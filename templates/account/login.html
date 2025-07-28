@@ -1,0 +1,29 @@
+<!-- templates/account/login.html -->
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Login | AHSP-RAB{% endblock %}
+
+{% block content %}
+
+<h1 style="color:rgba(3, 44, 131, 0.884);">WELCOME SIMPANSE</h1>
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <div class="card shadow-sm rounded-4">
+                <div class="card-body">
+                    <h4 class="text-center mb-4">Masuk ke Sistem</h4>
+                    <form method="POST" action="{% url 'account_login' %}">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <button type="submit" class="btn btn-primary w-100">Login</button>
+                    </form>
+                    <div class="text-center mt-3">
+                        <a href="{% url 'account_signup' %}">Belum punya akun?</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
