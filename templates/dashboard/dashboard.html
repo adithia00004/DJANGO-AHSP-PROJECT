@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Dashboard - My Projects{% endblock %}
+
+{% block extra_head %}
+<style>
+    .project-card { transition: all 0.3s ease; cursor: pointer; }
+    .project-card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .priority-badge { position: absolute; top: 10px; right: 10px; }
+    .project-stats { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+    .search-highlight { background-color: #fff3cd; padding: 2px 4px; border-radius: 3px; }
+    .dashboard-form-table-wrapper { overflow-x: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="dashboard-section">
+
+    <!-- SECTION 1: FORMSET INPUT PROJECT -->
+    <div class="dashboard-section-formset mb-5">
+        <div class="dashboard-form-card">
+            <div class="dashboard-form-header card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="fas fa-plus"></i> Tambah Project Langsung
+                </h5>
+            </div>
+            <div class="card-body">
+
+                <!-- 🔴 Tambahkan pesan global -->
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="post" class="dashboard-form" novalidate>
+                    {% csrf_token %}
+                    {{ formset.management_form }}
+
+                    <div class="dashboard-form-table-wrapper">
+                        <table class="dashboard-form-table table table-bordered align-middle text-nowrap" id="formset-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nama Project <span class="text-danger">*</span></th>
+                                    <th>Tahun Project <span class="text-danger">*</span></th>
+                                    <th>Sumber Dana <span class="text-danger">*</span></th>
+                                    <th>Lokasi Project <span class="text-danger">*</span></th>
+                                    <th>Nama Client <span class="text-danger">*</span></th>
+                                    <th>Anggaran Owner <span class="text-danger">*</span></th>
+                                    <th>Ket 1</th>
+                                    <th>Ket 2</th>
+                                    <th>Jabatan Client</th>
+                                    <th>Instansi Client</th>
+                                    <th>Nama Kontraktor</th>
+                                    <th>Instansi Kontraktor</th>
+                                    <th>Nama Konsultan Perencana</th>
+                                    <th>Instansi Konsultan Perencana</th>
+                                    <th>Nama Konsultan Pengawas</th>
+                                    <th>Instansi Konsultan Pengawas</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for form in formset %}
+                                    <tr>
+                                        <!-- 🔴 Tampilkan error umum (non-field errors) -->
+                                        <td colspan="16">
+                                            {% for error in form.non_field_errors %}
+                                                <div class="alert alert-danger small mb-1">⚠️ {{ error }}</div>
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="{% if form.nama.errors %}table-danger{% endif %}">
+                                            {{ form.nama }}
+                                            {% for err in form.nama.errors %}
+                                                <div class="text-danger small">⚠️ Kolom Nama Project: {{ err }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td class="{% if form.tahun_project.errors %}table-danger{% endif %}">
+                                            {{ form.tahun_project }}
+                                            {% for err in form.tahun_project.errors %}
+                                                <div class="text-danger small">⚠️ Kolom Tahun Project: {{ err }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td class="{% if form.sumber_dana.errors %}table-danger{% endif %}">
+                                            {{ form.sumber_dana }}
+                                            {% for err in form.sumber_dana.errors %}
+                                                <div class="text-danger small">⚠️ Kolom Sumber Dana: {{ err }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td class="{% if form.lokasi_project.errors %}table-danger{% endif %}">
+                                            {{ form.lokasi_project }}
+                                            {% for err in form.lokasi_project.errors %}
+                                                <div class="text-danger small">⚠️ Kolom Lokasi Project: {{ err }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td class="{% if form.nama_client.errors %}table-danger{% endif %}">
+                                            {{ form.nama_client }}
+                                            {% for err in form.nama_client.errors %}
+                                                <div class="text-danger small">⚠️ Kolom Nama Client: {{ err }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td class="{% if form.anggaran_owner.errors %}table-danger{% endif %}">
+                                            {{ form.anggaran_owner }}
+                                            {% for err in form.anggaran_owner.errors %}
+                                                <div class="text-danger small">⚠️ Kolom Anggaran Owner: {{ err }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td>{{ form.ket_project1 }}</td>
+                                        <td>{{ form.ket_project2 }}</td>
+                                        <td>{{ form.jabatan_client }}</td>
+                                        <td>{{ form.instansi_client }}</td>
+                                        <td>{{ form.nama_kontraktor }}</td>
+                                        <td>{{ form.instansi_kontraktor }}</td>
+                                        <td>{{ form.nama_konsultan_perencana }}</td>
+                                        <td>{{ form.instansi_konsultan_perencana }}</td>
+                                        <td>{{ form.nama_konsultan_pengawas }}</td>
+                                        <td>{{ form.instansi_konsultan_pengawas }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-end mt-3">
+                        <button type="button" class="btn btn-outline-secondary btn-sm dashboard-form-add-row" id="add-row-btn">
+                            <i class="fas fa-plus-circle"></i> Tambah Baris
+                        </button>
+                        <button type="submit" class="btn btn-success dashboard-form-submit">
+                            <i class="fas fa-save"></i> Simpan Project
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 2: TABEL & REKAP PROJECT -->
+    <div class="dashboard-section-summary-table">
+        {% include 'dashboard/_project_stats_and_table.html' %}
+    </div>
+
+    <!-- Tombol Upload Excel -->
+    <div class="mb-3 d-flex justify-content-end">
+        <a href="{% url 'project_upload' %}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-file-upload"></i> Upload dari Excel
+        </a>
+    </div>
+
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/dashboard.js' %}"></script>
+{% endblock %}

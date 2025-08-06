@@ -16,11 +16,20 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from accounts.views import dashboard_view  # ← import view
+from django.shortcuts import redirect
+from dashboard import views
 
+def home_redirect(request):
+    """Redirect homepage based on authentication status"""
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    else:
+        return redirect('account_login')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('accounts/', include('allauth.urls')),  # ⬅️ ini yang penting
-    path('', dashboard_view, name='dashboard'),  # root → dashboard
+    path('accounts/', include('allauth.urls')),
+    path('dashboard/', include('dashboard.urls')),
+    path('', home_redirect, name='home'),  # TAMBAHKAN INI
+    path('upload/', views.project_upload_view, name='project_upload'),
 ]

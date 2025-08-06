@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',
+    
     
     # Third-party apps
     'crispy_forms',
@@ -44,10 +46,11 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'widget_tweaks',
 
     # Aplikasi buatan sendiri
     'accounts',
-    
+    'dashboard',
 ]
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
@@ -135,6 +138,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -146,12 +150,15 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
+
+
+# Redirects and Authentication settings
 SITE_ID = 1
-LOGIN_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/dashboard/'
+LOGIN_URL = '/accounts/login/'
+LOGOUT_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/accounts/login/'
-# ACCOUNT_AUTHENTICATION_METHOD = 'username_email'
-# ACCOUNT_EMAIL_REQUIRED = True
-# ACCOUNT_USERNAME_REQUIRED = True
+ACCOUNT_LOGIN_REDIRECT_URL = '/dashboard/'
 ACCOUNT_LOGIN_METHODS = {'username', 'email'}  # bisa salah satu juga
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = 'none'  # Ganti 'mandatory' untuk email confirm
