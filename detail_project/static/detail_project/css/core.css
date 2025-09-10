@@ -1,0 +1,72 @@
+/* /static/detail_project/css/core.css */
+
+/* ===== Layering tokens (tetap: tidak mengubah apapun kecuali dipakai) ===== */
+:root{
+  /* Existing (dipertahankan) */
+  --dp-z-toolbar: 12030;   /* toolbar/topbar; > search, > thead */
+  --dp-z-search:  12015;   /* dropdown/search layer */
+  --dp-z-thead:   11950;   /* table header */
+
+  /* Tambahan opsional (tidak dipakai otomatis) */
+  --dp-z-toast:   12040;   /* untuk toast area jika mau via CSS (JS-mu sudah inline) */
+  --dp-topbar-h:  0px;     /* referensi offset sticky; isi dari halaman via inline style kalau perlu */
+
+  /* Token mikro (tidak memaksa ukuran) */
+  --dp-gap-xs: 4px;
+  --dp-gap-sm: 6px;
+  --dp-gap:    8px;
+  --dp-font-sm: .8rem;
+  --dp-line-sm: 1.25rem;
+}
+
+/* Layering helpers (opt-in) */
+.dp-layer-toolbar{ z-index: var(--dp-z-toolbar) !important; }
+.dp-layer-search{  z-index: var(--dp-z-search)  !important; }
+.dp-layer-thead{   z-index: var(--dp-z-thead)   !important; }
+/* Opsional kalau ingin pakai z-index toast via CSS, bukan inline */
+.dp-layer-toast{   z-index: var(--dp-z-toast)   !important; }
+
+/* ===== Micro-UI utilities (opt-in, aman; tidak mengubah ukuran default) ===== */
+
+/* Focus ring halus saat navigasi keyboard (hanya jika elemen fokus) */
+.dp-focus:focus-visible {
+  outline: 2px solid rgba(13,110,253,.6);
+  outline-offset: 2px;
+  border-radius: 6px; /* tidak mengubah box-model; hanya visual */
+}
+
+/* Clamp teks 2 baris (pakai hanya pada elemen yang memang perlu) */
+.dp-text-truncate-2{
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Aksesibilitas: sembunyikan visual, tetap dibaca screen reader */
+.dp-visually-hidden{
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+/* Sticky helper: posisikan tepat di bawah topbar (aktif hanya jika kelas ini dipakai) */
+.dp-sticky-under-topbar{
+  position: sticky;
+  top: var(--dp-topbar-h);
+}
+
+/* Teks kecil konsisten (tidak memaksa di elemen lain) */
+.dp-text-sm{
+  font-size: var(--dp-font-sm);
+  line-height: var(--dp-line-sm);
+}
+
+/* Non-select (mis. icon drag/handle), aman: tidak mengubah layout */
+.dp-noselect{
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
