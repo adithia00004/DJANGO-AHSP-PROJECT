@@ -1,0 +1,29 @@
+{% extends 'detail_project/base_detail.html' %}
+{% load static %}
+
+{% block dp_content %}
+{% include 'detail_project/_breadcrumbs.html' %}
+{% include 'detail_project/_alert.html' %}
+
+<h3>4) Harga Items (unik per proyek)</h3>
+<p class="text-muted">Hanya item yang digunakan di Detail AHSP yang muncul. Item baru akan muncul dengan harga kosong.</p>
+
+<div id="hi-app" data-project-id="{{ project.id }}">
+  <table class="table table-sm align-middle" id="hi-table">
+    <thead class="table-light">
+      <tr>
+        <th>#</th>
+        <th>Kode</th>
+        <th>Kategori</th>
+        <th class="text-wrap">Uraian</th>
+        <th>Satuan</th>
+        <th style="width:160px">Harga Satuan</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <button class="btn btn-primary" id="btn-save-harga">Simpan Harga</button>
+</div>
+
+<script src="{% static 'detail_project/harga_items.js' %}"></script>
+{% endblock %}

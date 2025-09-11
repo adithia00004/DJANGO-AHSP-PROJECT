@@ -1,0 +1,122 @@
+<!-- templates/detail_project/_sidebar_global.html -->
+{% load i18n %}
+
+{% url 'dashboard:dashboard' as url_dashboard %}
+{% if project %}
+  {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
+  {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
+  {% url 'detail_project:harga_items' project.id as url_harga_items %}
+  {% url 'detail_project:detail_ahsp' project.id as url_detail_ahsp %}
+  {% url 'detail_project:detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
+  {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
+{% endif %}
+
+{% trans "Project" as project_label %}
+{% trans "Global project navigation" as nav_label %}
+{% trans "Close sidebar" as close_label %}
+{% trans "Dashboard" as t_dashboard %}
+{% trans "List Pekerjaan" as t_list_pekerjaan %}
+{% trans "Volume Pekerjaan" as t_volume_pekerjaan %}
+{% trans "Harga Items" as t_harga_items %}
+{% trans "Detail AHSP" as t_detail_ahsp %}
+{% trans "Detail Gabungan" as t_detail_gabungan %}
+{% trans "Rekap RAB" as t_rekap_rab %}
+
+<aside id="dp-sidebar"
+       class="dp-sidebar"
+       aria-label="{{ nav_label }}"
+       aria-hidden="true"
+       tabindex="-1"
+       data-version="v4"
+       data-pid="{{ project.id|default:'' }}">
+  <div class="dp-sidebar__inner">
+    <div class="d-flex align-items-start justify-content-between">
+      <div class="dp-sidebar__project">
+        <div class="dp-sidebar__title"
+             title="{{ project.nama|default:project_label }}">
+          {{ project.nama|default:project_label }}
+        </div>
+        {% if project %}
+          {% if project.tahun_project or project.lokasi_project %}
+            <div class="dp-sidebar__meta text-muted">
+              {% if project.tahun_project %}<span>{{ project.tahun_project }}</span>{% endif %}
+              {% if project.lokasi_project %}<span> · {{ project.lokasi_project }}</span>{% endif %}
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      <button type="button"
+              class="btn-close ms-2 d-lg-none"
+              aria-label="{{ close_label }}"
+              onclick="try{document.querySelector('.dp-sidebar__backdrop')?.click()}catch(e){}">
+      </button>
+    </div>
+
+    <nav class="dp-sidebar__nav" role="navigation" aria-label="{{ nav_label }}">
+      <ul>
+        <li>
+          <a class="dp-link {% if side_active == 'dashboard' %}is-active{% endif %}"
+             {% if side_active == 'dashboard' %}aria-current="page"{% endif %}
+             href="{{ url_dashboard|default:'#' }}">
+            <i class="bi bi-speedometer2" aria-hidden="true"></i>
+            <span>{{ t_dashboard }}</span>
+          </a>
+        </li>
+
+        {% if project %}
+        <li>
+          <a class="dp-link {% if side_active == 'list_pekerjaan' %}is-active{% endif %}"
+             {% if side_active == 'list_pekerjaan' %}aria-current="page"{% endif %}
+             href="{{ url_list_pekerjaan|default:'#' }}">
+            <i class="bi bi-list-check" aria-hidden="true"></i>
+            <span>{{ t_list_pekerjaan }}</span>
+          </a>
+        </li>
+        <li>
+          <a class="dp-link {% if side_active == 'volume_pekerjaan' %}is-active{% endif %}"
+             {% if side_active == 'volume_pekerjaan' %}aria-current="page"{% endif %}
+             href="{{ url_volume_pekerjaan|default:'#' }}">
+            <i class="bi bi-rulers" aria-hidden="true"></i>
+            <span>{{ t_volume_pekerjaan }}</span>
+          </a>
+        </li>
+        <li>
+          <a class="dp-link {% if side_active == 'harga_items' %}is-active{% endif %}"
+             {% if side_active == 'harga_items' %}aria-current="page"{% endif %}
+             href="{{ url_harga_items|default:'#' }}">
+            <i class="bi bi-currency-dollar" aria-hidden="true"></i>
+            <span>{{ t_harga_items }}</span>
+          </a>
+        </li>
+        <li>
+          <a class="dp-link {% if side_active == 'detail_ahsp' %}is-active{% endif %}"
+             {% if side_active == 'detail_ahsp' %}aria-current="page"{% endif %}
+             href="{{ url_detail_ahsp|default:'#' }}">
+            <i class="bi bi-list-ul" aria-hidden="true"></i>
+            <span>{{ t_detail_ahsp }}</span>
+          </a>
+        </li>
+        <li>
+          <a class="dp-link {% if side_active == 'detail_ahsp_gabungan' %}is-active{% endif %}"
+             {% if side_active == 'detail_ahsp_gabungan' %}aria-current="page"{% endif %}
+             href="{{ url_detail_ahsp_gabungan|default:'#' }}">
+            <i class="bi bi-collection" aria-hidden="true"></i>
+            <span>{{ t_detail_gabungan }}</span>
+          </a>
+        </li>
+        <li>
+          <a class="dp-link {% if side_active == 'rekap_rab' %}is-active{% endif %}"
+             {% if side_active == 'rekap_rab' %}aria-current="page"{% endif %}
+             href="{{ url_rekap_rab|default:'#' }}">
+            <i class="bi bi-card-checklist" aria-hidden="true"></i>
+            <span>{{ t_rekap_rab }}</span>
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+
+  <button class="dp-sidebar__backdrop" type="button" aria-label="{{ close_label }}"></button>
+</aside>

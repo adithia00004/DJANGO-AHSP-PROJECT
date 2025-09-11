@@ -1,0 +1,157 @@
+{% load static %}
+{% load widget_tweaks %}
+{% load humanize %}
+
+<!-- Statistik Ringkas -->
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card text-white bg-primary shadow dashboard-stats-card">
+      <div class="card-body text-center">
+        <h5 class="card-title">{{ total_projects }}</h5>
+        <p class="card-text">Total Project</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter dan Search -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light">
+    <strong><i class="fas fa-filter"></i> Filter Project</strong>
+  </div>
+  <div class="card-body">
+    <form method="get" class="row g-3 dashboard-filter-form">
+      <div class="col-md-6">
+        {{ filter_form.search|add_class:"form-control" }}
+      </div>
+      <div class="col-md-4">
+        {{ filter_form.sort_by|add_class:"form-select" }}
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-outline-primary w-100">
+          <i class="fas fa-search"></i> Cari
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Tabel Proyek Ringkasan -->
+<div class="dashboard-table-wrapper table-responsive shadow-sm">
+  <table class="dashboard-project-table table table-bordered align-middle text-nowrap">
+    <thead class="table-light">
+      <tr>
+        <th>Kode</th>
+        <th>Nama Project</th>
+        <th>Tahun</th>
+        <th>Sumber Dana</th>
+        <th>Lokasi</th>
+        <th>Nama Client</th>
+        <th>Anggaran</th>
+        <th class="text-center">Aksi</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for project in projects %}
+      <tr>
+        <td><strong>{{ project.index_project|default:"—" }}</strong></td>
+        <td>{{ project.nama|default:"—" }}</td>
+        <td>{{ project.tahun_project|default:"—" }}</td>
+        <td>{{ project.sumber_dana|default:"—" }}</td>
+        <td>{{ project.lokasi_project|default:"—" }}</td>
+        <td>{{ project.nama_client|default:"—" }}</td>
+        <td>Rp{{ project.anggaran_owner|default:0|floatformat:0|intcomma }}</td>
+        <td class="text-center">
+          <!-- Detail (dashboard) -->
+          <a href="{% url 'dashboard:project_detail' project.pk %}" class="btn btn-sm btn-outline-info" title="Lihat Detail">
+            <i class="fas fa-eye"></i>
+          </a>
+          <!-- Masuk ke Detail Pekerjaan -->
+          <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-outline-success" title="Detail Pekerjaan">
+            <i class="fas fa-list"></i>
+          </a>
+          <!-- Edit -->
+          <a href="{% url 'dashboard:project_edit' project.pk %}" class="btn btn-sm btn-outline-warning" title="Edit Project">
+            <i class="fas fa-edit"></i>
+          </a>
+          <!-- Duplicate -->
+          <a href="{% url 'dashboard:project_duplicate' project.pk %}" class="btn btn-sm btn-outline-secondary" title="Duplikat Project">
+            <i class="fas fa-clone"></i>
+          </a>
+          <!-- Delete (POST via modal) -->
+          <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}" title="Hapus Project">
+            <i class="fas fa-trash"></i>
+          </button>
+
+          <!-- Modal Konfirmasi Hapus -->
+          <div class="modal fade" id="deleteModal-{{ project.pk }}" tabindex="-1" aria-labelledby="deleteModalLabel-{{ project.pk }}" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title" id="deleteModalLabel-{{ project.pk }}">Hapus Project</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body">
+                  Kamu yakin ingin menghapus project <strong>{{ project.nama }}</strong>?
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+                  <form method="post" action="{% url 'dashboard:project_delete' project.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Ya, Hapus</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="8" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if projects.paginator.num_pages > 1 %}
+{% with pnum=projects.number|stringformat:"s" %}
+<nav aria-label="Pagination" class="mt-2">
+  <ul class="pagination pagination-sm justify-content-end mb-0">
+    {% if projects.has_previous %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ projects.previous_page_number }}{% if request.GET %}&{{ request.GET.urlencode|default:''|cut:'page='|cut:pnum }}{% endif %}"
+           aria-label="Previous">&laquo;</a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
+    {% endif %}
+
+    {% for num in projects.paginator.page_range %}
+      {% if num == projects.number %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num >= projects.number|add:-2 and num <= projects.number|add:2 %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{ num }}{% if request.GET %}&{{ request.GET.urlencode|default:''|cut:'page='|cut:pnum }}{% endif %}">{{ num }}</a>
+        </li>
+      {% endif %}
+    {% endfor %}
+
+    {% if projects.has_next %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ projects.next_page_number }}{% if request.GET %}&{{ request.GET.urlencode|default:''|cut:'page='|cut:pnum }}{% endif %}"
+           aria-label="Next">&raquo;</a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endwith %}
+{% endif %}

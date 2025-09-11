@@ -1,0 +1,38 @@
+{% extends 'detail_project/base_detail.html' %}
+{% load static %}
+
+{% block dp_content %}
+{% include 'detail_project/_breadcrumbs.html' %}
+{% include 'detail_project/_alert.html' %}
+
+<h3>6) Rekap RAB</h3>
+<div id="rekap-app" data-project-id="{{ project.id }}">
+  <table class="table table-sm align-middle" id="rekap-table">
+    <thead class="table-light">
+      <tr>
+        <th>#</th>
+        <th>Kode</th>
+        <th class="text-wrap">Uraian</th>
+        <th>Satuan</th>
+        <th class="text-end">A (TK)</th>
+        <th class="text-end">B (Bahan)</th>
+        <th class="text-end">C (Alat)</th>
+        <th class="text-end">D = A+B+C</th>
+        <th class="text-end">E = %×D</th>
+        <th class="text-end">HSP</th>
+        <th class="text-end">Volume</th>
+        <th class="text-end">Total</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot class="table-light">
+      <tr>
+        <th colspan="11" class="text-end">Grand Total</th>
+        <th class="text-end" id="gt"></th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<script src="{% static 'detail_project/rekap_rab.js' %}"></script>
+{% endblock %}

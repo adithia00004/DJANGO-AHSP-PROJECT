@@ -1,0 +1,106 @@
+{# templates/detail_project/_pekerjaan_row.html #}
+
+<template id="tpl-pekerjaan-row-table">
+  <tr class="lp-row" data-id="" data-source-type="" data-ref-id="" data-order="">
+    <td class="col-num"></td>
+
+    <td class="col-mode">
+      <div class="vstack gap-1">
+        <select class="form-select src" aria-label="Pilih sumber pekerjaan">
+          <option value="ref">Referensi</option>
+          <option value="ref_modified">Referensi (Dimodifikasi)</option>
+          <option value="custom">Kustom</option>
+        </select>
+        <span class="source-badge badge rounded-pill text-bg-secondary source-hint"></span>
+      </div>
+    </td>
+
+    <td class="col-ref">
+      <div class="vstack gap-1">
+        <div class="select2-host">
+          <select
+            class="form-select ref-select native-select"
+            style="width:100%"
+            aria-label="Cari referensi AHSP"
+            data-placeholder="Cari AHSP referensi…"
+            data-ajax-url="{% url 'referensi:api_search_ahsp' %}"
+            data-minlength="2"
+            data-allowclear="1">
+            <option></option>
+          </select>
+        </div>
+        <div class="current-ref d-none">
+          <code class="ref-kode"></code>
+          <span class="ref-uraian"></span>
+        </div>
+      </div>
+    </td>
+
+    <td class="col-urai">
+      <div class="lp-urai-preview"></div>
+      <textarea class="form-control uraian" rows="2" placeholder="Uraian pekerjaan"></textarea>
+    </td>
+
+    <td class="col-sat">
+      <input class="form-control satuan" placeholder="cth: m, m2, m3, unit" />
+    </td>
+
+    <td class="col-act">
+      <button type="button" class="btn btn-outline-danger btn-del" title="Hapus baris">✕</button>
+    </td>
+  </tr>
+</template>
+
+<template id="tpl-pekerjaan-row-legacy">
+  <div class="lp-row d-flex align-items-start gap-2"
+       data-id="" data-source-type="" data-ref-id="" data-order="">
+
+    <div class="lp-col lp-col--order">
+      <input type="number" min="1" class="form-control input-order" placeholder="#" />
+    </div>
+
+    <div class="lp-col lp-col--mode">
+      <select class="form-select input-mode">
+        <option value="ref">Ref</option>
+        <option value="ref_modified">Ref Modified</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+
+    <div class="lp-col lp-col--ref w-100">
+      <div class="select2-host">
+        <select
+          class="form-select ref-select native-select"
+          data-placeholder="Cari AHSP referensi…"
+          data-ajax-url="{% url 'referensi:api_search_ahsp' %}"
+          data-minlength="1"
+          data-allowclear="1">
+          <option></option>
+        </select>
+      </div>
+
+      <div class="current-ref mt-1 d-none">
+        <code class="ref-kode"></code>
+        <span class="ref-uraian"></span>
+      </div>
+    </div>
+
+    <div class="lp-col lp-col--uraian flex-grow-1">
+      <input type="text" class="form-control input-uraian d-none" placeholder="Uraian pekerjaan" />
+      <div class="readonly-uraian d-none"></div>
+    </div>
+
+    <div class="lp-col lp-col--satuan">
+      <input type="text" class="form-control input-satuan d-none" placeholder="Satuan" />
+      <div class="readonly-satuan d-none"></div>
+    </div>
+
+    <div class="lp-col lp-col--badge">
+      <span class="badge text-bg-secondary source-badge">—</span>
+    </div>
+
+    <div class="lp-col lp-col--actions">
+      <button type="button" class="btn btn-outline-danger btn-del">Hapus</button>
+    </div>
+  </div>
+</template>

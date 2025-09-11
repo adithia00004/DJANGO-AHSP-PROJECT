@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-3">
+  {% include 'detail_project/_breadcrumbs.html' %}
+  <h5 class="mb-3">Rekap AHSP Proyek</h5>
+
+  {% if incomplete_ids and incomplete_ids|length > 0 %}
+    <div class="alert alert-warning">
+      Beberapa pekerjaan belum lengkap (volume kosong atau harga item belum diisi). Silakan lengkapi di <b>Harga Items</b>.
+    </div>
+  {% endif %}
+
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Pekerjaan</th><th>HSP</th><th>Volume</th><th>Total</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% with p=row.pekerjaan r=row.rekap %}
+        <tr>
+          <td>{{ p.uraian_pekerjaan|truncatechars:60 }}</td>
+          <td>{{ r.HSP }}</td>
+          <td>{{ r.volume }}</td>
+          <td>{{ r.total }}</td>
+          <td>
+            {% if r.is_complete %}
+              <span class="badge bg-success">Complete</span>
+            {% else %}
+              <a href="{% url 'detail_project:harga_items' project.id %}?pekerjaan_id={{ p.id }}" class="badge bg-warning text-dark">Perbaiki</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr><td colspan="5" class="text-muted">Belum ada pekerjaan.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="3" class="text-end">Grand Total</th>
+          <th colspan="2">{{ grand_total }}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endblock %}

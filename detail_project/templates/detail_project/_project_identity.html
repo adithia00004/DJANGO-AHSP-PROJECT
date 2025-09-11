@@ -1,0 +1,34 @@
+{# detail_project/templates/detail_project/_project_identity.html #}
+{% load i18n humanize %}
+
+<div class="pi pi-compact card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="pi-grid">
+      {# Proyek : Nama + ket1/ket2 (satu grid; ":" sejajar) #}
+      <div class="pi-label">{% trans "Proyek" %}</div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value pi-main {{ identity_styles.title|default:'' }}" title="{{ project.nama|default:'' }}">{% firstof project.nama "—" %}</div>
+
+      {% if project.ket_project1 %}
+      <div class="pi-label"></div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value pi-sub {{ identity_styles.ket1|default:'' }}">{{ project.ket_project1 }}</div>
+      {% endif %}
+
+      {% if project.ket_project2 %}
+      <div class="pi-label"></div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value pi-sub {{ identity_styles.ket2|default:'' }}">{{ project.ket_project2 }}</div>
+      {% endif %}
+
+      {# Pemilik Project : nama_client (instansi_client) #}
+      <div class="pi-label">{% trans "Pemilik Project" %}</div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value {{ identity_styles.client|default:'' }}">{% if project.nama_client or project.instansi_client %}{{ project.nama_client|default_if_none:"" }}{% if project.instansi_client %} ({{ project.instansi_client }}){% endif %}{% else %}—{% endif %}</div>
+
+      {# Tahun #}
+      <div class="pi-label">{% trans "Tahun" %}</div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value {{ identity_styles.tahun|default:'' }}">{% firstof project.tahun_project "—" %}</div>
+
+      {# Sumber Dana #}
+      <div class="pi-label">{% trans "Sumber Dana" %}</div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value pi-truncate {{ identity_styles.sumber_dana|default:'' }}">{% firstof project.sumber_dana "—" %}</div>
+
+      {# Lokasi #}
+      <div class="pi-label">{% trans "Lokasi" %}</div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value pi-truncate {{ identity_styles.lokasi|default:'' }}">{% firstof project.lokasi_project "—" %}</div>
+
+      {# Project Anggaran: satu baris; pakai anggaran_owner; None -> Rp 0 #}
+      <div class="pi-label">{% trans "Project Anggaran" %}</div><div class="pi-colon" aria-hidden="true">:</div><div class="pi-value pi-value-strong {{ identity_styles.anggaran|default:'' }}">{% with ang=project.anggaran_owner %}{% if ang is not None %}Rp {{ ang|floatformat:0|intcomma }}{% else %}Rp 0{% endif %}{% endwith %}</div>
+    </div>
+  </div>
+</div>

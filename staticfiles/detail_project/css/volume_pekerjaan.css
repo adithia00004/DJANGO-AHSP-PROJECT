@@ -1,0 +1,160 @@
+/* ===== Volume Pekerjaan — styling ===== */
+
+/* Root page container */
+#vp-page {
+  --vp-font-size: 0.8rem;
+  --vp-line: 1.25rem;
+  --vp-pad-v: 6px;
+  font-size: var(--vp-font-size);
+  line-height: var(--vp-line);
+}
+
+/* Keep header visible if you add .sticky-top on <thead> (optional) */
+#vp-table thead.sticky-top {
+  top: 0;
+  z-index: 2;
+}
+
+/* Horizontal scroll safety on small screens */
+#vp-page .table-responsive {
+  overflow-x: auto;
+}
+
+/* Table cell alignment */
+#vp-table th,
+#vp-table td {
+  vertical-align: middle;
+}
+
+/* Compact controls in cells */
+#vp-table td .form-control {
+  padding-top: var(--vp-pad-v);
+  padding-bottom: var(--vp-pad-v);
+}
+
+/* First column (#) — tight & right-aligned */
+#vp-table th:first-child,
+#vp-table td:first-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Monospace for Kode */
+#vp-table td.text-monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Wrap long descriptions safely */
+#vp-table td.text-wrap {
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* ===== Autocomplete (fallback positioning) ===== */
+/* Pastikan anchor relatif meskipun .vp-cell tidak ada */
+#vp-table .flex-grow-1 { position: relative; }
+/* Popup suggest harus di atas elemen lain */
+.vp-suggest { 
+  position: absolute; 
+  top: 100%; 
+  left: 0; 
+  right: 0; 
+  z-index: 1061; /* di atas header/sidebar & offcanvas backdrop */
+  background: #fff; 
+  border: 1px solid rgba(0,0,0,.15); 
+  border-radius: .375rem; 
+  box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+  max-height: 240px; 
+  overflow: auto;
+}
+.vp-suggest ul { list-style: none; margin: 0; padding: 4px; }
+.vp-suggest li { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; cursor: pointer; }
+.vp-suggest li.active, .vp-suggest li:hover { background: rgba(13,110,253,.1); }
+.vp-suggest .s-name { font-weight: 600; }
+.vp-suggest .s-value { font-variant-numeric: tabular-nums; opacity: .7; }
+
+/* Row validation states (optional hooks) */
+.vp-row.invalid { background: rgba(220, 53, 69, 0.06); } /* soft red */
+.vp-row.valid   { background: rgba(25, 135, 84, 0.04); } /* soft green */
+
+/* Tiny delete buttons (if any) */
+.vp-row-del { padding: 2px 6px; }
+
+/* Group headers: Klasifikasi & Sub-klasifikasi */
+.vp-klass,
+.vp-sub {
+  background: rgba(0, 0, 0, 0.03);
+}
+.vp-klass {
+  font-weight: 600;
+}
+.vp-sub {
+  background: rgba(0, 0, 0, 0.02);
+  font-weight: 500;
+}
+.vp-klass td,
+.vp-sub td {
+  padding-top: .5rem;
+  padding-bottom: .5rem;
+}
+
+/* Cell wrapper */
+.vp-cell {
+  position: relative;
+}
+/* Jadikan wrapper input sebagai anchor dropdown suggestion */
+.vp-cell .flex-grow-1 {
+  position: relative;
+}
+
+/* Offcanvas always on top of topbar/thead (extreme) */
+.offcanvas { z-index: 2147483600 !important; }
+.offcanvas-backdrop { z-index: 2147483590 !important; }
+
+/* Extra space for Quantity input */
+#vp-table .qty-input {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* ===== NEW: Autocomplete suggestions for formula variables ===== */
+.vp-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.125);
+  border-radius: .25rem;
+  box-shadow: 0 .25rem .75rem rgba(0,0,0,.1);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 1200; /* di atas tabel/head */
+}
+.vp-suggest ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+.vp-suggest li {
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: .25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.vp-suggest li:hover,
+.vp-suggest li.active {
+  background: rgba(13,110,253,.08); /* primary-100 feel */
+}
+.vp-suggest .s-name {
+  font-weight: 600;
+}
+.vp-suggest .s-value {
+  color: #6c757d;
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+

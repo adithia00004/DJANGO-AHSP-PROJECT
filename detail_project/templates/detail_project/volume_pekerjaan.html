@@ -1,0 +1,220 @@
+{% extends 'detail_project/base_detail.html' %}
+{% load static %}
+
+{% block dp_content %}
+
+<!-- Toolbar: searchbar + actions (sticky tepat di bawah #dp-topbar) -->
+<div id="vp-toolbar" class="d-flex justify-content-between align-items-center mb-2 sticky-top">
+  <!-- Searchbar -->
+  <div class="vp-searchbar position-relative flex-grow-1 me-2">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input id="vp-search" type="search" class="form-control"
+             placeholder="Cari Klasifikasi / Sub-Klasifikasi / Pekerjaan...">
+    </div>
+    <!-- Badge prefix (indikasi filter yang terdeteksi) -->
+    <span id="vp-search-prefix-badge"
+          class="badge text-bg-secondary position-absolute end-0 top-50 translate-middle-y me-2 d-none"
+          title="Prefix filter terdeteksi"
+          data-bs-toggle="tooltip"></span>
+    <!-- Dropdown hasil dengan ARIA (z-index di CSS) -->
+    <div id="vp-search-results"
+         class="vp-search-dropdown d-none"
+         role="listbox"
+         aria-label="Hasil pencarian"
+         aria-expanded="false"></div>
+  </div>
+
+  <!-- Actions kanan -->
+  <div class="d-flex align-items-center gap-2">
+    <!-- Offcanvas Parameter Perhitungan -->
+    <button type="button" class="btn btn-outline-primary btn-sm"
+            data-bs-toggle="offcanvas" data-bs-target="#vpVarOffcanvas"
+            aria-controls="vpVarOffcanvas">
+      Parameter Perhitungan
+    </button>
+    <!-- Bantuan Formula (Modal) -->
+    <button type="button" class="btn btn-outline-secondary btn-sm"
+            data-bs-toggle="modal" data-bs-target="#vpFormulaHelpModal"
+            aria-label="Buka bantuan formula">
+      Bantuan Formula
+    </button>
+  </div>
+</div>
+
+<div id="vol-app" data-project-id="{{ project.id }}">
+  <!-- Offcanvas: Parameter Perhitungan (FE-only; localStorage) -->
+  <div class="offcanvas offcanvas-end" tabindex="-1" id="vpVarOffcanvas" aria-labelledby="vpVarOffcanvasLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="vpVarOffcanvasLabel">Parameter Perhitungan</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body d-flex flex-column">
+      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <small class="text-muted">
+          Gunakan di formula, contoh <code>= panjang * lebar * tinggi</code>
+        </small>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-primary" id="vp-var-add">Tambah Parameter</button>
+          <!-- Import/Export JSON -->
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" data-bs-toggle="tooltip" title="Import JSON">
+            <i class="bi bi-file-arrow-up"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="vp-var-export-btn" data-bs-toggle="tooltip" title="Export JSON">
+            <i class="bi bi-file-arrow-down"></i>
+          </button>
+          <input type="file" id="vp-var-import" accept="application/json" class="d-none">
+          <!-- (opsional) Import Excel/CSV, hook JS nanti -->
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="vp-var-import-excel-btn" data-bs-toggle="tooltip" title="Import Excel/CSV">
+            <i class="bi bi-filetype-xlsx"></i>
+          </button>
+          <input type="file" id="vp-var-import-excel" accept=".xlsx,.csv" class="d-none">
+        </div>
+      </div>
+
+      <div class="table-responsive mt-2 flex-grow-1">
+        <!-- Header proxy (sticky seperti searchbar; JS sinkron kolom) -->
+        <div id="vp-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
+
+        <table class="table table-sm align-middle" id="vp-var-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:45%">Nama</th>
+              <th style="width:35%">Nilai</th>
+              <th class="text-end" style="width:20%">Aksi</th>
+            </tr>
+          </thead>
+          <tbody><!-- diisi JS; "Tambah Parameter" membuat baris input inline --></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabel utama -->
+  <div class="table-responsive" id="vp-page">
+    <!-- Header proxy GRID (sticky & ikut scroll horizontal) -->
+    <div id="vp-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
+
+    <table class="table table-sm align-middle" id="vp-table">
+      <colgroup>
+        <col style="width:60px;">      <!-- # -->
+        <col style="width:150px;">     <!-- Kode -->
+        <col>                          <!-- Uraian (fleksibel) -->
+        <col style="width:110px;">     <!-- Satuan -->
+        <col style="width:360px;">     <!-- Quantity (diperlebar) -->
+      </colgroup>
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Kode</th>
+          <th class="text-wrap">Uraian</th>
+          <th>Satuan</th>
+          <th>Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pekerjaan %}
+          <tr data-pekerjaan-id="{{ p.id }}">
+            <td>{{ forloop.counter }}</td>
+            <td class="text-monospace">{{ p.snapshot_kode }}</td>
+            <td class="text-wrap">{{ p.snapshot_uraian }}</td>
+            <td>{{ p.snapshot_satuan }}</td>
+            <td>
+              <div class="d-flex align-items-start gap-2 vp-cell" style="overflow: visible;">
+                <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
+                        title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
+                        aria-pressed="false">fx</button>
+                <div class="flex-grow-1" style="position: relative;">
+                  <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input" aria-label="Quantity">
+                  <div class="form-text fx-preview text-muted small" style="min-height:1rem;"></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="text-muted">Belum ada pekerjaan.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mt-2">
+    <small class="text-muted">
+      Hint: <code>=</code> untuk formula · <kbd>Ctrl</kbd>+<kbd>Space</kbd> buka parameter ·
+      <kbd>Enter</kbd>/<kbd>Shift</kbd>+<kbd>Enter</kbd> navigasi · <kbd>Ctrl</kbd>+<kbd>S</kbd> simpan
+    </small>
+    <div class="d-flex align-items-center gap-2">
+      <span id="vp-save-status" class="text-muted small"></span>
+      <button class="btn btn-success d-inline-flex align-items-center gap-2" id="btn-save-vol">
+        <span class="spinner-border spinner-border-sm d-none" id="btn-save-spin" role="status" aria-hidden="true"></span>
+        <span>Simpan Volume</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container (notifikasi non-blocking) — legacy single toast -->
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 2000">
+  <div id="vp-toast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="vp-toast-body">Tersimpan.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Multi-toast container (opsional; untuk banyak notifikasi) -->
+<div id="vp-toasts" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2001;"></div>
+
+<!-- Modal: Bantuan Formula -->
+<div class="modal fade" id="vpFormulaHelpModal" tabindex="-1" aria-labelledby="vpFormulaHelpLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-md">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="vpFormulaHelpLabel">Bantuan Formula & Parameter</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          Masuk <em>mode formula</em> dengan mengetik <code>=</code> di input quantity.
+          Atau tekan <kbd>Ctrl</kbd>+<kbd>Space</kbd> untuk membuka daftar parameter.
+        </p>
+        <hr>
+        <h6 class="mb-1">Parameter Perhitungan</h6>
+        <ul class="mb-2">
+          <li>Kelola via tombol <strong>Parameter Perhitungan</strong> (offcanvas kanan).</li>
+          <li>Nama (label) boleh spasi; di formula gunakan <em>kode</em> (dibuat otomatis).</li>
+        </ul>
+        <h6 class="mb-1">Operator Dasar</h6>
+        <p class="mb-2"><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>( )</code></p>
+        <h6 class="mb-1">Fungsi Umum</h6>
+        <p class="mb-2"><code>sum(a,b,...)</code>, <code>min(a,b)</code>, <code>max(a,b)</code>, <code>round(x,2)</code></p>
+        <h6 class="mb-1">Contoh</h6>
+        <ul class="mb-0">
+          <li><code>= panjang * lebar * tinggi</code></li>
+          <li><code>= (panjang + lebar) * 2</code></li>
+          <li><code>= max(tebal1, tebal2) * luas</code></li>
+        </ul>
+        <div class="text-muted small mt-2">
+          Tampilan angka mengikuti <code>id-ID</code> (ribuan <code>.</code>, desimal <code>,</code>).
+          Nilai ke server tetap numeric bersih; presisi DB tetap 3dp.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
+  <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
+{% endblock %}

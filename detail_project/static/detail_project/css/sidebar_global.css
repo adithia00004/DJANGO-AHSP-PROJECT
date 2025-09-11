@@ -1,0 +1,180 @@
+/* static/detail_project/css/sidebar_global.css */
+
+/* ====================== Root tokens ====================== */
+:root {
+  --dp-safe-top: env(safe-area-inset-top, 0px);
+  --dp-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --dp-topbar-h: 64px;            /* di-update via JS base_detail */
+  --dp-sidebar-w: 280px;
+
+  /* CHANGELOG: z-index tinggi agar di atas select2/popover/modal ringan */
+  --dp-sidebar-z: 12020;          /* > topbar(~12000) & komponen umum */
+  --dp-radius: 16px;
+
+  --dp-fs-0: .875rem;
+  --dp-fs-1: 1rem;
+  --dp-fs-2: 1.125rem;
+
+  --dp-muted: 0.62;
+}
+
+/* ====================== Trigger badge (opsional lama) ====================== */
+#dp-sidebadge {
+  position: relative;
+  z-index: calc(var(--dp-sidebar-z) + 1); /* di atas child topbar */
+  display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 600;
+}
+
+/* ====================== Sidebar container ====================== */
+#dp-sidebar.dp-sidebar {
+  position: fixed;
+  top: calc(var(--dp-topbar-h) + var(--dp-safe-top));
+  left: 0;
+  width: var(--dp-sidebar-w);
+
+  /* 100dvh → tinggi viewport aktual di mobile modern */
+  height: calc(100dvh - var(--dp-topbar-h) - var(--dp-safe-top));
+  z-index: var(--dp-sidebar-z);
+
+  background: var(--bs-body-bg);
+  border-right: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 0 24px rgba(0,0,0,.08);
+  will-change: transform, opacity, visibility;
+}
+
+/* Isi */
+.dp-sidebar__inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+  overflow: hidden;
+}
+.dp-sidebar__project {
+  padding: 10px 8px 6px;
+  border-bottom: 1px dashed rgba(0,0,0,.08);
+}
+.dp-sidebar__title {
+  font-size: var(--dp-fs-2);
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dp-sidebar__meta  {
+  font-size: var(--dp-fs-0);
+  opacity: var(--dp-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Nav */
+.dp-sidebar__nav {
+  flex: 1 1 auto;
+  padding: 8px 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: max(8px, var(--dp-safe-bottom));
+}
+.dp-sidebar__nav ul { list-style: none; padding: 0; margin: 0; }
+.dp-sidebar__nav li + li { margin-top: 2px; }
+
+.dp-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--dp-radius);
+  font-size: var(--dp-fs-1);
+  text-decoration: none;
+  color: var(--bs-body-color);
+  outline: none;
+}
+.dp-link i { min-width: 20px; text-align: center; }
+.dp-link:hover { background: rgba(0,0,0,.04); text-decoration: none; }
+.dp-link.is-active {
+  background: var(--bs-primary-bg-subtle, rgba(13,110,253,.12));
+  color: var(--bs-primary, #0d6efd);
+  font-weight: 600;
+}
+/* A11y focus */
+.dp-link:focus-visible {
+  outline: 2px solid var(--bs-primary, #0d6efd);
+  outline-offset: 2px;
+}
+
+/* ====================== Desktop behavior ====================== */
+@media (min-width: 992px) {
+  #dp-sidebar.dp-sidebar {
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transform: translateX(-12px);
+    transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+  }
+  body.dp-sidebar-peek #dp-sidebar.dp-sidebar,
+  body.dp-sidebar-pinned #dp-sidebar.dp-sidebar {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transform: translateX(0);
+  }
+}
+
+/* ====================== Legacy kill-switch ====================== */
+/* CHANGELOG: jangan sembunyikan .lp-sidebar-hotspot (modern) */
+#lpSidebar,
+.lp-sidebar,
+#lpSidebarMini,
+.lp-sidebar-collapsedbar {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* ====================== Hover-edge hotspot (opsional) ====================== */
+.lp-sidebar-hotspot {
+  position: fixed;
+  top: calc(var(--dp-topbar-h) + var(--dp-safe-top));
+  bottom: 0;
+  left: 0;
+  width: 8px;
+  z-index: calc(var(--dp-sidebar-z) + 1);
+  pointer-events: auto;
+}
+
+/* ====================== Mobile (off-canvas) ====================== */
+.dp-sidebar__backdrop {
+  position: fixed; inset: 0;
+  z-index: calc(var(--dp-sidebar-z) - 1);
+  background: rgba(0,0,0,.28);
+  border: 0;
+  display: none;
+}
+
+@media (max-width: 991.98px) {
+  #dp-sidebar.dp-sidebar {
+    transform: translateX(-100%);
+    visibility: hidden;
+    opacity: 0;
+    transition: transform .24s ease, visibility .24s ease, opacity .16s ease;
+  }
+  body.dp-sidebar-open #dp-sidebar.dp-sidebar {
+    transform: translateX(0);
+    visibility: visible;
+    opacity: 1;
+  }
+  body.dp-sidebar-open .dp-sidebar__backdrop { display: block; }
+
+  /* Cegah scroll di belakang saat sidebar terbuka */
+  body.dp-sidebar-open {
+    overflow: hidden;
+    touch-action: none;
+  }
+}
+
+/* ====================== Prefer-reduced-motion ====================== */
+@media (prefers-reduced-motion: reduce) {
+  #dp-sidebar.dp-sidebar { transition: none; }
+}
+
+/* ====================== (Dihapus) Sticky z-index global ======================
+   Catatan: sebelumnya ada aturan global yang memaksa z-index sticky header
+   tabel di bawah sidebar (z-index 11900). Itu berpotensi mengganggu urutan
+   "toolbar > search dropdown > header proxy" pada halaman Volume.
+   → Z-index sticky sekarang DIKELOLA PER-HALAMAN (mis. volume_pekerjaan.css).
+   ========================================================================== */

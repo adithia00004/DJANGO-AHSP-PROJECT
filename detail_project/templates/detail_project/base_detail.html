@@ -1,0 +1,122 @@
+<!-- templates/detail_project/base_detail.html -->
+{% extends "base.html" %}
+{% load static %}
+
+{# ===================== HEAD ===================== #}
+{% block extra_head %}
+  {{ block.super }}
+
+  {# Variabel tinggi topbar untuk komponen sticky & sidebar (default, akan di-update via JS) #}
+  <style>
+    :root { --topbar-height:64px; --lp-topbar-h:64px; --dp-topbar-h:64px; }
+  </style>
+
+  {# Ikon untuk _sidebar_global.html #}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+  {# Sidebar global (hover/klik) & kartu identitas proyek #}
+  <link rel="stylesheet" href="{% static 'detail_project/css/sidebar_global.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/_project_identity.css' %}">
+
+  {# CSS Detail AHSP dibuat opsional: halaman lain boleh override block ini menjadi kosong #}
+  {% block detail_css %}
+    <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
+  {% endblock %}
+
+  {# Slot CSS tambahan dari child page (Select2, list_pekerjaan.css, dll.) #}
+  {% block extra_css %}{% endblock %}
+
+  {# Slot JS di HEAD (dipakai halaman Volume untuk memuat engine lebih awal) #}
+  {% block extra_js_head %}{% endblock %}
+{% endblock %}
+
+{# ===================== BODY ===================== #}
+{% block content %}
+
+  {# Topbar proyek + tombol pemicu sidebar global #}
+  <div id="dp-topbar"
+       class="bg-white border-bottom sticky-top"
+       style="z-index:1040;"
+       role="region"
+       aria-label="Toolbar proyek">
+    <div class="container-fluid py-2 d-flex align-items-center gap-2">
+      <button id="dp-sidebar-toggle"
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              data-lp-toggle="sidebar"            {# opt-in controller #}
+              data-lp-target="#dp-sidebar"        {# target eksplisit #}
+              aria-controls="dp-sidebar"
+              aria-expanded="false"
+              title="Menu proyek">
+        <i class="bi bi-layout-sidebar"></i> Menu
+      </button>
+
+      <strong class="ms-2 me-2">{{ project.nama|default:"Project" }}</strong>
+      <span class="text-muted small">ID: {{ project.id }}</span>
+
+      {# Slot tombol/aksi khusus halaman #}
+      {% block dp_topbar_extra %}{% endblock %}
+    </div>
+  </div>
+
+  {# Hotspot tipis di tepi kiri untuk hover-edge (opsional, aman) #}
+  <div class="lp-sidebar-hotspot" aria-hidden="true"></div>
+
+  {# Identity Proyek (rapi & konsisten dengan _project_identity.css) #}
+  <div class="container-fluid mt-2">
+    {% include 'detail_project/_project_identity.html' %}
+  </div>
+
+  {# Konten utama halaman anak #}
+  <div class="container-fluid my-3 dp-scope">
+    {% block dp_content %}{% endblock %}
+  </div>
+
+  {# Sidebar Global (disertakan sekali) #}
+  {% include 'detail_project/_sidebar_global.html' %}
+
+  {# ===================== JS GLOBAL (NON-OVERRIDE ZONE) ===================== #}
+  <script defer src="{% static 'detail_project/js/sidebar_global.js' %}"></script>
+
+  {# Autoloader fallback — menyuntik CSS/JS jika terdeteksi belum termuat #}
+  <script>
+  (function () {
+    try {
+      // Setel variabel tinggi topbar secara dinamis untuk sticky offsets halaman anak
+      function __setTopbarVars() {
+        var tb = document.getElementById('dp-topbar');
+        var h = tb ? Math.ceil(tb.getBoundingClientRect().height) : 64;
+        var r = document.documentElement;
+        r.style.setProperty('--dp-topbar-h', h + 'px');
+        r.style.setProperty('--lp-topbar-h', h + 'px');
+        r.style.setProperty('--topbar-height', h + 'px');
+      }
+      window.addEventListener('load', __setTopbarVars);
+      window.addEventListener('resize', __setTopbarVars);
+
+      // Pastikan asset sidebar global tersedia (fallback aman)
+      if (!document.querySelector('link[href*="detail_project/css/sidebar_global.css"]')) {
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = "{% static 'detail_project/css/sidebar_global.css' %}";
+        document.head.appendChild(l);
+      }
+      if (!document.querySelector('script[src*="detail_project/js/sidebar_global.js"]')) {
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = "{% static 'detail_project/js/sidebar_global.js' %}";
+        document.body.appendChild(s);
+      }
+    } catch(e) { /* no-op */ }
+  })();
+  </script>
+{% endblock %}
+
+{# ===================== JS (SLOT CHILD) ===================== #}
+{% block extra_js %}
+  {{ block.super }}
+  {# Catatan:
+     - JANGAN muat detail_ahsp.js di base ini; muat hanya di halaman Detail AHSP.
+     - Halaman List Pekerjaan dapat mematikan CSS AHSP via block detail_css di child.
+  #}
+{% endblock %}

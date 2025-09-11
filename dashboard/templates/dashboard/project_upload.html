@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Upload Proyek dari Excel{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-light d-flex align-items-center justify-content-between">
+        <strong><i class="fas fa-file-upload"></i> Upload Proyek dari Excel (.xlsx)</strong>
+        <!-- 🔽 Tombol Download Template -->
+        <a class="btn btn-outline-secondary btn-sm"
+           href="{% static 'dashboard/sample/project_upload_template.xlsx' %}">
+          <i class="fas fa-download"></i> Download Template
+        </a>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">
+          Gunakan template dengan header berikut (case-insensitive, urutan bebas):
+          <code>nama, tahun_project, sumber_dana, lokasi_project, nama_client, anggaran_owner, ket_project1, ket_project2, jabatan_client, instansi_client, nama_kontraktor, instansi_kontraktor, nama_konsultan_perencana, instansi_konsultan_perencana, nama_konsultan_pengawas, instansi_konsultan_pengawas, deskripsi, kategori</code>
+        </p>
+
+        <form id="upload-form" method="post" enctype="multipart/form-data" class="row g-3">
+          {% csrf_token %}
+          <div class="col-12">
+            {{ upload_form.file.label_tag }}
+            {{ upload_form.file }}
+            {% if upload_form.file.errors %}
+              <div class="text-danger small mt-1">
+                {% for e in upload_form.file.errors %}• {{ e }}<br>{% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-secondary">
+              Kembali ke Dashboard
+            </a>
+            <button id="upload-submit" type="submit" class="btn btn-primary">
+              Unggah & Import
+            </button>
+          </div>
+        </form>
+
+        {% if error_rows %}
+          <hr>
+          <div class="alert alert-warning">
+            Beberapa baris gagal divalidasi. Silakan perbaiki dan coba lagi.
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+              <thead class="table-light">
+                <tr>
+                  <th>Baris</th>
+                  <th>Kesalahan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for rownum, errors in error_rows %}
+                  <tr>
+                    <td>{{ rownum }}</td>
+                    <td class="small">
+                      {% for field, msgs in errors.items %}
+                        <div><strong>{{ field }}</strong>:
+                          {% for m in msgs %}{{ m }}{% if not forloop.last %}; {% endif %}{% endfor %}
+                        </div>
+                      {% endfor %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

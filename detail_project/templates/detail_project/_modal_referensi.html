@@ -1,0 +1,49 @@
+<div class="modal fade lp-modal-ref" id="modalReferensi" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cari Referensi AHSP</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+
+      <div class="modal-body">
+        <form id="formSearchRef" class="row g-2 mb-3">
+          <div class="col-md-4">
+            <input type="text" class="form-control" name="q" placeholder="Kode atau Nama AHSP">
+          </div>
+          <div class="col-md-3">
+            <input type="text" class="form-control" name="klasifikasi" placeholder="Klasifikasi">
+          </div>
+          <div class="col-md-3">
+            <input type="text" class="form-control" name="sub_klasifikasi" placeholder="Sub-Klasifikasi">
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-primary w-100" type="submit">Cari</button>
+          </div>
+        </form>
+
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="width:120px">Kode</th>
+                <th class="text-wrap">Nama</th>
+                <th style="width:160px">Klasifikasi</th>
+                <th style="width:160px">Sub</th>
+                <th style="width:100px">Satuan</th>
+                <th style="width:80px"></th>
+              </tr>
+            </thead>
+            <tbody id="refResults">
+              <tr><td colspan="6">Masukkan kata kunci, lalu klik Cari.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,35 +1,42 @@
 """
 URL configuration for config project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import redirect
-from dashboard import views
+from django.conf import settings
+from django.conf.urls.static import static
 
+
+# Redirect root URL -> dashboard (jika login) atau login page
 def home_redirect(request):
-    """Redirect homepage based on authentication status"""
     if request.user.is_authenticated:
-        return redirect('dashboard')
-    else:
-        return redirect('account_login')
+        return redirect('dashboard:dashboard')  # pastikan dashboard/urls.py punya name="dashboard"
+    return redirect('account_login')
+
 
 urlpatterns = [
+    # Admin
     path('admin/', admin.site.urls),
+
+    # Authentication (django-allauth)
     path('accounts/', include('allauth.urls')),
-    path('dashboard/', include('dashboard.urls')),
-    path('', home_redirect, name='home'),  # TAMBAHKAN INI
-    path('upload/', views.project_upload_view, name='project_upload'),
+
+    # Dashboard (CRUD Project + upload Excel + link ke detail_project)
+    path('dashboard/', include(('dashboard.urls', 'dashboard'), namespace='dashboard')),
+    #path("dashboard/", include(("detail_project.urls", "detail_project"), namespace="detail_project")),
+
+    # Detail Project (List Pekerjaan, Volume, Harga Items, Rekap AHSP, Detail AHSP)
+    path('detail_project/', include(('detail_project.urls','detail_project'), namespace='detail_project')),
+
+    # Referensi AHSP (aktifkan kalau UI referensi sudah siap)
+    path('referensi/', include(('referensi.urls', 'referensi'), namespace='referensi')),
+
+    # Root redirect
+    path('', home_redirect, name='home'),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

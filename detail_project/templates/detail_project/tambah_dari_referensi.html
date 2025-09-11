@@ -1,0 +1,56 @@
+{% extends 'detail_project/base_detail.html' %}
+{% load static %}
+
+{% block dp_content %}
+{% include 'detail_project/_breadcrumbs.html' %}
+{% include 'detail_project/_alert.html' %}
+
+<h3>📚 Tambah Pekerjaan dari AHSP SNI — <strong>{{ project.nama }}</strong></h3>
+
+{# Form pencarian (GET) #}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-6">
+    <input type="text" name="search" class="form-control" placeholder="Cari kode atau nama pekerjaan" value="{{ request.GET.search }}">
+  </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-primary w-100">Cari</button>
+  </div>
+  <div class="col-md-2">
+    <a href="{% url 'detail_project:list_pekerjaan' project.id %}" class="btn btn-secondary w-100">Kembali</a>
+  </div>
+</form>
+
+{# Form seleksi (POST) #}
+<form method="post">
+  {% csrf_token %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th scope="col" style="width:70px">Pilih</th>
+          <th scope="col" style="width:160px">Kode AHSP</th>
+          <th scope="col" class="text-wrap">Nama Pekerjaan</th>
+          <th scope="col" style="width:120px">Satuan</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in referensi_list %}
+          <tr>
+            <td><input type="checkbox" name="selected_items" value="{{ item.id }}"></td>
+            <td>{{ item.kode_ahsp }}</td>
+            <td class="text-wrap">{{ item.nama_ahsp }}</td>
+            <td>{{ item.satuan }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-muted">Tidak ditemukan data referensi.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <button type="submit" class="btn btn-primary">➕ Tambahkan ke Proyek</button>
+  <a href="{% url 'detail_project:list_pekerjaan' project.id %}" class="btn btn-secondary">🔙 Kembali</a>
+</form>
+{% endblock %}

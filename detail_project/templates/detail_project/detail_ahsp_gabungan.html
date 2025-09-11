@@ -1,0 +1,42 @@
+{% extends 'detail_project/base_detail.html' %}
+{% load static %}
+
+{% block dp_content %}
+{% include 'detail_project/_breadcrumbs.html' %}
+{% include 'detail_project/_alert.html' %}
+
+<h3>5) Detail AHSP (Gabungan)</h3>
+<p class="text-muted">Edit semua rincian (ref + custom) setelah harga tersedia.</p>
+
+<div id="dag-app" data-project-id="{{ project.id }}">
+  <div class="alert alert-info">Pilih pekerjaan, ubah tabel, lalu Simpan Gabungan.</div>
+
+  <div class="mb-3">
+    <select multiple size="6" id="pkj-multi" class="form-select">
+      {% for p in pekerjaan %}
+        <option value="{{ p.id }}">{{ p.snapshot_kode }} — {{ p.snapshot_uraian }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-sm" id="dag-table">
+      <thead class="table-light">
+        <tr>
+          <th>Pekerjaan</th>
+          <th>Kategori</th>
+          <th>Kode</th>
+          <th>Uraian</th>
+          <th>Satuan</th>
+          <th>Koefisien</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <button class="btn btn-primary" id="btn-save-dag">Simpan Gabungan</button>
+</div>
+
+<script src="{% static 'detail_project/detail_ahsp_gabungan.js' %}"></script>
+{% endblock %}

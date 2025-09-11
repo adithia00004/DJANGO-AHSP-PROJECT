@@ -1,0 +1,40 @@
+<!-- templates/detail_project/_alert.html -->
+{% if messages %}
+  <div id="dp-alerts" class="vstack gap-2 mb-2" aria-live="polite" aria-atomic="true">
+    {% for message in messages %}
+      {# Tentukan variant Bootstrap dari tags; fallback ke 'info' #}
+      <div
+        class="alert alert-{% if 'error' in message.tags %}danger{% elif 'debug' in message.tags %}secondary{% elif 'warning' in message.tags %}warning{% elif 'success' in message.tags %}success{% elif 'info' in message.tags %}info{% else %}info{% endif %} alert-dismissible fade show mb-0{% if 'error' in message.tags %}{% else %} alert-auto{% endif %}"
+        role="alert"
+        data-tags="{{ message.tags }}"
+      >
+        <div class="d-flex align-items-start">
+          <i class="bi {% if 'error' in message.tags %}bi-x-circle{% elif 'warning' in message.tags %}bi-exclamation-triangle{% elif 'success' in message.tags %}bi-check-circle{% else %}bi-info-circle{% endif %} me-2 fs-5" aria-hidden="true"></i>
+          <div class="flex-grow-1">
+            {{ message }}
+          </div>
+          <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Tutup"></button>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# Auto-dismiss untuk alert non-danger (mis. success/info/warning) setelah 5 detik) #}
+  <script>
+    (function () {
+      try {
+        var alerts = document.querySelectorAll('#dp-alerts .alert.alert-auto');
+        alerts.forEach(function (el) {
+          setTimeout(function () {
+            try {
+              var inst = bootstrap.Alert.getOrCreateInstance(el);
+              inst.close();
+            } catch (e) {
+              if (el && el.parentNode) el.parentNode.removeChild(el);
+            }
+          }, 5000);
+        });
+      } catch (e) { /* no-op */ }
+    })();
+  </script>
+{% endif %}
