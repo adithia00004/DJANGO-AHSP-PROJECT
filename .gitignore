@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+
+# Virtualenv & local certs
+env/
+*.pem
+
+# Django SQLite (jika dipakai)
+*.sqlite3
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Collected static/media (jika dipakai)
+staticfiles/
+media/
+
+# Local backups
+backups/
