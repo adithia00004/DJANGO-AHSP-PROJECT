@@ -140,6 +140,8 @@ def api_save_list_pekerjaan(request: HttpRequest, project_id: int):
     Disarankan gunakan /upsert/. Endpoint ini tetap disediakan untuk kebutuhan reset penuh.
     """
     project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
 
     # 1) Parse JSON
     try:
@@ -376,6 +378,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             return default
 
     project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
 
     # Parse payload
     try:
@@ -1070,6 +1074,8 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
       lalu pindahkan detailnya ke objek asli (untuk menghindari konflik FK/unik).
     """
     project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
     pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
 
     if pkj.source_type != Pekerjaan.SOURCE_REF_MOD:
@@ -1294,18 +1300,17 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
             kode = (r.get('kode') or '').strip()
             uraian = (r.get('uraian') or '').strip()
             satuan = (r.get('satuan') or '').strip() or None
-            try:
-                koef = float(r.get('koefisien'))
-                if koef < 0:
-                    raise ValueError
-            except Exception:
-                all_errors.append(_err(f"items[{i}].rows[{j}].koefisien", "Harus ≥ 0")); continue
+            koef_dec = parse_any(r.get('koefisien'))
+            if koef_dec is None or koef_dec < 0:
+                all_errors.append(_err(f"items[{i}].rows[{j}].koefisien", "Harus ≥ 0 dan berupa angka yang valid")); continue
+            dp_koef = DECIMAL_SPEC["KOEF"].dp
+            koef_q = quantize_half_up(koef_dec, dp_koef)
             if not uraian or not kode:
                 all_errors.append(_err(f"items[{i}].rows[{j}]", "kode & uraian wajib")); continue
             hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
             to_create.append(DetailAHSPProject(
                 project=project, pekerjaan=pkj, harga_item=hip,
-                kategori=kat, kode=kode, uraian=uraian, satuan=satuan, koefisien=Decimal(str(koef))
+                kategori=kat, kode=kode, uraian=uraian, satuan=satuan, koefisien=koef_q
             ))
             saved_here += 1
         if to_create:
@@ -1434,19 +1439,39 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
                 .replace("\n", " "))
 
     lines = ["pekerjaan_kode;pekerjaan_uraian;kategori;kode;uraian;satuan;koefisien;volume;harga_satuan;subtotal"]
+    use_canon = (request.GET.get("canon") == "1")
+    if use_canon:
+        dp_harga = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
+        dp_koef  = DECIMAL_SPEC["KOEF"].dp
+        dp_vol   = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     for r in rows:
-        lines.append(";".join([
-            q(r["pekerjaan_kode"]),
-            q(r["pekerjaan_uraian"]),
-            q(r["kategori"]),
-            q(r["kode"]),
-            q(r["uraian"]),
-            q(r["satuan"]),
-            q(r["koefisien"]),
-            q(r["volume"]),
-            q(r["harga_satuan"]),
-            q(r["subtotal"]),
-        ]))
+        if use_canon:
+            row = [
+                q(r["pekerjaan_kode"]),
+                q(r["pekerjaan_uraian"]),
+                q(r["kategori"]),
+                q(r["kode"]),
+                q(r["uraian"]),
+                q(r["satuan"]),
+                q(to_dp_str(r["koefisien"], dp_koef)),
+                q(to_dp_str(r["volume"], dp_vol)),
+                q(to_dp_str(r["harga_satuan"], dp_harga)),
+                q(to_dp_str(r["subtotal"], 2)),
+            ]
+        else:
+            row = [
+                q(r["pekerjaan_kode"]),
+                q(r["pekerjaan_uraian"]),
+                q(r["kategori"]),
+                q(r["kode"]),
+                q(r["uraian"]),
+                q(r["satuan"]),
+                q(r["koefisien"]),
+                q(r["volume"]),
+                q(r["harga_satuan"]),
+                q(r["subtotal"]),
+            ]
+        lines.append(";".join(row))
 
     # Footer ringkas (opsional): total & BUK
     D = totals["total_langsung"]
