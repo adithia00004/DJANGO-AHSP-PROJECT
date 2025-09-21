@@ -1,23 +1,39 @@
 {% extends 'detail_project/base_detail.html' %}
 {% load static %}
 
+{% block extra_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
+  <style>
+    /* Perbaikan keterbacaan input + preview (hindari tumpang tindih) */
+    .vp-cell .fx-preview{
+      position: static;
+      display: block;
+      min-height: 1rem;
+      margin-top: .25rem;
+      white-space: normal;
+    }
+    /* Dropdown template */
+    .vp-template-dropdown .dropdown-menu{ min-width:220px; }
+  </style>
+{% endblock %}
+
 {% block dp_content %}
 
-<!-- Toolbar: searchbar + actions (sticky tepat di bawah #dp-topbar) -->
+<!-- ===== Toolbar ===== -->
 <div id="vp-toolbar" class="d-flex justify-content-between align-items-center mb-2 sticky-top">
   <!-- Searchbar -->
   <div class="vp-searchbar position-relative flex-grow-1 me-2">
     <div class="input-group input-group-sm">
       <span class="input-group-text"><i class="bi bi-search"></i></span>
       <input id="vp-search" type="search" class="form-control"
-             placeholder="Cari Klasifikasi / Sub-Klasifikasi / Pekerjaan...">
+             placeholder="Cari Klasifikasi / Sub-Klasifikasi / Pekerjaan..."
+             aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
     </div>
-    <!-- Badge prefix (indikasi filter yang terdeteksi) -->
     <span id="vp-search-prefix-badge"
           class="badge text-bg-secondary position-absolute end-0 top-50 translate-middle-y me-2 d-none"
           title="Prefix filter terdeteksi"
           data-bs-toggle="tooltip"></span>
-    <!-- Dropdown hasil dengan ARIA (z-index di CSS) -->
     <div id="vp-search-results"
          class="vp-search-dropdown d-none"
          role="listbox"
@@ -33,17 +49,23 @@
             aria-controls="vpVarOffcanvas">
       Parameter Perhitungan
     </button>
+
+    
+
     <!-- Bantuan Formula (Modal) -->
     <button type="button" class="btn btn-outline-secondary btn-sm"
             data-bs-toggle="modal" data-bs-target="#vpFormulaHelpModal"
             aria-label="Buka bantuan formula">
-      Bantuan Formula
+      Bantuan
     </button>
   </div>
 </div>
 
-<div id="vol-app" data-project-id="{{ project.id }}">
-  <!-- Offcanvas: Parameter Perhitungan (FE-only; localStorage) -->
+<div id="vol-app"
+     data-project-id="{% firstof project.id project_id %}"
+     data-endpoint-save="{% url 'detail_project:api_save_volume_pekerjaan' project.id %}"
+     data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}">
+  <!-- ===== Offcanvas: Parameter Perhitungan ===== -->
   <div class="offcanvas offcanvas-end" tabindex="-1" id="vpVarOffcanvas" aria-labelledby="vpVarOffcanvasLabel">
     <div class="offcanvas-header">
       <h5 class="offcanvas-title" id="vpVarOffcanvasLabel">Parameter Perhitungan</h5>
@@ -56,25 +78,12 @@
         </small>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-sm btn-primary" id="vp-var-add">Tambah Parameter</button>
-          <!-- Import/Export JSON -->
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" data-bs-toggle="tooltip" title="Import JSON">
-            <i class="bi bi-file-arrow-up"></i>
-          </button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="vp-var-export-btn" data-bs-toggle="tooltip" title="Export JSON">
-            <i class="bi bi-file-arrow-down"></i>
-          </button>
-          <input type="file" id="vp-var-import" accept="application/json" class="d-none">
-          <!-- (opsional) Import Excel/CSV, hook JS nanti -->
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="vp-var-import-excel-btn" data-bs-toggle="tooltip" title="Import Excel/CSV">
-            <i class="bi bi-filetype-xlsx"></i>
-          </button>
-          <input type="file" id="vp-var-import-excel" accept=".xlsx,.csv" class="d-none">
         </div>
       </div>
 
       <div class="table-responsive mt-2 flex-grow-1">
-        <!-- Header proxy (sticky seperti searchbar; JS sinkron kolom) -->
-        <div id="vp-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
+        <!-- Header proxy untuk tabel parameter (ID diganti agar tidak duplikat) -->
+        <div id="vp-vars-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
 
         <table class="table table-sm align-middle" id="vp-var-table">
           <thead class="table-light">
@@ -87,21 +96,47 @@
           <tbody><!-- diisi JS; "Tambah Parameter" membuat baris input inline --></tbody>
         </table>
       </div>
+
+      <!-- ===== Action bar sticky di bawah ===== -->
+      <div class="offcanvas-actions mt-2">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" title="Import JSON/CSV/XLSX">
+              <i class="bi bi-file-arrow-up"></i> Import
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="vp-var-export-btn" title="Export JSON">
+              <i class="bi bi-file-arrow-down"></i> Export
+            </button>
+            <input type="file" id="vp-var-import" accept=".json,.csv,.xlsx" class="d-none">
+          </div>
+
+          <!-- Template download -->
+          <div class="dropup">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              Template
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.xlsx' %}" download>Template (.xlsx)</a></li>
+              <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
+              <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Tabel utama -->
+  <!-- ===== Tabel Utama ===== -->
   <div class="table-responsive" id="vp-page">
-    <!-- Header proxy GRID (sticky & ikut scroll horizontal) -->
     <div id="vp-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
 
     <table class="table table-sm align-middle" id="vp-table">
       <colgroup>
-        <col style="width:60px;">      <!-- # -->
-        <col style="width:150px;">     <!-- Kode -->
-        <col>                          <!-- Uraian (fleksibel) -->
-        <col style="width:110px;">     <!-- Satuan -->
-        <col style="width:360px;">     <!-- Quantity (diperlebar) -->
+        <col style="width:60px;">
+        <col style="width:150px;">
+        <col>
+        <col style="width:110px;">
+        <col style="width:360px;">
       </colgroup>
       <thead class="table-light">
         <tr>
@@ -113,27 +148,32 @@
         </tr>
       </thead>
       <tbody>
-        {% for p in pekerjaan %}
-          <tr data-pekerjaan-id="{{ p.id }}">
-            <td>{{ forloop.counter }}</td>
-            <td class="text-monospace">{{ p.snapshot_kode }}</td>
-            <td class="text-wrap">{{ p.snapshot_uraian }}</td>
-            <td>{{ p.snapshot_satuan }}</td>
-            <td>
-              <div class="d-flex align-items-start gap-2 vp-cell" style="overflow: visible;">
-                <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
-                        title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
-                        aria-pressed="false">fx</button>
-                <div class="flex-grow-1" style="position: relative;">
-                  <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input" aria-label="Quantity">
-                  <div class="form-text fx-preview text-muted small" style="min-height:1rem;"></div>
+        {% if pekerjaan %}
+          {% for p in pekerjaan %}
+            <tr data-pekerjaan-id="{{ p.id }}">
+              <td>{{ forloop.counter }}</td>
+              <td class="text-monospace">{% firstof p.snapshot_kode p.kode p.code '-' %}</td>
+              <td class="text-wrap">{% firstof p.snapshot_uraian p.uraian p.nama '-' %}</td>
+              <td>{% firstof p.snapshot_satuan p.satuan '-' %}</td>
+              <td>
+                <div class="d-flex align-items-start gap-2 vp-cell" style="overflow: visible;">
+                  <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
+                          title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
+                          aria-pressed="false">fx</button>
+                  <div class="flex-grow-1" style="position: relative;">
+                    <input type="text"
+                           inputmode="decimal"
+                           class="form-control form-control-sm qty-input"
+                           aria-label="Quantity (gunakan koma sebagai desimal, mis. 12,345)">
+                    <div class="form-text fx-preview text-muted small"></div>
+                  </div>
                 </div>
-              </div>
-            </td>
-          </tr>
-        {% empty %}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
           <tr><td colspan="5" class="text-muted">Belum ada pekerjaan.</td></tr>
-        {% endfor %}
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -144,7 +184,7 @@
       <kbd>Enter</kbd>/<kbd>Shift</kbd>+<kbd>Enter</kbd> navigasi · <kbd>Ctrl</kbd>+<kbd>S</kbd> simpan
     </small>
     <div class="d-flex align-items-center gap-2">
-      <span id="vp-save-status" class="text-muted small"></span>
+      <span id="vp-save-status" class="text-muted small" role="status" aria-live="polite"></span>
       <button class="btn btn-success d-inline-flex align-items-center gap-2" id="btn-save-vol">
         <span class="spinner-border spinner-border-sm d-none" id="btn-save-spin" role="status" aria-hidden="true"></span>
         <span>Simpan Volume</span>
@@ -152,19 +192,6 @@
     </div>
   </div>
 </div>
-
-<!-- Toast container (notifikasi non-blocking) — legacy single toast -->
-<div class="position-fixed top-0 end-0 p-3" style="z-index: 2000">
-  <div id="vp-toast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="vp-toast-body">Tersimpan.</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-  </div>
-</div>
-
-<!-- Multi-toast container (opsional; untuk banyak notifikasi) -->
-<div id="vp-toasts" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2001;"></div>
 
 <!-- Modal: Bantuan Formula -->
 <div class="modal fade" id="vpFormulaHelpModal" tabindex="-1" aria-labelledby="vpFormulaHelpLabel" aria-hidden="true">
@@ -207,14 +234,19 @@
   </div>
 </div>
 
-{% endblock %}
+<!-- Multi-toast container -->
+<div id="vp-toasts" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1090"></div>
 
-{% block extra_css %}
-  {{ block.super }}
-  <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
 {% endblock %}
 
 {% block extra_js %}
   <script src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
+  <!-- XLSX untuk import .xlsx -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Tambahan baru (harus sebelum volume_pekerjaan.js) -->
+  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+  <script src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
+
   <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
 {% endblock %}

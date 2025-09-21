@@ -74,6 +74,10 @@ class RincianReferensi(models.Model):
             )
         ]
         ordering = ["ahsp_id", "kategori", "kode_item"]
+        indexes = [
+            models.Index(fields=["ahsp"]),
+            models.Index(fields=["ahsp", "kategori"]),
+        ]
 
     def __str__(self):
         uraian = (self.uraian_item or "")[:50]

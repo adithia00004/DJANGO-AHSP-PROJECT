@@ -1,9 +1,13 @@
 # detail_project/models.py
 # ================================
 from django.db import models
+from decimal import Decimal
 from django.conf import settings
 from django.utils import timezone
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import Q              # dipakai nanti oleh CheckConstraint (Fase 1)
+
+
 
 # Referensi (read-only) — pastikan app `referensi` sudah ada.
 try:
@@ -74,6 +78,11 @@ class Pekerjaan(TimeStampedModel):
 
     notes = models.TextField(blank=True, null=True)
     ordering_index = models.PositiveIntegerField(default=0, db_index=True)
+    markup_override_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Override % BUK khusus pekerjaan ini; null=pakai default project"
+    )
 
     class Meta:
         ordering = ["ordering_index", "id"]
@@ -143,13 +152,22 @@ class Pekerjaan(TimeStampedModel):
         return f"CUST-{count + 1:04d}"
 
     def save(self, *args, **kwargs):
-        if self.is_custom and not self.snapshot_kode:
-            if not self.pk:
-                self.snapshot_kode = self._gen_custom_code()
+        if self.is_custom and not self.snapshot_kode and not self.pk:
+            # import lokal untuk hindari circular import
+            from .services import generate_custom_code
+            self.snapshot_kode = generate_custom_code(self.project)
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.snapshot_kode or ''} - {self.snapshot_uraian or ''}"
+    
+    # QoL untuk API: volume aman (0 jika belum ada record VolumePekerjaan)
+    @property
+    def safe_volume(self):
+        try:
+            return self.volume.quantity  # OneToOne mungkin belum dibuat
+        except VolumePekerjaan.DoesNotExist:
+            return 0
 
 
 class VolumePekerjaan(TimeStampedModel):
@@ -203,12 +221,31 @@ class DetailAHSPProject(TimeStampedModel):
     uraian = models.TextField()
     satuan = models.CharField(max_length=50, blank=True, null=True)
     koefisien = models.DecimalField(max_digits=18, decimal_places=6, validators=[MinValueValidator(0)])
+    
+
+    # bundle target (hanya dipakai saat kategori = 'LAIN')
+    
+    ref_ahsp = models.ForeignKey(
+        'referensi.AHSPReferensi',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='detail_bundles'
+    )
 
     class Meta:
         indexes = [
-            models.Index(fields=["project", "pekerjaan"]),
+            models.Index(fields=["project", "pekerjaan"]),                # sudah ada
+            models.Index(fields=["project", "pekerjaan", "kategori"]),    # NEW: rekap cepat
+            models.Index(fields=["project", "kategori", "harga_item"]),   # OPT: join & filter cepat per kategori
         ]
-        unique_together = ("project", "pekerjaan", "kode")  # cegah duplikat kode_item di satu pekerjaan
+        unique_together = ("project", "pekerjaan", "kode")
+        constraints = [
+            # NEW: hanya baris kategori 'LAIN' yang boleh punya ref_ahsp (atau kosong)
+            models.CheckConstraint(
+                name="ref_ahsp_only_for_lain",
+                condition=Q(ref_ahsp__isnull=True) | Q(kategori='LAIN')
+            ),
+        ]
 
     def __str__(self):
         return f"{self.pekerjaan_id} / {self.kode} — {self.uraian}"
@@ -236,3 +273,37 @@ class VolumeFormulaState(TimeStampedModel):
 
     def __str__(self):
         return f"F[{self.project_id}:{self.pekerjaan_id}] = {('fx' if self.is_fx else 'val')}«{(self.raw or '')[:30]}... »"
+
+
+# === BUK per Project ===
+class ProjectPricing(TimeStampedModel):
+    """
+    Simpan Biaya Umum & Keuntungan (BUK) per project, dalam persen (0..100).
+    Minimal-change: OneToOne + default 10.00.
+    """
+    # NEW (Fase 4): preferensi tampilan/rekap proyek
+    ppn_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=11,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="PPN (%) yang diterapkan pada Rekap RAB"
+    )
+    rounding_base = models.PositiveIntegerField(
+        default=10000,
+        help_text="Basis pembulatan grand total (Rp), mis. 10000"
+    )
+    project = models.OneToOneField(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='pricing'
+    )
+    # default BUK proyek
+    markup_percent = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal('10.00'))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['project'], name='uniq_project_pricing_one')
+        ]
+
+    def __str__(self):
+        return f"Pricing for Project #{self.project_id}"

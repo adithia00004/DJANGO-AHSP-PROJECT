@@ -56,19 +56,30 @@ def volume_pekerjaan_view(request, project_id: int):
 @login_required
 @coerce_project_id
 def detail_ahsp_view(request, project_id: int):
+    """
+    Page 'Detail AHSP'.
+    Sidebar HARUS menampilkan SEMUA pekerjaan (REF, REF_MODIFIED, CUSTOM).
+    Mode edit/read-only diatur oleh API get-detail (meta.read_only), bukan disaring di sini.
+    """
     project = _project_or_404(project_id, request.user)
-    # tampilkan hanya custom & ref_modified
+
+    # ⬇️ PENTING: JANGAN filter source_type. Ambil semua pekerjaan.
     pekerjaan = (
         Pekerjaan.objects
-        .filter(project=project, source_type__in=[Pekerjaan.SOURCE_CUSTOM, Pekerjaan.SOURCE_REF_MOD])
-        .order_by('ordering_index', 'id')
+        .filter(project=project)
+        .select_related("sub_klasifikasi", "sub_klasifikasi__klasifikasi", "ref")
+        .order_by("ordering_index", "id")
     )
-    context = {
+
+    ctx = {
         "project": project,
-        "pekerjaan": pekerjaan,
-        "side_active": "detail_ahsp",
+        "pekerjaan": pekerjaan,  # ← sidebar akan melisting semuanya
+        # kalau template Anda butuh stats (opsional):
+        "count_ref": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_REF),
+        "count_mod": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_REF_MOD),
+        "count_custom": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_CUSTOM),
     }
-    return render(request, "detail_project/detail_ahsp.html", context)
+    return render(request, "detail_project/detail_ahsp.html", ctx)
 
 
 @login_required
@@ -108,3 +119,29 @@ def rekap_rab_view(request, project_id: int):
         "side_active": "rekap_rab",
     }
     return render(request, "detail_project/rekap_rab.html", context)
+
+
+@login_required
+@coerce_project_id
+def rekap_kebutuhan_view(request, project_id: int):
+    project = _project_or_404(project_id, request.user)
+    ctx = {
+        "project": project,
+        # endpoint API dipanggil dari template via {% url %}, jadi cukup project.
+    }
+    return render(request, "detail_project/rekap_kebutuhan.html", ctx)
+
+# --- NEW: Page Rincian RAB ---
+@login_required
+@coerce_project_id
+def rincian_rab_view(request, project_id: int):
+    """
+    Page 'Rincian RAB' (read-only table  export).
+    Data diambil via API: /api/project/<project_id>/rincian-rab/.
+    """
+    project = _project_or_404(project_id, request.user)
+    ctx = {
+        "project": project,
+        "side_active": "rincian_rab",
+    }
+    return render(request, "detail_project/rincian_rab.html", ctx)

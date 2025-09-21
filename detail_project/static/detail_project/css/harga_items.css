@@ -1,0 +1,109 @@
+/* ===========================
+   Base / Shared styles
+   =========================== */
+
+/* --- Variables & base --- */
+:root{
+  --rk-bg:#ffffff;
+  --rk-soft:#f8fafc;
+  --rk-border:#e5e7eb;
+  --rk-muted:#6b7280;
+  --rk-text:#0f172a;
+  --rk-accent:#0d6efd;
+  --rk-warn:#b45309;
+  --rk-warn-bg:#fff7ed;
+  --rk-shadow:0 1px 2px rgba(0,0,0,.06), 0 6px 12px rgba(0,0,0,.04);
+  /* NOTE: --rk-left-w DIHAPUS di base; didefinisikan di rekap_ahsp.css */
+}
+
+/* aman untuk dipakai lintas-halaman */
+.hi-app{ color:var(--rk-text); }
+
+/* --- Utilities --- */
+.mono{
+  font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+  letter-spacing:.2px;
+}
+.small{ font-size:12px; }
+.text-muted{ color: var(--rk-muted); }
+.row-note{ color: var(--rk-muted); font-size:13px; }
+
+/* Chips umum */
+.rk-chip{
+  display:inline-block; border:1px solid var(--rk-border); background:#f9fafb;
+  border-radius:999px; padding:2px 8px; font-size:12px; line-height:16px; font-weight:600;
+}
+.rk-chip-warn{ color:var(--rk-warn); background:var(--rk-warn-bg); border-color:#fed7aa; }
+
+/* --- Inputs & Buttons (fallback jika tidak pakai Bootstrap) --- */
+.hi-input{
+  display:inline-flex; align-items:center; border:1px solid var(--rk-border);
+  background:#fff; border-radius:8px; padding:6px 10px; min-height:34px; outline:none;
+}
+.hi-input:focus{ border-color:#93c5fd; box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  border-radius:8px; padding:6px 10px; border:1px solid var(--rk-border);
+  background:#fff; cursor:pointer; user-select:none;
+}
+.btn:hover{ background:#f8fafc; }
+.btn:disabled{ opacity:.6; cursor:not-allowed; }
+.btn-sm{ padding:4px 8px; font-size:13px; }
+.btn-primary{ background:var(--rk-accent); color:#fff; border-color:var(--rk-accent); }
+.btn-primary:hover{ filter:brightness(.95); }
+.btn-outline-secondary{ background:#fff; color:#0f172a; }
+
+/* Badge fallback (kalau tidak pakai Bootstrap) */
+.badge.text-bg-light{
+  background:#f3f4f6; color:#111827; border:1px solid var(--rk-border);
+  padding:4px 10px; border-radius:999px; font-weight:600;
+}
+
+/* --- Toolbar generik --- */
+.hi-toolbar{
+  background:var(--rk-bg); border:1px solid var(--rk-border); border-radius:12px;
+  padding:10px 12px; margin-bottom:10px; box-shadow:var(--rk-shadow);
+}
+.hi-spacer{ flex:1; }
+
+/* --- Table base (dipakai lintas-halaman) --- */
+.hi-table{
+  width:100%; border-collapse:collapse; background:#fff;
+}
+.hi-table th, .hi-table td{
+  padding:8px 10px; border:1px solid var(--rk-border); vertical-align:top;
+}
+.hi-table thead th{
+  position:sticky; top:0; background:#fff; z-index:1; box-shadow:0 1px 0 rgba(0,0,0,.06);
+}
+.hi-table tbody tr:nth-child(odd) td{ background:#fcfcfd; }
+.hi-table tbody tr:hover td{ background:#f6faff; }
+
+/* --- Toasts (reusable) --- */
+.rk-toast-wrap{
+  position:fixed; right:14px; bottom:14px; display:flex; flex-direction:column; gap:8px; z-index:40
+}
+.rk-toast{
+  padding:10px 12px; border-radius:10px; color:#0f172a; background:#f8fafc;
+  border:1px solid #e5e7eb; box-shadow:0 4px 14px rgba(0,0,0,.08);
+  transition:transform .2s, opacity .2s
+}
+.rk-toast-info{background:#ecfeff; border-color:#a5f3fc}
+.rk-toast-warn{background:#fffbeb; border-color:#fde68a}
+.rk-toast-error{background:#fef2f2; border-color:#fecaca}
+.rk-toast-success{background:#f0fdf4; border-color:#bbf7d0}
+.rk-toast.out{opacity:.0; transform:translateY(6px)}
+
+/* --- Focus ring agar accessible --- */
+:focus-visible{
+  outline:3px solid rgba(59,130,246,.4);
+  outline-offset:2px;
+  border-radius:6px;
+}
+
+/* NOTE:
+   - Semua style layout 2 kolom, resizer, list kiri, header kanan,
+     table-wrap khusus rekap, skeleton & responsive rekap
+     dipindahkan ke `rekap_ahsp.css` dan di-scope ke #rekap-app.
+*/

@@ -1,0 +1,81 @@
+/* =========================================================
+   Rekap RAB — CSS ringan, serasi dengan Bootstrap
+   - Fokus ke readability tabel & toolbar
+   - Sticky thead
+   - Density mode (rab-dense)
+   ========================================================= */
+
+/* Layout dasar */
+#rekap-table-wrap {
+  overflow: auto;
+  border: 1px solid #e9ecef;
+  border-radius: .5rem;
+  background: #fff;
+}
+
+/* Sticky header */
+#rekap-table thead th {
+  position: sticky;
+  top: var(--dp-topbar-h, 64px);
+  z-index: 10;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef !important;
+  text-transform: uppercase;
+  font-size: .75rem;
+  letter-spacing: .02em;
+}
+
+/* Row states */
+#rekap-table tbody tr.rab-pekerjaan:hover { background: #fcfdff; }
+#rekap-table tbody tr.rab-sub      { background: #f8fbff; }    /* lembut */
+#rekap-table tbody tr.rab-klas     { background: #f1f5ff; }    /* lebih tegas */
+
+/* Sel angka */
+#rekap-table td.text-end {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tombol toggle caret */
+#rekap-table .toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem; height: 1.4rem;
+  border-radius: .25rem;
+  cursor: pointer;
+  color: #0d6efd;
+}
+#rekap-table .toggle:hover {
+  background: rgba(13,110,253,.08);
+}
+
+/* Toolbar */
+.rekap-toolbar .btn {
+  --bs-btn-padding-y: .375rem;
+}
+.rekap-toolbar .input-group .form-control,
+.rekap-toolbar .input-group .input-group-text {
+  padding-top: .4rem; padding-bottom: .4rem;
+}
+
+/* Footer kartu hasil */
+.card .list-group-item strong {
+  font-weight: 600;
+}
+
+/* Density mode: pad & font-size diperkecil */
+.rab-dense #rekap-table {
+  font-size: .925rem;
+}
+.rab-dense #rekap-table td,
+.rab-dense #rekap-table th {
+  padding-top: .4rem;
+  padding-bottom: .4rem;
+}
+
+/* Responsif */
+@media (max-width: 991.98px) {
+  /* kolom kode & HSP disembunyikan oleh HTML (class d-none d-md-table-cell), jadi cukup spacing */
+  #rekap-table-wrap { border-radius: .35rem; }
+}

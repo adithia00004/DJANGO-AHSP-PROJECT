@@ -1,478 +1,296 @@
-/* ===========================
-   Detail AHSP — Base Styles
-   =========================== */
+/* static/detail_project/css/detail_ahsp.css */
+/* =========================================================
+   Detail AHSP — Polish Tipografi & Kontras (SCOPED .da-app)
+   - Aman: semua aturan berada di bawah .da-app
+   - Tipografi: Inter (sans), JetBrains Mono (mono)
+   - Aksesibilitas: kontras lebih baik, fokus jelas, zebra table
+   - Sticky header menghormati --dp-topbar-h + --da-toolbar-h
+   ========================================================= */
 
-:root {
-  --topbar-height: 56px;          /* sesuaikan dengan base_detail.html */
-  --toolbar-height: 44px;
-  --sidebar-w: 320px;
-  --radius: 10px;
-
-  /* Colors (light) */
-  --bg: #ffffff;
-  --bg-soft: #f6f7f9;
-  --card: #ffffff;
-  --text: #1f2430;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --primary: #2563eb;
-  --primary-600: #1d4ed8;
-  --success: #16a34a;
-  --warning: #d97706;
-  --danger: #dc2626;
-
-  --chip-warn-bg: #fff7ed;
-  --chip-warn-fg: #9a3412;
-
-  --badge-mod-bg: #fef3c7;
-  --badge-mod-fg: #92400e;
-  --badge-cus-bg: #dcfce7;
-  --badge-cus-fg: #166534;
-
-  --focus: #22c55e;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.06);
-  --shadow-md: 0 6px 16px rgba(0,0,0,.08);
-
-  /* Table */
-  --thead-bg: #f8fafc;
-  --row-hover: #f3f4f6;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b1020;
-    --bg-soft: #0f152a;
-    --card: #0f172a;
-    --text: #e5e7eb;
-    --muted: #9ca3af;
-    --border: #1f2937;
-    --primary: #60a5fa;
-    --primary-600: #3b82f6;
-
-    --chip-warn-bg: #3b2e1d;
-    --chip-warn-fg: #fbbf24;
-
-    --badge-mod-bg: #40381f;
-    --badge-mod-fg: #facc15;
-    --badge-cus-bg: #1d3b2a;
-    --badge-cus-fg: #86efac;
-
-    --thead-bg: #0b1428;
-    --row-hover: #0c1730;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.5);
-    --shadow-md: 0 8px 20px rgba(0,0,0,.45);
-  }
-}
-
-/* Global scaling */
 .da-app {
-  font-size: 0.8rem; /* sesuai requirement */
-  color: var(--text);
-  background: var(--bg);
+  /* === Tokens (scoped) === */
+  --da-font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+  --da-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --da-bg: #ffffff;
+  --da-surface: #ffffff;
+  --da-border: #e5e7eb;
+  --da-muted: #6c757d;
+  --da-muted-2: #8a9199;
+
+  --da-accent: #0d6efd;           /* primary */
+  --da-accent-soft: #eef5ff;      /* soft bg for selection */
+  --da-hover: #f8f9fa;            /* hover list */
+  --da-table-stripe: #fafbfc;     /* zebra */
+
+  --da-danger: #dc3545;
+  --da-warn: #ffc107;
+  --da-success: #198754;
+
+  --da-radius: 10px;
+  --da-radius-sm: 8px;
+
+  --da-toolbar-h: 48px;           /* kira-kira tinggi toolbar */
+  --da-topbar-h: var(--dp-topbar-h, 64px);
+
+  font-family: var(--da-font-sans);
+  color: #111827;
 }
 
-/* Utilities */
-.sr-only {
-  position: absolute !important;
-  height: 1px; width: 1px;
-  clip: rect(1px, 1px, 1px, 1px);
-  overflow: hidden;
-  white-space: nowrap;
+/* ===== Header / Judul Halaman ===== */
+.da-app .da-page-header { margin-top: 8px; }
+.da-app .da-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.125rem; /* 18px */
+  letter-spacing: 0.2px;
 }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.num  { text-align: right; }
-
-/* ===========================
-   Header
-   =========================== */
-
-.da-header {
-  padding: 14px 18px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
+.da-app .da-subtitle {
+  margin: 2px 0 0 0;
+  color: var(--da-muted);
+  font-size: .875rem;
 }
-.da-breadcrumb {
-  color: var(--muted);
-  margin-bottom: 6px;
-  font-size: 0.78rem;
-}
-.da-breadcrumb .sep { margin: 0 6px; opacity: .5; }
-.da-title { margin: 2px 0 2px; font-size: 1.2rem; }
-.da-subtitle { color: var(--muted); font-size: 0.78rem; }
-.da-quicklinks { margin-top: 6px; }
-.da-quicklinks .da-link {
-  color: var(--primary);
-  text-decoration: none;
-  margin-right: 10px;
-}
-.da-quicklinks .da-link:hover { text-decoration: underline; }
 
-/* ===========================
-   Toolbar sticky
-   =========================== */
-
-.da-toolbar {
+/* ===== Toolbar ===== */
+.da-app .da-toolbar {
   position: sticky;
-  top: var(--topbar-height);
-  z-index: 50;
+  top: var(--da-topbar-h);
+  z-index: 10;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  height: var(--toolbar-height);
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-}
-
-.da-toolbar .da-combobox { position: relative; min-width: 360px; flex: 0 1 520px; }
-.da-input {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  gap: 10px;
+  background: var(--da-surface);
+  border: 1px solid var(--da-border);
+  border-radius: var(--da-radius);
   padding: 8px 10px;
-  color: var(--text);
-  width: 100%;
-  outline: none;
+  min-height: var(--da-toolbar-h);
 }
-.da-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
+.da-app .da-toolbar .da-input { min-width: 280px; }
+.da-app .da-toolbar .btn { white-space: nowrap; }
+
+/* Dirty indicator */
+.da-app .da-dirty-indicator .dot {
+  color: var(--da-warn);
+  margin-right: 4px;
 }
 
-.da-toolbar .btn { height: 30px; }
-.btn {
-  -webkit-appearance: none; appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  background: var(--bg-soft);
-  color: var(--text);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-}
-.btn:hover { filter: brightness(1.03); }
-.btn:active { transform: translateY(1px); }
-.btn-primary {
-  background: var(--primary);
-  border-color: var(--primary-600);
-  color: #fff;
-}
-.btn-primary:hover { background: var(--primary-600); }
-.btn-secondary {
-  background: #f0f9ff;
-  border-color: #bae6fd;
-  color: #0369a1;
-}
-.btn-light {
-  background: var(--bg);
-  color: var(--text);
-}
-
-.da-toolbar-spacer { flex: 1; }
-
-.da-dirty-indicator { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
-.da-dirty-indicator .dot { color: var(--warning); font-size: 1rem; line-height: 1; }
-
-#da-btn-save {
-  display: inline-flex; align-items: center; gap: 8px;
-}
-#da-btn-save .spinner {
-  width: 14px; height: 14px; border-radius: 999px;
-  border: 2px solid color-mix(in oklab, var(--bg) 60%, transparent);
-  border-top-color: #fff;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg);} }
-
-/* ===========================
-   Body: Sidebar + Editor
-   =========================== */
-
-.da-body {
+/* ===== Body Grid ===== */
+.da-app .da-body {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
-  gap: 0;
-  min-height: calc(100vh - var(--topbar-height) - var(--toolbar-height) - 100px);
+  grid-template-columns: 360px 1fr;
+  gap: 12px;
 }
 
-/* Sidebar */
-.da-sidebar {
-  border-right: 1px solid var(--border);
-  background: var(--bg-soft);
+/* ===== Sidebar ===== */
+.da-app .da-sidebar {
+  background: var(--da-surface);
+  border: 1px solid var(--da-border);
+  border-radius: var(--da-radius);
   padding: 10px;
+}
+.da-app .da-sidebar-search .da-input,
+.da-app .da-sidebar input[type="text"] {
+  width: 100%;
+  border: 1px solid var(--da-border);
+  border-radius: var(--da-radius-sm);
+  padding: 8px 10px;
+  font-size: .9rem;
+}
+.da-app .da-job-list {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 0;
+  max-height: calc(100vh - 220px);
   overflow: auto;
 }
-.da-sidebar-search { padding: 6px 6px 12px; }
-.da-job-list { list-style: none; padding: 0; margin: 0; }
-.da-job-item {
-  border: 1px solid var(--border);
-  background: var(--card);
-  border-radius: 10px;
+.da-app .da-job-item {
   padding: 8px;
-  margin-bottom: 8px;
+  border-radius: var(--da-radius-sm);
   cursor: pointer;
-}
-.da-job-item:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
-.da-job-item .primary {
-  display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline;
-}
-.da-job-item .kode { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.da-job-item .uraian { color: var(--text); opacity: .95; }
-.da-job-item .meta { display: flex; gap: 6px; align-items: center; margin-top: 4px; color: var(--muted); font-size: .78rem; }
-.badge {
-  display: inline-block; padding: 2px 6px; border-radius: 999px; font-size: .70rem; border: 1px solid var(--border);
-}
-.badge-mod { background: var(--badge-mod-bg); color: var(--badge-mod-fg); border-color: transparent;}
-.badge-cus { background: var(--badge-cus-bg); color: var(--badge-cus-fg); border-color: transparent; }
-
-/* Editor header */
-.da-editor { padding: 12px; }
-.da-job-header {
-  border: 1px solid var(--border);
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 10px;
-  margin-bottom: 12px;
-}
-.da-job-header .row {
-  display: grid; grid-template-columns: 200px 1fr 140px 140px; gap: 12px;
-}
-.da-job-header .label { font-size: .72rem; color: var(--muted); }
-.da-job-header .value { margin-top: 2px; }
-
-/* Segments */
-.da-segment { margin-bottom: 16px; }
-.da-seg-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 6px;
-}
-.da-seg-header h2 { font-size: 1rem; margin: 2px 0; }
-.da-seg-header .seg-tools { display: flex; gap: 6px; }
-
-/* Table */
-.da-table-wrap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--card);
-}
-.da-table-wrap .da-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.da-table thead.sticky th {
-  position: sticky; top: calc(var(--topbar-height) + var(--toolbar-height));
-  background: var(--thead-bg);
-  z-index: 5;
-}
-.da-table th, .da-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 8px 10px;
-  vertical-align: top;
-}
-.da-table tbody tr:hover { background: var(--row-hover); }
-.da-table .col-no { width: 96px; white-space: nowrap; }
-.da-table .col-kode { width: 200px; }
-.da-table .col-satuan { width: 120px; }
-.da-table .col-koef { width: 160px; }
-.da-table .cell-input {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 6px; padding: 6px 8px;
-  background: var(--bg);
-  color: var(--text);
-}
-.da-table .cell-input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
-}
-.da-table .cell-wrap {
-  min-height: 28px;
-  padding: 6px 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  transition: background-color .15s ease, border-color .15s ease;
 }
-.da-table .cell-wrap:focus {
+.da-app .da-job-item:hover { background: var(--da-hover); }
+.da-app .da-job-item.is-active {
+  border-color: color-mix(in srgb, var(--da-accent) 15%, transparent);
+  background: var(--da-accent-soft);
+}
+.da-app .da-job-item .primary { display: flex; flex-direction: column; gap: 2px; }
+.da-app .da-job-item .kode {
+  font-family: var(--da-font-mono);
+  font-size: .85rem;
+  color: #111827;
+}
+.da-app .da-job-item .uraian { font-size: .92rem; }
+.da-app .da-job-item .meta {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--da-muted); font-size: .8rem; margin-top: 4px;
+}
+
+/* Badges */
+.da-app .badge {
+  display: inline-block;
+  padding: .15rem .4rem;
+  border-radius: .5rem;
+  font-size: .7rem;
+  background: #e9ecef;
+  color: #111827;
+}
+.da-app .badge-ref { background: #ede7ff; }
+.da-app .badge-mod { background: #fff3cd; }
+.da-app .badge-cus { background: #d1e7dd; }
+
+/* ===== Editor Panel ===== */
+.da-app .da-editor {
+  background: var(--da-surface);
+  border: 1px solid var(--da-border);
+  border-radius: var(--da-radius);
+  padding: 10px;
+}
+
+/* Header metadata */
+.da-app .da-job-header .row {
+  display: grid;
+  grid-template-columns: 160px 1fr 120px 160px;
+  gap: 10px;
+}
+.da-app .da-job-header .cell .label {
+  color: var(--da-muted);
+  font-size: .8rem;
+}
+.da-app .da-job-header .value {
+  font-weight: 600;
+  font-size: .95rem;
+}
+.da-app .da-job-header .value.mono { font-family: var(--da-font-mono); }
+
+/* ===== Segmen Header ===== */
+.da-app .da-seg-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px; margin-bottom: 6px;
+}
+.da-app .da-seg-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+/* ===== Table ===== */
+.da-app .da-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .9rem;
+}
+.da-app .da-table th,
+.da-app .da-table td {
+  border: 1px solid var(--da-border);
+  padding: 6px 8px;
+  vertical-align: top;
+  background: #fff;
+}
+
+.da-app .da-table thead.sticky {
+  position: sticky;
+  top: calc(var(--da-topbar-h) + var(--da-toolbar-h));
+  z-index: 5;
+  background: var(--da-surface);
+  box-shadow: 0 1px 0 0 var(--da-border);
+}
+
+.da-app .da-table tbody tr:nth-child(odd) td { background: var(--da-table-stripe); }
+.da-app .da-table tbody tr:hover td { background: #f2f6ff; }
+
+.da-app .da-table .mono { font-family: var(--da-font-mono); }
+
+/* ===== Inputs & Editable ===== */
+.da-app .cell-input,
+.da-app .da-input {
+  width: 100%;
+  border: 1px solid var(--da-border);
+  border-radius: var(--da-radius-sm);
+  padding: 6px 8px;
+  font-size: .9rem;
+  background: #fff;
+  color: #111827;
+}
+.da-app .cell-input.mono { font-family: var(--da-font-mono); }
+
+.da-app .cell-wrap[contenteditable="true"] {
+  display: block;
+  min-height: 30px;
+  border: 1px solid var(--da-border);
+  border-radius: var(--da-radius-sm);
+  padding: 6px 8px;
+  background: #fff;
+  color: #111827;
+}
+
+.da-app .cell-input:focus,
+.da-app .da-input:focus,
+.da-app .cell-wrap[contenteditable="true"]:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
+  border-color: color-mix(in srgb, var(--da-accent) 55%, var(--da-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--da-accent) 18%, transparent);
 }
 
-/* Row utilities */
-.da-row .drag-handle {
-  cursor: grab; user-select: none; margin-right: 6px; display: inline-block;
+/* Readonly state (baik untuk REF) */
+.da-app.da-readonly .cell-input,
+.da-app.da-readonly .cell-wrap {
+  background: var(--da-hover);
+  color: var(--da-muted-2);
+  pointer-events: none;
 }
-.da-row:active .drag-handle { cursor: grabbing; }
-.da-row .row-select { vertical-align: middle; margin-right: 6px; }
-.da-row .row-index { opacity: .6; }
+.da-app.da-readonly .seg-tools { display: none; }
 
-/* Empty row */
-.da-empty td {
-  color: var(--muted);
-  text-align: center;
-  padding: 16px !important;
+/* Chip kecil untuk warning harga (disembunyikan default) */
+.da-app .chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: .75rem;
+  line-height: 1;
+  border: 1px solid var(--da-border);
+  background: #fff;
+  color: #111827;
 }
+.da-app .chip-warn { border-color: #ffe69c; background: #fff9db; color: #664d03; }
 
-/* Price hint chip */
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 999px; font-size: .72rem; border: 1px dashed var(--border);}
-.chip-warn { background: var(--chip-warn-bg); color: var(--chip-warn-fg); }
-
-/* Validation states */
-.is-error,
-.da-row.error .cell-input,
-.da-row.error .cell-wrap {
-  border-color: var(--danger) !important;
-  background: color-mix(in oklab, var(--danger) 8%, transparent);
+/* ===== Row reusable (template) ===== */
+.da-app .drag-handle {
+  font-family: var(--da-font-mono);
+  user-select: none;
+  cursor: grab;
+  color: #9aa0a6;
+  margin-right: 6px;
 }
-.is-warning { border-color: var(--warning) !important; }
+.da-app .row-select { vertical-align: middle; margin-right: 6px; }
+.da-app .row-index { font-family: var(--da-font-mono); color: #6b7280; }
 
-/* Footer hint */
-.da-editor-footer {
+/* ===== Footer editor ===== */
+.da-app .da-editor-footer {
   display: flex; align-items: center; justify-content: space-between;
-  color: var(--muted); font-size: .78rem;
-  padding: 8px 2px 0;
+  margin-top: 10px; color: var(--da-muted); font-size: .82rem;
 }
 
-/* ===========================
-   Combobox / Listbox (ARIA)
-   =========================== */
+/* ===== Toasts (container di JS) — gaya minimal ===== */
+.da-app .da-toasts { font-size: .9rem; }
 
-.da-listbox {
-  position: absolute; inset-inline-start: 0; inset-block-start: calc(100% + 4px);
-  min-width: 320px; max-width: 560px;
-  max-height: 300px; overflow: auto;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-md);
-  padding: 6px 0;
-}
-.da-listbox[hidden] { display: none !important; }
-.da-listbox li {
-  list-style: none;
-  padding: 8px 12px;
-  display: grid; grid-template-columns: auto 1fr; gap: 8px;
-  cursor: pointer;
-}
-.da-listbox li[aria-selected="true"],
-.da-listbox li:hover { background: var(--row-hover); }
-.da-listbox .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.da-listbox .desc { color: var(--muted); }
-
-/* ===========================
-   Modal: Tambah Komponen AHSP
-   =========================== */
-
-.da-modal[hidden] { display: none; }
-.da-modal {
-  position: fixed; inset: 0; z-index: 100;
-  display: grid; place-items: center;
-  background: color-mix(in oklab, var(--bg) 20%, rgba(0,0,0,.5));
-  padding: 20px;
-}
-.da-modal-card {
-  width: min(860px, 96vw);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-md);
-}
-.da-modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid var(--border);
-}
-.da-modal-body { padding: 14px 16px; }
-.da-modal-close {
-  border: none; background: transparent; font-size: 18px; cursor: pointer; color: var(--muted);
-}
-
-/* Tabs */
-.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
-.tab {
-  border: 1px solid var(--border); border-bottom: none;
-  border-radius: 8px 8px 0 0; padding: 6px 10px; background: var(--bg-soft);
-  cursor: pointer; color: var(--text);
-}
-.tab.active { background: var(--card); font-weight: 600; }
-.tabpanel[hidden] { display: none; }
-
-/* Results list */
-.da-results {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  padding: 6px; max-height: 260px; overflow: auto;
-}
-.da-results .item {
-  padding: 8px; border-radius: 8px; cursor: pointer;
-  display: grid; grid-template-columns: 120px 1fr 80px; gap: 10px;
-}
-.da-results .item:hover { background: var(--row-hover); }
-.da-results .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.da-results .unit { color: var(--muted); text-align: right; }
-
-/* Form grid */
-.da-form .grid {
-  display: grid; grid-template-columns: 1fr 1fr 140px 160px; gap: 10px; margin-top: 10px;
-}
-.da-form .field .label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: 4px; }
-.da-form .hint { color: var(--muted); font-size: .72rem; margin-top: 4px; }
-.da-form .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
-
-/* ===========================
-   Toasts
-   =========================== */
-
-.da-toasts {
-  position: fixed; right: 16px; bottom: 16px; z-index: 120;
-  display: grid; gap: 8px;
-}
-.da-toast {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--primary);
-  color: var(--text);
-  border-radius: 10px;
-  box-shadow: var(--shadow-md);
-  padding: 10px 12px;
-  min-width: 260px;
-}
-.da-toast.success { border-left-color: var(--success); }
-.da-toast.error   { border-left-color: var(--danger); }
-.da-toast.warn    { border-left-color: var(--warning); }
-
-/* ===========================
-   Responsive
-   =========================== */
-
+/* ===== Responsif ===== */
 @media (max-width: 1024px) {
-  :root { --sidebar-w: 280px; }
-  .da-job-header .row { grid-template-columns: 1fr 1fr 120px 120px; }
-  .da-form .grid { grid-template-columns: 1fr 1fr 120px 140px; }
+  .da-app .da-body { grid-template-columns: 1fr; }
+  .da-app .da-sidebar { order: 2; }
+  .da-app .da-editor { order: 1; }
 }
 
-@media (max-width: 768px) {
-  :root { --sidebar-w: 100%; }
-  .da-body { grid-template-columns: 1fr; }
-  .da-sidebar { order: 1; }
-  .da-editor { order: 2; }
-
-  .da-toolbar { flex-wrap: wrap; height: auto; gap: 6px; }
-  .da-toolbar .da-combobox { min-width: 240px; flex: 1 1 100%; }
-  .da-toolbar .btn { height: 34px; }
-
-  .da-table-wrap { overflow-x: auto; }
-  .da-table th, .da-table td { white-space: nowrap; }
-  .da-table .col-uraian { min-width: 360px; white-space: normal; }
-
-  .da-job-header .row { grid-template-columns: 1fr 1fr; }
+/* ===== Preferensi Aksesibilitas ===== */
+@media (prefers-reduced-motion: reduce) {
+  .da-app * { transition: none !important; animation: none !important; }
 }
 
-@media (max-width: 576px) {
-  .da-app { font-size: 0.8rem; }
-  .da-table .col-no { width: 84px; }
-  .btn, .da-input { padding: 6px 8px; }
+/* ===== Helper kecil ===== */
+.da-app .da-empty {
+  color: var(--da-muted);
+  text-align: center;
+  font-size: .9rem;
 }
-
-/* ===========================
-   Links (helper)
-   =========================== */
-a { color: var(--primary); }
-a:hover { text-decoration: underline; }

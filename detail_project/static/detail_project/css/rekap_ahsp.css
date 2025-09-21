@@ -1,0 +1,140 @@
+/* ===========================
+   Rekap AHSP (scoped)
+   ===========================
+   Semua selector diprefix dgn #rekap-app agar tidak bleed ke page lain.
+*/
+
+/* Default lebar panel kiri untuk halaman ini */
+#rekap-app{
+  --rk-left-w: 360px; /* diubah/diingat via JS resizer */
+}
+
+/* ====== GRID: kiri | resizer | kanan ====== */
+#rekap-app .hi-body{
+  display:grid;
+  grid-template-columns: var(--rk-left-w, 360px) 6px 1fr;
+  gap:0;
+  align-items:stretch;
+  min-height:68vh;
+}
+
+/* ====== LEFT PANEL ====== */
+#rekap-app .rk-left{
+  min-width:240px; max-width:640px;
+  background:#fff; border:1px solid var(--rk-border); border-radius:12px;
+  overflow:hidden; /* header sticky + list scroll di child */
+  box-shadow:var(--rk-shadow);
+  display:flex; flex-direction:column;
+}
+
+#rekap-app .rk-left-toolbar{
+  display:flex; align-items:center; gap:8px;
+  padding:10px; border-bottom:1px solid var(--rk-border);
+  background:#fff; position:sticky; top:0; z-index:2;
+}
+
+#rekap-app .rk-left-scroll{
+  overflow:auto;
+}
+
+#rekap-app #rk-search{ width:100%; }
+
+/* List kiri */
+#rekap-app #rk-list{
+  list-style:none; margin:0; padding:0;
+}
+#rekap-app #rk-list .rk-item{
+  border-bottom:1px solid var(--rk-border); padding:10px 12px; background:#fff; cursor:pointer;
+  display:flex; flex-direction:column; gap:4px;
+}
+#rekap-app #rk-list .rk-item:hover{ background:#f8fafc; }
+#rekap-app #rk-list .rk-item.active{
+  background:#eef6ff; outline:2px solid #bfdbfe; outline-offset:-2px;
+}
+#rekap-app #rk-list .rk-item .rk-item-title{
+  font-weight:600; line-height:1.35;
+}
+#rekap-app #rk-list .rk-item .rk-item-meta{
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:12px; color:var(--rk-muted);
+}
+#rekap-app #rk-list .rk-item .rk-item-meta .mono{ color:#374151; }
+
+/* ====== RESIZER ====== */
+#rekap-app .rk-resizer{
+  background:linear-gradient(90deg,#f1f5f9,#e2e8f0,#f1f5f9);
+  cursor:col-resize; min-width:6px; max-width:6px;
+}
+#rekap-app .rk-resizer:hover{ background:#dbeafe; }
+#rekap-app .rk-resizer:focus{ outline:2px solid #93c5fd; outline-offset:-2px; }
+
+/* ====== RIGHT PANEL ====== */
+#rekap-app .rk-right{
+  background:#fff; border:1px solid var(--rk-border); border-radius:12px;
+  overflow:hidden; box-shadow:var(--rk-shadow);
+  display:flex; flex-direction:column;
+  min-width:320px;
+}
+
+/* Header kanan (judul + chips + override) */
+#rekap-app .rk-right-header{
+  padding:12px 14px;
+  border-bottom:1px solid var(--rk-border);
+  background:#fff;
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+}
+#rekap-app .rk-right-head-main{ flex:1; min-width:240px; }
+#rekap-app .rk-right-title{ font-weight:700; }
+#rekap-app .rk-right-actions{ display:flex; align-items:center; gap:8px; }
+
+/* ====== TABLE WRAP (kanan) ====== */
+#rekap-app .hi-table-wrap{
+  border-top:1px solid var(--rk-border);
+  background:#fff;
+  max-height:calc(68vh - 56px); /* kira-kira di bawah header kanan */
+  overflow:auto;
+}
+
+/* Section rows di tabel detail */
+#rekap-app .hi-table .sec-head td{
+  background:#f3f6ff; font-weight:700;
+}
+#rekap-app .hi-table .sec-sum td{
+  background:#f9fafb; font-weight:700;
+}
+#rekap-app .hi-table .tot-row td{
+  background:#fff7ed; font-weight:800;
+}
+#rekap-app .hi-table .tot-row td:first-child{ color:#7c2d12; }
+
+/* ====== Skeleton loader (opsional) ====== */
+#rekap-app.is-loading #rk-list .rk-item,
+#rekap-app.is-loading .hi-table tbody tr{
+  position:relative; overflow:hidden; color:transparent;
+}
+#rekap-app.is-loading #rk-list .rk-item::after,
+#rekap-app.is-loading .hi-table tbody tr::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(148,163,184,.12) 40%, rgba(148,163,184,.12) 60%, rgba(0,0,0,0) 100%);
+  animation: rk-shimmer 1.2s infinite;
+}
+@keyframes rk-shimmer{
+  0%{ transform:translateX(-100%); }
+  100%{ transform:translateX(100%); }
+}
+
+/* ====== Responsive (khusus rekap) ====== */
+@media (max-width: 1100px){
+  #rekap-app{ --rk-left-w: 320px; }
+}
+@media (max-width: 900px){
+  #rekap-app{ --rk-left-w: 280px; }
+}
+@media (max-width: 760px){
+  /* Stack jadi vertikal: list di atas, detail di bawah */
+  #rekap-app .hi-body{
+    display:flex; flex-direction:column;
+  }
+  #rekap-app .rk-resizer{ display:none; }
+  #rekap-app .hi-table-wrap{ max-height:unset; }
+  #rekap-app #rk-list .rk-item{ padding:12px; }
+}

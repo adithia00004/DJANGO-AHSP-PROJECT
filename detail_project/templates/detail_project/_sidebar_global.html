@@ -3,12 +3,13 @@
 
 {% url 'dashboard:dashboard' as url_dashboard %}
 {% if project %}
-  {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
-  {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
-  {% url 'detail_project:harga_items' project.id as url_harga_items %}
-  {% url 'detail_project:detail_ahsp' project.id as url_detail_ahsp %}
-  {% url 'detail_project:detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
-  {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
+  {% url 'list_pekerjaan' project.id as url_list_pekerjaan %}
+  {% url 'volume_pekerjaan' project.id as url_volume_pekerjaan %}
+  {% url 'harga_items' project.id as url_harga_items %}
+  {% url 'detail_ahsp' project.id as url_detail_ahsp %}
+  {% url 'detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
+  {% url 'rekap_rab' project.id as url_rekap_rab %}
+  {% url 'rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
 {% endif %}
 
 {% trans "Project" as project_label %}
@@ -21,6 +22,7 @@
 {% trans "Detail AHSP" as t_detail_ahsp %}
 {% trans "Detail Gabungan" as t_detail_gabungan %}
 {% trans "Rekap RAB" as t_rekap_rab %}
+{% trans "Rekap Kebutuhan" as t_rekap_kebutuhan %}
 
 <aside id="dp-sidebar"
        class="dp-sidebar"
@@ -111,6 +113,14 @@
              href="{{ url_rekap_rab|default:'#' }}">
             <i class="bi bi-card-checklist" aria-hidden="true"></i>
             <span>{{ t_rekap_rab }}</span>
+          </a>
+        </li>
+        <li>
+          <a class="dp-link {% if side_active == 'rekap_kebutuhan' %}is-active{% endif %}"
+             {% if side_active == 'rekap_kebutuhan' %}aria-current="page"{% endif %}
+             href="{{ url_rekap_kebutuhan|default:'#' }}">
+            <i class="bi bi-list-check" aria-hidden="true"></i>
+            <span>{{ t_rekap_kebutuhan }}</span>
           </a>
         </li>
         {% endif %}
