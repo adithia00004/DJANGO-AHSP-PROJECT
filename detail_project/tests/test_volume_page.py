@@ -1,4 +1,3 @@
-# detail_project/tests/test_volume_page.py
 from decimal import Decimal
 from django.urls.exceptions import NoReverseMatch
 import json
@@ -72,7 +71,7 @@ def make_project_for_tests(owner):
                 if existing:
                     kwargs[f.name] = existing
                 else:
-                    # fallback: coba buat instansi rel dengan CharField wajib tunggal
+                    # fallback: buat instansi rel sederhana
                     create_kwargs = {}
                     for rf in rel._meta.fields:
                         if rf.auto_created or rf.primary_key:
@@ -154,6 +153,7 @@ class VolumePekerjaanPageTests(TestCase):
     def _url_rekap(self):
         pid = self.project.id
         candidates = [
+            ("detail_project:api_get_rekap_rab", {"project_id": pid}),  # ← nama view rekap aktif
             ("detail_project:api_get_rekap", {"project_id": pid}),
             ("detail_project:api_rekap", {"project_id": pid}),
             ("detail_project:api_get_rekapitulasi", {"project_id": pid}),
@@ -197,6 +197,9 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertIn('id="vol-app"', html)
         self.assertIn('data-project-id="', html)
 
+        # (opsional) komponen penting
+        self.assertIn('qty-input', html)
+
     def test_layout_toolbar_search_and_thead_markup(self):
         self.c.login(username="owner", password="pass")
         html = self.c.get(self._url_page()).content.decode("utf-8")
@@ -207,11 +210,14 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertIn('id="vp-search-results"', html)
         self.assertIn('role="listbox"', html)  # ARIA listbox
 
-        # THEAD default (class table-light). Sticky diatur CSS, tak perlu class 'sticky-top' untuk lulus test.
+        # THEAD default (class table-light). Sticky diatur CSS.
         self.assertIn('<thead class="table-light"', html)
         # Kolom
         for label in ["#", "Kode", "Uraian", "Satuan", "Quantity"]:
             self.assertIn(f">{label}<", html)
+
+        # Multi-toast container (undo)
+        self.assertIn('id="vp-toasts"', html)
 
     def test_var_panel_and_io_controls_exist(self):
         self.c.login(username="owner", password="pass")
@@ -267,7 +273,6 @@ class VolumePekerjaanPageTests(TestCase):
             {"pekerjaan_id": 999999, "quantity": 4},  # tidak ada di project ini
         ]}
         r = self.c.post(self._url_save(), data=json.dumps(payload), content_type="application/json")
-        # sebagian sistem mengembalikan 200 dengan 'errors' untuk item gagal
         self.assertIn(r.status_code, (200,), r.content)
         data = r.json()
         self.assertTrue(data.get("saved", 0) >= 1)
@@ -351,8 +356,8 @@ class VolumePekerjaanAPILocaleTests(TestCase):
 
     def test_accepts_locale_formats_and_rounds_half_up(self):
         """
-        Terima "1.234,555" → 1.235 (HALF_UP)
-                "1,000.25" → 1000.250
+            Terima "1.234,555" → 1.235 (HALF_UP)
+                    "1,000.25" → 1000.250
         """
         resp = self._post(
             [

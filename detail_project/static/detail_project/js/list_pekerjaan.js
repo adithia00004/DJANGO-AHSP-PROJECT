@@ -916,82 +916,99 @@
   }
 
   async function handleSave() {
-    if (!projectId) { tShow('Project ID tidak ditemukan.', 'danger'); return; }
+    if (!projectId) { alert('Project ID tidak ditemukan.'); return; }
 
-    const btnMainSave = document.querySelector('#btn-save');
-    btnMainSave?.setAttribute('disabled', 'true');
-    const origText = btnMainSave?.textContent;
-    if (btnMainSave) btnMainSave.textContent = 'Menyimpan…';
+    const btn = document.querySelector('#btn-save');
+    const orig = btn?.textContent;
+    btn?.setAttribute('disabled', 'true');
+    if (btn) btn.textContent = 'Menyimpan…';
 
     const payload = { klasifikasi: [] };
     let hasError = false;
-    let globalPekerjaanOrder = 0;
+    let globalOrder = 0;
 
     const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
 
     kCards.forEach((kc, ki) => {
-      const subWrap = kc.querySelector('.sub-wrap');
-      const kName = (kc.querySelector('.klas-name')?.value || '').trim();
+      const subWrap  = kc.querySelector('.sub-wrap');
+      const kNameRaw = (kc.querySelector('.klas-name')?.value || '').trim();
       const hasAnySub = subWrap && subWrap.children.length > 0;
-      if (!hasAnySub && !kName) return;
+      if (!hasAnySub && !kNameRaw) return;
+
+      // === Aturan auto-naming: K1, K2, ... ===
+      const kCode = `K${ki + 1}`;
+      const kName = kNameRaw || kCode;
 
       const k = {
         id: kc.dataset.id ? parseInt(kc.dataset.id, 10) : undefined,
         temp_id: kc.dataset.tempId,
-        name: kName || null,
+        name: kName,                    // HINDARI null
         ordering_index: ki + 1,
         sub: []
       };
 
       Array.from(subWrap?.children || []).forEach((sb, si) => {
-        const rows = sb.querySelectorAll('tbody tr');
-        const sName = (sb.querySelector('.sub-name')?.value || '').trim();
-        if (!rows.length && !sName) return;
+        const rows     = sb.querySelectorAll('tbody tr');
+        const sNameRaw = (sb.querySelector('.sub-name')?.value || '').trim();
+        if (!rows.length && !sNameRaw) return;
+
+        // === Aturan auto-naming Sub: K{n}.{m} → K1.1, K1.2, K2.1, ... ===
+        const sName = sNameRaw || `${kCode}.${si + 1}`;
 
         const s = {
           id: sb.dataset.id ? parseInt(sb.dataset.id, 10) : undefined,
           temp_id: sb.dataset.tempId,
-          name: sName || null,
+          name: sName,                  // HINDARI null
           ordering_index: si + 1,
           pekerjaan: []
         };
 
-        rows.forEach((tr) => {
-          const src = tr.querySelector('.src')?.value;
-          const sel = $(tr).find('.ref-select');
-          const refVal = sel.val();
+        rows.forEach(tr => {
+          const src    = tr.querySelector('.src')?.value;
+          const sel    = $(tr).find('.ref-select');
+          const refRaw = sel.val();
           const uraian = (tr.querySelector('.uraian')?.value || '').trim();
           const satuan = (tr.querySelector('.satuan')?.value || '').trim();
 
-          let rowInvalid = false;
-          if (src === 'custom') { if (!uraian) rowInvalid = true; }
-          else { if (!refVal) rowInvalid = true; }
+          let invalid = false;
+          let refIdNum = null;
 
-          if (rowInvalid) {
+          if (src === 'custom') {
+            if (!uraian) invalid = true;
+          } else {
+            if (refRaw == null || refRaw === '') invalid = true;
+            else {
+              refIdNum = Number.parseInt(String(refRaw), 10);
+              if (Number.isNaN(refIdNum)) invalid = true;
+            }
+          }
+
+          if (invalid) {
             hasError = true;
             tr.classList.add('table-danger');
             return;
-          } else tr.classList.remove('table-danger');
+          } else {
+            tr.classList.remove('table-danger');
+          }
 
-          globalPekerjaanOrder += 1;
+          globalOrder += 1;
 
           const p = {
             id: tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined,
-            temp_id: `p_${ki}_${si}_${globalPekerjaanOrder}`,
+            temp_id: `p_${ki}_${si}_${globalOrder}`,
             source_type: src,
-            ordering_index: globalPekerjaanOrder
+            ordering_index: globalOrder
           };
 
-          // Payload rules
           if (src === 'custom') {
-            p.snapshot_uraian = uraian || null;
-            p.snapshot_satuan = satuan || null;
+            p.snapshot_uraian = uraian;                 // wajib isi
+            p.snapshot_satuan = satuan || null;         // boleh null
           } else if (src === 'ref_modified') {
-            p.ref_id = parseInt(refVal, 10);
-            p.snapshot_uraian = uraian || null;   // override optional
-            p.snapshot_satuan = satuan || null;   // override optional
+            p.ref_id = refIdNum;
+            if (uraian) p.snapshot_uraian = uraian;     // OMIt jika kosong
+            if (satuan) p.snapshot_satuan = satuan;     // OMIt jika kosong
           } else { // 'ref'
-            p.ref_id = parseInt(refVal, 10);
+            p.ref_id = refIdNum;
           }
 
           s.pekerjaan.push(p);
@@ -1004,46 +1021,34 @@
     });
 
     if (!payload.klasifikasi.length) {
-      tShow('Tidak ada data yang layak disimpan. Tambahkan minimal satu pekerjaan valid.', 'warning');
-      if (btnMainSave) { btnMainSave.disabled = false; btnMainSave.textContent = origText; }
+      alert('Tidak ada data yang layak disimpan.');
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
       return;
     }
-
     if (hasError) {
-      tShow('Beberapa baris belum lengkap. Periksa baris merah.', 'warning');
-      if (btnMainSave) { btnMainSave.disabled = false; btnMainSave.textContent = origText; }
+      alert('❌ Periksa baris merah. Pastikan ref_id numerik & nama K/Sub tidak kosong (fallback Kx/Kx.y aktif).');
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
       return;
     }
 
     try {
-      // Gunakan core http.jfetch agar sesuai pedoman (server angka bersih)
-      const res = await http.jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
+      await DP.core.http.jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'same-origin'
+        body: JSON.stringify(payload)
       });
-
-      // Deteksi 207/partial secara defensif dari payload (karena http.jfetch tidak expose status)
-      const isPartial = (res && (res.status === 207 || res.partial === true || Array.isArray(res.errors)));
-
-      if (isPartial) {
-        tShow('Sebagian gagal disimpan. Periksa baris merah.', 'warning');
-        const firstErrRow = document.querySelector('tr.table-danger') || document.querySelector('tr');
-        if (firstErrRow) firstErrRow.scrollIntoView({ behavior:'smooth', block:'center' });
-        // optional: jika server kirim info baris gagal, bisa dipetakan di sini
-      } else {
-        tShow('Perubahan tersimpan.', 'success');
-        await reloadAfterSave();
-      }
+      alert('✅ Perubahan tersimpan.');
+      await reloadAfterSave();
     } catch (e) {
-      err(e);
-      const msg = (e && e.body && (e.body.message || e.body.detail)) ? (e.body.message || e.body.detail) : 'Gagal simpan. Cek jaringan/server.';
-      tShow(`❌ ${msg}`, 'danger');
+      const raw = (e && e.body && typeof e.body === 'string') ? e.body : (e?.message || '');
+      const clean = String(raw).replace(/<[^>]+>/g, '').slice(0, 800);
+      alert(`❌ Gagal simpan (${e?.status || ''}). ${clean || 'Cek log server.'}`);
+      console.error('[LP] Save failed:', e);
     } finally {
-      if (btnMainSave) { btnMainSave.disabled = false; btnMainSave.textContent = origText; }
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
     }
   }
+
   async function reloadAfterSave() { klasWrap.innerHTML = ''; await loadTree(); }
 
   function mapToSelect2Results(json) {

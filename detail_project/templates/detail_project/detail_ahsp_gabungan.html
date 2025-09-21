@@ -1,42 +1,101 @@
-{% extends 'detail_project/base_detail.html' %}
+{% extends "detail_project/base_detail.html" %}
 {% load static %}
 
+{% block title %}Rekap AHSP — {{ project.nama }}{% endblock %}
+
+{% block extra_head %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'detail_project/css/harga_items.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_ahsp.css' %}">
+{% endblock %}
+
 {% block dp_content %}
-{% include 'detail_project/_breadcrumbs.html' %}
-{% include 'detail_project/_alert.html' %}
+<div id="rekap-app"
+     class="hi-app"
+     data-project-id="{{ project.id }}"
+     data-ep-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
+     data-ep-pricing="{% url 'detail_project:api_project_pricing' project.id %}"
+     data-ep-detail-prefix="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
+     data-ep-pricing-item-prefix="{% url 'detail_project:api_pekerjaan_pricing' project.id 0 %}"
+     data-locale="id-ID">
 
-<h3>5) Detail AHSP (Gabungan)</h3>
-<p class="text-muted">Edit semua rincian (ref + custom) setelah harga tersedia.</p>
-
-<div id="dag-app" data-project-id="{{ project.id }}">
-  <div class="alert alert-info">Pilih pekerjaan, ubah tabel, lalu Simpan Gabungan.</div>
-
-  <div class="mb-3">
-    <select multiple size="6" id="pkj-multi" class="form-select">
-      {% for p in pekerjaan %}
-        <option value="{{ p.id }}">{{ p.snapshot_kode }} — {{ p.snapshot_uraian }}</option>
-      {% endfor %}
-    </select>
+  <!-- ===== Top bar (judul + BUK badge + grand total) ===== -->
+  <div class="hi-toolbar" role="region" aria-label="Toolbar Rekap AHSP">
+    <h2 class="rk-title">Rekap AHSP</h2>
+    <span class="badge text-bg-light" id="rk-badge-buk" title="Biaya Umum & Keuntungan proyek">BUK: 10.00%</span>
+    <div class="hi-spacer"></div>
+    <div id="rk-grand" class="mono small text-muted">Grand Total: Rp 0,00</div>
   </div>
 
-  <div class="table-responsive">
-    <table class="table table-bordered table-sm" id="dag-table">
-      <thead class="table-light">
-        <tr>
-          <th>Pekerjaan</th>
-          <th>Kategori</th>
-          <th>Kode</th>
-          <th>Uraian</th>
-          <th>Satuan</th>
-          <th>Koefisien</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <!-- ===== Body grid: LEFT (list) | RESIZER | RIGHT (detail) ===== -->
+  <div class="hi-body">
+    <!-- ========== LEFT: daftar pekerjaan ========== -->
+    <aside class="rk-left">
+      <div class="rk-left-toolbar">
+        <input id="rk-search" type="search" class="hi-input" placeholder="Cari uraian/kode… (⌘/Ctrl+K)" />
+      </div>
+      <div class="rk-left-scroll">
+        <ul id="rk-list">
+          <li class="rk-item"><div class="row-note">Memuat…</div></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- ========== RESIZER (drag untuk ubah lebar kolom kiri) ========== -->
+    <div id="rk-resizer" class="rk-resizer" role="separator" aria-orientation="vertical" aria-label="Resize panel" tabindex="0"></div>
+
+    <!-- ========== RIGHT: header + tabel detail satu pekerjaan ========== -->
+    <section class="rk-right">
+      <!-- Header pekerjaan -->
+      <div class="rk-right-header">
+        <div class="rk-right-head-main">
+          <div class="mono small text-muted rk-right-meta">
+            <span id="rk-pkj-kode">—</span> ·
+            <span id="rk-pkj-sat">—</span>
+            &nbsp;&nbsp;<span id="rk-pkj-source" class="rk-chip">—</span>
+          </div>
+          <div id="rk-pkj-uraian" class="rk-right-title">Pilih pekerjaan di kiri</div>
+        </div>
+
+        <!-- Pricing efektif + override -->
+        <div class="rk-right-actions">
+          <span id="rk-eff" class="rk-chip mono" title="BUK efektif">Efektif: —%</span>
+          <span id="rk-pkj-ovr-chip" class="rk-chip rk-chip-warn mono" hidden>Override</span>
+          <input id="rk-ovr-input" type="text" inputmode="decimal" class="hi-input mono" placeholder="Override %">
+          <button id="rk-ovr-apply" class="btn btn-primary btn-sm" type="button">Apply</button>
+          <button id="rk-ovr-clear" class="btn btn-outline-secondary btn-sm" type="button">Clear</button>
+        </div>
+      </div>
+
+      <!-- Tabel detail -->
+      <div class="hi-table-wrap">
+        <table class="hi-table" aria-label="Rincian AHSP (pekerjaan terpilih)">
+          <thead>
+            <tr>
+              <th style="width:60px;">No</th>
+              <th>Uraian</th>
+              <th style="width:140px;">Kode</th>
+              <th style="width:80px;">Satuan</th>
+              <th style="width:120px;">Koefisien</th>
+              <th style="width:160px;">Harga Satuan (Rp)</th>
+              <th style="width:180px;">Jumlah Harga (Rp)</th>
+            </tr>
+          </thead>
+          <tbody id="rk-tbody-detail">
+            <tr><td colspan="7" class="row-note">Pilih pekerjaan untuk melihat rincian.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
-  <button class="btn btn-primary" id="btn-save-dag">Simpan Gabungan</button>
+  <!-- ===== Toast container ===== -->
+  <div id="rk-toast" class="rk-toast-wrap" aria-live="polite" aria-atomic="true"></div>
 </div>
+{% endblock %}
 
-<script src="{% static 'detail_project/detail_ahsp_gabungan.js' %}"></script>
+{% block extra_js %}
+  {{ block.super }}
+  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+  <script src="{% static 'detail_project/js/rekap_ahsp.js' %}"></script>
 {% endblock %}

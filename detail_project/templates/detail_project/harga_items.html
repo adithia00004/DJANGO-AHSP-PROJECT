@@ -1,29 +1,82 @@
-{% extends 'detail_project/base_detail.html' %}
+{% extends "detail_project/base_detail.html" %}
 {% load static %}
 
+{% block title %}Harga Items — {{ project.nama }}{% endblock %}
+
+{# Matikan CSS Detail AHSP di halaman ini #}
+{% block detail_css %}{% endblock %}
+
+{% block extra_head %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'detail_project/css/harga_items.css' %}">
+{% endblock %}
+
 {% block dp_content %}
-{% include 'detail_project/_breadcrumbs.html' %}
-{% include 'detail_project/_alert.html' %}
+<div id="hi-app"
+     class="hi-app"
+     data-project-id="{{ project.id }}"
+     data-endpoint-list="{% url 'detail_project:api_list_harga_items' project.id %}"
+     data-endpoint-save="{% url 'detail_project:api_save_harga_items' project.id %}"
+     data-locale="id-ID">
 
-<h3>4) Harga Items (unik per proyek)</h3>
-<p class="text-muted">Hanya item yang digunakan di Detail AHSP yang muncul. Item baru akan muncul dengan harga kosong.</p>
+  <!-- ===== Toolbar ===== -->
+  <div class="hi-toolbar" role="region" aria-label="Toolbar Harga Items">
+    <div class="hi-search">
+      <label for="hi-filter" class="sr-only">Cari item</label>
+      <input id="hi-filter" type="search" class="hi-input" placeholder="Cari kode / uraian / kategori…">
+    </div>
+    <div class="hi-spacer"></div>
+    <button id="hi-btn-export" class="btn btn-light" type="button" title="Export CSV">
+      <i class="bi bi-download" aria-hidden="true"></i> Export
+    </button>
+    <button id="hi-btn-save" class="btn btn-primary" type="button" aria-live="polite">
+      <i class="bi bi-save" aria-hidden="true"></i> Simpan
+    </button>
+  </div>
 
-<div id="hi-app" data-project-id="{{ project.id }}">
-  <table class="table table-sm align-middle" id="hi-table">
-    <thead class="table-light">
-      <tr>
-        <th>#</th>
-        <th>Kode</th>
-        <th>Kategori</th>
-        <th class="text-wrap">Uraian</th>
-        <th>Satuan</th>
-        <th style="width:160px">Harga Satuan</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-  <button class="btn btn-primary" id="btn-save-harga">Simpan Harga</button>
+  <!-- ===== BUK Panel (menonjol) ===== -->
+  <div class="hi-buk-card" role="region" aria-label="Biaya Umum & Keuntungan">
+    <div class="hi-buk-row">
+      <label for="hi-buk-input" class="hi-buk-label">Profit/Margins (%)</label>
+      <input id="hi-buk-input" type="text" inputmode="decimal" class="hi-buk-input" placeholder="10,00" aria-describedby="hi-buk-help">
+      <div class="hi-buk-actions">
+        <span id="hi-buk-help" class="hi-buk-help">Tersimpan per proyek & dipakai di Rekap AHSP.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Tabel ===== -->
+  <div class="hi-body">
+    <div class="hi-table-wrap">
+      <table class="hi-table" aria-label="Daftar Harga Items proyek">
+        <thead>
+          <tr>
+            <th style="width:56px;">No</th>
+            <th style="width:140px;">Kode</th>
+            <th>Uraian</th>
+            <th style="width:100px;">Satuan</th>
+            <th style="width:120px;">Kategori</th>
+            <th style="width:180px;">Harga Satuan (input)</th>
+            <th style="width:160px;">Rupiah</th>
+          </tr>
+        </thead>
+        <tbody id="hi-tbody">
+          <tr class="hi-empty"><td colspan="7">Memuat data…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="hi-footer">
+      <div id="hi-stats">0 item</div>
+      <div class="small text-muted">Tip: ketik angka bebas (., ,), sistem akan merapikan. Simpan untuk menyimpan perubahan.</div>
+    </div>
+  </div>
 </div>
+{% endblock %}
 
-<script src="{% static 'detail_project/harga_items.js' %}"></script>
+{% block extra_js %}
+  {{ block.super }}
+  <!-- Util numerik bersama (UMD) -->
+  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+  <!-- Script halaman Harga Items -->
+  <script src="{% static 'detail_project/js/harga_items.js' %}"></script>
 {% endblock %}

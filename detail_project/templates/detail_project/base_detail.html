@@ -114,9 +114,8 @@
 
 {# ===================== JS (SLOT CHILD) ===================== #}
 {% block extra_js %}
-  {{ block.super }}
-  {# Catatan:
-     - JANGAN muat detail_ahsp.js di base ini; muat hanya di halaman Detail AHSP.
-     - Halaman List Pekerjaan dapat mematikan CSS AHSP via block detail_css di child.
-  #}
+  {# hanya JS umum yang benar-benar dipakai semua halaman detail_project #}
+  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+  {# sediakan hook kosong untuk child #}
+  {% block page_js %}{% endblock %}
 {% endblock %}

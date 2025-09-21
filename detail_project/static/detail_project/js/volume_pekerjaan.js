@@ -17,7 +17,7 @@
   const STORE_PLACES = 3;
 
   // Debounce autosave (ms)
-  const AUTOSAVE_MS = 1200;
+  const AUTOSAVE_MS = 300000; 
 
   // ---- State in-memory
   let rows = Array.from(root.querySelectorAll('#vp-table tbody tr[data-pekerjaan-id]'));
@@ -97,6 +97,40 @@
     t.show();
   }
 
+  // ---- HTTP helper: gunakan DP.core.http bila ada
+  const HTTP = (function(){
+    const h = (window.DP && DP.core && DP.core.http) ? DP.core.http : null;
+    async function jget(url) {
+      if (h && h.jfetch) return h.jfetch(url, { method: 'GET', normalize: false });
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(r.statusText);
+      return r.json();
+    }
+    async function jpost(url, data) {
+      if (h && h.jfetchJson) return h.jfetchJson(url, { method: 'POST', data });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+        credentials: 'same-origin',
+        body: JSON.stringify(data)
+      });
+      const body = await r.json().catch(()=> ({}));
+      return { ok: r.ok, status: r.status, data: body, errors: body?.errors || [] };
+    }
+    return { jget, jpost };
+  })();
+
+  // ---- Toast helper: gunakan DP.core.toast bila ada
+  const TOAST = (function(){
+    const t = (window.DP && DP.core && DP.core.toast) ? DP.core.toast : null;
+    return {
+      ok(msg){ t ? t.show({message:msg, variant:'success'}) : showToast(msg, 'success'); },
+      warn(msg){ t ? t.show({message:msg, variant:'warning'}) : showToast(msg, 'warning'); },
+      err(msg){ t ? t.show({message:msg, variant:'danger'}) : showToast(msg, 'danger'); },
+      action(msg, actions){ showActionToast(msg, actions); }
+    };
+  })();
+
   // ---- Utils
   function getCsrf() {
     const m = document.cookie.match(/csrftoken=([^;]+)/);
@@ -151,8 +185,17 @@
   // ---- CSS Vars sync (topbar/toolbar/thead)
   function setTopOffsets() {
     try {
-      const topbarH  = topbarEl  ? Math.round(topbarEl.getBoundingClientRect().height)  : 0;
+      // coba baca CSS var global dari base
+      const rs = getComputedStyle(document.documentElement);
+      const topbarVar = rs.getPropertyValue('--dp-topbar-h') || rs.getPropertyValue('--topbar-height') || '';
+      const topbarFromVar = parseInt(String(topbarVar).replace('px','').trim(), 10);
+
+      const topbarH  = Number.isFinite(topbarFromVar) && topbarFromVar > 0
+        ? topbarFromVar
+        : (topbarEl ? Math.round(topbarEl.getBoundingClientRect().height) : 0);
+
       const toolbarH = toolbarEl ? Math.round(toolbarEl.getBoundingClientRect().height) : 42;
+
       const rootStyle = document.documentElement.style;
       rootStyle.setProperty('--vp-top-offset', `${topbarH}px`);
       rootStyle.setProperty('--vp-toolbar-h', `${toolbarH}px`);
@@ -435,9 +478,22 @@
     showSuggest(inputEl, items);
   }
 
-  // ==== Wiring baris pekerjaan
-  const formulaState = loadFormulas();
+  // === Server-side persist untuk formula state (silent on fail)
+  async function persistRowFormulaServer(id) {
+    try {
+      const payload = { items: [{ pekerjaan_id: id, raw: String(rawInputById[id] || ''), is_fx: !!fxModeById[id] }] };
+      await HTTP.jpost(`/detail_project/api/project/${projectId}/volume-formula-state/`, payload);
+    } catch {}
+  }
 
+  function persistRowFormula(id) {
+    const map = loadFormulas();
+    map[id] = { raw: rawInputById[id] || '', fx: !!fxModeById[id] };
+    saveFormulas(map);
+    persistRowFormulaServer(id);
+  }
+
+  // ==== Wiring baris pekerjaan
   function collectQtyInputs() {
     return Array.from(document.querySelectorAll('#vp-table .qty-input'));
   }
@@ -453,6 +509,9 @@
   }
 
   function bindRow(tr) {
+    if (tr.dataset.bound === '1') return;
+    tr.dataset.bound = '1';
+
     const id = parseInt(tr.dataset.pekerjaanId, 10);
     const input = tr.querySelector('.qty-input');
     const fxBtn = tr.querySelector('.fx-toggle');
@@ -460,18 +519,22 @@
 
     try { if (window.bootstrap && fxBtn) new bootstrap.Tooltip(fxBtn); } catch {}
 
-    const f = formulaState[id] || {};
+    // Jika localStorage punya state awal, apply ringan (server akan override saat prefill)
+    const initMap = loadFormulas();
+    const f = initMap[id] || {};
     if (typeof f.fx === 'boolean') {
       fxModeById[id] = !!f.fx;
-      fxBtn.setAttribute('aria-pressed', String(!!f.fx));
-      fxBtn.classList.toggle('active', !!f.fx);
+      if (fxBtn) {
+        fxBtn.setAttribute('aria-pressed', String(!!f.fx));
+        fxBtn.classList.toggle('active', !!f.fx);
+      }
     } else { fxModeById[id] = false; }
-    if (typeof f.raw === 'string' && f.raw.trim()) {
+    if (typeof f.raw === 'string' && f.raw.trim() && input && !input.value) {
       rawInputById[id] = f.raw;
       input.value = f.raw;
     }
 
-    fxBtn.addEventListener('click', () => {
+    fxBtn && fxBtn.addEventListener('click', () => {
       const newState = !fxModeById[id];
       fxModeById[id] = newState;
       fxBtn.setAttribute('aria-pressed', String(newState));
@@ -490,20 +553,32 @@
     });
 
     let debTimer = null;
-    input.addEventListener('input', () => {
+    input && input.addEventListener('input', () => {
       clearTimeout(debTimer);
+
+      // Auto-enable FX jika user mulai mengetik "="
+      const valNow = String(input.value || '').trim();
+      if (valNow.startsWith('=') && !fxModeById[id]) {
+        fxModeById[id] = true;
+        if (fxBtn) {
+          fxBtn.setAttribute('aria-pressed', 'true');
+          fxBtn.classList.add('active');
+        }
+        persistRowFormula(id);
+      }
+
       updateSuggestions(input, id);
       debTimer = setTimeout(() => handleInputChange(id, input, preview, false), 120);
     });
-    input.addEventListener('blur', () => {
+    input && input.addEventListener('blur', () => {
       if (!isFormulaMode(id, input.value)) {
         const normalized = normQty(input.value);
         if (normalized !== '') input.value = normalized;
       }
       setTimeout(() => hideSuggest(input), 120);
     });
-    input.addEventListener('focus', () => updateSuggestions(input, id));
-    input.addEventListener('keydown', (ev) => {
+    input && input.addEventListener('focus', () => updateSuggestions(input, id));
+    input && input.addEventListener('keydown', (ev) => {
       // Save
       if ((ev.ctrlKey || ev.metaKey) && (ev.key === 's' || ev.key === 'S')) {
         ev.preventDefault();
@@ -518,8 +593,10 @@
         if (!cur.trim().startsWith('=')) input.value = '=' + cur;
         if (!fxModeById[id]) {
           fxModeById[id] = true;
-          fxBtn.setAttribute('aria-pressed', 'true');
-          fxBtn.classList.add('active');
+          if (fxBtn) {
+            fxBtn.setAttribute('aria-pressed', 'true');
+            fxBtn.classList.add('active');
+          }
           persistRowFormula(id);
         }
         input.focus();
@@ -562,11 +639,6 @@
     const explicitFx = !!fxModeById[id];
     const startsEq = String(rawStr || '').trim().startsWith('=');
     return explicitFx || startsEq;
-  }
-  function persistRowFormula(id) {
-    const map = loadFormulas();
-    map[id] = { raw: rawInputById[id] || '', fx: !!fxModeById[id] };
-    saveFormulas(map);
   }
   function normQty(val) {
     if (val === '' || val == null) return '';
@@ -613,6 +685,7 @@
         const msg = (e && e.message) ? e.message : 'Formula error';
         inputEl.setAttribute('title', msg);
       }
+      persistRowFormula(id); // simpan raw & state fx setiap kali formula diproses
     } else {
       const n = parseNumberOrEmpty(raw);
       if (n === '') {
@@ -794,8 +867,44 @@
     btnVarAdd.dataset.bound = '1';
   }
 
-  // Export / Import (JSON + CSV)
-  function exportVariables() {
+  // === Unified Import/Export (JSON | CSV | XLSX*) ==================
+  // *XLSX untuk import/export akan aktif jika SheetJS ada (window.XLSX)
+
+  function parseCSV(text) {
+    const lines = String(text || '').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      const cells = line.split(/[,;\t]/).map(s=>s.trim());
+      if (!cells.length) continue;
+      // Toleransi header
+      if (/^nama|label$/i.test(cells[0]) || /^nilai|value$/i.test(cells[1]||"")) continue;
+      if (cells.length < 2) continue;
+      out.push({ label: cells[0], value: cells[1] });
+    }
+    return out;
+  }
+
+  function csvFromVars(varsObj, labelsObj) {
+    const codes = Object.keys(varsObj);
+    const rows = codes
+      .sort((a,b)=>(labelsObj[a]||a).localeCompare(labelsObj[b]||b, 'id'))
+      .map(code => `${(labelsObj[code]||code).replace(/[\r\n,]/g,' ')} , ${String(varsObj[code])}`);
+    return rows.join("\n") + "\n";
+  }
+
+  function ensureFileInputs() {
+    // Reuse input yang sudah ada; set accept jadi gabungan
+    const fileJson = document.getElementById('vp-var-import');
+    if (fileJson) fileJson.setAttribute('accept', '.json,.csv,.xlsx');
+    // Sembunyikan tombol import excel lama kalau ada
+    const btnOld = document.getElementById('vp-var-import-excel-btn');
+    const inpOld = document.getElementById('vp-var-import-excel');
+    if (btnOld) btnOld.classList.add('d-none');
+    if (inpOld) inpOld.classList.add('d-none');
+  }
+
+  // ---- EXPORTERS
+  function exportAsJSON() {
     try {
       const payload = { _format: 'vp-vars-v2', variables, labels: varLabels };
       const data = JSON.stringify(payload, null, 2);
@@ -804,136 +913,228 @@
       const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
       a.href = URL.createObjectURL(blob);
       a.download = `parameter_${projectId}_${ts}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      showToast('Parameter diekspor.', 'success');
-    } catch { showToast('Gagal export parameter.', 'danger'); }
+      document.body.appendChild(a); a.click(); a.remove();
+      TOAST.ok('Parameter diekspor (JSON).');
+    } catch { TOAST.err('Gagal export JSON.'); }
   }
 
-  function parseCSV(text) {
-    // Sederhana: pisah baris, split koma/semicolon/tab
-    const lines = String(text || '').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-    const out = [];
-    for (const line of lines) {
-      const cells = line.split(/[,;\t]/).map(s=>s.trim());
-      if (cells.length < 2) continue;
-      out.push({ label: cells[0], value: cells[1] });
+  function exportAsCSV() {
+    try {
+      const csv = csvFromVars(variables, varLabels);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      a.href = URL.createObjectURL(blob);
+      a.download = `parameter_${projectId}_${ts}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      TOAST.ok('Parameter diekspor (CSV).');
+    } catch { TOAST.err('Gagal export CSV.'); }
+  }
+
+  function exportAsXLSX() {
+    if (!(window.XLSX && XLSX.utils && XLSX.writeFile)) {
+      TOAST.warn('Export XLSX butuh SheetJS (window.XLSX). Fallback ke CSV.');
+      exportAsCSV(); return;
     }
-    return out;
+    try {
+      const rows = Object.keys(variables)
+        .sort((a,b)=>(varLabels[a]||a).localeCompare(varLabels[b]||b,'id'))
+        .map(code => ({ Nama: (varLabels[code]||code), Nilai: variables[code] }));
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama','Nilai'] });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Parameter');
+      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      XLSX.writeFile(wb, `parameter_${projectId}_${ts}.xlsx`);
+      TOAST.ok('Parameter diekspor (XLSX).');
+    } catch { TOAST.err('Gagal export XLSX.'); }
   }
 
-  function importVariablesFromFile(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const rawText = String(reader.result || '{}');
-        const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
-        if (isCsv) {
-          const rowsCsv = parseCSV(rawText);
-          if (!rowsCsv.length) throw new Error('csv-empty');
-          const nextVars = {};
-          const nextLabels = {};
-          rowsCsv.forEach(r => {
-            const label = String(r.label || '').trim();
-            const n = parseNumberOrEmpty(r.value);
-            if (!label || n === '') return;
-            let code = slugifyName(label);
-            if (!code) return;
-            if (nextVars[code] != null || variables[code] != null) {
-              // pecahkan duplikat sederhana
-              let i = 2;
-              while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
-            }
-            nextVars[code] = roundHalfUp(Number(n), STORE_PLACES);
-            nextLabels[code] = label;
-          });
-          if (!Object.keys(nextVars).length) throw new Error('csv-none');
-          variables = { ...variables, ...nextVars };
-          varLabels = { ...varLabels, ...nextLabels };
-          saveVars(); saveVarLabels();
-          renderVarTable();
-          reevaluateAllFormulas();
-          showToast('Parameter CSV diimport.', 'success');
-          return;
-        }
+  // Popup kecil di dekat tombol export untuk pilih format
+  function showExportMenu(anchorBtn) {
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu show';
+    menu.style.position = 'absolute';
+    menu.innerHTML = `
+      <button class="dropdown-item" type="button" data-fmt="json">Export JSON</button>
+      <button class="dropdown-item" type="button" data-fmt="csv">Export CSV</button>
+      <button class="dropdown-item" type="button" data-fmt="xlsx">Export XLSX</button>
+    `;
+    document.body.appendChild(menu);
+    const rect = anchorBtn.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + window.scrollY}px`;
 
-        // JSON
-        const obj = JSON.parse(rawText);
-        let nextVars = {}, nextLabels = {};
-        if (obj && typeof obj === 'object' && obj._format === 'vp-vars-v2') {
-          nextVars = (obj.variables && typeof obj.variables === 'object') ? obj.variables : {};
-          nextLabels = (obj.labels && typeof obj.labels === 'object') ? obj.labels : {};
-        } else if (obj && typeof obj === 'object') {
-          Object.keys(obj).forEach(code => {
-            const n = parseNumberOrEmpty(obj[code]);
-            if (n !== '') { nextVars[code] = Number(n); nextLabels[code] = code; }
-          });
-        } else throw new Error('format');
+    const close = () => { document.removeEventListener('click', onDoc); menu.remove(); };
+    const onDoc = (e) => { if (!menu.contains(e.target) && e.target!==anchorBtn) close(); };
+    document.addEventListener('click', onDoc);
 
-        const normalizedVars = {};
-        const normalizedLabels = {};
-        Object.keys(nextVars).forEach(code => {
-          let safe = String(code || '').trim();
-          safe = safe.normalize('NFKD').replace(/[^\w]/g, '_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
-          if (/^[0-9]/.test(safe)) safe = '_' + safe;
-          if (!safe) return;
-          const val = parseNumberOrEmpty(nextVars[code]);
-          if (val === '') return;
-          normalizedVars[safe] = roundHalfUp(Number(val), STORE_PLACES);
-          const lbl = String((nextLabels && nextLabels[code]) || code || '').trim();
-          normalizedLabels[safe] = lbl || safe;
-        });
-
-        if (Object.keys(normalizedVars).length === 0) {
-          showToast('File JSON tidak berisi parameter valid.', 'warning'); return;
-        }
-        variables = { ...variables, ...normalizedVars };
-        varLabels = { ...varLabels, ...normalizedLabels };
-        saveVars(); saveVarLabels();
-        renderVarTable();
-        reevaluateAllFormulas();
-        showToast('Parameter diimport.', 'success');
-      } catch {
-        showToast('Gagal import.', 'danger');
-      }
-    };
-    reader.onerror = () => showToast('Gagal membaca file.', 'danger');
-    reader.readAsText(file);
-  }
-
-  if (btnVarExportBtn) btnVarExportBtn.addEventListener('click', exportVariables);
-  if (btnVarImportBtn && fileVarImport) {
-    btnVarImportBtn.addEventListener('click', () => fileVarImport.click());
-    fileVarImport.addEventListener('change', (e) => {
-      const f = e.target.files && e.target.files[0];
-      importVariablesFromFile(f);
-      fileVarImport.value = '';
+    menu.addEventListener('click', (e) => {
+      const fmt = e.target && e.target.getAttribute('data-fmt');
+      if (fmt === 'json') exportAsJSON();
+      else if (fmt === 'csv') exportAsCSV();
+      else if (fmt === 'xlsx') exportAsXLSX();
+      close();
     });
   }
 
-  // ===== Enhance table (groups) + Prefill volume
+  // ---- IMPORTERS
+  async function importFromJSONText(rawText) {
+    const obj = JSON.parse(rawText);
+    let nextVars = {}, nextLabels = {};
+    if (obj && typeof obj === 'object' && obj._format === 'vp-vars-v2') {
+      nextVars = (obj.variables && typeof obj.variables === 'object') ? obj.variables : {};
+      nextLabels = (obj.labels && typeof obj.labels === 'object') ? obj.labels : {};
+    } else if (obj && typeof obj === 'object') {
+      Object.keys(obj).forEach(code => {
+        const n = parseNumberOrEmpty(obj[code]);
+        if (n !== '') { nextVars[code] = Number(n); nextLabels[code] = code; }
+      });
+    } else throw new Error('format');
+
+    const normalizedVars = {};
+    const normalizedLabels = {};
+    Object.keys(nextVars).forEach(code => {
+      let safe = String(code || '').trim();
+      safe = safe.normalize('NFKD').replace(/[^\w]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
+      if (/^[0-9]/.test(safe)) safe = '_' + safe;
+      if (!safe) return;
+      const val = parseNumberOrEmpty(nextVars[code]);
+      if (val === '') return;
+      normalizedVars[safe] = roundHalfUp(Number(val), STORE_PLACES);
+      const lbl = String((nextLabels && nextLabels[code]) || code || '').trim();
+      normalizedLabels[safe] = lbl || safe;
+    });
+
+    if (!Object.keys(normalizedVars).length) throw new Error('no-valid');
+    variables = { ...variables, ...normalizedVars };
+    varLabels = { ...varLabels, ...normalizedLabels };
+    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+  }
+
+  function importFromCSVText(rawText) {
+    const rowsCsv = parseCSV(rawText);
+    if (!rowsCsv.length) throw new Error('csv-empty');
+    const nextVars = {}, nextLabels = {};
+    rowsCsv.forEach(r => {
+      const label = String(r.label || '').trim();
+      const n = parseNumberOrEmpty(r.value);
+      if (!label || n === '') return;
+      let code = slugifyName(label);
+      if (!code) return;
+      if (nextVars[code] != null || variables[code] != null) {
+        let i = 2;
+        while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
+      }
+      nextVars[code] = roundHalfUp(Number(n), STORE_PLACES);
+      nextLabels[code] = label;
+    });
+    if (!Object.keys(nextVars).length) throw new Error('csv-none');
+    variables = { ...variables, ...nextVars };
+    varLabels = { ...varLabels, ...nextLabels };
+    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+  }
+
+  async function importFromXLSX(file) {
+    if (!(window.XLSX && XLSX.read)) throw new Error('no-xlsx-lib');
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const arr = XLSX.utils.sheet_to_json(ws, { header: 1 }); // 2D array
+    const rows = arr.filter(r => r && (r[0] != null || r[1] != null));
+    // skip header if like ["Nama","Nilai"]
+    const body = (rows[0] && /nama|label/i.test(String(rows[0][0])) && /nilai|value/i.test(String(rows[0][1]||"")))
+      ? rows.slice(1) : rows;
+    const nextVars = {}, nextLabels = {};
+    body.forEach(r => {
+      const label = String((r[0] ?? '')).trim();
+      const n = parseNumberOrEmpty(r[1]);
+      if (!label || n === '') return;
+      let code = slugifyName(label);
+      if (nextVars[code] != null || variables[code] != null) {
+        let i = 2; while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
+      }
+      nextVars[code] = roundHalfUp(Number(n), STORE_PLACES);
+      nextLabels[code] = label;
+    });
+    if (!Object.keys(nextVars).length) throw new Error('xlsx-none');
+    variables = { ...variables, ...nextVars };
+    varLabels = { ...varLabels, ...nextLabels };
+    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+  }
+
+  function handleUnifiedImport(file) {
+    if (!file) return;
+    const name = file.name || '';
+    const ext = (/\.(\w+)$/.exec(name)?.[1] || '').toLowerCase();
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        if (ext === 'json')       await importFromJSONText(String(reader.result || '{}'));
+        else if (ext === 'csv')   importFromCSVText(String(reader.result || ''));
+        else if (ext === 'xlsx')  await importFromXLSX(file);
+        else throw new Error('format');
+        TOAST.ok('Parameter diimport.');
+      } catch (e) {
+        if (String(e.message).includes('no-xlsx-lib')) {
+          TOAST.warn('Import XLSX butuh SheetJS (window.XLSX). Gunakan CSV/JSON.');
+        } else {
+          TOAST.err('Gagal import.');
+        }
+      }
+    };
+    reader.onerror = () => TOAST.err('Gagal membaca file.');
+    if (ext === 'xlsx') reader.readAsArrayBuffer(file); else reader.readAsText(file);
+  }
+
+  // Hook tombol Import/Export lama → Unified
+  (function installUnifiedIO(){
+    ensureFileInputs();
+    const btnImport = document.getElementById('vp-var-import-btn');
+    const fileInput = document.getElementById('vp-var-import');
+    const btnExport = document.getElementById('vp-var-export-btn');
+
+    if (btnImport && fileInput && !btnImport.dataset.boundUnified) {
+      btnImport.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        try { handleUnifiedImport(f); }
+        finally { fileInput.value = ''; }
+      });
+      btnImport.dataset.boundUnified = '1';
+      btnImport.setAttribute('title', 'Import JSON/CSV/XLSX');
+    }
+
+    if (btnExport && !btnExport.dataset.boundUnified) {
+      btnExport.addEventListener('click', (e) => showExportMenu(btnExport));
+      btnExport.dataset.boundUnified = '1';
+      btnExport.setAttribute('title', 'Export JSON/CSV/XLSX');
+    }
+  })();
+
+
+  // ===== Build table dari tree
   async function enhanceWithGroups() {
     try {
-      const res = await fetch(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`, { credentials: 'same-origin' });
-      const json = await res.json().catch(() => ({}));
-      if (!json || !json.ok || !Array.isArray(json.klasifikasi)) return;
+      const resp = await HTTP.jget(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`);
+      if (!resp || !Array.isArray(resp.klasifikasi)) return;
+
       const tbody = document.querySelector('#vp-table tbody');
       tbody.innerHTML = '';
-      rows.length = 0; // reset list row references
+      rows.length = 0;
 
       let counter = 0;
-      json.klasifikasi.forEach(k => {
+      resp.klasifikasi.forEach(k => {
         const trK = document.createElement('tr');
         trK.className = 'vp-klass';
         trK.innerHTML = `<td colspan="5">${escapeHtml(k.name || '(Tanpa Klasifikasi)')}</td>`;
         tbody.appendChild(trK);
+
         (k.sub || []).forEach(s => {
           const trS = document.createElement('tr');
           trS.className = 'vp-sub';
           trS.innerHTML = `<td colspan="5">${escapeHtml(s.name || '(Tanpa Sub)')}</td>`;
           tbody.appendChild(trS);
+
           (s.pekerjaan || []).forEach(p => {
             counter += 1;
             const tr = document.createElement('tr');
@@ -964,39 +1165,63 @@
       buildSearchIndex();
       setTopOffsets();
     } catch (e) {
-      console.warn('Enhance groups gagal', e);
+      console.warn('enhanceWithGroups() gagal', e);
     }
   }
 
+  // ===== Prefill: rekap volume + (opsional) server formula state
   (async function prefill() {
     try {
-      const res = await fetch(`/detail_project/api/project/${projectId}/rekap/`, { credentials: 'same-origin' });
-      const json = await res.json().catch(() => ({}));
+      // 1) Prefill volume dari rekap
+      const rekap = await HTTP.jget(`/detail_project/api/project/${projectId}/rekap/`).catch(()=> ({}));
       const volMap = {};
-      if (json && json.rows && Array.isArray(json.rows)) {
-        json.rows.forEach(r => {
+      if (rekap && rekap.rows && Array.isArray(rekap.rows)) {
+        rekap.rows.forEach(r => {
           if (r && typeof r.pekerjaan_id === 'number') {
             const v = Number(r.volume || 0);
             volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
           }
         });
       }
+
+      // 2) Build table dari tree
       await enhanceWithGroups();
 
+      // 3) Ambil formula state dari server; kalau error → pakai localStorage
+      let serverFormula = null;
+      try {
+        const resp = await HTTP.jget(`/detail_project/api/project/${projectId}/volume-formula-state/`);
+        if (resp && resp.ok && Array.isArray(resp.items)) {
+          serverFormula = {};
+          resp.items.forEach(it => {
+            serverFormula[it.pekerjaan_id] = { raw: it.raw || '', fx: !!it.is_fx };
+          });
+        }
+      } catch {}
+      const localFormula = loadFormulas();
+      const formulaState = serverFormula || localFormula;
+
+      // 4) Render nilai & formula preview
       rows.forEach(tr => {
         const id = parseInt(tr.dataset.pekerjaanId, 10);
         const input = tr.querySelector('.qty-input');
         const preview = tr.querySelector('.fx-preview');
+        const fxBtn = tr.querySelector('.fx-toggle');
         const base = Number(volMap[id] || 0);
+
         originalValueById[id] = roundHalfUp(base, STORE_PLACES);
         currentValueById[id] = originalValueById[id];
 
-        // Render tampilan: jika integer → "1.000", jika ada pecahan → sesuai
         input.value = base ? formatIdSmart(base) : '';
 
         const f = formulaState[id];
         if (f && typeof f.raw === 'string' && f.raw.trim()) {
           input.value = f.raw;
+          fxModeById[id] = !!f.fx;
+          if (fxBtn) {
+            fxBtn.setAttribute('aria-pressed', String(fxModeById[id]));
+            fxBtn.classList.toggle('active', fxModeById[id]);
+          }
           handleInputChange(id, input, preview, false);
         }
         setRowDirtyVisual(id, false);
@@ -1033,14 +1258,12 @@
     const postingIds = Array.from(dirtySet.values());
     if (!postingIds.length) return;
 
-    // Kumpulkan batch (before/after) untuk Undo
     const changes = postingIds.map(id => ({
       id,
       before: Number(originalValueById[id] ?? 0),
       after: Number(currentValueById[id] ?? 0)
     }));
 
-    // Build payload
     const items = changes.map(({id, after}) => {
       let q = after;
       if (!Number.isFinite(q)) q = 0;
@@ -1048,21 +1271,17 @@
       return { pekerjaan_id: id, quantity: rounded };
     });
 
-    // UI state
     saving = true;
     if (reason === 'manual' && btnSaveSpin) btnSaveSpin.classList.remove('d-none');
-    if (reason === 'manual') btnSave.disabled = true;
+    if (reason === 'manual' && btnSave) btnSave.disabled = true;
 
     try {
-      const res = await fetch(`/detail_project/api/project/${projectId}/volume-pekerjaan/save/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-        credentials: 'same-origin',
-        body: JSON.stringify({ items })
-      });
-      const json = await res.json().catch(() => ({}));
+      const res = await HTTP.jpost(
+        `/detail_project/api/project/${projectId}/volume-pekerjaan/save/`,
+        { items }
+      );
 
-      const markErrors = () => {
+      const markErrors = (json) => {
         if (!json || !Array.isArray(json.errors)) return;
         const re = /items\[(\d+)\]\.(quantity|pekerjaan_id)/;
         json.errors.forEach(e => {
@@ -1076,14 +1295,15 @@
         });
       };
 
-      if (!res.ok || json.ok === false) {
-        markErrors();
-        const saved = (json && typeof json.saved === 'number') ? json.saved : 0;
-        showToast(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`, 'danger');
+      const json = res?.data || {};
+      if (!res.ok) {
+        markErrors(json);
+        const saved = (typeof json.saved === 'number') ? json.saved : 0;
+        TOAST.err(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`);
         return;
       }
 
-      // Success → commit baseline & visuals
+      // OK — commit baseline & visuals
       postingIds.forEach(id => {
         originalValueById[id] = currentValueById[id] ?? 0;
         const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
@@ -1101,23 +1321,26 @@
       });
       setBtnSaveEnabled();
 
-      // Simpan ke undo stack (hanya bila ada perubahan nyata)
       const realChanges = changes.filter(c => roundHalfUp(c.before, STORE_PLACES) !== roundHalfUp(c.after, STORE_PLACES));
       if (realChanges.length) {
         undoStack.push({ ts: Date.now(), changes: realChanges });
         if (undoStack.length > UNDO_MAX) undoStack.shift();
-        showActionToast(`Tersimpan ${realChanges.length} item.`, [
+        TOAST.action(`Tersimpan ${realChanges.length} item.`, [
           { label: 'Undo', class: 'btn-warning', onClick: tryUndoLast }
         ]);
       } else if (reason === 'manual') {
-        showToast('Tidak ada perubahan.', 'warning');
+        TOAST.warn('Tidak ada perubahan.');
+      }
+
+      if (typeof json.decimal_places === 'number' && json.decimal_places !== STORE_PLACES) {
+        console.info('Server decimal_places =', json.decimal_places);
       }
     } catch (e) {
       console.error(e);
-      showToast('Gagal simpan (network/server error).', 'danger');
+      TOAST.err('Gagal simpan (network/server error).');
     } finally {
       if (reason === 'manual' && btnSaveSpin) btnSaveSpin.classList.add('d-none');
-      if (reason === 'manual') btnSave.disabled = false;
+      if (reason === 'manual' && btnSave) btnSave.disabled = false;
       saving = false;
     }
   }
@@ -1145,7 +1368,7 @@
   // Save manual
   btnSave && btnSave.addEventListener('click', () => saveDirty({ reason: 'manual' }));
 
-  // Undo hotkey global: Ctrl+Alt+Z (tidak mengganggu undo bawaan input)
+  // Undo hotkey global: Ctrl+Alt+Z
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'z') {
       e.preventDefault(); tryUndoLast();
@@ -1193,11 +1416,14 @@
     try { if (offcanvasEl && offcanvasEl.parentElement !== document.body) document.body.appendChild(offcanvasEl); } catch {}
   })();
 
-  // ==== Init: load variables, render table
+  // ==== Init: load variables, render table, bind baris existing (SSR)
   loadVars();
   loadVarLabels();
   Object.keys(variables).forEach(code => { if (!varLabels[code]) varLabels[code] = code; });
   saveVarLabels();
   renderVarTable();
+
+  // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
+  rows.forEach(tr => bindRow(tr));
 
 })();

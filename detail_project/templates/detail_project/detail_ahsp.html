@@ -1,92 +1,67 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
-
 {% block title %}Detail AHSP — {{ project.nama }}{% endblock %}
 
-{% block extra_head %}
-  <link rel="stylesheet" href="{% static 'detail_project/detail_ahsp.css' %}">
+{% block detail_css %}
+  {# biarkan default css detail_ahsp dari base load #}
+  <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
 {% endblock %}
 
-{% block content %}
+{# Select2 (autocomplete untuk segmen LAIN) #}
+{% block extra_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+{% endblock %}
+
+{% block extra_js_head %}
+  {{ block.super }}
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.full.min.js"></script>
+{% endblock %}
+
+{% block dp_topbar_extra %}{% endblock %}
+
+{% block dp_content %}
 <div id="da-app"
      class="da-app"
      data-project-id="{{ project.id }}"
      data-locale="id-ID"
+     data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"      {# 0 diganti JS #}
+     data-endpoint-save-pattern="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"
+     data-endpoint-reset-pattern="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
+     data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
      data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
-     data-endpoint-save-per="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"  <!-- pekerjaan_id akan diganti JS -->
-     data-endpoint-save-gabungan="{% url 'detail_project:api_save_detail_ahsp_gabungan' project.id %}"
-     data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}">
-  
-  <!-- ========== HEADER / BARIS ID ========== -->
-  <header class="da-header">
-    <div class="da-breadcrumb">
-      <a href="{% url 'dashboard:project_detail' project.id %}">{{ project.index_project }}</a>
-      <span class="sep">›</span>
-      <span>Detail AHSP</span>
-    </div>
-    <div class="da-project-meta">
-      <h1 class="da-title">{{ project.nama }}</h1>
-      <div class="da-subtitle">
-        Tahun: {{ project.tahun_project }} • Sumber Dana: {{ project.sumber_dana }}
-      </div>
-    </div>
-    <div class="da-quicklinks">
-      <a class="da-link" href="{% url 'detail_project:volume_pekerjaan' project.id %}">Volume</a>
-      <a class="da-link" href="{% url 'detail_project:rekap_rab' project.id %}">Rekap</a>
-    </div>
+     data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
+
+  {# Header halaman #}
+  <header class="da-page-header">
+    <h1 class="da-title">Detail AHSP</h1>
+    <p class="da-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
   </header>
 
-  <!-- ========== TOOLBAR STICKY ========== -->
+  {# Toolbar sticky #}
   <div class="da-toolbar" role="region" aria-label="Toolbar Detail AHSP">
-    <!-- Autocomplete katalog in-use -->
     <div class="da-combobox">
-      <label for="da-catalog-input" class="sr-only">Tambah dari katalog</label>
-      <input id="da-catalog-input"
-             class="da-input"
-             type="text"
-             placeholder="Tambah dari katalog (kode atau uraian)…"
-             aria-label="Tambah dari katalog"
-             role="combobox"
-             aria-autocomplete="list"
-             aria-expanded="false"
-             aria-controls="da-catalog-listbox"
-             autocomplete="off">
-      <ul id="da-catalog-listbox"
-          class="da-listbox"
-          role="listbox"
-          aria-label="Hasil katalog"
-          hidden></ul>
+      <input id="da-job-search" class="da-input" type="text" placeholder="Cari pekerjaan…"
+             aria-label="Cari pekerjaan" autocomplete="off">
     </div>
-
-    <!-- Tambah Komponen (LAIN) -->
-    <button id="da-btn-add-component" class="btn btn-secondary" type="button" data-modal-target="#da-modal-component">
-      Tambah Komponen AHSP…
-    </button>
-
-    <!-- Baris kosong (ke segmen aktif) -->
-    <button id="da-btn-add-empty" class="btn" type="button">+ Baris kosong</button>
 
     <div class="da-toolbar-spacer"></div>
 
-    <a id="da-btn-export" class="btn btn-light" href="#" download>Export CSV</a>
+    <button id="da-btn-export" class="btn btn-light" type="button">Ekspor CSV</button>
 
     <div class="da-dirty-indicator" aria-live="polite">
-      <span id="da-dirty-dot" class="dot" hidden>●</span> <span id="da-dirty-text" hidden>Belum disimpan</span>
+      <span id="da-dirty-dot" class="dot" hidden>●</span>
+      <span id="da-dirty-text" hidden>Belum disimpan</span>
     </div>
 
-    <button id="da-btn-save" class="btn btn-primary" type="button" aria-live="polite">
-      <span class="label">Simpan</span>
-      <span class="spinner" hidden aria-hidden="true"></span>
-    </button>
+    <button id="da-btn-reset" class="btn btn-warning" type="button" hidden>Reset ke Referensi</button>
+    <button id="da-btn-save" class="btn btn-primary" type="button" disabled>Simpan</button>
   </div>
 
-  <!-- ========== BODY: SIDEBAR + EDITOR ========== -->
   <div class="da-body">
-    <!-- Sidebar pekerjaan -->
+    {# Sidebar pekerjaan #}
     <aside class="da-sidebar" aria-label="Daftar pekerjaan">
-      <div class="da-sidebar-search">
-        <input id="da-job-filter" type="text" class="da-input" placeholder="Cari pekerjaan…">
-      </div>
       <ul id="da-job-list" class="da-job-list">
         {% for p in pekerjaan %}
           <li class="da-job-item"
@@ -95,12 +70,14 @@
               data-pekerjaan-id="{{ p.id }}"
               data-source-type="{{ p.source_type }}">
             <div class="primary">
-              <span class="kode">{{ p.snapshot_kode }}</span>
+              <span class="kode">{{ p.snapshot_kode|default:"-" }}</span>
               <span class="uraian">{{ p.snapshot_uraian }}</span>
             </div>
             <div class="meta">
               <span class="satuan">{{ p.snapshot_satuan }}</span>
-              {% if p.source_type == 'ref_modified' %}
+              {% if p.source_type == 'ref' %}
+                <span class="badge badge-ref">REF</span>
+              {% elif p.source_type == 'ref_modified' %}
                 <span class="badge badge-mod">MOD</span>
               {% elif p.source_type == 'custom' %}
                 <span class="badge badge-cus">CUS</span>
@@ -108,22 +85,21 @@
             </div>
           </li>
         {% empty %}
-          <li class="da-empty">Belum ada pekerjaan yang bisa diedit (Custom/Modified).</li>
+          <li class="da-empty">Belum ada pekerjaan yang bisa ditampilkan.</li>
         {% endfor %}
       </ul>
     </aside>
 
-    <!-- Panel editor kanan -->
+    {# Panel editor #}
     <main class="da-editor" aria-label="Editor Detail AHSP">
-      <!-- Header pekerjaan aktif -->
       <section class="da-job-header">
         <div class="row">
           <div class="cell">
-            <div class="label">Kode AHSP</div>
+            <div class="label">Kode</div>
             <div id="da-active-kode" class="value mono">—</div>
           </div>
           <div class="cell wide">
-            <div class="label">Uraian Pekerjaan</div>
+            <div class="label">Uraian</div>
             <div id="da-active-uraian" class="value">—</div>
           </div>
           <div class="cell">
@@ -137,247 +113,144 @@
         </div>
       </section>
 
-      <!-- ===== Segmen: Tenaga (TK) ===== -->
+      {# Segmen TK — Tenaga Kerja #}
       <section class="da-segment" data-seg="TK">
         <header class="da-seg-header">
-          <h2>Tenaga (TK)</h2>
+          <h2>Tenaga Kerja</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-catalog" type="button" data-target-seg="TK">+ Dari katalog</button>
             <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="TK">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel Tenaga Kerja">
+          <table class="da-table" aria-label="Tabel TK">
             <thead class="sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode items</th>
-                <th class="col-satuan">Satuan items</th>
-                <th class="col-koef">Koefisien item</th>
+                <th class="col-kode">Kode item</th>
+                <th class="col-satuan">Satuan</th>
+                <th class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-TK-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item. Tambah dari katalog atau buat baris kosong.</td></tr>
+              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ===== Segmen: Bahan (BHN) ===== -->
+      {# Segmen BHN — Bahan #}
       <section class="da-segment" data-seg="BHN">
         <header class="da-seg-header">
-          <h2>Bahan (BHN)</h2>
+          <h2>Bahan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-catalog" type="button" data-target-seg="BHN">+ Dari katalog</button>
             <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="BHN">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel Bahan">
+          <table class="da-table" aria-label="Tabel BHN">
             <thead class="sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode items</th>
-                <th class="col-satuan">Satuan items</th>
-                <th class="col-koef">Koefisien item</th>
+                <th class="col-kode">Kode item</th>
+                <th class="col-satuan">Satuan</th>
+                <th class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-BHN-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item. Tambah dari katalog atau buat baris kosong.</td></tr>
+              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ===== Segmen: Alat (ALT) ===== -->
+      {# Segmen ALT — Peralatan #}
       <section class="da-segment" data-seg="ALT">
         <header class="da-seg-header">
-          <h2>Peralatan (ALT)</h2>
+          <h2>Peralatan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-catalog" type="button" data-target-seg="ALT">+ Dari katalog</button>
             <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="ALT">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel Peralatan">
+          <table class="da-table" aria-label="Tabel ALT">
             <thead class="sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode items</th>
-                <th class="col-satuan">Satuan items</th>
-                <th class="col-koef">Koefisien item</th>
+                <th class="col-kode">Kode item</th>
+                <th class="col-satuan">Satuan</th>
+                <th class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-ALT-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item. Tambah dari katalog atau buat baris kosong.</td></tr>
+              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- ===== Segmen: Lainnya (LAIN) — Komponen AHSP (nested) ===== -->
+      {# Segmen LAIN — Lainnya #}
       <section class="da-segment" data-seg="LAIN">
         <header class="da-seg-header">
-          <h2>Lainnya (LAIN) — Komponen AHSP</h2>
+          <h2>Lainnya</h2>
           <div class="seg-tools">
-            <button class="btn btn-secondary" type="button" data-modal-target="#da-modal-component">+ Tambah Komponen AHSP…</button>
             <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="LAIN">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel Lainnya (Komponen)">
+          <table class="da-table" aria-label="Tabel LAIN">
             <thead class="sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
-                <th class="col-kode">Kode items</th>
-                <th class="col-satuan">Satuan items</th>
-                <th class="col-koef">Koefisien item</th>
+                <th class="col-kode">Kode item</th>
+                <th class="col-satuan">Satuan</th>
+                <th class="col-koef">Koefisien</th>
               </tr>
             </thead>
             <tbody id="seg-LAIN-body">
-              <tr class="da-empty"><td colspan="5">Belum ada komponen. Tambah melalui “Tambah Komponen AHSP…”.</td></tr>
+              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
-        <p class="da-note">
-          Catatan: Baris di segmen LAIN harus memakai format <code>COMP:REF:&lt;id&gt;</code> / <code>COMP:REFCODE:&lt;kode_ahsp&gt;</code> / <code>COMP:PKJ:&lt;pekerjaan_id&gt;</code>.
-        </p>
       </section>
 
-      <!-- Footer ringkas editor -->
       <footer class="da-editor-footer">
-        <div id="da-row-stats">0 baris • 0 error</div>
+        <div id="da-row-stats">0 baris</div>
         <div class="hint">Tip: Ctrl/⌘+S untuk Simpan; Enter/Shift+Enter pindah sel; Del hapus baris terpilih.</div>
       </footer>
     </main>
   </div>
 
-  <!-- ========== TEMPLATES (untuk cloning row via JS) ========== -->
+  {# Template row #}
   <template id="da-row-template">
-    <tr class="da-row" draggable="true">
-      <td class="col-no">
-        <span class="drag-handle" title="Seret untuk ubah urutan" aria-hidden="true">⋮⋮</span>
-        <input type="checkbox" class="row-select" aria-label="Pilih baris">
-        <span class="row-index">1</span>
-      </td>
+    <tr class="da-row">
+      <td class="col-no"><span class="row-index">1</span></td>
+
       <td class="col-uraian">
         <div class="cell-wrap" contenteditable="true" data-field="uraian" spellcheck="false"></div>
       </td>
+
       <td class="col-kode">
-        <input type="text" class="cell-input mono" data-field="kode" aria-label="Kode item">
-        <span class="chip chip-warn da-need-price" hidden>butuh harga</span>
+        <input type="text" class="cell-input mono" data-field="kode">
+        <input type="hidden" data-field="ref_ahsp_id">  {# hidden bundle ref di kolom kode #}
       </td>
+
       <td class="col-satuan">
-        <input type="text" class="cell-input" data-field="satuan" aria-label="Satuan item">
+        <input type="text" class="cell-input" data-field="satuan">
       </td>
+
       <td class="col-koef">
-        <input type="text" class="cell-input num" data-field="koefisien" inputmode="decimal" aria-label="Koefisien item">
+        <input type="text" class="cell-input num" data-field="koefisien" inputmode="decimal">
       </td>
     </tr>
   </template>
-
-  <!-- ========== MODAL: Tambah Komponen AHSP (LAIN) ========== -->
-  <div id="da-modal-component" class="da-modal" role="dialog" aria-modal="true" aria-labelledby="da-modal-component-title" hidden>
-    <div class="da-modal-card">
-      <header class="da-modal-header">
-        <h3 id="da-modal-component-title">Tambah Komponen AHSP</h3>
-        <button class="da-modal-close" type="button" aria-label="Tutup" data-modal-close>✕</button>
-      </header>
-
-      <div class="da-modal-body">
-        <div class="tabs">
-          <button class="tab active" data-tab="ref">Referensi SNI</button>
-          <button class="tab" data-tab="proj">Pekerjaan Proyek</button>
-        </div>
-
-        <!-- Tab: Referensi SNI -->
-        <div class="tabpanel" data-panel="ref">
-          <div class="field-row">
-            <label for="da-ref-search" class="label">Cari AHSP (kode/nama)</label>
-            <input id="da-ref-search" type="text" class="da-input" placeholder="Contoh: B.2 atau Beton f'c 15">
-          </div>
-          <div id="da-ref-results" class="da-results" role="listbox" aria-label="Hasil pencarian AHSP referensi">
-            <!-- JS akan isi: item dengan data-id, data-kode, data-uraian, data-satuan -->
-          </div>
-        </div>
-
-        <!-- Tab: Pekerjaan Proyek -->
-        <div class="tabpanel" data-panel="proj" hidden>
-          <div class="field-row">
-            <label for="da-proj-search" class="label">Cari pekerjaan</label>
-            <input id="da-proj-search" type="text" class="da-input" placeholder="Kode atau uraian pekerjaan…">
-          </div>
-          <div id="da-proj-results" class="da-results" role="listbox" aria-label="Hasil pencarian pekerjaan proyek">
-            <!-- JS akan isi: item dengan data-pekerjaan-id -->
-          </div>
-        </div>
-
-        <hr class="sep">
-
-        <form id="da-component-form" class="da-form" onsubmit="return false;">
-          <div class="grid">
-            <div class="field">
-              <label class="label">Uraian (otomatis)</label>
-              <input id="da-comp-uraian" type="text" class="da-input" readonly>
-            </div>
-            <div class="field">
-              <label class="label">Kode items (COMP:…)</label>
-              <input id="da-comp-kode" type="text" class="da-input mono" readonly>
-            </div>
-            <div class="field small">
-              <label class="label">Satuan</label>
-              <input id="da-comp-satuan" type="text" class="da-input" readonly>
-            </div>
-            <div class="field small">
-              <label class="label">Koefisien</label>
-              <input id="da-comp-koef" type="text" class="da-input num" inputmode="decimal" placeholder="0,000">
-              <div class="hint">Angka dengan koma desimal (id-ID)</div>
-            </div>
-          </div>
-          <div class="actions">
-            <button type="button" class="btn btn-light" data-modal-close>Batal</button>
-            <button id="da-comp-insert" type="submit" class="btn btn-primary" disabled>Tambah ke LAIN</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========== TOASTS / NOTIFIKASI ========== -->
-  <div id="da-toasts" class="da-toasts" aria-live="polite" aria-atomic="true"></div>
-
-  <!-- ========== SCRIPT: INITIAL STATE ========== -->
-  {# Opsi: server bisa menyuntik initial rows per pekerjaan terpilih #}
-  <script type="application/json" id="da-initial">
-    {
-      "project": {
-        "id": {{ project.id }},
-        "index": "{{ project.index_project|default_if_none:''|escapejs }}",
-        "nama": "{{ project.nama|escapejs }}"
-      },
-      "pekerjaan": [
-        {% for p in pekerjaan %}
-          {
-            "id": {{ p.id }},
-            "source_type": "{{ p.source_type }}",
-            "kode": "{{ p.snapshot_kode|default_if_none:''|escapejs }}",
-            "uraian": "{{ p.snapshot_uraian|default_if_none:''|escapejs }}",
-            "satuan": "{{ p.snapshot_satuan|default_if_none:''|escapejs }}"
-          }{% if not forloop.last %},{% endif %}
-        {% endfor %}
-      ],
-      "rows_by_job": {
-        {# contoh: "123": [{... row ...}]  — JS akan membaca bila tersedia #}
-      }
-    }
-  </script>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'detail_project/detail_ahsp.js' %}" defer></script>
+  {{ block.super }}
+  <script src="{% static 'detail_project/js/detail_ahsp.js' %}" defer></script>
 {% endblock %}

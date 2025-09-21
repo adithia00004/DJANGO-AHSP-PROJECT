@@ -1,0 +1,56 @@
+{% extends "detail_project/base_detail.html" %}
+{% load static %}
+{% block title %}Rekap Kebutuhan — {{ project.nama }}{% endblock %}
+
+{% block dp_content %}
+<div id="rk-app"
+     data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan' project.id %}"
+     data-endpoint-export="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}">
+  <h1 class="h5 mb-2">Rekap Kebutuhan</h1>
+
+  <div class="d-flex gap-2 align-items-center mb-2">
+    <button id="rk-btn-export" class="btn btn-sm btn-outline-secondary" type="button">
+      Export CSV
+    </button>
+    <div class="ms-auto small text-muted">
+      TK: <span id="rk-count-TK">0</span> •
+      BHN: <span id="rk-count-BHN">0</span> •
+      ALT: <span id="rk-count-ALT">0</span> •
+      LAIN: <span id="rk-count-LAIN">0</span>
+      <span class="ms-2">(<span id="rk-nrows">0</span> baris)</span>
+      <span class="ms-2" id="rk-generated" title="Generated at"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-2">
+      <div class="table-responsive" id="rk-tablewrap">
+        <table class="table table-sm table-bordered mb-0" id="rk-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:80px">Kat</th>
+              <th style="width:160px">Kode</th>
+              <th>Uraian</th>
+              <th style="width:90px">Satuan</th>
+              <th style="width:120px" class="text-end">Kuantitas</th>
+            </tr>
+          </thead>
+          <tbody id="rk-tbody">
+            <tr class="rk-loading-row">
+              <td colspan="5" class="text-muted">Memuat…</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div id="rk-empty" class="text-center text-muted py-3 d-none">Belum ada data.</div>
+        <div id="rk-loading" class="text-center text-muted py-3 d-none">Memuat…</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}" defer></script>
+{% endblock %}
