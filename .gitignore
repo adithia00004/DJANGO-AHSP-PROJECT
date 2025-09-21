@@ -4,15 +4,24 @@ __pycache__/
 *.pyd
 *.pyo
 
-# Virtualenv & local certs
+# Virtualenv
 env/
-*.pem
+.venv/
 
-# Django SQLite (jika dipakai)
+# Django (local DB)
 *.sqlite3
+local_settings.py
+
+# Test & tooling caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # Editors / OS
 .vscode/
+.idea/
 .DS_Store
 Thumbs.db
 
@@ -21,6 +30,4 @@ staticfiles/
 media/
 
 # Local backups
-backups/
-
 backups/
