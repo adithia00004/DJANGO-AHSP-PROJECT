@@ -72,9 +72,26 @@ class ProjectForm(forms.ModelForm):
         # Sisakan angka, koma, titik, minus (buang 'Rp', spasi, dll)
         s = re.sub(r"[^\d.,\-]", "", s)
 
-        # Hapus titik ribuan, koma -> titik (desimal)
-        s = s.replace(".", "")
-        s = s.replace(",", ".")
+
+        # Heuristik aman untuk ribuan/desimal
+        if "." in s and "," in s:
+            # titik=ribuan, koma=desimal (1.234,56)
+            s = s.replace(".", "").replace(",", ".")
+        elif "," in s and "." not in s:
+            # hanya koma
+            if s.count(",") == 1 and 1 <= len(s.split(",")[1]) <= 3:
+                s = s.replace(",", ".")  # desimal
+            else:
+                s = s.replace(",", "")   # ribuan
+        elif "." in s and "," not in s:
+            # hanya titik
+            if s.count(".") > 1:
+                s = s.replace(".", "")   # ribuan
+            else:
+                lhs, rhs = s.split(".")
+                if len(rhs) == 3 and sum(c.isdigit() for c in s) >= 4:
+                    s = s.replace(".", "")  # ribuan
+                # else: desimal sah
 
         # Setelah normalisasi, kalau kosong -> 0
         if s.strip() == "":
@@ -99,9 +116,12 @@ class ProjectForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        # Pastikan semua field wajib terisi (guard rail kedua)
+        for f in ["nama","sumber_dana","lokasi_project","nama_client","kategori"]:
+            if f in cleaned and isinstance(cleaned[f], str):
+                cleaned[f] = cleaned[f].strip()
+        # Pastikan semua field wajib terisi (tanpa salah tafsir nilai 0)
         for f in self.REQUIRED_FIELDS:
-            if not cleaned.get(f):
+            if f not in cleaned or cleaned.get(f) is None or cleaned.get(f) == "":
                 self.add_error(f, "Wajib diisi.")
         return cleaned
 
