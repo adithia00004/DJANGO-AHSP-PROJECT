@@ -170,8 +170,14 @@ def project_upload_view(request):
         if form.is_valid():
             try:
                 file = request.FILES['file']
-                wb = openpyxl.load_workbook(file)
+                wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
+                # Batasi ukuran untuk mencegah beban berlebih
+                MAX_ROWS = 2000  # data saja (tanpa header)
+                if (ws.max_row - 1) > MAX_ROWS:
+                    messages.error(request, f"Baris data melebihi batas {MAX_ROWS}.")
+                    context["upload_form"] = form
+                    return render(request, "dashboard/project_upload.html", context)
 
                 raw_headers = [str(c.value).strip() if c.value else "" for c in ws[1]]
                 lower_headers = [h.lower() for h in raw_headers]
@@ -205,10 +211,11 @@ def project_upload_view(request):
                       to_create.append(obj)
                   else:
                       error_rows.append((rownum, dict(f.errors)))
-
+                
                 if to_create:
-                    for obj in to_create:
-                        obj.save()
+                    with transaction.atomic():
+                        for obj in to_create:
+                            obj.save()
                     messages.success(request, f"{len(to_create)} proyek berhasil diupload.")
                     return redirect('dashboard:dashboard')
                 else:
