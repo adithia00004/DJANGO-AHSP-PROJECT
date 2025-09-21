@@ -17,6 +17,11 @@ def dashboard_view(request):
     queryset = Project.objects.filter(owner=request.user, is_active=True)
     filter_form = ProjectFilterForm(request.GET)
 
+    # Info ramah saat navigasi tanpa project terpilih
+    if request.GET.get("need_project") == "1":
+        messages.info(request, "Silakan pilih project dari tabel, lalu buka halaman Detail Project.")
+
+
     if filter_form.is_valid():
         search = filter_form.cleaned_data.get('search')
         sort_by = filter_form.cleaned_data.get('sort_by') or '-updated_at'
