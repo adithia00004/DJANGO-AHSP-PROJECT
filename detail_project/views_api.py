@@ -412,25 +412,36 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
             for pi, p in enumerate(pekerjaan_list):
                 src = _str_to_src(p.get("source_type"))
+                p_id = p.get("id")  # jika ada, berarti baris existing (boleh tanpa ref_id bila tidak berubah)
 
                 if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
-                    if p.get("ref_id") is None:
-                        pre_errors.append(_err(
-                            f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
-                            "Wajib untuk source=ref/ref_modified"
-                        ))
+                    rid_raw = p.get("ref_id", None)
+
+                    if rid_raw is None:
+                        # Tanpa ref_id:
+                        #  - kalau baris existing (punya id) → DIIZINKAN (artinya tidak ganti referensi)
+                        #  - kalau baris baru (tanpa id)     → ERROR (ref_id tetap wajib)
+                        if not p_id:
+                            pre_errors.append(_err(
+                                f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                                "Wajib untuk source=ref/ref_modified (baris baru)"
+                            ))
+                        # kalau p_id ada, tidak menambahkan ke all_ref_ids → tidak ada cek existensi (karena tak mengubah ref)
                         continue
-                    # tipe harus integer
+
+                    # Ada ref_id → harus integer & akan dicek eksistensinya (ini kasus ganti ref atau baris baru lengkap)
                     try:
-                        rid = int(p.get("ref_id"))
+                        rid = int(rid_raw)
                     except (TypeError, ValueError):
                         pre_errors.append(_err(
                             f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
                             "Harus integer"
                         ))
                         continue
+
                     all_ref_ids.add(rid)
                     ref_locs.append((f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id", rid))
+
 
                 elif src == Pekerjaan.SOURCE_CUSTOM:
                     if not (p.get("snapshot_uraian") or "").strip():
@@ -490,7 +501,19 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             "sub_klasifikasi", "source_type", "ref",
             "snapshot_kode", "snapshot_uraian", "snapshot_satuan", "ordering_index"
         ])
-        DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp).update(pekerjaan=pobj)
+        # --- DEDUP DETAIL ---
+        # Hindari UniqueViolation (project, pekerjaan, kode) dengan melewatkan baris TMP
+        # yang 'kode'-nya sudah ada pada target.
+        existing_kodes = set(
+            DetailAHSPProject.objects
+            .filter(project=project, pekerjaan=pobj)
+            .values_list("kode", flat=True)
+        )
+        tmp_qs = DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp)
+        if existing_kodes:
+            tmp_qs = tmp_qs.exclude(kode__in=existing_kodes)
+        # Pindahkan hanya baris yang tidak bentrok
+        tmp_qs.update(pekerjaan=pobj)
         tmp.delete()
 
     # === Loop utama ===
@@ -569,10 +592,20 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     replace = False
                     new_ref_id = p.get("ref_id")
 
+                    # Ganti tipe sumber → pasti replace
                     if pobj.source_type != src:
                         replace = True
-                    elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and new_ref_id is not None:
-                        replace = True
+                    # Untuk REF/REF_MOD: hanya replace jika ref_id benar-benar BERBEDA
+                    elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
+                        if new_ref_id is not None:
+                            try:
+                                replace = (int(new_ref_id) != getattr(pobj, "ref_id", None))
+                            except (TypeError, ValueError):
+                                # Payload anomali: fail-safe ke replace agar state konsisten
+                                replace = True
+                        else:
+                            # Tidak ada ref_id baru → tidak dianggap replace
+                            replace = False
 
                     if replace:
                         try:
@@ -1096,9 +1129,20 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
         override_uraian=pkj.snapshot_uraian or None,
         override_satuan=pkj.snapshot_satuan or None,
     )
+
     moved = 0
     if temp:
-        moved = DetailAHSPProject.objects.filter(project=project, pekerjaan=temp).update(pekerjaan=pkj)
+        # --- DEDUP saat reset (aman walau sebelumnya sudah delete) ---
+        from .models import DetailAHSPProject
+        existing_kodes = set(
+            DetailAHSPProject.objects
+            .filter(project=project, pekerjaan=pkj)
+            .values_list("kode", flat=True)
+        )
+        tmp_qs = DetailAHSPProject.objects.filter(project=project, pekerjaan=temp)
+        if existing_kodes:
+            tmp_qs = tmp_qs.exclude(kode__in=existing_kodes)
+        moved = tmp_qs.update(pekerjaan=pkj)
         temp.delete()
 
     # Tandai ready bila ada baris

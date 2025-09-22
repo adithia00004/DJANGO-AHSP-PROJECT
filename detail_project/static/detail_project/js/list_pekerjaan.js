@@ -513,6 +513,11 @@
           const td = row.querySelector('td.col-urai'); syncPreview(td); autoResize(ta);
         }
       });
+      // (opsional) kosongkan dataset.refId saat referensi di-clear
+      $sel.on('change', function () {
+        if (!$sel.val()) { delete row.dataset.refId; }
+      });
+
     } else {
       warn('Select2 belum tersedia saat init baris; lanjut tanpa enhance');
     }
@@ -544,10 +549,17 @@
 
       if (typeof $.fn?.select2 === 'function') {
         $sel.prop('disabled', !isRefLike).trigger('change.select2');
-        if (!isRefLike && $sel.val()) { $sel.val(null).trigger('change'); }
+        if (!isRefLike && $sel.val()) {
+          $sel.val(null).trigger('change');
+          delete row.dataset.refId; // (opsional) bersihkan jejak ref lama
+        }
+
       } else {
         $sel.prop('disabled', !isRefLike);
-        if (!isRefLike && $sel.val()) { $sel.val(null).trigger?.('change'); }
+        if (!isRefLike && $sel.val()) {
+          $sel.val(null).trigger?.('change');
+          delete row.dataset.refId; // (opsional)
+        }
       }
 
       if (sourceHint) sourceHint.textContent = buildSourceLabel(v);
@@ -918,14 +930,14 @@
   async function handleSave() {
     if (!projectId) { alert('Project ID tidak ditemukan.'); return; }
 
-    const btn = document.querySelector('#btn-save');
+    const btn  = document.querySelector('#btn-save');
     const orig = btn?.textContent;
     btn?.setAttribute('disabled', 'true');
     if (btn) btn.textContent = 'Menyimpan…';
 
     const payload = { klasifikasi: [] };
     let hasError = false;
-    let globalOrder = 0;
+    let globalOrder = 0; // ordering_index global per project (server mengharapkan ini)
 
     const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
 
@@ -935,14 +947,13 @@
       const hasAnySub = subWrap && subWrap.children.length > 0;
       if (!hasAnySub && !kNameRaw) return;
 
-      // === Aturan auto-naming: K1, K2, ... ===
-      const kCode = `K${ki + 1}`;
+      const kCode = `K${ki + 1}`;                    // fallback nama Klas
       const kName = kNameRaw || kCode;
 
       const k = {
         id: kc.dataset.id ? parseInt(kc.dataset.id, 10) : undefined,
         temp_id: kc.dataset.tempId,
-        name: kName,                    // HINDARI null
+        name: kName,
         ordering_index: ki + 1,
         sub: []
       };
@@ -952,13 +963,12 @@
         const sNameRaw = (sb.querySelector('.sub-name')?.value || '').trim();
         if (!rows.length && !sNameRaw) return;
 
-        // === Aturan auto-naming Sub: K{n}.{m} → K1.1, K1.2, K2.1, ... ===
-        const sName = sNameRaw || `${kCode}.${si + 1}`;
+        const sName = sNameRaw || `${kCode}.${si + 1}`; // fallback nama Sub
 
         const s = {
           id: sb.dataset.id ? parseInt(sb.dataset.id, 10) : undefined,
           temp_id: sb.dataset.tempId,
-          name: sName,                  // HINDARI null
+          name: sName,
           ordering_index: si + 1,
           pekerjaan: []
         };
@@ -993,22 +1003,29 @@
 
           globalOrder += 1;
 
+          const existingId    = tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined;
+          const originalRefId = (tr.dataset.refId ?? null); // di-seed saat load & saat select2:select
+          const isRefChanged  = (refIdNum != null) && (String(refIdNum) !== String(originalRefId ?? ''));
+
           const p = {
-            id: tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined,
+            id: existingId,
             temp_id: `p_${ki}_${si}_${globalOrder}`,
             source_type: src,
             ordering_index: globalOrder
           };
 
           if (src === 'custom') {
-            p.snapshot_uraian = uraian;                 // wajib isi
-            p.snapshot_satuan = satuan || null;         // boleh null
+            // Wajib: uraian; Satuan opsional (null jika kosong)
+            p.snapshot_uraian = uraian;
+            if (satuan) p.snapshot_satuan = satuan;
           } else if (src === 'ref_modified') {
-            p.ref_id = refIdNum;
-            if (uraian) p.snapshot_uraian = uraian;     // OMIt jika kosong
-            if (satuan) p.snapshot_satuan = satuan;     // OMIt jika kosong
+            // Kirim ref_id hanya jika create (id belum ada) ATAU user mengganti referensi
+            if (!existingId || isRefChanged) p.ref_id = refIdNum;
+            if (uraian) p.snapshot_uraian = uraian; // override opsional
+            if (satuan) p.snapshot_satuan = satuan; // override opsional
           } else { // 'ref'
-            p.ref_id = refIdNum;
+            // Sama: kirim ref_id hanya jika create atau berubah
+            if (!existingId || isRefChanged) p.ref_id = refIdNum;
           }
 
           s.pekerjaan.push(p);
@@ -1032,11 +1049,12 @@
     }
 
     try {
-      await DP.core.http.jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
+      const res = await DP.core.http.jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      // Catatan: jfetch sudah throw jika !res.ok; pada 207 (ok=true) tidak throw.
       alert('✅ Perubahan tersimpan.');
       await reloadAfterSave();
     } catch (e) {

@@ -33,13 +33,56 @@ def _env_login():
     return os.getenv("TEST_LOGIN_USER"), os.getenv("TEST_LOGIN_PASSWORD"), os.getenv("TEST_LOGIN_SUPER","1") == "1"
 
 def _merge_kw(base: dict, extra_env: str | None):
+    """
+    Parse LP_PROJECT_CREATE_KW jika tersedia.
+    Jika JSON tidak valid, JANGAN skip seluruh test.
+    Beri peringatan dan abaikan env agar test tetap berjalan dengan nilai default.
+    """
     if extra_env:
         try:
             extra = json.loads(extra_env)
-            base.update(extra)
+            if not isinstance(extra, dict):
+                # Hanya object/dict yang masuk akal untuk **kwargs create()
+                print(
+                    f"WARNING: LP_PROJECT_CREATE_KW harus JSON object; "
+                    f"mendapat {type(extra).__name__}. Diabaikan.",
+                    flush=True,
+                )
+            else:
+                base.update(extra)
         except Exception as e:
-            pytest.skip(f"LP_PROJECT_CREATE_KW bukan JSON valid: {e}")
+            print(
+                f"WARNING: LP_PROJECT_CREATE_KW bukan JSON valid: {e}. "
+                f"Env diabaikan; pakai defaults.",
+                flush=True,
+            )
     return base
+
+def _ensure_ahsp_refs(ids):
+    """
+    Pastikan AHSPReferensi untuk id/id_hint yang diberikan ada di DB test.
+    Jika gagal membuat dengan PK tertentu, fallback create biasa dan pakai pk yang dihasilkan.
+    """
+    try:
+        from referensi.models import AHSPReferensi
+    except Exception as e:
+        pytest.skip(f"App 'referensi' belum tersedia: {e}")
+
+    out = []
+    for i in ids:
+        defaults = {
+            "kode_ahsp": f"DUMMY-{i}",
+            "nama_ahsp": f"AHSP Dummy {i}",
+            "satuan": "unit",
+        }
+        try:
+            # upaya create/get dengan PK tertentu
+            obj, _ = AHSPReferensi.objects.get_or_create(id=i, defaults=defaults)
+        except Exception:
+            # fallback: biarkan DB menentukan PK
+            obj = AHSPReferensi.objects.create(**defaults)
+        out.append(obj)
+    return out
 
 
 # -----------------------------
@@ -158,6 +201,9 @@ def test_upsert_accepts_three_modes_and_persists(client: Client):
     user = _login_user(client)
     pid = _ensure_project(user)
 
+    # Pastikan referensi yang akan dipakai benar-benar ada
+    ref1, ref2 = _ensure_ahsp_refs([1001, 1002])
+
     payload = {
         "klasifikasi": [
             {
@@ -170,9 +216,9 @@ def test_upsert_accepts_three_modes_and_persists(client: Client):
                         "name": "Sub A",
                         "ordering_index": 1,
                         "pekerjaan": [
-                            {"temp_id": "p_ref", "source_type": "ref", "ordering_index": 1, "ref_id": 1001},
-                            {"temp_id": "p_ref_mod", "source_type": "ref_modified", "ordering_index": 2, "ref_id": 1002,
-                             "snapshot_uraian": "Uraian override (opsional)", "snapshot_satuan": "m2"},
+                            {"temp_id": "p_ref", "source_type": "ref", "ordering_index": 1, "ref_id": ref1.id},
+                            {"temp_id": "p_ref_mod", "source_type": "ref_modified", "ordering_index": 2, "ref_id": ref2.id,
+                              "snapshot_uraian": "Uraian override (opsional)", "snapshot_satuan": "m2"},
                             {"temp_id": "p_custom", "source_type": "custom", "ordering_index": 3,
                              "snapshot_uraian": "Pekerjaan custom uji", "snapshot_satuan": "unit"},
                         ],
