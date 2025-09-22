@@ -1,6 +1,7 @@
 from django.forms import modelformset_factory
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q
@@ -11,6 +12,14 @@ from .models import Project
 
 import openpyxl
 
+
+def _get_safe_next(request, default_name='dashboard:dashboard'):
+    next_url = request.POST.get('next') or request.GET.get('next')
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return next_url
+    # fallback ke dashboard
+    from django.urls import reverse
+    return reverse(default_name)
 
 @login_required
 def dashboard_view(request):
@@ -113,7 +122,7 @@ def project_edit(request, pk):
         if form.is_valid():
             form.save()
             messages.success(request, 'Project berhasil diperbarui.')
-            return redirect('dashboard:dashboard')
+            return redirect(_get_safe_next(request))
     else:
         form = ProjectForm(instance=project)
     return render(request, 'dashboard/project_form.html', {
@@ -130,7 +139,7 @@ def project_delete(request, pk):
         project.is_active = False  # Soft delete
         project.save()
         messages.success(request, 'Project berhasil dihapus.')
-        return redirect('dashboard:dashboard')
+        return redirect(_get_safe_next(request))
     return render(request, 'dashboard/project_confirm_delete.html', {'project': project})
 
 
@@ -146,7 +155,7 @@ def project_duplicate(request, pk):
             duplicated.owner = request.user
             duplicated.save()
             messages.success(request, 'Proyek berhasil diduplikasi dan disimpan.')
-            return redirect('dashboard:dashboard')
+            return redirect(_get_safe_next(request))
         else:
             messages.error(request, 'Gagal menyimpan duplikat. Silakan periksa kembali.')
     else:

@@ -1623,13 +1623,17 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
                 .replace("\n", " "))
 
     lines = ["kategori;kode;uraian;satuan;quantity"]
+    use_canon = (request.GET.get("canon") == "1")
+    dp_vol   = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     for r in rows:
+        qty = r.get("quantity")
+        qty_str = to_dp_str(qty, dp_vol) if use_canon else q(qty)
         lines.append(";".join([
             q(r.get("kategori")),
             q(r.get("kode")),
             q(r.get("uraian")),
             q(r.get("satuan")),
-            q(r.get("quantity")),
+            qty_str,
         ]))
     csv = "\n".join(lines)
     resp = HttpResponse(csv, content_type="text/csv; charset=utf-8")

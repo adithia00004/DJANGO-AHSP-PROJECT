@@ -3,13 +3,14 @@
 
 {% url 'dashboard:dashboard' as url_dashboard %}
 {% if project %}
-  {% url 'list_pekerjaan' project.id as url_list_pekerjaan %}
-  {% url 'volume_pekerjaan' project.id as url_volume_pekerjaan %}
-  {% url 'harga_items' project.id as url_harga_items %}
-  {% url 'detail_ahsp' project.id as url_detail_ahsp %}
-  {% url 'detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
-  {% url 'rekap_rab' project.id as url_rekap_rab %}
-  {% url 'rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
+  {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
+  {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
+  {% url 'detail_project:harga_items' project.id as url_harga_items %}
+  {% url 'detail_project:detail_ahsp' project.id as url_detail_ahsp %}
+  {% url 'detail_project:detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
+  {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
+  {% url 'detail_project:rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
+  {# opsional: tambahkan menu baru jika dipakai #}
 {% endif %}
 
 {% trans "Project" as project_label %}
@@ -23,6 +24,7 @@
 {% trans "Detail Gabungan" as t_detail_gabungan %}
 {% trans "Rekap RAB" as t_rekap_rab %}
 {% trans "Rekap Kebutuhan" as t_rekap_kebutuhan %}
+{% trans "Rincian RAB" as t_rincian_rab %}
 
 <aside id="dp-sidebar"
        class="dp-sidebar"
@@ -123,6 +125,7 @@
             <span>{{ t_rekap_kebutuhan }}</span>
           </a>
         </li>
+ 
         {% endif %}
       </ul>
     </nav>

@@ -71,11 +71,14 @@
             <i class="fas fa-list"></i>
           </a>
           <!-- Edit -->
-          <a href="{% url 'dashboard:project_edit' project.pk %}" class="btn btn-sm btn-outline-warning" title="Edit Project">
+          <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
+            class="btn btn-sm btn-outline-warning" title="Edit Project">
             <i class="fas fa-edit"></i>
           </a>
+
           <!-- Duplicate -->
-          <a href="{% url 'dashboard:project_duplicate' project.pk %}" class="btn btn-sm btn-outline-secondary" title="Duplikat Project">
+          <a href="{% url 'dashboard:project_duplicate' project.pk %}?next={{ request.get_full_path|urlencode }}"
+            class="btn btn-sm btn-outline-secondary" title="Duplikat Project">
             <i class="fas fa-clone"></i>
           </a>
           <!-- Delete (POST via modal) -->
@@ -98,6 +101,7 @@
                   <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
                   <form method="post" action="{% url 'dashboard:project_delete' project.pk %}">
                     {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
                     <button type="submit" class="btn btn-danger">Ya, Hapus</button>
                   </form>
                 </div>
