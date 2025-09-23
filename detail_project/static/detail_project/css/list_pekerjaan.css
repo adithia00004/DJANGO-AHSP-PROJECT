@@ -18,10 +18,12 @@
   --lp-overlay-z:12030;
   --lp-sidebar-w:486px;
 
-  /* z-index anchors */
-  --lp-topbar-z:12000;
-  --lp-thead-z:calc(var(--lp-topbar-z) - 2);
-  --lp-ac-z:1042;
+  /* z-index anchors (sinkron dgn core.css) */
+
+  --lp-topbar-z: var(--dp-z-toolbar, 12030);   /* toolbar/topbar */
+  --lp-thead-z:  calc(var(--lp-topbar-z) - 2); /* thead < toolbar */
+  /* Pastikan dropdown/search di atas thead, di bawah toolbar */
+  --lp-ac-z:     calc(var(--lp-topbar-z) - 1);
 
   /* clamp defaults */
   --lp-clamp-font:.75rem;
@@ -82,7 +84,7 @@
 .table.lp-table thead th{
   position:sticky; top:var(--lp-topbar-h); z-index:var(--lp-thead-z) !important;
   background:#f7f8fa; border-bottom:1px solid #e5e7eb;
-  font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:.03em;
+  font: size 0.9rem; font-weight:500; text-transform:uppercase; letter-spacing:.03em;
   padding:8px 10px;
 }
 .table.lp-table tbody td{ padding:10px; vertical-align:middle; border-bottom:1px solid #e5e7eb; }
@@ -136,13 +138,13 @@
 }
 .list-pekerjaan .select2-container .select2-selection__rendered{
   white-space:normal !important; word-break:break-word; overflow-wrap:anywhere;
-  line-height:1.25rem; font-size:.875rem; padding-right:2rem;
+  line-height:1.25rem; font-size:.75rem; padding-right:2rem;
 }
 
 /* Dropdown results */
 .list-pekerjaan .s2-dropdown-wrap .select2-results__option,
 .list-pekerjaan .select2-container .select2-results__option{
-  white-space:normal; word-break:break-word; line-height:1.25rem; font-size:.875rem; padding:6px 8px;
+  white-space:normal; word-break:break-word; line-height:1.25rem; font-size:.7rem; padding:6px 8px;
 }
 
 /* ============================== */
@@ -176,9 +178,23 @@
 .list-pekerjaan td.col-ref,
 .list-pekerjaan td.col-ref .select2-host{ overflow:visible !important; }
 .list-pekerjaan .select2-host{ position:relative; z-index:auto; }
-.list-pekerjaan .select2-host.s2-open{ z-index:var(--lp-ac-z) !important; }
-.list-pekerjaan .select2-host.s2-open .select2-dropdown{ z-index:calc(var(--lp-ac-z) + 1) !important; }
-.list-pekerjaan .select2-container--open{ z-index:var(--lp-ac-z) !important; }
+/* urutan: host (open) < container (open) < dropdown */
+.list-pekerjaan .select2-host.s2-open{ z-index:calc(var(--lp-ac-z) + 1) !important; }
+.list-pekerjaan .select2-container--open{ z-index:calc(var(--lp-ac-z) + 2) !important; }
+.list-pekerjaan .select2-host.s2-open .select2-dropdown,
+.list-pekerjaan .select2-container--open .select2-dropdown{
+  z-index:calc(var(--lp-ac-z) + 3) !important;
+}
+
+
+/* ===== Mode selector (kolom Sumber) — versi kecil ===== */
+#lp-app .table.lp-table td.col-mode .form-select.src{
+  font-size:.7rem;
+  line-height:1.3;
+  padding:.25rem .5rem;
+  height:auto;
+  min-height:calc(1.5em + .5rem);
+}
 
 /* ============================== */
 /* ========= OVERLAY NAV ======== */
@@ -187,15 +203,13 @@ body.lp-overlay-open{ overflow:hidden; }
 #lp-sidebar{
   position:fixed; inset:0; display:none;
   z-index:var(--lp-overlay-z);
+  /* hilangkan backdrop blur untuk mengurangi biaya compositing */
   background:rgba(0,0,0,.22);
-  -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px);
 }
 #lp-sidebar.is-open{ display:block; }
 #lp-sidebar.is-open .lp-sidebar-inner{ transform: translateX(0); opacity: 1; }
 #lp-sidebar.show{ display:block; }
-@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){
-  #lp-sidebar{ background:rgba(0,0,0,.35); }
-}
+
 #lp-sidebar .lp-sidebar-inner{
   position:absolute; right:10px; left:auto; top:var(--lp-topbar-h);
   width:min(92vw, var(--lp-sidebar-w));
@@ -205,7 +219,7 @@ body.lp-overlay-open{ overflow:hidden; }
   border:1px solid rgba(255,255,255,.08); border-radius:.5rem; box-shadow:0 12px 28px rgba(0,0,0,.35);
   padding:.75rem;
   transform:translateX(16px); opacity:0;
-  transition:transform .22s ease, opacity .22s ease; z-index:1;
+  transition:transform .16s ease, opacity .16s ease; z-index:1;
 }
 #lp-sidebar.show .lp-sidebar-inner{ transform:translateX(0); opacity:1; }
 
@@ -215,13 +229,29 @@ body.lp-overlay-open{ overflow:hidden; }
   border-top-left-radius:.5rem; border-bottom-left-radius:.5rem;
 }
 
+/* === Hotspot kanan untuk membuka overlay nav saat hover === */
+.lp-overlay-hotspot{
+  position: fixed;
+  top: var(--lp-topbar-h);
+  right: 0;
+  bottom: 0;
+  width: 10px;                /* tipis agar tidak mengganggu */
+  z-index: calc(var(--lp-overlay-z) + 2);
+  pointer-events: auto;
+  background: transparent;    /* tak terlihat; bisa diberi hint saat debug */
+}
+@media (max-width: 991.98px){
+  .lp-overlay-hotspot{ display:none; }
+}
+
+
 /* Sidebar tree */
 #lp-nav .lp-node__header{ display:flex; align-items:center; gap:.5rem; padding:.35rem .5rem; border-radius:.375rem; cursor:pointer; }
 #lp-nav .lp-node__header:hover{ background:rgba(255,255,255,.06); }
 #lp-nav .lp-node__toggle{ width:1.25rem; height:1.25rem; border-radius:.25rem; border:1px solid rgba(255,255,255,.2); display:inline-flex; align-items:center; justify-content:center; font-size:.8rem; color:#dee2e6; }
 #lp-nav .lp-node__label{ color:#f1f3f5; text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:var(--fib-1); }
 #lp-nav .lp-node__label:hover{ text-decoration:underline; }
-#lp-nav .lp-node__count{ color:#ced4da; font-size:.85em; }
+#lp-nav .lp-node__count{ color:#ced4da; font-size:.75em; }
 #lp-nav .lp-node__children{ margin-left:1.25rem; padding-left:.5rem; border-left:1px dashed rgba(255,255,255,.2); }
 #lp-nav .lp-node--active > .lp-node__header{ background:rgba(13,110,253,.25); outline:1px solid rgba(13,110,253,.35); }
 #lp-nav .lp-hit{ background:rgba(255,236,153,.35); border-radius:.25rem; padding:0 .125rem; }
@@ -349,6 +379,18 @@ td.col-urai.is-editing .form-control.uraian{ visibility: visible !important; z-i
 @media (max-width:420px){ #lp-sidebar .lp-sidebar-inner{ right:.75rem; left:.75rem; width:auto; } }
 @media (prefers-reduced-motion:reduce){ #lp-sidebar .lp-sidebar-inner{ transition:none; } }
 
-/* Matikan hover-edge (base_detail) di halaman ini */
-.list-pekerjaan .lp-sidebar-hotspot,
-.list-pekerjaan #lpSidebar{ display:none !important; }
+/* Matikan hanya sidebar lama (#lpSidebar) bila ada; hotspot kiri tetap aktif */
+.list_pekerjaan #lpSidebar{ display:none !important; }
+
+/* ============================== */
+/* ===== Anchor flash (UX) ====== */
+/* ============================== */
+.lp-flash{
+  animation: lpFlash 1.6s ease;
+}
+@keyframes lpFlash{
+  0%   { box-shadow: 0 0 0 0 rgba(13,110,253,.0), inset 0 0 0 0 rgba(13,110,253,.0); }
+  12%  { box-shadow: 0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35); }
+  40%  { box-shadow: 0 0 0 0 rgba(13,110,253,.0), inset 0 0 0 1px rgba(13,110,253,.35); }
+  100% { box-shadow: 0 0 0 0 rgba(13,110,253,.0), inset 0 0 0 0 rgba(13,110,253,.0); }
+}

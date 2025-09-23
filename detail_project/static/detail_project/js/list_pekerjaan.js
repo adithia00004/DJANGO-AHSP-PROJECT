@@ -28,6 +28,8 @@
 
   const overlaySidebar = document.getElementById('lp-sidebar');     // Overlay (aktif)
   const overlayPanel   = overlaySidebar?.querySelector('.lp-sidebar-inner');
+  const rightHotspot   = document.querySelector('.lp-overlay-hotspot'); // Hotspot kanan (baru)
+
 
   // ========= Root & anchors =========
   const root     = document.getElementById('lp-app');
@@ -88,15 +90,49 @@
     log('All required anchors OK');
   }
 
-  // ========= Nonaktifkan hover-edge =========
-  if (edgeHotspot) edgeHotspot.setAttribute('data-disabled', '1');
++  // ========= Hover-edge =========
+  // Kiri (global sidebar) di-handle oleh sidebar_global.js via .lp-sidebar-hotspot
+  // Di sini kita hanya sediakan stub agar pemanggil lama aman:
   function openEdge() {}
   function closeEdge() {}
   function isEdgeOpen(){ return false; }
 
+  // Kanan (overlay nav lokal) — aktif di desktop saja
+  function setupRightHoverEdge(){
+    if (!rightHotspot || !overlaySidebar) return;
+    const isDesktop = () => window.matchMedia('(min-width: 992px)').matches;
+    let tIn = null, tOut = null;
+    const ENTER_DELAY = 10, LEAVE_DELAY = 100;
+
+    rightHotspot.addEventListener('mouseenter', () => {
+      if (!isDesktop()) return;
+      clearTimeout(tOut);
+      tIn = setTimeout(()=> setOverlayVisible(true, {autofocus:false}), ENTER_DELAY);
+    }, { passive:true });
+
+    rightHotspot.addEventListener('mouseleave', () => {
+      if (!isDesktop()) return;
+      clearTimeout(tIn);
+      // Tutup bila mouse tidak sedang di dalam panel overlay
+      if (!overlaySidebar.matches(':hover')) {
+        tOut = setTimeout(()=> setOverlayVisible(false), LEAVE_DELAY);
+      }
+    }, { passive:true });
+
+    overlaySidebar.addEventListener('mouseenter', () => { clearTimeout(tOut); }, { passive:true });
+    overlaySidebar.addEventListener('mouseleave', () => {
+      if (!isDesktop()) return;
+      if (!rightHotspot.matches(':hover')) {
+        tOut = setTimeout(()=> setOverlayVisible(false), LEAVE_DELAY);
+      }
+    }, { passive:true });
+  }
+
   // ========= Overlay sidebar (aktif) =========
   let lastFocusBeforeOpen = null;
-  function setOverlayVisible(show){
+  function setOverlayVisible(show, opts = {}){
+    // default: autofocus = true, tapi bisa dimatikan oleh pemanggil
+    const { autofocus = true } = opts;
     if (!overlaySidebar) return;
     overlaySidebar.classList.toggle('show', show);
     overlaySidebar.classList.toggle('is-open', show);   // NEW alias
@@ -105,7 +141,10 @@
 
     if (show) {
       lastFocusBeforeOpen = document.activeElement;
-      setTimeout(()=> navSearchSide?.focus(), 60);
+      if (autofocus) {
+        // lebih responsif & tanpa delay
+        requestAnimationFrame(()=> navSearchSide?.focus());
+      }
       startFocusTrap();
       try { localStorage.setItem('lp_sidebar_open', '1'); } catch {}
     } else {
@@ -442,7 +481,7 @@
         allowClear: false,
         minimumInputLength: minLen,
         dropdownAutoWidth: true,
-        dropdownParent: host,
+        dropdownParent: $(document.body),
         ajax: {
           delay: 250,
           transport: function (params, success, failure) {
@@ -838,6 +877,12 @@
             }
           });
           navSearchSide.addEventListener('blur', ()=> setTimeout(()=> hideSuggestions(sideSuggest), 120));
+          // Klik tombol commit di sidebar
+          navSearchSide.closest('.lp-sidebar-search')?.querySelector('.lp-nav-search-commit')
+            ?.addEventListener('click', (e)=>{
+              e.preventDefault();
+              if (!commitSearch('side')) say('Tidak ada hasil yang cocok');
+            });
         }
         if (navSearchToolbar) {
           navSearchToolbar.addEventListener('input', () => {
@@ -850,6 +895,11 @@
             }
           });
           navSearchToolbar.addEventListener('blur', ()=> setTimeout(()=> hideSuggestions(tbSuggest), 120));
+          // Klik tombol cari di toolbar
+          document.getElementById('lp-toolbar-find')?.addEventListener('click', (e)=>{
+            e.preventDefault();
+            if (!commitSearch('tb')) say('Tidak ada hasil yang cocok');
+          });
         }
       }
 
@@ -1243,6 +1293,8 @@
     } catch(_){ /* no-op jika core belum siap */ }
 
     await loadTree();
+    // Aktifkan hover-edge kanan setelah data siap
+    setupRightHoverEdge();
   })();
 
   // ========= DEBUG helper =========
