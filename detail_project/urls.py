@@ -9,13 +9,18 @@ urlpatterns = [
     # ===== Web views =====
     path('<int:project_id>/list-pekerjaan/',        views.list_pekerjaan_view,        name='list_pekerjaan'),
     path('<int:project_id>/volume-pekerjaan/',      views.volume_pekerjaan_view,      name='volume_pekerjaan'),
-    path('<int:project_id>/detail-ahsp/',           views.detail_ahsp_view,           name='detail_ahsp'),
+
+    path('<int:project_id>/template-ahsp/',         views.template_ahsp_view,         name='template_ahsp'),
+    path('<int:project_id>/detail-ahsp/',           views.template_ahsp_view,         name='detail_ahsp_legacy'),
     path('<int:project_id>/harga-items/',           views.harga_items_view,           name='harga_items'),
-    path('<int:project_id>/detail-ahsp-gabungan/',  views.detail_ahsp_gabungan_view,  name='detail_ahsp_gabungan'),
+
+    # Renamed: detail_ahsp_gabungan -> rincian_ahsp (plus legacy alias)
+    path('<int:project_id>/rincian-ahsp/',          views.rincian_ahsp_view,          name='rincian_ahsp'),
+    path('<int:project_id>/detail-ahsp-gabungan/',  views.rincian_ahsp_view,          name='detail_ahsp_gabungan_legacy'),
     path('<int:project_id>/rekap-rab/',             views.rekap_rab_view,             name='rekap_rab'),
     path("<int:project_id>/rekap-kebutuhan/",       views.rekap_kebutuhan_view,       name="rekap_kebutuhan"),
     
-        # --- NEW: Rincian RAB (web)
+    # --- NEW: Rincian RAB (web)
     path('<int:project_id>/rincian-rab/',           views.rincian_rab_view,           name='rincian_rab'),  # NEW
 
     # ===== API: List Pekerjaan =====

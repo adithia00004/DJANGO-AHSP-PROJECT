@@ -55,9 +55,10 @@ def volume_pekerjaan_view(request, project_id: int):
 
 @login_required
 @coerce_project_id
-def detail_ahsp_view(request, project_id: int):
+
+def template_ahsp_view(request, project_id: int):
     """
-    Page 'Detail AHSP'.
+    (RENAMED) Page 'Template AHSP'.
     Sidebar HARUS menampilkan SEMUA pekerjaan (REF, REF_MODIFIED, CUSTOM).
     Mode edit/read-only diatur oleh API get-detail (meta.read_only), bukan disaring di sini.
     """
@@ -79,7 +80,7 @@ def detail_ahsp_view(request, project_id: int):
         "count_mod": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_REF_MOD),
         "count_custom": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_CUSTOM),
     }
-    return render(request, "detail_project/detail_ahsp.html", ctx)
+    return render(request, "detail_project/template_ahsp.html", ctx)
 
 
 @login_required
@@ -95,7 +96,8 @@ def harga_items_view(request, project_id: int):
 
 @login_required
 @coerce_project_id
-def detail_ahsp_gabungan_view(request, project_id: int):
+
+def rincian_ahsp_view(request, project_id: int):
     project = _project_or_404(project_id, request.user)
     pekerjaan = (
         Pekerjaan.objects
@@ -105,10 +107,9 @@ def detail_ahsp_gabungan_view(request, project_id: int):
     context = {
         "project": project,
         "pekerjaan": pekerjaan,
-        "side_active": "detail_ahsp_gabungan",
+        "side_active": "rincian_ahsp",
     }
-    return render(request, "detail_project/detail_ahsp_gabungan.html", context)
-
+    return render(request, "detail_project/rincian_ahsp.html", context)
 
 @login_required
 @coerce_project_id
