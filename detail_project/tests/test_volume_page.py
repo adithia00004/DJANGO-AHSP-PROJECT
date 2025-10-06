@@ -211,14 +211,26 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertIn('role="listbox"', html)  # ARIA listbox
 
         # THEAD default: harus ada class `table-light` (boleh ada kelas tambahan)
+        # boleh muncul di tabel utama ATAU di tabel nested (card).
         import re
         self.assertRegex(
             html,
             r"<thead[^>]*class=[\"'][^\"']*\btable-light\b",
         )
-        # Kolom
-        for label in ["#", "Kode", "Uraian", "Satuan", "Quantity"]:
-            self.assertIn(f">{label}<", html)
+        
+        # Kolom: terima dua varian header agar kompatibel dengan layout baru
+        # Varian A (tabel utama):    #, Kode, Uraian, Satuan, Quantity
+        # Varian B (nested card):    No, Uraian, Satuan, Quantity
+        variants = [
+            ["#", "Kode", "Uraian", "Satuan", "Quantity"],
+            ["No", "Uraian", "Satuan", "Quantity"],
+        ]
+        found_any_variant = any(
+            all((f">{label}<") in html for label in cols)
+            for cols in variants
+        )
+        self.assertTrue(found_any_variant, "Header kolom tabel tidak sesuai salah satu varian yang diharapkan.")
+
 
         # Multi-toast container (undo)
         self.assertIn('id="vp-toasts"', html)
