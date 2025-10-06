@@ -1,9 +1,10 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
 {% block title %}Detail AHSP — {{ project.nama }}{% endblock %}
+{% block body_attrs %}data-page="detail_ahsp"{% endblock %}
 
 {% block detail_css %}
-  {# biarkan default css detail_ahsp dari base load #}
+  {# Biarkan default css detail_ahsp dari base load #}
   <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
 {% endblock %}
 
@@ -39,8 +40,8 @@
     <p class="da-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
   </header>
 
-  {# Toolbar sticky #}
-  <div class="da-toolbar" role="region" aria-label="Toolbar Detail AHSP">
+  {# Toolbar sticky (id diperlukan untuk pengukuran tinggi oleh JS) #}
+  <div id="da-toolbar" class="da-toolbar" role="region" aria-label="Toolbar Detail AHSP">
     <div class="da-combobox">
       <input id="da-job-search" class="da-input" type="text" placeholder="Cari pekerjaan…"
              aria-label="Cari pekerjaan" autocomplete="off">
@@ -48,15 +49,15 @@
 
     <div class="da-toolbar-spacer"></div>
 
-    <button id="da-btn-export" class="btn btn-light" type="button">Ekspor CSV</button>
+    <button id="da-btn-export" class="btn btn-light btn-sm" type="button">Ekspor CSV</button>
 
     <div class="da-dirty-indicator" aria-live="polite">
       <span id="da-dirty-dot" class="dot" hidden>●</span>
       <span id="da-dirty-text" hidden>Belum disimpan</span>
     </div>
 
-    <button id="da-btn-reset" class="btn btn-warning" type="button" hidden>Reset ke Referensi</button>
-    <button id="da-btn-save" class="btn btn-primary" type="button" disabled>Simpan</button>
+    <button id="da-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>Reset ke Referensi</button>
+    <button id="da-btn-save" class="btn btn-primary btn-sm" type="button" disabled>Simpan</button>
   </div>
 
   <div class="da-body">
@@ -76,11 +77,11 @@
             <div class="meta">
               <span class="satuan">{{ p.snapshot_satuan }}</span>
               {% if p.source_type == 'ref' %}
-                <span class="badge badge-ref">REF</span>
+                <span class="badge">REF</span>
               {% elif p.source_type == 'ref_modified' %}
-                <span class="badge badge-mod">MOD</span>
+                <span class="badge">MOD</span>
               {% elif p.source_type == 'custom' %}
-                <span class="badge badge-cus">CUS</span>
+                <span class="badge">CUS</span>
               {% endif %}
             </div>
           </li>
@@ -118,12 +119,19 @@
         <header class="da-seg-header">
           <h2>Tenaga Kerja</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="TK">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="TK">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
           <table class="da-table" aria-label="Tabel TK">
-            <thead class="sticky">
+            <colgroup>
+              <col class="col-no">
+              <col class="col-uraian">
+              <col class="col-kode">
+              <col class="col-satuan">
+              <col class="col-koef">
+            </colgroup>
+            <thead class="da-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -144,12 +152,19 @@
         <header class="da-seg-header">
           <h2>Bahan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="BHN">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="BHN">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
           <table class="da-table" aria-label="Tabel BHN">
-            <thead class="sticky">
+            <colgroup>
+              <col class="col-no">
+              <col class="col-uraian">
+              <col class="col-kode">
+              <col class="col-satuan">
+              <col class="col-koef">
+            </colgroup>
+            <thead class="da-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -170,12 +185,19 @@
         <header class="da-seg-header">
           <h2>Peralatan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="ALT">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="ALT">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
           <table class="da-table" aria-label="Tabel ALT">
-            <thead class="sticky">
+            <colgroup>
+              <col class="col-no">
+              <col class="col-uraian">
+              <col class="col-kode">
+              <col class="col-satuan">
+              <col class="col-koef">
+            </colgroup>
+            <thead class="da-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -196,12 +218,19 @@
         <header class="da-seg-header">
           <h2>Lainnya</h2>
           <div class="seg-tools">
-            <button class="btn btn-light da-seg-add-empty" type="button" data-target-seg="LAIN">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="LAIN">+ Baris kosong</button>
           </div>
         </header>
         <div class="da-table-wrap">
           <table class="da-table" aria-label="Tabel LAIN">
-            <thead class="sticky">
+            <colgroup>
+              <col class="col-no">
+              <col class="col-uraian">
+              <col class="col-kode">
+              <col class="col-satuan">
+              <col class="col-koef">
+            </colgroup>
+            <thead class="da-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -219,7 +248,7 @@
 
       <footer class="da-editor-footer">
         <div id="da-row-stats">0 baris</div>
-        <div class="hint">Tip: Ctrl/⌘+S untuk Simpan; Enter/Shift+Enter pindah sel; Del hapus baris terpilih.</div>
+        <div class="hint">Tip: <kbd>Ctrl/⌘+S</kbd> Simpan; <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> pindah sel; <kbd>Del</kbd> hapus baris.</div>
       </footer>
     </main>
   </div>

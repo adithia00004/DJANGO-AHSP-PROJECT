@@ -1,304 +1,250 @@
-/* ===== Volume Pekerjaan — styling (drop-and-replace) ===== */
+/* =====================================================================
+   Volume Pekerjaan — PAGE CSS (SSOT-complement, lean)
+   - Menggunakan token dari core.css ( --dp-*, --ux-*, --vp-* )
+   - Tidak mengulang aturan yang sudah ada di core.css
+   - Hanya kosmetik ringan & utilitas kecil spesifik halaman
+   ===================================================================== */
 
-/* ------------------------------
-   Variabel & baseline
---------------------------------*/
-:root {
-  --vp-top-offset: 0px;   /* diisi via JS (dp-topbar) */
-  --vp-toolbar-h: 42px;   /* tinggi toolbar (default; bisa diupdate JS) */
-  --vp-thead-h: 36px;     /* estimasi tinggi header tabel */
-  --vp-gap: 3px;          /* jarak antar sticky elements */
 
-  /* Layering (toolbar > search dropdown > header) */
-  --vp-z-toolbar: 1202;
-  --vp-z-searchdrop: 1201;
-  --vp-z-thead: 1200;
-}
-
-/* Root page container */
-#vp-page {
-  --vp-font-size: 0.8rem;
-  --vp-line: 1.25rem;
-  --vp-pad-v: 6px;
-
-  font-size: var(--vp-font-size);
-  line-height: var(--vp-line);
-
-  overflow-x: auto;   /* scroll horizontal bila tabel lebar */
+/* *********************************************************************
+   I) PAGE CONTAINER
+   ********************************************************************* */
+#vp-page{
+  font-size: var(--ux-font-sm, .875rem);
+  line-height: var(--ux-line-md, 1.25rem);
+  overflow-x: auto;
   overflow-y: visible;
 }
 
-/* ------------------------------
-   Sticky toolbar (searchbar)
---------------------------------*/
-#vp-toolbar.sticky-top {
-  top: calc(var(--vp-top-offset) + var(--vp-gap)) !important;
-  z-index: var(--vp-z-toolbar);
-  background: var(--bs-body-bg, #fff);
+/* Pertegas border terluar tabel (kartu pembungkus) — “old & tegas” */
+#vp-page.dp-card{
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--dp-c-text) 35%, var(--dp-c-border));
+  overflow: hidden; /* radius rapi, konten tidak bocor */
+}
+#vp-page .table{ margin-bottom: 0; }
+
+
+/* *********************************************************************
+   II) TOOLBAR (VISUAL POLISH SAJA)
+   ********************************************************************* */
+#vp-toolbar{
+  background: var(--dp-c-surface-1);
   background-clip: padding-box;
-  box-shadow: 0 1px 0 rgba(0,0,0,.05),
-              0 2px 8px rgba(0,0,0,.04);
+  box-shadow: var(--dp-shadow-sm);
+  border-bottom: 1px solid var(--dp-c-border);
 }
 
-/* ------------------------------
-   Sticky THEAD (tanpa proxy)
---------------------------------*/
-#vp-table {
+
+/* *********************************************************************
+   III) TABLE: DASAR & UTIL
+   ********************************************************************* */
+#vp-table{
   border-collapse: separate;
   width: 100%;
   min-width: 100%;
+  border-color: var(--dp-c-border);
 }
-
-#vp-table thead th {
-  position: sticky;
-  top: calc(var(--vp-top-offset) + var(--vp-gap) + var(--vp-toolbar-h) + var(--vp-gap));
-  z-index: var(--vp-z-thead);
-  background: var(--bs-body-bg, #fff);
-  background-clip: padding-box;
-  box-shadow: 0 1px 0 rgba(0,0,0,.05),
-              0 2px 8px rgba(0,0,0,.04);
-}
-
-#vp-table thead.table-light th {
-  background: var(--bs-table-bg, #f8f9fa);
-  background-clip: padding-box;
-}
-
-/* Scroll margin untuk navigasi/jump */
-#vp-table tbody tr {
-  scroll-margin-top: calc(
-    var(--vp-top-offset)
-    + var(--vp-gap)
-    + var(--vp-toolbar-h)
-    + var(--vp-gap)
-    + var(--vp-thead-h)
-  );
-}
-
-/* ------------------------------
-   Kolom & sel tabel
---------------------------------*/
 #vp-table th,
-#vp-table td {
-  vertical-align: middle;
-}
+#vp-table td{ vertical-align: middle; }
 
 #vp-table th:first-child,
-#vp-table td:first-child {
+#vp-table td:first-child{
   text-align: right;
-  white-space: nowrap;
+  white-space: nowrap; /* kolom nomor rapat */
 }
 
-#vp-table td.text-monospace {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
-
-#vp-table td.text-wrap {
+/* Uraian boleh melipat baris */
+#vp-table td.text-wrap{
   white-space: normal;
   word-break: break-word;
 }
 
-#vp-table td .form-control {
-  padding-top: var(--vp-pad-v);
-  padding-bottom: var(--vp-pad-v);
+/* Scroll margin agar "jump to row" tidak tertutup elemen sticky */
+#vp-table tbody tr{
+  scroll-margin-top: calc(
+    var(--vp-top-offset, var(--dp-topbar-h)) +
+    var(--dp-gap-xs, 4px) +
+    var(--vp-toolbar-h, 42px) +
+    var(--dp-gap-xs, 4px) +
+    var(--vp-thead-h, 36px)
+  );
 }
 
-/* Quantity diperlebar (sinkron colgroup HTML) */
-#vp-table colgroup col:nth-child(1) { width: 60px; }
-#vp-table colgroup col:nth-child(2) { width: 150px; }
-#vp-table colgroup col:nth-child(4) { width: 110px; }
-#vp-table colgroup col:nth-child(5) { width: 360px; }
-
-#vp-table .flex-grow-1 { position: relative; overflow: visible; }
-#vp-table td { overflow: visible; }
-
-#vp-table .qty-input {
-  padding-top: 10px;
-  padding-bottom: 10px;
+/* Pastikan dropdown/suggest tidak terpotong di sel qty */
+#vp-table td,
+#vp-table .flex-grow-1{
+  overflow: visible;
 }
+#vp-table .flex-grow-1{ position: relative; }
 
-/* ------------------------------
-   Search dropdown
---------------------------------*/
-.vp-searchbar { min-width: 320px; }
+/* Baris Klas/Sub tetap terbaca (garis bawah halus) */
+.vp-klass td, .vp-sub td{ border-bottom: 1px solid var(--dp-c-border); }
 
-.vp-search-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: var(--vp-z-searchdrop);
-  background: #fff;
-  border: 1px solid rgba(0,0,0,.12);
-  border-radius: .375rem;
-  box-shadow: 0 .5rem 1rem rgba(0,0,0,.12);
-  max-height: 300px;
-  overflow: auto;
-  font-size: 0.8rem;
-}
 
-.vp-search-item {
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-.vp-search-item:hover,
-.vp-search-item.active { background: rgba(13,110,253,.08); }
-
-.vp-search-badge {
-  font-size: .65rem;
-  border: 1px solid rgba(0,0,0,.1);
-  border-radius: .25rem;
-  padding: 1px 6px;
-  color: #6c757d;
-  background: #f8f9fa;
-  white-space: nowrap;
-}
-.vp-search-label {
+/* *********************************************************************
+   IV) SEARCH UI (MINIMAL OVERRIDES)
+   ********************************************************************* */
+.vp-searchbar{
+  min-width: 320px;
+  flex: 1 1 clamp(24rem, 50vw, 48rem);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8rem;
+  position: relative;
 }
-.vp-type-klas { background: #eef6ff; border-color: rgba(13,110,253,.25); color: #0d6efd; }
-.vp-type-sub  { background: #eefaf2; border-color: rgba(25,135,84,.25); color: #198754; }
-.vp-type-pekerjaan { background: #f8f9fa; border-color: rgba(108,117,125,.25); color: #6c757d; }
-
-.vp-search-item.active {
-  outline: 2px solid rgba(13,110,253,.35);
-  outline-offset: -2px;
-}
-.vp-mark {
-  background: rgba(255, 228, 132, .55);
-  padding: 0 .1em;
-  border-radius: .15rem;
-}
-
-/* Prefix badge */
-#vp-search-prefix-badge {
+#vp-search-prefix-badge{
   font-variant-numeric: tabular-nums;
+  pointer-events: none; /* purely visual */
+}
+#vp-search-prefix-badge[hidden],
+#vp-search-results[hidden],
+.vp-suggest[hidden]{ display: none !important; }
+
+
+/* *********************************************************************
+   V) ROW GROUPING (OPSIONAL)
+   ********************************************************************* */
+.vp-klass{
+  background: color-mix(in srgb, var(--dp-c-text, #000) 6%, var(--dp-c-bg, #fff));
+  font-weight: 700;
+  font-size: var(--ux-font-md, .95rem);
+  border-top: 2px solid var(--dp-c-border);
+}
+.vp-sub{
+  background: color-mix(in srgb, var(--dp-c-text, #000) 4%, var(--dp-c-bg, #fff));
+  font-weight: 600;
+  font-size: var(--ux-font-sm, .9rem);
+  border-top: 1px solid var(--dp-c-border);
+}
+.vp-klass td, .vp-sub td{ padding-block: .5rem; }
+
+/* Toggle caret */
+.vp-klass .vp-toggle,
+.vp-sub  .vp-toggle{
+  margin-right: .25rem;
+  text-decoration: none;
+}
+.vp-klass.is-collapsed .bi-caret-down-fill{ display:none; }
+.vp-klass:not(.is-collapsed) .bi-caret-right-fill{ display:none; }
+.vp-sub.is-collapsed .bi-caret-down-fill{ display:none; }
+.vp-sub:not(.is-collapsed) .bi-caret-right-fill{ display:none; }
+
+/* *********************************************************************
+   VI) CELL UTIL & PREVIEW (qty)
+   ********************************************************************* */
+.vp-cell{ overflow: visible; } /* dropdown/suggest aman */
+.vp-cell .flex-grow-1{ position: relative; overflow: visible; }
+.vp-cell .fx-toggle{ white-space: nowrap; }
+.vp-cell .fx-preview{
+  position: static;
+  display: block;
+  min-height: 1rem;
+  margin-top: .25rem;
+  /* clamp 2 baris */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+
+/* *********************************************************************
+   VII) SIDEBAR PARAMETER (TABEL & INLINE ROW)
+   ********************************************************************* */
+/* Header/body spacing + border konsisten */
+#vp-sidebar .lp-sidebar-header{
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--dp-c-border);
+}
+#vp-sidebar .lp-sidebar-body{ padding: .75rem; }
+
+/* Tabel Parameter */
+#vp-var-table{ border-color: var(--dp-c-border); }
+#vp-var-table thead th{
+  font-size: var(--ux-font-xs);
+  white-space: nowrap;
+}
+#vp-var-table tbody tr > *{ border-top: 1px solid var(--dp-c-border); }
+#vp-var-table tbody td input.form-control{ font-size: var(--ux-font-xs); }
+#vp-var-table .btn{ white-space: nowrap; }
+
+/* ==== Sidebar Parameter: cegah sempit & kolom sejajar ==== */
+/* Lebar default sidebar kanan via token SSOT (tetap bisa di-resize runtime) */
+body[data-page="volume_pekerjaan"]{
+  --vp-rightbar-w: 560px;   /* fallback > 480px agar lega */
+}
+
+/* Tabel parameter: patuh lebar & sejajarkan kolom */
+#vp-var-table{
+  table-layout: fixed;
+  width: 100%;
+}
+#vp-var-table thead th:nth-child(1),
+#vp-var-table tbody td:nth-child(1){ width: 45%; }
+#vp-var-table thead th:nth-child(2),
+#vp-var-table tbody td:nth-child(2){ width: 35%; }
+#vp-var-table thead th:nth-child(3),
+#vp-var-table tbody td:nth-child(3){ width: 20%; }
+
+/* Input memenuhi sel */
+#vp-var-table tbody td:nth-child(1) .form-control,
+#vp-var-table tbody td:nth-child(2) .form-control{ width: 100%; }
+
+/* Hint “Kode dibuat otomatis …” kecil & tidak menambah tinggi baris */
+#vp-var-table tbody td:nth-child(1){ position: relative; }
+#vp-var-table .vp-hint{
+  position: absolute;
+  right: .35rem;
+  bottom: .25rem;
+  font-size: var(--ux-font-2xs);
+  color: var(--dp-c-muted);
+  white-space: nowrap;
   pointer-events: none;
 }
 
-/* ------------------------------
-   Autocomplete parameter (Quantity cell)
---------------------------------*/
-.vp-suggest {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  margin-top: 2px;
-  background: #fff;
-  border: 1px solid rgba(0,0,0,.125);
-  border-radius: .375rem;
-  box-shadow: 0 .5rem 1rem rgba(0,0,0,.12);
-  max-height: 240px;
-  overflow-y: auto;
-  z-index: 214;
-  opacity: 0;
-  transition: opacity .1s ease;
-}
-.vp-suggest ul { list-style: none; margin: 0; padding: 4px; }
-.vp-suggest li {
-  padding: 6px 10px;
-  cursor: pointer;
-  border-radius: .25rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-.vp-suggest li:hover,
-.vp-suggest li.active { background: rgba(13,110,253,.08); }
-.vp-suggest .s-name {
-  font-weight: 600;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vp-suggest .s-value {
-  color: #6c757d;
-  margin-left: 8px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+
+#vpFormulaHelpModal {z-index: calc(var(--dp-z-overlay) + 1);;}
+
+/* *********************************************************************
+   VIII) RESPONSIVE TWEAKS
+   ********************************************************************* */
+@media (max-width: 768px){
+  #vp-page table{ font-size: var(--ux-font-sm, .875rem); }
+  #vp-toolbar .form-control{ padding-block: .25rem; }
 }
 
-/* ------------------------------
-   Group header rows
---------------------------------*/
-.vp-klass { background: rgba(0,0,0,0.03); font-weight: 700; font-size: 0.95rem; }
-.vp-sub   { background: rgba(0,0,0,0.02); font-weight: 600; font-size: 0.9rem; }
-.vp-klass td,
-.vp-sub td { padding-top: .5rem; padding-bottom: .5rem; }
 
-/* Jump highlight */
-.vp-jump { animation: vpJumpFlash 1.8s ease 1; }
-@keyframes vpJumpFlash {
-  0%   { background-color: rgba(255, 243, 205, 0.9); }
-  100% { background-color: transparent; }
+/* *********************************************************************
+   IX) PRINT & REDUCED MOTION
+   ********************************************************************* */
+@media print{
+  /* Sticky & bayangan toolbar dinonaktifkan saat cetak */
+  #vp-toolbar{ position: static !important; box-shadow: none !important; }
+}
+@media (prefers-reduced-motion: reduce){
+  *{ animation: none !important; transition: none !important; }
 }
 
-/* Edited/saved hints */
-.vp-row-edited { animation: vpPulse 1s ease-in-out infinite alternate; }
-.vp-row-saved  { outline: 2px solid rgba(25, 135, 84, 0.6); outline-offset: -2px; }
-@keyframes vpPulse {
-  from { background-color: rgba(255, 230, 156, .50); }
-  to   { background-color: rgba(255, 230, 156, .15); }
+
+
+/* Collapse card: sembunyikan body saat collapsed */
+.vp-klas-card.is-collapsed > .card-body,
+.vp-sub-card.is-collapsed > .card-body { display: none; }
+
+/* Tombol toggle di header card */
+.vp-card-toggle { line-height: 1; }
+
+/* Quantity kosong → highlight lembut */
+.qty-input.vp-empty {
+  border-color: rgba(220, 53, 69, .35);      /* soft danger */
+  box-shadow: inset 0 0 0 1px rgba(220, 53, 69, .18);
+  background-color: #fffafb;
 }
 
-/* ------------------------------
-   Offcanvas & Modal layering
---------------------------------*/
-.offcanvas { z-index: 2147483600 !important; }
-.offcanvas-backdrop { z-index: 2147483590 !important; }
-.modal { z-index: 2147482800 !important; }
-.modal-backdrop { z-index: 2147482790 !important; }
+/* Sedikit lebar minimal input Quantity */
+.vp-cell .form-control { min-width: 14rem; }
 
-/* ------------------------------
-   Responsiveness ≤768px
---------------------------------*/
-@media (max-width: 768px) {
-  #vp-page { --vp-font-size: .82rem; }
-  #vp-page table { font-size: var(--vp-font-size); }
-  #vp-toolbar .form-control {
-    padding-top: .25rem;
-    padding-bottom: .25rem;
-  }
-  #vp-table colgroup col:nth-child(5) { width: 300px; }
-  #vp-table .qty-input {
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
-}
+/* Uraian eksplisit rata kiri (jaga-jaga bila ada override CSS lain) */
+td.text-wrap.text-start { text-align: left !important; }
 
-/* ------------------------------
-   Proxy head offcanvas
---------------------------------*/
-#vp-page > .vp-head-proxy { display: none !important; }
 
-#vpVarOffcanvas .vp-head-proxy {
-  display: grid;
-  grid-template-columns: 45% 35% 20%;
-  position: sticky;
-  top: calc(var(--vp-top-offset) + var(--vp-gap) + var(--vp-toolbar-h));
-  z-index: var(--vp-z-toolbar);
-  background: var(--bs-body-bg, #fff);
-  box-shadow: 0 1px 0 rgba(0,0,0,.05),
-              0 2px 8px rgba(0,0,0,.04);
-  gap: 0;
-  padding: 6px 0;
-  font-size: var(--vp-font-size);
-  line-height: var(--vp-line);
-}
-#vpVarOffcanvas .vp-head-proxy .cell {
-  padding: .25rem .5rem;
-  font-weight: 600;
-  border-right: 1px solid rgba(0,0,0,.05);
-  white-space: nowrap;
-}
-#vpVarOffcanvas .vp-head-proxy .cell:last-child { border-right: 0; }

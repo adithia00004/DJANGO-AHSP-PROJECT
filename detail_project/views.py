@@ -42,8 +42,8 @@ def volume_pekerjaan_view(request, project_id: int):
     pekerjaan = (
         Pekerjaan.objects
         .filter(project=project)
+        .select_related('sub_klasifikasi', 'sub_klasifikasi__klasifikasi')
         .order_by('ordering_index', 'id')
-        .values('id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan')
     )
     context = {
         "project": project,

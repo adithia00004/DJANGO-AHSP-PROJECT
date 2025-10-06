@@ -1,310 +1,20 @@
-/* =========================================================
-   List Pekerjaan — CSS (Final Drop-in)
-   - Sidebar overlay (show/hidden) sinkron dengan JS
-   - Sticky thead pakai --lp-topbar-h
-   - Select2 stabil (clamp 2 baris)
-   - Preview Uraian 2-baris + edit state
-   ========================================================= */
+/* =====================================================================
+   LIST_PEKERJAAN.CSS — Feel v1 (legacy) untuk Batch 2
+   - Menonjolkan layout "kartu Klasifikasi → Sub berisi tabel lokal"
+   - Tabel global #lp-table disembunyikan (fallback tetap ada)
+   - Komponen: toolbar, overlay, tree nav, kartu, sub-table, Select2, uraian preview
+   ===================================================================== */
 
-/* ============================== */
-/* ====== VARIABLES & SCALES ==== */
-/* ============================== */
-:root{
-  /* scale */
-  --fib-0:.618rem; --fib-1:1rem; --fib-2:1.618rem; --fib-3:2.618rem;
+/* ============== VAR & RESET TIPIS ============== */
+/* Menggunakan variabel dari core.css: --dp-*, --ux-*, --lp-* */
 
-  /* layout */
-  --lp-topbar-h:64px;
-  --lp-overlay-z:12030;
-  --lp-sidebar-w:486px;
-
-  /* z-index anchors (sinkron dgn core.css) */
-
-  --lp-topbar-z: var(--dp-z-toolbar, 12030);   /* toolbar/topbar */
-  --lp-thead-z:  calc(var(--lp-topbar-z) - 2); /* thead < toolbar */
-  /* Pastikan dropdown/search di atas thead, di bawah toolbar */
-  --lp-ac-z:     calc(var(--lp-topbar-z) - 1);
-
-  /* clamp defaults */
-  --lp-clamp-font:.75rem;
-  --lp-clamp-line:1.05rem;
-  --lp-clamp-pad-v:4px;
-
-  /* toolbar */
-  --lp-toolbar-fs:.75rem;
-  --lp-toolbar-py:.375rem;
-
-  /* uraian */
-  --lp-urai-line:1.25rem;
-  --lp-urai-pad-v:6px;
+/* ============== TOOLBAR ============== */
+.lp-toolbar{
+  min-height: var(--lp-toolbar-h);
+  background: var(--dp-c-bg);
+  border-bottom: 1px solid var(--dp-c-border);
+  gap: .5rem;
 }
-
-/* === Bridge tokens ke core (sinkronisasi pasif, aman) === */
-:root {
-  --dp-topbar-h: var(--lp-topbar-h);
-}
-
-/* Scoped defaults khusus halaman */
-.list-pekerjaan{
-  --lp-header-z:1030;
-  --lp-panel-z:1032;
-
-  /* lebar kolom (mudah di-tuning) */
-  --col-num-w:55px;
-  --col-mode-w:144px;
-  --col-ref-w:377px;
-  --col-urai-w:377px;
-  --col-sat-w:89px;
-  --col-act-w:89px;
-}
-
-/* ============================== */
-/* ========= LEGACY WIDTHS ====== */
-/* ============================== */
-.table.list-pekerjaan .col-num{ width:48px; text-align:center; }
-.table.list-pekerjaan .col-mode{ width:110px; }
-.table.list-pekerjaan .col-ref{ width:420px; }
-.table.list-pekerjaan .col-urai{ width:420px; }
-.table.list-pekerjaan .col-sat{ width:110px; }
-.table.list-pekerjaan .col-act{ width:56px; text-align:center; }
-
-/* Legacy compact */
-#lp-app.compact .card-header{ padding:.3rem .5rem; }
-#lp-app.compact .card-body{ padding:.5rem; }
-#lp-app.compact .table{ font-size:.9rem; }
-#lp-app.compact .table td,
-#lp-app.compact .table th{ padding:.25rem .4rem; }
-#lp-app.compact .form-control.form-control-sm,
-#lp-app.compact .form-select.form-select-sm{ padding:.15rem .35rem; height:calc(1.5em + .4rem); }
-
-/* ============================== */
-/* ============ TABLE =========== */
-/* ============================== */
-.table.lp-table{ width:100%; border-collapse:separate; border-spacing:0; }
-.table.lp-table thead th{
-  position:sticky; top:var(--lp-topbar-h); z-index:var(--lp-thead-z) !important;
-  background:#f7f8fa; border-bottom:1px solid #e5e7eb;
-  font: size 0.9rem; font-weight:500; text-transform:uppercase; letter-spacing:.03em;
-  padding:8px 10px;
-}
-.table.lp-table tbody td{ padding:10px; vertical-align:middle; border-bottom:1px solid #e5e7eb; }
-
-/* kolom modern via variabel */
-.col-num{ width:var(--col-num-w); text-align:center; }
-.col-mode{ width:var(--col-mode-w); }
-.col-ref{ width:var(--col-ref-w); }
-.col-urai{ width:var(--col-urai-w); }
-.col-sat{ width:var(--col-sat-w); }
-.col-act{ width:var(--col-act-w); text-align:center; }
-
-/* paksa override untuk tabel modern */
-.table.list-pekerjaan.lp-table .col-ref{ width:var(--col-ref-w) !important; }
-.table.list-pekerjaan.lp-table .col-urai{ width:var(--col-urai-w) !important; }
-.table.list-pekerjaan.lp-table .col-mode{ width:var(--col-mode-w) !important; }
-.table.list-pekerjaan.lp-table .col-sat{ width:var(--col-sat-w) !important; }
-.table.list-pekerjaan.lp-table .col-act{ width:var(--col-act-w) !important; }
-
-/* Responsive tuning */
-@media (max-width:1399.98px){ .list-pekerjaan{ --col-ref-w:533px; --col-urai-w:377px; } }
-@media (max-width:1199.98px){ .list-pekerjaan{ --col-ref-w:377px; --col-urai-w:377px; } }
-@media (max-width:991.98px){ .list-pekerjaan{ --col-ref-w:377px; --col-urai-w:233px; } }
-@media (max-width:767.98px){
-  .list-pekerjaan{ --col-mode-w:144px; --col-ref-w:233px; --col-urai-w:233px; --col-sat-w:72px; --col-act-w:72px; }
-}
-
-/* ============================== */
-/* ============ MISC ============ */
-/* ============================== */
-.lp-row{ display:table-row; }
-.lp-row:hover{ background:#fcfdff; }
-.source-badge{ display:inline-block; padding:.25rem .5rem; font-size:.75rem; border-radius:.35rem; }
-
-#btn-save-fab{
-  position:fixed; right:18px; bottom:18px; z-index:1030;
-  border-radius:999px; box-shadow:0 6px 16px rgba(0,0,0,.2);
-  padding:.7rem 1.1rem;
-}
-
-/* ============================== */
-/* =========== SELECT2 ========== */
-/* ============================== */
-.select2-host{ position:relative; min-width:260px; }
-.ref-select.is-enhanced,
-.native-select.is-enhanced{ position:absolute !important; left:-9999px !important; }
-
-.list-pekerjaan .select2-container{ width:100% !important; z-index:var(--lp-ac-z); }
-.list-pekerjaan .select2-container .select2-selection--single{
-  min-height:34px; border-radius:.375rem; display:flex; align-items:center; padding:4px 8px;
-}
-.list-pekerjaan .select2-container .select2-selection__rendered{
-  white-space:normal !important; word-break:break-word; overflow-wrap:anywhere;
-  line-height:1.25rem; font-size:.75rem; padding-right:2rem;
-}
-
-/* Dropdown results */
-.list-pekerjaan .s2-dropdown-wrap .select2-results__option,
-.list-pekerjaan .select2-container .select2-results__option{
-  white-space:normal; word-break:break-word; line-height:1.25rem; font-size:.7rem; padding:6px 8px;
-}
-
-/* ============================== */
-/* ===== REF COLUMN (CLAMP) ===== */
-/* ============================== */
-.table.lp-table{ --lp-clamp-font:.75rem; --lp-clamp-line:1.05rem; --lp-clamp-pad-v:4px; }
-
-.list-pekerjaan td.col-ref,
-.list-pekerjaan td.col-ref > div,
-.list-pekerjaan td.col-ref .select2-host,
-.list-pekerjaan td.col-ref .select2-container{ min-width:0 !important; max-width:100% !important; width:100% !important; }
-
-/* tinggi selection = 2 baris clamp */
-.list-pekerjaan td.col-ref .select2-container .select2-selection--single{
-  height:calc((var(--lp-clamp-line) * 2) + (var(--lp-clamp-pad-v) * 2)) !important;
-  min-height:calc((var(--lp-clamp-line) * 2) + (var(--lp-clamp-pad-v) * 2)) !important;
-  align-items:flex-start !important; padding-top:var(--lp-clamp-pad-v) !important; padding-bottom:var(--lp-clamp-pad-v) !important;
-  border-radius:.6rem !important;
-}
-
-/* isi selection (clamp 2 baris) */
-.list-pekerjaan td.col-ref .select2-container .select2-selection__rendered,
-.list-pekerjaan td.col-ref .s2-selection-wrap{
-  display:-webkit-box !important; -webkit-box-orient:vertical !important; -webkit-line-clamp:2 !important; line-clamp:2 !important; overflow:hidden !important;
-  white-space:normal !important; word-break:break-word !important; overflow-wrap:anywhere !important;
-  font-size:var(--lp-clamp-font) !important; line-height:var(--lp-clamp-line) !important;
-  max-height:calc(var(--lp-clamp-line) * 2) !important; padding-right:2rem !important;
-}
-
-/* z-index konsisten saat dropdown terbuka */
-.list-pekerjaan td.col-ref,
-.list-pekerjaan td.col-ref .select2-host{ overflow:visible !important; }
-.list-pekerjaan .select2-host{ position:relative; z-index:auto; }
-/* urutan: host (open) < container (open) < dropdown */
-.list-pekerjaan .select2-host.s2-open{ z-index:calc(var(--lp-ac-z) + 1) !important; }
-.list-pekerjaan .select2-container--open{ z-index:calc(var(--lp-ac-z) + 2) !important; }
-.list-pekerjaan .select2-host.s2-open .select2-dropdown,
-.list-pekerjaan .select2-container--open .select2-dropdown{
-  z-index:calc(var(--lp-ac-z) + 3) !important;
-}
-
-
-/* ===== Mode selector (kolom Sumber) — versi kecil ===== */
-#lp-app .table.lp-table td.col-mode .form-select.src{
-  font-size:.7rem;
-  line-height:1.3;
-  padding:.25rem .5rem;
-  height:auto;
-  min-height:calc(1.5em + .5rem);
-}
-
-/* ============================== */
-/* ========= OVERLAY NAV ======== */
-/* ============================== */
-body.lp-overlay-open{ overflow:hidden; }
-#lp-sidebar{
-  position:fixed; inset:0; display:none;
-  z-index:var(--lp-overlay-z);
-  /* hilangkan backdrop blur untuk mengurangi biaya compositing */
-  background:rgba(0,0,0,.22);
-}
-#lp-sidebar.is-open{ display:block; }
-#lp-sidebar.is-open .lp-sidebar-inner{ transform: translateX(0); opacity: 1; }
-#lp-sidebar.show{ display:block; }
-
-#lp-sidebar .lp-sidebar-inner{
-  position:absolute; right:10px; left:auto; top:var(--lp-topbar-h);
-  width:min(92vw, var(--lp-sidebar-w));
-  height:calc(100vh - var(--lp-topbar-h) - 16px);
-  display:flex; flex-direction:column; overflow:auto;
-  background:rgba(22,24,28,.96); color:#e9ecef;
-  border:1px solid rgba(255,255,255,.08); border-radius:.5rem; box-shadow:0 12px 28px rgba(0,0,0,.35);
-  padding:.75rem;
-  transform:translateX(16px); opacity:0;
-  transition:transform .16s ease, opacity .16s ease; z-index:1;
-}
-#lp-sidebar.show .lp-sidebar-inner{ transform:translateX(0); opacity:1; }
-
-#lp-sidebar .lp-resizer{
-  position:absolute; left:-6px; top:0; bottom:0; width:8px; cursor:ew-resize;
-  background:linear-gradient(to left, rgba(255,255,255,.08), transparent);
-  border-top-left-radius:.5rem; border-bottom-left-radius:.5rem;
-}
-
-/* === Hotspot kanan untuk membuka overlay nav saat hover === */
-.lp-overlay-hotspot{
-  position: fixed;
-  top: var(--lp-topbar-h);
-  right: 0;
-  bottom: 0;
-  width: 10px;                /* tipis agar tidak mengganggu */
-  z-index: calc(var(--lp-overlay-z) + 2);
-  pointer-events: auto;
-  background: transparent;    /* tak terlihat; bisa diberi hint saat debug */
-}
-@media (max-width: 991.98px){
-  .lp-overlay-hotspot{ display:none; }
-}
-
-
-/* Sidebar tree */
-#lp-nav .lp-node__header{ display:flex; align-items:center; gap:.5rem; padding:.35rem .5rem; border-radius:.375rem; cursor:pointer; }
-#lp-nav .lp-node__header:hover{ background:rgba(255,255,255,.06); }
-#lp-nav .lp-node__toggle{ width:1.25rem; height:1.25rem; border-radius:.25rem; border:1px solid rgba(255,255,255,.2); display:inline-flex; align-items:center; justify-content:center; font-size:.8rem; color:#dee2e6; }
-#lp-nav .lp-node__label{ color:#f1f3f5; text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:var(--fib-1); }
-#lp-nav .lp-node__label:hover{ text-decoration:underline; }
-#lp-nav .lp-node__count{ color:#ced4da; font-size:.75em; }
-#lp-nav .lp-node__children{ margin-left:1.25rem; padding-left:.5rem; border-left:1px dashed rgba(255,255,255,.2); }
-#lp-nav .lp-node--active > .lp-node__header{ background:rgba(13,110,253,.25); outline:1px solid rgba(13,110,253,.35); }
-#lp-nav .lp-hit{ background:rgba(255,236,153,.35); border-radius:.25rem; padding:0 .125rem; }
-
-/* Fokus keyboard */
-#lp-nav .lp-node__header:focus-visible,
-#lp-nav .lp-node__label:focus-visible{ outline:2px solid #4dabf7; outline-offset:2px; }
-
-/* Sidebar search & autocomplete */
-.lp-sidebar-search,.lp-toolbar-search{ position:relative; }
-.lp-sidebar-search .input-group .form-control,
-.lp-sidebar-search .input-group .input-group-text{ font-size:var(--fib-1); }
-
-.lp-autocomplete{
-  position:absolute; left:0; right:0; top:calc(100% + 6px);
-  z-index:calc(var(--lp-overlay-z) + 1); background:#fff; color:#212529;
-  border:1px solid rgba(0,0,0,.08); border-radius:.5rem; box-shadow:0 12px 28px rgba(0,0,0,.18);
-  max-height:min(45vh, 21rem); overflow:auto; padding:.25rem;
-}
-.lp-ac-group{ padding:.35rem .5rem; border-top:1px dashed #e9ecef; }
-.lp-ac-group:first-child{ border-top:0; }
-.lp-ac-title{ font-size:.75rem; font-weight:600; color:#6c757d; margin-bottom:.25rem; }
-.lp-ac-item{ display:flex; align-items:center; gap:.5rem; padding:.4rem .55rem; border-radius:.375rem; cursor:pointer; }
-.lp-ac-item:hover, .lp-ac-item.is-active{ background:#f7f8fa; }
-.lp-ac-item .lp-ac-text{ flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.lp-ac-item .lp-hit{ background:rgba(255,236,153,.35); border-radius:.25rem; padding:0 .125rem; }
-
-/* ============================== */
-/* ============ BUTTONS ========= */
-/* ============================== */
-.btn-add-sub, .btn-add-pekerjaan, .lp-btn-wide{ white-space:nowrap; padding:.375rem .85rem; }
-.btn-add-sub, .btn-add-pekerjaan{ background:#0d6efd; border-color:#0d6efd; color:#fff; }
-.btn-add-sub:hover, .btn-add-pekerjaan:hover{ background:#0b5ed7; border-color:#0a58ca; color:#fff; }
-.btn-add-sub:focus, .btn-add-pekerjaan:focus{ box-shadow:0 0 0 .2rem rgba(13,110,253,.25); }
-
-#lp-app .btn.btn-add-sub,
-#lp-app .btn.btn-add-pekerjaan{
-  --bs-btn-bg:#0d6efd; --bs-btn-color:#fff; --bs-btn-border-color:#0d6efd;
-  --bs-btn-hover-bg:#0b5ed7; --bs-btn-hover-border-color:#0a58ca;
-  --bs-btn-focus-shadow-rgb:13,110,253;
-  background-color:var(--bs-btn-bg) !important; border-color:var(--bs-btn-border-color) !important; color:var(--bs-btn-color) !important;
-}
-
-/* ============================== */
-/* =========== TOPBAR =========== */
-/* ============================== */
-#dp-topbar{ position:sticky; top:0; z-index:var(--lp-topbar-z) !important; }
-.table.lp-table thead th{ top:var(--lp-topbar-h); z-index:var(--lp-thead-z) !important; }
-
-/* ============================== */
-/* ========= TOOLBAR AREA ======= */
-/* ============================== */
-#lp-app .lp-toolbar{ gap:.5rem; }
 #lp-app .lp-toolbar > .ms-auto{
   display:flex !important; align-items:center !important; gap:.5rem !important;
   flex:1 1 auto !important; min-width:0 !important;
@@ -314,83 +24,325 @@ body.lp-overlay-open{ overflow:hidden; }
   flex:1 1 clamp(24rem, 50vw, 48rem) !important; min-width:0 !important;
 }
 #lp-app .lp-toolbar-search .form-control,
-#lp-app .lp-toolbar-search .input-group-text{
-  font-size:var(--lp-toolbar-fs) !important; line-height:1.5 !important;
-  padding-top:var(--lp-toolbar-py) !important; padding-bottom:var(--lp-toolbar-py) !important;
-}
+#lp-app .lp-toolbar-search .input-group-text,
 #lp-toolbar-find{
-  font-size:var(--lp-toolbar-fs) !important; line-height:1.5 !important;
-  padding-top:var(--lp-toolbar-py) !important; padding-bottom:var(--lp-toolbar-py) !important;
-  flex:0 0 auto !important; display:inline-flex !important; align-items:center !important; white-space:nowrap !important;
+  font-size: var(--lp-toolbar-fs) !important;
+  line-height: 1.5 !important;
+  padding-top: var(--lp-toolbar-py) !important;
+  padding-bottom: var(--lp-toolbar-py) !important;
 }
-@media (min-width:768px){ #lp-app .lp-toolbar{ flex-wrap:nowrap !important; } }
 
-/* ============================== */
-/* ============ URAIAN ========== */
-/* ============================== */
-/* Kontainer cell */
-.table.lp-table td.col-urai{ position:relative; }
+/* Font default kontrol interaktif (kompak) */
+#lp-app .form-control,
+#lp-app .form-select,
+#lp-app .input-group-text,
+#lp-app .btn.lp-btn{ font-size: var(--ux-font-xs); }
 
-/* Textarea (mode edit) — auto-resize via JS */
-.table.lp-table td.col-urai .form-control.uraian{
+/* Tombol aksi cepat */
+#btn-add-klas{ white-space: nowrap; }
+#lp-app .btn-add-sub,
+#lp-app .btn-add-pekerjaan,
+#lp-app .btn-del{
+  font-size: var(--ux-font-sm);
+  line-height: 1.35;
+  padding: .375rem .85rem;
+  white-space: nowrap;
+}
+#lp-app .btn-add-sub:not(.btn-primary),
+#lp-app .btn-add-pekerjaan:not(.btn-primary){
+  background: var(--bs-primary);
+  border-color: var(--bs-primary);
+  color:#fff;
+}
+
+/* ============== OVERLAY / SIDEBAR ============== */
+body.lp-overlay-open{ overflow:hidden; }
+
+#lp-sidebar{
+  position:fixed; inset:0; display:none;
+  z-index: var(--lp-overlay-z);
+  background: rgba(0,0,0,.22);
+}
+#lp-sidebar.is-open,
+#lp-sidebar.show{ display:block; }
+#lp-sidebar .lp-sidebar-inner{
+  position:absolute; right:10px; top:var(--dp-topbar-h); left:auto;
+  width: clamp(320px, var(--lp-sidebar-w), 760px);
+  height: calc(100vh - var(--dp-topbar-h) - 16px);
+  display:flex; flex-direction:column; overflow:auto;
+  padding:.75rem;
+  transform:translateX(16px); opacity:0;
+  background: var(--dp-c-bg); color: var(--dp-c-text);
+  border:1px solid var(--dp-c-border); border-radius:.5rem; box-shadow: var(--dp-shadow-lg);
+  transition: transform .16s ease, opacity .16s ease; z-index:1;
+}
+#lp-sidebar.is-open .lp-sidebar-inner,
+#lp-sidebar.show    .lp-sidebar-inner{ transform:translateX(0); opacity:1; }
+
+#lp-sidebar .lp-resizer{
+  position:absolute; left:-6px; top:0; bottom:0; width:8px; cursor:ew-resize;
+  background:linear-gradient(to left, rgba(255,255,255,.08), transparent);
+  border-top-left-radius:.5rem; border-bottom-left-radius:.5rem;
+}
+
+/* Hotspot kanan (desktop only) */
+.lp-overlay-hotspot{
+  position: fixed;
+  top: var(--lp-topbar-h);
+  right: 0; bottom: 0; width: 10px;
+  z-index: var(--lp-overlay-z);
+  pointer-events: auto; background: transparent;
+}
+@media (max-width: 991.98px){ .lp-overlay-hotspot{ display:none; } }
+
+/* Sidebar tree & search */
+#lp-nav .lp-node__header{
+  display:flex; align-items:center; gap:.5rem; padding:.35rem .5rem;
+  border-radius:.375rem; cursor:pointer;
+}
+#lp-nav .lp-node__header:hover{ background: var(--dp-c-surface-2); }
+#lp-nav .lp-node__toggle{
+  width:1.25rem; height:1.25rem; border-radius:.25rem;
+  border:1px solid var(--dp-c-border); display:inline-flex; align-items:center; justify-content:center;
+  font-size:.8rem; color:var(--dp-c-muted);
+}
+#lp-nav .lp-node__label{
+  color: var(--dp-c-text); text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-size: var(--ux-font-md);
+}
+#lp-nav .lp-node__label:hover{ text-decoration:underline; }
+#lp-nav .lp-node__count{ color:var(--dp-c-muted); font-size:.75em; }
+#lp-nav .lp-node__children{ border-left:1px dashed var(--dp-c-border); }
+#lp-nav .lp-node--active > .lp-node__header{
+  background: var(--dp-c-primary-subtle);
+  outline:1px solid color-mix(in srgb, var(--dp-c-primary) 35%, transparent);
+}
+#lp-nav .lp-hit{ background: var(--ux-hit-bg); }
+#lp-nav .lp-node__header:focus-visible,
+#lp-nav .lp-node__label:focus-visible{ outline:2px solid #4dabf7; outline-offset:2px; }
+
+.lp-sidebar-search,.lp-toolbar-search{ position:relative; }
+.lp-sidebar-search .input-group .form-control,
+.lp-sidebar-search .input-group .input-group-text{ font-size: var(--ux-font-md); }
+.lp-autocomplete{
+  position:absolute; left:0; right:0; top:calc(100% + 6px);
+  z-index: calc(var(--lp-overlay-z) + 1);
+  background: var(--dp-c-bg); color: var(--dp-c-text);
+  border:1px solid var(--dp-c-border); border-radius:.5rem; box-shadow: var(--dp-shadow-lg);
+  max-height:min(45vh, 21rem); overflow:auto; padding:.25rem;
+}
+.lp-ac-group{ padding:.35rem .5rem; border-top:1px dashed var(--dp-c-border); }
+.lp-ac-title{ font-size:.75rem; font-weight:600; color:var(--dp-c-muted); margin-bottom:.25rem; }
+.lp-ac-group:first-child{ border-top:0; }
+.lp-ac-item{ display:flex; align-items:center; gap:.5rem; padding:.4rem .55rem; border-radius:.375rem; cursor:pointer; }
+.lp-ac-item:hover, .lp-ac-item.is-active{ background: var(--dp-c-surface-2); }
+.lp-ac-item .lp-ac-text{
+  flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-size: var(--ux-font-xs);
+}
+.lp-ac-item .lp-hit{ background:var(--ux-hit-bg); border-radius:.25rem; padding:0 .125rem; }
+
+/* ============== MAIN AREA (Feel v1) ============== */
+/* Sembunyikan tabel global jika masih ada (fallback tetap ada di DOM) */
+.lp-main .lp-table-wrap{ display:none !important; }
+
+/* Kartu Klasifikasi */
+#klas-list{ margin-bottom: 2rem; }
+#klas-list .card{ border:1px solid var(--dp-c-border); border-radius:.6rem; }
+#klas-list .card-header{
+  background: var(--dp-c-surface-2);
+  padding:.5rem .75rem;
+  display:flex; gap:.5rem; align-items:center;
+}
+#klas-list .card-body{ padding:.75rem; }
+
+/* Input nama Klas/Sub */
+#klas-list .klas-name,
+#klas-list .sub-name{
+  font-size: var(--ux-font-sm);
+}
+
+/* Block Sub */
+#klas-list .sub-wrap > div{
+  background: var(--dp-c-surface-1);
+}
+
+/* Tabel lokal di dalam Sub (kompak, mirip v1) */
+#klas-list table.list-pekerjaan{ width:100%; border-collapse:separate; border-spacing:0; }
+#klas-list table.list-pekerjaan thead th{
+  background: var(--dp-c-surface-2);
+  border-bottom:1px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs); font-weight:600; text-transform:uppercase; letter-spacing:.03em;
+  padding:5px 5px;
+}
+#klas-list table.list-pekerjaan tbody td{
+  padding:10px; vertical-align:middle; border-bottom:1px solid var(--dp-c-border);
+  color: var(--dp-c-text);
+}
+#klas-list table.list-pekerjaan td.col-act,
+#klas-list table.list-pekerjaan th.col-num,
+#klas-list table.list-pekerjaan td.col-num{ text-align:center; }
+
+/* Uraian cell (2-lines clamp + inline edit feel lama) */
+#klas-list td.col-urai{ position:relative; }
+#klas-list td.col-urai .form-control.uraian{
   width:100%;
-  font-size:var(--lp-clamp-font);
-  line-height:var(--lp-clamp-line);
+  font-size: var(--ux-font-xs);
+  line-height: var(--lp-urai-line);
   white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;
-  min-height:calc((var(--lp-clamp-line) * 2) + (var(--lp-urai-pad-v) * 2)) !important;
-  padding-top:var(--lp-urai-pad-v) !important;
-  padding-bottom:var(--lp-urai-pad-v) !important;
-  overflow-y:hidden;  /* auto-resize via JS */
-  resize:vertical;
-  visibility:visible; /* default terlihat saat editing */
+  min-height: calc((var(--lp-urai-line) * 1.5) + (var(--lp-urai-pad-v) * 2)) !important;
+  padding-top: var(--lp-urai-pad-v) !important; padding-bottom: var(--lp-urai-pad-v) !important;
+  overflow-y:hidden; resize:vertical; visibility:visible;
 }
-
-/* Preview ringkas 2 baris — default hidden, muncul saat blur */
-.lp-urai-preview{
-  position:absolute; inset:0; z-index:2;
-  padding:var(--lp-urai-pad-v) .75rem;
-  font-size:var(--lp-clamp-font);
-  line-height:var(--lp-clamp-line);
-  color:inherit; background:var(--bs-body-bg, #fff);
+#klas-list td.col-urai .lp-urai-preview{
+  position:absolute;inset: 5px; ; z-index:2;
+  padding: var(--lp-urai-pad-v) .75rem;
+  font-size: var(--lp-clamp-font); line-height: var(--lp-clamp-line);
+  color: var(--dp-c-text); background: var(--dp-c-bg);
   border:1px solid transparent; border-radius:.375rem;
   white-space:normal; word-break:break-word; overflow-wrap:anywhere;
   display:none; overflow:hidden;
   display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2;
 }
+#klas-list td.col-urai:not(.is-editing) .form-control.uraian{ visibility: hidden !important; }
+#klas-list td.col-urai:not(.is-editing) .lp-urai-preview{ display: -webkit-box !important; display:block; z-index: 0; pointer-events:auto; }
+#klas-list td.col-urai.is-editing .lp-urai-preview{ display: none !important; pointer-events: none; }
+#klas-list td.col-urai.is-editing .form-control.uraian{ visibility: visible !important; z-index: 1 !important; }
+#klas-list td.col-urai .form-control.uraian[readonly]{ color: var(--ux-color-muted); cursor: default; }
 
-/* State: saat TIDAK mengedit -> sembunyikan textarea, tampilkan preview */
-td.col-urai:not(.is-editing) .form-control.uraian{ visibility:hidden !important; }
-td.col-urai:not(.is-editing) .lp-urai-preview{ display:-webkit-box; }
+/* Select2 (feel lama) */
+.select2-host{ position:relative; min-width:260px; }
+.ref-select.is-enhanced,
+.native-select.is-enhanced{ position:absolute !important; left:-9999px !important; }
 
-/* === FIX: caret terlihat saat editing col-urai === */
-.table.lp-table td.col-urai .form-control.uraian{
-  position: relative; z-index: 1; visibility: visible; caret-color: auto;
+.list-pekerjaan .select2-container{ width:100% !important; z-index: auto; }
+.list-pekerjaan .select2-container .select2-selection--single{
+  min-height:34px; border-radius:.375rem; display:flex; align-items:center; padding:4px 8px;
+  border: 1px solid var(--dp-c-border);
+  background: var(--dp-c-bg); color: var(--dp-c-text);
 }
-td.col-urai:not(.is-editing) .form-control.uraian{ visibility: hidden !important; }
-td.col-urai:not(.is-editing) .lp-urai-preview{
-  display: -webkit-box !important; display: block; z-index: 0; pointer-events: auto;
+.list-pekerjaan .select2-container .select2-selection__rendered{
+  white-space:normal !important; word-break:break-word; overflow-wrap:anywhere;
+  line-height:1.25rem; font-size: var(--ux-font-xs); padding-right:2rem;
 }
-td.col-urai.is-editing .lp-urai-preview{ display: none !important; pointer-events: none; }
-td.col-urai.is-editing .form-control.uraian{ visibility: visible !important; z-index: 1 !important; }
+.select2-container--default.select2-container--focus .select2-selection--single{
+  border-color: var(--dp-c-primary) !important;
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus) !important;
+}
+.list-pekerjaan .select2-dropdown{
+  background: var(--dp-c-bg); color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border); box-shadow: var(--dp-shadow-lg);
+  z-index: var(--lp-z-select2);
+}
+.list-pekerjaan .select2-results__option{ font-size: var(--ux-font-xs); }
+.list-pekerjaan .select2-host{ position:relative; z-index:auto; }
+.list-pekerjaan .select2-host.s2-open{ z-index: calc(var(--lp-z-select2) - 1) !important; }
+.list-pekerjaan .select2-host.s2-open .select2-dropdown{ z-index: var(--dp-z-dropdown) !important; }
 
-/* ============================== */
-/* ======= SMALL RESPONSIVE ===== */
-/* ============================== */
+/* Kolom “Referensi” clamp 2 baris (selection) */
+#klas-list td.col-ref .select2-container .select2-selection--single{
+  height: calc((var(--lp-clamp-line) * 2) + (var(--lp-clamp-pad-v) * 2)) !important;
+  min-height: calc((var(--lp-clamp-line) * 2) + (var(--lp-clamp-pad-v) * 2)) !important;
+  align-items:flex-start !important;
+  padding-top: var(--lp-clamp-pad-v) !important; padding-bottom: var(--lp-clamp-pad-v) !important;
+  border-radius:.6rem !important;
+}
+#klas-list td.col-ref .select2-container .select2-selection__rendered,
+#klas-list td.col-ref .s2-selection-wrap{
+  display:-webkit-box !important; -webkit-box-orient:vertical !important; -webkit-line-clamp:2 !important; line-clamp:2 !important; overflow:hidden !important;
+  white-space:normal !important; word-break:break-word !important; overflow-wrap:anywhere !important;
+  font-size: var(--lp-clamp-font) !important; line-height: var(--lp-clamp-line) !important;
+  max-height: calc(var(--lp-clamp-line) * 2) !important; padding-right:2rem !important;
+}
+
+/* Mode selector (kolom Sumber) kecil */
+#klas-list td.col-mode .form-select{
+  font-size: var(--ux-font-xs);
+  line-height:1.3;
+  padding:.25rem .5rem;
+  height:auto; min-height:calc(1.5em + .5rem);
+}
+
+/* Hover & badges */
+.lp-row{ display:table-row; }
+.lp-row:hover{ background: var(--dp-row-hover); }
+.source-badge{ display:inline-block; padding:.25rem .5rem; font-size:.75rem; border-radius:.35rem; }
+
+/* ============== COMPACT PREFERENCES ============== */
+#lp-app.compact .card-header{ padding:.35rem .5rem; }
+#lp-app.compact .card-body{ padding:.5rem; }
+#lp-app.compact .table{ font-size:.9rem; }
+#lp-app.compact .table td,
+#lp-app.compact .table th{ padding:.25rem .4rem; }
+#lp-app.compact .form-control.form-control-sm,
+#lp-app.compact .form-select.form-select-sm{ padding:.15rem .35rem; height:calc(1.5em + .4rem); }
+
+/* ============== FAB SAVE ============== */
+#btn-save-fab{
+  position:fixed; right:18px; bottom:18px; z-index: var(--dp-z-toolbar);
+  border-radius:999px; box-shadow: var(--dp-shadow-md);
+  padding:.7rem 1.1rem;
+}
+
+/* ============== RESPONSIVE & MISC ============== */
 @media (max-width:420px){ #lp-sidebar .lp-sidebar-inner{ right:.75rem; left:.75rem; width:auto; } }
 @media (prefers-reduced-motion:reduce){ #lp-sidebar .lp-sidebar-inner{ transition:none; } }
 
-/* Matikan hanya sidebar lama (#lpSidebar) bila ada; hotspot kiri tetap aktif */
-.list_pekerjaan #lpSidebar{ display:none !important; }
+/* Nonaktifkan sidebar lama jika ada */
+.list-pekerjaan #lpSidebar{ display:none !important; }
 
-/* ============================== */
-/* ===== Anchor flash (UX) ====== */
-/* ============================== */
-.lp-flash{
-  animation: lpFlash 1.6s ease;
-}
+/* Anchor flash */
+.lp-flash{ animation: lpFlash 1.6s ease; }
 @keyframes lpFlash{
-  0%   { box-shadow: 0 0 0 0 rgba(13,110,253,.0), inset 0 0 0 0 rgba(13,110,253,.0); }
-  12%  { box-shadow: 0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35); }
-  40%  { box-shadow: 0 0 0 0 rgba(13,110,253,.0), inset 0 0 0 1px rgba(13,110,253,.35); }
-  100% { box-shadow: 0 0 0 0 rgba(13,110,253,.0), inset 0 0 0 0 rgba(13,110,253,.0); }
+  0%{box-shadow:0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0);}
+  12%{box-shadow:0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35);}
+  40%{box-shadow:0 0 0 0 rgba(13,110,253,0), inset 0 0 0 1px rgba(13,110,253,.35);}
+  100%{box-shadow:0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0);}
+}
+
+
+/* ==== [LEBARKAN URAIAN | PERSEMPIT REF] ==== */
+
+/* 1) Tabel lokal (di dalam kartu Sub) — dipakai harian */
+#klas-list table.list-pekerjaan{
+  table-layout: fixed; /* penting: agar width kolom dipatuhi */
+}
+
+/* Atur lebar kolom (silakan ubah persentasenya sesuai selera) */
+#klas-list table.list-pekerjaan .col-num  { width: 35px; }
+#klas-list table.list-pekerjaan .col-mode { width: 175px; }
+#klas-list table.list-pekerjaan .col-ref  { width: 35%; }   /* dipersempit */
+#klas-list table.list-pekerjaan .col-urai { width: 45%; }   /* diperlebar */
+#klas-list table.list-pekerjaan .col-sat  { width: 96px; }
+#klas-list table.list-pekerjaan .col-act  { width: 64px; }
+
+/* Pastikan isi kolom Referensi tidak ‘ngelawan’ */
+#klas-list td.col-ref,
+#klas-list td.col-ref > div,
+#klas-list td.col-ref .select2-host,
+#klas-list td.col-ref .select2-container{
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+/* 2) Tabel global fallback (#lp-table) — jarang dipakai, tapi sekalian rapikan */
+#lp-table{
+  table-layout: fixed;
+}
+#lp-table col.col-num  { width: 35px; }
+#lp-table col.col-mode { width: 175px; }
+#lp-table col.col-ref  { width: 35%; }   /* dipersempit */
+#lp-table col.col-urai { width: 45%; }   /* diperlebar */
+#lp-table col.col-sat  { width: 96px; }
+#lp-table col.col-act  { width: 64px; }
+
+/* Bonus: dukung clamp/select2 supaya tidak melar */
+#lp-table tbody td:nth-child(3),
+#lp-table tbody td:nth-child(3) > div,
+#lp-table tbody td:nth-child(3) .select2-host,
+#lp-table tbody td:nth-child(3) .select2-container{
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
 }

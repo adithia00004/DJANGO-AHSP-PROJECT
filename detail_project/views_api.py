@@ -862,6 +862,41 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
     dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     return JsonResponse({"ok": saved > 0, "saved": saved, "errors": errors, "decimal_places": dp_vol}, status=status_code)
 
+# ---------- View 2b: Volume LIST (flat, ringan) ----------
+@login_required
+@require_GET
+def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
+    """
+    Kembalikan daftar flat {pekerjaan_id, quantity} untuk seluruh pekerjaan di project.
+    FE akan merge map ini ke pohon dari api_get_list_pekerjaan_tree.
+    Quantity bernilai "0" (string dp-kanonik) jika belum ada record VolumePekerjaan.
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    # Ambil semua pekerjaan id dalam project (agar item tanpa volume pun ikut 0)
+    p_ids = list(
+        Pekerjaan.objects
+        .filter(project=project)
+        .values_list("id", flat=True)
+    )
+
+    # Ambil volume yang sudah ada
+    vol_qs = VolumePekerjaan.objects.filter(project=project, pekerjaan_id__in=p_ids)\
+                                    .values("pekerjaan_id", "quantity")
+    vol_map = {row["pekerjaan_id"]: row["quantity"] for row in vol_qs}
+
+    # Tentukan dp kanonik untuk wire format (ikuti spec VOL)
+    dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
+
+    items = [
+        {
+            "pekerjaan_id": pid,
+            "quantity": to_dp_str(vol_map.get(pid, 0), dp_vol),  # "123,456" → kirim style kanonik "123.456"
+        }
+        for pid in p_ids
+    ]
+
+    return JsonResponse({"ok": True, "items": items, "decimal_places": dp_vol})
 
 
 # ---------- View 3: Detail AHSP per Pekerjaan ----------

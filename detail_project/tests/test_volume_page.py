@@ -210,8 +210,12 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertIn('id="vp-search-results"', html)
         self.assertIn('role="listbox"', html)  # ARIA listbox
 
-        # THEAD default (class table-light). Sticky diatur CSS.
-        self.assertIn('<thead class="table-light"', html)
+        # THEAD default: harus ada class `table-light` (boleh ada kelas tambahan)
+        import re
+        self.assertRegex(
+            html,
+            r"<thead[^>]*class=[\"'][^\"']*\btable-light\b",
+        )
         # Kolom
         for label in ["#", "Kode", "Uraian", "Satuan", "Quantity"]:
             self.assertIn(f">{label}<", html)
@@ -224,7 +228,8 @@ class VolumePekerjaanPageTests(TestCase):
         html = self.c.get(self._url_page()).content.decode("utf-8")
 
         # Offcanvas Parameter
-        self.assertIn('id="vpVarOffcanvas"', html)
+
+        self.assertRegex(html, r'id="(vpVarOffcanvas|vp-sidebar)"')
         self.assertIn('id="vp-var-table"', html)
         self.assertIn('id="vp-var-add"', html)
         self.assertIn('id="vp-var-import-btn"', html)

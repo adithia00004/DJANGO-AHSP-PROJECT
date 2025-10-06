@@ -27,16 +27,18 @@
 {% trans "Rincian RAB" as t_rincian_rab %}
 
 <aside id="dp-sidebar"
-       class="dp-sidebar"
+       class="dp-sidebar dp-z-sidebar"
        aria-label="{{ nav_label }}"
+       aria-labelledby="dp-sidebar-title"
        aria-hidden="true"
        tabindex="-1"
+       role="complementary"
        data-version="v4"
        data-pid="{{ project.id|default:'' }}">
-  <div class="dp-sidebar__inner">
+   <div class="dp-sidebar__inner dp-surface dp-border">
     <div class="d-flex align-items-start justify-content-between">
       <div class="dp-sidebar__project">
-        <div class="dp-sidebar__title"
+        <div id="dp-sidebar-title" class="dp-sidebar__title"
              title="{{ project.nama|default:project_label }}">
           {{ project.nama|default:project_label }}
         </div>
@@ -130,6 +132,6 @@
       </ul>
     </nav>
   </div>
-
-  <button class="dp-sidebar__backdrop" type="button" aria-label="{{ close_label }}"></button>
 </aside>
+<button class="dp-sidebar__backdrop dp-sidebar-backdrop" type="button" aria-label="{{ close_label }}"></button>
+

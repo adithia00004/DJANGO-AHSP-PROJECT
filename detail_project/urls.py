@@ -25,7 +25,7 @@ urlpatterns = [
 
     # ===== API: Volume =====
     path('api/project/<int:project_id>/volume-pekerjaan/save/', views_api.api_save_volume_pekerjaan, name='api_save_volume_pekerjaan'),
-
+    path('api/project/<int:project_id>/volume-pekerjaan/list/', views_api.api_list_volume_pekerjaan, name='api_list_volume_pekerjaan'),  # NEW
     # ===== API: Search AHSP (autocomplete untuk Select2) =====
     path('api/project/<int:project_id>/search-ahsp/', views_api.api_search_ahsp, name='api_search_ahsp'),
 

@@ -1,67 +1,39 @@
 /* static/detail_project/css/detail_ahsp.css */
-/* =========================================================
-   Detail AHSP — Polish Tipografi & Kontras (SCOPED .da-app)
-   - Aman: semua aturan berada di bawah .da-app
-   - Tipografi: Inter (sans), JetBrains Mono (mono)
-   - Aksesibilitas: kontras lebih baik, fokus jelas, zebra table
-   - Sticky header menghormati --dp-topbar-h + --da-toolbar-h
-   ========================================================= */
+/* =====================================================================
+   Detail AHSP — SSOT-aligned (layout-only)
+   - Tanpa warna/radius/shadow custom → pakai token global (core.css)
+   - Sticky menghormati: --dp-topbar-h + --da-toolbar-h
+   - Kontrol lebar kolom via <colgroup> (lihat HTML)
+   ===================================================================== */
 
-.da-app {
-  /* === Tokens (scoped) === */
-  --da-font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
-  --da-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-
-  --da-bg: #ffffff;
-  --da-surface: #ffffff;
-  --da-border: #e5e7eb;
-  --da-muted: #6c757d;
-  --da-muted-2: #8a9199;
-
-  --da-accent: #0d6efd;           /* primary */
-  --da-accent-soft: #eef5ff;      /* soft bg for selection */
-  --da-hover: #f8f9fa;            /* hover list */
-  --da-table-stripe: #fafbfc;     /* zebra */
-
-  --da-danger: #dc3545;
-  --da-warn: #ffc107;
-  --da-success: #198754;
-
-  --da-radius: 10px;
-  --da-radius-sm: 8px;
-
-  --da-toolbar-h: 48px;           /* kira-kira tinggi toolbar */
-  --da-topbar-h: var(--dp-topbar-h, 64px);
-
-  font-family: var(--da-font-sans);
-  color: #111827;
-}
+/* Fallback tinggi toolbar; runtime JS akan mengatur ulang */
+.da-app { --da-toolbar-h: 48px; }
 
 /* ===== Header / Judul Halaman ===== */
 .da-app .da-page-header { margin-top: 8px; }
 .da-app .da-title {
   margin: 0;
   font-weight: 700;
-  font-size: 1.125rem; /* 18px */
+  font-size: 1.125rem;
   letter-spacing: 0.2px;
 }
 .da-app .da-subtitle {
   margin: 2px 0 0 0;
-  color: var(--da-muted);
+  color: var(--dp-c-muted);
   font-size: .875rem;
 }
 
-/* ===== Toolbar ===== */
-.da-app .da-toolbar {
+/* ===== Toolbar (sticky di bawah topbar global) ===== */
+.da-app .da-toolbar{
   position: sticky;
-  top: var(--da-topbar-h);
-  z-index: 10;
+  top: var(--dp-topbar-h);
+  z-index: var(--dp-z-toolbar);
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--da-surface);
-  border: 1px solid var(--da-border);
-  border-radius: var(--da-radius);
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
   padding: 8px 10px;
   min-height: var(--da-toolbar-h);
 }
@@ -70,227 +42,189 @@
 
 /* Dirty indicator */
 .da-app .da-dirty-indicator .dot {
-  color: var(--da-warn);
+  color: var(--dp-c-warning);
   margin-right: 4px;
 }
 
 /* ===== Body Grid ===== */
-.da-app .da-body {
+.da-app .da-body{
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 12px;
 }
 
 /* ===== Sidebar ===== */
-.da-app .da-sidebar {
-  background: var(--da-surface);
-  border: 1px solid var(--da-border);
-  border-radius: var(--da-radius);
+.da-app .da-sidebar{
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
   padding: 10px;
 }
 .da-app .da-sidebar-search .da-input,
-.da-app .da-sidebar input[type="text"] {
+.da-app .da-sidebar input[type="text"]{
   width: 100%;
-  border: 1px solid var(--da-border);
-  border-radius: var(--da-radius-sm);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-sm);
   padding: 8px 10px;
   font-size: .9rem;
 }
-.da-app .da-job-list {
+.da-app .da-job-list{
   list-style: none;
   margin: 8px 0 0 0;
   padding: 0;
   max-height: calc(100vh - 220px);
   overflow: auto;
 }
-.da-app .da-job-item {
+.da-app .da-job-item{
   padding: 8px;
-  border-radius: var(--da-radius-sm);
+  border-radius: var(--dp-radius-sm);
   cursor: pointer;
   border: 1px solid transparent;
   transition: background-color .15s ease, border-color .15s ease;
 }
-.da-app .da-job-item:hover { background: var(--da-hover); }
-.da-app .da-job-item.is-active {
-  border-color: color-mix(in srgb, var(--da-accent) 15%, transparent);
-  background: var(--da-accent-soft);
+.da-app .da-job-item:hover{ background: var(--dp-c-surface-2); }
+.da-app .da-job-item.is-active{
+  border-color: color-mix(in srgb, var(--dp-c-primary) 15%, transparent);
+  background: var(--dp-c-primary-subtle);
 }
-.da-app .da-job-item .primary { display: flex; flex-direction: column; gap: 2px; }
-.da-app .da-job-item .kode {
-  font-family: var(--da-font-mono);
-  font-size: .85rem;
-  color: #111827;
-}
-.da-app .da-job-item .uraian { font-size: .92rem; }
-.da-app .da-job-item .meta {
-  display: flex; align-items: center; gap: 6px;
-  color: var(--da-muted); font-size: .8rem; margin-top: 4px;
-}
-
-/* Badges */
-.da-app .badge {
-  display: inline-block;
-  padding: .15rem .4rem;
-  border-radius: .5rem;
-  font-size: .7rem;
-  background: #e9ecef;
-  color: #111827;
-}
-.da-app .badge-ref { background: #ede7ff; }
-.da-app .badge-mod { background: #fff3cd; }
-.da-app .badge-cus { background: #d1e7dd; }
+.da-app .da-job-item .primary{ display: flex; flex-direction: column; gap: 2px; }
+.da-app .da-job-item .kode{ font-size: .85rem; color: var(--dp-c-text); }
+.da-app .da-job-item .uraian{ font-size: .92rem; }
+.da-app .da-job-item .meta{ display: flex; align-items: center; gap: 6px; color: var(--dp-c-muted); font-size: .8rem; margin-top: 4px; }
 
 /* ===== Editor Panel ===== */
-.da-app .da-editor {
-  background: var(--da-surface);
-  border: 1px solid var(--da-border);
-  border-radius: var(--da-radius);
+.da-app .da-editor{
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
   padding: 10px;
 }
 
 /* Header metadata */
-.da-app .da-job-header .row {
+.da-app .da-job-header .row{
   display: grid;
   grid-template-columns: 160px 1fr 120px 160px;
   gap: 10px;
 }
-.da-app .da-job-header .cell .label {
-  color: var(--da-muted);
+.da-app .da-job-header .cell .label{
+  color: var(--dp-c-muted);
   font-size: .8rem;
 }
-.da-app .da-job-header .value {
+.da-app .da-job-header .value{
   font-weight: 600;
   font-size: .95rem;
 }
-.da-app .da-job-header .value.mono { font-family: var(--da-font-mono); }
 
 /* ===== Segmen Header ===== */
-.da-app .da-seg-header {
+.da-app .da-seg-header{
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 10px; margin-bottom: 6px;
 }
-.da-app .da-seg-header h2 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: .2px;
+.da-app .da-seg-header h2{
+  margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: .2px;
 }
 
 /* ===== Table ===== */
-.da-app .da-table {
+.da-app .da-table{
   width: 100%;
   border-collapse: collapse;
   font-size: .9rem;
 }
 .da-app .da-table th,
-.da-app .da-table td {
-  border: 1px solid var(--da-border);
+.da-app .da-table td{
+  border: 1px solid var(--dp-c-border);
   padding: 6px 8px;
   vertical-align: top;
-  background: #fff;
+  background: var(--dp-c-surface);
 }
 
-.da-app .da-table thead.sticky {
+/* THEAD sticky (helper dipetakan di core.css) */
+.da-app .da-thead-sticky{
   position: sticky;
-  top: calc(var(--da-topbar-h) + var(--da-toolbar-h));
-  z-index: 5;
-  background: var(--da-surface);
-  box-shadow: 0 1px 0 0 var(--da-border);
+  top: calc(var(--dp-topbar-h) + var(--da-toolbar-h));
+  z-index: var(--dp-z-thead);
+  background: var(--dp-c-surface);
+  box-shadow: 0 1px 0 0 var(--dp-c-border);
 }
 
-.da-app .da-table tbody tr:nth-child(odd) td { background: var(--da-table-stripe); }
-.da-app .da-table tbody tr:hover td { background: #f2f6ff; }
-
-.da-app .da-table .mono { font-family: var(--da-font-mono); }
+.da-app .da-table .mono{ font-variant-numeric: tabular-nums; }
 
 /* ===== Inputs & Editable ===== */
 .da-app .cell-input,
-.da-app .da-input {
+.da-app .da-input{
   width: 100%;
-  border: 1px solid var(--da-border);
-  border-radius: var(--da-radius-sm);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-sm);
   padding: 6px 8px;
   font-size: .9rem;
-  background: #fff;
-  color: #111827;
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
 }
-.da-app .cell-input.mono { font-family: var(--da-font-mono); }
-
-.da-app .cell-wrap[contenteditable="true"] {
+.da-app .cell-wrap[contenteditable="true"]{
   display: block;
   min-height: 30px;
-  border: 1px solid var(--da-border);
-  border-radius: var(--da-radius-sm);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-sm);
   padding: 6px 8px;
-  background: #fff;
-  color: #111827;
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
 }
-
 .da-app .cell-input:focus,
 .da-app .da-input:focus,
-.da-app .cell-wrap[contenteditable="true"]:focus {
+.da-app .cell-wrap[contenteditable="true"]:focus{
   outline: none;
-  border-color: color-mix(in srgb, var(--da-accent) 55%, var(--da-border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--da-accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--dp-c-primary) 55%, transparent);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
 }
 
-/* Readonly state (baik untuk REF) */
+/* Readonly state */
 .da-app.da-readonly .cell-input,
-.da-app.da-readonly .cell-wrap {
-  background: var(--da-hover);
-  color: var(--da-muted-2);
+.da-app.da-readonly .cell-wrap{
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
   pointer-events: none;
 }
-.da-app.da-readonly .seg-tools { display: none; }
+.da-app.da-readonly .seg-tools{ display: none; }
 
-/* Chip kecil untuk warning harga (disembunyikan default) */
-.da-app .chip {
+/* Chip/hint kecil */
+.da-app .chip{
   display: inline-flex; align-items: center; gap: 6px;
   border-radius: 999px;
   padding: 2px 8px;
-  font-size: .75rem;
-  line-height: 1;
-  border: 1px solid var(--da-border);
-  background: #fff;
-  color: #111827;
+  font-size: .75rem; line-height: 1;
+  border: 1px solid var(--dp-c-border);
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
 }
-.da-app .chip-warn { border-color: #ffe69c; background: #fff9db; color: #664d03; }
-
-/* ===== Row reusable (template) ===== */
-.da-app .drag-handle {
-  font-family: var(--da-font-mono);
-  user-select: none;
-  cursor: grab;
-  color: #9aa0a6;
-  margin-right: 6px;
-}
-.da-app .row-select { vertical-align: middle; margin-right: 6px; }
-.da-app .row-index { font-family: var(--da-font-mono); color: #6b7280; }
 
 /* ===== Footer editor ===== */
-.da-app .da-editor-footer {
+.da-app .da-editor-footer{
   display: flex; align-items: center; justify-content: space-between;
-  margin-top: 10px; color: var(--da-muted); font-size: .82rem;
+  margin-top: 10px; color: var(--dp-c-muted); font-size: .82rem;
 }
 
-/* ===== Toasts (container di JS) — gaya minimal ===== */
-.da-app .da-toasts { font-size: .9rem; }
-
 /* ===== Responsif ===== */
-@media (max-width: 1024px) {
-  .da-app .da-body { grid-template-columns: 1fr; }
-  .da-app .da-sidebar { order: 2; }
-  .da-app .da-editor { order: 1; }
+@media (max-width: 1024px){
+  .da-app .da-body{ grid-template-columns: 1fr; }
+  .da-app .da-sidebar{ order: 2; }
+  .da-app .da-editor{ order: 1; }
 }
 
 /* ===== Preferensi Aksesibilitas ===== */
-@media (prefers-reduced-motion: reduce) {
-  .da-app * { transition: none !important; animation: none !important; }
+@media (prefers-reduced-motion: reduce){
+  .da-app *{ transition: none !important; animation: none !important; }
 }
 
 /* ===== Helper kecil ===== */
-.da-app .da-empty {
-  color: var(--da-muted);
+.da-app .da-empty{
+  color: var(--dp-c-muted);
   text-align: center;
   font-size: .9rem;
+}
+
+/* Print: nonaktifkan sticky */
+@media print{
+  .da-app .da-thead-sticky{
+    position: static !important; top: auto !important; box-shadow: none !important;
+  }
 }

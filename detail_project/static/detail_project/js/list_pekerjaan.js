@@ -1,15 +1,32 @@
 // /static/detail_project/js/list_pekerjaan.js
 /* =====================================================================
-   List Pekerjaan — JS (Drop-in Replace)
-   Kompatibel: jQuery 3.7, Select2 4.1, Bootstrap 5
-   Mode sidebar: Overlay (aktif), Hover-Edge (dinonaktifkan khusus halaman)
-   ===================================================================== */
-(function () {
-  // ========= Utilities =========
-  const log  = (...a) => console.debug('[LP]', ...a);
-  const warn = (...a) => console.warn('[LP]', ...a);
-  const err  = (...a) => console.error('[LP]', ...a);
+   List Pekerjaan — JS (Drop-in Replace, v2 → feel v1)
+   Target: Batch 2, tapi memaksa layout & workflow mirip Batch 1 (legacy)
+   - Otomatis "migrasi" layout bila template masih punya tabel global #lp-table:
+     * Buat <div id="klas-list" class="vstack gap-3"> setelah tabel
+     * Sembunyikan wrapper tabel global → kartu per Klas/Sub tampil seperti v1
+   - Kompatibel: jQuery 3.7, Select2 4.1, Bootstrap 5
+   - Sidebar: Overlay (aktif), Hover-Edge kanan (desktop), fokus/shortcuts aman
+   - Payload & kontrak API: TANPA perubahan (SSOT)
 
+   Catatan: Bila di kemudian hari kamu sudah menghapus tabel global dari template
+   (mengikuti rekomendasi), bagian migrasi layout akan otomatis no-op.
+   ===================================================================== */
+
+(function () {
+  // ========= [UTILITIES] Logging & Guards ====================================
+  const __DEBUG__ = false; // set true untuk log/diagnostic
+
+  const log  = (...a) => __DEBUG__ && console.debug('[LP]', ...a);
+  const warn = (...a) => __DEBUG__ && console.warn('[LP]', ...a);
+  const err  = (...a) => console.error('[LP]', ...a); // error tetap tampil
+
+  // jQuery alias (boleh null jika belum ter-load saat eval; cek dilakukan runtime)
+  const $ = window.jQuery || window.$;
+  const HAS_JQ = !!$;
+  const HAS_S2 = !!($ && $.fn && $.fn.select2);
+
+  // Global error diagnostics (tidak mengubah flow normal)
   window.addEventListener('error', (e) => {
     err('GlobalError:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno, e.error);
   });
@@ -17,23 +34,88 @@
     err('UnhandledPromise:', e.reason);
   });
 
-  // Core shortcuts
-  const http = (window.DP && DP.core && DP.core.http) ? DP.core.http : null;
-  const tShow = (window.DP && DP.core && DP.core.toast && DP.core.toast.show) ? DP.core.toast.show : (msg)=>alert(msg);
+  // ========= [CORE SHORTCUTS] jfetch & toast =================================
+  const jfetch = (window.DP && DP.core && DP.core.http && DP.core.http.jfetch)
+    ? DP.core.http.jfetch
+    : async function(url, opts = {}) {
+        const res  = await fetch(url, { credentials: 'same-origin', ...opts });
+        const ok   = res.ok;
+        const ctyp = res.headers.get('content-type') || '';
+        const body = ctyp.includes('application/json') ? await res.json() : await res.text();
+        if (!ok) {
+          const e = new Error('HTTP ' + res.status);
+          e.status = res.status; e.body = body;
+          throw e;
+        }
+        return body;
+      };
 
-  // ========= Sidebar refs =========
-  const edgeSidebar    = document.getElementById('lpSidebar');      // (hover-edge) — dinonaktifkan halaman ini
-  const edgeHotspot    = document.querySelector('.lp-sidebar-hotspot');
-  const edgeCloseBtn   = document.getElementById('lpSidebarClose');
+  const tShow = (window.DP && DP.core && DP.core.toast && DP.core.toast.show)
+    ? DP.core.toast.show
+    : (msg)=>alert(msg);
 
-  const overlaySidebar = document.getElementById('lp-sidebar');     // Overlay (aktif)
+  // ========= [DOM REFS] Sidebar & Area Utama =================================
+  const edgeSidebar    = document.getElementById('lpSidebar'); // (hover-edge) — nonaktif khusus halaman
+  const overlaySidebar = document.getElementById('lp-sidebar'); // Overlay (aktif)
   const overlayPanel   = overlaySidebar?.querySelector('.lp-sidebar-inner');
-  const rightHotspot   = document.querySelector('.lp-overlay-hotspot'); // Hotspot kanan (baru)
+  const rightHotspot   = document.querySelector('.lp-overlay-hotspot'); // hotspot kanan (baru)
+  const HOVER_AUTO_CLOSE = (overlaySidebar?.dataset.hoverclose ?? '1') !== '0';
+  let overlayOpenMode = null; // 'hover' | 'manual' | null
+  const mainArea = document.querySelector('.lp-main'); // untuk ARIA hide saat overlay terbuka
 
+  // ========= [DOM REFS] Root & Anchors =======================================
+  const root = document.getElementById('lp-app');
 
-  // ========= Root & anchors =========
-  const root     = document.getElementById('lp-app');
-  const klasWrap = document.getElementById('klas-list');
+  // --- [LEGACY FEEL MIGRATION] -----------------------------------------------
+  // Batch 2 template menaruh #klas-list di <tbody> dalam #lp-table.
+  // Agar mirip Batch 1, kita buat DIV container baru dan sembunyikan tabel global.
+  function ensureLegacyLayoutContainer() {
+    // Cari elemen-elemen potensial
+    const tableWrap = document.querySelector('.lp-table-wrap');
+    const table     = document.getElementById('lp-table');
+    let   klasList  = document.getElementById('klas-list');
+
+    // Jika #klas-list sudah berupa DIV card container → tidak perlu migrasi
+    if (klasList && klasList.tagName !== 'TBODY') {
+      return klasList;
+    }
+
+    // Jika tidak ada tabel global → kemungkinan template sudah legacy-friendly
+    if (!table || !tableWrap) {
+      // pastikan #klas-list ada, kalau tidak buat
+      if (!klasList) {
+        klasList = document.createElement('div');
+        klasList.id = 'klas-list';
+        klasList.className = 'vstack gap-3';
+        (mainArea || document.body).appendChild(klasList);
+      } else if (klasList.tagName === 'TBODY') {
+        // konversi tbody → div
+        const newDiv = document.createElement('div');
+        newDiv.id = 'klas-list';
+        newDiv.className = 'vstack gap-3';
+        klasList.replaceWith(newDiv);
+        klasList = newDiv;
+      }
+      return klasList;
+    }
+
+    // Ada tabel global dan #klas-list berada di TBODY → migrasikan
+    const newDiv = document.createElement('div');
+    newDiv.id = 'klas-list';
+    newDiv.className = 'vstack gap-3';
+
+    // Sisipkan setelah wrapper tabel agar tata letak tidak lompat
+    tableWrap.insertAdjacentElement('afterend', newDiv);
+
+    // Sembunyikan wrapper tabel global (feel seperti v1)
+    tableWrap.style.display = 'none';
+
+    // Kembalikan container baru
+    return newDiv;
+  }
+
+  // Buat/ambil container list yang benar (DIV seperti v1)
+  let klasWrap = ensureLegacyLayoutContainer();
 
   // Tombol (kanonik + alias class)
   const btnAddKlasAll    = Array.from(document.querySelectorAll('#btn-add-klas, .js-add-klas'));
@@ -45,10 +127,12 @@
   const navWrap           = document.getElementById('lp-nav');
   const navSearchSide     = document.getElementById('lp-nav-search-side');
   const navSearchToolbar  = document.getElementById('lp-nav-search');
+  const navAnnounce       = document.getElementById('lp-nav-announce');
+  const tbAnnounce        = document.getElementById('lp-toolbar-announce');
   const btnExpandAllAll   = Array.from(document.querySelectorAll('.lp-nav-expand-all, #lp-nav-expand-all'));
   const btnCollapseAllAll = Array.from(document.querySelectorAll('.lp-nav-collapse-all, #lp-nav-collapse-all'));
 
-  // Live region
+  // ========= [A11Y] Live region ==============================================
   let live = document.getElementById('lp-live');
   if (!live) {
     live = document.createElement('div');
@@ -60,10 +144,10 @@
   }
   const say = (t) => { live.textContent = t; };
 
-  // ========= Diagnostics =========
+  // ========= [DIAGNOSTICS] Cek Anchor Wajib ==================================
   const REQUIRED = [
     ['#lp-app', !!root],
-    ['#klas-list', !!klasWrap],
+    ['#klas-list (DIV legacy)', !!klasWrap && klasWrap.tagName !== 'TBODY'],
     ['#btn-add-klas', btnAddKlasAll.length > 0],
     ['#btn-save', btnSaveAll.length > 0],
     ['#btn-compact', btnCompactAll.length > 0],
@@ -90,81 +174,98 @@
     log('All required anchors OK');
   }
 
-+  // ========= Hover-edge =========
-  // Kiri (global sidebar) di-handle oleh sidebar_global.js via .lp-sidebar-hotspot
-  // Di sini kita hanya sediakan stub agar pemanggil lama aman:
+  // ========= [SIDEBAR-EDGE (STUB)] Dinonaktifkan di halaman ini ==============
   function openEdge() {}
   function closeEdge() {}
   function isEdgeOpen(){ return false; }
 
-  // Kanan (overlay nav lokal) — aktif di desktop saja
+  // ========= [HOVER-EDGE KANAN] untuk Overlay lokal (desktop) =================
   function setupRightHoverEdge(){
     if (!rightHotspot || !overlaySidebar) return;
     const isDesktop = () => window.matchMedia('(min-width: 992px)').matches;
+    const panel = overlayPanel || overlaySidebar;   // penting: pakai panel, bukan aside
     let tIn = null, tOut = null;
-    const ENTER_DELAY = 10, LEAVE_DELAY = 100;
+    const ENTER_DELAY = 10, LEAVE_DELAY = 120;
 
     rightHotspot.addEventListener('mouseenter', () => {
       if (!isDesktop()) return;
       clearTimeout(tOut);
-      tIn = setTimeout(()=> setOverlayVisible(true, {autofocus:false}), ENTER_DELAY);
+      tIn = setTimeout(() => setOverlayVisible(true, {autofocus:false, mode:'hover'}), ENTER_DELAY);
     }, { passive:true });
 
     rightHotspot.addEventListener('mouseleave', () => {
       if (!isDesktop()) return;
       clearTimeout(tIn);
-      // Tutup bila mouse tidak sedang di dalam panel overlay
-      if (!overlaySidebar.matches(':hover')) {
-        tOut = setTimeout(()=> setOverlayVisible(false), LEAVE_DELAY);
+      if (HOVER_AUTO_CLOSE && overlayOpenMode === 'hover' && !panel.matches(':hover')) {
+        tOut = setTimeout(() => setOverlayVisible(false), LEAVE_DELAY);
       }
     }, { passive:true });
 
-    overlaySidebar.addEventListener('mouseenter', () => { clearTimeout(tOut); }, { passive:true });
-    overlaySidebar.addEventListener('mouseleave', () => {
+    panel.addEventListener('mouseenter', () => { clearTimeout(tOut); }, { passive:true });
+
+    panel.addEventListener('mouseleave', () => {
       if (!isDesktop()) return;
-      if (!rightHotspot.matches(':hover')) {
-        tOut = setTimeout(()=> setOverlayVisible(false), LEAVE_DELAY);
+      if (HOVER_AUTO_CLOSE && overlayOpenMode === 'hover' && !rightHotspot.matches(':hover')) {
+        tOut = setTimeout(() => setOverlayVisible(false), LEAVE_DELAY);
       }
     }, { passive:true });
   }
+  try { setupRightHoverEdge(); } catch(_){}
 
-  // ========= Overlay sidebar (aktif) =========
+  // ========= [OVERLAY SIDEBAR] Open/Close & Focus Trap =======================
   let lastFocusBeforeOpen = null;
+
+  // [TDZ-SAFE] Predeclare suggest boxes agar aman ketika overlay ditutup cepat
+  let sideSuggest = null;
+  let tbSuggest   = null;
+
   function setOverlayVisible(show, opts = {}){
-    // default: autofocus = true, tapi bisa dimatikan oleh pemanggil
-    const { autofocus = true } = opts;
+    const { autofocus = true, mode = null } = opts;
     if (!overlaySidebar) return;
+
     overlaySidebar.classList.toggle('show', show);
-    overlaySidebar.classList.toggle('is-open', show);   // NEW alias
+    overlaySidebar.classList.toggle('is-open', show);
     document.body.classList.toggle('lp-overlay-open', show);
     btnSidebarTogAll.forEach(btn => btn.setAttribute('aria-expanded', String(show)));
 
+    // Sinkronkan trigger standar (data-toggle="side-right")
+    document.querySelectorAll('[data-toggle="side-right"][aria-controls="lp-sidebar"]')
+      .forEach(el => el.setAttribute('aria-expanded', String(show)));
+    document.querySelectorAll('[data-open="lp-sidebar"]').forEach(el => {
+      el.setAttribute('aria-expanded', String(show));
+    });
+
+    // ARIA sync & announce
+    overlaySidebar.setAttribute('aria-hidden', show ? 'false' : 'true');
+    if (mainArea) {
+      if (show) mainArea.setAttribute('aria-hidden','true');
+      else mainArea.removeAttribute('aria-hidden');
+    }
+    try {
+      document.dispatchEvent(new CustomEvent('lp:overlay:change', { detail: { open: !!show } }));
+    } catch(_){}
+
     if (show) {
+      overlayOpenMode = mode || overlayOpenMode || 'manual';
       lastFocusBeforeOpen = document.activeElement;
-      if (autofocus) {
-        // lebih responsif & tanpa delay
-        requestAnimationFrame(()=> navSearchSide?.focus());
-      }
+      if (autofocus) requestAnimationFrame(()=> navSearchSide?.focus());
       startFocusTrap();
       try { localStorage.setItem('lp_sidebar_open', '1'); } catch {}
     } else {
+      overlayOpenMode = null;
       stopFocusTrap();
-      if (navSearchSide) {
-        navSearchSide.value = '';
-        hideSuggestions(sideSuggest);
-      }
+      if (navSearchSide) { navSearchSide.value = ''; }
+      if (sideSuggest) { hideSuggestions(sideSuggest); } // TDZ-safe
       try { localStorage.setItem('lp_sidebar_open', '0'); } catch {}
-      if (lastFocusBeforeOpen && document.contains(lastFocusBeforeOpen)) {
-        lastFocusBeforeOpen.focus();
-      } else {
-        btnSidebarTogAll[0]?.focus();
-      }
+      if (lastFocusBeforeOpen && document.contains(lastFocusBeforeOpen)) lastFocusBeforeOpen.focus();
+      else btnSidebarTogAll[0]?.focus();
     }
   }
-  function isOverlayOpen(){ 
+
+  function isOverlayOpen(){
     return !!(overlaySidebar &&
-    (overlaySidebar.classList.contains('show') || overlaySidebar.classList.contains('is-open'))); // NEW
-   }
+      (overlaySidebar.classList.contains('show') || overlaySidebar.classList.contains('is-open')));
+  }
 
   (function restoreOverlayState(){
     if (!overlaySidebar) return;
@@ -177,11 +278,24 @@
   btnSidebarTogAll.forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.preventDefault();
-      setOverlayVisible(!isOverlayOpen());
+      if (isOverlayOpen()) setOverlayVisible(false);
+      else setOverlayVisible(true, { mode: 'manual' });
     });
   });
 
+  // Delegasi global: tombol apapun yang punya data-open="lp-sidebar"
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-open="lp-sidebar"]');
+    if (!t) return;
+    e.preventDefault();
+    setOverlayVisible(!isOverlayOpen(), { mode: 'manual' });
+  }, false);
+
+  // Shortcuts umum (ESC, '/'), dengan pengecualian untuk Select2
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && window.jQuery && jQuery(e.target).closest('.select2-container').length) {
+      return; // biarkan Select2 handle ESC saat dropdown aktif
+    }
     if (e.key === '/' && isOverlayOpen()) {
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -194,6 +308,19 @@
     }
   });
 
+  // Menelan shortcut app-level saat Select2 fokus/terbuka
+  document.addEventListener('keydown', (e) => {
+    const $jq = window.jQuery;
+    if ($jq && $jq(e.target).closest('.select2-dropdown, .select2-container--open').length) {
+      const key = e.key.toLowerCase();
+      const meta = e.ctrlKey || e.metaKey;
+      if (key === '/' || (meta && (key === 'f' || key === 's'))) {
+        e.stopImmediatePropagation();
+      }
+    }
+  }, true);
+
+  // Klik backdrop overlay menutup panel
   overlaySidebar?.addEventListener('click', (e) => {
     const panel = overlaySidebar.querySelector('.lp-sidebar-inner');
     if (!panel) return;
@@ -202,12 +329,15 @@
   overlaySidebar?.querySelector('[data-action="close-sidebar"]')
     ?.addEventListener('click', () => setOverlayVisible(false));
 
-  // ========= Focus trap =========
+  // ========= [FOCUS TRAP] ====================================================
   let trapKeydown = null;
   function getFocusable(container) {
     return Array.from(container.querySelectorAll(
       'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
-    )).filter(el => el.offsetParent !== null || el === document.activeElement);
+    )).filter(el => {
+      const cs = window.getComputedStyle(el);
+      return cs.visibility !== 'hidden' && cs.display !== 'none';
+    });
   }
   function startFocusTrap(){
     if (!overlaySidebar) return;
@@ -228,7 +358,7 @@
     trapKeydown = null;
   }
 
-  // ========= App guards =========
+  // ========= [APP GUARDS] Root & Project Id ==================================
   if (!root || !klasWrap) {
     err('Abort: #lp-app atau #klas-list tidak ditemukan.');
     return;
@@ -236,14 +366,8 @@
   const projectId = root.dataset.projectId;
   const REF_YEAR  = root.dataset.refYear || null;
 
-  // ========= Helpers =========
+  // ========= [HELPERS] Umum ===================================================
   const uid = () => Math.random().toString(36).slice(2, 9);
-  function getCsrf() {
-    const tokenFromAttr = root.dataset.csrfToken;
-    if (tokenFromAttr) return tokenFromAttr;
-    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : '';
-  }
   function renum(tbody) {
     if (!tbody) return;
     Array.from(tbody.children).forEach((tr, i) => {
@@ -263,6 +387,38 @@
     if (src === 'ref_modified') return REF_YEAR ? `AHSP ${REF_YEAR} (modified)` : 'Ref (modified)';
     return 'Kustom';
   }
+
+  // Mapper aman untuk berbagai format respons API → {id, text}
+  function mapToSelect2Results(input){
+    try{
+      if (!input) return [];
+      if (Array.isArray(input)) {
+        return input.map(it => ({
+          id:  String(it.id   ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
+          text:String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
+        })).filter(x => x.id && x.text);
+      }
+      if (Array.isArray(input.results)) return input.results;
+      if (Array.isArray(input.items)) {
+        return input.items.map(it => ({
+          id:  String(it.id   ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
+          text:String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
+        })).filter(x => x.id && x.text);
+      }
+      const src = Array.isArray(input.data) ? input.data : Object.values(input);
+      if (Array.isArray(src) && src.length && typeof src[0] === 'object') {
+        return src.map(it => ({
+          id:  String(it.id   ?? it.pk ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
+          text:String(it.text ?? it.label
+                 ?? (it.kode_ahsp && it.nama_ahsp
+                      ? `${it.kode_ahsp} — ${it.nama_ahsp}`
+                      : (it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')))
+        })).filter(x => x.id && x.text);
+      }
+      return [];
+    }catch(_){ return []; }
+  }
+
   function escRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
   function highlightLabel(raw, kw){
     if (!kw) return escapeHtml(raw);
@@ -270,8 +426,7 @@
     return escapeHtml(raw).replace(re, '<span class="lp-hit">$1</span>');
   }
 
-  // ========= URAIAN: Preview 2-baris & Edit =========
-  // [CHG] — menggantikan setupUraianPreview lama
+  // ========= [URAIAN] Preview 2-baris & Edit =================================
   function autoResize(ta){ if(!ta) return; ta.style.height='auto'; ta.style.height = Math.max(ta.scrollHeight, ta.offsetHeight) + 'px'; }
   function syncPreview(td){
     const ta = td?.querySelector('.uraian');
@@ -303,23 +458,25 @@
     pv.style.cursor = editable ? 'text' : 'default';
   }
   function setupUraianInteractivity(scope = document){
-    scope.querySelectorAll('td.col-urai').forEach((td)=>{
+    // dukung selector lama (td.col-urai) dan baru
+    scope.querySelectorAll('td.col-urai, #lp-table tbody td:nth-child(4)').forEach((td)=>{
       const ta = td.querySelector('.uraian');
       let pv = td.querySelector('.lp-urai-preview');
       if (!ta) return;
       if (!pv) { pv = document.createElement('div'); pv.className = 'lp-urai-preview'; td.prepend(pv); }
-      // initial render
       syncPreview(td); autoResize(ta); applyUraianGate(td);
-      // events
       pv.onclick = ()=> enterEdit(td);
       ta.addEventListener('input', ()=>{ autoResize(ta); syncPreview(td); });
       ta.addEventListener('focus', ()=> td.classList.add('is-editing'));
       ta.addEventListener('blur',  ()=> { td.classList.remove('is-editing'); syncPreview(td); });
     });
   }
-  document.addEventListener('DOMContentLoaded', ()=> setupUraianInteractivity(document));
+  document.addEventListener('DOMContentLoaded', ()=>{
+    setupUraianInteractivity(document);
+    try { setupRightHoverEdge(); } catch(_){}
+  });
 
-  // ========= Builders: Klas/Sub/Row =========
+  // ========= [BUILDERS] Klas / Sub / Row =====================================
   let kCounter = 0;
 
   function newKlas(prefillName = null) {
@@ -333,18 +490,26 @@
     div.innerHTML = `
       <div class="card-header d-flex gap-2 align-items-center">
         <input class="form-control klas-name" placeholder="Nama Klasifikasi (auto: Klasifikasi ${kCounter})" value="${prefillName ? escapeHtml(prefillName) : ''}">
-        <button class="btn btn-add-sub lp-btn-wide" type="button">+ Sub-Klasifikasi</button>
-        <button class="btn btn-outline-danger btn-del" type="button">Hapus</button>
+        <button class="btn btn-primary btn-add-sub lp-btn lp-btn-wide" type="button">
+          <i class="bi bi-plus-circle"></i> Sub-Klasifikasi
+        </button>
+        <button class="btn btn-outline-danger btn-del lp-btn" type="button">Hapus</button>
       </div>
       <div class="card-body vstack gap-2 sub-wrap"></div>`;
 
     div.dataset.tempId = `k${kCounter}_${Date.now()}`;
     const subWrap = div.querySelector('.sub-wrap');
     div.querySelector('.btn-add-sub').onclick = () => { addSub(subWrap); scheduleSidebarRebuild(); };
-    div.querySelector('.btn-del').onclick = () => { div.remove(); scheduleSidebarRebuild(); };
+    div.querySelector('.btn-del').onclick     = () => { div.remove(); scheduleSidebarRebuild(); };
     div.querySelector('.klas-name').addEventListener('input', scheduleSidebarRebuild);
 
     klasWrap.appendChild(div);
+    requestAnimationFrame(()=>{
+      div.scrollIntoView({ behavior:'smooth', block:'start' });
+      div.classList.add('lp-flash');
+      const inp = div.querySelector('.klas-name'); inp?.focus();
+      say('Klasifikasi ditambahkan'); tbAnnounce && (tbAnnounce.textContent = 'Klasifikasi ditambahkan');
+    });
     lastKlasTarget = div;
     scheduleSidebarRebuild();
     return div;
@@ -359,32 +524,49 @@
     block.dataset.anchorId = id;
 
     block.innerHTML = `
-      <div class="d-flex gap-2 align-items-center mb-2">
-        <input class="form-control sub-name" placeholder="Nama Sub-Klasifikasi (mis. 1.1)" value="${name ? escapeHtml(name) : ''}">
-        <button class="btn btn-add-pekerjaan lp-btn-wide" type="button">+ Pekerjaan</button>
-        <button class="btn btn-outline-danger btn-del" type="button">Hapus</button>
-      </div>
-      <table class="table mb-0 list-pekerjaan lp-table">
-        <thead>
-          <tr>
-            <th class="col-num">#</th>
-            <th class="col-mode">Sumber</th>
-            <th class="col-ref">Referensi AHSP</th>
-            <th class="col-urai">Uraian Pekerjaan</th>
-            <th class="col-sat">Satuan</th>
-            <th class="col-act"></th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>`;
+    <div class="d-flex gap-2 align-items-center mb-2">
+      <input class="form-control sub-name" placeholder="Nama Sub-Klasifikasi (mis. 1.1)" value="${name ? escapeHtml(name) : ''}">
+      <button class="btn btn-primary btn-add-pekerjaan lp-btn lp-btn-wide" type="button">
+        <i class="bi bi-plus-circle"></i> Pekerjaan
+      </button>
+      <button class="btn btn-outline-danger btn-del" type="button">Hapus</button>
+    </div>
+    <table class="table mb-0 list-pekerjaan lp-table">
+      <!-- SSOT: kolom & rasio pakai colgroup; CSS memberi width via var -->
+      <colgroup>
+        <col class="col-num">
+        <col class="col-mode">
+        <col class="col-ref">
+        <col class="col-urai">
+        <col class="col-sat">
+        <col class="col-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col-num">No</th>
+          <th class="col-mode">Sumber</th>
+          <th class="col-ref">Referensi AHSP</th>
+          <th class="col-urai">Uraian Pekerjaan</th>
+          <th class="col-sat">Satuan</th>
+          <th class="col-act"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>`;
 
     block.dataset.tempId = `s${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const tbody = block.querySelector('tbody');
     block.querySelector('.btn-add-pekerjaan').onclick = () => { addPekerjaan(tbody); scheduleSidebarRebuild(); };
-    block.querySelector('.btn-del').onclick = () => { block.remove(); scheduleSidebarRebuild(); };
+    block.querySelector('.btn-del').onclick           = () => { block.remove(); scheduleSidebarRebuild(); };
     block.querySelector('.sub-name').addEventListener('input', scheduleSidebarRebuild);
 
     container.appendChild(block);
+    requestAnimationFrame(()=>{
+      block.scrollIntoView({ behavior:'smooth', block:'start' });
+      block.classList.add('lp-flash');
+      const inp = block.querySelector('.sub-name'); inp?.focus();
+      say('Sub-Klasifikasi ditambahkan'); tbAnnounce && (tbAnnounce.textContent = 'Sub-Klasifikasi ditambahkan');
+    });
     scheduleSidebarRebuild();
     return block;
   }
@@ -396,7 +578,8 @@
     $sel.empty().append(opt).trigger('change');
   }
 
-  function addPekerjaan(tbody, preset = {}) {
+  function addPekerjaan(tbody, preset = {}, opts = {}) {
+    const { autofocus = true } = opts;
     const {
       mode = 'ref',
       ref_id = null,
@@ -441,18 +624,21 @@
           </div>
         </td>
         <td class="col-urai">
-          <div class="lp-urai-preview"></div> <!-- [CHG] preview ringkas -->
+          <div class="lp-urai-preview"></div>
           <textarea class="form-control uraian" rows="2" placeholder="Uraian pekerjaan"></textarea>
         </td>
         <td class="col-sat">
           <input class="form-control satuan" placeholder="cth: m, m2, m3, unit">
         </td>
         <td class="col-act">
-          <button class="btn btn-outline-danger btn-del" title="Hapus baris">✕</button>
+          <button class="btn btn-outline-danger btn-del" title="Hapus baris">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+            <span class="visually-hidden">Hapus</span>
+          </button>
         </td>`;
     }
 
-    // [CHG] dataset untuk gate editing
+    // gate editing via dataset
     row.dataset.sourceType = mode || 'ref';
     if (ref_id) row.dataset.refId = String(ref_id);
 
@@ -466,24 +652,28 @@
     const srcSel = row.querySelector('.src');
     if (srcSel) srcSel.value = mode;
 
-    // ----- Select2 init -----
-    const host        = $(row).find('.select2-host');
-    const $sel        = $(row).find('.ref-select');
+    // ----- Select2 init (dengan guard jQuery/Select2) -----
+    let host, $sel;
     const selEl       = row.querySelector('.ref-select');
     const ajaxUrl     = selEl?.dataset.ajaxUrl || '/referensi/api/search';
     const minLen      = Number(selEl?.dataset.minlength || 2);
     const placeholder = selEl?.dataset.placeholder || 'Cari referensi kode/nama…';
 
-    if (typeof $.fn?.select2 === 'function') {
+    if (HAS_JQ) {
+      host = $(row).find('.select2-host');
+      $sel = $(row).find('.ref-select');
+    }
+
+    if (HAS_S2 && $sel && $sel.length) {
       $sel.select2({
         width: '100%',
         placeholder,
         allowClear: false,
         minimumInputLength: minLen,
         dropdownAutoWidth: true,
-        dropdownParent: $(document.body),
+        dropdownParent: host,
         ajax: {
-          delay: 250,
+          delay: 140,
           transport: function (params, success, failure) {
             const q = params.data && params.data.q ? params.data.q : '';
             fetch(`${ajaxUrl}?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' })
@@ -493,6 +683,7 @@
           },
           processResults: function (data) { return data; }
         },
+        closeOnSelect: true,
         templateResult: function(item) {
           if (item.loading) return item.text;
           return $(
@@ -513,12 +704,21 @@
       $sel.on('select2:open', function () {
         $('.select2-host.s2-open').removeClass('s2-open');
         host.addClass('s2-open');
+        setTimeout(() => { try { $('.select2-container--open .select2-search__field').trigger('focus'); } catch{} }, 0);
+
+        // blokir Enter agar tidak bentrok dengan shortcut global
+        const $input = $('.select2-container--open .select2-search__field');
+        $input.on('keydown.lpEnter', (ev) => {
+          if (ev.key === 'Enter') { ev.stopImmediatePropagation(); }
+        });
+        $sel.one('select2:close', () => $input.off('keydown.lpEnter'));
       });
+
       $sel.on('select2:close', function () { host.removeClass('s2-open'); });
 
       row.querySelector('.ref-select')?.classList.add('is-enhanced');
 
-      // Clear via Delete/Backspace
+      // Clear via Delete/Backspace pada selection
       const $selection = host.find('.select2-selection');
       $selection.on('keydown', function(e){
         if ((e.key === 'Delete' || e.key === 'Backspace') && $sel.val()) {
@@ -537,7 +737,7 @@
         $sel.one('select2:close', () => $input.off('keydown.lpClear', onKey));
       });
 
-      // [CHG] set dataset.refId & seed uraian saat ref_modified
+      // set dataset.refId & seed uraian saat ref_modified
       $sel.on('select2:select', function () {
         const v = $sel.val();
         if (v) row.dataset.refId = String(v);
@@ -549,15 +749,23 @@
           const parts = full.split('—');
           const ura  = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
           if (ura) { ta.value = ura; }
-          const td = row.querySelector('td.col-urai'); syncPreview(td); autoResize(ta);
+          const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)'); 
+          syncPreview(td || row);
+          autoResize(ta);
         }
       });
-      // (opsional) kosongkan dataset.refId saat referensi di-clear
+      // kosongkan dataset.refId saat clear
       $sel.on('change', function () {
         if (!$sel.val()) { delete row.dataset.refId; }
       });
 
     } else {
+      // Tanpa jQuery/Select2: biarkan native select terlihat & aktif
+      if (selEl) {
+        selEl.classList.remove('is-enhanced');
+        selEl.removeAttribute('style');
+        selEl.disabled = false;
+      }
       warn('Select2 belum tersedia saat init baris; lanjut tanpa enhance');
     }
 
@@ -567,7 +775,14 @@
         || (snapshot_kode && snapshot_uraian
               ? `${snapshot_kode || ''}${snapshot_kode && snapshot_uraian ? ' — ' : ''}${snapshot_uraian || ''}`
               : null);
-      preselectSelect2($sel, ref_id, lbl);
+      if (HAS_S2 && $sel && $sel.length) {
+        preselectSelect2($sel, ref_id, lbl);
+      } else if (selEl) {
+        const opt = document.createElement('option');
+        opt.value = String(ref_id); opt.textContent = lbl || String(ref_id);
+        opt.selected = true;
+        selEl.innerHTML = ''; selEl.appendChild(opt);
+      }
     }
 
     const uraianInput  = row.querySelector('.uraian');
@@ -579,40 +794,59 @@
 
     function syncFields() {
       const v = srcSel?.value;
-      row.dataset.sourceType = v || ''; // [CHG] gate editing
+      row.dataset.sourceType = v || '';
       const isCustom  = (v === 'custom');
       const isRefLike = (v === 'ref' || v === 'ref_modified');
 
       if (uraianInput) uraianInput.readOnly = !(isCustom || v === 'ref_modified');
       if (satuanInput) satuanInput.readOnly = !isCustom;
 
-      if (typeof $.fn?.select2 === 'function') {
+      if (HAS_S2 && $sel && $sel.length) {
         $sel.prop('disabled', !isRefLike).trigger('change.select2');
         if (!isRefLike && $sel.val()) {
           $sel.val(null).trigger('change');
-          delete row.dataset.refId; // (opsional) bersihkan jejak ref lama
+          delete row.dataset.refId;
         }
-
-      } else {
-        $sel.prop('disabled', !isRefLike);
-        if (!isRefLike && $sel.val()) {
-          $sel.val(null).trigger?.('change');
-          delete row.dataset.refId; // (opsional)
+      } else if (selEl) {
+        selEl.disabled = !isRefLike;
+        if (!isRefLike && selEl.value) {
+          selEl.value = '';
+          delete row.dataset.refId;
         }
       }
 
       if (sourceHint) sourceHint.textContent = buildSourceLabel(v);
       row.querySelector('.current-ref')?.remove();
 
-      // [CHG] re-apply gate & preview text
-      const td = row.querySelector('td.col-urai');
-      applyUraianGate(td); syncPreview(td);
+      const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
+      if (td) { applyUraianGate(td); syncPreview(td); }
     }
 
-    // [CHG] interaksi kolom uraian
+    // Interaksi kolom uraian
     setupUraianInteractivity(row);
 
-    if (typeof $.fn?.select2 === 'function') {
+    // Autofocus UX saat tambah baru (bukan saat loadTree)
+    if (autofocus) {
+      requestAnimationFrame(()=>{
+        row.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        const srcNow = srcSel?.value;
+        if (srcNow === 'ref' || srcNow === 'ref_modified') {
+          if (HAS_JQ) {
+            const $selEl = $(row).find('.ref-select');
+            $selEl.select2 ? $selEl.select2('open') : row.querySelector('.ref-select')?.focus();
+          } else {
+            row.querySelector('.ref-select')?.focus();
+          }
+        } else {
+          row.querySelector('.uraian')?.focus();
+        }
+        row.classList.add('lp-flash');
+        say('Pekerjaan ditambahkan');
+        tbAnnounce && (tbAnnounce.textContent = 'Pekerjaan ditambahkan');
+      });
+    }
+
+    if (HAS_S2 && $sel && $sel.length) {
       $sel.on('select2:select', function () {
         if (srcSel?.value === 'ref_modified' && uraianInput && !uraianInput.value) {
           const item = $sel.select2('data')[0];
@@ -620,7 +854,8 @@
           const parts = text.split('—');
           const ura  = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
           if (ura) uraianInput.value = ura;
-          const td = row.querySelector('td.col-urai'); syncPreview(td); autoResize(uraianInput);
+          const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
+          if (td) { syncPreview(td); autoResize(uraianInput); }
         }
       });
     }
@@ -635,10 +870,8 @@
     return row;
   }
 
-  // ========= Sidebar Tree =========
+  // ========= [SIDEBAR TREE] Konstruksi, Search, dan Suggest ==================
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
-  function text(v) { return (v || '').toString().trim(); }
-
   function setNodeOpen(node, open) {
     node.classList.toggle('open', open);
     node.querySelector(':scope > .lp-node__header')?.setAttribute('aria-expanded', String(open));
@@ -687,23 +920,24 @@
 
   function scheduleSidebarRebuild() {
     if (!navWrap) return;
-    if (scheduleSidebarRebuild._t) cancelAnimationFrame(scheduleSidebarRebuild._t);
-    scheduleSidebarRebuild._t = requestAnimationFrame(buildSidebar);
+    clearTimeout(scheduleSidebarRebuild._tid);
+    scheduleSidebarRebuild._tid = setTimeout(buildSidebar, 120);
   }
 
-  // ====== Autocomplete (grouped) ======
+  // ====== Autocomplete (grouped) =============================================
   function ensureSuggest(container, id) {
-    let box = container.querySelector('#' + id);
+    // Cari global dulu untuk mencegah duplikat ID
+    let box = document.getElementById(id);
     if (!box) {
       box = document.createElement('div');
       box.id = id;
       box.className = 'lp-autocomplete d-none';
+      (container || document.body).appendChild(box);
+    } else if (container && box.parentElement !== container) {
       container.appendChild(box);
     }
     return box;
   }
-  const sideSuggest = navSearchSide ? ensureSuggest(navSearchSide.closest('.lp-sidebar-search') || overlayPanel || document.body, 'lp-nav-suggest') : null;
-  const tbSuggest   = navSearchToolbar ? ensureSuggest(navSearchToolbar.closest('.lp-toolbar-search') || document.body, 'lp-nav-suggest-toolbar') : null;
 
   function rankText(s, q){
     const t = s.toLowerCase(), qq = q.toLowerCase();
@@ -745,6 +979,12 @@
       makeGroup('Pekerjaan', groups.pekerjaan),
     ].join('');
     box.classList.remove('d-none');
+    if (box === sideSuggest)  { navSearchSide?.setAttribute('aria-expanded', 'true'); }
+    if (box === tbSuggest)    { navSearchToolbar?.setAttribute('aria-expanded', 'true'); }
+    const total = groups.klas.length + groups.sub.length + groups.pekerjaan.length;
+    const msg = total ? `${total} hasil` : 'Tidak ada hasil';
+    if (box === sideSuggest) { navAnnounce && (navAnnounce.textContent = msg); }
+    if (box === tbSuggest)   { tbAnnounce && (tbAnnounce.textContent = msg); }
 
     box.querySelectorAll('.lp-ac-item').forEach(it=>{
       it.addEventListener('click', ()=>{
@@ -756,7 +996,12 @@
       });
     });
   }
-  function hideSuggestions(box){ if (box) box.classList.add('d-none'); }
+  function hideSuggestions(box){
+    if (!box) return;
+    box.classList.add('d-none');
+    if (box === sideSuggest)  { navSearchSide?.setAttribute('aria-expanded', 'false'); }
+    if (box === tbSuggest)    { navSearchToolbar?.setAttribute('aria-expanded', 'false'); }
+  }
 
   function handleSearchInput(which){
     const q = which === 'side' ? (navSearchSide?.value || '') : (navSearchToolbar?.value || '');
@@ -778,6 +1023,18 @@
     }
     return false;
   }
+
+  // === Wiring event pada input & tombol Cari (toolbar & sidebar) =============
+  navSearchSide?.addEventListener('input', () => handleSearchInput('side'));
+  navSearchToolbar?.addEventListener('input', () => handleSearchInput('toolbar'));
+  navSearchSide?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitSearch('side'); }
+  });
+  navSearchToolbar?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitSearch('toolbar'); }
+  });
+  document.getElementById('lp-toolbar-find')
+    ?.addEventListener('click', () => { commitSearch('toolbar') || handleSearchInput('toolbar'); });
 
   function buildSidebar() {
     if (!navWrap) return;
@@ -804,7 +1061,8 @@
         const node = el('div', 'lp-node');
         const head = el('div', 'lp-node__header');
         const toggle = el('span', 'lp-node__toggle', '▸');
-        const label = el('a', 'lp-node__label');
+        const label = document.createElement('a');
+        label.className = 'lp-node__label';
         label.innerHTML = highlightLabel(K.name, keywords);
         label.href = `#${K.id}`;
         label.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(K.id); });
@@ -814,14 +1072,22 @@
         head.setAttribute('role','treeitem'); head.setAttribute('aria-expanded','false');
         node.appendChild(head);
 
-        const children = el('div', 'lp-node__children'); node.appendChild(children);
+        const children = el('div', 'lp-node__children');
+        children.setAttribute('role','group');
+        node.appendChild(children);
+
+        head.addEventListener('click', (e) => {
+          if (e.target.closest('a')) return;
+          setNodeOpen(node, !node.classList.contains('open'));
+        });
 
         let openK = false;
         (K.sub || []).forEach((S) => {
           const nodeS = el('div', 'lp-node');
           const headS = el('div', 'lp-node__header');
           const toggleS = el('span', 'lp-node__toggle', '▸');
-          const labelS = el('a', 'lp-node__label');
+          const labelS = document.createElement('a');
+          labelS.className = 'lp-node__label';
           labelS.innerHTML = highlightLabel(S.name, keywords);
           labelS.href = `#${S.id}`;
           labelS.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(S.id); });
@@ -831,7 +1097,9 @@
           headS.setAttribute('role','treeitem'); headS.setAttribute('aria-expanded','false');
           nodeS.appendChild(headS);
 
-          const childrenS = el('div', 'lp-node__children'); nodeS.appendChild(childrenS);
+          const childrenS = el('div', 'lp-node__children');
+          childrenS.setAttribute('role','group');
+          nodeS.appendChild(childrenS);
 
           let openS = false;
           (S.pekerjaan || []).forEach((P) => {
@@ -841,7 +1109,8 @@
             const item = el('div', 'lp-node');
             const headP = el('div', 'lp-node__header');
             const bullet = el('span', 'lp-node__toggle', '•');
-            const labelP = el('a', 'lp-node__label');
+            const labelP = document.createElement('a');
+            labelP.className = 'lp-node__label';
             labelP.innerHTML = highlightLabel(P.name, keywords);
             labelP.href = `#${P.id}`;
             labelP.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(P.id); });
@@ -854,54 +1123,16 @@
 
           setNodeOpen(nodeS, openS);
           children.appendChild(nodeS);
-          headS.addEventListener('click', (e) => { if (e.target.tagName === 'A') return; setNodeOpen(nodeS, !nodeS.classList.contains('open')); });
+
+          headS.addEventListener('click', (e) => {
+            if (e.target.tagName === 'A') return;
+            setNodeOpen(nodeS, !nodeS.classList.contains('open'));
+          });
         });
 
         setNodeOpen(node, openK);
         navWrap.appendChild(node);
-        head.addEventListener('click', (e) => { if (e.target.tagName === 'A') return; setNodeOpen(node, !node.classList.contains('open')); });
       });
-
-      if (!buildSidebar._searchBound) {
-        buildSidebar._searchBound = true;
-
-        let tSide, tTb;
-        if (navSearchSide) {
-          navSearchSide.addEventListener('input', () => {
-            clearTimeout(tSide); tSide = setTimeout(()=>{ handleSearchInput('side'); buildSidebar(); }, 140);
-          });
-          navSearchSide.addEventListener('keydown', (e)=>{
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              if (!commitSearch('side')) say('Tidak ada hasil yang cocok');
-            }
-          });
-          navSearchSide.addEventListener('blur', ()=> setTimeout(()=> hideSuggestions(sideSuggest), 120));
-          // Klik tombol commit di sidebar
-          navSearchSide.closest('.lp-sidebar-search')?.querySelector('.lp-nav-search-commit')
-            ?.addEventListener('click', (e)=>{
-              e.preventDefault();
-              if (!commitSearch('side')) say('Tidak ada hasil yang cocok');
-            });
-        }
-        if (navSearchToolbar) {
-          navSearchToolbar.addEventListener('input', () => {
-            clearTimeout(tTb); tTb = setTimeout(()=> handleSearchInput('tb'), 140);
-          });
-          navSearchToolbar.addEventListener('keydown', (e)=>{
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              if (!commitSearch('tb')) say('Tidak ada hasil yang cocok');
-            }
-          });
-          navSearchToolbar.addEventListener('blur', ()=> setTimeout(()=> hideSuggestions(tbSuggest), 120));
-          // Klik tombol cari di toolbar
-          document.getElementById('lp-toolbar-find')?.addEventListener('click', (e)=>{
-            e.preventDefault();
-            if (!commitSearch('tb')) say('Tidak ada hasil yang cocok');
-          });
-        }
-      }
 
       if (!navWrap.querySelector('.lp-node')) {
         navWrap.innerHTML = '<div class="text-muted small" style="padding:.5rem .75rem;">Tidak ada hasil yang cocok.</div>';
@@ -910,6 +1141,14 @@
       err('buildSidebar failed:', e);
     }
   }
+
+  // Inisialisasi suggest container SETELAH fungsi di atas siap
+  sideSuggest = navSearchSide
+    ? ensureSuggest(navSearchSide.closest('.lp-sidebar-search') || overlayPanel || document.body, 'lp-nav-suggest')
+    : null;
+  tbSuggest   = navSearchToolbar
+    ? ensureSuggest(navSearchToolbar.closest('.lp-toolbar-search') || document.body, 'lp-nav-suggest-toolbar')
+    : null;
 
   function scrollToAnchor(anchorId) {
     const target = document.getElementById(anchorId);
@@ -920,7 +1159,7 @@
     if (isOverlayOpen()) setOverlayVisible(false);
   }
 
-  // ========= Save / Load =========
+  // ========= [LOAD & SAVE] ====================================================
   async function loadTree() {
     try {
       if (!projectId) {
@@ -928,10 +1167,9 @@
         scheduleSidebarRebuild();
         return;
       }
-      const url = `/detail_project/api/project/${projectId}/list-pekerjaan/tree/`;
-      // Core jfetch (GET)
-      const data = await http.jfetch(url, { method: 'GET' });
 
+      const url = `/detail_project/api/project/${projectId}/list-pekerjaan/tree/`;
+      const data = await jfetch(url, { method: 'GET' });
       const list = data?.klasifikasi;
 
       if (!list || !Array.isArray(list) || list.length === 0) {
@@ -959,7 +1197,8 @@
               satuan: p.snapshot_satuan || '',
               snapshot_kode: p.snapshot_kode || null,
               snapshot_uraian: p.snapshot_uraian || null
-            });
+            },
+            { autofocus:false });
             if (p.id) row.dataset.id = p.id;
           });
         });
@@ -997,7 +1236,7 @@
       const hasAnySub = subWrap && subWrap.children.length > 0;
       if (!hasAnySub && !kNameRaw) return;
 
-      const kCode = `K${ki + 1}`;                    // fallback nama Klas
+      const kCode = `K${ki + 1}`;
       const kName = kNameRaw || kCode;
 
       const k = {
@@ -1013,7 +1252,7 @@
         const sNameRaw = (sb.querySelector('.sub-name')?.value || '').trim();
         if (!rows.length && !sNameRaw) return;
 
-        const sName = sNameRaw || `${kCode}.${si + 1}`; // fallback nama Sub
+        const sName = sNameRaw || `${kCode}.${si + 1}`;
 
         const s = {
           id: sb.dataset.id ? parseInt(sb.dataset.id, 10) : undefined,
@@ -1025,8 +1264,15 @@
 
         rows.forEach(tr => {
           const src    = tr.querySelector('.src')?.value;
-          const sel    = $(tr).find('.ref-select');
-          const refRaw = sel.val();
+
+          // Baca nilai select2/native tanpa bergantung pada jQuery
+          let refRaw;
+          if (HAS_JQ) {
+            refRaw = $(tr).find('.ref-select').val();
+          } else {
+            refRaw = tr.querySelector('.ref-select')?.value ?? '';
+          }
+
           const uraian = (tr.querySelector('.uraian')?.value || '').trim();
           const satuan = (tr.querySelector('.satuan')?.value || '').trim();
 
@@ -1065,16 +1311,13 @@
           };
 
           if (src === 'custom') {
-            // Wajib: uraian; Satuan opsional (null jika kosong)
             p.snapshot_uraian = uraian;
             if (satuan) p.snapshot_satuan = satuan;
           } else if (src === 'ref_modified') {
-            // Kirim ref_id hanya jika create (id belum ada) ATAU user mengganti referensi
             if (!existingId || isRefChanged) p.ref_id = refIdNum;
-            if (uraian) p.snapshot_uraian = uraian; // override opsional
-            if (satuan) p.snapshot_satuan = satuan; // override opsional
+            if (uraian) p.snapshot_uraian = uraian;
+            if (satuan) p.snapshot_satuan = satuan;
           } else { // 'ref'
-            // Sama: kirim ref_id hanya jika create atau berubah
             if (!existingId || isRefChanged) p.ref_id = refIdNum;
           }
 
@@ -1099,13 +1342,13 @@
     }
 
     try {
-      const res = await DP.core.http.jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
+      await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      // Catatan: jfetch sudah throw jika !res.ok; pada 207 (ok=true) tidak throw.
       alert('✅ Perubahan tersimpan.');
+      tbAnnounce && (tbAnnounce.textContent = 'Perubahan tersimpan');
       await reloadAfterSave();
     } catch (e) {
       const raw = (e && e.body && typeof e.body === 'string') ? e.body : (e?.message || '');
@@ -1119,19 +1362,7 @@
 
   async function reloadAfterSave() { klasWrap.innerHTML = ''; await loadTree(); }
 
-  function mapToSelect2Results(json) {
-    if (json && Array.isArray(json.results)) return json.results;
-    if (Array.isArray(json) && json.length && (json[0].id !== undefined)) return json;
-    const src = json?.items || json?.data || [];
-    return src.map(x => ({
-      id: x.id ?? x.pk ?? x.kode_ahsp ?? x.kode ?? x.value,
-      text: x.text ?? x.label ?? (x.kode_ahsp && x.nama_ahsp
-        ? `${x.kode_ahsp} — ${x.nama_ahsp}`
-        : (x.nama_ahsp ?? x.nama ?? String(x.id ?? '')))
-    })).filter(r => r.id != null && r.text);
-  }
-
-  // ========= Bind toolbar buttons =========
+  // ========= [BINDING] Toolbar & Sidebar Buttons =============================
   btnAddKlasAll.forEach(b => b.addEventListener('click', () => newKlas()));
   btnSaveAll.forEach(b  => b.addEventListener('click', () => handleSave()));
 
@@ -1180,7 +1411,7 @@
     scheduleSidebarRebuild();
   });
 
-  // Compact toggle
+  // ========= [UI PREFERENCES] Compact Toggle =================================
   (function setupCompactToggle(){
     const KEY = 'lp_compact_v2';
     const app = root;
@@ -1206,7 +1437,7 @@
     document.querySelector('#btn-save')?.click();
   });
 
-  // ========= Scroll-Spy =========
+  // ========= [SCROLL SPY] Sinkron active node di tree ========================
   function setupScrollSpy(){
     if (setupScrollSpy._done) return;
     const io = new IntersectionObserver(entries=>{
@@ -1223,13 +1454,15 @@
     setupScrollSpy._done = true;
   }
 
-  // ========= Overlay resize (persist width) =========
+  // ========= [OVERLAY RESIZE] Persist width ==================================
   (function enableOverlayResize(){
     const aside = overlaySidebar;
     const panel = overlayPanel;
     if (!aside || !panel) return;
     let resizer = panel.querySelector('.lp-resizer');
     if (!resizer) { resizer = document.createElement('div'); resizer.className = 'lp-resizer'; panel.appendChild(resizer); }
+    // preferensi arah: 'east' (drag kanan membesar) atau 'west' (drag kiri membesar)
+    const RESIZE_SENSE = (overlaySidebar?.dataset.resizeSense || 'west').toLowerCase();
     try{
       const saved = localStorage.getItem('lp_sidebar_w');
       if (saved) {
@@ -1246,7 +1479,9 @@
     window.addEventListener('mousemove', (e)=>{
       if (!drag) return;
       const MIN_W = 320, MAX_W = 760;
-      const w = Math.min(Math.max(startW + (e.clientX - startX), MIN_W), MAX_W);
+      const dx = e.clientX - startX;
+      const wRaw = (RESIZE_SENSE === 'east') ? (startW - dx) : (startW + dx);
+      const w    = Math.min(Math.max(wRaw, MIN_W), MAX_W);
       document.documentElement.style.setProperty('--lp-sidebar-w', `${w}px`);
     });
     window.addEventListener('mouseup', ()=>{
@@ -1257,7 +1492,7 @@
     });
   })();
 
-  // Sinkronkan tinggi topbar
+  // ========= [TOPBAR OFFSET] Sinkron CSS var =================================
   (function syncTopbarOffset(){
     function recalc(){
       const tb = document.getElementById('dp-topbar') || document.querySelector('#dp-topbar');
@@ -1272,11 +1507,11 @@
     window.addEventListener('load', recalc);
   })();
 
-  // ========= Start =========
+  // ========= [START] Bootstrap module ========================================
   (async function start(){
     if (!projectId) warn('data-project-id pada #lp-app kosong; sebagian fitur (load/save) non-aktif.');
     if (typeof $ === 'undefined') warn('jQuery belum tersedia saat init awal (defer race?), lanjut saja.');
-    if (typeof $.fn?.select2 !== 'function') warn('Select2 belum terpasang; dropdown ref tetap jalan tanpa enhance.');
+    if (typeof $?.fn?.select2 !== 'function') warn('Select2 belum terpasang; dropdown ref tetap jalan tanpa enhance.');
 
     btnExpandAllAll.forEach(b => b.onclick = () => setNavAll(true));
     btnCollapseAllAll.forEach(b => b.onclick = () => setNavAll(false));
@@ -1293,17 +1528,16 @@
     } catch(_){ /* no-op jika core belum siap */ }
 
     await loadTree();
-    // Aktifkan hover-edge kanan setelah data siap
     setupRightHoverEdge();
   })();
 
-  // ========= DEBUG helper =========
+  // ========= [DEBUG] =========================================================
   window.LP_DEBUG = {
     newKlas, addSub, addPekerjaan, handleSave, scheduleSidebarRebuild,
     report(){
       const map = {
         '#lp-app': !!root,
-        '#klas-list': !!klasWrap,
+        '#klas-list (DIV)': !!klasWrap && klasWrap.tagName !== 'TBODY',
         '#btn-add-klas': btnAddKlasAll.length,
         '#btn-save': btnSaveAll.length,
         '#btn-compact': btnCompactAll.length,

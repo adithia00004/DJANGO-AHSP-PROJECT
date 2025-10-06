@@ -1,31 +1,39 @@
-<!-- templates/detail_project/list_pekerjaan.html -->
 {% extends 'detail_project/base_detail.html' %}
 {% load static i18n %}
+{% block body_attrs %}data-page="list_pekerjaan"{% endblock %}
 
-{# MATIKAN CSS Detail AHSP di halaman LP agar styling tidak saling ganggu #}
+{# ===== [0] MATIKAN CSS Detail AHSP DI HALAMAN INI ===== #}
 {% block detail_css %}{% endblock %}
 
 {% block extra_css %}
-  {{ block.super }}  {# PENTING: pastikan CSS/JS global dari base_detail ikut termuat #}
-
-  {# OPT-IN CORE CSS (pasif, hanya util) #}
-  <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
-
+  {{ block.super }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"/>
   <link rel="stylesheet" href="{% static 'detail_project/css/list_pekerjaan.css' %}">
-
-  {# Matikan hover-edge global khusus halaman ini (hotspot ada di luar .list-pekerjaan) #}
-  <style>.lp-sidebar-hotspot { display: none !important; }</style>
 {% endblock %}
 
 {% block dp_content %}
+  {# ===== [A] ALERT (GLOBAL) ===== #}
   {% include 'detail_project/_alert.html' %}
 
-  <div id="lp-app" class="lp-app container-fluid list-pekerjaan" data-project-id="{{ project.id }}" data-dom-version="lp-v2">
-    <!-- Toolbar -->
-    <div class="lp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-layer-toolbar">
-      <!-- Toggle di toolbar (untuk LP overlay) -->
-      <button class="btn btn-outline-secondary lp-btn btn-sidebar-toggle" type="button" aria-controls="lp-sidebar" aria-expanded="false" title="{% trans 'Buka navigasi' %}">
+  {# ===== [B] ROOT WRAPPER / PAGE SHELL ===== #}
+  <div id="lp-app"
+       class="lp-app container-fluid list-pekerjaan ux-scrollbar ux-scroll-smooth"
+       data-project-id="{{ project.id }}"
+       data-ref-year="{{ project.tahun_project|default:'' }}"
+       data-dom-version="lp-v2"
+       data-compact-default="1">
+
+    {# ===== [C] TOOLBAR ===== #}
+    <div class="lp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-layer-toolbar dp-sticky-topbar bg-body border-bottom"
+         style="height: var(--lp-toolbar-h);">
+      <button class="btn btn-outline-secondary lp-btn btn-sidebar-toggle"
+              data-toggle="side-right"
+              type="button"
+              role="button"
+              aria-haspopup="dialog"
+              aria-controls="lp-sidebar"
+              aria-expanded="false"
+              title="{% trans 'Buka navigasi' %}">
         <i class="bi bi-list"></i> {% trans "Navigasi" %}
       </button>
 
@@ -33,20 +41,19 @@
         <i class="bi bi-plus-circle"></i> {% trans "Klasifikasi" %}
       </button>
 
-      <button id="btn-save" class="btn btn-success lp-btn" type="button" title="{% trans 'Simpan perubahan' %}">
+      <button id="btn-save" class="btn btn-success lp-btn btn-neon" type="button" title="{% trans 'Simpan perubahan' %}">
         <i class="bi bi-save"></i> {% trans "Simpan" %}
       </button>
 
-      <button id="btn-compact" class="btn btn-outline-dark lp-btn" type="button" data-state="off" title="{% trans 'Compact mode' %}">
+      <button id="btn-compact" class="btn btn-outline-secondary lp-btn" type="button" data-state="off" title="{% trans 'Compact mode' %}">
         <i class="bi bi-aspect-ratio"></i> {% trans "Compact" %}
       </button>
 
       <div class="ms-auto d-flex align-items-center gap-2">
-        <!-- Search (toolbar) -->
         <div class="input-group lp-toolbar-search">
           <span class="input-group-text"><i class="bi bi-search"></i></span>
-          <input id="lp-nav-search" type="search" class="form-control lp-nav-search" placeholder="{% trans 'Cari di navigasi…' %}" autocomplete="off" aria-label="{% trans 'Cari di navigasi' %}">
-          <button id="lp-toolbar-find" class="btn btn-primary lp-btn ms-1" type="button" title="{% trans 'Cari' %}">
+          <input id="lp-nav-search" type="search" class="form-control lp-nav-search ux-focusable" placeholder="{% trans 'Cari di navigasi…' %}" autocomplete="off" aria-label="{% trans 'Cari di navigasi' %}">
+          <button id="lp-toolbar-find" class="btn btn-primary lp-btn btn-neon ms-1" type="button" title="{% trans 'Cari' %}">
             <i class="bi bi-search"></i> {% trans "Cari" %}
           </button>
         </div>
@@ -54,15 +61,19 @@
       </div>
     </div>
 
-    <!-- Layout -->
+    {# ===== [D] LAYOUT: OVERLAY NAV + MAIN ===== #}
     <div class="position-relative">
+
+      {# Hotspot kanan untuk membuka Overlay Nav saat hover di tepi kanan #}
+      <div class="lp-overlay-hotspot" aria-hidden="true"></div>
+
       <!-- Sidebar Overlay (LP) -->
-      <aside id="lp-sidebar" aria-label="{% trans 'Navigasi List Pekerjaan' %}">
-        <div class="lp-sidebar-inner">
+      <aside id="lp-sidebar" class="dp-z-sidebar" role="dialog" aria-modal="true"
+             aria-label="{% trans 'Navigasi List Pekerjaan' %}" data-hoverclose="1" data-resize-sense="east">
+        <div class="lp-sidebar-inner dp-surface dp-border">
           <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2">
             <h6 class="m-0">{% trans "Navigasi" %}</h6>
             <div class="d-flex align-items-center gap-2">
-              <!-- Tombol alternatif di sidebar -->
               <button id="btn-add-klas--sidebar" class="btn btn-sm btn-primary lp-btn" type="button" title="{% trans 'Tambah Klasifikasi' %}">
                 <i class="bi bi-plus-circle"></i> {% trans "Klas" %}
               </button>
@@ -79,68 +90,93 @@
           <div class="lp-sidebar-search mt-2">
             <div class="input-group">
               <span class="input-group-text"><i class="bi bi-search"></i></span>
-              <input id="lp-nav-search-side" type="search" class="form-control lp-nav-search"
+              <input id="lp-nav-search-side" type="search" class="form-control lp-nav-search ux-focusable"
                      placeholder="{% trans 'Cari Klas/Sub/Pekerjaan…' %}" autocomplete="off"
                      aria-label="{% trans 'Cari di navigasi' %}"
                      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lp-nav-suggest">
-              <button class="btn btn-outline-light lp-nav-search-commit" type="button" title="{% trans 'Cari' %}">
+              <button class="btn btn-outline-secondary lp-nav-search-commit" type="button" title="{% trans 'Cari' %}">
                 <i class="bi bi-arrow-return-right"></i>
               </button>
             </div>
-            <!-- List saran (diisi JS) -->
             <div id="lp-nav-suggest" class="lp-autocomplete d-none dp-layer-search" role="listbox" aria-label="{% trans 'Saran pencarian' %}"></div>
           </div>
 
-          <!-- Controls: Expand/Collapse All -->
           <div class="d-flex align-items-center gap-2 mt-2">
-            <button class="btn btn-sm btn-outline-light lp-btn lp-nav-expand-all"
+            <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-expand-all"
                     type="button" title="{% trans 'Expand semua' %}" aria-controls="lp-nav">
               <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-sm-inline">{% trans "Expand all" %}</span>
             </button>
-            <button class="btn btn-sm btn-outline-light lp-btn lp-nav-collapse-all"
+            <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-collapse-all"
                     type="button" title="{% trans 'Collapse semua' %}" aria-controls="lp-nav">
               <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-sm-inline">{% trans "Collapse all" %}</span>
             </button>
             <span class="visually-hidden" aria-live="polite" id="lp-nav-announce"></span>
           </div>
 
-          <!-- Tree Nav -->
-          <nav id="lp-nav" class="lp-nav mt-2" role="tree" aria-label="{% trans 'Navigasi List Pekerjaan' %}">
-            <ul class="list-unstyled m-0" data-role="tree-root"></ul>
-          </nav>
+          <nav id="lp-nav" class="lp-nav mt-2" role="tree" aria-label="{% trans 'Navigasi List Pekerjaan' %}"></nav>
         </div>
       </aside>
 
+      <!-- MAIN AREA (Feel v1: kartu Klasifikasi → Sub berisi tabel lokal) -->
       <main class="lp-main">
+        <!-- Container utama mirip versi lama -->
         <div id="klas-list" class="vstack gap-3">
           <div class="text-muted small">
             {% trans "Mulai dengan tombol +Klasifikasi, lalu +Sub dan +Pekerjaan. Mode baris: Ref / Ref Modified / Custom." %}
           </div>
         </div>
+
+        {# Simpan tabel global sebagai fallback (disembunyikan via CSS/JS) #}
+        <div class="lp-table-wrap d-none" aria-hidden="true">
+          <table id="lp-table" class="table lp-table table-hover ux-table-compact">
+            <colgroup>
+              <col class="col-num">
+              <col class="col-mode">
+              <col class="col-ref">
+              <col class="col-urai">
+              <col class="col-sat">
+              <col class="col-act">
+            </colgroup>
+            <thead class="dp-thead-sticky">
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">{% trans "Mode" %}</th>
+                <th scope="col">{% trans "Referensi AHSP" %}</th>
+                <th scope="col">{% trans "Uraian" %}</th>
+                <th scope="col">{% trans "Satuan" %}</th>
+                <th scope="col">{% trans "Aksi" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="6" class="text-muted small">{% trans "Gunakan area di atas (kartu) untuk mengelola data." %}</td></tr>
+            </tbody>
+          </table>
+        </div>
       </main>
     </div>
 
-    <!-- FAB -->
-    <button id="btn-save-fab" class="btn btn-success position-fixed d-none" type="button" title="{% trans 'Simpan' %}">
+    {# ===== [E] FAB (SAVE) ===== #}
+    <button id="btn-save-fab"
+            class="btn btn-success position-fixed d-none dp-z-toolbar"
+            type="button"
+            title="{% trans 'Simpan' %}">
       <i class="bi bi-save"></i>
     </button>
 
-    <!-- Template Baris (WAJIB sebelum JS) -->
+    {# ===== [F] TEMPLATE BARIS ===== #}
     {% include 'detail_project/_pekerjaan_row.html' %}
   </div>
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}  {# PENTING: pastikan JS global (sidebar_global.js) tetap termuat #}
+  {{ block.super }}
   <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-  {# CORE (opt-in, pasif) #}
   <script defer src="{% static 'detail_project/js/core/http.js' %}"></script>
   <script defer src="{% static 'detail_project/js/core/format.js' %}"></script>
   <script defer src="{% static 'detail_project/js/core/toast.js' %}"></script>
   <script defer src="{% static 'detail_project/js/core/keys.js' %}"></script>
 
-  {# Halaman #}
   <script defer src="{% static 'detail_project/js/list_pekerjaan.js' %}"></script>
 {% endblock %}
