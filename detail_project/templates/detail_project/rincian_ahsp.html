@@ -1,12 +1,15 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
 
-{% block title %}Rekap AHSP — {{ project.nama }}{% endblock %}
+{% block title %}Rincian AHSP — {{ project.nama }}{% endblock %}
+{% block body_attrs %}data-page="rincian_ahsp"{% endblock %}
+
+{% block detail_css %}{% endblock %}
 
 {% block extra_head %}
   {{ block.super }}
   <link rel="stylesheet" href="{% static 'detail_project/css/harga_items.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_ahsp.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/rincian_ahsp.css' %}">
 {% endblock %}
 
 {% block dp_content %}
@@ -20,8 +23,8 @@
      data-locale="id-ID">
 
   <!-- ===== Top bar (judul + BUK badge + grand total) ===== -->
-  <div class="hi-toolbar" role="region" aria-label="Toolbar Rekap AHSP">
-    <h2 class="rk-title">Rekap AHSP</h2>
+  <div class="hi-toolbar" role="region" aria-label="Toolbar Rincian AHSP">
+    <h2 class="rk-title">Rincian AHSP</h2>
     <span class="badge text-bg-light" id="rk-badge-buk" title="Biaya Umum & Keuntungan proyek">BUK: 10.00%</span>
     <div class="hi-spacer"></div>
     <div id="rk-grand" class="mono small text-muted">Grand Total: Rp 0,00</div>
@@ -96,6 +99,5 @@
 
 {% block extra_js %}
   {{ block.super }}
-  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
-  <script src="{% static 'detail_project/js/rekap_ahsp.js' %}"></script>
+  <script src="{% static 'detail_project/js/rincian_ahsp.js' %}"></script>
 {% endblock %}

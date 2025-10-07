@@ -1153,7 +1153,8 @@ body[data-page="harga_items"] .hi-table col.col-rp   { width: var(--hi-col-rp-w)
 
 
 /* ---- Detail AHSP (disiapkan) ---- */
-body[data-page="detail_ahsp"]{
+body[data-page="detail_ahsp"],
+body[data-page="template_ahsp"]{
   /* Offset & layer */
   --da-top-offset: var(--dp-topbar-h);
   --da-toolbar-h: 44px;         /* akan diukur runtime oleh JS page */
@@ -1172,7 +1173,8 @@ body[data-page="detail_ahsp"]{
 }
 
 /* THEAD sticky helper spesifik Detail AHSP */
-body[data-page="detail_ahsp"] .da-thead-sticky{
+body[data-page="detail_ahsp"] .da-thead-sticky,
+body[data-page="template_ahsp"] .da-thead-sticky{
   position: sticky;
   top: calc(var(--dp-topbar-h) + var(--da-toolbar-h));
   z-index: var(--dp-z-thead);
@@ -1182,21 +1184,29 @@ body[data-page="detail_ahsp"] .da-thead-sticky{
 /* Pemetaan <colgroup> → token lebar kolom Detail AHSP
    Tambahkan class ini pada <col> di tiap tabel segmen:
    .col-no, .col-uraian, .col-kode, .col-satuan, .col-koef  */
-body[data-page="detail_ahsp"] .da-table col.col-no    { width: var(--da-col-no-w);   }
-body[data-page="detail_ahsp"] .da-table col.col-uraian{ width: var(--da-col-urai-w); }
-body[data-page="detail_ahsp"] .da-table col.col-kode  { width: var(--da-col-kode-w); }
-body[data-page="detail_ahsp"] .da-table col.col-satuan{ width: var(--da-col-sat-w);  }
-body[data-page="detail_ahsp"] .da-table col.col-koef  { width: var(--da-col-koef-w); }
+body[data-page="detail_ahsp"] .da-table col.col-no,
+body[data-page="template_ahsp"] .da-table col.col-no    { width: var(--da-col-no-w);   }
+body[data-page="detail_ahsp"] .da-table col.col-uraian,
+body[data-page="template_ahsp"] .da-table col.col-uraian{ width: var(--da-col-urai-w); }
+body[data-page="detail_ahsp"] .da-table col.col-kode,
+body[data-page="template_ahsp"] .da-table col.col-kode  { width: var(--da-col-kode-w); }
+body[data-page="detail_ahsp"] .da-table col.col-satuan,
+body[data-page="template_ahsp"] .da-table col.col-satuan{ width: var(--da-col-sat-w);  }
+body[data-page="detail_ahsp"] .da-table col.col-koef,
+body[data-page="template_ahsp"] .da-table col.col-koef  { width: var(--da-col-koef-w); }
 
 /* Pastikan dropdown berada di layer aman (opsional; sudah covered global) */
-body[data-page="detail_ahsp"] .select2-container .select2-dropdown{
+body[data-page="detail_ahsp"] .select2-container .select2-dropdown,
+body[data-page="template_ahsp"] .select2-container .select2-dropdown{
   z-index: var(--da-z-dropdown) !important;
-
+}
 
 /* Print: nonaktifkan sticky khusus halaman ini */
 @media print{
-  body[data-page="detail_ahsp"] .da-thead-sticky{
-    position: static !important; top: auto !important; box-shadow: none !important;
+  body[data-page="detail_ahsp"] .da-thead-sticky,
+  body[data-page="template_ahsp"] .da-thead-sticky{
+    position: static !important;
+    top: auto !important;
+    box-shadow: none !important;
   }
-}
 }

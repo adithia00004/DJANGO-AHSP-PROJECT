@@ -4,7 +4,7 @@
   const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
 
   // ---------- STATE ----------
-  const app = $('#da-app');
+  const app = $('#ta-app');
   if (!app) return;
 
   const endpoints = {
@@ -57,29 +57,29 @@
   }
   function setDirty(v) {
     dirty = !!v;
-    $('#da-dirty-dot').hidden = !dirty;
-    $('#da-dirty-text').hidden = !dirty;
-    $('#da-btn-save').disabled = dirty ? false : true;
+    $('#ta-dirty-dot').hidden = !dirty;
+    $('#ta-dirty-text').hidden = !dirty;
+    $('#ta-btn-save').disabled = dirty ? false : true;
   }
   function normKoefStrToSend(s) {
     if (s == null) return '';
     return String(s).trim();
   }
   function formatIndex() {
-    $$('.da-row').forEach((tr, i) => $('.row-index', tr).textContent = (i+1));
+    $$('.ta-row').forEach((tr, i) => $('.row-index', tr).textContent = (i+1));
   }
   function clearTable(seg) {
     const body = $(`#seg-${seg}-body`);
-    body.innerHTML = `<tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>`;
+    body.innerHTML = `<tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>`;
   }
 
   function renderRows(seg, rows) {
     const body = $(`#seg-${seg}-body`);
     body.innerHTML = '';
-    const tpl = $('#da-row-template');
+    const tpl = $('#ta-row-template');
 
     if (!rows.length) {
-      body.innerHTML = `<tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>`;
+      body.innerHTML = `<tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>`;
       return;
     }
 
@@ -119,7 +119,7 @@
   const segs = ['TK','BHN','ALT','LAIN'];
   const out = [];
   segs.forEach(seg => {
-    $(`#seg-${seg}-body`)?.querySelectorAll('tr.da-row')?.forEach(tr => {
+    $(`#seg-${seg}-body`)?.querySelectorAll('tr.ta-row')?.forEach(tr => {
       const base = {
         kategori: seg,
         uraian: $('.cell-wrap', tr).textContent.trim(),
@@ -160,16 +160,16 @@
     const canSave  = (activeSource === 'ref_modified' || activeSource === 'custom') && !readOnly;
     const canReset = (activeSource === 'ref_modified') && !readOnly;
 
-    $('#da-btn-save').hidden   = !canSave;
-    $('#da-btn-save').disabled = !canSave || !dirty;
+    $('#ta-btn-save').hidden   = !canSave;
+    $('#ta-btn-save').disabled = !canSave || !dirty;
 
-    const resetBtnEl = $('#da-btn-reset');
+    const resetBtnEl = $('#ta-btn-reset');
     if (resetBtnEl) resetBtnEl.hidden = !canReset;
 
     const editable = canSave;
 
     // Enable/disable input & contenteditable
-    $$('.da-row input, .da-row .cell-wrap').forEach(el => {
+    $$('.ta-row input, .ta-row .cell-wrap').forEach(el => {
       if (editable) {
         el.removeAttribute('disabled');
         if (el.tagName === 'DIV') el.setAttribute('contenteditable', 'true');
@@ -181,14 +181,14 @@
 
     // Kunci tombol penambah baris saat tidak editable
     const lockBtns = [
-      ...$$('.da-seg-add-catalog'),
-      ...$$('.da-seg-add-empty'),
-      $('#da-btn-add-empty'),
-      $('#da-btn-add-component'),
+      ...$$('.ta-seg-add-catalog'),
+      ...$$('.ta-seg-add-empty'),
+      $('#ta-btn-add-empty'),
+      $('#ta-btn-add-component'),
     ].filter(Boolean);
     lockBtns.forEach(btn => { btn.disabled = !editable; });
 
-    document.body.classList.toggle('da-readonly', !editable);
+    document.body.classList.toggle('ta-readonly', !editable);
 
     // Sinkronkan Select2 (kalau ada)
     if (window.jQuery && jQuery.fn.select2) {
@@ -209,11 +209,11 @@
     // Kalau tidak, fallback ke seluruh dokumen.
     const scope   = scopeEl || document;
     const selector = scopeEl
-      ? '.da-row input[data-field="kode"]'
-      : '#seg-LAIN-body .da-row input[data-field="kode"]';
+      ? '.ta-row input[data-field="kode"]'
+      : '#seg-LAIN-body .ta-row input[data-field="kode"]';
 
     $$(selector, scope).forEach(input => {
-      const tr = input.closest('tr.da-row');
+      const tr = input.closest('tr.ta-row');
       const $input = jQuery(input);
 
       // Hindari double-init
@@ -271,11 +271,11 @@
     if (!id || id === activeJobId) return;
     activeJobId = id;
     activeSource = li.dataset.sourceType;
-    $$('.da-job-item').forEach(n => n.classList.toggle('is-active', n === li));
-    $('#da-active-kode').textContent = $('.kode', li)?.textContent?.trim() || '—';
-    $('#da-active-uraian').textContent = $('.uraian', li)?.textContent?.trim() || '—';
-    $('#da-active-satuan').textContent = $('.satuan', li)?.textContent?.trim() || '—';
-    $('#da-active-source').innerHTML = `<span class="badge">${activeSource}</span>`;
+    $$('.ta-job-item').forEach(n => n.classList.toggle('is-active', n === li));
+    $('#ta-active-kode').textContent = $('.kode', li)?.textContent?.trim() || '—';
+    $('#ta-active-uraian').textContent = $('.uraian', li)?.textContent?.trim() || '—';
+    $('#ta-active-satuan').textContent = $('.satuan', li)?.textContent?.trim() || '—';
+    $('#ta-active-source').innerHTML = `<span class="badge">${activeSource}</span>`;
     setDirty(false);
 
     if (rowsByJob[id]) {
@@ -312,23 +312,23 @@
   }
 
   function updateStats() {
-    const n = $$('.da-row').length;
-    $('#da-row-stats').textContent = `${n} baris`;
+    const n = $$('.ta-row').length;
+    $('#ta-row-stats').textContent = `${n} baris`;
   }
 
   // ---------- EVENTS ----------
   // pilih pekerjaan
-  $$('#da-job-list .da-job-item').forEach(li => {
+  $$('#ta-job-list .ta-job-item').forEach(li => {
     li.addEventListener('click', () => selectJob(li));
     li.addEventListener('keydown', (e) => { if (e.key==='Enter' || e.key===' ') { e.preventDefault(); selectJob(li);} });
   });
 
   // filter (fallback dua id supaya aman)
-  const jobFilterEl = $('#da-job-filter') || $('#da-job-search');
+  const jobFilterEl = $('#ta-job-filter') || $('#ta-job-search');
   if (jobFilterEl) {
     jobFilterEl.addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase();
-      $$('#da-job-list .da-job-item').forEach(li => {
+      $$('#ta-job-list .ta-job-item').forEach(li => {
         const t = li.textContent.toLowerCase();
         li.hidden = !(t.includes(q));
       });
@@ -336,15 +336,15 @@
   }
 
   // add empty row
-  $$('.da-seg-add-empty').forEach(btn => {
+  $$('.ta-seg-add-empty').forEach(btn => {
     btn.addEventListener('click', () => {
       if (activeSource === 'ref') return; // read-only
       const seg = btn.dataset.targetSeg;
       const body = $(`#seg-${seg}-body`);
-      const tpl = $('#da-row-template');
+      const tpl = $('#ta-row-template');
       const tr = tpl.content.firstElementChild.cloneNode(true);
       tr.dataset.kategori = seg;
-      if ($('.da-empty', body)) body.innerHTML = '';
+      if ($('.ta-empty', body)) body.innerHTML = '';
       body.appendChild(tr);
       formatIndex();
       setDirty(true);
@@ -357,19 +357,19 @@
 
   // input change -> dirty
   app.addEventListener('input', (e) => {
-    if (!e.target.closest('.da-row')) return;
+    if (!e.target.closest('.ta-row')) return;
     if (activeSource === 'ref') return;
     setDirty(true);
   });
   app.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
-      $('#da-btn-save').click();
+      $('#ta-btn-save').click();
     }
   });
 
   // SAVE (replace-all) —>>> PATCH: kanonisasi sebelum POST
-  $('#da-btn-save').addEventListener('click', () => {
+  $('#ta-btn-save').addEventListener('click', () => {
     if (!activeJobId) return;
     const rows = gatherRows();
     const errs = validateClient(rows);
@@ -398,7 +398,7 @@
   });
 
   // RESET (ref_modified)
-  const resetBtn = $('#da-btn-reset');
+  const resetBtn = $('#ta-btn-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       if (!activeJobId || activeSource !== 'ref_modified') return;
@@ -424,7 +424,7 @@
   }
 
   // EXPORT CSV —>>> PATCH: tulis koefisien dalam format kanonik (titik)
-  $('#da-btn-export').addEventListener('click', () => {
+  $('#ta-btn-export').addEventListener('click', () => {
     if (!activeJobId) return;
     const rows = gatherRows();
     const csv = ['kategori;kode;uraian;satuan;koefisien']
@@ -439,7 +439,7 @@
     const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `detail_ahsp_${activeJobId}.csv`;
+    a.download = `template_ahsp_${activeJobId}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   });
@@ -451,6 +451,6 @@
   }
 
   // auto-select first job
-  const first = $('#da-job-list .da-job-item:not([hidden])');
+  const first = $('#ta-job-list .ta-job-item:not([hidden])');
   if (first) selectJob(first);
 })();

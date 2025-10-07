@@ -79,6 +79,7 @@ def template_ahsp_view(request, project_id: int):
         "count_ref": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_REF),
         "count_mod": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_REF_MOD),
         "count_custom": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_CUSTOM),
+        "side_active": "template_ahsp",
     }
     return render(request, "detail_project/template_ahsp.html", ctx)
 

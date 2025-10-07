@@ -1,4 +1,4 @@
-// rekap_ahsp.js — layout 2 panel: list kiri, detail satu pekerjaan kanan
+// rincian_ahsp.js — layout 2 panel: list kiri, detail satu pekerjaan kanan
 (function(){
   const ROOT = document.getElementById('rekap-app');
   if (!ROOT) return;

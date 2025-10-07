@@ -6,8 +6,8 @@
   {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
   {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
   {% url 'detail_project:harga_items' project.id as url_harga_items %}
-  {% url 'detail_project:detail_ahsp' project.id as url_detail_ahsp %}
-  {% url 'detail_project:detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
+  {% url 'detail_project:template_ahsp' project.id as url_template_ahsp %}
+  {% url 'detail_project:rincian_ahsp' project.id as url_rincian_ahsp %}
   {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
   {% url 'detail_project:rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
   {# opsional: tambahkan menu baru jika dipakai #}
@@ -20,8 +20,8 @@
 {% trans "List Pekerjaan" as t_list_pekerjaan %}
 {% trans "Volume Pekerjaan" as t_volume_pekerjaan %}
 {% trans "Harga Items" as t_harga_items %}
-{% trans "Detail AHSP" as t_detail_ahsp %}
-{% trans "Detail Gabungan" as t_detail_gabungan %}
+{% trans "Template AHSP" as t_template_ahsp %}
+{% trans "Rincian AHSP" as t_rincian_ahsp %}
 {% trans "Rekap RAB" as t_rekap_rab %}
 {% trans "Rekap Kebutuhan" as t_rekap_kebutuhan %}
 {% trans "Rincian RAB" as t_rincian_rab %}
@@ -88,6 +88,14 @@
           </a>
         </li>
         <li>
+          <a class="dp-link {% if side_active == 'template_ahsp' %}is-active{% endif %}"
+             {% if side_active == 'template_ahsp' %}aria-current="page"{% endif %}
+             href="{{ url_template_ahsp|default:'#' }}">
+            <i class="bi bi-list-ul" aria-hidden="true"></i>
+            <span>{{ t_template_ahsp }}</span>
+          </a>
+        </li>
+        <li>
           <a class="dp-link {% if side_active == 'harga_items' %}is-active{% endif %}"
              {% if side_active == 'harga_items' %}aria-current="page"{% endif %}
              href="{{ url_harga_items|default:'#' }}">
@@ -96,19 +104,11 @@
           </a>
         </li>
         <li>
-          <a class="dp-link {% if side_active == 'detail_ahsp' %}is-active{% endif %}"
-             {% if side_active == 'detail_ahsp' %}aria-current="page"{% endif %}
-             href="{{ url_detail_ahsp|default:'#' }}">
-            <i class="bi bi-list-ul" aria-hidden="true"></i>
-            <span>{{ t_detail_ahsp }}</span>
-          </a>
-        </li>
-        <li>
-          <a class="dp-link {% if side_active == 'detail_ahsp_gabungan' %}is-active{% endif %}"
-             {% if side_active == 'detail_ahsp_gabungan' %}aria-current="page"{% endif %}
-             href="{{ url_detail_ahsp_gabungan|default:'#' }}">
+          <a class="dp-link {% if side_active == 'rincian_ahsp' %}is-active{% endif %}"
+             {% if side_active == 'rincian_ahsp' %}aria-current="page"{% endif %}
+             href="{{ url_rincian_ahsp|default:'#' }}">
             <i class="bi bi-collection" aria-hidden="true"></i>
-            <span>{{ t_detail_gabungan }}</span>
+            <span>{{ t_rincian_ahsp }}</span>
           </a>
         </li>
         <li>

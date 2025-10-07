@@ -1,11 +1,11 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
-{% block title %}Detail AHSP — {{ project.nama }}{% endblock %}
-{% block body_attrs %}data-page="detail_ahsp"{% endblock %}
+{% block title %}Template AHSP — {{ project.nama }}{% endblock %}
+{% block body_attrs %}data-page="template_ahsp"{% endblock %}
 
 {% block detail_css %}
   {# Biarkan default css detail_ahsp dari base load #}
-  <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp.css' %}">
 {% endblock %}
 
 {# Select2 (autocomplete untuk segmen LAIN) #}
@@ -23,8 +23,8 @@
 {% block dp_topbar_extra %}{% endblock %}
 
 {% block dp_content %}
-<div id="da-app"
-     class="da-app"
+<div id="ta-app"
+     class="ta-app"
      data-project-id="{{ project.id }}"
      data-locale="id-ID"
      data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"      {# 0 diganti JS #}
@@ -35,37 +35,37 @@
      data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
 
   {# Header halaman #}
-  <header class="da-page-header">
-    <h1 class="da-title">Detail AHSP</h1>
-    <p class="da-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
+  <header class="ta-page-header">
+    <h1 class="ta-title">Template AHSP</h1>
+    <p class="ta-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
   </header>
 
   {# Toolbar sticky (id diperlukan untuk pengukuran tinggi oleh JS) #}
-  <div id="da-toolbar" class="da-toolbar" role="region" aria-label="Toolbar Detail AHSP">
-    <div class="da-combobox">
-      <input id="da-job-search" class="da-input" type="text" placeholder="Cari pekerjaan…"
+  <div id="ta-toolbar" class="ta-toolbar" role="region" aria-label="Toolbar Template AHSP">
+    <div class="ta-combobox">
+      <input id="ta-job-search" class="ta-input" type="text" placeholder="Cari pekerjaan…"
              aria-label="Cari pekerjaan" autocomplete="off">
     </div>
 
-    <div class="da-toolbar-spacer"></div>
+    <div class="ta-toolbar-spacer"></div>
 
-    <button id="da-btn-export" class="btn btn-light btn-sm" type="button">Ekspor CSV</button>
+    <button id="ta-btn-export" class="btn btn-light btn-sm" type="button">Ekspor CSV</button>
 
-    <div class="da-dirty-indicator" aria-live="polite">
-      <span id="da-dirty-dot" class="dot" hidden>●</span>
-      <span id="da-dirty-text" hidden>Belum disimpan</span>
+    <div class="ta-dirty-indicator" aria-live="polite">
+      <span id="ta-dirty-dot" class="dot" hidden>●</span>
+      <span id="ta-dirty-text" hidden>Belum disimpan</span>
     </div>
 
-    <button id="da-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>Reset ke Referensi</button>
-    <button id="da-btn-save" class="btn btn-primary btn-sm" type="button" disabled>Simpan</button>
+    <button id="ta-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>Reset ke Referensi</button>
+    <button id="ta-btn-save" class="btn btn-primary btn-sm" type="button" disabled>Simpan</button>
   </div>
 
-  <div class="da-body">
+  <div class="ta-body">
     {# Sidebar pekerjaan #}
-    <aside class="da-sidebar" aria-label="Daftar pekerjaan">
-      <ul id="da-job-list" class="da-job-list">
+    <aside class="ta-sidebar" aria-label="Daftar pekerjaan">
+      <ul id="ta-job-list" class="ta-job-list">
         {% for p in pekerjaan %}
-          <li class="da-job-item"
+          <li class="ta-job-item"
               tabindex="0"
               role="button"
               data-pekerjaan-id="{{ p.id }}"
@@ -86,44 +86,44 @@
             </div>
           </li>
         {% empty %}
-          <li class="da-empty">Belum ada pekerjaan yang bisa ditampilkan.</li>
+          <li class="ta-empty">Belum ada pekerjaan yang bisa ditampilkan.</li>
         {% endfor %}
       </ul>
     </aside>
 
     {# Panel editor #}
-    <main class="da-editor" aria-label="Editor Detail AHSP">
-      <section class="da-job-header">
+    <main class="ta-editor" aria-label="Editor Template AHSP">
+      <section class="ta-job-header">
         <div class="row">
           <div class="cell">
             <div class="label">Kode</div>
-            <div id="da-active-kode" class="value mono">—</div>
+            <div id="ta-active-kode" class="value mono">—</div>
           </div>
           <div class="cell wide">
             <div class="label">Uraian</div>
-            <div id="da-active-uraian" class="value">—</div>
+            <div id="ta-active-uraian" class="value">—</div>
           </div>
           <div class="cell">
             <div class="label">Satuan</div>
-            <div id="da-active-satuan" class="value">—</div>
+            <div id="ta-active-satuan" class="value">—</div>
           </div>
           <div class="cell">
             <div class="label">Sumber</div>
-            <div id="da-active-source" class="value"><span class="badge">—</span></div>
+            <div id="ta-active-source" class="value"><span class="badge">—</span></div>
           </div>
         </div>
       </section>
 
       {# Segmen TK — Tenaga Kerja #}
-      <section class="da-segment" data-seg="TK">
-        <header class="da-seg-header">
+      <section class="ta-segment" data-seg="TK">
+        <header class="ta-seg-header">
           <h2>Tenaga Kerja</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="TK">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="TK">+ Baris kosong</button>
           </div>
         </header>
-        <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel TK">
+        <div class="ta-table-wrap">
+          <table class="ta-table" aria-label="Tabel TK">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -131,7 +131,7 @@
               <col class="col-satuan">
               <col class="col-koef">
             </colgroup>
-            <thead class="da-thead-sticky">
+            <thead class="ta-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -141,22 +141,22 @@
               </tr>
             </thead>
             <tbody id="seg-TK-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
       {# Segmen BHN — Bahan #}
-      <section class="da-segment" data-seg="BHN">
-        <header class="da-seg-header">
+      <section class="ta-segment" data-seg="BHN">
+        <header class="ta-seg-header">
           <h2>Bahan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="BHN">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="BHN">+ Baris kosong</button>
           </div>
         </header>
-        <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel BHN">
+        <div class="ta-table-wrap">
+          <table class="ta-table" aria-label="Tabel BHN">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -164,7 +164,7 @@
               <col class="col-satuan">
               <col class="col-koef">
             </colgroup>
-            <thead class="da-thead-sticky">
+            <thead class="ta-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -174,22 +174,22 @@
               </tr>
             </thead>
             <tbody id="seg-BHN-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
       {# Segmen ALT — Peralatan #}
-      <section class="da-segment" data-seg="ALT">
-        <header class="da-seg-header">
+      <section class="ta-segment" data-seg="ALT">
+        <header class="ta-seg-header">
           <h2>Peralatan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="ALT">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="ALT">+ Baris kosong</button>
           </div>
         </header>
-        <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel ALT">
+        <div class="ta-table-wrap">
+          <table class="ta-table" aria-label="Tabel ALT">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -197,7 +197,7 @@
               <col class="col-satuan">
               <col class="col-koef">
             </colgroup>
-            <thead class="da-thead-sticky">
+            <thead class="ta-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -207,22 +207,22 @@
               </tr>
             </thead>
             <tbody id="seg-ALT-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
       {# Segmen LAIN — Lainnya #}
-      <section class="da-segment" data-seg="LAIN">
-        <header class="da-seg-header">
+      <section class="ta-segment" data-seg="LAIN">
+        <header class="ta-seg-header">
           <h2>Lainnya</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm da-seg-add-empty" type="button" data-target-seg="LAIN">+ Baris kosong</button>
+            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="LAIN">+ Baris kosong</button>
           </div>
         </header>
-        <div class="da-table-wrap">
-          <table class="da-table" aria-label="Tabel LAIN">
+        <div class="ta-table-wrap">
+          <table class="ta-table" aria-label="Tabel LAIN">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -230,7 +230,7 @@
               <col class="col-satuan">
               <col class="col-koef">
             </colgroup>
-            <thead class="da-thead-sticky">
+            <thead class="ta-thead-sticky">
               <tr>
                 <th class="col-no">No</th>
                 <th class="col-uraian">Uraian</th>
@@ -240,22 +240,22 @@
               </tr>
             </thead>
             <tbody id="seg-LAIN-body">
-              <tr class="da-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <footer class="da-editor-footer">
-        <div id="da-row-stats">0 baris</div>
+      <footer class="ta-editor-footer">
+        <div id="ta-row-stats">0 baris</div>
         <div class="hint">Tip: <kbd>Ctrl/⌘+S</kbd> Simpan; <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> pindah sel; <kbd>Del</kbd> hapus baris.</div>
       </footer>
     </main>
   </div>
 
   {# Template row #}
-  <template id="da-row-template">
-    <tr class="da-row">
+  <template id="ta-row-template">
+    <tr class="ta-row">
       <td class="col-no"><span class="row-index">1</span></td>
 
       <td class="col-uraian">
@@ -281,5 +281,5 @@
 
 {% block extra_js %}
   {{ block.super }}
-  <script src="{% static 'detail_project/js/detail_ahsp.js' %}" defer></script>
+  <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}

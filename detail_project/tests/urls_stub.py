@@ -14,6 +14,10 @@ urlpatterns = [
     path("list/", ok, name="list_pekerjaan"),
     path("volume/", ok, name="volume_pekerjaan"),
     path("harga/", ok, name="harga_items"),
+    # NEW names
+    path("template-ahsp/", ok, name="template_ahsp"),
+    path("rincian-ahsp/", ok, name="rincian_ahsp"),
+    # Legacy aliases (tetap ada demi backward-compat)
     path("detail/", ok, name="detail_ahsp"),
     path("detail-gabungan/", ok, name="detail_ahsp_gabungan"),
     path("rekap/", ok, name="rekap_rab"),
