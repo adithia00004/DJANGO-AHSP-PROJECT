@@ -140,6 +140,8 @@ def api_save_list_pekerjaan(request: HttpRequest, project_id: int):
     Disarankan gunakan /upsert/. Endpoint ini tetap disediakan untuk kebutuhan reset penuh.
     """
     project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
 
     # 1) Parse JSON
     try:
@@ -376,6 +378,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             return default
 
     project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
 
     # Parse payload
     try:
@@ -408,25 +412,36 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
             for pi, p in enumerate(pekerjaan_list):
                 src = _str_to_src(p.get("source_type"))
+                p_id = p.get("id")  # jika ada, berarti baris existing (boleh tanpa ref_id bila tidak berubah)
 
                 if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
-                    if p.get("ref_id") is None:
-                        pre_errors.append(_err(
-                            f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
-                            "Wajib untuk source=ref/ref_modified"
-                        ))
+                    rid_raw = p.get("ref_id", None)
+
+                    if rid_raw is None:
+                        # Tanpa ref_id:
+                        #  - kalau baris existing (punya id) → DIIZINKAN (artinya tidak ganti referensi)
+                        #  - kalau baris baru (tanpa id)     → ERROR (ref_id tetap wajib)
+                        if not p_id:
+                            pre_errors.append(_err(
+                                f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                                "Wajib untuk source=ref/ref_modified (baris baru)"
+                            ))
+                        # kalau p_id ada, tidak menambahkan ke all_ref_ids → tidak ada cek existensi (karena tak mengubah ref)
                         continue
-                    # tipe harus integer
+
+                    # Ada ref_id → harus integer & akan dicek eksistensinya (ini kasus ganti ref atau baris baru lengkap)
                     try:
-                        rid = int(p.get("ref_id"))
+                        rid = int(rid_raw)
                     except (TypeError, ValueError):
                         pre_errors.append(_err(
                             f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
                             "Harus integer"
                         ))
                         continue
+
                     all_ref_ids.add(rid)
                     ref_locs.append((f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id", rid))
+
 
                 elif src == Pekerjaan.SOURCE_CUSTOM:
                     if not (p.get("snapshot_uraian") or "").strip():
@@ -486,7 +501,19 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             "sub_klasifikasi", "source_type", "ref",
             "snapshot_kode", "snapshot_uraian", "snapshot_satuan", "ordering_index"
         ])
-        DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp).update(pekerjaan=pobj)
+        # --- DEDUP DETAIL ---
+        # Hindari UniqueViolation (project, pekerjaan, kode) dengan melewatkan baris TMP
+        # yang 'kode'-nya sudah ada pada target.
+        existing_kodes = set(
+            DetailAHSPProject.objects
+            .filter(project=project, pekerjaan=pobj)
+            .values_list("kode", flat=True)
+        )
+        tmp_qs = DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp)
+        if existing_kodes:
+            tmp_qs = tmp_qs.exclude(kode__in=existing_kodes)
+        # Pindahkan hanya baris yang tidak bentrok
+        tmp_qs.update(pekerjaan=pobj)
         tmp.delete()
 
     # === Loop utama ===
@@ -565,10 +592,20 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     replace = False
                     new_ref_id = p.get("ref_id")
 
+                    # Ganti tipe sumber → pasti replace
                     if pobj.source_type != src:
                         replace = True
-                    elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and new_ref_id is not None:
-                        replace = True
+                    # Untuk REF/REF_MOD: hanya replace jika ref_id benar-benar BERBEDA
+                    elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
+                        if new_ref_id is not None:
+                            try:
+                                replace = (int(new_ref_id) != getattr(pobj, "ref_id", None))
+                            except (TypeError, ValueError):
+                                # Payload anomali: fail-safe ke replace agar state konsisten
+                                replace = True
+                        else:
+                            # Tidak ada ref_id baru → tidak dianggap replace
+                            replace = False
 
                     if replace:
                         try:
@@ -825,6 +862,41 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
     dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     return JsonResponse({"ok": saved > 0, "saved": saved, "errors": errors, "decimal_places": dp_vol}, status=status_code)
 
+# ---------- View 2b: Volume LIST (flat, ringan) ----------
+@login_required
+@require_GET
+def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
+    """
+    Kembalikan daftar flat {pekerjaan_id, quantity} untuk seluruh pekerjaan di project.
+    FE akan merge map ini ke pohon dari api_get_list_pekerjaan_tree.
+    Quantity bernilai "0" (string dp-kanonik) jika belum ada record VolumePekerjaan.
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    # Ambil semua pekerjaan id dalam project (agar item tanpa volume pun ikut 0)
+    p_ids = list(
+        Pekerjaan.objects
+        .filter(project=project)
+        .values_list("id", flat=True)
+    )
+
+    # Ambil volume yang sudah ada
+    vol_qs = VolumePekerjaan.objects.filter(project=project, pekerjaan_id__in=p_ids)\
+                                    .values("pekerjaan_id", "quantity")
+    vol_map = {row["pekerjaan_id"]: row["quantity"] for row in vol_qs}
+
+    # Tentukan dp kanonik untuk wire format (ikuti spec VOL)
+    dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
+
+    items = [
+        {
+            "pekerjaan_id": pid,
+            "quantity": to_dp_str(vol_map.get(pid, 0), dp_vol),  # "123,456" → kirim style kanonik "123.456"
+        }
+        for pid in p_ids
+    ]
+
+    return JsonResponse({"ok": True, "items": items, "decimal_places": dp_vol})
 
 
 # ---------- View 3: Detail AHSP per Pekerjaan ----------
@@ -1070,6 +1142,8 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
       lalu pindahkan detailnya ke objek asli (untuk menghindari konflik FK/unik).
     """
     project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
     pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
 
     if pkj.source_type != Pekerjaan.SOURCE_REF_MOD:
@@ -1090,9 +1164,20 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
         override_uraian=pkj.snapshot_uraian or None,
         override_satuan=pkj.snapshot_satuan or None,
     )
+
     moved = 0
     if temp:
-        moved = DetailAHSPProject.objects.filter(project=project, pekerjaan=temp).update(pekerjaan=pkj)
+        # --- DEDUP saat reset (aman walau sebelumnya sudah delete) ---
+        from .models import DetailAHSPProject
+        existing_kodes = set(
+            DetailAHSPProject.objects
+            .filter(project=project, pekerjaan=pkj)
+            .values_list("kode", flat=True)
+        )
+        tmp_qs = DetailAHSPProject.objects.filter(project=project, pekerjaan=temp)
+        if existing_kodes:
+            tmp_qs = tmp_qs.exclude(kode__in=existing_kodes)
+        moved = tmp_qs.update(pekerjaan=pkj)
         temp.delete()
 
     # Tandai ready bila ada baris
@@ -1294,18 +1379,17 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
             kode = (r.get('kode') or '').strip()
             uraian = (r.get('uraian') or '').strip()
             satuan = (r.get('satuan') or '').strip() or None
-            try:
-                koef = float(r.get('koefisien'))
-                if koef < 0:
-                    raise ValueError
-            except Exception:
-                all_errors.append(_err(f"items[{i}].rows[{j}].koefisien", "Harus ≥ 0")); continue
+            koef_dec = parse_any(r.get('koefisien'))
+            if koef_dec is None or koef_dec < 0:
+                all_errors.append(_err(f"items[{i}].rows[{j}].koefisien", "Harus ≥ 0 dan berupa angka yang valid")); continue
+            dp_koef = DECIMAL_SPEC["KOEF"].dp
+            koef_q = quantize_half_up(koef_dec, dp_koef)
             if not uraian or not kode:
                 all_errors.append(_err(f"items[{i}].rows[{j}]", "kode & uraian wajib")); continue
             hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
             to_create.append(DetailAHSPProject(
                 project=project, pekerjaan=pkj, harga_item=hip,
-                kategori=kat, kode=kode, uraian=uraian, satuan=satuan, koefisien=Decimal(str(koef))
+                kategori=kat, kode=kode, uraian=uraian, satuan=satuan, koefisien=koef_q
             ))
             saved_here += 1
         if to_create:
@@ -1434,19 +1518,39 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
                 .replace("\n", " "))
 
     lines = ["pekerjaan_kode;pekerjaan_uraian;kategori;kode;uraian;satuan;koefisien;volume;harga_satuan;subtotal"]
+    use_canon = (request.GET.get("canon") == "1")
+    if use_canon:
+        dp_harga = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
+        dp_koef  = DECIMAL_SPEC["KOEF"].dp
+        dp_vol   = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     for r in rows:
-        lines.append(";".join([
-            q(r["pekerjaan_kode"]),
-            q(r["pekerjaan_uraian"]),
-            q(r["kategori"]),
-            q(r["kode"]),
-            q(r["uraian"]),
-            q(r["satuan"]),
-            q(r["koefisien"]),
-            q(r["volume"]),
-            q(r["harga_satuan"]),
-            q(r["subtotal"]),
-        ]))
+        if use_canon:
+            row = [
+                q(r["pekerjaan_kode"]),
+                q(r["pekerjaan_uraian"]),
+                q(r["kategori"]),
+                q(r["kode"]),
+                q(r["uraian"]),
+                q(r["satuan"]),
+                q(to_dp_str(r["koefisien"], dp_koef)),
+                q(to_dp_str(r["volume"], dp_vol)),
+                q(to_dp_str(r["harga_satuan"], dp_harga)),
+                q(to_dp_str(r["subtotal"], 2)),
+            ]
+        else:
+            row = [
+                q(r["pekerjaan_kode"]),
+                q(r["pekerjaan_uraian"]),
+                q(r["kategori"]),
+                q(r["kode"]),
+                q(r["uraian"]),
+                q(r["satuan"]),
+                q(r["koefisien"]),
+                q(r["volume"]),
+                q(r["harga_satuan"]),
+                q(r["subtotal"]),
+            ]
+        lines.append(";".join(row))
 
     # Footer ringkas (opsional): total & BUK
     D = totals["total_langsung"]
@@ -1598,13 +1702,17 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
                 .replace("\n", " "))
 
     lines = ["kategori;kode;uraian;satuan;quantity"]
+    use_canon = (request.GET.get("canon") == "1")
+    dp_vol   = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     for r in rows:
+        qty = r.get("quantity")
+        qty_str = to_dp_str(qty, dp_vol) if use_canon else q(qty)
         lines.append(";".join([
             q(r.get("kategori")),
             q(r.get("kode")),
             q(r.get("uraian")),
             q(r.get("satuan")),
-            q(r.get("quantity")),
+            qty_str,
         ]))
     csv = "\n".join(lines)
     resp = HttpResponse(csv, content_type="text/csv; charset=utf-8")

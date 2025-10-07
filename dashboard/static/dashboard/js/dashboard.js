@@ -73,3 +73,9 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 });
+
+// Safety: bersihkan modal-backdrop jika tertinggal setelah modal ditutup
+document.addEventListener('hidden.bs.modal', function () {
+  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+  document.body.classList.remove('modal-open');
+});

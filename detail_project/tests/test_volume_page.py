@@ -210,11 +210,27 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertIn('id="vp-search-results"', html)
         self.assertIn('role="listbox"', html)  # ARIA listbox
 
-        # THEAD default (class table-light). Sticky diatur CSS.
-        self.assertIn('<thead class="table-light"', html)
-        # Kolom
-        for label in ["#", "Kode", "Uraian", "Satuan", "Quantity"]:
-            self.assertIn(f">{label}<", html)
+        # THEAD default: harus ada class `table-light` (boleh ada kelas tambahan)
+        # boleh muncul di tabel utama ATAU di tabel nested (card).
+        import re
+        self.assertRegex(
+            html,
+            r"<thead[^>]*class=[\"'][^\"']*\btable-light\b",
+        )
+        
+        # Kolom: terima dua varian header agar kompatibel dengan layout baru
+        # Varian A (tabel utama):    #, Kode, Uraian, Satuan, Quantity
+        # Varian B (nested card):    No, Uraian, Satuan, Quantity
+        variants = [
+            ["#", "Kode", "Uraian", "Satuan", "Quantity"],
+            ["No", "Uraian", "Satuan", "Quantity"],
+        ]
+        found_any_variant = any(
+            all((f">{label}<") in html for label in cols)
+            for cols in variants
+        )
+        self.assertTrue(found_any_variant, "Header kolom tabel tidak sesuai salah satu varian yang diharapkan.")
+
 
         # Multi-toast container (undo)
         self.assertIn('id="vp-toasts"', html)
@@ -224,7 +240,8 @@ class VolumePekerjaanPageTests(TestCase):
         html = self.c.get(self._url_page()).content.decode("utf-8")
 
         # Offcanvas Parameter
-        self.assertIn('id="vpVarOffcanvas"', html)
+
+        self.assertRegex(html, r'id="(vpVarOffcanvas|vp-sidebar)"')
         self.assertIn('id="vp-var-table"', html)
         self.assertIn('id="vp-var-add"', html)
         self.assertIn('id="vp-var-import-btn"', html)

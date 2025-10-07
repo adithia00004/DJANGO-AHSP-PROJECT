@@ -37,7 +37,7 @@
     </td>
 
     <td class="col-urai">
-      <div class="lp-urai-preview"></div>
+      <div class="lp-urai-preview dp-clamp-2"></div>
       <textarea class="form-control uraian" rows="2" placeholder="Uraian pekerjaan"></textarea>
     </td>
 
@@ -46,7 +46,7 @@
     </td>
 
     <td class="col-act">
-      <button type="button" class="btn btn-outline-danger btn-del" title="Hapus baris">✕</button>
+      <button type="button" class="btn btn-danger btn-sm btn-neon btn-del" title="Hapus baris" aria-label="Hapus baris">✕</button>
     </td>
   </tr>
 </template>
@@ -87,7 +87,7 @@
 
     <div class="lp-col lp-col--uraian flex-grow-1">
       <input type="text" class="form-control input-uraian d-none" placeholder="Uraian pekerjaan" />
-      <div class="readonly-uraian d-none"></div>
+      <div class="readonly-uraian d-none dp-clamp-2"></div>
     </div>
 
     <div class="lp-col lp-col--satuan">
@@ -100,7 +100,7 @@
     </div>
 
     <div class="lp-col lp-col--actions">
-      <button type="button" class="btn btn-outline-danger btn-del">Hapus</button>
+      <button type="button" class="btn btn-danger btn-sm btn-neon btn-del">Hapus</button>
     </div>
   </div>
 </template>

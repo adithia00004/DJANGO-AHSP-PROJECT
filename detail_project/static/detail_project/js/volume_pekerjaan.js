@@ -12,15 +12,24 @@
 
   // ---- Konteks dasar
   const projectId = root.dataset.projectId || root.dataset.pid;
+  // NEW: endpoint dari data-attribute (fallback ke pattern lama)
+  const EP_SAVE    = root.dataset.endpointSave
+    || `/detail_project/api/project/${projectId}/volume-pekerjaan/save/`;
+  // State formula (raw,is_fx) disimpan/diambil dari endpoint ini
+  const EP_FORMULA_STATE = root.dataset.endpointFormula
+    || `/detail_project/api/project/${projectId}/volume-formula-state/`;
+  // Pohon data untuk membangun grup Klas/Sub/Pekerjaan 
+  const EP_TREE    = root.dataset.endpointTree
+    || `/detail_project/api/project/${projectId}/list-pekerjaan/tree/`;
 
   // Presisi simpan (DB 3dp), tampilan dinamis 0..3 dp
   const STORE_PLACES = 3;
 
   // Debounce autosave (ms)
-  const AUTOSAVE_MS = 300000; 
+  const AUTOSAVE_MS = Number(root.dataset.autosaveMs || 30000);
 
-  // ---- State in-memory
-  let rows = Array.from(root.querySelectorAll('#vp-table tbody tr[data-pekerjaan-id]'));
+  // ---- State in-memory (global selector agar mendukung multi-tabel/di dalam card)
+  let rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
   const originalValueById = {}; // nilai tersimpan di server (baseline)
   const rawInputById = {};      // string mentah di input
   const currentValueById = {};  // nilai numerik hasil parse/eval
@@ -48,13 +57,12 @@
   const btnVarImportBtn = document.getElementById('vp-var-import-btn');
   const btnVarExportBtn = document.getElementById('vp-var-export-btn');
   const fileVarImport = document.getElementById('vp-var-import');
-  const offcanvasEl = document.getElementById('vpVarOffcanvas');
+  // Overlay sidebar (pengganti offcanvas)
+  const sidebarEl = document.getElementById('vp-sidebar');
 
   const searchInput = document.getElementById('vp-search');
   const searchDrop = document.getElementById('vp-search-results');
   const prefixBadge = document.getElementById('vp-search-prefix-badge');
-  const topbarEl = document.getElementById('dp-topbar');
-  const toolbarEl = document.getElementById('vp-toolbar');
 
   // Toast (single) + multi-toasts (untuk Undo)
   const toastEl = document.getElementById('vp-toast');
@@ -182,49 +190,78 @@
     window.__vpDirty = dirty;
   }
 
-  // ---- CSS Vars sync (topbar/toolbar/thead)
-  function setTopOffsets() {
-    try {
-      // coba baca CSS var global dari base
-      const rs = getComputedStyle(document.documentElement);
-      const topbarVar = rs.getPropertyValue('--dp-topbar-h') || rs.getPropertyValue('--topbar-height') || '';
-      const topbarFromVar = parseInt(String(topbarVar).replace('px','').trim(), 10);
-
-      const topbarH  = Number.isFinite(topbarFromVar) && topbarFromVar > 0
-        ? topbarFromVar
-        : (topbarEl ? Math.round(topbarEl.getBoundingClientRect().height) : 0);
-
-      const toolbarH = toolbarEl ? Math.round(toolbarEl.getBoundingClientRect().height) : 42;
-
-      const rootStyle = document.documentElement.style;
-      rootStyle.setProperty('--vp-top-offset', `${topbarH}px`);
-      rootStyle.setProperty('--vp-toolbar-h', `${toolbarH}px`);
-
-      const thead = document.querySelector('#vp-table thead');
-      const thOrHead = thead?.querySelector('tr') || thead;
-      const theadH = thOrHead ? Math.round(thOrHead.getBoundingClientRect().height) : 36;
-      rootStyle.setProperty('--vp-thead-h', `${theadH}px`);
-    } catch {}
-  }
-  setTopOffsets();
-  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(setTopOffsets).catch(()=>{}); }
-  window.addEventListener('load', setTopOffsets, { once: true });
-  window.addEventListener('resize', setTopOffsets);
-  if (toolbarEl) toolbarEl.addEventListener('transitionend', setTopOffsets);
-  if (searchInput) ['focus','blur','input'].forEach(ev => searchInput.addEventListener(ev, setTopOffsets));
-  ['shown.bs.offcanvas','hidden.bs.offcanvas','shown.bs.modal','hidden.bs.modal'].forEach(evt => { document.addEventListener(evt, setTopOffsets); });
-  (function observeTopbarResize() {
-    try {
-      const navEl = document.getElementById('dp-topbar') || document.querySelector('body > nav');
-      if (!navEl || typeof ResizeObserver === 'undefined') return;
-      const ro = new ResizeObserver(() => setTopOffsets());
-      ro.observe(navEl);
-    } catch {}
-  })();
 
   // ===== Search Index & UI =====
   let searchIndex = []; // {type, id, label, el}
   let searchState = { items: [], activeIdx: -1 };
+
+  // ===== Collapse (toggle Klas/Sub) =====
+  const COLLAPSE_KEY = `vp_collapse:${projectId}`;
+  let collapsed = { klas: {}, sub: {} };
+  try { const raw = localStorage.getItem(COLLAPSE_KEY); if (raw) collapsed = Object.assign({klas:{},sub:{}}, JSON.parse(raw)||{}); } catch {}
+  function saveCollapse(){ try{ localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); }catch{} }
+  function slugKey(s){
+    return String(s||'').trim().toLowerCase().normalize('NFKD')
+      .replace(/[^\w\s-]/g,'').replace(/\s+/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'') || '_';
+  }
+  function applyCollapseOnTable(){
+    const tbody = document.querySelector('#vp-table tbody'); if(!tbody) return;
+    let curK = null, curS = null;
+    Array.from(tbody.rows).forEach(tr=>{
+      if(tr.classList.contains('vp-klass')){
+        curK = tr.getAttribute('data-klas-id') || slugKey(tr.textContent);
+        tr.classList.toggle('is-collapsed', !!collapsed.klas[curK]);
+        return;
+      }
+      if(tr.classList.contains('vp-sub')){
+        curS = tr.getAttribute('data-sub-id') || slugKey(tr.textContent);
+        tr.classList.toggle('is-collapsed', !!collapsed.sub[curS] || !!collapsed.klas[curK]);
+        return;
+      }
+      // baris pekerjaan
+      const k = tr.getAttribute('data-klas-id') || curK;
+      const s = tr.getAttribute('data-sub-id') || curS;
+      tr.hidden = !!collapsed.klas[k] || !!collapsed.sub[s];
+    });
+  }
+
+  function applyCollapseOnCards() {
+    document.querySelectorAll('.vp-klas-card, .vp-sub-card').forEach(card => {
+      const isKlas = card.classList.contains('vp-klas-card');
+      const key = isKlas ? (card.getAttribute('data-klas-id') || slugKey(card.querySelector('.card-header')?.textContent))
+                         : (card.getAttribute('data-sub-id')  || slugKey(card.querySelector('.card-header')?.textContent));
+      const isCollapsed = isKlas ? !!collapsed.klas[key] : !!collapsed.sub[key];
+      card.classList.toggle('is-collapsed', isCollapsed);
+      const btn = card.querySelector('.vp-card-toggle');
+      if (btn) {
+        btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = `bi ${isCollapsed ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}`;
+      }
+    });
+  }
+
+  // Delegasi klik toggle caret
+  document.addEventListener('click', (e)=>{
+    // row-based (fallback dari builder EP_TREE)
+    const btnRow = e.target.closest('.vp-toggle');
+    if (btnRow) {
+      const type = btnRow.getAttribute('data-type'); const key = btnRow.getAttribute('data-key');
+      if(!type || !key) return;
+      if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
+      else collapsed.sub[key] = !collapsed.sub[key];
+      saveCollapse(); applyCollapseOnTable(); applyCollapseOnCards(); return;
+    }
+    // card-based (SSR / template)
+    const btnCard = e.target.closest('.vp-card-toggle');
+    if (btnCard) {
+      const type = btnCard.getAttribute('data-type'); const key = btnCard.getAttribute('data-key');
+      if(!type || !key) return;
+      if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
+      else collapsed.sub[key] = !collapsed.sub[key];
+      saveCollapse(); applyCollapseOnCards(); return;
+    }    
+  });
 
   function typeBadgeClass(type) {
     if (type === 'Klasifikasi') return 'vp-type-klas';
@@ -241,23 +278,37 @@
     const after  = text.slice(idx + q.length);
     return `${escapeHtml(before)}<mark class="vp-mark">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
   }
+
   function buildSearchIndex() {
     searchIndex = [];
-    document.querySelectorAll('#vp-table tbody tr.vp-klass').forEach((tr, i) => {
-      const label = tr.textContent.trim();
-      searchIndex.push({ type: 'Klasifikasi', id: `k${i}`, label, el: tr });
+    // Dukung 2 gaya header: versi <tr>.vp-klass/.vp-sub (table-group) & versi card (.vp-klas-card/.vp-sub-card)
+    // 1) Header Klas/Sub versi CARD (list_pekerjaan-like)
+    document.querySelectorAll('.vp-klas-card > .card-header').forEach((el, i) => {
+      const label = el.textContent.trim();
+      searchIndex.push({ type: 'Klasifikasi', id: `k_card_${i}`, label, el });
     });
-    document.querySelectorAll('#vp-table tbody tr.vp-sub').forEach((tr, i) => {
-      const label = tr.textContent.trim();
-      searchIndex.push({ type: 'Sub', id: `s${i}`, label, el: tr });
+    document.querySelectorAll('.vp-sub-card > .card-header').forEach((el, i) => {
+      const label = el.textContent.trim();
+      searchIndex.push({ type: 'Sub', id: `s_card_${i}`, label, el });
     });
-    document.querySelectorAll('#vp-table tbody tr[data-pekerjaan-id]').forEach((tr) => {
-      const kode = (tr.querySelector('.text-monospace')?.textContent || '').trim();
+    // 2) Header Klas/Sub versi ROW (fallback)
+    document.querySelectorAll('tr.vp-klass').forEach((tr, i) => {
+      const label = tr.textContent.trim();
+      searchIndex.push({ type: 'Klasifikasi', id: `k_row_${i}`, label, el: tr });
+    });
+    document.querySelectorAll('tr.vp-sub').forEach((tr, i) => {
+      const label = tr.textContent.trim();
+      searchIndex.push({ type: 'Sub', id: `s_row_${i}`, label, el: tr });
+    });
+    // 3) Item pekerjaan (selalu ada)
+    document.querySelectorAll('tr[data-pekerjaan-id]').forEach((tr) => {
+      const kode = (tr.querySelector('.ux-mono, .text-monospace')?.textContent || '').trim();
       const uraian = (tr.querySelector('.text-wrap')?.textContent || '').trim();
       const label = (kode ? `${kode} — ` : '') + uraian;
       searchIndex.push({ type: 'Pekerjaan', id: tr.dataset.pekerjaanId, label, el: tr });
     });
   }
+
   function showSearchResults(items, q) {
     if (!searchDrop) return;
     searchState.items = items.slice(0, 15);
@@ -482,7 +533,7 @@
   async function persistRowFormulaServer(id) {
     try {
       const payload = { items: [{ pekerjaan_id: id, raw: String(rawInputById[id] || ''), is_fx: !!fxModeById[id] }] };
-      await HTTP.jpost(`/detail_project/api/project/${projectId}/volume-formula-state/`, payload);
+      await HTTP.jpost(EP_FORMULA_STATE, payload);
     } catch {}
   }
 
@@ -495,8 +546,10 @@
 
   // ==== Wiring baris pekerjaan
   function collectQtyInputs() {
-    return Array.from(document.querySelectorAll('#vp-table .qty-input'));
+    // Global: karena input bisa tersebar di beberapa sub-tabel dalam card
+    return Array.from(document.querySelectorAll('.qty-input'));
   }
+
   function focusNextFrom(currentEl, delta) {
     const inputs = collectQtyInputs();
     const idx = inputs.indexOf(currentEl);
@@ -575,6 +628,7 @@
         const normalized = normQty(input.value);
         if (normalized !== '') input.value = normalized;
       }
+      input.classList.toggle('vp-empty', !String(input.value||'').trim());
       setTimeout(() => hideSuggest(input), 120);
     });
     input && input.addEventListener('focus', () => updateSuggestions(input, id));
@@ -622,6 +676,7 @@
         const tgt = document.activeElement;
         if (tgt && tgt.classList.contains('qty-input')) {
           tgt.value = val;
+          tgt.classList.toggle('vp-empty', !String(tgt.value||'').trim());
           const tr2 = tgt.closest('tr');
           const id2 = parseInt(tr2.dataset.pekerjaanId, 10);
           const pv2 = tr2.querySelector('.fx-preview');
@@ -664,6 +719,9 @@
   function handleInputChange(id, inputEl, previewEl) {
     const raw = String(inputEl.value || '');
     rawInputById[id] = raw;
+    // flag kosong
+    const isEmpty = raw.trim() === '';
+    inputEl.classList.toggle('vp-empty', isEmpty);
 
     inputEl.classList.remove('is-invalid', 'is-valid');
     inputEl.removeAttribute('title');
@@ -1115,7 +1173,15 @@
   // ===== Build table dari tree
   async function enhanceWithGroups() {
     try {
-      const resp = await HTTP.jget(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`);
+      // Jika SSR sudah menyediakan baris pekerjaan, tidak perlu rebuild via API
+      if (document.querySelector('tr[data-pekerjaan-id]')) {
+        rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
+        buildSearchIndex();
+        // applyCollapseOnTable aman dipanggil; akan no-op jika tidak ada baris .vp-klass/.vp-sub
+        applyCollapseOnTable();
+        return;
+      }
+      const resp = await HTTP.jget(EP_TREE);
       if (!resp || !Array.isArray(resp.klasifikasi)) return;
 
       const tbody = document.querySelector('#vp-table tbody');
@@ -1124,32 +1190,51 @@
 
       let counter = 0;
       resp.klasifikasi.forEach(k => {
+        const kKey = String(k.id ?? slugKey(k.name));
         const trK = document.createElement('tr');
         trK.className = 'vp-klass';
-        trK.innerHTML = `<td colspan="5">${escapeHtml(k.name || '(Tanpa Klasifikasi)')}</td>`;
+        trK.setAttribute('data-klas-id', kKey);
+        trK.innerHTML = `
+          <td colspan="5">
+            <button type="button" class="btn btn-link btn-sm vp-toggle" data-type="klas" data-key="${escapeHtml(kKey)}" aria-expanded="${!collapsed.klas[kKey]}">
+              <i class="bi ${collapsed.klas[kKey] ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}"></i>
+            </button>
+            <strong>${escapeHtml(k.name || '(Tanpa Klasifikasi)')}</strong>
+          </td>`;
         tbody.appendChild(trK);
 
         (k.sub || []).forEach(s => {
+          const sKey = String(s.id ?? (kKey + ':' + slugKey(s.name)));
           const trS = document.createElement('tr');
           trS.className = 'vp-sub';
-          trS.innerHTML = `<td colspan="5">${escapeHtml(s.name || '(Tanpa Sub)')}</td>`;
+          trS.setAttribute('data-sub-id', sKey);
+          trS.setAttribute('data-klas-id', kKey);
+          trS.innerHTML = `
+            <td colspan="5">
+              <button type="button" class="btn btn-link btn-sm vp-toggle" data-type="sub" data-key="${escapeHtml(sKey)}" aria-expanded="${!(collapsed.sub[sKey]||collapsed.klas[kKey])}">
+                <i class="bi ${(collapsed.sub[sKey]||collapsed.klas[kKey]) ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}"></i>
+              </button>
+              ${escapeHtml(s.name || '(Tanpa Sub)')}
+            </td>`;          
           tbody.appendChild(trS);
 
           (s.pekerjaan || []).forEach(p => {
             counter += 1;
             const tr = document.createElement('tr');
             tr.dataset.pekerjaanId = p.id;
+            tr.setAttribute('data-klas-id', kKey);
+            tr.setAttribute('data-sub-id', sKey);
             tr.innerHTML = `
               <td>${counter}</td>
-              <td class="text-monospace">${escapeHtml(p.snapshot_kode || '')}</td>
+              <td class="text-monospace ux-mono">${escapeHtml(p.snapshot_kode || '')}</td>
               <td class="text-wrap">${escapeHtml(p.snapshot_uraian || '')}</td>
-              <td>${escapeHtml(p.snapshot_satuan || '')}</td>
+              <td>${escapeHtml(p.snapshot_satuan || '-')}</td>
               <td>
-                <div class="d-flex align-items-start gap-2 vp-cell" style="overflow: visible;">
+                <div class="d-flex align-items-start gap-2 vp-cell">
                   <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
                           title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
                           aria-pressed="false">fx</button>
-                  <div class="flex-grow-1" style="position: relative;">
+                  <div class="flex-grow-1">
                     <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input" aria-label="Quantity">
                     <div class="form-text fx-preview text-muted small" style="min-height:1rem;"></div>
                   </div>
@@ -1163,7 +1248,8 @@
       });
 
       buildSearchIndex();
-      setTopOffsets();
+      applyCollapseOnTable();
+      applyCollapseOnCards();
     } catch (e) {
       console.warn('enhanceWithGroups() gagal', e);
     }
@@ -1172,25 +1258,41 @@
   // ===== Prefill: rekap volume + (opsional) server formula state
   (async function prefill() {
     try {
-      // 1) Prefill volume dari rekap
-      const rekap = await HTTP.jget(`/detail_project/api/project/${projectId}/rekap/`).catch(()=> ({}));
+      // 1) Prefill volume: coba dari volume list (paling tepat), fallback ke rekap
       const volMap = {};
-      if (rekap && rekap.rows && Array.isArray(rekap.rows)) {
-        rekap.rows.forEach(r => {
-          if (r && typeof r.pekerjaan_id === 'number') {
-            const v = Number(r.volume || 0);
-            volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
-          }
-        });
+      try {
+        const vlist = await HTTP.jget(`/detail_project/api/project/${projectId}/volume-pekerjaan/list/`);
+        if (vlist && Array.isArray(vlist.items)) {
+          vlist.items.forEach(it => {
+            const id = Number(it.pekerjaan_id);
+            const v  = Number(String(it.quantity || '0').replace(',', '.'));
+            if (Number.isFinite(id) && Number.isFinite(v)) volMap[id] = v;
+          });
+        }
+      } catch {}
+      if (Object.keys(volMap).length === 0) {
+        const rekap = await HTTP.jget(`/detail_project/api/project/${projectId}/rekap/`).catch(()=> ({}));
+        if (rekap && Array.isArray(rekap.rows)) {
+          rekap.rows.forEach(r => {
+            if (r && typeof r.pekerjaan_id === 'number') {
+              const v = Number(r.volume || 0);
+              volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
+            }
+          });
+        }
       }
+      // 2) Pastikan baris ada: pakai SSR jika tersedia; jika tidak → fallback ke EP_TREE
+      if (!document.querySelector('tr[data-pekerjaan-id]')) {
+        await enhanceWithGroups();
+      }
+      rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
+      rows.forEach(tr => bindRow(tr));
 
-      // 2) Build table dari tree
-      await enhanceWithGroups();
 
       // 3) Ambil formula state dari server; kalau error → pakai localStorage
       let serverFormula = null;
       try {
-        const resp = await HTTP.jget(`/detail_project/api/project/${projectId}/volume-formula-state/`);
+        const resp = await HTTP.jget(EP_FORMULA_STATE);
         if (resp && resp.ok && Array.isArray(resp.items)) {
           serverFormula = {};
           resp.items.forEach(it => {
@@ -1213,6 +1315,7 @@
         currentValueById[id] = originalValueById[id];
 
         input.value = base ? formatIdSmart(base) : '';
+        input.classList.toggle('vp-empty', !input.value.trim());
 
         const f = formulaState[id];
         if (f && typeof f.raw === 'string' && f.raw.trim()) {
@@ -1229,7 +1332,9 @@
 
       setBtnSaveEnabled();
       buildSearchIndex();
-      setTopOffsets();
+     // Terapkan state collapse untuk kedua mode (row/card)
+     applyCollapseOnTable();
+     applyCollapseOnCards();
     } catch (e) {
       console.warn('Prefill rekap gagal', e);
       await enhanceWithGroups();
@@ -1240,7 +1345,6 @@
         setRowDirtyVisual(id, false);
       });
       setBtnSaveEnabled();
-      setTopOffsets();
     }
   })();
 
@@ -1272,15 +1376,12 @@
     });
 
     saving = true;
-    if (reason === 'manual' && btnSaveSpin) btnSaveSpin.classList.remove('d-none');
+    if (reason === 'manual' && btnSaveSpin) btnSaveSpin.hidden = false;
     if (reason === 'manual' && btnSave) btnSave.disabled = true;
 
     try {
-      const res = await HTTP.jpost(
-        `/detail_project/api/project/${projectId}/volume-pekerjaan/save/`,
-        { items }
-      );
-
+      const res = await HTTP.jpost(EP_SAVE, { items });
+      
       const markErrors = (json) => {
         if (!json || !Array.isArray(json.errors)) return;
         const re = /items\[(\d+)\]\.(quantity|pekerjaan_id)/;
@@ -1339,7 +1440,7 @@
       console.error(e);
       TOAST.err('Gagal simpan (network/server error).');
     } finally {
-      if (reason === 'manual' && btnSaveSpin) btnSaveSpin.classList.add('d-none');
+      if (reason === 'manual' && btnSaveSpin) btnSaveSpin.hidden = true;
       if (reason === 'manual' && btnSave) btnSave.disabled = false;
       saving = false;
     }
@@ -1358,6 +1459,7 @@
       if (input) {
         input.value = formatIdSmart(currentValueById[id]);
         input.classList.add('is-valid'); setTimeout(()=>input.classList.remove('is-valid'), 700);
+        input.classList.toggle('vp-empty', !String(input.value||'').trim());
       }
       if (preview) preview.textContent = '';
       updateDirty(id);
@@ -1411,10 +1513,6 @@
   }
   function saveFormulas(map) { localStorage.setItem(storageKeyForms(), JSON.stringify(map)); }
 
-  // ---- Angkat offcanvas ke body (hindari clipping)
-  (function liftOffcanvasToBody() {
-    try { if (offcanvasEl && offcanvasEl.parentElement !== document.body) document.body.appendChild(offcanvasEl); } catch {}
-  })();
 
   // ==== Init: load variables, render table, bind baris existing (SSR)
   loadVars();

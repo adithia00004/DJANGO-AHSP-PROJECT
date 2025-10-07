@@ -31,3 +31,11 @@ media/
 
 # Local backups
 backups/
+
+NUL
+localhost*.pem
+# dev artifacts
+runserver.log
+*.log
+__pycache__/
+*.pyc

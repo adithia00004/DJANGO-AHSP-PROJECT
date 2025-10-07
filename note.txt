@@ -1,0 +1,107 @@
+Batch A — P0 (inti page volume_pekerjaan)
+
+Kirim berurutan (1 → 5). Setelah Batch A terkirim, kita sudah bisa menambal tumpang-tindih/z-index, sticky THEAD, dan hover-edge sidebar.
+
+static/core.css (atau CSS global yang memuat custom properties)
+
+Yang diperlukan: blok :root { … } (semua CSS variables global), serta definisi z-index/topbar/sidebar kalau ada.
+
+templates/detail_project/base_detail.html
+
+Yang diperlukan:
+
+Struktur topbar & kontainer utama (elemen <main> atau wrapper)
+
+Hook/ID untuk konten halaman detail (pastikan ada container calon #vp-app)
+
+Tempat include CSS/JS halaman (block {% block extra_head %} / {% block dp_content %}).
+
+templates/detail_project/volume_pekerjaan.html
+
+Yang diperlukan:
+
+Wrapper utama #vp-app
+
+Toolbar/filter (jika sticky)
+
+Struktur tabel (thead/tbody) dan kontainer scroll (jika ada)
+
+Elemen .dp-hover-edge (jika sudah ada)
+
+Elemen <aside id="dp-sidebar" class="dp-sidebar"> untuk Sidebar Parameter
+
+Include ke file CSS/JS spesifik halaman ini (link/script).
+
+static/detail_project/css/volume_pekerjaan.css
+
+Yang diperlukan:
+
+Rule untuk sticky thead/toolbar, wrapper, dan kontainer scroll
+
+Rule .dp-sidebar dan .dp-hover-edge jika didefinisikan di sini
+
+Rule apapun yang memakai overflow/transform pada parent tabel.
+
+static/detail_project/js/volume_pekerjaan.js
+
+Yang diperlukan:
+
+Inisialisasi app (mendeteksi #vp-app)
+
+Logika sticky header (jika ada)
+
+Event untuk hover-edge membuka/tutup sidebar
+
+Bagian autosave/undo yang mungkin mengubah layout (untuk cek efek samping).
+
+Batch B — P1 (penopang sidebar & tema)
+
+Kirim setelah Batch A, tapi bisa paralel 6 ↔ 7.
+
+templates/detail_project/_sidebar_global.html
+
+Yang diperlukan:
+
+Struktur <aside> sidebar global (jika dipakai bersama)
+
+Atribut aria-*, tabindex, dan kelas/ID yang berhubungan dengan sidebar
+
+Catat jika ada aria-hidden default yang aktif.
+
+CSS Sidebar Global (mis. static/detail_project/css/_sidebar_global.css atau gabung di theme)
+
+Yang diperlukan:
+
+Semua rule .dp-sidebar/overlay/transition/z-index
+
+Rule yang bisa membuat stacking context (mis. transform, filter).
+
+static/theme.js (atau early theme boot JS kamu)
+
+Yang diperlukan:
+
+Bagian yang inject kelas/atribut pada <html>/<body>
+
+Apakah ada manipulasi visibility, opacity, atau style global yang bisa memengaruhi sticky/z-index.
+
+templates/base.html (hanya jika ada)
+
+Yang diperlukan:
+
+Bagian <body>/wrapper yang mungkin memasang overflow/transform global
+
+Link include ke core.css/theme.css/theme.js (untuk urutan).
+
+Batch C — P2 (opsional, bantu stabilisasi & debug)
+
+CSS util/global lain (mis. static/detail_project/css/detail_project.css)
+
+Rule utilitas (z-index, bg, border) yang dipakai di halaman ini.
+
+Komponen notifikasi/toast (CSS/JS)
+
+Untuk pastikan z-index toast tidak menutup hover-edge.
+
+Partial script global (mis. helper untuk inert/focus-trap bila ada)
+
+Bagian yang menambah aria-hidden/inert—penting untuk cegah konflik fokus.

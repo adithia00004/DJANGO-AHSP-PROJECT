@@ -1,40 +1,34 @@
 {% extends 'detail_project/base_detail.html' %}
 {% load static %}
 
+{# === Aktifkan segmen per-page (SSOT) === #}
+{% block body_attrs %}data-page="volume_pekerjaan"{% endblock %}
+
 {% block extra_css %}
   {{ block.super }}
   <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
-  <style>
-    /* Perbaikan keterbacaan input + preview (hindari tumpang tindih) */
-    .vp-cell .fx-preview{
-      position: static;
-      display: block;
-      min-height: 1rem;
-      margin-top: .25rem;
-      white-space: normal;
-    }
-    /* Dropdown template */
-    .vp-template-dropdown .dropdown-menu{ min-width:220px; }
-  </style>
 {% endblock %}
 
 {% block dp_content %}
 
-<!-- ===== Toolbar ===== -->
-<div id="vp-toolbar" class="d-flex justify-content-between align-items-center mb-2 sticky-top">
+<!-- ===== Toolbar (sticky tepat di bawah topbar SSOT) ===== -->
+<div id="vp-toolbar"
+     class="d-flex justify-content-between align-items-center mb-2">
+
   <!-- Searchbar -->
-  <div class="vp-searchbar position-relative flex-grow-1 me-2">
+  <div class="vp-searchbar position-relative flex-grow-1 me-2" role="search">
     <div class="input-group input-group-sm">
       <span class="input-group-text"><i class="bi bi-search"></i></span>
       <input id="vp-search" type="search" class="form-control"
              placeholder="Cari Klasifikasi / Sub-Klasifikasi / Pekerjaan..."
+             autocomplete="off"
              aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
     </div>
     <span id="vp-search-prefix-badge"
           class="badge text-bg-secondary position-absolute end-0 top-50 translate-middle-y me-2 d-none"
           title="Prefix filter terdeteksi"
           data-bs-toggle="tooltip"></span>
-    <div id="vp-search-results"
+     <div id="vp-search-results"
          class="vp-search-dropdown d-none"
          role="listbox"
          aria-label="Hasil pencarian"
@@ -43,14 +37,13 @@
 
   <!-- Actions kanan -->
   <div class="d-flex align-items-center gap-2">
-    <!-- Offcanvas Parameter Perhitungan -->
-    <button type="button" class="btn btn-outline-primary btn-sm"
-            data-bs-toggle="offcanvas" data-bs-target="#vpVarOffcanvas"
-            aria-controls="vpVarOffcanvas">
+    <button type="button"
+            id="btn-vp-sidebar-toggle"
+            class="btn btn-primary btn-sm js-vp-sidebar-toggle"
+            aria-controls="vp-sidebar"
+            aria-expanded="false">
       Parameter Perhitungan
     </button>
-
-    
 
     <!-- Bantuan Formula (Modal) -->
     <button type="button" class="btn btn-outline-secondary btn-sm"
@@ -62,110 +55,183 @@
 </div>
 
 <div id="vol-app"
+     class="dp-container ux-scrollbar ux-scroll-smooth"
      data-project-id="{% firstof project.id project_id %}"
      data-endpoint-save="{% url 'detail_project:api_save_volume_pekerjaan' project.id %}"
-     data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}">
-  <!-- ===== Offcanvas: Parameter Perhitungan ===== -->
-  <div class="offcanvas offcanvas-end" tabindex="-1" id="vpVarOffcanvas" aria-labelledby="vpVarOffcanvasLabel">
-    <div class="offcanvas-header">
-      <h5 class="offcanvas-title" id="vpVarOffcanvasLabel">Parameter Perhitungan</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-    </div>
-    <div class="offcanvas-body d-flex flex-column">
-      <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-        <small class="text-muted">
-          Gunakan di formula, contoh <code>= panjang * lebar * tinggi</code>
-        </small>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-primary" id="vp-var-add">Tambah Parameter</button>
-        </div>
+     data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}"
+     data-endpoint-tree="/detail_project/api/project/{{ project.id }}/list-pekerjaan/tree/">
+  <!-- ===== Overlay Sidebar Kanan (Parameter) ===== -->
+  <aside id="vp-sidebar"
+         role="complementary"
+         data-side="right"
+         data-align="topbar"
+         data-hoverclose="1"
+         data-resize-sense="east"
+         aria-labelledby="vpSidebarTitle"
+         aria-hidden="true">
+
+    <!-- inner = kartu panel -->
+    <div class="vp-sidebar-inner dp-card ux-scrollbar">
+      <div class="lp-sidebar-header d-flex align-items-center justify-content-between">
+        <h5 id="vpSidebarTitle" class="mb-0">Parameter Perhitungan</h5>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary js-vp-sidebar-close"
+                data-action="close-sidebar"
+                aria-label="Tutup">Tutup</button>
       </div>
 
-      <div class="table-responsive mt-2 flex-grow-1">
-        <!-- Header proxy untuk tabel parameter (ID diganti agar tidak duplikat) -->
-        <div id="vp-vars-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
-
-        <table class="table table-sm align-middle" id="vp-var-table">
-          <thead class="table-light">
-            <tr>
-              <th style="width:45%">Nama</th>
-              <th style="width:35%">Nilai</th>
-              <th class="text-end" style="width:20%">Aksi</th>
-            </tr>
-          </thead>
-          <tbody><!-- diisi JS; "Tambah Parameter" membuat baris input inline --></tbody>
-        </table>
-      </div>
-
-      <!-- ===== Action bar sticky di bawah ===== -->
-      <div class="offcanvas-actions mt-2">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="lp-sidebar-body d-flex flex-column gap-2" tabindex="-1">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <small class="text-muted">
+            Gunakan di formula, contoh <code>= panjang * lebar * tinggi</code>
+          </small>
           <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" title="Import JSON/CSV/XLSX">
-              <i class="bi bi-file-arrow-up"></i> Import
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" id="vp-var-export-btn" title="Export JSON">
-              <i class="bi bi-file-arrow-down"></i> Export
-            </button>
-            <input type="file" id="vp-var-import" accept=".json,.csv,.xlsx" class="d-none">
+            <button type="button" class="btn btn-sm btn-primary" id="vp-var-add">Tambah Parameter</button>
           </div>
+        </div>
 
-          <!-- Template download -->
-          <div class="dropup">
-            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-              Template
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.xlsx' %}" download>Template (.xlsx)</a></li>
-              <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
-              <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
-            </ul>
+        <div class="table-responsive mt-2 flex-grow-1">
+          <!-- Header proxy untuk tabel parameter -->
+          <div id="vp-vars-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
+
+          <table class="table table-sm align-middle" id="vp-var-table">
+            <thead class="vp-thead-sticky">
+              <tr>
+                <th style="width:45%">Nama</th>
+                <th style="width:35%">Nilai</th>
+                <th class="text-end" style="width:20%">Aksi</th>
+              </tr>
+            </thead>
+            <tbody><!-- diisi JS --></tbody>
+          </table>
+        </div>
+
+        <div class="mt-2">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" title="Import JSON/CSV/XLSX">
+                <i class="bi bi-file-arrow-up"></i> Import
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" id="vp-var-export-btn" title="Export JSON">
+                <i class="bi bi-file-arrow-down"></i> Export
+              </button>
+              <input type="file" id="vp-var-import" accept=".json,.csv,.xlsx" class="d-none">
+            </div>
+
+            <div class="dropup vp-template-dropdown">
+              <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                Template
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.xlsx' %}" download>Template (.xlsx)</a></li>
+                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
+                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- handle untuk resize lebar -->
+      <div class="lp-resizer"></div>
     </div>
-  </div>
+  </aside>
+
+  <!-- Backdrop overlay -->
+  <div class="dp-sidebar__backdrop" aria-hidden="true"></div>
 
   <!-- ===== Tabel Utama ===== -->
-  <div class="table-responsive" id="vp-page">
+  <div class="table-responsive dp-card" id="vp-page">
     <div id="vp-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
 
     <table class="table table-sm align-middle" id="vp-table">
       <colgroup>
-        <col style="width:60px;">
-        <col style="width:150px;">
-        <col>
-        <col style="width:110px;">
-        <col style="width:360px;">
+        <col class="col-no">
+        <col class="col-kode">
+        <col class="col-urai"> <!-- Uraian fleksibel -->
+        <col class="col-satuan">
+        <col class="col-qty">
       </colgroup>
-      <thead class="table-light">
-        <tr>
-          <th>#</th>
-          <th>Kode</th>
-          <th class="text-wrap">Uraian</th>
-          <th>Satuan</th>
-          <th>Quantity</th>
-        </tr>
-      </thead>
       <tbody>
         {% if pekerjaan %}
-          {% for p in pekerjaan %}
-            <tr data-pekerjaan-id="{{ p.id }}">
-              <td>{{ forloop.counter }}</td>
-              <td class="text-monospace">{% firstof p.snapshot_kode p.kode p.code '-' %}</td>
-              <td class="text-wrap">{% firstof p.snapshot_uraian p.uraian p.nama '-' %}</td>
-              <td>{% firstof p.snapshot_satuan p.satuan '-' %}</td>
-              <td>
-                <div class="d-flex align-items-start gap-2 vp-cell" style="overflow: visible;">
-                  <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
-                          title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
-                          aria-pressed="false">fx</button>
-                  <div class="flex-grow-1" style="position: relative;">
-                    <input type="text"
-                           inputmode="decimal"
-                           class="form-control form-control-sm qty-input"
-                           aria-label="Quantity (gunakan koma sebagai desimal, mis. 12,345)">
-                    <div class="form-text fx-preview text-muted small"></div>
+          {# Kelompokkan pekerjaan -> Klasifikasi #}
+          {% regroup pekerjaan by sub_klasifikasi.klasifikasi as by_klas %}
+
+          {% for klas in by_klas %}
+            <tr>
+              <td colspan="5" class="p-0">
+                <div class="card vp-klas-card mb-3" data-klas-id="{{ klas.grouper.id }}">
+                  <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
+                    <span>{{ klas.grouper.name|default:"(Tanpa Klasifikasi)" }}</span>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary vp-card-toggle"
+                            data-type="klas" data-key="{{ klas.grouper.id }}"
+                            aria-expanded="true" title="Collapse/Expand">
+                      <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                  </div>
+                  <div class="card-body p-2">
+                    {# Di dalam Klas, kelompokkan lagi -> SubKlasifikasi #}
+                    {% regroup klas.list by sub_klasifikasi as by_sub %}
+
+                    {% for sub in by_sub %}
+                      <div class="card vp-sub-card mb-3" data-sub-id="{{ sub.grouper.id }}" data-klas-id="{{ klas.grouper.id }}">
+                        <div class="card-header py-2 d-flex align-items-center justify-content-between">
+                          <span>{{ sub.grouper.name|default:"(Tanpa Sub)" }}</span>
+                          <button type="button"
+                                  class="btn btn-sm btn-outline-secondary vp-card-toggle"
+                                  data-type="sub" data-key="{{ sub.grouper.id }}"
+                                  aria-expanded="true" title="Collapse/Expand">
+                            <i class="bi bi-caret-down-fill"></i>
+                          </button>
+                        </div>
+                        <div class="card-body p-2">
+                          <div class="table-responsive">
+                            <table class="table table-sm align-middle vp-table">
+                              <colgroup>
+                                <col style="width:6ch">              <!-- No -->
+                                <col class="col-urai">               <!-- Uraian -->
+                                <col style="width:10ch">             <!-- Satuan -->
+                                <col class="col-qty" style="width:36ch"> <!-- Quantity (lebih lebar) -->
+                              </colgroup>
+                              <thead class="table-light">
+                                <tr>
+                                  <th class="text-center">No</th>
+                                  <th class="text-wrap text-start">Uraian</th>
+                                  <th>Satuan</th>
+                                  <th>Quantity</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for p in sub.list %}
+                                  <tr data-pekerjaan-id="{{ p.id }}"
+                                      data-klasid="{{ klas.grouper.id }}"
+                                      data-subid="{{ sub.grouper.id }}">
+                                    <td>{{ forloop.counter }}</td>
+                                    <td class="text-wrap text-start">{% firstof p.snapshot_uraian p.uraian p.nama '-' %}</td>
+                                    <td>{% firstof p.snapshot_satuan p.satuan '-' %}</td>
+                                    <td>
+                                      <div class="d-flex align-items-start gap-2 vp-cell">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
+                                                title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
+                                                aria-pressed="false">fx</button>
+                                        <div class="flex-grow-1">
+                                          <input type="text"
+                                                inputmode="decimal"
+                                                class="form-control form-control-sm qty-input"
+                                                aria-label="Quantity (gunakan koma sebagai desimal, mis. 12,345)">
+                                          <div class="form-text fx-preview text-muted small"></div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    {% endfor %}
                   </div>
                 </div>
               </td>
@@ -180,13 +246,12 @@
 
   <div class="d-flex justify-content-between align-items-center mt-2">
     <small class="text-muted">
-      Hint: <code>=</code> untuk formula · <kbd>Ctrl</kbd>+<kbd>Space</kbd> buka parameter ·
-      <kbd>Enter</kbd>/<kbd>Shift</kbd>+<kbd>Enter</kbd> navigasi · <kbd>Ctrl</kbd>+<kbd>S</kbd> simpan
+      Tutorial Link : <a href="" target="_blank" rel="noopener">https://www.ahspkemenkeu.com/tutorial</a>
     </small>
     <div class="d-flex align-items-center gap-2">
       <span id="vp-save-status" class="text-muted small" role="status" aria-live="polite"></span>
-      <button class="btn btn-success d-inline-flex align-items-center gap-2" id="btn-save-vol">
-        <span class="spinner-border spinner-border-sm d-none" id="btn-save-spin" role="status" aria-hidden="true"></span>
+      <button class="btn btn-success btn-neon d-inline-flex align-items-center gap-2" id="btn-save-vol">
+        <span class="spinner-border spinner-border-sm" id="btn-save-spin" role="status" aria-hidden="true" hidden></span>
         <span>Simpan Volume</span>
       </button>
     </div>
@@ -204,12 +269,12 @@
       <div class="modal-body">
         <p class="mb-2">
           Masuk <em>mode formula</em> dengan mengetik <code>=</code> di input quantity.
-          Atau tekan <kbd>Ctrl</kbd>+<kbd>Space</kbd> untuk membuka daftar parameter.
+          Atau tekan button <kbd>fx</kbd> untuk mengaktifkan parameter yang terdaftar.
         </p>
         <hr>
         <h6 class="mb-1">Parameter Perhitungan</h6>
         <ul class="mb-2">
-          <li>Kelola via tombol <strong>Parameter Perhitungan</strong> (offcanvas kanan).</li>
+          <li>Kelola via tombol <strong>Parameter Perhitungan</strong> (sidebar kanan).</li>
           <li>Nama (label) boleh spasi; di formula gunakan <em>kode</em> (dibuat otomatis).</li>
         </ul>
         <h6 class="mb-1">Operator Dasar</h6>
@@ -235,18 +300,29 @@
 </div>
 
 <!-- Multi-toast container -->
-<div id="vp-toasts" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1090"></div>
+<div id="vp-toasts" class="toast-container position-fixed top-0 end-0 p-3 dp-layer-toast"></div>
+<!-- Single toast (fallback untuk TOAST.ok/warn/err) -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" aria-live="polite" aria-atomic="true">
+  <div id="vp-toast" class="toast text-bg-dark border-0" role="status" aria-live="assertive" aria-atomic="true" data-bs-delay="1600">
+    <div class="toast-body" id="vp-toast-body">OK</div>
+  </div>
+</div>
+<!-- Hover hotspot kanan -->
+<div class="vp-overlay-hotspot" aria-hidden="true"></div>
 
 {% endblock %}
 
 {% block extra_js %}
-  <script src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
+  {{ block.super }}
+
+  <script defer src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
   <!-- XLSX untuk import .xlsx -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- Tambahan baru (harus sebelum volume_pekerjaan.js) -->
-  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
-  <script src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
+  <script defer src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+  <script defer src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
+  <script defer src="{% static 'detail_project/js/volume_runtime.js' %}"></script>
 
-  <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
+  <script defer src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
 {% endblock %}

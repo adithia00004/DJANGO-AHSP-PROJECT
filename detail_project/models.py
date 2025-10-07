@@ -153,9 +153,11 @@ class Pekerjaan(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if self.is_custom and not self.snapshot_kode and not self.pk:
-            # import lokal untuk hindari circular import
-            from .services import generate_custom_code
-            self.snapshot_kode = generate_custom_code(self.project)
+          try:
+              from .services import generate_custom_code  # import lokal untuk hindari circular
+              self.snapshot_kode = generate_custom_code(self.project)
+          except Exception:
+              self.snapshot_kode = self._gen_custom_code()
         super().save(*args, **kwargs)
 
     def __str__(self):

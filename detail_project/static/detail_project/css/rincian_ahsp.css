@@ -7,6 +7,10 @@
 /* Default lebar panel kiri untuk halaman ini */
 #rekap-app{
   --rk-left-w: 360px; /* diubah/diingat via JS resizer */
+  /* Map ke token global agar aman walau css lama dihapus */
+  --rk-border: var(--dp-c-border);
+  --rk-muted: var(--dp-c-muted);
+  --rk-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
 
 /* ====== GRID: kiri | resizer | kanan ====== */

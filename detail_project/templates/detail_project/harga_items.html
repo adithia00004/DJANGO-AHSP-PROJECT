@@ -2,8 +2,9 @@
 {% load static %}
 
 {% block title %}Harga Items — {{ project.nama }}{% endblock %}
+{% block body_attrs %}data-page="harga_items"{% endblock %}
 
-{# Matikan CSS Detail AHSP di halaman ini #}
+{# Matikan CSS Detail AHSP di halaman ini (ikuti pola lama) #}
 {% block detail_css %}{% endblock %}
 
 {% block extra_head %}
@@ -12,71 +13,237 @@
 {% endblock %}
 
 {% block dp_content %}
+
+<!-- ===== Toolbar (sticky tepat di bawah topbar global) ===== -->
+<div id="hi-toolbar"
+     class="dp-layer-toolbar bg-body border-bottom d-flex justify-content-between align-items-center gap-2 px-3 py-2 ux-text-xs"
+     style="position:sticky; top:var(--dp-topbar-h); z-index:var(--dp-z-toolbar); min-height:var(--hi-toolbar-h)"
+     role="region" aria-label="Toolbar Harga Items">
+
+  <!-- Searchbar -->
+  <div class="position-relative flex-grow-1 me-2" role="search">
+    <div class="input-group input-group-sm">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input id="hi-filter" type="search"
+             class="form-control ux-focusable"
+             placeholder="Cari kode / uraian / kategori…"
+             autocomplete="off"
+             aria-label="Cari item harga">
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="d-flex align-items-center gap-2">
+    <button id="hi-btn-export" class="btn btn-sm btn-outline-secondary" type="button" title="Export CSV">
+      <i class="bi bi-file-arrow-down" aria-hidden="true"></i>
+      <span class="only-desktop">Export</span>
+    </button>
+
+    <button id="hi-btn-save" class="btn btn-sm btn-success btn-neon d-inline-flex align-items-center gap-2" type="button" aria-live="polite">
+      <span class="spinner-border spinner-border-sm" id="hi-save-spin" role="status" aria-hidden="true" hidden></span>
+      <span>Simpan</span>
+    </button>
+  </div>
+</div>
+
+<!-- ===== App Container ===== -->
 <div id="hi-app"
-     class="hi-app"
+     class="dp-container"
      data-project-id="{{ project.id }}"
      data-endpoint-list="{% url 'detail_project:api_list_harga_items' project.id %}"
      data-endpoint-save="{% url 'detail_project:api_save_harga_items' project.id %}"
      data-locale="id-ID">
 
-  <!-- ===== Toolbar ===== -->
-  <div class="hi-toolbar" role="region" aria-label="Toolbar Harga Items">
-    <div class="hi-search">
-      <label for="hi-filter" class="sr-only">Cari item</label>
-      <input id="hi-filter" type="search" class="hi-input" placeholder="Cari kode / uraian / kategori…">
-    </div>
-    <div class="hi-spacer"></div>
-    <button id="hi-btn-export" class="btn btn-light" type="button" title="Export CSV">
-      <i class="bi bi-download" aria-hidden="true"></i> Export
-    </button>
-    <button id="hi-btn-save" class="btn btn-primary" type="button" aria-live="polite">
-      <i class="bi bi-save" aria-hidden="true"></i> Simpan
-    </button>
-  </div>
-
-  <!-- ===== BUK Panel (menonjol) ===== -->
-  <div class="hi-buk-card" role="region" aria-label="Biaya Umum & Keuntungan">
-    <div class="hi-buk-row">
-      <label for="hi-buk-input" class="hi-buk-label">Profit/Margins (%)</label>
-      <input id="hi-buk-input" type="text" inputmode="decimal" class="hi-buk-input" placeholder="10,00" aria-describedby="hi-buk-help">
-      <div class="hi-buk-actions">
-        <span id="hi-buk-help" class="hi-buk-help">Tersimpan per proyek & dipakai di Rekap AHSP.</span>
+  <!-- ===== Panel BUK ===== -->
+  <div class="dp-card dp-border dp-surface mt-3 p-3" role="region" aria-label="Biaya Umum & Keuntungan">
+    <div class="row g-2 align-items-center">
+      <div class="col-auto">
+        <label for="hi-buk-input" class="form-label mb-0 ux-text-sm">Profit/Margins (%)</label>
+      </div>
+      <div class="col-auto">
+        <input id="hi-buk-input" type="text" inputmode="decimal"
+               class="form-control form-control-sm ux-focusable"
+               placeholder="10,00" aria-describedby="hi-buk-help"
+               style="width:120px">
+      </div>
+      <div class="col-auto">
+        <span id="hi-buk-help" class="ux-text-xs text-muted">Tersimpan per proyek & dipakai di Rekap AHSP.</span>
       </div>
     </div>
   </div>
 
-  <!-- ===== Tabel ===== -->
-  <div class="hi-body">
-    <div class="hi-table-wrap">
-      <table class="hi-table" aria-label="Daftar Harga Items proyek">
-        <thead>
+  <!-- ===== Tabel Utama ===== -->
+  <div class="dp-card dp-border dp-surface mt-3">
+    <div class="table-responsive">
+      <table class="hi-table table table-sm table-hover ux-table-compact align-middle mb-0" aria-label="Daftar Harga Items proyek">
+        <colgroup>
+          <col class="col-no">
+          <col class="col-kat">
+          <col class="col-kode">
+          <col class="col-urai">
+          <col class="col-sat">
+          <col class="col-inp">
+          <col class="col-rp">
+        </colgroup>
+
+        <!-- Header sticky pakai offset global (topbar + dp-toolbar-h) -->
+        <thead class="table-light dp-thead-sticky">
           <tr>
-            <th style="width:56px;">No</th>
-            <th style="width:140px;">Kode</th>
+            <th class="text-center">No</th>
+            <th class="text-nowrap">Kategori</th>
+            <th class="font-monospace">Kode</th>
             <th>Uraian</th>
-            <th style="width:100px;">Satuan</th>
-            <th style="width:120px;">Kategori</th>
-            <th style="width:180px;">Harga Satuan (input)</th>
-            <th style="width:160px;">Rupiah</th>
+            <th class="text-nowrap">Satuan</th>
+            <th class="text-nowrap">Harga</th>
+            <th class="text-nowrap">Nominal</th>
           </tr>
         </thead>
+
         <tbody id="hi-tbody">
           <tr class="hi-empty"><td colspan="7">Memuat data…</td></tr>
         </tbody>
       </table>
     </div>
-    <div class="hi-footer">
-      <div id="hi-stats">0 item</div>
-      <div class="small text-muted">Tip: ketik angka bebas (., ,), sistem akan merapikan. Simpan untuk menyimpan perubahan.</div>
+
+    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">
+      <div id="hi-stats" class="ux-text-sm">0 item</div>
+      <div class="ux-text-xs text-muted">Tip: ketik angka bebas (., ,), sistem akan merapikan. Simpan untuk menyimpan perubahan.</div>
     </div>
   </div>
 </div>
+
+<!-- ===== Modal: Konversi Satuan (bahasa formal) ===== -->
+<div class="modal fade" id="hiConvModal" tabindex="-1" aria-labelledby="hiConvLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title ux-text-md" id="hiConvLabel">Konversi Satuan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Ringkasan item -->
+        <div class="mb-2">
+          <label class="form-label ux-text-xs mb-1">Item</label>
+          <div id="hi-conv-item" class="ux-text-sm text-muted">—</div>
+        </div>
+
+        <!-- Langkah 1 — Satuan pembelian dari Supplier & harga -->
+        <div class="mb-2">
+          <div class="ux-text-xs text-muted mb-1 fw-semibold">Langkah 1 — Satuan pembelian dari Supplier & harga</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label ux-text-xs">Satuan pembelian dari Supplier</label>
+              <select id="hi-conv-unit" class="form-select form-select-sm ux-focusable" aria-label="Satuan pembelian dari Supplier">
+                <option value="dump_truck">Dump truck</option>
+                <option value="m3">meter kubik (m³)</option>
+                <option value="ton">ton</option>
+                <option value="zak">zak</option>
+                <option value="custom">Lainnya…</option>
+              </select>
+              <input id="hi-conv-unit-custom"
+                     class="form-control form-control-sm mt-1 d-none ux-focusable"
+                     placeholder="Masukkan satuan pembelian (mis. pickup)">
+            </div>
+
+            <div class="col-6">
+              <label class="form-label ux-text-xs">Harga per satuan pembelian dari Supplier</label>
+              <input id="hi-conv-price" type="text" inputmode="decimal"
+                     class="form-control form-control-sm ux-focusable"
+                     placeholder="cth: 1.200.000"
+                     aria-describedby="hi-conv-price-help">
+              <div id="hi-conv-price-help" class="form-text ux-text-xs text-muted">
+                Gunakan angka biasa; tampilan akan disesuaikan otomatis.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Langkah 2 — Parameter perhitungan (opsional) -->
+        <div class="mb-2">
+          <div class="ux-text-xs text-muted mb-1 fw-semibold">Langkah 2 — Parameter perhitungan (opsional)</div>
+          <div class="dp-card dp-border dp-surface p-2">
+            <div class="row g-2 align-items-end">
+              <div class="col-6 d-none" id="hi-capacity-m3-wrap">
+                <label class="form-label ux-text-xs">Kapasitas per satuan pembelian (m³)</label>
+                <input id="hi-conv-cap-m3" type="text" inputmode="decimal"
+                       class="form-control form-control-sm ux-focusable"
+                       placeholder="cth: 8">
+              </div>
+              <div class="col-6 d-none" id="hi-capacity-ton-wrap">
+                <label class="form-label ux-text-xs">Bobot per satuan pembelian (ton)</label>
+                <input id="hi-conv-cap-ton" type="text" inputmode="decimal"
+                       class="form-control form-control-sm ux-focusable"
+                       placeholder="cth: 1">
+              </div>
+              <div class="col-6 d-none" id="hi-density-wrap">
+                <label class="form-label ux-text-xs">Massa jenis (kg/m³)</label>
+                <input id="hi-conv-density" type="text" inputmode="decimal"
+                       class="form-control form-control-sm ux-focusable"
+                       placeholder="cth: 1.600">
+              </div>
+            </div>
+            <div class="ux-text-xs text-muted mt-2">
+              Jika relevan, sistem akan mengisi <em>Konstanta konversi</em> otomatis dari parameter di atas.
+            </div>
+          </div>
+        </div>
+
+        <!-- Konstanta konversi (langsung) -->
+        <div class="mb-2">
+          <label class="form-label ux-text-xs mb-1">Konstanta konversi</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">1</span>
+            <span class="input-group-text" id="hi-conv-unit-label">satuan pembelian dari Supplier</span>
+            <span class="input-group-text">=</span>
+            <input id="hi-conv-factor" type="text" inputmode="decimal"
+                   class="form-control ux-focusable"
+                   placeholder="cth: 10.500">
+            <span class="input-group-text" id="hi-conv-to-base">[satuan dasar]</span>
+          </div>
+          <div class="form-text ux-text-xs text-muted">
+            Isi berapa <strong>1 satuan pembelian dari Supplier</strong> setara dengan satuan dasar item.
+          </div>
+        </div>
+
+        <!-- Hasil -->
+        <div class="mb-2">
+          <div class="d-flex justify-content-between align-items-center p-2 dp-border dp-surface rounded" aria-live="polite">
+            <div class="ux-text-sm">Harga per <span id="hi-conv-base">[satuan dasar]</span></div>
+            <div id="hi-conv-result" class="ux-text-lg fw-semibold">—</div>
+          </div>
+          <div class="ux-text-xs text-muted mt-1" id="hi-conv-formula">
+            Rumus: Harga per satuan pembelian dari Supplier ÷ Konstanta konversi
+          </div>
+          <div id="hi-conv-hint" class="ux-text-xs text-muted mt-1"></div>
+        </div>
+
+        <!-- Preferensi -->
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="hi-conv-remember">
+            <label class="form-check-label ux-text-xs" for="hi-conv-remember">Simpan untuk kode ini (perangkat ini)</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="hi-conv-remember-server">
+            <label class="form-check-label ux-text-xs" for="hi-conv-remember-server">Simpan di server (bila tersedia)</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span id="hi-conv-error" class="text-danger ux-text-xs me-auto d-none">Lengkapi nilai yang wajib dan pastikan semua angka valid.</span>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Tutup</button>
+        <button id="hi-conv-apply" class="btn btn-primary btn-sm" disabled>Terapkan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
   {{ block.super }}
-  <!-- Util numerik bersama (UMD) -->
   <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
-  <!-- Script halaman Harga Items -->
   <script src="{% static 'detail_project/js/harga_items.js' %}"></script>
 {% endblock %}

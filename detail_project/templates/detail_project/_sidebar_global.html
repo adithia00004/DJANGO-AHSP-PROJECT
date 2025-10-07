@@ -3,13 +3,14 @@
 
 {% url 'dashboard:dashboard' as url_dashboard %}
 {% if project %}
-  {% url 'list_pekerjaan' project.id as url_list_pekerjaan %}
-  {% url 'volume_pekerjaan' project.id as url_volume_pekerjaan %}
-  {% url 'harga_items' project.id as url_harga_items %}
-  {% url 'detail_ahsp' project.id as url_detail_ahsp %}
-  {% url 'detail_ahsp_gabungan' project.id as url_detail_ahsp_gabungan %}
-  {% url 'rekap_rab' project.id as url_rekap_rab %}
-  {% url 'rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
+  {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
+  {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
+  {% url 'detail_project:harga_items' project.id as url_harga_items %}
+  {% url 'detail_project:template_ahsp' project.id as url_template_ahsp %}
+  {% url 'detail_project:rincian_ahsp' project.id as url_rincian_ahsp %}
+  {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
+  {% url 'detail_project:rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
+  {# opsional: tambahkan menu baru jika dipakai #}
 {% endif %}
 
 {% trans "Project" as project_label %}
@@ -19,22 +20,25 @@
 {% trans "List Pekerjaan" as t_list_pekerjaan %}
 {% trans "Volume Pekerjaan" as t_volume_pekerjaan %}
 {% trans "Harga Items" as t_harga_items %}
-{% trans "Detail AHSP" as t_detail_ahsp %}
-{% trans "Detail Gabungan" as t_detail_gabungan %}
+{% trans "Template AHSP" as t_template_ahsp %}
+{% trans "Rincian AHSP" as t_rincian_ahsp %}
 {% trans "Rekap RAB" as t_rekap_rab %}
 {% trans "Rekap Kebutuhan" as t_rekap_kebutuhan %}
+{% trans "Rincian RAB" as t_rincian_rab %}
 
 <aside id="dp-sidebar"
-       class="dp-sidebar"
+       class="dp-sidebar dp-z-sidebar"
        aria-label="{{ nav_label }}"
+       aria-labelledby="dp-sidebar-title"
        aria-hidden="true"
        tabindex="-1"
+       role="complementary"
        data-version="v4"
        data-pid="{{ project.id|default:'' }}">
-  <div class="dp-sidebar__inner">
+   <div class="dp-sidebar__inner dp-surface dp-border">
     <div class="d-flex align-items-start justify-content-between">
       <div class="dp-sidebar__project">
-        <div class="dp-sidebar__title"
+        <div id="dp-sidebar-title" class="dp-sidebar__title"
              title="{{ project.nama|default:project_label }}">
           {{ project.nama|default:project_label }}
         </div>
@@ -84,6 +88,14 @@
           </a>
         </li>
         <li>
+          <a class="dp-link {% if side_active == 'template_ahsp' %}is-active{% endif %}"
+             {% if side_active == 'template_ahsp' %}aria-current="page"{% endif %}
+             href="{{ url_template_ahsp|default:'#' }}">
+            <i class="bi bi-list-ul" aria-hidden="true"></i>
+            <span>{{ t_template_ahsp }}</span>
+          </a>
+        </li>
+        <li>
           <a class="dp-link {% if side_active == 'harga_items' %}is-active{% endif %}"
              {% if side_active == 'harga_items' %}aria-current="page"{% endif %}
              href="{{ url_harga_items|default:'#' }}">
@@ -92,19 +104,11 @@
           </a>
         </li>
         <li>
-          <a class="dp-link {% if side_active == 'detail_ahsp' %}is-active{% endif %}"
-             {% if side_active == 'detail_ahsp' %}aria-current="page"{% endif %}
-             href="{{ url_detail_ahsp|default:'#' }}">
-            <i class="bi bi-list-ul" aria-hidden="true"></i>
-            <span>{{ t_detail_ahsp }}</span>
-          </a>
-        </li>
-        <li>
-          <a class="dp-link {% if side_active == 'detail_ahsp_gabungan' %}is-active{% endif %}"
-             {% if side_active == 'detail_ahsp_gabungan' %}aria-current="page"{% endif %}
-             href="{{ url_detail_ahsp_gabungan|default:'#' }}">
+          <a class="dp-link {% if side_active == 'rincian_ahsp' %}is-active{% endif %}"
+             {% if side_active == 'rincian_ahsp' %}aria-current="page"{% endif %}
+             href="{{ url_rincian_ahsp|default:'#' }}">
             <i class="bi bi-collection" aria-hidden="true"></i>
-            <span>{{ t_detail_gabungan }}</span>
+            <span>{{ t_rincian_ahsp }}</span>
           </a>
         </li>
         <li>
@@ -123,10 +127,11 @@
             <span>{{ t_rekap_kebutuhan }}</span>
           </a>
         </li>
+ 
         {% endif %}
       </ul>
     </nav>
   </div>
-
-  <button class="dp-sidebar__backdrop" type="button" aria-label="{{ close_label }}"></button>
 </aside>
+<button class="dp-sidebar__backdrop dp-sidebar-backdrop" type="button" aria-label="{{ close_label }}"></button>
+

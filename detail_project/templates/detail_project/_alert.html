@@ -1,6 +1,6 @@
 <!-- templates/detail_project/_alert.html -->
 {% if messages %}
-  <div id="dp-alerts" class="vstack gap-2 mb-2" aria-live="polite" aria-atomic="true">
+  <div id="dp-alerts" class="position-fixed top-0 start-50 translate-middle-x vstack gap-2 mt-2 dp-z-toast" style="min-width:320px; max-width:96vw;" aria-live="polite" aria-atomic="true"></div>
     {% for message in messages %}
       {# Tentukan variant Bootstrap dari tags; fallback ke 'info' #}
       <div
