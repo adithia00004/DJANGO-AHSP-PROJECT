@@ -9,7 +9,6 @@
 (function () {
   const root = document.getElementById('vol-app');
   if (!root) return;
-
   // Gunakan Numeric bila tersedia agar konsisten (koma <-> titik)
   const N = window.Numeric || null;
 
