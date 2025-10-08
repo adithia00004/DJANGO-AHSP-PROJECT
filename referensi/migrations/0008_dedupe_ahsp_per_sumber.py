@@ -7,31 +7,54 @@ def dedupe_ahsp_per_sumber(apps, schema_editor):
     Rincian = apps.get_model("referensi", "RincianReferensi")
     from django.db.models import Count
 
+    # Grup (sumber, kode_ahsp) yang duplikat
     dups = (
         AHSP.objects.values("sumber", "kode_ahsp")
         .annotate(c=Count("id"))
         .filter(c__gt=1)
     )
+
     for g in dups:
         sumber = g["sumber"]
         kode = g["kode_ahsp"]
-        keep = (
-            AHSP.objects
-            .filter(sumber=sumber, kode_ahsp=kode)
-            .order_by("id").first()
+
+        # Urutkan: keep = id terkecil, sisanya "losers"
+        ahsps = list(
+            AHSP.objects.filter(sumber=sumber, kode_ahsp=kode).order_by("id").values("id", "nama_ahsp")
         )
-        if not keep:
+        if not ahsps:
             continue
+        keep_id = ahsps[0]["id"]
+        loser_ids = [a["id"] for a in ahsps[1:]]
 
-        (Rincian.objects
-         .filter(ahsp__sumber=sumber, ahsp__kode_ahsp=kode)
-         .exclude(ahsp_id=keep.id)
-         .update(ahsp_id=keep.id))
+        # Untuk setiap loser, pindahkan rinciannya satu per satu dengan merge
+        for lid in loser_ids:
+            # Ambil Rincian loser sebagai dict (hemat memori)
+            qs = Rincian.objects.filter(ahsp_id=lid).values(
+                "id", "kategori", "kode_item", "uraian_item", "satuan_item", "koefisien"
+            ).iterator()
 
-        (AHSP.objects
-         .filter(sumber=sumber, kode_ahsp=kode)
-         .exclude(id=keep.id)
-         .delete())
+            for r in qs:
+                ident = dict(
+                    ahsp_id=keep_id,
+                    kategori=r["kategori"],
+                    kode_item=r["kode_item"],
+                    uraian_item=r["uraian_item"],
+                    satuan_item=r["satuan_item"],
+                )
+
+                # Jika baris identitas sudah ada di keep → hapus duplikat dari loser
+                exists = Rincian.objects.filter(**ident).only("id").first()
+                if exists:
+                    # Kebijakan sederhana: pertahankan baris yang sudah ada di keep.
+                    # (Kalau ingin, Anda bisa mengubah kebijakan: update koefisien jika 0, dst.)
+                    Rincian.objects.filter(id=r["id"]).delete()
+                else:
+                    # Aman untuk update ahsp_id ke keep (tidak melanggar unique)
+                    Rincian.objects.filter(id=r["id"]).update(ahsp_id=keep_id)
+
+            # Hapus AHSP loser setelah semua rinciannya ditangani
+            AHSP.objects.filter(id=lid).delete()
 
 class Migration(migrations.Migration):
 
