@@ -24,6 +24,12 @@ class AHSPReferensi(models.Model):
         ordering = ["kode_ahsp"]
         indexes = [
             models.Index(fields=["klasifikasi", "sub_klasifikasi"]),
+            models.Index(fields=["sumber", "kode_ahsp"], name="ix_ahsp_sumber_kode"),  # NEW
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sumber", "kode_ahsp"], name="uniq_ahsp_per_sumber"          # NEW
+            ),
         ]
 
     def __str__(self):

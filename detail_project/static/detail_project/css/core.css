@@ -114,6 +114,12 @@
 
   /* State */
   --dp-row-hover: #fcfdff; /* fallback netral */
+
+  /* Accent halus untuk highlight/baris aktif & badge sumber */
+  --dp-accent: color-mix(in srgb, var(--dp-c-primary) 28%, transparent);
+  --dp-badge-ref:   color-mix(in srgb, var(--dp-c-info) 18%, transparent);
+  --dp-badge-mod:   color-mix(in srgb, var(--dp-c-warning) 18%, transparent);
+  --dp-badge-cus:   color-mix(in srgb, var(--dp-c-success) 18%, transparent);
 }
 
 /* Manual theme override via data attribute (wins over OS) */
@@ -268,6 +274,26 @@
   padding-top: var(--ux-cell-py-compact);
   padding-bottom: var(--ux-cell-py-compact);
 }
+
+.ux-row-active > *{
+  outline: 2px solid var(--dp-accent);
+  outline-offset: -2px;
+}
+
+/* Badges sumber (REF/MOD/CUS) — kalem, kontras cukup */
+.ux-badge-ref{ background: var(--dp-badge-ref); border: 1px solid color-mix(in srgb, var(--dp-c-info) 40%, transparent); }
+.ux-badge-mod{ background: var(--dp-badge-mod); border: 1px solid color-mix(in srgb, var(--dp-c-warning) 40%, transparent); }
+.ux-badge-cus{ background: var(--dp-badge-cus); border: 1px solid color-mix(in srgb, var(--dp-c-success) 40%, transparent); }
+.ux-badge-ref,.ux-badge-mod,.ux-badge-cus{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.15rem .45rem; border-radius:.5rem; font-size: var(--ux-font-2xs);
+}
+
+/* Resizer warna aktif */
+.ux-resizer{ background: linear-gradient(90deg, var(--dp-c-surface-2), var(--dp-c-border), var(--dp-c-surface-2)); min-width:6px; max-width:6px; cursor: col-resize; }
+.ux-resizer:hover{ background: var(--dp-c-primary-subtle); }
+.ux-resizer:focus{ outline:2px solid color-mix(in srgb, var(--dp-c-primary) 55%, transparent); outline-offset:-2px; }
+
 .ux-thead-sticky{ position: sticky; z-index: var(--dp-z-thead); }
 .ux-row-hover tbody tr:hover{ background: var(--ux-row-hover); }
 
@@ -509,7 +535,7 @@ html[data-bs-theme] .select2-container .select2-selection--single{
 /* THEAD sticky standar (gunakan ini jika ingin top: topbar+toolbar) */
 .dp-thead-sticky{
   position: sticky;
-  top: calc(var(--dp-topbar-h)-5 );
+  top: calc(var(--dp-topbar-h)-5px );
   z-index: var(--dp-z-thead);
   background: var(--dp-c-surface);
 }
@@ -1170,7 +1196,28 @@ body[data-page="template_ahsp"]{
   --da-col-kode-w: 160px;       /* Kode item */
   --da-col-sat-w:  110px;       /* Satuan */
   --da-col-koef-w: 140px;       /* Koefisien */
+
+
+  /* ===== Tambahan khusus Template AHSP (tanpa sticky) ===== */
+  /* Lebar maksimum searchbar (mengganti inline style di HTML) */
+  --ta-search-w: 560px;
+  /* Headroom untuk hitung tinggi daftar pekerjaan (hindari magic number) */
+  --ta-headroom: calc(var(--dp-topbar-h) + var(--da-toolbar-h) + 90px);
+  /* NEW: Lebar minimum panel editor agar tidak terasa “kempis” */
+  --ta-editor-min: 560px;
+  /* NEW: Surface editor sedikit lebih “angkat” di dark mode */
+  --ta-editor-surface: var(--dp-c-surface-1);
+
+
+  /* ===== Polishing tokens (khusus page) ===== */
+  --ta-sticky-gap: 0px;                 /* offset top untuk seg-header sticky di dalam editor */
+  --ta-seg-z: calc(var(--dp-z-sticky) + 1);
+  --ta-editor-pad-x: 10px;              /* konsisten padding kiri/kanan panel editor */
+  --ta-shadow-height: 18px;             /* tinggi gradasi scroll shadow */
+  --ta-shadow-color: color-mix(in srgb, var(--dp-c-text) 14%, transparent);
 }
+
+
 
 /* THEAD sticky helper spesifik Detail AHSP */
 body[data-page="detail_ahsp"] .da-thead-sticky,
@@ -1180,6 +1227,7 @@ body[data-page="template_ahsp"] .da-thead-sticky{
   z-index: var(--dp-z-thead);
   background: var(--dp-c-surface);
 }
+
 
 /* Pemetaan <colgroup> → token lebar kolom Detail AHSP
    Tambahkan class ini pada <col> di tiap tabel segmen:
@@ -1208,5 +1256,108 @@ body[data-page="template_ahsp"] .select2-container .select2-dropdown{
     position: static !important;
     top: auto !important;
     box-shadow: none !important;
+  }
+}
+
+/* ---- Rincian AHSP (baru, pengganti Detail AHSP untuk page ini) ---- */
+body[data-page="rincian_ahsp"]{
+  /* Offset & layer */
+  --ra-toolbar-h: var(--da-toolbar-h);            /* akan diukur runtime oleh JS */
+  --ra-thead-h:   36px;
+  --ra-z-dropdown: var(--dp-z-dropdown);
+
+  /* Sinkronkan helper global yang memakai --dp-toolbar-h */
+  --dp-toolbar-h: var(--ra-toolbar-h);
+
+  /* Lebar panel kiri untuk grid kiri|resizer|kanan */
+  --ra-left-w: 360px;
+
+  /* Lebar kolom tabel (pakai colgroup) */
+  --ra-col-no-w:    60px;          /* No */
+  --ra-col-urai-w:  clamp(24rem, 42vw, 64rem);
+  --ra-col-kode-w:  140px;
+  --ra-col-sat-w:   100px;
+  --ra-col-koef-w:  120px;
+  --ra-col-rps-w:   160px;         /* Harga Satuan (Rp) */
+  --ra-col-rpj-w:   180px;         /* Jumlah Harga (Rp) */
+
+  /* ===== Default heights (SSOT) =====
+     - --ra-page-minvh : tinggi minimum area kerja (grid dua panel)
+     - --ra-headroom   : ruang untuk header judul/subtitle dsb (bisa di-tune)
+   */
+  --ra-page-minvh: 72vh;
+  /* Pakai headroom yang sama dengan Template (hindari magic number beda halaman) */
+  --ra-headroom:  var(--ta-headroom);
+
+  /* Adopsi batas/lebar editor & lebar search seperti Template */
+  --ta-editor-min: var(--ta-editor-min);
+  --ta-search-w:   var(--ta-search-w);
+
+}
+
+/* THEAD sticky khusus Rincian AHSP */
+body[data-page="rincian_ahsp"] .ra-thead-sticky{
+  position: sticky;
+  z-index: var(--dp-z-thead);
+  background: var(--dp-c-surface);
+
+}
+
+/* Pemetaan <colgroup> → token lebar kolom Rincian AHSP
+   Kelas pada <col>: .col-no .col-uraian .col-kode .col-satuan .col-koef .col-rps .col-rpj */
+body[data-page="rincian_ahsp"] table.ra-table col.col-no    { width: var(--ra-col-no-w); }
+body[data-page="rincian_ahsp"] table.ra-table col.col-uraian{ width: var(--ra-col-urai-w); }
+body[data-page="rincian_ahsp"] table.ra-table col.col-kode  { width: var(--ra-col-kode-w); }
+body[data-page="rincian_ahsp"] table.ra-table col.col-satuan{ width: var(--ra-col-sat-w); }
+body[data-page="rincian_ahsp"] table.ra-table col.col-koef  { width: var(--ra-col-koef-w); }
+body[data-page="rincian_ahsp"] table.ra-table col.col-rps   { width: var(--ra-col-rps-w); }
+body[data-page="rincian_ahsp"] table.ra-table col.col-rpj   { width: var(--ra-col-rpj-w); }
+
+/* ---- Rekap RAB ----
+   SSOT tokens khusus halaman rekap_rab.
+   - Hanya definisi variabel & pemetaan colgroup.
+   - Styling visual tetap di rekap_rab.css.
+------------------------------------------------------------------ */
+body[data-page="rekap_rab"]{
+  /* Offsets & layering alias */
+  --rab-toolbar-h: 44px;                /* tinggi toolbar halaman */
+  --dp-toolbar-h: var(--rab-toolbar-h); /* sinkron helper global yang pakai dp-toolbar-h */
+  --rab-z-dropdown: var(--dp-z-dropdown);
+  --rab-z-overlay:  var(--dp-z-sidebar);
+
+  /* Komponen kecil */
+  --rab-search-w: 560px;                /* max width search input di toolbar */
+  --rab-kpi-shadow: var(--dp-shadow-sm);/* bayangan KPI (dipakai oleh page CSS) */
+
+  /* Lebar kolom tabel (dipakai <colgroup>) */
+  --rab-col-urai-w: auto;   /* Uraian fleksibel (sisa ruang) */
+  --rab-col-kode-w: 140px;  /* Kode AHSP */
+  --rab-col-sat-w:  110px;  /* Satuan */
+  --rab-col-vol-w:  160px;  /* Volume */
+  --rab-col-har-w:  180px;  /* Harga Satuan */
+  --rab-col-tot-w:  200px;  /* Total Harga */
+}
+
+/* Pemetaan <colgroup> → token lebar kolom Rekap RAB
+   Kelas pada <col>: .col-uraian .col-kode .col-satuan .col-volume .col-harga .col-total */
+#rekap-table col.col-uraian{ width: var(--rab-col-urai-w); }
+#rekap-table col.col-kode  { width: var(--rab-col-kode-w); }
+#rekap-table col.col-satuan{ width: var(--rab-col-sat-w);  }
+#rekap-table col.col-volume{ width: var(--rab-col-vol-w);  }
+#rekap-table col.col-harga { width: var(--rab-col-har-w);  }
+#rekap-table col.col-total { width: var(--rab-col-tot-w);  }
+
+/* Responsive tweaks untuk Rekap RAB */
+@media (max-width: 991.98px){
+  body[data-page="rekap_rab"]{
+    --rab-search-w: 420px;
+    --rab-col-vol-w: 140px;
+    --rab-col-har-w: 160px;
+  }
+}
+@media (max-width: 575.98px){
+  body[data-page="rekap_rab"]{
+    --rab-search-w: 320px;
+    --rab-col-tot-w: 160px;
   }
 }

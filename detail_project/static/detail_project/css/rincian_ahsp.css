@@ -1,143 +1,241 @@
-/* ===========================
-   Rekap AHSP (scoped)
-   ===========================
-   Semua selector diprefix dgn #rekap-app agar tidak bleed ke page lain.
-*/
+/* ==========================================
+   Rincian AHSP — Elegant & Functional Parity
+   ========================================== */
 
-/* Default lebar panel kiri untuk halaman ini */
-#rekap-app{
-  --rk-left-w: 360px; /* diubah/diingat via JS resizer */
-  /* Map ke token global agar aman walau css lama dihapus */
-  --rk-border: var(--dp-c-border);
-  --rk-muted: var(--dp-c-muted);
-  --rk-shadow: 0 1px 2px rgba(0,0,0,.04);
-}
-
-/* ====== GRID: kiri | resizer | kanan ====== */
+/* ===== Grid: kiri | resizer | kanan (match template_ahsp) ===== */
 #rekap-app .hi-body{
-  display:grid;
-  grid-template-columns: var(--rk-left-w, 360px) 6px 1fr;
-  gap:0;
-  align-items:stretch;
-  min-height:68vh;
+  display: grid;
+  grid-template-columns:
+    minmax(280px, var(--ra-left-w, 360px))
+    6px
+    minmax(var(--ta-editor-min, 600px), 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-height: var(--ra-page-minvh, 68vh);
 }
 
-/* ====== LEFT PANEL ====== */
-#rekap-app .rk-left{
-  min-width:240px; max-width:640px;
-  background:#fff; border:1px solid var(--rk-border); border-radius:12px;
-  overflow:hidden; /* header sticky + list scroll di child */
-  box-shadow:var(--rk-shadow);
-  display:flex; flex-direction:column;
+/* ===== Sidebar kiri (parity .ta-sidebar & .ta-job-list) ===== */
+#rekap-app .rk-left.ta-sidebar{
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px; max-width: 640px;
+  box-shadow: var(--dp-shadow-sm);
+  max-height: calc(100vh - var(--ra-headroom, 120px));
+  min-height: 0;
+  overflow: hidden;
 }
 
-#rekap-app .rk-left-toolbar{
-  display:flex; align-items:center; gap:8px;
-  padding:10px; border-bottom:1px solid var(--rk-border);
-  background:#fff; position:sticky; top:0; z-index:2;
+/* List (scroll in-panel + shadows parity) */
+#rekap-app .ta-job-list{
+  list-style: none; margin: 8px 0 0 0; padding: 0;
+  max-height: calc(100vh - var(--ra-headroom, 120px));
+  overflow: auto;
+  position: relative;
+  background-clip: padding-box;
+}
+#rekap-app .ta-job-list::before,
+#rekap-app .ta-job-list::after{
+  content:"";
+  position: sticky;
+  left: 0; right: 0;
+  height: 14px;
+  pointer-events: none;
+  z-index: 1;
+}
+#rekap-app .ta-job-list::before{
+  top: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
+}
+#rekap-app .ta-job-list::after{
+  bottom: 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
 }
 
-#rekap-app .rk-left-scroll{
-  overflow:auto;
-}
-
-#rekap-app #rk-search{ width:100%; }
-
-/* List kiri */
-#rekap-app #rk-list{
-  list-style:none; margin:0; padding:0;
-}
+/* Item parity (hover/active + active bar) */
 #rekap-app #rk-list .rk-item{
-  border-bottom:1px solid var(--rk-border); padding:10px 12px; background:#fff; cursor:pointer;
-  display:flex; flex-direction:column; gap:4px;
+  padding: 8px;
+  border-radius: var(--dp-radius-sm);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+  background: var(--dp-c-surface);
+  display: flex; flex-direction: column; gap: 4px;
 }
-#rekap-app #rk-list .rk-item:hover{ background:#f8fafc; }
+#rekap-app #rk-list .rk-item:hover{ background: var(--dp-c-surface-2); }
 #rekap-app #rk-list .rk-item.active{
-  background:#eef6ff; outline:2px solid #bfdbfe; outline-offset:-2px;
+  border-color: color-mix(in srgb, var(--dp-c-primary) 15%, transparent);
+  background: var(--dp-c-primary-subtle);
+  position: relative;
+}
+#rekap-app #rk-list .rk-item.active::before{
+  content:"";
+  position:absolute; inset: 6px auto 6px 4px;
+  width: 2px; border-radius: 2px;
+  background: color-mix(in srgb, var(--dp-c-primary) 72%, transparent);
 }
 #rekap-app #rk-list .rk-item .rk-item-title{
-  font-weight:600; line-height:1.35;
+  font-weight: 600; line-height: 1.35; font-size: var(--ux-font-md);
 }
 #rekap-app #rk-list .rk-item .rk-item-meta{
-  display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:12px; color:var(--rk-muted);
-}
-#rekap-app #rk-list .rk-item .rk-item-meta .mono{ color:#374151; }
-
-/* ====== RESIZER ====== */
-#rekap-app .rk-resizer{
-  background:linear-gradient(90deg,#f1f5f9,#e2e8f0,#f1f5f9);
-  cursor:col-resize; min-width:6px; max-width:6px;
-}
-#rekap-app .rk-resizer:hover{ background:#dbeafe; }
-#rekap-app .rk-resizer:focus{ outline:2px solid #93c5fd; outline-offset:-2px; }
-
-/* ====== RIGHT PANEL ====== */
-#rekap-app .rk-right{
-  background:#fff; border:1px solid var(--rk-border); border-radius:12px;
-  overflow:hidden; box-shadow:var(--rk-shadow);
-  display:flex; flex-direction:column;
-  min-width:320px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  font-size: var(--ux-font-xs); color: var(--dp-c-muted);
 }
 
-/* Header kanan (judul + chips + override) */
-#rekap-app .rk-right-header{
-  padding:12px 14px;
-  border-bottom:1px solid var(--rk-border);
-  background:#fff;
-  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+/* ===== Resizer (affordance parity) ===== */
+#rekap-app .rk-resizer{ position: relative; }
+#rekap-app .rk-resizer::before{
+  content:""; position:absolute; inset: 0;
+  background: linear-gradient(transparent 40%, color-mix(in srgb, var(--dp-c-text) 22%, transparent) 40% 60%, transparent 60%) center/2px 22px no-repeat;
+  opacity: .25;
 }
-#rekap-app .rk-right-head-main{ flex:1; min-width:240px; }
-#rekap-app .rk-right-title{ font-weight:700; }
+#rekap-app .rk-resizer:hover::before,
+#rekap-app .rk-resizer:focus::before{ opacity:.6; }
+#rekap-app .rk-resizer:focus{ outline: 2px solid var(--dp-c-focus); outline-offset: -2px; }
+
+/* ===== Editor kanan (parity .ta-editor) ===== */
+#rekap-app .rk-right.ta-editor{
+  background: var(--ta-editor-surface, var(--dp-c-surface));
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: auto;
+  padding-left: var(--ta-editor-pad-x, 10px);
+  padding-right: var(--ta-editor-pad-x, 10px);
+  position: relative;
+  min-width: 320px;
+  max-height: calc(100vh - var(--ra-headroom, 120px));
+  box-shadow: var(--dp-shadow-sm);
+}
+/* Scroll shadows parity */
+#rekap-app .rk-right.ta-editor::before,
+#rekap-app .rk-right.ta-editor::after{
+  content:""; position: sticky; left: 0; right: 0; height: 18px; pointer-events: none; z-index: 2;
+}
+#rekap-app .rk-right.ta-editor::before{
+  top: 0; margin-top: -1px;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
+}
+#rekap-app .rk-right.ta-editor::after{
+  bottom: 0; margin-bottom: -1px;
+  background: linear-gradient(to top, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
+}
+
+/* Header kanan (parity .ta-seg-header) */
+#rekap-app .rk-right-header.ta-seg-header{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-top:10px; margin-bottom:6px; padding:6px 0;
+  border-bottom:1px solid var(--dp-c-border);
+  background: var(--dp-c-surface-1);
+  position: sticky; top: var(--ta-sticky-gap, 0px);
+  z-index: calc(var(--dp-z-sticky) + 1);
+  backdrop-filter: saturate(1.1) blur(2px);
+}
+#rekap-app .rk-right-title.ta-title{
+  margin:0; font-size: var(--ux-font-lg); font-weight:700; letter-spacing:.2px;
+}
 #rekap-app .rk-right-actions{ display:flex; align-items:center; gap:8px; }
 
-/* ====== TABLE WRAP (kanan) ====== */
-#rekap-app .hi-table-wrap{
-  border-top:1px solid var(--rk-border);
-  background:#fff;
-  max-height:calc(68vh - 56px); /* kira-kira di bawah header kanan */
-  overflow:auto;
+/* ===== Table wrap & table (parity .ta-table) ===== */
+#rekap-app .hi-table-wrap.ta-table-wrap{
+  border-top: 1px solid var(--dp-c-border);
+  background: var(--dp-c-surface);
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+}
+#rekap-app table.ta-table{
+  width: 100%; border-collapse: collapse; font-size: var(--ux-font-md); table-layout: fixed;
+}
+#rekap-app table.ta-table th,
+#rekap-app table.ta-table td{
+  border: 1px solid var(--dp-c-border);
+  padding: var(--ux-cell-py-compact) var(--ux-cell-px);
+  vertical-align: middle; background: var(--dp-c-surface);
+  word-break: break-word; overflow-wrap: anywhere;
+}
+/* Zebra & hover parity */
+#rekap-app table.ta-table tbody tr:nth-child(odd) > *{
+  background: color-mix(in srgb, var(--dp-c-surface-2) 30%, transparent);
+}
+#rekap-app table.ta-table tbody tr:hover > *{
+  background: color-mix(in srgb, var(--dp-c-primary) 6%, transparent);
+}
+/* Fokus/aktif parity */
+#rekap-app table.ra-table tbody tr.is-active,
+#rekap-app table.ra-table tbody tr:focus-within{
+  outline: 2px solid var(--dp-accent); outline-offset: -2px;
 }
 
-/* Section rows di tabel detail */
-#rekap-app .hi-table .sec-head td{
-  background:#f3f6ff; font-weight:700;
-}
-#rekap-app .hi-table .sec-sum td{
-  background:#f9fafb; font-weight:700;
-}
-#rekap-app .hi-table .tot-row td{
-  background:#fff7ed; font-weight:800;
-}
-#rekap-app .hi-table .tot-row td:first-child{ color:#7c2d12; }
-
-/* ====== Skeleton loader (opsional) ====== */
-#rekap-app.is-loading #rk-list .rk-item,
-#rekap-app.is-loading .hi-table tbody tr{
-  position:relative; overflow:hidden; color:transparent;
-}
-#rekap-app.is-loading #rk-list .rk-item::after,
-#rekap-app.is-loading .hi-table tbody tr::after{
-  content:""; position:absolute; inset:0;
-  background:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(148,163,184,.12) 40%, rgba(148,163,184,.12) 60%, rgba(0,0,0,0) 100%);
-  animation: rk-shimmer 1.2s infinite;
-}
-@keyframes rk-shimmer{
-  0%{ transform:translateX(-100%); }
-  100%{ transform:translateX(100%); }
+/* Sticky thead INSIDE the scroll container */
+#rekap-app thead .ra-thead-sticky th{
+  position: sticky;
+  top: 0; /* scroll-nya di .hi-table-wrap, bukan window */
+  z-index: var(--dp-z-thead);
+  background: var(--dp-c-surface);
 }
 
-/* ====== Responsive (khusus rekap) ====== */
-@media (max-width: 1100px){
-  #rekap-app{ --rk-left-w: 320px; }
+/* Alignment angka & monospace */
+#rekap-app table.ra-table td:nth-child(4){ text-align:center; } /* Satuan */
+#rekap-app table.ra-table td:nth-child(5),
+#rekap-app table.ra-table td:nth-child(6),
+#rekap-app table.ra-table td:nth-child(7){
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--ux-font-feature-num, "tnum" 1, "lnum" 1);
 }
-@media (max-width: 900px){
-  #rekap-app{ --rk-left-w: 280px; }
+
+/* Summary chips (parity) */
+#rekap-app #rk-summary .ux-badge-ref{ background: var(--dp-c-surface-2); }
+
+/* Chips */
+#rekap-app .ta-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  border-radius: calc(var(--dp-radius-sm) - 2px);
+  padding:2px 8px; font-size: var(--ux-font-2xs); line-height:1;
+  border:1px solid var(--dp-c-border);
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-text);
 }
+#rekap-app .ta-chip-warn{
+  background: color-mix(in srgb, var(--dp-c-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--dp-c-warning) 30%, transparent);
+}
+
+/* ===== Page header & toolbar parity ===== */
+#rekap-app.ta-app .ta-page-header{ margin-top:8px; }
+#rekap-app.ta-app .ta-title{ margin:0; font-weight:700; font-size: var(--ux-font-lg); letter-spacing:.2px; }
+#rekap-app.ta-app .ta-subtitle{ margin:2px 0 0 0; color:var(--dp-c-muted); font-size: var(--ux-font-md); }
+
+#rekap-app.ta-app .ta-toolbar{
+  background: var(--dp-c-surface-1);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: .5rem .75rem;
+  min-height: var(--da-toolbar-h);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Searchbar parity */
+.ta-searchbar{ max-width: var(--ta-search-w, 560px); }
+.ta-searchbar .input-group-text{ border-right:0; display:flex; align-items:center; }
+.ta-searchbar .form-control{ border-left:0; }
+
+/* Input kecil seragam */
+#rekap-app input.hi-input{
+  font-size: var(--ux-font-sm); line-height:1.25;
+  height: var(--ux-input-h-compact); padding:.25rem .5rem;
+}
+
+/* Alias kecil: .mono → monospace (agar konsisten bila dipakai) */
+#rekap-app .mono{ font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace; }
+
+/* ===== Responsive ===== */
+@media (max-width: 1100px){ body[data-page="rincian_ahsp"]{ --ra-left-w: 320px; } }
+@media (max-width: 900px) { body[data-page="rincian_ahsp"]{ --ra-left-w: 280px; } }
 @media (max-width: 760px){
-  /* Stack jadi vertikal: list di atas, detail di bawah */
-  #rekap-app .hi-body{
-    display:flex; flex-direction:column;
-  }
+  #rekap-app .hi-body{ display:flex; flex-direction:column; gap: 12px; }
   #rekap-app .rk-resizer{ display:none; }
   #rekap-app .hi-table-wrap{ max-height:unset; }
   #rekap-app #rk-list .rk-item{ padding:12px; }

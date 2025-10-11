@@ -1,14 +1,12 @@
 {% extends "detail_project/base_detail.html" %}
-{% load static %}
+{% load static i18n %}
 {% block title %}Template AHSP — {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="template_ahsp"{% endblock %}
 
 {% block detail_css %}
-  {# Biarkan default css detail_ahsp dari base load #}
   <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp.css' %}">
 {% endblock %}
 
-{# Select2 (autocomplete untuk segmen LAIN) #}
 {% block extra_css %}
   {{ block.super }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
@@ -27,41 +25,73 @@
      class="ta-app"
      data-project-id="{{ project.id }}"
      data-locale="id-ID"
-     data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"      {# 0 diganti JS #}
+     data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
      data-endpoint-save-pattern="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"
      data-endpoint-reset-pattern="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
      data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
      data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
      data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
 
-  {# Header halaman #}
+  <!-- Header -->
   <header class="ta-page-header">
     <h1 class="ta-title">Template AHSP</h1>
     <p class="ta-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
   </header>
 
-  {# Toolbar sticky (id diperlukan untuk pengukuran tinggi oleh JS) #}
-  <div id="ta-toolbar" class="ta-toolbar" role="region" aria-label="Toolbar Template AHSP">
-    <div class="ta-combobox">
-      <input id="ta-job-search" class="ta-input" type="text" placeholder="Cari pekerjaan…"
-             aria-label="Cari pekerjaan" autocomplete="off">
+  <!-- Toolbar (tanpa Undo/Redo; pakai hint keyboard) -->
+  <div id="ta-toolbar" class="ta-toolbar dp-layer-toolbar d-flex align-items-center gap-2" role="region" aria-label="Toolbar Template AHSP">
+    <!-- Searchbar (adapt lp-toolbar-search) -->
+    <div class="ta-combobox ta-searchbar flex-grow-1" role="search">
+      <div class="input-group input-group-sm lp-toolbar-search">
+        <span class="input-group-text" id="ta-search-addon">
+          <i class="bi bi-search" aria-hidden="true"></i>
+        </span>
+        <input id="ta-job-search"
+               type="search"
+               class="form-control ux-focusable"
+               placeholder="{% trans 'Cari pekerjaan…' %}"
+               autocomplete="off"
+               aria-label="{% trans 'Cari pekerjaan' %}"
+               aria-describedby="ta-search-addon">
+        <button id="ta-toolbar-find"
+                class="btn btn-primary btn-neon ms-1"
+                type="button"
+                title="{% trans 'Cari' %}">
+          <i class="bi bi-search"></i> {% trans "Cari" %}
+        </button>
+      </div>
     </div>
 
-    <div class="ta-toolbar-spacer"></div>
 
-    <button id="ta-btn-export" class="btn btn-light btn-sm" type="button">Ekspor CSV</button>
+    <div class="ta-toolbar-hint only-desktop ms-2 me-auto">
+      <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo &middot; <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo</span>
+    </div>
 
-    <div class="ta-dirty-indicator" aria-live="polite">
-      <span id="ta-dirty-dot" class="dot" hidden>●</span>
+    <!-- Export -->
+    <div class="btn-group">
+      <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        Export
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button class="dropdown-item" type="button" id="ta-btn-export">Export CSV</button></li>
+      </ul>
+    </div>
+
+    <!-- Dirty indicator -->
+    <div class="ta-dirty-indicator d-inline-flex align-items-center small text-muted" aria-live="polite">
+      <span id="ta-dirty-dot" class="dot me-1" hidden>●</span>
       <span id="ta-dirty-text" hidden>Belum disimpan</span>
     </div>
 
-    <button id="ta-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>Reset ke Referensi</button>
-    <button id="ta-btn-save" class="btn btn-primary btn-sm" type="button" disabled>Simpan</button>
+    <!-- Simpan -->
+    <button id="ta-btn-save" class="btn btn-success btn-neon d-inline-flex align-items-center gap-2" type="button" disabled>
+      <span class="spinner-border spinner-border-sm" id="ta-btn-save-spin" role="status" aria-hidden="true" hidden></span>
+      <span>Simpan</span>
+    </button>
   </div>
 
   <div class="ta-body">
-    {# Sidebar pekerjaan #}
+    <!-- Sidebar pekerjaan -->
     <aside class="ta-sidebar" aria-label="Daftar pekerjaan">
       <ul id="ta-job-list" class="ta-job-list">
         {% for p in pekerjaan %}
@@ -77,11 +107,11 @@
             <div class="meta">
               <span class="satuan">{{ p.snapshot_satuan }}</span>
               {% if p.source_type == 'ref' %}
-                <span class="badge">REF</span>
+                <span class="ux-badge-ref mono">REF</span>
               {% elif p.source_type == 'ref_modified' %}
-                <span class="badge">MOD</span>
+                <span class="ux-badge-mod mono">MOD</span>
               {% elif p.source_type == 'custom' %}
-                <span class="badge">CUS</span>
+                <span class="ux-badge-cus mono">CUS</span>
               {% endif %}
             </div>
           </li>
@@ -91,7 +121,10 @@
       </ul>
     </aside>
 
-    {# Panel editor #}
+    <!-- Resizer -->
+    <div id="ta-resizer" class="ux-resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize panel"></div>
+
+    <!-- Panel editor -->
     <main class="ta-editor" aria-label="Editor Template AHSP">
       <section class="ta-job-header">
         <div class="row">
@@ -114,12 +147,16 @@
         </div>
       </section>
 
-      {# Segmen TK — Tenaga Kerja #}
+      <!-- Segmen TK -->
       <section class="ta-segment" data-seg="TK">
         <header class="ta-seg-header">
           <h2>Tenaga Kerja</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="TK">+ Baris kosong</button>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-primary ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK">
+                <i class="bi bi-plus-lg"></i><span>Baris</span>
+              </button>
+            </div>
           </div>
         </header>
         <div class="ta-table-wrap">
@@ -147,12 +184,14 @@
         </div>
       </section>
 
-      {# Segmen BHN — Bahan #}
+      <!-- Segmen BHN -->
       <section class="ta-segment" data-seg="BHN">
         <header class="ta-seg-header">
           <h2>Bahan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="BHN">+ Baris kosong</button>
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN">
+              <i class="bi bi-plus-lg"></i><span>Baris</span>
+            </button>
           </div>
         </header>
         <div class="ta-table-wrap">
@@ -180,12 +219,14 @@
         </div>
       </section>
 
-      {# Segmen ALT — Peralatan #}
+      <!-- Segmen ALT -->
       <section class="ta-segment" data-seg="ALT">
         <header class="ta-seg-header">
           <h2>Peralatan</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="ALT">+ Baris kosong</button>
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT">
+              <i class="bi bi-plus-lg"></i><span>Baris</span>
+            </button>
           </div>
         </header>
         <div class="ta-table-wrap">
@@ -213,12 +254,14 @@
         </div>
       </section>
 
-      {# Segmen LAIN — Lainnya #}
+      <!-- Segmen LAIN -->
       <section class="ta-segment" data-seg="LAIN">
         <header class="ta-seg-header">
           <h2>Lainnya</h2>
           <div class="seg-tools">
-            <button class="btn btn-light btn-sm ta-seg-add-empty" type="button" data-target-seg="LAIN">+ Baris kosong</button>
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN">
+              <i class="bi bi-plus-lg"></i><span>Baris</span>
+            </button>
           </div>
         </header>
         <div class="ta-table-wrap">
@@ -246,6 +289,16 @@
         </div>
       </section>
 
+      <!-- RESET pindah ke bawah (dekat footer) -->
+      <div class="ta-reset-area">
+        <button id="ta-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>
+          Reset ke Referensi
+        </button>
+        <div class="hint small text-muted mt-1">
+          Hanya muncul untuk pekerjaan sumber <strong>MOD</strong> (ref_modified).
+        </div>
+      </div>
+
       <footer class="ta-editor-footer">
         <div id="ta-row-stats">0 baris</div>
         <div class="hint">Tip: <kbd>Ctrl/⌘+S</kbd> Simpan; <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> pindah sel; <kbd>Del</kbd> hapus baris.</div>
@@ -253,7 +306,7 @@
     </main>
   </div>
 
-  {# Template row #}
+  <!-- Template row -->
   <template id="ta-row-template">
     <tr class="ta-row">
       <td class="col-no"><span class="row-index">1</span></td>
@@ -264,7 +317,7 @@
 
       <td class="col-kode">
         <input type="text" class="cell-input mono" data-field="kode">
-        <input type="hidden" data-field="ref_ahsp_id">  {# hidden bundle ref di kolom kode #}
+        <input type="hidden" data-field="ref_ahsp_id">
       </td>
 
       <td class="col-satuan">

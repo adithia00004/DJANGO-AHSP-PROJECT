@@ -1,4 +1,8 @@
-// static/detail_project/js/detail_ahsp.js
+// Template AHSP – JS (selaras SSOT + gaya aksi seperti VP)
+// - Hapus handler tombol toolbar “+ Tambah Baris” (sudah dihilangkan dari HTML)
+// - Simpan: tombol success + neon + spinner (mirip VP) → #ta-btn-save & #ta-btn-save-spin
+// - “+ Baris kosong” per-segmen tetap aktif dengan guard mode read-only & Select2 di LAIN
+
 (function () {
   const $ = (sel, ctx=document) => ctx.querySelector(sel);
   const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
@@ -11,7 +15,7 @@
     get: app.dataset.endpointGetPattern,       // .../<pid>/detail-ahsp/0/   -> replace 0
     save: app.dataset.endpointSavePattern,     // .../<pid>/detail-ahsp/0/save/
     reset: app.dataset.endpointResetPattern,   // .../<pid>/detail-ahsp/0/reset-to-ref/
-    searchAhsp: app.dataset.endpointSearchAhsp,   // NEW Fase 5
+    searchAhsp: app.dataset.endpointSearchAhsp,
   };
   const locale = app.dataset.locale || 'id-ID';
 
@@ -22,7 +26,7 @@
   let kategoriMeta = [];       // [{code,label}]
   const rowsByJob = {};        // { jobId: [{kategori,kode,uraian,satuan,koefisien}] }
 
-  // === Koefisien numeric helpers (dp=6) ===
+  // === Koefisien numeric helpers (dp=6)
   const __NUM = window.Numeric || null;
   const __KOEF_DP = 6;
   function __koefToCanon(v){
@@ -34,7 +38,7 @@
     if (!__NUM) return canon ?? '';
     return __NUM.formatForUI(__NUM.enforceDp(canon ?? '', __KOEF_DP));
   }
-  // Auto-format setiap input koef saat blur
+  // Auto-format input koef saat blur
   document.addEventListener('blur', (e)=>{
     const el = e.target;
     if (!(el instanceof HTMLInputElement)) return;
@@ -44,15 +48,14 @@
     el.value = __koefToUI(canon);
   }, true);
 
-  // --- CSRF helper (dipakai semua POST) ---
+  // --- CSRF helper ---
   function getCookie(name){
     return document.cookie.split('; ').find(r => r.startsWith(name+'='))?.split('=')[1] || '';
   }
   const CSRF = getCookie('csrftoken');
-  
+
   // ---------- UTILS ----------
   function urlFor(pattern, id) {
-    // Ganti segmen "/0/" (atau "/0" di akhir) menjadi "/<id>/"
     return pattern.replace(/\/0(\/|$)/, `/${id}$1`);
   }
   function setDirty(v) {
@@ -88,13 +91,13 @@
       $('.cell-wrap', tr).textContent = r.uraian || '';
       $('input[data-field="kode"]', tr).value = r.kode || '';
       $('input[data-field="satuan"]', tr).value = r.satuan || '';
-      // TAMPILKAN KOEF DI UI (locale) — bukan raw string
+      // UI koef pakai locale
       $('input[data-field="koefisien"]', tr).value = __koefToUI(String(r.koefisien ?? ''));
 
       // Hidden ref_ahsp_id dari GET (kalau ada)
       const hid = $('input[data-field="ref_ahsp_id"]', tr);
       if (hid) hid.value = (r.ref_ahsp_id != null ? String(r.ref_ahsp_id) : '');
-      // Tambah lencana kecil saat LAIN + ada ref_ahsp_id
+      // Tandai bundle di LAIN
       if (seg === 'LAIN') {
         const isBundle = !!(hid && hid.value);
         const kodeTd = $('input[data-field="kode"]', tr).closest('td');
@@ -109,33 +112,34 @@
 
     formatIndex();
 
-    // Pasang Select2 hanya utk LAIN & job CUSTOM
+    // Autocomplete khusus LAIN + sumber CUSTOM
     if (seg === 'LAIN' && activeSource === 'custom') {
       enhanceLAINAutocomplete(body);
     }
   }
 
   function gatherRows() {
-  const segs = ['TK','BHN','ALT','LAIN'];
-  const out = [];
-  segs.forEach(seg => {
-    $(`#seg-${seg}-body`)?.querySelectorAll('tr.ta-row')?.forEach(tr => {
-      const base = {
-        kategori: seg,
-        uraian: $('.cell-wrap', tr).textContent.trim(),
-        kode: $('input[data-field="kode"]', tr).value.trim(),
-        satuan: $('input[data-field="satuan"]', tr).value.trim(),
-        koefisien: normKoefStrToSend($('input[data-field="koefisien"]', tr).value),
-      };
-      if (seg === 'LAIN' && activeSource === 'custom') {
-        const refId = $('input[data-field="ref_ahsp_id"]', tr).value.trim();
-        if (refId) base.ref_ahsp_id = refId;
-      }
-      out.push(base);
+    const segs = ['TK','BHN','ALT','LAIN'];
+    const out = [];
+    segs.forEach(seg => {
+      $(`#seg-${seg}-body`)?.querySelectorAll('tr.ta-row')?.forEach(tr => {
+        const base = {
+          kategori: seg,
+          uraian: $('.cell-wrap', tr).textContent.trim(),
+          kode: $('input[data-field="kode"]', tr).value.trim(),
+          satuan: $('input[data-field="satuan"]', tr).value.trim(),
+          koefisien: normKoefStrToSend($('input[data-field="koefisien"]', tr).value),
+        };
+        if (seg === 'LAIN' && activeSource === 'custom') {
+          const refId = $('input[data-field="ref_ahsp_id"]', tr).value.trim();
+          if (refId) base.ref_ahsp_id = refId;
+        }
+        out.push(base);
+      });
     });
-  });
-  return out;
+    return out;
   }
+
   function validateClient(rows) {
     const errors = [];
     const seen = new Set();
@@ -154,8 +158,7 @@
     return errors;
   }
 
-  // >>> PATCH: perluas guard agar juga mematikan tombol tambah & katalog
-
+  // Mode editor berdasarkan sumber row (lock/unlock)
   function setEditorModeBySource() {
     const canSave  = (activeSource === 'ref_modified' || activeSource === 'custom') && !readOnly;
     const canReset = (activeSource === 'ref_modified') && !readOnly;
@@ -182,9 +185,7 @@
     // Kunci tombol penambah baris saat tidak editable
     const lockBtns = [
       ...$$('.ta-seg-add-catalog'),
-      ...$$('.ta-seg-add-empty'),
-      $('#ta-btn-add-empty'),
-      $('#ta-btn-add-component'),
+      ...$$('.ta-seg-add-empty')
     ].filter(Boolean);
     lockBtns.forEach(btn => { btn.disabled = !editable; });
 
@@ -204,9 +205,6 @@
 
   function enhanceLAINAutocomplete(scopeEl) {
     if (!window.jQuery || !jQuery.fn.select2 || !endpoints.searchAhsp) return;
-
-    // Jika diberi scopeEl (tbody LAIN), cari input di dalamnya.
-    // Kalau tidak, fallback ke seluruh dokumen.
     const scope   = scopeEl || document;
     const selector = scopeEl
       ? '.ta-row input[data-field="kode"]'
@@ -215,8 +213,6 @@
     $$(selector, scope).forEach(input => {
       const tr = input.closest('tr.ta-row');
       const $input = jQuery(input);
-
-      // Hindari double-init
       if ($input.data('hasSelect2')) return;
 
       $input.select2({
@@ -246,7 +242,6 @@
         $('.cell-wrap', tr).textContent = d.nama_ahsp || '';
         $('input[data-field="satuan"]', tr).value = d.satuan || '';
         $('input[data-field="ref_ahsp_id"]', tr).value = d.id || '';
-        // >>> tambahkan ini:
         const kodeTd = input.closest('td');
         if (kodeTd && !kodeTd.querySelector('.tag-bundle')) {
           kodeTd.insertAdjacentHTML('beforeend', ' <span class="tag-bundle">Bundle</span>');
@@ -254,7 +249,7 @@
         setDirty(true);
       });
 
-      // Kalau user edit manual kode → kosongkan ref id
+      // Edit manual kode → kosongkan ref id
       input.addEventListener('input', () => {
         $('input[data-field="ref_ahsp_id"]', tr).value = '';
         const b = tr.querySelector('.tag-bundle');
@@ -323,8 +318,8 @@
     li.addEventListener('keydown', (e) => { if (e.key==='Enter' || e.key===' ') { e.preventDefault(); selectJob(li);} });
   });
 
-  // filter (fallback dua id supaya aman)
-  const jobFilterEl = $('#ta-job-filter') || $('#ta-job-search');
+  // filter
+  const jobFilterEl = $('#ta-job-search');
   if (jobFilterEl) {
     jobFilterEl.addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase();
@@ -335,7 +330,7 @@
     });
   }
 
-  // add empty row
+  // add empty row (per-segmen)
   $$('.ta-seg-add-empty').forEach(btn => {
     btn.addEventListener('click', () => {
       if (activeSource === 'ref') return; // read-only
@@ -350,7 +345,7 @@
       setDirty(true);
       setEditorModeBySource();
       if (seg === 'LAIN' && activeSource === 'custom') {
-        enhanceLAINAutocomplete(body); // NEW
+        enhanceLAINAutocomplete(body);
       }
     });
   });
@@ -368,7 +363,7 @@
     }
   });
 
-  // SAVE (replace-all) —>>> PATCH: kanonisasi sebelum POST
+  // SAVE (replace-all) — spinner ala VP
   $('#ta-btn-save').addEventListener('click', () => {
     if (!activeJobId) return;
     const rows = gatherRows();
@@ -377,10 +372,15 @@
       toast('Periksa isian: ada error', 'warn');
       return;
     }
-    // >>> PATCH: normalisasi koef ke string kanonik (dp=6) sebelum POST
-    const rowsCanon = rows.map(r => ({ ...r, koefisien: __koefToCanon(r.koefisien) }));
 
+    const rowsCanon = rows.map(r => ({ ...r, koefisien: __koefToCanon(r.koefisien) }));
     const url = urlFor(endpoints.save, activeJobId);
+
+    const btnSave = $('#ta-btn-save');
+    const spin = $('#ta-btn-save-spin');
+    if (spin) spin.hidden = false;
+    if (btnSave) btnSave.disabled = true;
+
     fetch(url, {
       method:'POST',
       credentials:'same-origin',
@@ -390,10 +390,13 @@
       if (!js.ok && !js.saved_rows) throw new Error('Gagal simpan');
       setDirty(false);
       rowsByJob[activeJobId] = rowsByJob[activeJobId] || {};
-      rowsByJob[activeJobId].items = rows; // cache apa adanya (UI tetap seperti yang terlihat)
+      rowsByJob[activeJobId].items = rows; // cache tampilan
       toast('Tersimpan', 'success');
     }).catch(()=>{
       toast('Gagal menyimpan', 'error');
+    }).finally(()=>{
+      if (spin) spin.hidden = true;
+      if (btnSave) btnSave.disabled = false;
     });
   });
 
@@ -423,7 +426,7 @@
     });
   }
 
-  // EXPORT CSV —>>> PATCH: tulis koefisien dalam format kanonik (titik)
+  // EXPORT CSV (koefisien format kanonik titik)
   $('#ta-btn-export').addEventListener('click', () => {
     if (!activeJobId) return;
     const rows = gatherRows();
@@ -444,10 +447,9 @@
     URL.revokeObjectURL(a.href);
   });
 
-  // toast minimal
+  // toast minimal (pakai console; bisa diganti DP.core.toast jika ada)
   function toast(msg, type='info') {
     console.log(`[${type}] ${msg}`);
-    // bisa diganti komponen toast kamu
   }
 
   // auto-select first job
