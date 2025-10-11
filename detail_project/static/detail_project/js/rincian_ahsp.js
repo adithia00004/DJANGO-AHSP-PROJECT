@@ -49,6 +49,7 @@
   const $leftPane = ROOT.querySelector('.rk-left');
   // Toast
   const $toast    = ROOT.querySelector('#rk-toast');
+  
 
   // ====== state ======
   let ctrlDetail = null, ctrlPricing = null; // AbortControllers

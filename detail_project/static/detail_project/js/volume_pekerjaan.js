@@ -9,6 +9,8 @@
 (function () {
   const root = document.getElementById('vol-app');
   if (!root) return;
+  // Gunakan Numeric bila tersedia agar konsisten (koma <-> titik)
+  const N = window.Numeric || null;
 
   // ---- Konteks dasar
   const projectId = root.dataset.projectId || root.dataset.pid;
@@ -165,7 +167,9 @@
       return n.toFixed(fracLen);
     }
   }
+
   function normalizeLocaleNumericString(input) {
+    if (N) return (N.canonicalizeForAPI(input ?? '') || '');
     let s = String(input ?? '').trim();
     if (!s) return s;
     s = s.replace(/\s+/g, '').replace(/_/g, '');
@@ -174,6 +178,19 @@
     else if (hasComma) { s = s.replace(',', '.'); }
     return s;
   }
+  function parseNumberOrEmpty(val) {
+    if (N) {
+      const c = N.canonicalizeForAPI(val || '');
+      if (!c) return '';
+      const n = Number(c);
+      return Number.isFinite(n) ? n : '';
+    }
+    const s = normalizeLocaleNumericString(val);
+    if (!s) return '';
+    const n = Number(s);
+    return Number.isFinite(n) ? n : '';
+  }
+
   function parseNumberOrEmpty(val) {
     const s = normalizeLocaleNumericString(val);
     if (!s) return '';
@@ -697,12 +714,17 @@
   }
   function normQty(val) {
     if (val === '' || val == null) return '';
-    const s = normalizeLocaleNumericString(val);
-    let num = Number(s);
-    if (!Number.isFinite(num)) return '';
-    if (num < 0) num = 0;
-    const rounded = roundHalfUp(num, STORE_PLACES);
-    return formatIdSmart(rounded);
+    if (N) {
+      const c = N.enforceDp(N.canonicalizeForAPI(val), STORE_PLACES);
+      return N.formatForUI(c); // tampilkan dengan koma (id-ID)
+    } else {
+      const s = normalizeLocaleNumericString(val);
+      let num = Number(s);
+      if (!Number.isFinite(num)) return '';
+      if (num < 0) num = 0;
+      const rounded = roundHalfUp(num, STORE_PLACES);
+      return formatIdSmart(rounded);
+    }
   }
   function setRowDirtyVisual(id, isDirty) {
     const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
@@ -1265,7 +1287,8 @@
         if (vlist && Array.isArray(vlist.items)) {
           vlist.items.forEach(it => {
             const id = Number(it.pekerjaan_id);
-            const v  = Number(String(it.quantity || '0').replace(',', '.'));
+            const v  = N ? Number(N.canonicalizeForAPI(it.quantity ?? '0'))
+                         : Number(String(it.quantity || '0').replace(',', '.'));
             if (Number.isFinite(id) && Number.isFinite(v)) volMap[id] = v;
           });
         }
@@ -1275,7 +1298,8 @@
         if (rekap && Array.isArray(rekap.rows)) {
           rekap.rows.forEach(r => {
             if (r && typeof r.pekerjaan_id === 'number') {
-              const v = Number(r.volume || 0);
+              const v = N ? Number(N.canonicalizeForAPI(r.volume ?? 0))
+                          : Number(r.volume || 0);
               volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
             }
           });

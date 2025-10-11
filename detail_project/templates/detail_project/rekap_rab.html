@@ -1,80 +1,148 @@
 {% extends 'detail_project/base_detail.html' %}
 {% load static %}
 
-{# Matikan CSS Detail AHSP khusus halaman ini agar styling konsisten seperti list_pekerjaan #}
+{# Matikan CSS Detail AHSP #}
 {% block detail_css %}{% endblock %}
+
+{# Set data-page di body #}
+{% block body_attrs %}data-page="rekap_rab"{% endblock %}
 
 {% block extra_css %}
   {{ block.super }}
-  {# Opt-in util core agar selaras dengan halaman lain #}
-  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_rab.css' %}">
   <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_rab.css' %}">
 {% endblock %}
 
 {% block dp_content %}
 {% include 'detail_project/_alert.html' %}
 
 <div id="rekap-app" class="container-fluid" data-project-id="{{ project.id }}">
-  <!-- Toolbar: selaras pola LP (tanpa card), gunakan dp-layer-toolbar -->
-  <div class="rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-layer-toolbar">
-    <div class="input-group input-group-sm" style="max-width:360px;">
+
+  <!-- Toolbar -->
+  <div id="rab-toolbar" class="rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3">
+
+    <!-- Search -->
+    <div class="input-group rab-toolbar-search">
       <span class="input-group-text"><i class="bi bi-search"></i></span>
-      <input id="rab-search" class="form-control" placeholder="Cari klasifikasi / sub / pekerjaan / kode…">
+      <input id="rab-search" class="form-control" 
+             placeholder="Cari klasifikasi / sub / pekerjaan / kode…"
+             aria-label="Cari dalam rekap RAB"
+             role="searchbox">
     </div>
 
-    <div class="btn-group btn-group-sm ms-1" role="group" aria-label="Expand/Collapse">
-      <button id="btn-expand" class="btn btn-outline-secondary" type="button">
-        <i class="bi bi-arrows-expand"></i> Expand All
+    <!-- Expand/Collapse -->
+    <div class="btn-group ms-1" role="group" aria-label="Expand dan Collapse">
+      <button id="btn-expand" class="btn btn-outline-secondary" type="button"
+              title="Expand semua">
+        <i class="bi bi-arrows-expand"></i> 
+        <span class="d-none d-md-inline">Expand All</span>
       </button>
-      <button id="btn-collapse" class="btn btn-outline-secondary" type="button">
-        <i class="bi bi-arrows-collapse"></i> Collapse All
+      <button id="btn-collapse" class="btn btn-outline-secondary" type="button"
+              title="Collapse semua">
+        <i class="bi bi-arrows-collapse"></i> 
+        <span class="d-none d-md-inline">Collapse All</span>
       </button>
     </div>
 
-    <div class="btn-group btn-group-sm ms-1" role="group" aria-label="View modes">
-      <button id="btn-subtotal" class="btn btn-outline-secondary" type="button" title="Tampilkan subtotal saja">
-        <i class="bi bi-diagram-3"></i> Subtotal Only
+    <!-- View modes -->
+    <div class="btn-group ms-1" role="group" aria-label="Mode tampilan">
+      <button id="btn-subtotal" class="btn btn-outline-secondary" type="button" 
+              title="Tampilkan subtotal saja">
+        <i class="bi bi-diagram-3"></i> 
+        <span class="d-none d-lg-inline">Subtotal</span>
       </button>
-      <button id="btn-density" class="btn btn-outline-secondary" type="button" title="Mode padat">
-        <i class="bi bi-file-ruled"></i> Padat
+      <button id="btn-density" class="btn btn-outline-secondary" type="button" 
+              title="Mode padat">
+        <i class="bi bi-file-ruled"></i> 
+        <span class="d-none d-lg-inline">Padat</span>
       </button>
+    </div>
+
+    <!-- Column Manager -->
+    <div class="dropdown ms-1">
+      <button class="btn btn-outline-secondary dropdown-toggle" type="button" 
+              data-bs-toggle="dropdown" aria-expanded="false"
+              aria-label="Kelola kolom">
+        <i class="bi bi-layout-three-columns"></i> 
+        <span class="d-none d-md-inline">Kolom</span>
+      </button>
+      <div class="dropdown-menu p-3" style="min-width:260px;">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="col-toggle-kode" checked>
+          <label class="form-check-label" for="col-toggle-kode">Kode AHSP</label>
+        </div>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="col-toggle-satuan" checked>
+          <label class="form-check-label" for="col-toggle-satuan">Satuan</label>
+        </div>
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="col-toggle-volume" checked>
+          <label class="form-check-label" for="col-toggle-volume">Volume</label>
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="col-toggle-harga" checked>
+          <label class="form-check-label" for="col-toggle-harga">Harga Satuan</label>
+        </div>
+      </div>
     </div>
 
     <div class="ms-auto d-flex gap-2">
-      <button id="btn-refresh" class="btn btn-outline-secondary btn-sm" type="button">
-        <i class="bi bi-arrow-repeat"></i> Refresh
+      <button id="btn-refresh" class="btn btn-outline-secondary" type="button"
+              title="Muat ulang data">
+        <i class="bi bi-arrow-repeat"></i> 
+        <span class="d-none d-md-inline">Refresh</span>
       </button>
-      <button id="btn-export" class="btn btn-outline-primary btn-sm" type="button">
-        <i class="bi bi-download"></i> Export CSV
+      <button id="btn-export" class="btn btn-outline-primary" type="button"
+              title="Export ke CSV">
+        <i class="bi bi-download"></i> 
+        <span class="d-none d-md-inline">Export</span>
       </button>
-      <button id="btn-print" class="btn btn-outline-secondary btn-sm" type="button">
-        <i class="bi bi-printer"></i> Print
+      <button id="btn-print" class="btn btn-outline-secondary" type="button"
+              title="Cetak halaman">
+        <i class="bi bi-printer"></i> 
+        <span class="d-none d-md-inline">Print</span>
       </button>
     </div>
   </div>
 
-  <!-- Area tabel utama (maksimalkan ruang layar) -->
-  <div id="rekap-table-wrap" class="table-responsive" style="overflow:auto;">
-    <table class="table table-sm table-striped table-hover align-middle mb-0" id="rekap-table">
-      <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+  <!-- Table -->
+  <div id="rekap-table-wrap" class="table-responsive ux-scrollbar">
+    <table class="table table-hover align-middle mb-0" id="rekap-table">
+      <colgroup>
+        <col class="col-uraian">
+        <col class="col-kode">
+        <col class="col-satuan">
+        <col class="col-volume">
+        <col class="col-harga">
+        <col class="col-total">
+      </colgroup>
+
+      <thead class="dp-thead-sticky">
         <tr>
-          <th class="text-wrap">Uraian (Klasifikasi / Sub-Klasifikasi / Pekerjaan)</th>
-          <th class="d-none d-md-table-cell">Kode AHSP</th>
-          <th class="d-none d-lg-table-cell">Satuan</th>
-          <th class="text-end d-none d-sm-table-cell">Volume</th>
-          <th class="text-end d-none d-md-table-cell">Harga Satuan</th>
-          <th class="text-end">Total Harga</th>
+          <th>Uraian (Klasifikasi / Sub-Klasifikasi / Pekerjaan)</th>
+          <th class="col-kode">Kode AHSP</th>
+          <th class="col-satuan">Satuan</th>
+          <th class="text-end th-sortable" data-sort-key="volume" 
+              title="Urutkan berdasarkan Volume">Volume</th>
+          <th class="text-end th-sortable" data-sort-key="harga" 
+              title="Urutkan berdasarkan Harga Satuan">Harga Satuan</th>
+          <th class="text-end th-sortable" data-sort-key="total" 
+              title="Urutkan berdasarkan Total Harga">Total Harga</th>
         </tr>
       </thead>
+
       <tbody>
         <tr id="rab-loading">
           <td colspan="6" class="text-center text-muted py-4">
-            <div class="spinner-border spinner-border-sm" role="status"></div>
-            <span class="ms-2">Memuat data…</span>
+            <div class="d-inline-flex align-items-center gap-2">
+              <div class="spinner-border spinner-border-sm" role="status"></div>
+              <span>Memuat data…</span>
+            </div>
           </td>
         </tr>
       </tbody>
-      <tfoot class="table-light" style="position: sticky; bottom: 0; z-index: 1;">
+
+      <tfoot>
         <tr>
           <th colspan="5" class="text-end">Total Proyek (D)</th>
           <th class="text-end" id="ft-total-d">-</th>
@@ -82,8 +150,10 @@
         <tr>
           <th colspan="4" class="text-end">PPN</th>
           <th class="text-end">
-            <div class="input-group input-group-sm" style="max-width:220px; margin-left:auto;">
-              <input id="ppn-pct" type="number" step="0.01" min="0" class="form-control" placeholder="PPN %" value="11">
+            <div class="input-group">
+              <input id="ppn-pct" type="number" step="0.01" min="0" 
+                     class="form-control" placeholder="PPN %" value="11"
+                     aria-label="Persentase PPN">
               <span class="input-group-text">%</span>
             </div>
           </th>
@@ -96,8 +166,9 @@
         <tr>
           <th colspan="4" class="text-end">Pembulatan ke</th>
           <th class="text-end">
-            <div class="input-group input-group-sm" style="max-width:260px; margin-left:auto;">
-              <select id="round-base" class="form-select">
+            <div class="input-group">
+              <select id="round-base" class="form-select" 
+                      aria-label="Basis pembulatan">
                 <option value="1000">1.000</option>
                 <option value="5000">5.000</option>
                 <option value="10000" selected>10.000</option>
@@ -114,153 +185,6 @@
     </table>
   </div>
 </div>
-
-<style>
-/* ===== Selaras dengan pola LP (tanpa menyalin seluruh CSS) ===== */
-
-/* Skala toolbar (mengikuti token di LP, dengan fallback aman) */
-:root {
-  --lp-toolbar-fs: .75rem;
-  --lp-toolbar-py: .375rem;
-}
-
-/* Tinggi tabel default; JS akan hitung ulang berdasarkan tinggi .rekap-toolbar */
-#rekap-table-wrap { 
-  max-height: calc(100vh - var(--dp-topbar-h, 64px) - 112px);
-  /* scroll halus */
-  scroll-behavior: smooth;
-}
-
-/* Toolbar scale & spacing (align dengan LP) */
-.rekap-toolbar .input-group .form-control,
-.rekap-toolbar .input-group .input-group-text {
-  font-size: var(--lp-toolbar-fs);
-  line-height: 1.5;
-  padding-top: var(--lp-toolbar-py);
-  padding-bottom: var(--lp-toolbar-py);
-}
-@media (min-width:768px){
-  .rekap-toolbar { flex-wrap: nowrap !important; }
-}
-
-/* Header tabel: uppercase tipis ala LP + warna Bootstrap */
-#rekap-table thead th{
-  text-transform: uppercase;
-  letter-spacing: .03em;
-  font-size: .8rem;
-  font-weight: 700;
-  background: var(--bs-tertiary-bg, #f7f8fa);
-  border-bottom: 1px solid var(--bs-border-color, #e5e7eb);
-}
-
-/* Angka rata kanan stabil & padding ringkas */
-#rekap-table th.text-end, 
-#rekap-table td.text-end { 
-  font-variant-numeric: tabular-nums; 
-}
-#rekap-table { font-size: .95rem; } /* body rows nyaman dibaca */
-#rekap-table td, 
-#rekap-table th { 
-  padding-top: .5rem; 
-  padding-bottom: .5rem; 
-}
-
-/* Kolom kode monospaced (scan cepat) */
-#rekap-table td:nth-child(2), 
-#rekap-table th:nth-child(2) {
-  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-}
-
-/* Toggle caret & fokus (accessible) */
-#rekap-table .toggle { 
-  display:inline-flex; 
-  align-items:center; 
-  padding:.1rem .25rem; 
-  border-radius:.25rem; 
-}
-#rekap-table .toggle:focus { 
-  outline:0; 
-  box-shadow:0 0 0 .2rem rgba(13,110,253,.25); 
-}
-
-/* Indentasi level */
-tr[data-level="2"] > td:first-child { padding-left: .75rem; }
-tr[data-level="3"] > td:first-child { padding-left: 1.5rem; }
-
-/* Warna level & garis subtotal (selaras palet Bootstrap 5) */
-#rekap-table tbody tr.table-primary > * { 
-  background: var(--bs-primary-bg-subtle, #edf2ff); 
-}
-#rekap-table tbody tr.table-light > *   { 
-  background: var(--bs-secondary-bg-subtle, #f8f9fa); 
-}
-#rekap-table tbody tr[data-level="1"]   { 
-  border-top: 2px solid var(--bs-primary-border-subtle, #cfe2ff); 
-  font-weight: 600; 
-}
-#rekap-table tbody tr[data-level="2"]   { 
-  border-top: 1px dashed var(--bs-secondary-border-subtle, #e2e3e5); 
-  font-weight: 500; 
-}
-
-/* Hover halus, tetap mengikuti Bootstrap table-hover */
-.table-hover tbody tr:hover > * {
-  background-color: var(--bs-table-hover-bg) !important;
-}
-/* Kolom angka sedikit menonjol saat hover */
-#rekap-table tbody tr:hover td.text-end {
-  filter: contrast(1.03);
-}
-
-/* Density mode (Padat) */
-#rekap-app.rab-dense #rekap-table { font-size: .9rem; }
-#rekap-app.rab-dense #rekap-table td,
-#rekap-app.rab-dense #rekap-table th { padding-top: .3rem; padding-bottom: .3rem; }
-
-/* Tombol toolbar: soft look agar tidak flat */
-.rekap-toolbar .btn { 
-  border-radius: .5rem; 
-  transition: background-color .12s ease, border-color .12s ease, color .12s ease; 
-}
-/* Soft neutral untuk aksi sekunder */
-#btn-expand, #btn-collapse, #btn-density, #btn-subtotal, #btn-refresh, #btn-print {
-  background-color: var(--bs-light-bg-subtle, #f8f9fa);
-  border-color: var(--bs-border-color, #dee2e6);
-  color: var(--bs-body-color, #212529);
-}
-#btn-expand:hover, #btn-collapse:hover, #btn-density:hover, #btn-subtotal:hover, #btn-refresh:hover, #btn-print:hover {
-  background-color: color-mix(in srgb, var(--bs-light-bg-subtle, #f8f9fa) 85%, #fff);
-  border-color: color-mix(in srgb, var(--bs-border-color, #dee2e6) 75%, #000);
-}
-/* Aksi utama (Export) bernuansa brand primary */
-#btn-export {
-  background-color: color-mix(in srgb, rgb(var(--bs-primary-rgb, 13,110,253)) 10%, #fff);
-  border-color: color-mix(in srgb, rgb(var(--bs-primary-rgb, 13,110,253)) 30%, #fff);
-  color: rgb(var(--bs-primary-rgb, 13,110,253));
-}
-#btn-export:hover {
-  background-color: color-mix(in srgb, rgb(var(--bs-primary-rgb, 13,110,253)) 15%, #fff);
-  border-color: color-mix(in srgb, rgb(var(--bs-primary-rgb, 13,110,253)) 45%, #fff);
-  color: rgb(var(--bs-primary-rgb, 13,110,253));
-}
-
-/* Footer ringkasan: angka tebal & rapat */
-#ft-total-d, #ft-ppn, #ft-grand, #ft-rounded { font-weight: 700; }
-
-/* Cetak rapih (selaras halaman lain) */
-@media print {
-  @page { size: A4; margin: 12mm 10mm; }
-  #dp-sidebar, .lp-sidebar-hotspot, #dp-topbar { display:none !important; }
-  #rekap-app .rekap-toolbar, #rekap-app .btn, #rekap-app .input-group, #rekap-app select { display:none !important; }
-  .table-responsive { overflow:visible !important; max-height:none !important; }
-  tfoot, thead { position: static !important; }
-  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  #rekap-table tbody tr[data-level="1"],
-  #rekap-table tbody tr[data-level="2"] { break-inside: avoid; }
-  #rekap-table tbody tr.table-primary > * { background: #e8f0ff !important; }
-  #rekap-table tbody tr.table-light   > * { background: #f5f7f9 !important; }
-}
-</style>
 
 <script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
 {% endblock %}

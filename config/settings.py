@@ -144,3 +144,21 @@ ACCOUNT_SESSION_REMEMBER = True
 # === Crispy Forms ===
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+
+# === Numeric & Localization Guardrails (Batch 0) ===
+# Gunakan lokal hanya untuk TEMPLATE (display), bukan untuk API JSON.
+USE_L10N = True  # pastikan True
+
+# DRF: kirim Decimal sebagai string (hindari float rounding).
+try:
+    REST_FRAMEWORK  # type: ignore
+except NameError:
+    REST_FRAMEWORK = {}
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    'COERCE_DECIMAL_TO_STRING': True,
+}
+
+# Jangan paksa pemisah ribuan secara global; biarkan UI yang format saat display.
+USE_THOUSAND_SEPARATOR = False
