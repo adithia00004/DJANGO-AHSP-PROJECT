@@ -1,16 +1,13 @@
 /* =====================================================================
-   REKAP_RAB.CSS — Diselaraskan dengan List Pekerjaan Feel
-   Versi: rab-aligned-2025-01-11
+   REKAP_RAB.CSS — Adjusted for Desktop/Tablet Focus
+   Versi: rab-desktop-focused-v1
    
-   PERUBAHAN UTAMA:
-   - Toolbar design mengikuti .lp-toolbar (stretch search, spacing)
-   - Font size konsisten dengan LP (--ux-font-xs untuk kontrol)
-   - Button styling + neon effects (dark mode)
-   - Hover states & focus rings yang kuat
-   - Table cell padding & typography hierarchy
-   - Responsive behavior yang lebih baik
-   - Column visibility hooks
-   - Print styles
+   CHANGES:
+   1. ✅ REMOVED sticky header (position: relative instead)
+   2. ✅ REMOVED sticky footer (position: relative instead)
+   3. ✅ Wider Uraian column (via core.css tokens)
+   4. ✅ Responsive optimized for laptop/tablet (768px+)
+   5. ✅ Mobile responsive removed (not focused)
    ===================================================================== */
 
 /* ============== ROOT & APP CONTAINER ============== */
@@ -19,7 +16,7 @@
   background: var(--dp-c-bg);
 }
 
-/* ============== TOOLBAR (mengikuti .lp-toolbar) ============== */
+/* ============== TOOLBAR ============== */
 .rekap-toolbar,
 #rab-toolbar {
   position: sticky;
@@ -35,9 +32,9 @@
   flex-wrap: wrap;
 }
 
-/* Search input group: stretch seperti LP */
+/* Search input group */
 #rab-toolbar .input-group {
-  flex: 1 1 clamp(18rem, 42vw, var(--rab-search-w));
+  flex: 1 1 clamp(24rem, 50vw, var(--rab-search-w));
   max-width: var(--rab-search-w);
   min-width: 0;
 }
@@ -49,6 +46,7 @@
   padding-top: .375rem;
   padding-bottom: .375rem;
   border-color: var(--dp-c-border);
+  transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
 #rab-toolbar .input-group .form-control {
@@ -56,12 +54,19 @@
   color: var(--dp-c-text);
 }
 
+#rab-toolbar .form-control:focus {
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  outline: 0;
+  transform: scale(1.005);
+}
+
 #rab-toolbar .input-group .input-group-text {
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
 }
 
-/* Button groups & buttons */
+/* Buttons */
 #rab-toolbar .btn {
   font-size: var(--ux-font-xs);
   line-height: 1.5;
@@ -72,13 +77,19 @@
   transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
+#rab-toolbar .btn i {
+  margin-right: .35rem;
+}
+
 #rab-toolbar .btn-group .btn {
   border-radius: 0;
 }
+
 #rab-toolbar .btn-group .btn:first-child {
   border-top-left-radius: var(--dp-radius-md);
   border-bottom-left-radius: var(--dp-radius-md);
 }
+
 #rab-toolbar .btn-group .btn:last-child {
   border-top-right-radius: var(--dp-radius-md);
   border-bottom-right-radius: var(--dp-radius-md);
@@ -89,26 +100,32 @@
   box-shadow: var(--dp-shadow-md);
 }
 
+#rab-toolbar .btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--dp-shadow-sm);
+}
+
 #rab-toolbar .btn.active {
   background: var(--dp-c-primary);
   border-color: var(--dp-c-primary);
   color: #fff;
+  font-weight: 600;
 }
 
-/* Disabled state (untuk expand/collapse saat search aktif) */
 #rab-toolbar .btn:disabled,
 #rab-toolbar .btn.disabled {
   opacity: .5;
   cursor: not-allowed;
   pointer-events: none;
+  filter: grayscale(.3);
 }
 
-/* Auto margin untuk button group kanan */
 #rab-toolbar .ms-auto {
   display: flex !important;
   align-items: center !important;
   gap: .5rem !important;
   margin-left: auto !important;
+  flex: 0 0 auto;
 }
 
 /* Dropdown menu */
@@ -116,16 +133,40 @@
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
-  box-shadow: var(--dp-shadow-md);
+  box-shadow: var(--dp-shadow-lg);
   border-radius: var(--dp-radius-md);
   padding: .75rem;
   z-index: var(--rab-z-dropdown);
+  min-width: 220px;
+  animation: dropdownSlideIn var(--ux-duration-200) var(--ux-ease);
+}
+
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#rab-toolbar .dropdown-menu .form-check {
+  padding: .5rem;
+  border-radius: var(--dp-radius-sm);
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+#rab-toolbar .dropdown-menu .form-check:hover {
+  background: var(--dp-c-surface-2);
 }
 
 #rab-toolbar .dropdown-menu .form-check-label {
   font-size: var(--ux-font-sm);
   cursor: pointer;
   user-select: none;
+  width: 100%;
 }
 
 #rab-toolbar .dropdown-menu .form-check-input {
@@ -141,7 +182,6 @@
 #rekap-table-wrap {
   overflow: auto;
   scrollbar-gutter: stable both-edges;
-  /* Inherit scrollbar styling dari global */
 }
 
 #rekap-table-wrap::-webkit-scrollbar {
@@ -152,10 +192,20 @@
 #rekap-table-wrap::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
   border-radius: 8px;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+#rekap-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
 }
 
 #rekap-table-wrap::-webkit-scrollbar-track {
   background: transparent;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+#rekap-table-wrap:hover::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dp-c-border) 20%, transparent);
 }
 
 /* ============== TABLE STRUCTURE ============== */
@@ -169,130 +219,93 @@
   margin-bottom: 0;
 }
 
-/* Lebar kolom dari SSOT (sudah ada di core.css) */
-/* Hanya pastikan class ada di <colgroup> */
-
-/* ============== TABLE HEADER (mengikuti LP) ============== */
+/* ============== TABLE HEADER (NO STICKY - CHANGE #1) ============== */
 #rekap-table thead th {
-  position: relative;
+  position: relative; /* ← CHANGED from sticky */
+  /* NO top offset needed */
+  /* NO z-index needed */
   background: var(--dp-c-surface-2);
-  color: var(--dp-c-text);
-  border-bottom: 1px solid var(--dp-c-border);
+  border-bottom: 2px solid var(--dp-c-border);
   font-size: var(--ux-font-xs);
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .03em;
   padding: .5rem .75rem;
   vertical-align: middle;
 }
 
-/* THEAD sticky dengan offset toolbar */
-#rekap-table thead.dp-thead-sticky {
-  z-index: var(--dp-z-thead);
+/* Angka dengan tabular-nums */
+#rekap-table th.text-end,
+#rekap-table td.text-end {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sortable header hover */
+#rekap-table thead th.th-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+#rekap-table thead th.th-sortable:hover {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 90%, var(--dp-c-primary));
+}
+
+/* ============== TABLE BODY ============== */
+#rekap-table tbody td {
+  padding: .5rem .75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--dp-c-border);
+  color: var(--dp-c-text);
+  transition: background-color var(--ux-duration-200) var(--ux-ease);
+}
+
+/* Row hover */
+#rekap-table tbody tr:hover {
+  background: var(--ux-row-hover);
+}
+
+/* ============== HIERARCHICAL ROWS ============== */
+/* Level 1: Klasifikasi */
+#rekap-table tbody tr[data-level="1"] {
+  background: var(--dp-c-surface-1);
+}
+
+#rekap-table tbody tr[data-level="1"] td {
+  font-weight: 700;
+  font-size: var(--ux-font-sm);
+  background: color-mix(in srgb, var(--dp-c-surface-2) 70%, var(--dp-c-bg));
+}
+
+#rekap-table tbody tr[data-level="1"] td:first-child {
+  padding-left: .75rem;
+}
+
+/* Level 2: Sub-Klasifikasi */
+#rekap-table tbody tr[data-level="2"] {
   background: var(--dp-c-surface);
 }
 
-/* Sortable headers: visual feedback */
-#rekap-table thead .th-sortable {
-  cursor: pointer;
-  user-select: none;
-  padding-right: 1.5rem;
-}
-
-#rekap-table thead .th-sortable:hover {
-  background: color-mix(in srgb, var(--dp-c-primary) 8%, transparent);
-}
-
-#rekap-table thead .th-sortable::after {
-  content: '⇅';
-  position: absolute;
-  right: .5rem;
-  opacity: .3;
-  font-size: .75rem;
-}
-
-#rekap-table thead .th-sortable.is-sorted-desc::after {
-  content: '↓';
-  opacity: 1;
-  color: var(--dp-c-primary);
-}
-
-#rekap-table thead .th-sortable.is-sorted-asc::after {
-  content: '↑';
-  opacity: 1;
-  color: var(--dp-c-primary);
-}
-
-/* ============== TABLE BODY (cell consistency) ============== */
-#rekap-table tbody td {
-  padding: var(--ux-cell-py, .5rem) var(--ux-cell-px, .75rem);
-  border-bottom: 1px solid var(--dp-c-border);
-  vertical-align: middle;
-  font-size: var(--ux-font-xs);
-  line-height: 1.35;
-}
-
-/* Hover effect (sama seperti LP) */
-#rekap-table tbody tr:hover > * {
-  background: var(--dp-row-hover);
-}
-
-/* Zebra striping (opsional, aktifkan jika mau) */
-#rekap-table.table-striped tbody tr:nth-child(odd) > * {
-  background: color-mix(in srgb, var(--dp-c-surface-2) 30%, transparent);
-}
-
-/* ============== TIPOGRAFI HIERARCHY ============== */
-/* Default: item pekerjaan */
-#rekap-table tbody td {
-  font-size: .75rem;
-  font-weight: 400;
-}
-
-/* Klasifikasi (level 1) - seperti kartu header di LP */
-#rekap-table tbody tr[data-level="1"] td,
-#rekap-table tbody tr.rab-row--klas td,
-#rekap-table tbody tr.table-primary td {
-  font-size: .8rem;
-  font-weight: 700;
-  background: var(--dp-c-primary-subtle) !important;
-  color: var(--dp-c-text);
-}
-
-/* Sub-klasifikasi (level 2) - seperti sub-header di LP */
-#rekap-table tbody tr[data-level="2"] td,
-#rekap-table tbody tr.rab-row--sub td,
-#rekap-table tbody tr.table-light td {
-  font-size: .75rem;
+#rekap-table tbody tr[data-level="2"] td {
   font-weight: 600;
-  background: var(--dp-c-surface-2) !important;
+  background: color-mix(in srgb, var(--dp-c-surface-1) 50%, var(--dp-c-bg));
 }
 
-/* Item pekerjaan (level 3) - tetap normal */
-#rekap-table tbody tr[data-level="3"] td {
-  font-size: .75rem;
-  font-weight: 400;
-}
-
-/* ============== INDENTASI HIERARKI (col-uraian) ============== */
-#rekap-table tbody td.col-uraian,
-#rekap-table tbody td:first-child {
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-/* Indentasi visual untuk sub & item */
 #rekap-table tbody tr[data-level="2"] td:first-child {
-  padding-left: 1.25rem;
+  padding-left: 1.5rem;
+}
+
+/* Level 3: Pekerjaan */
+#rekap-table tbody tr[data-level="3"] td {
+  font-weight: 400;
 }
 
 #rekap-table tbody tr[data-level="3"] td:first-child {
-  padding-left: 2rem;
+  padding-left: 2.25rem;
 }
 
-/* Toggle icon container */
-#rekap-table tbody .toggle {
+/* ============== TOGGLE BUTTON ============== */
+#rekap-table .toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -300,69 +313,58 @@
   height: 1.25rem;
   margin-right: .5rem;
   cursor: pointer;
-  border-radius: .25rem;
+  border-radius: var(--dp-radius-sm);
+  background: transparent;
   border: 1px solid var(--dp-c-border);
-  background: var(--dp-c-surface);
-  transition: all var(--ux-duration-100) var(--ux-ease);
+  transition: all var(--ux-duration-200) var(--ux-ease);
+  vertical-align: middle;
 }
 
-#rekap-table tbody .toggle:hover {
+#rekap-table .toggle:hover {
   background: var(--dp-c-surface-2);
   border-color: var(--dp-c-primary);
 }
 
-#rekap-table tbody .toggle:focus-visible {
-  outline: 2px solid var(--dp-c-focus);
-  outline-offset: 2px;
-}
-
-#rekap-table tbody .toggle i {
-  font-size: .75rem;
+#rekap-table .toggle i {
+  font-size: .7rem;
   color: var(--dp-c-muted);
+  transition: transform var(--ux-duration-200) var(--ux-ease);
 }
 
-/* Meta label untuk item pekerjaan */
-#rekap-table tbody td .text-muted.small {
-  font-size: .65rem;
-  display: block;
-  margin-bottom: .15rem;
-  text-transform: uppercase;
-  letter-spacing: .02em;
+#rekap-table .toggle.collapsed i {
+  transform: rotate(-90deg);
 }
 
-/* ============== HIGHLIGHT SEARCH RESULTS ============== */
-#rekap-table mark {
+/* ============== SEARCH HIGHLIGHT ============== */
+.rab-hit {
   background: var(--ux-hit-bg);
-  color: var(--dp-c-text);
-  padding: .1em .2em;
-  border-radius: .2em;
-  font-weight: 600;
+  border-radius: .25rem;
+  padding: 0 .125rem;
+  font-weight: 500;
 }
 
-/* ============== NUMERIC COLUMNS (alignment & formatting) ============== */
-#rekap-table .text-end,
-#rekap-table td.col-volume,
-#rekap-table td.col-harga,
-#rekap-table td.col-total,
-#rekap-table th:nth-child(4),
-#rekap-table th:nth-child(5),
-#rekap-table th:nth-child(6) {
-  text-align: right;
-  font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: var(--ux-font-feature-num);
+/* Jump to result animation */
+@keyframes rabJumpTo {
+  0%   { background: color-mix(in srgb, var(--dp-c-info) 25%, transparent); }
+  100% { background: transparent; }
 }
 
-/* ============== TABLE FOOTER (sticky & styling) ============== */
+#rekap-table .rab-jump-to td {
+  animation: rabJumpTo .9s var(--ux-ease);
+}
+
+/* ============== TABLE FOOTER (NO STICKY - CHANGE #2) ============== */
 #rekap-table tfoot {
-  position: sticky;
-  bottom: 0;
-  z-index: var(--dp-z-sticky);
+  position: relative; /* ← CHANGED from sticky */
+  /* NO bottom offset needed */
+  /* NO z-index needed */
   background: var(--dp-c-surface);
-  border-top: 2px solid var(--dp-c-border);
+  border-top: 2px solid var(--dp-c-primary);
+  box-shadow: 0 -2px 8px rgba(0,0,0,.08);
 }
 
 #rekap-table tfoot th {
-  padding: .625rem .75rem;
+  padding: .75rem;
   border-bottom: 1px solid var(--dp-c-border);
   font-size: var(--ux-font-sm);
   font-weight: 600;
@@ -370,17 +372,20 @@
   color: var(--dp-c-text);
 }
 
+/* Grand total row */
 #rekap-table tfoot tr.table-primary th {
   background: var(--dp-c-primary-subtle);
   color: var(--dp-c-text);
   font-weight: 700;
-  font-size: .85rem;
+  font-size: .9rem;
+  border-top: 2px solid var(--dp-c-primary);
 }
 
 /* Footer input controls */
 #rekap-table tfoot .input-group {
-  max-width: 220px;
+  max-width: 240px;
   margin-left: auto;
+  gap: .25rem;
 }
 
 #rekap-table tfoot .input-group .form-control,
@@ -408,7 +413,6 @@
 }
 
 /* ============== COLUMN VISIBILITY SYSTEM ============== */
-/* Kelas ini ditoggle oleh JS berdasarkan checkbox di dropdown */
 #rekap-app.rab-hide-kode .col-kode,
 #rekap-app.rab-hide-kode #rekap-table thead th:nth-child(2),
 #rekap-app.rab-hide-kode #rekap-table tbody td:nth-child(2),
@@ -457,22 +461,58 @@
 /* ============== LOADING & EMPTY STATES ============== */
 #rekap-table tbody tr#rab-loading td {
   text-align: center;
-  padding: 2rem 1rem;
+  padding: 3rem 1rem;
   color: var(--dp-c-muted);
 }
 
 #rekap-table .spinner-border {
-  width: 1.25rem;
-  height: 1.25rem;
-  border-width: .15rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: .2rem;
   color: var(--dp-c-primary);
 }
 
-/* ============== RESPONSIVE TWEAKS ============== */
+.rab-empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--dp-c-muted);
+}
+
+.rab-empty-state i {
+  font-size: 3rem;
+  opacity: .3;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.rab-empty-state p {
+  font-size: var(--ux-font-sm);
+  margin: 0;
+}
+
+/* ============== RESPONSIVE (Laptop/Tablet Focus - CHANGE #4) ============== */
+
+/* Large Desktop (1200px+) - No changes needed */
+
+/* Laptop (< 1200px) */
+@media (max-width: 1199.98px) {
+  #rab-toolbar .input-group {
+    flex: 1 1 clamp(20rem, 45vw, var(--rab-search-w));
+  }
+
+  #rekap-table thead th,
+  #rekap-table tbody td,
+  #rekap-table tfoot th {
+    padding: .45rem .65rem;
+    font-size: .74rem;
+  }
+}
+
+/* Tablet Landscape (< 992px) */
 @media (max-width: 991.98px) {
   #rab-toolbar .input-group {
-    max-width: 420px;
     flex: 1 1 100%;
+    max-width: none;
   }
 
   #rab-toolbar {
@@ -480,33 +520,42 @@
   }
 
   #rab-toolbar .btn {
-    font-size: .7rem;
+    font-size: var(--ux-font-xs);
     padding: .3rem .6rem;
+  }
+
+  #rekap-table thead th,
+  #rekap-table tbody td,
+  #rekap-table tfoot th {
+    padding: .4rem .6rem;
+    font-size: .72rem;
   }
 }
 
+/* Tablet Portrait (< 768px) - Minimum usable */
 @media (max-width: 767.98px) {
-  #rab-toolbar .input-group {
-    max-width: 100%;
+  #rab-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   #rab-toolbar .btn-group {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  #rab-toolbar .ms-auto {
+    margin-left: 0 !important;
+    width: 100%;
+    flex-direction: row;
     flex-wrap: wrap;
   }
 
-  /* Stack buttons vertikal di mobile */
-  #rab-toolbar .ms-auto {
-    flex-direction: column;
-    align-items: stretch !important;
-    width: 100%;
-  }
-
   #rab-toolbar .ms-auto .btn {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: fit-content;
   }
-}
 
-@media (max-width: 575.98px) {
   #rekap-table thead th,
   #rekap-table tbody td,
   #rekap-table tfoot th {
@@ -521,13 +570,15 @@
   }
 
   #rekap-table tbody tr[data-level="2"] td:first-child {
-    padding-left: .75rem;
+    padding-left: 1rem;
   }
 
   #rekap-table tbody tr[data-level="3"] td:first-child {
-    padding-left: 1.25rem;
+    padding-left: 1.75rem;
   }
 }
+
+/* Note: Mobile (< 576px) - Not optimized per requirement */
 
 /* ============== PRINT STYLES ============== */
 @media print {
@@ -536,14 +587,9 @@
     display: none !important;
   }
 
-  #rekap-table thead.dp-thead-sticky {
-    position: static !important;
-    top: auto !important;
-  }
-
+  #rekap-table thead th,
   #rekap-table tfoot {
     position: static !important;
-    bottom: auto !important;
   }
 
   #rekap-table {
@@ -573,7 +619,6 @@
 }
 
 /* ============== DARK MODE ENHANCEMENTS ============== */
-/* Neon button effects untuk tombol primary di dark mode (mengikuti core.css) */
 [data-bs-theme="dark"] #rab-toolbar .btn-primary {
   box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
 }
@@ -583,7 +628,6 @@
 }
 
 /* ============== ACCESSIBILITY ============== */
-/* Forced colors mode (high contrast) */
 @media (forced-colors: active) {
   #rekap-table thead th,
   #rekap-table tbody td,
@@ -600,11 +644,13 @@
   }
 }
 
-/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -620,7 +666,7 @@
   border-radius: var(--dp-radius-sm);
 }
 
-/* ============== UTILITY CLASSES (opsional) ============== */
+/* ============== UTILITY CLASSES ============== */
 .rab-highlight {
   background: var(--dp-accent);
   animation: rabHighlight 1.2s var(--ux-ease);

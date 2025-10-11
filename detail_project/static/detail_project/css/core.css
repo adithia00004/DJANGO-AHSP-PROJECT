@@ -1315,31 +1315,44 @@ body[data-page="rincian_ahsp"] table.ra-table col.col-rpj   { width: var(--ra-co
 
 /* ---- Rekap RAB ----
    SSOT tokens khusus halaman rekap_rab.
-   - Hanya definisi variabel & pemetaan colgroup.
-   - Styling visual tetap di rekap_rab.css.
+   
+   ADJUSTED v2:
+   1. ✅ Sticky header & footer dihilangkan (lihat rekap_rab.css)
+   2. ✅ Kolom Uraian diperluas dengan mengurangi Satuan & Volume
+   3. ✅ Responsive focus pada laptop/tablet (768px+)
+   
+   Column Width Changes:
+   - Uraian: auto (flexible, mengambil sisa space)
+   - Kode: 140px → 140px (tetap)
+   - Satuan: 110px → 80px (dikurangi 30px)
+   - Volume: 160px → 120px (dikurangi 40px)
+   - Harga: 180px → 180px (tetap)
+   - Total: 200px → 200px (tetap)
+   
+   Total space saved: 70px → dikembalikan ke Uraian
 ------------------------------------------------------------------ */
+
 body[data-page="rekap_rab"]{
   /* Offsets & layering alias */
   --rab-toolbar-h: 44px;                /* tinggi toolbar halaman */
-  --dp-toolbar-h: var(--rab-toolbar-h); /* sinkron helper global yang pakai dp-toolbar-h */
+  --dp-toolbar-h: var(--rab-toolbar-h); /* sinkron helper global */
   --rab-z-dropdown: var(--dp-z-dropdown);
   --rab-z-overlay:  var(--dp-z-sidebar);
 
   /* Komponen kecil */
   --rab-search-w: 560px;                /* max width search input di toolbar */
-  --rab-kpi-shadow: var(--dp-shadow-sm);/* bayangan KPI (dipakai oleh page CSS) */
+  --rab-kpi-shadow: var(--dp-shadow-sm);
 
-  /* Lebar kolom tabel (dipakai <colgroup>) */
-  --rab-col-urai-w: auto;   /* Uraian fleksibel (sisa ruang) */
-  --rab-col-kode-w: 140px;  /* Kode AHSP */
-  --rab-col-sat-w:  110px;  /* Satuan */
-  --rab-col-vol-w:  160px;  /* Volume */
-  --rab-col-har-w:  180px;  /* Harga Satuan */
-  --rab-col-tot-w:  200px;  /* Total Harga */
+  /* ADJUSTED: Lebar kolom tabel (Uraian diperluas) */
+  --rab-col-urai-w: auto;   /* Fleksibel, ambil sisa space (EXPANDED) */
+  --rab-col-kode-w: 140px;  /* Kode AHSP (unchanged) */
+  --rab-col-sat-w:  80px;   /* Satuan (reduced from 110px) */
+  --rab-col-vol-w:  120px;  /* Volume (reduced from 160px) */
+  --rab-col-har-w:  180px;  /* Harga Satuan (unchanged) */
+  --rab-col-tot-w:  200px;  /* Total Harga (unchanged) */
 }
 
-/* Pemetaan <colgroup> → token lebar kolom Rekap RAB
-   Kelas pada <col>: .col-uraian .col-kode .col-satuan .col-volume .col-harga .col-total */
+/* Pemetaan <colgroup> → token lebar kolom Rekap RAB */
 #rekap-table col.col-uraian{ width: var(--rab-col-urai-w); }
 #rekap-table col.col-kode  { width: var(--rab-col-kode-w); }
 #rekap-table col.col-satuan{ width: var(--rab-col-sat-w);  }
@@ -1347,17 +1360,39 @@ body[data-page="rekap_rab"]{
 #rekap-table col.col-harga { width: var(--rab-col-har-w);  }
 #rekap-table col.col-total { width: var(--rab-col-tot-w);  }
 
-/* Responsive tweaks untuk Rekap RAB */
+/* Responsive tweaks - FOCUS: Laptop & Tablet (768px+) */
+
+/* Tablet Landscape (< 1200px) - Minor adjustments */
+@media (max-width: 1199.98px){
+  body[data-page="rekap_rab"]{
+    --rab-search-w: 480px;
+    --rab-col-sat-w:  70px;   /* Satuan lebih kecil */
+    --rab-col-vol-w:  110px;  /* Volume lebih kecil */
+  }
+}
+
+/* Tablet Portrait (< 992px) - More compact */
 @media (max-width: 991.98px){
   body[data-page="rekap_rab"]{
     --rab-search-w: 420px;
-    --rab-col-vol-w: 140px;
-    --rab-col-har-w: 160px;
+    --rab-col-kode-w: 120px;  /* Kode lebih kecil */
+    --rab-col-sat-w:  70px;   /* Satuan tetap kecil */
+    --rab-col-vol-w:  100px;  /* Volume compact */
+    --rab-col-har-w:  160px;  /* Harga lebih kecil */
+    --rab-col-tot-w:  180px;  /* Total lebih kecil */
   }
 }
-@media (max-width: 575.98px){
+
+/* Small Tablet (< 768px) - Minimum for usability */
+@media (max-width: 767.98px){
   body[data-page="rekap_rab"]{
-    --rab-search-w: 320px;
-    --rab-col-tot-w: 160px;
+    --rab-search-w: 100%;
+    --rab-col-kode-w: 100px;
+    --rab-col-sat-w:  60px;
+    --rab-col-vol-w:  90px;
+    --rab-col-har-w:  140px;
+    --rab-col-tot-w:  160px;
   }
 }
+
+/* Note: Mobile (< 576px) tidak difokuskan sesuai requirement */

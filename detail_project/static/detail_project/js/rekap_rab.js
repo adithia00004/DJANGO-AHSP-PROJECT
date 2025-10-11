@@ -1,4 +1,16 @@
+/* =====================================================================
+   REKAP_RAB.JS — Enhanced (Based on Your Working Original)
+   
+   ENHANCEMENTS ADDED:
+   ✅ Search highlight dengan .rab-hit class
+   ✅ Accessibility announcements
+   ✅ Better error handling & loading states
+   ✅ All original functionality preserved
+   ===================================================================== */
+
 (function () {
+  'use strict';
+
   const root = document.getElementById('rekap-app');
   if (!root) return;
 
@@ -25,6 +37,9 @@
   const btnSubtotal = document.getElementById('btn-subtotal');
   const btnDensity  = document.getElementById('btn-density');
 
+  // ENHANCEMENT #2: Live region for accessibility
+  const liveRegion = document.getElementById('rab-announce');
+
   // ========= Utils =========
   const nf = (dp=2) => new Intl.NumberFormat('id-ID', { maximumFractionDigits: dp });
   const fmt = (v, dp=2) => (v == null || v === '') ? '' : nf(dp).format(Number(v));
@@ -35,12 +50,17 @@
     const data = await res.json().catch(() => ({ ok:false }));
     return { ok: res.ok && (data.ok ?? true), data };
   }
+
   // CSRF helpers for POST
   function getCookie(name) {
     const v = document.cookie ? document.cookie.split('; ') : [];
-    for (let i=0;i<v.length;i++){ const p=v[i].split('='); if (p[0]===name) return decodeURIComponent(p[1]); }
+    for (let i=0;i<v.length;i++){ 
+      const p=v[i].split('='); 
+      if (p[0]===name) return decodeURIComponent(p[1]); 
+    }
     return null;
   }
+
   function csrfHeaders(extra={}) {
     const token = getCookie('csrftoken');
     return Object.assign({
@@ -50,12 +70,25 @@
     }, extra);
   }
 
+  // ENHANCEMENT #2: Announce helper for accessibility
+  function announce(message) {
+    if (!liveRegion) return;
+    liveRegion.textContent = message;
+    setTimeout(() => { liveRegion.textContent = ''; }, 3000);
+  }
+
+  // ENHANCEMENT #1: Highlight helper for search
+  function highlightMatch(text, query) {
+    if (!query || !text) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    return text.replace(regex, '<span class="rab-hit">$1</span>');
+  }
+
   // ========= STATE =========
   let tree = [];
   let rekapRows = [];
-  let fullModel = null; // normalized tree+numbers for re-rendering/filter/export
-
-  // View preferences
+  let fullModel = null;
   let subtotalOnly = false;
   let dense = false;
 
@@ -63,25 +96,46 @@
   const exKey = (k)=>`rekap_rab:${projectId}:expanded:${k}`;
   const expanded = {
     get(id) {
-      try { const v = localStorage.getItem(exKey(id)); return v === null ? true : v === '1'; }
-      catch(_) { return true; }
+      try { 
+        const v = localStorage.getItem(exKey(id)); 
+        return v === null ? true : v === '1'; 
+      } catch(_) { return true; }
     },
-    set(id, val) { try { localStorage.setItem(exKey(id), val ? '1' : '0'); } catch(_) {} },
-    setMany(map) { try { for (const [id,val] of map) localStorage.setItem(exKey(id), val ? '1' : '0'); } catch(_) {} }
+    set(id, val) { 
+      try { localStorage.setItem(exKey(id), val ? '1' : '0'); } 
+      catch(_) {}
+    },
+    setMany(map) { 
+      try { 
+        for (const [id,val] of map) {
+          localStorage.setItem(exKey(id), val ? '1' : '0');
+        }
+      } catch(_) {}
+    }
   };
 
-  // local prefs (fallback only; server is source of truth for PPN/rounding)
+  // Local prefs
   const prefKey = (k)=>`rekap_rab:${projectId}:${k}`;
+  
   const getBoolPref = (k, def=false) => {
-    try { const v = localStorage.getItem(prefKey(k)); return v===null ? def : v==='1'; } catch(_) { return def; }
+    try { 
+      const v = localStorage.getItem(prefKey(k)); 
+      return v===null ? def : v==='1'; 
+    } catch(_) { return def; }
   };
-  const setBoolPref = (k, val) => { try { localStorage.setItem(prefKey(k), val?'1':'0'); } catch(_) {} };
+  
+  const setBoolPref = (k, val) => { 
+    try { localStorage.setItem(prefKey(k), val?'1':'0'); } 
+    catch(_) {}
+  };
+
   function savePrefs(){
     try {
       localStorage.setItem(prefKey('ppn_pct'),  String(inpPPN.value || ''));
       localStorage.setItem(prefKey('round_base'), String(selBase.value || ''));
     } catch(_) {}
   }
+
   function restorePrefs(){
     try {
       const savedPPN  = localStorage.getItem(prefKey('ppn_pct'));
@@ -111,7 +165,7 @@
 
           const volume = (r && r.volume != null) ? Number(r.volume) : 0;
           const harga  = (r && (r.HSP != null || r.unit_price != null)) ? Number(r.HSP ?? r.unit_price) : 0;
-          const total  = Number((volume || 0) * (harga || 0)); // selalu konsisten dengan harga × volume
+          const total  = Number((volume || 0) * (harga || 0));
 
           Snode.children.push({
             type:'job',
@@ -161,8 +215,8 @@
     return { totalD, rows };
   }
 
-  // ========= Rendering =========
-  function buildRow(level, node, total, parentId) {
+  // ========= Rendering (ENHANCED with highlight) =========
+  function buildRow(level, node, total, parentId, currentFilter='') {
     const tr = document.createElement('tr');
     tr.dataset.nodeId = node.id;
     if (parentId) tr.dataset.parentId = parentId;
@@ -178,13 +232,28 @@
     if (level === 1 || level === 2) {
       const isExpanded = expanded.get(node.id);
       const icon = isExpanded ? 'bi-caret-down-fill' : 'bi-caret-right-fill';
-      tdU.innerHTML = `<span class="toggle" role="button" tabindex="0" aria-expanded="${isExpanded}" aria-label="Toggle"><i class="bi ${icon} me-1"></i></span>${node.name}`;
+      
+      // ENHANCEMENT #1: Apply highlight pada nama K/S
+      const displayName = currentFilter 
+        ? highlightMatch(node.name, currentFilter)
+        : node.name;
+      
+      tdU.innerHTML = `<span class="toggle" role="button" tabindex="0" aria-expanded="${isExpanded}" aria-label="Toggle"><i class="bi ${icon} me-1"></i></span>${displayName}`;
+      
       if (level === 1) tr.classList.add('table-primary');
       if (level === 2) tr.classList.add('table-light');
       tdT.textContent = fmt(total, 2);
     } else {
-      tdU.innerHTML = `<span class="text-muted small d-block">Pekerjaan</span><span>${node.label}</span>`;
-      tdK.textContent = node.kode || '';
+      // ENHANCEMENT #1: Apply highlight pada label & kode pekerjaan
+      const displayLabel = currentFilter 
+        ? highlightMatch(node.label, currentFilter)
+        : node.label;
+      const displayKode = currentFilter && node.kode
+        ? highlightMatch(node.kode, currentFilter)
+        : (node.kode || '');
+      
+      tdU.innerHTML = `<span class="text-muted small d-block">Pekerjaan</span><span>${displayLabel}</span>`;
+      tdK.innerHTML = displayKode;
       tdS.textContent = node.satuan || '';
       tdV.textContent = fmt(node.volume ?? '', 3);
       tdH.textContent = fmt(node.harga ?? '', 2);
@@ -218,7 +287,7 @@
     });
 
     function ancestorsExpanded(row) {
-      if (filterActive) return true; // saat filter, tampilkan semua konteks
+      if (filterActive) return true;
       let pid = row.dataset.parentId || '';
       while (pid) {
         if (expanded.get(pid) === false) return false;
@@ -235,10 +304,11 @@
     });
   }
 
-  // ====== Toolbar guard (block expand/collapse saat search aktif) ======
+  // ====== Toolbar guard ======
   function hasFilterText() {
     return !!(inpSearch?.value || '').trim();
   }
+
   function updateToolbarState() {
     const blocked = hasFilterText();
     if (btnExpand) {
@@ -284,15 +354,17 @@
 
     const frag = document.createDocumentFragment();
     let currentK = null, currentS = null;
+    
+    // ENHANCEMENT #1: Pass currentFilter ke buildRow untuk highlight
     for (const r of rows) {
       if (r.level === 1) {
         currentK = r.node;
-        frag.appendChild(buildRow(1, r.node, r.total));
+        frag.appendChild(buildRow(1, r.node, r.total, null, q));
       } else if (r.level === 2) {
         currentS = r.node;
-        frag.appendChild(buildRow(2, r.node, r.total, currentK?.id));
+        frag.appendChild(buildRow(2, r.node, r.total, currentK?.id, q));
       } else {
-        const trP = buildRow(3, r.node, r.total, currentS?.id);
+        const trP = buildRow(3, r.node, r.total, currentS?.id, q);
         frag.appendChild(trP);
       }
     }
@@ -303,35 +375,50 @@
       const td = document.createElement('td');
       td.colSpan = 6;
       td.className = 'text-center text-muted py-4';
-      td.textContent = 'Tidak ada data';
+      td.textContent = q ? 'Tidak ada hasil yang cocok dengan pencarian' : 'Tidak ada data';
       tr.appendChild(td);
       tbody.appendChild(tr);
+      
+      // ENHANCEMENT #2: Announce no results
+      if (q) announce('Tidak ada hasil yang cocok dengan pencarian');
     } else {
       tbody.appendChild(frag);
       updateIconsFromState();
       applyVisibility({ filterActive: !!q });
+      
+      // ENHANCEMENT #2: Announce search results
+      if (q) {
+        const visibleJobs = rows.filter(r => r.level === 3).length;
+        announce(`Menampilkan ${visibleJobs} pekerjaan dari hasil pencarian "${q}"`);
+      }
     }
+    
     recalcFooter(totalD);
-    recalcTableHeight(); // fokus ruang untuk tabel
-    updateToolbarState(); // sinkronkan state tombol
+    recalcTableHeight();
+    updateToolbarState();
   }
 
+  // ENHANCEMENT #3: Better error handling
   async function loadData() {
     try {
       loadingRow && (loadingRow.style.display = '');
+      
+      // CORRECT URL PREFIX: /detail_project/api/project/...
       const [tRes, rRes, pRes] = await Promise.all([
         fetchJSON(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`),
         fetchJSON(`/detail_project/api/project/${projectId}/rekap/`),
         fetchJSON(`/detail_project/api/project/${projectId}/pricing/`)
       ]);
+      
       if (!tRes.ok || !rRes.ok || !Array.isArray(tRes.data.klasifikasi) || !Array.isArray(rRes.data.rows)) {
-        throw new Error('Gagal memuat data');
+        throw new Error('Gagal memuat data dari server');
       }
+      
       tree = tRes.data.klasifikasi;
       rekapRows = rRes.data.rows;
       fullModel = normalize(tree, rekapRows);
 
-      // Prefill PPN & rounding dari server; fallback ke meta dari /rekap lalu localStorage
+      // Prefill PPN & rounding
       if (pRes && pRes.ok) {
         setPPNValue(pRes.data.ppn_percent);
         setRoundBase(pRes.data.rounding_base);
@@ -344,9 +431,26 @@
       }
 
       render('');
+      
+      // ENHANCEMENT #2: Announce success
+      announce('Data RAB berhasil dimuat');
+      
     } catch (e) {
-      console.error(e);
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Gagal memuat data. Coba Refresh.</td></tr>';
+      console.error('[RAB] Load error:', e);
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center text-danger py-4">
+            <i class="bi bi-exclamation-triangle-fill mb-2" style="font-size: 2rem; display: block;"></i>
+            <strong>Gagal memuat data</strong>
+            <p class="mb-2 small">${e.message}</p>
+            <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
+              <i class="bi bi-arrow-clockwise"></i> Muat Ulang
+            </button>
+          </td>
+        </tr>
+      `;
+      // ENHANCEMENT #2: Announce error
+      announce(`Error: ${e.message}`);
     } finally {
       loadingRow && loadingRow.remove();
     }
@@ -357,11 +461,11 @@
     const num = Number(v);
     if (!Number.isNaN(num)) inpPPN.value = String(num);
   }
+
   function setRoundBase(v) {
     if (v == null) return;
     const ival = Number(v);
     if (!Number.isFinite(ival) || ival <= 0) return;
-    // Jika nilai tidak ada di options, tambahkan sementara agar selected valid
     if (selBase && !Array.from(selBase.options).some(o => Number(o.value) === ival)) {
       const opt = document.createElement('option');
       opt.value = String(ival);
@@ -381,13 +485,18 @@
     const topH = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 64;
     const tbH  = toolbar ? Math.ceil(toolbar.getBoundingClientRect().height) : 0;
 
-    const gaps = 12; // kecil agar tabel lebih lega
+    const gaps = 12;
     const h = Math.max(320, vh - topH - tbH - gaps);
 
     tableWrap.style.maxHeight = h + 'px';
     tableWrap.style.height    = h + 'px';
   }
-  const recalcHeightDebounced = (()=>{ let t; return ()=>{ clearTimeout(t); t=setTimeout(recalcTableHeight, 60); }; })();
+
+  const recalcHeightDebounced = (()=>{ 
+    let t; 
+    return ()=>{ clearTimeout(t); t=setTimeout(recalcTableHeight, 60); }; 
+  })();
+  
   window.addEventListener('resize', recalcHeightDebounced);
   window.addEventListener('load', recalcTableHeight);
 
@@ -401,9 +510,13 @@
     const willExpand = !(expanded.get(id) === false);
     expanded.set(id, !willExpand);
     updateIconsFromState();
-    applyVisibility({ filterActive: !!(inpSearch?.value || '').trim() });
+    applyVisibility({ filterActive: hasFilterText() });
+    
+    // ENHANCEMENT #2: Announce toggle
+    announce(willExpand ? 'Baris di-collapse' : 'Baris di-expand');
   });
-  // Aksesibilitas keyboard: Enter/Space pada .toggle
+
+  // Keyboard support
   tbody.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
     const btn = ev.target.closest('.toggle');
@@ -415,12 +528,11 @@
     const willExpand = !(expanded.get(id) === false);
     expanded.set(id, !willExpand);
     updateIconsFromState();
-    applyVisibility({ filterActive: !!(inpSearch?.value || '').trim() });
+    applyVisibility({ filterActive: hasFilterText() });
   });
 
-  // ==== NEW: semantics tombol ====
+  // ==== Expand/Collapse All ====
   function expandAll() {
-    // Buka semua K & S
     const pairs = [];
     if (Array.isArray(fullModel)) {
       for (const K of fullModel) {
@@ -428,7 +540,6 @@
         for (const S of K.children) pairs.push([S.id, true]);
       }
     } else {
-      // fallback DOM
       tbody.querySelectorAll('tr').forEach(r => {
         if (r.querySelector('.toggle')) pairs.push([r.dataset.nodeId, true]);
       });
@@ -436,23 +547,28 @@
     expanded.setMany(pairs);
     updateIconsFromState();
     applyVisibility({ filterActive: hasFilterText() });
+    
+    // ENHANCEMENT #2: Announce
+    announce('Semua baris telah di-expand');
   }
+
   function collapseAll() {
-    // Kolaps ke level-1: S & Pekerjaan tersembunyi (set K=false sudah cukup)
     const pairs = [];
     if (Array.isArray(fullModel)) {
       for (const K of fullModel) {
         pairs.push([K.id, false]);
-        for (const S of K.children) pairs.push([S.id, false]); // opsional
+        for (const S of K.children) pairs.push([S.id, false]);
       }
     } else {
-      // fallback DOM
       tbody.querySelectorAll('tr[data-level="1"]').forEach(r => pairs.push([r.dataset.nodeId, false]));
       tbody.querySelectorAll('tr[data-level="2"]').forEach(r => pairs.push([r.dataset.nodeId, false]));
     }
     expanded.setMany(pairs);
     updateIconsFromState();
     applyVisibility({ filterActive: hasFilterText() });
+    
+    // ENHANCEMENT #2: Announce
+    announce('Semua baris telah di-collapse');
   }
 
   // ========= Export CSV =========
@@ -460,6 +576,7 @@
     if (!fullModel) return;
     const lines = [];
     lines.push(['Klasifikasi','Sub-Klasifikasi','Pekerjaan','Kode AHSP','Satuan','Volume','Harga Satuan','Total Harga'].join(';'));
+    
     for (const K of fullModel) {
       for (const S of K.children) {
         for (const J of S.children) {
@@ -476,7 +593,8 @@
         }
       }
     }
-    // Ringkasan
+    
+    // Summary
     const { totalD } = computeTotalsFiltered(fullModel, () => true);
     const D = Number(totalD || 0);
     const pct = Number(inpPPN?.value || 0);
@@ -484,6 +602,7 @@
     const grand = D + ppn;
     const base = Number(selBase?.value || 10000);
     const rounded = Math.round(grand / base) * base;
+    
     lines.push('');
     lines.push(['', '', '', '', 'Total Proyek (D)', String(Math.round(D))].join(';'));
     lines.push(['', '', '', '', `PPN ${pct}%`, String(Math.round(ppn))].join(';'));
@@ -498,9 +617,12 @@
     a.click();
     a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+    
+    // ENHANCEMENT #2: Announce export
+    announce('File CSV berhasil di-download');
   }
 
-  // ========= Server-save prefs (PPN & rounding) =========
+  // ========= Server-save prefs =========
   const postPricingDebounced = (() => {
     let t; 
     return (payload) => {
@@ -512,7 +634,7 @@
             headers: csrfHeaders(),
             body: JSON.stringify(payload)
           });
-        } catch(e) { /* no-op */ }
+        } catch(e) { console.error('[RAB] Pricing error:', e); }
       }, 250);
     };
   })();
@@ -525,7 +647,10 @@
   }
 
   // ========= Events =========
-  function debounce(fn, ms) { let t=0; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
+  function debounce(fn, ms) { 
+    let t=0; 
+    return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; 
+  }
 
   inpSearch?.addEventListener('input', debounce(e => {
     render(e.target.value || '');
@@ -539,9 +664,14 @@
     tbody.appendChild(tr); 
     loadData();
   });
+
   btnExport?.addEventListener('click', exportCSV);
   btnExpand?.addEventListener('click', (e) => { e.preventDefault(); if (!hasFilterText()) expandAll(); });
-  btnCollapse?.addEventListener('click', (e) => { e.preventDefault(); if (!hasFilterText()) collapseAll(); });
+  btnCollapse?.addEventListener('click', (e) => { 
+    e.preventDefault(); 
+    if (!hasFilterText()) collapseAll(); 
+  });
+
   btnPrint?.addEventListener('click', ()=>window.print());
 
   btnSubtotal?.addEventListener('click', () => {
@@ -549,12 +679,14 @@
     setBoolPref('subtotal_only', subtotalOnly);
     btnSubtotal.classList.toggle('active', subtotalOnly);
     render(inpSearch?.value || '');
+    announce(subtotalOnly ? 'Mode subtotal aktif' : 'Mode detail aktif');
   });
 
   btnDensity?.addEventListener('click', () => {
     dense = !dense;
     setBoolPref('dense', dense);
     applyDenseUI();
+    announce(dense ? 'Mode compact aktif' : 'Mode normal aktif');
   });
 
   inpPPN?.addEventListener('input', () => {
@@ -577,4 +709,5 @@
   applyDenseUI();
   updateToolbarState();
   loadData();
+
 })();

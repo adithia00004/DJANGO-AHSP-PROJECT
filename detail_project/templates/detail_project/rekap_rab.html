@@ -16,98 +16,120 @@
 {% block dp_content %}
 {% include 'detail_project/_alert.html' %}
 
-<div id="rekap-app" class="container-fluid" data-project-id="{{ project.id }}">
+<div id="rekap-app" class="container-fluid ux-scrollbar" data-project-id="{{ project.id }}">
 
-  <!-- Toolbar -->
-  <div id="rab-toolbar" class="rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3">
+  <!-- ============== TOOLBAR (ENHANCED) ============== -->
+  <div id="rab-toolbar" 
+       class="rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3"
+       role="toolbar"
+       aria-label="Rekap RAB toolbar">
 
     <!-- Search -->
     <div class="input-group rab-toolbar-search">
-      <span class="input-group-text"><i class="bi bi-search"></i></span>
-      <input id="rab-search" class="form-control" 
+      <span class="input-group-text">
+        <i class="bi bi-search" aria-hidden="true"></i>
+      </span>
+      <input id="rab-search" 
+             class="form-control" 
+             type="search"
              placeholder="Cari klasifikasi / sub / pekerjaan / kode…"
              aria-label="Cari dalam rekap RAB"
+             autocomplete="off"
              role="searchbox">
     </div>
 
     <!-- Expand/Collapse -->
     <div class="btn-group ms-1" role="group" aria-label="Expand dan Collapse">
-      <button id="btn-expand" class="btn btn-outline-secondary" type="button"
-              title="Expand semua">
-        <i class="bi bi-arrows-expand"></i> 
+      <button id="btn-expand" 
+              class="btn btn-outline-secondary" 
+              type="button"
+              title="Expand semua baris"
+              aria-label="Expand semua">
+        <i class="bi bi-arrows-expand" aria-hidden="true"></i> 
         <span class="d-none d-md-inline">Expand All</span>
       </button>
-      <button id="btn-collapse" class="btn btn-outline-secondary" type="button"
-              title="Collapse semua">
-        <i class="bi bi-arrows-collapse"></i> 
+      <button id="btn-collapse" 
+              class="btn btn-outline-secondary" 
+              type="button"
+              title="Collapse semua baris"
+              aria-label="Collapse semua">
+        <i class="bi bi-arrows-collapse" aria-hidden="true"></i> 
         <span class="d-none d-md-inline">Collapse All</span>
       </button>
     </div>
 
     <!-- View modes -->
     <div class="btn-group ms-1" role="group" aria-label="Mode tampilan">
-      <button id="btn-subtotal" class="btn btn-outline-secondary" type="button" 
-              title="Tampilkan subtotal saja">
-        <i class="bi bi-diagram-3"></i> 
-        <span class="d-none d-lg-inline">Subtotal</span>
+      <button id="btn-subtotal" 
+              class="btn btn-outline-secondary" 
+              type="button" 
+              title="Tampilkan hanya subtotal (sembunyikan detail pekerjaan)"
+              aria-label="Toggle subtotal only">
+        <i class="bi bi-list-nested" aria-hidden="true"></i> 
+        <span class="d-none d-md-inline">Subtotal</span>
       </button>
-      <button id="btn-density" class="btn btn-outline-secondary" type="button" 
-              title="Mode padat">
-        <i class="bi bi-file-ruled"></i> 
-        <span class="d-none d-lg-inline">Padat</span>
+      <button id="btn-density" 
+              class="btn btn-outline-secondary" 
+              type="button"
+              title="Toggle compact mode"
+              aria-label="Toggle density">
+        <i class="bi bi-layout-text-window-reverse" aria-hidden="true"></i> 
+        <span class="d-none d-md-inline">Compact</span>
       </button>
     </div>
 
-    <!-- Column Manager -->
-    <div class="dropdown ms-1">
-      <button class="btn btn-outline-secondary dropdown-toggle" type="button" 
-              data-bs-toggle="dropdown" aria-expanded="false"
-              aria-label="Kelola kolom">
-        <i class="bi bi-layout-three-columns"></i> 
-        <span class="d-none d-md-inline">Kolom</span>
-      </button>
-      <div class="dropdown-menu p-3" style="min-width:260px;">
-        <div class="form-check form-switch mb-2">
-          <input class="form-check-input" type="checkbox" id="col-toggle-kode" checked>
-          <label class="form-check-label" for="col-toggle-kode">Kode AHSP</label>
-        </div>
-        <div class="form-check form-switch mb-2">
-          <input class="form-check-input" type="checkbox" id="col-toggle-satuan" checked>
-          <label class="form-check-label" for="col-toggle-satuan">Satuan</label>
-        </div>
-        <div class="form-check form-switch mb-2">
-          <input class="form-check-input" type="checkbox" id="col-toggle-volume" checked>
-          <label class="form-check-label" for="col-toggle-volume">Volume</label>
-        </div>
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="col-toggle-harga" checked>
-          <label class="form-check-label" for="col-toggle-harga">Harga Satuan</label>
-        </div>
-      </div>
-    </div>
-
-    <div class="ms-auto d-flex gap-2">
-      <button id="btn-refresh" class="btn btn-outline-secondary" type="button"
-              title="Muat ulang data">
-        <i class="bi bi-arrow-repeat"></i> 
+    <!-- Actions (Right side) -->
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <button id="btn-refresh" 
+              class="btn btn-outline-secondary" 
+              type="button"
+              title="Muat ulang data dari server"
+              aria-label="Refresh data">
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> 
         <span class="d-none d-md-inline">Refresh</span>
       </button>
-      <button id="btn-export" class="btn btn-outline-primary" type="button"
-              title="Export ke CSV">
-        <i class="bi bi-download"></i> 
+      <button id="btn-export" 
+              class="btn btn-outline-primary" 
+              type="button"
+              title="Export data ke CSV"
+              aria-label="Export CSV">
+        <i class="bi bi-download" aria-hidden="true"></i> 
         <span class="d-none d-md-inline">Export</span>
       </button>
-      <button id="btn-print" class="btn btn-outline-secondary" type="button"
-              title="Cetak halaman">
-        <i class="bi bi-printer"></i> 
+      <button id="btn-print" 
+              class="btn btn-outline-secondary" 
+              type="button"
+              title="Cetak halaman"
+              aria-label="Print">
+        <i class="bi bi-printer" aria-hidden="true"></i> 
         <span class="d-none d-md-inline">Print</span>
       </button>
     </div>
+
+    <!-- Live region untuk announcements (accessibility) -->
+    <div id="rab-announce" 
+         class="visually-hidden" 
+         role="status" 
+         aria-live="polite" 
+         aria-atomic="true"></div>
   </div>
 
-  <!-- Table -->
-  <div id="rekap-table-wrap" class="table-responsive ux-scrollbar">
-    <table class="table table-hover align-middle mb-0" id="rekap-table">
+  <!-- ============== TABLE (ENHANCED) ============== -->
+  <div id="rekap-table-wrap" 
+       class="table-responsive ux-scrollbar"
+       role="region"
+       aria-label="Tabel Rekap RAB"
+       tabindex="0">
+    <table class="table table-hover align-middle mb-0" 
+           id="rekap-table"
+           aria-describedby="rekap-table-desc">
+      
+      <!-- Screen reader description -->
+      <caption id="rekap-table-desc" class="visually-hidden">
+        Rekap Rencana Anggaran Biaya (RAB) dengan struktur hierarki Klasifikasi, Sub-Klasifikasi, dan Pekerjaan. 
+        Gunakan tombol expand/collapse untuk menavigasi struktur tree.
+      </caption>
+
       <colgroup>
         <col class="col-uraian">
         <col class="col-kode">
@@ -119,72 +141,120 @@
 
       <thead class="dp-thead-sticky">
         <tr>
-          <th>Uraian (Klasifikasi / Sub-Klasifikasi / Pekerjaan)</th>
-          <th class="col-kode">Kode AHSP</th>
-          <th class="col-satuan">Satuan</th>
-          <th class="text-end th-sortable" data-sort-key="volume" 
-              title="Urutkan berdasarkan Volume">Volume</th>
-          <th class="text-end th-sortable" data-sort-key="harga" 
-              title="Urutkan berdasarkan Harga Satuan">Harga Satuan</th>
-          <th class="text-end th-sortable" data-sort-key="total" 
-              title="Urutkan berdasarkan Total Harga">Total Harga</th>
+          <th scope="col">Uraian (Klasifikasi / Sub / Pekerjaan)</th>
+          <th scope="col" class="col-kode">Kode AHSP</th>
+          <th scope="col" class="col-satuan">Satuan</th>
+          <th scope="col" class="text-end th-sortable" data-sort-key="volume" 
+              title="Klik untuk urutkan berdasarkan Volume"
+              role="button"
+              tabindex="0"
+              aria-label="Volume, dapat diurutkan">
+            Volume
+          </th>
+          <th scope="col" class="text-end th-sortable" data-sort-key="harga" 
+              title="Klik untuk urutkan berdasarkan Harga Satuan"
+              role="button"
+              tabindex="0"
+              aria-label="Harga Satuan, dapat diurutkan">
+            Harga Satuan
+          </th>
+          <th scope="col" class="text-end th-sortable" data-sort-key="total" 
+              title="Klik untuk urutkan berdasarkan Total Harga"
+              role="button"
+              tabindex="0"
+              aria-label="Total Harga, dapat diurutkan">
+            Total Harga
+          </th>
         </tr>
       </thead>
 
       <tbody>
-        <tr id="rab-loading">
+        <!-- Loading State (Enhanced) -->
+        <tr id="rab-loading" aria-live="polite">
           <td colspan="6" class="text-center text-muted py-4">
             <div class="d-inline-flex align-items-center gap-2">
-              <div class="spinner-border spinner-border-sm" role="status"></div>
-              <span>Memuat data…</span>
+              <div class="spinner-border" role="status">
+                <span class="visually-hidden">Memuat data...</span>
+              </div>
+              <span>Memuat data Rekap RAB...</span>
             </div>
           </td>
         </tr>
+        <!-- Data akan di-render oleh JavaScript -->
       </tbody>
 
       <tfoot>
+        <!-- Total D (tanpa PPN) -->
         <tr>
-          <th colspan="5" class="text-end">Total Proyek (D)</th>
-          <th class="text-end" id="ft-total-d">-</th>
+          <th colspan="5" class="text-end">Total Biaya Langsung:</th>
+          <th id="ft-total-d" class="text-end">-</th>
         </tr>
+        
+        <!-- PPN Row dengan Input -->
         <tr>
-          <th colspan="4" class="text-end">PPN</th>
-          <th class="text-end">
-            <div class="input-group">
-              <input id="ppn-pct" type="number" step="0.01" min="0" 
-                     class="form-control" placeholder="PPN %" value="11"
-                     aria-label="Persentase PPN">
-              <span class="input-group-text">%</span>
+          <th colspan="5" class="text-end">
+            <div class="d-flex align-items-center justify-content-end gap-2">
+              <label for="ppn-pct" class="mb-0">PPN:</label>
+              <div class="input-group" style="max-width: 140px;">
+                <input id="ppn-pct" 
+                       type="number" 
+                       class="form-control text-end" 
+                       min="0" 
+                       max="100" 
+                       step="0.1"
+                       value="11"
+                       aria-label="Persentase PPN"
+                       title="Masukkan persentase PPN (0-100)">
+                <span class="input-group-text">%</span>
+              </div>
             </div>
           </th>
-          <th class="text-end" id="ft-ppn">-</th>
+          <th id="ft-ppn" class="text-end">-</th>
         </tr>
+        
+        <!-- Grand Total (D + PPN) -->
         <tr class="table-primary">
-          <th colspan="5" class="text-end">Grand Total (D + PPN)</th>
-          <th class="text-end" id="ft-grand">-</th>
+          <th colspan="5" class="text-end">Grand Total (D + PPN):</th>
+          <th id="ft-grand" class="text-end">-</th>
         </tr>
+        
+        <!-- Rounded Total dengan Selector -->
         <tr>
-          <th colspan="4" class="text-end">Pembulatan ke</th>
-          <th class="text-end">
-            <div class="input-group">
-              <select id="round-base" class="form-select" 
+          <th colspan="5" class="text-end">
+            <div class="d-flex align-items-center justify-content-end gap-2">
+              <label for="round-base" class="mb-0">Pembulatan:</label>
+              <select id="round-base" 
+                      class="form-select" 
+                      style="max-width: 140px;"
                       aria-label="Basis pembulatan">
-                <option value="1000">1.000</option>
-                <option value="5000">5.000</option>
-                <option value="10000" selected>10.000</option>
-                <option value="25000">25.000</option>
-                <option value="50000">50.000</option>
-                <option value="100000">100.000</option>
+                <option value="1">Rp 1</option>
+                <option value="1000" selected>Rp 1.000</option>
+                <option value="10000">Rp 10.000</option>
+                <option value="100000">Rp 100.000</option>
               </select>
-              <span class="input-group-text">Rp</span>
             </div>
           </th>
-          <th class="text-end" id="ft-rounded">-</th>
+          <th id="ft-rounded" class="text-end">-</th>
         </tr>
       </tfoot>
     </table>
   </div>
-</div>
 
-<script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
+  <!-- Empty State Template (hidden by default, shown by JS if no data) -->
+  <div id="rab-empty" class="rab-empty-state d-none" role="status">
+    <i class="bi bi-inbox" aria-hidden="true"></i>
+    <p>Belum ada data RAB untuk ditampilkan.</p>
+    <p class="small text-muted">
+      Pastikan Anda sudah menambahkan pekerjaan dan mengisi volume di halaman 
+      <a href="{% url 'detail_project:list_pekerjaan' project.id %}">List Pekerjaan</a> dan 
+      <a href="{% url 'detail_project:volume_pekerjaan' project.id %}">Volume Pekerjaan</a>.
+    </p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
 {% endblock %}
