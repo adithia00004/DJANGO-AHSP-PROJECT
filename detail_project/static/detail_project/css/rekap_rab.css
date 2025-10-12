@@ -1,6 +1,6 @@
 /* =====================================================================
    REKAP_RAB.CSS — Adjusted for Desktop/Tablet Focus
-   Versi: rab-desktop-focused-v1
+   Versi: rab-desktop-focused-v2-FIXED
    
    CHANGES:
    1. ✅ REMOVED sticky header (position: relative instead)
@@ -8,6 +8,9 @@
    3. ✅ Wider Uraian column (via core.css tokens)
    4. ✅ Responsive optimized for laptop/tablet (768px+)
    5. ✅ Mobile responsive removed (not focused)
+   6. ✅ FIXED: Duplikasi @media print dihapus
+   7. ✅ FIXED: @page rules digabung
+   8. ✅ ENHANCED: Print optimization dengan footer handling
    ===================================================================== */
 
 /* ============== ROOT & APP CONTAINER ============== */
@@ -221,9 +224,7 @@
 
 /* ============== TABLE HEADER (NO STICKY - CHANGE #1) ============== */
 #rekap-table thead th {
-  position: relative; /* ← CHANGED from sticky */
-  /* NO top offset needed */
-  /* NO z-index needed */
+  position: relative;
   background: var(--dp-c-surface-2);
   border-bottom: 2px solid var(--dp-c-border);
   font-size: var(--ux-font-xs);
@@ -355,9 +356,7 @@
 
 /* ============== TABLE FOOTER (NO STICKY - CHANGE #2) ============== */
 #rekap-table tfoot {
-  position: relative; /* ← CHANGED from sticky */
-  /* NO bottom offset needed */
-  /* NO z-index needed */
+  position: relative;
   background: var(--dp-c-surface);
   border-top: 2px solid var(--dp-c-primary);
   box-shadow: 0 -2px 8px rgba(0,0,0,.08);
@@ -492,8 +491,6 @@
 
 /* ============== RESPONSIVE (Laptop/Tablet Focus - CHANGE #4) ============== */
 
-/* Large Desktop (1200px+) - No changes needed */
-
 /* Laptop (< 1200px) */
 @media (max-width: 1199.98px) {
   #rab-toolbar .input-group {
@@ -578,44 +575,198 @@
   }
 }
 
-/* Note: Mobile (< 576px) - Not optimized per requirement */
-
-/* ============== PRINT STYLES ============== */
+/* ============== PRINT STYLES - ENHANCED & OPTIMIZED ============== */
 @media print {
+  /* === HIDE UI ELEMENTS === */
   #rab-toolbar,
-  #rekap-app .rekap-toolbar {
+  #rekap-app .rekap-toolbar,
+  .btn,
+  .btn-group,
+  button,
+  #rab-announce,
+  #rekap-table .toggle {
     display: none !important;
   }
 
+  /* === RESET POSITIONING === */
   #rekap-table thead th,
-  #rekap-table tfoot {
+  #rekap-table tfoot,
+  #rekap-table tfoot th {
     position: static !important;
   }
 
-  #rekap-table {
-    page-break-inside: auto;
+  /* === REMOVE OVERFLOW & SCROLLBARS === */
+  body,
+  #rekap-app,
+  #rekap-table-wrap,
+  .ux-scrollbar,
+  .table-responsive {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    max-height: none !important;
   }
 
+  /* === RESET CONTAINERS === */
+  body {
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  #rekap-app,
+  #rekap-table-wrap {
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* === TABLE STRUCTURE === */
+  #rekap-table {
+    page-break-inside: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+    font-size: 9pt !important;
+  }
+
+  /* Header repeats on every page */
+  #rekap-table thead {
+    display: table-header-group;
+  }
+
+  /* Footer - hidden by default, will be shown via JS at the end */
+  #rekap-table tfoot {
+    display: none !important;
+  }
+
+  /* Body */
+  #rekap-table tbody {
+    display: table-row-group;
+  }
+
+  /* === PAGE BREAKS === */
   #rekap-table tr {
     page-break-inside: avoid;
     page-break-after: auto;
   }
 
-  body {
-    background: #fff !important;
+  /* === HEADER STYLING === */
+  #rekap-table thead th {
+    background: #f0f0f0 !important;
     color: #000 !important;
+    font-weight: 700 !important;
+    border: 1px solid #000 !important;
+    padding: 8px !important;
+    font-size: 9pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  #rekap-table,
-  #rekap-table thead th,
-  #rekap-table tbody td,
-  #rekap-table tfoot th {
-    border-color: #000 !important;
+  /* === BODY CELL STYLING === */
+  #rekap-table tbody td {
+    border: 1px solid #666 !important;
+    padding: 6px 8px !important;
+    color: #000 !important;
+    background: #fff !important;
+    font-size: 9pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  #rekap-table .toggle {
+  /* === HIERARCHICAL LEVELS === */
+  #rekap-table tbody tr[data-level="1"] td {
+    background: #e8e8e8 !important;
+    font-weight: 700 !important;
+  }
+
+  #rekap-table tbody tr[data-level="2"] td {
+    background: #f5f5f5 !important;
+    font-weight: 600 !important;
+  }
+
+  #rekap-table tbody tr[data-level="3"] td {
+    background: #fff !important;
+    font-weight: 400 !important;
+  }
+
+  /* === FOOTER ROWS (injected by JS) === */
+  #rekap-table tbody tr.print-footer-row td {
+    background: #f8f8f8 !important;
+    border: 1px solid #000 !important;
+    padding: 8px !important;
+    font-weight: 600 !important;
+    color: #000 !important;
+    font-size: 9pt !important;
+    border-top: 2px solid #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #rekap-table tbody tr.print-footer-row.print-footer-grand td {
+    background: #d4e4f7 !important;
+    font-weight: 700 !important;
+    font-size: 10pt !important;
+    border-top: 3px double #000 !important;
+  }
+
+  /* === HIDE INPUT CONTROLS === */
+  #rekap-table tfoot .input-group,
+  #rekap-table tfoot .form-control,
+  #rekap-table tfoot .form-select,
+  #rekap-table tbody .input-group,
+  #rekap-table tbody .form-control,
+  #rekap-table tbody .form-select {
     display: none !important;
   }
+
+  /* === REMOVE SHADOWS === */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* === REMOVE SEARCH HIGHLIGHT === */
+  .rab-hit {
+    background: transparent !important;
+    font-weight: inherit !important;
+  }
+
+  /* === VISIBILITY RULES === */
+  #rekap-table tbody tr.d-none,
+  #rekap-table tbody tr[style*="display: none"] {
+    display: none !important;
+  }
+
+  #rekap-table tbody tr:not(.d-none):not([style*="display: none"]) {
+    display: table-row !important;
+  }
+
+  /* === PAGE SETUP === */
+  @page {
+    size: A4 landscape;
+    margin: 2cm 1.5cm;
+  }
+
+  /* Optional: Page headers/footers (not widely supported) */
+  /* Uncomment if your browser supports it */
+  /*
+  @page {
+    @top-center {
+      content: "Rekap RAB - " attr(data-project-name);
+      font-size: 10pt;
+      font-weight: bold;
+    }
+    @bottom-right {
+      content: "Halaman " counter(page);
+      font-size: 9pt;
+    }
+  }
+  */
 }
 
 /* ============== DARK MODE ENHANCEMENTS ============== */
@@ -686,4 +837,16 @@
   12% { box-shadow: 0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35); }
   40% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 1px rgba(13,110,253,.35); }
   100% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
+}
+
+/* ============== PRINT BUTTON HANDLER ============== */
+@media screen {
+  #btn-print:active {
+    transform: scale(0.95);
+  }
+  
+  #btn-print.printing {
+    opacity: 0.6;
+    pointer-events: none;
+  }
 }

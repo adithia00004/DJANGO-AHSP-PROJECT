@@ -11,12 +11,24 @@
   {{ block.super }}
   <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
   <link rel="stylesheet" href="{% static 'detail_project/css/rekap_rab.css' %}">
+  
+  <!-- Print System (Hybrid) -->
+  <link rel="stylesheet" href="{% static 'detail_project/css/print/print-base.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/print/print-theme.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/print/print-components.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/print/rekap-rab-print.css' %}">
 {% endblock %}
 
 {% block dp_content %}
 {% include 'detail_project/_alert.html' %}
 
-<div id="rekap-app" class="container-fluid ux-scrollbar" data-project-id="{{ project.id }}">
+<div id="rekap-app" 
+     class="container-fluid ux-scrollbar" 
+     data-project-id="{{ project.id }}"
+     data-project-name="{{ project.nama_project|default:'Nama Proyek' }}"
+     data-project-code="{{ project.kode_project|default:'-' }}"
+     data-project-location="{{ project.lokasi|default:'-' }}"
+     data-project-year="{{ project.tahun_anggaran|default:'-' }}">
 
   <!-- ============== TOOLBAR (ENHANCED) ============== -->
   <div id="rab-toolbar" 
@@ -97,12 +109,12 @@
         <span class="d-none d-md-inline">Export</span>
       </button>
       <button id="btn-print" 
-              class="btn btn-outline-secondary" 
+              class="btn btn-success" 
               type="button"
-              title="Cetak halaman"
-              aria-label="Print">
-        <i class="bi bi-printer" aria-hidden="true"></i> 
-        <span class="d-none d-md-inline">Print</span>
+              title="Cetak atau simpan ke PDF"
+              aria-label="Print / Save PDF">
+        <i class="bi bi-printer-fill" aria-hidden="true"></i> 
+        <span class="d-none d-md-inline">Print / PDF</span>
       </button>
     </div>
 
@@ -257,4 +269,18 @@
 {% block extra_js %}
   {{ block.super }}
   <script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
+  
+  <!-- Print System (ES6 Module) -->
+  <script type="module">
+    import { initRekapRABPrint } from '{% static "detail_project/js/print/RekapRABPrint.js" %}';
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.RABModule) {
+        initRekapRABPrint(window.RABModule);
+        console.log('[Print] Rekap RAB print system initialized');
+      } else {
+        console.error('[Print] RABModule not found. Check rekap_rab.js export.');
+      }
+    });
+  </script>
 {% endblock %}

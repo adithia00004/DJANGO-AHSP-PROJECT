@@ -1,0 +1,155 @@
+/* =====================================================================
+   PRINT-THEME.CSS - Theme & Color Palette (Shared)
+   File: detail_project/static/detail_project/css/print/print-theme.css
+   
+   Usage: Include setelah print-base.css
+   
+   Note: Warna bisa dikustomisasi di sini untuk consistent branding
+   ===================================================================== */
+
+:root {
+  /* === PRIMARY PALETTE === */
+  --print-primary: #2c3e50;
+  --print-primary-dark: #1a252f;
+  --print-primary-light: #34495e;
+  
+  --print-secondary: #7f8c8d;
+  --print-secondary-dark: #5d6d6e;
+  --print-secondary-light: #95a5a6;
+  
+  --print-accent: #3498db;
+  --print-accent-dark: #2980b9;
+  --print-accent-light: #5dade2;
+  
+  /* === NEUTRAL PALETTE === */
+  --print-white: #ffffff;
+  --print-black: #000000;
+  --print-gray-100: #f8f9fa;
+  --print-gray-200: #ecf0f1;
+  --print-gray-300: #dee2e6;
+  --print-gray-400: #bdc3c7;
+  --print-gray-500: #95a5a6;
+  --print-gray-600: #7f8c8d;
+  --print-gray-700: #5d6d6e;
+  --print-gray-800: #34495e;
+  --print-gray-900: #2c3e50;
+  
+  /* === SEMANTIC COLORS === */
+  --print-success: #27ae60;
+  --print-info: #3498db;
+  --print-warning: #f39c12;
+  --print-danger: #e74c3c;
+  
+  /* === BORDERS & DIVIDERS === */
+  --print-border-color: var(--print-gray-400);
+  --print-border-dark: var(--print-gray-600);
+  --print-border-light: var(--print-gray-300);
+  
+  /* === TEXT COLORS === */
+  --print-text-primary: var(--print-black);
+  --print-text-secondary: var(--print-gray-700);
+  --print-text-muted: var(--print-gray-600);
+  --print-text-inverse: var(--print-white);
+  
+  /* === BACKGROUND COLORS === */
+  --print-bg-primary: var(--print-white);
+  --print-bg-secondary: var(--print-gray-100);
+  --print-bg-tertiary: var(--print-gray-200);
+  --print-bg-dark: var(--print-primary);
+  
+  /* === TABLE COLORS === */
+  --print-table-header-bg: var(--print-primary);
+  --print-table-header-text: var(--print-white);
+  --print-table-row-odd: var(--print-white);
+  --print-table-row-even: var(--print-gray-100);
+  --print-table-border: var(--print-border-color);
+  
+  /* === HIERARCHY COLORS (for multi-level data) === */
+  --print-level-1-bg: var(--print-primary);
+  --print-level-1-text: var(--print-white);
+  
+  --print-level-2-bg: var(--print-gray-200);
+  --print-level-2-text: var(--print-black);
+  
+  --print-level-3-bg: var(--print-white);
+  --print-level-3-text: var(--print-black);
+  
+  /* === BORDERS & LINES === */
+  --print-border-width: 0.5pt;
+  --print-border-width-thick: 1pt;
+  --print-border-width-thicker: 1.5pt;
+  --print-border-style: solid;
+  
+  /* === SHADOWS (minimal for print) === */
+  --print-shadow-sm: 0 1pt 2pt rgba(0,0,0,0.1);
+}
+
+/* ============== THEME CLASSES ============== */
+@media print {
+  
+  /* === BACKGROUND UTILITIES === */
+  .print-bg-primary { background: var(--print-bg-primary) !important; }
+  .print-bg-secondary { background: var(--print-bg-secondary) !important; }
+  .print-bg-dark { background: var(--print-bg-dark) !important; color: var(--print-white) !important; }
+  .print-bg-light { background: var(--print-gray-100) !important; }
+  
+  /* === TEXT UTILITIES === */
+  .print-text-primary { color: var(--print-text-primary) !important; }
+  .print-text-secondary { color: var(--print-text-secondary) !important; }
+  .print-text-muted { color: var(--print-text-muted) !important; }
+  .print-text-white { color: var(--print-white) !important; }
+  
+  /* === BORDER UTILITIES === */
+  .print-border { border: var(--print-border-width) var(--print-border-style) var(--print-border-color) !important; }
+  .print-border-top { border-top: var(--print-border-width) var(--print-border-style) var(--print-border-color) !important; }
+  .print-border-bottom { border-bottom: var(--print-border-width) var(--print-border-style) var(--print-border-color) !important; }
+  .print-border-left { border-left: var(--print-border-width) var(--print-border-style) var(--print-border-color) !important; }
+  .print-border-right { border-right: var(--print-border-width) var(--print-border-style) var(--print-border-color) !important; }
+  
+  .print-border-thick { border-width: var(--print-border-width-thick) !important; }
+  .print-border-thicker { border-width: var(--print-border-width-thicker) !important; }
+  
+  /* === SEMANTIC COLOR CLASSES === */
+  .print-success { color: var(--print-success) !important; }
+  .print-info { color: var(--print-info) !important; }
+  .print-warning { color: var(--print-warning) !important; }
+  .print-danger { color: var(--print-danger) !important; }
+  
+  .print-bg-success { background: var(--print-success) !important; color: white !important; }
+  .print-bg-info { background: var(--print-info) !important; color: white !important; }
+  .print-bg-warning { background: var(--print-warning) !important; color: white !important; }
+  .print-bg-danger { background: var(--print-danger) !important; color: white !important; }
+  
+  /* === HIERARCHY LEVEL CLASSES === */
+  .print-level-1 {
+    background: var(--print-level-1-bg) !important;
+    color: var(--print-level-1-text) !important;
+    font-weight: bold !important;
+  }
+  
+  .print-level-2 {
+    background: var(--print-level-2-bg) !important;
+    color: var(--print-level-2-text) !important;
+    font-weight: 600 !important;
+  }
+  
+  .print-level-3 {
+    background: var(--print-level-3-bg) !important;
+    color: var(--print-level-3-text) !important;
+    font-weight: normal !important;
+  }
+}
+
+/* ============== BRAND CUSTOMIZATION ============== */
+
+/* 
+  Untuk customize warna sesuai branding perusahaan,
+  override variable di sini:
+  
+  :root {
+    --print-primary: #YOUR_PRIMARY_COLOR;
+    --print-accent: #YOUR_ACCENT_COLOR;
+  }
+  
+  Atau buat file print-theme-custom.css
+*/

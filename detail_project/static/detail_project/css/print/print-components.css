@@ -1,0 +1,358 @@
+/* =====================================================================
+   PRINT-COMPONENTS.CSS - Reusable Print Components (Shared)
+   File: detail_project/static/detail_project/css/print/print-components.css
+   
+   Components:
+   - print-header: Document header dengan logo & info
+   - print-footer: Page footer  
+   - print-signatures: Tanda tangan section
+   - print-table-standard: Standard table styling
+   - print-cover: Cover page (optional)
+   ===================================================================== */
+
+@media print {
+  
+  /* ============== PRINT HEADER ============== */
+  .print-header {
+    display: block !important;
+    width: 100%;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2pt solid var(--print-primary);
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .print-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 3mm;
+    gap: 4mm;
+  }
+  
+  .print-header-logo {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+  }
+  
+  .print-header-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  
+  .print-header-title {
+    flex: 1;
+    text-align: center;
+    padding: 0 20px;
+  }
+  
+  .print-header-title h1 {
+    font-size: 16pt;
+    font-weight: bold;
+    margin: 0 0 2mm 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    color: var(--print-primary);
+  }
+  
+  .print-header-title h2 {
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 0 0 1mm 0;
+    color: var(--print-text-primary);
+  }
+  
+  .print-header-title p {
+    font-size: 10pt;
+    margin: 0;
+    color: var(--print-text-secondary);
+  }
+  
+  .print-header-info {
+    flex-shrink: 0;
+    width: 150px;
+    font-size: 9pt;
+    text-align: right;
+    line-height: 1.6;
+  }
+  
+  .print-header-info strong {
+    font-weight: 600;
+  }
+  
+  .print-header-meta {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2mm 4mm;
+    margin-top: 2mm;
+    font-size: 9pt;
+  }
+  
+  .print-header-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+  }
+  
+  .print-header-meta-label {
+    font-weight: bold;
+    color: var(--print-text-secondary);
+    font-size: 8.5pt;
+  }
+  
+  .print-header-meta-value {
+    color: var(--print-text-primary);
+  }
+  
+  /* ============== PRINT FOOTER ============== */
+  .print-footer {
+    display: block !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 2mm 0;
+    border-top: 0.5pt solid var(--print-border-color);
+    font-size: 8pt;
+    color: var(--print-text-muted);
+    background: var(--print-bg-primary);
+  }
+  
+  .print-footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .print-footer-left,
+  .print-footer-center,
+  .print-footer-right {
+    flex: 1;
+  }
+  
+  .print-footer-center {
+    text-align: center;
+  }
+  
+  .print-footer-right {
+    text-align: right;
+  }
+  
+  /* ============== PRINT SIGNATURES ============== */
+  .print-signatures {
+    display: block !important;
+    margin-top: 15mm;
+    padding-top: 5mm;
+    border-top: 1pt solid var(--print-border-color);
+    page-break-inside: avoid;
+    page-break-before: auto;
+  }
+  
+  .print-signatures-title {
+    text-align: center;
+    font-weight: bold;
+    font-size: 10pt;
+    margin-bottom: 3mm;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+  }
+  
+  .print-signatures-desc {
+    font-size: 9pt;
+    margin-bottom: 10mm;
+    text-align: justify;
+    line-height: 1.5;
+  }
+  
+  .print-signatures-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10mm;
+    margin-top: 10mm;
+  }
+  
+  .print-signature-box {
+    text-align: center;
+    padding: 3mm;
+    border: 1pt solid var(--print-border-color);
+    min-height: 25mm;
+    page-break-inside: avoid;
+  }
+  
+  .print-signature-title {
+    font-weight: bold;
+    margin-bottom: 15mm;
+    font-size: 9pt;
+    line-height: 1.4;
+  }
+  
+  .print-signature-name {
+    border-top: 1pt solid var(--print-black);
+    padding-top: 2mm;
+    margin-top: 10mm;
+    font-weight: bold;
+    font-size: 9pt;
+  }
+  
+  .print-signature-nip {
+    font-size: 8pt;
+    color: var(--print-text-muted);
+    margin-top: 1mm;
+  }
+  
+  /* ============== STANDARD TABLE ============== */
+  .print-table-standard {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+    margin: 0 !important;
+    font-size: 9pt;
+  }
+  
+  .print-table-standard thead th {
+    background: var(--print-table-header-bg) !important;
+    color: var(--print-table-header-text) !important;
+    font-weight: bold !important;
+    font-size: 9pt !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 3mm 2mm !important;
+    border: var(--print-border-width) var(--print-border-style) var(--print-primary-dark) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.3pt;
+  }
+  
+  .print-table-standard thead th:first-child {
+    text-align: left !important;
+  }
+  
+  .print-table-standard tbody td {
+    padding: 2.5mm 2mm !important;
+    border: var(--print-border-width) var(--print-border-style) var(--print-table-border) !important;
+    vertical-align: middle !important;
+    font-size: 9pt !important;
+    background: var(--print-white) !important;
+  }
+  
+  .print-table-standard tbody tr:nth-child(even) td {
+    background: var(--print-table-row-even) !important;
+  }
+  
+  /* Numeric columns */
+  .print-table-standard td.text-end,
+  .print-table-standard th.text-end {
+    text-align: right !important;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* ============== COVER PAGE ============== */
+  .print-cover {
+    display: block !important;
+    page-break-after: always;
+    text-align: center;
+    padding: 50mm 20mm;
+    min-height: 100vh;
+  }
+  
+  .print-cover-logo {
+    margin-bottom: 20mm;
+  }
+  
+  .print-cover-logo img {
+    max-width: 150px;
+    max-height: 150px;
+  }
+  
+  .print-cover h1 {
+    font-size: 24pt;
+    font-weight: bold;
+    margin-bottom: 10mm;
+    color: var(--print-primary);
+    text-transform: uppercase;
+    letter-spacing: 1pt;
+  }
+  
+  .print-cover h2 {
+    font-size: 18pt;
+    font-weight: 600;
+    margin-bottom: 5mm;
+    color: var(--print-text-primary);
+  }
+  
+  .print-cover p {
+    font-size: 14pt;
+    margin: 5mm 0;
+    color: var(--print-text-secondary);
+  }
+  
+  .print-cover-meta {
+    margin-top: 30mm;
+    font-size: 12pt;
+    line-height: 2;
+  }
+  
+  /* ============== UTILITY COMPONENTS ============== */
+  
+  /* Section Divider */
+  .print-section-divider {
+    margin: 5mm 0;
+    border-top: 1pt solid var(--print-border-color);
+    page-break-after: avoid;
+  }
+  
+  /* Info Box */
+  .print-info-box {
+    padding: 3mm;
+    border: 1pt solid var(--print-border-color);
+    background: var(--print-bg-secondary);
+    margin: 3mm 0;
+    page-break-inside: avoid;
+  }
+  
+  .print-info-box-title {
+    font-weight: bold;
+    margin-bottom: 2mm;
+  }
+  
+  /* Highlight Box */
+  .print-highlight {
+    background: var(--print-accent-light) !important;
+    padding: 2mm;
+    border-left: 3pt solid var(--print-accent);
+  }
+  
+  /* Note/Catatan */
+  .print-note {
+    font-size: 8pt;
+    color: var(--print-text-muted);
+    font-style: italic;
+    margin: 2mm 0;
+  }
+  
+  /* Logo Placeholder */
+  .print-logo-placeholder {
+    width: 60px;
+    height: 60px;
+    background: var(--print-primary);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 20pt;
+  }
+}
+
+/* ============== SCREEN-ONLY (Hidden in Print) ============== */
+@media screen {
+  .print-header,
+  .print-footer,
+  .print-signatures,
+  .print-cover {
+    display: none !important;
+  }
+}

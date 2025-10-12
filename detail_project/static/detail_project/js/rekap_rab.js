@@ -1,11 +1,11 @@
 /* =====================================================================
-   REKAP_RAB.JS — Enhanced (Based on Your Working Original)
+   REKAP_RAB.JS — Enhanced with Print System Export
    
-   ENHANCEMENTS ADDED:
+   ENHANCEMENTS:
    ✅ Search highlight dengan .rab-hit class
    ✅ Accessibility announcements
    ✅ Better error handling & loading states
-   ✅ All original functionality preserved
+   ✅ Export RABModule for print system integration
    ===================================================================== */
 
 (function () {
@@ -709,5 +709,19 @@
   applyDenseUI();
   updateToolbarState();
   loadData();
+
+  // ========= EXPORT MODULE FOR PRINT SYSTEM =========
+  window.RABModule = {
+    expanded,
+    expandAll,
+    collapseAll,
+    renderTable: () => render(inpSearch?.value || ''),
+    tree: () => fullModel,
+    root,
+    btnPrint,
+    tbody
+  };
+
+  console.log('[RAB] Module exported for print system');
 
 })();

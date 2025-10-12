@@ -1,11 +1,11 @@
-/* detail_project/static/detail_project/css/_project_identity.css */
+/* static/detail_project/css/_project_identity.css */
 /* Satu grid 3 kolom untuk semua baris → ":" sejajar sempurna */
 
 .pi{
   --pi-font-family: var(--bs-body-font-family, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial);
-  --pi-label-size: .8rem;   /* label */
-  --pi-value-size: .9rem;      /* nilai */
-  --pi-main-size: .9rem;       /* nama proyek */
+  --pi-label-size: .8rem;     /* label */
+  --pi-value-size: .9rem;     /* nilai */
+  --pi-main-size: .9rem;      /* nama proyek */
   --pi-colon-w: 12px;         /* lebar kolom ":" */
   --pi-gap-x: 12px;           /* jarak antar kolom */
   --pi-gap-y: .25rem;         /* jarak antar baris */
@@ -13,55 +13,75 @@
 }
 
 /* util opsional */
-.pi-bold{font-weight:700!important}.pi-medium{font-weight:500!important}.pi-regular{font-weight:400!important}
-.pi-italic{font-style:italic!important}.pi-underline{text-decoration:underline!important}.pi-no-underline{text-decoration:none!important}
+.pi-bold{font-weight:700!important}
+.pi-medium{font-weight:500!important}
+.pi-regular{font-weight:400!important}
+.pi-italic{font-style:italic!important}
+.pi-underline{text-decoration:underline!important}
+.pi-no-underline{text-decoration:none!important}
+
+/* Truncate 1 baris */
 .pi-truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/* Truncate 2 baris (untuk nilai panjang seperti lokasi/sumber) */
+.pi-truncate-2{
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  white-space:normal;
+}
+
+/* Angka rata tetap */
+.pi-num{font-variant-numeric:tabular-nums}
+
+/* Kompakkan padding kartu ketika pi-compact */
 .pi.pi-compact .card-body{padding-top:.5rem;padding-bottom:.5rem}
 
 /* === GRID GLOBAL (bukan per-baris) === */
 .pi-grid{
-  display: grid;
-  grid-template-columns: max-content var(--pi-colon-w) 1fr; /* label | ":" | nilai */
-  column-gap: var(--pi-gap-x);
-  row-gap: var(--pi-gap-y);
-  align-items: start;
+  display:grid;
+  grid-template-columns:max-content var(--pi-colon-w) 1fr; /* label | ":" | nilai */
+  column-gap:var(--pi-gap-x);
+  row-gap:var(--pi-gap-y);
+  align-items:start; /* nilai multi-baris tetap rapi */
 }
 
 /* Sel label/colon/value */
 .pi-label{
-  font-size: var(--pi-label-size);
-  color: var(--bs-secondary-color);
-  text-transform: uppercase;
-  letter-spacing: .02em;
-  font-weight: 600;
-  line-height: 1.35;
-  min-width: 0;
+  font-size:var(--pi-label-size);
+  color:var(--bs-secondary-color);
+  text-transform:uppercase;
+  letter-spacing:.02em;
+  font-weight:600;
+  line-height:1.35;
+  min-width:0;
 }
 
 .pi-colon{
-  width: var(--pi-colon-w);
-  text-align: center;
-  color: var(--bs-secondary-color);
-  font-weight: 600;
-  line-height: 1.35;
+  width:var(--pi-colon-w);
+  text-align:center;
+  color:var(--bs-secondary-color);
+  font-weight:600;
+  line-height:1.35;
 }
 
 .pi-value{
-  font-size: var(--pi-value-size);
-  font-weight: 500;
-  line-height: 1.35;
-  min-width: 0;
+  font-size:var(--pi-value-size);
+  font-weight:500;
+  line-height:1.35;
+  min-width:0;
+  word-break:break-word;       /* hindari overflow pada kata sangat panjang */
 }
 
+/* Judul/nama proyek */
 .pi-main{
-  font-size: var(--pi-main-size);
-  font-weight: 600;
+  font-size:var(--pi-main-size);
+  font-weight:600;
 }
 
-.pi-sub{
-  color: var(--bs-secondary-color);
-}
+/* Sub-teks (ket1/ket2) */
+.pi-sub{color:var(--bs-secondary-color)}
 
 /* angka tebal */
 .pi-value-strong{font-weight:600}

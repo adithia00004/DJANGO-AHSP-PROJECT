@@ -1,312 +1,456 @@
-/* volume_pekerjaan.js — Page logic (FE-only)
- * Fitur:
- * - Prefill volume via GET /detail_project/api/project/<id>/rekap/
- * - Input angka biasa & formula (= …) dengan variabel global
- * - Variabel global disimpan di localStorage per proyek (offcanvas UI)
- * - Dirty-submit (kirim delta saja) ke endpoint lama: /volume-pekerjaan/save/
- * - Format tampilan angka Indonesia: 1.000,33 (2 desimal, HALF_UP)
- * - Autocomplete variabel saat mengetik di mode formula (dropdown saran)
- * - Keyboard UX: Enter/Shift+Enter navigasi; Ctrl/⌘+S untuk simpan
- * - Unsaved changes guard (peringatan saat meninggalkan halaman jika ada perubahan)
- *
- * Catatan:
- * - Tidak mengubah endpoint/kontrak API.
- * - Mengandalkan VolFormula.evaluate(expr, variables, opts) dari vol_formula_engine.js
+/* volume_pekerjaan.js — Drop-in (sticky THEAD, autosave+undo, id-ID formatting)
+ * - Header tabel sticky tepat di bawah searchbar (JS mengisi CSS vars)
+ * - Format tampilan id-ID dinamis (maks 3 desimal)
+ * - Autosave (debounce) + Undo batch terakhir via toast (Ctrl+Alt+Z)
+ * - Import parameter JSON & CSV (Excel-friendly, "label,value")
+ * - Keyboard: Enter/Shift+Enter nav • Ctrl/⌘+S save • Ctrl/⌘+Space param • Ctrl+D fill-down
  */
+
 (function () {
   const root = document.getElementById('vol-app');
   if (!root) return;
+  // Gunakan Numeric bila tersedia agar konsisten (koma <-> titik)
+  const N = window.Numeric || null;
 
-  // --- Konteks dasar
+  // ---- Konteks dasar
   const projectId = root.dataset.projectId || root.dataset.pid;
-  const qtyPlaces = 2; // tampilkan & bulatkan UI ke 2 desimal; DB tetap 3dp (schema lama)
-  const qtyStep = qtyPlaces === 0 ? '1' : ('0.' + '0'.repeat(qtyPlaces - 1) + '1');
+  // NEW: endpoint dari data-attribute (fallback ke pattern lama)
+  const EP_SAVE    = root.dataset.endpointSave
+    || `/detail_project/api/project/${projectId}/volume-pekerjaan/save/`;
+  // State formula (raw,is_fx) disimpan/diambil dari endpoint ini
+  const EP_FORMULA_STATE = root.dataset.endpointFormula
+    || `/detail_project/api/project/${projectId}/volume-formula-state/`;
+  // Pohon data untuk membangun grup Klas/Sub/Pekerjaan 
+  const EP_TREE    = root.dataset.endpointTree
+    || `/detail_project/api/project/${projectId}/list-pekerjaan/tree/`;
 
-  // --- State in-memory
-  const rows = Array.from(root.querySelectorAll('#vp-table tbody tr[data-pekerjaan-id]'));
-  const originalValueById = {};  // baseline dari prefill (number)
-  const rawInputById = {};       // string yang user ketik (bisa '= …')
-  const currentValueById = {};   // nilai numerik terkini (hasil normalisasi/evaluasi)
-  const fxModeById = {};         // boolean: toggle formula per baris
-  const dirtySet = new Set();    // id yang berubah dari original
-  let variables = {};            // variabel global proyek {name: number}
+  // Presisi simpan (DB 3dp), tampilan dinamis 0..3 dp
+  const STORE_PLACES = 3;
 
-  // --- Elemen UI
+  // Debounce autosave (ms)
+  const AUTOSAVE_MS = Number(root.dataset.autosaveMs || 30000);
+
+  // ---- State in-memory (global selector agar mendukung multi-tabel/di dalam card)
+  let rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
+  const originalValueById = {}; // nilai tersimpan di server (baseline)
+  const rawInputById = {};      // string mentah di input
+  const currentValueById = {};  // nilai numerik hasil parse/eval
+  const fxModeById = {};        // mode formula per baris
+  const dirtySet = new Set();   // id pekerjaan yang berubah
+
+  // Autosave timer & guard
+  let autosaveTimer = null;
+  let saving = false;
+
+  // Undo stack (batch autosave/simpan terakhir)
+  const undoStack = []; // item: { ts, changes:[{id,before,after}] }
+  const UNDO_MAX = 10;
+
+  // === Parameter (values & labels)
+  let variables = {}; // { KODE: number }
+  let varLabels = {}; // { KODE: label }
+
+  // ---- Elemen UI
   const btnSave = document.getElementById('btn-save-vol');
-  const totalEl = document.getElementById('vp-total'); // boleh null (tfoot dihapus)
+  const btnSaveSpin = document.getElementById('btn-save-spin');
 
-  // Offcanvas Variabel
   const varTable = document.getElementById('vp-var-table');
   const btnVarAdd = document.getElementById('vp-var-add');
-  const btnVarInsert = document.getElementById('vp-var-insert');
-  const offcanvasEl = document.getElementById('vpVarOffcanvas');
+  const btnVarImportBtn = document.getElementById('vp-var-import-btn');
+  const btnVarExportBtn = document.getElementById('vp-var-export-btn');
+  const fileVarImport = document.getElementById('vp-var-import');
+  // Overlay sidebar (pengganti offcanvas)
+  const sidebarEl = document.getElementById('vp-sidebar');
 
-  // --- Util umum
+  const searchInput = document.getElementById('vp-search');
+  const searchDrop = document.getElementById('vp-search-results');
+  const prefixBadge = document.getElementById('vp-search-prefix-badge');
+
+  // Toast (single) + multi-toasts (untuk Undo)
+  const toastEl = document.getElementById('vp-toast');
+  const toastBody = document.getElementById('vp-toast-body');
+  const multiToasts = document.getElementById('vp-toasts');
+  let toastRef = null;
+  try { if (window.bootstrap && toastEl) toastRef = new bootstrap.Toast(toastEl, { delay: 1600 }); } catch {}
+
+  function showToast(message, variant) {
+    if (!toastEl || !toastBody || !toastRef) { if (message) alert(message); return; }
+    toastEl.classList.remove('text-bg-success', 'text-bg-danger', 'text-bg-warning');
+    toastEl.classList.add(variant === 'danger' ? 'text-bg-danger' : variant === 'warning' ? 'text-bg-warning' : 'text-bg-success');
+    toastBody.textContent = message || 'OK';
+    toastRef.show();
+  }
+
+  function showActionToast(message, actions = []) {
+    if (!multiToasts || !window.bootstrap) { showToast(message); return; }
+    const wrapper = document.createElement('div');
+    wrapper.className = 'toast align-items-center text-bg-dark border-0';
+    wrapper.setAttribute('role', 'alert');
+    wrapper.setAttribute('aria-live', 'assertive');
+    wrapper.setAttribute('aria-atomic', 'true');
+    wrapper.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${escapeHtml(message)}</div>
+        <div class="d-flex align-items-center gap-1 me-2">
+          ${actions.map((a,i)=>`<button type="button" class="btn btn-sm ${a.class||'btn-warning'}" data-i="${i}">${escapeHtml(a.label||'OK')}</button>`).join('')}
+          <button type="button" class="btn-close btn-close-white m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    `;
+    multiToasts.appendChild(wrapper);
+    const t = new bootstrap.Toast(wrapper, { delay: 4000 });
+    actions.forEach((a,i)=>{
+      const btn = wrapper.querySelector(`[data-i="${i}"]`);
+      if (btn) btn.addEventListener('click', () => { try{ a.onClick?.(); }finally{ t.hide(); } });
+    });
+    wrapper.addEventListener('hidden.bs.toast', ()=> wrapper.remove());
+    t.show();
+  }
+
+  // ---- HTTP helper: gunakan DP.core.http bila ada
+  const HTTP = (function(){
+    const h = (window.DP && DP.core && DP.core.http) ? DP.core.http : null;
+    async function jget(url) {
+      if (h && h.jfetch) return h.jfetch(url, { method: 'GET', normalize: false });
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(r.statusText);
+      return r.json();
+    }
+    async function jpost(url, data) {
+      if (h && h.jfetchJson) return h.jfetchJson(url, { method: 'POST', data });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+        credentials: 'same-origin',
+        body: JSON.stringify(data)
+      });
+      const body = await r.json().catch(()=> ({}));
+      return { ok: r.ok, status: r.status, data: body, errors: body?.errors || [] };
+    }
+    return { jget, jpost };
+  })();
+
+  // ---- Toast helper: gunakan DP.core.toast bila ada
+  const TOAST = (function(){
+    const t = (window.DP && DP.core && DP.core.toast) ? DP.core.toast : null;
+    return {
+      ok(msg){ t ? t.show({message:msg, variant:'success'}) : showToast(msg, 'success'); },
+      warn(msg){ t ? t.show({message:msg, variant:'warning'}) : showToast(msg, 'warning'); },
+      err(msg){ t ? t.show({message:msg, variant:'danger'}) : showToast(msg, 'danger'); },
+      action(msg, actions){ showActionToast(msg, actions); }
+    };
+  })();
+
+  // ---- Utils
   function getCsrf() {
     const m = document.cookie.match(/csrftoken=([^;]+)/);
     return m ? m[1] : '';
   }
   function roundHalfUp(x, places) {
-    const p = Math.max(0, Math.min(20, places | 0));
+    const p = Math.max(0, Math.min(20, places|0));
     const factor = Math.pow(10, p);
     return (x >= 0)
       ? Math.floor(x * factor + 0.5) / factor
       : Math.ceil(x * factor - 0.5) / factor;
   }
-  // Format angka Indonesia (ribuan '.', desimal ',')
-  function formatId(num, places) {
+  // Tampilan id-ID dinamis (maks 3 dp—tanpa trailing bila .000)
+  function formatIdSmart(num) {
+    const n = Number(num || 0);
+    const hasFrac = Math.abs(n - Math.trunc(n)) > 1e-12;
+    const fracLen = hasFrac ? Math.min(String(n.toFixed(STORE_PLACES)).split('.')[1]?.replace(/0+$/,'').length || 0, STORE_PLACES) : 0;
     try {
       return new Intl.NumberFormat('id-ID', {
-        minimumFractionDigits: places,
-        maximumFractionDigits: places
-      }).format(num);
+        minimumFractionDigits: fracLen,
+        maximumFractionDigits: STORE_PLACES
+      }).format(n);
     } catch {
-      // fallback
-      return Number(num).toFixed(places);
+      return n.toFixed(fracLen);
     }
   }
-  // Normalisasi string angka lokal → “dot-decimal” agar bisa diparse Number/Decimal
+
   function normalizeLocaleNumericString(input) {
+    if (N) return (N.canonicalizeForAPI(input ?? '') || '');
     let s = String(input ?? '').trim();
     if (!s) return s;
-    s = s.replace(/\s+/g, '').replace(/_/g, ''); // hapus spasi/underscore
-    const hasComma = s.includes(',');
-    const hasDot = s.includes('.');
-    if (hasComma && hasDot) {
-      // Asumsi id-ID: '.' ribuan, ',' desimal
-      s = s.replace(/\./g, '');
-      s = s.replace(',', '.');
-    } else if (hasComma) {
-      s = s.replace(',', '.');
-    }
+    s = s.replace(/\s+/g, '').replace(/_/g, '');
+    const hasComma = s.includes(','), hasDot = s.includes('.');
+    if (hasComma && hasDot) { s = s.replace(/\./g, ''); s = s.replace(',', '.'); }
+    else if (hasComma) { s = s.replace(',', '.'); }
     return s;
   }
-  function normQty(val) {
-    if (val === '' || val === null || typeof val === 'undefined') return '';
+  function parseNumberOrEmpty(val) {
+    if (N) {
+      const c = N.canonicalizeForAPI(val || '');
+      if (!c) return '';
+      const n = Number(c);
+      return Number.isFinite(n) ? n : '';
+    }
     const s = normalizeLocaleNumericString(val);
-    let num = Number(s);
-    if (!Number.isFinite(num)) return '';
-    if (num < 0) num = 0;
-    const rounded = roundHalfUp(num, qtyPlaces);
-    return formatId(rounded, qtyPlaces); // tampil sebagai id-ID
+    if (!s) return '';
+    const n = Number(s);
+    return Number.isFinite(n) ? n : '';
   }
+
   function parseNumberOrEmpty(val) {
     const s = normalizeLocaleNumericString(val);
     if (!s) return '';
     const n = Number(s);
     return Number.isFinite(n) ? n : '';
   }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
   function setBtnSaveEnabled() {
     const dirty = dirtySet.size !== 0;
     if (btnSave) btnSave.disabled = !dirty;
-    // NEW: tandai halaman kotor untuk beforeunload guard
     window.__vpDirty = dirty;
   }
-  function recalcTotal() {
-    let sum = 0;
-    rows.forEach(tr => {
-      const id = parseInt(tr.dataset.pekerjaanId, 10);
-      const v = currentValueById[id] ?? 0;
-      if (Number.isFinite(v)) sum += v;
-    });
-    const rounded = roundHalfUp(sum, qtyPlaces);
-    if (totalEl) totalEl.textContent = formatId(rounded, qtyPlaces);
-  }
-  function storageKeyVars() { return `volvars:${projectId}`; }
-  function storageKeyForms() { return `volform:${projectId}`; }
-  function loadVars() {
-    try {
-      const raw = localStorage.getItem(storageKeyVars());
-      variables = raw ? JSON.parse(raw) : {};
-      if (typeof variables !== 'object' || !variables) variables = {};
-    } catch { variables = {}; }
-  }
-  function saveVars() {
-    localStorage.setItem(storageKeyVars(), JSON.stringify(variables));
-  }
-  function loadFormulas() {
-    try {
-      const raw = localStorage.getItem(storageKeyForms());
-      const obj = raw ? JSON.parse(raw) : {};
-      if (!obj || typeof obj !== 'object') return {};
-      return obj;
-    } catch { return {}; }
-  }
-  function saveFormulas(map) {
-    localStorage.setItem(storageKeyForms(), JSON.stringify(map));
-  }
-  // --- NEW: angkat offcanvas ke <body> agar lepas dari stacking context kontainer
-  (function liftOffcanvasToBody() {
-    try {
-      if (offcanvasEl && offcanvasEl.parentElement !== document.body) {
-        document.body.appendChild(offcanvasEl);
-      }
-    } catch (_) { /* no-op */ }
-  })();
 
-  // --- Panel Variabel Proyek (CRUD FE-only)
-  function renderVarTable() {
-    const tbody = varTable.querySelector('tbody');
-    tbody.innerHTML = '';
-    const names = Object.keys(variables);
-    if (names.length === 0) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="3" class="text-muted">Belum ada variabel.</td>`;
-      tbody.appendChild(tr);
+
+  // ===== Search Index & UI =====
+  let searchIndex = []; // {type, id, label, el}
+  let searchState = { items: [], activeIdx: -1 };
+
+  // ===== Collapse (toggle Klas/Sub) =====
+  const COLLAPSE_KEY = `vp_collapse:${projectId}`;
+  let collapsed = { klas: {}, sub: {} };
+  try { const raw = localStorage.getItem(COLLAPSE_KEY); if (raw) collapsed = Object.assign({klas:{},sub:{}}, JSON.parse(raw)||{}); } catch {}
+  function saveCollapse(){ try{ localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); }catch{} }
+  function slugKey(s){
+    return String(s||'').trim().toLowerCase().normalize('NFKD')
+      .replace(/[^\w\s-]/g,'').replace(/\s+/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'') || '_';
+  }
+  function applyCollapseOnTable(){
+    const tbody = document.querySelector('#vp-table tbody'); if(!tbody) return;
+    let curK = null, curS = null;
+    Array.from(tbody.rows).forEach(tr=>{
+      if(tr.classList.contains('vp-klass')){
+        curK = tr.getAttribute('data-klas-id') || slugKey(tr.textContent);
+        tr.classList.toggle('is-collapsed', !!collapsed.klas[curK]);
+        return;
+      }
+      if(tr.classList.contains('vp-sub')){
+        curS = tr.getAttribute('data-sub-id') || slugKey(tr.textContent);
+        tr.classList.toggle('is-collapsed', !!collapsed.sub[curS] || !!collapsed.klas[curK]);
+        return;
+      }
+      // baris pekerjaan
+      const k = tr.getAttribute('data-klas-id') || curK;
+      const s = tr.getAttribute('data-sub-id') || curS;
+      tr.hidden = !!collapsed.klas[k] || !!collapsed.sub[s];
+    });
+  }
+
+  function applyCollapseOnCards() {
+    document.querySelectorAll('.vp-klas-card, .vp-sub-card').forEach(card => {
+      const isKlas = card.classList.contains('vp-klas-card');
+      const key = isKlas ? (card.getAttribute('data-klas-id') || slugKey(card.querySelector('.card-header')?.textContent))
+                         : (card.getAttribute('data-sub-id')  || slugKey(card.querySelector('.card-header')?.textContent));
+      const isCollapsed = isKlas ? !!collapsed.klas[key] : !!collapsed.sub[key];
+      card.classList.toggle('is-collapsed', isCollapsed);
+      const btn = card.querySelector('.vp-card-toggle');
+      if (btn) {
+        btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = `bi ${isCollapsed ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}`;
+      }
+    });
+  }
+
+  // Delegasi klik toggle caret
+  document.addEventListener('click', (e)=>{
+    // row-based (fallback dari builder EP_TREE)
+    const btnRow = e.target.closest('.vp-toggle');
+    if (btnRow) {
+      const type = btnRow.getAttribute('data-type'); const key = btnRow.getAttribute('data-key');
+      if(!type || !key) return;
+      if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
+      else collapsed.sub[key] = !collapsed.sub[key];
+      saveCollapse(); applyCollapseOnTable(); applyCollapseOnCards(); return;
+    }
+    // card-based (SSR / template)
+    const btnCard = e.target.closest('.vp-card-toggle');
+    if (btnCard) {
+      const type = btnCard.getAttribute('data-type'); const key = btnCard.getAttribute('data-key');
+      if(!type || !key) return;
+      if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
+      else collapsed.sub[key] = !collapsed.sub[key];
+      saveCollapse(); applyCollapseOnCards(); return;
+    }    
+  });
+
+  function typeBadgeClass(type) {
+    if (type === 'Klasifikasi') return 'vp-type-klas';
+    if (type === 'Sub') return 'vp-type-sub';
+    return 'vp-type-pekerjaan';
+  }
+  function highlightLabel(text, query) {
+    const q = String(query || '').trim();
+    if (!q) return escapeHtml(text);
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return escapeHtml(text);
+    const before = text.slice(0, idx);
+    const match  = text.slice(idx, idx + q.length);
+    const after  = text.slice(idx + q.length);
+    return `${escapeHtml(before)}<mark class="vp-mark">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+  }
+
+  function buildSearchIndex() {
+    searchIndex = [];
+    // Dukung 2 gaya header: versi <tr>.vp-klass/.vp-sub (table-group) & versi card (.vp-klas-card/.vp-sub-card)
+    // 1) Header Klas/Sub versi CARD (list_pekerjaan-like)
+    document.querySelectorAll('.vp-klas-card > .card-header').forEach((el, i) => {
+      const label = el.textContent.trim();
+      searchIndex.push({ type: 'Klasifikasi', id: `k_card_${i}`, label, el });
+    });
+    document.querySelectorAll('.vp-sub-card > .card-header').forEach((el, i) => {
+      const label = el.textContent.trim();
+      searchIndex.push({ type: 'Sub', id: `s_card_${i}`, label, el });
+    });
+    // 2) Header Klas/Sub versi ROW (fallback)
+    document.querySelectorAll('tr.vp-klass').forEach((tr, i) => {
+      const label = tr.textContent.trim();
+      searchIndex.push({ type: 'Klasifikasi', id: `k_row_${i}`, label, el: tr });
+    });
+    document.querySelectorAll('tr.vp-sub').forEach((tr, i) => {
+      const label = tr.textContent.trim();
+      searchIndex.push({ type: 'Sub', id: `s_row_${i}`, label, el: tr });
+    });
+    // 3) Item pekerjaan (selalu ada)
+    document.querySelectorAll('tr[data-pekerjaan-id]').forEach((tr) => {
+      const kode = (tr.querySelector('.ux-mono, .text-monospace')?.textContent || '').trim();
+      const uraian = (tr.querySelector('.text-wrap')?.textContent || '').trim();
+      const label = (kode ? `${kode} — ` : '') + uraian;
+      searchIndex.push({ type: 'Pekerjaan', id: tr.dataset.pekerjaanId, label, el: tr });
+    });
+  }
+
+  function showSearchResults(items, q) {
+    if (!searchDrop) return;
+    searchState.items = items.slice(0, 15);
+    searchState.activeIdx = searchState.items.length ? 0 : -1;
+
+    if (!searchState.items.length) {
+      searchDrop.innerHTML = '<div class="p-2 text-muted small">Tidak ada hasil</div>';
+      searchDrop.classList.remove('d-none');
+      searchDrop.setAttribute('aria-expanded', 'true');
+      if (prefixBadge) prefixBadge.classList.add('d-none');
       return;
     }
-    names.sort().forEach(name => {
-      const val = variables[name];
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="text" class="form-control form-control-sm var-name" value="${name}" aria-label="Nama variabel"></td>
-        <td><input type="text" class="form-control form-control-sm var-value" value="${val}" aria-label="Nilai variabel"></td>
-        <td class="text-end">
-          <button type="button" class="btn btn-sm btn-outline-danger var-del">Hapus</button>
-        </td>`;
-      // Klik baris → pilih variabel (untuk tombol "Sisipkan")
-      tr.addEventListener('click', () => {
-        tbody.querySelectorAll('tr').forEach(r => r.classList.remove('table-primary'));
-        tr.classList.add('table-primary');
-        tr.dataset.selected = '1';
-      });
-      // events
-      tr.querySelector('.var-name').addEventListener('change', e => {
-        const newName = String(e.target.value || '').trim();
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(newName)) {
-          alert('Nama variabel harus berupa identifier (huruf/underscore, lalu huruf/angka/underscore).');
-          e.target.value = name;
-          return;
-        }
-        if (newName !== name) {
-          if (variables[newName] != null) {
-            alert('Nama variabel sudah ada.');
-            e.target.value = name;
-            return;
+
+    searchDrop.innerHTML = searchState.items.map((it, i) => {
+      const id = `sr-${it.type}-${it.id}`;
+      const badgeCls = typeBadgeClass(it.type);
+      const labelHtml = highlightLabel(it.label, q);
+      return `
+        <div class="vp-search-item${i===0?' active':''}" id="${id}" role="option" aria-selected="${i===0?'true':'false'}" data-id="${it.id}" data-type="${it.type}">
+          <span class="vp-search-badge ${badgeCls}">${it.type}</span>
+          <span class="vp-search-label">${labelHtml}</span>
+        </div>`;
+    }).join('');
+    searchDrop.classList.remove('d-none');
+    searchDrop.setAttribute('aria-expanded', 'true');
+
+    Array.from(searchDrop.querySelectorAll('.vp-search-item')).forEach((node, idx) => {
+      node.addEventListener('mousedown', (e) => e.preventDefault());
+      node.addEventListener('click', () => selectSearchIndex(idx));
+    });
+  }
+  function setActiveIdx(nextIdx) {
+    const nodes = searchDrop ? searchDrop.querySelectorAll('.vp-search-item') : [];
+    if (!nodes.length) return;
+    searchState.activeIdx = (nextIdx + nodes.length) % nodes.length;
+    nodes.forEach((el, i) => {
+      const active = i === searchState.activeIdx;
+      el.classList.toggle('active', active);
+      el.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    const activeEl = nodes[searchState.activeIdx];
+    activeEl?.scrollIntoView?.({ block: 'nearest' });
+    const id = activeEl?.id;
+    if (id) searchDrop.setAttribute('aria-activedescendant', id);
+  }
+  function selectSearchIndex(idx) {
+    const it = searchState.items[idx];
+    if (!it || !it.el) return;
+    it.el.scrollIntoView({ block: 'center' });
+    it.el.classList.add('vp-jump');
+    setTimeout(() => it.el.classList.remove('vp-jump'), 1800);
+    searchDrop.classList.add('d-none');
+    searchDrop.setAttribute('aria-expanded', 'false');
+  }
+  function updateSearch(q) {
+    const s = String(q || '').trim().toLowerCase();
+    if (prefixBadge) {
+      if (!s) { prefixBadge.classList.add('d-none'); }
+      else { prefixBadge.classList.remove('d-none'); prefixBadge.textContent = s.length > 18 ? s.slice(0, 17) + '…' : s; }
+    }
+    if (!s) {
+      if (searchDrop) { searchDrop.classList.add('d-none'); searchDrop.setAttribute('aria-expanded', 'false'); }
+      return;
+    }
+    const items = searchIndex.filter(it => it.label.toLowerCase().includes(s));
+    showSearchResults(items, q);
+  }
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => updateSearch(e.target.value));
+    searchInput.addEventListener('keydown', (e) => {
+      const visible = searchDrop && !searchDrop.classList.contains('d-none') && searchState.items.length > 0;
+      if (!visible) {
+        if (e.key === 'Enter') {
+          const q = searchInput.value.trim().toLowerCase();
+          const first = searchIndex.find(it => it.label.toLowerCase().includes(q));
+          if (first && first.el) {
+            e.preventDefault();
+            first.el.scrollIntoView({ block: 'center' });
+            first.el.classList.add('vp-jump');
+            setTimeout(() => first.el.classList.remove('vp-jump'), 1800);
           }
-          const v = variables[name];
-          delete variables[name];
-          variables[newName] = Number(v) || 0;
-          saveVars();
-          // re-evaluate semua formula
-          reevaluateAllFormulas();
-          renderVarTable();
         }
-      });
-      tr.querySelector('.var-value').addEventListener('change', e => {
-        const n = parseNumberOrEmpty(e.target.value);
-        if (n === '') {
-          alert('Nilai variabel harus berupa angka.');
-          e.target.value = val;
-          return;
+        if (e.key === 'Escape') {
+          searchDrop?.classList.add('d-none');
+          searchDrop?.setAttribute('aria-expanded', 'false');
         }
-        variables[name] = n;
-        saveVars();
-        reevaluateAllFormulas();
-      });
-      tr.querySelector('.var-del').addEventListener('click', () => {
-        if (!confirm(`Hapus variabel "${name}"?`)) return;
-        delete variables[name];
-        saveVars();
-        reevaluateAllFormulas();
-        renderVarTable();
-      });
-      tbody.appendChild(tr);
+        return;
+      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(searchState.activeIdx + 1); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(searchState.activeIdx - 1); return; }
+      if (e.key === 'Enter')     { e.preventDefault(); selectSearchIndex(searchState.activeIdx); return; }
+      if (e.key === 'Escape')    { e.preventDefault(); searchDrop.classList.add('d-none'); searchDrop.setAttribute('aria-expanded','false'); return; }
     });
-  }
-  if (btnVarAdd) {
-    btnVarAdd.addEventListener('click', () => {
-      const name = prompt('Nama variabel (mis. panjang, lebar, tinggi):');
-      if (!name) return;
-      const trimmed = name.trim();
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-        alert('Nama variabel tidak valid. Gunakan huruf/underscore, lalu huruf/angka/underscore.');
-        return;
+    document.addEventListener('click', (e) => {
+      if (!searchDrop) return;
+      if (!searchDrop.contains(e.target) && e.target !== searchInput) {
+        searchDrop.classList.add('d-none');
+        searchDrop.setAttribute('aria-expanded', 'false');
       }
-      if (variables[trimmed] != null) {
-        alert('Nama variabel sudah ada.');
-        return;
-      }
-      const valStr = prompt(`Nilai untuk ${trimmed}:`, '0');
-      const n = parseNumberOrEmpty(valStr);
-      if (n === '') {
-        alert('Nilai variabel harus berupa angka.');
-        return;
-      }
-      variables[trimmed] = n;
-      saveVars();
-      renderVarTable();
-      reevaluateAllFormulas();
     });
   }
 
-  // Tombol SISIPKAN → sisipkan nama variabel terpilih ke input aktif (caret)
-  if (btnVarInsert) {
-    btnVarInsert.addEventListener('click', () => {
-      const tbody = varTable.querySelector('tbody');
-      const selected = Array.from(tbody.querySelectorAll('tr')).find(tr => tr.classList.contains('table-primary'));
-      if (!selected) {
-        alert('Pilih variabel dulu (klik salah satu baris).');
-        return;
-      }
-      const nameInput = selected.querySelector('.var-name');
-      const varName = nameInput ? String(nameInput.value || '').trim() : '';
-      if (!varName) return;
-      // target = input qty yang sedang fokus
-      const active = document.activeElement;
-      if (!active || !active.classList || !active.classList.contains('qty-input')) {
-        alert('Fokuskan kursor di kolom Quantity terlebih dahulu.');
-        return;
-      }
-      // Pastikan mode formula; jika tidak, otomatis aktifkan
-      if (!String(active.value || '').trim().startsWith('=')) {
-        active.value = '=' + (active.value || '');
-      }
-      // sisipkan pada caret
-      const start = active.selectionStart ?? active.value.length;
-      const end = active.selectionEnd ?? active.value.length;
-      const before = active.value.slice(0, start);
-      const after = active.value.slice(end);
-      active.value = before + varName + after;
-      // pindahkan caret ke belakang variabel
-      const pos = before.length + varName.length;
-      active.setSelectionRange(pos, pos);
-      // trigger evaluasi
-      const tr = active.closest('tr');
-      const id = parseInt(tr.dataset.pekerjaanId, 10);
-      const preview = tr.querySelector('.fx-preview');
-      handleInputChange(id, active, preview, false);
-    });
-  }
-
-  // --- SUGGESTIONS (autocomplete variabel di input formula)
-  const suggestState = new WeakMap(); // inputEl -> {box, ul, items, activeIdx}
-
+  // ====== Suggestions (autocomplete parameter)
+  const suggestState = new WeakMap();
   function getCaretIdentifier(inputEl) {
     const value = String(inputEl.value || '');
     const pos = inputEl.selectionStart ?? value.length;
-    // Harus dalam mode formula
     if (!value.trim().startsWith('=')) return null;
-    // Cari batas kiri/kanan untuk token identifier (A-Za-z0-9_)
     let start = pos, end = pos;
     const isPart = c => /[A-Za-z0-9_]/.test(c);
     while (start > 0 && isPart(value[start - 1])) start--;
     while (end < value.length && isPart(value[end])) end++;
-    // Validasi huruf pertama
     const word = value.slice(start, end);
     if (!word) return null;
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(word)) return null;
     return { word, start, end };
   }
-
   function ensureSuggestBox(inputEl) {
     let state = suggestState.get(inputEl);
     if (state && state.box && state.ul) return state;
-    // anchor = wrapper flex-grow-1 (fallback ke parent)
     const wrap = inputEl.closest('.flex-grow-1') || inputEl.parentElement;
     const box = document.createElement('div');
     box.className = 'vp-suggest';
     box.style.display = 'none';
+    box.style.opacity = '0';
     const ul = document.createElement('ul');
     box.appendChild(ul);
     wrap.appendChild(box);
@@ -314,47 +458,49 @@
     suggestState.set(inputEl, state);
     return state;
   }
-
   function hideSuggest(inputEl) {
     const state = suggestState.get(inputEl);
     if (!state) return;
-    state.box.style.display = 'none';
+    state.box.style.opacity = '0';
     state.items = [];
     state.activeIdx = -1;
     state.ul.innerHTML = '';
+    setTimeout(() => { state.box.style.display = 'none'; }, 80);
   }
-
   function showSuggest(inputEl, items) {
     const state = ensureSuggestBox(inputEl);
-    state.items = items.slice(0, 8); // batasi 8
+    state.items = items.slice(0, 8);
     state.activeIdx = state.items.length ? 0 : -1;
     state.ul.innerHTML = '';
     if (!state.items.length) {
-      state.box.style.display = 'none';
+      const li = document.createElement('li'); li.className = 'text-muted'; li.textContent = 'Tidak ada parameter cocok';
+      state.ul.appendChild(li);
+      state.box.style.display = 'block';
+      requestAnimationFrame(() => { state.box.style.opacity = '1'; });
       return;
     }
     state.items.forEach((it, idx) => {
       const li = document.createElement('li');
       li.className = idx === state.activeIdx ? 'active' : '';
-      li.innerHTML = `<span class="s-name">${it.name}</span><span class="s-value">${formatId(it.value, qtyPlaces)}</span>`;
+      li.innerHTML = `
+        <span class="s-name">${escapeHtml(it.label)} <span class="text-muted">(${escapeHtml(it.name)})</span></span>
+        <span class="s-value">${formatIdSmart(it.value)}</span>`;
       li.addEventListener('mousedown', (ev) => {
-        ev.preventDefault(); // jangan hilang fokus
+        ev.preventDefault();
         applySuggestion(inputEl, it.name);
       });
       state.ul.appendChild(li);
     });
     state.box.style.display = 'block';
+    requestAnimationFrame(() => { state.box.style.opacity = '1'; });
   }
-
   function moveActive(inputEl, delta) {
     const state = suggestState.get(inputEl);
     if (!state || !state.items.length) return;
     state.activeIdx = (state.activeIdx + delta + state.items.length) % state.items.length;
-    // refresh active class
     const lis = state.ul.querySelectorAll('li');
     lis.forEach((li, i) => li.classList.toggle('active', i === state.activeIdx));
   }
-
   function applyActiveSuggestion(inputEl) {
     const state = suggestState.get(inputEl);
     if (!state || state.activeIdx < 0) return false;
@@ -363,63 +509,64 @@
     applySuggestion(inputEl, it.name);
     return true;
   }
-
-  function applySuggestion(inputEl, varName) {
+  function applySuggestion(inputEl, varCode) {
     const value = String(inputEl.value || '');
     const caret = inputEl.selectionStart ?? value.length;
-    // Cari identifier di caret; kalau tidak ada, tinggal sisipkan
     const idf = getCaretIdentifier(inputEl);
     let before, after;
-    if (idf) {
-      before = value.slice(0, idf.start);
-      after = value.slice(idf.end);
-    } else {
-      before = value.slice(0, caret);
-      after = value.slice(caret);
-    }
-    // Pastikan ada '=' di awal
+    if (idf) { before = value.slice(0, idf.start); after = value.slice(idf.end); }
+    else { before = value.slice(0, caret); after = value.slice(caret); }
     const ensureEq = value.trim().startsWith('=') ? '' : '=';
-    inputEl.value = ensureEq + before + varName + after;
-    const pos = (ensureEq ? 1 : 0) + before.length + varName.length;
+    inputEl.value = ensureEq + before + varCode + after;
+    const pos = (ensureEq ? 1 : 0) + before.length + varCode.length;
     inputEl.setSelectionRange(pos, pos);
-    // Trigger evaluasi
     const tr = inputEl.closest('tr');
     const id = parseInt(tr.dataset.pekerjaanId, 10);
     const preview = tr.querySelector('.fx-preview');
     handleInputChange(id, inputEl, preview, false);
     hideSuggest(inputEl);
   }
-
   function updateSuggestions(inputEl, id) {
     const raw = String(inputEl.value || '');
     if (!isFormulaMode(id, raw)) { hideSuggest(inputEl); return; }
-    const names = Object.keys(variables || {});
-    if (!names.length) { hideSuggest(inputEl); return; }
+    const codes = Object.keys(variables || {});
+    if (!codes.length) { hideSuggest(inputEl); return; }
+    const itemsAll = codes.map(code => ({
+      name: code,
+      label: varLabels[code] || code,
+      value: Number(variables[code] || 0),
+    }));
     const idf = getCaretIdentifier(inputEl);
-    // 🔁 Perbaikan UX: jika baru ketik "=" (belum ada identifier), tampilkan SEMUA variabel
-    if (!idf) {
-      const allItems = names
-        .sort((a, b) => a.localeCompare(b, 'id'))
-        .map(n => ({ name: n, value: Number(variables[n] || 0) }));
-      showSuggest(inputEl, allItems);
-      return;
+    let items = itemsAll;
+    if (idf) {
+      const q = idf.word.toLowerCase();
+      items = itemsAll.filter(it => it.name.toLowerCase().startsWith(q));
     }
-    const prefix = idf.word.toLowerCase();
-    const items = names
-      .filter(n => n.toLowerCase().startsWith(prefix))
-      .sort((a, b) => a.localeCompare(b, 'id'))
-      .map(n => ({ name: n, value: Number(variables[n] || 0) }));
-    if (!items.length) { hideSuggest(inputEl); return; }
+    items.sort((a,b) => (varLabels[a.name]||a.name).localeCompare(varLabels[b.name]||b.name, 'id'));
     showSuggest(inputEl, items);
   }
 
-  // --- Wiring baris pekerjaan
-  const formulaState = loadFormulas(); // { [pekerjaanId]: { raw: string, fx: boolean } }
-
-  // Helper navigasi keyboard antar input
-  function collectQtyInputs() {
-    return Array.from(document.querySelectorAll('#vp-table .qty-input'));
+  // === Server-side persist untuk formula state (silent on fail)
+  async function persistRowFormulaServer(id) {
+    try {
+      const payload = { items: [{ pekerjaan_id: id, raw: String(rawInputById[id] || ''), is_fx: !!fxModeById[id] }] };
+      await HTTP.jpost(EP_FORMULA_STATE, payload);
+    } catch {}
   }
+
+  function persistRowFormula(id) {
+    const map = loadFormulas();
+    map[id] = { raw: rawInputById[id] || '', fx: !!fxModeById[id] };
+    saveFormulas(map);
+    persistRowFormulaServer(id);
+  }
+
+  // ==== Wiring baris pekerjaan
+  function collectQtyInputs() {
+    // Global: karena input bisa tersebar di beberapa sub-tabel dalam card
+    return Array.from(document.querySelectorAll('.qty-input'));
+  }
+
   function focusNextFrom(currentEl, delta) {
     const inputs = collectQtyInputs();
     const idx = inputs.indexOf(currentEl);
@@ -428,190 +575,222 @@
     if (next < 0) next = 0;
     if (next >= inputs.length) next = inputs.length - 1;
     const tgt = inputs[next];
-    if (tgt) {
-      tgt.focus();
-      try { tgt.select(); } catch (_) {}
-    }
+    if (tgt) { tgt.focus(); try { tgt.select(); } catch{} }
   }
 
   function bindRow(tr) {
+    if (tr.dataset.bound === '1') return;
+    tr.dataset.bound = '1';
+
     const id = parseInt(tr.dataset.pekerjaanId, 10);
     const input = tr.querySelector('.qty-input');
     const fxBtn = tr.querySelector('.fx-toggle');
     const preview = tr.querySelector('.fx-preview');
 
-    // Set atribut & default
-    input.setAttribute('step', qtyStep);
-    input.setAttribute('min', '0');
+    try { if (window.bootstrap && fxBtn) new bootstrap.Tooltip(fxBtn); } catch {}
 
-    // Restore formula state (localStorage)
-    const f = formulaState[id] || {};
+    // Jika localStorage punya state awal, apply ringan (server akan override saat prefill)
+    const initMap = loadFormulas();
+    const f = initMap[id] || {};
     if (typeof f.fx === 'boolean') {
       fxModeById[id] = !!f.fx;
-      fxBtn.setAttribute('aria-pressed', String(!!f.fx));
-      if (f.fx) fxBtn.classList.add('active');
-    } else {
-      fxModeById[id] = false;
-    }
-    if (typeof f.raw === 'string' && f.raw.trim()) {
+      if (fxBtn) {
+        fxBtn.setAttribute('aria-pressed', String(!!f.fx));
+        fxBtn.classList.toggle('active', !!f.fx);
+      }
+    } else { fxModeById[id] = false; }
+    if (typeof f.raw === 'string' && f.raw.trim() && input && !input.value) {
       rawInputById[id] = f.raw;
-      input.value = f.raw; // tampilkan raw formula agar user tahu dia di mode formula
+      input.value = f.raw;
     }
 
-    // Toggle handler
-    fxBtn.addEventListener('click', () => {
-      const newState = !(fxModeById[id]);
+    fxBtn && fxBtn.addEventListener('click', () => {
+      const newState = !fxModeById[id];
       fxModeById[id] = newState;
       fxBtn.setAttribute('aria-pressed', String(newState));
       fxBtn.classList.toggle('active', newState);
-      // Jika baru ON dan input tidak diawali '=', tambahkan '=' agar UX jelas
-      if (newState && input.value.trim() && !String(input.value).trim().startsWith('=')) {
-        input.value = '=' + input.value.trim();
+      if (newState) {
+        const cur = String(input.value || '').trim();
+        if (!cur.startsWith('=')) input.value = '=' + cur;
+        input.focus();
+        updateSuggestions(input, id);
+      } else {
+        hideSuggest(input);
       }
-      handleInputChange(id, input, preview, /*fromToggle*/true);
-      // Simpan ke localStorage
+      handleInputChange(id, input, preview, true);
       persistRowFormula(id);
-      // Perbarui suggestions
       updateSuggestions(input, id);
     });
 
-    // Input & blur
     let debTimer = null;
-    input.addEventListener('input', () => {
+    input && input.addEventListener('input', () => {
       clearTimeout(debTimer);
-      // update suggestions segera (tanpa delay) agar terasa responsif
+
+      // Auto-enable FX jika user mulai mengetik "="
+      const valNow = String(input.value || '').trim();
+      if (valNow.startsWith('=') && !fxModeById[id]) {
+        fxModeById[id] = true;
+        if (fxBtn) {
+          fxBtn.setAttribute('aria-pressed', 'true');
+          fxBtn.classList.add('active');
+        }
+        persistRowFormula(id);
+      }
+
       updateSuggestions(input, id);
       debTimer = setTimeout(() => handleInputChange(id, input, preview, false), 120);
     });
-    input.addEventListener('blur', () => {
-      // normalisasi tampilan angka biasa di blur
+    input && input.addEventListener('blur', () => {
       if (!isFormulaMode(id, input.value)) {
         const normalized = normQty(input.value);
         if (normalized !== '') input.value = normalized;
       }
-      // sembunyikan suggestions sedikit terlambat agar klik item tetap tertangkap
+      input.classList.toggle('vp-empty', !String(input.value||'').trim());
       setTimeout(() => hideSuggest(input), 120);
     });
-    input.addEventListener('focus', () => {
-      // saat fokus kembali, tampilkan lagi jika relevan
-      updateSuggestions(input, id);
-    });
-
-    // Keyboard UX (suggestion + navigasi + quick save)
-    input.addEventListener('keydown', (ev) => {
-      // Ctrl/⌘ + S => Simpan
+    input && input.addEventListener('focus', () => updateSuggestions(input, id));
+    input && input.addEventListener('keydown', (ev) => {
+      // Save
       if ((ev.ctrlKey || ev.metaKey) && (ev.key === 's' || ev.key === 'S')) {
         ev.preventDefault();
         if (btnSave && !btnSave.disabled) btnSave.click();
+        else scheduleAutosave(300);
+        return;
+      }
+      // Toggle suggestion panel
+      if ((ev.ctrlKey || ev.metaKey) && ev.code === 'Space') {
+        ev.preventDefault();
+        const cur = String(input.value || '');
+        if (!cur.trim().startsWith('=')) input.value = '=' + cur;
+        if (!fxModeById[id]) {
+          fxModeById[id] = true;
+          if (fxBtn) {
+            fxBtn.setAttribute('aria-pressed', 'true');
+            fxBtn.classList.add('active');
+          }
+          persistRowFormula(id);
+        }
+        input.focus();
+        updateSuggestions(input, id);
         return;
       }
 
+      // Suggest navigation
       const state = suggestState.get(input);
       const suggestVisible = state && state.box && state.box.style.display !== 'none' && state.items.length > 0;
-
-      // Navigasi di popup suggest
       if (suggestVisible) {
         if (ev.key === 'ArrowDown') { ev.preventDefault(); moveActive(input, +1); return; }
         if (ev.key === 'ArrowUp')   { ev.preventDefault(); moveActive(input, -1); return; }
-        if (ev.key === 'Enter') {
-          // bila ada pilihan aktif, pakai dulu; jika tidak ada, lanjut ke navigasi baris
-          const applied = applyActiveSuggestion(input);
-          if (applied) { ev.preventDefault(); return; }
-          // jatuh ke navigasi baris (di bawah)
-        }
-        if (ev.key === 'Escape') { hideSuggest(input); return; }
+        if (ev.key === 'Enter')     { const ok = applyActiveSuggestion(input); if (ok) { ev.preventDefault(); return; } }
+        if (ev.key === 'Escape')    { hideSuggest(input); return; }
       }
 
-      // Enter => pindah baris; Shift+Enter => baris sebelumnya
-      if (ev.key === 'Enter') {
+      // Fill-down (Excel-like)
+      if ((ev.ctrlKey || ev.metaKey) && (ev.key.toLowerCase() === 'd')) {
         ev.preventDefault();
-        focusNextFrom(input, ev.shiftKey ? -1 : +1);
+        const val = String(input.value || '');
+        focusNextFrom(input, +1);
+        const tgt = document.activeElement;
+        if (tgt && tgt.classList.contains('qty-input')) {
+          tgt.value = val;
+          tgt.classList.toggle('vp-empty', !String(tgt.value||'').trim());
+          const tr2 = tgt.closest('tr');
+          const id2 = parseInt(tr2.dataset.pekerjaanId, 10);
+          const pv2 = tr2.querySelector('.fx-preview');
+          handleInputChange(id2, tgt, pv2, false);
+        }
+        return;
       }
+
+      // Enter nav
+      if (ev.key === 'Enter') { ev.preventDefault(); focusNextFrom(input, ev.shiftKey ? -1 : +1); }
     });
   }
-  rows.forEach(bindRow);
 
   function isFormulaMode(id, rawStr) {
     const explicitFx = !!fxModeById[id];
     const startsEq = String(rawStr || '').trim().startsWith('=');
     return explicitFx || startsEq;
   }
-
-  function persistRowFormula(id) {
-    const map = loadFormulas();
-    map[id] = {
-      raw: rawInputById[id] || '',
-      fx: !!fxModeById[id]
-    };
-    saveFormulas(map);
+  function normQty(val) {
+    if (val === '' || val == null) return '';
+    if (N) {
+      const c = N.enforceDp(N.canonicalizeForAPI(val), STORE_PLACES);
+      return N.formatForUI(c); // tampilkan dengan koma (id-ID)
+    } else {
+      const s = normalizeLocaleNumericString(val);
+      let num = Number(s);
+      if (!Number.isFinite(num)) return '';
+      if (num < 0) num = 0;
+      const rounded = roundHalfUp(num, STORE_PLACES);
+      return formatIdSmart(rounded);
+    }
   }
-
-  function handleInputChange(id, inputEl, previewEl, fromToggle) {
+  function setRowDirtyVisual(id, isDirty) {
+    const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
+    if (!tr) return;
+    tr.classList.toggle('table-warning', !!isDirty);
+    tr.classList.toggle('vp-row-edited', !!isDirty);
+  }
+  function markRowSaved(tr) {
+    if (!tr) return;
+    tr.classList.remove('vp-row-edited');
+    tr.classList.add('vp-row-saved');
+    setTimeout(() => tr.classList.remove('vp-row-saved'), 1800);
+  }
+  function handleInputChange(id, inputEl, previewEl) {
     const raw = String(inputEl.value || '');
     rawInputById[id] = raw;
+    // flag kosong
+    const isEmpty = raw.trim() === '';
+    inputEl.classList.toggle('vp-empty', isEmpty);
 
-    // Bersihkan status visual
     inputEl.classList.remove('is-invalid', 'is-valid');
     inputEl.removeAttribute('title');
     if (previewEl) previewEl.textContent = '';
 
     if (isFormulaMode(id, raw)) {
-      // pastikan ada '=' di awal agar konsisten UX
       const expr = raw.startsWith('=') ? raw : ('=' + raw);
       try {
-        // Evaluasi aman via engine
-        if (typeof VolFormula === 'undefined' || !VolFormula.evaluate) {
-          throw new Error('Formula engine tidak tersedia');
-        }
+        if (typeof VolFormula === 'undefined' || !VolFormula.evaluate) throw new Error('Formula engine tidak tersedia');
         let val = VolFormula.evaluate(expr, variables, { clampMinZero: true });
         if (!Number.isFinite(val) || val < 0) val = 0;
-        const rounded = roundHalfUp(val, qtyPlaces);
+        const rounded = roundHalfUp(val, STORE_PLACES);
         currentValueById[id] = rounded;
-
-        // Preview & visual
-        if (previewEl) {
-          previewEl.textContent = `${expr}  →  ${formatId(rounded, qtyPlaces)}`;
-        }
+        if (previewEl) previewEl.textContent = `${expr}  →  ${formatIdSmart(rounded)}`;
         inputEl.classList.add('is-valid');
-
-        // Dirty tracking
         updateDirty(id);
       } catch (e) {
         inputEl.classList.add('is-invalid');
         const msg = (e && e.message) ? e.message : 'Formula error';
         inputEl.setAttribute('title', msg);
-        // Jangan ubah currentValue jika gagal; hanya preview error
       }
-      // Persist state formula
-      persistRowFormula(id);
+      persistRowFormula(id); // simpan raw & state fx setiap kali formula diproses
     } else {
-      // Mode angka biasa
       const n = parseNumberOrEmpty(raw);
       if (n === '') {
-        // kosong → tidak update currentValue; biarkan user mengetik
         if (previewEl) previewEl.textContent = '';
       } else {
         const clamped = n < 0 ? 0 : n;
-        const rounded = roundHalfUp(clamped, qtyPlaces);
+        const rounded = roundHalfUp(clamped, STORE_PLACES);
         currentValueById[id] = rounded;
         inputEl.classList.add('is-valid');
       }
       updateDirty(id);
-      persistRowFormula(id); // simpan raw kosong juga, agar toggle state tetap
     }
-    recalcTotal();
-    setBtnSaveEnabled();
-  }
 
+    setBtnSaveEnabled();
+    scheduleAutosave();
+  }
   function updateDirty(id) {
     const cur = currentValueById[id];
     const base = originalValueById[id] ?? 0;
-    // compare in fixed dp to avoid float noise
-    const a = Number.isFinite(cur) ? roundHalfUp(cur, qtyPlaces) : 0;
-    const b = Number.isFinite(base) ? roundHalfUp(base, qtyPlaces) : 0;
-    if (a !== b) dirtySet.add(id); else dirtySet.delete(id);
+    const a = Number.isFinite(cur) ? roundHalfUp(cur, STORE_PLACES) : 0;
+    const b = Number.isFinite(base) ? roundHalfUp(base, STORE_PLACES) : 0;
+    const dirty = a !== b;
+    if (dirty) dirtySet.add(id); else dirtySet.delete(id);
+    setRowDirtyVisual(id, dirty);
   }
-
   function reevaluateAllFormulas() {
     rows.forEach(tr => {
       const id = parseInt(tr.dataset.pekerjaanId, 10);
@@ -619,49 +798,464 @@
       const preview = tr.querySelector('.fx-preview');
       const raw = String(rawInputById[id] || input.value || '');
       if (!raw.trim()) return;
-      if (isFormulaMode(id, raw)) {
-        handleInputChange(id, input, preview, false);
-      }
+      if (isFormulaMode(id, raw)) handleInputChange(id, input, preview, false);
     });
-    recalcTotal();
     setBtnSaveEnabled();
   }
 
-  // helper: rebuild tbody with groups (Klasifikasi/Sub) dari tree endpoint
+  // ===== Parameter table (Label & Kode)
+  function slugifyName(s) {
+    let t = String(s || '').trim();
+    if (!t) return '';
+    t = t.normalize('NFKD').replace(/[^\w\s]/g, '').replace(/\s+/g, '_');
+    if (/^[0-9]/.test(t)) t = '_' + t;
+    t = t.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+    return t || '_param';
+  }
+
+  function renderVarTable() {
+    if (!varTable) return;
+    const tbody = varTable.querySelector('tbody');
+    tbody.innerHTML = '';
+    const codes = Object.keys(variables);
+    if (codes.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="3" class="text-muted">Belum ada parameter.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+    codes.sort((a,b) => (varLabels[a] || a).localeCompare(varLabels[b] || b, 'id'));
+    codes.forEach(code => {
+      const val = variables[code];
+      const label = varLabels[code] || code;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <input type="text" class="form-control form-control-sm var-label" value="${escapeHtml(label)}" aria-label="Nama/Label parameter">
+          <small class="text-muted d-block mt-1">Kode: <code>${escapeHtml(code)}</code></small>
+        </td>
+        <td>
+          <input type="text" class="form-control form-control-sm var-value" value="${formatIdSmart(val)}" aria-label="Nilai parameter">
+        </td>
+        <td class="text-end">
+          <button type="button" class="btn btn-sm btn-outline-danger var-del">Hapus</button>
+        </td>`;
+      tr.addEventListener('click', () => {
+        tbody.querySelectorAll('tr').forEach(r => r.classList.remove('table-primary'));
+        tr.classList.add('table-primary');
+        tr.scrollIntoView({ block: 'nearest' });
+      });
+      tr.querySelector('.var-label').addEventListener('change', e => {
+        const nextLabel = String(e.target.value || '').trim();
+        if (!nextLabel) {
+          e.target.classList.add('is-invalid');
+          setTimeout(() => e.target.classList.remove('is-invalid'), 1200);
+          e.target.value = label;
+          return;
+        }
+        varLabels[code] = nextLabel;
+        saveVarLabels();
+      });
+      tr.querySelector('.var-value').addEventListener('change', e => {
+        const n = parseNumberOrEmpty(e.target.value);
+        if (n === '') {
+          e.target.classList.add('is-invalid');
+          setTimeout(() => e.target.classList.remove('is-invalid'), 1200);
+          e.target.value = formatIdSmart(val);
+          return;
+        }
+        variables[code] = roundHalfUp(Number(n), STORE_PLACES);
+        saveVars();
+        reevaluateAllFormulas();
+      });
+      tr.querySelector('.var-del').addEventListener('click', () => {
+        const nm = varLabels[code] || code;
+        if (!confirm(`Hapus parameter "${nm}" (kode: ${code})?`)) return;
+        delete variables[code];
+        delete varLabels[code];
+        saveVars();
+        saveVarLabels();
+        reevaluateAllFormulas();
+        renderVarTable();
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Tambah Parameter (inline)
+  if (btnVarAdd && !btnVarAdd.dataset.bound) {
+    btnVarAdd.addEventListener('click', () => {
+      if (!varTable) return;
+      const tbody = varTable.querySelector('tbody');
+      const existing = tbody.querySelector('tr.vp-var-inline');
+      if (existing) { existing.querySelector('.var-label')?.focus(); return; }
+
+      const tr = document.createElement('tr');
+      tr.className = 'vp-var-inline';
+      tr.innerHTML = `
+        <td>
+          <input type="text" class="form-control form-control-sm var-label" placeholder="mis. Panjang Dinding">
+          <div class="invalid-feedback">Label tidak boleh kosong.</div>
+          <small class="text-muted d-block mt-1">Kode dibuat otomatis dari label.</small>
+        </td>
+        <td>
+          <input type="text" class="form-control form-control-sm var-value" placeholder="0">
+          <div class="invalid-feedback">Nilai angka diperlukan.</div>
+        </td>
+        <td class="text-end">
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-success var-save">Simpan</button>
+            <button type="button" class="btn btn-outline-secondary var-cancel">Batal</button>
+          </div>
+        </td>`;
+      tbody.prepend(tr);
+
+      const labelEl = tr.querySelector('.var-label');
+      const valEl   = tr.querySelector('.var-value');
+      labelEl && labelEl.focus();
+
+      const doCancel = () => tr.remove();
+      const doSave = () => {
+        const label = String(labelEl.value || '').trim();
+        const n = parseNumberOrEmpty(valEl.value);
+        labelEl.classList.toggle('is-invalid', !label);
+        valEl.classList.toggle('is-invalid', n === '');
+        if (!label || n === '') return;
+
+        const code = slugifyName(label);
+        if (Object.prototype.hasOwnProperty.call(variables, code)) {
+          labelEl.classList.add('is-invalid');
+          const help = labelEl.parentElement.querySelector('.invalid-feedback');
+          if (help) help.textContent = 'Label menghasilkan kode duplikat. Ubah label.';
+          return;
+        }
+        variables[code] = roundHalfUp(Number(n), STORE_PLACES);
+        varLabels[code] = label;
+        saveVars(); saveVarLabels();
+        tr.remove();
+        renderVarTable();
+        reevaluateAllFormulas();
+      };
+
+      tr.querySelector('.var-save').addEventListener('click', doSave);
+      tr.querySelector('.var-cancel').addEventListener('click', doCancel);
+      [labelEl, valEl].forEach(el => el.addEventListener('keydown', e => {
+        if (e.key === 'Enter') doSave();
+        if (e.key === 'Escape') doCancel();
+      }));
+    });
+    btnVarAdd.dataset.bound = '1';
+  }
+
+  // === Unified Import/Export (JSON | CSV | XLSX*) ==================
+  // *XLSX untuk import/export akan aktif jika SheetJS ada (window.XLSX)
+
+  function parseCSV(text) {
+    const lines = String(text || '').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      const cells = line.split(/[,;\t]/).map(s=>s.trim());
+      if (!cells.length) continue;
+      // Toleransi header
+      if (/^nama|label$/i.test(cells[0]) || /^nilai|value$/i.test(cells[1]||"")) continue;
+      if (cells.length < 2) continue;
+      out.push({ label: cells[0], value: cells[1] });
+    }
+    return out;
+  }
+
+  function csvFromVars(varsObj, labelsObj) {
+    const codes = Object.keys(varsObj);
+    const rows = codes
+      .sort((a,b)=>(labelsObj[a]||a).localeCompare(labelsObj[b]||b, 'id'))
+      .map(code => `${(labelsObj[code]||code).replace(/[\r\n,]/g,' ')} , ${String(varsObj[code])}`);
+    return rows.join("\n") + "\n";
+  }
+
+  function ensureFileInputs() {
+    // Reuse input yang sudah ada; set accept jadi gabungan
+    const fileJson = document.getElementById('vp-var-import');
+    if (fileJson) fileJson.setAttribute('accept', '.json,.csv,.xlsx');
+    // Sembunyikan tombol import excel lama kalau ada
+    const btnOld = document.getElementById('vp-var-import-excel-btn');
+    const inpOld = document.getElementById('vp-var-import-excel');
+    if (btnOld) btnOld.classList.add('d-none');
+    if (inpOld) inpOld.classList.add('d-none');
+  }
+
+  // ---- EXPORTERS
+  function exportAsJSON() {
+    try {
+      const payload = { _format: 'vp-vars-v2', variables, labels: varLabels };
+      const data = JSON.stringify(payload, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      a.href = URL.createObjectURL(blob);
+      a.download = `parameter_${projectId}_${ts}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      TOAST.ok('Parameter diekspor (JSON).');
+    } catch { TOAST.err('Gagal export JSON.'); }
+  }
+
+  function exportAsCSV() {
+    try {
+      const csv = csvFromVars(variables, varLabels);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      a.href = URL.createObjectURL(blob);
+      a.download = `parameter_${projectId}_${ts}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      TOAST.ok('Parameter diekspor (CSV).');
+    } catch { TOAST.err('Gagal export CSV.'); }
+  }
+
+  function exportAsXLSX() {
+    if (!(window.XLSX && XLSX.utils && XLSX.writeFile)) {
+      TOAST.warn('Export XLSX butuh SheetJS (window.XLSX). Fallback ke CSV.');
+      exportAsCSV(); return;
+    }
+    try {
+      const rows = Object.keys(variables)
+        .sort((a,b)=>(varLabels[a]||a).localeCompare(varLabels[b]||b,'id'))
+        .map(code => ({ Nama: (varLabels[code]||code), Nilai: variables[code] }));
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama','Nilai'] });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Parameter');
+      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      XLSX.writeFile(wb, `parameter_${projectId}_${ts}.xlsx`);
+      TOAST.ok('Parameter diekspor (XLSX).');
+    } catch { TOAST.err('Gagal export XLSX.'); }
+  }
+
+  // Popup kecil di dekat tombol export untuk pilih format
+  function showExportMenu(anchorBtn) {
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu show';
+    menu.style.position = 'absolute';
+    menu.innerHTML = `
+      <button class="dropdown-item" type="button" data-fmt="json">Export JSON</button>
+      <button class="dropdown-item" type="button" data-fmt="csv">Export CSV</button>
+      <button class="dropdown-item" type="button" data-fmt="xlsx">Export XLSX</button>
+    `;
+    document.body.appendChild(menu);
+    const rect = anchorBtn.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + window.scrollY}px`;
+
+    const close = () => { document.removeEventListener('click', onDoc); menu.remove(); };
+    const onDoc = (e) => { if (!menu.contains(e.target) && e.target!==anchorBtn) close(); };
+    document.addEventListener('click', onDoc);
+
+    menu.addEventListener('click', (e) => {
+      const fmt = e.target && e.target.getAttribute('data-fmt');
+      if (fmt === 'json') exportAsJSON();
+      else if (fmt === 'csv') exportAsCSV();
+      else if (fmt === 'xlsx') exportAsXLSX();
+      close();
+    });
+  }
+
+  // ---- IMPORTERS
+  async function importFromJSONText(rawText) {
+    const obj = JSON.parse(rawText);
+    let nextVars = {}, nextLabels = {};
+    if (obj && typeof obj === 'object' && obj._format === 'vp-vars-v2') {
+      nextVars = (obj.variables && typeof obj.variables === 'object') ? obj.variables : {};
+      nextLabels = (obj.labels && typeof obj.labels === 'object') ? obj.labels : {};
+    } else if (obj && typeof obj === 'object') {
+      Object.keys(obj).forEach(code => {
+        const n = parseNumberOrEmpty(obj[code]);
+        if (n !== '') { nextVars[code] = Number(n); nextLabels[code] = code; }
+      });
+    } else throw new Error('format');
+
+    const normalizedVars = {};
+    const normalizedLabels = {};
+    Object.keys(nextVars).forEach(code => {
+      let safe = String(code || '').trim();
+      safe = safe.normalize('NFKD').replace(/[^\w]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
+      if (/^[0-9]/.test(safe)) safe = '_' + safe;
+      if (!safe) return;
+      const val = parseNumberOrEmpty(nextVars[code]);
+      if (val === '') return;
+      normalizedVars[safe] = roundHalfUp(Number(val), STORE_PLACES);
+      const lbl = String((nextLabels && nextLabels[code]) || code || '').trim();
+      normalizedLabels[safe] = lbl || safe;
+    });
+
+    if (!Object.keys(normalizedVars).length) throw new Error('no-valid');
+    variables = { ...variables, ...normalizedVars };
+    varLabels = { ...varLabels, ...normalizedLabels };
+    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+  }
+
+  function importFromCSVText(rawText) {
+    const rowsCsv = parseCSV(rawText);
+    if (!rowsCsv.length) throw new Error('csv-empty');
+    const nextVars = {}, nextLabels = {};
+    rowsCsv.forEach(r => {
+      const label = String(r.label || '').trim();
+      const n = parseNumberOrEmpty(r.value);
+      if (!label || n === '') return;
+      let code = slugifyName(label);
+      if (!code) return;
+      if (nextVars[code] != null || variables[code] != null) {
+        let i = 2;
+        while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
+      }
+      nextVars[code] = roundHalfUp(Number(n), STORE_PLACES);
+      nextLabels[code] = label;
+    });
+    if (!Object.keys(nextVars).length) throw new Error('csv-none');
+    variables = { ...variables, ...nextVars };
+    varLabels = { ...varLabels, ...nextLabels };
+    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+  }
+
+  async function importFromXLSX(file) {
+    if (!(window.XLSX && XLSX.read)) throw new Error('no-xlsx-lib');
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const arr = XLSX.utils.sheet_to_json(ws, { header: 1 }); // 2D array
+    const rows = arr.filter(r => r && (r[0] != null || r[1] != null));
+    // skip header if like ["Nama","Nilai"]
+    const body = (rows[0] && /nama|label/i.test(String(rows[0][0])) && /nilai|value/i.test(String(rows[0][1]||"")))
+      ? rows.slice(1) : rows;
+    const nextVars = {}, nextLabels = {};
+    body.forEach(r => {
+      const label = String((r[0] ?? '')).trim();
+      const n = parseNumberOrEmpty(r[1]);
+      if (!label || n === '') return;
+      let code = slugifyName(label);
+      if (nextVars[code] != null || variables[code] != null) {
+        let i = 2; while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
+      }
+      nextVars[code] = roundHalfUp(Number(n), STORE_PLACES);
+      nextLabels[code] = label;
+    });
+    if (!Object.keys(nextVars).length) throw new Error('xlsx-none');
+    variables = { ...variables, ...nextVars };
+    varLabels = { ...varLabels, ...nextLabels };
+    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+  }
+
+  function handleUnifiedImport(file) {
+    if (!file) return;
+    const name = file.name || '';
+    const ext = (/\.(\w+)$/.exec(name)?.[1] || '').toLowerCase();
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        if (ext === 'json')       await importFromJSONText(String(reader.result || '{}'));
+        else if (ext === 'csv')   importFromCSVText(String(reader.result || ''));
+        else if (ext === 'xlsx')  await importFromXLSX(file);
+        else throw new Error('format');
+        TOAST.ok('Parameter diimport.');
+      } catch (e) {
+        if (String(e.message).includes('no-xlsx-lib')) {
+          TOAST.warn('Import XLSX butuh SheetJS (window.XLSX). Gunakan CSV/JSON.');
+        } else {
+          TOAST.err('Gagal import.');
+        }
+      }
+    };
+    reader.onerror = () => TOAST.err('Gagal membaca file.');
+    if (ext === 'xlsx') reader.readAsArrayBuffer(file); else reader.readAsText(file);
+  }
+
+  // Hook tombol Import/Export lama → Unified
+  (function installUnifiedIO(){
+    ensureFileInputs();
+    const btnImport = document.getElementById('vp-var-import-btn');
+    const fileInput = document.getElementById('vp-var-import');
+    const btnExport = document.getElementById('vp-var-export-btn');
+
+    if (btnImport && fileInput && !btnImport.dataset.boundUnified) {
+      btnImport.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        try { handleUnifiedImport(f); }
+        finally { fileInput.value = ''; }
+      });
+      btnImport.dataset.boundUnified = '1';
+      btnImport.setAttribute('title', 'Import JSON/CSV/XLSX');
+    }
+
+    if (btnExport && !btnExport.dataset.boundUnified) {
+      btnExport.addEventListener('click', (e) => showExportMenu(btnExport));
+      btnExport.dataset.boundUnified = '1';
+      btnExport.setAttribute('title', 'Export JSON/CSV/XLSX');
+    }
+  })();
+
+
+  // ===== Build table dari tree
   async function enhanceWithGroups() {
     try {
-      const res = await fetch(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`, { credentials: 'same-origin' });
-      const json = await res.json().catch(() => ({}));
-      if (!json || !json.ok || !Array.isArray(json.klasifikasi)) return; // fallback flat
+      // Jika SSR sudah menyediakan baris pekerjaan, tidak perlu rebuild via API
+      if (document.querySelector('tr[data-pekerjaan-id]')) {
+        rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
+        buildSearchIndex();
+        // applyCollapseOnTable aman dipanggil; akan no-op jika tidak ada baris .vp-klass/.vp-sub
+        applyCollapseOnTable();
+        return;
+      }
+      const resp = await HTTP.jget(EP_TREE);
+      if (!resp || !Array.isArray(resp.klasifikasi)) return;
+
       const tbody = document.querySelector('#vp-table tbody');
       tbody.innerHTML = '';
+      rows.length = 0;
+
       let counter = 0;
-      json.klasifikasi.forEach(k => {
-        // header klasifikasi
+      resp.klasifikasi.forEach(k => {
+        const kKey = String(k.id ?? slugKey(k.name));
         const trK = document.createElement('tr');
         trK.className = 'vp-klass';
-        trK.innerHTML = `<td colspan="5">${k.name || '(Tanpa Klasifikasi)'}</td>`;
+        trK.setAttribute('data-klas-id', kKey);
+        trK.innerHTML = `
+          <td colspan="5">
+            <button type="button" class="btn btn-link btn-sm vp-toggle" data-type="klas" data-key="${escapeHtml(kKey)}" aria-expanded="${!collapsed.klas[kKey]}">
+              <i class="bi ${collapsed.klas[kKey] ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}"></i>
+            </button>
+            <strong>${escapeHtml(k.name || '(Tanpa Klasifikasi)')}</strong>
+          </td>`;
         tbody.appendChild(trK);
+
         (k.sub || []).forEach(s => {
-          // header sub
+          const sKey = String(s.id ?? (kKey + ':' + slugKey(s.name)));
           const trS = document.createElement('tr');
           trS.className = 'vp-sub';
-          trS.innerHTML = `<td colspan="5">${s.name || '(Tanpa Sub)'}</td>`;
+          trS.setAttribute('data-sub-id', sKey);
+          trS.setAttribute('data-klas-id', kKey);
+          trS.innerHTML = `
+            <td colspan="5">
+              <button type="button" class="btn btn-link btn-sm vp-toggle" data-type="sub" data-key="${escapeHtml(sKey)}" aria-expanded="${!(collapsed.sub[sKey]||collapsed.klas[kKey])}">
+                <i class="bi ${(collapsed.sub[sKey]||collapsed.klas[kKey]) ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}"></i>
+              </button>
+              ${escapeHtml(s.name || '(Tanpa Sub)')}
+            </td>`;          
           tbody.appendChild(trS);
-          // pekerjaan
+
           (s.pekerjaan || []).forEach(p => {
             counter += 1;
             const tr = document.createElement('tr');
             tr.dataset.pekerjaanId = p.id;
+            tr.setAttribute('data-klas-id', kKey);
+            tr.setAttribute('data-sub-id', sKey);
             tr.innerHTML = `
               <td>${counter}</td>
-              <td class="text-monospace">${p.snapshot_kode || ''}</td>
-              <td class="text-wrap">${p.snapshot_uraian || ''}</td>
-              <td>${p.snapshot_satuan || ''}</td>
+              <td class="text-monospace ux-mono">${escapeHtml(p.snapshot_kode || '')}</td>
+              <td class="text-wrap">${escapeHtml(p.snapshot_uraian || '')}</td>
+              <td>${escapeHtml(p.snapshot_satuan || '-')}</td>
               <td>
                 <div class="d-flex align-items-start gap-2 vp-cell">
                   <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
-                          title="Mode formula (gunakan awalan =)" aria-pressed="false">fx</button>
+                          title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
+                          aria-pressed="false">fx</button>
                   <div class="flex-grow-1">
                     <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input" aria-label="Quantity">
                     <div class="form-text fx-preview text-muted small" style="min-height:1rem;"></div>
@@ -669,96 +1263,150 @@
                 </div>
               </td>`;
             tbody.appendChild(tr);
+            rows.push(tr);
             bindRow(tr);
           });
         });
       });
-      // update rows reference
-      while (rows.length) rows.pop();
-      document.querySelectorAll('#vp-table tbody tr[data-pekerjaan-id]').forEach(tr => rows.push(tr));
+
+      buildSearchIndex();
+      applyCollapseOnTable();
+      applyCollapseOnCards();
     } catch (e) {
-      console.warn('Enhance groups gagal', e);
+      console.warn('enhanceWithGroups() gagal', e);
     }
   }
 
-  // --- Prefill nilai dari rekap (tanpa ubah BE)
+  // ===== Prefill: rekap volume + (opsional) server formula state
   (async function prefill() {
     try {
-      const res = await fetch(`/detail_project/api/project/${projectId}/rekap/`, { credentials: 'same-origin' });
-      const json = await res.json().catch(() => ({}));
+      // 1) Prefill volume: coba dari volume list (paling tepat), fallback ke rekap
       const volMap = {};
-      if (json && json.rows && Array.isArray(json.rows)) {
-        json.rows.forEach(r => {
-          if (r && typeof r.pekerjaan_id === 'number') {
-            const v = Number(r.volume || 0);
-            volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
-          }
-        });
+      try {
+        const vlist = await HTTP.jget(`/detail_project/api/project/${projectId}/volume-pekerjaan/list/`);
+        if (vlist && Array.isArray(vlist.items)) {
+          vlist.items.forEach(it => {
+            const id = Number(it.pekerjaan_id);
+            const v  = N ? Number(N.canonicalizeForAPI(it.quantity ?? '0'))
+                         : Number(String(it.quantity || '0').replace(',', '.'));
+            if (Number.isFinite(id) && Number.isFinite(v)) volMap[id] = v;
+          });
+        }
+      } catch {}
+      if (Object.keys(volMap).length === 0) {
+        const rekap = await HTTP.jget(`/detail_project/api/project/${projectId}/rekap/`).catch(()=> ({}));
+        if (rekap && Array.isArray(rekap.rows)) {
+          rekap.rows.forEach(r => {
+            if (r && typeof r.pekerjaan_id === 'number') {
+              const v = N ? Number(N.canonicalizeForAPI(r.volume ?? 0))
+                          : Number(r.volume || 0);
+              volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
+            }
+          });
+        }
       }
-      // Bangun ulang tabel berkelompok (tidak wajib; aman bila gagal)
-      await enhanceWithGroups();
-      // Isi ke UI
+      // 2) Pastikan baris ada: pakai SSR jika tersedia; jika tidak → fallback ke EP_TREE
+      if (!document.querySelector('tr[data-pekerjaan-id]')) {
+        await enhanceWithGroups();
+      }
+      rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
+      rows.forEach(tr => bindRow(tr));
+
+
+      // 3) Ambil formula state dari server; kalau error → pakai localStorage
+      let serverFormula = null;
+      try {
+        const resp = await HTTP.jget(EP_FORMULA_STATE);
+        if (resp && resp.ok && Array.isArray(resp.items)) {
+          serverFormula = {};
+          resp.items.forEach(it => {
+            serverFormula[it.pekerjaan_id] = { raw: it.raw || '', fx: !!it.is_fx };
+          });
+        }
+      } catch {}
+      const localFormula = loadFormulas();
+      const formulaState = serverFormula || localFormula;
+
+      // 4) Render nilai & formula preview
       rows.forEach(tr => {
         const id = parseInt(tr.dataset.pekerjaanId, 10);
         const input = tr.querySelector('.qty-input');
         const preview = tr.querySelector('.fx-preview');
+        const fxBtn = tr.querySelector('.fx-toggle');
         const base = Number(volMap[id] || 0);
-        originalValueById[id] = base;
-        currentValueById[id] = base;
-        // Tampilkan base dengan format Indonesia (kosongkan jika 0 untuk tampilan ringkas)
-        input.value = base ? formatId(base, qtyPlaces) : (base === 0 ? '' : '');
-        // Jika ada raw formula tersimpan, tampilkan & evaluasi
+
+        originalValueById[id] = roundHalfUp(base, STORE_PLACES);
+        currentValueById[id] = originalValueById[id];
+
+        input.value = base ? formatIdSmart(base) : '';
+        input.classList.toggle('vp-empty', !input.value.trim());
+
         const f = formulaState[id];
         if (f && typeof f.raw === 'string' && f.raw.trim()) {
           input.value = f.raw;
+          fxModeById[id] = !!f.fx;
+          if (fxBtn) {
+            fxBtn.setAttribute('aria-pressed', String(fxModeById[id]));
+            fxBtn.classList.toggle('active', fxModeById[id]);
+          }
           handleInputChange(id, input, preview, false);
         }
+        setRowDirtyVisual(id, false);
       });
-      recalcTotal();
+
       setBtnSaveEnabled();
+      buildSearchIndex();
+     // Terapkan state collapse untuk kedua mode (row/card)
+     applyCollapseOnTable();
+     applyCollapseOnCards();
     } catch (e) {
       console.warn('Prefill rekap gagal', e);
-      // fallback: tampilkan kosong, original dianggap 0
+      await enhanceWithGroups();
       rows.forEach(tr => {
         const id = parseInt(tr.dataset.pekerjaanId, 10);
         originalValueById[id] = 0;
         currentValueById[id] = 0;
+        setRowDirtyVisual(id, false);
       });
-      recalcTotal();
       setBtnSaveEnabled();
     }
   })();
 
-  // --- Submit
-  btnSave && btnSave.addEventListener('click', async function () {
-    if (dirtySet.size === 0) {
-      alert('Tidak ada perubahan untuk disimpan.');
-      return;
-    }
+  // ===== Autosave + Undo =====
+  function scheduleAutosave(ms = AUTOSAVE_MS) {
+    if (autosaveTimer) clearTimeout(autosaveTimer);
+    if (dirtySet.size === 0) return;
+    autosaveTimer = setTimeout(() => {
+      if (dirtySet.size > 0) saveDirty({ reason: 'autosave' });
+    }, ms);
+  }
 
-    // Kumpulkan delta
+  async function saveDirty({ reason = 'manual' } = {}) {
+    if (saving) return;
     const postingIds = Array.from(dirtySet.values());
-    const items = postingIds.map(id => {
-      // Jika input kosong tapi dirty (misalnya formula sebelumnya dihapus), kirim 0
-      let q = currentValueById[id];
+    if (!postingIds.length) return;
+
+    const changes = postingIds.map(id => ({
+      id,
+      before: Number(originalValueById[id] ?? 0),
+      after: Number(currentValueById[id] ?? 0)
+    }));
+
+    const items = changes.map(({id, after}) => {
+      let q = after;
       if (!Number.isFinite(q)) q = 0;
-      // kirim sebagai number (bukan string terformat)
-      const rounded = roundHalfUp(q, qtyPlaces);
+      const rounded = roundHalfUp(q, STORE_PLACES);
       return { pekerjaan_id: id, quantity: rounded };
     });
 
-    btnSave.disabled = true;
-    try {
-      const res = await fetch(`/detail_project/api/project/${projectId}/volume-pekerjaan/save/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-        credentials: 'same-origin',
-        body: JSON.stringify({ items })
-      });
-      const json = await res.json().catch(() => ({}));
+    saving = true;
+    if (reason === 'manual' && btnSaveSpin) btnSaveSpin.hidden = false;
+    if (reason === 'manual' && btnSave) btnSave.disabled = true;
 
-      // Mark per-baris error berdasarkan indeks items[...] dari payload kita
-      const markErrors = () => {
+    try {
+      const res = await HTTP.jpost(EP_SAVE, { items });
+      
+      const markErrors = (json) => {
         if (!json || !Array.isArray(json.errors)) return;
         const re = /items\[(\d+)\]\.(quantity|pekerjaan_id)/;
         json.errors.forEach(e => {
@@ -767,58 +1415,137 @@
           const idx = parseInt(m[1], 10);
           const id = postingIds[idx];
           const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
-          if (!tr) return;
-          const input = tr.querySelector('.qty-input');
-          if (!input) return;
-          input.classList.add('is-invalid');
-          if (e.message) input.setAttribute('title', e.message);
+          const input = tr?.querySelector('.qty-input');
+          if (input) { input.classList.add('is-invalid'); if (e.message) input.setAttribute('title', e.message); }
         });
       };
 
-      if (!res.ok || json.ok === false) {
-        markErrors();
-        alert(`⚠️ Sebagian/semua gagal disimpan.\nTersimpan: ${json && typeof json.saved === 'number' ? json.saved : 0}\n${
-          json && json.errors ? JSON.stringify(json.errors, null, 2) : 'Server error'
-        }`);
+      const json = res?.data || {};
+      if (!res.ok) {
+        markErrors(json);
+        const saved = (typeof json.saved === 'number') ? json.saved : 0;
+        TOAST.err(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`);
         return;
       }
 
-      // Sukses penuh
+      // OK — commit baseline & visuals
       postingIds.forEach(id => {
         originalValueById[id] = currentValueById[id] ?? 0;
-        // Flash hijau singkat
         const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
         if (tr) {
           const input = tr.querySelector('.qty-input');
           if (input) {
             input.classList.remove('is-invalid');
             input.classList.add('is-valid');
-            setTimeout(() => input.classList.remove('is-valid'), 1200);
+            setTimeout(() => input.classList.remove('is-valid'), 900);
           }
+          markRowSaved(tr);
         }
         dirtySet.delete(id);
+        setRowDirtyVisual(id, false);
       });
       setBtnSaveEnabled();
-      recalcTotal();
-      alert(`✅ Disimpan: ${json && typeof json.saved === 'number' ? json.saved : postingIds.length}`);
+
+      const realChanges = changes.filter(c => roundHalfUp(c.before, STORE_PLACES) !== roundHalfUp(c.after, STORE_PLACES));
+      if (realChanges.length) {
+        undoStack.push({ ts: Date.now(), changes: realChanges });
+        if (undoStack.length > UNDO_MAX) undoStack.shift();
+        TOAST.action(`Tersimpan ${realChanges.length} item.`, [
+          { label: 'Undo', class: 'btn-warning', onClick: tryUndoLast }
+        ]);
+      } else if (reason === 'manual') {
+        TOAST.warn('Tidak ada perubahan.');
+      }
+
+      if (typeof json.decimal_places === 'number' && json.decimal_places !== STORE_PLACES) {
+        console.info('Server decimal_places =', json.decimal_places);
+      }
     } catch (e) {
       console.error(e);
-      alert('❌ Gagal simpan (network/server error).');
+      TOAST.err('Gagal simpan (network/server error).');
     } finally {
-      btnSave.disabled = false;
+      if (reason === 'manual' && btnSaveSpin) btnSaveSpin.hidden = true;
+      if (reason === 'manual' && btnSave) btnSave.disabled = false;
+      saving = false;
+    }
+  }
+
+  async function tryUndoLast() {
+    const last = undoStack.pop();
+    if (!last || !last.changes || !last.changes.length) { showToast('Tidak ada yang bisa di-undo.', 'warning'); return; }
+
+    // Apply "before" ke state & UI lalu kirim simpan
+    last.changes.forEach(({id, before}) => {
+      currentValueById[id] = roundHalfUp(Number(before), STORE_PLACES);
+      const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
+      const input = tr?.querySelector('.qty-input');
+      const preview = tr?.querySelector('.fx-preview');
+      if (input) {
+        input.value = formatIdSmart(currentValueById[id]);
+        input.classList.add('is-valid'); setTimeout(()=>input.classList.remove('is-valid'), 700);
+        input.classList.toggle('vp-empty', !String(input.value||'').trim());
+      }
+      if (preview) preview.textContent = '';
+      updateDirty(id);
+    });
+    await saveDirty({ reason: 'manual' });
+  }
+
+  // Save manual
+  btnSave && btnSave.addEventListener('click', () => saveDirty({ reason: 'manual' }));
+
+  // Undo hotkey global: Ctrl+Alt+Z
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'z') {
+      e.preventDefault(); tryUndoLast();
     }
   });
 
-  // --- Unsaved changes guard
+  // Guard before unload
   window.addEventListener('beforeunload', (e) => {
-    if (window.__vpDirty) {
-      e.preventDefault();
-      e.returnValue = '';
-      return '';
-    }
+    if (window.__vpDirty) { e.preventDefault(); e.returnValue = ''; return ''; }
   });
 
-  // --- Init variables-panel (load & render)
+  // ===== Storage helpers
+  function storageKeyVars() { return `volvars:${projectId}`; }
+  function storageKeyVarLabels() { return `volvars_labels:${projectId}`; }
+  function storageKeyForms() { return `volform:${projectId}`; }
+
+  function loadVars() {
+    try {
+      const raw = localStorage.getItem(storageKeyVars());
+      variables = raw ? JSON.parse(raw) : {};
+      if (typeof variables !== 'object' || !variables) variables = {};
+    } catch { variables = {}; }
+  }
+  function saveVars() { localStorage.setItem(storageKeyVars(), JSON.stringify(variables)); }
+  function loadVarLabels() {
+    try {
+      const raw = localStorage.getItem(storageKeyVarLabels());
+      varLabels = raw ? JSON.parse(raw) : {};
+      if (!varLabels || typeof varLabels !== 'object') varLabels = {};
+    } catch { varLabels = {}; }
+  }
+  function saveVarLabels() { localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels)); }
+
+  function loadFormulas() {
+    try {
+      const raw = localStorage.getItem(storageKeyForms());
+      const obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch { return {}; }
+  }
+  function saveFormulas(map) { localStorage.setItem(storageKeyForms(), JSON.stringify(map)); }
+
+
+  // ==== Init: load variables, render table, bind baris existing (SSR)
   loadVars();
+  loadVarLabels();
+  Object.keys(variables).forEach(code => { if (!varLabels[code]) varLabels[code] = code; });
+  saveVarLabels();
   renderVarTable();
+
+  // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
+  rows.forEach(tr => bindRow(tr));
+
 })();
