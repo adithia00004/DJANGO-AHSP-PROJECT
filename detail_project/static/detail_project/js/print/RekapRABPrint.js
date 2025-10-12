@@ -1,32 +1,26 @@
 /* =====================================================================
-   REKAP-RAB-PRINT.JS - Rekap RAB Print Adapter (v2 - All Issues Fixed)
-   File: detail_project/static/detail_project/js/print/RekapRABPrint.js
+   REKAP-RAB-PRINT.JS - v5 (Final Corrections)
    
-   CHANGELOG v2:
-   - Fixed project identity layout (not cramped)
-   - Consistent table styling (borders, colors, fonts)
-   - Single print process (no double print)
-   - Signature only on last page
-   - Fixed header/column width alignment
-   - Fixed missing data/values
+   CHANGELOG v5:
+   B.1: Fix column alignment - show all values correctly
+   B.2: Hierarchical border styling (thick for klasifikasi, medium for sub)
+   C.1: Move "LEMBAR PENGESAHAN" title up for more table space
+   C.3: Reduce signature space to prevent page break
+   C.4: Keep signatures together using page-break-inside: avoid
    ===================================================================== */
 
 import { PrintComponents, PrintUtils } from './PrintComponents.js';
 
-/**
- * Initialize Rekap RAB Print functionality
- */
 export function initRekapRABPrint(rabModule) {
   if (!rabModule || !rabModule.btnPrint) {
     PrintUtils.log('Warning: RABModule or print button not found');
     return;
   }
   
-  PrintUtils.log('Initializing Rekap RAB Print v2...');
+  PrintUtils.log('Initializing Rekap RAB Print v5...');
   
   const printHandler = new RekapRABPrintHandler(rabModule);
   
-  // FIXED: Remove any existing listeners to prevent double print
   rabModule.btnPrint.replaceWith(rabModule.btnPrint.cloneNode(true));
   const newBtn = document.getElementById(rabModule.btnPrint.id) || rabModule.btnPrint;
   
@@ -36,28 +30,22 @@ export function initRekapRABPrint(rabModule) {
     printHandler.execute();
   }, { once: false });
   
-  PrintUtils.log('Rekap RAB Print v2 initialized successfully');
+  PrintUtils.log('Rekap RAB Print v5 initialized successfully');
 }
 
-/**
- * Rekap RAB Print Handler Class
- */
 class RekapRABPrintHandler {
   constructor(rabModule) {
     this.rabModule = rabModule;
     this.injectedElements = [];
-    this.printInProgress = false; // Prevent double print
+    this.printInProgress = false;
+    this.originalStyles = {};
   }
 
   log(message) {
-    console.log(`[Rekap RAB Print v2] ${message}`);
+    console.log(`[Rekap RAB Print v5] ${message}`);
   }
 
-  /**
-   * Main execution method
-   */
   async execute() {
-    // FIXED: Prevent double print
     if (this.printInProgress) {
       this.log('Print already in progress, skipping...');
       return;
@@ -67,26 +55,17 @@ class RekapRABPrintHandler {
       this.printInProgress = true;
       this.log('Starting print execution...');
       
-      // 1. Prepare for print
+      this.storeOriginalStyles();
       await this.prepare();
-      
-      // 2. Expand all rows
       await this.expandAllRows();
-      
-      // 3. Inject print components
+      await this.moveTfootToEnd();
       await this.injectComponents();
-      
-      // 4. Apply print styles
       this.applyPrintStyles();
-      
-      // 5. Wait for DOM updates
       await this.sleep(300);
       
-      // 6. Trigger print
       this.log('Triggering print dialog...');
       window.print();
       
-      // 7. Cleanup after print (with delay)
       setTimeout(() => {
         this.cleanup();
         this.printInProgress = false;
@@ -98,36 +77,54 @@ class RekapRABPrintHandler {
     }
   }
 
-  /**
-   * Prepare for print
-   */
+  storeOriginalStyles() {
+    this.log('Storing original styles...');
+    
+    const body = document.body;
+    this.originalStyles.bodyClass = body.className;
+    this.originalStyles.bodyDataTheme = body.getAttribute('data-theme');
+    
+    const mainContent = document.querySelector('#main-content > div.container-fluid.mt-2');
+    if (mainContent) {
+      this.originalStyles.mainContentMaxWidth = mainContent.style.maxWidth;
+      this.originalStyles.mainContentWidth = mainContent.style.width;
+    }
+    
+    const tfoot = document.querySelector('#rekap-table tfoot');
+    if (tfoot) {
+      this.originalStyles.tfootParent = tfoot.parentNode;
+      this.originalStyles.tfootNextSibling = tfoot.nextSibling;
+    }
+  }
+
   async prepare() {
     this.log('Preparing for print...');
     
-    // Hide toolbar
+    const body = document.body;
+    body.classList.remove('dark-mode', 'theme-dark');
+    body.classList.add('light-mode', 'theme-light', 'print-mode');
+    body.setAttribute('data-theme', 'light');
+    
+    const mainContent = document.querySelector('#main-content > div.container-fluid.mt-2');
+    if (mainContent) {
+      mainContent.style.maxWidth = '100%';
+      mainContent.style.width = '100%';
+    }
+    
     const toolbar = document.getElementById('rab-toolbar');
     if (toolbar) {
       toolbar.style.display = 'none';
     }
 
-    // Remove fixed positioning from table elements
     const table = document.getElementById('rekap-table');
     if (table) {
       const thead = table.querySelector('thead');
-      const tfoot = table.querySelector('tfoot');
-      
       if (thead) {
         thead.style.position = 'static';
-      }
-      if (tfoot) {
-        tfoot.style.position = 'static';
       }
     }
   }
 
-  /**
-   * Expand all rows
-   */
   async expandAllRows() {
     this.log('Expanding all rows...');
     
@@ -138,30 +135,120 @@ class RekapRABPrintHandler {
     }
   }
 
-  /**
-   * Inject print-specific components
-   */
+  async moveTfootToEnd() {
+    this.log('Moving tfoot to end...');
+    
+    const table = document.getElementById('rekap-table');
+    const tfoot = table?.querySelector('tfoot');
+    
+    if (!tfoot) {
+      this.log('No tfoot found, skipping...');
+      return;
+    }
+    
+    const summaryData = this.extractSummaryFromTfoot(tfoot);
+    
+    const summaryDiv = document.createElement('div');
+    summaryDiv.className = 'print-summary-section';
+    summaryDiv.id = 'print-summary-replacement';
+    
+    summaryDiv.innerHTML = `
+      <div class="print-summary-content">
+        <table class="print-summary-table">
+          <tr>
+            <td class="summary-label">Total Proyek (D)</td>
+            <td class="summary-separator">:</td>
+            <td class="summary-value">${summaryData.totalD}</td>
+          </tr>
+          <tr>
+            <td class="summary-label">PPN ${summaryData.ppnPercent}%</td>
+            <td class="summary-separator">:</td>
+            <td class="summary-value">${summaryData.ppnValue}</td>
+          </tr>
+          <tr>
+            <td class="summary-label">Grand Total (D + PPN)</td>
+            <td class="summary-separator">:</td>
+            <td class="summary-value">${summaryData.grandTotal}</td>
+          </tr>
+          <tr>
+            <td class="summary-label">Pembulatan (${summaryData.roundingBase})</td>
+            <td class="summary-separator">:</td>
+            <td class="summary-value">${summaryData.rounded}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+    
+    tfoot.style.display = 'none';
+    
+    const tableWrap = document.getElementById('rekap-table-wrap');
+    if (tableWrap && tableWrap.parentNode) {
+      tableWrap.parentNode.appendChild(summaryDiv);
+      this.injectedElements.push(summaryDiv);
+    }
+  }
+
+  extractSummaryFromTfoot(tfoot) {
+    const ppnInput = tfoot.querySelector('#inp-ppn, input[type="number"]');
+    const ppnPercent = ppnInput ? ppnInput.value : '11';
+    
+    const roundingSelect = tfoot.querySelector('#sel-rounding-base, select');
+    const roundingBase = roundingSelect ? roundingSelect.value : '10000';
+    
+    const tfootCells = Array.from(tfoot.querySelectorAll('th'));
+    
+    let totalD = 0;
+    
+    const totalCell = tfootCells.find(cell => 
+      cell.textContent.includes('Rp') || 
+      cell.classList.contains('text-end') ||
+      cell.style.textAlign === 'right'
+    );
+    
+    if (totalCell) {
+      const text = totalCell.textContent.replace(/[^0-9]/g, '');
+      totalD = parseFloat(text) || 0;
+    }
+    
+    if (totalD === 0 && tfootCells.length > 0) {
+      const lastCell = tfootCells[tfootCells.length - 1];
+      const text = lastCell.textContent.replace(/[^0-9]/g, '');
+      totalD = parseFloat(text) || 0;
+    }
+    
+    const ppn = totalD * (parseFloat(ppnPercent) / 100);
+    const grandTotal = totalD + ppn;
+    const base = parseInt(roundingBase);
+    const rounded = Math.round(grandTotal / base) * base;
+    
+    return {
+      totalD: this.formatNumber(Math.round(totalD)),
+      ppnPercent: ppnPercent,
+      ppnValue: this.formatNumber(Math.round(ppn)),
+      grandTotal: this.formatNumber(Math.round(grandTotal)),
+      roundingBase: this.formatNumber(base),
+      rounded: this.formatNumber(rounded)
+    };
+  }
+
+  formatNumber(num) {
+    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+
   async injectComponents() {
     this.log('Injecting print components...');
     
     try {
       const rekapApp = document.getElementById('rekap-app');
-      if (!rekapApp) {
-        throw new Error('Rekap app container not found');
-      }
+      if (!rekapApp) throw new Error('Rekap app container not found');
 
       const table = document.getElementById('rekap-table');
-      if (!table) {
-        throw new Error('Rekap table not found');
-      }
+      if (!table) throw new Error('Rekap table not found');
 
-      // Get project info
       const projectInfo = this.getProjectInfo();
 
-      // Create print header
       const printHeader = this.createPrintHeader(projectInfo);
       
-      // Insert header
       const tableWrap = document.getElementById('rekap-table-wrap');
       if (tableWrap && tableWrap.parentNode) {
         tableWrap.parentNode.insertBefore(printHeader, tableWrap);
@@ -171,10 +258,8 @@ class RekapRABPrintHandler {
         this.injectedElements.push(printHeader);
       }
 
-      // Create print footer (signature - only on last page)
       const printFooter = this.createPrintFooter(projectInfo);
       
-      // Insert footer AFTER table wrap
       if (tableWrap && tableWrap.parentNode) {
         tableWrap.parentNode.appendChild(printFooter);
         this.injectedElements.push(printFooter);
@@ -191,9 +276,6 @@ class RekapRABPrintHandler {
     }
   }
 
-  /**
-   * Create print header - FIXED: Better layout, not cramped
-   */
   createPrintHeader(info) {
     const header = document.createElement('div');
     header.className = 'print-header';
@@ -227,6 +309,11 @@ class RekapRABPrintHandler {
               <td class="info-value">${info.year || new Date().getFullYear()}</td>
             </tr>
             <tr>
+              <td class="info-label">Sumber Dana</td>
+              <td class="info-separator">:</td>
+              <td class="info-value">${info.sumberDana || '-'}</td>
+            </tr>
+            <tr>
               <td class="info-label">Tanggal Cetak</td>
               <td class="info-separator">:</td>
               <td class="info-value">${this.formatDate(new Date())}</td>
@@ -238,38 +325,58 @@ class RekapRABPrintHandler {
     return header;
   }
 
-  /**
-   * Create print footer - FIXED: Only on last page
-   */
   createPrintFooter(info) {
+    const klasifikasiData = this.extractKlasifikasiTotals();
+    
     const footer = document.createElement('div');
     footer.className = 'print-footer-signatures';
     footer.innerHTML = `
       <div class="print-signatures-wrapper">
-        <h3 class="signatures-title">PENGESAHAN</h3>
-        <div class="signatures-grid">
-          <div class="signature-box">
-            <p class="sig-role">Menyetujui,</p>
-            <p class="sig-position">Pemilik Proyek</p>
-            <div class="sig-line"></div>
-            <p class="sig-name">( _________________________ )</p>
-            <p class="sig-subtitle">NIP/NIK: </p>
-          </div>
-          
-          <div class="signature-box">
-            <p class="sig-role">Mengetahui,</p>
-            <p class="sig-position">Konsultan Perencana</p>
-            <div class="sig-line"></div>
-            <p class="sig-name">( _________________________ )</p>
-            <p class="sig-subtitle">NIP/NIK: </p>
-          </div>
-          
-          <div class="signature-box">
-            <p class="sig-role">Menyusun,</p>
-            <p class="sig-position">Pelaksana Pekerjaan</p>
-            <div class="sig-line"></div>
-            <p class="sig-name">( _________________________ )</p>
-            <p class="sig-subtitle">NIP/NIK: </p>
+        <!-- FIX C.1: Title moved up, less margin -->
+        <h3 class="signatures-title">LEMBAR PENGESAHAN</h3>
+        
+        <!-- FIX C.4: Klasifikasi table can break, signatures cannot -->
+        <div class="klasifikasi-summary">
+          <table class="klasifikasi-table">
+            <thead>
+              <tr>
+                <th style="width: 10%;">No</th>
+                <th style="width: 60%;">Klasifikasi</th>
+                <th style="width: 30%;">Total (Rp)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${klasifikasiData.map((item, idx) => `
+                <tr>
+                  <td style="text-align: center;">${idx + 1}</td>
+                  <td>${item.name}</td>
+                  <td style="text-align: right;">${item.total}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- FIX C.3 & C.4: Signatures together, reduced space -->
+        <div class="signatures-section">
+          <div class="signatures-grid-two">
+            <div class="signature-box">
+              <p class="sig-role">Disetujui Oleh,</p>
+              <p class="sig-position">Pemilik Proyek</p>
+              <div class="sig-space"></div>
+              <div class="sig-underline"></div>
+              <p class="sig-name">( _________________________________ )</p>
+              <p class="sig-nip">NIP/NIK: __________________________</p>
+            </div>
+            
+            <div class="signature-box">
+              <p class="sig-role">Dibuat Oleh,</p>
+              <p class="sig-position">Konsultan Perencana</p>
+              <div class="sig-space"></div>
+              <div class="sig-underline"></div>
+              <p class="sig-name">( _________________________________ )</p>
+              <p class="sig-nip">NIP/NIK: __________________________</p>
+            </div>
           </div>
         </div>
       </div>
@@ -277,11 +384,31 @@ class RekapRABPrintHandler {
     return footer;
   }
 
-  /**
-   * Apply print styles - FIXED: All styling issues
-   */
+  extractKlasifikasiTotals() {
+    const table = document.getElementById('rekap-table');
+    if (!table) return [];
+    
+    const klasifikasiRows = table.querySelectorAll('tbody tr[data-level="1"]');
+    const klasifikasiData = [];
+    
+    klasifikasiRows.forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length >= 6) {
+        const name = cells[0].textContent.trim().replace(/^[▼▶]\s*/, '');
+        const totalText = cells[5].textContent.trim();
+        
+        klasifikasiData.push({
+          name: name,
+          total: totalText
+        });
+      }
+    });
+    
+    return klasifikasiData;
+  }
+
   applyPrintStyles() {
-    this.log('Applying print styles v2...');
+    this.log('Applying print styles v5...');
     
     let styleEl = document.getElementById('rekap-print-styles');
     if (!styleEl) {
@@ -291,12 +418,7 @@ class RekapRABPrintHandler {
     }
 
     styleEl.textContent = `
-      /* ============================================================
-         PRINT STYLES v2 - Fixed All Issues
-         ============================================================ */
-      
       @media print {
-        /* ===== PAGE SETUP ===== */
         @page {
           size: A4 landscape;
           margin: 15mm 10mm 15mm 10mm;
@@ -308,34 +430,56 @@ class RekapRABPrintHandler {
           color-adjust: exact !important;
         }
 
-        /* ===== HIDE NON-PRINTABLE ===== */
+        /* Force light mode */
+        body,
+        body.dark-mode,
+        body[data-theme="dark"] {
+          background: #ffffff !important;
+          color: #000000 !important;
+        }
+
+        *,
+        *::before,
+        *::after {
+          background-color: transparent !important;
+          color: #000000 !important;
+        }
+
+        /* Container width */
+        #main-content,
+        #main-content > div.container-fluid.mt-2,
+        .container-fluid {
+          max-width: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        /* Hide non-printable */
         #rab-toolbar,
-        .rekap-toolbar,
         #dp-topbar,
         #dp-sidebar,
         .btn,
-        button:not(.print-keep),
-        .no-print,
+        button,
         nav,
-        .breadcrumb,
-        .alert {
+        .card:not(.print-keep),
+        input,
+        select {
           display: none !important;
         }
 
-        /* ===== BODY & CONTAINER ===== */
         body {
           margin: 0 !important;
           padding: 0 !important;
           background: white !important;
           color: #000 !important;
-          font-family: 'Arial', 'Helvetica', sans-serif !important;
+          font-family: 'Arial', sans-serif !important;
         }
 
         #rekap-app {
           max-width: none !important;
           padding: 0 !important;
           margin: 0 !important;
-          width: 100% !important;
         }
 
         #rekap-table-wrap {
@@ -344,17 +488,13 @@ class RekapRABPrintHandler {
           overflow: visible !important;
         }
 
-        /* ===== PRINT HEADER - FIXED: Not cramped ===== */
+        /* Header */
         .print-header {
           width: 100%;
           margin-bottom: 20px;
           page-break-inside: avoid;
           border-bottom: 3px solid #000;
           padding-bottom: 15px;
-        }
-
-        .print-header-wrapper {
-          width: 100%;
         }
 
         .print-title-section {
@@ -378,24 +518,19 @@ class RekapRABPrintHandler {
           color: #000 !important;
         }
 
-        .print-info-section {
-          margin-top: 15px;
-        }
-
         .print-info-table {
           width: 100%;
-          max-width: 600px;
+          max-width: 650px;
           margin: 0 auto;
           border-collapse: collapse;
         }
 
         .print-info-table tr {
-          height: 24px;
+          height: 26px;
         }
 
         .print-info-table td {
-          padding: 3px 8px;
-          vertical-align: top;
+          padding: 4px 10px;
           font-size: 10pt;
           color: #000 !important;
         }
@@ -403,21 +538,14 @@ class RekapRABPrintHandler {
         .info-label {
           width: 150px;
           font-weight: 600;
-          text-align: left;
         }
 
         .info-separator {
-          width: 15px;
+          width: 20px;
           text-align: center;
-          font-weight: bold;
         }
 
-        .info-value {
-          font-weight: normal;
-          text-align: left;
-        }
-
-        /* ===== TABLE STYLES - FIXED: Consistent styling ===== */
+        /* FIX B.1: Table - ensure all columns visible with correct values */
         #rekap-table {
           width: 100% !important;
           border-collapse: collapse !important;
@@ -427,15 +555,15 @@ class RekapRABPrintHandler {
           margin-top: 15px;
         }
 
-        /* FIXED: Column widths to match header */
+        /* Proper column widths */
         #rekap-table col:nth-child(1) { width: 35%; }  /* Uraian */
-        #rekap-table col:nth-child(2) { width: 12%; }  /* Kode */
+        #rekap-table col:nth-child(2) { width: 12%; }  /* Kode AHSP */
         #rekap-table col:nth-child(3) { width: 8%; }   /* Satuan */
         #rekap-table col:nth-child(4) { width: 10%; }  /* Volume */
         #rekap-table col:nth-child(5) { width: 15%; }  /* Harga Satuan */
         #rekap-table col:nth-child(6) { width: 20%; }  /* Total */
 
-        /* ===== THEAD - FIXED: Consistent borders and colors ===== */
+        /* Table head */
         #rekap-table thead {
           position: static !important;
           display: table-header-group !important;
@@ -448,192 +576,293 @@ class RekapRABPrintHandler {
           padding: 8px 6px !important;
           font-weight: bold !important;
           text-align: center !important;
-          vertical-align: middle !important;
           font-size: 9pt !important;
-          position: static !important;
         }
 
-        /* ===== TBODY - FIXED: No missing data ===== */
+        /* Table body */
         #rekap-table tbody {
           display: table-row-group !important;
         }
 
         #rekap-table tbody tr {
           page-break-inside: avoid !important;
-          page-break-after: auto !important;
           display: table-row !important;
         }
 
+        /* FIX B.1: Ensure all cells display with correct alignment */
         #rekap-table tbody td {
-          border: 1px solid #333 !important;
+          border: 1px solid #666 !important;
           padding: 5px 4px !important;
           color: #000 !important;
           background: #fff !important;
-          vertical-align: middle !important;
           font-size: 8pt !important;
+          display: table-cell !important;
+          visibility: visible !important;
           overflow: visible !important;
-          text-overflow: clip !important;
           white-space: normal !important;
           word-wrap: break-word !important;
         }
 
-        /* Level 1 - Klasifikasi (Bold + Gray background) */
+        /* Column-specific alignment - FIX B.1 */
+        #rekap-table tbody td:nth-child(1) { 
+          text-align: left !important;
+        }
+        #rekap-table tbody td:nth-child(2) { 
+          text-align: center !important;  /* Kode AHSP - center */
+        }
+        #rekap-table tbody td:nth-child(3) { 
+          text-align: center !important;  /* Satuan - center */
+        }
+        #rekap-table tbody td:nth-child(4) { 
+          text-align: right !important;   /* Volume - right */
+        }
+        #rekap-table tbody td:nth-child(5) { 
+          text-align: right !important;   /* Harga - right */
+        }
+        #rekap-table tbody td:nth-child(6) { 
+          text-align: right !important;   /* Total - right */
+        }
+
+        /* FIX B.2: Hierarchical border styling */
+        
+        /* Level 1 - Klasifikasi: Thick border (1 px), wraps around its children */
         #rekap-table tbody tr[data-level="1"] td {
           font-weight: bold !important;
           background-color: #d9d9d9 !important;
           color: #000 !important;
+          font-size: 9pt !important;
+          border: 1px solid #000 !important;  /* Thick border */
         }
 
         #rekap-table tbody tr[data-level="1"] td:first-child {
-          padding-left: 6px !important;
+          padding-left: 8px !important;
         }
 
-        /* Level 2 - Sub (Bold + Light gray) */
+        /* First klasifikasi row - top border only */
+        #rekap-table tbody tr[data-level="1"]:first-of-type td {
+          border-top: 1px solid #000 !important;
+          border-left: 1px solid #000 !important;
+          border-right: 1px solid #000 !important;
+          border-bottom: 1px solid #666 !important;
+        }
+
+        /* Subsequent klasifikasi rows */
+        #rekap-table tbody tr[data-level="1"] + tr[data-level="2"] td,
+        #rekap-table tbody tr[data-level="1"] + tr[data-level="3"] td {
+          border-left: 1px solid #000 !important;  /* Inherit thick left border */
+          border-right: 1px solid #000 !important; /* Inherit thick right border */
+        }
+
+        /* Level 2 - Sub-klasifikasi: Medium border (1px), wraps around itself */
         #rekap-table tbody tr[data-level="2"] td {
           font-weight: 600 !important;
           background-color: #efefef !important;
           color: #000 !important;
+          border: 1px solid #333 !important;  /* Medium border */
         }
 
         #rekap-table tbody tr[data-level="2"] td:first-child {
-          padding-left: 18px !important;
+          padding-left: 20px !important;
         }
 
-        /* Level 3 - Pekerjaan (Normal + White) */
+        /* Level 3 - Pekerjaan: Normal border (1px) */
         #rekap-table tbody tr[data-level="3"] td {
           font-weight: normal !important;
           background-color: #fff !important;
           color: #000 !important;
+          border: 1px solid #666 !important;  /* Normal border */
         }
 
         #rekap-table tbody tr[data-level="3"] td:first-child {
-          padding-left: 32px !important;
+          padding-left: 35px !important;
         }
 
-        /* Text alignment per column */
-        #rekap-table tbody td:nth-child(1) { text-align: left !important; }    /* Uraian */
-        #rekap-table tbody td:nth-child(2) { text-align: center !important; }  /* Kode */
-        #rekap-table tbody td:nth-child(3) { text-align: center !important; }  /* Satuan */
-        #rekap-table tbody td:nth-child(4) { text-align: right !important; }   /* Volume */
-        #rekap-table tbody td:nth-child(5) { text-align: right !important; }   /* Harga */
-        #rekap-table tbody td:nth-child(6) { text-align: right !important; }   /* Total */
+        /* Last row of klasifikasi group - bottom border thick */
+        #rekap-table tbody tr[data-level="1"] + tr:not([data-level="1"]):last-of-type td,
+        #rekap-table tbody tr[data-level="3"]:last-child td {
+          border-bottom: 2.5px solid #000 !important;
+        }
 
-        /* Hide toggle buttons */
+        /* Hide toggle */
         .toggle,
         .toggle-icon {
           display: none !important;
         }
 
-        /* ===== TFOOT - FIXED: Consistent with thead ===== */
+        /* Hide tfoot */
         #rekap-table tfoot {
-          position: static !important;
-          display: table-footer-group !important;
+          display: none !important;
         }
 
-        #rekap-table tfoot th {
-          background-color: #4a4a4a !important;
-          color: #ffffff !important;
-          border: 1.5px solid #000 !important;
-          padding: 8px 6px !important;
-          font-weight: bold !important;
-          font-size: 9pt !important;
-          text-align: right !important;
+        /* Summary section */
+        .print-summary-section {
+          width: 100%;
+          margin: 25px 0;
+          padding: 15px 0;
+          border-top: 2px solid #000;
+          border-bottom: 2px solid #000;
+          page-break-inside: avoid;
         }
 
-        #rekap-table tfoot th:first-child {
-          text-align: left !important;
+        .print-summary-table {
+          width: 100%;
+          max-width: 500px;
+          margin: 0 auto;
+          border-collapse: collapse;
         }
 
-        /* FIXED: Ensure tfoot inputs/selects are hidden or styled */
-        #rekap-table tfoot input,
-        #rekap-table tfoot select {
-          border: none !important;
-          background: transparent !important;
-          color: #fff !important;
-          font-weight: bold !important;
-          text-align: right !important;
-          padding: 0 !important;
+        .print-summary-table tr {
+          height: 30px;
         }
 
-        /* ===== PRINT FOOTER - FIXED: Only on last page ===== */
+        .print-summary-table td {
+          padding: 5px 10px;
+          font-size: 11pt;
+          font-weight: 600;
+          color: #000 !important;
+        }
+
+        .summary-label {
+          width: 220px;
+        }
+
+        .summary-value {
+          text-align: right;
+          font-weight: bold;
+        }
+
+        /* FIX C: Signature section improvements */
         .print-footer-signatures {
           page-break-before: always !important;
-          page-break-inside: avoid !important;
-          margin-top: 40px;
+          margin-top: 30px;
           width: 100%;
         }
 
         .print-signatures-wrapper {
           width: 100%;
-          padding: 20px 0;
+          padding: 20px 20px;  /* Reduced from 30px */
         }
 
+        /* FIX C.1: Title with less margin */
         .signatures-title {
           text-align: center;
           font-size: 14pt;
           font-weight: bold;
-          margin: 0 0 30px 0;
-          letter-spacing: 1px;
+          margin: 0 0 20px 0;  /* Reduced from 30px */
+          letter-spacing: 2px;
           text-decoration: underline;
           color: #000 !important;
         }
 
-        .signatures-grid {
+        /* FIX C.4: Klasifikasi table can break across pages */
+        .klasifikasi-summary {
+          width: 100%;
+          margin-bottom: 30px;
+          page-break-inside: auto;  /* Allow breaking */
+        }
+
+        .klasifikasi-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .klasifikasi-table thead {
+          display: table-header-group;  /* Repeat header if breaks */
+        }
+
+        .klasifikasi-table thead th {
+          background-color: #4a4a4a !important;
+          color: #ffffff !important;
+          border: 1.5px solid #000 !important;
+          padding: 8px 6px !important;
+          font-weight: bold !important;
+          text-align: center !important;
+          font-size: 10pt !important;
+        }
+
+        .klasifikasi-table tbody {
+          page-break-inside: auto;  /* Allow breaking within table */
+        }
+
+        .klasifikasi-table tbody tr {
+          page-break-inside: avoid;  /* But not within a row */
+        }
+
+        .klasifikasi-table tbody td {
+          border: 1px solid #333 !important;
+          padding: 6px 8px !important;
+          color: #000 !important;
+          background: #fff !important;
+          font-size: 9pt !important;
+        }
+
+        /* FIX C.3 & C.4: Signatures stay together, reduced space */
+        .signatures-section {
+          page-break-inside: avoid !important;  /* CRITICAL: Keep together */
+          page-break-before: avoid !important;
+          margin-top: 20px;
+        }
+
+        .signatures-grid-two {
           display: flex;
           justify-content: space-around;
           align-items: flex-start;
-          gap: 30px;
-          margin: 0 40px;
+          gap: 60px;
+          margin: 0 60px;
         }
 
         .signature-box {
           flex: 1;
           text-align: center;
-          min-width: 200px;
+          min-width: 250px;
         }
 
         .sig-role {
-          font-size: 10pt;
-          font-weight: normal;
-          margin: 0 0 60px 0;
+          font-size: 11pt;
+          margin: 0 0 5px 0;  /* Reduced from 8px */
           color: #000 !important;
         }
 
-        .sig-line {
-          height: 50px;
-          margin: 10px 0;
+        .sig-position {
+          font-size: 11pt;
+          font-weight: bold;
+          margin: 0 0 10px 0;  /* Reduced from 15px */
+          color: #000 !important;
+        }
+
+        /* FIX C.3: Reduced signature space from 60mm to 45mm */
+        .sig-space {
+          height: 45mm;  /* Was 60mm */
+          margin: 10px 0;  /* Reduced from 15px */
+        }
+
+        .sig-underline {
+          width: 80%;
+          margin: 0 auto 5px;  /* Reduced bottom margin */
+          border-bottom: 1px solid #000;
         }
 
         .sig-name {
           font-size: 10pt;
           font-weight: bold;
-          margin: 5px 0;
+          margin: 5px 0 3px 0;  /* Reduced margins */
           color: #000 !important;
         }
 
-        .sig-position {
-          font-size: 10pt;
-          font-weight: bold;
-          margin: 5px 0 0 0;
-          color: #000 !important;
-        }
-
-        .sig-subtitle {
+        .sig-nip {
           font-size: 9pt;
-          margin: 3px 0 0 0;
+          margin: 2px 0 0 0;  /* Reduced from 3px */
           color: #000 !important;
         }
 
-        /* ===== ENSURE VISIBILITY ===== */
+        /* Ensure visibility */
         #rekap-table,
         #rekap-table *,
         .print-header,
-        .print-header *,
-        .print-footer-signatures,
-        .print-footer-signatures * {
+        .print-summary-section,
+        .print-footer-signatures {
           visibility: visible !important;
           opacity: 1 !important;
-          display: table-cell !important;
         }
 
         #rekap-table {
@@ -648,39 +877,21 @@ class RekapRABPrintHandler {
           display: table-row-group !important;
         }
 
-        #rekap-table tfoot {
-          display: table-footer-group !important;
-        }
-
         #rekap-table tr {
           display: table-row !important;
         }
 
-        .print-header,
-        .print-footer-signatures {
-          display: block !important;
-        }
-
-        /* Remove hover effects */
-        #rekap-table tbody tr:hover {
-          background: inherit !important;
-        }
-
-        /* FIXED: Prevent text from being cut off */
-        * {
-          box-sizing: border-box !important;
+        #rekap-table td,
+        #rekap-table th {
+          display: table-cell !important;
         }
       }
     `;
   }
 
-  /**
-   * Cleanup after print
-   */
   cleanup() {
     this.log('Cleaning up...');
     
-    // Remove injected elements
     this.injectedElements.forEach(el => {
       if (el && el.parentNode) {
         el.parentNode.removeChild(el);
@@ -688,42 +899,40 @@ class RekapRABPrintHandler {
     });
     this.injectedElements = [];
 
-    // Restore toolbar
+    const body = document.body;
+    body.className = this.originalStyles.bodyClass || '';
+    if (this.originalStyles.bodyDataTheme) {
+      body.setAttribute('data-theme', this.originalStyles.bodyDataTheme);
+    }
+    body.classList.remove('print-mode');
+
+    const mainContent = document.querySelector('#main-content > div.container-fluid.mt-2');
+    if (mainContent && this.originalStyles.mainContentMaxWidth !== undefined) {
+      mainContent.style.maxWidth = this.originalStyles.mainContentMaxWidth;
+      mainContent.style.width = this.originalStyles.mainContentWidth;
+    }
+
     const toolbar = document.getElementById('rab-toolbar');
     if (toolbar) {
       toolbar.style.display = '';
     }
 
-    // Restore table positioning
     const table = document.getElementById('rekap-table');
     if (table) {
       const thead = table.querySelector('thead');
-      const tfoot = table.querySelector('tfoot');
-      
       if (thead) {
         thead.style.position = '';
       }
-      if (tfoot) {
-        tfoot.style.position = '';
-      }
+    }
+
+    const tfoot = document.querySelector('#rekap-table tfoot');
+    if (tfoot) {
+      tfoot.style.display = '';
     }
   }
 
-  /**
-   * Get project information from page
-   */
   getProjectInfo() {
-    // Try multiple selectors for project info
-    const titleSelectors = [
-      'h1.project-title',
-      'h2.project-title', 
-      '.project-header h1',
-      '.project-header h2',
-      '#project-title',
-      'h1',
-      'h2'
-    ];
-    
+    const titleSelectors = ['h1', 'h2', '.project-title'];
     let titleEl = null;
     for (const selector of titleSelectors) {
       titleEl = document.querySelector(selector);
@@ -731,58 +940,42 @@ class RekapRABPrintHandler {
     }
     
     const info = {
-      title: 'REKAPITULASI RENCANA ANGGARAN BIAYA',
       projectName: titleEl ? titleEl.textContent.trim() : 'Pembangunan Gedung Serbaguna',
       owner: 'Dinas PUPR (Pemprov DKI Jakarta)',
       location: 'Jakarta',
-      year: new Date().getFullYear().toString()
+      year: new Date().getFullYear().toString(),
+      sumberDana: 'APBD'
     };
 
-    // Try to extract from meta elements
-    const metaEls = document.querySelectorAll('.project-meta dt, .project-meta dd');
-    for (let i = 0; i < metaEls.length; i += 2) {
-      const key = metaEls[i]?.textContent?.toLowerCase() || '';
-      const value = metaEls[i + 1]?.textContent?.trim() || '';
+    const metaEls = document.querySelectorAll('.project-meta dt, .project-meta dd, .card-body p');
+    metaEls.forEach(el => {
+      const text = el.textContent.toLowerCase();
+      const value = el.textContent.trim();
       
-      if (key.includes('pemilik') || key.includes('owner')) info.owner = value;
-      if (key.includes('lokasi') || key.includes('location')) info.location = value;
-      if (key.includes('tahun') || key.includes('year')) info.year = value;
-      if (key.includes('nama') || key.includes('proyek') || key.includes('project')) {
-        info.projectName = value;
-      }
-    }
+      if (text.includes('pemilik')) info.owner = value.replace(/pemilik\s*:\s*/i, '');
+      if (text.includes('lokasi')) info.location = value.replace(/lokasi\s*:\s*/i, '');
+      if (text.includes('tahun')) info.year = value.replace(/tahun\s*:\s*/i, '');
+      if (text.includes('sumber dana')) info.sumberDana = value.replace(/sumber dana\s*:\s*/i, '');
+    });
 
     return info;
   }
 
-  /**
-   * Format date to Indonesian format
-   */
   formatDate(date) {
     const months = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
     ];
     
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear();
-    
-    return `${day} ${month} ${year}`;
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
   }
 
-  /**
-   * Sleep helper
-   */
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  /**
-   * Error handler
-   */
   handleError(error) {
-    console.error('[Rekap RAB Print v2] Error:', error);
+    console.error('[Rekap RAB Print v5] Error:', error);
     alert('Terjadi kesalahan saat mencetak. Silakan coba lagi.');
     this.cleanup();
     this.printInProgress = false;
@@ -794,4 +987,4 @@ export { RekapRABPrintHandler };
 export default { initRekapRABPrint, RekapRABPrintHandler };
 
 window.RekapRABPrintHandler = RekapRABPrintHandler;
-console.log('[RAB] RekapRABPrint v2 handler loaded successfully');
+console.log('[RAB] RekapRABPrint v5 handler loaded successfully');
