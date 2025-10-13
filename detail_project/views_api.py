@@ -2,6 +2,8 @@
 # detail_project/views_api.py
 # ================================
 import json
+import csv
+from io import BytesIO
 from typing import Any
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
 from django.http import JsonResponse, HttpRequest, HttpResponse
@@ -1834,3 +1836,640 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
         {"ok": status_code == 200, "created": created, "updated": updated, "errors": errors},
         status=status_code
     )
+
+
+
+# Library untuk PDF (install: pip install reportlab)
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
+# Library untuk Word (install: pip install python-docx)
+try:
+    from docx import Document
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+
+# ============== EXPORT CSV ==============
+@login_required
+@require_GET
+def export_rekap_rab_csv(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format CSV dengan formatting yang lebih baik
+    - UTF-8 with BOM untuk Excel compatibility
+    - Pemisah semicolon untuk Excel Indonesia
+    - Format angka dengan separator ribuan
+    - Kolom yang lebih rapi
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        rekap_rows = compute_rekap_for_project(project)
+        pricing = _get_or_create_pricing(project)
+        mp = pricing.markup_percent or Decimal("10.00")
+        
+        # Response dengan UTF-8 BOM untuk Excel compatibility
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        
+        # Filename dengan timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'Rekap_RAB_Project_{project_id}_{timestamp}.csv'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        writer = csv.writer(response, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+        
+        # ===== HEADER SECTION =====
+        writer.writerow(['REKAP RENCANA ANGGARAN BIAYA (RAB)'])
+        writer.writerow([])
+        writer.writerow(['Nama Project:', project.nama])
+        writer.writerow(['Project ID:', project.id])
+        writer.writerow(['BUK/Markup:', f'{mp}%'])
+        writer.writerow(['Tanggal Export:', datetime.now().strftime('%d-%m-%Y %H:%M')])
+        writer.writerow([])
+        
+        # ===== TABLE HEADER =====
+        writer.writerow([
+            'No',
+            'Klasifikasi',
+            'Sub-Klasifikasi', 
+            'Kode',
+            'Uraian Pekerjaan',
+            'Satuan',
+            'Volume',
+            'Tenaga Kerja (Rp)',
+            'Bahan (Rp)',
+            'Alat (Rp)',
+            'Lain-lain (Rp)',
+            'Jumlah (Rp)',
+            'BUK (Rp)',
+            'Harga Satuan (Rp)',
+            'Total (Rp)'
+        ])
+        
+        # ===== DATA ROWS =====
+        total_all = Decimal("0")
+        
+        for idx, row in enumerate(rekap_rows, start=1):
+            # Format angka dengan separator ribuan (Indonesia style)
+            def format_number(val):
+                if val is None:
+                    return '0'
+                try:
+                    num = Decimal(str(val))
+                    # Format: 1.234.567,89
+                    formatted = f"{num:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                    return formatted
+                except:
+                    return '0'
+            
+            writer.writerow([
+                idx,
+                row.get('klasifikasi_nama', '') or '-',
+                row.get('subklasifikasi_nama', '') or '-',
+                row.get('pekerjaan_kode', '') or '-',
+                row.get('pekerjaan_uraian', '') or '-',
+                row.get('pekerjaan_satuan', '') or '-',
+                format_number(row.get('volume')).replace(',00', ''),  # Volume tanpa desimal
+                format_number(row.get('A')),
+                format_number(row.get('B')),
+                format_number(row.get('C')),
+                format_number(row.get('LAIN')),
+                format_number(row.get('E_base')),
+                format_number(row.get('F')),
+                format_number(row.get('G')),
+                format_number(row.get('total')),
+            ])
+            
+            total_all += Decimal(str(row.get('total', 0)))
+        
+        # ===== FOOTER - TOTAL =====
+        writer.writerow([])
+        writer.writerow([
+            '', '', '', '', '', '', '', '', '', '', '', '', '',
+            'TOTAL KESELURUHAN:',
+            format_number(total_all)
+        ])
+        
+        # ===== SUMMARY SECTION =====
+        writer.writerow([])
+        writer.writerow(['RINGKASAN'])
+        writer.writerow(['Total Pekerjaan:', len(rekap_rows)])
+        writer.writerow(['Total Anggaran:', format_number(total_all)])
+        writer.writerow(['BUK/Markup:', f'{mp}%'])
+        
+        return response
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export CSV gagal: {str(e)}'
+        }, status=500)
+
+# ============== EXPORT PDF ==============
+@login_required
+@require_GET
+def export_rekap_rab_pdf(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format PDF dengan layout profesional
+    - Landscape A4 untuk tabel lebar
+    - Typography yang lebih baik
+    - Auto text wrapping untuk kolom panjang
+    - Page numbering
+    - Professional color scheme
+    """
+    if not REPORTLAB_AVAILABLE:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Library reportlab belum terinstall. Jalankan: pip install reportlab'
+        }, status=500)
+    
+    try:
+        project = _owner_or_404(project_id, request.user)
+        rekap_rows = compute_rekap_for_project(project)
+        pricing = _get_or_create_pricing(project)
+        mp = pricing.markup_percent or Decimal("10.00")
+        
+        buffer = BytesIO()
+        
+        # Document setup - Landscape A4
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.platypus import PageBreak
+        
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=landscape(A4),
+            rightMargin=10*mm,
+            leftMargin=10*mm,
+            topMargin=15*mm,
+            bottomMargin=15*mm,
+            title=f"Rekap RAB - {project.nama}"
+        )
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # ===== CUSTOM STYLES =====
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1a5490'),
+            spaceAfter=6,
+            alignment=1,  # center
+            fontName='Helvetica-Bold'
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.HexColor('#666666'),
+            spaceAfter=3,
+            alignment=1,  # center
+            fontName='Helvetica'
+        )
+        
+        # ===== HEADER =====
+        elements.append(Paragraph("REKAP RENCANA ANGGARAN BIAYA (RAB)", title_style))
+        elements.append(Paragraph(f"<b>{project.nama}</b>", subtitle_style))
+        
+        from datetime import datetime
+        info_text = f"Project ID: {project.id} | BUK: {mp}% | Tanggal: {datetime.now().strftime('%d-%m-%Y')}"
+        elements.append(Paragraph(info_text, subtitle_style))
+        elements.append(Spacer(1, 12))
+        
+        # ===== TABLE DATA =====
+        data = [[
+            Paragraph('<b>No</b>', styles['Normal']),
+            Paragraph('<b>Klas.</b>', styles['Normal']),
+            Paragraph('<b>Sub</b>', styles['Normal']),
+            Paragraph('<b>Kode</b>', styles['Normal']),
+            Paragraph('<b>Uraian</b>', styles['Normal']),
+            Paragraph('<b>Sat</b>', styles['Normal']),
+            Paragraph('<b>Vol</b>', styles['Normal']),
+            Paragraph('<b>TK</b>', styles['Normal']),
+            Paragraph('<b>BHN</b>', styles['Normal']),
+            Paragraph('<b>ALT</b>', styles['Normal']),
+            Paragraph('<b>LAIN</b>', styles['Normal']),
+            Paragraph('<b>Jml (E)</b>', styles['Normal']),
+            Paragraph('<b>BUK (F)</b>', styles['Normal']),
+            Paragraph('<b>HSP (G)</b>', styles['Normal']),
+            Paragraph('<b>Total</b>', styles['Normal']),
+        ]]
+        
+        # Helper untuk format angka
+        def format_currency(val, show_decimal=True):
+            if val is None:
+                return '0'
+            try:
+                num = Decimal(str(val))
+                if show_decimal:
+                    return f"{num:,.0f}".replace(',', '.')
+                else:
+                    return f"{int(num):,}".replace(',', '.')
+            except:
+                return '0'
+        
+        # Data rows
+        for idx, row in enumerate(rekap_rows, start=1):
+            # Truncate text yang terlalu panjang
+            klas = (row.get('klasifikasi_nama', '') or '')[:12]
+            sub = (row.get('subklasifikasi_nama', '') or '')[:12]
+            kode = (row.get('pekerjaan_kode', '') or '')[:10]
+            
+            # Uraian dengan wrapping
+            uraian = row.get('pekerjaan_uraian', '') or ''
+            if len(uraian) > 35:
+                uraian = uraian[:32] + '...'
+            
+            data.append([
+                str(idx),
+                klas,
+                sub,
+                kode,
+                uraian,
+                (row.get('pekerjaan_satuan', '') or '')[:5],
+                format_currency(row.get('volume'), False),
+                format_currency(row.get('A')),
+                format_currency(row.get('B')),
+                format_currency(row.get('C')),
+                format_currency(row.get('LAIN')),
+                format_currency(row.get('E_base')),
+                format_currency(row.get('F')),
+                format_currency(row.get('G')),
+                format_currency(row.get('total')),
+            ])
+        
+        # Total row
+        total_all = sum(Decimal(str(r.get('total', 0))) for r in rekap_rows)
+        data.append([
+            '', '', '', '', '', '', '', '', '', '', '', '', '',
+            Paragraph('<b>TOTAL:</b>', styles['Normal']),
+            Paragraph(f'<b>{format_currency(total_all)}</b>', styles['Normal'])
+        ])
+        
+        # ===== TABLE STYLING =====
+        # Column widths (adjusted for landscape A4)
+        col_widths = [
+            8*mm,   # No
+            20*mm,  # Klasifikasi
+            20*mm,  # Sub
+            18*mm,  # Kode
+            38*mm,  # Uraian
+            10*mm,  # Satuan
+            12*mm,  # Volume
+            16*mm,  # TK
+            16*mm,  # BHN
+            16*mm,  # ALT
+            16*mm,  # LAIN
+            16*mm,  # Jumlah
+            16*mm,  # BUK
+            16*mm,  # HSP
+            20*mm,  # Total
+        ]
+        
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        
+        # Professional color scheme
+        header_color = colors.HexColor('#1a5490')
+        row_even = colors.HexColor('#f0f4f8')
+        row_odd = colors.white
+        total_color = colors.HexColor('#2c5aa0')
+        
+        table_style = TableStyle([
+            # Header styling
+            ('BACKGROUND', (0, 0), (-1, 0), header_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
+            
+            # Data rows - alternating colors
+            ('BACKGROUND', (0, 1), (-1, -2), row_even),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [row_even, row_odd]),
+            
+            # Text alignment
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # No
+            ('ALIGN', (1, 1), (5, -1), 'LEFT'),    # Text columns
+            ('ALIGN', (6, 1), (-1, -1), 'RIGHT'),  # Number columns
+            
+            # Font
+            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -2), 7),
+            ('TEXTCOLOR', (0, 1), (-1, -2), colors.HexColor('#333333')),
+            
+            # Grid
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+            ('LINEBELOW', (0, 0), (-1, 0), 1.5, header_color),
+            
+            # Total row styling
+            ('BACKGROUND', (0, -1), (-1, -1), total_color),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
+            ('ALIGN', (0, -1), (-1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, -1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, -1), (-1, -1), 8),
+        ])
+        
+        table.setStyle(table_style)
+        elements.append(table)
+        
+        # ===== FOOTER INFO =====
+        elements.append(Spacer(1, 10))
+        
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.HexColor('#666666'),
+            fontName='Helvetica-Oblique'
+        )
+        
+        footer_text = f"Total Pekerjaan: {len(rekap_rows)} | Total Anggaran: Rp {format_currency(total_all)} | Markup: {mp}%"
+        elements.append(Paragraph(footer_text, footer_style))
+        
+        # Build PDF
+        doc.build(elements)
+        
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'Rekap_RAB_Project_{project_id}_{timestamp}.pdf'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export PDF gagal: {str(e)}'
+        }, status=500)
+
+# ============== EXPORT WORD ==============
+@login_required
+@require_GET
+def export_rekap_rab_word(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format Word dengan layout profesional
+    - Landscape orientation
+    - Professional table styling
+    - Proper column widths
+    - Color scheme yang konsisten
+    - Summary section
+    """
+    if not DOCX_AVAILABLE:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Library python-docx belum terinstall. Jalankan: pip install python-docx'
+        }, status=500)
+    
+    try:
+        project = _owner_or_404(project_id, request.user)
+        rekap_rows = compute_rekap_for_project(project)
+        pricing = _get_or_create_pricing(project)
+        mp = pricing.markup_percent or Decimal("10.00")
+        
+        # Create document
+        doc = Document()
+        
+        # ===== PAGE SETUP - LANDSCAPE =====
+        section = doc.sections[0]
+        
+        # Set to landscape
+        section.page_width = Inches(11.69)   # A4 landscape width
+        section.page_height = Inches(8.27)   # A4 landscape height
+        
+        # Margins
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+        
+        # ===== HEADER SECTION =====
+        # Title
+        title = doc.add_heading('REKAP RENCANA ANGGARAN BIAYA (RAB)', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title.runs[0]
+        title_run.font.size = Pt(16)
+        title_run.font.color.rgb = RGBColor(26, 84, 144)  # Blue color
+        
+        # Project info
+        info = doc.add_paragraph()
+        info.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        info_run = info.add_run(f'{project.nama}')
+        info_run.font.size = Pt(12)
+        info_run.font.bold = True
+        
+        # Details
+        from datetime import datetime
+        details = doc.add_paragraph()
+        details.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        details_text = f"Project ID: {project.id} | BUK: {mp}% | Tanggal: {datetime.now().strftime('%d-%m-%Y %H:%M')}"
+        details_run = details.add_run(details_text)
+        details_run.font.size = Pt(9)
+        details_run.font.color.rgb = RGBColor(102, 102, 102)
+        
+        doc.add_paragraph()  # Spacer
+        
+        # ===== TABLE =====
+        # 15 columns: No, Klas, Sub, Kode, Uraian, Sat, Vol, TK, BHN, ALT, LAIN, E, F, G, Total
+        table = doc.add_table(rows=1, cols=15)
+        table.style = 'Light Grid Accent 1'
+        
+        # Helper function untuk format angka
+        def format_currency(val, show_decimal=True):
+            if val is None:
+                return '0'
+            try:
+                num = Decimal(str(val))
+                formatted = f"{num:,.0f}".replace(',', '.')
+                return formatted
+            except:
+                return '0'
+        
+        # ===== HEADER ROW =====
+        header_cells = table.rows[0].cells
+        headers = [
+            'No', 'Klasifikasi', 'Sub-Klas', 'Kode', 'Uraian Pekerjaan', 
+            'Sat', 'Vol', 'TK', 'BHN', 'ALT', 'LAIN', 'Jumlah', 'BUK', 'HSP', 'Total'
+        ]
+        
+        for i, header_text in enumerate(headers):
+            cell = header_cells[i]
+            cell.text = header_text
+            
+            # Header styling
+            for paragraph in cell.paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in paragraph.runs:
+                    run.font.bold = True
+                    run.font.size = Pt(8)
+                    run.font.color.rgb = RGBColor(255, 255, 255)
+            
+            # Cell background color (header)
+            from docx.oxml.ns import nsdecls
+            from docx.oxml import parse_xml
+            
+            shading_elm = parse_xml(r'<w:shd {} w:fill="1A5490"/>'.format(nsdecls('w')))
+            cell._element.get_or_add_tcPr().append(shading_elm)
+        
+        # ===== DATA ROWS =====
+        for idx, row in enumerate(rekap_rows, start=1):
+            row_cells = table.add_row().cells
+            
+            row_data = [
+                str(idx),
+                (row.get('klasifikasi_nama', '') or '')[:15],
+                (row.get('subklasifikasi_nama', '') or '')[:15],
+                (row.get('pekerjaan_kode', '') or '')[:12],
+                (row.get('pekerjaan_uraian', '') or '')[:40],
+                (row.get('pekerjaan_satuan', '') or '')[:5],
+                format_currency(row.get('volume'), False),
+                format_currency(row.get('A')),
+                format_currency(row.get('B')),
+                format_currency(row.get('C')),
+                format_currency(row.get('LAIN')),
+                format_currency(row.get('E_base')),
+                format_currency(row.get('F')),
+                format_currency(row.get('G')),
+                format_currency(row.get('total')),
+            ]
+            
+            for i, value in enumerate(row_data):
+                cell = row_cells[i]
+                cell.text = str(value)
+                
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(7)
+                    
+                    # Alignment
+                    if i == 0:  # No
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif i <= 5:  # Text columns
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    else:  # Number columns
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                
+                # Alternating row colors
+                if idx % 2 == 0:
+                    shading_elm = parse_xml(r'<w:shd {} w:fill="F0F4F8"/>'.format(nsdecls('w')))
+                    cell._element.get_or_add_tcPr().append(shading_elm)
+        
+        # ===== TOTAL ROW =====
+        total_all = sum(Decimal(str(r.get('total', 0))) for r in rekap_rows)
+        row_cells = table.add_row().cells
+        
+        # Merge cells for "TOTAL:" label
+        for i in range(13):
+            row_cells[i].text = ''
+        
+        row_cells[13].text = 'TOTAL:'
+        row_cells[14].text = format_currency(total_all)
+        
+        # Total row styling
+        for i in [13, 14]:
+            for paragraph in row_cells[i].paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                for run in paragraph.runs:
+                    run.font.bold = True
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = RGBColor(255, 255, 255)
+            
+            # Background color
+            shading_elm = parse_xml(r'<w:shd {} w:fill="2C5AA0"/>'.format(nsdecls('w')))
+            row_cells[i]._element.get_or_add_tcPr().append(shading_elm)
+        
+        # ===== SET COLUMN WIDTHS =====
+        # Proportional widths for landscape A4
+        widths = [
+            Inches(0.3),   # No
+            Inches(0.9),   # Klasifikasi
+            Inches(0.9),   # Sub
+            Inches(0.7),   # Kode
+            Inches(1.8),   # Uraian
+            Inches(0.4),   # Satuan
+            Inches(0.5),   # Volume
+            Inches(0.7),   # TK
+            Inches(0.7),   # BHN
+            Inches(0.7),   # ALT
+            Inches(0.7),   # LAIN
+            Inches(0.7),   # Jumlah
+            Inches(0.7),   # BUK
+            Inches(0.7),   # HSP
+            Inches(0.9),   # Total
+        ]
+        
+        for row in table.rows:
+            for idx, width in enumerate(widths):
+                row.cells[idx].width = width
+        
+        # ===== SUMMARY SECTION =====
+        doc.add_paragraph()  # Spacer
+        
+        summary = doc.add_paragraph()
+        summary_run = summary.add_run('RINGKASAN')
+        summary_run.font.bold = True
+        summary_run.font.size = Pt(11)
+        
+        # Summary details
+        summary_details = doc.add_paragraph()
+        summary_text = f"Total Pekerjaan: {len(rekap_rows)} | Total Anggaran: Rp {format_currency(total_all)} | BUK/Markup: {mp}%"
+        summary_run = summary_details.add_run(summary_text)
+        summary_run.font.size = Pt(9)
+        
+        # ===== FOOTER =====
+        doc.add_paragraph()
+        footer = doc.add_paragraph()
+        footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        footer_run = footer.add_run(f"Dicetak pada: {datetime.now().strftime('%d-%m-%Y %H:%M')}")
+        footer_run.font.size = Pt(8)
+        footer_run.font.italic = True
+        footer_run.font.color.rgb = RGBColor(102, 102, 102)
+        
+        # ===== SAVE TO BUFFER =====
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        # ===== RESPONSE =====
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'Rekap_RAB_Project_{project_id}_{timestamp}.docx'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export Word gagal: {str(e)}'
+        }, status=500)
+  

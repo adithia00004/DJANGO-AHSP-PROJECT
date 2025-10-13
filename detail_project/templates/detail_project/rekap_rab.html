@@ -90,7 +90,8 @@
       </button>
     </div>
 
-    <!-- Actions (Right side) -->
+
+   <!-- Actions (Right side) -->
     <div class="ms-auto d-flex align-items-center gap-2">
       <button id="btn-refresh" 
               class="btn btn-outline-secondary" 
@@ -100,23 +101,68 @@
         <i class="bi bi-arrow-repeat" aria-hidden="true"></i> 
         <span class="d-none d-md-inline">Refresh</span>
       </button>
-      <button id="btn-export" 
-              class="btn btn-outline-primary" 
+      
+      <!-- Export Dropdown (CSV/PDF/Word) -->
+      <div class="btn-group" role="group">
+        <button type="button" 
+                class="btn btn-outline-primary dropdown-toggle" 
+                data-bs-toggle="dropdown" 
+                aria-expanded="false"
+                aria-label="Export options">
+          <i class="bi bi-download" aria-hidden="true"></i>
+          <span class="d-none d-md-inline">Export</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            <button class="dropdown-item" 
+                    type="button" 
+                    id="btn-export-csv"
+                    title="Export ke CSV (Excel-friendly)">
+              <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
+              Export CSV
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item" 
+                    type="button" 
+                    id="btn-export-pdf"
+                    title="Export ke PDF">
+              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+              Export PDF
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item" 
+                    type="button" 
+                    id="btn-export-word"
+                    title="Export ke Word (dapat diedit)">
+              <i class="bi bi-file-earmark-word text-primary me-2"></i>
+              Export Word
+            </button>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- Keep your existing Excel button (separate feature) -->
+      <button id="btn-export-excel" 
+              class="btn btn-success" 
               type="button"
-              title="Export data ke CSV"
-              aria-label="Export CSV">
-        <i class="bi bi-download" aria-hidden="true"></i> 
-        <span class="d-none d-md-inline">Export</span>
+              title="Export ke Excel dengan format khusus"
+              aria-label="Export Excel">
+        <i class="bi bi-file-earmark-excel" aria-hidden="true"></i> 
+        <span class="d-none d-lg-inline">Excel</span>
       </button>
+      
+      <!-- Print button -->
       <button id="btn-print" 
               class="btn btn-success" 
               type="button"
               title="Cetak atau simpan ke PDF"
               aria-label="Print / Save PDF">
         <i class="bi bi-printer-fill" aria-hidden="true"></i> 
-        <span class="d-none d-md-inline">Print / PDF</span>
+        <span class="d-none d-md-inline">Print</span>
       </button>
-    </div>
+    </div>    
 
     <!-- Live region untuk announcements (accessibility) -->
     <div id="rab-announce" 
@@ -268,6 +314,17 @@
 
 {% block extra_js %}
   {{ block.super }}
+  
+  <!-- SheetJS for Excel export (keep this - for your Excel feature) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  
+  <!-- Excel Exporter (keep this - your existing feature) -->
+  <script src="{% static 'detail_project/js/export/ExcelExporter.js' %}"></script>
+  
+  <!-- NEW: Unified Export Manager (MUST load BEFORE rekap_rab.js) -->
+  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+  
+  <!-- Main Rekap RAB Script -->
   <script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
   
   <!-- Print System (ES6 Module) -->

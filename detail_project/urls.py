@@ -2,6 +2,7 @@
 from django.urls import path
 from . import views
 from . import views_api
+from . import views_export  # ← Clean import at root level!
 
 app_name = "detail_project"
 
@@ -65,4 +66,19 @@ urlpatterns = [
     path('api/project/<int:project_id>/volume-formula-state/', views_api.api_volume_formula_state, name='api_volume_formula_state_alias'),
 
 
+    # Export endpoints
+    # Export Rekap RAB
+    path('api/project/<int:project_id>/export/rekap-rab/csv/', 
+         views_api.export_rekap_rab_csv, 
+         name='export_rekap_rab_csv'),
+    
+    path('api/project/<int:project_id>/export/rekap-rab/pdf/', 
+         views_api.export_rekap_rab_pdf, 
+         name='export_rekap_rab_pdf'),
+    
+    path('api/project/<int:project_id>/export/rekap-rab/word/', 
+         views_api.export_rekap_rab_word, 
+         name='export_rekap_rab_word'),
+
 ]
+
