@@ -1,17 +1,36 @@
-# =====================================================================
-# STEP 2: Create Base Structure
-# detail_project/exports/__init__.py
-# =====================================================================
+# ============================================================================
+# FILE: detail_project/exports/__init__.py
+# ============================================================================
+"""
+Export System - Phase 1: Foundation
 
-"Export system for AHSP project"
+Menyediakan base exporter dan shared utilities untuk export ke berbagai format.
+Implementasi Opsi 3 Pragmatic Architecture.
 
-from .base import ExportConfig, BaseExporter, SignatureConfig, WatermarkConfig
-from .export_manager import ExportManager
+Usage:
+    from .exports import BaseExporter, RekapRABExporter
+    
+    exporter = RekapRABExporter(project, data, pricing)
+    response = exporter.to_csv()
+
+Author: Export Refactoring Phase 1
+Created: 2025
+"""
+
+from .base import BaseExporter
+
+# Placeholder untuk future exports (Phase 2+)
+from .rekap_rab import RekapRABExporter
+# from .rincian_rab import RincianRABExporter
+from .rekap_kebutuhan import RekapKebutuhanExporter
 
 __all__ = [
-    'ExportConfig',
-    'BaseExporter', 
-    'SignatureConfig',
-    'WatermarkConfig',
-    'ExportManager'
+    'BaseExporter',
+    # Future exports akan ditambahkan di sini
+    'RekapRABExporter',
+    # 'RincianRABExporter', 
+    'RekapKebutuhanExporter',
 ]
+
+__version__ = '1.0.0'
+__phase__ = 'Phase 1: Foundation'

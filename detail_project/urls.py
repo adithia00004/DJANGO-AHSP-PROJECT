@@ -54,8 +54,7 @@ urlpatterns = [
     # ===== API: Rekap =====
     path('api/project/<int:project_id>/rekap/', views_api.api_get_rekap_rab, name='api_get_rekap_rab'),
     path('api/project/<int:project_id>/rekap-kebutuhan/', views_api.api_get_rekap_kebutuhan, name='api_get_rekap_kebutuhan'),  # <-- Fase 5
-    path('api/project/<int:project_id>/rekap-kebutuhan/export.csv', views_api.api_export_rekap_kebutuhan_csv, name='api_export_rekap_kebutuhan_csv'),  # <-- Fase 5
-
+    
     # --- NEW: Rincian RAB (API)
     path('api/project/<int:project_id>/rincian-rab/',          views_api.api_get_rincian_rab,         name='api_get_rincian_rab'),          # NEW (GET)
     path('api/project/<int:project_id>/rincian-rab/export.csv', views_api.api_export_rincian_rab_csv, name='api_export_rincian_rab_csv'),   # NEW (EXPORT)
@@ -80,5 +79,20 @@ urlpatterns = [
          views_api.export_rekap_rab_word, 
          name='export_rekap_rab_word'),
 
+     # Export Rekap Kebutuhan
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/csv/', 
+          views_api.api_export_rekap_kebutuhan_csv, 
+          name='api_export_rekap_kebutuhan_csv'),  # ✅ CORRECT NAME
+
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/pdf/', 
+          views_api.export_rekap_kebutuhan_pdf, 
+          name='api_export_rekap_kebutuhan_pdf'),  # ✅ ADD api_ prefix
+
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/word/', 
+          views_api.export_rekap_kebutuhan_word, 
+          name='api_export_rekap_kebutuhan_word'),  # ✅ ADD api_ prefix
+     
+     
+   
 ]
 
