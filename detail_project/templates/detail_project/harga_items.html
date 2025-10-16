@@ -14,34 +14,40 @@
 
 {% block dp_content %}
 
-<!-- ===== Toolbar (sticky tepat di bawah topbar global) ===== -->
+<!-- ===== Toolbar (sticky, konsisten SSOT) ===== -->
 <div id="hi-toolbar"
-     class="dp-layer-toolbar bg-body border-bottom d-flex justify-content-between align-items-center gap-2 px-3 py-2 ux-text-xs"
-     style="position:sticky; top:var(--dp-topbar-h); z-index:var(--dp-z-toolbar); min-height:var(--hi-toolbar-h)"
-     role="region" aria-label="Toolbar Harga Items">
+     class="d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom px-3 ux-toolbar-inputs"
+     role="toolbar" aria-label="Toolbar Harga Items">
 
   <!-- Searchbar -->
-  <div class="position-relative flex-grow-1 me-2" role="search">
-    <div class="input-group input-group-sm">
-      <span class="input-group-text"><i class="bi bi-search"></i></span>
-      <input id="hi-filter" type="search"
-             class="form-control ux-focusable"
-             placeholder="Cari kode / uraian / kategori…"
-             autocomplete="off"
+  <div class="position-relative flex-grow-1 me-2 hi-searchbar" role="search">
+    <div class="input-group">
+      <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+      <input id="hi-filter" type="search" class="form-control ux-focusable"
+             placeholder="Cari kode / uraian / kategori…" autocomplete="off"
              aria-label="Cari item harga">
     </div>
   </div>
 
   <!-- Actions -->
-  <div class="d-flex align-items-center gap-2">
-    <button id="hi-btn-export" class="btn btn-sm btn-outline-secondary" type="button" title="Export CSV">
-      <i class="bi bi-file-arrow-down" aria-hidden="true"></i>
-      <span class="only-desktop">Export</span>
-    </button>
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <!-- Export dropdown (CSV/PDF/Word) -->
+    <div class="btn-group ux-dropdown" role="group">
+      <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export options">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-sm-inline">Export</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button class="dropdown-item" type="button" id="btn-export-csv"><i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Export CSV</button></li>
+        <li><button class="dropdown-item" type="button" id="btn-export-pdf"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Export PDF</button></li>
+        <li><button class="dropdown-item" type="button" id="btn-export-word"><i class="bi bi-file-earmark-word text-primary me-2"></i>Export Word</button></li>
+      </ul>
+    </div>
 
-    <button id="hi-btn-save" class="btn btn-sm btn-success btn-neon d-inline-flex align-items-center gap-2" type="button" aria-live="polite">
+    <button id="hi-btn-save" class="btn btn-sm btn-success d-inline-flex align-items-center gap-2" type="button" aria-live="polite">
       <span class="spinner-border spinner-border-sm" id="hi-save-spin" role="status" aria-hidden="true" hidden></span>
-      <span>Simpan</span>
+      <i class="bi bi-save" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline">Simpan</span>
     </button>
   </div>
 </div>
@@ -113,7 +119,7 @@
 </div>
 
 <!-- ===== Modal: Konversi Satuan (bahasa formal) ===== -->
-<div class="modal fade" id="hiConvModal" tabindex="-1" aria-labelledby="hiConvLabel" aria-hidden="true">
+  <div class="modal fade ux-modal" id="hiConvModal" tabindex="-1" aria-labelledby="hiConvLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-md">
     <div class="modal-content">
       <div class="modal-header">

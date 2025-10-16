@@ -11,15 +11,17 @@
 
 {% block dp_content %}
 
-<!-- ===== Toolbar (sticky tepat di bawah topbar SSOT) ===== -->
+<!-- ===== Toolbar (sticky di bawah topbar; konsisten SSOT) ===== -->
 <div id="vp-toolbar"
-     class="d-flex justify-content-between align-items-center mb-2">
+     class="d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom ux-toolbar-inputs"
+     role="toolbar"
+     aria-label="Toolbar Volume Pekerjaan">
 
   <!-- Searchbar -->
   <div class="vp-searchbar position-relative flex-grow-1 me-2" role="search">
-    <div class="input-group input-group-sm">
-      <span class="input-group-text"><i class="bi bi-search"></i></span>
-      <input id="vp-search" type="search" class="form-control"
+    <div class="input-group">
+      <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+      <input id="vp-search" type="search" class="form-control ux-focusable"
              placeholder="Cari Klasifikasi / Sub-Klasifikasi / Pekerjaan..."
              autocomplete="off"
              aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
@@ -36,20 +38,64 @@
   </div>
 
   <!-- Actions kanan -->
-  <div class="d-flex align-items-center gap-2">
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <!-- Save (mirroring List/Rekap) -->
+    <button id="btn-save"
+            class="btn btn-success btn-sm"
+            type="button"
+            title="Simpan perubahan"
+            aria-label="Simpan">
+      <i class="bi bi-save" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline">Simpan</span>
+    </button>
+
+    <!-- Export dropdown (CSV/PDF/Word) -->
+    <div class="btn-group" role="group" aria-label="Opsi export">
+      <button type="button"
+              class="btn btn-outline-primary btn-sm dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              aria-label="Export options">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-sm-inline">Export</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-csv">
+            <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
+            Export CSV
+          </button>
+        </li>
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-pdf">
+            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+            Export PDF
+          </button>
+        </li>
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-word">
+            <i class="bi bi-file-earmark-word text-primary me-2"></i>
+            Export Word
+          </button>
+        </li>
+      </ul>
+    </div>
+
     <button type="button"
             id="btn-vp-sidebar-toggle"
             class="btn btn-primary btn-sm js-vp-sidebar-toggle"
             aria-controls="vp-sidebar"
             aria-expanded="false">
-      Parameter Perhitungan
+      <i class="bi bi-sliders2"></i>
+      <span class="d-none d-sm-inline">Parameter</span>
     </button>
 
     <!-- Bantuan Formula (Modal) -->
     <button type="button" class="btn btn-outline-secondary btn-sm"
             data-bs-toggle="modal" data-bs-target="#vpFormulaHelpModal"
             aria-label="Buka bantuan formula">
-      Bantuan
+      <i class="bi bi-question-circle"></i>
+      <span class="d-none d-sm-inline">Bantuan</span>
     </button>
   </div>
 </div>
@@ -187,7 +233,7 @@
                         </div>
                         <div class="card-body p-2">
                           <div class="table-responsive">
-                            <table class="table table-sm align-middle vp-table">
+                            <table class="table table-sm align-middle vp-table ux-thead">
                               <colgroup>
                                 <col style="width:6ch">              <!-- No -->
                                 <col class="col-urai">               <!-- Uraian -->

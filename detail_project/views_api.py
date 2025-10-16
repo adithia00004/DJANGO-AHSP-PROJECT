@@ -1714,13 +1714,9 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
         
-        # 2. Get data
-        from .services import compute_kebutuhan_items
-        rows = compute_kebutuhan_items(project)
-        
-        # 3. Export via exporter (no pricing needed for kebutuhan)
-        exporter = RekapKebutuhanExporter(project, rows, None)
-        return exporter.to_csv()
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_kebutuhan('csv')
         
     except Exception as e:
         import traceback
@@ -1745,13 +1741,9 @@ def export_rekap_kebutuhan_pdf(request: HttpRequest, project_id: int):
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
         
-        # 2. Get data
-        from .services import compute_kebutuhan_items
-        rows = compute_kebutuhan_items(project)
-        
-        # 3. Export via exporter
-        exporter = RekapKebutuhanExporter(project, rows, None)
-        return exporter.to_pdf()
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_kebutuhan('pdf')
         
     except Exception as e:
         import traceback
@@ -1777,13 +1769,9 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
         
-        # 2. Get data
-        from .services import compute_kebutuhan_items
-        rows = compute_kebutuhan_items(project)
-        
-        # 3. Export via exporter
-        exporter = RekapKebutuhanExporter(project, rows, None)
-        return exporter.to_word()
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_kebutuhan('word')
         
     except Exception as e:
         import traceback
@@ -1943,19 +1931,16 @@ def export_rekap_rab_csv(request: HttpRequest, project_id: int):
     """
     Export Rekap RAB ke format CSV.
     
-    Thin controller - delegasi ke RekapRABExporter.
+    Thin controller - delegasi ke ExportManager (pilot v2).
     """
     try:
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
         
-        # 2. Get data
-        rekap_rows = compute_rekap_for_project(project)
-        pricing = _get_or_create_pricing(project)
-        
-        # 3. Export via exporter
-        exporter = RekapRABExporter(project, rekap_rows, pricing)
-        return exporter.to_csv()
+        # 2. Export via ExportManager (builds 2-page payload)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('csv')
         
     except Exception as e:
         import traceback
@@ -1976,19 +1961,15 @@ def export_rekap_rab_pdf(request: HttpRequest, project_id: int):
     """
     Export Rekap RAB ke format PDF.
     
-    Thin controller - delegasi ke RekapRABExporter.
+    Thin controller - delegasi ke ExportManager (pilot v2).
     """
     try:
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
         
-        # 2. Get data
-        rekap_rows = compute_rekap_for_project(project)
-        pricing = _get_or_create_pricing(project)
-        
-        # 3. Export via exporter
-        exporter = RekapRABExporter(project, rekap_rows, pricing)
-        return exporter.to_pdf()
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('pdf')
         
     except Exception as e:
         import traceback
@@ -2009,19 +1990,15 @@ def export_rekap_rab_word(request: HttpRequest, project_id: int):
     """
     Export Rekap RAB ke format Word.
     
-    Thin controller - delegasi ke RekapRABExporter.
+    Thin controller - delegasi ke ExportManager (pilot v2).
     """
     try:
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
         
-        # 2. Get data
-        rekap_rows = compute_rekap_for_project(project)
-        pricing = _get_or_create_pricing(project)
-        
-        # 3. Export via exporter
-        exporter = RekapRABExporter(project, rekap_rows, pricing)
-        return exporter.to_word()
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('word')
         
     except Exception as e:
         import traceback

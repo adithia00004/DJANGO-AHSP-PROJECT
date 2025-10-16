@@ -6,10 +6,11 @@
 import csv
 from io import StringIO
 from typing import Dict, Any
-from .base import BaseExporter
+from .base import ConfigExporterBase
+from django.http import HttpResponse
 
 
-class CSVExporter(BaseExporter):
+class CSVExporter(ConfigExporterBase):
     """CSV Export handler - Excel friendly"""
     
     def export(self, data: Dict[str, Any]) -> HttpResponse:
@@ -29,42 +30,47 @@ class CSVExporter(BaseExporter):
         output = StringIO()
         writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL)
         
-        # Write project info as header
-        writer.writerow([self.config.title])
-        writer.writerow(['Nama Proyek', self.config.project_name])
-        writer.writerow(['Kode Proyek', self.config.project_code])
-        writer.writerow(['Lokasi', self.config.location])
-        writer.writerow(['Tahun', self.config.year])
-        writer.writerow([])  # Empty row
-        
-        # Write table
-        table_data = data.get('table_data', {})
-        headers = table_data.get('headers', [])
-        rows = table_data.get('rows', [])
-        hierarchy = data.get('hierarchy_levels', {})
-        
-        # Write headers
-        if headers:
-            writer.writerow(headers)
-        
-        # Write data rows with indentation for hierarchy
-        for idx, row in enumerate(rows):
-            level = hierarchy.get(idx, 3)
-            
-            # Add indentation for hierarchy in first column
-            if level > 1 and len(row) > 0:
-                indent = '  ' * (level - 1)
-                row_with_indent = [indent + str(row[0])] + list(row[1:])
-            else:
-                row_with_indent = row
-            
-            writer.writerow(row_with_indent)
-        
-        # Add footer if present
-        if 'footer_rows' in data:
-            writer.writerow([])  # Empty row
-            for footer_row in data['footer_rows']:
-                writer.writerow(footer_row)
+        def write_section(section: Dict[str, Any]):
+            # Header per section
+            title = section.get('title') or self.config.title
+            writer.writerow([title])
+            # Identity block aligned with page
+            from ..export_config import build_identity_rows
+            for label, _colon, value in build_identity_rows(self.config):
+                writer.writerow([label, value])
+            writer.writerow([])
+
+            table_data = section.get('table_data', {})
+            headers = table_data.get('headers', [])
+            rows = table_data.get('rows', [])
+            hierarchy = section.get('hierarchy_levels', {})
+
+            if headers:
+                writer.writerow(headers)
+
+            for idx, row in enumerate(rows):
+                level = hierarchy.get(idx, 3)
+                if level > 1 and len(row) > 0:
+                    indent = '  ' * (level - 1)
+                    row_with_indent = [indent + str(row[0])] + list(row[1:])
+                else:
+                    row_with_indent = row
+                writer.writerow(row_with_indent)
+
+            if 'footer_rows' in section:
+                writer.writerow([])
+                for footer_row in section['footer_rows']:
+                    writer.writerow(footer_row)
+
+        # Multi-page support
+        if 'pages' in data:
+            pages = data['pages']
+            for i, section in enumerate(pages):
+                write_section(section)
+                if i < len(pages) - 1:
+                    writer.writerow([])
+        else:
+            write_section(data)
         
         # Create response
         content = output.getvalue().encode('utf-8-sig')  # BOM for Excel

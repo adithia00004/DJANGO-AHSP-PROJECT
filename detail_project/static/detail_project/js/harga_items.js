@@ -22,7 +22,10 @@
   const $tbody = document.getElementById('hi-tbody');
   const $filter = document.getElementById('hi-filter');
   const $btnSave = document.getElementById('hi-btn-save');
-  const $btnExport = document.getElementById('hi-btn-export');
+  // Unified export (dropdown like Rekap RAB)
+  const btnExportCSV  = document.getElementById('btn-export-csv');
+  const btnExportPDF  = document.getElementById('btn-export-pdf');
+  const btnExportWord = document.getElementById('btn-export-word');
   const $stats = document.getElementById('hi-stats');
   const $bukInput = document.getElementById('hi-buk-input');
 
@@ -273,7 +276,8 @@
   });
 
   // ===== EXPORT CSV
-  $btnExport?.addEventListener('click', ()=>{
+  // Export CSV (fallback local), or unified via ExportManager if available
+  function exportCSVLocal(){
     const headers = ['No','Kategori','Kode','Uraian','Satuan','Harga','Nominal'];
     const lines = [headers.join(';')];
     let idx=0;
@@ -293,7 +297,36 @@
     const a = document.createElement('a'); a.href = url;
     a.download = `harga_items_${(new Date()).toISOString().slice(0,10)}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
+  }
+
+  (function initUnifiedExport(){
+    const projectId = ROOT?.dataset?.projectId;
+    if (!projectId){
+      // bind CSV local only
+      btnExportCSV?.addEventListener('click', exportCSVLocal);
+      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
+      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
+      return;
+    }
+    if (typeof ExportManager === 'undefined'){
+      btnExportCSV?.addEventListener('click', exportCSVLocal);
+      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
+      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
+      return;
+    }
+    try{
+      // Page type for backend endpoints (to be provided server-side)
+      const exporter = new ExportManager(projectId, 'harga-items');
+      btnExportCSV?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('csv'); });
+      btnExportPDF?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('pdf'); });
+      btnExportWord?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('word'); });
+    }catch(err){
+      console.warn('[HI] ExportManager init failed, fallback to local CSV', err);
+      btnExportCSV?.addEventListener('click', exportCSVLocal);
+      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
+      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
+    }
+  })();
 
   // ===== BULK PASTE (Kode;[Unit];Harga;[Factor];[Density])
   document.addEventListener('paste', (e)=>{

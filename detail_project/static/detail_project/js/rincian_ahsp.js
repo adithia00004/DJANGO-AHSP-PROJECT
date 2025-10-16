@@ -49,7 +49,7 @@
   const $leftPane = ROOT.querySelector('.rk-left');
   // Toast
   const $toast    = ROOT.querySelector('#rk-toast');
-  
+
 
   // ====== state ======
   let ctrlDetail = null, ctrlPricing = null; // AbortControllers
@@ -64,12 +64,65 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[m]));
-  const num = (x) => {
-    const n = Number(x || 0);
-    return Number.isFinite(n) ? n : 0;
-  };
+  // Parser angka robust (mirip backend parse_any): dukung ","/"." dan ribuan
+  function parseNum(x){
+    if (x == null) return 0;
+    let s = String(x).trim();
+    if (!s) return 0;
+    s = s.replace(/_/g,'');
+    const hasComma = s.includes(',');
+    const hasDot   = s.includes('.');
+    if (hasComma && hasDot){
+      const lastComma = s.lastIndexOf(',');
+      const lastDot   = s.lastIndexOf('.');
+      if (lastComma > lastDot){
+        const fracLen = s.length - lastComma - 1;
+        if (fracLen === 3){ s = s.replace(/,/g,''); }
+        else { s = s.replace(/\./g,'').replace(',', '.'); }
+      } else {
+        const fracLen = s.length - lastDot - 1;
+        if (fracLen === 3){ s = s.replace(/\./g,'').replace(',', '.'); }
+        else { s = s.replace(/,/g,''); }
+      }
+    } else {
+      if (!hasDot && (s.match(/,/g)||[]).length === 1){ s = s.replace(',', '.'); }
+      else if (!hasComma && (s.match(/\./g)||[]).length === 1){ /* ok */ }
+      else { s = s.replace(/\./g,'').replace(',', '.'); }
+    }
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+  const num = parseNum;
   const fmt = (x) => fmtRp.format(num(x));
   const csrf = () => (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] || '');
+
+  // ====== UI polish: icons/classes/placeholder alignment ======
+  function applyIconAndUIFixes(){
+    // Ensure chips use consistent styles
+    const srcChip = ROOT.querySelector('#rk-pkj-source');
+    srcChip?.classList.add('ux-chip','ux-mono','mono');
+    // Update icons to consistent variants
+    const effIcon = ROOT.querySelector('#rk-eff i');
+    if (effIcon && effIcon.classList.contains('bi-lightning-charge')){
+      effIcon.classList.remove('bi-lightning-charge');
+      effIcon.classList.add('bi-lightning-charge-fill');
+    }
+    const ovrIcon = ROOT.querySelector('#rk-pkj-ovr-chip i');
+    if (ovrIcon && ovrIcon.classList.contains('bi-sliders')){
+      ovrIcon.classList.remove('bi-sliders');
+      ovrIcon.classList.add('bi-sliders2');
+    }
+    // Table header style
+    ROOT.querySelector('#ra-table')?.classList.add('ux-thead');
+    // Initial placeholders clean
+    if ($kode)   $kode.textContent = $kode.textContent && $kode.textContent.trim() ? $kode.textContent : '-';
+    if ($sat)    $sat.textContent  = $sat.textContent  && $sat.textContent.trim()  ? $sat.textContent  : '-';
+    if ($src)    $src.textContent  = $src.textContent  && $src.textContent.trim()  ? $src.textContent  : '-';
+    if ($eff && !$eff.textContent.includes('%')) $eff.textContent = 'Efektif: -%';
+    // Loading note punctuation
+    const rowNote = ROOT.querySelector('.ta-job-list .row-note');
+    if (rowNote && /Memuat/.test(rowNote.textContent||'')) rowNote.textContent = 'Memuat…';
+  }
 
   function parsePctUI(s){
     if (s == null) return null;
@@ -428,6 +481,7 @@
   // ====== init ======
   (async () => {
     try{
+      applyIconAndUIFixes();
       if (!EP_POV_PREF) setOverrideUIEnabled(false);
       await loadProjectBUK();
       await loadRekap();

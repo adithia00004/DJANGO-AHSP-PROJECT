@@ -110,7 +110,8 @@ def rincian_ahsp_view(request, project_id: int):
         "pekerjaan": pekerjaan,
         "side_active": "rincian_ahsp",
     }
-    return render(request, "detail_project/rincian_ahsp.html", context)
+    # Use UTF-8 safe template version to avoid decode errors
+    return render(request, "detail_project/rincian_ahsp_utf8.html", context)
 
 @login_required
 @coerce_project_id

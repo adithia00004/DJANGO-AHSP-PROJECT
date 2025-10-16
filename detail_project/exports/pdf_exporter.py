@@ -15,10 +15,11 @@ from reportlab.platypus import (
 )
 from io import BytesIO
 from typing import Dict, Any, List
-from .base import BaseExporter
+from .base import ConfigExporterBase
+from django.http import HttpResponse
 
 
-class PDFExporter(BaseExporter):
+class PDFExporter(ConfigExporterBase):
     """PDF Export handler with ReportLab"""
     
     def __init__(self, config):
@@ -54,7 +55,7 @@ class PDFExporter(BaseExporter):
         }
     
     def export(self, data: Dict[str, Any]) -> HttpResponse:
-        """Export to PDF"""
+        """Export to PDF (supports single or multi-page payload)"""
         buffer = BytesIO()
         
         # Create document
@@ -68,28 +69,55 @@ class PDFExporter(BaseExporter):
             title=self.config.title
         )
         
-        # Build content
         story = []
-        
-        # Header
-        story.extend(self._build_header())
-        story.append(Spacer(1, 5*mm))
-        
-        # Table
-        table = self._build_table(data)
-        story.append(table)
-        
-        # Footer totals if present
-        if 'footer_rows' in data:
-            story.append(Spacer(1, 3*mm))
-            footer_table = self._build_footer_table(data['footer_rows'])
-            story.append(footer_table)
-        
-        story.append(Spacer(1, 8*mm))
-        
-        # Signatures
-        if self.config.signature_config.enabled:
-            story.extend(self._build_signatures())
+
+        def build_page(section: Dict[str, Any], is_pengesahan: bool = False):
+            # Header with page-specific title
+            story.extend(self._build_header(section.get('title') or self.config.title))
+            story.append(Spacer(1, 5*mm))
+
+            # Main table
+            table = self._build_table(section)
+
+            # On pengesahan, try to keep table + footer together when possible
+            if is_pengesahan and 'footer_rows' in section:
+                bundle = []
+                bundle.append(table)
+                bundle.append(Spacer(1, 3*mm))
+                bundle.append(self._build_footer_table(section['footer_rows']))
+                story.append(KeepTogether(bundle))
+            else:
+                story.append(table)
+                if 'footer_rows' in section:
+                    story.append(Spacer(1, 3*mm))
+                    story.append(self._build_footer_table(section['footer_rows']))
+
+            story.append(Spacer(1, 8*mm))
+
+        # Multi-page support
+        pages = data.get('pages')
+        if pages:
+            for idx, section in enumerate(pages):
+                is_pengesahan = (idx == 1)
+                build_page(section, is_pengesahan=is_pengesahan)
+                if idx < len(pages) - 1:
+                    story.append(PageBreak())
+            # Keep footer + signatures together on last page
+            if self.config.signature_config.enabled and pages:
+                last = pages[-1]
+                bundle = []
+                if 'footer_rows' in last:
+                    bundle.append(self._build_footer_table(last['footer_rows']))
+                bundle.extend(self._build_signatures())
+                story.append(KeepTogether(bundle))
+        else:
+            build_page(data)
+            if self.config.signature_config.enabled:
+                bundle = []
+                if 'footer_rows' in data:
+                    bundle.append(self._build_footer_table(data['footer_rows']))
+                bundle.extend(self._build_signatures())
+                story.append(KeepTogether(bundle))
         
         # Build PDF
         doc.build(story)
@@ -101,31 +129,28 @@ class PDFExporter(BaseExporter):
         filename = f"{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.pdf"
         return self._create_response(pdf_content, filename, 'application/pdf')
     
-    def _build_header(self) -> List:
+    def _build_header(self, title_override: str = None) -> List:
         """Build document header"""
         elements = []
         
         # Title
-        title = Paragraph(f"<b>{self.config.title}</b>", self.styles['title'])
+        the_title = title_override or self.config.title
+        title = Paragraph(f"<b>{the_title}</b>", self.styles['title'])
         elements.append(title)
         
-        # Project info
-        info_data = [
-            ['Nama Proyek', ':', self.config.project_name],
-            ['Kode Proyek', ':', self.config.project_code],
-            ['Lokasi', ':', self.config.location],
-            ['Tahun Anggaran', ':', self.config.year],
-        ]
-        
-        if self.config.owner:
-            info_data.append(['Pemilik Proyek', ':', self.config.owner])
+        # Project info (aligned with page identity) built from single helper
+        from ..export_config import build_identity_rows
+        info_data = build_identity_rows(self.config)
         
         info_table = Table(info_data, colWidths=[40*mm, 5*mm, 120*mm])
         info_table.setStyle(TableStyle([
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), self.config.font_size_normal),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+            # Tighter spacing between identity rows
+            ('TOPPADDING', (0, 0), (-1, -1), 0.5*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5*mm),
         ]))
         
         elements.append(info_table)
@@ -139,9 +164,33 @@ class PDFExporter(BaseExporter):
         rows = table_data.get('rows', [])
         col_widths = [w * mm for w in data.get('col_widths', [])]
         hierarchy = data.get('hierarchy_levels', {})
-        
-        # Prepare table data with headers
-        full_data = [headers] + rows
+
+        # Convert text to Paragraphs for wrapping
+        def P(text, bold=False, align='LEFT'):
+            styles = getSampleStyleSheet()
+            st = ParagraphStyle(
+                'Cell', parent=styles['Normal'],
+                fontSize=self.config.font_size_normal,
+                alignment={'LEFT': 0, 'CENTER': 1, 'RIGHT': 2}.get(align, 0)
+            )
+            if bold:
+                st.fontName = 'Helvetica-Bold'
+            return Paragraph(str(text or ''), st)
+
+        wrapped_rows = []
+        for r in rows:
+            if not isinstance(r, (list, tuple)):
+                r = [r]
+            wrapped = []
+            for idx, cell in enumerate(r):
+                if idx == 0:
+                    wrapped.append(P(cell, bold=False, align='LEFT'))
+                else:
+                    wrapped.append(P(cell, bold=False, align='RIGHT' if idx >= len(r) - 3 else 'LEFT'))
+            wrapped_rows.append(wrapped)
+
+        header_cells = [P(h, bold=True, align='CENTER') for h in headers]
+        full_data = [header_cells] + wrapped_rows
         
         # Create table
         table = Table(full_data, colWidths=col_widths or None, repeatRows=1)
@@ -149,8 +198,8 @@ class PDFExporter(BaseExporter):
         # Build style commands
         style_commands = [
             # Header row
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e8e8e8')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
             ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size_header),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
@@ -161,32 +210,31 @@ class PDFExporter(BaseExporter):
             
             # Borders
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
-            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#2c3e50')),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
             
             # Padding
-            ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
-            ('LEFTPADDING', (0, 0), (-1, -1), 2*mm),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 2*mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 1.5*mm),
         ]
         
-        # Apply hierarchy styling
+        # Apply hierarchy styling (only when provided)
         for idx, level in hierarchy.items():
             row_num = idx + 1  # +1 because of header row
             
             if level == 1:  # Klasifikasi
                 style_commands.extend([
                     ('BACKGROUND', (0, row_num), (-1, row_num), 
-                     colors.HexColor('#2c3e50')),
-                    ('TEXTCOLOR', (0, row_num), (-1, row_num), colors.whitesmoke),
+                     colors.HexColor('#e8e8e8')),
+                    ('TEXTCOLOR', (0, row_num), (-1, row_num), colors.black),
                     ('FONTNAME', (0, row_num), (-1, row_num), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, row_num), (-1, row_num), 
-                     self.config.font_size_header),
+                    ('FONTSIZE', (0, row_num), (-1, row_num), self.config.font_size_normal),
                 ])
             elif level == 2:  # Sub-Klasifikasi
                 style_commands.extend([
                     ('BACKGROUND', (0, row_num), (-1, row_num), 
-                     colors.HexColor('#e9ecef')),
+                     colors.HexColor('#f5f5f5')),
                     ('FONTNAME', (0, row_num), (-1, row_num), 'Helvetica-Bold'),
                 ])
         

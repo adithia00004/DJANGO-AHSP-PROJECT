@@ -7,14 +7,14 @@
 
 /* ===== Toolbar ===== */
 .ta-app .ta-toolbar{
-  position: static;
-  top: auto;
+  /* sticky handled by dp-sticky-topbar class on HTML */
   z-index: var(--dp-z-toolbar);
-  background: var(--dp-c-surface-1);
-  border: 1px solid var(--dp-c-border);
-  border-radius: var(--dp-radius-md);
-  padding: .5rem .75rem;
-  min-height: var(--da-toolbar-h);
+  background: var(--dp-c-surface);
+  border: 0;
+  border-bottom: 1px solid var(--dp-c-border);
+  border-radius: 0;
+  padding: .5rem 0;
+  min-height: var(--dp-toolbar-h);
   box-shadow: var(--dp-shadow-sm);
 }
 .ta-app .ta-toolbar .btn{ white-space: nowrap; }
@@ -24,6 +24,39 @@
 .ta-app .ta-searchbar .form-control{ border-left:0; }
 .ta-app .ta-toolbar-hint{ color: var(--dp-c-muted); font-size: var(--ux-font-xs); }
 .ta-app .ta-toolbar-hint .kbd-hint kbd{ margin: 0 .1rem; }
+
+/* Input group sizing and theme in toolbar */
+.ta-app #ta-toolbar .input-group .form-control,
+.ta-app #ta-toolbar .input-group .input-group-text{
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+}
+.ta-app #ta-toolbar .input-group .form-control{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+}
+.ta-app #ta-toolbar .input-group .input-group-text{
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
+}
+
+/* Toolbar dropdown theme */
+.ta-app #ta-toolbar .dropdown-menu{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-md);
+  padding: .5rem;
+}
+
+/* Searchbar width clamp like List Pekerjaan */
+.ta-app .ta-searchbar{
+  flex: 1 1 clamp(24rem, 50vw, 48rem);
+  min-width: 0;
+}
 
 /* ===== Body Grid (sidebar | resizer | editor) ===== */
 .ta-app .ta-body{
@@ -106,6 +139,8 @@
 .ta-app .ta-job-header .row{ display:grid; grid-template-columns:160px 1fr 120px 160px; gap:10px; }
 .ta-app .ta-job-header .cell .label{ color:var(--dp-c-muted); font-size: var(--ux-font-xs); }
 .ta-app .ta-job-header .value{ font-weight:600; font-size: var(--ux-font-md); }
+/* Reduce boldness specifically for active uraian */
+#ta-active-uraian{ font-weight: 500; }
 
 /* ===== Segmen Header (sticky in-panel) ===== */
 .ta-app .ta-seg-header{
@@ -127,8 +162,14 @@
 
 /* ===== Table ===== */
 .ta-app .ta-table-wrap{ overflow: auto; padding-bottom: 10px; }
-.ta-app .ta-table{
-  width:100%; border-collapse:collapse; font-size: var(--ux-font-md); table-layout: fixed;
+.ta-app .ta-table{ width:100%; border-collapse:collapse; font-size: var(--ux-font-md); table-layout: fixed; }
+.ta-app .ta-table thead th{
+  background: var(--dp-c-surface-2);
+  border-bottom: 2px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
 }
 .ta-app .ta-table th, .ta-app .ta-table td{
   border:1px solid var(--dp-c-border);
@@ -180,6 +221,9 @@
   gap: 10px;
 }
 .ta-app .ta-reset-area .btn{ white-space: nowrap; }
+
+/* Sidebar list text weight (reduce uraian boldness) */
+.ta-app .ta-job-item .primary .uraian{ font-weight: 400; }
 
 /* Footer editor */
 .ta-app .ta-editor-footer{

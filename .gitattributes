@@ -1,0 +1,36 @@
+# Normalize line endings across the repo
+# Keep LF in Git for source files; allow CRLF only for Windows scripts
+* text=auto eol=lf
+
+# Explicit text types (LF)
+*.py     text eol=lf
+*.html   text eol=lf
+*.htm    text eol=lf
+*.css    text eol=lf
+*.js     text eol=lf
+*.json   text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.csv    text eol=lf
+*.ini    text eol=lf
+*.cfg    text eol=lf
+
+# Windows scripts (CRLF)
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+
+# Binary files (no normalization)
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.svg    binary
+*.ico    binary
+*.pdf    binary
+*.docx   binary
+*.xlsx   binary
+*.zip    binary
+*.woff   binary
+*.woff2  binary

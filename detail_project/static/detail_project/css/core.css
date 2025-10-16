@@ -602,6 +602,76 @@ html[data-bs-theme] .select2-container .select2-selection--single{
 }
 
 /* ===========================================================
+   REUSABLE UI UTILITIES (thead/toolbar/dropdown/modal/chip)
+   =========================================================== */
+/* Apply on a table or a wrapper: <table class="ux-thead"> or <div class="ux-thead"><table>.. */
+.ux-thead thead th,
+table.ux-thead thead th{
+  background: var(--dp-c-surface-2);
+  border-bottom: 2px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+/* Toolbar inputs preset: attach to a container that wraps input-group */
+.ux-toolbar-inputs .input-group .form-control,
+.ux-toolbar-inputs .input-group .input-group-text{
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+}
+.ux-toolbar-inputs .input-group .form-control{ background: var(--dp-c-bg); color: var(--dp-c-text); }
+.ux-toolbar-inputs .input-group .input-group-text{ background: var(--dp-c-surface-2); color: var(--dp-c-muted); border-color: var(--dp-c-border); }
+
+/* Dropdown preset: add .ux-dropdown on a parent around .dropdown-menu */
+.ux-dropdown .dropdown-menu{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-md);
+  padding: .5rem .75rem;
+}
+
+/* Modal preset: add .ux-modal on .modal or a wrapper */
+.ux-modal .modal-content{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-lg);
+}
+.ux-modal .modal-header{ background: var(--dp-c-surface-2); border-bottom: 1px solid var(--dp-c-border); }
+.ux-modal .modal-footer{ background: var(--dp-c-surface-1); border-top: 1px solid var(--dp-c-border); }
+
+/* Chip preset (meta badges) */
+.ux-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  border-radius: calc(var(--dp-radius-sm) - 2px);
+  padding:2px 8px; font-size: var(--ux-font-2xs); line-height:1;
+  border:1px solid var(--dp-c-border);
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-text);
+}
+.ux-chip.warn{
+  background: color-mix(in srgb, var(--dp-c-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--dp-c-warning) 30%, transparent);
+}
+
+/* ===========================================================
+   PER-PAGE TOKENS (centralized defaults)
+   =========================================================== */
+/* Volume Pekerjaan: default sidebar/rightbar width */
+body[data-page="volume_pekerjaan"]{ --vp-rightbar-w: 560px; }
+/* Template AHSP: default search width */
+body[data-page="template_ahsp"]{ --ta-search-w: 560px; }
+/* Rincian AHSP: default left panel width */
+body[data-page="rincian_ahsp"]{ --rk-left-w: 360px; }
+
+/* ===========================================================
    Sidebar Global (layout & transisi; SSoT)
    =========================================================== */
 :root{ --dp-sidebar-bg: var(--dp-c-surface); }

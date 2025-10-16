@@ -26,13 +26,51 @@
 
 
 /* *********************************************************************
-   II) TOOLBAR (VISUAL POLISH SAJA)
+   II) TOOLBAR (sticky + konsisten tipografi/ikon)
    ********************************************************************* */
 #vp-toolbar{
-  background: var(--dp-c-surface-1);
+  min-height: var(--dp-toolbar-h);
+  /* gunakan surface agar tidak terlalu gelap di dark mode */
+  background: var(--dp-c-surface);
   background-clip: padding-box;
   box-shadow: var(--dp-shadow-sm);
   border-bottom: 1px solid var(--dp-c-border);
+}
+#vp-toolbar .input-group .form-control,
+#vp-toolbar .input-group .input-group-text{
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+}
+#vp-toolbar .input-group .form-control{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+}
+#vp-toolbar .input-group .input-group-text{
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
+}
+#vp-toolbar .btn{ white-space: nowrap; }
+
+/* Dropdown di toolbar mengikuti tema (mirip Rekap) */
+#vp-toolbar .dropdown-menu{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-md);
+  padding: .5rem;
+}
+
+/* Search suggest/dropdown hasil */
+.vp-search-dropdown{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-sm);
+  z-index: var(--dp-z-dropdown);
 }
 
 
@@ -47,6 +85,17 @@
 }
 #vp-table th,
 #vp-table td{ vertical-align: middle; }
+
+/* Header tabel lokal (dalam kartu) — samakan feel rekap/list */
+.vp-table thead th{
+  background: var(--dp-c-surface-2);
+  border-bottom: 2px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding: .5rem .75rem;
+}
 
 #vp-table th:first-child,
 #vp-table td:first-child{
@@ -116,6 +165,40 @@
   border-top: 1px solid var(--dp-c-border);
 }
 .vp-klass td, .vp-sub td{ padding-block: .5rem; }
+
+/* Card header untuk Klas/Sub mengikuti surface-2 agar kontras */
+.vp-klas-card > .card-header,
+.vp-sub-card > .card-header{
+  background: var(--dp-c-surface-2);
+  border-bottom: 1px solid var(--dp-c-border);
+}
+
+/* *********************************************************************
+   VII.a) SIDEBAR PARAMETER: tipografi & warna konsisten
+   ********************************************************************* */
+#vp-sidebar .lp-sidebar-header{
+  background: var(--dp-c-surface-2);
+}
+#vp-sidebar .lp-sidebar-header h5{
+  font-size: var(--ux-font-lg);
+  line-height: 1.35;
+  margin: 0;
+}
+#vp-sidebar .lp-sidebar-body{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+}
+#vp-sidebar .dropdown-menu{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+}
+#vp-sidebar .form-control,
+#vp-sidebar .form-select,
+#vp-sidebar .input-group-text{
+  font-size: var(--ux-font-xs);
+}
 
 /* Toggle caret */
 .vp-klass .vp-toggle,

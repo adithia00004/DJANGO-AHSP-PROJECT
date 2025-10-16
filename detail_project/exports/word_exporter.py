@@ -10,14 +10,15 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from io import BytesIO
 from typing import Dict, Any, List
-from .base import BaseExporter
+from .base import ConfigExporterBase
+from django.http import HttpResponse
 
 
-class WordExporter(BaseExporter):
+class WordExporter(ConfigExporterBase):
     """Word Export handler with python-docx"""
     
     def export(self, data: Dict[str, Any]) -> HttpResponse:
-        """Export to Word document"""
+        """Export to Word document (supports multi-page payload)"""
         doc = Document()
         
         # Set landscape orientation
@@ -29,19 +30,28 @@ class WordExporter(BaseExporter):
         section.left_margin = Cm(self.config.margin_left / 10)
         section.right_margin = Cm(self.config.margin_right / 10)
         
-        # Add header
-        self._add_header(doc)
-        
-        # Add table
-        self._add_table(doc, data)
-        
-        # Add footer totals if present
-        if 'footer_rows' in data:
-            self._add_footer_totals(doc, data['footer_rows'])
-        
-        # Add signatures
-        if self.config.signature_config.enabled:
-            self._add_signatures(doc)
+        def build_page(section: Dict[str, Any], add_signatures: bool = False):
+            # Header with override title
+            self._add_header_with_title(doc, section.get('title') or self.config.title)
+            # Table
+            self._add_table(doc, section)
+            # Footer
+            if 'footer_rows' in section:
+                self._add_footer_totals(doc, section['footer_rows'])
+            # Signatures (if requested)
+            if add_signatures and self.config.signature_config.enabled:
+                self._add_signatures(doc)
+
+        pages = data.get('pages')
+        if pages:
+            # Page 1
+            build_page(pages[0] if len(pages) > 0 else {}, add_signatures=False)
+            # Page 2 (pengesahan) + signatures on same page
+            if len(pages) > 1:
+                doc.add_page_break()
+                build_page(pages[1], add_signatures=True)
+        else:
+            build_page(data, add_signatures=True)
         
         # Save to buffer
         buffer = BytesIO()
@@ -56,7 +66,7 @@ class WordExporter(BaseExporter):
         )
     
     def _add_header(self, doc: Document):
-        """Add document header"""
+        """Add document header (legacy)"""
         # Title
         title = doc.add_heading(self.config.title, 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -103,6 +113,10 @@ class WordExporter(BaseExporter):
         # Create table
         table = doc.add_table(rows=1 + len(rows), cols=len(headers))
         table.style = 'Light Grid Accent 1'
+        try:
+            table.autofit = False
+        except Exception:
+            pass
         
         # Set column widths
         if col_widths:
@@ -116,29 +130,41 @@ class WordExporter(BaseExporter):
             cell = header_row.cells[i]
             cell.text = header_text
             
-            # Style header
+            # Style header (light background, dark text)
             self._style_cell(cell, bold=True, size=10, 
                            align=WD_ALIGN_PARAGRAPH.CENTER,
-                           bg_color=self.config.color_primary,
-                           text_color=(255, 255, 255))
+                           bg_color=self.config.color_primary)
         
         # Data rows
         for idx, row_data in enumerate(rows):
             row = table.rows[idx + 1]
             level = hierarchy.get(idx, 3)
-            
+
             for i, cell_value in enumerate(row_data):
                 cell = row.cells[i]
                 cell.text = str(cell_value)
-                
+
+                # Numeric alignment: last 3 columns of 6-col tables (volume,harga,total)
+                if len(headers) >= 6 and i >= len(headers) - 3:
+                    for para in cell.paragraphs:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                # For 2-col summary tables, align last column right
+                if len(headers) == 2 and i == 1:
+                    for para in cell.paragraphs:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                # For Rekap Kebutuhan (5 cols), align Quantity column right
+                if len(headers) == 5 and headers[-1].strip().lower() in ('quantity',):
+                    if i == len(headers) - 1:
+                        for para in cell.paragraphs:
+                            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
                 # Style based on hierarchy
                 if level == 1:  # Klasifikasi
                     self._style_cell(cell, bold=True, size=10,
-                                   bg_color=self.config.color_primary,
-                                   text_color=(255, 255, 255))
+                                     bg_color=self.config.color_primary)
                 elif level == 2:  # Sub-Klasifikasi
                     self._style_cell(cell, bold=True, size=9,
-                                   bg_color=(233, 236, 239))
+                                     bg_color=(233, 236, 239))
                 else:  # Item
                     self._style_cell(cell, size=9)
     
@@ -162,8 +188,7 @@ class WordExporter(BaseExporter):
             self._style_cell(row.cells[1], bold=True, align=WD_ALIGN_PARAGRAPH.RIGHT)
     
     def _add_signatures(self, doc: Document):
-        """Add signature section"""
-        doc.add_page_break()  # New page for signatures
+        """Add signature section (kept on same page as footer)"""
         
         heading = doc.add_heading('LEMBAR PENGESAHAN', 2)
         heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -217,3 +242,26 @@ class WordExporter(BaseExporter):
                 color_hex = bg_color
             shading_elm.set(qn('w:fill'), color_hex)
             cell._element.get_or_add_tcPr().append(shading_elm)
+    def _add_header_with_title(self, doc: Document, title_text: str):
+        """Add document header with override title"""
+        title = doc.add_heading(title_text, 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Reuse info table
+        from ..export_config import build_identity_rows
+        rows = build_identity_rows(self.config)
+        info_table = doc.add_table(rows=len(rows), cols=3)
+        info_table.style = 'Light Grid'
+        for i, (label, sep, value) in enumerate(rows):
+            row = info_table.rows[i]
+            row.cells[0].text = label
+            row.cells[1].text = sep
+            row.cells[2].text = value
+            row.cells[0].width = Cm(4)
+            row.cells[1].width = Cm(0.5)
+            row.cells[2].width = Cm(12)
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(10)
+                        run.font.name = 'Arial'
+        doc.add_paragraph()

@@ -4,11 +4,45 @@
 
 {% block dp_content %}
 <div id="rk-app"
+     data-project-id="{{ project.id }}"
      data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan' project.id %}"
      data-endpoint-export="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}">
   <h1 class="h5 mb-2">Rekap Kebutuhan</h1>
 
   <div class="d-flex gap-2 align-items-center mb-2">
+    <!-- Unified Export Dropdown (CSV/PDF/Word) -->
+    <div class="btn-group" role="group">
+      <button type="button"
+              class="btn btn-sm btn-outline-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              aria-label="Export options">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-md-inline">Export</span>
+      </button>
+      <ul class="dropdown-menu">
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-csv">
+            <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
+            Export CSV
+          </button>
+        </li>
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-pdf">
+            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+            Export PDF
+          </button>
+        </li>
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-word">
+            <i class="bi bi-file-earmark-word text-primary me-2"></i>
+            Export Word
+          </button>
+        </li>
+      </ul>
+    </div>
+    
+    <!-- Legacy single CSV button (kept as fallback) -->
     <button id="rk-btn-export" class="btn btn-sm btn-outline-secondary" type="button">
       Export CSV
     </button>
@@ -52,5 +86,7 @@
 
 {% block extra_js %}
   {{ block.super }}
+  <!-- Unified Export Manager -->
+  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
   <script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}" defer></script>
 {% endblock %}

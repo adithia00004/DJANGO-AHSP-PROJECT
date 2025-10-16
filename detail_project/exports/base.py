@@ -538,6 +538,42 @@ def check_library_availability():
             print("Install reportlab untuk PDF export")
     """
     return {
-        'reportlab': REPORTLAB_AVAILABLE,
-        'docx': DOCX_AVAILABLE,
-    }
+            'reportlab': REPORTLAB_AVAILABLE,
+            'docx': DOCX_AVAILABLE,
+        }
+
+
+# ============================================================================
+# CONFIG-BASED EXPORTER BASE (Phase 1, non-breaking)
+# ============================================================================
+
+try:
+    # Import placed here to avoid circular imports during Django app loading
+    from ..export_config import ExportConfig  # type: ignore
+except Exception:  # pragma: no cover
+    ExportConfig = None  # type: ignore
+
+
+class ConfigExporterBase:
+    """
+    Base class for V2 exporters that operate with a single ExportConfig.
+    Co-exists with legacy BaseExporter to avoid breaking existing exports.
+
+    Provides:
+    - self.config: immutable export configuration
+    - _create_response(): unified HTTP response builder
+    """
+
+    def __init__(self, config):
+        # duck-typed; prefer ExportConfig but avoid hard dependency at import time
+        self.config = config
+
+    def _create_response(self, content: bytes | bytearray | str, filename: str, content_type: str) -> HttpResponse:
+        if isinstance(content, str):
+            payload = content.encode('utf-8')
+        else:
+            payload = bytes(content)
+
+        resp = HttpResponse(payload, content_type=content_type)
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp

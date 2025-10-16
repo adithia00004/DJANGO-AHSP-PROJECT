@@ -14,6 +14,8 @@ Created: 2025
 """
 
 from decimal import Decimal
+from dataclasses import dataclass, field
+from datetime import datetime
 
 
 # ============================================================================
@@ -345,6 +347,101 @@ try:
 except ValueError as e:
     import warnings
     warnings.warn(f"Export config validation failed: {e}")
+
+
+# ============================================================================
+# CONFIG OBJECTS (Phase 1)
+# ============================================================================
+
+@dataclass
+class SignatureConfig:
+    """Signature section configuration"""
+    enabled: bool = False
+    signatures: list = field(default_factory=list)
+    # Optional runtime override (if provided, replace signatures when rendering)
+    custom_signatures: list | None = None
+
+
+@dataclass
+class ExportConfig:
+    """Export configuration (single source of truth per export run)"""
+    # Titles and meta
+    title: str
+    project_name: str
+    project_code: str
+    location: str
+    year: str
+    owner: str = ''
+    export_by: str = ''
+    export_date: datetime = field(default_factory=datetime.now)
+
+    # Section visibility / signatures
+    signature_config: SignatureConfig = field(default_factory=SignatureConfig)
+
+    # Extra identity fields (label/value pairs or known keys)
+    # Suggested keys: tahap, prioritas, sumber_dana, project_anggaran
+    extra_identity: dict = field(default_factory=dict)
+
+    # Styling shortcuts (optional quick access)
+    color_primary: str = ExportColors.HEADER_BG
+    font_size_title: int = ExportFonts.TITLE
+    font_size_header: int = ExportFonts.HEADER
+    font_size_normal: int = ExportFonts.LEVEL3
+
+    # Layout (mm)
+    margin_top: int = ExportLayout.MARGIN_TOP
+    margin_bottom: int = ExportLayout.MARGIN_BOTTOM
+    margin_left: int = ExportLayout.MARGIN_LEFT
+    margin_right: int = ExportLayout.MARGIN_RIGHT
+
+
+# ============================================================================
+# IDENTITY RENDER HELPERS (single source of truth)
+# ============================================================================
+
+def build_identity_rows(config: ExportConfig) -> list:
+    """
+    Build identity rows to mirror templates/detail_project/_project_identity.html
+    Returns list of [label, ':', value] rows for PDF/Word. CSV can drop ':' column.
+    """
+    ei = getattr(config, 'extra_identity', {}) or {}
+    rows = []
+
+    # Proyek + ket1/ket2 style
+    rows.append(['Proyek', ':', config.project_name or '-'])
+    ket1 = ei.get('ket_project1') or ei.get('tahap') or None
+    ket2 = ei.get('ket_project2') or ei.get('prioritas') or None
+    if ket1:
+        rows.append(['', ':', str(ket1)])
+    if ket2:
+        rows.append(['', ':', str(ket2)])
+
+    # Pemilik Project: owner (+ instansi)
+    owner = config.owner or ''
+    instansi = ei.get('instansi_client')
+    if instansi:
+        owner_val = f"{owner} ({instansi})" if owner else f"({instansi})"
+    else:
+        owner_val = owner or '-'
+    rows.append(['Pemilik Project', ':', owner_val])
+
+    # Tahun (prefer tahun_project)
+    tahun = str(ei.get('tahun_project') or config.year or '-')
+    rows.append(['Tahun', ':', tahun])
+
+    # Sumber Dana
+    sumber = ei.get('sumber_dana') or '-'
+    rows.append(['Sumber Dana', ':', str(sumber)])
+
+    # Lokasi (prefer lokasi_project)
+    lokasi = ei.get('lokasi_project') or config.location or '-'
+    rows.append(['Lokasi', ':', str(lokasi)])
+
+    # Project Anggaran
+    ang = ei.get('project_anggaran') or '-'
+    rows.append(['Project Anggaran', ':', str(ang)])
+
+    return rows
 
 
 # ============================================================================

@@ -107,6 +107,8 @@
       }
 
       tr.dataset.kategori = r.kategori;
+      // tambahkan checkbox seleksi di kolom nomor
+      try { ensureSelectAffordance(tr); } catch(_){}
       body.appendChild(tr);
     });
 
@@ -116,6 +118,28 @@
     if (seg === 'LAIN' && activeSource === 'custom') {
       enhanceLAINAutocomplete(body);
     }
+  }
+
+  // Tambah checkbox seleksi di kolom nomor jika belum ada
+  function ensureSelectAffordance(tr){
+    const noCell = tr.querySelector('td.col-no');
+    if (!noCell) return;
+    if (noCell.querySelector('.ta-row-check')) return;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'form-check-input ta-row-check me-2';
+    noCell.prepend(cb);
+  }
+
+  // Hitung & tampilkan jumlah baris terseleksi per segmen
+  function updateDelState(seg){
+    const body = $(`#seg-${seg}-body`);
+    if (!body) return;
+    const selected = body.querySelectorAll('.ta-row-check:checked').length;
+    const cnt = document.querySelector(`.ta-del-count[data-for="${seg}"]`);
+    if (cnt) cnt.textContent = String(selected);
+    const btn = document.querySelector(`.ta-seg-del-selected[data-target-seg="${seg}"]`);
+    if (btn) btn.disabled = selected === 0;
   }
 
   function gatherRows() {
@@ -340,6 +364,7 @@
       const tr = tpl.content.firstElementChild.cloneNode(true);
       tr.dataset.kategori = seg;
       if ($('.ta-empty', body)) body.innerHTML = '';
+      try { ensureSelectAffordance(tr); } catch(_){}
       body.appendChild(tr);
       formatIndex();
       setDirty(true);
@@ -347,6 +372,7 @@
       if (seg === 'LAIN' && activeSource === 'custom') {
         enhanceLAINAutocomplete(body);
       }
+      try { updateDelState(seg); } catch(_){}
     });
   });
 
@@ -394,10 +420,38 @@
       toast('Tersimpan', 'success');
     }).catch(()=>{
       toast('Gagal menyimpan', 'error');
-    }).finally(()=>{
+  }).finally(()=>{
       if (spin) spin.hidden = true;
       if (btnSave) btnSave.disabled = false;
     });
+  });
+
+  // Hapus baris terseleksi per segmen
+  document.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('.ta-seg-del-selected');
+    if (!delBtn) return;
+    if (activeSource === 'ref') return;
+    const seg = delBtn.dataset.targetSeg;
+    const body = document.getElementById(`seg-${seg}-body`);
+    if (!body) return;
+    const checked = body.querySelectorAll('.ta-row-check:checked');
+    if (!checked.length) return;
+    checked.forEach(cb => cb.closest('tr.ta-row')?.remove());
+    if (!body.querySelector('tr.ta-row')) {
+      body.innerHTML = `<tr class=\"ta-empty\"><td colspan=\"5\">Belum ada item.</td></tr>`;
+    }
+    formatIndex();
+    setDirty(true);
+    updateDelState(seg);
+  });
+
+  // Update state tombol hapus saat ceklis berubah
+  document.addEventListener('change', (e) => {
+    const cb = e.target.closest('.ta-row-check');
+    if (!cb) return;
+    const tr = cb.closest('tr.ta-row');
+    const seg = tr?.dataset?.kategori;
+    if (seg) updateDelState(seg);
   });
 
   // RESET (ref_modified)

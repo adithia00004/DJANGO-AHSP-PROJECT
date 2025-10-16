@@ -4,6 +4,7 @@
   const app = $('#rk-app');
   if (!app) return;
 
+  const projectId = app.getAttribute('data-project-id');
   const endpoint = app.dataset.endpoint;
   const endpointExport = app.dataset.endpointExport; // boleh kosong
   if (!endpoint) {
@@ -23,6 +24,9 @@
   const genEl    = $('#rk-generated');
 
   const btnExport = $('#rk-btn-export');
+  const btnCsv  = document.getElementById('btn-export-csv');
+  const btnPdf  = document.getElementById('btn-export-pdf');
+  const btnWord = document.getElementById('btn-export-word');
 
   // Sembunyikan tombol export jika endpoint export tidak tersedia
   if (!endpointExport && btnExport) {
@@ -118,6 +122,25 @@
     }
   }
 
+  // Unified ExportManager bindings
+  try {
+    if (window.ExportManager && projectId) {
+      const exp = new window.ExportManager(projectId, 'rekap-kebutuhan');
+
+      if (btnCsv)  btnCsv.addEventListener('click',  () => exp.exportAs('csv'));
+      if (btnPdf)  btnPdf.addEventListener('click',  () => exp.exportAs('pdf'));
+      if (btnWord) btnWord.addEventListener('click', () => exp.exportAs('word'));
+
+      // Keep legacy single CSV button as fallback
+      if (btnExport && !endpointExport) {
+        btnExport.addEventListener('click', () => exp.exportAs('csv'));
+      }
+    }
+  } catch(e) {
+    console.warn('[rk] ExportManager not available, falling back to direct CSV');
+  }
+
+  // Legacy CSV fallback (kept for compatibility)
   if (btnExport && endpointExport){
     btnExport.addEventListener('click', ()=>{
       window.open(endpointExport, '_blank');

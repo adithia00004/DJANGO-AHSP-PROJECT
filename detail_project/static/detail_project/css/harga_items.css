@@ -4,16 +4,47 @@
 
 /* Toolbar polish (seragam dengan Volume Pekerjaan) */
 #hi-toolbar{
-  background: var(--dp-c-surface-1);
+  min-height: var(--dp-toolbar-h);
+  background: var(--dp-c-surface);
   background-clip: padding-box;
   box-shadow: var(--dp-shadow-sm);
   border-bottom: 1px solid var(--dp-c-border);
 }
 
+/* Input group sizing and theme in toolbar (match List/Rekap) */
+#hi-toolbar .input-group .form-control,
+#hi-toolbar .input-group .input-group-text{
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+}
+#hi-toolbar .input-group .form-control{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+}
+#hi-toolbar .input-group .input-group-text{
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
+}
+
+/* Searchbar width clamp */
+.hi-searchbar{ flex: 1 1 clamp(24rem, 50vw, 48rem); min-width: 0; }
+
 /* THEAD: offset global via .dp-thead-sticky; hanya aksen garis bawah halus */
 .hi-table thead.dp-thead-sticky{
   box-shadow: 0 1px 0 var(--dp-c-border);
   background: var(--dp-c-surface);
+}
+
+/* Header gaya konsisten (Rekap/List) */
+.hi-table thead th{
+  background: var(--dp-c-surface-2);
+  border-bottom: 2px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
 }
 
 /* Numerik & monospace */
@@ -66,6 +97,46 @@
 #hiConvModal{
   z-index: var(--dp-z-modal) !important;
 }
+
+/* ===== Konversi Satuan Modal (SSOT-themed) ===== */
+#hiConvModal .modal-content{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-lg);
+}
+#hiConvModal .modal-header{
+  background: var(--dp-c-surface-2);
+  border-bottom: 1px solid var(--dp-c-border);
+}
+#hiConvModal .modal-footer{
+  background: var(--dp-c-surface-1);
+  border-top: 1px solid var(--dp-c-border);
+}
+#hiConvModal .form-label{ font-size: var(--ux-font-xs); }
+#hiConvModal .form-text{ font-size: var(--ux-font-xs); color: var(--dp-c-muted); }
+
+/* Input-group sizing and tone inside modal */
+#hiConvModal .input-group .form-control,
+#hiConvModal .input-group .input-group-text{
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+}
+#hiConvModal .input-group .form-control{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+}
+#hiConvModal .input-group .input-group-text{
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
+  border-color: var(--dp-c-border);
+}
+
+/* Result panel emphasis */
+#hiConvModal #hi-conv-result{ font-variant-numeric: tabular-nums; }
 
 
 /* Permintaan spesifik: pastikan selector berikut juga “tercapai”.

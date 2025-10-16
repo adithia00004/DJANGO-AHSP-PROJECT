@@ -12,7 +12,6 @@
   <link rel="stylesheet" href="{% static 'detail_project/css/rincian_ahsp.css' %}">
 {% endblock %}
 
-{# Gunakan toolbar di dalam konten agar parity dengan template_ahsp #}
 {% block dp_toolbar %}{% endblock %}
 
 {% block dp_content %}
@@ -26,13 +25,11 @@
      data-ep-reset-prefix="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
      data-locale="id-ID">
 
-  <!-- Header (parity) -->
   <header class="ta-page-header">
     <h1 class="ta-title">Rincian AHSP</h1>
     <p class="ta-subtitle">Detail komponen AHSP per pekerjaan (dengan harga dan total).</p>
   </header>
 
-  <!-- Toolbar (parity: search kiri, metrik kanan, hint desktop) -->
   <div id="ra-toolbar-inner" class="ta-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Rincian AHSP">
     <div class="ta-combobox ta-searchbar flex-grow-1" role="search">
       <div class="input-group">
@@ -40,7 +37,7 @@
         <input id="rk-search"
                type="search"
                class="hi-input form-control ux-focusable"
-               placeholder="Cari uraian/kode� (?/Ctrl+K)"
+               placeholder="Cari uraian/kode… (⌘/Ctrl+K)"
                autocomplete="off"
                aria-label="Cari pekerjaan"
                aria-describedby="rk-search-addon" />
@@ -60,38 +57,33 @@
     </div>
   </div>
 
-  <!-- Body grid: LEFT (list) | RESIZER | RIGHT (detail) -->
   <div class="hi-body ta-body">
-    <!-- LEFT: daftar pekerjaan -->
     <aside class="rk-left ta-sidebar" aria-label="Daftar pekerjaan">
       <ul id="rk-list" class="ta-job-list" role="listbox" aria-label="Pekerjaan">
         <li class="rk-item ta-job-item"><div class="row-note">Memuat…</div></li>
       </ul>
     </aside>
 
-    <!-- RESIZER -->
     <div id="rk-resizer" class="rk-resizer ux-resizer" role="separator" aria-orientation="vertical" aria-label="Resize panel" tabindex="0"></div>
 
-    <!-- RIGHT: header + tabel detail satu pekerjaan -->
     <section class="rk-right ta-editor" aria-label="Detail pekerjaan terpilih">
-      <!-- Header pekerjaan (parity feel) -->
       <div class="rk-right-header ta-seg-header">
         <div class="rk-right-head-main">
           <div class="ux-mono mono small text-muted rk-right-meta">
-            <span id="rk-pkj-kode">-</span> &middot;
-            <span id="rk-pkj-sat">—</span>
-            &nbsp;&nbsp;<span id="rk-pkj-source" class="rk-chip ta-chip">—</span>
+            <span id="rk-pkj-kode" class="mono">-</span>
+            &middot;
+            <span id="rk-pkj-sat" class="mono">-</span>
+            &nbsp;&nbsp;<span id="rk-pkj-source" class="ux-chip ux-mono mono">-</span>
           </div>
           <div id="rk-pkj-uraian" class="rk-right-title ta-title">Pilih pekerjaan di kiri</div>
         </div>
 
-        <!-- Pricing efektif + override -->
         <div class="rk-right-actions d-flex align-items-center gap-2">
-          <span id="rk-eff" class="rk-chip ta-chip ux-mono mono" title="BUK efektif">
-            <i class="bi bi-lightning-charge"></i>&nbsp;Efektif: —%
+          <span id="rk-eff" class="ux-chip ux-mono mono" title="BUK efektif">
+            <i class="bi bi-lightning-charge-fill"></i>&nbsp;Efektif: -%
           </span>
-          <span id="rk-pkj-ovr-chip" class="rk-chip ta-chip-warn ux-mono mono" hidden>
-            <i class="bi bi-sliders"></i>&nbsp;Override
+          <span id="rk-pkj-ovr-chip" class="ux-chip warn ux-mono mono" hidden>
+            <i class="bi bi-sliders2"></i>&nbsp;Override
           </span>
           <div class="input-group input-group-sm" style="width:160px">
             <span class="input-group-text ux-mono mono">%</span>
@@ -111,16 +103,14 @@
         </div>
       </div>
 
-      <!-- Summary ringkas -->
       <div id="rk-summary" class="rk-summary d-flex flex-wrap gap-2 my-2">
-        <span class="ux-badge-ref ux-mono mono" id="rk-sum-sub">Sub-Total: —</span>
-        <span class="ux-badge-ref ux-mono mono" id="rk-sum-buk">BUK (—%): —</span>
-        <span class="ux-badge-ref ux-mono mono" id="rk-sum-grand">Grand Total: —</span>
+        <span class="ux-badge-ref ux-mono mono" id="rk-sum-sub">Sub-Total: -</span>
+        <span class="ux-badge-ref ux-mono mono" id="rk-sum-buk">BUK (-%): -</span>
+        <span class="ux-badge-ref ux-mono mono" id="rk-sum-grand">Grand Total: -</span>
       </div>
 
-      <!-- Tabel detail -->
       <div class="hi-table-wrap ta-table-wrap">
-        <table id="ra-table" class="table table-sm ra-table ta-table table-hover" aria-label="Rincian AHSP (pekerjaan terpilih)">
+        <table id="ra-table" class="table table-sm ra-table ta-table table-hover ux-thead" aria-label="Rincian AHSP (pekerjaan terpilih)">
           <colgroup>
             <col class="col-no">
             <col class="col-uraian">
@@ -149,7 +139,6 @@
     </section>
   </div>
 
-  <!-- Toast -->
   <div id="rk-toast" class="rk-toast-wrap" aria-live="polite" aria-atomic="true"></div>
 </div>
 {% endblock %}
@@ -158,3 +147,4 @@
   {{ block.super }}
   <script src="{% static 'detail_project/js/rincian_ahsp.js' %}"></script>
 {% endblock %}
+

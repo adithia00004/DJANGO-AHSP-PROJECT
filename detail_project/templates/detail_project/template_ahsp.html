@@ -38,11 +38,11 @@
     <p class="ta-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
   </header>
 
-  <!-- Toolbar (tanpa Undo/Redo; pakai hint keyboard) -->
-  <div id="ta-toolbar" class="ta-toolbar dp-layer-toolbar d-flex align-items-center gap-2" role="region" aria-label="Toolbar Template AHSP">
+  <!-- Toolbar (sticky, konsisten SSOT) -->
+  <div id="ta-toolbar" class="ta-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Template AHSP">
     <!-- Searchbar (adapt lp-toolbar-search) -->
     <div class="ta-combobox ta-searchbar flex-grow-1" role="search">
-      <div class="input-group input-group-sm lp-toolbar-search">
+      <div class="input-group lp-toolbar-search">
         <span class="input-group-text" id="ta-search-addon">
           <i class="bi bi-search" aria-hidden="true"></i>
         </span>
@@ -67,13 +67,16 @@
       <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo &middot; <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo</span>
     </div>
 
-    <!-- Export -->
-    <div class="btn-group">
-      <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-        Export
+    <!-- Export (dropdown, konsisten dengan Rekap) -->
+    <div class="btn-group ux-dropdown">
+      <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export options">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-sm-inline">Export</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="ta-btn-export">Export CSV</button></li>
+        <li><button class="dropdown-item" type="button" id="ta-btn-export"><i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Export CSV</button></li>
+        <li><button class="dropdown-item" type="button" id="ta-btn-export-pdf"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Export PDF</button></li>
+        <li><button class="dropdown-item" type="button" id="ta-btn-export-word"><i class="bi bi-file-earmark-word text-primary me-2"></i>Export Word</button></li>
       </ul>
     </div>
 
@@ -84,9 +87,10 @@
     </div>
 
     <!-- Simpan -->
-    <button id="ta-btn-save" class="btn btn-success btn-neon d-inline-flex align-items-center gap-2" type="button" disabled>
+    <button id="ta-btn-save" class="btn btn-success btn-sm d-inline-flex align-items-center gap-2" type="button" disabled>
       <span class="spinner-border spinner-border-sm" id="ta-btn-save-spin" role="status" aria-hidden="true" hidden></span>
-      <span>Simpan</span>
+      <i class="bi bi-save" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline">Simpan</span>
     </button>
   </div>
 
@@ -151,16 +155,17 @@
       <section class="ta-segment" data-seg="TK">
         <header class="ta-seg-header">
           <h2>Tenaga Kerja</h2>
-          <div class="seg-tools">
-            <div class="btn-group btn-group-sm">
-              <button class="btn btn-primary ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK">
-                <i class="bi bi-plus-lg"></i><span>Baris</span>
-              </button>
-            </div>
+          <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen TK">
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK">
+              <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
+            </button>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK" disabled>
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="TK">0</span> baris</span>
+            </button>
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table" aria-label="Tabel TK">
+          <table class="ta-table ux-thead" aria-label="Tabel TK">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -188,14 +193,17 @@
       <section class="ta-segment" data-seg="BHN">
         <header class="ta-seg-header">
           <h2>Bahan</h2>
-          <div class="seg-tools">
+          <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen BHN">
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN">
-              <i class="bi bi-plus-lg"></i><span>Baris</span>
+              <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
+            </button>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN" disabled>
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="BHN">0</span> baris</span>
             </button>
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table" aria-label="Tabel BHN">
+          <table class="ta-table ux-thead" aria-label="Tabel BHN">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -223,14 +231,17 @@
       <section class="ta-segment" data-seg="ALT">
         <header class="ta-seg-header">
           <h2>Peralatan</h2>
-          <div class="seg-tools">
+          <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen ALT">
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT">
-              <i class="bi bi-plus-lg"></i><span>Baris</span>
+              <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
+            </button>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT" disabled>
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="ALT">0</span> baris</span>
             </button>
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table" aria-label="Tabel ALT">
+          <table class="ta-table ux-thead" aria-label="Tabel ALT">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -258,14 +269,17 @@
       <section class="ta-segment" data-seg="LAIN">
         <header class="ta-seg-header">
           <h2>Lainnya</h2>
-          <div class="seg-tools">
+          <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen LAIN">
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN">
-              <i class="bi bi-plus-lg"></i><span>Baris</span>
+              <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
+            </button>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN" disabled>
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="LAIN">0</span> baris</span>
             </button>
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table" aria-label="Tabel LAIN">
+          <table class="ta-table ux-thead" aria-label="Tabel LAIN">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
