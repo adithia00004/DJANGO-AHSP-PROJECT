@@ -155,8 +155,13 @@
           koefisien: normKoefStrToSend($('input[data-field="koefisien"]', tr).value),
         };
         if (seg === 'LAIN' && activeSource === 'custom') {
-          const refId = $('input[data-field="ref_ahsp_id"]', tr).value.trim();
-          if (refId) base.ref_ahsp_id = refId;
+          const rk = $('input[data-field="ref_kind"]', tr).value.trim();
+          const rid = $('input[data-field="ref_id"]', tr).value.trim();
+          if (rk && rid) { base.ref_kind = rk; base.ref_id = rid; }
+          else {
+            const refId = $('input[data-field="ref_ahsp_id"]', tr).value.trim();
+            if (refId) base.ref_ahsp_id = refId;
+          }
         }
         out.push(base);
       });
@@ -239,33 +244,81 @@
       const $input = jQuery(input);
       if ($input.data('hasSelect2')) return;
 
+      function localProjectOptions(term) {
+        const q = String(term || '').toLowerCase();
+        const items = [];
+        document.querySelectorAll('#ta-job-list .ta-job-item').forEach(li => {
+          const id = parseInt(li.getAttribute('data-pekerjaan-id')||'0',10);
+          const kode = (li.querySelector('.kode')?.textContent || '').trim();
+          const uraian = (li.querySelector('.uraian')?.textContent || '').trim();
+          const satuan = (li.querySelector('.satuan')?.textContent || '').trim();
+          if (!id) return;
+          const hay = `${kode} ${uraian}`.toLowerCase();
+          if (q && !hay.includes(q)) return;
+          const badge = (li.getAttribute('data-source-type')||'').toUpperCase();
+          items.push({
+            id: `job:${id}`,
+            text: `[${badge||'JOB'}] ${kode} — ${uraian}`,
+            kode_job: kode,
+            nama_job: uraian,
+            satuan: satuan || ''
+          });
+        });
+        return items.slice(0, 20);
+      }
+
       $input.select2({
         ajax: {
           url: endpoints.searchAhsp,
           delay: 250,
           data: params => ({ q: params.term }),
-          processResults: data => ({
-            results: (data.results || []).map(x => ({
-              id: x.id,
+          processResults: (data, params) => {
+            const remote = (data.results || []).map(x => ({
+              id: `ahsp:${x.id}`,
               text: `${x.kode_ahsp} — ${x.nama_ahsp}`,
               kode_ahsp: x.kode_ahsp,
               nama_ahsp: x.nama_ahsp,
               satuan: x.satuan || ''
-            }))
-          })
+            }));
+            const local = localProjectOptions(params?.term);
+            const groups = [];
+            if (local.length) groups.push({ text: 'Pekerjaan Proyek', children: local });
+            if (remote.length) groups.push({ text: 'Master AHSP', children: remote });
+            return { results: groups.length ? groups : [] };
+          }
         },
         minimumInputLength: 1,
         width: 'resolve',
-        placeholder: 'Cari AHSP…',
+        placeholder: 'Cari AHSP atau Pekerjaan…',
         dropdownAutoWidth: true
       });
 
       $input.on('select2:select', (e) => {
         const d = e.params.data || {};
-        input.value = d.kode_ahsp || '';
-        $('.cell-wrap', tr).textContent = d.nama_ahsp || '';
-        $('input[data-field="satuan"]', tr).value = d.satuan || '';
-        $('input[data-field="ref_ahsp_id"]', tr).value = d.id || '';
+        let kind = 'ahsp';
+        let refId = '';
+        let kode = '';
+        let nama = '';
+        let sat  = d.satuan || '';
+        const sid = String(d.id||'');
+        if (sid.startsWith('job:')) {
+          kind = 'job';
+          refId = sid.split(':')[1] || '';
+          kode = d.kode_job || '';
+          nama = d.nama_job || '';
+        } else {
+          kind = 'ahsp';
+          refId = sid.split(':')[1] || sid;
+          kode = d.kode_ahsp || '';
+          nama = d.nama_ahsp || '';
+        }
+
+        input.value = kode;
+        $('.cell-wrap', tr).textContent = nama;
+        $('input[data-field="satuan"]', tr).value = sat;
+        $('input[data-field="ref_kind"]', tr).value = kind;
+        $('input[data-field="ref_id"]', tr).value = String(refId || '');
+        $('input[data-field="ref_ahsp_id"]', tr).value = (kind === 'ahsp' ? String(refId||'') : '');
         const kodeTd = input.closest('td');
         if (kodeTd && !kodeTd.querySelector('.tag-bundle')) {
           kodeTd.insertAdjacentHTML('beforeend', ' <span class="tag-bundle">Bundle</span>');
@@ -276,6 +329,8 @@
       // Edit manual kode → kosongkan ref id
       input.addEventListener('input', () => {
         $('input[data-field="ref_ahsp_id"]', tr).value = '';
+        $('input[data-field="ref_kind"]', tr).value = '';
+        $('input[data-field="ref_id"]', tr).value = '';
         const b = tr.querySelector('.tag-bundle');
         if (b) b.remove();
       });
