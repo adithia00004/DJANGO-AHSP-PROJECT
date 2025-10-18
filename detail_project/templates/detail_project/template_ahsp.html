@@ -10,6 +10,7 @@
 {% block extra_css %}
   {{ block.super }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+  <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
 {% endblock %}
 
 {% block extra_js_head %}
@@ -159,8 +160,8 @@
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK" disabled>
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="TK">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="TK">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -197,8 +198,8 @@
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN" disabled>
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="BHN">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="BHN">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -235,8 +236,8 @@
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT" disabled>
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="ALT">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="ALT">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -268,13 +269,13 @@
       <!-- Segmen LAIN -->
       <section class="ta-segment" data-seg="LAIN">
         <header class="ta-seg-header">
-          <h2>Lainnya</h2>
+          <h2>Pekerjaan Gabungan</h2>
           <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen LAIN">
             <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN" disabled>
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline">Hapus <span class="ta-del-count" data-for="LAIN">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="LAIN">0</span> baris</span>
             </button>
           </div>
         </header>

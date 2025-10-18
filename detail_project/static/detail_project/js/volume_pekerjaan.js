@@ -831,14 +831,17 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>
-          <input type="text" class="form-control form-control-sm var-label" value="${escapeHtml(label)}" aria-label="Nama/Label parameter">
+          <input type="text" class="form-control form-control-sm var-label" value="${escapeHtml(label)}" aria-label="Nama/Label parameter" readonly>
           <small class="text-muted d-block mt-1">Kode: <code>${escapeHtml(code)}</code></small>
         </td>
         <td>
-          <input type="text" class="form-control form-control-sm var-value" value="${formatIdSmart(val)}" aria-label="Nilai parameter">
+          <input type="text" class="form-control form-control-sm var-value" value="${formatIdSmart(val)}" aria-label="Nilai parameter" readonly>
         </td>
         <td class="text-end">
-          <button type="button" class="btn btn-sm btn-outline-danger var-del">Hapus</button>
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-secondary var-edit" title="Ubah" aria-label="Ubah"><i class="bi bi-pencil"></i></button>
+            <button type="button" class="btn btn-outline-danger var-del" title="Hapus" aria-label="Hapus"><i class="bi bi-trash"></i></button>
+          </div>
         </td>`;
       tr.addEventListener('click', () => {
         tbody.querySelectorAll('tr').forEach(r => r.classList.remove('table-primary'));
@@ -868,6 +871,39 @@
         saveVars();
         reevaluateAllFormulas();
       });
+      // Edit toggle button
+      const btnEdit = tr.querySelector('.var-edit');
+      if (btnEdit) {
+        btnEdit.addEventListener('click', () => {
+          const labelEl = tr.querySelector('.var-label');
+          const valueEl = tr.querySelector('.var-value');
+          const isEditing = tr.classList.toggle('is-editing');
+          const icon = btnEdit.querySelector('i');
+          if (isEditing) {
+            // Enter edit mode
+            labelEl.readOnly = false; valueEl.readOnly = false;
+            labelEl.dataset.prev = labelEl.value; valueEl.dataset.prev = valueEl.value;
+            if (icon) icon.className = 'bi bi-check-lg';
+            btnEdit.setAttribute('title','Simpan'); btnEdit.setAttribute('aria-label','Simpan');
+            labelEl.focus();
+          } else {
+            // Save and exit edit mode
+            const nextLabel = String(labelEl.value || '').trim();
+            const n = parseNumberOrEmpty(valueEl.value);
+            let ok = true;
+            if (!nextLabel) { ok = false; labelEl.classList.add('is-invalid'); setTimeout(()=>labelEl.classList.remove('is-invalid'), 1200); labelEl.value = varLabels[code] || code; }
+            if (n === '')     { ok = false; valueEl.classList.add('is-invalid'); setTimeout(()=>valueEl.classList.remove('is-invalid'), 1200); valueEl.value = formatIdSmart(variables[code]); }
+            if (ok) {
+              varLabels[code] = nextLabel; saveVarLabels();
+              variables[code] = roundHalfUp(Number(n), STORE_PLACES); saveVars();
+              reevaluateAllFormulas();
+            }
+            labelEl.readOnly = true; valueEl.readOnly = true;
+            if (icon) icon.className = 'bi bi-pencil';
+            btnEdit.setAttribute('title','Ubah'); btnEdit.setAttribute('aria-label','Ubah');
+          }
+        });
+      }
       tr.querySelector('.var-del').addEventListener('click', () => {
         const nm = varLabels[code] || code;
         if (!confirm(`Hapus parameter "${nm}" (kode: ${code})?`)) return;
@@ -969,7 +1005,13 @@
     const rows = codes
       .sort((a,b)=>(labelsObj[a]||a).localeCompare(labelsObj[b]||b, 'id'))
       .map(code => `${(labelsObj[code]||code).replace(/[\r\n,]/g,' ')} , ${String(varsObj[code])}`);
-    return rows.join("\n") + "\n";
+    return ['Nama,Nilai'].concat(rows).join("\n") + "\n";
+  }
+
+  function tsCompact() {
+    const d = new Date();
+    const pad = (n)=> String(n).padStart(2,'0');
+    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
   }
 
   function ensureFileInputs() {
@@ -990,7 +1032,7 @@
       const data = JSON.stringify(payload, null, 2);
       const blob = new Blob([data], { type: 'application/json' });
       const a = document.createElement('a');
-      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      const ts = tsCompact();
       a.href = URL.createObjectURL(blob);
       a.download = `parameter_${projectId}_${ts}.json`;
       document.body.appendChild(a); a.click(); a.remove();
@@ -1003,7 +1045,7 @@
       const csv = csvFromVars(variables, varLabels);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a');
-      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      const ts = tsCompact();
       a.href = URL.createObjectURL(blob);
       a.download = `parameter_${projectId}_${ts}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
@@ -1023,10 +1065,25 @@
       const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama','Nilai'] });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Parameter');
-      const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      const ts = tsCompact();
       XLSX.writeFile(wb, `parameter_${projectId}_${ts}.xlsx`);
       TOAST.ok('Parameter diekspor (XLSX).');
     } catch { TOAST.err('Gagal export XLSX.'); }
+  }
+
+  async function copyJSONToClipboard() {
+    try {
+      const payload = { _format: 'vp-vars-v2', variables, labels: varLabels };
+      const data = JSON.stringify(payload, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(data);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = data; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      TOAST.ok('JSON disalin ke clipboard.');
+    } catch { TOAST.err('Gagal menyalin JSON.'); }
   }
 
   // Popup kecil di dekat tombol export untuk pilih format
@@ -1058,49 +1115,47 @@
   }
 
   // ---- IMPORTERS
-  async function importFromJSONText(rawText) {
+  // --- Import parsers (parse-only; not applying state yet)
+  function parseJSONToVarsLabels(rawText) {
     const obj = JSON.parse(rawText);
-    let nextVars = {}, nextLabels = {};
+    let srcVars = {}, srcLabels = {};
     if (obj && typeof obj === 'object' && obj._format === 'vp-vars-v2') {
-      nextVars = (obj.variables && typeof obj.variables === 'object') ? obj.variables : {};
-      nextLabels = (obj.labels && typeof obj.labels === 'object') ? obj.labels : {};
+      srcVars = (obj.variables && typeof obj.variables === 'object') ? obj.variables : {};
+      srcLabels = (obj.labels && typeof obj.labels === 'object') ? obj.labels : {};
     } else if (obj && typeof obj === 'object') {
       Object.keys(obj).forEach(code => {
-        const n = parseNumberOrEmpty(obj[code]);
-        if (n !== '') { nextVars[code] = Number(n); nextLabels[code] = code; }
+        srcVars[code] = obj[code];
+        srcLabels[code] = code;
       });
     } else throw new Error('format');
-
-    const normalizedVars = {};
-    const normalizedLabels = {};
-    Object.keys(nextVars).forEach(code => {
+    const errors = [];
+    const outVars = {}, outLabels = {};
+    Object.keys(srcVars).forEach(code => {
       let safe = String(code || '').trim();
       safe = safe.normalize('NFKD').replace(/[^\w]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
       if (/^[0-9]/.test(safe)) safe = '_' + safe;
       if (!safe) return;
-      const val = parseNumberOrEmpty(nextVars[code]);
-      if (val === '') return;
-      normalizedVars[safe] = roundHalfUp(Number(val), STORE_PLACES);
-      const lbl = String((nextLabels && nextLabels[code]) || code || '').trim();
-      normalizedLabels[safe] = lbl || safe;
+      const val = parseNumberOrEmpty(srcVars[code]);
+      if (val === '') { errors.push(`Kode ${code}: Nilai tidak valid`); return; }
+      outVars[safe] = roundHalfUp(Number(val), STORE_PLACES);
+      const lbl = String((srcLabels && srcLabels[code]) || code || '').trim();
+      outLabels[safe] = lbl || safe;
     });
-
-    if (!Object.keys(normalizedVars).length) throw new Error('no-valid');
-    variables = { ...variables, ...normalizedVars };
-    varLabels = { ...varLabels, ...normalizedLabels };
-    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+    return { vars: outVars, labels: outLabels, errors };
   }
 
-  function importFromCSVText(rawText) {
+  function parseCSVToVarsLabels(rawText) {
     const rowsCsv = parseCSV(rawText);
     if (!rowsCsv.length) throw new Error('csv-empty');
+    const errors = [];
     const nextVars = {}, nextLabels = {};
-    rowsCsv.forEach(r => {
+    rowsCsv.forEach((r, idx) => {
       const label = String(r.label || '').trim();
       const n = parseNumberOrEmpty(r.value);
-      if (!label || n === '') return;
+      if (!label) { errors.push(`Baris ${idx+1}: Label kosong`); return; }
+      if (n === '') { errors.push(`Baris ${idx+1}: Nilai bukan angka`); return; }
       let code = slugifyName(label);
-      if (!code) return;
+      if (!code) { errors.push(`Baris ${idx+1}: Kode tidak valid`); return; }
       if (nextVars[code] != null || variables[code] != null) {
         let i = 2;
         while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
@@ -1109,26 +1164,25 @@
       nextLabels[code] = label;
     });
     if (!Object.keys(nextVars).length) throw new Error('csv-none');
-    variables = { ...variables, ...nextVars };
-    varLabels = { ...varLabels, ...nextLabels };
-    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+    return { vars: nextVars, labels: nextLabels, errors };
   }
 
-  async function importFromXLSX(file) {
+  async function parseXLSXToVarsLabels(file) {
     if (!(window.XLSX && XLSX.read)) throw new Error('no-xlsx-lib');
     const ab = await file.arrayBuffer();
     const wb = XLSX.read(ab);
     const ws = wb.Sheets[wb.SheetNames[0]];
     const arr = XLSX.utils.sheet_to_json(ws, { header: 1 }); // 2D array
     const rows = arr.filter(r => r && (r[0] != null || r[1] != null));
-    // skip header if like ["Nama","Nilai"]
     const body = (rows[0] && /nama|label/i.test(String(rows[0][0])) && /nilai|value/i.test(String(rows[0][1]||"")))
       ? rows.slice(1) : rows;
+    const errors = [];
     const nextVars = {}, nextLabels = {};
-    body.forEach(r => {
+    body.forEach((r, idx) => {
       const label = String((r[0] ?? '')).trim();
       const n = parseNumberOrEmpty(r[1]);
-      if (!label || n === '') return;
+      if (!label) { errors.push(`Baris ${idx+1}: Label kosong`); return; }
+      if (n === '') { errors.push(`Baris ${idx+1}: Nilai bukan angka`); return; }
       let code = slugifyName(label);
       if (nextVars[code] != null || variables[code] != null) {
         let i = 2; while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
@@ -1137,33 +1191,54 @@
       nextLabels[code] = label;
     });
     if (!Object.keys(nextVars).length) throw new Error('xlsx-none');
-    variables = { ...variables, ...nextVars };
-    varLabels = { ...varLabels, ...nextLabels };
-    saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+    return { vars: nextVars, labels: nextLabels, errors };
   }
 
-  function handleUnifiedImport(file) {
+  async function handleUnifiedImport(file) {
     if (!file) return;
     const name = file.name || '';
     const ext = (/\.(\w+)$/.exec(name)?.[1] || '').toLowerCase();
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        if (ext === 'json')       await importFromJSONText(String(reader.result || '{}'));
-        else if (ext === 'csv')   importFromCSVText(String(reader.result || ''));
-        else if (ext === 'xlsx')  await importFromXLSX(file);
-        else throw new Error('format');
-        TOAST.ok('Parameter diimport.');
-      } catch (e) {
-        if (String(e.message).includes('no-xlsx-lib')) {
-          TOAST.warn('Import XLSX butuh SheetJS (window.XLSX). Gunakan CSV/JSON.');
-        } else {
-          TOAST.err('Gagal import.');
-        }
+    try {
+      let parsed = { vars:{}, labels:{}, errors:[] };
+      if (ext === 'json') {
+        const txt = await file.text();
+        parsed = parseJSONToVarsLabels(txt);
+      } else if (ext === 'csv') {
+        const txt = await file.text();
+        parsed = parseCSVToVarsLabels(txt);
+      } else if (ext === 'xlsx') {
+        parsed = await parseXLSXToVarsLabels(file);
+      } else {
+        throw new Error('format');
       }
-    };
-    reader.onerror = () => TOAST.err('Gagal membaca file.');
-    if (ext === 'xlsx') reader.readAsArrayBuffer(file); else reader.readAsText(file);
+      if (parsed.errors && parsed.errors.length) {
+        alert('Beberapa baris diabaikan:\n' + parsed.errors.slice(0,10).join('\n') + (parsed.errors.length>10?'\n…':'') );
+      }
+      const nextVars = parsed.vars, nextLabels = parsed.labels;
+      const existingCodes = new Set(Object.keys(variables));
+      const codes = Object.keys(nextVars);
+      const adds = codes.filter(c => !existingCodes.has(c)).length;
+      const updates = codes.filter(c => existingCodes.has(c)).length;
+      const summary = `Ditemukan ${codes.length} parameter.\nTambah: ${adds}\nPerbarui: ${updates}.\nOK = Merge, Cancel = Replace`;
+      const doMerge = window.confirm(summary);
+      if (doMerge) {
+        variables = { ...variables, ...nextVars };
+        varLabels = { ...varLabels, ...nextLabels };
+      } else {
+        variables = { ...nextVars };
+        varLabels = { ...nextLabels };
+      }
+      saveVars(); saveVarLabels(); renderVarTable(); reevaluateAllFormulas();
+      TOAST.ok('Parameter diimport.');
+    } catch (e) {
+      if (String(e.message).includes('no-xlsx-lib')) {
+        TOAST.warn('Import XLSX butuh SheetJS (window.XLSX). Gunakan CSV/JSON.');
+      } else if (String(e.message).includes('format')) {
+        TOAST.err('Format file tidak dikenali.');
+      } else {
+        TOAST.err('Gagal import.');
+      }
+    }
   }
 
   // Hook tombol Import/Export lama → Unified
@@ -1185,10 +1260,32 @@
     }
 
     if (btnExport && !btnExport.dataset.boundUnified) {
-      btnExport.addEventListener('click', (e) => showExportMenu(btnExport));
+      const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+      bind('vp-export-json', exportAsJSON);
+      bind('vp-export-csv', exportAsCSV);
+      bind('vp-export-xlsx', exportAsXLSX);
+      bind('vp-export-copy-json', copyJSONToClipboard);
       btnExport.dataset.boundUnified = '1';
       btnExport.setAttribute('title', 'Export JSON/CSV/XLSX');
     }
+  })();
+
+  // Generate XLSX template (no static file needed)
+  (function installTemplateGen(){
+    const btn = document.getElementById('vp-template-xlsx-gen');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (!(window.XLSX && XLSX.utils && XLSX.writeFile)) { TOAST.warn('Butuh SheetJS untuk XLSX'); return; }
+      const rows = [
+        { Nama: 'Panjang', Nilai: 0 },
+        { Nama: 'Lebar',   Nilai: 0 },
+        { Nama: 'Tinggi',  Nilai: 0 },
+      ];
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama','Nilai'] });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Parameter');
+      XLSX.writeFile(wb, 'parameters_template.xlsx');
+    });
   })();
 
 

@@ -509,4 +509,89 @@
   // auto-select first job
   const first = $('#ta-job-list .ta-job-item:not([hidden])');
   if (first) selectJob(first);
+
+  // =========================
+  // Sidebar Resizer (vertical)
+  // =========================
+  (function installResizer(){
+    const res = document.getElementById('ta-resizer');
+    const side = document.querySelector('.ta-sidebar');
+    if (!res || !side) return;
+
+    const pid = app.dataset.projectId || '0';
+    const KEY = `ta_sidebar_w:${pid}`;
+    const MIN_W = 280; const MAX_W = 720;
+
+    // restore saved width
+    try {
+      const saved = parseInt(localStorage.getItem(KEY)||'', 10);
+      if (Number.isFinite(saved)) {
+        const w = Math.min(MAX_W, Math.max(MIN_W, saved));
+        // set both legacy and new tokens for compatibility
+        document.body.style.setProperty('--ta-sidebar-w', `${w}px`);
+        document.body.style.setProperty('--ta-left-w', `${w}px`);
+      }
+    } catch {}
+
+    let dragging = false, startX = 0, startW = 0;
+    const clamp = (w) => Math.min(MAX_W, Math.max(MIN_W, w));
+    const onMove = (ev) => {
+      if (!dragging) return;
+      const x = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const dx = x - startX; // drag right grows sidebar
+      const w = clamp(startW + dx);
+      const wpx = `${Math.round(w)}px`;
+      // update both tokens so whichever CSS wins will reflect change
+      document.body.style.setProperty('--ta-sidebar-w', wpx);
+      document.body.style.setProperty('--ta-left-w',   wpx);
+      try { localStorage.setItem(KEY, String(Math.round(w))); } catch {}
+      ev.preventDefault();
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.classList.remove('user-resizing');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchend', onUp);
+    };
+    const onDown = (ev) => {
+      dragging = true;
+      startX = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      startW = side.getBoundingClientRect().width;
+      document.body.classList.add('user-resizing');
+      window.addEventListener('mousemove', onMove, { passive: false });
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('mouseup', onUp, { passive: true });
+      window.addEventListener('touchend', onUp, { passive: true });
+      ev.preventDefault();
+    };
+    res.addEventListener('mousedown', onDown);
+    res.addEventListener('touchstart', onDown, { passive: false });
+    // keyboard support
+    res.addEventListener('keydown', (e) => {
+      const step = (e.shiftKey ? 20 : 10);
+      // prefer legacy token if present
+      let cur = parseInt(getComputedStyle(document.body).getPropertyValue('--ta-left-w')||'0',10);
+      if (!Number.isFinite(cur) || cur <= 0) {
+        cur = parseInt(getComputedStyle(document.body).getPropertyValue('--ta-sidebar-w')||'360',10) || 360;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'Left') {
+        const w = clamp(cur - step);
+        const wpx = `${w}px`;
+        document.body.style.setProperty('--ta-sidebar-w', wpx);
+        document.body.style.setProperty('--ta-left-w',   wpx);
+        try{localStorage.setItem(KEY,String(w));}catch{}
+        e.preventDefault();
+      } else if (e.key === 'ArrowRight' || e.key === 'Right') {
+        const w = clamp(cur + step);
+        const wpx = `${w}px`;
+        document.body.style.setProperty('--ta-sidebar-w', wpx);
+        document.body.style.setProperty('--ta-left-w',   wpx);
+        try{localStorage.setItem(KEY,String(w));}catch{}
+        e.preventDefault();
+      }
+    });
+  })();
 })();

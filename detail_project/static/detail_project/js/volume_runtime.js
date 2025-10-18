@@ -94,6 +94,16 @@
       toggleBtn.dataset.bound = '1';
     }
 
+    // Close button inside sidebar header
+    const closeBtn = qs('.js-vp-sidebar-close, [data-action="close-sidebar"]', sidebar);
+    if (closeBtn && !closeBtn.dataset.bound) {
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeSidebar({ by: 'button', force: true });
+      });
+      closeBtn.dataset.bound = '1';
+    }
+
     // Hotspot hover (desktop)
     if (hotspot && !hotspot.dataset.bound) {
       const hasHover = window.matchMedia?.('(hover: hover)').matches;

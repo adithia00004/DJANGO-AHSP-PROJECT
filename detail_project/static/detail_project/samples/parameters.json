@@ -1,0 +1,13 @@
+{
+  "_format": "vp-vars-v2",
+  "variables": {
+    "panjang": 0,
+    "lebar": 0,
+    "tinggi": 0
+  },
+  "labels": {
+    "panjang": "Panjang",
+    "lebar": "Lebar",
+    "tinggi": "Tinggi"
+  }
+}

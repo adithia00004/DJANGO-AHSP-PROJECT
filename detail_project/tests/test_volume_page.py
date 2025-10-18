@@ -252,6 +252,27 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertIn("Ctrl", html)  # hint Ctrl+Space pada tooltip/hint
         self.assertIn("Space", html)
 
+    def test_var_export_import_markup_enhanced(self):
+        """Periksa markup Export/Import terbaru: dropup + opsi export + template."""
+        self.c.login(username="owner", password="pass")
+        html = self.c.get(self._url_page()).content.decode("utf-8")
+
+        # Export dropup items (JSON/CSV/XLSX + Copy JSON)
+        self.assertIn('id="vp-var-export-btn"', html)
+        self.assertIn('id="vp-export-json"', html)
+        self.assertIn('id="vp-export-csv"', html)
+        self.assertIn('id="vp-export-xlsx"', html)
+        self.assertIn('id="vp-export-copy-json"', html)
+
+        # Import input accepts 3 formats
+        self.assertIn('id="vp-var-import"', html)
+        self.assertIn('accept=".json,.csv,.xlsx"', html)
+
+        # Template dropup: sample files (CSV/JSON) dan generator XLSX
+        self.assertIn('detail_project/samples/parameters.csv', html)
+        self.assertIn('detail_project/samples/parameters.json', html)
+        self.assertIn('id="vp-template-xlsx-gen"', html)
+
     def test_scripts_order_engine_before_page_js(self):
         self.c.login(username="owner", password="pass")
         html = self.c.get(self._url_page()).content.decode("utf-8")

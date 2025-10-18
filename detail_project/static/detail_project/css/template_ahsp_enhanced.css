@@ -1,0 +1,251 @@
+/* =====================================================================
+   TEMPLATE_AHSP_ENHANCED.CSS 
+   Sinkronisasi dengan Feel List Pekerjaan & Rekap RAB
+   - Mengadopsi pattern dari list_pekerjaan.css & rekap_rab.css
+   - Konsisten dengan design token dari core.css
+   - Enhanced visual hierarchy & modern UI patterns
+   ===================================================================== */
+
+/* ============== ROOT CONTAINER ============== */
+.ta-app {
+  color: var(--dp-c-text);
+  background: var(--dp-c-bg);
+  min-height: calc(100vh - var(--dp-topbar-h));
+}
+
+/* ============== ENHANCED TOOLBAR (dari rekap_rab) ============== */
+.ta-toolbar,
+#ta-toolbar {
+  position: sticky;
+  top: var(--dp-topbar-h);
+  z-index: var(--dp-z-toolbar);
+  min-height: var(--lp-toolbar-h, 56px);
+  background: var(--dp-c-bg);
+  border-bottom: 1px solid var(--dp-c-border);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem 0;
+  flex-wrap: wrap;
+  transition: box-shadow var(--ux-duration-200) var(--ux-ease);
+}
+
+/* Toolbar on scroll shadow */
+.ta-toolbar.scrolled {
+  box-shadow: var(--dp-shadow-md);
+}
+
+/* Search Input Group (dari rekap_rab) */
+.ta-toolbar-search {
+  flex: 1 1 clamp(24rem, 50vw, var(--ta-search-w, 560px));
+  max-width: var(--ta-search-w, 560px);
+  min-width: 0;
+}
+
+.ta-toolbar .input-group .form-control,
+.ta-toolbar .input-group .input-group-text {
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+  border-color: var(--dp-c-border);
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.ta-toolbar .form-control {
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+}
+
+.ta-toolbar .form-control:focus {
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  outline: 0;
+  transform: scale(1.005);
+}
+
+.ta-toolbar .input-group-text {
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
+}
+
+/* Button Styling (dari list_pekerjaan & rekap_rab) */
+.ta-toolbar .btn,
+.ta-btn {
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding: .375rem .75rem;
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  white-space: nowrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.ta-toolbar .btn i {
+  margin-right: .35rem;
+}
+
+.ta-toolbar .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+.ta-toolbar .btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Save Button States (enhanced) */
+#ta-btn-save.btn-primary {
+  background: var(--dp-c-primary);
+  border-color: var(--dp-c-primary);
+}
+
+#ta-btn-save:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+#ta-btn-save.saving {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(var(--bs-primary-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0); }
+}
+
+/* Dirty Indicator (enhanced visual) */
+.ta-dirty-indicator {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+#ta-dirty-dot {
+  animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.3; }
+}
+
+/* ============== BODY GRID LAYOUT (dari list_pekerjaan) ============== */
+.ta-body {
+  display: grid;
+  grid-template-columns: minmax(280px, var(--ta-sidebar-w, 25%)) 6px 1fr;
+  gap: 0;
+  margin-top: 1rem;
+  min-height: calc(100vh - var(--dp-topbar-h) - var(--lp-toolbar-h) - 2rem);
+}
+
+/* Vertical resizer between sidebar and editor */
+#ta-resizer.ux-resizer{
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+#ta-resizer.ux-resizer::after{
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
+  opacity: .2;
+}
+#ta-resizer.ux-resizer:hover::after,
+#ta-resizer.ux-resizer:focus::after{
+  opacity: .35;
+}
+body.user-resizing #ta-resizer.ux-resizer::after{
+  opacity: .5;
+}
+
+/* ============== SIDEBAR (enhanced dari list_pekerjaan) ============== */
+.ta-sidebar {
+  background: var(--dp-c-surface-1);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: 1rem;
+  overflow-y: auto;
+  max-height: calc(100vh - var(--dp-topbar-h) - var(--lp-toolbar-h) - 2rem);
+}
+
+.ta-sidebar-header h5 {
+  font-size: var(--ux-font-lg);
+  font-weight: 700;
+  color: var(--dp-c-text);
+  margin: 0;
+}
+
+/* Job List */
+
+/* ============== SELECT2 THEME (dark/light aware) ============== */
+/* Scope to Template AHSP page to avoid global impact */
+body[data-page="template_ahsp"] .select2-container .select2-selection--single,
+body[data-page="template_ahsp"] .select2-container .select2-selection--multiple{
+  background-color: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+}
+body[data-page="template_ahsp"] .select2-container .select2-selection__rendered{
+  color: var(--dp-c-text);
+}
+body[data-page="template_ahsp"] .select2-container .select2-selection__placeholder{
+  color: var(--dp-c-muted);
+}
+body[data-page="template_ahsp"] .select2-container .select2-selection--single .select2-selection__arrow b{
+  border-color: var(--dp-c-muted) transparent transparent transparent;
+}
+
+/* Dropdown panel */
+body[data-page="template_ahsp"] .select2-container .select2-dropdown{
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+}
+body[data-page="template_ahsp"] .select2-container .select2-results__option{
+  color: var(--dp-c-text);
+}
+/* Hover/highlighted option – keep strong contrast */
+body[data-page="template_ahsp"] .select2-container .select2-results__option--highlighted[aria-selected]{
+  background: color-mix(in srgb, var(--dp-c-primary) 20%, var(--dp-c-surface));
+  color: var(--dp-c-text);
+}
+/* Selected option */
+body[data-page="template_ahsp"] .select2-container .select2-results__option[aria-selected=true]{
+  background: color-mix(in srgb, var(--dp-c-primary) 28%, var(--dp-c-surface));
+  color: var(--dp-c-text);
+  font-weight: 600;
+}
+
+/* Search box inside dropdown */
+body[data-page="template_ahsp"] .select2-container .select2-search__field{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-sm);
+}
+body[data-page="template_ahsp"] .select2-container .select2-search__field::placeholder{
+  color: var(--dp-c-muted);
+}
+
+/* Focus ring for accessibility */
+body[data-page="template_ahsp"] .select2-container--default .select2-selection--single:focus{
+  outline: 0;
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  border-color: var(--dp-c-primary);
+}
+body[data-page="template_ahsp"] .select2-container .select2-search__field:focus{
+  outline: 0;
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  border-color: var(--dp-c-primary);
+}
+
+/* Disabled state */
+body[data-page="template_ahsp"] .select2-container--disabled .select2-selection{
+  background: color-mix(in srgb, var(--dp-c-bg) 70%, var(--dp-c-surface));
+  color: var(--dp-c-muted);
+}

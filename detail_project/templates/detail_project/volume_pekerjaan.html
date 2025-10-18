@@ -117,7 +117,7 @@
          aria-hidden="true">
 
     <!-- inner = kartu panel -->
-    <div class="vp-sidebar-inner dp-card ux-scrollbar">
+    <div class="lp-sidebar-inner dp-card ux-scrollbar">
       <div class="lp-sidebar-header d-flex align-items-center justify-content-between">
         <h5 id="vpSidebarTitle" class="mb-0">Parameter Perhitungan</h5>
         <button type="button"
@@ -154,25 +154,38 @@
 
         <div class="mt-2">
           <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 align-items-center">
               <button class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" title="Import JSON/CSV/XLSX">
                 <i class="bi bi-file-arrow-up"></i> Import
               </button>
-              <button class="btn btn-sm btn-outline-secondary" id="vp-var-export-btn" title="Export JSON">
-                <i class="bi bi-file-arrow-down"></i> Export
-              </button>
               <input type="file" id="vp-var-import" accept=".json,.csv,.xlsx" class="d-none">
-            </div>
 
-            <div class="dropup vp-template-dropdown">
-              <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                Template
-              </button>
-              <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.xlsx' %}" download>Template (.xlsx)</a></li>
-                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
-                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
-              </ul>
+              <!-- Export dropup (Bootstrap dropdown like Template) -->
+              <div class="dropup">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="vp-var-export-btn"
+                        data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">
+                  <i class="bi bi-file-arrow-down"></i> Export
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="vp-var-export-btn">
+                  <li><button class="dropdown-item" type="button" id="vp-export-json">Export JSON</button></li>
+                  <li><button class="dropdown-item" type="button" id="vp-export-csv">Export CSV</button></li>
+                  <li><button class="dropdown-item" type="button" id="vp-export-xlsx">Export XLSX</button></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><button class="dropdown-item" type="button" id="vp-export-copy-json">Copy JSON to Clipboard</button></li>
+                </ul>
+              </div>
+
+              <!-- Template dropup (sample files / generator) -->
+              <div class="dropup vp-template-dropdown">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                  Template
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li><button class="dropdown-item" type="button" id="vp-template-xlsx-gen">Generate Template (.xlsx)</button></li>
+                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
+                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
