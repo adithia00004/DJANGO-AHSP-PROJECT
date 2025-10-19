@@ -52,7 +52,26 @@
 
   // ---- Elemen UI
   const btnSave = document.getElementById('btn-save-vol');
+  const btnSaveTop = document.getElementById('btn-save');
   const btnSaveSpin = document.getElementById('btn-save-spin');
+  const saveStatusEl = document.getElementById('vp-save-status');
+  let saveStatusTimer = null;
+
+  function setSaveStatus(message, variant){
+    try{
+      if (!saveStatusEl) return;
+      saveStatusEl.textContent = message || '';
+      saveStatusEl.classList.remove('text-success','text-warning','text-danger');
+      if (variant === 'success') saveStatusEl.classList.add('text-success');
+      else if (variant === 'warning') saveStatusEl.classList.add('text-warning');
+      else if (variant === 'danger') saveStatusEl.classList.add('text-danger');
+      if (saveStatusTimer) clearTimeout(saveStatusTimer);
+      if (message) saveStatusTimer = setTimeout(()=>{
+        saveStatusEl.textContent = '';
+        saveStatusEl.classList.remove('text-success','text-warning','text-danger');
+      }, 3200);
+    }catch{}
+  }
 
   const varTable = document.getElementById('vp-var-table');
   const btnVarAdd = document.getElementById('vp-var-add');
@@ -65,6 +84,35 @@
   const searchInput = document.getElementById('vp-search');
   const searchDrop = document.getElementById('vp-search-results');
   const prefixBadge = document.getElementById('vp-search-prefix-badge');
+
+  // Reposition dropdown to always appear below toolbar and not cover the input
+  function positionSearchDropdown() {
+    try {
+      if (!searchInput || !searchDrop) return;
+      const wrap = searchInput.closest('.vp-searchbar') || searchInput.parentElement;
+      const rect = wrap.getBoundingClientRect();
+      // Place using fixed position relative to viewport to avoid being clipped by toolbar area
+      searchDrop.style.position = 'fixed';
+      searchDrop.style.left = `${Math.round(rect.left)}px`;
+      searchDrop.style.width = `${Math.round(rect.width)}px`;
+      // IMPORTANT: with position: fixed, use viewport coords directly (no scrollY)
+      const top = rect.bottom + 6; // 6px gap below the sticky toolbar searchbar
+      searchDrop.style.top = `${Math.round(top)}px`;
+      searchDrop.style.maxHeight = '40vh';
+      searchDrop.style.overflow = 'auto';
+      // z-index diatur via CSS: var(--vp-z-search, calc(var(--dp-z-toolbar)+1))
+      searchDrop.style.zIndex = 'var(--vp-z-search)';
+    } catch {}
+  }
+
+  ['focus','input','keydown'].forEach(ev => {
+    if (searchInput) searchInput.addEventListener(ev, positionSearchDropdown, { passive: true });
+  });
+  window.addEventListener('resize', positionSearchDropdown, { passive: true });
+  window.addEventListener('scroll', (e)=>{
+    // keep dropdown anchored during scroll when visible
+    if (searchDrop && !searchDrop.classList.contains('d-none')) positionSearchDropdown();
+  }, { passive: true });
 
   // Toast (single) + multi-toasts (untuk Undo)
   const toastEl = document.getElementById('vp-toast');
@@ -277,8 +325,57 @@
       if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
       else collapsed.sub[key] = !collapsed.sub[key];
       saveCollapse(); applyCollapseOnCards(); return;
-    }    
+    }
   });
+
+  // PERBAIKAN #2: Expand All / Collapse All buttons (seperti list_pekerjaan)
+  const btnExpandAll = document.getElementById('vp-expand-all');
+  const btnCollapseAll = document.getElementById('vp-collapse-all');
+
+  if (btnExpandAll) {
+    btnExpandAll.addEventListener('click', () => {
+      // Clear semua collapse state
+      collapsed.klas = {};
+      collapsed.sub = {};
+      saveCollapse();
+      applyCollapseOnTable();
+      applyCollapseOnCards();
+
+      // Visual feedback (optional)
+      showToast('Semua klasifikasi dan sub-klasifikasi diperluas', 'info');
+    });
+  }
+
+  if (btnCollapseAll) {
+    btnCollapseAll.addEventListener('click', () => {
+      // Collapse semua Klasifikasi dan Sub
+      document.querySelectorAll('.vp-klas-card').forEach(card => {
+        const key = card.getAttribute('data-klas-id') || slugKey(card.querySelector('.card-header')?.textContent);
+        if (key) collapsed.klas[key] = true;
+      });
+      document.querySelectorAll('.vp-sub-card').forEach(card => {
+        const key = card.getAttribute('data-sub-id') || slugKey(card.querySelector('.card-header')?.textContent);
+        if (key) collapsed.sub[key] = true;
+      });
+
+      // Juga handle row-based (fallback)
+      document.querySelectorAll('tr.vp-klass').forEach(tr => {
+        const key = tr.getAttribute('data-klas-id') || slugKey(tr.textContent);
+        if (key) collapsed.klas[key] = true;
+      });
+      document.querySelectorAll('tr.vp-sub').forEach(tr => {
+        const key = tr.getAttribute('data-sub-id') || slugKey(tr.textContent);
+        if (key) collapsed.sub[key] = true;
+      });
+
+      saveCollapse();
+      applyCollapseOnTable();
+      applyCollapseOnCards();
+
+      // Visual feedback (optional)
+      showToast('Semua klasifikasi dan sub-klasifikasi diciutkan', 'info');
+    });
+  }
 
   function typeBadgeClass(type) {
     if (type === 'Klasifikasi') return 'vp-type-klas';
@@ -491,8 +588,70 @@
       });
       state.ul.appendChild(li);
     });
+    // Tampilkan lalu atur posisi (flip jika mendekati bawah viewport)
     state.box.style.display = 'block';
-    requestAnimationFrame(() => { state.box.style.opacity = '1'; });
+    state.box.style.opacity = '0';
+    requestAnimationFrame(() => {
+      try {
+        const wrap = inputEl.closest('.flex-grow-1') || inputEl.parentElement;
+        const rect = wrap.getBoundingClientRect();
+        const menuH = state.box.offsetHeight || 240;
+        const gap = 6;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const placeDown = spaceBelow >= Math.min(menuH, 160);
+        // Reset anchors
+        state.box.style.left = '0';
+        state.box.style.right = '0';
+        state.box.style.maxHeight = '';
+        state.box.style.top = '';
+        state.box.style.bottom = '';
+        if (placeDown) {
+          state.box.style.top = `calc(100% + ${gap}px)`;
+          state.box.style.bottom = 'auto';
+          const mh = Math.max(120, Math.min(menuH, Math.floor(spaceBelow - gap)));
+          state.box.style.maxHeight = `${mh}px`;
+        } else {
+          state.box.style.top = 'auto';
+          state.box.style.bottom = `calc(100% + ${gap}px)`;
+          const mh = Math.max(120, Math.min(menuH, Math.floor(spaceAbove - gap)));
+          state.box.style.maxHeight = `${mh}px`;
+        }
+      } finally {
+        state.box.style.opacity = '1';
+      }
+    });
+  }
+
+  // Robust UI->canonical parser for quantity (handles id-ID grouping)
+  function canonFromUIQty(raw){
+    let s = String(raw ?? '').trim();
+    if (!s) return '';
+    s = s.replace(/\u00A0/g,' ').replace(/\s+/g,'').replace(/_/g,'');
+    const hasDot = s.includes('.');
+    const hasComma = s.includes(',');
+    if (hasDot && !hasComma){
+      const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
+      if (dotGrouping.test(s)) s = s.replace(/\./g, '');
+      // else: treat dot as decimal (e.g., 1.25)
+    } else if (hasComma && !hasDot){
+      const commaGrouping = /^\d{1,3}(,\d{3})+$/;
+      if (commaGrouping.test(s)) s = s.replace(/,/g, '');
+      else s = s.replace(/,/g, '.'); // comma as decimal
+    } else if (hasDot && hasComma){
+      const lastComma = s.lastIndexOf(',');
+      const lastDot = s.lastIndexOf('.');
+      if (lastComma > lastDot){
+        // comma decimal, dot thousands
+        s = s.replace(/\./g, '').replace(/,/g, '.');
+      } else {
+        // dot decimal, comma thousands
+        s = s.replace(/,/g, '');
+      }
+    }
+    // canonical integer/decimal
+    if (!/^\-?\d+(\.\d+)?$/.test(s)) return '';
+    return s;
   }
   function moveActive(inputEl, delta) {
     const state = suggestState.get(inputEl);
@@ -604,6 +763,15 @@
       input.value = f.raw;
     }
 
+    // Mark initial empty/zero state
+    if (input) {
+      const raw0 = String(input.value || '').trim();
+      tr.classList.toggle('vp-row-empty', !raw0);
+      const c0 = canonFromUIQty(raw0);
+      if (c0 !== '') tr.classList.toggle('vp-row-zero', Number(c0) === 0);
+      tr.classList.remove('vp-row-invalid');
+    }
+
     fxBtn && fxBtn.addEventListener('click', () => {
       const newState = !fxModeById[id];
       fxModeById[id] = newState;
@@ -644,8 +812,20 @@
       if (!isFormulaMode(id, input.value)) {
         const normalized = normQty(input.value);
         if (normalized !== '') input.value = normalized;
+        // Update row markers based on normalized numeric
+        const tr2 = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
+        const c = canonFromUIQty(input.value);
+        const isEmpty2 = !String(input.value||'').trim();
+        input.classList.toggle('vp-empty', isEmpty2);
+        if (tr2){
+          tr2.classList.toggle('vp-row-empty', isEmpty2);
+          tr2.classList.toggle('vp-row-zero', (!isEmpty2 && c !== '' && Number(c) === 0));
+          tr2.classList.remove('vp-row-invalid');
+        }
+      } else {
+        // Formula mode: only toggle empty flag; vp-row-invalid handled in input handler
+        input.classList.toggle('vp-empty', !String(input.value||'').trim());
       }
-      input.classList.toggle('vp-empty', !String(input.value||'').trim());
       setTimeout(() => hideSuggest(input), 120);
     });
     input && input.addEventListener('focus', () => updateSuggestions(input, id));
@@ -714,22 +894,23 @@
   }
   function normQty(val) {
     if (val === '' || val == null) return '';
+    // Gunakan parser robust agar '1.000' (id-ID ribuan) tidak dibaca 1.000 (desimal)
+    const c = canonFromUIQty(val);
+    if (!c) return '';
     if (N) {
-      const c = N.enforceDp(N.canonicalizeForAPI(val), STORE_PLACES);
-      return N.formatForUI(c); // tampilkan dengan koma (id-ID)
-    } else {
-      const s = normalizeLocaleNumericString(val);
-      let num = Number(s);
-      if (!Number.isFinite(num)) return '';
-      if (num < 0) num = 0;
-      const rounded = roundHalfUp(num, STORE_PLACES);
-      return formatIdSmart(rounded);
+      return N.formatForUI(N.enforceDp(c, STORE_PLACES)); // tampilkan dengan format lokal
     }
+    let num = Number(c);
+    if (!Number.isFinite(num)) return '';
+    if (num < 0) num = 0;
+    const rounded = roundHalfUp(num, STORE_PLACES);
+    return formatIdSmart(rounded);
   }
   function setRowDirtyVisual(id, isDirty) {
     const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
     if (!tr) return;
-    tr.classList.toggle('table-warning', !!isDirty);
+    // Border-only indicator (no Bootstrap background)
+    if (tr.classList.contains('table-warning')) tr.classList.remove('table-warning');
     tr.classList.toggle('vp-row-edited', !!isDirty);
   }
   function markRowSaved(tr) {
@@ -744,6 +925,8 @@
     // flag kosong
     const isEmpty = raw.trim() === '';
     inputEl.classList.toggle('vp-empty', isEmpty);
+    const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
+    if (tr) tr.classList.toggle('vp-row-empty', isEmpty);
 
     inputEl.classList.remove('is-invalid', 'is-valid');
     inputEl.removeAttribute('title');
@@ -759,22 +942,35 @@
         currentValueById[id] = rounded;
         if (previewEl) previewEl.textContent = `${expr}  →  ${formatIdSmart(rounded)}`;
         inputEl.classList.add('is-valid');
+        // Row indicators: valid formula clears invalid, set zero if 0
+        if (tr) {
+          tr.classList.remove('vp-row-invalid');
+          tr.classList.toggle('vp-row-zero', Number(rounded) === 0);
+        }
         updateDirty(id);
       } catch (e) {
         inputEl.classList.add('is-invalid');
         const msg = (e && e.message) ? e.message : 'Formula error';
         inputEl.setAttribute('title', msg);
+        if (tr) tr.classList.add('vp-row-invalid');
       }
       persistRowFormula(id); // simpan raw & state fx setiap kali formula diproses
     } else {
-      const n = parseNumberOrEmpty(raw);
+      // Robust parse to avoid "1.000" -> 1 error (id-ID grouping)
+      const c = canonFromUIQty(raw);
+      const n = c === '' ? '' : Number(c);
       if (n === '') {
         if (previewEl) previewEl.textContent = '';
+        if (tr) tr.classList.remove('vp-row-invalid');
       } else {
         const clamped = n < 0 ? 0 : n;
         const rounded = roundHalfUp(clamped, STORE_PLACES);
         currentValueById[id] = rounded;
         inputEl.classList.add('is-valid');
+        if (tr) {
+          tr.classList.remove('vp-row-invalid');
+          tr.classList.toggle('vp-row-zero', Number(rounded) === 0);
+        }
       }
       updateDirty(id);
     }
@@ -1437,6 +1633,10 @@
 
         input.value = base ? formatIdSmart(base) : '';
         input.classList.toggle('vp-empty', !input.value.trim());
+        // Sync row markers for numeric (non-formula) rows after prefill
+        tr.classList.toggle('vp-row-empty', !input.value.trim());
+        tr.classList.toggle('vp-row-zero', (!!input.value.trim() && Number(base) === 0));
+        tr.classList.remove('vp-row-invalid');
 
         const f = formulaState[id];
         if (f && typeof f.raw === 'string' && f.raw.trim()) {
@@ -1498,7 +1698,10 @@
 
     saving = true;
     if (reason === 'manual' && btnSaveSpin) btnSaveSpin.hidden = false;
-    if (reason === 'manual' && btnSave) btnSave.disabled = true;
+    if (reason === 'manual') {
+      if (btnSave) btnSave.disabled = true;
+      if (btnSaveTop) btnSaveTop.disabled = true;
+    }
 
     try {
       const res = await HTTP.jpost(EP_SAVE, { items });
@@ -1522,6 +1725,7 @@
         markErrors(json);
         const saved = (typeof json.saved === 'number') ? json.saved : 0;
         TOAST.err(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`);
+        setSaveStatus(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`,'danger');
         return;
       }
 
@@ -1536,6 +1740,8 @@
             input.classList.add('is-valid');
             setTimeout(() => input.classList.remove('is-valid'), 900);
           }
+          // Clear invalid/empty and saved pulse; zero is allowed
+          tr.classList.remove('vp-row-invalid', 'vp-row-empty', 'vp-row-zero');
           markRowSaved(tr);
         }
         dirtySet.delete(id);
@@ -1544,6 +1750,7 @@
       setBtnSaveEnabled();
 
       const realChanges = changes.filter(c => roundHalfUp(c.before, STORE_PLACES) !== roundHalfUp(c.after, STORE_PLACES));
+      setSaveStatus(`Tersimpan ${realChanges.length} item.`, 'success');
       if (realChanges.length) {
         undoStack.push({ ts: Date.now(), changes: realChanges });
         if (undoStack.length > UNDO_MAX) undoStack.shift();
@@ -1552,6 +1759,7 @@
         ]);
       } else if (reason === 'manual') {
         TOAST.warn('Tidak ada perubahan.');
+        setSaveStatus('Tidak ada perubahan.', 'warning');
       }
 
       if (typeof json.decimal_places === 'number' && json.decimal_places !== STORE_PLACES) {
@@ -1560,9 +1768,13 @@
     } catch (e) {
       console.error(e);
       TOAST.err('Gagal simpan (network/server error).');
+      setSaveStatus('Gagal simpan (network/server error).', 'danger');
     } finally {
       if (reason === 'manual' && btnSaveSpin) btnSaveSpin.hidden = true;
-      if (reason === 'manual' && btnSave) btnSave.disabled = false;
+      if (reason === 'manual') {
+        if (btnSave) btnSave.disabled = false;
+        if (btnSaveTop) btnSaveTop.disabled = false;
+      }
       saving = false;
     }
   }
@@ -1588,8 +1800,9 @@
     await saveDirty({ reason: 'manual' });
   }
 
-  // Save manual
+  // Save manual (dua tombol: toolbar atas dan footer bawah)
   btnSave && btnSave.addEventListener('click', () => saveDirty({ reason: 'manual' }));
+  btnSaveTop && btnSaveTop.addEventListener('click', () => saveDirty({ reason: 'manual' }));
 
   // Undo hotkey global: Ctrl+Alt+Z
   document.addEventListener('keydown', (e) => {

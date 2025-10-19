@@ -13,6 +13,10 @@
   min-height: calc(100vh - var(--dp-topbar-h));
 }
 
+/* Selaraskan background header & toolbar dengan container utama */
+#ta-app > .ta-page-header,
+#ta-toolbar { background: var(--dp-c-bg) !important; }
+
 /* ============== ENHANCED TOOLBAR (dari rekap_rab) ============== */
 .ta-toolbar,
 #ta-toolbar {
@@ -21,7 +25,7 @@
   z-index: var(--dp-z-toolbar);
   min-height: var(--lp-toolbar-h, 56px);
   background: var(--dp-c-bg);
-  border-bottom: 1px solid var(--dp-c-border);
+  border-bottom: 0; /* selaras dengan halaman lain */
   display: flex;
   align-items: center;
   gap: .5rem;
@@ -171,6 +175,9 @@ body.user-resizing #ta-resizer.ux-resizer::after{
   max-height: calc(100vh - var(--dp-topbar-h) - var(--lp-toolbar-h) - 2rem);
 }
 
+/* Hapus background pada header metadata pekerjaan */
+#ta-app .ta-job-header { background: transparent !important; }
+
 .ta-sidebar-header h5 {
   font-size: var(--ux-font-lg);
   font-weight: 700;
@@ -205,6 +212,15 @@ body[data-page="template_ahsp"] .select2-container .select2-dropdown{
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
   box-shadow: var(--dp-shadow-lg);
+  z-index: var(--ta-z-select2, calc(var(--dp-z-toolbar) + 1)) !important;
+}
+
+/* Sticky thead alias (selaras dp-thead-sticky) */
+.ta-thead-sticky {
+  position: sticky;
+  top: calc(var(--dp-topbar-h) + var(--lp-toolbar-h, 40px));
+  z-index: var(--dp-z-thead);
+  background: var(--dp-c-surface-2);
 }
 body[data-page="template_ahsp"] .select2-container .select2-results__option{
   color: var(--dp-c-text);

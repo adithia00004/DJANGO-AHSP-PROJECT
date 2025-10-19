@@ -16,7 +16,7 @@
     const sidebar   = doc.getElementById('vp-sidebar');
     if (!sidebar) return;
 
-    const panel     = qs('.lp-sidebar-inner', sidebar) || sidebar;
+    const panel     = qs('.dp-sidebar-inner, .lp-sidebar-inner', sidebar) || sidebar;
     const toggleBtn = doc.getElementById('btn-vp-sidebar-toggle') || qs('.js-vp-sidebar-toggle');
     const hotspot   = qs('.vp-overlay-hotspot, .lp-overlay-hotspot');
 
@@ -32,6 +32,8 @@
 
     let pinned = false;      // pinned = dibuka via tombol
     let closeTimer = null;
+    let lastFocused = null;  // elemen fokus sebelum overlay dibuka
+    let trapKeydown = null;  // handler untuk focus trap
 
     const isOpen = () =>
       sidebar.classList.contains('is-open') || sidebar.getAttribute('aria-hidden') === 'false';
@@ -60,10 +62,24 @@
     function openSidebar({ by = 'program', pin = false } = {}) {
       if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       emit('open', { by });
+      // simpan elemen fokus saat ini untuk dipulihkan saat close
+      try { lastFocused = doc.activeElement || null; } catch { lastFocused = null; }
       sidebar.classList.add('is-open');
       applyAria(true);
       if (pin) pinned = true;
       hotspot?.classList.add('is-open'); // jangan intercept pointer saat terbuka
+      // Pindahkan fokus ke panel hanya jika bukan dibuka via hover
+      if (by !== 'hover') {
+        const closeBtn = qs('.js-vp-sidebar-close, [data-action="close-sidebar"]', sidebar);
+        const titleEl  = qs('#vpSidebarTitle', sidebar);
+        const bodyEl   = qs('.dp-sidebar-body, .lp-sidebar-body, .dp-sidebar-inner, .lp-sidebar-inner', sidebar);
+        const target   = closeBtn || titleEl || bodyEl || sidebar;
+        if (target && typeof target.focus === 'function') {
+          if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+          try { target.focus(); } catch {}
+        }
+        startFocusTrap();
+      }
       requestAnimationFrame(() => emit('opened', { by }));
     }
 
@@ -75,6 +91,13 @@
       applyAria(false);
       if (by === 'button') pinned = false;
       hotspot?.classList.remove('is-open');
+      // hentikan focus trap & pulihkan fokus
+      stopFocusTrap();
+      try {
+        if (toggleBtn && typeof toggleBtn.focus === 'function') toggleBtn.focus();
+        else if (lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
+      } catch {}
+      lastFocused = null;
       requestAnimationFrame(() => emit('closed', { by }));
     }
 
@@ -133,6 +156,46 @@
       if ((!inside && !onToggle && !onHot) || onBackdrop) closeSidebar({ by: 'outside' });
     });
 
+    // Click pada area overlay (di luar panel) menutup, tanpa perlu backdrop terpisah
+    sidebar.addEventListener('click', (e) => {
+      if (!isOpen() || pinned) return; // hormati mode pinned: hanya tombol menutup
+      const panelInner = qs('.dp-sidebar-inner, .lp-sidebar-inner', sidebar) || sidebar;
+      if (panelInner && !panelInner.contains(e.target)) {
+        closeSidebar({ by: 'outside' });
+      }
+    });
+
+    // =============== Focus Trap (aksesibilitas) ===============
+    function getFocusable(container) {
+      const nodes = container.querySelectorAll(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      return Array.from(nodes).filter(el => {
+        const cs = window.getComputedStyle(el);
+        return cs.visibility !== 'hidden' && cs.display !== 'none';
+      });
+    }
+
+    function startFocusTrap() {
+      if (trapKeydown) return; // sudah aktif
+      trapKeydown = (e) => {
+        if (e.key !== 'Tab' || !isOpen()) return;
+        const focusables = getFocusable(sidebar);
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last  = focusables[focusables.length - 1];
+        if (e.shiftKey && doc.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && doc.activeElement === last) { e.preventDefault(); first.focus(); }
+      };
+      doc.addEventListener('keydown', trapKeydown, true);
+    }
+
+    function stopFocusTrap() {
+      if (!trapKeydown) return;
+      doc.removeEventListener('keydown', trapKeydown, true);
+      trapKeydown = null;
+    }
+
     // Restore width (scoped ke elemen sidebar → tidak global)
     (function restoreWidth() {
       try {
@@ -144,10 +207,10 @@
     })();
 
     // Ensure resizer exists
-    let resizer = qs('.lp-resizer', sidebar);
+    let resizer = qs('.dp-resizer, .lp-resizer', sidebar);
     if (!resizer) {
       resizer = doc.createElement('div');
-      resizer.className = 'lp-resizer';
+      resizer.className = 'dp-resizer lp-resizer';
       panel.appendChild(resizer);
     }
 

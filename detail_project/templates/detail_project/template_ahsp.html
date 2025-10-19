@@ -1,4 +1,4 @@
-{% extends "detail_project/base_detail.html" %}
+﻿{% extends "detail_project/base_detail.html" %}
 {% load static i18n %}
 {% block title %}Template AHSP — {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="template_ahsp"{% endblock %}
@@ -10,6 +10,7 @@
 {% block extra_css %}
   {{ block.super }}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
   <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
 {% endblock %}
 
@@ -40,10 +41,10 @@
   </header>
 
   <!-- Toolbar (sticky, konsisten SSOT) -->
-  <div id="ta-toolbar" class="ta-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Template AHSP">
+  <div id="ta-toolbar" class="ta-toolbar dp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Template AHSP">
     <!-- Searchbar (adapt lp-toolbar-search) -->
     <div class="ta-combobox ta-searchbar flex-grow-1" role="search">
-      <div class="input-group lp-toolbar-search">
+      <div class="input-group dp-toolbar-search ta-toolbar-search">
         <span class="input-group-text" id="ta-search-addon">
           <i class="bi bi-search" aria-hidden="true"></i>
         </span>
@@ -55,7 +56,7 @@
                aria-label="{% trans 'Cari pekerjaan' %}"
                aria-describedby="ta-search-addon">
         <button id="ta-toolbar-find"
-                class="btn btn-primary btn-neon ms-1"
+                class="btn btn-primary dp-btn dp-btn-sm btn-neon ms-1"
                 type="button"
                 title="{% trans 'Cari' %}">
           <i class="bi bi-search"></i> {% trans "Cari" %}
@@ -64,13 +65,11 @@
     </div>
 
 
-    <div class="ta-toolbar-hint only-desktop ms-2 me-auto">
-      <span class="kbd-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo &middot; <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo</span>
-    </div>
+    {# Hint keyboard dihapus sesuai permintaan #}
 
     <!-- Export (dropdown, konsisten dengan Rekap) -->
-    <div class="btn-group ux-dropdown">
-      <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export options">
+    <div class="btn-group dp-btn-group ux-dropdown">
+      <button type="button" class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export options">
         <i class="bi bi-download" aria-hidden="true"></i>
         <span class="d-none d-sm-inline">Export</span>
       </button>
@@ -83,12 +82,17 @@
 
     <!-- Dirty indicator -->
     <div class="ta-dirty-indicator d-inline-flex align-items-center small text-muted" aria-live="polite">
-      <span id="ta-dirty-dot" class="dot me-1" hidden>●</span>
+      <span id="ta-dirty-dot" class="dot me-1" hidden>�</span>
       <span id="ta-dirty-text" hidden>Belum disimpan</span>
     </div>
 
+    <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm" data-bs-toggle="modal" data-bs-target="#taHelpModal" aria-label="Buka bantuan">
+      <i class="bi bi-question-circle"></i>
+      <span class="d-none d-sm-inline">Bantuan</span>
+    </button>
+
     <!-- Simpan -->
-    <button id="ta-btn-save" class="btn btn-success btn-sm d-inline-flex align-items-center gap-2" type="button" disabled>
+    <button id="ta-btn-save" class="btn btn-success dp-btn dp-btn-sm d-inline-flex align-items-center gap-2" type="button" disabled>
       <span class="spinner-border spinner-border-sm" id="ta-btn-save-spin" role="status" aria-hidden="true" hidden></span>
       <i class="bi bi-save" aria-hidden="true"></i>
       <span class="d-none d-sm-inline">Simpan</span>
@@ -166,7 +170,7 @@
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table ux-thead" aria-label="Tabel TK">
+          <table class="ta-table dp-table ux-thead" aria-label="Tabel TK">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -204,7 +208,7 @@
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table ux-thead" aria-label="Tabel BHN">
+          <table class="ta-table dp-table ux-thead" aria-label="Tabel BHN">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -242,7 +246,7 @@
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table ux-thead" aria-label="Tabel ALT">
+          <table class="ta-table dp-table ux-thead" aria-label="Tabel ALT">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -280,7 +284,7 @@
           </div>
         </header>
         <div class="ta-table-wrap">
-          <table class="ta-table ux-thead" aria-label="Tabel LAIN">
+          <table class="ta-table dp-table ux-thead" aria-label="Tabel LAIN">
             <colgroup>
               <col class="col-no">
               <col class="col-uraian">
@@ -346,10 +350,35 @@
       </td>
     </tr>
   </template>
-</div>
+<!-- Modal: Bantuan Template AHSP -->
+<div class="modal fade" id="taHelpModal" tabindex="-1" aria-labelledby="taHelpLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-md">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="taHelpLabel">Bantuan Template AHSP</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Kelola komponen AHSP per pekerjaan tanpa kolom harga.</p>
+        <ul>
+          <li>Pilih pekerjaan dari sidebar kiri.</li>
+          <li>Tambah baris pada segmen TK/BHN/ALT/LAIN melalui tombol <em>Baris</em>.</li>
+          <li>Gunakan <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> berpindah sel, <kbd>Del</kbd> hapus baris.</li>
+          <li>Tekan <strong>Simpan</strong> untuk menyimpan perubahan.</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div></div>
 {% endblock %}
 
 {% block extra_js %}
   {{ block.super }}
   <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}
+
+
+

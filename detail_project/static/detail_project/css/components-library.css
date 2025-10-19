@@ -1,0 +1,811 @@
+/* =====================================================================
+   COMPONENTS LIBRARY - Design System untuk Konsistensi UI/UX
+   Versi: 1.0.0
+   Based on: list_pekerjaan.css & rekap_rab.css
+
+   File ini berisi komponen-komponen reusable yang telah distandarisasi
+   untuk memastikan konsistensi feel user di seluruh aplikasi.
+
+   CARA PENGGUNAAN:
+   1. Load file ini setelah core.css
+   2. Gunakan class-class yang sudah didefinisikan
+   3. JANGAN override variables, gunakan yang sudah ada
+
+   DEPENDENCIES:
+   - core.css (WAJIB - untuk design tokens)
+   - Bootstrap 5.x (untuk utility classes)
+   ===================================================================== */
+
+/* ===========================================================
+   [1] TOOLBAR COMPONENTS
+   Standard toolbar untuk semua page dengan sticky positioning
+   =========================================================== */
+
+/* Base Toolbar */
+.dp-toolbar,
+.app-toolbar {
+  position: sticky;
+  top: var(--dp-topbar-h);
+  z-index: var(--dp-z-toolbar);
+  min-height: var(--lp-toolbar-h, 40px);
+  background: var(--dp-c-bg);
+  border-bottom: 1px solid var(--dp-c-border);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem 0;
+  flex-wrap: wrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+/* Toolbar Search Input Group */
+.dp-toolbar-search {
+  max-width: none !important;
+  width: 100% !important;
+  flex: 1 1 clamp(24rem, 50vw, 48rem) !important;
+  min-width: 0 !important;
+}
+
+.dp-toolbar-search .form-control,
+.dp-toolbar-search .input-group-text {
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding-top: .375rem;
+  padding-bottom: .375rem;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-toolbar-search .input-group-text {
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-muted);
+  border-color: var(--dp-c-border);
+}
+
+.dp-toolbar-search .form-control {
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border-color: var(--dp-c-border);
+}
+
+.dp-toolbar-search .form-control:focus {
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  outline: 0;
+  transform: scale(1.005);
+}
+
+/* Toolbar Right Section */
+.dp-toolbar > .ms-auto {
+  display: flex !important;
+  align-items: center !important;
+  gap: .5rem !important;
+  margin-left: auto !important;
+  flex: 0 0 auto;
+}
+
+
+/* ===========================================================
+   [2] BUTTON COMPONENTS
+   Standardized button styles dengan hover/active states
+   =========================================================== */
+
+/* Standard Button */
+.dp-btn {
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding: .375rem .75rem;
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  white-space: nowrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-btn i {
+  margin-right: .35rem;
+  font-size: 1em;
+}
+
+/* Button Hover States */
+.dp-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+.dp-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+.dp-btn:disabled,
+.dp-btn.disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(.3);
+}
+
+/* Small Button (untuk sidebar, dll) */
+.dp-btn-sm {
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding: .25rem .5rem;
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Button Group (untuk Expand/Collapse, dll) */
+.dp-btn-group .btn,
+.btn-group .dp-btn {
+  border-radius: 0;
+}
+
+.dp-btn-group .btn:first-child,
+.btn-group .dp-btn:first-child {
+  border-top-left-radius: var(--dp-radius-md);
+  border-bottom-left-radius: var(--dp-radius-md);
+}
+
+.dp-btn-group .btn:last-child,
+.btn-group .dp-btn:last-child {
+  border-top-right-radius: var(--dp-radius-md);
+  border-bottom-right-radius: var(--dp-radius-md);
+}
+
+/* Action Buttons (Add/Delete) */
+.dp-btn-action {
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding: .375rem .75rem;
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  white-space: nowrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-btn-action:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+.dp-btn-action:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+
+/* ===========================================================
+   [3] CARD COMPONENTS
+   Card containers dengan hierarki visual yang jelas
+   =========================================================== */
+
+/* Card Base - Level 1 (Klasifikasi) */
+.dp-card-primary {
+  border: 2px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-lg);
+  box-shadow: var(--dp-shadow-sm);
+  transition: all var(--ux-duration-200) var(--ux-ease);
+  margin-bottom: 1rem;
+  background: var(--dp-c-bg);
+}
+
+.dp-card-primary:hover {
+  box-shadow: var(--dp-shadow-md);
+}
+
+.dp-card-primary .card-header {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 70%, var(--dp-c-bg));
+  border-bottom: 2px solid var(--dp-c-border);
+  padding: .75rem;
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  border-radius: calc(var(--dp-radius-lg) - 2px) calc(var(--dp-radius-lg) - 2px) 0 0;
+}
+
+.dp-card-primary .card-body {
+  padding: 1rem;
+  background: var(--dp-c-bg);
+}
+
+/* Card Secondary - Level 2 (Sub-Klasifikasi) */
+.dp-card-secondary {
+  background: var(--dp-c-surface-1);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: .75rem;
+  margin-bottom: .75rem;
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Card Header Title - dengan font weight hierarchy */
+.dp-card-title-primary {
+  font-size: var(--ux-font-md);
+  font-weight: 700;
+  color: var(--dp-c-text);
+  margin: 0;
+}
+
+.dp-card-title-secondary {
+  font-size: var(--ux-font-sm);
+  font-weight: 600;
+  color: var(--dp-c-text);
+  margin: 0;
+}
+
+
+/* ===========================================================
+   [4] TABLE COMPONENTS
+   Table styling dengan border radius dan hover states
+   =========================================================== */
+
+/* Table Base */
+.dp-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  overflow: hidden;
+  color: var(--dp-c-text);
+  margin-bottom: 0;
+}
+
+.dp-table thead th {
+  background: var(--dp-c-surface-2);
+  border-bottom: 2px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding: .5rem .75rem;
+  color: var(--dp-c-text);
+  vertical-align: middle;
+}
+
+.dp-table tbody td {
+  padding: .5rem .75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--dp-c-border);
+  color: var(--dp-c-text);
+  transition: background-color var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-table tbody tr:hover {
+  background: var(--ux-row-hover);
+}
+
+.dp-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Table with Hierarchical Levels (untuk rekap, dll) */
+.dp-table-hierarchy tbody tr[data-level="1"] td {
+  font-weight: 700;
+  font-size: var(--ux-font-sm);
+  background: color-mix(in srgb, var(--dp-c-surface-2) 70%, var(--dp-c-bg));
+  padding-left: .75rem;
+}
+
+.dp-table-hierarchy tbody tr[data-level="2"] td {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--dp-c-surface-1) 50%, var(--dp-c-bg));
+  padding-left: 1.5rem;
+}
+
+.dp-table-hierarchy tbody tr[data-level="3"] td {
+  font-weight: 400;
+  padding-left: 2.25rem;
+}
+
+
+/* ===========================================================
+   [5] SIDEBAR/NAVIGATION COMPONENTS
+   Overlay sidebar dengan tree navigation
+   =========================================================== */
+
+/* Sidebar Overlay */
+.dp-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: var(--dp-z-sidebar);
+  background: color-mix(in srgb, var(--dp-c-text) 22%, transparent);
+  backdrop-filter: blur(2px);
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-sidebar-overlay.is-open,
+.dp-sidebar-overlay.show {
+  display: block;
+}
+
+/* Sidebar Inner Panel */
+.dp-sidebar-inner {
+  position: absolute;
+  right: 10px;
+  top: var(--dp-topbar-h);
+  left: auto;
+  width: clamp(320px, var(--lp-sidebar-w, 486px), 760px);
+  height: calc(100vh - var(--dp-topbar-h) - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 1rem;
+  transform: translateX(16px);
+  opacity: 0;
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-lg);
+  box-shadow: var(--dp-shadow-lg);
+  transition: transform var(--ux-duration-200) var(--ux-ease),
+              opacity var(--ux-duration-200) var(--ux-ease);
+  z-index: 1;
+}
+
+.dp-sidebar-overlay.is-open .dp-sidebar-inner,
+.dp-sidebar-overlay.show .dp-sidebar-inner {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+/* Sidebar Header */
+.dp-sidebar-header {
+  border-bottom: 2px solid var(--dp-c-border);
+  padding-bottom: .75rem;
+  margin-bottom: .75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.dp-sidebar-header h6 {
+  font-weight: 700;
+  color: var(--dp-c-text);
+  font-size: var(--ux-font-lg);
+  margin: 0;
+}
+
+/* Tree Navigation Node */
+.dp-nav-node__header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  border-radius: var(--dp-radius-md);
+  cursor: pointer;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-nav-node__header:hover {
+  background: var(--dp-c-surface-2);
+  transform: translateX(2px);
+}
+
+.dp-nav-node__toggle {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--dp-radius-sm);
+  border: 1px solid var(--dp-c-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .8rem;
+  color: var(--dp-c-muted);
+  transition: all var(--ux-duration-200) var(--ux-ease);
+  flex-shrink: 0;
+}
+
+.dp-nav-node__toggle:hover {
+  background: var(--dp-c-surface-2);
+  border-color: var(--dp-c-primary);
+}
+
+/* Tree Navigation Labels - Hierarchical Font Weight */
+.dp-nav-node[data-level="klas"] > .dp-nav-node__header .dp-nav-node__label {
+  font-weight: 700;
+  font-size: var(--ux-font-md);
+  color: var(--dp-c-text);
+}
+
+.dp-nav-node[data-level="sub"] > .dp-nav-node__header .dp-nav-node__label {
+  font-weight: 600;
+  font-size: var(--ux-font-sm);
+  color: var(--dp-c-text);
+}
+
+.dp-nav-node[data-level="job"] > .dp-nav-node__header .dp-nav-node__label {
+  font-weight: 400;
+  font-size: var(--ux-font-xs);
+  color: var(--dp-c-text);
+}
+
+.dp-nav-node__label {
+  color: var(--dp-c-text);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.dp-nav-node__label:hover {
+  text-decoration: underline;
+}
+
+/* Tree Navigation Children - Hierarchical Indentation */
+.dp-nav-node__children {
+  border-left: 2px solid var(--dp-c-border);
+  margin-left: .75rem;
+  padding-left: .75rem;
+}
+
+.dp-nav-node[data-level="sub"] .dp-nav-node__children {
+  border-left: 1px solid color-mix(in srgb, var(--dp-c-border) 60%, transparent);
+  margin-left: 1rem;
+  padding-left: 1rem;
+}
+
+/* Active Node */
+.dp-nav-node--active > .dp-nav-node__header {
+  background: var(--dp-c-primary-subtle);
+  outline: 2px solid color-mix(in srgb, var(--dp-c-primary) 35%, transparent);
+  outline-offset: -2px;
+  box-shadow: var(--dp-shadow-sm);
+}
+
+
+/* ===========================================================
+   [6] SCROLLBAR COMPONENTS
+   Custom scrollbar untuk konsistensi visual
+   =========================================================== */
+
+.dp-scrollbar {
+  scrollbar-gutter: stable both-edges;
+}
+
+.dp-scrollbar::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.dp-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
+  border-radius: 8px;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
+}
+
+.dp-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-scrollbar:hover::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dp-c-border) 20%, transparent);
+}
+
+
+/* ===========================================================
+   [7] AUTOCOMPLETE/DROPDOWN COMPONENTS
+   Dropdown dengan animasi dan styling konsisten
+   =========================================================== */
+
+.dp-autocomplete {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: var(--dp-z-dropdown);
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-lg);
+  max-height: min(45vh, 21rem);
+  overflow: auto;
+  padding: .5rem;
+  animation: dpDropdownSlideIn var(--ux-duration-200) var(--ux-ease);
+}
+
+@keyframes dpDropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dp-autocomplete-group {
+  padding: .5rem;
+  border-top: 1px solid var(--dp-c-border);
+  margin-top: .25rem;
+}
+
+.dp-autocomplete-group:first-child {
+  border-top: 0;
+  margin-top: 0;
+}
+
+.dp-autocomplete-title {
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  color: var(--dp-c-muted);
+  margin-bottom: .35rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.dp-autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  border-radius: var(--dp-radius-sm);
+  cursor: pointer;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-autocomplete-item:hover,
+.dp-autocomplete-item.is-active {
+  background: var(--dp-c-surface-2);
+  transform: translateX(2px);
+}
+
+
+/* ===========================================================
+   [8] DENSITY/COMPACT MODE
+   Mode kompak untuk menampilkan lebih banyak data
+   =========================================================== */
+
+.dp-app-dense .dp-card-primary .card-header,
+.dp-app-compact .dp-card-primary .card-header {
+  padding: .35rem .5rem;
+}
+
+.dp-app-dense .dp-card-primary .card-body,
+.dp-app-compact .dp-card-primary .card-body {
+  padding: .5rem;
+}
+
+.dp-app-dense .dp-table,
+.dp-app-compact .dp-table {
+  font-size: .7rem;
+}
+
+.dp-app-dense .dp-table td,
+.dp-app-dense .dp-table th,
+.dp-app-compact .dp-table td,
+.dp-app-compact .dp-table th {
+  padding: .25rem .5rem;
+  font-size: .7rem;
+}
+
+.dp-app-dense .dp-btn,
+.dp-app-compact .dp-btn {
+  padding: .25rem .5rem;
+  font-size: .7rem;
+}
+
+.dp-app-dense .dp-toolbar,
+.dp-app-compact .dp-toolbar {
+  gap: .375rem;
+}
+
+
+/* ===========================================================
+   [9] DARK MODE ENHANCEMENTS
+   Glow effects dan adjustments untuk dark mode
+   =========================================================== */
+
+[data-bs-theme="dark"] .dp-btn.btn-primary,
+[data-bs-theme="dark"] .dp-btn.btn-success {
+  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+}
+
+[data-bs-theme="dark"] .dp-btn.btn-primary:hover,
+[data-bs-theme="dark"] .dp-btn.btn-success:hover {
+  box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+}
+
+[data-bs-theme="dark"] .dp-sidebar-overlay {
+  background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
+}
+
+[data-bs-theme="dark"] .dp-card-primary {
+  border-color: color-mix(in srgb, var(--dp-c-border) 80%, transparent);
+}
+
+[data-bs-theme="dark"] .dp-table thead th {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 60%, var(--dp-c-bg));
+}
+
+
+/* ===========================================================
+   [10] RESPONSIVE BREAKPOINTS
+   Mobile-first responsive design
+   =========================================================== */
+
+/* Laptop (< 1200px) */
+@media (max-width: 1199.98px) {
+  .dp-toolbar-search {
+    flex: 1 1 clamp(20rem, 45vw, 48rem);
+  }
+
+  .dp-table thead th,
+  .dp-table tbody td {
+    padding: .45rem .65rem;
+    font-size: .74rem;
+  }
+}
+
+/* Tablet Landscape (< 992px) */
+@media (max-width: 991.98px) {
+  .dp-toolbar-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .dp-toolbar {
+    gap: .375rem;
+  }
+
+  .dp-btn {
+    font-size: var(--ux-font-xs);
+    padding: .3rem .6rem;
+  }
+
+  .dp-table thead th,
+  .dp-table tbody td {
+    padding: .4rem .6rem;
+    font-size: .72rem;
+  }
+}
+
+/* Tablet Portrait (< 768px) */
+@media (max-width: 767.98px) {
+  .dp-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dp-toolbar .btn-group,
+  .dp-toolbar .dp-btn-group {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .dp-toolbar > .ms-auto {
+    margin-left: 0 !important;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .dp-toolbar > .ms-auto .btn,
+  .dp-toolbar > .ms-auto .dp-btn {
+    flex: 1 1 auto;
+    min-width: fit-content;
+  }
+
+  .dp-table thead th,
+  .dp-table tbody td {
+    padding: .35rem .5rem;
+    font-size: .7rem;
+  }
+
+  .dp-sidebar-inner {
+    right: .75rem;
+    left: .75rem;
+    width: auto;
+  }
+}
+
+/* Mobile Small (< 420px) */
+@media (max-width: 420px) {
+  .dp-sidebar-inner {
+    right: .5rem;
+    left: .5rem;
+    width: auto;
+  }
+
+  .dp-btn {
+    font-size: .7rem;
+    padding: .25rem .5rem;
+  }
+}
+
+
+/* ===========================================================
+   [11] ACCESSIBILITY
+   Support untuk forced-colors dan reduced-motion
+   =========================================================== */
+
+@media (forced-colors: active) {
+  .dp-nav-node__toggle,
+  .dp-btn,
+  .dp-card-primary {
+    border-color: CanvasText !important;
+  }
+
+  .dp-nav-node__header:focus-visible,
+  .dp-btn:focus-visible {
+    outline: 2px solid Highlight !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus Management */
+.dp-app *:focus-visible {
+  outline: 2px solid var(--dp-c-focus);
+  outline-offset: 2px;
+  border-radius: var(--dp-radius-sm);
+}
+
+.dp-table tbody tr:focus-within {
+  outline: 2px solid var(--dp-c-focus);
+  outline-offset: -2px;
+}
+
+
+/* ===========================================================
+   [12] UTILITY CLASSES
+   Helper classes untuk penggunaan cepat
+   =========================================================== */
+
+/* Search Highlight */
+.dp-hit {
+  background: var(--ux-hit-bg);
+  border-radius: .25rem;
+  padding: 0 .125rem;
+  font-weight: 500;
+}
+
+/* Hover Effect untuk Row/Card */
+.dp-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+/* Flash Animation */
+.dp-flash {
+  animation: dpFlash 1.6s ease;
+}
+
+@keyframes dpFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
+  12%  { box-shadow: 0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35); }
+  40%  { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 1px rgba(13,110,253,.35); }
+  100% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
+}
+
+/* Loading State */
+.dp-loading {
+  opacity: .6;
+  pointer-events: none;
+  cursor: wait;
+}
+
+.dp-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--dp-c-bg) 60%, transparent);
+  backdrop-filter: blur(2px);
+}

@@ -4,44 +4,65 @@
 {# === Aktifkan segmen per-page (SSOT) === #}
 {% block body_attrs %}data-page="volume_pekerjaan"{% endblock %}
 
+{# === FIX: Matikan detail_ahsp.css yang tidak ada === #}
+{% block detail_css %}{% endblock %}
+
 {% block extra_css %}
   {{ block.super }}
+  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
   <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
 {% endblock %}
 
 {% block dp_content %}
 
-<!-- ===== Toolbar (sticky di bawah topbar; konsisten SSOT) ===== -->
+<!-- ===== Toolbar (REFACTORED - Using Component Library) ===== -->
 <div id="vp-toolbar"
-     class="d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom ux-toolbar-inputs"
+     class="dp-toolbar"
      role="toolbar"
      aria-label="Toolbar Volume Pekerjaan">
 
-  <!-- Searchbar -->
-  <div class="vp-searchbar position-relative flex-grow-1 me-2" role="search">
-    <div class="input-group">
-      <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
-      <input id="vp-search" type="search" class="form-control ux-focusable"
-             placeholder="Cari Klasifikasi / Sub-Klasifikasi / Pekerjaan..."
-             autocomplete="off"
-             aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
-    </div>
+  <!-- Searchbar (Component Library) -->
+  <div class="input-group dp-toolbar-search vp-searchbar position-relative" role="search">
+    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+    <input id="vp-search" type="search" class="form-control"
+           placeholder="Cari Klasifikasi / Sub / Pekerjaan..."
+           autocomplete="off"
+           aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
     <span id="vp-search-prefix-badge"
           class="badge text-bg-secondary position-absolute end-0 top-50 translate-middle-y me-2 d-none"
           title="Prefix filter terdeteksi"
           data-bs-toggle="tooltip"></span>
-     <div id="vp-search-results"
-         class="vp-search-dropdown d-none"
+    <div id="vp-search-results"
+         class="dp-autocomplete vp-search-dropdown d-none dp-scrollbar"
          role="listbox"
          aria-label="Hasil pencarian"
          aria-expanded="false"></div>
   </div>
 
+  <!-- Actions kiri toolbar -->
+  <div class="d-flex align-items-center gap-2">
+    <!-- PERBAIKAN #2: Expand/Collapse All buttons (seperti list_pekerjaan) -->
+    <button id="vp-expand-all"
+            class="btn btn-sm btn-outline-secondary dp-btn-sm"
+            type="button"
+            title="Expand semua Klasifikasi dan Sub"
+            aria-label="Expand all">
+      <i class="bi bi-arrows-expand" aria-hidden="true"></i>
+    </button>
+    <button id="vp-collapse-all"
+            class="btn btn-sm btn-outline-secondary dp-btn-sm"
+            type="button"
+            title="Collapse semua Klasifikasi dan Sub"
+            aria-label="Collapse all">
+      <i class="bi bi-arrows-collapse" aria-hidden="true"></i>
+    </button>
+  </div>
+
   <!-- Actions kanan -->
   <div class="ms-auto d-flex align-items-center gap-2">
-    <!-- Save (mirroring List/Rekap) -->
+    <!-- Save Button (Component Library) -->
     <button id="btn-save"
-            class="btn btn-success btn-sm"
+            class="btn btn-success dp-btn dp-btn-sm"
             type="button"
             title="Simpan perubahan"
             aria-label="Simpan">
@@ -49,10 +70,10 @@
       <span class="d-none d-sm-inline">Simpan</span>
     </button>
 
-    <!-- Export dropdown (CSV/PDF/Word) -->
-    <div class="btn-group" role="group" aria-label="Opsi export">
+    <!-- Export dropdown (Component Library Button Group) -->
+    <div class="btn-group dp-btn-group" role="group" aria-label="Opsi export">
       <button type="button"
-              class="btn btn-outline-primary btn-sm dropdown-toggle"
+              class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle"
               data-bs-toggle="dropdown"
               aria-expanded="false"
               aria-label="Export options">
@@ -81,17 +102,18 @@
       </ul>
     </div>
 
+    <!-- Parameter Sidebar Toggle (Component Library) -->
     <button type="button"
             id="btn-vp-sidebar-toggle"
-            class="btn btn-primary btn-sm js-vp-sidebar-toggle"
+            class="btn btn-primary dp-btn dp-btn-sm js-vp-sidebar-toggle"
             aria-controls="vp-sidebar"
             aria-expanded="false">
       <i class="bi bi-sliders2"></i>
       <span class="d-none d-sm-inline">Parameter</span>
     </button>
 
-    <!-- Bantuan Formula (Modal) -->
-    <button type="button" class="btn btn-outline-secondary btn-sm"
+    <!-- Bantuan Formula (Component Library) -->
+    <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm"
             data-bs-toggle="modal" data-bs-target="#vpFormulaHelpModal"
             aria-label="Buka bantuan formula">
       <i class="bi bi-question-circle"></i>
@@ -106,8 +128,9 @@
      data-endpoint-save="{% url 'detail_project:api_save_volume_pekerjaan' project.id %}"
      data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}"
      data-endpoint-tree="/detail_project/api/project/{{ project.id }}/list-pekerjaan/tree/">
-  <!-- ===== Overlay Sidebar Kanan (Parameter) ===== -->
+  <!-- ===== Overlay Sidebar Kanan (REFACTORED - Component Library) ===== -->
   <aside id="vp-sidebar"
+         class="dp-sidebar-overlay"
          role="complementary"
          data-side="right"
          data-align="topbar"
@@ -116,17 +139,19 @@
          aria-labelledby="vpSidebarTitle"
          aria-hidden="true">
 
-    <!-- inner = kartu panel -->
-    <div class="lp-sidebar-inner dp-card ux-scrollbar">
-      <div class="lp-sidebar-header d-flex align-items-center justify-content-between">
-        <h5 id="vpSidebarTitle" class="mb-0">Parameter Perhitungan</h5>
+    <!-- Inner Panel (Component Library) -->
+    <div class="dp-sidebar-inner dp-scrollbar">
+      <div class="dp-sidebar-header">
+        <h6 id="vpSidebarTitle">Parameter Perhitungan</h6>
         <button type="button"
-                class="btn btn-sm btn-outline-secondary js-vp-sidebar-close"
+                class="btn btn-sm btn-outline-secondary dp-btn-sm js-vp-sidebar-close"
                 data-action="close-sidebar"
-                aria-label="Tutup">Tutup</button>
+                aria-label="Tutup">
+          <i class="bi bi-x-lg"></i>
+        </button>
       </div>
 
-      <div class="lp-sidebar-body d-flex flex-column gap-2" tabindex="-1">
+      <div class="dp-sidebar-body d-flex flex-column gap-2" tabindex="-1">
         <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
           <small class="text-muted">
             Gunakan di formula, contoh <code>= panjang * lebar * tinggi</code>
@@ -192,12 +217,11 @@
       </div>
 
       <!-- handle untuk resize lebar -->
-      <div class="lp-resizer"></div>
+      <div class="dp-resizer"></div>
     </div>
   </aside>
 
-  <!-- Backdrop overlay -->
-  <div class="dp-sidebar__backdrop" aria-hidden="true"></div>
+  {# Backdrop terpisah dihapus karena overlay sudah memberi latar. #}
 
   <!-- ===== Tabel Utama ===== -->
   <div class="table-responsive dp-card" id="vp-page">
@@ -219,48 +243,50 @@
           {% for klas in by_klas %}
             <tr>
               <td colspan="5" class="p-0">
-                <div class="card vp-klas-card mb-3" data-klas-id="{{ klas.grouper.id }}">
-                  <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
-                    <span>{{ klas.grouper.name|default:"(Tanpa Klasifikasi)" }}</span>
+                <!-- Klasifikasi Card (Component Library) -->
+                <div class="card dp-card-primary vp-klas-card mb-3" data-klas-id="{{ klas.grouper.id }}">
+                  <div class="card-header">
+                    <span class="dp-card-title-primary">{{ klas.grouper.name|default:"(Tanpa Klasifikasi)" }}</span>
                     <button type="button"
-                            class="btn btn-sm btn-outline-secondary vp-card-toggle"
+                            class="btn btn-sm btn-outline-secondary dp-btn-sm vp-card-toggle ms-auto"
                             data-type="klas" data-key="{{ klas.grouper.id }}"
                             aria-expanded="true" title="Collapse/Expand">
                       <i class="bi bi-caret-down-fill"></i>
                     </button>
                   </div>
-                  <div class="card-body p-2">
+                  <div class="card-body">
                     {# Di dalam Klas, kelompokkan lagi -> SubKlasifikasi #}
                     {% regroup klas.list by sub_klasifikasi as by_sub %}
 
                     {% for sub in by_sub %}
-                      <div class="card vp-sub-card mb-3" data-sub-id="{{ sub.grouper.id }}" data-klas-id="{{ klas.grouper.id }}">
-                        <div class="card-header py-2 d-flex align-items-center justify-content-between">
-                          <span>{{ sub.grouper.name|default:"(Tanpa Sub)" }}</span>
+                      <!-- Sub-Klasifikasi Card (Component Library) -->
+                      <div class="dp-card-secondary vp-sub-card mb-3" data-sub-id="{{ sub.grouper.id }}" data-klas-id="{{ klas.grouper.id }}">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                          <span class="dp-card-title-secondary">{{ sub.grouper.name|default:"(Tanpa Sub)" }}</span>
                           <button type="button"
-                                  class="btn btn-sm btn-outline-secondary vp-card-toggle"
+                                  class="btn btn-sm btn-outline-secondary dp-btn-sm vp-card-toggle"
                                   data-type="sub" data-key="{{ sub.grouper.id }}"
                                   aria-expanded="true" title="Collapse/Expand">
                             <i class="bi bi-caret-down-fill"></i>
                           </button>
                         </div>
-                        <div class="card-body p-2">
-                          <div class="table-responsive">
-                            <table class="table table-sm align-middle vp-table ux-thead">
-                              <colgroup>
-                                <col style="width:6ch">              <!-- No -->
-                                <col class="col-urai">               <!-- Uraian -->
-                                <col style="width:10ch">             <!-- Satuan -->
-                                <col class="col-qty" style="width:36ch"> <!-- Quantity (lebih lebar) -->
-                              </colgroup>
-                              <thead class="table-light">
-                                <tr>
-                                  <th class="text-center">No</th>
-                                  <th class="text-wrap text-start">Uraian</th>
-                                  <th>Satuan</th>
-                                  <th>Quantity</th>
-                                </tr>
-                              </thead>
+                        <div class="vp-sub-body">
+                          <!-- Table (Component Library) -->
+                          <table class="table dp-table vp-table">
+                            <colgroup>
+                              <col style="width:6ch">              <!-- No -->
+                              <col class="col-urai">               <!-- Uraian -->
+                              <col style="width:10ch">             <!-- Satuan -->
+                              <col class="col-qty" style="width:36ch"> <!-- Quantity (lebih lebar) -->
+                            </colgroup>
+                            <thead>
+                              <tr>
+                                <th class="text-center">No</th>
+                                <th class="text-wrap text-start">Uraian</th>
+                                <th>Satuan</th>
+                                <th>Quantity</th>
+                              </tr>
+                            </thead>
                               <tbody>
                                 {% for p in sub.list %}
                                   <tr data-pekerjaan-id="{{ p.id }}"
@@ -286,8 +312,7 @@
                                   </tr>
                                 {% endfor %}
                               </tbody>
-                            </table>
-                          </div>
+                          </table>
                         </div>
                       </div>
                     {% endfor %}

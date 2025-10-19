@@ -1164,7 +1164,7 @@ body[data-page="volume_pekerjaan"]{
   position: sticky;
   top: var(--dp-topbar-h);
   z-index: var(--dp-z-toolbar);
-  background: var(--dp-c-bg);
+  background: var(--bs-body-bg);
   min-height: var(--vp-toolbar-h);
 }
 

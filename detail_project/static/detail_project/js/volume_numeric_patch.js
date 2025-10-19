@@ -8,6 +8,33 @@
 
   const DP = 3; // volume = 3 dp
 
+  function canonFromUIQty(raw){
+    let s = String(raw ?? '').trim();
+    if (!s) return '';
+    s = s.replace(/\u00A0/g,' ').replace(/\s+/g,'').replace(/_/g,'');
+    const hasDot = s.includes('.');
+    const hasComma = s.includes(',');
+    if (hasDot && !hasComma){
+      const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
+      if (dotGrouping.test(s)) s = s.replace(/\./g, '');
+    } else if (hasComma && !hasDot){
+      const commaGrouping = /^\d{1,3}(,\d{3})+$/;
+      if (commaGrouping.test(s)) s = s.replace(/,/g, '');
+      else s = s.replace(/,/g, '.');
+    } else if (hasDot && hasComma){
+      const lastComma = s.lastIndexOf(',');
+      const lastDot = s.lastIndexOf('.');
+      if (lastComma > lastDot){
+        s = s.replace(/\./g, '').replace(/,/g, '.');
+      } else {
+        s = s.replace(/,/g, '');
+      }
+    }
+    // valid kanonik sederhana
+    if (!/^\-?\d+(\.\d+)?$/.test(s)) return '';
+    return s;
+  }
+
   // Format UI on blur (idempotent)
   document.addEventListener('blur', function (e) {
     const el = e.target;
@@ -16,7 +43,7 @@
     // Jangan menyentuh input dalam mode formula
     const raw = String(el.value || '').trim();
     if (raw.startsWith('=')) return;
-    const canon = N.canonicalizeForAPI(el.value);
+    const canon = canonFromUIQty(el.value);
     if (canon === '') { el.value = ''; return; }
     el.value = N.formatForUI(N.enforceDp(canon, DP));
   }, true);
@@ -28,7 +55,7 @@
       if (!el) return '';
       const raw = String(el.value || '').trim();
       if (raw.startsWith('=')) return ''; // formula tidak dikonversi ke angka murni
-      const canon = N.canonicalizeForAPI(el.value);
+      const canon = canonFromUIQty(el.value);
       return canon ? N.enforceDp(canon, DP) : '';
     },
     /** memaksa isi input menjadi tampilan lokal (koma) dp=3 */
@@ -36,7 +63,7 @@
       if (!el) return;
       const raw = String(el.value || '').trim();
       if (raw.startsWith('=')) return; // biarkan formula apa adanya
-      const canon = N.canonicalizeForAPI(el.value);
+      const canon = canonFromUIQty(el.value);
       el.value = canon ? N.formatForUI(N.enforceDp(canon, DP)) : '';
     }
   };

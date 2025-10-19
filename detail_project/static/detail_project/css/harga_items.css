@@ -1,43 +1,170 @@
 /* =====================================================================
-   harga_items.css — SSOT-aligned (layout & util, no custom colors/radius)
+   HARGA_ITEMS.CSS — SELARAS dengan List Pekerjaan, Volume, Rekap RAB, Template AHSP
+
+   PERUBAHAN:
+   ✅ Toolbar: background --bs-card-bg, gap .5rem, button styling konsisten
+   ✅ Buttons: padding .375rem .75rem, hover effect translateY
+   ✅ Cards: border 2px, radius --dp-radius-lg, box-shadow
+   ✅ Table: padding .5rem .75rem, scrollbar custom
+   ✅ Dropdown: padding .75rem, animation slideIn
+   ✅ Modal: z-index +100, styling konsisten
    ===================================================================== */
 
-/* Toolbar polish (seragam dengan Volume Pekerjaan) */
+/* ===== TOOLBAR (SELARAS dengan 4 page rujukan) ===== */
 #hi-toolbar{
+  position: sticky;
+  top: var(--dp-topbar-h);
+  z-index: var(--dp-z-toolbar);
   min-height: var(--dp-toolbar-h);
-  background: var(--dp-c-surface);
-  background-clip: padding-box;
+  background: var(--bs-card-bg);
+  border-bottom: 1px solid var(--bs-card-bg)!important;
+  padding: .5rem 0;
+  gap: .5rem;
+  flex-wrap: wrap;
   box-shadow: var(--dp-shadow-sm);
-  border-bottom: 1px solid var(--dp-c-border);
 }
 
-/* Input group sizing and theme in toolbar (match List/Rekap) */
+/* Input group sizing (SELARAS dengan Rekap RAB) */
 #hi-toolbar .input-group .form-control,
 #hi-toolbar .input-group .input-group-text{
   font-size: var(--ux-font-xs);
   line-height: 1.5;
   padding-top: .375rem;
   padding-bottom: .375rem;
+  border-color: var(--dp-c-border);
+  transition: all var(--ux-duration-200) var(--ux-ease);
 }
+
 #hi-toolbar .input-group .form-control{
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
 }
+
+#hi-toolbar .input-group .form-control:focus{
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  outline: 0;
+  transform: scale(1.005);
+}
+
 #hi-toolbar .input-group .input-group-text{
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
 }
 
-/* Searchbar width clamp */
-.hi-searchbar{ flex: 1 1 clamp(24rem, 50vw, 48rem); min-width: 0; }
-
-/* THEAD: offset global via .dp-thead-sticky; hanya aksen garis bawah halus */
-.hi-table thead.dp-thead-sticky{
-  box-shadow: 0 1px 0 var(--dp-c-border);
-  background: var(--dp-c-surface);
+/* Searchbar width (SELARAS dengan List Pekerjaan) */
+.hi-searchbar{
+  flex: 1 1 clamp(24rem, 50vw, 48rem);
+  min-width: 0;
 }
 
-/* Header gaya konsisten (Rekap/List) */
+/* Button styling (SELARAS dengan 4 page rujukan) */
+#hi-toolbar .btn{
+  font-size: var(--ux-font-xs);
+  line-height: 1.5;
+  padding: .375rem .75rem;
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  white-space: nowrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+#hi-toolbar .btn:hover{
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+#hi-toolbar .btn:active{
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Dropdown menu (SELARAS dengan Rekap RAB) */
+#hi-toolbar .dropdown-menu{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-md);
+  padding: .75rem;
+  min-width: 220px;
+  animation: dropdownSlideIn var(--ux-duration-200) var(--ux-ease);
+}
+
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== APP CONTAINER ===== */
+#hi-app {
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+/* ===== CARD/PANEL BUK (SELARAS dengan List Pekerjaan) ===== */
+#hi-app .dp-card{
+  background: var(--dp-c-bg);
+  border: 2px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-lg);
+  box-shadow: var(--dp-shadow-sm);
+  transition: box-shadow var(--ux-duration-200) var(--ux-ease);
+}
+
+#hi-app .dp-card:hover{
+  box-shadow: var(--dp-shadow-md);
+}
+
+/* ===== TABLE (SELARAS dengan Rekap RAB) ===== */
+.hi-table{
+  font-size: var(--ux-font-sm, .875rem);
+  line-height: var(--ux-line-md, 1.25rem);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* Table responsive dengan scrollbar custom */
+.table-responsive{
+  scrollbar-gutter: stable both-edges;
+  overflow: auto;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
+  border-radius: 8px;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: transparent;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.table-responsive:hover::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dp-c-border) 20%, transparent);
+}
+
+/* THEAD sticky dengan styling konsisten */
+.hi-table thead.dp-thead-sticky{
+  background: var(--dp-c-surface-2);
+  box-shadow: 0 1px 0 var(--dp-c-border);
+}
+
 .hi-table thead th{
   background: var(--dp-c-surface-2);
   border-bottom: 2px solid var(--dp-c-border);
@@ -45,60 +172,126 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .03em;
+  padding: .5rem .75rem;
+  vertical-align: middle;
+}
+
+/* Table body cells */
+.hi-table tbody td{
+  padding: .5rem .75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--dp-c-border);
+  color: var(--dp-c-text);
+  transition: background-color var(--ux-duration-200) var(--ux-ease);
+}
+
+/* Row hover (SELARAS dengan Rekap RAB) */
+.hi-table tbody tr:hover{
+  background: var(--ux-row-hover);
 }
 
 /* Numerik & monospace */
 .hi-table td .font-monospace,
-.hi-table td.mono{
+.hi-table td.mono,
+.hi-table th.font-monospace{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
+
 .hi-table td.text-end,
+.hi-table th.text-end,
 .hi-table .hi-price-preview{
   text-align: right;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-/* Kontrol kecil seragam */
-#hi-toolbar .form-control,
+/* Form controls dalam table */
 .hi-table .form-control{
   font-size: var(--ux-font-xs);
+  border-color: var(--dp-c-border);
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
-/* Focus ring konsisten (token SSOT) */
-.ux-focusable:focus{
-  outline: 0;
+.hi-table .form-control:focus{
+  border-color: var(--dp-c-primary);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
-  border-color: color-mix(in srgb, var(--dp-c-primary) 55%, transparent);
-}/* =====================================================================
-   harga_items.css — SSOT-aligned (layout & util, no custom colors/radius)
-   ===================================================================== */
-
-/* Toolbar polish (seragam dengan Volume Pekerjaan) */
-#hi-toolbar{
-  background: var(--dp-c-surface-1);
-  background-clip: padding-box;
-  box-shadow: var(--dp-shadow-sm);
-  border-bottom: 1px solid var(--dp-c-border);
+  outline: 0;
 }
 
-/* === BASELINE FONT SIZING (match Volume Pekerjaan) =================== */
-/* Catatan:
-   - VP menetapkan font-size area tabel via container (#vp-page) ke
-     var(--ux-font-sm, .875rem) dengan line-height fallback 1.25rem.
-   - Kita samakan untuk tabel Harga Items.
-*/
-#hi-app .hi-table{
-  font-size: var(--ux-font-sm, .875rem);
-  line-height: var(--ux-line-md, 1.25rem);
+/* Invalid state highlight for price inputs: border-only by default */
+.hi-table .form-control.ux-invalid{
+  border-color: var(--dp-c-danger);
+  border-width: 2px;
+  box-shadow: none;
 }
 
-/* Definisikan modal untuk menerapkan z-index yang sesuai
-*/
+/* Empty marker (harga belum diisi di DB) */
+.hi-table .form-control.vp-empty{
+  border-style: dashed;
+  border-color: var(--dp-c-border);
+  opacity: .96;
+}
+
+/* Row states use a left border indicator (border-only) */
+.hi-table tbody tr.hi-row-empty > td:first-child,
+.hi-table tbody tr.hi-row-invalid > td:first-child,
+.hi-table tbody tr.hi-row-zero > td:first-child{
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-left-color: var(--dp-c-danger);
+}
+
+.hi-table tbody tr.hi-row-edited > td:first-child{
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-left-color: var(--dp-c-warning);
+}
+
+/* Row state: saved flash */
+/* Saved (success) border pulse (border color only) */
+@keyframes hiSavedBorderPulse {
+  0%   { border-left-color: color-mix(in srgb, var(--dp-c-success) 65%, transparent); }
+  60%  { border-left-color: color-mix(in srgb, var(--dp-c-success) 35%, transparent); }
+  100% { border-left-color: var(--dp-c-success); }
+}
+.hi-table tbody tr.hi-row-saved > td:first-child{
+  border-left-width: 4px;
+  border-left-style: solid;
+  border-left-color: var(--dp-c-success);
+  animation: hiSavedBorderPulse .8s ease-out;
+}
+
+/* Row state: empty (harga null asal DB) → border only (left) already handled above */
+
+/* Dark mode: neon-like rings (subtle) to increase contrast */
+[data-bs-theme="dark"] .hi-table .form-control.ux-invalid{
+  box-shadow: 0 0 0 .16rem rgba(255, 91, 91, .35);
+}
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-empty > td:first-child,
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-invalid > td:first-child,
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-zero > td:first-child{
+  border-left-color: #ff5b5b; /* neon red */
+  box-shadow: 0 0 6px 0 rgba(255, 91, 91, .55);
+}
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-edited > td:first-child{
+  border-left-color: #ffd24d; /* neon yellow */
+  box-shadow: 0 0 6px 0 rgba(255, 210, 77, .55);
+}
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-saved > td:first-child{
+  border-left-color: #4dff88; /* neon green */
+  box-shadow: 0 0 6px 0 rgba(77, 255, 136, .55);
+}
+
+/* ===== MODAL KONVERSI SATUAN (SELARAS dengan Template AHSP) ===== */
 #hiConvModal{
-  z-index: var(--dp-z-modal) !important;
+  z-index: calc(var(--dp-z-modal) + 100) !important;
 }
 
-/* ===== Konversi Satuan Modal (SSOT-themed) ===== */
+#hiConvModal ~ .modal-backdrop{
+  z-index: calc(var(--dp-z-backdrop) + 100) !important;
+}
+
 #hiConvModal .modal-content{
   background: var(--dp-c-surface);
   color: var(--dp-c-text);
@@ -106,18 +299,52 @@
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-lg);
 }
+
 #hiConvModal .modal-header{
   background: var(--dp-c-surface-2);
   border-bottom: 1px solid var(--dp-c-border);
+  padding: 1rem;
 }
+
+#hiConvModal .modal-body{
+  padding: 1rem;
+}
+
 #hiConvModal .modal-footer{
   background: var(--dp-c-surface-1);
   border-top: 1px solid var(--dp-c-border);
+  padding: 1rem;
 }
-#hiConvModal .form-label{ font-size: var(--ux-font-xs); }
-#hiConvModal .form-text{ font-size: var(--ux-font-xs); color: var(--dp-c-muted); }
 
-/* Input-group sizing and tone inside modal */
+/* Modal form controls */
+#hiConvModal .form-label{
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  margin-bottom: .25rem;
+}
+
+#hiConvModal .form-text{
+  font-size: var(--ux-font-xs);
+  color: var(--dp-c-muted);
+}
+
+#hiConvModal .form-control,
+#hiConvModal .form-select{
+  font-size: var(--ux-font-xs);
+  border-color: var(--dp-c-border);
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+#hiConvModal .form-control:focus,
+#hiConvModal .form-select:focus{
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  outline: 0;
+}
+
+/* Input group dalam modal */
 #hiConvModal .input-group .form-control,
 #hiConvModal .input-group .input-group-text{
   font-size: var(--ux-font-xs);
@@ -125,63 +352,140 @@
   padding-top: .375rem;
   padding-bottom: .375rem;
 }
+
 #hiConvModal .input-group .form-control{
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
 }
+
 #hiConvModal .input-group .input-group-text{
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
   border-color: var(--dp-c-border);
 }
 
-/* Result panel emphasis */
-#hiConvModal #hi-conv-result{ font-variant-numeric: tabular-nums; }
-
-
-/* Permintaan spesifik: pastikan selector berikut juga “tercapai”.
-   (Hati-hati: selector ini bergantung struktur DOM; tetap kita tambahkan
-   sebagai jaring pengaman tanpa !important) */
-#hi-tbody > tr:nth-child(1),
-#hi-app > div:nth-child(2) > div.table-responsive > table > thead{
-  font-size: var(--ux-font-sm, .875rem);
-  line-height: var(--ux-line-md, 1.25rem);
+/* Price preview uses dash for invalid */
+.hi-price-preview{
+  opacity: .9;
 }
 
-/* THEAD: offset global via .dp-thead-sticky; hanya aksen garis bawah halus */
-.hi-table thead.dp-thead-sticky{
-  box-shadow: 0 1px 0 var(--dp-c-border);
-  background: var(--dp-c-surface);
+/* Result panel dalam modal */
+#hiConvModal #hi-conv-result{
+  font-variant-numeric: tabular-nums;
+  color: var(--dp-c-text);
 }
 
-/* Numerik & monospace */
-.hi-table td .font-monospace,
-.hi-table td.mono{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-}
-.hi-table td.text-end,
-.hi-table .hi-price-preview{
-  text-align: right;
-  font-variant-numeric: tabular-nums lining-nums;
-}
-
-/* Kontrol kecil seragam (seperti VP) */
-#hi-toolbar .form-control,
-.hi-table .form-control{
+/* Modal buttons */
+#hiConvModal .btn{
   font-size: var(--ux-font-xs);
+  padding: .375rem .75rem;
+  border-radius: var(--dp-radius-md);
+  transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
-/* Focus ring konsisten (token SSOT) */
+#hiConvModal .btn:hover{
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* ===== FOCUS MANAGEMENT (SELARAS dengan 4 page) ===== */
 .ux-focusable:focus{
   outline: 0;
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   border-color: color-mix(in srgb, var(--dp-c-primary) 55%, transparent);
 }
 
-/* Responsiveness hint */
-.table-responsive{ scrollbar-gutter: stable both-edges; }
+/* ===== RESPONSIVE (SELARAS dengan Rekap RAB) ===== */
 
+/* Laptop (< 1200px) */
+@media (max-width: 1199.98px) {
+  #hi-toolbar .hi-searchbar {
+    flex: 1 1 clamp(20rem, 45vw, 48rem);
+  }
 
-/* Responsiveness hint */
-.table-responsive{ scrollbar-gutter: stable both-edges; }
+  .hi-table thead th,
+  .hi-table tbody td {
+    padding: .45rem .65rem;
+    font-size: .74rem;
+  }
+}
 
+/* Tablet Landscape (< 992px) */
+@media (max-width: 991.98px) {
+  #hi-toolbar .hi-searchbar {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  #hi-toolbar {
+    gap: .375rem;
+  }
+
+  #hi-toolbar .btn {
+    font-size: var(--ux-font-xs);
+    padding: .3rem .6rem;
+  }
+
+  .hi-table thead th,
+  .hi-table tbody td {
+    padding: .4rem .6rem;
+    font-size: .72rem;
+  }
+}
+
+/* Tablet Portrait (< 768px) */
+@media (max-width: 767.98px) {
+  #hi-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #hi-toolbar .ms-auto {
+    margin-left: 0 !important;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  #hi-toolbar .ms-auto .btn {
+    flex: 1 1 auto;
+    min-width: fit-content;
+  }
+
+  .hi-table thead th,
+  .hi-table tbody td {
+    padding: .35rem .5rem;
+    font-size: .7rem;
+  }
+}
+
+/* ===== DARK MODE ENHANCEMENTS ===== */
+[data-bs-theme="dark"] #hi-toolbar .btn-primary {
+  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+}
+
+[data-bs-theme="dark"] #hi-toolbar .btn-primary:hover {
+  box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+}
+
+/* ===== ACCESSIBILITY ===== */
+@media (forced-colors: active) {
+  .hi-table thead th,
+  .hi-table tbody td {
+    border-color: CanvasText !important;
+  }
+
+  #hi-toolbar .btn:focus-visible {
+    outline: 2px solid Highlight !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
