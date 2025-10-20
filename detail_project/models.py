@@ -81,7 +81,7 @@ class Pekerjaan(TimeStampedModel):
     markup_override_percent = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Override % BUK khusus pekerjaan ini; null=pakai default project"
+        help_text="Override % Profit/Margin khusus pekerjaan ini; null=pakai default project"
     )
 
     class Meta:
@@ -277,10 +277,10 @@ class VolumeFormulaState(TimeStampedModel):
         return f"F[{self.project_id}:{self.pekerjaan_id}] = {('fx' if self.is_fx else 'val')}«{(self.raw or '')[:30]}... »"
 
 
-# === BUK per Project ===
+# === Profit/Margin per Project ===
 class ProjectPricing(TimeStampedModel):
     """
-    Simpan Biaya Umum & Keuntungan (BUK) per project, dalam persen (0..100).
+    Simpan Biaya Umum & Keuntungan (Profit/Margin) per project, dalam persen (0..100).
     Minimal-change: OneToOne + default 10.00.
     """
     # NEW (Fase 4): preferensi tampilan/rekap proyek
@@ -298,7 +298,7 @@ class ProjectPricing(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name='pricing'
     )
-    # default BUK proyek
+    # default Profit/Margin proyek
     markup_percent = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal('10.00'))
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

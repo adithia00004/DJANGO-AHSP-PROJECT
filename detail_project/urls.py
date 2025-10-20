@@ -45,7 +45,7 @@ urlpatterns = [
     path('api/project/<int:project_id>/harga-items/save/', views_api.api_save_harga_items, name='api_save_harga_items'),
     path('api/project/<int:project_id>/harga-items/list/', views_api.api_list_harga_items, name='api_list_harga_items'),
     
-    # ===== API: Project Pricing (BUK) =====
+    # ===== API: Project Pricing (Profit/Margin) =====
     path('api/project/<int:project_id>/pricing/', views_api.api_project_pricing, name='api_project_pricing'),
     
     # Pricing per-pekerjaan
@@ -80,19 +80,58 @@ urlpatterns = [
          name='export_rekap_rab_word'),
 
      # Export Rekap Kebutuhan
-     path('api/project/<int:project_id>/export/rekap-kebutuhan/csv/', 
-          views_api.api_export_rekap_kebutuhan_csv, 
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/csv/',
+          views_api.api_export_rekap_kebutuhan_csv,
           name='api_export_rekap_kebutuhan_csv'),  # ✅ CORRECT NAME
 
-     path('api/project/<int:project_id>/export/rekap-kebutuhan/pdf/', 
-          views_api.export_rekap_kebutuhan_pdf, 
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/pdf/',
+          views_api.export_rekap_kebutuhan_pdf,
           name='api_export_rekap_kebutuhan_pdf'),  # ✅ ADD api_ prefix
 
-     path('api/project/<int:project_id>/export/rekap-kebutuhan/word/', 
-          views_api.export_rekap_kebutuhan_word, 
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/word/',
+          views_api.export_rekap_kebutuhan_word,
           name='api_export_rekap_kebutuhan_word'),  # ✅ ADD api_ prefix
-     
-     
-   
+
+     # Export Volume Pekerjaan
+     path('api/project/<int:project_id>/export/volume-pekerjaan/csv/',
+          views_api.export_volume_pekerjaan_csv,
+          name='export_volume_pekerjaan_csv'),
+
+     path('api/project/<int:project_id>/export/volume-pekerjaan/pdf/',
+          views_api.export_volume_pekerjaan_pdf,
+          name='export_volume_pekerjaan_pdf'),
+
+     path('api/project/<int:project_id>/export/volume-pekerjaan/word/',
+          views_api.export_volume_pekerjaan_word,
+          name='export_volume_pekerjaan_word'),
+
+     # Export Harga Items
+     path('api/project/<int:project_id>/export/harga-items/csv/',
+          views_api.export_harga_items_csv,
+          name='export_harga_items_csv'),
+
+     path('api/project/<int:project_id>/export/harga-items/pdf/',
+          views_api.export_harga_items_pdf,
+          name='export_harga_items_pdf'),
+
+     path('api/project/<int:project_id>/export/harga-items/word/',
+          views_api.export_harga_items_word,
+          name='export_harga_items_word'),
+
+     # Export Rincian AHSP
+     path('api/project/<int:project_id>/export/rincian-ahsp/csv/',
+          views_api.export_rincian_ahsp_csv,
+          name='export_rincian_ahsp_csv'),
+
+     path('api/project/<int:project_id>/export/rincian-ahsp/pdf/',
+          views_api.export_rincian_ahsp_pdf,
+          name='export_rincian_ahsp_pdf'),
+
+     path('api/project/<int:project_id>/export/rincian-ahsp/word/',
+          views_api.export_rincian_ahsp_word,
+          name='export_rincian_ahsp_word'),
+
+
+
 ]
 

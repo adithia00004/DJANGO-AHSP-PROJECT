@@ -164,8 +164,12 @@
           if (!r && P.snapshot_kode) r = byKode.get(String(P.snapshot_kode));
 
           const volume = (r && r.volume != null) ? Number(r.volume) : 0;
-          const harga  = (r && (r.HSP != null || r.unit_price != null)) ? Number(r.HSP ?? r.unit_price) : 0;
-          const total  = Number((volume || 0) * (harga || 0));
+    // Harga Satuan pada Rekap RAB harus mengikuti G (HSP = E + F) dari Rincian AHSP
+    // Fallback ke field lain bila G belum tersedia untuk kompatibilitas mundur
+    const harga  = (r && (r.G != null || r.harga_satuan != null || r.HSP != null || r.unit_price != null))
+      ? Number(r.G ?? r.harga_satuan ?? r.HSP ?? r.unit_price)
+      : 0;
+    const total  = Number((volume || 0) * (harga || 0));
 
           Snode.children.push({
             type:'job',

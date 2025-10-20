@@ -135,7 +135,7 @@
         }
       });
 
-      // BUK
+      // Profit/Margin
       if (j.meta && typeof j.meta.markup_percent !== 'undefined'){
         bukCanonLoaded = String(j.meta.markup_percent || '10.00');
         if ($bukInput) $bukInput.value = toUI2(bukCanonLoaded);
@@ -283,7 +283,7 @@
     }
   }, true);
 
-  // ===== BUK: enforce 2dp pada blur
+  // ===== Profit/Margin: enforce 2dp pada blur
   $bukInput?.addEventListener('blur', ()=>{
     const canon = toCanon2($bukInput.value);
     $bukInput.value = toUI2(canon || bukCanonLoaded);
@@ -761,4 +761,57 @@
 
   // ===== Init
   fetchList();
+
+  // ===== EXPORT INITIALIZATION =====
+  // Initialize unified export (CSV/PDF/Word) via ExportManager
+  function initExportButtons() {
+    if (typeof ExportManager === 'undefined') {
+      console.warn('[HargaItems] ⚠️ ExportManager not loaded - export buttons disabled');
+      return;
+    }
+
+    try {
+      const exporter = new ExportManager(projectId, 'harga-items');
+
+      const btnCSV = document.getElementById('btn-export-csv');
+      const btnPDF = document.getElementById('btn-export-pdf');
+      const btnWord = document.getElementById('btn-export-word');
+
+      if (btnCSV) {
+        btnCSV.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[HargaItems] 📥 CSV export requested');
+          await exporter.exportAs('csv');
+        });
+      }
+
+      if (btnPDF) {
+        btnPDF.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[HargaItems] 📄 PDF export requested');
+          await exporter.exportAs('pdf');
+        });
+      }
+
+      if (btnWord) {
+        btnWord.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[HargaItems] 📝 Word export requested');
+          await exporter.exportAs('word');
+        });
+      }
+
+      console.log('[HargaItems] ✓ Export buttons initialized');
+    } catch (err) {
+      console.error('[HargaItems] Export initialization failed:', err);
+    }
+  }
+
+  // Run export initialization after DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initExportButtons);
+  } else {
+    initExportButtons();
+  }
+
 })();

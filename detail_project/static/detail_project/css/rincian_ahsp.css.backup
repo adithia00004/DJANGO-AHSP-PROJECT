@@ -6,18 +6,18 @@
    ===================================================================== */
 
 /* ===== Header ===== */
-.ra-app .ra-page-header {
+.ta-app .ta-page-header {
   margin-top: 8px;
   background: var(--bs-card-bg, var(--dp-c-surface));
   padding: 1rem;
   border-radius: var(--dp-radius-md);
   margin-bottom: .5rem;
 }
-.ra-app .ra-title{ margin:0; font-weight:700; font-size: var(--ux-font-lg); letter-spacing:.2px; }
-.ra-app .ra-subtitle{ margin:2px 0 0 0; color:var(--dp-c-muted); font-size: var(--ux-font-md); }
+.ta-app .ta-title{ margin:0; font-weight:700; font-size: var(--ux-font-lg); letter-spacing:.2px; }
+.ta-app .ta-subtitle{ margin:2px 0 0 0; color:var(--dp-c-muted); font-size: var(--ux-font-md); }
 
 /* ===== Toolbar (SELARAS dengan List Pekerjaan/Volume/Rekap RAB) ===== */
-.ra-app .ra-toolbar{
+.ta-app .ta-toolbar{
   /* sticky handled by dp-sticky-topbar class on HTML */
   z-index: var(--dp-z-toolbar);
   background: var(--bs-card-bg, var(--dp-c-surface));
@@ -30,7 +30,7 @@
   gap: .5rem;
   flex-wrap: wrap;
 }
-.ra-app .ra-toolbar .btn{
+.ta-app .ta-toolbar .btn{
   white-space: nowrap;
   font-size: var(--ux-font-xs);
   line-height: 1.5;
@@ -39,27 +39,27 @@
   box-shadow: var(--dp-shadow-sm);
   transition: all var(--ux-duration-200) var(--ux-ease);
 }
-.ra-app .ra-toolbar .btn:hover{
+.ta-app .ta-toolbar .btn:hover{
   transform: translateY(-1px);
   box-shadow: var(--dp-shadow-md);
 }
-.ra-app .ra-toolbar .btn:active{
+.ta-app .ta-toolbar .btn:active{
   transform: translateY(0) scale(0.98);
   box-shadow: var(--dp-shadow-sm);
 }
-.ra-app .ra-searchbar{
+.ta-app .ta-searchbar{
   flex: 1 1 clamp(24rem, 50vw, 48rem);
   min-width: 0;
 }
 /* sejajarkan ikon & sambungkan border dengan input */
-.ra-app .ra-searchbar .input-group-text{ border-right:0; display:flex; align-items:center; }
-.ra-app .ra-searchbar .form-control{ border-left:0; }
-.ra-app .ra-toolbar-hint{ color: var(--dp-c-muted); font-size: var(--ux-font-xs); }
-.ra-app .ra-toolbar-hint .kbd-hint kbd{ margin: 0 .1rem; }
+.ta-app .ta-searchbar .input-group-text{ border-right:0; display:flex; align-items:center; }
+.ta-app .ta-searchbar .form-control{ border-left:0; }
+.ta-app .ta-toolbar-hint{ color: var(--dp-c-muted); font-size: var(--ux-font-xs); }
+.ta-app .ta-toolbar-hint .kbd-hint kbd{ margin: 0 .1rem; }
 
 /* Input group sizing and theme in toolbar (SELARAS dengan Rekap RAB) */
-.ra-app #ra-toolbar .input-group .form-control,
-.ra-app #ra-toolbar .input-group .input-group-text{
+.ta-app #ra-toolbar .input-group .form-control,
+.ta-app #ra-toolbar .input-group .input-group-text{
   font-size: var(--ux-font-xs);
   line-height: 1.5;
   padding-top: .375rem;
@@ -67,23 +67,23 @@
   border-color: var(--dp-c-border);
   transition: all var(--ux-duration-200) var(--ux-ease);
 }
-.ra-app #ra-toolbar .input-group .form-control{
+.ta-app #ra-toolbar .input-group .form-control{
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
 }
-.ra-app #ra-toolbar .input-group .form-control:focus{
+.ta-app #ra-toolbar .input-group .form-control:focus{
   border-color: var(--dp-c-primary);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   outline: 0;
   transform: scale(1.005);
 }
-.ra-app #ra-toolbar .input-group .input-group-text{
+.ta-app #ra-toolbar .input-group .input-group-text{
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
 }
 
 /* Toolbar dropdown theme (SELARAS dengan Rekap RAB) */
-.ra-app #ra-toolbar .dropdown-menu{
+.ta-app #ra-toolbar .dropdown-menu{
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
@@ -106,7 +106,7 @@
 }
 
 /* ===== Body Grid (sidebar | resizer | editor) ===== */
-.ra-app .ra-body{
+.ta-app .ta-body{
   display: grid;
   grid-template-columns:
     minmax(280px, var(--ta-left-w, 25%))
@@ -115,20 +115,20 @@
   gap: 12px;
   align-items: stretch;
 }
-.ra-app #ra-resizer{
+.ta-app #ra-resizer{
   grid-column: 2;
   grid-row: 1 / -1;
   cursor: col-resize;
 }
 
 /* Tanpa min-width:0 */
-.ra-app .ra-sidebar,
-.ra-app .ra-editor{
+.ta-app .ta-sidebar,
+.ta-app .ta-editor{
   overflow: hidden;
 }
 
 /* ===== Sidebar (SELARAS dengan List Pekerjaan) ===== */
-.ra-app .ra-sidebar{
+.ta-app .ta-sidebar{
   background: var(--dp-c-bg);
   border: 2px solid var(--dp-c-border);
   border-radius: var(--dp-radius-lg);
@@ -138,13 +138,13 @@
   box-shadow: var(--dp-shadow-sm);
   transition: box-shadow var(--ux-duration-200) var(--ux-ease);
 }
-.ra-app .ra-sidebar:hover{
+.ta-app .ta-sidebar:hover{
   box-shadow: var(--dp-shadow-md);
 }
 
 /* Job list (IDENTIK) */
-.ra-app .ra-job-list,
-.ra-app #rk-list {
+.ta-app .ta-job-list,
+.ta-app #rk-list {
   list-style: none;
   margin: 8px 0 0 0;
   padding: 0;
@@ -156,8 +156,8 @@
 }
 
 /* Scroll shadows untuk job list */
-.ra-app .ra-job-list::before,
-.ra-app .ra-job-list::after {
+.ta-app .ta-job-list::before,
+.ta-app .ta-job-list::after {
   content: "";
   position: sticky;
   left: 0;
@@ -167,43 +167,43 @@
   z-index: 1;
 }
 
-.ra-app .ra-job-list::before {
+.ta-app .ta-job-list::before {
   top: 0;
   background: linear-gradient(to bottom, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
 }
 
-.ra-app .ra-job-list::after {
+.ta-app .ta-job-list::after {
   bottom: 0;
   background: linear-gradient(to top, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
 }
 
 /* Custom scrollbar */
-.ra-app .ra-job-list::-webkit-scrollbar {
+.ta-app .ta-job-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.ra-app .ra-job-list::-webkit-scrollbar-thumb {
+.ta-app .ta-job-list::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
   border-radius: 8px;
   transition: background var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .ra-job-list::-webkit-scrollbar-thumb:hover {
+.ta-app .ta-job-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
 }
 
-.ra-app .ra-job-list::-webkit-scrollbar-track {
+.ta-app .ta-job-list::-webkit-scrollbar-track {
   background: transparent;
   transition: background var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .ra-job-list:hover::-webkit-scrollbar-track {
+.ta-app .ta-job-list:hover::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--dp-c-border) 20%, transparent);
 }
 
 /* ===== JOB ITEM (100% IDENTIK dengan Template AHSP) ===== */
-.ra-app .ra-job-item,
-.ra-app .rk-item {
+.ta-app .ta-job-item,
+.ta-app .rk-item {
   padding: 8px;
   border-radius: var(--dp-radius-sm);
   cursor: pointer;
@@ -212,22 +212,22 @@
   background: var(--dp-c-surface);
 }
 
-.ra-app .ra-job-item:hover,
-.ra-app .rk-item:hover {
+.ta-app .ta-job-item:hover,
+.ta-app .rk-item:hover {
   background: var(--dp-c-surface-2);
 }
 
-.ra-app .ra-job-item.is-active,
-.ra-app .ra-job-item.active,
-.ra-app .rk-item.active {
+.ta-app .ta-job-item.is-active,
+.ta-app .ta-job-item.active,
+.ta-app .rk-item.active {
   border-color: color-mix(in srgb, var(--dp-c-primary) 15%, transparent);
   background: var(--dp-c-primary-subtle);
   position: relative;
 }
 
-.ra-app .ra-job-item.is-active::before,
-.ra-app .ra-job-item.active::before,
-.ra-app .rk-item.active::before {
+.ta-app .ta-job-item.is-active::before,
+.ta-app .ta-job-item.active::before,
+.ta-app .rk-item.active::before {
   content: "";
   position: absolute;
   inset: 6px auto 6px 4px;
@@ -236,34 +236,34 @@
   background: color-mix(in srgb, var(--dp-c-primary) 72%, transparent);
 }
 
-.ra-app .ra-job-item:focus-visible,
-.ra-app .rk-item:focus-visible {
+.ta-app .ta-job-item:focus-visible,
+.ta-app .rk-item:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   border-color: color-mix(in srgb, var(--dp-c-primary) 55%, transparent);
 }
 
 /* Job item structure (IDENTIK dengan Template AHSP) */
-.ra-app .ra-job-item .primary,
-.ra-app .rk-item .primary,
-.ra-app .rk-item-title {
+.ta-app .ta-job-item .primary,
+.ta-app .rk-item .primary,
+.ta-app .rk-item-title {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.ra-app .ra-job-item .primary .kode,
-.ra-app .rk-item .primary .kode,
-.ra-app .rk-item-kode {
+.ta-app .ta-job-item .primary .kode,
+.ta-app .rk-item .primary .kode,
+.ta-app .rk-item-kode {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: var(--ux-font-xs);
   font-weight: 600;
   color: var(--dp-c-muted);
 }
 
-.ra-app .ra-job-item .primary .uraian,
-.ra-app .rk-item .primary .uraian,
-.ra-app .rk-item-title {
+.ta-app .ta-job-item .primary .uraian,
+.ta-app .rk-item .primary .uraian,
+.ta-app .rk-item-title {
   font-weight: 400;
   line-height: 1.35;
   font-size: var(--ux-font-sm);
@@ -275,9 +275,9 @@
   overflow: hidden;
 }
 
-.ra-app .ra-job-item .meta,
-.ra-app .rk-item .meta,
-.ra-app .rk-item-meta {
+.ta-app .ta-job-item .meta,
+.ta-app .rk-item .meta,
+.ta-app .rk-item-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -287,28 +287,28 @@
   margin-top: 4px;
 }
 
-.ra-app .ra-job-item .meta .satuan,
-.ra-app .rk-item .meta .satuan,
-.ra-app .rk-item-satuan {
+.ta-app .ta-job-item .meta .satuan,
+.ta-app .rk-item .meta .satuan,
+.ta-app .rk-item-satuan {
   font-size: var(--ux-font-xs);
 }
 
 /* Menyembunyikan chip di dalam job item meta (per permintaan user) */
-.ra-app #rk-list > li.rk-item .rk-item-meta > .rk-chip,
-.ra-app #rk-list > li.rk-item .meta > .rk-chip {
+.ta-app #rk-list > li.rk-item .rk-item-meta > .rk-chip,
+.ta-app #rk-list > li.rk-item .meta > .rk-chip {
   display: none;
 }
 
 /* Menghapus padding dari row-note di dalam rk-item-meta (per permintaan user) */
-.ra-app #rk-list > li.rk-item .rk-item-meta > .row-note,
-.ra-app #rk-list > li.rk-item .meta > .row-note {
+.ta-app #rk-list > li.rk-item .rk-item-meta > .row-note,
+.ta-app #rk-list > li.rk-item .meta > .row-note {
   padding: 0;
   margin: 0;
 }
 
 /* Empty state */
 .row-note,
-.ra-empty {
+.ta-empty {
   padding: 2rem 1rem;
   text-align: center;
   color: var(--dp-c-muted);
@@ -316,15 +316,15 @@
 }
 
 /* ===== RESIZER (IDENTIK) ===== */
-.ra-app .rk-resizer,
-.ra-app .ux-resizer {
+.ta-app .rk-resizer,
+.ta-app .ux-resizer {
   position: relative;
   cursor: col-resize;
   user-select: none;
 }
 
-.ra-app .rk-resizer::before,
-.ra-app .ux-resizer::before {
+.ta-app .rk-resizer::before,
+.ta-app .ux-resizer::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -333,22 +333,22 @@
   transition: opacity var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .rk-resizer:hover::before,
-.ra-app .rk-resizer:focus::before,
-.ra-app .ux-resizer:hover::before,
-.ra-app .ux-resizer:focus::before {
+.ta-app .rk-resizer:hover::before,
+.ta-app .rk-resizer:focus::before,
+.ta-app .ux-resizer:hover::before,
+.ta-app .ux-resizer:focus::before {
   opacity: .6;
 }
 
-.ra-app .rk-resizer:focus,
-.ra-app .ux-resizer:focus {
+.ta-app .rk-resizer:focus,
+.ta-app .ux-resizer:focus {
   outline: 2px solid var(--dp-c-focus);
   outline-offset: -2px;
 }
 
 /* ===== EDITOR PANEL (100% IDENTIK dengan Template AHSP) ===== */
-.ra-app .rk-right.ra-editor,
-.ra-app .ra-editor {
+.ta-app .rk-right.ta-editor,
+.ta-app .ta-editor {
   background: var(--ta-editor-surface, var(--dp-c-surface-1));
   border: 2px solid var(--dp-c-border);
   border-radius: var(--dp-radius-lg);
@@ -363,27 +363,27 @@
   transition: box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .ra-editor:hover {
+.ta-app .ta-editor:hover {
   box-shadow: var(--dp-shadow-md);
 }
 
-.ra-app .ra-editor > * {
+.ta-app .ta-editor > * {
   padding-left: 0;
   padding-right: 0;
 }
 
 /* HAPUS scroll shadows (seperti Template AHSP) */
-.ra-app .rk-right.ra-editor::before,
-.ra-app .rk-right.ra-editor::after,
-.ra-app .ra-editor::before,
-.ra-app .ra-editor::after {
+.ta-app .rk-right.ta-editor::before,
+.ta-app .rk-right.ta-editor::after,
+.ta-app .ta-editor::before,
+.ta-app .ta-editor::after {
   content: none;
   display: none;
 }
 
-/* ===== HEADER PANEL KANAN (IDENTIK dengan Template AHSP .ra-seg-header) ===== */
-.ra-app .rk-right-header.ra-seg-header,
-.ra-app .ra-seg-header {
+/* ===== HEADER PANEL KANAN (IDENTIK dengan Template AHSP .ta-seg-header) ===== */
+.ta-app .rk-right-header.ta-seg-header,
+.ta-app .ta-seg-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -398,8 +398,8 @@
   backdrop-filter: saturate(1.1) blur(2px);
 }
 
-.ra-app .ra-seg-header h2,
-.ra-app .rk-right-title {
+.ta-app .ta-seg-header h2,
+.ta-app .rk-right-title {
   margin: 0;
   font-size: var(--ux-font-lg);
   font-weight: 700;
@@ -407,13 +407,13 @@
 }
 
 /* Header metadata (IDENTIK dengan Template AHSP) */
-.ra-app .rk-right-meta {
+.ta-app .rk-right-meta {
   font-size: var(--ux-font-xs);
   color: var(--dp-c-muted);
   font-weight: 400;
 }
 
-/* Uraian di header (IDENTIK dengan #ra-active-uraian) */
+/* Uraian di header (IDENTIK dengan #ta-active-uraian) */
 #rk-pkj-uraian {
   font-weight: 400;
   font-size: var(--ux-font-sm);
@@ -421,7 +421,7 @@
 }
 
 /* Right actions (Override controls) - Compact seperti Template AHSP */
-.ra-app .rk-right-actions {
+.ta-app .rk-right-actions {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -429,8 +429,8 @@
 }
 
 /* ===== CHIPS & BADGES (IDENTIK) ===== */
-.ra-app .ra-chip,
-.ra-app .rk-chip {
+.ta-app .ta-chip,
+.ta-app .rk-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -444,12 +444,12 @@
   font-weight: 500;
 }
 
-.ra-app .ra-chip i,
-.ra-app .rk-chip i {
+.ta-app .ta-chip i,
+.ta-app .rk-chip i {
   font-size: 0.85em;
 }
 
-.ra-app .ra-chip-warn {
+.ta-app .ta-chip-warn {
   background: color-mix(in srgb, var(--dp-c-warning) 14%, transparent);
   border-color: color-mix(in srgb, var(--dp-c-warning) 30%, transparent);
 }
@@ -482,14 +482,14 @@
 }
 
 /* Summary badges */
-.ra-app #rk-summary {
+.ta-app #rk-summary {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin: 12px 0;
 }
 
-.ra-app #rk-summary .ux-badge-ref {
+.ta-app #rk-summary .ux-badge-ref {
   background: var(--dp-c-surface-2);
   padding: 4px 8px;
   border-radius: var(--dp-radius-sm);
@@ -497,8 +497,8 @@
 }
 
 /* ===== TABLE (IDENTIK dengan Template AHSP) ===== */
-.ra-app .hi-table-wrap,
-.ra-app .ra-table-wrap {
+.ta-app .hi-table-wrap,
+.ta-app .ta-table-wrap {
   border-top: 1px solid var(--dp-c-border);
   background: var(--dp-c-surface);
   overflow: auto;
@@ -507,33 +507,33 @@
 }
 
 /* Custom scrollbar untuk table */
-.ra-app .ra-table-wrap::-webkit-scrollbar {
+.ta-app .ta-table-wrap::-webkit-scrollbar {
   height: 8px;
   width: 8px;
 }
 
-.ra-app .ra-table-wrap::-webkit-scrollbar-thumb {
+.ta-app .ta-table-wrap::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
   border-radius: 8px;
   transition: background var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .ra-table-wrap::-webkit-scrollbar-thumb:hover {
+.ta-app .ta-table-wrap::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
 }
 
-.ra-app .ra-table-wrap::-webkit-scrollbar-track {
+.ta-app .ta-table-wrap::-webkit-scrollbar-track {
   background: transparent;
   transition: background var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .ra-table-wrap:hover::-webkit-scrollbar-track {
+.ta-app .ta-table-wrap:hover::-webkit-scrollbar-track {
   background: color-mix(in srgb, var(--dp-c-border) 20%, transparent);
 }
 
 /* Table structure (IDENTIK) */
-.ra-app table.ra-table,
-.ra-app table.ra-table {
+.ta-app table.ta-table,
+.ta-app table.ra-table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -542,8 +542,8 @@
 }
 
 /* Table header (IDENTIK) */
-.ra-app table.ra-table thead th,
-.ra-app table.ra-table thead th {
+.ta-app table.ta-table thead th,
+.ta-app table.ra-table thead th {
   background: var(--dp-c-surface-2);
   border-bottom: 2px solid var(--dp-c-border);
   font-size: var(--ux-font-xs);
@@ -555,10 +555,10 @@
 }
 
 /* Table cells (IDENTIK) */
-.ra-app table.ra-table th,
-.ra-app table.ra-table td,
-.ra-app table.ra-table th,
-.ra-app table.ra-table td {
+.ta-app table.ta-table th,
+.ta-app table.ta-table td,
+.ta-app table.ra-table th,
+.ta-app table.ra-table td {
   border: 1px solid var(--dp-c-border);
   padding: .5rem .75rem;
   vertical-align: middle;
@@ -569,69 +569,69 @@
 }
 
 /* Zebra striping (IDENTIK) */
-.ra-app table.ra-table tbody tr:nth-child(odd) > *,
-.ra-app table.ra-table tbody tr:nth-child(odd) > * {
+.ta-app table.ta-table tbody tr:nth-child(odd) > *,
+.ta-app table.ra-table tbody tr:nth-child(odd) > * {
   background: color-mix(in srgb, var(--dp-c-surface-2) 30%, transparent);
 }
 
 /* Row hover (IDENTIK) */
-.ra-app table.ra-table tbody tr:hover > *,
-.ra-app table.ra-table tbody tr:hover > * {
+.ta-app table.ta-table tbody tr:hover > *,
+.ta-app table.ra-table tbody tr:hover > * {
   background: color-mix(in srgb, var(--dp-c-primary) 6%, transparent);
 }
 
 /* Fokus row (IDENTIK) */
-.ra-app table.ra-table tbody tr.is-active,
-.ra-app table.ra-table tbody tr:focus-within,
-.ra-app table.ra-table tbody tr.is-active,
-.ra-app table.ra-table tbody tr:focus-within {
+.ta-app table.ta-table tbody tr.is-active,
+.ta-app table.ta-table tbody tr:focus-within,
+.ta-app table.ra-table tbody tr.is-active,
+.ta-app table.ra-table tbody tr:focus-within {
   outline: 2px solid var(--dp-c-focus);
   outline-offset: -2px;
 }
 
 /* Column widths untuk Rincian AHSP (7 kolom) */
-.ra-app #ra-table col.col-no {
+.ta-app #ra-table col.col-no {
   width: 6ch;
 }
 
-.ra-app #ra-table col.col-uraian {
+.ta-app #ra-table col.col-uraian {
   width: auto;
 }
 
-.ra-app #ra-table col.col-kode {
-  width: 14ch;
-}
-
-.ra-app #ra-table col.col-satuan {
+.ta-app #ra-table col.col-kode {
   width: 10ch;
 }
 
-.ra-app #ra-table col.col-koef {
-  width: 12ch;
+.ta-app #ra-table col.col-satuan {
+  width: 8ch;
 }
 
-.ra-app #ra-table col.col-rps {
-  width: 20ch;
+.ta-app #ra-table col.col-koef {
+  width: 14ch;
 }
 
-.ra-app #ra-table col.col-rpj {
-  width: 22ch;
+.ta-app #ra-table col.col-rps {
+  width: 18ch;
+}
+
+.ta-app #ra-table col.col-rpj {
+  width: 18ch;
 }
 
 /* Alignment untuk angka */
-.ra-app table.ra-table td:nth-child(4) {
+.ta-app table.ra-table td:nth-child(4) {
   text-align: center;
 }
 
-.ra-app table.ra-table td:nth-child(5),
-.ra-app table.ra-table td:nth-child(6),
-.ra-app table.ra-table td:nth-child(7) {
+.ta-app table.ra-table td:nth-child(5),
+.ta-app table.ra-table td:nth-child(6),
+.ta-app table.ra-table td:nth-child(7) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 /* ===== BUTTONS (100% IDENTIK dengan Template AHSP) ===== */
-.ra-app .btn {
+.ta-app .btn {
   font-size: var(--ux-font-xs);
   line-height: 1.1;
   padding: .375rem .75rem;
@@ -641,45 +641,45 @@
   transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app .btn:hover {
+.ta-app .btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--dp-shadow-md);
 }
 
-.ra-app .btn:active {
+.ta-app .btn:active {
   transform: translateY(0) scale(0.98);
   box-shadow: var(--dp-shadow-sm);
 }
 
-.ra-app .btn-sm,
-.ra-app .btn-group-sm > .btn {
+.ta-app .btn-sm,
+.ta-app .btn-group-sm > .btn {
   font-size: var(--ux-font-xs);
   line-height: 1.1;
   padding: .25rem .5rem;
   border-radius: var(--dp-radius-sm);
 }
 
-.ra-app .btn i {
+.ta-app .btn i {
   margin-right: .35rem;
 }
 
-.ra-app .btn i:last-child {
+.ta-app .btn i:last-child {
   margin-right: 0;
   margin-left: .35rem;
 }
 
-.ra-app .btn.btn-neon {
+.ta-app .btn.btn-neon {
   box-shadow: 0 0 0 .2rem rgba(13,110,253,.25);
 }
 
-.ra-app .btn.btn-neon:hover {
+.ta-app .btn.btn-neon:hover {
   box-shadow: 0 0 0 .2rem rgba(13,110,253,.35), 0 0 18px rgba(13,110,253,.45);
 }
 
 /* ===== INPUT CONTROLS (IDENTIK) ===== */
-.ra-app input.hi-input,
-.ra-app .ta-input,
-.ra-app .cell-input {
+.ta-app input.hi-input,
+.ta-app .ta-input,
+.ta-app .cell-input {
   width: 100%;
   border: 1px solid var(--dp-c-border);
   border-radius: var(--dp-radius-sm);
@@ -691,9 +691,9 @@
   transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
-.ra-app input.hi-input:focus,
-.ra-app .ta-input:focus,
-.ra-app .cell-input:focus {
+.ta-app input.hi-input:focus,
+.ta-app .ta-input:focus,
+.ta-app .cell-input:focus {
   border-color: color-mix(in srgb, var(--dp-c-primary) 55%, transparent);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   outline: 0;
@@ -707,7 +707,7 @@
 }
 
 /* Input group sizing */
-.ra-app .input-group-sm .input-group-text {
+.ta-app .input-group-sm .input-group-text {
   font-size: var(--ux-font-xs);
   line-height: 1.1;
   padding: .25rem .5rem;
@@ -716,7 +716,7 @@
   border-color: var(--dp-c-border);
 }
 
-.ra-app .input-group-sm .form-control {
+.ta-app .input-group-sm .form-control {
   font-size: var(--ux-font-xs);
   line-height: 1.1;
   padding: .25rem .5rem;
@@ -730,40 +730,18 @@
 }
 
 /* ===== MONOSPACE ===== */
-.ra-app .mono,
-.ra-app .ux-mono {
+.ta-app .mono,
+.ta-app .ux-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* ===== TOAST ===== */
-.ra-app .rk-toast-wrap {
+.ta-app .rk-toast-wrap {
   position: fixed;
   bottom: 1rem;
   right: 1rem;
-  z-index: var(--dp-z-toast);
+  z-index: calc(var(--dp-z-modal) + 200);
 }
-
-/* Ensure Help Modal sits above any local overlays (parity with template AHSP) */
-#raHelpModal { z-index: calc(var(--dp-z-modal) + 100) !important; }
-#raHelpModal ~ .modal-backdrop { z-index: calc(var(--dp-z-backdrop) + 100) !important; }
-
-/* Dropdown/tooltip/popover layering above content and sticky thead */
-.ra-app .dropdown-menu { z-index: var(--dp-z-dropdown) !important; }
-.ra-app .tooltip { z-index: var(--dp-z-dropdown) !important; }
-.ra-app .popover { z-index: var(--dp-z-dropdown) !important; }
-
-/* Sticky thead for rincian table with proper z-index under toolbar */
-.ra-thead-sticky {
-  position: sticky;
-  z-index: var(--dp-z-thead);
-  background: var(--dp-c-surface-2);
-}
-
-/* Page-scoped modal layering (ensure modal body not covered) */
-body[data-page="rincian_ahsp"] .modal { z-index: calc(var(--dp-z-modal) + 100) !important; }
-body[data-page="rincian_ahsp"] .modal-backdrop { z-index: calc(var(--dp-z-backdrop) + 100) !important; }
-body[data-page="rincian_ahsp"] .modal .modal-content { position: relative; z-index: 1; }
-body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index: 1; }
 
 /* ===== RESPONSIVE (IDENTIK dengan Template AHSP) ===== */
 
@@ -772,8 +750,8 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
     --ra-left-w: 340px;
   }
 
-  .ra-app table.ra-table th,
-  .ra-app table.ra-table td {
+  .ta-app table.ta-table th,
+  .ta-app table.ta-table td {
     padding: .45rem .65rem;
     font-size: .74rem;
   }
@@ -784,16 +762,16 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
     --ra-left-w: 320px;
   }
 
-  .ra-app.ra-app .ra-toolbar {
+  .ta-app.ta-app .ta-toolbar {
     gap: .375rem;
   }
 
-  .ra-app .btn {
+  .ta-app .btn {
     padding: .3rem .6rem;
   }
 
-  .ra-app table.ra-table th,
-  .ra-app table.ra-table td {
+  .ta-app table.ta-table th,
+  .ta-app table.ta-table td {
     padding: .4rem .6rem;
     font-size: .72rem;
   }
@@ -804,42 +782,42 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
     --ra-left-w: 280px;
   }
 
-  .ra-app .hi-body,
-  .ra-app .ra-body {
+  .ta-app .hi-body,
+  .ta-app .ta-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
 
-  .ra-app .rk-resizer,
-  .ra-app .ux-resizer {
+  .ta-app .rk-resizer,
+  .ta-app .ux-resizer {
     display: none;
   }
 
-  .ra-app table.ra-table th,
-  .ra-app table.ra-table td {
+  .ta-app table.ta-table th,
+  .ta-app table.ta-table td {
     padding: .35rem .5rem;
     font-size: .7rem;
   }
 }
 
 /* ===== DARK MODE (IDENTIK) ===== */
-[data-bs-theme="dark"] .ra-app .btn-primary {
+[data-bs-theme="dark"] .ta-app .btn-primary {
   box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
 }
 
-[data-bs-theme="dark"] .ra-app .btn-primary:hover {
+[data-bs-theme="dark"] .ta-app .btn-primary:hover {
   box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
 }
 
 /* ===== ACCESSIBILITY (IDENTIK) ===== */
 @media (forced-colors: active) {
-  .ra-app table.ra-table thead th,
-  .ra-app table.ra-table tbody td {
+  .ta-app table.ta-table thead th,
+  .ta-app table.ta-table tbody td {
     border-color: CanvasText !important;
   }
 
-  .ra-app .btn:focus-visible {
+  .ta-app .btn:focus-visible {
     outline: 2px solid Highlight !important;
   }
 }

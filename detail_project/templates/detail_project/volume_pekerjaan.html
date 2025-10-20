@@ -404,9 +404,12 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- Tambahan baru (harus sebelum volume_pekerjaan.js) -->
-  <script defer src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
-  <script defer src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
-  <script defer src="{% static 'detail_project/js/volume_runtime.js' %}"></script>
+  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+  <script src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
+  <script src="{% static 'detail_project/js/volume_runtime.js' %}"></script>
 
-  <script defer src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
+  <!-- Export Manager (MUST load BEFORE volume_pekerjaan.js) -->
+  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
+  <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
 {% endblock %}

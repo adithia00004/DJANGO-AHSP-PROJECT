@@ -19,7 +19,7 @@
 
 {% block dp_content %}
 <div id="rekap-app"
-     class="ra-app"
+     class="ta-app"
      data-project-id="{{ project.id }}"
      data-ep-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
      data-ep-pricing="{% url 'detail_project:api_project_pricing' project.id %}"
@@ -29,16 +29,16 @@
      data-locale="id-ID">
 
   <!-- Header (parity) -->
-  <header class="ra-page-header">
-    <h1 class="ra-title">Rincian AHSP</h1>
-    <p class="ra-subtitle">Detail komponen AHSP per pekerjaan (dengan harga dan total).</p>
+  <header class="ta-page-header">
+    <h1 class="ta-title">Rincian AHSP</h1>
+    <p class="ta-subtitle">Detail komponen AHSP per pekerjaan (dengan harga dan total).</p>
   </header>
 
   <!-- Toolbar (sticky, konsisten SSOT) -->
-  <div id="ra-toolbar" class="ra-toolbar dp-toolbar" d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Rincian AHSP">
+  <div id="ra-toolbar" class="ta-toolbar dp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Rincian AHSP">
     <!-- Searchbar (adapt lp-toolbar-search) -->
-    <div class="ra-combobox ra-searchbar" flex-grow-1" role="search">
-      <div class="input-group dp-toolbar-search ra-toolbar-search">
+    <div class="ta-combobox ta-searchbar flex-grow-1" role="search">
+      <div class="input-group dp-toolbar-search ta-toolbar-search">
         <span class="input-group-text" id="ra-search-addon">
           <i class="bi bi-search" aria-hidden="true"></i>
         </span>
@@ -74,13 +74,14 @@
       </ul>
     </div>
 
-    <!-- Metrics (Grand Total saja; BUK badge dihapus) -->
+    <!-- Metrics (BUK & Grand Total - spesifik untuk Rincian AHSP) -->
     <div class="d-inline-flex align-items-center gap-2">
+      <span class="badge text-bg-light" id="rk-badge-buk" title="Biaya Umum &amp; Keuntungan proyek">BUK: 10.00%</span>
       <div id="rk-grand" class="ux-mono small text-muted" aria-live="polite">Grand Total: Rp 0,00</div>
     </div>
 
     <!-- Dirty indicator -->
-    <div class="ra-dirty-indicator" d-inline-flex align-items-center small text-muted" aria-live="polite">
+    <div class="ta-dirty-indicator d-inline-flex align-items-center small text-muted" aria-live="polite">
       <span id="ra-dirty-dot" class="dot me-1" hidden>●</span>
       <span id="ra-dirty-text" hidden>Belum disimpan</span>
     </div>
@@ -99,11 +100,11 @@
   </div>
 
   <!-- Body grid: LEFT (list) | RESIZER | RIGHT (detail) -->
-  <div class="ra-body">
+  <div class="ta-body">
     <!-- LEFT: daftar pekerjaan -->
-    <aside class="rk-left ra-sidebar" aria-label="Daftar pekerjaan">
-      <ul id="rk-list" class="ra-job-list" role="listbox" aria-label="Pekerjaan">
-        <li class="rk-item ra-job-item"><div class="row-note">Memuat…</div></li>
+    <aside class="rk-left ta-sidebar" aria-label="Daftar pekerjaan">
+      <ul id="rk-list" class="ta-job-list" role="listbox" aria-label="Pekerjaan">
+        <li class="rk-item ta-job-item"><div class="row-note">Memuat…</div></li>
       </ul>
     </aside>
 
@@ -111,43 +112,54 @@
     <div id="rk-resizer" class="rk-resizer ux-resizer" role="separator" aria-orientation="vertical" aria-label="Resize panel" tabindex="0"></div>
 
     <!-- RIGHT: header + tabel detail satu pekerjaan -->
-    <section class="rk-right ra-editor" aria-label="Detail pekerjaan terpilih">
+    <section class="rk-right ta-editor" aria-label="Detail pekerjaan terpilih">
       <!-- Header pekerjaan (parity feel) -->
-      <div class="rk-right-header ra-seg-header">
+      <div class="rk-right-header ta-seg-header">
         <div class="rk-right-head-main">
           <div class="ux-mono mono small text-muted rk-right-meta">
             <span id="rk-pkj-kode">-</span> &middot;
             <span id="rk-pkj-sat">—</span>
-            &nbsp;&nbsp;<span id="rk-pkj-source" class="rk-chip ra-chip">—</span>
+            &nbsp;&nbsp;<span id="rk-pkj-source" class="rk-chip ta-chip">—</span>
           </div>
-          <div id="rk-pkj-uraian" class="rk-right-title ra-title">Pilih pekerjaan di kiri</div>
+          <div id="rk-pkj-uraian" class="rk-right-title ta-title">Pilih pekerjaan di kiri</div>
         </div>
 
-        <!-- Pricing info + action buttons -->
+        <!-- Pricing efektif + override -->
         <div class="rk-right-actions d-flex align-items-center gap-2">
-          <!-- BUK Efektif Display -->
-          <span id="rk-eff" class="rk-chip ra-chip ux-mono mono" title="Profit/Margin (BUK) untuk pekerjaan ini">
-            <i class="bi bi-lightning-charge"></i>&nbsp;Profit: —%
+          <span id="rk-eff" class="rk-chip ta-chip ux-mono mono" title="BUK efektif">
+            <i class="bi bi-lightning-charge"></i>&nbsp;Efektif: —%
           </span>
-
-          <!-- Override Status Indicator -->
-          <span id="rk-pkj-ovr-chip" class="rk-chip ra-chip-warn ux-mono mono" hidden title="Pekerjaan ini memiliki override aktif">
-            <i class="bi bi-sliders"></i>&nbsp;Override Aktif
+          <span id="rk-pkj-ovr-chip" class="rk-chip ta-chip-warn ux-mono mono" hidden>
+            <i class="bi bi-sliders"></i>&nbsp;Override
           </span>
-
-          <!-- Action Buttons -->
+          <div class="input-group input-group-sm" style="width:160px">
+            <span class="input-group-text ux-mono mono">%</span>
+            <input id="rk-ovr-input" type="text" inputmode="decimal" class="form-control ux-mono mono" placeholder="Override" aria-label="Override BUK">
+          </div>
           <div class="btn-group btn-group-sm">
-            <button id="rk-btn-override" class="btn btn-outline-primary d-inline-flex align-items-center gap-1" type="button" data-bs-toggle="modal" data-bs-target="#raOverrideModal" title="Atur override untuk pekerjaan ini">
-              <i class="bi bi-sliders"></i><span>Override</span>
+            <button id="rk-ovr-apply" class="btn btn-primary btn-neon d-inline-flex align-items-center gap-1" type="button">
+              <i class="bi bi-check2"></i><span>Apply</span>
             </button>
-            <button id="rk-btn-reset" class="btn btn-outline-warning d-inline-flex align-items-center gap-1" type="button" title="Reset semua override ke default" disabled>
-              <i class="bi bi-arrow-counterclockwise"></i><span>Reset</span>
+            <button id="rk-ovr-clear" class="btn btn-outline-secondary d-inline-flex align-items-center gap-1" type="button">
+              <i class="bi bi-x-lg"></i><span>Clear</span>
+            </button>
+            <button id="rk-btn-reset" class="btn btn-outline-warning d-inline-flex align-items-center gap-1" type="button" title="Reset ke Referensi">
+              <i class="bi bi-arrow-repeat"></i><span>Reset</span>
             </button>
           </div>
         </div>
-      </div>\n<!-- Tabel detail -->
-      <div class="ra-table-wrap">
-        <table id="ra-table" class="table table-sm ra-table ra-table table-hover" aria-label="Rincian AHSP (pekerjaan terpilih)">
+      </div>
+
+      <!-- Summary ringkas -->
+      <div id="rk-summary" class="rk-summary d-flex flex-wrap gap-2 my-2">
+        <span class="ux-badge-ref ux-mono mono" id="rk-sum-sub">Sub-Total: —</span>
+        <span class="ux-badge-ref ux-mono mono" id="rk-sum-buk">BUK (—%): —</span>
+        <span class="ux-badge-ref ux-mono mono" id="rk-sum-grand">Grand Total: —</span>
+      </div>
+
+      <!-- Tabel detail -->
+      <div class="ta-table-wrap">
+        <table id="ra-table" class="table table-sm ra-table ta-table table-hover" aria-label="Rincian AHSP (pekerjaan terpilih)">
           <colgroup>
             <col class="col-no">
             <col class="col-uraian">
@@ -157,7 +169,7 @@
             <col class="col-rps">
             <col class="col-rpj">
           </colgroup>
-          <thead class="ra-thead-sticky">
+          <thead class="ta-thead-sticky">
             <tr>
               <th scope="col">No</th>
               <th scope="col">Uraian</th>
@@ -179,55 +191,6 @@
   <!-- Toast -->
   <div id="rk-toast" class="rk-toast-wrap" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Modal: Override Settings -->
-  <div class="modal fade" id="raOverrideModal" tabindex="-1" aria-labelledby="raOverrideLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="raOverrideLabel">
-            <i class="bi bi-sliders me-2"></i>Override Settings
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <!-- Pekerjaan Info -->
-          <div class="alert alert-info d-flex align-items-start gap-2 mb-3">
-            <i class="bi bi-info-circle flex-shrink-0 mt-1"></i>
-            <div class="flex-grow-1">
-              <div class="fw-bold mb-1">Pekerjaan Terpilih:</div>
-              <div class="small">
-                <span class="badge bg-secondary" id="ovr-modal-kode">—</span>
-                <span id="ovr-modal-uraian" class="ms-2">Pilih pekerjaan terlebih dahulu</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Override sederhana -->
-          <div class="mb-3">
-            <label for="ovr-buk-custom" class="form-label fw-bold">Override Profit/Margin (BUK) (%)</label>
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi bi-percent"></i></span>
-              <input type="text" class="form-control" id="ovr-buk-custom" inputmode="decimal" placeholder="Kosongkan untuk menggunakan default" aria-label="Custom Profit/Margin (BUK)">
-              <span class="input-group-text">%</span>
-            </div>
-            <div class="form-text">Masukkan 0–100. Kosongkan untuk kembali ke default proyek.</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            <i class="bi bi-x-lg me-1"></i>Batal
-          </button>
-          <button type="button" class="btn btn-outline-danger" id="ovr-clear-btn">
-            <i class="bi bi-trash me-1"></i>Hapus Override
-          </button>
-          <button type="button" class="btn btn-primary" id="ovr-apply-btn">
-            <i class="bi bi-check2-circle me-1"></i>Terapkan Override
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Modal: Bantuan Rincian AHSP -->
   <div class="modal fade" id="raHelpModal" tabindex="-1" aria-labelledby="raHelpLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-scrollable modal-md">
@@ -241,7 +204,7 @@
           <ul>
             <li>Pilih pekerjaan dari sidebar kiri untuk melihat rincian komponen.</li>
             <li>Lihat detail harga satuan dan jumlah harga untuk setiap komponen (TK, BHN, ALT, LAIN).</li>
-            <li>Gunakan kontrol <strong>Override</strong> untuk mengatur Profit/Margin (BUK) kustom per pekerjaan.</li>
+            <li>Gunakan kontrol <strong>Override</strong> untuk mengatur BUK kustom per pekerjaan.</li>
             <li>Tombol <strong>Apply</strong> untuk menerapkan override, <strong>Clear</strong> untuk menghapus override, <strong>Reset</strong> untuk kembali ke referensi.</li>
           </ul>
         </div>
@@ -256,11 +219,5 @@
 
 {% block extra_js %}
   {{ block.super }}
-
-  <!-- Export Manager (MUST load BEFORE rincian_ahsp.js) -->
-  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
-
   <script src="{% static 'detail_project/js/rincian_ahsp.js' %}"></script>
 {% endblock %}
-
-

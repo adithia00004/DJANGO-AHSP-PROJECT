@@ -166,7 +166,7 @@ class RekapRABPrintHandler {
             <td class="summary-value">${summaryData.ppnValue}</td>
           </tr>
           <tr>
-            <td class="summary-label">Grand Total (D + PPN)</td>
+            <td class="summary-label">Grand Total (Total Biaya Langsung + PPN)</td>
             <td class="summary-separator">:</td>
             <td class="summary-value">${summaryData.grandTotal}</td>
           </tr>

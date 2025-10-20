@@ -78,6 +78,22 @@ def _owner_or_404(project_id, user):
     return get_object_or_404(qs)
 
 
+def _extract_parameters_from_request(request: HttpRequest) -> dict:
+    """
+    Extract parameters from request query string or body
+    Supports: ?params={"panjang":100,"lebar":50}
+    Returns: dict of parameter values
+    """
+    try:
+        # Try query string first
+        params_str = request.GET.get('params', '')
+        if params_str:
+            return json.loads(params_str)
+        return {}
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
 def _get_or_create_pricing(project):
     """
     Defaults used by the *pricing API*:
@@ -1237,7 +1253,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         )
         updated += 1
 
-    # === NEW: BUK (opsional)
+    # === NEW: Profit/Margin (opsional)
     pricing_saved = False
     if 'markup_percent' in (payload or {}):
         mp_raw = payload.get('markup_percent')
@@ -1259,11 +1275,11 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     else:
         status_code = 200
 
-    # NEW: rekap berubah jika ada harga/BUK yang berubah
+    # NEW: rekap berubah jika ada harga, Profit/Margin yang berubah
     if updated > 0 or pricing_saved:
         invalidate_rekap_cache(project)
 
-    # kirim balik nilai BUK terbaru untuk sinkronisasi FE
+    # kirim balik nilai Profit/Margin terbaru untuk sinkronisasi FE
     pricing = _get_or_create_pricing(project)
     return JsonResponse(
         {
@@ -1276,7 +1292,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         status=status_code
     )
 
-# ---------- View: Project Pricing (BUK) ----------
+# ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
 @require_http_methods(["GET","POST"])
 @transaction.atomic
@@ -1476,12 +1492,12 @@ def api_get_rincian_rab(request: HttpRequest, project_id: int):
 
     rows, totals = _compute_rincian_rab(project)
 
-    # Ambil BUK proyek
+    # Ambil Profit/Margin proyek
     pricing = _get_or_create_pricing(project)
     mp = pricing.markup_percent or Decimal("10.00")   # Decimal
 
     D = totals["total_langsung"]                      # biaya langsung
-    E = (D * (mp / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)  # BUK
+    E = (D * (mp / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)  # Profit/Margin
     grand_total = (D + E).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     # dp konversi string
@@ -1564,15 +1580,15 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
             ]
         lines.append(";".join(row))
 
-    # Footer ringkas (opsional): total & BUK
+    # Footer ringkas (opsional): total & Profit/Margin
     D = totals["total_langsung"]
     E = (D * (mp / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     G = (D + E).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     lines += [
         "",
         f"TOTAL LANGSUNG (D);{D}",
-        f"BUK %;{mp}",
-        f"BUK (E);{E}",
+        f"Profit/Margin %;{mp}",
+        f"Profit/Margin (E);{E}",
         f"GRAND TOTAL (D+E);{G}",
     ]
 
@@ -1597,7 +1613,7 @@ def api_list_harga_items(request: HttpRequest, project_id: int):
         for it in items:
             it['harga_satuan'] = to_dp_str(it.get('harga_satuan'), dp)  # "12345.67" atau None
 
-    # === NEW: expose BUK default 10.00% sebagai string "10.00"
+    # === NEW: expose Profit/Margin default 10.00% sebagai string "10.00"
     pricing = _get_or_create_pricing(project)
     meta = { "markup_percent": to_dp_str(pricing.markup_percent, 2) }
 
@@ -1989,17 +2005,17 @@ def export_rekap_rab_pdf(request: HttpRequest, project_id: int):
 def export_rekap_rab_word(request: HttpRequest, project_id: int):
     """
     Export Rekap RAB ke format Word.
-    
+
     Thin controller - delegasi ke ExportManager (pilot v2).
     """
     try:
         # 1. Auth & get project
         project = _owner_or_404(project_id, request.user)
-        
+
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
         return manager.export_rekap_rab('word')
-        
+
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -2007,4 +2023,157 @@ def export_rekap_rab_word(request: HttpRequest, project_id: int):
             'status': 'error',
             'message': f'Export Word gagal: {str(e)}'
         }, status=500)
+
+
+# ============================================================================
+# EXPORT: VOLUME PEKERJAAN (CSV / PDF / WORD)
+# ============================================================================
+
+@login_required
+@require_GET
+def export_volume_pekerjaan_csv(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to CSV"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        # Extract parameters from query string (optional: ?params={"panjang":100,"lebar":50})
+        parameters = _extract_parameters_from_request(request)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_volume_pekerjaan('csv', parameters=parameters)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_volume_pekerjaan_pdf(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to PDF"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        # Extract parameters from query string
+        parameters = _extract_parameters_from_request(request)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_volume_pekerjaan('pdf', parameters=parameters)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_volume_pekerjaan_word(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to Word"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        # Extract parameters from query string
+        parameters = _extract_parameters_from_request(request)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_volume_pekerjaan('word', parameters=parameters)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+# ============================================================================
+# EXPORT: HARGA ITEMS (CSV / PDF / WORD)
+# ============================================================================
+
+@login_required
+@require_GET
+def export_harga_items_csv(request: HttpRequest, project_id: int):
+    """Export Harga Items to CSV"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_harga_items('csv')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_harga_items_pdf(request: HttpRequest, project_id: int):
+    """Export Harga Items to PDF"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_harga_items('pdf')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_harga_items_word(request: HttpRequest, project_id: int):
+    """Export Harga Items to Word"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_harga_items('word')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+# ============================================================================
+# EXPORT: RINCIAN AHSP (CSV / PDF / WORD)
+# ============================================================================
+
+@login_required
+@require_GET
+def export_rincian_ahsp_csv(request: HttpRequest, project_id: int):
+    """Export Rincian AHSP to CSV"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rincian_ahsp('csv')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_rincian_ahsp_pdf(request: HttpRequest, project_id: int):
+    """Export Rincian AHSP to PDF"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rincian_ahsp('pdf')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
+    """Export Rincian AHSP to Word"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rincian_ahsp('word')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
 

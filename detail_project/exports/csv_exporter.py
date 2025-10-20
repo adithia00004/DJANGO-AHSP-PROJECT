@@ -40,6 +40,30 @@ class CSVExporter(ConfigExporterBase):
                 writer.writerow([label, value])
             writer.writerow([])
 
+            # Check if this section has subsections (appendix with multiple tables)
+            if 'sections' in section:
+                # Multi-section page (e.g., Parameter + Formula appendix)
+                for subsection in section['sections']:
+                    # Subsection title
+                    subsection_title = subsection.get('section_title')
+                    if subsection_title:
+                        writer.writerow([subsection_title])
+                        writer.writerow([])
+
+                    # Subsection table
+                    write_table(subsection)
+                    writer.writerow([])  # Separator between sections
+            else:
+                # Single table section
+                write_table(section)
+
+            if 'footer_rows' in section:
+                writer.writerow([])
+                for footer_row in section['footer_rows']:
+                    writer.writerow(footer_row)
+
+        def write_table(section: Dict[str, Any]):
+            """Write a single table"""
             table_data = section.get('table_data', {})
             headers = table_data.get('headers', [])
             rows = table_data.get('rows', [])
@@ -56,11 +80,6 @@ class CSVExporter(ConfigExporterBase):
                 else:
                     row_with_indent = row
                 writer.writerow(row_with_indent)
-
-            if 'footer_rows' in section:
-                writer.writerow([])
-                for footer_row in section['footer_rows']:
-                    writer.writerow(footer_row)
 
         # Multi-page support
         if 'pages' in data:

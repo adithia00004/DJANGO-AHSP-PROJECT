@@ -394,6 +394,9 @@ class ExportConfig:
     margin_left: int = ExportLayout.MARGIN_LEFT
     margin_right: int = ExportLayout.MARGIN_RIGHT
 
+    # Page orientation
+    page_orientation: str = 'landscape'  # 'portrait' or 'landscape'
+
 
 # ============================================================================
 # IDENTITY RENDER HELPERS (single source of truth)

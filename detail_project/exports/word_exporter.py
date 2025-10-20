@@ -20,11 +20,20 @@ class WordExporter(ConfigExporterBase):
     def export(self, data: Dict[str, Any]) -> HttpResponse:
         """Export to Word document (supports multi-page payload)"""
         doc = Document()
-        
-        # Set landscape orientation
+
+        # Set page orientation based on config
+        orientation = getattr(self.config, 'page_orientation', 'landscape')
         section = doc.sections[0]
-        section.page_width = Cm(29.7)
-        section.page_height = Cm(21.0)
+
+        if orientation == 'portrait':
+            # Portrait: A4 (21cm x 29.7cm)
+            section.page_width = Cm(21.0)
+            section.page_height = Cm(29.7)
+        else:
+            # Landscape: A4 (29.7cm x 21cm)
+            section.page_width = Cm(29.7)
+            section.page_height = Cm(21.0)
+
         section.top_margin = Cm(self.config.margin_top / 10)
         section.bottom_margin = Cm(self.config.margin_bottom / 10)
         section.left_margin = Cm(self.config.margin_left / 10)
@@ -33,23 +42,41 @@ class WordExporter(ConfigExporterBase):
         def build_page(section: Dict[str, Any], add_signatures: bool = False):
             # Header with override title
             self._add_header_with_title(doc, section.get('title') or self.config.title)
-            # Table
-            self._add_table(doc, section)
-            # Footer
-            if 'footer_rows' in section:
-                self._add_footer_totals(doc, section['footer_rows'])
+
+            # Check if this page has sections (appendix with multiple tables)
+            if 'sections' in section:
+                # Multi-section page (e.g., Parameter + Formula appendix)
+                for subsection in section['sections']:
+                    # Section title
+                    section_title = subsection.get('section_title')
+                    if section_title:
+                        heading = doc.add_heading(section_title, level=2)
+                        heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+                    # Section table
+                    self._add_table(doc, subsection)
+                    doc.add_paragraph()  # Spacer
+
+            else:
+                # Single table page
+                self._add_table(doc, section)
+                # Footer
+                if 'footer_rows' in section:
+                    self._add_footer_totals(doc, section['footer_rows'])
+
             # Signatures (if requested)
             if add_signatures and self.config.signature_config.enabled:
                 self._add_signatures(doc)
 
         pages = data.get('pages')
         if pages:
-            # Page 1
-            build_page(pages[0] if len(pages) > 0 else {}, add_signatures=False)
-            # Page 2 (pengesahan) + signatures on same page
-            if len(pages) > 1:
+            # Page 1 - with signatures at the end
+            build_page(pages[0] if len(pages) > 0 else {}, add_signatures=True)
+
+            # Page 2 onwards - no signatures
+            for idx in range(1, len(pages)):
                 doc.add_page_break()
-                build_page(pages[1], add_signatures=True)
+                build_page(pages[idx], add_signatures=False)
         else:
             build_page(data, add_signatures=True)
         

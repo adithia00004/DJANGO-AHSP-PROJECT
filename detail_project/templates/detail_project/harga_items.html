@@ -64,7 +64,7 @@
   <div class="dp-card dp-border dp-surface mt-3 p-3" role="region" aria-label="Biaya Umum & Keuntungan">
     <div class="row g-2 align-items-center">
       <div class="col-auto">
-        <label for="hi-buk-input" class="form-label mb-0 ux-text-sm">Profit/Margins (%)</label>
+        <label for="hi-buk-input" class="form-label mb-0 ux-text-sm">Profit/Margin (%)</label>
       </div>
       <div class="col-auto">
         <input id="hi-buk-input" type="text" inputmode="decimal"
@@ -251,5 +251,9 @@
 {% block extra_js %}
   {{ block.super }}
   <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+
+  <!-- Export Manager (MUST load BEFORE harga_items.js) -->
+  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
   <script src="{% static 'detail_project/js/harga_items.js' %}"></script>
 {% endblock %}

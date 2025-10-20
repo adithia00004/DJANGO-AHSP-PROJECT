@@ -277,7 +277,7 @@ class RekapRABExcelExporter {
     if (data.summary) {
       aoa[row++] = ['Total Proyek (D)', '', '', '', '', this.formatNumber(data.summary.totalD)];
       aoa[row++] = [`PPN ${data.summary.ppnPercent}%`, '', '', '', '', this.formatNumber(data.summary.ppn)];
-      aoa[row++] = ['Grand Total (D + PPN)', '', '', '', '', this.formatNumber(data.summary.grandTotal)];
+      aoa[row++] = ['Grand Total (Total Biaya Langsung + PPN)', '', '', '', '', this.formatNumber(data.summary.grandTotal)];
       aoa[row++] = [`Pembulatan (${this.formatNumber(data.summary.roundingBase)})`, '', '', '', '', this.formatNumber(data.summary.rounded)];
     }
 

@@ -26,12 +26,13 @@
   const urlPricingItem = (id) => substId(EP_POV_PREF, id);
 
   // ====== DOM refs ======
-  const $grid     = ROOT.querySelector('.hi-body'); // grid container
-  // Kiri
+  const $grid     = ROOT.querySelector('.ra-body'); // grid container - independent dari Template AHSP
+  // Toolbar
   const $badgeBUK = ROOT.querySelector('#rk-badge-buk');
-  const $search   = ROOT.querySelector('#rk-search');
-  const $list     = ROOT.querySelector('#rk-list');
+  const $search   = ROOT.querySelector('#ra-job-search'); // Updated: rk-search → ra-job-search
   const $grand    = ROOT.querySelector('#rk-grand');
+  // Sidebar
+  const $list     = ROOT.querySelector('#rk-list');
   // Kanan (header)
   const $kode     = ROOT.querySelector('#rk-pkj-kode');
   const $uraian   = ROOT.querySelector('#rk-pkj-uraian');
@@ -42,6 +43,10 @@
   const $ovrInput = ROOT.querySelector('#rk-ovr-input');
   const $ovrApply = ROOT.querySelector('#rk-ovr-apply');
   const $ovrClear = ROOT.querySelector('#rk-ovr-clear');
+  // Modal override controls (simple modal UI)
+  const $modalInput = ROOT.querySelector('#ovr-buk-custom');
+  const $modalApply = ROOT.querySelector('#ovr-apply-btn');
+  const $modalClear = ROOT.querySelector('#ovr-clear-btn');
   // Kanan (tabel)
   const $tbody    = ROOT.querySelector('#rk-tbody-detail');
   // Resizer
@@ -57,6 +62,7 @@
   let filtered = [];
   let selectedId = null;
   let projectBUK = 10.00;
+  let projectPPN = 0.00;
   const cacheDetail = new Map();
   let selectToken = 0;
 
@@ -118,9 +124,9 @@
     if ($kode)   $kode.textContent = $kode.textContent && $kode.textContent.trim() ? $kode.textContent : '-';
     if ($sat)    $sat.textContent  = $sat.textContent  && $sat.textContent.trim()  ? $sat.textContent  : '-';
     if ($src)    $src.textContent  = $src.textContent  && $src.textContent.trim()  ? $src.textContent  : '-';
-    if ($eff && !$eff.textContent.includes('%')) $eff.textContent = 'Efektif: -%';
+    if ($eff && !$eff.textContent.includes('%')) $eff.textContent = 'Profit: -%';
     // Loading note punctuation
-    const rowNote = ROOT.querySelector('.ta-job-list .row-note');
+    const rowNote = ROOT.querySelector('.ra-job-list .row-note, .ta-job-list .row-note');
     if (rowNote && /Memuat/.test(rowNote.textContent||'')) rowNote.textContent = 'Memuat…';
   }
 
@@ -169,7 +175,7 @@
     const j = await safeJson(r);
     if (!r.ok || !j.ok) throw new Error('pricing fail');
     projectBUK = Number(j.markup_percent);
-    if ($badgeBUK) $badgeBUK.textContent = `BUK: ${j.markup_percent}%`;
+    if ($badgeBUK) $badgeBUK.textContent = `Profit/Margin (BUK): ${j.markup_percent}%`;
   }
 
   async function loadRekap(){
@@ -180,7 +186,9 @@
       const j = await safeJson(r);
       if (!r.ok || !j.ok) throw new Error('rekap fail');
       rows = j.rows || [];
+      try { projectPPN = Number(j.meta?.ppn_percent ?? 0); } catch { projectPPN = 0; }
       renderList();
+      updateGrandTotalFromRekap();
 
       const last = localStorage.getItem('rk-last-pkj-id');
       const firstId = filtered[0]?.pekerjaan_id;
@@ -235,11 +243,9 @@
 
     if (!filtered.length){
       if ($list) $list.innerHTML = `<li class="rk-item"><div class="row-note">Tidak ada hasil.</div></li>`;
-      if ($grand) $grand.textContent = `Grand Total: ${fmt(0)}`;
       return;
     }
 
-    let grand = 0;
     const fr = document.createDocumentFragment();
     filtered.forEach(r => {
       const A = num(r.A), B = num(r.B), C = num(r.C), L = num(r.LAIN || 0);
@@ -248,8 +254,7 @@
       const F = E * (bukEff/100);
       const G = E + F;
       const total = G * num(r.volume);
-      grand += total;
-
+      
       const li = document.createElement('li');
       li.className = 'rk-item';
       li.dataset.id = r.pekerjaan_id;
@@ -270,7 +275,6 @@
       $list.innerHTML = '';
       $list.appendChild(fr);
     }
-    if ($grand) $grand.textContent = `Grand Total: ${fmt(grand)}`;
 
     highlightActive();
   }
@@ -279,6 +283,22 @@
     if (!$list) return;
     const items = $list.querySelectorAll('.rk-item');
     items.forEach(el => el.classList.toggle('active', String(el.dataset.id) === String(selectedId)));
+  }
+
+
+  // Hitung Grand Total sesuai Rekap RAB (D + PPN) untuk seluruh rows (bukan hasil filter)
+  function updateGrandTotalFromRekap(){
+    if (!$grand) return;
+    try{
+      let D = 0;
+      for (const r of (rows || [])){
+        D += num(r.total);
+      }
+      const grand = D + (D * (Number(projectPPN||0)/100));
+      $grand.textContent = `Grand Total: ${fmt(grand)}`;
+    }catch{
+      $grand.textContent = `Grand Total: ${fmt(0)}`;
+    }
   }
 
   // ====== kanan: detail satu pekerjaan ======
@@ -301,7 +321,7 @@
       let effPct = projectBUK;
       if (!EP_POV_PREF) {
         setOverrideUIEnabled(false);
-        if ($eff) $eff.textContent = `Efektif: ${projectBUK.toFixed(2)}%`;
+        if ($eff) $eff.textContent = `Profit: ${projectBUK.toFixed(2)}%`;
       } else {
         setOverrideUIEnabled(true);
         try{
@@ -310,12 +330,12 @@
           effPct = Number(pp.effective_markup);
           if ($ovrInput) $ovrInput.value = (pp.override_markup ?? '');
           if ($ovrChip)  $ovrChip.hidden = !(pp.override_markup != null);
-          if ($eff)      $eff.textContent = `Efektif: ${pp.effective_markup}%`;
+          if ($eff)      $eff.textContent = `Profit: ${pp.effective_markup}%`;
         }catch{
           if (myToken !== selectToken) return;
           if ($ovrInput) $ovrInput.value = '';
           if ($ovrChip)  $ovrChip.hidden = true;
-          if ($eff)      $eff.textContent = `Efektif: ${projectBUK.toFixed(2)}%`;
+          if ($eff)      $eff.textContent = `Profit: ${projectBUK.toFixed(2)}%`;
         }
       }
 
@@ -392,7 +412,7 @@
     tre.innerHTML = `<td colspan="6">E — Jumlah (A+B+C+D)</td><td class="mono">${fmt(E)}</td>`;
     const trf = document.createElement('tr');
     trf.className='tot-row';
-    trf.innerHTML = `<td colspan="6">F — BUK × E</td><td class="mono">${fmt(F)}</td>`;
+    trf.innerHTML = `<td colspan="6">F — Profit/Margin × E</td><td class="mono">${fmt(F)}</td>`;
     const trg = document.createElement('tr');
     trg.className='tot-row';
     trg.innerHTML = `<td colspan="6">G — HSP = E + F</td><td class="mono">${fmt(G)}</td>`;
@@ -414,12 +434,12 @@
     $ovrApply.addEventListener('click', async () => {
       if (selectedId == null) return;
       const v = parsePctUI($ovrInput?.value);
-      if (v==null || v<0 || v>100){ showToast('Override BUK harus 0..100', 'warn'); return; }
+      if (v==null || v<0 || v>100){ showToast('Override Profit/Margin (BUK) harus 0..100', 'warn'); return; }
       $ovrApply.disabled = true;
       try{
         await saveOverride(selectedId, v);
         const pp = await getPricingItem(selectedId);
-        if ($eff) $eff.textContent = `Efektif: ${pp.effective_markup}%`;
+        if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
         if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
 
         const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
@@ -429,7 +449,9 @@
         const det = cacheDetail.get(selectedId);
         renderDetailTable(det?.items || [], Number(pp.effective_markup));
 
-        showToast('Override BUK tersimpan', 'success');
+        updateGrandTotalFromRekap();
+
+        showToast('Override Profit/Margin (BUK) tersimpan', 'success');
       }catch(e){
         console.error(e); showToast('Gagal menerapkan override', 'error');
       }finally{ $ovrApply.disabled = false; }
@@ -453,7 +475,7 @@
         await saveOverride(selectedId, null);
         const pp = await getPricingItem(selectedId);
         if ($ovrInput) $ovrInput.value = '';
-        if ($eff)      $eff.textContent = `Efektif: ${pp.effective_markup}%`;
+        if ($eff)      $eff.textContent = `Profit: ${pp.effective_markup}%`;
         if ($ovrChip)  $ovrChip.hidden = true;
 
         const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
@@ -463,10 +485,73 @@
         const det = cacheDetail.get(selectedId);
         renderDetailTable(det?.items || [], Number(pp.effective_markup));
 
+        updateGrandTotalFromRekap();
+
         showToast('Override dihapus', 'info');
       }catch(e){
         console.error(e); showToast('Gagal menghapus override', 'error');
       }finally{ $ovrClear.disabled = false; }
+    });
+  }
+
+  // Modal Apply handler
+  if ($modalApply) {
+    $modalApply.addEventListener('click', async () => {
+      if (selectedId == null) return;
+      const v = parsePctUI($modalInput?.value);
+      if (v==null || v<0 || v>100){ showToast('Override Profit/Margin (BUK) harus 0..100', 'warn'); return; }
+      $modalApply.disabled = true;
+      try{
+        await saveOverride(selectedId, v);
+        const pp = await getPricingItem(selectedId);
+        if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
+        if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
+
+        const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
+        if (idx >= 0) rows[idx].markup_eff = Number(pp.effective_markup);
+        renderList();
+
+        const det = cacheDetail.get(selectedId);
+        renderDetailTable(det?.items || [], Number(pp.effective_markup));
+
+        if (window.bootstrap) {
+          const modalEl = document.getElementById('raOverrideModal');
+          window.bootstrap.Modal.getOrCreateInstance(modalEl)?.hide();
+        }
+        showToast('Override Profit/Margin (BUK) tersimpan', 'success');
+      }catch(e){
+        console.error(e); showToast('Gagal menerapkan override', 'error');
+      }finally{ $modalApply.disabled = false; }
+    });
+  }
+
+  // Modal Clear handler
+  if ($modalClear) {
+    $modalClear.addEventListener('click', async () => {
+      if (selectedId == null) return;
+      $modalClear.disabled = true;
+      try{
+        await saveOverride(selectedId, null);
+        const pp = await getPricingItem(selectedId);
+        if ($modalInput) $modalInput.value = '';
+        if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
+        if ($ovrChip) $ovrChip.hidden = true;
+
+        const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
+        if (idx >= 0) rows[idx].markup_eff = Number(pp.effective_markup);
+        renderList();
+
+        const det = cacheDetail.get(selectedId);
+        renderDetailTable(det?.items || [], Number(pp.effective_markup));
+
+        if (window.bootstrap) {
+          const modalEl = document.getElementById('raOverrideModal');
+          window.bootstrap.Modal.getOrCreateInstance(modalEl)?.hide();
+        }
+        showToast('Override dihapus', 'info');
+      }catch(e){
+        console.error(e); showToast('Gagal menghapus override', 'error');
+      }finally{ $modalClear.disabled = false; }
     });
   }
 
@@ -560,4 +645,66 @@
     });
   })();
 
+  // ===== EXPORT INITIALIZATION =====
+  // Initialize unified export (CSV/PDF/Word) via ExportManager
+  function initExportButtons() {
+    if (typeof ExportManager === 'undefined') {
+      console.warn('[RincianAHSP] ⚠️ ExportManager not loaded - export buttons disabled');
+      return;
+    }
+
+    try {
+      // Get project ID from data attribute
+      const projectId = ROOT.dataset.projectId || ROOT.dataset.pid;
+      if (!projectId) {
+        console.error('[RincianAHSP] Project ID not found');
+        return;
+      }
+
+      const exporter = new ExportManager(projectId, 'rincian-ahsp');
+
+      const btnCSV = document.getElementById('btn-export-csv') || document.getElementById('ra-btn-export');
+      const btnPDF = document.getElementById('btn-export-pdf') || document.getElementById('ra-btn-export-pdf');
+      const btnWord = document.getElementById('btn-export-word') || document.getElementById('ra-btn-export-word');
+
+      if (btnCSV) {
+        btnCSV.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[RincianAHSP] 📥 CSV export requested');
+          await exporter.exportAs('csv');
+        });
+      }
+
+      if (btnPDF) {
+        btnPDF.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[RincianAHSP] 📄 PDF export requested');
+          await exporter.exportAs('pdf');
+        });
+      }
+
+      if (btnWord) {
+        btnWord.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[RincianAHSP] 📝 Word export requested');
+          await exporter.exportAs('word');
+        });
+      }
+
+      console.log('[RincianAHSP] ✓ Export buttons initialized');
+    } catch (err) {
+      console.error('[RincianAHSP] Export initialization failed:', err);
+    }
+  }
+
+  // Run export initialization after DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initExportButtons);
+  } else {
+    initExportButtons();
+  }
+
 })();
+
+
+

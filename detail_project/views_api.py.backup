@@ -1227,7 +1227,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         )
         updated += 1
 
-    # === NEW: BUK (opsional)
+    # === NEW: Profit/Margin (opsional)
     pricing_saved = False
     if 'markup_percent' in (payload or {}):
         mp_raw = payload.get('markup_percent')
@@ -1249,11 +1249,11 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     else:
         status_code = 200
 
-    # NEW: rekap berubah jika ada harga/BUK yang berubah
+    # NEW: rekap berubah jika ada harga/Profit/Margin yang berubah
     if updated > 0 or pricing_saved:
         invalidate_rekap_cache(project)
 
-    # kirim balik nilai BUK terbaru untuk sinkronisasi FE
+    # kirim balik nilai Profit/Margin terbaru untuk sinkronisasi FE
     pricing = _get_or_create_pricing(project)
     return JsonResponse(
         {
@@ -1266,7 +1266,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         status=status_code
     )
 
-# ---------- View: Project Pricing (BUK) ----------
+# ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
 @require_http_methods(["GET","POST"])
 @transaction.atomic
@@ -1466,12 +1466,12 @@ def api_get_rincian_rab(request: HttpRequest, project_id: int):
 
     rows, totals = _compute_rincian_rab(project)
 
-    # Ambil BUK proyek
+    # Ambil Profit/Margin proyek
     pricing = _get_or_create_pricing(project)
     mp = pricing.markup_percent or Decimal("10.00")   # Decimal
 
     D = totals["total_langsung"]                      # biaya langsung
-    E = (D * (mp / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)  # BUK
+    E = (D * (mp / Decimal("100"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)  # Profit/Margin
     grand_total = (D + E).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     # dp konversi string
@@ -1561,8 +1561,8 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
     lines += [
         "",
         f"TOTAL LANGSUNG (D);{D}",
-        f"BUK %;{mp}",
-        f"BUK (E);{E}",
+        f"Profit/Margin %;{mp}",
+        f"Profit/Margin (E);{E}",
         f"GRAND TOTAL (D+E);{G}",
     ]
 
@@ -1893,7 +1893,7 @@ def export_rekap_rab_csv(request: HttpRequest, project_id: int):
         writer.writerow([])
         writer.writerow(['Nama Project:', project.nama])
         writer.writerow(['Project ID:', project.id])
-        writer.writerow(['BUK/Markup:', f'{mp}%'])
+        writer.writerow(['Profit/Margin:', f'{mp}%'])
         writer.writerow(['Tanggal Export:', datetime.now().strftime('%d-%m-%Y %H:%M')])
         writer.writerow([])
         
@@ -1911,7 +1911,7 @@ def export_rekap_rab_csv(request: HttpRequest, project_id: int):
             'Alat (Rp)',
             'Lain-lain (Rp)',
             'Jumlah (Rp)',
-            'BUK (Rp)',
+            'Profit/Margin (Rp)',
             'Harga Satuan (Rp)',
             'Total (Rp)'
         ])
@@ -1965,7 +1965,7 @@ def export_rekap_rab_csv(request: HttpRequest, project_id: int):
         writer.writerow(['RINGKASAN'])
         writer.writerow(['Total Pekerjaan:', len(rekap_rows)])
         writer.writerow(['Total Anggaran:', format_number(total_all)])
-        writer.writerow(['BUK/Markup:', f'{mp}%'])
+        writer.writerow(['Profit/Margin:', f'{mp}%'])
         
         return response
         
@@ -2216,7 +2216,7 @@ def export_rekap_rab_pdf(request: HttpRequest, project_id: int):
             fontName='Helvetica-Bold'
         )
         
-        summary_text = f"<b>RINGKASAN</b><br/>Total Pekerjaan: {len(rekap_rows)} | Total Anggaran: Rp {format_currency(total_all)} | BUK/Markup: {mp}%"
+        summary_text = f"<b>RINGKASAN</b><br/>Total Pekerjaan: {len(rekap_rows)} | Total Anggaran: Rp {format_currency(total_all)} | Profit/Margin: {mp}%"
         elements.append(Paragraph(summary_text, summary_style))
         
         # ===== FOOTER =====
@@ -2499,7 +2499,7 @@ def export_rekap_rab_word(request: HttpRequest, project_id: int):
         summary_run.font.name = 'Arial'
         
         summary_details = doc.add_paragraph()
-        summary_text = f"Total Pekerjaan: {len(rekap_rows)} | Total Anggaran: Rp {format_currency(total_all)} | BUK/Markup: {mp}%"
+        summary_text = f"Total Pekerjaan: {len(rekap_rows)} | Total Anggaran: Rp {format_currency(total_all)} | Profit/Margin: {mp}%"
         summary_run = summary_details.add_run(summary_text)
         summary_run.font.size = Pt(9)
         summary_run.font.name = 'Arial'

@@ -154,18 +154,18 @@ def compute_rekap_for_project(project):
     if data is not None:
         return data
     """
-    Hitung komponen biaya per pekerjaan (pakai override BUK per-pekerjaan jika ada):
+    Hitung komponen biaya per pekerjaan (pakai override Profit/Margin per-pekerjaan jika ada):
       A = Σ(TK), B = Σ(BHN), C = Σ(ALT), LAIN = Σ(LAIN)
       D = A+B+C  (kompat historis)
       E_base = A+B+C+LAIN
-      F = E_base × markup_eff   (markup_eff = override% jika ada, else project BUK %)
+      F = E_base × markup_eff   (markup_eff = override% jika ada, else project Profit/Margin %)
       G = E_base + F            (HSP/unit sesudah markup)
       total = G × volume
     Nilai kompat:
       E (lama) diisi = F (margin) agar test lama tetap lolos,
       HSP = E_base (pra-markup) untuk konsistensi dengan halaman Volume & test.
     """
-    # --- Ambil BUK default proyek (fallback 10.00)
+    # --- Ambil Profit/Margin default proyek (fallback 10.00)
     proj_markup = Decimal("0")
     try:
         pp = ProjectPricing.objects.filter(project=project).first()

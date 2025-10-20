@@ -137,7 +137,7 @@ class BaseExporter:
         Usage:
             info_rows = [
                 ['Nama Project', ':', self.project.nama],
-                ['BUK/Markup', ':', f'{self.pricing.markup_percent}%']
+                ['Profit/Margin', ':', f'{self.pricing.markup_percent}%']
             ]
             self._write_csv_header(writer, 'REKAP RAB', info_rows)
         """

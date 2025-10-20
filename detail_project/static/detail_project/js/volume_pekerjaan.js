@@ -1858,4 +1858,70 @@
   // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
   rows.forEach(tr => bindRow(tr));
 
+  // ===== EXPORT INITIALIZATION =====
+  // Initialize unified export (CSV/PDF/Word) via ExportManager
+  function initExportButtons() {
+    if (typeof ExportManager === 'undefined') {
+      console.warn('[Volume] ⚠️ ExportManager not loaded - export buttons disabled');
+      return;
+    }
+
+    try {
+      const exporter = new ExportManager(projectId, 'volume-pekerjaan');
+
+      // Helper function to get current parameters from localStorage
+      function getExportParameters() {
+        try {
+          const raw = localStorage.getItem(storageKeyVars());
+          const params = raw ? JSON.parse(raw) : {};
+          if (typeof params !== 'object' || !params) return {};
+          console.log('[Volume] Loaded parameters for export:', params);
+          return params;
+        } catch (err) {
+          console.warn('[Volume] Failed to load parameters:', err);
+          return {};
+        }
+      }
+
+      const btnCSV = document.getElementById('btn-export-csv');
+      const btnPDF = document.getElementById('btn-export-pdf');
+      const btnWord = document.getElementById('btn-export-word');
+
+      if (btnCSV) {
+        btnCSV.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[Volume] 📥 CSV export requested');
+          await exporter.exportAs('csv', { parameters: getExportParameters() });
+        });
+      }
+
+      if (btnPDF) {
+        btnPDF.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[Volume] 📄 PDF export requested');
+          await exporter.exportAs('pdf', { parameters: getExportParameters() });
+        });
+      }
+
+      if (btnWord) {
+        btnWord.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[Volume] 📝 Word export requested');
+          await exporter.exportAs('word', { parameters: getExportParameters() });
+        });
+      }
+
+      console.log('[Volume] ✓ Export buttons initialized');
+    } catch (err) {
+      console.error('[Volume] Export initialization failed:', err);
+    }
+  }
+
+  // Run export initialization after DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initExportButtons);
+  } else {
+    initExportButtons();
+  }
+
 })();

@@ -27,16 +27,25 @@ class ExportManager {
   /**
    * Export data in specified format
    * @param {string} format - 'csv', 'pdf', or 'word'
+   * @param {object} options - Optional export options (e.g., { parameters: {...} })
    * @returns {Promise<void>}
    */
-  async exportAs(format) {
-    const url = `${this.baseUrl}${format}/`;
-    
+  async exportAs(format, options = {}) {
+    let url = `${this.baseUrl}${format}/`;
+
+    // Append parameters if provided (for volume_pekerjaan)
+    if (options.parameters && Object.keys(options.parameters).length > 0) {
+      const paramsJson = JSON.stringify(options.parameters);
+      const separator = url.includes('?') ? '&' : '?';
+      url += `${separator}params=${encodeURIComponent(paramsJson)}`;
+      console.log(`[ExportManager] Including parameters:`, options.parameters);
+    }
+
     console.log(`[ExportManager] Starting ${format.toUpperCase()} export...`);
-    
+
     try {
       this._showLoading(format);
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {

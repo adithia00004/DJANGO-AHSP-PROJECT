@@ -83,7 +83,7 @@ class RekapRABExporter(BaseExporter):
         - C: Decimal (Alat)
         - LAIN: Decimal (Lain-lain)
         - E_base: Decimal (Jumlah = A+B+C+LAIN)
-        - F: Decimal (BUK)
+        - F: Decimal (Profit/Margin)
         - G: Decimal (Harga Satuan = E_base + F)
         - total: Decimal (Total = G × volume)
     
@@ -123,7 +123,7 @@ class RekapRABExporter(BaseExporter):
         
         # ===== HEADER SECTION =====
         info_rows = self._format_project_info()
-        info_rows.append(['BUK/Markup', ':', f'{mp}%'])
+        info_rows.append(['Profit/Margin', ':', f'{mp}%'])
         
         self._write_csv_header(
             writer,
@@ -145,7 +145,7 @@ class RekapRABExporter(BaseExporter):
             'Alat (Rp)',
             'Lain-lain (Rp)',
             'Jumlah (Rp)',
-            'BUK (Rp)',
+            'Profit/Margin (Rp)',
             'Harga Satuan (Rp)',
             'Total (Rp)'
         ])
@@ -187,7 +187,7 @@ class RekapRABExporter(BaseExporter):
         writer.writerow(['RINGKASAN'])
         writer.writerow(['Total Pekerjaan:', len(self.data)])
         writer.writerow(['Total Anggaran:', format_currency(total_all)])
-        writer.writerow(['BUK/Markup:', f'{mp}%'])
+        writer.writerow(['Profit/Margin:', f'{mp}%'])
         
         return response
     
@@ -338,7 +338,7 @@ class RekapRABExporter(BaseExporter):
 
         # ===== ADD FOOTER =====
         mp = self.pricing.markup_percent or Decimal("10.00")
-        summary_text = f"Total Pekerjaan: {len(self.data)} | Total Anggaran: Rp {format_currency(total_all)} | BUK/Markup: {mp}%"
+        summary_text = f"Total Pekerjaan: {len(self.data)} | Total Anggaran: Rp {format_currency(total_all)} | Profit/Margin: {mp}%"
         self._add_pdf_footer(elements, summary_text)
         
         # Build PDF
@@ -505,7 +505,7 @@ class RekapRABExporter(BaseExporter):
         
         mp = self.pricing.markup_percent or Decimal("10.00")
         summary_details = doc.add_paragraph()
-        summary_text = f"Total Pekerjaan: {len(self.data)} | Total Anggaran: Rp {format_currency(total_all)} | BUK/Markup: {mp}%"
+        summary_text = f"Total Pekerjaan: {len(self.data)} | Total Anggaran: Rp {format_currency(total_all)} | Profit/Margin: {mp}%"
         summary_run = summary_details.add_run(summary_text)
         summary_run.font.size = Pt(ExportFonts.SUMMARY_TEXT)
         summary_run.font.name = 'Arial'

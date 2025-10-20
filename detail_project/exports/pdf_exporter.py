@@ -57,11 +57,18 @@ class PDFExporter(ConfigExporterBase):
     def export(self, data: Dict[str, Any]) -> HttpResponse:
         """Export to PDF (supports single or multi-page payload)"""
         buffer = BytesIO()
-        
+
+        # Determine page size based on orientation
+        orientation = getattr(self.config, 'page_orientation', 'landscape')
+        if orientation == 'portrait':
+            pagesize = A4
+        else:
+            pagesize = landscape(A4)
+
         # Create document
         doc = SimpleDocTemplate(
             buffer,
-            pagesize=landscape(A4),
+            pagesize=pagesize,
             topMargin=self.config.margin_top * mm,
             bottomMargin=self.config.margin_bottom * mm,
             leftMargin=self.config.margin_left * mm,
@@ -76,21 +83,41 @@ class PDFExporter(ConfigExporterBase):
             story.extend(self._build_header(section.get('title') or self.config.title))
             story.append(Spacer(1, 5*mm))
 
-            # Main table
-            table = self._build_table(section)
+            # Check if this page has sections (appendix with multiple tables)
+            if 'sections' in section:
+                # Multi-section page (e.g., Parameter + Formula appendix)
+                for subsection in section['sections']:
+                    # Section title
+                    section_title = subsection.get('section_title')
+                    if section_title:
+                        section_para = Paragraph(
+                            f"<b>{section_title}</b>",
+                            self.styles['subtitle']
+                        )
+                        story.append(section_para)
+                        story.append(Spacer(1, 3*mm))
 
-            # On pengesahan, try to keep table + footer together when possible
-            if is_pengesahan and 'footer_rows' in section:
-                bundle = []
-                bundle.append(table)
-                bundle.append(Spacer(1, 3*mm))
-                bundle.append(self._build_footer_table(section['footer_rows']))
-                story.append(KeepTogether(bundle))
+                    # Section table
+                    table = self._build_table(subsection)
+                    story.append(table)
+                    story.append(Spacer(1, 5*mm))
+
             else:
-                story.append(table)
-                if 'footer_rows' in section:
-                    story.append(Spacer(1, 3*mm))
-                    story.append(self._build_footer_table(section['footer_rows']))
+                # Single table page
+                table = self._build_table(section)
+
+                # On pengesahan, try to keep table + footer together when possible
+                if is_pengesahan and 'footer_rows' in section:
+                    bundle = []
+                    bundle.append(table)
+                    bundle.append(Spacer(1, 3*mm))
+                    bundle.append(self._build_footer_table(section['footer_rows']))
+                    story.append(KeepTogether(bundle))
+                else:
+                    story.append(table)
+                    if 'footer_rows' in section:
+                        story.append(Spacer(1, 3*mm))
+                        story.append(self._build_footer_table(section['footer_rows']))
 
             story.append(Spacer(1, 8*mm))
 
@@ -100,16 +127,15 @@ class PDFExporter(ConfigExporterBase):
             for idx, section in enumerate(pages):
                 is_pengesahan = (idx == 1)
                 build_page(section, is_pengesahan=is_pengesahan)
+
+                # Add signatures after first page (Volume Pekerjaan)
+                if idx == 0 and self.config.signature_config.enabled:
+                    bundle = self._build_signatures()
+                    story.extend(bundle)
+
+                # Page break between pages
                 if idx < len(pages) - 1:
                     story.append(PageBreak())
-            # Keep footer + signatures together on last page
-            if self.config.signature_config.enabled and pages:
-                last = pages[-1]
-                bundle = []
-                if 'footer_rows' in last:
-                    bundle.append(self._build_footer_table(last['footer_rows']))
-                bundle.extend(self._build_signatures())
-                story.append(KeepTogether(bundle))
         else:
             build_page(data)
             if self.config.signature_config.enabled:
