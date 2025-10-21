@@ -1,19 +1,27 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
+{% block body_attrs %}data-page="rekap_kebutuhan"{% endblock %}
+{% block detail_css %}{% endblock %}
+{% block extra_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_kebutuhan.css' %}">
+{% endblock %}
 {% block title %}Rekap Kebutuhan — {{ project.nama }}{% endblock %}
 
 {% block dp_content %}
 <div id="rk-app"
+     class="dp-container"
      data-project-id="{{ project.id }}"
      data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan' project.id %}"
      data-endpoint-export="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}">
   <h1 class="h5 mb-2">Rekap Kebutuhan</h1>
 
-  <div class="d-flex gap-2 align-items-center mb-2">
+  <div id="rk-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
     <!-- Unified Export Dropdown (CSV/PDF/Word) -->
     <div class="btn-group" role="group">
       <button type="button"
-              class="btn btn-sm btn-outline-primary dropdown-toggle"
+              class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle"
               data-bs-toggle="dropdown"
               aria-expanded="false"
               aria-label="Export options">
@@ -43,7 +51,7 @@
     </div>
     
     <!-- Legacy single CSV button (kept as fallback) -->
-    <button id="rk-btn-export" class="btn btn-sm btn-outline-secondary" type="button">
+    <button id="rk-btn-export" class="btn btn-outline-secondary dp-btn dp-btn-sm" type="button">
       Export CSV
     </button>
     <div class="ms-auto small text-muted">
@@ -56,17 +64,17 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-body p-2">
-      <div class="table-responsive" id="rk-tablewrap">
-        <table class="table table-sm table-bordered mb-0" id="rk-table">
-          <thead class="table-light">
+  <div class="dp-card dp-border dp-surface mt-3">
+    <div class="card-body p-0">
+      <div class="table-responsive dp-scrollbar" id="rk-tablewrap">
+        <table class="rk-table table table-sm table-hover align-middle mb-0" id="rk-table">
+          <thead class="table-light dp-thead-sticky">
             <tr>
-              <th style="width:80px">Kat</th>
-              <th style="width:160px">Kode</th>
+              <th style="width:90px" class="text-nowrap">Kat</th>
+              <th style="width:160px" class="text-nowrap">Kode</th>
               <th>Uraian</th>
               <th style="width:90px">Satuan</th>
-              <th style="width:120px" class="text-end">Kuantitas</th>
+              <th style="width:120px" class="text-end text-nowrap">Kuantitas</th>
             </tr>
           </thead>
           <tbody id="rk-tbody">

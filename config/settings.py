@@ -4,8 +4,10 @@ Django 5.2.4
 """
 
 import os
+import socket
 from pathlib import Path
 from dotenv import load_dotenv
+
 
 # === Paths ===
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -16,11 +18,34 @@ load_dotenv(BASE_DIR / ".env")
 # === Security / ENV (aman untuk dev, siap di-hardening saat deploy) ===
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key")  # ganti di .env saat production
 DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
-ALLOWED_HOSTS = [
-    h.strip()
-    for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
-    if h.strip()
-]
+
+
+# Dapatkan IP lokal komputer Anda
+def get_local_ip():
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        return local_ip
+    except:
+        return '192.168.1.100'  # Ganti dengan IP Anda jika error
+
+# Update ALLOWED_HOSTS untuk testing lokal
+if DEBUG:
+    ALLOWED_HOSTS = [
+        'localhost',
+        '127.0.0.1',
+        'testserver',
+        get_local_ip(),  # IP lokal komputer Anda
+        '192.168.*.*',   # Atau spesifik: '192.168.1.*'
+        '10.0.*.*',      # Jika pakai jaringan 10.x.x.x
+        '*'              # HANYA untuk testing internal!
+    ]
+
+# ALLOWED_HOSTS = [
+#     h.strip()
+#     for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
+#     if h.strip()
+# ]
 
 
 # === Apps ===

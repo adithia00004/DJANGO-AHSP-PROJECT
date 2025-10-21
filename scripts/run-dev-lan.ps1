@@ -1,5 +1,6 @@
 Param(
-  [int]$Port = 8000
+  [int]$Port = 8000,
+  [switch]$UseSQLite
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,7 @@ Write-Host "LAN IP: $ip"
 $env:DJANGO_DEBUG = "True"
 $env:DJANGO_ALLOWED_HOSTS = "localhost,127.0.0.1,$ip"
 $env:DJANGO_CSRF_TRUSTED_ORIGINS = "http://$ip:$Port,http://127.0.0.1:$Port"
+if ($UseSQLite) { $env:DJANGO_DB_ENGINE = 'sqlite' }
 
 # Create virtualenv if missing
 if (-not (Test-Path $VenvPath)) {
@@ -40,13 +42,8 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # Migrate database (jika Postgres belum siap, perbarui .env atau jalankan server dulu)
-try {
-  python manage.py migrate
-} catch {
-  Write-Warning "Migrate gagal. Pastikan database siap atau gunakan SQLite sementara."
-}
+python manage.py migrate
 
 Write-Host "Menjalankan server di 0.0.0.0:$Port (akses dari klien: http://$ip:$Port)"
 python manage.py runserver 0.0.0.0:$Port
 Pop-Location
-

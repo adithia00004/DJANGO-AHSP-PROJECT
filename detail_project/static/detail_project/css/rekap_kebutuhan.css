@@ -1,0 +1,120 @@
+/* =====================================================================
+   REKAP_KEBUTUHAN.CSS — Selaras dengan Harga Items & Volume Pekerjaan
+   - Menggunakan design tokens dari core.css
+   - Memakai pola komponen dari components-library.css (dp-*)
+   ===================================================================== */
+
+/* ===== App Container ===== */
+#rk-app {
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+/* ===== Toolbar (gunakan .dp-toolbar sebagai basis) ===== */
+#rk-toolbar {
+  /* dp-toolbar sudah handle sticky, background, border, gap */
+  box-shadow: var(--dp-shadow-sm);
+}
+
+#rk-toolbar .dp-btn {
+  /* konsisten hover/active sudah di components-library */
+}
+
+#rk-toolbar .dropdown-menu {
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-md);
+  padding: .75rem;
+  min-width: 220px;
+  animation: dropdownSlideIn var(--ux-duration-200) var(--ux-ease);
+}
+
+@keyframes dropdownSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.rk-stats { white-space: nowrap; }
+
+/* ===== Table ===== */
+.rk-table {
+  font-size: var(--ux-font-sm, .875rem);
+  line-height: var(--ux-line-md, 1.25rem);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.rk-table thead th {
+  background: var(--dp-c-surface-2);
+  border-bottom: 2px solid var(--dp-c-border);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  padding: .5rem .75rem;
+  vertical-align: middle;
+}
+
+.rk-table tbody td {
+  padding: .5rem .75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--dp-c-border);
+  color: var(--dp-c-text);
+  transition: background-color var(--ux-duration-200) var(--ux-ease);
+}
+
+.rk-table tbody tr:hover { background: var(--ux-row-hover); }
+
+/* Monospace & numeric alignment */
+.rk-table td.mono,
+.rk-table th.mono,
+.rk-table td .font-monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.rk-table td.text-end,
+.rk-table th.text-end { font-variant-numeric: tabular-nums lining-nums; }
+
+/* ===== Scrollbar (table wrapper) ===== */
+#rk-tablewrap { scrollbar-gutter: stable both-edges; }
+#rk-tablewrap::-webkit-scrollbar { height: 8px; width: 8px; }
+#rk-tablewrap::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
+  border-radius: 8px;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+#rk-tablewrap::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
+}
+#rk-tablewrap::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== Responsive (ikut pola components-library) ===== */
+@media (max-width: 1199.98px) {
+  .rk-table thead th,
+  .rk-table tbody td { padding: .45rem .65rem; font-size: .74rem; }
+}
+
+@media (max-width: 991.98px) {
+  #rk-toolbar { gap: .375rem; }
+  .rk-table thead th,
+  .rk-table tbody td { padding: .4rem .6rem; font-size: .72rem; }
+}
+
+@media (max-width: 767.98px) {
+  #rk-toolbar { flex-direction: column; align-items: stretch; }
+  #rk-toolbar > .ms-auto { margin-left: 0 !important; width: 100%; flex-wrap: wrap; }
+  .rk-table thead th,
+  .rk-table tbody td { padding: .35rem .5rem; font-size: .7rem; }
+}
+
+/* ===== Dark mode enhancements ===== */
+[data-bs-theme="dark"] #rk-toolbar .btn.btn-primary {
+  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+}
+
+[data-bs-theme="dark"] .rk-table thead th {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 60%, var(--dp-c-bg));
+}
+
