@@ -22,7 +22,10 @@
   const $tbody = document.getElementById('hi-tbody');
   const $filter = document.getElementById('hi-filter');
   const $btnSave = document.getElementById('hi-btn-save');
-  const $btnExport = document.getElementById('hi-btn-export');
+  // Unified export (dropdown like Rekap RAB)
+  const btnExportCSV  = document.getElementById('btn-export-csv');
+  const btnExportPDF  = document.getElementById('btn-export-pdf');
+  const btnExportWord = document.getElementById('btn-export-word');
   const $stats = document.getElementById('hi-stats');
   const $bukInput = document.getElementById('hi-buk-input');
 
@@ -46,20 +49,46 @@
 
   // ===== Helpers: numeric & format
   const toUI = (s)=> N ? N.formatForUI(N.enforceDp(s||'', DP)) : (s||'');
-  const toCanon = (v)=> N ? (N.enforceDp(N.canonicalizeForAPI(v||''), DP) || '') : String(v||'');
+  // Locale-aware canonicalizer: prevents "100.000" (id-ID grouping) becoming 100.00
+  function canonFromUI(raw, dp){
+    const s0 = String(raw ?? '').trim();
+    if (!s0) return '';
+    const hasDot = s0.includes('.');
+    const hasComma = s0.includes(',');
+    if (hasDot && !hasComma){
+      const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
+      if (dotGrouping.test(s0)){
+        const noGroup = s0.replace(/\./g, '');
+        return N ? (N.enforceDp(noGroup, dp) || '') : noGroup;
+      }
+    }
+    if (hasComma && !hasDot){
+      const commaGrouping = /^\d{1,3}(,\d{3})+$/;
+      if (commaGrouping.test(s0)){
+        const noGroup = s0.replace(/,/g, '');
+        return N ? (N.enforceDp(noGroup, dp) || '') : noGroup;
+      }
+      const dec = s0.replace(/,/g, '.');
+      const c = N ? N.canonicalizeForAPI(dec) : dec;
+      return N ? (N.enforceDp(c || '', dp) || '') : (c || '');
+    }
+    const c = N ? N.canonicalizeForAPI(s0) : s0;
+    return N ? (N.enforceDp(c || '', dp) || '') : (c || '');
+  }
+  const toCanon = (v)=> canonFromUI(v, DP);
   const toUI2 = (s)=> N ? N.formatForUI(N.enforceDp(s||'', 2)) : (s||'');
-  const toCanon2 = (v)=> N ? (N.enforceDp(N.canonicalizeForAPI(v||''), 2) || '') : String(v||'');
-  const toCanonFloat = (v, dp=6)=> N ? (N.enforceDp(N.canonicalizeForAPI(v||''), dp) || '') : String(v||'');
+  const toCanon2 = (v)=> canonFromUI(v, 2);
+  const toCanonFloat = (v, dp=6)=> canonFromUI(v, dp);
   const rupiah = (canon)=>{
     if (canon == null || canon === '') return '—';
     const n = Number(canon); if (!isFinite(n)) return '—';
     return fmtRp.format(n);
   };
-  const decCountRaw = (raw)=>{
-    const str = String(raw ?? '');
-    if (!str) return 0;
-    const i = Math.max(str.lastIndexOf('.'), str.lastIndexOf(','));
-    return i === -1 ? 0 : (str.length - i - 1);
+  const decCountFromCanon = (canon)=>{
+    const s = String(canon ?? '');
+    if (!s) return 0;
+    const i = s.lastIndexOf('.');
+    return i === -1 ? 0 : (s.length - i - 1);
   };
   const csrfToken = ()=>{
     const m = document.cookie.match(/csrftoken=([^;]+)/);
@@ -106,7 +135,7 @@
         }
       });
 
-      // BUK
+      // Profit/Margin
       if (j.meta && typeof j.meta.markup_percent !== 'undefined'){
         bukCanonLoaded = String(j.meta.markup_percent || '10.00');
         if ($bukInput) $bukInput.value = toUI2(bukCanonLoaded);
@@ -160,6 +189,18 @@
         </td>
         <td class="mono hi-price-preview">${escapeHtml(rupiah(canonDisp))}</td>
       `;
+      // simpan canon awal untuk deteksi edit/empty
+      tr.dataset.origCanon = canonDisp;
+      tr.dataset.manualEdited = '0';
+      if (r.harga_canon === '' || r.harga_canon == null) {
+        tr.classList.add('hi-row-empty');
+        const inp = tr.querySelector('.hi-input-price');
+        if (inp) inp.classList.add('vp-empty');
+      } else {
+        // Tandai nol sebagai perhatian (merah border kiri), tapi bukan invalid
+        const isZero = (Number(canonDisp) === 0);
+        if (isZero) tr.classList.add('hi-row-zero');
+      }
       fr.appendChild(tr);
       viewRows.push(tr);
     });
@@ -185,26 +226,64 @@
     $stats.textContent = `${show} / ${viewRows.length} item`;
   });
 
-  // ===== Blur: validasi + autofill 0
+  // ===== Input/Blur: validasi live + autofill 0
+  function setRowDirtyVisual(tr, isDirty){
+    if (!tr) return;
+    tr.classList.toggle('hi-row-edited', !!isDirty);
+    // Hindari background kuning Bootstrap di dark mode
+    if (tr.classList.contains('table-warning')) tr.classList.remove('table-warning');
+  }
+  $tbody.addEventListener('input', (e)=>{
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
+    const tr = el.closest('tr');
+    const canon = toCanon(el.value) || '';
+    const num = Number(canon || 'NaN');
+    const invalid = !isFinite(num) || num < 0 || num > MAX_PRICE;
+    el.classList.toggle('ux-invalid', invalid);
+    if (tr) tr.classList.toggle('hi-row-invalid', invalid);
+    const prev = tr?.querySelector('.hi-price-preview');
+    if (prev) prev.textContent = invalid ? '-' : rupiah(canon || '0.00');
+    if (tr) tr.dataset.manualEdited = '1';
+    // kosong? (harga asli null) -> hilangkan tanda empty saat user mengetik
+    tr?.classList.remove('hi-row-empty');
+    el.classList.remove('vp-empty');
+    // nol? tandai/lepaskan sesuai nilai kanonik sekarang
+    const isZero = (Number(canon) === 0);
+    tr?.classList.toggle('hi-row-zero', isZero);
+    // tandai dirty vs baseline
+    const orig = tr?.dataset.origCanon || '';
+    setRowDirtyVisual(tr, !!canon && canon !== orig);
+  });
+
+  // ===== Blur: normalisasi ke display format
   $tbody.addEventListener('blur', (e)=>{
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
 
-    const raw = el.value;
-    const dec = decCountRaw(raw);
-    let canon = toCanon(raw);
+    let canon = toCanon(el.value);
     if (!canon) canon = '0.00'; // autofill 0
     const num = Number(canon);
 
-    const invalid = !isFinite(num) || dec > DP || num < 0 || num > MAX_PRICE;
+    const invalid = !isFinite(num) || num < 0 || num > MAX_PRICE;
     el.value = toUI(canon);
     el.classList.toggle('ux-invalid', invalid);
+    const tr = el.closest('tr');
+    if (tr) tr.classList.toggle('hi-row-invalid', invalid);
 
-    const prev = el.closest('tr')?.querySelector('.hi-price-preview');
-    if (prev) prev.textContent = invalid ? '—' : rupiah(canon);
+    const prev = tr?.querySelector('.hi-price-preview');
+    if (prev) prev.textContent = invalid ? '-' : rupiah(canon);
+    if (tr){
+      const orig = tr.dataset.origCanon || '';
+      const isDirty = (orig && orig !== canon);
+      tr.dataset.manualEdited = isDirty ? '1' : '0';
+      setRowDirtyVisual(tr, isDirty);
+      // Atur tanda nol setelah normalisasi
+      tr.classList.toggle('hi-row-zero', Number(canon) === 0);
+    }
   }, true);
 
-  // ===== BUK: enforce 2dp pada blur
+  // ===== Profit/Margin: enforce 2dp pada blur
   $bukInput?.addEventListener('blur', ()=>{
     const canon = toCanon2($bukInput.value);
     $bukInput.value = toUI2(canon || bukCanonLoaded);
@@ -216,7 +295,9 @@
       const payload = { items: [] };
       const mpCanon = toCanon2($bukInput?.value);
 
-      // kumpulkan harga
+      // kumpulkan harga dengan validasi ketat (abort jika ada invalid)
+      let invalidCount = 0;
+      const idsSaving = [];
       viewRows.forEach(tr=>{
         const id = Number(tr.dataset.itemId);
         const input = tr.querySelector('.hi-input-price');
@@ -227,10 +308,16 @@
         const n = Number(canon);
         const invalid = !isFinite(n) || n < 0 || n > MAX_PRICE;
         input.classList.toggle('ux-invalid', invalid);
-        if (invalid) return;
+        if (invalid){ invalidCount++; return; }
 
         payload.items.push({ id, harga_satuan: canon });
+        idsSaving.push({ id, canon });
       });
+
+      if (invalidCount > 0){
+        toast(`Terdapat ${invalidCount} input tidak valid. Perbaiki sebelum menyimpan.`, 'warn');
+        return;
+      }
 
       // konversi → jika user minta simpan ke server
       const conversions = [];
@@ -260,20 +347,38 @@
       if (!res.ok || !j.ok){
         console.warn(j);
         toast('Sebagian gagal disimpan. Cek log.', 'warn');
+        fetchList(); // segarkan untuk sinkron
       } else {
         toast(`Berhasil menyimpan ${j.updated ?? payload.items.length} item.`, 'success');
+        // Tandai baris-baris yang tersimpan dan bersihkan status dirty/empty
+        idsSaving.forEach(({id, canon})=>{
+          const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
+          if (!tr) return;
+          tr.classList.add('hi-row-saved');
+          setTimeout(()=> tr.classList.remove('hi-row-saved'), 1200);
+          tr.classList.remove('hi-row-empty');
+          tr.classList.toggle('hi-row-zero', Number(canon) === 0);
+          setRowDirtyVisual(tr, false);
+          tr.dataset.origCanon = canon;
+          const input = tr.querySelector('.hi-input-price');
+          input?.classList.remove('ux-invalid');
+        });
+        // Tunda refresh agar highlight terlihat
+        setTimeout(()=> fetchList(), 900);
       }
     }catch(e){
       console.error(e); toast('Gagal menyimpan.', 'error');
+      fetchList();
     }finally{
       const spin = document.getElementById('hi-save-spin');
       $btnSave.disabled = false; spin?.setAttribute('hidden','');
-      fetchList(); // segarkan tampilan
+      // fetchList dipanggil pada cabang di atas
     }
   });
 
   // ===== EXPORT CSV
-  $btnExport?.addEventListener('click', ()=>{
+  // Export CSV (fallback local), or unified via ExportManager if available
+  function exportCSVLocal(){
     const headers = ['No','Kategori','Kode','Uraian','Satuan','Harga','Nominal'];
     const lines = [headers.join(';')];
     let idx=0;
@@ -293,14 +398,43 @@
     const a = document.createElement('a'); a.href = url;
     a.download = `harga_items_${(new Date()).toISOString().slice(0,10)}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  });
+  }
+
+  (function initUnifiedExport(){
+    const projectId = ROOT?.dataset?.projectId;
+    if (!projectId){
+      // bind CSV local only
+      btnExportCSV?.addEventListener('click', exportCSVLocal);
+      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
+      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
+      return;
+    }
+    if (typeof ExportManager === 'undefined'){
+      btnExportCSV?.addEventListener('click', exportCSVLocal);
+      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
+      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
+      return;
+    }
+    try{
+      // Page type for backend endpoints (to be provided server-side)
+      const exporter = new ExportManager(projectId, 'harga-items');
+      btnExportCSV?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('csv'); });
+      btnExportPDF?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('pdf'); });
+      btnExportWord?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('word'); });
+    }catch(err){
+      console.warn('[HI] ExportManager init failed, fallback to local CSV', err);
+      btnExportCSV?.addEventListener('click', exportCSVLocal);
+      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
+      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
+    }
+  })();
 
   // ===== BULK PASTE (Kode;[Unit];Harga;[Factor];[Density])
   document.addEventListener('paste', (e)=>{
     if (!e.clipboardData) return;
     const text = e.clipboardData.getData('text');
     if (!text || !text.includes('\n')) return; // bukan tabel
-    const rowsPaste = text.trim().split(/\r?\n/).map(line => line.split(/\t|;|,/));
+    const rowsPaste = text.trim().split(/\r?\n/).map(line => line.split(/\t|;/));
     let hit=0, invalid=0;
     const byKode = new Map();
 
@@ -420,10 +554,10 @@
         setUnitLabel(unitOpt);
       }
       if (prof.price_market) $convPrice.value = toUI2(prof.price_market);
-      if (prof.factor_to_base) $convFactor.value = toUI2(prof.factor_to_base);
-      if (prof.capacity_m3){ $convCapM3Wrap.classList.remove('d-none'); $convCapM3.value = toUI2(prof.capacity_m3); }
-      if (prof.capacity_ton){ $convCapTonWrap.classList.remove('d-none'); $convCapTon.value = toUI2(prof.capacity_ton); }
-      if (prof.density){ $convDensityWrap.classList.remove('d-none'); $convDensity.value = toUI2(prof.density); }
+      if (prof.factor_to_base) $convFactor.value = (N ? N.formatForUI(N.enforceDp(prof.factor_to_base, 6)) : (prof.factor_to_base||''));
+      if (prof.capacity_m3){ $convCapM3Wrap.classList.remove('d-none'); $convCapM3.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_m3, 6)) : (prof.capacity_m3||'')); }
+      if (prof.capacity_ton){ $convCapTonWrap.classList.remove('d-none'); $convCapTon.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_ton, 6)) : (prof.capacity_ton||'')); }
+      if (prof.density){ $convDensityWrap.classList.remove('d-none'); $convDensity.value = (N ? N.formatForUI(N.enforceDp(prof.density, 6)) : (prof.density||'')); }
     }
 
     updateHelperVisibility();
@@ -466,8 +600,25 @@
 
     const input = convCtx.tr?.querySelector('.hi-input-price');
     const prev = convCtx.tr?.querySelector('.hi-price-preview');
+    // Jika user sudah edit manual dan nilai akan berbeda, minta konfirmasi
+    if (convCtx.tr){
+      const wasManual = convCtx.tr.dataset.manualEdited === '1';
+      const curCanon = toCanon(input?.value);
+      if (wasManual && curCanon && curCanon !== canon){
+        const ok = window.confirm('Nilai harga pada baris ini telah diisi manual. Terapkan hasil konversi akan mengganti nilai tersebut. Lanjutkan?');
+        if (!ok) return;
+      }
+    }
     if (input){ input.value = toUI(canon); input.classList.remove('ux-invalid'); }
     if (prev){ prev.textContent = rupiah(canon); }
+    // Tampilkan indikator edited (kuning) untuk hasil konversi juga
+    if (convCtx.tr){
+      convCtx.tr.classList.remove('hi-row-empty');
+      convCtx.tr.classList.toggle('hi-row-zero', Number(canon) === 0);
+      const orig = convCtx.tr.dataset.origCanon || '';
+      const isDirty = (orig && orig !== canon);
+      setRowDirtyVisual(convCtx.tr, isDirty);
+    }
 
     // simpan profil
     const unitName = ($convUnit.value==='custom') ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : $convUnit.value;
@@ -494,6 +645,8 @@
     if (window.bootstrap && $convModal){
       window.bootstrap.Modal.getOrCreateInstance($convModal).hide();
     }
+    // Tandai baris sebagai tidak manual (diganti hasil konversi)
+    if (convCtx.tr){ convCtx.tr.dataset.manualEdited = '0'; }
   });
 
   $convModal?.addEventListener('hidden.bs.modal', resetModal);
@@ -546,7 +699,7 @@
       }
     }
     if (factor){
-      $convFactor.value = toUI2(N ? N.enforceDp(factor,6) : factor);
+      $convFactor.value = N ? N.formatForUI(N.enforceDp(factor,6)) : factor;
     }
   }
 
@@ -608,4 +761,57 @@
 
   // ===== Init
   fetchList();
+
+  // ===== EXPORT INITIALIZATION =====
+  // Initialize unified export (CSV/PDF/Word) via ExportManager
+  function initExportButtons() {
+    if (typeof ExportManager === 'undefined') {
+      console.warn('[HargaItems] ⚠️ ExportManager not loaded - export buttons disabled');
+      return;
+    }
+
+    try {
+      const exporter = new ExportManager(projectId, 'harga-items');
+
+      const btnCSV = document.getElementById('btn-export-csv');
+      const btnPDF = document.getElementById('btn-export-pdf');
+      const btnWord = document.getElementById('btn-export-word');
+
+      if (btnCSV) {
+        btnCSV.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[HargaItems] 📥 CSV export requested');
+          await exporter.exportAs('csv');
+        });
+      }
+
+      if (btnPDF) {
+        btnPDF.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[HargaItems] 📄 PDF export requested');
+          await exporter.exportAs('pdf');
+        });
+      }
+
+      if (btnWord) {
+        btnWord.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[HargaItems] 📝 Word export requested');
+          await exporter.exportAs('word');
+        });
+      }
+
+      console.log('[HargaItems] ✓ Export buttons initialized');
+    } catch (err) {
+      console.error('[HargaItems] Export initialization failed:', err);
+    }
+  }
+
+  // Run export initialization after DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initExportButtons);
+  } else {
+    initExportButtons();
+  }
+
 })();

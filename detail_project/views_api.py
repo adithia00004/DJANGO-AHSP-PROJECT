@@ -2156,7 +2156,8 @@ def export_rincian_ahsp_pdf(request: HttpRequest, project_id: int):
         project = _owner_or_404(project_id, request.user)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_rincian_ahsp('pdf')
+        orientation = request.GET.get('orientation')
+        return manager.export_rincian_ahsp('pdf', orientation=orientation)
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -2171,7 +2172,8 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
         project = _owner_or_404(project_id, request.user)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_rincian_ahsp('word')
+        orientation = request.GET.get('orientation')
+        return manager.export_rincian_ahsp('word', orientation=orientation)
     except Exception as e:
         import traceback
         print(traceback.format_exc())

@@ -164,8 +164,12 @@
           if (!r && P.snapshot_kode) r = byKode.get(String(P.snapshot_kode));
 
           const volume = (r && r.volume != null) ? Number(r.volume) : 0;
-          const harga  = (r && (r.HSP != null || r.unit_price != null)) ? Number(r.HSP ?? r.unit_price) : 0;
-          const total  = Number((volume || 0) * (harga || 0));
+    // Harga Satuan pada Rekap RAB harus mengikuti G (HSP = E + F) dari Rincian AHSP
+    // Fallback ke field lain bila G belum tersedia untuk kompatibilitas mundur
+    const harga  = (r && (r.G != null || r.harga_satuan != null || r.HSP != null || r.unit_price != null))
+      ? Number(r.G ?? r.harga_satuan ?? r.HSP ?? r.unit_price)
+      : 0;
+    const total  = Number((volume || 0) * (harga || 0));
 
           Snode.children.push({
             type:'job',
@@ -665,7 +669,6 @@
     loadData();
   });
 
-  btnExport?.addEventListener('click', exportCSV);
   btnExpand?.addEventListener('click', (e) => { e.preventDefault(); if (!hasFilterText()) expandAll(); });
   btnCollapse?.addEventListener('click', (e) => { 
     e.preventDefault(); 
@@ -710,8 +713,85 @@
   updateToolbarState();
   loadData();
 
-  // ========= EXPORT MODULE FOR PRINT SYSTEM =========
+  // ========= UNIFIED EXPORT FUNCTIONALITY =========
+
+  /**
+   * Initialize unified export manager (CSV, PDF, Word)
+   * This is separate from Excel export above
+   */
+  function initUnifiedExport() {
+    console.log('[RAB] Initializing unified export system...');
+    
+    // Validate prerequisites
+    if (!projectId) {
+      console.warn('[RAB] ⚠️ Project ID not found, unified export disabled');
+      return null;
+    }
+    
+    // Check if ExportManager is available
+    if (typeof ExportManager === 'undefined') {
+      console.warn('[RAB] ⚠️ ExportManager not loaded');
+      console.warn('[RAB] Unified export (CSV/PDF/Word) disabled - only Excel export available');
+      return null;
+    }
+    
+    try {
+      // Create exporter instance
+      const exporter = new ExportManager(projectId, 'rekap-rab');
+      
+      // Get export button references
+      const btnExportCSV = document.getElementById('btn-export-csv');
+      const btnExportPDF = document.getElementById('btn-export-pdf');
+      const btnExportWord = document.getElementById('btn-export-word');
+      
+      // Bind CSV export
+      if (btnExportCSV) {
+        btnExportCSV.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('[RAB] 📥 CSV export requested');
+          await exporter.exportAs('csv');
+        });
+        console.log('[RAB] ✓ CSV export button bound');
+      }
+      
+      // Bind PDF export
+      if (btnExportPDF) {
+        btnExportPDF.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('[RAB] 📥 PDF export requested');
+          await exporter.exportAs('pdf');
+        });
+        console.log('[RAB] ✓ PDF export button bound');
+      }
+      
+      // Bind Word export
+      if (btnExportWord) {
+        btnExportWord.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('[RAB] 📥 Word export requested');
+          await exporter.exportAs('word');
+        });
+        console.log('[RAB] ✓ Word export button bound');
+      }
+      
+      console.log('[RAB] ✓ Unified export system ready');
+      return exporter;
+      
+    } catch (error) {
+      console.error('[RAB] ❌ Failed to initialize unified export:', error);
+      return null;
+    }
+  }
+
+  // Initialize unified export
+  const unifiedExporter = initUnifiedExport();
+
+  // ========= EXPORT MODULE FOR PRINT SYSTEM & UNIFIED EXPORT =========
   window.RABModule = {
+    // Existing exports
     expanded,
     expandAll,
     collapseAll,
@@ -719,9 +799,13 @@
     tree: () => fullModel,
     root,
     btnPrint,
-    tbody
+    tbody,
+    
+    // NEW: Add unified export functionality
+    unifiedExporter: unifiedExporter,
+    exportAs: (format) => unifiedExporter?.exportAs(format)
   };
 
-  console.log('[RAB] Module exported for print system');
+  console.log('[RAB] Module exported for print system & unified export');
 
-})();
+  })();

@@ -41,6 +41,19 @@ class ExportManager {
       console.log(`[ExportManager] Including parameters:`, options.parameters);
     }
 
+    // Optional orientation override (for pages that support it)
+    try {
+      const raw = options.orientation || (this.pageType === 'rincian-ahsp' ? localStorage.getItem('rincian_ahsp_export_orientation') : null);
+      const ori = (raw || '').toLowerCase();
+      if (ori === 'portrait' || ori === 'landscape') {
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}orientation=${encodeURIComponent(ori)}`;
+        console.log(`[ExportManager] Orientation: ${ori}`);
+      }
+    } catch (e) {
+      // ignore orientation errors
+    }
+
     console.log(`[ExportManager] Starting ${format.toUpperCase()} export...`);
 
     try {

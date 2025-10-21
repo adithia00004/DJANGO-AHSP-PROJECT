@@ -1,13 +1,17 @@
-"""
+﻿"""
 Django settings for config project.
 Django 5.2.4
 """
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # === Paths ===
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env after BASE_DIR is defined
+load_dotenv(BASE_DIR / ".env")
 
 # === Security / ENV (aman untuk dev, siap di-hardening saat deploy) ===
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key")  # ganti di .env saat production
@@ -17,6 +21,7 @@ ALLOWED_HOSTS = [
     for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",")
     if h.strip()
 ]
+
 
 # === Apps ===
 INSTALLED_APPS = [
@@ -50,6 +55,7 @@ AUTH_USER_MODEL = "accounts.CustomUser"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -85,17 +91,29 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# === Database (PostgreSQL) ===
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "ahsp_sni_db"),
-        "USER": os.getenv("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "password"),
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+"""Database
+Default: PostgreSQL via env.
+Optional: set DJANGO_DB_ENGINE=sqlite to use local file db for quick testing.
+"""
+
+if os.getenv("DJANGO_DB_ENGINE", "postgres").lower() == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "ahsp_sni_db"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "password"),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 
 # === Password validators ===
 AUTH_PASSWORD_VALIDATORS = [
@@ -163,3 +181,13 @@ REST_FRAMEWORK = {
 
 # Jangan paksa pemisah ribuan secara global; biarkan UI yang format saat display.
 USE_THOUSAND_SEPARATOR = False
+# === Security: optional CSRF trusted origins via env (for HTTPS/reverse proxy) ===
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
+
+# Enable Whitenoise finders in dev so static works without collectstatic
+WHITENOISE_USE_FINDERS = True
+

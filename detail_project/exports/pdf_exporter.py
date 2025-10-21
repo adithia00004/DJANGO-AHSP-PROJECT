@@ -36,16 +36,23 @@ class PDFExporter(ConfigExporterBase):
                 parent=styles['Heading1'],
                 fontSize=self.config.font_size_title,
                 textColor=colors.HexColor('#2c3e50'),
-                spaceAfter=6*mm,
-                alignment=TA_CENTER,
+                spaceAfter=1*mm,
+                alignment=TA_LEFT,
                 fontName='Helvetica-Bold'
             ),
             'subtitle': ParagraphStyle(
                 'CustomSubtitle',
                 parent=styles['Heading2'],
                 fontSize=self.config.font_size_header,
-                spaceAfter=3*mm,
-                alignment=TA_CENTER
+                spaceAfter=1*mm,
+                alignment=TA_LEFT
+            ),
+            'subtitle_left': ParagraphStyle(
+                'CustomSubtitleLeft',
+                parent=styles['Heading2'],
+                fontSize=self.config.font_size_header,
+                spaceAfter=1*mm,
+                alignment=TA_LEFT
             ),
             'normal': ParagraphStyle(
                 'CustomNormal',
@@ -83,24 +90,31 @@ class PDFExporter(ConfigExporterBase):
             story.extend(self._build_header(section.get('title') or self.config.title))
             story.append(Spacer(1, 5*mm))
 
-            # Check if this page has sections (appendix with multiple tables)
+            # Check if this page has sections (appendix with multiple tables OR pekerjaan sections)
             if 'sections' in section:
-                # Multi-section page (e.g., Parameter + Formula appendix)
-                for subsection in section['sections']:
-                    # Section title
-                    section_title = subsection.get('section_title')
-                    if section_title:
-                        section_para = Paragraph(
-                            f"<b>{section_title}</b>",
-                            self.styles['subtitle']
-                        )
-                        story.append(section_para)
-                        story.append(Spacer(1, 3*mm))
+                # Check if sections are pekerjaan sections (Rincian AHSP style)
+                if section['sections'] and isinstance(section['sections'][0], dict) and 'pekerjaan' in section['sections'][0]:
+                    # Rincian AHSP sections (each pekerjaan with its detail table)
+                    for pek_section in section['sections']:
+                        self._build_pekerjaan_section(pek_section, story)
+                        story.append(Spacer(1, 8*mm))
+                else:
+                    # Multi-section page (e.g., Parameter + Formula appendix)
+                    for subsection in section['sections']:
+                        # Section title
+                        section_title = subsection.get('section_title')
+                        if section_title:
+                            section_para = Paragraph(
+                                f"<b>{section_title}</b>",
+                                self.styles['subtitle']
+                            )
+                            story.append(section_para)
+                            story.append(Spacer(1, 3*mm))
 
-                    # Section table
-                    table = self._build_table(subsection)
-                    story.append(table)
-                    story.append(Spacer(1, 5*mm))
+                        # Section table
+                        table = self._build_table(subsection)
+                        story.append(table)
+                        story.append(Spacer(1, 5*mm))
 
             else:
                 # Single table page
@@ -136,6 +150,29 @@ class PDFExporter(ConfigExporterBase):
                 # Page break between pages
                 if idx < len(pages) - 1:
                     story.append(PageBreak())
+        # Sections at root level (Rincian AHSP style)
+        elif 'sections' in data and data['sections'] and isinstance(data['sections'][0], dict) and 'pekerjaan' in data['sections'][0]:
+            # Rincian AHSP: sections with pekerjaan data
+            build_page(data)
+
+            # Add summary at the end
+            if 'summary' in data:
+                story.append(Spacer(1, 10*mm))
+                summary = data['summary']
+                summary_lines = [
+                    f"<b>Total Pekerjaan:</b> {summary.get('total_pekerjaan', 0)}",
+                    f"<b>Total Items:</b> {summary.get('total_items', 0)}",
+                    f"<b>Grand Total:</b> Rp {summary.get('grand_total', '0')}",
+                ]
+                for line in summary_lines:
+                    para = Paragraph(line, self.styles['normal'])
+                    story.append(para)
+                    story.append(Spacer(1, 2*mm))
+
+            # Add signatures if enabled
+            if self.config.signature_config.enabled:
+                bundle = self._build_signatures()
+                story.extend(bundle)
         else:
             build_page(data)
             if self.config.signature_config.enabled:
@@ -145,6 +182,30 @@ class PDFExporter(ConfigExporterBase):
                 bundle.extend(self._build_signatures())
                 story.append(KeepTogether(bundle))
         
+        # Append appendix recap if provided
+        recap = data.get('recap')
+        if recap and isinstance(recap, dict):
+            # Page break before appendix when there is prior content
+            if story:
+                story.append(PageBreak())
+            story.append(Paragraph("<b>Lampiran Rekap AHSP</b>", self.styles['subtitle']))
+            story.append(Spacer(1, 3*mm))
+
+            # Determine sensible column widths based on orientation
+            page_w_mm = 210 if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else 297
+            usable_w = page_w_mm - (self.config.margin_left + self.config.margin_right)
+            # Allocate widths: Kode (20%), Uraian (60%), Total (20%)
+            col_widths = [0.20*usable_w, 0.60*usable_w, 0.20*usable_w]
+
+            appendix_section = {
+                'table_data': {
+                    'headers': recap.get('headers', ['Kode AHSP', 'Uraian', 'Total HSP (Rp)']),
+                    'rows': recap.get('rows', []),
+                },
+                'col_widths': col_widths,
+            }
+            story.append(self._build_table(appendix_section))
+
         # Build PDF
         doc.build(story)
         
@@ -282,9 +343,191 @@ class PDFExporter(ConfigExporterBase):
             ('LINEABOVE', (0, 0), (-1, 0), 1, colors.HexColor('#2c3e50')),
             ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#2c3e50')),
         ]))
-        
+
         return table
-    
+
+    def _build_pekerjaan_section(self, section: Dict[str, Any], story: List) -> None:
+        """
+        Build a pekerjaan section for Rincian AHSP export.
+        Structure mimics the .rk-right .ra-editor on the web page:
+        - Pekerjaan header (metadata + title)
+        - Detail items table
+        """
+        pekerjaan = section.get('pekerjaan', {})
+        detail_table = section.get('detail_table', {})
+
+        # Helper for paragraphs
+        def P(text, style_name='Normal', bold=False):
+            styles = getSampleStyleSheet()
+            st = ParagraphStyle(
+                'Custom', parent=styles[style_name],
+                fontSize=self.config.font_size_normal
+            )
+            if bold:
+                st.fontName = 'Helvetica-Bold'
+            return Paragraph(str(text or ''), st)
+
+        # Pekerjaan Header Section (similar to .rk-right-header)
+        # Metadata line: Kode • Satuan
+        meta_text = f"<font color='#666'>{pekerjaan.get('kode', '-')} · {pekerjaan.get('satuan', '-')}</font>"
+        meta_para = Paragraph(meta_text, self.styles['normal'])
+        story.append(meta_para)
+        story.append(Spacer(1, 1*mm))
+
+        # Uraian (main title)
+        uraian_text = f"<b>{pekerjaan.get('uraian', 'Pekerjaan')}</b>"
+        uraian_para = Paragraph(uraian_text, self.styles['subtitle'])
+        story.append(uraian_para)
+        story.append(Spacer(1, 1*mm))
+
+        # Replace two-line header (kode+satuan, then uraian) with single-line: "<kode> <uraian>"
+        try:
+            # Remove: spacer, uraian_para, spacer, meta_para (in reverse order)
+            story.pop(); story.pop(); story.pop(); story.pop()
+        except Exception:
+            pass
+        combined_header = Paragraph(
+            f"<b>{pekerjaan.get('kode', '-')} {pekerjaan.get('uraian', 'Pekerjaan')}</b>",
+            self.styles['subtitle']
+        )
+        story.append(combined_header)
+        story.append(Spacer(1, 1*mm))
+        # Optional secondary line for satuan
+        story.append(Paragraph(
+            f"<font color='#666'>Satuan: {pekerjaan.get('satuan', '-')}</font>",
+            self.styles['normal']
+        ))
+        story.append(Spacer(1, 1*mm))
+
+        # Total
+        total_text = f"<font color='#2c3e50'><b>Total: Rp {pekerjaan.get('total', '0')}</b></font>"
+        total_para = Paragraph(total_text, self.styles['normal'])
+        story.append(total_para)
+        story.append(Spacer(1, 3*mm))
+
+        # Detail Table
+        if section.get('has_details'):
+            headers = detail_table.get('headers', [])
+            widths_mm = list(detail_table.get('col_widths', []) or [])
+            # Scale column widths to fit page orientation/margins
+            try:
+                page_w_mm = 210 if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else 297
+                usable_w = page_w_mm - (self.config.margin_left + self.config.margin_right)
+                current = sum(widths_mm) if widths_mm else 0
+                if current and abs(current - usable_w) > 0.5:
+                    factor = usable_w / current
+                    widths_mm = [w * factor for w in widths_mm]
+            except Exception:
+                pass
+            col_widths = [w * mm for w in widths_mm] if widths_mm else None
+            ncols = len(headers)
+
+            # Wrap cells in Paragraphs
+            def wrap_cell(text, align='LEFT', bold=False):
+                styles = getSampleStyleSheet()
+                st = ParagraphStyle(
+                    'Cell', parent=styles['Normal'],
+                    fontSize=self.config.font_size_normal,
+                    alignment={'LEFT': 0, 'CENTER': 1, 'RIGHT': 2}.get(align, 0)
+                )
+                if bold:
+                    st.fontName = 'Helvetica-Bold'
+                return Paragraph(str(text or ''), st)
+
+            # Header row
+            header_cells = [wrap_cell(h, align='CENTER', bold=True) for h in headers]
+
+            full_data = [header_cells]
+            style_commands = [
+                # Header styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f5f5f5')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size_header),
+                ('LINEBELOW', (0, 0), (-1, 0), 1.2, colors.HexColor('#2c3e50')),
+
+                # Body defaults
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), self.config.font_size_normal),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#ddd')),
+                ('BOX', (0, 0), (-1, -1), 1.5, colors.black),
+                ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
+                ('LEFTPADDING', (0, 0), (-1, -1), 1.5*mm),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ]
+
+            groups = section.get('groups') or []
+            totals = section.get('totals') or {}
+
+            current_row = 1  # account for header
+
+            def add_group(title: str, rows: list, subtotal_text: str):
+                nonlocal current_row
+                # Group header (spanned)
+                full_data.append([wrap_cell(title, bold=True)] + [''] * (ncols - 1))
+                style_commands.extend([
+                    ('SPAN', (0, current_row), (-1, current_row)),
+                    ('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#f5f5f5')),
+                    ('FONTNAME', (0, current_row), (-1, current_row), 'Helvetica-Bold'),
+                    ('LINEABOVE', (0, current_row), (-1, current_row), 0.8, colors.HexColor('#2c3e50')),
+                    ('LINEBELOW', (0, current_row), (-1, current_row), 0.8, colors.HexColor('#2c3e50')),
+                ])
+                current_row += 1
+
+                # Group rows
+                for row in rows:
+                    wrapped = []
+                    for idx, cell in enumerate(row):
+                        if idx == 0:
+                            wrapped.append(wrap_cell(cell, align='CENTER'))
+                        elif idx in [4, 5, 6]:
+                            wrapped.append(wrap_cell(cell, align='RIGHT'))
+                        elif idx == 3:
+                            wrapped.append(wrap_cell(cell, align='CENTER'))
+                        else:
+                            wrapped.append(wrap_cell(cell, align='LEFT'))
+                    full_data.append(wrapped)
+                    current_row += 1
+
+                # Subtotal row (label spans ncols-1)
+                full_data.append([wrap_cell(f"Subtotal {title.split('—')[1].strip() if '—' in title else title}", bold=True)] + [''] * (ncols - 2) + [wrap_cell(subtotal_text, align='RIGHT', bold=True)])
+                style_commands.extend([
+                    ('SPAN', (0, current_row), (ncols - 2, current_row)),
+                    ('FONTNAME', (0, current_row), (-1, current_row), 'Helvetica-Bold'),
+                ])
+                current_row += 1
+
+            for g in groups:
+                add_group(g.get('title') or '', g.get('rows') or [], g.get('subtotal') or '0')
+
+            # Totals E, F, G
+            if totals:
+                labels = [
+                    (f"E — Jumlah (A+B+C+D)", totals.get('E', '0')),
+                    (f"F — Profit/Margin × Jumlah (E) ({totals.get('markup_eff', '0')}%)", totals.get('F', '0')),
+                    (f"G — HSP = E + F", totals.get('G', '0')),
+                ]
+                for idx, (label, value) in enumerate(labels):
+                    full_data.append([wrap_cell(label, bold=True)] + [''] * (ncols - 2) + [wrap_cell(value, align='RIGHT', bold=True)])
+                    style_commands.extend([
+                        ('SPAN', (0, current_row), (ncols - 2, current_row)),
+                        ('FONTNAME', (0, current_row), (-1, current_row), 'Helvetica-Bold'),
+                    ])
+                    # Add thicker line hierarchy: E/G thicker, F medium
+                    thickness = 1.2 if idx in (0, 2) else 0.8
+                    style_commands.append(('LINEABOVE', (0, current_row), (-1, current_row), thickness, colors.HexColor('#2c3e50')))
+                    current_row += 1
+
+            # Create table
+            table = Table(full_data, colWidths=col_widths, repeatRows=1)
+            table.setStyle(TableStyle(style_commands))
+            story.append(table)
+        else:
+            # No details message
+            no_detail_para = Paragraph("<i>Tidak ada detail item untuk pekerjaan ini</i>", self.styles['normal'])
+            story.append(no_detail_para)
+
     def _build_signatures(self) -> List:
         """Build signature section"""
         elements = []

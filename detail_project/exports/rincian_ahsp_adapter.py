@@ -15,27 +15,27 @@ class RincianAHSPAdapter:
     def get_export_data(self) -> Dict[str, Any]:
         """
         Transform Rincian AHSP data for export.
-        This exports all DetailAHSPProject records grouped by Pekerjaan.
+        Structure: Each pekerjaan becomes a separate section with header and detail table.
+        Similar to the web page .rk-right .ra-editor structure.
         """
-        from detail_project.models import Klasifikasi, DetailAHSPProject
+        from detail_project.models import Klasifikasi, DetailAHSPProject, ProjectPricing
 
-        rows = []
-        hierarchy_levels = {}
-        row_idx = 0
+        sections = []  # List of pekerjaan sections
+        recap_rows = []  # Lampiran Rekap AHSP rows
 
-        # Column configuration
-        headers = [
-            'Uraian Pekerjaan / Item',
+        # Detail table configuration (7 columns)
+        detail_headers = [
+            'No',
+            'Uraian',
             'Kode',
-            'Kategori',
             'Satuan',
             'Koefisien',
             'Harga Satuan (Rp)',
-            'Jumlah (Rp)'
+            'Jumlah Harga (Rp)'
         ]
 
         # Column widths for A4 Landscape (297mm width - 20mm margins = 277mm usable)
-        col_widths = [90, 35, 25, 25, 30, 36, 36]  # in mm (total: 277mm)
+        detail_col_widths = [15, 80, 35, 25, 30, 46, 46]  # in mm (total: 277mm)
 
         # Fetch hierarchical containers with detail AHSP
         klasifikasi_list = (
@@ -60,114 +60,129 @@ class RincianAHSPAdapter:
 
         total_pekerjaan = 0
         total_items = 0
+        grand_total = Decimal('0')
+
+        # Build sections - each pekerjaan becomes a section
+        # Determine default project markup (Profit/Margin)
+        try:
+            default_markup = Decimal(str(getattr(self.project.pricing, 'markup_percent', '10.00')))
+        except Exception:
+            # If pricing not created yet, use 10.00%
+            default_markup = Decimal('10.00')
 
         for klas in klasifikasi_list:
-            # Klasifikasi header
-            rows.append([
-                getattr(klas, 'name', getattr(klas, 'nama', 'Klasifikasi')),
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-            ])
-            hierarchy_levels[row_idx] = 1
-            row_idx += 1
+            klas_name = getattr(klas, 'name', getattr(klas, 'nama', 'Klasifikasi'))
 
             for sub in klas.sub_list.all().order_by('ordering_index', 'id'):
-                # Sub header
-                rows.append([
-                    getattr(sub, 'name', getattr(sub, 'nama', 'Sub')),
-                    '',
-                    '',
-                    '',
-                    '',
-                    '',
-                    '',
-                ])
-                hierarchy_levels[row_idx] = 2
-                row_idx += 1
+                sub_name = getattr(sub, 'name', getattr(sub, 'nama', 'Sub'))
 
                 # Pekerjaan items
                 for pek in sub.pekerjaan_list.all().order_by('ordering_index', 'id'):
                     uraian = getattr(pek, 'snapshot_uraian', getattr(pek, 'nama', getattr(pek, 'name', '')))
                     kode_pek = getattr(pek, 'snapshot_kode', getattr(pek, 'kode_ahsp', ''))
+                    satuan_pek = getattr(pek, 'satuan', '-')
 
                     # Get details for this pekerjaan
                     details = details_by_pekerjaan.get(pek.id, [])
 
-                    if not details:
-                        # Pekerjaan without details - show empty row
-                        rows.append([
-                            uraian,
-                            kode_pek or '',
-                            '',
-                            '',
-                            '',
-                            '',
-                            '',
-                        ])
-                        hierarchy_levels[row_idx] = 3
-                        row_idx += 1
-                        total_pekerjaan += 1
-                    else:
-                        # Pekerjaan header
-                        rows.append([
-                            uraian,
-                            kode_pek or '',
-                            '',
-                            '',
-                            '',
-                            '',
-                            '',
-                        ])
-                        hierarchy_levels[row_idx] = 3
-                        pekerjaan_header_idx = row_idx
-                        row_idx += 1
-                        total_pekerjaan += 1
+                    # Group detail rows by kategori to mirror page structure
+                    groups_spec = [
+                        ('TK', 'A — Tenaga Kerja', 'Tenaga Kerja'),
+                        ('BHN', 'B — Bahan', 'Bahan'),
+                        ('ALT', 'C — Peralatan', 'Peralatan'),
+                        ('LAIN', 'D — Lainnya', 'Lainnya'),
+                    ]
 
-                        # Detail items (nested under pekerjaan)
-                        pekerjaan_total = Decimal('0')
-                        for detail in details:
+                    groups: List[dict] = []
+                    detail_no = 1
+                    pekerjaan_total = Decimal('0')
+
+                    for key, title, short_title in groups_spec:
+                        rows_in_group = []
+                        subtotal = Decimal('0')
+                        for detail in (d for d in details if (d.kategori or '').upper() == key):
                             koefisien = self._to_decimal(detail.koefisien)
                             harga_satuan = self._to_decimal(
                                 detail.harga_item.harga_satuan if detail.harga_item else 0
                             )
                             jumlah = koefisien * harga_satuan
+                            subtotal += jumlah
+                            pekerjaan_total += jumlah
 
-                            rows.append([
-                                f"  {detail.uraian}",  # Indent for detail
+                            rows_in_group.append([
+                                str(detail_no),
+                                detail.uraian or '',
                                 detail.kode or '',
-                                detail.kategori or '',
                                 detail.satuan or '',
                                 self._format_number(koefisien, 6),
                                 self._format_number(harga_satuan, 0),
                                 self._format_number(jumlah, 0),
                             ])
-                            # No hierarchy level for detail rows - they're regular data rows
-                            row_idx += 1
+                            detail_no += 1
                             total_items += 1
-                            pekerjaan_total += jumlah
 
-                        # Update pekerjaan header with total in last column
-                        if pekerjaan_total > 0:
-                            rows[pekerjaan_header_idx][-1] = self._format_number(pekerjaan_total, 0)
+                        groups.append({
+                            'key': key,
+                            'title': title,
+                            'short_title': short_title,
+                            'rows': rows_in_group,
+                            'subtotal': self._format_number(subtotal, 0),
+                        })
 
-        # Footer rows - summary info
-        footer_rows = [
-            ['Total Pekerjaan', str(total_pekerjaan)],
-            ['Total Items', str(total_items)],
-        ]
+                    # Effective Profit/Margin (override per pekerjaan if available)
+                    ov = getattr(pek, 'markup_override_percent', None)
+                    eff_markup = Decimal(str(ov)) if ov is not None else default_markup
+                    E_total = pekerjaan_total
+                    F_margin = (E_total * eff_markup) / Decimal('100')
+                    G_hsp = E_total + F_margin
+
+                    # Add to recap rows (Lampiran)
+                    recap_rows.append([
+                        kode_pek or '-',
+                        uraian,
+                        self._format_number(G_hsp, 0),
+                    ])
+
+                    # Create section for this pekerjaan
+                    section = {
+                        'klasifikasi': klas_name,
+                        'sub_klasifikasi': sub_name,
+                        'pekerjaan': {
+                            'kode': kode_pek or '-',
+                            'uraian': uraian,
+                            'satuan': satuan_pek,
+                            'total': self._format_number(G_hsp, 0),
+                        },
+                        'detail_table': {
+                            'headers': detail_headers,
+                            'col_widths': detail_col_widths,
+                        },
+                        # New: grouped rows to mirror page structure
+                        'groups': groups,
+                        'totals': {
+                            'E': self._format_number(E_total, 0),
+                            'F': self._format_number(F_margin, 0),
+                            'G': self._format_number(G_hsp, 0),
+                            'markup_eff': f"{eff_markup:.2f}",
+                        },
+                        'has_details': any(len(g['rows']) > 0 for g in groups),
+                    }
+
+                    sections.append(section)
+                    total_pekerjaan += 1
+                    grand_total += G_hsp
 
         return {
-            'table_data': {
-                'headers': headers,
-                'rows': rows,
+            'sections': sections,
+            'recap': {
+                'headers': ['Kode AHSP', 'Uraian', 'Total HSP (Rp)'],
+                'rows': recap_rows,
             },
-            'col_widths': col_widths,
-            'hierarchy_levels': hierarchy_levels,
-            'footer_rows': footer_rows,
+            'summary': {
+                'total_pekerjaan': total_pekerjaan,
+                'total_items': total_items,
+                'grand_total': self._format_number(grand_total, 0),
+            }
         }
 
     def _format_number(self, value: Any, decimals: int = 2) -> str:

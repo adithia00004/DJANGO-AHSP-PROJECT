@@ -40,19 +40,26 @@ class CSVExporter(ConfigExporterBase):
                 writer.writerow([label, value])
             writer.writerow([])
 
-            # Check if this section has subsections (appendix with multiple tables)
+            # Check if this section has subsections (appendix with multiple tables OR pekerjaan sections)
             if 'sections' in section:
-                # Multi-section page (e.g., Parameter + Formula appendix)
-                for subsection in section['sections']:
-                    # Subsection title
-                    subsection_title = subsection.get('section_title')
-                    if subsection_title:
-                        writer.writerow([subsection_title])
-                        writer.writerow([])
+                # Check if sections are pekerjaan sections (Rincian AHSP style)
+                if section['sections'] and isinstance(section['sections'][0], dict) and 'pekerjaan' in section['sections'][0]:
+                    # Rincian AHSP sections (each pekerjaan with its detail table)
+                    for pek_section in section['sections']:
+                        write_pekerjaan_section(pek_section)
+                        writer.writerow([])  # Separator between pekerjaan
+                else:
+                    # Multi-section page (e.g., Parameter + Formula appendix)
+                    for subsection in section['sections']:
+                        # Subsection title
+                        subsection_title = subsection.get('section_title')
+                        if subsection_title:
+                            writer.writerow([subsection_title])
+                            writer.writerow([])
 
-                    # Subsection table
-                    write_table(subsection)
-                    writer.writerow([])  # Separator between sections
+                        # Subsection table
+                        write_table(subsection)
+                        writer.writerow([])  # Separator between sections
             else:
                 # Single table section
                 write_table(section)
@@ -81,6 +88,34 @@ class CSVExporter(ConfigExporterBase):
                     row_with_indent = row
                 writer.writerow(row_with_indent)
 
+        def write_pekerjaan_section(pek_section: Dict[str, Any]):
+            """Write a pekerjaan section (Rincian AHSP style)"""
+            pekerjaan = pek_section.get('pekerjaan', {})
+            detail_table = pek_section.get('detail_table', {})
+
+            # Pekerjaan header section
+            writer.writerow(['=== PEKERJAAN ==='])
+            writer.writerow(['Kode', pekerjaan.get('kode', '-')])
+            writer.writerow(['Uraian', pekerjaan.get('uraian', '-')])
+            writer.writerow(['Satuan', pekerjaan.get('satuan', '-')])
+            writer.writerow(['Total', f"Rp {pekerjaan.get('total', '0')}"])
+            writer.writerow([])
+
+            # Detail items table
+            if pek_section.get('has_details'):
+                headers = detail_table.get('headers', [])
+                rows = detail_table.get('rows', [])
+
+                # Write headers
+                if headers:
+                    writer.writerow(headers)
+
+                # Write data rows
+                for row in rows:
+                    writer.writerow(row)
+            else:
+                writer.writerow(['Tidak ada detail item untuk pekerjaan ini'])
+
         # Multi-page support
         if 'pages' in data:
             pages = data['pages']
@@ -88,6 +123,19 @@ class CSVExporter(ConfigExporterBase):
                 write_section(section)
                 if i < len(pages) - 1:
                     writer.writerow([])
+        # Sections at root level (Rincian AHSP style)
+        elif 'sections' in data and data['sections'] and isinstance(data['sections'][0], dict) and 'pekerjaan' in data['sections'][0]:
+            # Rincian AHSP: sections with pekerjaan data
+            write_section(data)
+
+            # Add summary at the end
+            if 'summary' in data:
+                writer.writerow([])
+                writer.writerow(['=== RINGKASAN ==='])
+                summary = data['summary']
+                writer.writerow(['Total Pekerjaan', summary.get('total_pekerjaan', 0)])
+                writer.writerow(['Total Items', summary.get('total_items', 0)])
+                writer.writerow(['Grand Total', f"Rp {summary.get('grand_total', '0')}"])
         else:
             write_section(data)
         

@@ -231,7 +231,7 @@ class ExportManager:
         # Export!
         return exporter.export(data)
 
-    def export_rincian_ahsp(self, format_type: str) -> HttpResponse:
+    def export_rincian_ahsp(self, format_type: str, orientation: str | None = None) -> HttpResponse:
         """
         Export Rincian AHSP (Detail AHSP for all pekerjaan)
 
@@ -241,8 +241,9 @@ class ExportManager:
         Returns:
             HttpResponse with exported file
         """
-        # Create export config with landscape orientation (many columns) and signatures
-        config = self._create_config_simple('RINCIAN ANALISA HARGA SATUAN PEKERJAAN', page_orientation='landscape')
+        # Create export config; allow override via parameter (default: portrait)
+        page_orientation = orientation if orientation in ('portrait', 'landscape') else 'portrait'
+        config = self._create_config_simple('RINCIAN ANALISA HARGA SATUAN PEKERJAAN', page_orientation=page_orientation)
 
         # Get data
         adapter = RincianAHSPAdapter(self.project)
