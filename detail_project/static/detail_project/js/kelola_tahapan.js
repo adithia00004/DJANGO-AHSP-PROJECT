@@ -205,22 +205,61 @@
 
       allPekerjaan = [];
 
-      // Flatten tree structure
-      function flattenNode(node) {
+      // Flatten tree structure - handle both response formats
+      function flattenNode(node, parentKlasifikasi = '', parentSubKlasifikasi = '') {
         if (!node) return;
+
         if (Array.isArray(node)) {
-          node.forEach(n => flattenNode(n));
+          node.forEach(n => flattenNode(n, parentKlasifikasi, parentSubKlasifikasi));
           return;
         }
 
-        if (node.type === 'pekerjaan') {
+        // Handle response format: {ok: true, klasifikasi: [...]}
+        if (node.klasifikasi && Array.isArray(node.klasifikasi)) {
+          console.log('DEBUG: Processing klasifikasi array, length =', node.klasifikasi.length);
+          node.klasifikasi.forEach(klas => flattenNode(klas, '', ''));
+          return;
+        }
+
+        // Handle klasifikasi node
+        if (node.type === 'klasifikasi' || node.sub_klasifikasi) {
+          const klasNama = node.nama || node.name || '';
+          console.log('DEBUG: Processing klasifikasi:', klasNama);
+
+          if (node.sub_klasifikasi && Array.isArray(node.sub_klasifikasi)) {
+            node.sub_klasifikasi.forEach(sub => flattenNode(sub, klasNama, ''));
+          }
+          if (node.children && Array.isArray(node.children)) {
+            node.children.forEach(child => flattenNode(child, klasNama, ''));
+          }
+          return;
+        }
+
+        // Handle sub-klasifikasi node
+        if (node.type === 'sub_klasifikasi' || node.pekerjaan) {
+          const subKlasNama = node.nama || node.name || '';
+          console.log('DEBUG: Processing sub-klasifikasi:', subKlasNama);
+
+          if (node.pekerjaan && Array.isArray(node.pekerjaan)) {
+            node.pekerjaan.forEach(pkj => flattenNode(pkj, parentKlasifikasi, subKlasNama));
+          }
+          if (node.children && Array.isArray(node.children)) {
+            node.children.forEach(child => flattenNode(child, parentKlasifikasi, subKlasNama));
+          }
+          return;
+        }
+
+        // Handle pekerjaan node
+        if (node.type === 'pekerjaan' || node.pekerjaan_id) {
+          console.log('DEBUG: Found pekerjaan:', node.pekerjaan_id);
+
           const pkjData = {
             id: node.pekerjaan_id,
-            kode: node.snapshot_kode || node.kode,
-            uraian: node.snapshot_uraian || node.uraian,
+            kode: node.snapshot_kode || node.kode || '',
+            uraian: node.snapshot_uraian || node.uraian || '',
             satuan: node.snapshot_satuan || node.satuan || '-',
-            klasifikasi: node.klasifikasi_nama || '',
-            sub_klasifikasi: node.sub_klasifikasi_nama || '',
+            klasifikasi: node.klasifikasi_nama || parentKlasifikasi || '',
+            sub_klasifikasi: node.sub_klasifikasi_nama || parentSubKlasifikasi || '',
             ordering_index: node.ordering_index || 0
           };
 
@@ -233,8 +272,9 @@
           });
         }
 
-        if (node.children) {
-          node.children.forEach(child => flattenNode(child));
+        // Fallback: check children
+        if (node.children && Array.isArray(node.children)) {
+          node.children.forEach(child => flattenNode(child, parentKlasifikasi, parentSubKlasifikasi));
         }
       }
 
@@ -243,6 +283,9 @@
       console.log('DEBUG loadPekerjaan: Flattened allPekerjaan.length =', allPekerjaan.length);
       if (allPekerjaan.length > 0) {
         console.log('DEBUG loadPekerjaan: First pekerjaan =', allPekerjaan[0]);
+      } else {
+        console.warn('DEBUG loadPekerjaan: No pekerjaan found! Response structure might be unexpected.');
+        console.log('DEBUG loadPekerjaan: Full response =', JSON.stringify(response, null, 2));
       }
 
       // Populate filter klasifikasi dropdown
