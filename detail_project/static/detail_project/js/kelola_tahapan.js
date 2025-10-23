@@ -129,10 +129,9 @@
       // Load tahapan list
       await loadTahapan();
 
-      // Check if we have tahapan
+      // Check if we have tahapan, if not auto-create Tahap 1
       if (tahapanList.length === 0) {
-        showEmpty(true);
-        return;
+        await autoInitializeTahap1();
       }
 
       // Load pekerjaan tree
@@ -143,6 +142,9 @@
 
       // Load all assignments
       await loadAllAssignments();
+
+      // Auto-assign unassigned pekerjaan to Tahap 1
+      await autoAssignUnassignedToTahap1();
 
       // Render table
       renderTable();
@@ -259,6 +261,107 @@
     });
 
     await Promise.all(promises);
+  }
+
+  // =========================================================================
+  // AUTO-INITIALIZATION (DEFAULT TAHAP 1)
+  // =========================================================================
+
+  async function autoInitializeTahap1() {
+    console.log('Auto-initializing Tahap 1...');
+    try {
+      // Create Tahap 1 automatically
+      await apiCall(apiBase, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+          nama: 'Tahap 1',
+          urutan: 1,
+          deskripsi: 'Tahap pelaksanaan default',
+          tanggal_mulai: null,
+          tanggal_selesai: null
+        })
+      });
+
+      // Reload tahapan list
+      await loadTahapan();
+
+      console.log('Tahap 1 created successfully');
+      showStatus('Tahap 1 telah dibuat secara otomatis', 'success');
+    } catch (error) {
+      console.error('Failed to auto-initialize Tahap 1:', error);
+      // Non-critical, continue
+    }
+  }
+
+  async function autoAssignUnassignedToTahap1() {
+    // Find Tahap 1
+    const tahap1 = tahapanList.find(t => t.nama.toLowerCase().includes('tahap 1') || t.urutan === 1);
+    if (!tahap1) {
+      console.warn('Tahap 1 not found, skipping auto-assignment');
+      return;
+    }
+
+    // Find all unassigned or partially assigned pekerjaan
+    const unassignedPekerjaan = [];
+
+    pekerjaanMap.forEach((pkjData, pkjId) => {
+      const totalAssigned = pkjData.total_assigned || 0;
+
+      // If completely unassigned or partially assigned
+      if (totalAssigned < 99.99) {
+        const remainingProportion = 100 - totalAssigned;
+
+        // Check if already has Tahap 1 assignment
+        const existingTahap1 = pkjData.assignments.find(a => a.tahapan_id === tahap1.tahapan_id);
+
+        if (!existingTahap1 && remainingProportion > 0) {
+          // Add to unassigned list
+          unassignedPekerjaan.push({
+            pekerjaan_id: pkjId,
+            proporsi: remainingProportion
+          });
+
+          // Update local state
+          pkjData.assignments.push({
+            tahapan_id: tahap1.tahapan_id,
+            proporsi: remainingProportion
+          });
+          pkjData.total_assigned = 100;
+        }
+      }
+    });
+
+    // If there are unassigned pekerjaan, assign them to Tahap 1
+    if (unassignedPekerjaan.length > 0) {
+      console.log(`Auto-assigning ${unassignedPekerjaan.length} pekerjaan to Tahap 1...`);
+
+      try {
+        // Batch assign in chunks to avoid oversized payloads
+        const chunkSize = 50;
+        for (let i = 0; i < unassignedPekerjaan.length; i += chunkSize) {
+          const chunk = unassignedPekerjaan.slice(i, i + chunkSize);
+
+          await apiCall(`${apiBase}${tahap1.tahapan_id}/assign/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ assignments: chunk })
+          });
+        }
+
+        console.log('Auto-assignment completed successfully');
+        showStatus(`${unassignedPekerjaan.length} pekerjaan telah di-assign ke Tahap 1 secara otomatis`, 'success');
+      } catch (error) {
+        console.error('Failed to auto-assign to Tahap 1:', error);
+        showToast('Gagal auto-assign ke Tahap 1: ' + error.message, 'warning');
+      }
+    }
   }
 
   // =========================================================================
