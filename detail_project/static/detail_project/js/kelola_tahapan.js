@@ -124,36 +124,58 @@
   // =========================================================================
 
   async function loadAllData() {
+    console.log('=== LOAD ALL DATA START ===');
     showLoading(true);
     try {
       // Load tahapan list
+      console.log('Step 1: Loading tahapan...');
       await loadTahapan();
+      console.log('Step 1 DONE: tahapanList.length =', tahapanList.length);
 
       // Check if we have tahapan, if not auto-create Tahap 1
       if (tahapanList.length === 0) {
+        console.log('Step 2: No tahapan found, auto-initializing...');
         await autoInitializeTahap1();
+        console.log('Step 2 DONE: tahapanList.length =', tahapanList.length);
       }
 
       // Load pekerjaan tree
+      console.log('Step 3: Loading pekerjaan...');
       await loadPekerjaan();
+      console.log('Step 3 DONE: allPekerjaan.length =', allPekerjaan.length);
+      console.log('Step 3 DONE: pekerjaanMap.size =', pekerjaanMap.size);
 
       // Load volumes
+      console.log('Step 4: Loading volumes...');
       await loadVolumes();
+      console.log('Step 4 DONE: volumeMap.size =', volumeMap.size);
 
       // Load all assignments
+      console.log('Step 5: Loading assignments...');
       await loadAllAssignments();
+      console.log('Step 5 DONE');
 
       // Auto-assign unassigned pekerjaan to Tahap 1
+      console.log('Step 6: Auto-assigning unassigned...');
       await autoAssignUnassignedToTahap1();
+      console.log('Step 6 DONE');
 
       // Render table
+      console.log('Step 7: Rendering table...');
       renderTable();
+      console.log('Step 7 DONE');
 
       // Show main container
+      console.log('Step 8: Showing main container...');
       showEmpty(false);
+      console.log('Step 8 DONE');
+
+      console.log('=== LOAD ALL DATA COMPLETE ===');
 
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('!!! LOAD ALL DATA FAILED !!!');
+      console.error('Error:', error);
+      console.error('Stack:', error.stack);
       showToast('Gagal memuat data: ' + error.message, 'error');
     } finally {
       showLoading(false);
@@ -177,7 +199,10 @@
 
   async function loadPekerjaan() {
     try {
+      console.log('DEBUG loadPekerjaan: Fetching from API...');
       const response = await apiCall(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`);
+      console.log('DEBUG loadPekerjaan: API response =', response);
+
       allPekerjaan = [];
 
       // Flatten tree structure
@@ -189,7 +214,7 @@
         }
 
         if (node.type === 'pekerjaan') {
-          allPekerjaan.push({
+          const pkjData = {
             id: node.pekerjaan_id,
             kode: node.snapshot_kode || node.kode,
             uraian: node.snapshot_uraian || node.uraian,
@@ -197,11 +222,13 @@
             klasifikasi: node.klasifikasi_nama || '',
             sub_klasifikasi: node.sub_klasifikasi_nama || '',
             ordering_index: node.ordering_index || 0
-          });
+          };
+
+          allPekerjaan.push(pkjData);
 
           // Initialize in pekerjaanMap
           pekerjaanMap.set(node.pekerjaan_id, {
-            ...allPekerjaan[allPekerjaan.length - 1],
+            ...pkjData,
             assignments: [] // Will be populated later
           });
         }
@@ -213,6 +240,11 @@
 
       flattenNode(response);
 
+      console.log('DEBUG loadPekerjaan: Flattened allPekerjaan.length =', allPekerjaan.length);
+      if (allPekerjaan.length > 0) {
+        console.log('DEBUG loadPekerjaan: First pekerjaan =', allPekerjaan[0]);
+      }
+
       // Populate filter klasifikasi dropdown
       const klasifikasiSet = new Set(allPekerjaan.map(p => p.klasifikasi).filter(Boolean));
       if ($filterKlasifikasi) {
@@ -223,6 +255,7 @@
       return allPekerjaan;
     } catch (error) {
       console.error('Failed to load pekerjaan:', error);
+      console.error('Error details:', error.message, error.stack);
       throw error;
     }
   }
@@ -404,22 +437,47 @@
   // =========================================================================
 
   function renderTable() {
-    if (!$tbody) return;
+    console.log('DEBUG renderTable: Starting...');
+    console.log('DEBUG renderTable: $tbody =', $tbody);
+    console.log('DEBUG renderTable: allPekerjaan.length =', allPekerjaan.length);
+
+    if (!$tbody) {
+      console.error('DEBUG renderTable: $tbody is null!');
+      return;
+    }
 
     if (allPekerjaan.length === 0) {
+      console.warn('DEBUG renderTable: No pekerjaan to render');
       $tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Tidak ada pekerjaan</td></tr>';
       return;
     }
 
-    const html = allPekerjaan.map((pkj, idx) => createTableRow(pkj, idx + 1)).join('');
+    console.log('DEBUG renderTable: Creating rows...');
+    const html = allPekerjaan.map((pkj, idx) => {
+      try {
+        return createTableRow(pkj, idx + 1);
+      } catch (error) {
+        console.error('Error creating row for pekerjaan:', pkj, error);
+        return '';
+      }
+    }).join('');
+
+    console.log('DEBUG renderTable: HTML length =', html.length);
+    console.log('DEBUG renderTable: First 500 chars =', html.substring(0, 500));
+
     $tbody.innerHTML = html;
 
     // Attach event listeners
+    console.log('DEBUG renderTable: Attaching event listeners...');
     attachTableEventListeners();
 
     // Update count
-    document.getElementById('showing-count').textContent = allPekerjaan.length;
-    document.getElementById('total-count').textContent = allPekerjaan.length;
+    const showingCount = document.getElementById('showing-count');
+    const totalCount = document.getElementById('total-count');
+    if (showingCount) showingCount.textContent = allPekerjaan.length;
+    if (totalCount) totalCount.textContent = allPekerjaan.length;
+
+    console.log('DEBUG renderTable: Complete!');
   }
 
   function createTableRow(pkj, rowNum) {
