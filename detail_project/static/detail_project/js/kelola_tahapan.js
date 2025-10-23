@@ -1145,7 +1145,7 @@
     document.getElementById('oc-tahapan-selesai').value = t.tanggal_selesai || '';
   }
 
-  document.getElementById('offcanvas-tahapan')?.addEventListener('shown.bs.offcanvas', () => {
+  document.getElementById('vpVarOffcanvas')?.addEventListener('shown.bs.offcanvas', () => {
     renderOffcanvasTahapan();
   });
 

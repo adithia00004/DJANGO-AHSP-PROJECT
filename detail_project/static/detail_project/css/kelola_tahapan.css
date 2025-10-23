@@ -1,0 +1,90 @@
+/* =====================================================================
+   KELOLA_TAHAPAN.CSS — Styles for Tahapan Manager (cards, matrix, panel)
+   Relies on design tokens from core.css (dp-*) and Bootstrap utilities.
+   ===================================================================== */
+
+/* ===== Matrix Mode ===== */
+#matrix-mode { margin-top: .5rem; }
+
+#matrix-tablewrap {
+  border: 1px solid var(--dp-c-border, rgba(0,0,0,.08));
+  border-radius: var(--dp-radius-md, .375rem);
+  background: var(--dp-c-surface, #fff);
+  box-shadow: var(--dp-shadow-sm, 0 1px 2px rgba(0,0,0,.04));
+}
+
+#matrix-table thead th {
+  position: sticky;
+  top: 0; /* sticks within #matrix-tablewrap */
+  z-index: 2;
+  background: var(--dp-c-surface-2, #f8f9fa);
+  border-bottom: 1px solid var(--dp-c-border, rgba(0,0,0,.08));
+}
+
+#matrix-table td, #matrix-table th {
+  vertical-align: middle;
+}
+
+.matrix-input {
+  max-width: 7rem;
+  min-width: 5.5rem;
+  display: inline-block;
+  text-align: right;
+}
+
+#matrix-table td:last-child { /* Σ column */
+  font-weight: 600;
+}
+
+.matrix-toolbar { gap: .5rem; }
+
+/* Invalid inputs: reinforce Bootstrap feedback */
+.matrix-input.is-invalid {
+  border-color: var(--bs-danger) !important;
+  box-shadow: 0 0 0 .15rem rgba(220,53,69,.15);
+}
+
+/* ===== Offcanvas Panel (Right) ===== */
+#vpVarOffcanvas {
+  width: 420px;
+  max-width: 100vw;
+}
+
+#vpVarOffcanvas .offcanvas-body { padding-bottom: 2rem; }
+
+#offcanvas-tahapan-list .border {
+  border-color: var(--dp-c-border, rgba(0,0,0,.08)) !important;
+  background: var(--dp-c-surface, #fff);
+}
+
+#offcanvas-tahapan-list .fw-semibold { font-size: .95rem; }
+#offcanvas-tahapan-list .text-muted.small { opacity: .9; }
+
+/* ===== Assign Modal quick tools ===== */
+#modal-assign .form-check-label small { opacity: .85; }
+#filter-unassigned-toggle { cursor: pointer; }
+
+/* ===== Card polish ===== */
+.tahap-card .badge { font-weight: 600; }
+.tahap-header { border-bottom: 1px solid var(--dp-c-border, rgba(0,0,0,.06)); }
+
+/* ===== Dark mode tweaks ===== */
+[data-bs-theme="dark"] #matrix-table thead th {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 60%, var(--dp-c-bg, #0b0f14));
+}
+
+[data-bs-theme="dark"] #matrix-tablewrap {
+  background: var(--dp-c-surface, #0f141a);
+  border-color: var(--dp-c-border, rgba(255,255,255,.08));
+}
+
+[data-bs-theme="dark"] #offcanvas-tahapan-list .border {
+  background: var(--dp-c-surface, #0f141a);
+  border-color: var(--dp-c-border, rgba(255,255,255,.08)) !important;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 991.98px) {
+  .matrix-input { min-width: 4.5rem; max-width: 6rem; }
+}
+
