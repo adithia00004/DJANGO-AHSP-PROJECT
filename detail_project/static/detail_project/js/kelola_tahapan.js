@@ -271,7 +271,7 @@
     console.log('Auto-initializing Tahap 1...');
     try {
       // Create Tahap 1 automatically
-      await apiCall(apiBase, {
+      const response = await apiCall(apiBase, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -286,11 +286,25 @@
         })
       });
 
-      // Reload tahapan list
-      await loadTahapan();
+      console.log('DEBUG: Create Tahap 1 response =', response);
 
-      console.log('Tahap 1 created successfully');
-      showStatus('Tahap 1 telah dibuat secara otomatis', 'success');
+      // Reload tahapan list with retry
+      let retries = 3;
+      while (retries > 0) {
+        await loadTahapan();
+        if (tahapanList.length > 0) {
+          console.log('Tahap 1 created and loaded successfully');
+          showStatus('Tahap 1 telah dibuat secara otomatis', 'success');
+          return;
+        }
+        retries--;
+        if (retries > 0) {
+          console.log(`Tahapan list still empty, retrying... (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        }
+      }
+
+      console.warn('Tahap 1 created but not found in tahapanList after retries');
     } catch (error) {
       console.error('Failed to auto-initialize Tahap 1:', error);
       // Non-critical, continue
@@ -298,12 +312,33 @@
   }
 
   async function autoAssignUnassignedToTahap1() {
-    // Find Tahap 1
-    const tahap1 = tahapanList.find(t => t.nama.toLowerCase().includes('tahap 1') || t.urutan === 1);
+    // Debug: Log tahapanList
+    console.log('DEBUG: tahapanList =', tahapanList);
+    console.log('DEBUG: tahapanList length =', tahapanList.length);
+    if (tahapanList.length > 0) {
+      console.log('DEBUG: First tahapan =', tahapanList[0]);
+    }
+
+    // Find Tahap 1 (try multiple methods)
+    let tahap1 = tahapanList.find(t => t.nama && t.nama.toLowerCase().includes('tahap 1'));
+
+    if (!tahap1) {
+      // Try by urutan
+      tahap1 = tahapanList.find(t => t.urutan === 1);
+    }
+
+    if (!tahap1) {
+      // Try first tahapan as fallback
+      tahap1 = tahapanList[0];
+    }
+
     if (!tahap1) {
       console.warn('Tahap 1 not found, skipping auto-assignment');
+      console.warn('DEBUG: Available tahapan:', tahapanList);
       return;
     }
+
+    console.log('DEBUG: Using tahap1 =', tahap1);
 
     // Find all unassigned or partially assigned pekerjaan
     const unassignedPekerjaan = [];
