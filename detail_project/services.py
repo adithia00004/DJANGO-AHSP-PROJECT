@@ -1,15 +1,23 @@
 # detail_project/services.py
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from django.db import transaction
 from django.db.models import Sum, F as DJF, DecimalField, ExpressionWrapper
 from decimal import Decimal
 from collections import defaultdict
+from django.db.models import Q
 from .numeric import to_dp_str, DECIMAL_SPEC
 from django.core.cache import cache
 
 from .models import (
-    Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
-    DetailAHSPProject, HargaItemProject, ProjectPricing, 
+    Klasifikasi, 
+    SubKlasifikasi, 
+    Pekerjaan, 
+    VolumePekerjaan,
+    DetailAHSPProject, 
+    HargaItemProject, 
+    ProjectPricing, 
+    TahapPelaksanaan,
+    PekerjaanTahapan,
 )
 
 def invalidate_rekap_cache(project_or_id) -> None:
@@ -249,67 +257,350 @@ def compute_rekap_for_project(project):
     return result
 
 
-def compute_kebutuhan_items(project):
+def compute_kebutuhan_items(
+    project, 
+    mode='all', 
+    tahapan_id=None, 
+    filters=None
+):
     """
-    Rekap kebutuhan kuantitas per item (TK/BHN/ALT) untuk 1 project.
-    Rumus:
-      - Normal (TK/BHN/ALT): qty = koef_detail × volume
-      - Bundle (CUSTOM.LAIN + ref_ahsp): qty = multiplier (koef LAIN) × koef_ref(item) × volume
-    Baris LAIN non-bundle diabaikan.
-    Hasil dikembalikan sebagai list dict terurut.
+    Compute rekap kebutuhan dengan support split volume dan filtering.
+    
+    Args:
+        project: Project instance
+        mode: str - 'all' | 'tahapan'
+            - 'all': Semua pekerjaan (default)
+            - 'tahapan': Filter berdasarkan tahapan tertentu
+        tahapan_id: int - ID tahapan (required jika mode='tahapan')
+        filters: dict - Additional filters:
+            - klasifikasi_ids: list[int] - Filter by klasifikasi
+            - sub_klasifikasi_ids: list[int] - Filter by sub-klasifikasi
+            - kategori_items: list[str] - Filter by kategori item (TK/BHN/ALT/LAIN)
+    
+    Returns:
+        list of dict: [{kategori, kode, uraian, satuan, quantity, metadata}, ...]
+        
+    Examples:
+        # Semua pekerjaan
+        >>> rows = compute_kebutuhan_items(project)
+        
+        # Tahapan tertentu
+        >>> rows = compute_kebutuhan_items(project, mode='tahapan', tahapan_id=1)
+        
+        # Dengan filter klasifikasi
+        >>> rows = compute_kebutuhan_items(
+        ...     project, 
+        ...     filters={'klasifikasi_ids': [1, 2]}
+        ... )
+        
+        # Tahapan + filter kategori
+        >>> rows = compute_kebutuhan_items(
+        ...     project,
+        ...     mode='tahapan',
+        ...     tahapan_id=1,
+        ...     filters={'kategori_items': ['TK', 'BHN']}
+        ... )
     """
-    # 1) Volume map
+    # ========================================================================
+    # STEP 1: Determine scope - pekerjaan mana yang akan di-aggregate
+    # ========================================================================
+    
+    if mode == 'tahapan' and tahapan_id:
+        # Mode tahapan: ambil pekerjaan dari tahapan tertentu dengan proporsi
+        pt_qs = PekerjaanTahapan.objects.filter(
+            tahapan_id=tahapan_id
+        ).select_related('pekerjaan', 'tahapan')
+        
+        # Build dict: pekerjaan_id -> proporsi (dalam bentuk Decimal 0-1)
+        pekerjaan_proporsi = {
+            pt.pekerjaan_id: pt.proporsi_volume / Decimal('100')
+            for pt in pt_qs
+        }
+        pekerjaan_ids = list(pekerjaan_proporsi.keys())
+        
+    else:
+        # Mode 'all': semua pekerjaan dengan proporsi 100%
+        pekerjaan_ids = list(
+            Pekerjaan.objects.filter(project=project).values_list('id', flat=True)
+        )
+        pekerjaan_proporsi = {pk: Decimal('1.0') for pk in pekerjaan_ids}
+    
+    # ========================================================================
+    # STEP 2: Apply additional filters (klasifikasi, sub-klasifikasi)
+    # ========================================================================
+    
+    if filters:
+        queryset = Pekerjaan.objects.filter(id__in=pekerjaan_ids)
+        
+        # Filter by klasifikasi
+        if filters.get('klasifikasi_ids'):
+            queryset = queryset.filter(
+                sub_klasifikasi__klasifikasi_id__in=filters['klasifikasi_ids']
+            )
+        
+        # Filter by sub-klasifikasi
+        if filters.get('sub_klasifikasi_ids'):
+            queryset = queryset.filter(
+                sub_klasifikasi_id__in=filters['sub_klasifikasi_ids']
+            )
+        
+        # Update pekerjaan_ids setelah filter
+        pekerjaan_ids = list(queryset.values_list('id', flat=True))
+    
+    # Jika tidak ada pekerjaan dalam scope, return empty
+    if not pekerjaan_ids:
+        return []
+    
+    # ========================================================================
+    # STEP 3: Get volume map untuk semua pekerjaan dalam scope
+    # ========================================================================
+    
     vol_map = dict(
-        (pid, Decimal(str(qty)))
-        for pid, qty in
-        project.volume_list.values_list('pekerjaan_id', 'quantity')
+        VolumePekerjaan.objects
+        .filter(project=project, pekerjaan_id__in=pekerjaan_ids)
+        .values_list('pekerjaan_id', 'quantity')
     )
-
-    # 2) Ambil semua detail (termasuk ref_ahsp_id)
-    rows = (DetailAHSPProject.objects
-            .filter(project=project)
-            .values('pekerjaan_id', 'kategori', 'kode', 'uraian', 'satuan', 'koefisien', 'ref_ahsp_id'))
-
-    # 3) Kumpulkan AHSP referensi dari baris LAIN (bundle)
-    ahsp_ids = {r['ref_ahsp_id'] for r in rows if r['ref_ahsp_id']}
-
+    
+    # ========================================================================
+    # STEP 4: Aggregate items dengan proporsi volume
+    # ========================================================================
+    
+    # Dictionary untuk agregasi: key = (kategori, kode, uraian, satuan)
+    aggregated = defaultdict(Decimal)
+    
+    # Get all detail items untuk pekerjaan dalam scope
+    details = DetailAHSPProject.objects.filter(
+        project=project,
+        pekerjaan_id__in=pekerjaan_ids
+    ).select_related('harga_item').values(
+        'pekerjaan_id', 
+        'kategori', 
+        'kode', 
+        'uraian', 
+        'satuan', 
+        'koefisien', 
+        'ref_ahsp_id'
+    )
+    
+    # Kumpulkan ref_ahsp_id untuk bundle items (kategori LAIN)
+    ahsp_ids = {d['ref_ahsp_id'] for d in details if d['ref_ahsp_id']}
+    
+    # Get bundle items dari RincianReferensi
     ref_map = {}
     if ahsp_ids and RincianReferensi is not None:
-        rqs = (RincianReferensi.objects
-               .filter(ahsp_id__in=ahsp_ids, kategori__in=['TK', 'BHN', 'ALT'])
-               .values('ahsp_id', 'kategori', 'kode_item', 'uraian_item', 'satuan_item', 'koefisien'))
-        for r in rqs:
+        ref_items = RincianReferensi.objects.filter(
+            ahsp_id__in=ahsp_ids,
+            kategori__in=['TK', 'BHN', 'ALT']
+        ).values(
+            'ahsp_id', 
+            'kategori', 
+            'kode_item', 
+            'uraian_item', 
+            'satuan_item', 
+            'koefisien'
+        )
+        
+        for r in ref_items:
             ref_map.setdefault(r['ahsp_id'], []).append(r)
-
-    # 4) Agregasi kuantitas
-    agg = defaultdict(Decimal)
-    for r in rows:
-        volume = Decimal(str(vol_map.get(r['pekerjaan_id'], 0) or 0))
-        if volume == 0:
+    
+    # Process each detail item
+    for detail in details:
+        pekerjaan_id = detail['pekerjaan_id']
+        
+        # Get volume dan proporsi
+        volume_total = Decimal(str(vol_map.get(pekerjaan_id, 0) or 0))
+        proporsi = pekerjaan_proporsi.get(pekerjaan_id, Decimal('1.0'))
+        
+        # Volume efektif dengan proporsi
+        volume_efektif = volume_total * proporsi
+        
+        if volume_efektif == 0:
             continue
+        
+        kategori = detail['kategori']
+        koefisien = Decimal(str(detail['koefisien'] or 0))
+        
+        # Handle bundle items (LAIN dengan ref_ahsp)
+        if detail['ref_ahsp_id'] and kategori == 'LAIN':
+            # Bundle: multiply with ref items
+            multiplier = koefisien
+            for ref_item in ref_map.get(detail['ref_ahsp_id'], []):
+                key = (
+                    ref_item['kategori'],
+                    ref_item['kode_item'],
+                    ref_item['uraian_item'],
+                    ref_item['satuan_item']
+                )
+                ref_koef = Decimal(str(ref_item['koefisien']))
+                qty = multiplier * ref_koef * volume_efektif
+                aggregated[key] += qty
+        
+        # Handle normal items (TK/BHN/ALT)
+        elif kategori in ('TK', 'BHN', 'ALT'):
+            key = (
+                kategori,
+                detail['kode'],
+                detail['uraian'],
+                detail['satuan']
+            )
+            qty = koefisien * volume_efektif
+            aggregated[key] += qty
+    
+    # ========================================================================
+    # STEP 5: Apply kategori filter (jika ada)
+    # ========================================================================
+    
+    if filters and filters.get('kategori_items'):
+        allowed_kat = set(filters['kategori_items'])
+        aggregated = {
+            k: v for k, v in aggregated.items() 
+            if k[0] in allowed_kat
+        }
+    
+    # ========================================================================
+    # STEP 6: Format output
+    # ========================================================================
+    
+    rows = []
+    for (kategori, kode, uraian, satuan), quantity in aggregated.items():
+        # Format quantity dengan 6 decimal places, remove trailing zeros
+        qty_str = f"{quantity:.6f}".rstrip('0').rstrip('.')
+        
+        rows.append({
+            'kategori': kategori,
+            'kode': kode or '-',
+            'uraian': uraian or '-',
+            'satuan': satuan or '-',
+            'quantity': qty_str,  # String untuk display
+            'quantity_decimal': quantity,  # Decimal untuk calculation
+        })
+    
+    # ========================================================================
+    # STEP 7: Sort output
+    # ========================================================================
+    
+    # Sort by kategori (TK -> BHN -> ALT -> LAIN), then by kode
+    kategori_order = {'TK': 1, 'BHN': 2, 'ALT': 3, 'LAIN': 4}
+    rows.sort(key=lambda x: (
+        kategori_order.get(x['kategori'], 99), 
+        x['kode'] or '', 
+        x['uraian'] or ''
+    ))
+    
+    return rows
 
-        kat = r['kategori']
-        if r['ref_ahsp_id'] and kat == 'LAIN':
-            # Bundle
-            m = Decimal(str(r['koefisien'] or 0))
-            for i in ref_map.get(r['ref_ahsp_id'], []):
-                key = (i['kategori'], i['kode_item'], i['uraian_item'], i['satuan_item'])
-                agg[key] += m * Decimal(str(i['koefisien'])) * volume
+
+
+def get_tahapan_summary(project):
+    """
+    Get summary info untuk semua tahapan dalam project.
+    
+    Args:
+        project: Project instance
+    
+    Returns:
+        list of dict: Summary info per tahapan
+        
+    Example:
+        [
+            {
+                'tahapan_id': 1,
+                'nama': 'Tahap 1: Persiapan',
+                'urutan': 1,
+                'jumlah_pekerjaan': 3,
+                'total_assigned_proportion': 300.00,  # 3 pekerjaan @ 100%
+                'tanggal_mulai': '2025-01-01',
+                'tanggal_selesai': '2025-01-15'
+            },
+            ...
+        ]
+    """
+    tahapan_list = TahapPelaksanaan.objects.filter(
+        project=project
+    ).prefetch_related('pekerjaan_items').order_by('urutan', 'id')
+    
+    result = []
+    for tahap in tahapan_list:
+        # Count pekerjaan dan total proporsi
+        assignments = tahap.pekerjaan_items.all()
+        jumlah_pekerjaan = assignments.values('pekerjaan').distinct().count()
+        total_proporsi = sum(a.proporsi_volume for a in assignments)
+        
+        result.append({
+            'tahapan_id': tahap.id,
+            'nama': tahap.nama,
+            'urutan': tahap.urutan,
+            'deskripsi': tahap.deskripsi,
+            'jumlah_pekerjaan': jumlah_pekerjaan,
+            'total_assigned_proportion': float(total_proporsi),
+            'tanggal_mulai': tahap.tanggal_mulai.isoformat() if tahap.tanggal_mulai else None,
+            'tanggal_selesai': tahap.tanggal_selesai.isoformat() if tahap.tanggal_selesai else None,
+            'created_at': tahap.created_at.isoformat() if tahap.created_at else None,
+        })
+    
+    return result
+
+
+def get_unassigned_pekerjaan(project):
+    """
+    Get list pekerjaan yang belum fully assigned ke tahapan.
+    
+    Args:
+        project: Project instance
+    
+    Returns:
+        list of dict: Pekerjaan yang belum/partial assigned
+        
+    Example:
+        [
+            {
+                'pekerjaan_id': 5,
+                'kode': '1.1.1',
+                'uraian': 'Galian Tanah',
+                'assigned_proportion': 60.00,
+                'unassigned_proportion': 40.00,
+                'status': 'partial'  # 'unassigned' | 'partial'
+            },
+            ...
+        ]
+    """
+    from django.db.models import Sum, F
+    
+    # Get all pekerjaan dengan total assigned proportion
+    pekerjaan_qs = Pekerjaan.objects.filter(
+        project=project
+    ).annotate(
+        total_assigned=Sum('tahapan_assignments__proporsi_volume')
+    ).order_by('ordering_index', 'id')
+    
+    result = []
+    for pkj in pekerjaan_qs:
+        assigned = float(pkj.total_assigned or 0)
+        unassigned = 100.0 - assigned
+        
+        # Skip jika fully assigned
+        if abs(unassigned) < 0.01:
+            continue
+        
+        # Determine status
+        if assigned < 0.01:
+            status = 'unassigned'
         else:
-            # Normal (hanya TK/BHN/ALT)
-            if kat in ('TK', 'BHN', 'ALT'):
-                key = (kat, r['kode'], r['uraian'], r['satuan'])
-                agg[key] += Decimal(str(r['koefisien'] or 0)) * volume
-
-    # 5) Kemas hasil (format dp = KOEF)
-    dp = DECIMAL_SPEC["KOEF"].dp
-    items = [
-        dict(kategori=k, kode=code, uraian=ura, satuan=sat, quantity=to_dp_str(q, dp))
-        for (k, code, ura, sat), q in agg.items()
-        if q is not None
-    ]
-
-    # Urutkan: TK, BHN, ALT → lalu kode, uraian
-    order_kat = {'TK': 0, 'BHN': 1, 'ALT': 2}
-    items.sort(key=lambda x: (order_kat.get(x['kategori'], 99), str(x['kode'] or ''), str(x['uraian'] or '')))
-    return items
+            status = 'partial'
+        
+        result.append({
+            'pekerjaan_id': pkj.id,
+            'kode': pkj.snapshot_kode,
+            'uraian': pkj.snapshot_uraian,
+            'assigned_proportion': assigned,
+            'unassigned_proportion': unassigned,
+            'status': status,
+            'klasifikasi': (pkj.sub_klasifikasi.klasifikasi.name 
+                        if pkj.sub_klasifikasi and pkj.sub_klasifikasi.klasifikasi 
+                        else None),
+            'sub_klasifikasi': (pkj.sub_klasifikasi.name 
+                            if pkj.sub_klasifikasi 
+                            else None),
+        })
+    
+    return result

@@ -4,8 +4,12 @@
 
 {% block title %}Edit Proyek{% endblock %}
 
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
+{% endblock %}
+
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4 dashboard-page">
   <div class="card shadow-sm">
     <div class="card-header bg-primary text-white">
       <h5 class="mb-0">

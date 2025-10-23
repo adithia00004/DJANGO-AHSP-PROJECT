@@ -1,0 +1,159 @@
+/* dashboard/static/dashboard/css/dashboard.css */
+/* Selaraskan tampilan dashboard dengan halaman detail_project (core.css) */
+
+/* Formset table wrapper mengikuti utilitas scroll yang dipakai di halaman lain */
+.dashboard-form-table-wrapper{
+  overflow: auto;
+}
+
+/* Sticky thead konsisten dengan pola dp-thead-sticky */
+table .dp-thead-sticky th{
+  position: sticky;
+  top: 0; /* untuk container scroll lokal */
+  z-index: var(--dp-z-thead, 12030);
+  background: var(--dp-c-surface, #fff);
+}
+
+/* Hover row halus (mengacu pada tokens core.css) */
+.dashboard-project-table tbody tr:hover{
+  background-color: var(--dp-row-hover, rgba(13,110,253,.06));
+}
+
+/* Validasi form merah konsisten */
+.table-danger input,
+.table-danger select,
+.table-danger textarea{
+  border-color: var(--dp-c-danger, #dc3545);
+}
+
+/* Filter/search spacing & tinggi input mengikuti density tokens */
+.dashboard-filter-form .form-control,
+.dashboard-filter-form .form-select{
+  min-height: var(--ux-input-h, 2.375rem);
+}
+
+/* Kartu statistik mengikuti bayangan & radius dari core.css (opsional) */
+.dashboard-stats-card{
+  border-radius: var(--dp-radius-md, .5rem);
+  box-shadow: var(--dp-shadow-md, 0 6px 16px rgba(0,0,0,.12));
+}
+
+/* ========== General theming alignment for dashboard pages ========== */
+.dashboard-section,
+.dashboard-page{
+  color: var(--dp-c-text);
+}
+
+/* Cards and headers follow surface tokens */
+.dashboard-section .card,
+.dashboard-page .card{
+  background: var(--dp-c-surface, #fff);
+  border-color: var(--dp-c-border, #e5e7eb);
+}
+.dashboard-section .card-header,
+.dashboard-page .card-header{
+  background: var(--dp-c-surface-2, #f7f8fa) !important;
+  border-bottom-color: var(--dp-c-border, #e5e7eb);
+}
+
+/* Tables: borders and head color aligned */
+.dashboard-section .table,
+.dashboard-page .table{
+  border-color: var(--dp-c-border, #e5e7eb);
+}
+.dashboard-section .table > :not(caption) > * > *,
+.dashboard-page .table > :not(caption) > * > *{
+  border-color: var(--dp-c-border, #e5e7eb);
+}
+.dashboard-section .table thead,
+.dashboard-page .table thead{
+  background: var(--dp-c-surface-2, #f7f8fa);
+}
+
+/* Forms: colors and focus ring */
+.dashboard-section .form-control,
+.dashboard-section .form-select,
+.dashboard-page .form-control,
+.dashboard-page .form-select{
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border-color: var(--dp-c-border);
+}
+.dashboard-section .form-control:focus,
+.dashboard-section .form-select:focus,
+.dashboard-page .form-control:focus,
+.dashboard-page .form-select:focus{
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 .2rem var(--dp-c-focus);
+  outline: 0;
+}
+
+/* Tabs style alignment */
+.dashboard-page .nav-tabs .nav-link{
+  color: var(--dp-c-text);
+  border-color: var(--dp-c-border);
+}
+.dashboard-page .nav-tabs .nav-link.active{
+  border-color: var(--dp-c-primary) var(--dp-c-primary) var(--dp-c-surface);
+  color: var(--dp-c-primary);
+}
+
+/* Breadcrumb look */
+.dashboard-page .breadcrumb{
+  background: var(--dp-c-surface-2) !important;
+  border: 1px solid var(--dp-c-border);
+}
+
+/* Buttons radius/hover feel (light touch) */
+.dashboard-section .btn,
+.dashboard-page .btn{
+  border-radius: var(--dp-radius-md);
+}
+
+/* ===== Project list table (rounded, single-border) ===== */
+.dashboard-table-wrapper{
+  border: 2px solid var(--dp-c-border, #e5e7eb);
+  border-radius: var(--dp-radius-md, .5rem);
+  background: var(--dp-c-surface, #fff);
+  overflow: hidden; /* enforce rounded corners for table content */
+  border-width: 4px; /* outer line thicker for clear hierarchy */
+}
+
+.dashboard-project-table{
+  margin-bottom: 0;         /* remove extra gap under rounded wrapper */
+  border: 0 !important;     /* avoid double border with wrapper */
+  border-collapse: separate; /* allow clean edges */
+  border-spacing: 0;         /* no gaps */
+}
+
+.dashboard-project-table thead th{
+  border-top: 0; /* top border handled by wrapper */
+  border-bottom: 1px solid var(--dp-c-border, #e5e7eb); /* header thinner than outer */
+  background: var(--dp-c-surface-2, #f7f8fa);
+}
+
+.dashboard-project-table thead th:first-child,
+.dashboard-project-table tbody td:first-child{
+  border-left: 0; /* left outer border handled by wrapper */
+}
+.dashboard-project-table thead th:last-child,
+.dashboard-project-table tbody td:last-child{
+  border-right: 0; /* right outer border handled by wrapper */
+}
+.dashboard-project-table tbody tr:last-child td{
+  border-bottom: 0; /* bottom outer border handled by wrapper */
+}
+
+.dashboard-project-table td .btn{
+  margin: 0 .125rem; /* compact spacing between action buttons */
+}
+
+/* Softer inner grid lines for body cells (visual hierarchy) */
+.dashboard-project-table > :not(caption) > tbody > tr > *{
+  border-color: color-mix(in srgb, var(--dp-c-border, #e5e7eb) 60%, transparent);
+}
+
+/* Subtle zebra to aid scanning (keeps hover stronger) */
+.dashboard-project-table tbody tr:nth-child(even){
+  background-color: color-mix(in srgb, var(--dp-c-surface-2, #f7f8fa) 35%, transparent);
+}

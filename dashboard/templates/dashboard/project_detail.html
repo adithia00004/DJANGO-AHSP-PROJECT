@@ -3,8 +3,12 @@
 
 {% block title %}{{ project.nama }} - Detail Proyek{% endblock %}
 
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
+{% endblock %}
+
 {% block content %}
-<div class="row">
+<div class="row dashboard-page">
     <div class="col-12">
 
         <!-- ✅ Breadcrumb Multi-Level -->

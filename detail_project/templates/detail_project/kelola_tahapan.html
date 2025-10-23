@@ -1,0 +1,386 @@
+{% extends "detail_project/base_detail.html" %}
+{% load static %}
+
+{% block title %}Kelola Tahapan Pelaksanaan - {{ project.nama }}{% endblock %}
+
+{# Matikan include CSS detail_ahsp.css yang tidak ada (hindari 404) #}
+{% block detail_css %}{% endblock %}
+
+{% block extra_css %}
+<style>
+.tahap-card {
+  border-left: 4px solid #0d6efd;
+  transition: all 0.2s ease;
+}
+
+.tahap-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.tahap-header {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.assignment-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.split-indicator {
+  color: #fd7e14;
+  font-weight: 600;
+}
+
+.progress-thin {
+  height: 4px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6c757d;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  opacity: 0.5;
+  margin-bottom: 1rem;
+}
+
+.warning-incomplete {
+  border-left: 4px solid #ffc107;
+  background-color: #fff3cd;
+}
+
+.btn-reorder {
+  cursor: move;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  background: white;
+  padding: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+</style>
+{% endblock %}
+
+{% block dp_content %}
+<div id="tahapan-app" 
+     data-project-id="{{ project.id }}"
+     data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/">
+
+  <!-- Header with Actions -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2>Kelola Tahapan Pelaksanaan</h2>
+      <p class="text-muted mb-0">
+        Atur tahapan konstruksi dan assign pekerjaan dengan split volume
+      </p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div class="form-check form-switch me-2">
+        <input class="form-check-input" type="checkbox" id="toggle-matrix-mode">
+        <label class="form-check-label" for="toggle-matrix-mode">Matrix Mode (Beta)</label>
+      </div>
+      <button class="btn btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvas-tahapan" aria-controls="offcanvas-tahapan">
+        <i class="bi bi-layout-sidebar-inset-reverse"></i> Panel Tahapan
+      </button>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" id="btn-add-tahapan">
+          <i class="bi bi-plus-circle"></i> Tambah Tahapan
+        </button>
+        {# Validasi kini otomatis via banner; tombol disembunyikan untuk menyederhanakan UI #}
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Warning -->
+  <div id="warning-incomplete" class="alert warning-incomplete d-none" role="alert">
+    <div class="d-flex align-items-center">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>
+      <div class="flex-grow-1">
+        <strong>Perhatian:</strong> 
+        <span id="incomplete-count"></span> pekerjaan belum fully assigned ke tahapan.
+      </div>
+      <button type="button" class="btn btn-sm btn-warning" id="btn-show-incomplete">
+        Lihat Detail
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading Indicator -->
+  <div id="loading" class="text-center py-5 d-none">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2 text-muted">Memuat tahapan...</p>
+  </div>
+
+  <!-- Empty State -->
+  <div id="empty-state" class="empty-state d-none">
+    <i class="bi bi-inbox"></i>
+    <h4>Belum Ada Tahapan</h4>
+    <p class="text-muted">
+      Mulai dengan menambahkan tahapan pelaksanaan untuk project Anda.
+    </p>
+    <button type="button" class="btn btn-primary" data-trigger="add-tahapan">
+      <i class="bi bi-plus-circle"></i> Tambah Tahapan Pertama
+    </button>
+  </div>
+
+  <!-- Tahapan List -->
+  <div id="tahapan-list" class="vstack gap-3">
+    <!-- Cards will be rendered here by JavaScript -->
+  </div>
+
+  <!-- Matrix Mode Container (hidden by default) -->
+  <div id="matrix-mode" class="d-none">
+    <div class="alert alert-info py-2 small">
+      <i class="bi bi-info-circle"></i>
+      Mode tabel pivot per-tahap. Isi proporsi (%) per pekerjaan per tahapan. Σ harus 100% per baris.
+    </div>
+    <div class="d-flex justify-content-end mb-2">
+      <button type="button" class="btn btn-sm btn-success" id="btn-matrix-save" disabled>
+        <i class="bi bi-check2-circle"></i> Simpan Perubahan (<span id="matrix-change-count">0</span>)
+      </button>
+    </div>
+    <div class="table-responsive" id="matrix-tablewrap" style="max-height: 70vh; overflow: auto;">
+      <table class="table table-sm table-hover align-middle" id="matrix-table">
+        <thead class="table-light" id="matrix-thead"></thead>
+        <tbody id="matrix-tbody">
+          <tr><td class="text-muted">Memuat matrix…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: Add/Edit Tahapan -->
+<div class="modal fade" id="modal-tahapan" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-tahapan-title">Tambah Tahapan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="form-tahapan">
+          <input type="hidden" id="tahapan-id" name="tahapan_id">
+          
+          <div class="mb-3">
+            <label for="tahapan-nama" class="form-label">
+              Nama Tahapan <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="tahapan-nama" required
+                   placeholder="Contoh: Tahap 1 - Pekerjaan Persiapan">
+            <div class="form-text">Nama harus unik dalam project</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="tahapan-deskripsi" class="form-label">Deskripsi</label>
+            <textarea class="form-control" id="tahapan-deskripsi" rows="3"
+                      placeholder="Deskripsi detail tahapan (opsional)"></textarea>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="tahapan-tanggal-mulai" class="form-label">Tanggal Mulai</label>
+              <input type="date" class="form-control" id="tahapan-tanggal-mulai">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="tahapan-tanggal-selesai" class="form-label">Tanggal Selesai</label>
+              <input type="date" class="form-control" id="tahapan-tanggal-selesai">
+            </div>
+          </div>
+
+          <div class="alert alert-info small mb-0">
+            <i class="bi bi-info-circle"></i>
+            Setelah membuat tahapan, Anda bisa assign pekerjaan dari card tahapan.
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary" id="btn-save-tahapan">
+          <i class="bi bi-check-circle"></i> Simpan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Assign Pekerjaan -->
+<div class="modal fade" id="modal-assign" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Assign Pekerjaan ke Tahapan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="assign-tahapan-info" class="alert alert-secondary mb-3">
+          <strong>Tahapan:</strong> <span id="assign-tahapan-nama"></span>
+        </div>
+
+        <!-- Search/Filter -->
+        <div class="mb-3">
+          <input type="text" class="form-control" id="search-pekerjaan" 
+                 placeholder="Cari pekerjaan...">
+        </div>
+
+        <!-- Quick Tools: filter & bulk fill -->
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="filter-unassigned-toggle">
+            <label class="form-check-label" for="filter-unassigned-toggle">
+              Tampilkan hanya pekerjaan belum/parsial
+            </label>
+          </div>
+          <div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-fill-remaining">
+              <i class="bi bi-magic"></i> Isi sisa 100% ke Tahapan ini
+            </button>
+          </div>
+        </div>
+
+        <!-- Pekerjaan List with Checkboxes -->
+        <div id="pekerjaan-list" style="max-height: 400px; overflow-y: auto;">
+          <!-- Will be populated by JavaScript -->
+        </div>
+
+        <div class="mt-3">
+          <p class="text-muted small mb-0">
+            <i class="bi bi-info-circle"></i>
+            Pilih pekerjaan dan set proporsi volume (%). Total harus 100% per pekerjaan.
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary" id="btn-save-assignments">
+          <i class="bi bi-check-circle"></i> Simpan Assignments
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Detail Tahapan -->
+<div class="modal fade" id="modal-tahapan-detail" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Detail Tahapan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="tahapan-detail-body">
+          <!-- Injected by JavaScript -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+  
+</div>
+
+<!-- Modal: Unassigned Pekerjaan -->
+<div class="modal fade" id="modal-unassigned" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Pekerjaan Belum Ter-assign</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="unassigned-list">
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay d-none">
+  <div class="loading-spinner">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2 mb-0">Memproses...</p>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="{% static 'detail_project/js/kelola_tahapan.js' %}" defer></script>
+{% endblock %}
+<!-- Offcanvas: Panel Tahapan (Right Sidebar) -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvas-tahapan" aria-labelledby="offcanvas-tahapan-label">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="offcanvas-tahapan-label">Panel Tahapan</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body">
+    <div class="mb-3">
+      <h6 class="mb-2">Daftar Tahapan</h6>
+      <div id="offcanvas-tahapan-list" class="vstack gap-2 small">
+        <!-- populated by JS -->
+      </div>
+    </div>
+    <hr>
+    <div>
+      <h6 class="mb-2">Tambah / Edit Tahapan</h6>
+      <form id="offcanvas-form-tahapan">
+        <input type="hidden" id="oc-tahapan-id">
+        <div class="mb-2">
+          <label class="form-label">Nama Tahapan</label>
+          <input type="text" class="form-control" id="oc-tahapan-nama" placeholder="Contoh: Tahap 1 - Persiapan" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Deskripsi</label>
+          <textarea class="form-control" id="oc-tahapan-deskripsi" rows="2" placeholder="Opsional"></textarea>
+        </div>
+        <div class="row mb-2">
+          <div class="col-6">
+            <label class="form-label">Tanggal Mulai</label>
+            <input type="date" class="form-control" id="oc-tahapan-mulai">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Tanggal Selesai</label>
+            <input type="date" class="form-control" id="oc-tahapan-selesai">
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm" id="oc-btn-save">
+            <i class="bi bi-check-circle"></i> Simpan
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="oc-btn-reset">Reset</button>
+        </div>
+      </form>
+    </div>
+  </div>
+ </div>

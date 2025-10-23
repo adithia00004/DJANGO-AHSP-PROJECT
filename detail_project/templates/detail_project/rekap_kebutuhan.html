@@ -13,10 +13,82 @@
 <div id="rk-app"
      class="dp-container"
      data-project-id="{{ project.id }}"
-     data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan' project.id %}"
+     data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_enhanced' project.id %}"
      data-endpoint-export="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}">
-  <h1 class="h5 mb-2">Rekap Kebutuhan</h1>
+  
+  <h1 class="h5 mb-3">Rekap Kebutuhan</h1>
 
+  <!-- Filter Panel (NEW) -->
+  <div class="dp-card dp-border dp-surface mb-3 rk-filter-card">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">
+          <i class="bi bi-funnel"></i> Filter & Scope
+        </h6>
+        <a href="{% url 'detail_project:kelola_tahapan' project.id %}" 
+           class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-gear"></i> Kelola Tahapan
+        </a>
+      </div>
+      
+      <!-- Tahapan Scope Selector -->
+      <div class="rk-filter-section mb-3">
+        <label class="rk-filter-label">
+          <i class="bi bi-bookmark"></i> Scope Tahapan:
+        </label>
+        <div class="rk-tahapan-selector">
+          <button type="button" 
+                  class="rk-tahapan-btn active" 
+                  data-scope="all" 
+                  data-tahapan-id="">
+            <i class="bi bi-globe"></i> Keseluruhan Project
+          </button>
+          <!-- Tahapan buttons loaded by JS -->
+          <div id="rk-tahapan-buttons"></div>
+        </div>
+      </div>
+
+      <!-- Kategori Filter -->
+      <div class="rk-filter-section mb-3">
+        <label class="rk-filter-label">
+          <i class="bi bi-tags"></i> Kategori Item:
+        </label>
+        <div class="rk-kategori-filter">
+          <label class="rk-kategori-checkbox">
+            <input type="checkbox" class="form-check-input kategori-check" value="TK" checked>
+            <span>Tenaga Kerja (TK)</span>
+          </label>
+          <label class="rk-kategori-checkbox">
+            <input type="checkbox" class="form-check-input kategori-check" value="BHN" checked>
+            <span>Bahan (BHN)</span>
+          </label>
+          <label class="rk-kategori-checkbox">
+            <input type="checkbox" class="form-check-input kategori-check" value="ALT" checked>
+            <span>Alat (ALT)</span>
+          </label>
+          <label class="rk-kategori-checkbox">
+            <input type="checkbox" class="form-check-input kategori-check" value="LAIN" checked>
+            <span>Lain-lain (LAIN)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Apply/Reset Buttons -->
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary btn-sm" id="rk-btn-apply-filter">
+          <i class="bi bi-check-circle"></i> Terapkan Filter
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-btn-reset-filter">
+          <i class="bi bi-arrow-counterclockwise"></i> Reset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scope Indicator -->
+  <div id="rk-scope-indicator" class="mb-2"></div>
+
+  <!-- Toolbar (EXISTING - Enhanced) -->
   <div id="rk-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
     <!-- Unified Export Dropdown (CSV/PDF/Word) -->
     <div class="btn-group" role="group">
@@ -50,20 +122,18 @@
       </ul>
     </div>
     
-    <!-- Legacy single CSV button (kept as fallback) -->
-    <button id="rk-btn-export" class="btn btn-outline-secondary dp-btn dp-btn-sm" type="button">
-      Export CSV
-    </button>
-    <div class="ms-auto small text-muted">
+    <div class="ms-auto small text-muted rk-stats">
       TK: <span id="rk-count-TK">0</span> •
       BHN: <span id="rk-count-BHN">0</span> •
       ALT: <span id="rk-count-ALT">0</span> •
       LAIN: <span id="rk-count-LAIN">0</span>
       <span class="ms-2">(<span id="rk-nrows">0</span> baris)</span>
       <span class="ms-2" id="rk-generated" title="Generated at"></span>
+      <span id="rk-filter-indicator" class="ms-2"></span>
     </div>
   </div>
 
+  <!-- Table Card (EXISTING) -->
   <div class="dp-card dp-border dp-surface mt-3">
     <div class="card-body p-0">
       <div class="table-responsive dp-scrollbar" id="rk-tablewrap">
@@ -84,8 +154,16 @@
           </tbody>
         </table>
 
-        <div id="rk-empty" class="text-center text-muted py-3 d-none">Belum ada data.</div>
-        <div id="rk-loading" class="text-center text-muted py-3 d-none">Memuat…</div>
+        <div id="rk-empty" class="text-center text-muted py-3 d-none">
+          <i class="bi bi-inbox" style="font-size: 2rem; opacity: 0.5;"></i>
+          <p class="mt-2 mb-0">Tidak ada data untuk filter yang dipilih.</p>
+        </div>
+        <div id="rk-loading" class="text-center text-muted py-3 d-none">
+          <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <span class="ms-2">Memuat data...</span>
+        </div>
       </div>
     </div>
   </div>

@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 from . import views_api
 from . import views_export  # ← Clean import at root level!
+from . import views_api_tahapan  # NEW IMPORT
 
 app_name = "detail_project"
 
@@ -20,7 +21,7 @@ urlpatterns = [
     path('<int:project_id>/detail-ahsp-gabungan/',  views.rincian_ahsp_view,          name='detail_ahsp_gabungan_legacy'),
     path('<int:project_id>/rekap-rab/',             views.rekap_rab_view,             name='rekap_rab'),
     path("<int:project_id>/rekap-kebutuhan/",       views.rekap_kebutuhan_view,       name="rekap_kebutuhan"),
-    
+    path('<int:project_id>/kelola-tahapan/',        views.kelola_tahapan_view,        name='kelola_tahapan'),
     # --- NEW: Rincian RAB (web)
     path('<int:project_id>/rincian-rab/',           views.rincian_rab_view,           name='rincian_rab'),  # NEW
 
@@ -132,6 +133,48 @@ urlpatterns = [
           name='export_rincian_ahsp_word'),
 
 
+    
+    # ===== TAHAPAN PELAKSANAAN API (NEW) =====
+      
+    # Tahapan CRUD
+    path('api/project/<int:project_id>/tahapan/', 
+         views_api_tahapan.api_list_create_tahapan, 
+         name='api_list_create_tahapan'),
+    
+    path('api/project/<int:project_id>/tahapan/<int:tahapan_id>/', 
+         views_api_tahapan.api_update_delete_tahapan, 
+         name='api_update_delete_tahapan'),
+    
+    path('api/project/<int:project_id>/tahapan/reorder/', 
+         views_api_tahapan.api_reorder_tahapan, 
+         name='api_reorder_tahapan'),
+    
+    # Assignment Management
+    path('api/project/<int:project_id>/tahapan/<int:tahapan_id>/assign/', 
+         views_api_tahapan.api_assign_pekerjaan_to_tahapan, 
+         name='api_assign_pekerjaan'),
+    
+    path('api/project/<int:project_id>/tahapan/<int:tahapan_id>/unassign/', 
+         views_api_tahapan.api_unassign_pekerjaan_from_tahapan, 
+         name='api_unassign_pekerjaan'),
+    
+    path('api/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/assignments/', 
+         views_api_tahapan.api_get_pekerjaan_assignments, 
+         name='api_get_pekerjaan_assignments'),
+    
+    # Validation & Status
+    path('api/project/<int:project_id>/tahapan/validate/', 
+         views_api_tahapan.api_validate_all_assignments, 
+         name='api_validate_assignments'),
+    
+    path('api/project/<int:project_id>/tahapan/unassigned/', 
+         views_api_tahapan.api_get_unassigned_pekerjaan, 
+         name='api_unassigned_pekerjaan'),
+    
+    # Rekap Kebutuhan Enhanced (dapat replace yang lama atau jadi endpoint terpisah)
+    path('api/project/<int:project_id>/rekap-kebutuhan-enhanced/', 
+         views_api_tahapan.api_get_rekap_kebutuhan_enhanced, 
+         name='api_get_rekap_kebutuhan_enhanced'),
 
 ]
 

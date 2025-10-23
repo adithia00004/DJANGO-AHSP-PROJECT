@@ -4,11 +4,8 @@
 
 {% block title %}Dashboard - My Projects{% endblock %}
 
-{% block extra_head %}
-<style>
-  .dashboard-form-table-wrapper { overflow-x: auto; }
-  .table-danger input, .table-danger select, .table-danger textarea { border-color:#dc3545; }
-</style>
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -35,9 +32,9 @@
             </div>
           {% endif %}
 
-          <div class="dashboard-form-table-wrapper">
+          <div class="dashboard-form-table-wrapper ux-scrollbar">
             <table class="table table-bordered align-middle text-nowrap" id="formset-table">
-              <thead class="table-light">
+              <thead class="table-light dp-thead-sticky">
                 <tr>
                   <th>Nama Project <span class="text-danger">*</span></th>
                   <th>Tahun Project <span class="text-danger">*</span></th>

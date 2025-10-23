@@ -1,7 +1,8 @@
 /* =====================================================================
-   REKAP_KEBUTUHAN.CSS — Selaras dengan Harga Items & Volume Pekerjaan
-   - Menggunakan design tokens dari core.css
-   - Memakai pola komponen dari components-library.css (dp-*)
+   REKAP_KEBUTUHAN.CSS — Enhanced with Tahapan Filter Support
+   - Extends existing design tokens from core.css
+   - Uses component patterns from components-library.css (dp-*)
+   - NEW: Filter panel components for tahapan selection
    ===================================================================== */
 
 /* ===== App Container ===== */
@@ -10,14 +11,150 @@
   margin: 0 auto;
 }
 
-/* ===== Toolbar (gunakan .dp-toolbar sebagai basis) ===== */
-#rk-toolbar {
-  /* dp-toolbar sudah handle sticky, background, border, gap */
+/* ===== NEW: Filter Card ===== */
+.rk-filter-card {
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-sm);
+  transition: box-shadow var(--ux-duration-200) var(--ux-ease);
+}
+
+.rk-filter-card:hover {
+  box-shadow: var(--dp-shadow-md);
+}
+
+/* ===== NEW: Filter Section ===== */
+.rk-filter-section {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--dp-c-border-subtle, rgba(0,0,0,0.06));
+}
+
+.rk-filter-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.rk-filter-label {
+  display: block;
+  font-weight: 600;
+  color: var(--dp-c-text);
+  margin-bottom: 0.5rem;
+  font-size: var(--ux-font-sm, 0.875rem);
+}
+
+/* ===== NEW: Tahapan Selector Buttons ===== */
+.rk-tahapan-selector {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.rk-tahapan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--dp-c-border);
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border-radius: var(--dp-radius-md, 0.375rem);
+  font-size: var(--ux-font-sm, 0.875rem);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+  white-space: nowrap;
+}
+
+.rk-tahapan-btn:hover {
+  border-color: var(--dp-c-primary, #0d6efd);
+  background: color-mix(in srgb, var(--dp-c-primary) 5%, var(--dp-c-bg));
+  transform: translateY(-1px);
   box-shadow: var(--dp-shadow-sm);
 }
 
-#rk-toolbar .dp-btn {
-  /* konsisten hover/active sudah di components-library */
+.rk-tahapan-btn.active {
+  border-color: var(--dp-c-primary, #0d6efd);
+  background: var(--dp-c-primary, #0d6efd);
+  color: white;
+  box-shadow: 0 2px 4px rgba(13, 110, 253, 0.25);
+}
+
+.rk-tahapan-btn:active {
+  transform: translateY(0);
+}
+
+.rk-tahapan-btn i {
+  font-size: 1rem;
+}
+
+/* ===== NEW: Kategori Filter Checkboxes ===== */
+.rk-kategori-filter {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.rk-kategori-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md, 0.375rem);
+  background: var(--dp-c-bg);
+  cursor: pointer;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+  font-size: var(--ux-font-sm, 0.875rem);
+  user-select: none;
+}
+
+.rk-kategori-checkbox:hover {
+  border-color: var(--dp-c-primary, #0d6efd);
+  background: color-mix(in srgb, var(--dp-c-primary) 3%, var(--dp-c-bg));
+}
+
+.rk-kategori-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+}
+
+.rk-kategori-checkbox input:checked + span {
+  font-weight: 600;
+  color: var(--dp-c-primary, #0d6efd);
+}
+
+/* ===== NEW: Scope Indicator Badge ===== */
+#rk-scope-indicator .badge {
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  border-radius: var(--dp-radius-lg, 1rem);
+}
+
+/* ===== NEW: Filter Active Indicator ===== */
+.rk-filter-active-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  color: #856404;
+  white-space: nowrap;
+}
+
+[data-bs-theme="dark"] .rk-filter-active-indicator {
+  background: rgba(255, 193, 7, 0.2);
+  border-color: rgba(255, 193, 7, 0.4);
+  color: #ffc107;
+}
+
+/* ===== Toolbar (existing, enhanced) ===== */
+#rk-toolbar {
+  box-shadow: var(--dp-shadow-sm);
 }
 
 #rk-toolbar .dropdown-menu {
@@ -36,9 +173,15 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.rk-stats { white-space: nowrap; }
+.rk-stats { 
+  white-space: nowrap; 
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 
-/* ===== Table ===== */
+/* ===== Table (existing) ===== */
 .rk-table {
   font-size: var(--ux-font-sm, .875rem);
   line-height: var(--ux-line-md, 1.25rem);
@@ -65,7 +208,9 @@
   transition: background-color var(--ux-duration-200) var(--ux-ease);
 }
 
-.rk-table tbody tr:hover { background: var(--ux-row-hover); }
+.rk-table tbody tr:hover { 
+  background: var(--ux-row-hover); 
+}
 
 /* Monospace & numeric alignment */
 .rk-table td.mono,
@@ -75,38 +220,98 @@
 }
 
 .rk-table td.text-end,
-.rk-table th.text-end { font-variant-numeric: tabular-nums lining-nums; }
+.rk-table th.text-end { 
+  font-variant-numeric: tabular-nums lining-nums; 
+}
 
 /* ===== Scrollbar (table wrapper) ===== */
-#rk-tablewrap { scrollbar-gutter: stable both-edges; }
-#rk-tablewrap::-webkit-scrollbar { height: 8px; width: 8px; }
+#rk-tablewrap { 
+  scrollbar-gutter: stable both-edges; 
+}
+
+#rk-tablewrap::-webkit-scrollbar { 
+  height: 8px; 
+  width: 8px; 
+}
+
 #rk-tablewrap::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
   border-radius: 8px;
   transition: background var(--ux-duration-200) var(--ux-ease);
 }
+
 #rk-tablewrap::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
 }
-#rk-tablewrap::-webkit-scrollbar-track { background: transparent; }
 
-/* ===== Responsive (ikut pola components-library) ===== */
+#rk-tablewrap::-webkit-scrollbar-track { 
+  background: transparent; 
+}
+
+/* ===== Responsive ===== */
 @media (max-width: 1199.98px) {
   .rk-table thead th,
-  .rk-table tbody td { padding: .45rem .65rem; font-size: .74rem; }
+  .rk-table tbody td { 
+    padding: .45rem .65rem; 
+    font-size: .74rem; 
+  }
+  
+  .rk-tahapan-btn,
+  .rk-kategori-checkbox {
+    font-size: 0.8125rem;
+    padding: 0.4rem 0.875rem;
+  }
 }
 
 @media (max-width: 991.98px) {
-  #rk-toolbar { gap: .375rem; }
+  #rk-toolbar { 
+    gap: .375rem; 
+    flex-wrap: wrap;
+  }
+  
   .rk-table thead th,
-  .rk-table tbody td { padding: .4rem .6rem; font-size: .72rem; }
+  .rk-table tbody td { 
+    padding: .4rem .6rem; 
+    font-size: .72rem; 
+  }
+  
+  .rk-tahapan-selector {
+    gap: 0.375rem;
+  }
+  
+  .rk-kategori-filter {
+    gap: 0.75rem;
+  }
 }
 
 @media (max-width: 767.98px) {
-  #rk-toolbar { flex-direction: column; align-items: stretch; }
-  #rk-toolbar > .ms-auto { margin-left: 0 !important; width: 100%; flex-wrap: wrap; }
+  #rk-toolbar { 
+    flex-direction: column; 
+    align-items: stretch; 
+  }
+  
+  #rk-toolbar > .ms-auto { 
+    margin-left: 0 !important; 
+    width: 100%; 
+    flex-wrap: wrap; 
+  }
+  
   .rk-table thead th,
-  .rk-table tbody td { padding: .35rem .5rem; font-size: .7rem; }
+  .rk-table tbody td { 
+    padding: .35rem .5rem; 
+    font-size: .7rem; 
+  }
+  
+  .rk-tahapan-btn,
+  .rk-kategori-checkbox {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+  }
+  
+  .rk-stats {
+    font-size: 0.75rem;
+    justify-content: center;
+  }
 }
 
 /* ===== Dark mode enhancements ===== */
@@ -118,3 +323,65 @@
   background: color-mix(in srgb, var(--dp-c-surface-2) 60%, var(--dp-c-bg));
 }
 
+[data-bs-theme="dark"] .rk-filter-card {
+  background: var(--dp-c-surface);
+  border-color: var(--dp-c-border);
+}
+
+[data-bs-theme="dark"] .rk-tahapan-btn {
+  border-color: var(--dp-c-border);
+  background: var(--dp-c-surface);
+}
+
+[data-bs-theme="dark"] .rk-tahapan-btn:hover {
+  background: color-mix(in srgb, var(--dp-c-primary) 15%, var(--dp-c-surface));
+}
+
+[data-bs-theme="dark"] .rk-tahapan-btn.active {
+  background: var(--dp-c-primary);
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
+}
+
+[data-bs-theme="dark"] .rk-kategori-checkbox {
+  border-color: var(--dp-c-border);
+  background: var(--dp-c-surface);
+}
+
+[data-bs-theme="dark"] .rk-kategori-checkbox:hover {
+  background: color-mix(in srgb, var(--dp-c-primary) 10%, var(--dp-c-surface));
+}
+
+/* ===== Loading & Empty States ===== */
+#rk-loading i.bi-inbox,
+#rk-empty i.bi-inbox {
+  display: block;
+  font-size: 3rem;
+  opacity: 0.3;
+  margin: 0 auto 1rem;
+}
+
+.rk-loading-row td {
+  text-align: center;
+  padding: 2rem !important;
+  color: var(--dp-c-text-muted);
+}
+
+/* ===== Print Styles ===== */
+@media print {
+  .rk-filter-card,
+  #rk-toolbar,
+  #rk-scope-indicator {
+    display: none !important;
+  }
+  
+  .rk-table {
+    font-size: 10pt;
+  }
+  
+  .rk-table thead th {
+    background: #f8f9fa !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

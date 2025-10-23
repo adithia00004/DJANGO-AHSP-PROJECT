@@ -147,3 +147,20 @@ def rincian_rab_view(request, project_id: int):
         "side_active": "rincian_rab",
     }
     return render(request, "detail_project/rincian_rab.html", ctx)
+
+
+@login_required
+@coerce_project_id
+def kelola_tahapan_view(request, project_id: int):
+    """
+    Page untuk kelola tahapan pelaksanaan dan assignment pekerjaan.
+    Data di-load via JavaScript dari API.
+    """
+    project = _project_or_404(project_id, request.user)
+    
+    context = {
+        "project": project,
+        "side_active": "kelola_tahapan",  # untuk sidebar highlighting
+    }
+    
+    return render(request, "detail_project/kelola_tahapan.html", context)

@@ -3,8 +3,12 @@
 
 {% block title %}Upload Proyek dari Excel{% endblock %}
 
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
+{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center">
+<div class="row justify-content-center dashboard-page">
   <div class="col-lg-8">
     <div class="card shadow-sm">
       <div class="card-header bg-light d-flex align-items-center justify-content-between">
@@ -47,9 +51,9 @@
           <div class="alert alert-warning">
             Beberapa baris gagal divalidasi. Silakan perbaiki dan coba lagi.
           </div>
-          <div class="table-responsive">
+          <div class="table-responsive ux-scrollbar">
             <table class="table table-sm table-bordered">
-              <thead class="table-light">
+              <thead class="table-light dp-thead-sticky">
                 <tr>
                   <th>Baris</th>
                   <th>Kesalahan</th>
