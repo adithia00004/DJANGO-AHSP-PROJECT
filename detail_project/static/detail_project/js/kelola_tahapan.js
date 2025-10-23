@@ -205,7 +205,7 @@
 
       allPekerjaan = [];
 
-      // Flatten tree structure - handle both response formats
+      // Flatten tree structure - handle API response format
       function flattenNode(node, parentKlasifikasi = '', parentSubKlasifikasi = '') {
         if (!node) return;
 
@@ -216,63 +216,54 @@
 
         // Handle response format: {ok: true, klasifikasi: [...]}
         if (node.klasifikasi && Array.isArray(node.klasifikasi)) {
-          console.log('DEBUG: Processing klasifikasi array, length =', node.klasifikasi.length);
+          console.log('DEBUG: Processing root klasifikasi array, length =', node.klasifikasi.length);
           node.klasifikasi.forEach(klas => flattenNode(klas, '', ''));
           return;
         }
 
-        // Handle klasifikasi node
-        if (node.type === 'klasifikasi' || node.sub_klasifikasi) {
-          const klasNama = node.nama || node.name || '';
+        // Handle klasifikasi node: has "sub" array property
+        if (node.sub && Array.isArray(node.sub)) {
+          const klasNama = node.name || node.nama || '';
           console.log('DEBUG: Processing klasifikasi:', klasNama);
 
-          if (node.sub_klasifikasi && Array.isArray(node.sub_klasifikasi)) {
-            node.sub_klasifikasi.forEach(sub => flattenNode(sub, klasNama, ''));
-          }
-          if (node.children && Array.isArray(node.children)) {
-            node.children.forEach(child => flattenNode(child, klasNama, ''));
-          }
+          node.sub.forEach(sub => flattenNode(sub, klasNama, ''));
           return;
         }
 
-        // Handle sub-klasifikasi node
-        if (node.type === 'sub_klasifikasi' || node.pekerjaan) {
-          const subKlasNama = node.nama || node.name || '';
+        // Handle sub-klasifikasi node: has "pekerjaan" array property
+        if (node.pekerjaan && Array.isArray(node.pekerjaan)) {
+          const subKlasNama = node.name || node.nama || '';
           console.log('DEBUG: Processing sub-klasifikasi:', subKlasNama);
 
-          if (node.pekerjaan && Array.isArray(node.pekerjaan)) {
-            node.pekerjaan.forEach(pkj => flattenNode(pkj, parentKlasifikasi, subKlasNama));
-          }
-          if (node.children && Array.isArray(node.children)) {
-            node.children.forEach(child => flattenNode(child, parentKlasifikasi, subKlasNama));
-          }
+          node.pekerjaan.forEach(pkj => {
+            // Process pekerjaan inline
+            const pekerjaanId = pkj.id || pkj.pekerjaan_id;
+            if (pekerjaanId) {
+              console.log('DEBUG: Found pekerjaan:', pekerjaanId, pkj.snapshot_kode);
+
+              const pkjData = {
+                id: pekerjaanId,
+                kode: pkj.snapshot_kode || pkj.kode || '',
+                uraian: pkj.snapshot_uraian || pkj.uraian || '',
+                satuan: pkj.snapshot_satuan || pkj.satuan || '-',
+                klasifikasi: pkj.klasifikasi_nama || parentKlasifikasi || '',
+                sub_klasifikasi: pkj.sub_klasifikasi_nama || parentSubKlasifikasi || subKlasNama || '',
+                ordering_index: pkj.ordering_index || 0
+              };
+
+              allPekerjaan.push(pkjData);
+
+              // Initialize in pekerjaanMap
+              pekerjaanMap.set(pekerjaanId, {
+                ...pkjData,
+                assignments: [] // Will be populated later
+              });
+            }
+          });
           return;
         }
 
-        // Handle pekerjaan node
-        if (node.type === 'pekerjaan' || node.pekerjaan_id) {
-          console.log('DEBUG: Found pekerjaan:', node.pekerjaan_id);
-
-          const pkjData = {
-            id: node.pekerjaan_id,
-            kode: node.snapshot_kode || node.kode || '',
-            uraian: node.snapshot_uraian || node.uraian || '',
-            satuan: node.snapshot_satuan || node.satuan || '-',
-            klasifikasi: node.klasifikasi_nama || parentKlasifikasi || '',
-            sub_klasifikasi: node.sub_klasifikasi_nama || parentSubKlasifikasi || '',
-            ordering_index: node.ordering_index || 0
-          };
-
-          allPekerjaan.push(pkjData);
-
-          // Initialize in pekerjaanMap
-          pekerjaanMap.set(node.pekerjaan_id, {
-            ...pkjData,
-            assignments: [] // Will be populated later
-          });
-        }
-
-        // Fallback: check children
+        // Fallback: check children array (tree format)
         if (node.children && Array.isArray(node.children)) {
           node.children.forEach(child => flattenNode(child, parentKlasifikasi, parentSubKlasifikasi));
         }
