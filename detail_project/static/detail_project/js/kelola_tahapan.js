@@ -44,6 +44,80 @@
   const modalUnassigned = new bootstrap.Modal(document.getElementById('modal-unassigned'));
   const modalTahapanDetail = new bootstrap.Modal(document.getElementById('modal-tahapan-detail'));
 
+  // Hover edge → open right offcanvas (to match Volume behavior)
+  try {
+    if (document.body && document.body.dataset && document.body.dataset.page === 'kelola_tahapan') {
+      const hoverEdge = document.querySelector('.dp-hover-edge');
+      const offcanvasEl = document.getElementById('vpVarOffcanvas');
+      if (hoverEdge && offcanvasEl && window.bootstrap && window.bootstrap.Offcanvas) {
+        const oc = window.bootstrap.Offcanvas.getOrCreateInstance(offcanvasEl);
+        let timer = null;
+        hoverEdge.addEventListener('mouseenter', () => {
+          timer = setTimeout(() => { try { oc.show(); } catch {} }, 180);
+        });
+        hoverEdge.addEventListener('mouseleave', () => {
+          if (timer) { clearTimeout(timer); timer = null; }
+        });
+      }
+    }
+  } catch {}
+
+  // Sidebar Overlay (dp-sidebar-overlay) toggling + hover edge open + resizer
+  try {
+    const sidebar = document.getElementById('kt-sidebar');
+    const btnToggle = document.querySelector('.js-kt-sidebar-toggle');
+    const btnClose = document.querySelector('.js-kt-sidebar-close');
+    const hotspot = document.querySelector('.vp-overlay-hotspot');
+    const hoverEdge = document.querySelector('.dp-hover-edge');
+
+    const openSidebar = () => { if (!sidebar) return; sidebar.classList.add('is-open'); sidebar.setAttribute('aria-hidden','false'); btnToggle && btnToggle.setAttribute('aria-expanded','true'); };
+    const closeSidebar = () => { if (!sidebar) return; sidebar.classList.remove('is-open'); sidebar.setAttribute('aria-hidden','true'); btnToggle && btnToggle.setAttribute('aria-expanded','false'); };
+
+    btnToggle && btnToggle.addEventListener('click', () => {
+      if (!sidebar) return;
+      const isOpen = sidebar.classList.contains('is-open');
+      isOpen ? closeSidebar() : openSidebar();
+    });
+
+    btnClose && btnClose.addEventListener('click', closeSidebar);
+
+    // Click outside (overlay area) closes, but ignore clicks inside panel
+    sidebar && sidebar.addEventListener('mousedown', (e) => {
+      if (!sidebar) return;
+      const inner = sidebar.querySelector('.dp-sidebar-inner');
+      if (inner && !inner.contains(e.target)) closeSidebar();
+    });
+
+    // ESC to close
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
+
+    // Hover triggers open (both hotspot and right-edge)
+    let hoverTimer = null;
+    const scheduleOpen = () => { hoverTimer = setTimeout(openSidebar, 180); };
+    const cancelOpen = () => { if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; } };
+    hotspot && hotspot.addEventListener('mouseenter', scheduleOpen);
+    hotspot && hotspot.addEventListener('mouseleave', cancelOpen);
+    hoverEdge && hoverEdge.addEventListener('mouseenter', scheduleOpen);
+    hoverEdge && hoverEdge.addEventListener('mouseleave', cancelOpen);
+
+    // Resizer (simple east resize)
+    if (sidebar) {
+      const inner = sidebar.querySelector('.dp-sidebar-inner');
+      const handle = sidebar.querySelector('.dp-resizer');
+      if (inner && handle) {
+        let startX = 0; let startW = 0; let dragging = false;
+        const onMove = (e) => {
+          if (!dragging) return;
+          const dx = startX - (e.clientX || (e.touches && e.touches[0].clientX) || 0);
+          let w = Math.max(320, Math.min(760, startW + dx));
+          inner.style.width = w + 'px';
+        };
+        const onUp = () => { dragging = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+        handle.addEventListener('mousedown', (e) => { dragging = true; startX = e.clientX; startW = inner.getBoundingClientRect().width; document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); e.preventDefault(); });
+      }
+    }
+  } catch {}
+
   // =========================================================================
   // UTILITY FUNCTIONS
   // =========================================================================
@@ -61,12 +135,23 @@
   }
 
   function showToast(message, type = 'success') {
-    // Use your existing toast system or implement simple alert
     if (window.DP && window.DP.core && window.DP.core.toast) {
       window.DP.core.toast.show(message, type);
-    } else {
-      alert(message);
+      return;
     }
+    try {
+      const toastEl = document.getElementById('kt-toast');
+      const toastBody = document.getElementById('kt-toast-body');
+      if (toastEl && window.bootstrap) {
+        toastEl.classList.remove('text-bg-success','text-bg-danger','text-bg-warning');
+        toastEl.classList.add(type === 'error' ? 'text-bg-danger' : (type === 'warning' ? 'text-bg-warning' : 'text-bg-success'));
+        if (toastBody) toastBody.textContent = message || 'OK';
+        const t = window.bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 1600 });
+        t.show();
+        return;
+      }
+    } catch {}
+    alert(message);
   }
 
   async function apiCall(url, options = {}) {
@@ -192,7 +277,7 @@
       : 'Tanggal belum ditentukan';
 
     return `
-      <div class="card tahap-card" data-tahapan-id="${tahap.tahapan_id}">
+      <div class="card dp-card-primary tahap-card" data-tahapan-id="${tahap.tahapan_id}">
         <div class="card-header tahap-header d-flex justify-content-between align-items-center">
           <div class="flex-grow-1">
             <h5 class="mb-0">
@@ -204,17 +289,17 @@
             </small>
           </div>
           <div class="btn-group btn-group-sm">
-            <button class="btn btn-outline-primary" data-action="assign" 
+            <button class="btn btn-outline-primary dp-btn dp-btn-sm" data-action="assign" aria-label="Assign Pekerjaan" 
                     data-tahapan-id="${tahap.tahapan_id}"
                     title="Assign Pekerjaan">
               <i class="bi bi-plus-circle"></i>
             </button>
-            <button class="btn btn-outline-secondary" data-action="edit" 
+            <button class="btn btn-outline-secondary dp-btn dp-btn-sm" data-action="edit" aria-label="Edit Tahapan" 
                     data-tahapan-id="${tahap.tahapan_id}"
                     title="Edit Tahapan">
               <i class="bi bi-pencil"></i>
             </button>
-            <button class="btn btn-outline-danger" data-action="delete" 
+            <button class="btn btn-outline-danger dp-btn dp-btn-sm" data-action="delete" aria-label="Hapus Tahapan" 
                     data-tahapan-id="${tahap.tahapan_id}"
                     title="Hapus Tahapan">
               <i class="bi bi-trash"></i>
@@ -422,6 +507,7 @@
         });
       }
       
+      try { message = message.replace(/�+/g, '-'); } catch {}
       alert(message);
       
     } catch (error) {
@@ -471,7 +557,7 @@
   function renderPekerjaanList(assignedIds, assignedMap) {
     const $list = document.getElementById('pekerjaan-list');
     
-    const html = allPekerjaan.map(pkj => {
+    let html = allPekerjaan.map(pkj => {
       const isAssigned = assignedIds.has(pkj.id);
       const proporsi = assignedMap[pkj.id] || 100;
       
@@ -505,7 +591,9 @@
         </div>
       `;
     }).join('');
-    
+
+    // Sanitize stray encoding artifacts (fallback fix)
+    try { html = html.replace(/�+/g, '—'); } catch {}
     $list.innerHTML = html;
     
     // Enhance with smarter interactions (autofill/validation/filter)
