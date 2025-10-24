@@ -490,8 +490,30 @@
   }
 
   // =========================================================================
-  // TABLE RENDERING
+  // TABLE RENDERING (Hierarchical Structure)
   // =========================================================================
+
+  // Group pekerjaan by klasifikasi and sub-klasifikasi
+  function groupPekerjaanHierarchical() {
+    const grouped = {};
+
+    allPekerjaan.forEach(pkj => {
+      const klasNama = pkj.klasifikasi || '(Tanpa Klasifikasi)';
+      const subNama = pkj.sub_klasifikasi || '(Tanpa Sub-Klasifikasi)';
+
+      if (!grouped[klasNama]) {
+        grouped[klasNama] = {};
+      }
+
+      if (!grouped[klasNama][subNama]) {
+        grouped[klasNama][subNama] = [];
+      }
+
+      grouped[klasNama][subNama].push(pkj);
+    });
+
+    return grouped;
+  }
 
   function renderTable() {
     console.log('DEBUG renderTable: Starting...');
@@ -509,24 +531,22 @@
       return;
     }
 
-    console.log('DEBUG renderTable: Creating rows...');
-    const html = allPekerjaan.map((pkj, idx) => {
-      try {
-        return createTableRow(pkj, idx + 1);
-      } catch (error) {
-        console.error('Error creating row for pekerjaan:', pkj, error);
-        return '';
-      }
+    console.log('DEBUG renderTable: Grouping pekerjaan hierarchically...');
+    const grouped = groupPekerjaanHierarchical();
+
+    console.log('DEBUG renderTable: Creating hierarchical cards...');
+    const html = Object.entries(grouped).map(([klasNama, subGroups]) => {
+      return createKlasifikasiCard(klasNama, subGroups);
     }).join('');
 
     console.log('DEBUG renderTable: HTML length =', html.length);
-    console.log('DEBUG renderTable: First 500 chars =', html.substring(0, 500));
 
     $tbody.innerHTML = html;
 
     // Attach event listeners
     console.log('DEBUG renderTable: Attaching event listeners...');
     attachTableEventListeners();
+    attachCollapseToggles();
 
     // Update count
     const showingCount = document.getElementById('showing-count');
@@ -537,7 +557,116 @@
     console.log('DEBUG renderTable: Complete!');
   }
 
-  function createTableRow(pkj, rowNum) {
+  function createKlasifikasiCard(klasNama, subGroups) {
+    const klasId = klasNama.replace(/[^a-zA-Z0-9]/g, '_');
+    const subCardsHtml = Object.entries(subGroups).map(([subNama, pekerjaanList]) => {
+      return createSubKlasifikasiCard(klasId, subNama, pekerjaanList);
+    }).join('');
+
+    return `
+      <tr>
+        <td colspan="10" class="p-0">
+          <div class="card dp-card-primary kt-klas-card mb-3" data-klas-id="${klasId}">
+            <div class="card-header d-flex align-items-center justify-content-between">
+              <span class="dp-card-title-primary fw-bold">${escapeHtml(klasNama)}</span>
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary dp-btn-sm kt-card-toggle"
+                      data-type="klas"
+                      data-key="${klasId}"
+                      aria-expanded="true"
+                      title="Collapse/Expand">
+                <i class="bi bi-caret-down-fill"></i>
+              </button>
+            </div>
+            <div class="card-body kt-klas-body" data-klas-id="${klasId}">
+              ${subCardsHtml}
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  function createSubKlasifikasiCard(klasId, subNama, pekerjaanList) {
+    const subId = `${klasId}_${subNama.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const rowsHtml = pekerjaanList.map((pkj, idx) => {
+      return createPekerjaanRow(pkj, idx + 1);
+    }).join('');
+
+    return `
+      <div class="dp-card-secondary kt-sub-card mb-3" data-sub-id="${subId}" data-klas-id="${klasId}">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="dp-card-title-secondary fw-semibold">${escapeHtml(subNama)}</span>
+          <button type="button"
+                  class="btn btn-sm btn-outline-secondary dp-btn-sm kt-card-toggle"
+                  data-type="sub"
+                  data-key="${subId}"
+                  aria-expanded="true"
+                  title="Collapse/Expand">
+            <i class="bi bi-caret-down-fill"></i>
+          </button>
+        </div>
+        <div class="kt-sub-body" data-sub-id="${subId}">
+          <table class="table dp-table kt-table table-sm">
+            <thead class="table-light">
+              <tr>
+                <th class="text-center" style="width: 50px;">No</th>
+                <th style="width: 100px;">Kode</th>
+                <th style="min-width: 300px;">Uraian Pekerjaan</th>
+                <th class="text-end" style="width: 100px;">Volume</th>
+                <th style="width: 80px;">Satuan</th>
+                <th style="width: 180px;">Tahapan</th>
+                <th style="width: 320px;">Detail Proporsi</th>
+                <th class="text-center" style="width: 100px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function attachCollapseToggles() {
+    document.querySelectorAll('.kt-card-toggle').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const type = this.dataset.type;
+        const key = this.dataset.key;
+        const icon = this.querySelector('i');
+        const isExpanded = this.getAttribute('aria-expanded') === 'true';
+
+        if (type === 'klas') {
+          const body = document.querySelector(`.kt-klas-body[data-klas-id="${key}"]`);
+          if (body) {
+            if (isExpanded) {
+              body.style.display = 'none';
+              icon.className = 'bi bi-caret-right-fill';
+            } else {
+              body.style.display = 'block';
+              icon.className = 'bi bi-caret-down-fill';
+            }
+          }
+        } else if (type === 'sub') {
+          const body = document.querySelector(`.kt-sub-body[data-sub-id="${key}"]`);
+          if (body) {
+            if (isExpanded) {
+              body.style.display = 'none';
+              icon.className = 'bi bi-caret-right-fill';
+            } else {
+              body.style.display = 'block';
+              icon.className = 'bi bi-caret-down-fill';
+            }
+          }
+        }
+
+        this.setAttribute('aria-expanded', !isExpanded);
+      });
+    });
+  }
+
+  function createPekerjaanRow(pkj, rowNum) {
     const volume = volumeMap.get(pkj.id) || 0;
     const pkjData = pekerjaanMap.get(pkj.id);
     const assignments = pkjData?.assignments || [];
@@ -560,8 +689,6 @@
     return `
       <tr data-pekerjaan-id="${pkj.id}" data-status="${status}">
         <td class="text-center text-muted">${rowNum}</td>
-        <td>${escapeHtml(pkj.klasifikasi)}</td>
-        <td>${escapeHtml(pkj.sub_klasifikasi)}</td>
         <td class="font-monospace">${escapeHtml(pkj.kode)}</td>
         <td>${escapeHtml(pkj.uraian)}</td>
         <td class="text-end font-monospace">${formatNumber(volume)}</td>
@@ -570,7 +697,7 @@
           ${createTahapanMultiSelect(pkj.id, assignedTahapanIds)}
         </td>
         <td>
-          ${createProportionInputs(pkj.id, assignments)}
+          ${createProportionInputs(pkj.id, assignments, volume)}
         </td>
         <td class="text-center">
           ${statusBadge}
@@ -614,29 +741,60 @@
     `;
   }
 
-  function createProportionInputs(pekerjaanId, assignments = []) {
+  function createProportionInputs(pekerjaanId, assignments = [], totalVolume = 0) {
     if (assignments.length === 0) {
       return '<span class="text-muted small">Pilih tahapan terlebih dahulu</span>';
     }
 
-    // Create proportion inputs for each assigned tahapan
+    // Get satuan from pekerjaan
+    const pkj = allPekerjaan.find(p => p.id === pekerjaanId);
+    const satuan = pkj?.satuan || '-';
+
+    // Create dual input (percentage AND volume) for each assigned tahapan
     const inputs = assignments.map(a => {
       const tahap = tahapanList.find(t => t.tahapan_id === a.tahapan_id);
       if (!tahap) return '';
 
+      const proportion = parseFloat(a.proporsi);
+      const calculatedVolume = totalVolume > 0 ? (totalVolume * proportion / 100).toFixed(3) : '0.000';
+
       return `
-        <div class="input-group input-group-sm mb-2">
-          <span class="input-group-text" style="min-width: 120px;">${escapeHtml(tahap.nama)}</span>
-          <input type="number"
-                 class="form-control proportion-input"
-                 min="0.01"
-                 max="100"
-                 step="0.01"
-                 value="${parseFloat(a.proporsi).toFixed(2)}"
-                 data-pekerjaan-id="${pekerjaanId}"
-                 data-tahapan-id="${a.tahapan_id}"
-                 data-original="${parseFloat(a.proporsi).toFixed(2)}">
-          <span class="input-group-text">%</span>
+        <div class="proportion-row mb-2" data-pekerjaan-id="${pekerjaanId}" data-tahapan-id="${a.tahapan_id}">
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small" style="min-width: 90px;">${escapeHtml(tahap.nama)}</span>
+
+            <!-- Percentage Input -->
+            <div class="input-group input-group-sm" style="width: 120px;">
+              <input type="number"
+                     class="form-control proportion-pct-input"
+                     min="0.01"
+                     max="100"
+                     step="0.01"
+                     value="${proportion.toFixed(2)}"
+                     data-pekerjaan-id="${pekerjaanId}"
+                     data-tahapan-id="${a.tahapan_id}"
+                     data-original="${proportion.toFixed(2)}"
+                     title="Input persentase">
+              <span class="input-group-text">%</span>
+            </div>
+
+            <span class="text-muted">=</span>
+
+            <!-- Volume Input (Calculated) -->
+            <div class="input-group input-group-sm" style="width: 140px;">
+              <input type="number"
+                     class="form-control proportion-vol-input"
+                     min="0"
+                     step="0.001"
+                     value="${calculatedVolume}"
+                     data-pekerjaan-id="${pekerjaanId}"
+                     data-tahapan-id="${a.tahapan_id}"
+                     data-total-volume="${totalVolume}"
+                     title="Input volume (akan auto-calculate persentase)"
+                     ${totalVolume === 0 ? 'disabled' : ''}>
+              <span class="input-group-text">${escapeHtml(satuan)}</span>
+            </div>
+          </div>
         </div>
       `;
     }).join('');
@@ -644,12 +802,18 @@
     // Add total indicator
     const total = assignments.reduce((sum, a) => sum + parseFloat(a.proporsi || 0), 0);
     const totalClass = Math.abs(total - 100) < 0.01 ? 'text-success' : 'text-danger';
+    const totalVolumeCalc = totalVolume > 0 ? (totalVolume * total / 100).toFixed(3) : '0.000';
 
     return `
       <div class="proportion-container" data-pekerjaan-id="${pekerjaanId}">
         ${inputs}
-        <div class="text-end small ${totalClass} fw-bold">
-          Total: <span class="total-proportion">${total.toFixed(2)}</span>%
+        <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+          <span class="small ${totalClass} fw-bold">
+            Total: <span class="total-proportion">${total.toFixed(2)}</span>%
+          </span>
+          <span class="small ${totalClass} fw-bold">
+            = <span class="total-volume">${totalVolumeCalc}</span> ${escapeHtml(satuan)}
+          </span>
         </div>
       </div>
     `;
@@ -673,10 +837,15 @@
       checkbox.addEventListener('change', handleTahapanCheckboxChange);
     });
 
-    // Proportion input change handler
-    document.querySelectorAll('.proportion-input').forEach(input => {
-      input.addEventListener('input', handleProportionInputChange);
+    // Proportion percentage input change handler
+    document.querySelectorAll('.proportion-pct-input').forEach(input => {
+      input.addEventListener('input', handleProportionPctInputChange);
       input.addEventListener('blur', validateProportionInput);
+    });
+
+    // Proportion volume input change handler
+    document.querySelectorAll('.proportion-vol-input').forEach(input => {
+      input.addEventListener('input', handleProportionVolInputChange);
     });
 
     // Prevent dropdown from closing when clicking checkboxes
@@ -685,6 +854,50 @@
         e.stopPropagation();
       });
     });
+  }
+
+  // Handler when user changes PERCENTAGE input
+  function handleProportionPctInputChange(e) {
+    const input = e.target;
+    const pekerjaanId = parseInt(input.dataset.pekerjaanId);
+    const tahapanId = parseInt(input.dataset.tahapanId);
+    const newPct = parseFloat(input.value) || 0;
+
+    // Update corresponding volume input
+    const row = input.closest('.proportion-row');
+    const volInput = row.querySelector('.proportion-vol-input');
+    if (volInput) {
+      const totalVolume = parseFloat(volInput.dataset.totalVolume) || 0;
+      const calculatedVol = totalVolume > 0 ? (totalVolume * newPct / 100).toFixed(3) : '0.000';
+      volInput.value = calculatedVol;
+    }
+
+    // Update local state and mark as dirty
+    handleProportionInputChange(e);
+  }
+
+  // Handler when user changes VOLUME input
+  function handleProportionVolInputChange(e) {
+    const input = e.target;
+    const pekerjaanId = parseInt(input.dataset.pekerjaanId);
+    const tahapanId = parseInt(input.dataset.tahapanId);
+    const newVol = parseFloat(input.value) || 0;
+    const totalVolume = parseFloat(input.dataset.totalVolume) || 0;
+
+    if (totalVolume > 0) {
+      // Calculate percentage from volume
+      const calculatedPct = ((newVol / totalVolume) * 100).toFixed(2);
+
+      // Update corresponding percentage input
+      const row = input.closest('.proportion-row');
+      const pctInput = row.querySelector('.proportion-pct-input');
+      if (pctInput) {
+        pctInput.value = calculatedPct;
+
+        // Trigger percentage input change to update local state
+        pctInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
   }
 
   function handleTahapanCheckboxChange(e) {
@@ -810,28 +1023,43 @@
   }
 
   function updateTotalProportion(row) {
-    const inputs = row.querySelectorAll('.proportion-input');
-    let total = 0;
+    const proportionContainer = row.querySelector('.proportion-container');
+    if (!proportionContainer) return;
+
+    const inputs = proportionContainer.querySelectorAll('.proportion-pct-input');
+    let totalPct = 0;
 
     inputs.forEach(input => {
-      total += parseFloat(input.value) || 0;
+      totalPct += parseFloat(input.value) || 0;
     });
 
-    const totalSpan = row.querySelector('.total-proportion');
-    const totalContainer = totalSpan?.parentElement;
-
-    if (totalSpan) {
-      totalSpan.textContent = total.toFixed(2);
+    // Update total percentage
+    const totalPctSpan = proportionContainer.querySelector('.total-proportion');
+    if (totalPctSpan) {
+      totalPctSpan.textContent = totalPct.toFixed(2);
     }
 
-    if (totalContainer) {
-      totalContainer.classList.remove('text-success', 'text-danger', 'text-warning');
-      if (Math.abs(total - 100) < 0.01) {
-        totalContainer.classList.add('text-success');
-      } else {
-        totalContainer.classList.add('text-danger');
+    // Update total volume
+    const totalVolSpan = proportionContainer.querySelector('.total-volume');
+    if (totalVolSpan) {
+      const firstVolInput = proportionContainer.querySelector('.proportion-vol-input');
+      if (firstVolInput) {
+        const totalVolume = parseFloat(firstVolInput.dataset.totalVolume) || 0;
+        const calculatedTotal = totalVolume > 0 ? (totalVolume * totalPct / 100).toFixed(3) : '0.000';
+        totalVolSpan.textContent = calculatedTotal;
       }
     }
+
+    // Update styling based on total
+    const totalContainers = proportionContainer.querySelectorAll('.border-top span');
+    totalContainers.forEach(container => {
+      container.classList.remove('text-success', 'text-danger', 'text-warning');
+      if (Math.abs(totalPct - 100) < 0.01) {
+        container.classList.add('text-success');
+      } else {
+        container.classList.add('text-danger');
+      }
+    });
   }
 
   function markRowAsChanged(row) {
