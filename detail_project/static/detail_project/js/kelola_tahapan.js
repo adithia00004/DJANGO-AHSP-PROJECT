@@ -628,51 +628,44 @@
       return '<span class="text-muted small">Pilih tahapan terlebih dahulu</span>';
     }
 
-    // Get satuan from pekerjaan
     const pkj = allPekerjaan.find(p => p.id === pekerjaanId);
     const satuan = pkj?.satuan || '-';
 
-    // Create dual input (percentage AND volume) for each assigned tahapan
+    // Compact dual input layout
     const inputs = assignments.map(a => {
       const tahap = tahapanList.find(t => t.tahapan_id === a.tahapan_id);
       if (!tahap) return '';
 
       const proportion = parseFloat(a.proporsi);
-      const calculatedVolume = totalVolume > 0 ? (totalVolume * proportion / 100).toFixed(3) : '0.000';
+      const calculatedVolume = totalVolume > 0 ? (totalVolume * proportion / 100).toFixed(2) : '0.00';
 
       return `
-        <div class="proportion-row mb-2" data-pekerjaan-id="${pekerjaanId}" data-tahapan-id="${a.tahapan_id}">
-          <div class="d-flex align-items-center gap-2">
-            <span class="text-muted small" style="min-width: 90px;">${escapeHtml(tahap.nama)}</span>
-
-            <!-- Percentage Input -->
-            <div class="input-group input-group-sm" style="width: 120px;">
+        <div class="proportion-row" data-pekerjaan-id="${pekerjaanId}" data-tahapan-id="${a.tahapan_id}">
+          <div class="d-flex align-items-center gap-1">
+            <span class="text-muted small" style="min-width: 70px; max-width: 70px;" title="${escapeHtml(tahap.nama)}">
+              ${escapeHtml(tahap.nama.length > 10 ? tahap.nama.substring(0, 10) + '...' : tahap.nama)}
+            </span>
+            <div class="input-group input-group-sm" style="width: 85px;">
               <input type="number"
                      class="form-control proportion-pct-input"
-                     min="0.01"
-                     max="100"
-                     step="0.01"
+                     min="0.01" max="100" step="0.01"
                      value="${proportion.toFixed(2)}"
                      data-pekerjaan-id="${pekerjaanId}"
                      data-tahapan-id="${a.tahapan_id}"
                      data-original="${proportion.toFixed(2)}"
-                     title="Input persentase">
+                     title="Persentase">
               <span class="input-group-text">%</span>
             </div>
-
-            <span class="text-muted">=</span>
-
-            <!-- Volume Input (Calculated) -->
-            <div class="input-group input-group-sm" style="width: 140px;">
+            <span class="text-muted" style="font-size: 0.7rem;">=</span>
+            <div class="input-group input-group-sm" style="width: 110px;">
               <input type="number"
                      class="form-control proportion-vol-input"
-                     min="0"
-                     step="0.001"
+                     min="0" step="0.01"
                      value="${calculatedVolume}"
                      data-pekerjaan-id="${pekerjaanId}"
                      data-tahapan-id="${a.tahapan_id}"
                      data-total-volume="${totalVolume}"
-                     title="Input volume (akan auto-calculate persentase)"
+                     title="Volume"
                      ${totalVolume === 0 ? 'disabled' : ''}>
               <span class="input-group-text">${escapeHtml(satuan)}</span>
             </div>
@@ -681,20 +674,19 @@
       `;
     }).join('');
 
-    // Add total indicator
     const total = assignments.reduce((sum, a) => sum + parseFloat(a.proporsi || 0), 0);
     const totalClass = Math.abs(total - 100) < 0.01 ? 'text-success' : 'text-danger';
-    const totalVolumeCalc = totalVolume > 0 ? (totalVolume * total / 100).toFixed(3) : '0.000';
+    const totalVolumeCalc = totalVolume > 0 ? (totalVolume * total / 100).toFixed(2) : '0.00';
 
     return `
       <div class="proportion-container" data-pekerjaan-id="${pekerjaanId}">
         ${inputs}
-        <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
-          <span class="small ${totalClass} fw-bold">
-            Total: <span class="total-proportion">${total.toFixed(2)}</span>%
+        <div class="d-flex justify-content-between align-items-center mt-1 pt-1 border-top" style="font-size: 0.75rem;">
+          <span class="${totalClass} fw-bold">
+            Σ <span class="total-proportion">${total.toFixed(1)}</span>%
           </span>
-          <span class="small ${totalClass} fw-bold">
-            = <span class="total-volume">${totalVolumeCalc}</span> ${escapeHtml(satuan)}
+          <span class="${totalClass} fw-bold">
+            <span class="total-volume">${totalVolumeCalc}</span> ${escapeHtml(satuan)}
           </span>
         </div>
       </div>
@@ -750,7 +742,7 @@
     const volInput = row.querySelector('.proportion-vol-input');
     if (volInput) {
       const totalVolume = parseFloat(volInput.dataset.totalVolume) || 0;
-      const calculatedVol = totalVolume > 0 ? (totalVolume * newPct / 100).toFixed(3) : '0.000';
+      const calculatedVol = totalVolume > 0 ? (totalVolume * newPct / 100).toFixed(2) : '0.00';
       volInput.value = calculatedVol;
     }
 
@@ -918,7 +910,7 @@
     // Update total percentage
     const totalPctSpan = proportionContainer.querySelector('.total-proportion');
     if (totalPctSpan) {
-      totalPctSpan.textContent = totalPct.toFixed(2);
+      totalPctSpan.textContent = totalPct.toFixed(1);
     }
 
     // Update total volume
@@ -927,7 +919,7 @@
       const firstVolInput = proportionContainer.querySelector('.proportion-vol-input');
       if (firstVolInput) {
         const totalVolume = parseFloat(firstVolInput.dataset.totalVolume) || 0;
-        const calculatedTotal = totalVolume > 0 ? (totalVolume * totalPct / 100).toFixed(3) : '0.000';
+        const calculatedTotal = totalVolume > 0 ? (totalVolume * totalPct / 100).toFixed(2) : '0.00';
         totalVolSpan.textContent = calculatedTotal;
       }
     }
