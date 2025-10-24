@@ -303,8 +303,9 @@
       volumeMap.clear();
 
       // Handle different response formats
-      const volumes = data.volumes || data.data || data || [];
+      const volumes = data.items || data.volumes || data.data || [];
       console.log('DEBUG loadVolumes: Processing volumes array, length =', volumes.length);
+      console.log('DEBUG loadVolumes: First item =', volumes.length > 0 ? volumes[0] : 'N/A');
 
       if (Array.isArray(volumes)) {
         volumes.forEach(v => {
