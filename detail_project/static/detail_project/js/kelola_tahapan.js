@@ -308,12 +308,17 @@
       console.log('DEBUG loadVolumes: First item =', volumes.length > 0 ? volumes[0] : 'N/A');
 
       if (Array.isArray(volumes)) {
-        volumes.forEach(v => {
+        volumes.forEach((v, idx) => {
           const pkjId = v.pekerjaan_id || v.id;
           const qty = parseFloat(v.quantity || v.volume || v.qty) || 0;
-          if (pkjId && qty > 0) {
+
+          console.log(`DEBUG loadVolumes: Item ${idx + 1}:`, {pkjId, qty, raw: v.quantity || v.volume || v.qty});
+
+          if (pkjId) {
             volumeMap.set(pkjId, qty);
-            console.log('DEBUG loadVolumes: Set volume for pekerjaan', pkjId, '=', qty);
+            console.log(`DEBUG loadVolumes: ✓ Set volume for pekerjaan ${pkjId} = ${qty}`);
+          } else {
+            console.warn('DEBUG loadVolumes: ✗ Skipped item - no pekerjaan_id:', v);
           }
         });
       }
