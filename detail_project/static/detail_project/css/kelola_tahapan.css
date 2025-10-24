@@ -1,6 +1,15 @@
 /* =====================================================================
-   KELOLA_TAHAPAN.CSS — Styles for Tahapan Manager (Table-based workflow)
+   KELOLA_TAHAPAN.CSS — Simplified Tahapan Manager Styles
    ===================================================================== */
+
+/* ===== CSS Variables ===== */
+:root {
+  --kt-surface-hover: rgba(0, 0, 0, 0.02);
+  --kt-warning-bg: #fff3cd;
+  --kt-warning-border: #ffc107;
+  --kt-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --kt-transition: all 0.2s ease;
+}
 
 /* ===== Main Table ===== */
 #pekerjaan-table {
@@ -18,16 +27,16 @@
 }
 
 #pekerjaan-table tbody tr {
-  transition: background-color 0.2s ease;
+  transition: var(--kt-transition);
 }
 
 #pekerjaan-table tbody tr:hover {
-  background-color: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
+  background-color: var(--kt-surface-hover);
 }
 
 #pekerjaan-table tbody tr.table-warning {
-  background-color: #fff3cd;
-  border-left: 3px solid #ffc107;
+  background-color: var(--kt-warning-bg);
+  border-left: 3px solid var(--kt-warning-border);
 }
 
 #pekerjaan-table td {
@@ -44,11 +53,12 @@
   margin-bottom: 0.25rem;
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
-  transition: background-color 0.15s ease;
+  transition: var(--kt-transition);
+  cursor: pointer;
 }
 
 .dropdown-menu-checkbox .form-check:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: var(--kt-surface-hover);
 }
 
 .dropdown-menu-checkbox .form-check-input {
@@ -65,15 +75,17 @@
   min-width: 250px;
 }
 
-.proportion-input {
+.proportion-input,
+.proportion-pct-input,
+.proportion-vol-input {
   text-align: right;
   font-family: 'Courier New', monospace;
   font-size: 0.875rem;
 }
 
-.proportion-input:focus {
-  border-color: #0d6efd;
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 252, 0.25);
+.proportion-vol-input:disabled {
+  background-color: var(--dp-c-surface-2, #e9ecef);
+  cursor: not-allowed;
 }
 
 .input-group-text {
@@ -87,15 +99,16 @@
   padding: 0.35em 0.65em;
 }
 
-/* ===== Sidebar ===== */
-#kt-sidebar .card-sm {
+/* ===== Sidebar & Cards ===== */
+#kt-sidebar .card-sm,
+.card.mb-3 {
   border: 1px solid var(--dp-c-border, #dee2e6);
   margin-bottom: 0.5rem;
-  transition: all 0.2s ease;
+  transition: var(--kt-transition);
 }
 
 #kt-sidebar .card-sm:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--kt-card-shadow);
   transform: translateY(-1px);
 }
 
@@ -119,12 +132,6 @@
 
 #form-tahapan .form-control-sm {
   font-size: 0.875rem;
-}
-
-/* ===== Filters Card ===== */
-.card.mb-3 {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--dp-c-border, #dee2e6);
 }
 
 /* ===== Empty State ===== */
@@ -158,10 +165,10 @@
 }
 
 .loading-spinner {
-  background: #fff;
+  background: var(--dp-c-surface, #fff);
   padding: 2rem;
   border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--kt-card-shadow);
   text-align: center;
 }
 
@@ -187,7 +194,6 @@
 
   .input-group-text {
     font-size: 0.75rem;
-    min-width: 90px !important;
   }
 }
 
@@ -319,7 +325,7 @@
   scrollbar-color: var(--dp-c-border, #888) var(--dp-c-surface-2, #f1f1f1);
 }
 
-/* ===== Hierarchical Cards (Klasifikasi & Sub-Klasifikasi) ===== */
+/* ===== Hierarchical Cards ===== */
 .kt-klas-card {
   border-radius: 0.5rem;
   overflow: hidden;
@@ -336,6 +342,25 @@
   font-weight: 600;
 }
 
+.kt-sub-card {
+  border: 1px solid var(--dp-c-border, #dee2e6);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  background-color: var(--dp-c-surface-1, #fff);
+  margin-bottom: 1rem;
+}
+
+.kt-sub-card .dp-card-title-secondary {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--dp-c-text-primary, #212529);
+}
+
+/* ===== Card Toggle Buttons ===== */
+.kt-card-toggle {
+  transition: var(--kt-transition);
+}
+
 .kt-klas-card .kt-card-toggle {
   border-color: rgba(255, 255, 255, 0.5);
   color: white;
@@ -346,23 +371,15 @@
   border-color: white;
 }
 
-.kt-sub-card {
-  border: 1px solid var(--dp-c-border, #dee2e6);
-  border-radius: 0.375rem;
-  padding: 0.75rem;
-  background-color: var(--dp-c-surface-1, #fff);
-}
-
-.kt-sub-card .dp-card-title-secondary {
-  font-size: 1rem;
-  font-weight: 500;
-  color: var(--dp-c-text-primary, #212529);
-}
-
 .kt-sub-card .kt-card-toggle {
   border-color: var(--dp-c-border, #dee2e6);
 }
 
+.kt-card-toggle i {
+  transition: transform 0.3s ease;
+}
+
+/* ===== Nested Table (kt-table) ===== */
 .kt-table {
   margin-top: 0.5rem;
   font-size: 0.875rem;
@@ -381,36 +398,16 @@
 }
 
 .kt-table tbody tr:hover {
-  background-color: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
+  background-color: var(--kt-surface-hover);
 }
 
 .kt-table tbody tr.table-warning {
-  background-color: #fff3cd;
-  border-left: 3px solid #ffc107;
-}
-
-/* ===== Proportion Row (Dual Input Mode) ===== */
-.proportion-row {
-  font-size: 0.875rem;
-}
-
-.proportion-row .proportion-pct-input,
-.proportion-row .proportion-vol-input {
-  font-family: 'Courier New', monospace;
-  text-align: right;
-}
-
-.proportion-row .proportion-vol-input:disabled {
-  background-color: var(--dp-c-surface-2, #e9ecef);
-  cursor: not-allowed;
+  background-color: var(--kt-warning-bg);
+  border-left: 3px solid var(--kt-warning-border);
 }
 
 /* ===== Collapse/Expand Animation ===== */
 .kt-klas-body,
 .kt-sub-body {
-  transition: all 0.3s ease;
-}
-
-.kt-card-toggle i {
-  transition: transform 0.3s ease;
+  transition: var(--kt-transition);
 }

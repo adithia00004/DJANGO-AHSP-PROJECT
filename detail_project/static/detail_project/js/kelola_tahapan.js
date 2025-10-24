@@ -124,58 +124,24 @@
   // =========================================================================
 
   async function loadAllData() {
-    console.log('=== LOAD ALL DATA START ===');
     showLoading(true);
     try {
-      // Load tahapan list
-      console.log('Step 1: Loading tahapan...');
       await loadTahapan();
-      console.log('Step 1 DONE: tahapanList.length =', tahapanList.length);
 
-      // Check if we have tahapan, if not auto-create Tahap 1
       if (tahapanList.length === 0) {
-        console.log('Step 2: No tahapan found, auto-initializing...');
         await autoInitializeTahap1();
-        console.log('Step 2 DONE: tahapanList.length =', tahapanList.length);
       }
 
-      // Load pekerjaan tree
-      console.log('Step 3: Loading pekerjaan...');
       await loadPekerjaan();
-      console.log('Step 3 DONE: allPekerjaan.length =', allPekerjaan.length);
-      console.log('Step 3 DONE: pekerjaanMap.size =', pekerjaanMap.size);
-
-      // Load volumes
-      console.log('Step 4: Loading volumes...');
       await loadVolumes();
-      console.log('Step 4 DONE: volumeMap.size =', volumeMap.size);
-
-      // Load all assignments
-      console.log('Step 5: Loading assignments...');
       await loadAllAssignments();
-      console.log('Step 5 DONE');
-
-      // Auto-assign unassigned pekerjaan to Tahap 1
-      console.log('Step 6: Auto-assigning unassigned...');
       await autoAssignUnassignedToTahap1();
-      console.log('Step 6 DONE');
 
-      // Render table
-      console.log('Step 7: Rendering table...');
       renderTable();
-      console.log('Step 7 DONE');
-
-      // Show main container
-      console.log('Step 8: Showing main container...');
       showEmpty(false);
-      console.log('Step 8 DONE');
-
-      console.log('=== LOAD ALL DATA COMPLETE ===');
 
     } catch (error) {
-      console.error('!!! LOAD ALL DATA FAILED !!!');
-      console.error('Error:', error);
-      console.error('Stack:', error.stack);
+      console.error('Load data failed:', error);
       showToast('Gagal memuat data: ' + error.message, 'error');
     } finally {
       showLoading(false);
@@ -199,10 +165,7 @@
 
   async function loadPekerjaan() {
     try {
-      console.log('DEBUG loadPekerjaan: Fetching from API...');
       const response = await apiCall(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`);
-      console.log('DEBUG loadPekerjaan: API response =', response);
-
       allPekerjaan = [];
 
       // Flatten tree structure - handle API response format
@@ -216,7 +179,6 @@
 
         // Handle response format: {ok: true, klasifikasi: [...]}
         if (node.klasifikasi && Array.isArray(node.klasifikasi)) {
-          console.log('DEBUG: Processing root klasifikasi array, length =', node.klasifikasi.length);
           node.klasifikasi.forEach(klas => flattenNode(klas, '', ''));
           return;
         }
@@ -224,8 +186,6 @@
         // Handle klasifikasi node: has "sub" array property
         if (node.sub && Array.isArray(node.sub)) {
           const klasNama = node.name || node.nama || '';
-          console.log('DEBUG: Processing klasifikasi:', klasNama);
-
           node.sub.forEach(sub => flattenNode(sub, klasNama, ''));
           return;
         }
@@ -233,14 +193,10 @@
         // Handle sub-klasifikasi node: has "pekerjaan" array property
         if (node.pekerjaan && Array.isArray(node.pekerjaan)) {
           const subKlasNama = node.name || node.nama || '';
-          console.log('DEBUG: Processing sub-klasifikasi:', subKlasNama);
 
           node.pekerjaan.forEach(pkj => {
-            // Process pekerjaan inline
             const pekerjaanId = pkj.id || pkj.pekerjaan_id;
             if (pekerjaanId) {
-              console.log('DEBUG: Found pekerjaan:', pekerjaanId, pkj.snapshot_kode);
-
               const pkjData = {
                 id: pekerjaanId,
                 kode: pkj.snapshot_kode || pkj.kode || '',
@@ -256,7 +212,7 @@
               // Initialize in pekerjaanMap
               pekerjaanMap.set(pekerjaanId, {
                 ...pkjData,
-                assignments: [] // Will be populated later
+                assignments: []
               });
             }
           });
@@ -271,14 +227,6 @@
 
       flattenNode(response);
 
-      console.log('DEBUG loadPekerjaan: Flattened allPekerjaan.length =', allPekerjaan.length);
-      if (allPekerjaan.length > 0) {
-        console.log('DEBUG loadPekerjaan: First pekerjaan =', allPekerjaan[0]);
-      } else {
-        console.warn('DEBUG loadPekerjaan: No pekerjaan found! Response structure might be unexpected.');
-        console.log('DEBUG loadPekerjaan: Full response =', JSON.stringify(response, null, 2));
-      }
-
       // Populate filter klasifikasi dropdown
       const klasifikasiSet = new Set(allPekerjaan.map(p => p.klasifikasi).filter(Boolean));
       if ($filterKlasifikasi) {
@@ -289,47 +237,31 @@
       return allPekerjaan;
     } catch (error) {
       console.error('Failed to load pekerjaan:', error);
-      console.error('Error details:', error.message, error.stack);
       throw error;
     }
   }
 
   async function loadVolumes() {
     try {
-      console.log('DEBUG loadVolumes: Fetching from API...');
       const data = await apiCall(`/detail_project/api/project/${projectId}/volume-pekerjaan/list/`);
-      console.log('DEBUG loadVolumes: API response =', data);
-
       volumeMap.clear();
 
-      // Handle different response formats
       const volumes = data.items || data.volumes || data.data || [];
-      console.log('DEBUG loadVolumes: Processing volumes array, length =', volumes.length);
-      console.log('DEBUG loadVolumes: First item =', volumes.length > 0 ? volumes[0] : 'N/A');
 
       if (Array.isArray(volumes)) {
-        volumes.forEach((v, idx) => {
+        volumes.forEach(v => {
           const pkjId = v.pekerjaan_id || v.id;
           const qty = parseFloat(v.quantity || v.volume || v.qty) || 0;
 
-          console.log(`DEBUG loadVolumes: Item ${idx + 1}:`, {pkjId, qty, raw: v.quantity || v.volume || v.qty});
-
           if (pkjId) {
             volumeMap.set(pkjId, qty);
-            console.log(`DEBUG loadVolumes: ✓ Set volume for pekerjaan ${pkjId} = ${qty}`);
-          } else {
-            console.warn('DEBUG loadVolumes: ✗ Skipped item - no pekerjaan_id:', v);
           }
         });
       }
 
-      console.log('DEBUG loadVolumes: Final volumeMap.size =', volumeMap.size);
-
       return volumeMap;
     } catch (error) {
       console.error('Failed to load volumes:', error);
-      console.error('Error details:', error.message);
-      // Non-critical, continue without volumes
       return volumeMap;
     }
   }
@@ -358,10 +290,8 @@
   // =========================================================================
 
   async function autoInitializeTahap1() {
-    console.log('Auto-initializing Tahap 1...');
     try {
-      // Create Tahap 1 automatically
-      const response = await apiCall(apiBase, {
+      await apiCall(apiBase, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -376,59 +306,37 @@
         })
       });
 
-      console.log('DEBUG: Create Tahap 1 response =', response);
-
       // Reload tahapan list with retry
       let retries = 3;
       while (retries > 0) {
         await loadTahapan();
         if (tahapanList.length > 0) {
-          console.log('Tahap 1 created and loaded successfully');
           showStatus('Tahap 1 telah dibuat secara otomatis', 'success');
           return;
         }
         retries--;
         if (retries > 0) {
-          console.log(`Tahapan list still empty, retrying... (${retries} retries left)`);
-          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
-
-      console.warn('Tahap 1 created but not found in tahapanList after retries');
     } catch (error) {
       console.error('Failed to auto-initialize Tahap 1:', error);
-      // Non-critical, continue
     }
   }
 
   async function autoAssignUnassignedToTahap1() {
-    // Debug: Log tahapanList
-    console.log('DEBUG: tahapanList =', tahapanList);
-    console.log('DEBUG: tahapanList length =', tahapanList.length);
-    if (tahapanList.length > 0) {
-      console.log('DEBUG: First tahapan =', tahapanList[0]);
-    }
-
     // Find Tahap 1 (try multiple methods)
     let tahap1 = tahapanList.find(t => t.nama && t.nama.toLowerCase().includes('tahap 1'));
 
     if (!tahap1) {
-      // Try by urutan
       tahap1 = tahapanList.find(t => t.urutan === 1);
     }
 
     if (!tahap1) {
-      // Try first tahapan as fallback
       tahap1 = tahapanList[0];
     }
 
-    if (!tahap1) {
-      console.warn('Tahap 1 not found, skipping auto-assignment');
-      console.warn('DEBUG: Available tahapan:', tahapanList);
-      return;
-    }
-
-    console.log('DEBUG: Using tahap1 =', tahap1);
+    if (!tahap1) return;
 
     // Find all unassigned or partially assigned pekerjaan
     const unassignedPekerjaan = [];
@@ -436,21 +344,16 @@
     pekerjaanMap.forEach((pkjData, pkjId) => {
       const totalAssigned = pkjData.total_assigned || 0;
 
-      // If completely unassigned or partially assigned
       if (totalAssigned < 99.99) {
         const remainingProportion = 100 - totalAssigned;
-
-        // Check if already has Tahap 1 assignment
         const existingTahap1 = pkjData.assignments.find(a => a.tahapan_id === tahap1.tahapan_id);
 
         if (!existingTahap1 && remainingProportion > 0) {
-          // Add to unassigned list
           unassignedPekerjaan.push({
             pekerjaan_id: pkjId,
             proporsi: remainingProportion
           });
 
-          // Update local state
           pkjData.assignments.push({
             tahapan_id: tahap1.tahapan_id,
             proporsi: remainingProportion
@@ -462,10 +365,7 @@
 
     // If there are unassigned pekerjaan, assign them to Tahap 1
     if (unassignedPekerjaan.length > 0) {
-      console.log(`Auto-assigning ${unassignedPekerjaan.length} pekerjaan to Tahap 1...`);
-
       try {
-        // Batch assign in chunks to avoid oversized payloads
         const chunkSize = 50;
         for (let i = 0; i < unassignedPekerjaan.length; i += chunkSize) {
           const chunk = unassignedPekerjaan.slice(i, i + chunkSize);
@@ -480,7 +380,6 @@
           });
         }
 
-        console.log('Auto-assignment completed successfully');
         showStatus(`${unassignedPekerjaan.length} pekerjaan telah di-assign ke Tahap 1 secara otomatis`, 'success');
       } catch (error) {
         console.error('Failed to auto-assign to Tahap 1:', error);
@@ -516,45 +415,28 @@
   }
 
   function renderTable() {
-    console.log('DEBUG renderTable: Starting...');
-    console.log('DEBUG renderTable: $tbody =', $tbody);
-    console.log('DEBUG renderTable: allPekerjaan.length =', allPekerjaan.length);
-
-    if (!$tbody) {
-      console.error('DEBUG renderTable: $tbody is null!');
-      return;
-    }
+    if (!$tbody) return;
 
     if (allPekerjaan.length === 0) {
-      console.warn('DEBUG renderTable: No pekerjaan to render');
       $tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Tidak ada pekerjaan</td></tr>';
       return;
     }
 
-    console.log('DEBUG renderTable: Grouping pekerjaan hierarchically...');
     const grouped = groupPekerjaanHierarchical();
 
-    console.log('DEBUG renderTable: Creating hierarchical cards...');
     const html = Object.entries(grouped).map(([klasNama, subGroups]) => {
       return createKlasifikasiCard(klasNama, subGroups);
     }).join('');
 
-    console.log('DEBUG renderTable: HTML length =', html.length);
-
     $tbody.innerHTML = html;
 
-    // Attach event listeners
-    console.log('DEBUG renderTable: Attaching event listeners...');
     attachTableEventListeners();
     attachCollapseToggles();
 
-    // Update count
     const showingCount = document.getElementById('showing-count');
     const totalCount = document.getElementById('total-count');
     if (showingCount) showingCount.textContent = allPekerjaan.length;
     if (totalCount) totalCount.textContent = allPekerjaan.length;
-
-    console.log('DEBUG renderTable: Complete!');
   }
 
   function createKlasifikasiCard(klasNama, subGroups) {

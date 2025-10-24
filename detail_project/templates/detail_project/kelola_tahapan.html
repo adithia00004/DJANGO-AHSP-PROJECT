@@ -18,19 +18,26 @@
      data-project-id="{{ project.id }}"
      data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/">
 
-  <!-- Toolbar (sticky) -->
+  <!-- Toolbar -->
   <div id="kt-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Kelola Tahapan">
     <div class="d-flex flex-column">
-      <span class="fw-semibold">Kelola Tahapan Pelaksanaan</span>
+      <h1 class="h5 fw-semibold mb-0">Kelola Tahapan Pelaksanaan</h1>
       <small class="text-muted">Atur tahapan dan distribusi volume pekerjaan per tahap</small>
     </div>
 
     <div class="ms-auto d-flex align-items-center gap-2">
-      <button class="btn btn-outline-secondary dp-btn dp-btn-sm js-kt-sidebar-toggle" type="button" aria-controls="kt-sidebar" aria-expanded="false" aria-label="Buka Panel Tahapan">
+      <button class="btn btn-outline-secondary dp-btn dp-btn-sm js-kt-sidebar-toggle"
+              type="button"
+              aria-controls="kt-sidebar"
+              aria-expanded="false"
+              aria-label="Buka panel kelola tahapan">
         <i class="bi bi-layout-sidebar-inset-reverse" aria-hidden="true"></i>
         <span class="d-none d-sm-inline">Kelola Tahapan</span>
       </button>
-      <button type="button" class="btn btn-success dp-btn dp-btn-sm" id="btn-save-all" aria-label="Simpan Semua Perubahan">
+      <button type="button"
+              class="btn btn-success dp-btn dp-btn-sm"
+              id="btn-save-all"
+              aria-label="Simpan semua perubahan">
         <i class="bi bi-save" aria-hidden="true"></i>
         <span class="d-none d-sm-inline">Simpan Semua</span>
       </button>
@@ -56,15 +63,19 @@
     <p class="mt-2 text-muted">Memuat data...</p>
   </div>
 
-  <!-- Empty State (No Tahapan) -->
-  <div id="empty-state" class="empty-state d-none">
-    <i class="bi bi-inbox"></i>
-    <h4>Belum Ada Tahapan</h4>
+  <!-- Empty State -->
+  <div id="empty-state" class="empty-state d-none" role="status">
+    <i class="bi bi-inbox" aria-hidden="true"></i>
+    <h2 class="h4">Belum Ada Tahapan</h2>
     <p class="text-muted">
       Anda perlu membuat tahapan terlebih dahulu sebelum dapat mengatur distribusi pekerjaan.
     </p>
-    <button type="button" class="btn btn-primary js-kt-sidebar-toggle" aria-controls="kt-sidebar">
-      <i class="bi bi-plus-circle"></i> Buka Panel Kelola Tahapan
+    <button type="button"
+            class="btn btn-primary js-kt-sidebar-toggle"
+            aria-controls="kt-sidebar"
+            aria-label="Buka panel untuk membuat tahapan">
+      <i class="bi bi-plus-circle" aria-hidden="true"></i>
+      Buka Panel Kelola Tahapan
     </button>
   </div>
 
@@ -75,16 +86,26 @@
       <div class="card-body py-2">
         <div class="row g-2 align-items-center">
           <div class="col-md-4">
-            <input type="text" class="form-control form-control-sm" id="search-pekerjaan"
-                   placeholder="Cari pekerjaan (kode/uraian)...">
+            <label for="search-pekerjaan" class="visually-hidden">Cari pekerjaan</label>
+            <input type="text"
+                   class="form-control form-control-sm"
+                   id="search-pekerjaan"
+                   placeholder="Cari pekerjaan (kode/uraian)..."
+                   aria-label="Cari pekerjaan berdasarkan kode atau uraian">
           </div>
           <div class="col-md-3">
-            <select class="form-select form-select-sm" id="filter-klasifikasi">
+            <label for="filter-klasifikasi" class="visually-hidden">Filter klasifikasi</label>
+            <select class="form-select form-select-sm"
+                    id="filter-klasifikasi"
+                    aria-label="Filter berdasarkan klasifikasi">
               <option value="">Semua Klasifikasi</option>
             </select>
           </div>
           <div class="col-md-3">
-            <select class="form-select form-select-sm" id="filter-status">
+            <label for="filter-status" class="visually-hidden">Filter status</label>
+            <select class="form-select form-select-sm"
+                    id="filter-status"
+                    aria-label="Filter berdasarkan status assignment">
               <option value="">Semua Status</option>
               <option value="assigned">Sudah Ter-assign</option>
               <option value="unassigned">Belum Ter-assign</option>
@@ -92,8 +113,12 @@
             </select>
           </div>
           <div class="col-md-2 text-end">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-reset-filters">
-              <i class="bi bi-x-circle"></i> Reset
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="btn-reset-filters"
+                    aria-label="Reset semua filter">
+              <i class="bi bi-x-circle" aria-hidden="true"></i>
+              Reset
             </button>
           </div>
         </div>
@@ -150,7 +175,7 @@
     </div>
   </div>
 
-  <!-- Overlay Sidebar Kanan untuk Kelola Tahapan -->
+  <!-- Sidebar: Kelola Tahapan -->
   <aside id="kt-sidebar"
          class="dp-sidebar-overlay"
          role="complementary"
@@ -162,54 +187,79 @@
 
     <div class="dp-sidebar-inner dp-scrollbar">
       <div class="dp-sidebar-header">
-        <h6 id="ktSidebarTitle">Kelola Tahapan</h6>
-        <button type="button" class="btn btn-sm btn-outline-secondary dp-btn-sm js-kt-sidebar-close" aria-label="Tutup">
-          <i class="bi bi-x-lg"></i>
+        <h2 class="h6 mb-0" id="ktSidebarTitle">Kelola Tahapan</h2>
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary dp-btn-sm js-kt-sidebar-close"
+                aria-label="Tutup panel">
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
         </button>
       </div>
 
       <div class="dp-sidebar-body" tabindex="-1">
-        <!-- Form Add/Edit Tahapan -->
+        <!-- Form: Add/Edit Tahapan -->
         <div class="mb-4">
-          <h6 class="mb-3 d-flex align-items-center">
-            <i class="bi bi-plus-circle me-2"></i>
+          <h3 class="h6 mb-3 d-flex align-items-center">
+            <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>
             <span id="form-title">Tambah Tahapan Baru</span>
-          </h6>
+          </h3>
           <form id="form-tahapan">
             <input type="hidden" id="tahapan-id">
             <div class="mb-3">
-              <label class="form-label">Nama Tahapan <span class="text-danger">*</span></label>
-              <input type="text" class="form-control form-control-sm" id="tahapan-nama"
-                     placeholder="Contoh: Tahap 1 - Persiapan" required>
+              <label for="tahapan-nama" class="form-label">
+                Nama Tahapan <span class="text-danger" aria-label="wajib">*</span>
+              </label>
+              <input type="text"
+                     class="form-control form-control-sm"
+                     id="tahapan-nama"
+                     placeholder="Contoh: Tahap 1 - Persiapan"
+                     required
+                     aria-required="true">
               <div class="form-text small">Nama harus unik dalam project</div>
             </div>
             <div class="mb-3">
-              <label class="form-label">Urutan</label>
-              <input type="number" class="form-control form-control-sm" id="tahapan-urutan"
-                     placeholder="Auto" min="1">
-              <div class="form-text small">Kosongkan untuk urutan otomatis</div>
+              <label for="tahapan-urutan" class="form-label">Urutan</label>
+              <input type="number"
+                     class="form-control form-control-sm"
+                     id="tahapan-urutan"
+                     placeholder="Auto"
+                     min="1"
+                     aria-describedby="urutan-help">
+              <div id="urutan-help" class="form-text small">Kosongkan untuk urutan otomatis</div>
             </div>
             <div class="mb-3">
-              <label class="form-label">Deskripsi</label>
-              <textarea class="form-control form-control-sm" id="tahapan-deskripsi" rows="2"
+              <label for="tahapan-deskripsi" class="form-label">Deskripsi</label>
+              <textarea class="form-control form-control-sm"
+                        id="tahapan-deskripsi"
+                        rows="2"
                         placeholder="Deskripsi opsional"></textarea>
             </div>
             <div class="row mb-3">
               <div class="col-6">
-                <label class="form-label small">Tanggal Mulai</label>
-                <input type="date" class="form-control form-control-sm" id="tahapan-tanggal-mulai">
+                <label for="tahapan-tanggal-mulai" class="form-label small">Tanggal Mulai</label>
+                <input type="date"
+                       class="form-control form-control-sm"
+                       id="tahapan-tanggal-mulai">
               </div>
               <div class="col-6">
-                <label class="form-label small">Tanggal Selesai</label>
-                <input type="date" class="form-control form-control-sm" id="tahapan-tanggal-selesai">
+                <label for="tahapan-tanggal-selesai" class="form-label small">Tanggal Selesai</label>
+                <input type="date"
+                       class="form-control form-control-sm"
+                       id="tahapan-tanggal-selesai">
               </div>
             </div>
             <div class="d-flex gap-2">
-              <button type="submit" class="btn btn-primary btn-sm flex-grow-1" id="btn-save-tahapan">
-                <i class="bi bi-check-circle"></i> Simpan
+              <button type="submit"
+                      class="btn btn-primary btn-sm flex-grow-1"
+                      id="btn-save-tahapan">
+                <i class="bi bi-check-circle" aria-hidden="true"></i>
+                Simpan
               </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-reset-form">
-                <i class="bi bi-x-circle"></i> Batal
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm"
+                      id="btn-reset-form"
+                      aria-label="Batalkan perubahan">
+                <i class="bi bi-x-circle" aria-hidden="true"></i>
+                Batal
               </button>
             </div>
           </form>
@@ -217,13 +267,13 @@
 
         <hr>
 
-        <!-- Daftar Tahapan yang Ada -->
+        <!-- Daftar Tahapan -->
         <div>
-          <h6 class="mb-3">
-            <i class="bi bi-list-ul me-2"></i>
-            Daftar Tahapan (<span id="tahapan-count">0</span>)
-          </h6>
-          <div id="tahapan-list-sidebar" class="vstack gap-2">
+          <h3 class="h6 mb-3">
+            <i class="bi bi-list-ul me-2" aria-hidden="true"></i>
+            Daftar Tahapan (<span id="tahapan-count" aria-live="polite">0</span>)
+          </h3>
+          <div id="tahapan-list-sidebar" class="vstack gap-2" role="list">
             <!-- Populated by JS -->
           </div>
         </div>
