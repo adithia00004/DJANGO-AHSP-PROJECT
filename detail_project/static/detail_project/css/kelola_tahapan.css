@@ -37,14 +37,16 @@
 
 /* ===== Multi-Select Dropdown ===== */
 .dropdown-menu-checkbox {
-  min-width: 200px;
+  min-width: 220px;
+  max-width: 300px;
 }
 
 .dropdown-menu-checkbox .form-check {
   margin-bottom: 0.25rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.5rem 0.25rem 1.75rem;
   border-radius: 0.25rem;
   transition: background-color 0.15s ease;
+  position: relative;
 }
 
 .dropdown-menu-checkbox .form-check:hover {
@@ -52,12 +54,22 @@
 }
 
 .dropdown-menu-checkbox .form-check-input {
-  margin-top: 0.1rem;
+  margin-top: 0.25rem;
+  margin-left: -1.5rem;
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
 }
 
 .dropdown-menu-checkbox .form-check-label {
   cursor: pointer;
   user-select: none;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  display: block;
+  padding-right: 0.5rem;
+  line-height: 1.4;
 }
 
 /* ===== Proportion Inputs ===== */

@@ -829,14 +829,13 @@
       return aIdx - bIdx;
     });
 
-    // Calculate equal distribution
+    // Always calculate equal distribution to ensure total is always 100%
     const equalProportion = parseFloat((100 / sortedIds.length).toFixed(2));
     let remainder = parseFloat((100 - equalProportion * sortedIds.length).toFixed(2));
 
     sortedIds.forEach((tahapanId, idx) => {
-      // Check if this tahapan already has assignment
-      const existing = existingAssignments.find(a => a.tahapan_id === tahapanId);
-      let proporsi = existing ? parseFloat(existing.proporsi) : equalProportion;
+      // Always use equal proportion for all tahapan, regardless of existing assignments
+      let proporsi = equalProportion;
 
       // Add remainder to first item to ensure total = 100%
       if (idx === 0 && remainder !== 0) {
