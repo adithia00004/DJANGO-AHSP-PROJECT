@@ -1,54 +1,318 @@
 /* =====================================================================
-   KELOLA_TAHAPAN.CSS — Styles for Tahapan Manager (Table-based workflow)
+   Kelola Tahapan — PAGE CSS (REFACTORED to match Volume Pekerjaan)
+   - Menggunakan Component Library (components-library.css)
+   - Menggunakan design tokens dari core.css
+   - Hierarchical card-based layout
+   - Konsisten dengan volume_pekerjaan.css pattern
    ===================================================================== */
 
-/* ===== Main Table ===== */
-#pekerjaan-table {
-  font-size: 0.875rem;
+
+/* ===========================================================
+   I) PAGE CONTAINER
+   =========================================================== */
+#tahapan-app {
+  max-width: 1800px; /* Selaras dengan volume_pekerjaan */
+  margin: 0 auto;
 }
 
-#pekerjaan-table thead th {
-  background-color: var(--dp-c-surface-2, #f8f9fa);
-  border-bottom: 2px solid var(--dp-c-border, #dee2e6);
+#kt-page {
+  font-size: var(--ux-font-sm, .875rem);
+  line-height: var(--ux-line-md, 1.25rem);
+}
+
+/* Outer container - border thickness sesuai component library */
+#main-content.dp-card {
+  border-width: 1px;
+}
+
+
+/* ===========================================================
+   II) TOOLBAR - Page-specific overrides
+   =========================================================== */
+#kt-toolbar {
+  box-shadow: var(--dp-shadow-sm);
+  flex-wrap: nowrap;
+  border-bottom: 0 !important;
+}
+
+/* Searchbar - lebar khusus */
+.kt-searchbar {
+  min-width: 320px;
+  position: relative;
+}
+
+/* Autocomplete dropdown mengikuti component library */
+.kt-search-dropdown {
+  z-index: var(--kt-z-search, calc(var(--dp-z-toolbar) + 1));
+  position: absolute;
+  left: 0; right: 0;
+  top: calc(100% + .25rem);
+  max-height: min(50vh, 360px);
+  overflow: auto;
+}
+
+/* Search results item */
+#kt-search-results .kt-search-item {
+  font-size: var(--ux-font-sm);
+  padding: .25rem .5rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  cursor: pointer;
+}
+
+#kt-search-results .kt-search-item:hover {
+  background: var(--dp-c-surface-2);
+}
+
+
+/* ===========================================================
+   III) HIERARCHICAL CARDS - Adopsi dari Volume Pekerjaan
+   =========================================================== */
+
+/* Klasifikasi Card (Primary Level) */
+.kt-klas-card {
+  border-radius: var(--dp-radius-lg);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-md);
+}
+
+.kt-klas-card .card-header {
+  background: var(--dp-c-primary, #0d6efd);
+  color: white;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: none;
+}
+
+.kt-klas-card .dp-card-title-primary {
+  font-size: var(--ux-font-lg);
   font-weight: 600;
-  white-space: nowrap;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  margin: 0;
 }
 
-#pekerjaan-table tbody tr {
-  transition: background-color 0.2s ease;
+.kt-klas-card .card-body {
+  padding: 1rem;
+  background: var(--dp-c-surface);
 }
 
-#pekerjaan-table tbody tr:hover {
-  background-color: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
+/* Sub-Klasifikasi Card (Secondary Level) */
+.kt-sub-card {
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  background: var(--dp-c-surface-1, #fff);
 }
 
-#pekerjaan-table tbody tr.table-warning {
-  background-color: #fff3cd;
-  border-left: 3px solid #ffc107;
+.kt-sub-card .kt-sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
-#pekerjaan-table td {
-  vertical-align: middle;
+.kt-sub-card .dp-card-title-secondary {
+  font-size: var(--ux-font-base);
+  font-weight: 500;
+  color: var(--dp-c-text);
+  margin: 0;
+}
+
+/* Collapse behavior */
+.kt-klas-card.is-collapsed > .card-body,
+.kt-sub-card.is-collapsed > .kt-sub-body {
+  display: none;
+}
+
+/* Toggle button behavior */
+.kt-card-toggle {
+  line-height: 1;
+  transition: transform var(--ux-duration-200) var(--ux-ease);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+}
+
+.kt-card-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: white;
+}
+
+.kt-card-toggle i {
+  transition: transform var(--ux-duration-200) var(--ux-ease);
+}
+
+.is-collapsed .kt-card-toggle i {
+  transform: rotate(-90deg);
+}
+
+/* Sub-card toggle (different color) */
+.kt-sub-card .kt-card-toggle {
+  border-color: var(--dp-c-border);
+  color: var(--dp-c-text);
+}
+
+.kt-sub-card .kt-card-toggle:hover {
+  background: var(--dp-c-surface-2);
+  border-color: var(--dp-c-border-dark, #adb5bd);
+}
+
+
+/* ===========================================================
+   IV) TABLE - Simplified nested table
+   =========================================================== */
+
+/* Table di dalam sub-card */
+.kt-table {
+  margin-top: 0.5rem;
+  font-size: var(--ux-font-sm);
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.kt-table thead th {
+  background: var(--dp-c-surface-2, #f8f9fa);
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
   padding: 0.5rem;
+  border-bottom: 2px solid var(--dp-c-border);
+  white-space: nowrap;
 }
 
-/* ===== Multi-Select Dropdown ===== */
+.kt-table tbody td {
+  padding: 0.5rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--dp-c-border-light, #e9ecef);
+}
+
+.kt-table tbody tr:hover {
+  background: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
+}
+
+/* Column widths (simplified from 10 columns to 6) */
+.kt-table colgroup col.col-no { width: 6ch; }
+.kt-table colgroup col.col-urai { width: auto; min-width: 20ch; }
+.kt-table colgroup col.col-volume { width: 12ch; }
+.kt-table colgroup col.col-satuan { width: 8ch; }
+.kt-table colgroup col.col-tahapan { width: 20ch; }
+.kt-table colgroup col.col-proporsi { width: 40ch; }
+
+/* Nomor column - center aligned */
+.kt-table th:first-child,
+.kt-table td:first-child {
+  text-align: center;
+}
+
+/* Uraian - left aligned, wrap allowed */
+.kt-table td.text-wrap {
+  text-align: left;
+  word-wrap: break-word;
+}
+
+
+/* ===========================================================
+   V) ROW STATUS INDICATORS (Border-left like Volume Pekerjaan)
+   =========================================================== */
+
+/* Red: unassigned */
+.kt-table tbody tr[data-status="unassigned"] > td:first-child {
+  border-left: 4px solid var(--dp-c-danger);
+}
+
+/* Yellow: partial */
+.kt-table tbody tr[data-status="partial"] > td:first-child {
+  border-left: 4px solid var(--dp-c-warning);
+}
+
+/* Green: assigned (complete) */
+.kt-table tbody tr[data-status="assigned"] > td:first-child {
+  border-left: 4px solid var(--dp-c-success);
+}
+
+/* Dark mode neon accents */
+[data-bs-theme="dark"] .kt-table tbody tr[data-status="unassigned"] > td:first-child {
+  border-left-color: #ff5b5b;
+  box-shadow: 0 0 6px 0 rgba(255, 91, 91, .55);
+}
+
+[data-bs-theme="dark"] .kt-table tbody tr[data-status="partial"] > td:first-child {
+  border-left-color: #ffd24d;
+  box-shadow: 0 0 6px 0 rgba(255, 210, 77, .5);
+}
+
+[data-bs-theme="dark"] .kt-table tbody tr[data-status="assigned"] > td:first-child {
+  border-left-color: #4dff88;
+  box-shadow: 0 0 6px 0 rgba(77, 255, 136, .5);
+}
+
+
+/* ===========================================================
+   VI) PROPORTION INPUTS - Inline dual-mode
+   =========================================================== */
+
+.proportion-container {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 38ch;
+}
+
+.proportion-row {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.proportion-pct-input,
+.proportion-vol-input {
+  font-family: var(--bs-font-monospace, 'Courier New', monospace);
+  font-size: var(--ux-font-xs);
+  text-align: right;
+  width: 8ch;
+  padding: 0.25rem 0.5rem;
+}
+
+.proportion-vol-input {
+  width: 10ch;
+  background: var(--dp-c-surface-2);
+  border-color: var(--dp-c-border-light);
+}
+
+.proportion-vol-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.input-group-text {
+  font-size: var(--ux-font-xs);
+  min-width: auto;
+  padding: 0.25rem 0.5rem;
+}
+
+
+/* ===========================================================
+   VII) DROPDOWN TAHAPAN (Multi-select)
+   =========================================================== */
+
 .dropdown-menu-checkbox {
   min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .dropdown-menu-checkbox .form-check {
   margin-bottom: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
+  border-radius: var(--dp-radius-sm);
   transition: background-color 0.15s ease;
 }
 
 .dropdown-menu-checkbox .form-check:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background: var(--dp-c-surface-2);
 }
 
 .dropdown-menu-checkbox .form-check-input {
@@ -58,95 +322,157 @@
 .dropdown-menu-checkbox .form-check-label {
   cursor: pointer;
   user-select: none;
+  font-size: var(--ux-font-sm);
 }
 
-/* ===== Proportion Inputs ===== */
-.proportion-container {
-  min-width: 250px;
+
+/* ===========================================================
+   VIII) SIDEBAR - Kelola Tahapan (matches Volume Pekerjaan)
+   =========================================================== */
+
+/* Sidebar width custom */
+body[data-page="kelola_tahapan"] {
+  --kt-rightbar-w: 560px;
+  --lp-sidebar-w: var(--kt-rightbar-w, 560px);
+  --kt-z-select2: calc(var(--dp-z-toolbar) + 1);
 }
 
-.proportion-input {
-  text-align: right;
-  font-family: 'Courier New', monospace;
-  font-size: 0.875rem;
+/* Sidebar overlay positioning */
+#kt-sidebar.dp-sidebar-overlay {
+  position: fixed;
+  right: 10px;
+  top: var(--dp-topbar-h);
+  bottom: 16px;
+  left: auto;
+  width: clamp(320px, var(--lp-sidebar-w, 560px), 760px);
+  display: none;
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-lg);
+  box-shadow: var(--dp-shadow-lg);
+  transform: translateX(16px);
+  opacity: 0;
+  transition: all var(--ux-duration-300) var(--ux-ease);
+  overflow: auto;
 }
 
-.proportion-input:focus {
-  border-color: #0d6efd;
-  box-shadow: 0 0 0 0.2rem rgba(13, 110, 252, 0.25);
+#kt-sidebar.dp-sidebar-overlay.is-open,
+#kt-sidebar.dp-sidebar-overlay.show {
+  display: block;
+  transform: translateX(0);
+  opacity: 1;
 }
 
-.input-group-text {
-  font-size: 0.875rem;
+/* Inner neutral wrapper */
+#kt-sidebar.dp-sidebar-overlay .dp-sidebar-inner {
+  position: static;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
-/* ===== Status Badges ===== */
-.badge {
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.35em 0.65em;
+/* Sidebar header */
+#kt-sidebar .dp-sidebar-header {
+  background: var(--dp-c-surface-2);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--dp-c-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
-/* ===== Sidebar ===== */
-#kt-sidebar .card-sm {
-  border: 1px solid var(--dp-c-border, #dee2e6);
-  margin-bottom: 0.5rem;
-  transition: all 0.2s ease;
+#kt-sidebar .dp-sidebar-header h6 {
+  font-size: var(--ux-font-lg);
+  margin: 0;
 }
 
-#kt-sidebar .card-sm:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transform: translateY(-1px);
-}
-
-#kt-sidebar .btn-group-sm .btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-}
-
-#form-tahapan {
-  background: var(--dp-c-surface, #fff);
+/* Sidebar body */
+#kt-sidebar .dp-sidebar-body {
+  background: var(--dp-c-surface);
+  color: var(--dp-c-text);
   padding: 1rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--dp-c-border, #dee2e6);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Form styling */
+#form-tahapan {
+  background: var(--dp-c-surface-1);
+  padding: 1rem;
+  border-radius: var(--dp-radius-md);
+  border: 1px solid var(--dp-c-border);
 }
 
 #form-tahapan .form-label {
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: var(--ux-font-sm);
   margin-bottom: 0.25rem;
 }
 
 #form-tahapan .form-control-sm {
-  font-size: 0.875rem;
+  font-size: var(--ux-font-sm);
 }
 
-/* ===== Filters Card ===== */
-.card.mb-3 {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--dp-c-border, #dee2e6);
+/* Tahapan list in sidebar */
+#kt-sidebar .card-sm {
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--dp-c-surface-1);
+  transition: all 0.2s ease;
 }
 
-/* ===== Empty State ===== */
+#kt-sidebar .card-sm:hover {
+  box-shadow: var(--dp-shadow-sm);
+  transform: translateY(-1px);
+}
+
+/* Resizer handle */
+#kt-sidebar .dp-resizer {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: transparent;
+}
+
+#kt-sidebar .dp-resizer:hover {
+  background: color-mix(in srgb, var(--dp-c-text) 10%, transparent);
+}
+
+
+/* ===========================================================
+   IX) EMPTY STATE & LOADING
+   =========================================================== */
+
 .empty-state {
   text-align: center;
-  padding: 3rem 1rem;
-  color: #6c757d;
+  padding: 4rem 2rem;
+  color: var(--dp-c-muted);
 }
 
 .empty-state i {
-  font-size: 3rem;
-  opacity: 0.5;
-  margin-bottom: 1rem;
+  font-size: 4rem;
+  opacity: 0.4;
+  margin-bottom: 1.5rem;
   display: block;
 }
 
 .empty-state h4 {
   margin-top: 1rem;
   margin-bottom: 0.5rem;
+  color: var(--dp-c-text);
 }
 
-/* ===== Loading Overlay ===== */
+/* Loading Overlay */
 .loading-overlay {
   position: fixed;
   inset: 0;
@@ -158,10 +484,10 @@
 }
 
 .loading-spinner {
-  background: #fff;
+  background: var(--dp-c-bg);
   padding: 2rem;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-radius: var(--dp-radius-lg);
+  box-shadow: var(--dp-shadow-xl);
   text-align: center;
 }
 
@@ -170,107 +496,131 @@
   height: 3rem;
 }
 
-/* ===== Responsive Adjustments ===== */
-@media (max-width: 991.98px) {
-  #pekerjaan-table {
-    font-size: 0.75rem;
+
+/* ===========================================================
+   X) RESPONSIVE ADJUSTMENTS
+   =========================================================== */
+
+@media (max-width: 768px) {
+  /* Searchbar full width on mobile */
+  .kt-searchbar {
+    min-width: 100%;
   }
 
-  #pekerjaan-table td,
-  #pekerjaan-table th {
+  /* Table font size smaller */
+  .kt-table {
+    font-size: var(--ux-font-xs);
+  }
+
+  .kt-table thead th,
+  .kt-table tbody td {
     padding: 0.35rem;
   }
 
+  /* Sidebar full width */
+  body[data-page="kelola_tahapan"] {
+    --kt-rightbar-w: calc(100vw - 2rem);
+  }
+
+  /* Proportion inputs stack */
   .proportion-container {
-    min-width: 200px;
-  }
-
-  .input-group-text {
-    font-size: 0.75rem;
-    min-width: 90px !important;
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
-@media (max-width: 767.98px) {
-  #pekerjaan-table thead th {
-    font-size: 0.7rem;
+@media (max-width: 576px) {
+  /* Toolbar wraps on small screens */
+  #kt-toolbar {
+    flex-wrap: wrap;
   }
 
-  .dropdown-menu-checkbox {
-    min-width: 150px;
-  }
-
-  #kt-sidebar .dp-sidebar-inner {
-    width: 100% !important;
+  /* Cards less padding */
+  .kt-klas-card .card-body,
+  .kt-sub-card {
+    padding: 0.5rem;
   }
 }
 
-/* ===== Table Row Highlighting ===== */
-#pekerjaan-tbody tr[data-status="unassigned"] {
-  background-color: rgba(220, 53, 69, 0.05);
+
+/* ===========================================================
+   XI) DARK MODE ENHANCEMENTS
+   =========================================================== */
+
+[data-bs-theme="dark"] .kt-klas-card .card-header {
+  background: var(--dp-c-primary-dark, #0a58ca);
 }
 
-#pekerjaan-tbody tr[data-status="partial"] {
-  background-color: rgba(255, 193, 7, 0.05);
-}
-
-#pekerjaan-tbody tr[data-status="assigned"] {
-  background-color: rgba(25, 135, 84, 0.02);
-}
-
-/* ===== Sticky Columns (optional enhancement) ===== */
-@media (min-width: 1200px) {
-  /* You can enable sticky left columns for better UX on large screens
-  #pekerjaan-table tbody tr td:nth-child(1),
-  #pekerjaan-table tbody tr td:nth-child(2),
-  #pekerjaan-table tbody tr td:nth-child(3) {
-    position: sticky;
-    left: 0;
-    background-color: inherit;
-    z-index: 5;
-  }
-  */
-}
-
-/* ===== Dark Mode Support ===== */
-[data-bs-theme="dark"] #pekerjaan-table thead th {
-  background-color: var(--dp-c-surface-2, #212529);
+[data-bs-theme="dark"] .kt-table thead th {
+  background: var(--dp-c-surface-2, #212529);
   border-color: var(--dp-c-border, #495057);
 }
 
-[data-bs-theme="dark"] #pekerjaan-table tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-[data-bs-theme="dark"] #pekerjaan-table tbody tr.table-warning {
-  background-color: rgba(255, 193, 7, 0.15);
-}
-
-[data-bs-theme="dark"] .dropdown-menu-checkbox .form-check:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+[data-bs-theme="dark"] .kt-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 [data-bs-theme="dark"] #form-tahapan {
-  background-color: var(--dp-c-surface, #212529);
-  border-color: var(--dp-c-border, #495057);
-}
-
-[data-bs-theme="dark"] .card.mb-3,
-[data-bs-theme="dark"] #kt-sidebar .card-sm {
-  background-color: var(--dp-c-surface, #212529);
+  background: var(--dp-c-surface, #1a1d20);
   border-color: var(--dp-c-border, #495057);
 }
 
 [data-bs-theme="dark"] .loading-spinner {
-  background-color: #212529;
-  color: #f8f9fa;
+  background: var(--dp-c-surface, #212529);
+  color: var(--dp-c-text, #f8f9fa);
 }
 
-/* ===== Utility Classes ===== */
-.font-monospace {
-  font-family: 'Courier New', Courier, monospace;
+
+/* ===========================================================
+   XII) PRINT & ACCESSIBILITY
+   =========================================================== */
+
+@media print {
+  #kt-toolbar,
+  #kt-sidebar,
+  .kt-card-toggle {
+    display: none !important;
+  }
+
+  /* Expand all cards for print */
+  .kt-klas-card.is-collapsed > .card-body,
+  .kt-sub-card.is-collapsed > .kt-sub-body {
+    display: block !important;
+  }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .kt-card-toggle i,
+  .kt-klas-card,
+  .kt-sub-card {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Forced colors mode */
+@media (forced-colors: active) {
+  .kt-card-toggle {
+    border-color: CanvasText !important;
+  }
+}
+
+
+/* ===========================================================
+   XIII) UTILITIES
+   =========================================================== */
+
+/* Animation for row changes */
+@keyframes ktHighlightChange {
+  0% { background-color: var(--dp-c-warning-light, #fff3cd); }
+  100% { background-color: transparent; }
+}
+
+.row-just-changed {
+  animation: ktHighlightChange 1s ease-out;
+}
+
+/* Truncate text with ellipsis */
 .text-truncate-2 {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -279,138 +629,37 @@
   text-overflow: ellipsis;
 }
 
-/* ===== Animation for changes ===== */
-@keyframes highlight-change {
-  0% {
-    background-color: #fff3cd;
-  }
-  100% {
-    background-color: transparent;
-  }
+/* Monospace font for numbers */
+.font-monospace {
+  font-family: var(--bs-font-monospace, 'Courier New', Courier, monospace);
+  font-variant-numeric: tabular-nums;
 }
 
-.row-just-changed {
-  animation: highlight-change 1s ease-out;
-}
-
-/* ===== Scrollbar Styling ===== */
-.table-responsive::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.table-responsive::-webkit-scrollbar-track {
-  background: var(--dp-c-surface-2, #f1f1f1);
-  border-radius: 4px;
-}
-
-.table-responsive::-webkit-scrollbar-thumb {
-  background: var(--dp-c-border, #888);
-  border-radius: 4px;
-}
-
-.table-responsive::-webkit-scrollbar-thumb:hover {
-  background: var(--dp-c-text-muted, #555);
-}
-
-/* Firefox scrollbar */
-.table-responsive {
-  scrollbar-width: thin;
-  scrollbar-color: var(--dp-c-border, #888) var(--dp-c-surface-2, #f1f1f1);
-}
-
-/* ===== Hierarchical Cards (Klasifikasi & Sub-Klasifikasi) ===== */
-.kt-klas-card {
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
-
-.kt-klas-card .card-header {
-  background-color: var(--dp-c-primary, #0d6efd);
-  color: white;
-  padding: 0.75rem 1rem;
-}
-
-.kt-klas-card .dp-card-title-primary {
-  font-size: 1.1rem;
+/* Badge sizing */
+.badge {
+  font-size: var(--ux-font-xs);
   font-weight: 600;
+  padding: 0.35em 0.65em;
 }
 
-.kt-klas-card .kt-card-toggle {
-  border-color: rgba(255, 255, 255, 0.5);
-  color: white;
-}
 
-.kt-klas-card .kt-card-toggle:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: white;
-}
+/* ===========================================================
+   MIGRATION NOTES:
 
-.kt-sub-card {
-  border: 1px solid var(--dp-c-border, #dee2e6);
-  border-radius: 0.375rem;
-  padding: 0.75rem;
-  background-color: var(--dp-c-surface-1, #fff);
-}
+   CHANGED from v1 to v2:
+   ✅ Flat table → Hierarchical card-based layout
+   ✅ Filter card → Integrated search in toolbar
+   ✅ Custom styling → Component library patterns
+   ✅ 10 columns → 6 simplified columns
+   ✅ Klasifikasi/Sub columns → Card headers
+   ✅ Status column → Border-left indicators
+   ✅ Separate filters → Toolbar search + expand/collapse
 
-.kt-sub-card .dp-card-title-secondary {
-  font-size: 1rem;
-  font-weight: 500;
-  color: var(--dp-c-text-primary, #212529);
-}
-
-.kt-sub-card .kt-card-toggle {
-  border-color: var(--dp-c-border, #dee2e6);
-}
-
-.kt-table {
-  margin-top: 0.5rem;
-  font-size: 0.875rem;
-}
-
-.kt-table thead th {
-  background-color: var(--dp-c-surface-2, #f8f9fa);
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.5rem;
-}
-
-.kt-table tbody td {
-  padding: 0.5rem;
-  vertical-align: middle;
-}
-
-.kt-table tbody tr:hover {
-  background-color: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
-}
-
-.kt-table tbody tr.table-warning {
-  background-color: #fff3cd;
-  border-left: 3px solid #ffc107;
-}
-
-/* ===== Proportion Row (Dual Input Mode) ===== */
-.proportion-row {
-  font-size: 0.875rem;
-}
-
-.proportion-row .proportion-pct-input,
-.proportion-row .proportion-vol-input {
-  font-family: 'Courier New', monospace;
-  text-align: right;
-}
-
-.proportion-row .proportion-vol-input:disabled {
-  background-color: var(--dp-c-surface-2, #e9ecef);
-  cursor: not-allowed;
-}
-
-/* ===== Collapse/Expand Animation ===== */
-.kt-klas-body,
-.kt-sub-body {
-  transition: all 0.3s ease;
-}
-
-.kt-card-toggle i {
-  transition: transform 0.3s ease;
-}
+   CONSISTENCY IMPROVEMENTS:
+   ✅ Matches volume_pekerjaan.css structure
+   ✅ Uses same design tokens
+   ✅ Same card styling patterns
+   ✅ Same toolbar layout
+   ✅ Same sidebar overlay behavior
+   ✅ Same responsive breakpoints
+   =========================================================== */

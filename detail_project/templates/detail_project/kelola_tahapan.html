@@ -14,39 +14,72 @@
 {% endblock %}
 
 {% block dp_content %}
-<div id="tahapan-app" 
+
+<!-- ===== Toolbar (REFACTORED - Following Volume Pekerjaan Pattern) ===== -->
+<div id="kt-toolbar"
+     class="dp-toolbar"
+     role="toolbar"
+     aria-label="Toolbar Kelola Tahapan">
+
+  <!-- Searchbar (Component Library) -->
+  <div class="input-group dp-toolbar-search kt-searchbar position-relative" role="search">
+    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+    <input id="kt-search" type="search" class="form-control"
+           placeholder="Cari Pekerjaan (Kode / Uraian)..."
+           autocomplete="off"
+           aria-controls="kt-search-results">
+    <div id="kt-search-results"
+         class="dp-autocomplete kt-search-dropdown d-none dp-scrollbar"
+         role="listbox"
+         aria-label="Hasil pencarian"></div>
+  </div>
+
+  <!-- Expand/Collapse Controls -->
+  <div class="d-flex align-items-center gap-2">
+    <button id="kt-expand-all"
+            class="btn btn-sm btn-outline-secondary dp-btn-sm"
+            type="button"
+            title="Expand semua Klasifikasi dan Sub"
+            aria-label="Expand all">
+      <i class="bi bi-arrows-expand" aria-hidden="true"></i>
+    </button>
+    <button id="kt-collapse-all"
+            class="btn btn-sm btn-outline-secondary dp-btn-sm"
+            type="button"
+            title="Collapse semua Klasifikasi dan Sub"
+            aria-label="Collapse all">
+      <i class="bi bi-arrows-collapse" aria-hidden="true"></i>
+    </button>
+  </div>
+
+  <!-- Actions kanan -->
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <!-- Save Button -->
+    <button id="btn-save-all"
+            class="btn btn-success dp-btn dp-btn-sm"
+            type="button"
+            title="Simpan semua perubahan"
+            aria-label="Simpan">
+      <i class="bi bi-save" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline">Simpan</span>
+    </button>
+
+    <!-- Kelola Tahapan Sidebar Toggle -->
+    <button type="button"
+            id="btn-kt-sidebar-toggle"
+            class="btn btn-primary dp-btn dp-btn-sm js-kt-sidebar-toggle"
+            aria-controls="kt-sidebar"
+            aria-expanded="false">
+      <i class="bi bi-sliders2"></i>
+      <span class="d-none d-sm-inline">Kelola Tahapan</span>
+    </button>
+  </div>
+</div>
+
+<div id="tahapan-app"
+     class="dp-container ux-scrollbar ux-scroll-smooth"
      data-project-id="{{ project.id }}"
      data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/">
-
-  <!-- Toolbar (sticky) -->
-  <div id="kt-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Kelola Tahapan">
-    <div class="d-flex flex-column">
-      <span class="fw-semibold">Kelola Tahapan Pelaksanaan</span>
-      <small class="text-muted">Atur tahapan dan distribusi volume pekerjaan per tahap</small>
-    </div>
-
-    <div class="ms-auto d-flex align-items-center gap-2">
-      <button class="btn btn-outline-secondary dp-btn dp-btn-sm js-kt-sidebar-toggle" type="button" aria-controls="kt-sidebar" aria-expanded="false" aria-label="Buka Panel Tahapan">
-        <i class="bi bi-layout-sidebar-inset-reverse" aria-hidden="true"></i>
-        <span class="d-none d-sm-inline">Kelola Tahapan</span>
-      </button>
-      <button type="button" class="btn btn-success dp-btn dp-btn-sm" id="btn-save-all" aria-label="Simpan Semua Perubahan">
-        <i class="bi bi-save" aria-hidden="true"></i>
-        <span class="d-none d-sm-inline">Simpan Semua</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- Status Info -->
-  <div id="status-info" class="alert alert-info mb-3 d-none" role="alert">
-    <div class="d-flex align-items-center">
-      <i class="bi bi-info-circle me-2"></i>
-      <div class="flex-grow-1">
-        <strong>Info:</strong>
-        <span id="status-message"></span>
-      </div>
-    </div>
-  </div>
 
   <!-- Loading Indicator -->
   <div id="loading" class="text-center py-5 d-none">
@@ -68,74 +101,25 @@
     </button>
   </div>
 
-  <!-- Main Table Container -->
-  <div id="main-table-container" class="d-none">
-    <!-- Filter & Search -->
-    <div class="card mb-3">
-      <div class="card-body py-2">
-        <div class="row g-2 align-items-center">
-          <div class="col-md-4">
-            <input type="text" class="form-control form-control-sm" id="search-pekerjaan"
-                   placeholder="Cari pekerjaan (kode/uraian)...">
-          </div>
-          <div class="col-md-3">
-            <select class="form-select form-select-sm" id="filter-klasifikasi">
-              <option value="">Semua Klasifikasi</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <select class="form-select form-select-sm" id="filter-status">
-              <option value="">Semua Status</option>
-              <option value="assigned">Sudah Ter-assign</option>
-              <option value="unassigned">Belum Ter-assign</option>
-              <option value="partial">Ter-assign Parsial</option>
-            </select>
-          </div>
-          <div class="col-md-2 text-end">
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-reset-filters">
-              <i class="bi bi-x-circle"></i> Reset
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Table -->
-    <div class="table-responsive" style="max-height: calc(100vh - 280px); overflow: auto;">
-      <table class="table table-hover table-sm align-middle dp-table" id="pekerjaan-table">
-        <thead class="table-light sticky-top">
-          <tr>
-            <th style="width: 50px;" class="text-center">#</th>
-            <th style="width: 150px;">Klasifikasi</th>
-            <th style="width: 150px;">Sub-Klasifikasi</th>
-            <th style="width: 100px;">Kode</th>
-            <th style="min-width: 400px;">Uraian Pekerjaan</th>
-            <th style="width: 100px;" class="text-end">Volume</th>
-            <th style="width: 60px;">Satuan</th>
-            <th style="width: 180px;">Tahapan</th>
-            <th style="width: 280px;" id="dynamic-header">Detail Proporsi</th>
-            <th style="width: 80px;" class="text-center">Status</th>
-          </tr>
-        </thead>
-        <tbody id="pekerjaan-tbody">
-          <tr>
-            <td colspan="10" class="text-center text-muted py-4">Memuat data...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Pagination -->
-    <div class="d-flex justify-content-between align-items-center mt-3">
-      <div class="text-muted small">
-        Menampilkan <span id="showing-count">0</span> dari <span id="total-count">0</span> pekerjaan
-      </div>
-      <div id="pagination-controls">
-        <!-- Pagination will be rendered here if needed -->
+  <!-- ===== Main Content: Hierarchical Cards (Like Volume Pekerjaan) ===== -->
+  <div id="main-content" class="dp-card" style="display: none;">
+    <div id="kt-page">
+      <!-- Content will be populated by JavaScript -->
+      <div id="kt-content-body">
+        <!-- Dynamic hierarchical content here -->
       </div>
     </div>
   </div>
 
+  <!-- Footer Info -->
+  <div class="d-flex justify-content-between align-items-center mt-2" id="kt-footer" style="display: none !important;">
+    <small class="text-muted">
+      <span id="showing-info">Menampilkan <span id="showing-count">0</span> dari <span id="total-count">0</span> pekerjaan</span>
+    </small>
+    <div class="d-flex align-items-center gap-2">
+      <span id="kt-save-status" class="text-muted small" role="status" aria-live="polite"></span>
+    </div>
+  </div>
 </div>
 
 <!-- No modals needed - all actions done inline in table and sidebar -->
