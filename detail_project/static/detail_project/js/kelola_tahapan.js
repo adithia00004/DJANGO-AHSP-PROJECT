@@ -296,16 +296,33 @@
 
   async function loadVolumes() {
     try {
+      console.log('DEBUG loadVolumes: Fetching from API...');
       const data = await apiCall(`/detail_project/api/project/${projectId}/volume-pekerjaan/list/`);
+      console.log('DEBUG loadVolumes: API response =', data);
+
       volumeMap.clear();
 
-      (data.volumes || []).forEach(v => {
-        volumeMap.set(v.pekerjaan_id, parseFloat(v.quantity) || 0);
-      });
+      // Handle different response formats
+      const volumes = data.volumes || data.data || data || [];
+      console.log('DEBUG loadVolumes: Processing volumes array, length =', volumes.length);
+
+      if (Array.isArray(volumes)) {
+        volumes.forEach(v => {
+          const pkjId = v.pekerjaan_id || v.id;
+          const qty = parseFloat(v.quantity || v.volume || v.qty) || 0;
+          if (pkjId && qty > 0) {
+            volumeMap.set(pkjId, qty);
+            console.log('DEBUG loadVolumes: Set volume for pekerjaan', pkjId, '=', qty);
+          }
+        });
+      }
+
+      console.log('DEBUG loadVolumes: Final volumeMap.size =', volumeMap.size);
 
       return volumeMap;
     } catch (error) {
       console.error('Failed to load volumes:', error);
+      console.error('Error details:', error.message);
       // Non-critical, continue without volumes
       return volumeMap;
     }
