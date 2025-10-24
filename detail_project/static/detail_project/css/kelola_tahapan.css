@@ -1,37 +1,33 @@
 /* =====================================================================
-   KELOLA_TAHAPAN.CSS — Simplified Tahapan Manager Styles
+   KELOLA_TAHAPAN.CSS — Styles for Tahapan Manager (Table-based workflow)
    ===================================================================== */
-
-/* ===== CSS Variables ===== */
-:root {
-  --kt-surface-hover: rgba(0, 0, 0, 0.02);
-  --kt-warning-bg: #fff3cd;
-  --kt-warning-border: #ffc107;
-  --kt-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --kt-transition: all 0.2s ease;
-}
 
 /* ===== Main Table ===== */
 #pekerjaan-table {
   font-size: 0.875rem;
 }
 
-/* Hide main table header (redundant with nested headers) */
-#pekerjaan-table > thead {
-  display: none;
+#pekerjaan-table thead th {
+  background-color: var(--dp-c-surface-2, #f8f9fa);
+  border-bottom: 2px solid var(--dp-c-border, #dee2e6);
+  font-weight: 600;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 #pekerjaan-table tbody tr {
-  transition: var(--kt-transition);
+  transition: background-color 0.2s ease;
 }
 
 #pekerjaan-table tbody tr:hover {
-  background-color: var(--kt-surface-hover);
+  background-color: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
 }
 
 #pekerjaan-table tbody tr.table-warning {
-  background-color: var(--kt-warning-bg);
-  border-left: 3px solid var(--kt-warning-border);
+  background-color: #fff3cd;
+  border-left: 3px solid #ffc107;
 }
 
 #pekerjaan-table td {
@@ -41,86 +37,47 @@
 
 /* ===== Multi-Select Dropdown ===== */
 .dropdown-menu-checkbox {
-  min-width: 220px;
-  max-width: 350px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
 }
 
 .dropdown-menu-checkbox .form-check {
   margin-bottom: 0.25rem;
-  padding: 0.4rem 0.5rem;
+  padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
-  transition: var(--kt-transition);
-  cursor: pointer;
-  display: flex;
-  align-items: flex-start;
+  transition: background-color 0.15s ease;
 }
 
 .dropdown-menu-checkbox .form-check:hover {
-  background-color: var(--kt-surface-hover);
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .dropdown-menu-checkbox .form-check-input {
-  margin-top: 0.25rem;
-  flex-shrink: 0;
+  margin-top: 0.1rem;
 }
 
 .dropdown-menu-checkbox .form-check-label {
   cursor: pointer;
   user-select: none;
-  white-space: normal;
-  word-wrap: break-word;
-  line-height: 1.4;
-  margin-left: 0.5rem;
-  flex: 1;
 }
 
-/* ===== Proportion Inputs (Compact Design) ===== */
+/* ===== Proportion Inputs ===== */
 .proportion-container {
-  min-width: 280px;
-  max-width: 380px;
+  min-width: 250px;
 }
 
-.proportion-row {
-  font-size: 0.8rem;
-  margin-bottom: 0.35rem;
-}
-
-.proportion-input,
-.proportion-pct-input,
-.proportion-vol-input {
+.proportion-input {
   text-align: right;
   font-family: 'Courier New', monospace;
-  font-size: 0.8rem;
-  padding: 0.25rem 0.4rem;
-  height: auto;
+  font-size: 0.875rem;
 }
 
-.proportion-vol-input:disabled {
-  background-color: var(--dp-c-surface-2, #e9ecef);
-  cursor: not-allowed;
-  opacity: 0.7;
+.proportion-input:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 252, 0.25);
 }
 
-.proportion-row .input-group {
-  flex: 0 0 auto;
-}
-
-.proportion-row .input-group-text {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.4rem;
-  min-width: 32px;
-  text-align: center;
-}
-
-.proportion-row .text-muted {
-  font-size: 0.75rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.input-group-text {
+  font-size: 0.875rem;
 }
 
 /* ===== Status Badges ===== */
@@ -130,16 +87,15 @@
   padding: 0.35em 0.65em;
 }
 
-/* ===== Sidebar & Cards ===== */
-#kt-sidebar .card-sm,
-.card.mb-3 {
+/* ===== Sidebar ===== */
+#kt-sidebar .card-sm {
   border: 1px solid var(--dp-c-border, #dee2e6);
   margin-bottom: 0.5rem;
-  transition: var(--kt-transition);
+  transition: all 0.2s ease;
 }
 
 #kt-sidebar .card-sm:hover {
-  box-shadow: var(--kt-card-shadow);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
 }
 
@@ -163,6 +119,12 @@
 
 #form-tahapan .form-control-sm {
   font-size: 0.875rem;
+}
+
+/* ===== Filters Card ===== */
+.card.mb-3 {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--dp-c-border, #dee2e6);
 }
 
 /* ===== Empty State ===== */
@@ -196,10 +158,10 @@
 }
 
 .loading-spinner {
-  background: var(--dp-c-surface, #fff);
+  background: #fff;
   padding: 2rem;
   border-radius: 0.5rem;
-  box-shadow: var(--kt-card-shadow);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   text-align: center;
 }
 
@@ -225,6 +187,7 @@
 
   .input-group-text {
     font-size: 0.75rem;
+    min-width: 90px !important;
   }
 }
 
@@ -356,49 +319,21 @@
   scrollbar-color: var(--dp-c-border, #888) var(--dp-c-surface-2, #f1f1f1);
 }
 
-/* ===== Hierarchical Cards ===== */
+/* ===== Hierarchical Cards (Klasifikasi & Sub-Klasifikasi) ===== */
 .kt-klas-card {
   border-radius: 0.5rem;
   overflow: hidden;
-  margin-bottom: 1.5rem;
 }
 
 .kt-klas-card .card-header {
-  background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
-  color: #ffffff;
-  padding: 0.875rem 1rem;
-  border: none;
+  background-color: var(--dp-c-primary, #0d6efd);
+  color: white;
+  padding: 0.75rem 1rem;
 }
 
 .kt-klas-card .dp-card-title-primary {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: #ffffff;
-  margin: 0;
-}
-
-.kt-sub-card {
-  border: 1px solid var(--dp-c-border, #e0e0e0);
-  border-radius: 0.375rem;
-  padding: 0.875rem 1rem;
-  background-color: var(--dp-c-surface-1, #fafafa);
-  margin-bottom: 0.75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.kt-sub-card .dp-card-title-secondary {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--dp-c-text-primary, #424242);
-  letter-spacing: 0.01em;
-  margin: 0;
-}
-
-/* ===== Card Toggle Buttons ===== */
-.kt-card-toggle {
-  transition: var(--kt-transition);
 }
 
 .kt-klas-card .kt-card-toggle {
@@ -411,93 +346,71 @@
   border-color: white;
 }
 
+.kt-sub-card {
+  border: 1px solid var(--dp-c-border, #dee2e6);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  background-color: var(--dp-c-surface-1, #fff);
+}
+
+.kt-sub-card .dp-card-title-secondary {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--dp-c-text-primary, #212529);
+}
+
 .kt-sub-card .kt-card-toggle {
   border-color: var(--dp-c-border, #dee2e6);
 }
 
-.kt-card-toggle i {
-  transition: transform 0.3s ease;
-}
-
-/* ===== Nested Table (kt-table) ===== */
 .kt-table {
   margin-top: 0.5rem;
-  font-size: 0.825rem;
-  margin-bottom: 0;
+  font-size: 0.875rem;
 }
 
 .kt-table thead th {
-  background-color: var(--dp-c-surface-2, #f1f3f5);
-  font-size: 0.75rem;
+  background-color: var(--dp-c-surface-2, #f8f9fa);
+  font-size: 0.8rem;
   font-weight: 600;
-  padding: 0.5rem 0.4rem;
-  color: #495057;
-  border-bottom: 2px solid #dee2e6;
+  padding: 0.5rem;
 }
 
 .kt-table tbody td {
-  padding: 0.5rem 0.4rem;
+  padding: 0.5rem;
   vertical-align: middle;
-  font-size: 0.825rem;
 }
 
 .kt-table tbody tr:hover {
-  background-color: var(--kt-surface-hover);
+  background-color: var(--dp-c-surface-hover, rgba(0, 0, 0, 0.02));
 }
 
 .kt-table tbody tr.table-warning {
-  background-color: var(--kt-warning-bg);
-  border-left: 3px solid var(--kt-warning-border);
+  background-color: #fff3cd;
+  border-left: 3px solid #ffc107;
 }
 
-/* Column width adjustments for nested table */
-.kt-table th:nth-child(1),
-.kt-table td:nth-child(1) {
-  width: 40px;
-  text-align: center;
+/* ===== Proportion Row (Dual Input Mode) ===== */
+.proportion-row {
+  font-size: 0.875rem;
 }
 
-.kt-table th:nth-child(2),
-.kt-table td:nth-child(2) {
-  width: 90px;
+.proportion-row .proportion-pct-input,
+.proportion-row .proportion-vol-input {
   font-family: 'Courier New', monospace;
-}
-
-.kt-table th:nth-child(3),
-.kt-table td:nth-child(3) {
-  min-width: 250px;
-}
-
-.kt-table th:nth-child(4),
-.kt-table td:nth-child(4) {
-  width: 90px;
   text-align: right;
-  font-family: 'Courier New', monospace;
 }
 
-.kt-table th:nth-child(5),
-.kt-table td:nth-child(5) {
-  width: 60px;
-}
-
-.kt-table th:nth-child(6),
-.kt-table td:nth-child(6) {
-  width: 160px;
-}
-
-.kt-table th:nth-child(7),
-.kt-table td:nth-child(7) {
-  width: 280px;
-}
-
-.kt-table th:nth-child(8),
-.kt-table td:nth-child(8) {
-  width: 80px;
-  text-align: center;
+.proportion-row .proportion-vol-input:disabled {
+  background-color: var(--dp-c-surface-2, #e9ecef);
+  cursor: not-allowed;
 }
 
 /* ===== Collapse/Expand Animation ===== */
 .kt-klas-body,
 .kt-sub-body {
-  transition: var(--kt-transition);
+  transition: all 0.3s ease;
+}
+
+.kt-card-toggle i {
+  transition: transform 0.3s ease;
 }
