@@ -35,9 +35,9 @@
   };
 
   // DOM Elements
-  const $frozenTbody = document.getElementById('frozen-tbody');
-  const $timeTbody = document.getElementById('time-tbody');
-  const $timeHeaderRow = document.getElementById('time-header-row');
+  const $gridTable = document.getElementById('main-grid-table');
+  const $gridThead = $gridTable ? $gridTable.querySelector('thead tr') : null;
+  const $gridTbody = document.getElementById('grid-tbody');
   const $itemCount = document.getElementById('item-count');
   const $modifiedCount = document.getElementById('modified-count');
   const $totalProgress = document.getElementById('total-progress');
@@ -312,31 +312,51 @@
   }
 
   function generateWeeklyColumns() {
-    // Generate 52 weeks (1 year)
-    // Each column maps to a tahapan if available
-    // For now, use tahapan-based columns
+    // Generate 52 weeks starting from project start date or current date
+    const startDate = getProjectStartDate();
+    const weeksToGenerate = 52; // 1 year
 
-    if (state.tahapanList.length > 0) {
-      state.tahapanList.forEach((tahap, index) => {
-        state.timeColumns.push({
-          id: `tahap-${tahap.tahapan_id}`,
-          label: tahap.nama,
-          tahapanId: tahap.tahapan_id,
-          type: 'tahapan',
-          index: index
-        });
-      });
-    } else {
-      // Fallback: generate generic weeks
-      for (let i = 1; i <= 12; i++) {
-        state.timeColumns.push({
-          id: `week-${i}`,
-          label: `W${i}`,
-          type: 'week',
-          index: i - 1
-        });
+    for (let i = 0; i < weeksToGenerate; i++) {
+      const weekStart = new Date(startDate);
+      weekStart.setDate(weekStart.getDate() + (i * 7));
+
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+
+      // Format: "W1 (01-07 Jan)"
+      const weekNum = i + 1;
+      const startDay = weekStart.getDate().toString().padStart(2, '0');
+      const endDay = weekEnd.getDate().toString().padStart(2, '0');
+      const startMonth = weekStart.toLocaleString('id-ID', { month: 'short' });
+      const endMonth = weekEnd.toLocaleString('id-ID', { month: 'short' });
+
+      let label;
+      if (startMonth === endMonth) {
+        label = `W${weekNum} (${startDay}-${endDay} ${startMonth})`;
+      } else {
+        label = `W${weekNum} (${startDay} ${startMonth}-${endDay} ${endMonth})`;
       }
+
+      state.timeColumns.push({
+        id: `week-${weekNum}`,
+        label: label,
+        type: 'week',
+        index: i,
+        startDate: new Date(weekStart),
+        endDate: new Date(weekEnd)
+      });
     }
+  }
+
+  function getProjectStartDate() {
+    // Try to get from first tahapan
+    if (state.tahapanList.length > 0 && state.tahapanList[0].tanggal_mulai) {
+      return new Date(state.tahapanList[0].tanggal_mulai);
+    }
+
+    // Default to start of current year
+    const now = new Date();
+    return new Date(now.getFullYear(), 0, 1); // Jan 1st
   }
 
   function generateDailyColumns() {
@@ -345,16 +365,25 @@
   }
 
   function generateMonthlyColumns() {
-    // TODO: Implement monthly view
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    months.forEach((month, index) => {
+    const startDate = getProjectStartDate();
+    const monthsToGenerate = 12; // 1 year
+
+    for (let i = 0; i < monthsToGenerate; i++) {
+      const monthStart = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
+      const monthEnd = new Date(startDate.getFullYear(), startDate.getMonth() + i + 1, 0);
+
+      const monthName = monthStart.toLocaleString('id-ID', { month: 'long' });
+      const year = monthStart.getFullYear();
+
       state.timeColumns.push({
-        id: `month-${index}`,
-        label: month,
+        id: `month-${i}`,
+        label: `${monthName} ${year}`,
         type: 'month',
-        index: index
+        index: i,
+        startDate: new Date(monthStart),
+        endDate: new Date(monthEnd)
       });
-    });
+    }
   }
 
   function generateCustomColumns() {
@@ -367,22 +396,44 @@
   // =========================================================================
 
   function renderGrid() {
-    renderFrozenPanel();
-    renderTimePanel();
-    syncScrolling();
+    if (!$gridThead || !$gridTbody) return;
+
+    // Render time column headers
+    renderTimeHeaders();
+
+    // Render all rows
+    renderGridRows();
+
+    // Attach events
+    attachGridEvents();
   }
 
-  function renderFrozenPanel() {
-    if (!$frozenTbody) return;
+  function renderTimeHeaders() {
+    // Remove existing time columns (keep sticky columns)
+    const existingTimeCols = $gridThead.querySelectorAll('.col-time');
+    existingTimeCols.forEach(col => col.remove());
 
+    // Add new time columns
+    const fragment = document.createDocumentFragment();
+    state.timeColumns.forEach(col => {
+      const th = document.createElement('th');
+      th.className = 'col-time';
+      th.dataset.colId = col.id;
+      th.textContent = col.label;
+      th.title = col.label; // Tooltip for long labels
+      fragment.appendChild(th);
+    });
+
+    $gridThead.appendChild(fragment);
+  }
+
+  function renderGridRows() {
     const rows = [];
-
     state.pekerjaanTree.forEach(node => {
       renderTreeNode(node, rows);
     });
 
-    $frozenTbody.innerHTML = rows.join('');
-    attachFrozenPanelEvents();
+    $gridTbody.innerHTML = rows.join('');
   }
 
   function renderTreeNode(node, rows, parentExpanded = true) {
@@ -401,19 +452,23 @@
     const volume = node.type === 'pekerjaan' ? formatNumber(state.volumeMap.get(node.id) || 0) : '';
     const satuan = node.type === 'pekerjaan' ? escapeHtml(node.satuan) : '';
 
+    // Time cells
+    const timeCells = state.timeColumns.map(col => renderTimeCell(node, col)).join('');
+
     rows.push(`
       <tr class="${rowClass}" data-node-id="${node.id}" data-node-type="${node.type}">
-        <td class="col-tree">
+        <td class="col-sticky col-tree">
           ${toggleIcon}
         </td>
-        <td class="col-kode">${escapeHtml(node.kode || '')}</td>
-        <td class="col-uraian ${levelClass}">
+        <td class="col-sticky col-kode">${escapeHtml(node.kode || '')}</td>
+        <td class="col-sticky col-uraian ${levelClass}">
           <div class="tree-node">
             ${escapeHtml(node.nama)}
           </div>
         </td>
-        <td class="col-volume text-right">${volume}</td>
-        <td class="col-satuan">${satuan}</td>
+        <td class="col-sticky col-volume text-right">${volume}</td>
+        <td class="col-sticky col-satuan">${satuan}</td>
+        ${timeCells}
       </tr>
     `);
 
@@ -425,64 +480,16 @@
     }
   }
 
-  function renderTimePanel() {
-    if (!$timeHeaderRow || !$timeTbody) return;
-
-    // Render header
-    const headerCells = state.timeColumns.map(col =>
-      `<th data-col-id="${col.id}">${escapeHtml(col.label)}</th>`
-    ).join('');
-    $timeHeaderRow.innerHTML = headerCells;
-
-    // Render body
-    const rows = [];
-    state.pekerjaanTree.forEach(node => {
-      renderTimeNodeRow(node, rows);
-    });
-
-    $timeTbody.innerHTML = rows.join('');
-    attachTimePanelEvents();
-  }
-
-  function renderTimeNodeRow(node, rows, parentExpanded = true) {
-    const isExpanded = state.expandedNodes.has(node.id) !== false;
-    const isVisible = parentExpanded;
-    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
-
-    const cells = state.timeColumns.map(col => {
-      return renderTimeCell(node, col);
-    }).join('');
-
-    rows.push(`
-      <tr class="${rowClass}" data-node-id="${node.id}">
-        ${cells}
-      </tr>
-    `);
-
-    // Render children
-    if (node.children && node.children.length > 0) {
-      node.children.forEach(child => {
-        renderTimeNodeRow(child, rows, isExpanded && isVisible);
-      });
-    }
-  }
-
   function renderTimeCell(node, column) {
     if (node.type !== 'pekerjaan') {
       // Readonly for klasifikasi/sub-klasifikasi
       return `<td class="time-cell readonly" data-node-id="${node.id}" data-col-id="${column.id}"></td>`;
     }
 
-    // Get value from assignments
-    const assignments = state.assignmentMap.get(node.id) || {};
-    const tahapanId = column.tahapanId;
-    let value = assignments[tahapanId] || 0;
-
-    // Check if modified
+    // For now, use empty cells (no tahapan mapping yet)
+    // TODO: Map weeks to tahapan assignments
     const cellKey = `${node.id}-${column.id}`;
-    if (state.modifiedCells.has(cellKey)) {
-      value = state.modifiedCells.get(cellKey);
-    }
+    let value = state.modifiedCells.get(cellKey) || 0;
 
     // Display mode
     let displayValue = '';
@@ -509,14 +516,12 @@
   // EVENT HANDLERS
   // =========================================================================
 
-  function attachFrozenPanelEvents() {
+  function attachGridEvents() {
     // Tree toggle
     document.querySelectorAll('.tree-toggle').forEach(toggle => {
       toggle.addEventListener('click', handleTreeToggle);
     });
-  }
 
-  function attachTimePanelEvents() {
     // Cell editing
     document.querySelectorAll('.time-cell.editable').forEach(cell => {
       cell.addEventListener('click', handleCellClick);
@@ -543,14 +548,13 @@
   }
 
   function toggleNodeChildren(nodeId, show) {
-    // Find all children rows in both panels
-    const frozenRows = $frozenTbody.querySelectorAll(`tr[data-node-id]`);
-    const timeRows = $timeTbody.querySelectorAll(`tr[data-node-id]`);
+    // Find all children rows in single table
+    const allRows = $gridTbody.querySelectorAll(`tr[data-node-id]`);
 
     let foundParent = false;
     let parentLevel = -1;
 
-    frozenRows.forEach((row, index) => {
+    allRows.forEach((row) => {
       if (row.dataset.nodeId === nodeId) {
         foundParent = true;
         const levelClass = row.querySelector('.col-uraian').className.match(/level-(\d+)/);
@@ -566,10 +570,8 @@
           // This is a child
           if (show) {
             row.classList.remove('row-hidden');
-            timeRows[index]?.classList.remove('row-hidden');
           } else {
             row.classList.add('row-hidden');
-            timeRows[index]?.classList.add('row-hidden');
           }
         } else {
           // No longer a child

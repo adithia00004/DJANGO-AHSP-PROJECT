@@ -96,41 +96,23 @@
     <!-- GRID VIEW TAB -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel">
       <div class="grid-container">
-        <!-- Split Panel Container -->
-        <div class="split-panel-container">
-
-          <!-- LEFT PANEL (Frozen) -->
-          <div class="left-panel frozen-panel">
-            <table class="grid-table frozen-table" id="frozen-table">
-              <thead>
-                <tr>
-                  <th class="col-tree" style="width: 40px;"></th>
-                  <th class="col-kode" style="width: 80px;">Kode</th>
-                  <th class="col-uraian" style="width: 300px;">Uraian Pekerjaan</th>
-                  <th class="col-volume" style="width: 100px;">Volume</th>
-                  <th class="col-satuan" style="width: 60px;">Satuan</th>
-                </tr>
-              </thead>
-              <tbody id="frozen-tbody">
-                <!-- Populated by JS -->
-              </tbody>
-            </table>
-          </div>
-
-          <!-- RIGHT PANEL (Scrollable Time Grid) -->
-          <div class="right-panel scrollable-panel">
-            <table class="grid-table time-table" id="time-table">
-              <thead>
-                <tr id="time-header-row">
-                  <!-- Dynamic columns: W1, W2, W3... populated by JS -->
-                </tr>
-              </thead>
-              <tbody id="time-tbody">
-                <!-- Populated by JS -->
-              </tbody>
-            </table>
-          </div>
-
+        <!-- Single Table with Sticky Columns -->
+        <div class="grid-wrapper">
+          <table class="grid-table" id="main-grid-table">
+            <thead>
+              <tr>
+                <th class="col-sticky col-tree" style="width: 40px;"></th>
+                <th class="col-sticky col-kode" style="width: 80px;">Kode</th>
+                <th class="col-sticky col-uraian" style="width: 300px;">Uraian Pekerjaan</th>
+                <th class="col-sticky col-volume" style="width: 100px;">Volume</th>
+                <th class="col-sticky col-satuan" style="width: 60px;">Satuan</th>
+                <!-- Time columns will be dynamically inserted here -->
+              </tr>
+            </thead>
+            <tbody id="grid-tbody">
+              <!-- Rows populated by JS -->
+            </tbody>
+          </table>
         </div>
 
         <!-- Status Bar -->

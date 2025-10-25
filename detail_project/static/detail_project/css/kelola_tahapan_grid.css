@@ -2,6 +2,55 @@
    KELOLA_TAHAPAN_GRID.CSS - Excel-like Grid View for Project Scheduling
    ===================================================================== */
 
+/* ===== CSS Variables for Theme Support ===== */
+:root {
+  /* Light mode (default) */
+  --grid-bg: #ffffff;
+  --grid-border: #dee2e6;
+  --grid-header-bg: #f8f9fa;
+  --grid-header-text: #495057;
+  --grid-row-hover: rgba(13, 110, 252, 0.05);
+  --grid-frozen-bg: #e3f2fd;
+  --grid-frozen-border: #0d6efd;
+  --grid-cell-readonly: #f8f9fa;
+  --grid-cell-edit: #fff3cd;
+  --grid-cell-modified: #fff3cd;
+  --grid-text: #212529;
+  --grid-text-muted: #6c757d;
+  --grid-klas-bg: #e3f2fd;
+  --grid-klas-text: #0d47a1;
+  --grid-sub-bg: #f3f4f6;
+  --grid-sub-text: #374151;
+  --status-bar-bg: #f8f9fa;
+  --scrollbar-track: #f1f1f1;
+  --scrollbar-thumb: #888;
+  --scrollbar-thumb-hover: #555;
+}
+
+[data-bs-theme="dark"] {
+  /* Dark mode */
+  --grid-bg: #1e1e1e;
+  --grid-border: #404040;
+  --grid-header-bg: #2d2d2d;
+  --grid-header-text: #e0e0e0;
+  --grid-row-hover: rgba(13, 110, 252, 0.15);
+  --grid-frozen-bg: #1a2332;
+  --grid-frozen-border: #0d6efd;
+  --grid-cell-readonly: #2d2d2d;
+  --grid-cell-edit: #3d3520;
+  --grid-cell-modified: #3d3520;
+  --grid-text: #e0e0e0;
+  --grid-text-muted: #a0a0a0;
+  --grid-klas-bg: #1a2332;
+  --grid-klas-text: #64b5f6;
+  --grid-sub-bg: #252525;
+  --grid-sub-text: #b0b0b0;
+  --status-bar-bg: #2d2d2d;
+  --scrollbar-track: #2d2d2d;
+  --scrollbar-thumb: #555;
+  --scrollbar-thumb-hover: #777;
+}
+
 /* ===== Reset & Base ===== */
 * {
   box-sizing: border-box;
@@ -11,6 +60,8 @@
   height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
+  background: var(--grid-bg);
+  color: var(--grid-text);
 }
 
 /* ===== Toolbar ===== */
@@ -84,70 +135,87 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid #dee2e6;
+  background: var(--grid-bg);
+  border: 1px solid var(--grid-border);
   border-radius: 0.375rem;
 }
 
-/* ===== Split Panel Layout ===== */
-.split-panel-container {
+/* ===== Grid Wrapper (Scrollable Container) ===== */
+.grid-wrapper {
   flex: 1;
-  display: flex;
-  overflow: hidden;
+  overflow: auto;
   position: relative;
-}
-
-/* ===== Left Panel (Frozen) ===== */
-.left-panel {
-  width: 580px; /* Fixed width for frozen columns */
-  flex-shrink: 0;
-  overflow: hidden;
-  border-right: 2px solid #0d6efd;
-  background: #f8f9fa;
-  z-index: 10;
-}
-
-/* ===== Right Panel (Scrollable) ===== */
-.right-panel {
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-  background: #fff;
+  background: var(--grid-bg);
 }
 
 /* ===== Custom Scrollbar ===== */
-.right-panel::-webkit-scrollbar {
+.grid-wrapper::-webkit-scrollbar {
+  width: 12px;
   height: 12px;
 }
 
-.right-panel::-webkit-scrollbar-track {
-  background: #f1f1f1;
+.grid-wrapper::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
   border-radius: 6px;
 }
 
-.right-panel::-webkit-scrollbar-thumb {
-  background: #888;
+.grid-wrapper::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
 }
 
-.right-panel::-webkit-scrollbar-thumb:hover {
-  background: #555;
+.grid-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox */
+.grid-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 /* ===== Grid Tables ===== */
 .grid-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
-  table-layout: fixed;
+  background: var(--grid-bg);
+  color: var(--grid-text);
 }
 
-.frozen-table {
-  width: 580px;
+/* ===== Sticky Columns (Frozen Left) ===== */
+.col-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 15;
+  background: var(--grid-frozen-bg);
+  border-right: 2px solid var(--grid-frozen-border) !important;
 }
 
-.time-table {
-  min-width: 100%;
+.col-sticky.col-tree {
+  left: 0;
+  z-index: 16;
+}
+
+.col-sticky.col-kode {
+  left: 40px;
+  z-index: 16;
+}
+
+.col-sticky.col-uraian {
+  left: 120px;
+  z-index: 16;
+}
+
+.col-sticky.col-volume {
+  left: 420px;
+  z-index: 16;
+}
+
+.col-sticky.col-satuan {
+  left: 520px;
+  z-index: 16;
 }
 
 /* ===== Table Headers ===== */
@@ -155,7 +223,17 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: #fff;
+  background: var(--grid-header-bg);
+}
+
+.grid-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.grid-table thead th.col-sticky {
+  z-index: 25;
 }
 
 .grid-table th {
@@ -164,22 +242,20 @@
   font-weight: 600;
   font-size: 0.8rem;
   text-transform: uppercase;
-  color: #495057;
-  background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
-  border: 1px solid #dee2e6;
+  color: var(--grid-header-text);
+  background: var(--grid-header-bg);
+  border: 1px solid var(--grid-border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.frozen-table th {
-  background: linear-gradient(180deg, #e3f2fd 0%, #bbdefb 100%);
-  color: #0d6efd;
-}
-
-.time-table th {
+/* Time column headers */
+.grid-table th.col-time {
   width: 80px;
+  min-width: 80px;
   text-align: center;
+  background: var(--grid-header-bg);
 }
 
 /* ===== Table Body ===== */
@@ -188,16 +264,26 @@
 }
 
 .grid-table tbody tr:hover {
-  background-color: rgba(13, 110, 252, 0.05);
+  background-color: var(--grid-row-hover);
+}
+
+.grid-table tbody tr:hover td.col-sticky {
+  background-color: var(--grid-frozen-bg);
+  filter: brightness(0.98);
 }
 
 .grid-table td {
   padding: 0.5rem;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--grid-border);
   vertical-align: middle;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: var(--grid-bg);
+}
+
+.grid-table td.col-sticky {
+  background: var(--grid-frozen-bg);
 }
 
 /* ===== Frozen Columns Styling ===== */
@@ -263,25 +349,38 @@
 .level-3 { padding-left: 4.5rem; }
 
 /* Row types */
-.row-klasifikasi {
-  background-color: #e3f2fd;
+.row-klasifikasi td {
+  background-color: var(--grid-klas-bg);
   font-weight: 600;
-  color: #0d47a1;
+  color: var(--grid-klas-text);
 }
 
-.row-sub-klasifikasi {
-  background-color: #f3f4f6;
+.row-klasifikasi td.col-sticky {
+  background-color: var(--grid-klas-bg);
+}
+
+.row-sub-klasifikasi td {
+  background-color: var(--grid-sub-bg);
   font-weight: 500;
-  color: #374151;
+  color: var(--grid-sub-text);
 }
 
-.row-pekerjaan {
-  background-color: #fff;
+.row-sub-klasifikasi td.col-sticky {
+  background-color: var(--grid-sub-bg);
 }
 
-.row-klasifikasi:hover,
-.row-sub-klasifikasi:hover {
-  background-color: rgba(13, 110, 252, 0.1) !important;
+.row-pekerjaan td {
+  background-color: var(--grid-bg);
+  color: var(--grid-text);
+}
+
+.row-pekerjaan td.col-sticky {
+  background-color: var(--grid-frozen-bg);
+}
+
+.row-klasifikasi:hover td,
+.row-sub-klasifikasi:hover td {
+  filter: brightness(0.95);
 }
 
 /* Hidden rows (collapsed) */
@@ -297,23 +396,25 @@
   min-height: 32px;
   font-family: 'Courier New', monospace;
   font-size: 0.9rem;
+  width: 80px;
+  min-width: 80px;
 }
 
 .time-cell.editable:hover {
-  background-color: #fff3cd;
+  background-color: var(--grid-cell-edit);
   outline: 2px solid #ffc107;
   outline-offset: -2px;
 }
 
 .time-cell.readonly {
-  background-color: #f8f9fa;
-  color: #adb5bd;
+  background-color: var(--grid-cell-readonly);
+  color: var(--grid-text-muted);
   cursor: not-allowed;
 }
 
 .time-cell.editing {
   padding: 0;
-  background-color: #fff;
+  background-color: var(--grid-bg);
   outline: 3px solid #0d6efd;
   outline-offset: -3px;
 }
@@ -345,7 +446,7 @@
 
 /* Cell states */
 .time-cell.modified {
-  background-color: #fff3cd;
+  background-color: var(--grid-cell-modified);
   border-left: 3px solid #ffc107;
 }
 
@@ -358,37 +459,31 @@
   background-color: #d1e7dd;
 }
 
-/* ===== Sync Scroll (Vertical) ===== */
-/* Both tables must scroll together vertically */
-.frozen-table tbody,
-.time-table tbody {
-  height: 100%;
-}
-
 /* ===== Status Bar ===== */
 .status-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background: #f8f9fa;
-  border-top: 1px solid #dee2e6;
+  background: var(--status-bar-bg);
+  border-top: 1px solid var(--grid-border);
   font-size: 0.875rem;
   flex-shrink: 0;
+  color: var(--grid-text);
 }
 
 .status-left {
-  color: #6c757d;
+  color: var(--grid-text-muted);
 }
 
 .status-right {
   display: flex;
   gap: 1rem;
-  color: #495057;
+  color: var(--grid-text);
 }
 
 .status-right strong {
-  color: #212529;
+  color: var(--grid-text);
   font-weight: 600;
 }
 
