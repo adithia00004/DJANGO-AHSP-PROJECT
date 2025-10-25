@@ -266,6 +266,7 @@
   async function loadAssignments() {
     try {
       state.assignmentMap.clear();
+      console.log('Loading assignments for pekerjaan...');
 
       // Load assignments for all pekerjaan
       const promises = state.flatPekerjaan
@@ -275,6 +276,7 @@
             const data = await apiCall(`/detail_project/api/project/${projectId}/pekerjaan/${node.id}/assignments/`);
 
             if (data.assignments && Array.isArray(data.assignments)) {
+              console.log(`  Pekerjaan ${node.id} has ${data.assignments.length} assignments:`, data.assignments);
               data.assignments.forEach(a => {
                 const tahapanId = a.tahapan_id;
                 const proporsi = parseFloat(a.proporsi) || 0;
@@ -284,6 +286,7 @@
                   if (col.tahapanId === tahapanId) {
                     // Use cellKey format: "pekerjaanId-colId"
                     const cellKey = `${node.id}-${col.id}`;
+                    console.log(`    Mapped: ${cellKey} = ${proporsi}`);
                     state.assignmentMap.set(cellKey, proporsi);
                   }
                 });
@@ -295,6 +298,8 @@
         });
 
       await Promise.all(promises);
+      console.log(`Total assignments loaded: ${state.assignmentMap.size}`);
+      console.log('Assignment map:', Array.from(state.assignmentMap.entries()));
       return state.assignmentMap;
     } catch (error) {
       console.error('Failed to load assignments:', error);
@@ -804,6 +809,8 @@
     const savedValue = parseFloat(cell.dataset.savedValue) || 0;
     const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
 
+    console.log(`exitEditMode: cellKey=${cellKey}, newValue=${newValue}, savedValue=${savedValue}`);
+
     cell.classList.remove('editing');
 
     // Validate range
@@ -817,13 +824,16 @@
 
     // Determine if value changed from saved value
     const hasChanged = newValue !== savedValue;
+    console.log(`  hasChanged=${hasChanged}`);
 
     if (hasChanged) {
       // Update modifiedCells Map
       if (newValue === 0 && savedValue === 0) {
         // Both zero - remove from modified
+        console.log(`  Both zero - removing from modifiedCells`);
         state.modifiedCells.delete(cellKey);
       } else {
+        console.log(`  Adding to modifiedCells: ${cellKey} = ${newValue}`);
         state.modifiedCells.set(cellKey, newValue);
       }
 
@@ -953,6 +963,9 @@
   // =========================================================================
 
   async function saveAllChanges() {
+    console.log('Save All clicked. Modified cells:', state.modifiedCells.size);
+    console.log('Modified cells map:', Array.from(state.modifiedCells.entries()));
+
     if (state.modifiedCells.size === 0) {
       showToast('No changes to save', 'warning');
       return;
@@ -977,10 +990,17 @@
         }
       });
 
+      console.log('Changes grouped by pekerjaan:', Array.from(changesByPekerjaan.entries()));
+
       // Save each pekerjaan
+      let successCount = 0;
       for (const [pekerjaanId, assignments] of changesByPekerjaan.entries()) {
+        console.log(`Saving pekerjaan ${pekerjaanId}:`, assignments);
         await savePekerjaanAssignments(pekerjaanId, assignments);
+        successCount++;
       }
+
+      console.log(`Successfully saved ${successCount} pekerjaan assignments`);
 
       // SUCCESS: Move modified values to assignmentMap
       state.modifiedCells.forEach((value, key) => {
@@ -1007,10 +1027,11 @@
       // Clear modified cells after successful save
       state.modifiedCells.clear();
 
-      showToast('All changes saved successfully', 'success');
+      showToast(`All changes saved successfully (${successCount} pekerjaan)`, 'success');
       updateStatusBar();
 
     } catch (error) {
+      console.error('Save failed:', error);
       showToast('Failed to save: ' + error.message, 'danger');
     } finally {
       showLoading(false);
@@ -1030,35 +1051,48 @@
       }
     }
 
+    console.log(`  - To assign (${toAssign.length}):`, toAssign);
+    console.log(`  - To unassign (${toUnassign.length}):`, toUnassign);
+
     // Handle assignments (proporsi > 0)
     for (const { tahapanId, proporsi } of toAssign) {
-      await apiCall(`${apiBase}${tahapanId}/assign/`, {
+      const url = `${apiBase}${tahapanId}/assign/`;
+      const payload = {
+        assignments: [{
+          pekerjaan_id: parseInt(pekerjaanId),
+          proporsi: proporsi
+        }]
+      };
+      console.log(`  - POST ${url}`, payload);
+
+      const response = await apiCall(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRFToken': getCookie('csrftoken')
         },
-        body: JSON.stringify({
-          assignments: [{
-            pekerjaan_id: parseInt(pekerjaanId),
-            proporsi: proporsi
-          }]
-        })
+        body: JSON.stringify(payload)
       });
+      console.log(`  - Response:`, response);
     }
 
     // Handle unassignments (proporsi = 0)
     for (const tahapanId of toUnassign) {
-      await apiCall(`${apiBase}${tahapanId}/unassign/`, {
+      const url = `${apiBase}${tahapanId}/unassign/`;
+      const payload = {
+        pekerjaan_ids: [parseInt(pekerjaanId)]
+      };
+      console.log(`  - POST ${url}`, payload);
+
+      const response = await apiCall(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRFToken': getCookie('csrftoken')
         },
-        body: JSON.stringify({
-          pekerjaan_ids: [parseInt(pekerjaanId)]
-        })
+        body: JSON.stringify(payload)
       });
+      console.log(`  - Response:`, response);
     }
   }
 
