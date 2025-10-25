@@ -313,23 +313,27 @@
 
   function generateTimeColumns() {
     state.timeColumns = [];
+    console.log(`Generating time columns from ${state.tahapanList.length} tahapan`);
 
-    switch (state.timeScale) {
-      case 'daily':
-        generateDailyColumns();
-        break;
-      case 'weekly':
-        generateWeeklyColumns();
-        break;
-      case 'monthly':
-        generateMonthlyColumns();
-        break;
-      case 'custom':
-        generateCustomColumns();
-        break;
-      default:
-        generateWeeklyColumns();
-    }
+    // Generate columns from tahapan (not calendar weeks!)
+    // Each column represents one tahapan
+    state.tahapanList.forEach((tahap, index) => {
+      const column = {
+        id: `tahap-${tahap.tahapan_id}`,
+        tahapanId: tahap.tahapan_id,  // ✅ CRITICAL: Link to tahapan
+        label: tahap.nama || `Tahap ${index + 1}`,
+        type: 'tahapan',
+        index: index,
+        startDate: tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null,
+        endDate: tahap.tanggal_selesai ? new Date(tahap.tanggal_selesai) : null,
+        urutan: tahap.urutan || index
+      };
+
+      console.log(`  Column ${index}: ${column.id} (tahapanId=${column.tahapanId}, label="${column.label}")`);
+      state.timeColumns.push(column);
+    });
+
+    console.log(`Generated ${state.timeColumns.length} time columns`);
   }
 
   function generateWeeklyColumns() {
