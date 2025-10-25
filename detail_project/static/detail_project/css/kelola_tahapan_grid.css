@@ -249,12 +249,19 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Make each th sticky as well for better support */
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  /* Add subtle shadow when scrolling for visual depth */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* Left table headers */
 .left-table th {
   background: var(--grid-frozen-bg);
   color: var(--grid-frozen-border);
+  z-index: 25; /* Higher than right table for proper layering */
 }
 
 /* Time column headers */
@@ -263,6 +270,7 @@
   min-width: 80px;
   text-align: center;
   background: var(--grid-header-bg);
+  z-index: 20;
 }
 
 /* ===== Table Body ===== */

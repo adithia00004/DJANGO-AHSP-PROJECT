@@ -565,7 +565,10 @@
       }
     }
 
-    return `<td class="time-cell editable"
+    // Add 'modified' class if cell has value
+    const modifiedClass = value > 0 ? 'modified' : '';
+
+    return `<td class="time-cell editable ${modifiedClass}"
                 data-node-id="${node.id}"
                 data-col-id="${column.id}"
                 data-value="${value}"
@@ -762,31 +765,40 @@
 
     cell.classList.remove('editing');
 
+    // Always update the cell display based on current value
+    const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
+
     if (newValue !== oldValue) {
-      // Mark as modified
-      const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
+      // Value changed - mark as modified and update state
       state.modifiedCells.set(cellKey, newValue);
-      cell.classList.add('modified');
-      cell.dataset.value = newValue;
-
-      // Update display
-      let displayValue = '';
-      if (newValue > 0) {
-        if (state.displayMode === 'percentage') {
-          displayValue = `<span class="cell-value percentage">${newValue.toFixed(1)}</span>`;
-        } else {
-          const node = state.flatPekerjaan.find(n => n.id == cell.dataset.nodeId);
-          const volume = state.volumeMap.get(node?.id) || 0;
-          const volValue = (volume * newValue / 100).toFixed(2);
-          displayValue = `<span class="cell-value volume">${volValue}</span>`;
-        }
-      }
-      cell.innerHTML = displayValue;
-
       updateStatusBar();
-    } else {
-      cell.innerHTML = cell._originalContent;
     }
+
+    // Update cell data and display (whether changed or not)
+    cell.dataset.value = newValue;
+
+    if (newValue > 0) {
+      cell.classList.add('modified');
+      state.modifiedCells.set(cellKey, newValue);
+    } else {
+      // Remove from modified cells if value is 0
+      cell.classList.remove('modified');
+      state.modifiedCells.delete(cellKey);
+    }
+
+    // Always display the current value (not restore original content)
+    let displayValue = '';
+    if (newValue > 0) {
+      if (state.displayMode === 'percentage') {
+        displayValue = `<span class="cell-value percentage">${newValue.toFixed(1)}</span>`;
+      } else {
+        const node = state.flatPekerjaan.find(n => n.id == cell.dataset.nodeId);
+        const volume = state.volumeMap.get(node?.id) || 0;
+        const volValue = (volume * newValue / 100).toFixed(2);
+        displayValue = `<span class="cell-value volume">${volValue}</span>`;
+      }
+    }
+    cell.innerHTML = displayValue;
 
     cell.focus();
   }
