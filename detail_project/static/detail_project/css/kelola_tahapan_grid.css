@@ -70,9 +70,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background: #fff;
-  border-bottom: 2px solid #e9ecef;
+  /* Sticky behavior handled by dp-sticky-topbar class */
   flex-shrink: 0;
+  box-shadow: var(--dp-shadow-sm);
 }
 
 .toolbar-left {
@@ -229,29 +229,20 @@
   background: var(--grid-bg);
 }
 
-/* ===== Table Headers - Dual Mode Sticky ===== */
+/* ===== Table Headers ===== */
 
-/* CSS Variables for dynamic positioning */
-:root {
-  --dp-topbar-height: 56px; /* Bootstrap navbar default height */
-}
-
-/* Base sticky header setup */
-.grid-table thead {
+/* Table headers stick to PANEL top (not viewport) */
+#left-thead,
+#right-thead {
   position: sticky;
-  top: 0;
-  z-index: 12044; /* Same as topbar for equal layer */
+  top: 0; /* Stick to top of scroll panel */
+  z-index: var(--dp-z-thead); /* 12030 - Proper layer for table headers */
   background: var(--grid-header-bg);
-  transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* Smooth transition */
 }
 
-/* Mode 2: When page scrolled - stick below topbar */
-.grid-table thead.sticky-below-topbar {
-  top: var(--dp-topbar-height);
-}
-
-/* Add shadow effect when content scrolls under header */
-.grid-table thead::after {
+/* Shadow effect when content scrolls under header */
+#left-thead.scrolled::after,
+#right-thead.scrolled::after {
   content: '';
   position: absolute;
   left: 0;
@@ -259,13 +250,9 @@
   bottom: -4px;
   height: 4px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.1), transparent);
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s ease;
   pointer-events: none;
-}
-
-.grid-table thead.scrolled::after {
-  opacity: 1;
 }
 
 .grid-table th {

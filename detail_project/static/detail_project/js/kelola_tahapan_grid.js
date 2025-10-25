@@ -1163,43 +1163,16 @@
   });
 
   // =========================================================================
-  // DUAL-MODE STICKY HEADER SYSTEM
+  // PANEL SCROLL SHADOW EFFECT
   // =========================================================================
 
   const $leftThead = document.getElementById('left-thead');
   const $rightThead = document.getElementById('right-thead');
-  const $gridContainer = document.querySelector('.grid-container');
 
   /**
-   * Dual-mode sticky header handler
-   * Mode 1: top = 0 (normal position, when grid is at top)
-   * Mode 2: top = topbar height (stick below topbar, when page scrolled)
-   */
-  function handleDualModeStickyHeader() {
-    if (!$gridContainer) return;
-
-    // Get grid container position relative to viewport
-    const gridRect = $gridContainer.getBoundingClientRect();
-    const topbarHeight = parseFloat(getComputedStyle(document.documentElement)
-      .getPropertyValue('--dp-topbar-height')) || 56;
-
-    // Determine if grid top is above topbar bottom
-    const shouldStickBelowTopbar = gridRect.top < topbarHeight;
-
-    // Apply class for Mode 2
-    if ($leftThead) {
-      $leftThead.classList.toggle('sticky-below-topbar', shouldStickBelowTopbar);
-    }
-    if ($rightThead) {
-      $rightThead.classList.toggle('sticky-below-topbar', shouldStickBelowTopbar);
-    }
-
-    // Shadow effect for panel scroll
-    handlePanelScrollShadow();
-  }
-
-  /**
-   * Handle shadow effect when content scrolls under header
+   * Handle shadow effect when content scrolls under table headers
+   * Headers are sticky to panel top (not viewport)
+   * Toolbar sticky handled by dp-sticky-topbar class (pure CSS)
    */
   function handlePanelScrollShadow() {
     if ($leftPanelScroll && $leftThead) {
@@ -1213,24 +1186,13 @@
     }
   }
 
-  // Attach listeners
-  // Window scroll for dual-mode detection
-  let scrollTimeout;
-  window.addEventListener('scroll', () => {
-    if (scrollTimeout) cancelAnimationFrame(scrollTimeout);
-    scrollTimeout = requestAnimationFrame(handleDualModeStickyHeader);
-  }, { passive: true });
-
-  // Panel scroll for shadow effect
+  // Attach panel scroll listeners for shadow effect
   if ($leftPanelScroll) {
     $leftPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
   }
   if ($rightPanelScroll) {
     $rightPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
   }
-
-  // Initial check
-  handleDualModeStickyHeader();
 
   // =========================================================================
   // INITIALIZATION
