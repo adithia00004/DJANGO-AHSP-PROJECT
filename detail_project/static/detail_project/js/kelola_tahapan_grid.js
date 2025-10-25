@@ -40,6 +40,8 @@
   const $leftTbody = document.getElementById('left-tbody');
   const $rightTbody = document.getElementById('right-tbody');
   const $timeHeaderRow = document.getElementById('time-header-row');
+  const $stickyTimeHeaderRow = document.getElementById('sticky-time-header-row');
+  const $stickyRightScroll = document.getElementById('sticky-right-scroll');
   const $leftPanelScroll = document.querySelector('.left-panel-scroll');
   const $rightPanelScroll = document.querySelector('.right-panel-scroll');
   const $itemCount = document.getElementById('item-count');
@@ -449,18 +451,23 @@
   function renderTimeHeaders() {
     // Clear existing headers
     $timeHeaderRow.innerHTML = '';
+    $stickyTimeHeaderRow.innerHTML = '';
 
-    // Add time columns
-    const fragment = document.createDocumentFragment();
-    state.timeColumns.forEach(col => {
-      const th = document.createElement('th');
-      th.dataset.colId = col.id;
-      th.textContent = col.label;
-      th.title = col.label; // Tooltip for long labels
-      fragment.appendChild(th);
-    });
+    // Render time columns for both original and sticky headers
+    const renderHeaderTo = (targetRow) => {
+      const fragment = document.createDocumentFragment();
+      state.timeColumns.forEach(col => {
+        const th = document.createElement('th');
+        th.dataset.colId = col.id;
+        th.textContent = col.label;
+        th.title = col.label; // Tooltip for long labels
+        fragment.appendChild(th);
+      });
+      targetRow.appendChild(fragment);
+    };
 
-    $timeHeaderRow.appendChild(fragment);
+    renderHeaderTo($timeHeaderRow);
+    renderHeaderTo($stickyTimeHeaderRow);
   }
 
   function renderLeftTable() {
@@ -654,16 +661,23 @@
   }
 
   function setupScrollSync() {
-    if (!$leftPanelScroll || !$rightPanelScroll) return;
+    if (!$leftPanelScroll || !$rightPanelScroll || !$stickyRightScroll) return;
 
     // Sync vertical scrolling from right to left
     $rightPanelScroll.addEventListener('scroll', () => {
       $leftPanelScroll.scrollTop = $rightPanelScroll.scrollTop;
+      // Sync horizontal scroll to sticky header
+      $stickyRightScroll.scrollLeft = $rightPanelScroll.scrollLeft;
     });
 
     // Sync vertical scrolling from left to right (if user scrolls left via keyboard/touch)
     $leftPanelScroll.addEventListener('scroll', () => {
       $rightPanelScroll.scrollTop = $leftPanelScroll.scrollTop;
+    });
+
+    // Sync horizontal scroll from sticky header to right panel
+    $stickyRightScroll.addEventListener('scroll', () => {
+      $rightPanelScroll.scrollLeft = $stickyRightScroll.scrollLeft;
     });
   }
 
@@ -723,6 +737,7 @@
 
   function enterEditMode(cell, initialValue = '') {
     if (cell.classList.contains('readonly')) return;
+    if (cell.classList.contains('editing')) return; // Prevent double edit
 
     cell.classList.add('editing');
     const currentValue = initialValue || cell.dataset.value || '';
@@ -735,24 +750,39 @@
     input.value = initialValue || currentValue;
     input.className = 'cell-input';
 
-    input.addEventListener('blur', () => exitEditMode(cell, input));
+    // Use flag to prevent double call
+    let isExiting = false;
+
+    const exitHandler = () => {
+      if (isExiting) return;
+      isExiting = true;
+      exitEditMode(cell, input);
+    };
+
+    input.addEventListener('blur', exitHandler);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        if (isExiting) return;
+        isExiting = true;
         exitEditMode(cell, input);
         navigateCell('down');
         e.preventDefault();
       } else if (e.key === 'Escape') {
+        if (isExiting) return;
+        isExiting = true;
         cell.classList.remove('editing');
-        cell.innerHTML = cell._originalContent;
+        // Restore display from dataset
+        updateCellDisplay(cell);
         cell.focus();
       } else if (e.key === 'Tab') {
+        if (isExiting) return;
+        isExiting = true;
         exitEditMode(cell, input);
         navigateCell(e.shiftKey ? 'left' : 'right');
         e.preventDefault();
       }
     });
 
-    cell._originalContent = cell.innerHTML;
     cell.innerHTML = '';
     cell.appendChild(input);
     input.focus();
@@ -760,47 +790,55 @@
   }
 
   function exitEditMode(cell, input) {
+    if (!cell.classList.contains('editing')) return; // Already exited
+
     const newValue = parseFloat(input.value) || 0;
-    const oldValue = parseFloat(cell.dataset.value) || 0;
-
-    cell.classList.remove('editing');
-
-    // Always update the cell display based on current value
     const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
 
-    if (newValue !== oldValue) {
-      // Value changed - mark as modified and update state
-      state.modifiedCells.set(cellKey, newValue);
-      updateStatusBar();
-    }
-
-    // Update cell data and display (whether changed or not)
+    // Update state
     cell.dataset.value = newValue;
 
     if (newValue > 0) {
       cell.classList.add('modified');
       state.modifiedCells.set(cellKey, newValue);
     } else {
-      // Remove from modified cells if value is 0
       cell.classList.remove('modified');
       state.modifiedCells.delete(cellKey);
     }
 
-    // Always display the current value (not restore original content)
+    // Remove editing state
+    cell.classList.remove('editing');
+
+    // Remove input from DOM
+    if (input && input.parentNode === cell) {
+      cell.removeChild(input);
+    }
+
+    // Update cell display
+    updateCellDisplay(cell);
+
+    // Update status bar
+    updateStatusBar();
+
+    // Focus back to cell
+    cell.focus();
+  }
+
+  function updateCellDisplay(cell) {
+    const value = parseFloat(cell.dataset.value) || 0;
+
     let displayValue = '';
-    if (newValue > 0) {
+    if (value > 0) {
       if (state.displayMode === 'percentage') {
-        displayValue = `<span class="cell-value percentage">${newValue.toFixed(1)}</span>`;
+        displayValue = `<span class="cell-value percentage">${value.toFixed(1)}</span>`;
       } else {
         const node = state.flatPekerjaan.find(n => n.id == cell.dataset.nodeId);
         const volume = state.volumeMap.get(node?.id) || 0;
-        const volValue = (volume * newValue / 100).toFixed(2);
+        const volValue = (volume * value / 100).toFixed(2);
         displayValue = `<span class="cell-value volume">${volValue}</span>`;
       }
     }
     cell.innerHTML = displayValue;
-
-    cell.focus();
   }
 
   function navigateCell(direction) {

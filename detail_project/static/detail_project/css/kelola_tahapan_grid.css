@@ -140,6 +140,69 @@
   border-radius: 0.375rem;
 }
 
+/* ===== Sticky Header Wrapper (Fixed at Top) ===== */
+.sticky-header-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  background: var(--grid-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-bottom: 2px solid var(--grid-border);
+}
+
+.sticky-header-left {
+  flex-shrink: 0;
+  width: 620px;
+  background: var(--grid-frozen-bg);
+  border-right: 2px solid var(--grid-frozen-border);
+  overflow: hidden;
+}
+
+.sticky-header-right {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.sticky-header-right-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+}
+
+.sticky-header-right-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Edge */
+}
+
+/* Sticky header tables */
+.left-table-header,
+.right-table-header {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.left-table-header thead th,
+.right-table-header thead th {
+  position: static; /* Override individual th sticky */
+  box-shadow: none;
+}
+
+/* Hide original thead (keep for spacing) */
+.original-thead {
+  visibility: hidden;
+  height: 0;
+}
+
+.original-thead th {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border: none !important;
+  height: 0 !important;
+  line-height: 0 !important;
+}
+
 /* ===== Split Panel Wrapper ===== */
 .split-panel-wrapper {
   flex: 1;

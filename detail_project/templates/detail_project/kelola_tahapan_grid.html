@@ -96,6 +96,35 @@
     <!-- GRID VIEW TAB -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel">
       <div class="grid-container">
+        <!-- Sticky Header Wrapper (Fixed at Top) -->
+        <div class="sticky-header-wrapper">
+          <!-- Left Header (Fixed) -->
+          <div class="sticky-header-left">
+            <table class="grid-table left-table-header">
+              <thead>
+                <tr>
+                  <th class="col-tree" style="width: 40px;"></th>
+                  <th class="col-uraian" style="width: 400px;">Uraian Pekerjaan</th>
+                  <th class="col-volume" style="width: 100px;">Volume</th>
+                  <th class="col-satuan" style="width: 80px;">Satuan</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
+          <!-- Right Header (Fixed + Scrollable) -->
+          <div class="sticky-header-right">
+            <div class="sticky-header-right-scroll" id="sticky-right-scroll">
+              <table class="grid-table right-table-header">
+                <thead>
+                  <tr id="sticky-time-header-row">
+                    <!-- Time columns cloned here by JS -->
+                  </tr>
+                </thead>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- Split Panel Container -->
         <div class="split-panel-wrapper">
 
@@ -103,7 +132,7 @@
           <div class="left-panel-wrapper">
             <div class="left-panel-scroll">
               <table class="grid-table left-table" id="left-table">
-                <thead>
+                <thead class="original-thead">
                   <tr>
                     <th class="col-tree" style="width: 40px;"></th>
                     <th class="col-uraian" style="width: 400px;">Uraian Pekerjaan</th>
@@ -122,7 +151,7 @@
           <div class="right-panel-wrapper">
             <div class="right-panel-scroll">
               <table class="grid-table right-table" id="right-table">
-                <thead>
+                <thead class="original-thead">
                   <tr id="time-header-row">
                     <!-- Time columns dynamically inserted here -->
                   </tr>
