@@ -123,14 +123,20 @@
   async function loadAllData() {
     showLoading(true);
     try {
+      // Load base data first
       await Promise.all([
         loadTahapan(),
         loadPekerjaan(),
-        loadVolumes(),
-        loadAssignments()
+        loadVolumes()
       ]);
 
+      // Generate time columns (needed for assignment mapping)
       generateTimeColumns();
+
+      // Load assignments after time columns are ready
+      await loadAssignments();
+
+      // Render grid with all data
       renderGrid();
       updateStatusBar();
 
@@ -267,18 +273,24 @@
         .map(async (node) => {
           try {
             const data = await apiCall(`/detail_project/api/project/${projectId}/pekerjaan/${node.id}/assignments/`);
-            const assignments = {};
 
             if (data.assignments && Array.isArray(data.assignments)) {
               data.assignments.forEach(a => {
-                assignments[a.tahapan_id] = parseFloat(a.proporsi) || 0;
+                const tahapanId = a.tahapan_id;
+                const proporsi = parseFloat(a.proporsi) || 0;
+
+                // Map tahapanId to corresponding timeColumns
+                state.timeColumns.forEach(col => {
+                  if (col.tahapanId === tahapanId) {
+                    // Use cellKey format: "pekerjaanId-colId"
+                    const cellKey = `${node.id}-${col.id}`;
+                    state.assignmentMap.set(cellKey, proporsi);
+                  }
+                });
               });
             }
-
-            state.assignmentMap.set(node.id, assignments);
           } catch (error) {
             console.warn(`Failed to load assignments for pekerjaan ${node.id}:`, error);
-            state.assignmentMap.set(node.id, {});
           }
         });
 
@@ -548,27 +560,49 @@
       return `<td class="time-cell readonly" data-node-id="${node.id}" data-col-id="${column.id}"></td>`;
     }
 
-    // For now, use empty cells (no tahapan mapping yet)
-    // TODO: Map weeks to tahapan assignments
     const cellKey = `${node.id}-${column.id}`;
-    let value = state.modifiedCells.get(cellKey) || 0;
 
-    // Display mode
+    // Get saved value from assignmentMap (from database)
+    const savedValue = state.assignmentMap.get(cellKey) || 0;
+
+    // Get modified value (pending changes)
+    const modifiedValue = state.modifiedCells.get(cellKey);
+
+    // Current value to display: modified if exists, otherwise saved
+    const currentValue = modifiedValue !== undefined ? modifiedValue : savedValue;
+
+    // Determine cell state classes
+    let cellClasses = 'time-cell editable';
+
+    // State 3: Saved (nilai > 0 di database)
+    if (savedValue > 0) {
+      cellClasses += ' saved';
+    }
+
+    // State 2: Modified (ada perubahan pending)
+    if (modifiedValue !== undefined && modifiedValue !== savedValue) {
+      cellClasses += ' modified';
+    }
+
+    // State 1: Default (empty) - no additional class needed
+
+    // Calculate display value
     let displayValue = '';
-    if (value > 0) {
+    if (currentValue > 0) {
       if (state.displayMode === 'percentage') {
-        displayValue = `<span class="cell-value percentage">${value.toFixed(1)}</span>`;
+        displayValue = `<span class="cell-value percentage">${currentValue.toFixed(1)}</span>`;
       } else {
         const volume = state.volumeMap.get(node.id) || 0;
-        const volValue = (volume * value / 100).toFixed(2);
+        const volValue = (volume * currentValue / 100).toFixed(2);
         displayValue = `<span class="cell-value volume">${volValue}</span>`;
       }
     }
 
-    return `<td class="time-cell editable"
+    return `<td class="${cellClasses}"
                 data-node-id="${node.id}"
                 data-col-id="${column.id}"
-                data-value="${value}"
+                data-value="${currentValue}"
+                data-saved-value="${savedValue}"
                 tabindex="0">
               ${displayValue}
             </td>`;
@@ -758,18 +792,48 @@
 
   function exitEditMode(cell, input) {
     const newValue = parseFloat(input.value) || 0;
-    const oldValue = parseFloat(cell.dataset.value) || 0;
+    const savedValue = parseFloat(cell.dataset.savedValue) || 0;
+    const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
 
     cell.classList.remove('editing');
 
-    if (newValue !== oldValue) {
-      // Mark as modified
-      const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
-      state.modifiedCells.set(cellKey, newValue);
-      cell.classList.add('modified');
+    // Validate range
+    if (newValue < 0 || newValue > 100) {
+      showToast('Value must be between 0-100', 'danger');
+      cell.innerHTML = cell._originalContent;
+      cell.focus();
+      return;
+    }
+
+    // Determine if value changed from saved value
+    const hasChanged = newValue !== savedValue;
+
+    if (hasChanged) {
+      // Update modifiedCells Map
+      if (newValue === 0 && savedValue === 0) {
+        // Both zero - remove from modified
+        state.modifiedCells.delete(cellKey);
+      } else {
+        state.modifiedCells.set(cellKey, newValue);
+      }
+
+      // Update cell classes based on 3-state system
+      cell.classList.remove('saved', 'modified');
+
+      // State 3: Saved
+      if (savedValue > 0) {
+        cell.classList.add('saved');
+      }
+
+      // State 2: Modified
+      if (newValue !== savedValue) {
+        cell.classList.add('modified');
+      }
+
+      // Update data attribute
       cell.dataset.value = newValue;
 
-      // Update display
+      // Calculate and update display
       let displayValue = '';
       if (newValue > 0) {
         if (state.displayMode === 'percentage') {
@@ -785,6 +849,7 @@
 
       updateStatusBar();
     } else {
+      // No change - restore original
       cell.innerHTML = cell._originalContent;
     }
 
@@ -905,8 +970,30 @@
         await savePekerjaanAssignments(pekerjaanId, assignments);
       }
 
+      // SUCCESS: Move modified values to assignmentMap
+      state.modifiedCells.forEach((value, key) => {
+        state.assignmentMap.set(key, value);
+
+        // Update cell data-saved-value attribute
+        const [pekerjaanId, colId] = key.split('-');
+        const cell = document.querySelector(
+          `.time-cell[data-node-id="${pekerjaanId}"][data-col-id="${colId}"]`
+        );
+        if (cell) {
+          cell.dataset.savedValue = value;
+
+          // Update classes: remove modified, add saved if value > 0
+          cell.classList.remove('modified');
+          if (value > 0) {
+            cell.classList.add('saved');
+          } else {
+            cell.classList.remove('saved');
+          }
+        }
+      });
+
+      // Clear modified cells after successful save
       state.modifiedCells.clear();
-      document.querySelectorAll('.time-cell.modified').forEach(c => c.classList.remove('modified'));
 
       showToast('All changes saved successfully', 'success');
       updateStatusBar();
@@ -1076,35 +1163,74 @@
   });
 
   // =========================================================================
-  // STICKY HEADER SHADOW EFFECT
+  // DUAL-MODE STICKY HEADER SYSTEM
   // =========================================================================
 
-  // Add shadow effect to sticky headers when scrolling
-  function handleStickyHeaderShadow() {
-    if ($leftPanelScroll) {
-      const leftThead = $leftTable?.querySelector('thead');
-      if (leftThead) {
-        const scrollTop = $leftPanelScroll.scrollTop;
-        leftThead.classList.toggle('scrolled', scrollTop > 0);
-      }
+  const $leftThead = document.getElementById('left-thead');
+  const $rightThead = document.getElementById('right-thead');
+  const $gridContainer = document.querySelector('.grid-container');
+
+  /**
+   * Dual-mode sticky header handler
+   * Mode 1: top = 0 (normal position, when grid is at top)
+   * Mode 2: top = topbar height (stick below topbar, when page scrolled)
+   */
+  function handleDualModeStickyHeader() {
+    if (!$gridContainer) return;
+
+    // Get grid container position relative to viewport
+    const gridRect = $gridContainer.getBoundingClientRect();
+    const topbarHeight = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue('--dp-topbar-height')) || 56;
+
+    // Determine if grid top is above topbar bottom
+    const shouldStickBelowTopbar = gridRect.top < topbarHeight;
+
+    // Apply class for Mode 2
+    if ($leftThead) {
+      $leftThead.classList.toggle('sticky-below-topbar', shouldStickBelowTopbar);
+    }
+    if ($rightThead) {
+      $rightThead.classList.toggle('sticky-below-topbar', shouldStickBelowTopbar);
     }
 
-    if ($rightPanelScroll) {
-      const rightThead = $rightTable?.querySelector('thead');
-      if (rightThead) {
-        const scrollTop = $rightPanelScroll.scrollTop;
-        rightThead.classList.toggle('scrolled', scrollTop > 0);
-      }
+    // Shadow effect for panel scroll
+    handlePanelScrollShadow();
+  }
+
+  /**
+   * Handle shadow effect when content scrolls under header
+   */
+  function handlePanelScrollShadow() {
+    if ($leftPanelScroll && $leftThead) {
+      const scrollTop = $leftPanelScroll.scrollTop;
+      $leftThead.classList.toggle('scrolled', scrollTop > 0);
+    }
+
+    if ($rightPanelScroll && $rightThead) {
+      const scrollTop = $rightPanelScroll.scrollTop;
+      $rightThead.classList.toggle('scrolled', scrollTop > 0);
     }
   }
 
-  // Attach scroll listeners for sticky header shadow
+  // Attach listeners
+  // Window scroll for dual-mode detection
+  let scrollTimeout;
+  window.addEventListener('scroll', () => {
+    if (scrollTimeout) cancelAnimationFrame(scrollTimeout);
+    scrollTimeout = requestAnimationFrame(handleDualModeStickyHeader);
+  }, { passive: true });
+
+  // Panel scroll for shadow effect
   if ($leftPanelScroll) {
-    $leftPanelScroll.addEventListener('scroll', handleStickyHeaderShadow);
+    $leftPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
   }
   if ($rightPanelScroll) {
-    $rightPanelScroll.addEventListener('scroll', handleStickyHeaderShadow);
+    $rightPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
   }
+
+  // Initial check
+  handleDualModeStickyHeader();
 
   // =========================================================================
   // INITIALIZATION

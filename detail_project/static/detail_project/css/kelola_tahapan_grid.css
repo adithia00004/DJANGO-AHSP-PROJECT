@@ -229,12 +229,25 @@
   background: var(--grid-bg);
 }
 
-/* ===== Table Headers ===== */
+/* ===== Table Headers - Dual Mode Sticky ===== */
+
+/* CSS Variables for dynamic positioning */
+:root {
+  --dp-topbar-height: 56px; /* Bootstrap navbar default height */
+}
+
+/* Base sticky header setup */
 .grid-table thead {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 12044; /* Same as topbar for equal layer */
   background: var(--grid-header-bg);
+  transition: top 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* Smooth transition */
+}
+
+/* Mode 2: When page scrolled - stick below topbar */
+.grid-table thead.sticky-below-topbar {
+  top: var(--dp-topbar-height);
 }
 
 /* Add shadow effect when content scrolls under header */
@@ -476,19 +489,73 @@
   font-size: 0.8em;
 }
 
-/* Cell states */
-.time-cell.modified {
-  background-color: var(--grid-cell-modified);
-  border-left: 3px solid #ffc107;
+/* ===== CELL STATES - 3 States System ===== */
+
+/* State 1: DEFAULT (empty, value = 0, never saved) */
+.time-cell.editable {
+  background-color: var(--grid-bg);
+  color: var(--grid-text-muted);
 }
 
+/* State 2: MODIFIED (changed, not saved yet) */
+.time-cell.modified {
+  background-color: #fff3cd; /* Yellow warning background */
+  border-left: 3px solid #ffc107;
+  color: #856404;
+  font-weight: 500;
+}
+
+[data-bs-theme="dark"] .time-cell.modified {
+  background-color: #3d3520;
+  border-left: 3px solid #ffc107;
+  color: #ffc107;
+}
+
+/* State 3: SAVED (value > 0, saved in database) */
+.time-cell.saved {
+  background-color: #e7f3ff; /* Light blue subtle background */
+  color: #004085;
+  font-weight: 600; /* Bold untuk kontras */
+}
+
+[data-bs-theme="dark"] .time-cell.saved {
+  background-color: #1a2d42;
+  color: #64b5f6;
+  font-weight: 600;
+}
+
+/* State 3 + Modified: Saved value yang diedit (priority: modified style) */
+.time-cell.saved.modified {
+  background-color: #fff3cd;
+  border-left: 3px solid #ffc107;
+  color: #856404;
+  font-weight: 600; /* Keep bold untuk indicate ada saved value */
+}
+
+[data-bs-theme="dark"] .time-cell.saved.modified {
+  background-color: #3d3520;
+  border-left: 3px solid #ffc107;
+  color: #ffc107;
+  font-weight: 600;
+}
+
+/* Error state (validation failed) */
 .time-cell.error {
   background-color: #f8d7da;
   border-left: 3px solid #dc3545;
+  color: #721c24;
 }
 
+[data-bs-theme="dark"] .time-cell.error {
+  background-color: #2d1517;
+  border-left: 3px solid #dc3545;
+  color: #f8d7da;
+}
+
+/* Valid state (optional, for positive feedback) */
 .time-cell.valid {
   background-color: #d1e7dd;
+  border-left: 3px solid #198754;
 }
 
 /* ===== Status Bar ===== */
