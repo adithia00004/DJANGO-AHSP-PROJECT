@@ -15,61 +15,62 @@
 {% endblock %}
 
 {% block dp_content %}
+<!-- Toolbar (MOVED OUTSIDE for proper sticky behavior) -->
+<div id="kt-toolbar" class="grid-toolbar dp-sticky-topbar dp-layer-toolbar bg-body border-bottom">
+  <div class="toolbar-left">
+    <h1 class="toolbar-title">Jadwal Pekerjaan</h1>
+    <span class="toolbar-subtitle">Project: {{ project.nama }}</span>
+  </div>
+
+  <div class="toolbar-right">
+    <!-- Time Scale Selector -->
+    <div class="btn-group btn-group-sm time-scale-selector" role="group">
+      <input type="radio" class="btn-check" name="timeScale" id="scale-daily" value="daily">
+      <label class="btn btn-outline-primary" for="scale-daily">Daily</label>
+
+      <input type="radio" class="btn-check" name="timeScale" id="scale-weekly" value="weekly" checked>
+      <label class="btn btn-outline-primary" for="scale-weekly">Weekly</label>
+
+      <input type="radio" class="btn-check" name="timeScale" id="scale-monthly" value="monthly">
+      <label class="btn btn-outline-primary" for="scale-monthly">Monthly</label>
+
+      <input type="radio" class="btn-check" name="timeScale" id="scale-custom" value="custom">
+      <label class="btn btn-outline-primary" for="scale-custom">Custom</label>
+    </div>
+
+    <!-- Display Mode Toggle -->
+    <div class="btn-group btn-group-sm display-mode-toggle ms-2" role="group">
+      <input type="radio" class="btn-check" name="displayMode" id="mode-percentage" value="percentage" checked>
+      <label class="btn btn-outline-success" for="mode-percentage">
+        <i class="bi bi-percent"></i> Percentage
+      </label>
+
+      <input type="radio" class="btn-check" name="displayMode" id="mode-volume" value="volume">
+      <label class="btn btn-outline-success" for="mode-volume">
+        <i class="bi bi-123"></i> Volume
+      </label>
+    </div>
+
+    <!-- Action Buttons -->
+    <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="btn-collapse-all">
+      <i class="bi bi-arrows-collapse"></i> Collapse
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-expand-all">
+      <i class="bi bi-arrows-expand"></i> Expand
+    </button>
+    <button type="button" class="btn btn-primary btn-sm ms-2" id="btn-export-excel">
+      <i class="bi bi-file-earmark-excel"></i> Export
+    </button>
+    <button type="button" class="btn btn-success btn-sm" id="btn-save-all">
+      <i class="bi bi-save"></i> Save All
+    </button>
+  </div>
+</div>
+
+<!-- Main App Container -->
 <div id="tahapan-grid-app"
      data-project-id="{{ project.id }}"
      data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/">
-
-  <!-- Toolbar -->
-  <div id="kt-toolbar" class="grid-toolbar dp-sticky-topbar dp-layer-toolbar bg-body border-bottom">
-    <div class="toolbar-left">
-      <h1 class="toolbar-title">Jadwal Pekerjaan</h1>
-      <span class="toolbar-subtitle">Project: {{ project.nama }}</span>
-    </div>
-
-    <div class="toolbar-right">
-      <!-- Time Scale Selector -->
-      <div class="btn-group btn-group-sm time-scale-selector" role="group">
-        <input type="radio" class="btn-check" name="timeScale" id="scale-daily" value="daily">
-        <label class="btn btn-outline-primary" for="scale-daily">Daily</label>
-
-        <input type="radio" class="btn-check" name="timeScale" id="scale-weekly" value="weekly" checked>
-        <label class="btn btn-outline-primary" for="scale-weekly">Weekly</label>
-
-        <input type="radio" class="btn-check" name="timeScale" id="scale-monthly" value="monthly">
-        <label class="btn btn-outline-primary" for="scale-monthly">Monthly</label>
-
-        <input type="radio" class="btn-check" name="timeScale" id="scale-custom" value="custom">
-        <label class="btn btn-outline-primary" for="scale-custom">Custom</label>
-      </div>
-
-      <!-- Display Mode Toggle -->
-      <div class="btn-group btn-group-sm display-mode-toggle ms-2" role="group">
-        <input type="radio" class="btn-check" name="displayMode" id="mode-percentage" value="percentage" checked>
-        <label class="btn btn-outline-success" for="mode-percentage">
-          <i class="bi bi-percent"></i> Percentage
-        </label>
-
-        <input type="radio" class="btn-check" name="displayMode" id="mode-volume" value="volume">
-        <label class="btn btn-outline-success" for="mode-volume">
-          <i class="bi bi-123"></i> Volume
-        </label>
-      </div>
-
-      <!-- Action Buttons -->
-      <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="btn-collapse-all">
-        <i class="bi bi-arrows-collapse"></i> Collapse
-      </button>
-      <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-expand-all">
-        <i class="bi bi-arrows-expand"></i> Expand
-      </button>
-      <button type="button" class="btn btn-primary btn-sm ms-2" id="btn-export-excel">
-        <i class="bi bi-file-earmark-excel"></i> Export
-      </button>
-      <button type="button" class="btn btn-success btn-sm" id="btn-save-all">
-        <i class="bi bi-save"></i> Save All
-      </button>
-    </div>
-  </div>
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
