@@ -35,9 +35,13 @@
   };
 
   // DOM Elements
-  const $gridTable = document.getElementById('main-grid-table');
-  const $gridThead = $gridTable ? $gridTable.querySelector('thead tr') : null;
-  const $gridTbody = document.getElementById('grid-tbody');
+  const $leftTable = document.getElementById('left-table');
+  const $rightTable = document.getElementById('right-table');
+  const $leftTbody = document.getElementById('left-tbody');
+  const $rightTbody = document.getElementById('right-tbody');
+  const $timeHeaderRow = document.getElementById('time-header-row');
+  const $leftPanelScroll = document.querySelector('.left-panel-scroll');
+  const $rightPanelScroll = document.querySelector('.right-panel-scroll');
   const $itemCount = document.getElementById('item-count');
   const $modifiedCount = document.getElementById('modified-count');
   const $totalProgress = document.getElementById('total-progress');
@@ -396,48 +400,59 @@
   // =========================================================================
 
   function renderGrid() {
-    if (!$gridThead || !$gridTbody) return;
+    if (!$leftTbody || !$rightTbody || !$timeHeaderRow) return;
 
     // Render time column headers
     renderTimeHeaders();
 
-    // Render all rows
-    renderGridRows();
+    // Render both tables
+    renderLeftTable();
+    renderRightTable();
+
+    // Setup scroll sync
+    setupScrollSync();
 
     // Attach events
     attachGridEvents();
   }
 
   function renderTimeHeaders() {
-    // Remove existing time columns (keep sticky columns)
-    const existingTimeCols = $gridThead.querySelectorAll('.col-time');
-    existingTimeCols.forEach(col => col.remove());
+    // Clear existing headers
+    $timeHeaderRow.innerHTML = '';
 
-    // Add new time columns
+    // Add time columns
     const fragment = document.createDocumentFragment();
     state.timeColumns.forEach(col => {
       const th = document.createElement('th');
-      th.className = 'col-time';
       th.dataset.colId = col.id;
       th.textContent = col.label;
       th.title = col.label; // Tooltip for long labels
       fragment.appendChild(th);
     });
 
-    $gridThead.appendChild(fragment);
+    $timeHeaderRow.appendChild(fragment);
   }
 
-  function renderGridRows() {
+  function renderLeftTable() {
     const rows = [];
     state.pekerjaanTree.forEach(node => {
-      renderTreeNode(node, rows);
+      renderLeftRow(node, rows);
     });
 
-    $gridTbody.innerHTML = rows.join('');
+    $leftTbody.innerHTML = rows.join('');
   }
 
-  function renderTreeNode(node, rows, parentExpanded = true) {
-    const isExpanded = state.expandedNodes.has(node.id) !== false; // Default to expanded
+  function renderRightTable() {
+    const rows = [];
+    state.pekerjaanTree.forEach(node => {
+      renderRightRow(node, rows);
+    });
+
+    $rightTbody.innerHTML = rows.join('');
+  }
+
+  function renderLeftRow(node, rows, parentExpanded = true) {
+    const isExpanded = state.expandedNodes.has(node.id) !== false;
     const isVisible = parentExpanded;
     const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
     const levelClass = `level-${node.level}`;
@@ -452,22 +467,39 @@
     const volume = node.type === 'pekerjaan' ? formatNumber(state.volumeMap.get(node.id) || 0) : '';
     const satuan = node.type === 'pekerjaan' ? escapeHtml(node.satuan) : '';
 
-    // Time cells
-    const timeCells = state.timeColumns.map(col => renderTimeCell(node, col)).join('');
-
     rows.push(`
-      <tr class="${rowClass}" data-node-id="${node.id}" data-node-type="${node.type}">
-        <td class="col-sticky col-tree">
+      <tr class="${rowClass}" data-node-id="${node.id}" data-row-index="${rows.length}">
+        <td class="col-tree">
           ${toggleIcon}
         </td>
-        <td class="col-sticky col-kode">${escapeHtml(node.kode || '')}</td>
-        <td class="col-sticky col-uraian ${levelClass}">
+        <td class="col-uraian ${levelClass}">
           <div class="tree-node">
             ${escapeHtml(node.nama)}
           </div>
         </td>
-        <td class="col-sticky col-volume text-right">${volume}</td>
-        <td class="col-sticky col-satuan">${satuan}</td>
+        <td class="col-volume text-right">${volume}</td>
+        <td class="col-satuan">${satuan}</td>
+      </tr>
+    `);
+
+    // Render children
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(child => {
+        renderLeftRow(child, rows, isExpanded && isVisible);
+      });
+    }
+  }
+
+  function renderRightRow(node, rows, parentExpanded = true) {
+    const isExpanded = state.expandedNodes.has(node.id) !== false;
+    const isVisible = parentExpanded;
+    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
+
+    // Time cells
+    const timeCells = state.timeColumns.map(col => renderTimeCell(node, col)).join('');
+
+    rows.push(`
+      <tr class="${rowClass}" data-node-id="${node.id}" data-row-index="${rows.length}">
         ${timeCells}
       </tr>
     `);
@@ -475,7 +507,7 @@
     // Render children
     if (node.children && node.children.length > 0) {
       node.children.forEach(child => {
-        renderTreeNode(child, rows, isExpanded && isVisible);
+        renderRightRow(child, rows, isExpanded && isVisible);
       });
     }
   }
@@ -548,13 +580,14 @@
   }
 
   function toggleNodeChildren(nodeId, show) {
-    // Find all children rows in single table
-    const allRows = $gridTbody.querySelectorAll(`tr[data-node-id]`);
+    // Find all children rows in both tables
+    const leftRows = $leftTbody.querySelectorAll(`tr[data-node-id]`);
+    const rightRows = $rightTbody.querySelectorAll(`tr[data-node-id]`);
 
     let foundParent = false;
     let parentLevel = -1;
 
-    allRows.forEach((row) => {
+    leftRows.forEach((row, index) => {
       if (row.dataset.nodeId === nodeId) {
         foundParent = true;
         const levelClass = row.querySelector('.col-uraian').className.match(/level-(\d+)/);
@@ -567,17 +600,33 @@
         const rowLevel = rowLevelClass ? parseInt(rowLevelClass[1]) : -1;
 
         if (rowLevel > parentLevel) {
-          // This is a child
+          // This is a child - toggle both left and right rows
           if (show) {
             row.classList.remove('row-hidden');
+            rightRows[index]?.classList.remove('row-hidden');
           } else {
             row.classList.add('row-hidden');
+            rightRows[index]?.classList.add('row-hidden');
           }
         } else {
           // No longer a child
           foundParent = false;
         }
       }
+    });
+  }
+
+  function setupScrollSync() {
+    if (!$leftPanelScroll || !$rightPanelScroll) return;
+
+    // Sync vertical scrolling from right to left
+    $rightPanelScroll.addEventListener('scroll', () => {
+      $leftPanelScroll.scrollTop = $rightPanelScroll.scrollTop;
+    });
+
+    // Sync vertical scrolling from left to right (if user scrolls left via keyboard/touch)
+    $leftPanelScroll.addEventListener('scroll', () => {
+      $rightPanelScroll.scrollTop = $leftPanelScroll.scrollTop;
     });
   }
 

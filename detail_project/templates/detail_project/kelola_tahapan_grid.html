@@ -96,23 +96,44 @@
     <!-- GRID VIEW TAB -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel">
       <div class="grid-container">
-        <!-- Single Table with Sticky Columns -->
-        <div class="grid-wrapper">
-          <table class="grid-table" id="main-grid-table">
-            <thead>
-              <tr>
-                <th class="col-sticky col-tree" style="width: 40px;"></th>
-                <th class="col-sticky col-kode" style="width: 80px;">Kode</th>
-                <th class="col-sticky col-uraian" style="width: 300px;">Uraian Pekerjaan</th>
-                <th class="col-sticky col-volume" style="width: 100px;">Volume</th>
-                <th class="col-sticky col-satuan" style="width: 60px;">Satuan</th>
-                <!-- Time columns will be dynamically inserted here -->
-              </tr>
-            </thead>
-            <tbody id="grid-tbody">
-              <!-- Rows populated by JS -->
-            </tbody>
-          </table>
+        <!-- Split Panel Container -->
+        <div class="split-panel-wrapper">
+
+          <!-- LEFT PANEL (Frozen) -->
+          <div class="left-panel-wrapper">
+            <div class="left-panel-scroll">
+              <table class="grid-table left-table" id="left-table">
+                <thead>
+                  <tr>
+                    <th class="col-tree" style="width: 40px;"></th>
+                    <th class="col-uraian" style="width: 400px;">Uraian Pekerjaan</th>
+                    <th class="col-volume" style="width: 100px;">Volume</th>
+                    <th class="col-satuan" style="width: 80px;">Satuan</th>
+                  </tr>
+                </thead>
+                <tbody id="left-tbody">
+                  <!-- Rows populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- RIGHT PANEL (Scrollable) -->
+          <div class="right-panel-wrapper">
+            <div class="right-panel-scroll">
+              <table class="grid-table right-table" id="right-table">
+                <thead>
+                  <tr id="time-header-row">
+                    <!-- Time columns dynamically inserted here -->
+                  </tr>
+                </thead>
+                <tbody id="right-tbody">
+                  <!-- Rows populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
 
         <!-- Status Bar -->
