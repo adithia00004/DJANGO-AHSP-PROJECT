@@ -117,8 +117,8 @@
       tahapanButtonsContainer.innerHTML = `
         <span class="text-muted small">
           <i class="bi bi-info-circle"></i>
-          Belum ada tahapan. 
-          <a href="/detail_project/${projectId}/kelola-tahapan/">Buat tahapan</a>
+          Belum ada tahapan.
+          <a href="/detail_project/${projectId}/jadwal-pekerjaan/">Buat tahapan</a>
         </span>
       `;
       return;

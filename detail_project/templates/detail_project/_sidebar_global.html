@@ -12,7 +12,7 @@
   {% url 'detail_project:rincian_ahsp' project.id as url_rincian_ahsp %}
   {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
   {% url 'detail_project:rekap_kebutuhan' project.id as url_rekap_kebutuhan %}
-  {% url 'detail_project:kelola_tahapan' project.id as url_kelola_tahapan %}
+  {% url 'detail_project:jadwal_pekerjaan' project.id as url_jadwal_pekerjaan %}
 {% endif %}
 
 {% trans "Project" as project_label %}
@@ -26,7 +26,7 @@
 {% trans "Rincian AHSP" as t_rincian_ahsp %}
 {% trans "Rekap RAB" as t_rekap_rab %}
 {% trans "Rekap Kebutuhan" as t_rekap_kebutuhan %}
-{% trans "Kelola Tahapan" as t_kelola_tahapan %}
+{% trans "Jadwal Pekerjaan" as t_jadwal_pekerjaan %}
 
 <aside id="dp-sidebar"
        class="dp-sidebar dp-z-sidebar"
@@ -141,11 +141,11 @@
           <!-- Planning Section (NEW) -->
           <li class="dp-nav-section">Perencanaan</li>
           <li>
-            <a class="dp-link {% if side_active == 'kelola_tahapan' %}is-active{% endif %}"
-               {% if side_active == 'kelola_tahapan' %}aria-current="page"{% endif %}
-               href="{{ url_kelola_tahapan|default:'#' }}">
+            <a class="dp-link {% if side_active == 'jadwal_pekerjaan' %}is-active{% endif %}"
+               {% if side_active == 'jadwal_pekerjaan' %}aria-current="page"{% endif %}
+               href="{{ url_jadwal_pekerjaan|default:'#' }}">
               <i class="bi bi-calendar2-range" aria-hidden="true"></i>
-              <span>{{ t_kelola_tahapan }}</span>
+              <span>{{ t_jadwal_pekerjaan }}</span>
             </a>
           </li>
         {% endif %}
