@@ -1,5 +1,5 @@
 /* =====================================================================
-   KELOLA_TAHAPAN_GRID.CSS - Excel-like Grid View for Project Scheduling
+   JADWAL_PEKERJAAN.CSS - Excel-like Grid View for Project Scheduling
    ===================================================================== */
 
 /* ===== CSS Variables for Theme Support ===== */
@@ -237,6 +237,24 @@
   background: var(--grid-header-bg);
 }
 
+/* Add shadow effect when content scrolls under header */
+.grid-table thead::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.1), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.grid-table thead.scrolled::after {
+  opacity: 1;
+}
+
 .grid-table th {
   padding: 0.75rem 0.5rem;
   text-align: left;
@@ -249,6 +267,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  position: relative;
 }
 
 /* Left table headers */

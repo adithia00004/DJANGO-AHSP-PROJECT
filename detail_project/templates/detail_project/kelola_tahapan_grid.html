@@ -1,9 +1,9 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
 
-{% block body_attrs %}data-page="kelola_tahapan_grid"{% endblock %}
+{% block body_attrs %}data-page="jadwal_pekerjaan"{% endblock %}
 
-{% block title %}Kelola Tahapan (Grid View) - {{ project.nama }}{% endblock %}
+{% block title %}Jadwal Pekerjaan - {{ project.nama }}{% endblock %}
 
 {% block detail_css %}{% endblock %}
 
@@ -22,7 +22,7 @@
   <!-- Toolbar -->
   <div id="kt-toolbar" class="grid-toolbar">
     <div class="toolbar-left">
-      <h1 class="toolbar-title">Kelola Tahapan Pelaksanaan</h1>
+      <h1 class="toolbar-title">Jadwal Pekerjaan</h1>
       <span class="toolbar-subtitle">Project: {{ project.nama }}</span>
     </div>
 

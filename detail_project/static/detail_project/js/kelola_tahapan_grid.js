@@ -1076,6 +1076,37 @@
   });
 
   // =========================================================================
+  // STICKY HEADER SHADOW EFFECT
+  // =========================================================================
+
+  // Add shadow effect to sticky headers when scrolling
+  function handleStickyHeaderShadow() {
+    if ($leftPanelScroll) {
+      const leftThead = $leftTable?.querySelector('thead');
+      if (leftThead) {
+        const scrollTop = $leftPanelScroll.scrollTop;
+        leftThead.classList.toggle('scrolled', scrollTop > 0);
+      }
+    }
+
+    if ($rightPanelScroll) {
+      const rightThead = $rightTable?.querySelector('thead');
+      if (rightThead) {
+        const scrollTop = $rightPanelScroll.scrollTop;
+        rightThead.classList.toggle('scrolled', scrollTop > 0);
+      }
+    }
+  }
+
+  // Attach scroll listeners for sticky header shadow
+  if ($leftPanelScroll) {
+    $leftPanelScroll.addEventListener('scroll', handleStickyHeaderShadow);
+  }
+  if ($rightPanelScroll) {
+    $rightPanelScroll.addEventListener('scroll', handleStickyHeaderShadow);
+  }
+
+  // =========================================================================
   // INITIALIZATION
   // =========================================================================
 
