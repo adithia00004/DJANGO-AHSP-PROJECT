@@ -766,17 +766,26 @@
     input.value = initialValue || currentValue;
     input.className = 'cell-input';
 
-    input.addEventListener('blur', () => exitEditMode(cell, input));
+    input.addEventListener('blur', () => {
+      // Only exit if not already exiting (prevent race condition)
+      if (!cell._isExiting) {
+        exitEditMode(cell, input);
+      }
+    });
+
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        cell._isExiting = true; // Prevent blur from calling exitEditMode again
         exitEditMode(cell, input);
         navigateCell('down');
         e.preventDefault();
       } else if (e.key === 'Escape') {
+        cell._isExiting = true; // Prevent blur from calling exitEditMode again
         cell.classList.remove('editing');
         cell.innerHTML = cell._originalContent;
         cell.focus();
       } else if (e.key === 'Tab') {
+        cell._isExiting = true; // Prevent blur from calling exitEditMode again
         exitEditMode(cell, input);
         navigateCell(e.shiftKey ? 'left' : 'right');
         e.preventDefault();
@@ -801,6 +810,7 @@
     if (newValue < 0 || newValue > 100) {
       showToast('Value must be between 0-100', 'danger');
       cell.innerHTML = cell._originalContent;
+      cell._isExiting = false; // Reset flag
       cell.focus();
       return;
     }
@@ -853,6 +863,8 @@
       cell.innerHTML = cell._originalContent;
     }
 
+    // Reset flag for next edit
+    cell._isExiting = false;
     cell.focus();
   }
 
