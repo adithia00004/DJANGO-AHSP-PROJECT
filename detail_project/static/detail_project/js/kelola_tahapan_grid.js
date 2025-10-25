@@ -409,11 +409,41 @@
     renderLeftTable();
     renderRightTable();
 
+    // CRITICAL: Sync row heights after render
+    syncRowHeights();
+
     // Setup scroll sync
     setupScrollSync();
 
     // Attach events
     attachGridEvents();
+  }
+
+  function syncRowHeights() {
+    // Get all rows from both tables
+    const leftRows = $leftTbody.querySelectorAll('tr');
+    const rightRows = $rightTbody.querySelectorAll('tr');
+
+    // Sync each row height
+    leftRows.forEach((leftRow, index) => {
+      const rightRow = rightRows[index];
+      if (!rightRow) return;
+
+      // Clear any previous inline height
+      leftRow.style.height = '';
+      rightRow.style.height = '';
+
+      // Force browser to calculate natural height
+      const leftHeight = leftRow.offsetHeight;
+      const rightHeight = rightRow.offsetHeight;
+
+      // Use the maximum height of both
+      const maxHeight = Math.max(leftHeight, rightHeight);
+
+      // Apply to both rows for perfect alignment
+      leftRow.style.height = `${maxHeight}px`;
+      rightRow.style.height = `${maxHeight}px`;
+    });
   }
 
   function renderTimeHeaders() {
@@ -577,6 +607,10 @@
 
     // Toggle children visibility
     toggleNodeChildren(nodeId, !isExpanded);
+
+    // CRITICAL: Re-sync row heights after toggle
+    // Use setTimeout to ensure DOM has updated
+    setTimeout(() => syncRowHeights(), 10);
   }
 
   function toggleNodeChildren(nodeId, show) {
