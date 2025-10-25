@@ -1018,8 +1018,20 @@
   }
 
   async function savePekerjaanAssignments(pekerjaanId, assignments) {
-    // Group by tahapan and save
+    // Separate assignments into two groups: assign (proporsi > 0) and unassign (proporsi = 0)
+    const toAssign = [];
+    const toUnassign = [];
+
     for (const [tahapanId, proporsi] of Object.entries(assignments)) {
+      if (parseFloat(proporsi) > 0) {
+        toAssign.push({ tahapanId, proporsi: parseFloat(proporsi) });
+      } else {
+        toUnassign.push(tahapanId);
+      }
+    }
+
+    // Handle assignments (proporsi > 0)
+    for (const { tahapanId, proporsi } of toAssign) {
       await apiCall(`${apiBase}${tahapanId}/assign/`, {
         method: 'POST',
         headers: {
@@ -1029,8 +1041,22 @@
         body: JSON.stringify({
           assignments: [{
             pekerjaan_id: parseInt(pekerjaanId),
-            proporsi: parseFloat(proporsi)
+            proporsi: proporsi
           }]
+        })
+      });
+    }
+
+    // Handle unassignments (proporsi = 0)
+    for (const tahapanId of toUnassign) {
+      await apiCall(`${apiBase}${tahapanId}/unassign/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+          pekerjaan_ids: [parseInt(pekerjaanId)]
         })
       });
     }
