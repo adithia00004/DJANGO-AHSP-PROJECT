@@ -391,10 +391,29 @@ class TahapPelaksanaan(models.Model):
         help_text="Tanggal rencana mulai (opsional)"
     )
     tanggal_selesai = models.DateField(
-        null=True, 
+        null=True,
         blank=True,
         help_text="Tanggal rencana selesai (opsional)"
     )
+
+    # Auto-generation tracking (for time scale modes)
+    is_auto_generated = models.BooleanField(
+        default=False,
+        help_text="True jika tahapan di-generate otomatis oleh sistem (daily/weekly/monthly mode)"
+    )
+    generation_mode = models.CharField(
+        max_length=10,
+        choices=[
+            ('daily', 'Daily'),
+            ('weekly', 'Weekly'),
+            ('monthly', 'Monthly'),
+            ('custom', 'Custom'),
+        ],
+        null=True,
+        blank=True,
+        help_text="Mode yang digunakan untuk generate tahapan ini"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

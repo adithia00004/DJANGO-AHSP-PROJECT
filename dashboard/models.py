@@ -72,6 +72,23 @@ class Project(models.Model):
 
     def save(self, *args, **kwargs):
         creating = self._state.adding and not self.index_project
+
+        # Set default timeline if not provided
+        if not self.tanggal_mulai:
+            from django.utils import timezone
+            self.tanggal_mulai = timezone.now().date()
+
+        if not self.tanggal_selesai:
+            # Default: 31 Desember tahun ini (atau tahun project)
+            from datetime import date
+            year = self.tahun_project if self.tahun_project else self.tanggal_mulai.year
+            self.tanggal_selesai = date(year, 12, 31)
+
+        if not self.durasi_hari:
+            # Calculate duration from dates
+            delta = (self.tanggal_selesai - self.tanggal_mulai).days + 1
+            self.durasi_hari = delta
+
         super().save(*args, **kwargs)
 
         if creating and not self.index_project:
