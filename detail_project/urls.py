@@ -22,6 +22,7 @@ urlpatterns = [
     path('<int:project_id>/rekap-rab/',             views.rekap_rab_view,             name='rekap_rab'),
     path("<int:project_id>/rekap-kebutuhan/",       views.rekap_kebutuhan_view,       name="rekap_kebutuhan"),
     path('<int:project_id>/kelola-tahapan/',        views.kelola_tahapan_view,        name='kelola_tahapan'),
+    path('<int:project_id>/kelola-tahapan-grid/',   views.kelola_tahapan_grid_view,   name='kelola_tahapan_grid'),  # NEW: Grid View
     # --- NEW: Rincian RAB (web)
     path('<int:project_id>/rincian-rab/',           views.rincian_rab_view,           name='rincian_rab'),  # NEW
 

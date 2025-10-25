@@ -1,0 +1,999 @@
+// static/detail_project/js/kelola_tahapan_grid.js
+// Excel-like Grid View for Project Scheduling with Gantt & S-Curve
+
+(function() {
+  'use strict';
+
+  // =========================================================================
+  // CONFIGURATION & STATE
+  // =========================================================================
+
+  const app = document.getElementById('tahapan-grid-app');
+  if (!app) return;
+
+  const projectId = parseInt(app.dataset.projectId);
+  const apiBase = app.dataset.apiBase;
+
+  // State Management
+  const state = {
+    tahapanList: [],           // List of tahapan with dates
+    pekerjaanTree: [],         // Hierarchical tree: Klasifikasi > Sub > Pekerjaan
+    flatPekerjaan: [],         // Flattened list for easy access
+    volumeMap: new Map(),      // pekerjaan_id -> volume
+    assignmentMap: new Map(),  // pekerjaan_id -> { tahapan_id: percentage }
+
+    timeScale: 'weekly',       // 'daily', 'weekly', 'monthly', 'custom'
+    displayMode: 'percentage', // 'percentage' or 'volume'
+    timeColumns: [],           // Array of time period objects
+
+    expandedNodes: new Set(),  // Set of expanded node IDs
+    modifiedCells: new Map(),  // Track changes: "pekerjaanId-timeId" -> value
+    currentCell: null,         // Currently focused cell
+
+    ganttInstance: null,       // Frappe Gantt instance
+    scurveChart: null,         // ECharts instance
+  };
+
+  // DOM Elements
+  const $frozenTbody = document.getElementById('frozen-tbody');
+  const $timeTbody = document.getElementById('time-tbody');
+  const $timeHeaderRow = document.getElementById('time-header-row');
+  const $itemCount = document.getElementById('item-count');
+  const $modifiedCount = document.getElementById('modified-count');
+  const $totalProgress = document.getElementById('total-progress');
+  const $statusMessage = document.getElementById('status-message');
+  const $loadingOverlay = document.getElementById('loading-overlay');
+
+  // =========================================================================
+  // UTILITY FUNCTIONS
+  // =========================================================================
+
+  function showLoading(show = true) {
+    if ($loadingOverlay) {
+      $loadingOverlay.classList.toggle('d-none', !show);
+    }
+  }
+
+  function showToast(message, type = 'success') {
+    const toast = document.getElementById('toast');
+    const toastBody = document.getElementById('toast-body');
+    if (!toast || !toastBody) return;
+
+    toast.classList.remove('text-bg-success', 'text-bg-danger', 'text-bg-warning');
+    toast.classList.add(`text-bg-${type}`);
+    toastBody.textContent = message;
+
+    const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
+    bsToast.show();
+  }
+
+  async function apiCall(url, options = {}) {
+    const response = await fetch(url, {
+      credentials: 'same-origin',
+      ...options
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  function formatNumber(num, decimals = 2) {
+    if (num === null || num === undefined || num === '') return '-';
+    const n = parseFloat(num);
+    if (isNaN(n)) return '-';
+    return n.toLocaleString('id-ID', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  }
+
+  // =========================================================================
+  // DATA LOADING
+  // =========================================================================
+
+  async function loadAllData() {
+    showLoading(true);
+    try {
+      await Promise.all([
+        loadTahapan(),
+        loadPekerjaan(),
+        loadVolumes(),
+        loadAssignments()
+      ]);
+
+      generateTimeColumns();
+      renderGrid();
+      updateStatusBar();
+
+      showToast('Data loaded successfully', 'success');
+    } catch (error) {
+      console.error('Load data failed:', error);
+      showToast('Failed to load data: ' + error.message, 'danger');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  async function loadTahapan() {
+    try {
+      const data = await apiCall(apiBase);
+      state.tahapanList = (data.tahapan || []).sort((a, b) => a.urutan - b.urutan);
+      return state.tahapanList;
+    } catch (error) {
+      console.error('Failed to load tahapan:', error);
+      throw error;
+    }
+  }
+
+  async function loadPekerjaan() {
+    try {
+      const response = await apiCall(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`);
+
+      // Build hierarchical tree
+      const tree = buildPekerjaanTree(response);
+      state.pekerjaanTree = tree;
+
+      // Flatten for easy access
+      state.flatPekerjaan = flattenTree(tree);
+
+      return state.pekerjaanTree;
+    } catch (error) {
+      console.error('Failed to load pekerjaan:', error);
+      throw error;
+    }
+  }
+
+  function buildPekerjaanTree(response) {
+    const tree = [];
+    const data = response.klasifikasi || response;
+
+    if (!Array.isArray(data)) return tree;
+
+    data.forEach(klas => {
+      const klasNode = {
+        id: `klas-${klas.id || klas.nama}`,
+        type: 'klasifikasi',
+        nama: klas.name || klas.nama || 'Klasifikasi',
+        children: [],
+        level: 0,
+        expanded: true
+      };
+
+      if (klas.sub && Array.isArray(klas.sub)) {
+        klas.sub.forEach(sub => {
+          const subNode = {
+            id: `sub-${sub.id || sub.nama}`,
+            type: 'sub-klasifikasi',
+            nama: sub.name || sub.nama || 'Sub-Klasifikasi',
+            children: [],
+            level: 1,
+            expanded: true
+          };
+
+          if (sub.pekerjaan && Array.isArray(sub.pekerjaan)) {
+            sub.pekerjaan.forEach(pkj => {
+              const pkjNode = {
+                id: pkj.id || pkj.pekerjaan_id,
+                type: 'pekerjaan',
+                kode: pkj.snapshot_kode || pkj.kode || '',
+                nama: pkj.snapshot_uraian || pkj.uraian || '',
+                volume: pkj.volume || 0,
+                satuan: pkj.snapshot_satuan || pkj.satuan || '-',
+                level: 2
+              };
+              subNode.children.push(pkjNode);
+            });
+          }
+
+          klasNode.children.push(subNode);
+        });
+      }
+
+      tree.push(klasNode);
+    });
+
+    return tree;
+  }
+
+  function flattenTree(tree, result = []) {
+    tree.forEach(node => {
+      result.push(node);
+      if (node.children && node.children.length > 0) {
+        flattenTree(node.children, result);
+      }
+    });
+    return result;
+  }
+
+  async function loadVolumes() {
+    try {
+      const data = await apiCall(`/detail_project/api/project/${projectId}/volume-pekerjaan/list/`);
+      state.volumeMap.clear();
+
+      const volumes = data.items || data.volumes || data.data || [];
+      if (Array.isArray(volumes)) {
+        volumes.forEach(v => {
+          const pkjId = v.pekerjaan_id || v.id;
+          const qty = parseFloat(v.quantity || v.volume || v.qty) || 0;
+          if (pkjId) {
+            state.volumeMap.set(pkjId, qty);
+          }
+        });
+      }
+
+      return state.volumeMap;
+    } catch (error) {
+      console.error('Failed to load volumes:', error);
+      return state.volumeMap;
+    }
+  }
+
+  async function loadAssignments() {
+    try {
+      state.assignmentMap.clear();
+
+      // Load assignments for all pekerjaan
+      const promises = state.flatPekerjaan
+        .filter(node => node.type === 'pekerjaan')
+        .map(async (node) => {
+          try {
+            const data = await apiCall(`/detail_project/api/project/${projectId}/pekerjaan/${node.id}/assignments/`);
+            const assignments = {};
+
+            if (data.assignments && Array.isArray(data.assignments)) {
+              data.assignments.forEach(a => {
+                assignments[a.tahapan_id] = parseFloat(a.proporsi) || 0;
+              });
+            }
+
+            state.assignmentMap.set(node.id, assignments);
+          } catch (error) {
+            console.warn(`Failed to load assignments for pekerjaan ${node.id}:`, error);
+            state.assignmentMap.set(node.id, {});
+          }
+        });
+
+      await Promise.all(promises);
+      return state.assignmentMap;
+    } catch (error) {
+      console.error('Failed to load assignments:', error);
+      return state.assignmentMap;
+    }
+  }
+
+  // =========================================================================
+  // TIME COLUMNS GENERATION
+  // =========================================================================
+
+  function generateTimeColumns() {
+    state.timeColumns = [];
+
+    switch (state.timeScale) {
+      case 'daily':
+        generateDailyColumns();
+        break;
+      case 'weekly':
+        generateWeeklyColumns();
+        break;
+      case 'monthly':
+        generateMonthlyColumns();
+        break;
+      case 'custom':
+        generateCustomColumns();
+        break;
+      default:
+        generateWeeklyColumns();
+    }
+  }
+
+  function generateWeeklyColumns() {
+    // Generate 52 weeks (1 year)
+    // Each column maps to a tahapan if available
+    // For now, use tahapan-based columns
+
+    if (state.tahapanList.length > 0) {
+      state.tahapanList.forEach((tahap, index) => {
+        state.timeColumns.push({
+          id: `tahap-${tahap.tahapan_id}`,
+          label: tahap.nama,
+          tahapanId: tahap.tahapan_id,
+          type: 'tahapan',
+          index: index
+        });
+      });
+    } else {
+      // Fallback: generate generic weeks
+      for (let i = 1; i <= 12; i++) {
+        state.timeColumns.push({
+          id: `week-${i}`,
+          label: `W${i}`,
+          type: 'week',
+          index: i - 1
+        });
+      }
+    }
+  }
+
+  function generateDailyColumns() {
+    // TODO: Implement daily view
+    generateWeeklyColumns(); // Fallback for now
+  }
+
+  function generateMonthlyColumns() {
+    // TODO: Implement monthly view
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    months.forEach((month, index) => {
+      state.timeColumns.push({
+        id: `month-${index}`,
+        label: month,
+        type: 'month',
+        index: index
+      });
+    });
+  }
+
+  function generateCustomColumns() {
+    // TODO: Implement custom date range
+    generateWeeklyColumns(); // Fallback for now
+  }
+
+  // =========================================================================
+  // GRID RENDERING
+  // =========================================================================
+
+  function renderGrid() {
+    renderFrozenPanel();
+    renderTimePanel();
+    syncScrolling();
+  }
+
+  function renderFrozenPanel() {
+    if (!$frozenTbody) return;
+
+    const rows = [];
+
+    state.pekerjaanTree.forEach(node => {
+      renderTreeNode(node, rows);
+    });
+
+    $frozenTbody.innerHTML = rows.join('');
+    attachFrozenPanelEvents();
+  }
+
+  function renderTreeNode(node, rows, parentExpanded = true) {
+    const isExpanded = state.expandedNodes.has(node.id) !== false; // Default to expanded
+    const isVisible = parentExpanded;
+    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
+    const levelClass = `level-${node.level}`;
+
+    let toggleIcon = '';
+    if (node.children && node.children.length > 0) {
+      toggleIcon = `<span class="tree-toggle ${isExpanded ? '' : 'collapsed'}" data-node-id="${node.id}">
+        <i class="bi bi-caret-down-fill"></i>
+      </span>`;
+    }
+
+    const volume = node.type === 'pekerjaan' ? formatNumber(state.volumeMap.get(node.id) || 0) : '';
+    const satuan = node.type === 'pekerjaan' ? escapeHtml(node.satuan) : '';
+
+    rows.push(`
+      <tr class="${rowClass}" data-node-id="${node.id}" data-node-type="${node.type}">
+        <td class="col-tree">
+          ${toggleIcon}
+        </td>
+        <td class="col-kode">${escapeHtml(node.kode || '')}</td>
+        <td class="col-uraian ${levelClass}">
+          <div class="tree-node">
+            ${escapeHtml(node.nama)}
+          </div>
+        </td>
+        <td class="col-volume text-right">${volume}</td>
+        <td class="col-satuan">${satuan}</td>
+      </tr>
+    `);
+
+    // Render children
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(child => {
+        renderTreeNode(child, rows, isExpanded && isVisible);
+      });
+    }
+  }
+
+  function renderTimePanel() {
+    if (!$timeHeaderRow || !$timeTbody) return;
+
+    // Render header
+    const headerCells = state.timeColumns.map(col =>
+      `<th data-col-id="${col.id}">${escapeHtml(col.label)}</th>`
+    ).join('');
+    $timeHeaderRow.innerHTML = headerCells;
+
+    // Render body
+    const rows = [];
+    state.pekerjaanTree.forEach(node => {
+      renderTimeNodeRow(node, rows);
+    });
+
+    $timeTbody.innerHTML = rows.join('');
+    attachTimePanelEvents();
+  }
+
+  function renderTimeNodeRow(node, rows, parentExpanded = true) {
+    const isExpanded = state.expandedNodes.has(node.id) !== false;
+    const isVisible = parentExpanded;
+    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
+
+    const cells = state.timeColumns.map(col => {
+      return renderTimeCell(node, col);
+    }).join('');
+
+    rows.push(`
+      <tr class="${rowClass}" data-node-id="${node.id}">
+        ${cells}
+      </tr>
+    `);
+
+    // Render children
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(child => {
+        renderTimeNodeRow(child, rows, isExpanded && isVisible);
+      });
+    }
+  }
+
+  function renderTimeCell(node, column) {
+    if (node.type !== 'pekerjaan') {
+      // Readonly for klasifikasi/sub-klasifikasi
+      return `<td class="time-cell readonly" data-node-id="${node.id}" data-col-id="${column.id}"></td>`;
+    }
+
+    // Get value from assignments
+    const assignments = state.assignmentMap.get(node.id) || {};
+    const tahapanId = column.tahapanId;
+    let value = assignments[tahapanId] || 0;
+
+    // Check if modified
+    const cellKey = `${node.id}-${column.id}`;
+    if (state.modifiedCells.has(cellKey)) {
+      value = state.modifiedCells.get(cellKey);
+    }
+
+    // Display mode
+    let displayValue = '';
+    if (value > 0) {
+      if (state.displayMode === 'percentage') {
+        displayValue = `<span class="cell-value percentage">${value.toFixed(1)}</span>`;
+      } else {
+        const volume = state.volumeMap.get(node.id) || 0;
+        const volValue = (volume * value / 100).toFixed(2);
+        displayValue = `<span class="cell-value volume">${volValue}</span>`;
+      }
+    }
+
+    return `<td class="time-cell editable"
+                data-node-id="${node.id}"
+                data-col-id="${column.id}"
+                data-value="${value}"
+                tabindex="0">
+              ${displayValue}
+            </td>`;
+  }
+
+  // =========================================================================
+  // EVENT HANDLERS
+  // =========================================================================
+
+  function attachFrozenPanelEvents() {
+    // Tree toggle
+    document.querySelectorAll('.tree-toggle').forEach(toggle => {
+      toggle.addEventListener('click', handleTreeToggle);
+    });
+  }
+
+  function attachTimePanelEvents() {
+    // Cell editing
+    document.querySelectorAll('.time-cell.editable').forEach(cell => {
+      cell.addEventListener('click', handleCellClick);
+      cell.addEventListener('dblclick', handleCellDoubleClick);
+      cell.addEventListener('keydown', handleCellKeydown);
+    });
+  }
+
+  function handleTreeToggle(e) {
+    e.stopPropagation();
+    const nodeId = this.dataset.nodeId;
+    const isExpanded = !this.classList.contains('collapsed');
+
+    if (isExpanded) {
+      state.expandedNodes.delete(nodeId);
+      this.classList.add('collapsed');
+    } else {
+      state.expandedNodes.add(nodeId);
+      this.classList.remove('collapsed');
+    }
+
+    // Toggle children visibility
+    toggleNodeChildren(nodeId, !isExpanded);
+  }
+
+  function toggleNodeChildren(nodeId, show) {
+    // Find all children rows in both panels
+    const frozenRows = $frozenTbody.querySelectorAll(`tr[data-node-id]`);
+    const timeRows = $timeTbody.querySelectorAll(`tr[data-node-id]`);
+
+    let foundParent = false;
+    let parentLevel = -1;
+
+    frozenRows.forEach((row, index) => {
+      if (row.dataset.nodeId === nodeId) {
+        foundParent = true;
+        const levelClass = row.querySelector('.col-uraian').className.match(/level-(\d+)/);
+        parentLevel = levelClass ? parseInt(levelClass[1]) : -1;
+        return;
+      }
+
+      if (foundParent) {
+        const rowLevelClass = row.querySelector('.col-uraian')?.className.match(/level-(\d+)/);
+        const rowLevel = rowLevelClass ? parseInt(rowLevelClass[1]) : -1;
+
+        if (rowLevel > parentLevel) {
+          // This is a child
+          if (show) {
+            row.classList.remove('row-hidden');
+            timeRows[index]?.classList.remove('row-hidden');
+          } else {
+            row.classList.add('row-hidden');
+            timeRows[index]?.classList.add('row-hidden');
+          }
+        } else {
+          // No longer a child
+          foundParent = false;
+        }
+      }
+    });
+  }
+
+  function handleCellClick(e) {
+    // Select cell
+    document.querySelectorAll('.time-cell.selected').forEach(c => c.classList.remove('selected'));
+    this.classList.add('selected');
+    state.currentCell = this;
+  }
+
+  function handleCellDoubleClick(e) {
+    // Enter edit mode
+    enterEditMode(this);
+  }
+
+  function handleCellKeydown(e) {
+    if (!this.classList.contains('editing')) {
+      // Navigation mode
+      switch(e.key) {
+        case 'Enter':
+          enterEditMode(this);
+          e.preventDefault();
+          break;
+        case 'Tab':
+          navigateCell(e.shiftKey ? 'left' : 'right');
+          e.preventDefault();
+          break;
+        case 'ArrowUp':
+          navigateCell('up');
+          e.preventDefault();
+          break;
+        case 'ArrowDown':
+          navigateCell('down');
+          e.preventDefault();
+          break;
+        case 'ArrowLeft':
+          if (!e.shiftKey) {
+            navigateCell('left');
+            e.preventDefault();
+          }
+          break;
+        case 'ArrowRight':
+          if (!e.shiftKey) {
+            navigateCell('right');
+            e.preventDefault();
+          }
+          break;
+        default:
+          // Start typing
+          if (e.key.length === 1 && /[0-9]/.test(e.key)) {
+            enterEditMode(this, e.key);
+            e.preventDefault();
+          }
+      }
+    }
+  }
+
+  function enterEditMode(cell, initialValue = '') {
+    if (cell.classList.contains('readonly')) return;
+
+    cell.classList.add('editing');
+    const currentValue = initialValue || cell.dataset.value || '';
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.min = '0';
+    input.max = '100';
+    input.value = initialValue || currentValue;
+    input.className = 'cell-input';
+
+    input.addEventListener('blur', () => exitEditMode(cell, input));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        exitEditMode(cell, input);
+        navigateCell('down');
+        e.preventDefault();
+      } else if (e.key === 'Escape') {
+        cell.classList.remove('editing');
+        cell.innerHTML = cell._originalContent;
+        cell.focus();
+      } else if (e.key === 'Tab') {
+        exitEditMode(cell, input);
+        navigateCell(e.shiftKey ? 'left' : 'right');
+        e.preventDefault();
+      }
+    });
+
+    cell._originalContent = cell.innerHTML;
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+  }
+
+  function exitEditMode(cell, input) {
+    const newValue = parseFloat(input.value) || 0;
+    const oldValue = parseFloat(cell.dataset.value) || 0;
+
+    cell.classList.remove('editing');
+
+    if (newValue !== oldValue) {
+      // Mark as modified
+      const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
+      state.modifiedCells.set(cellKey, newValue);
+      cell.classList.add('modified');
+      cell.dataset.value = newValue;
+
+      // Update display
+      let displayValue = '';
+      if (newValue > 0) {
+        if (state.displayMode === 'percentage') {
+          displayValue = `<span class="cell-value percentage">${newValue.toFixed(1)}</span>`;
+        } else {
+          const node = state.flatPekerjaan.find(n => n.id == cell.dataset.nodeId);
+          const volume = state.volumeMap.get(node?.id) || 0;
+          const volValue = (volume * newValue / 100).toFixed(2);
+          displayValue = `<span class="cell-value volume">${volValue}</span>`;
+        }
+      }
+      cell.innerHTML = displayValue;
+
+      updateStatusBar();
+    } else {
+      cell.innerHTML = cell._originalContent;
+    }
+
+    cell.focus();
+  }
+
+  function navigateCell(direction) {
+    if (!state.currentCell) return;
+
+    const currentRow = state.currentCell.closest('tr');
+    const currentIndex = Array.from(currentRow.children).indexOf(state.currentCell);
+    let nextCell = null;
+
+    switch(direction) {
+      case 'up': {
+        const prevRow = currentRow.previousElementSibling;
+        if (prevRow && !prevRow.classList.contains('row-hidden')) {
+          nextCell = prevRow.children[currentIndex];
+        }
+        break;
+      }
+      case 'down': {
+        const nextRow = currentRow.nextElementSibling;
+        if (nextRow && !nextRow.classList.contains('row-hidden')) {
+          nextCell = nextRow.children[currentIndex];
+        }
+        break;
+      }
+      case 'left': {
+        nextCell = state.currentCell.previousElementSibling;
+        break;
+      }
+      case 'right': {
+        nextCell = state.currentCell.nextElementSibling;
+        break;
+      }
+    }
+
+    if (nextCell && nextCell.classList.contains('time-cell')) {
+      nextCell.focus();
+      nextCell.click();
+    }
+  }
+
+  function syncScrolling() {
+    // Sync vertical scrolling between frozen and time tables
+    if ($frozenTbody && $timeTbody) {
+      const frozenPanel = document.querySelector('.left-panel');
+      const timePanel = document.querySelector('.right-panel');
+
+      // Not needed if tables are in same container with overflow
+      // For now, tables are separate, we need manual sync
+    }
+  }
+
+  // =========================================================================
+  // STATUS BAR & STATISTICS
+  // =========================================================================
+
+  function updateStatusBar() {
+    if ($itemCount) {
+      const pekerjaanCount = state.flatPekerjaan.filter(n => n.type === 'pekerjaan').length;
+      $itemCount.textContent = pekerjaanCount;
+    }
+
+    if ($modifiedCount) {
+      $modifiedCount.textContent = state.modifiedCells.size;
+    }
+
+    if ($totalProgress) {
+      // Calculate overall progress
+      let totalPercent = 0;
+      let count = 0;
+
+      state.flatPekerjaan.filter(n => n.type === 'pekerjaan').forEach(node => {
+        const assignments = state.assignmentMap.get(node.id) || {};
+        const sum = Object.values(assignments).reduce((a, b) => a + b, 0);
+        totalPercent += sum;
+        count++;
+      });
+
+      const avgProgress = count > 0 ? (totalPercent / count).toFixed(1) : 0;
+      $totalProgress.textContent = `${avgProgress}%`;
+    }
+  }
+
+  // =========================================================================
+  // SAVE FUNCTIONALITY
+  // =========================================================================
+
+  async function saveAllChanges() {
+    if (state.modifiedCells.size === 0) {
+      showToast('No changes to save', 'warning');
+      return;
+    }
+
+    showLoading(true);
+
+    try {
+      // Group changes by pekerjaan
+      const changesByPekerjaan = new Map();
+
+      state.modifiedCells.forEach((value, key) => {
+        const [pekerjaanId, colId] = key.split('-');
+        if (!changesByPekerjaan.has(pekerjaanId)) {
+          changesByPekerjaan.set(pekerjaanId, {});
+        }
+
+        // Find tahapan ID from column
+        const column = state.timeColumns.find(c => c.id === colId);
+        if (column && column.tahapanId) {
+          changesByPekerjaan.get(pekerjaanId)[column.tahapanId] = value;
+        }
+      });
+
+      // Save each pekerjaan
+      for (const [pekerjaanId, assignments] of changesByPekerjaan.entries()) {
+        await savePekerjaanAssignments(pekerjaanId, assignments);
+      }
+
+      state.modifiedCells.clear();
+      document.querySelectorAll('.time-cell.modified').forEach(c => c.classList.remove('modified'));
+
+      showToast('All changes saved successfully', 'success');
+      updateStatusBar();
+
+    } catch (error) {
+      showToast('Failed to save: ' + error.message, 'danger');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  async function savePekerjaanAssignments(pekerjaanId, assignments) {
+    // Group by tahapan and save
+    for (const [tahapanId, proporsi] of Object.entries(assignments)) {
+      await apiCall(`${apiBase}${tahapanId}/assign/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+          assignments: [{
+            pekerjaan_id: parseInt(pekerjaanId),
+            proporsi: parseFloat(proporsi)
+          }]
+        })
+      });
+    }
+  }
+
+  // =========================================================================
+  // GANTT CHART
+  // =========================================================================
+
+  function initGanttChart() {
+    const ganttData = state.tahapanList.map(tahap => ({
+      id: `tahap-${tahap.tahapan_id}`,
+      name: tahap.nama,
+      start: tahap.tanggal_mulai || new Date().toISOString().split('T')[0],
+      end: tahap.tanggal_selesai || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+      progress: 50 // Calculate from assignments
+    }));
+
+    if (ganttData.length > 0 && window.Gantt) {
+      state.ganttInstance = new Gantt('#gantt-chart', ganttData, {
+        view_mode: 'Week',
+        language: 'id'
+      });
+    }
+  }
+
+  // =========================================================================
+  // KURVA S CHART
+  // =========================================================================
+
+  function initScurveChart() {
+    if (!window.echarts) return;
+
+    const chartDom = document.getElementById('scurve-chart');
+    if (!chartDom) return;
+
+    state.scurveChart = echarts.init(chartDom);
+
+    // Sample data - replace with real calculations
+    const option = {
+      title: {
+        text: 'Kurva S - Progress Project'
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      legend: {
+        data: ['Planned', 'Actual']
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6']
+      },
+      yAxis: {
+        type: 'value',
+        max: 100,
+        axisLabel: {
+          formatter: '{value}%'
+        }
+      },
+      series: [
+        {
+          name: 'Planned',
+          type: 'line',
+          smooth: true,
+          data: [0, 15, 35, 55, 75, 100],
+          lineStyle: { color: '#0d6efd', width: 2, type: 'dashed' }
+        },
+        {
+          name: 'Actual',
+          type: 'line',
+          smooth: true,
+          data: [0, 10, 30, 50, 68, 85],
+          lineStyle: { color: '#198754', width: 3 },
+          areaStyle: { color: 'rgba(25, 135, 84, 0.1)' }
+        }
+      ]
+    };
+
+    state.scurveChart.setOption(option);
+  }
+
+  // =========================================================================
+  // EVENT BINDINGS
+  // =========================================================================
+
+  // Time scale toggle
+  document.querySelectorAll('input[name="timeScale"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      state.timeScale = e.target.value;
+      generateTimeColumns();
+      renderTimePanel();
+    });
+  });
+
+  // Display mode toggle
+  document.querySelectorAll('input[name="displayMode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      state.displayMode = e.target.value;
+      renderTimePanel();
+    });
+  });
+
+  // Collapse/Expand all
+  document.getElementById('btn-collapse-all')?.addEventListener('click', () => {
+    state.expandedNodes.clear();
+    renderGrid();
+  });
+
+  document.getElementById('btn-expand-all')?.addEventListener('click', () => {
+    state.flatPekerjaan.forEach(node => {
+      if (node.children && node.children.length > 0) {
+        state.expandedNodes.add(node.id);
+      }
+    });
+    renderGrid();
+  });
+
+  // Save button
+  document.getElementById('btn-save-all')?.addEventListener('click', saveAllChanges);
+
+  // Tab switch events
+  document.getElementById('gantt-tab')?.addEventListener('shown.bs.tab', () => {
+    if (!state.ganttInstance) {
+      initGanttChart();
+    }
+  });
+
+  document.getElementById('scurve-tab')?.addEventListener('shown.bs.tab', () => {
+    if (!state.scurveChart) {
+      initScurveChart();
+    } else {
+      state.scurveChart.resize();
+    }
+  });
+
+  // =========================================================================
+  // INITIALIZATION
+  // =========================================================================
+
+  loadAllData();
+
+})();
