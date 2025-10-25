@@ -28,6 +28,11 @@ class ProjectForm(forms.ModelForm):
             "anggaran_owner": forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
             "deskripsi": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "kategori": forms.TextInput(attrs={"class": "form-control"}),
+            # Timeline fields
+            "tanggal_mulai": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "tanggal_selesai": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "durasi_hari": forms.NumberInput(attrs={"class": "form-control", "min": 1, "placeholder": "Durasi dalam hari"}),
+            # Other fields
             "ket_project1": forms.TextInput(attrs={"class": "form-control"}),
             "ket_project2": forms.TextInput(attrs={"class": "form-control"}),
             "jabatan_client": forms.TextInput(attrs={"class": "form-control"}),
@@ -123,6 +128,35 @@ class ProjectForm(forms.ModelForm):
         for f in self.REQUIRED_FIELDS:
             if f not in cleaned or cleaned.get(f) is None or cleaned.get(f) == "":
                 self.add_error(f, "Wajib diisi.")
+
+        # Validate timeline logic
+        tanggal_mulai = cleaned.get('tanggal_mulai')
+        tanggal_selesai = cleaned.get('tanggal_selesai')
+        durasi_hari = cleaned.get('durasi_hari')
+
+        # If both dates are provided, validate order
+        if tanggal_mulai and tanggal_selesai:
+            if tanggal_selesai < tanggal_mulai:
+                self.add_error('tanggal_selesai', 'Tanggal selesai harus setelah tanggal mulai.')
+
+            # Calculate and sync durasi_hari
+            delta = (tanggal_selesai - tanggal_mulai).days + 1
+            if durasi_hari and durasi_hari != delta:
+                # If durasi provided but doesn't match, use calculated value
+                cleaned['durasi_hari'] = delta
+            elif not durasi_hari:
+                cleaned['durasi_hari'] = delta
+
+        # If only durasi provided with tanggal_mulai, calculate tanggal_selesai
+        elif tanggal_mulai and durasi_hari and not tanggal_selesai:
+            from datetime import timedelta
+            cleaned['tanggal_selesai'] = tanggal_mulai + timedelta(days=durasi_hari - 1)
+
+        # If only durasi provided with tanggal_selesai, calculate tanggal_mulai
+        elif tanggal_selesai and durasi_hari and not tanggal_mulai:
+            from datetime import timedelta
+            cleaned['tanggal_mulai'] = tanggal_selesai - timedelta(days=durasi_hari - 1)
+
         return cleaned
 
 

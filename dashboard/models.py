@@ -35,6 +35,26 @@ class Project(models.Model):
     deskripsi = models.TextField(blank=True, null=True)
     kategori = models.CharField(max_length=100, blank=True, null=True)
 
+    # === Timeline Pelaksanaan Project ===
+    tanggal_mulai = models.DateField(
+        'Tanggal Mulai Pelaksanaan',
+        null=True,
+        blank=True,
+        help_text='Tanggal mulai pelaksanaan project'
+    )
+    tanggal_selesai = models.DateField(
+        'Tanggal Target Selesai',
+        null=True,
+        blank=True,
+        help_text='Tanggal target penyelesaian project'
+    )
+    durasi_hari = models.PositiveIntegerField(
+        'Durasi Pelaksanaan (hari)',
+        null=True,
+        blank=True,
+        help_text='Durasi pelaksanaan dalam hari kalender'
+    )
+
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
