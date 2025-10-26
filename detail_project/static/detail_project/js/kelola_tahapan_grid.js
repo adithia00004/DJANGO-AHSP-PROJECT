@@ -1560,8 +1560,26 @@
     radio.addEventListener('change', (e) => {
       const newMode = e.target.value;
 
-      // Confirm mode switch (since it will regenerate tahapan)
-      const confirmMsg = `Switch to ${newMode} mode? This will regenerate tahapan.`;
+      // Check for unsaved changes
+      const hasUnsavedChanges = state.modifiedCells.size > 0;
+
+      let confirmMsg;
+      if (hasUnsavedChanges) {
+        // Show detailed warning about unsaved changes
+        confirmMsg = `⚠️ WARNING: You have ${state.modifiedCells.size} unsaved change(s).\n\n` +
+                     `Switching to ${newMode} mode will:\n` +
+                     `  • Regenerate tahapan based on the new time scale\n` +
+                     `  • Convert existing assignments to the new mode\n` +
+                     `  • DISCARD all unsaved changes\n\n` +
+                     `Do you want to continue?\n\n` +
+                     `💡 TIP: Click "Cancel", then "Save All Changes" to save your work first.`;
+      } else {
+        // Standard confirmation for mode switch
+        confirmMsg = `Switch to ${newMode} mode?\n\n` +
+                     `This will regenerate tahapan and convert existing assignments ` +
+                     `to the new time scale.`;
+      }
+
       if (confirm(confirmMsg)) {
         switchTimeScaleMode(newMode);
       } else {
@@ -1609,6 +1627,16 @@
       initScurveChart();
     } else {
       state.scurveChart.resize();
+    }
+  });
+
+  // Prevent accidental page closure with unsaved changes
+  window.addEventListener('beforeunload', (e) => {
+    if (state.modifiedCells.size > 0) {
+      // Show browser's standard "unsaved changes" warning
+      e.preventDefault();
+      e.returnValue = ''; // Chrome requires returnValue to be set
+      return ''; // Some browsers show this message
     }
   });
 
