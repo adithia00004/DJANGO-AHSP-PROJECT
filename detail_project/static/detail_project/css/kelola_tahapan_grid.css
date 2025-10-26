@@ -692,3 +692,242 @@
 .time-cell.focus {
   box-shadow: inset 0 0 0 2px #0d6efd;
 }
+
+/* ===== GANTT CHART HIERARCHY STYLING ===== */
+
+/* Gantt Controls */
+.gantt-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 0.375rem;
+  border: 1px solid #dee2e6;
+}
+
+.gantt-controls .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+/* Gantt Chart Container Adjustments */
+#gantt-chart {
+  min-height: 600px;
+  background: #ffffff;
+}
+
+#gantt-chart-svg {
+  width: 100%;
+  min-height: 550px;
+}
+
+/* Gantt Popup Enhancements */
+.gantt-popup {
+  min-width: 250px;
+  padding: 0.75rem;
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.gantt-popup h6 {
+  margin: 0 0 0.5rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #dee2e6;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #212529;
+}
+
+.gantt-popup p {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+  color: #495057;
+}
+
+.gantt-popup strong {
+  color: #212529;
+  font-weight: 600;
+}
+
+/* Hierarchy Level Styling - Klasifikasi (Level 0) */
+.gantt-klasifikasi .bar {
+  fill: #6c757d !important;
+  fill-opacity: 0.35 !important;
+  stroke: #495057 !important;
+  stroke-width: 2 !important;
+  height: 22px !important;
+  cursor: pointer !important;
+}
+
+.gantt-klasifikasi .bar:hover {
+  fill-opacity: 0.5 !important;
+  stroke: #212529 !important;
+}
+
+.gantt-klasifikasi .bar-label {
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  fill: #212529 !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+}
+
+.gantt-klasifikasi .bar-progress {
+  display: none !important; /* No progress fill for summary */
+}
+
+/* Hierarchy Level Styling - Sub-Klasifikasi (Level 1) */
+.gantt-sub .bar {
+  fill: #adb5bd !important;
+  fill-opacity: 0.5 !important;
+  stroke: #6c757d !important;
+  stroke-width: 1.5 !important;
+  height: 24px !important;
+}
+
+.gantt-sub .bar:hover {
+  fill-opacity: 0.65 !important;
+}
+
+.gantt-sub .bar-label {
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  fill: #495057 !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+}
+
+.gantt-sub .bar-progress {
+  fill: #6c757d !important;
+  fill-opacity: 0.3 !important;
+}
+
+/* Hierarchy Level Styling - Pekerjaan (Level 2) */
+.gantt-pekerjaan .bar {
+  fill: #e7f3ff !important; /* Light blue base */
+  stroke: #0d6efd !important;
+  stroke-width: 1.5 !important;
+  height: 28px !important;
+}
+
+.gantt-pekerjaan .bar:hover {
+  stroke: #0a58ca !important;
+  stroke-width: 2 !important;
+}
+
+.gantt-pekerjaan .bar-label {
+  font-weight: 500 !important;
+  font-size: 11px !important;
+  fill: #212529 !important;
+}
+
+/* Progress-based styling for Pekerjaan */
+/* 0% - Not started (Red) */
+.gantt-progress-0 .bar-progress {
+  fill: #dc3545 !important;
+  fill-opacity: 0.8 !important;
+}
+
+.gantt-progress-0 .bar {
+  stroke: #dc3545 !important;
+}
+
+/* 1-50% - Early progress (Yellow/Orange) */
+.gantt-progress-1-50 .bar-progress {
+  fill: #ffc107 !important;
+  fill-opacity: 0.85 !important;
+}
+
+.gantt-progress-1-50 .bar {
+  stroke: #ff9800 !important;
+}
+
+/* 51-99% - Almost done (Cyan) */
+.gantt-progress-51-99 .bar-progress {
+  fill: #0dcaf0 !important;
+  fill-opacity: 0.85 !important;
+}
+
+.gantt-progress-51-99 .bar {
+  stroke: #0dcaf0 !important;
+}
+
+/* 100% - Complete (Green) */
+.gantt-progress-100 .bar-progress {
+  fill: #198754 !important;
+  fill-opacity: 0.9 !important;
+}
+
+.gantt-progress-100 .bar {
+  stroke: #198754 !important;
+  stroke-width: 2 !important;
+}
+
+/* Dark Mode Adjustments for Gantt */
+[data-bs-theme="dark"] .gantt-controls {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] #gantt-chart {
+  background: #1e1e1e;
+}
+
+[data-bs-theme="dark"] .gantt-popup {
+  background: #2d2d2d;
+  border-color: #404040;
+  color: #e0e0e0;
+}
+
+[data-bs-theme="dark"] .gantt-popup h6 {
+  color: #e0e0e0;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .gantt-popup p {
+  color: #b0b0b0;
+}
+
+[data-bs-theme="dark"] .gantt-klasifikasi .bar-label,
+[data-bs-theme="dark"] .gantt-sub .bar-label,
+[data-bs-theme="dark"] .gantt-pekerjaan .bar-label {
+  fill: #e0e0e0 !important;
+}
+
+/* Gantt Grid Lines & Background */
+.gantt .grid-background {
+  fill: #fafafa;
+}
+
+[data-bs-theme="dark"] .gantt .grid-background {
+  fill: #252525;
+}
+
+.gantt .grid-row {
+  fill: #ffffff;
+}
+
+.gantt .grid-row:nth-child(even) {
+  fill: #f8f9fa;
+}
+
+[data-bs-theme="dark"] .gantt .grid-row {
+  fill: #1e1e1e;
+}
+
+[data-bs-theme="dark"] .gantt .grid-row:nth-child(even) {
+  fill: #252525;
+}
+
+/* Gantt Date Headers */
+.gantt .lower-text,
+.gantt .upper-text {
+  font-family: system-ui, -apple-system, sans-serif !important;
+  font-size: 12px !important;
+}
+
+[data-bs-theme="dark"] .gantt .lower-text,
+[data-bs-theme="dark"] .gantt .upper-text {
+  fill: #e0e0e0 !important;
+}

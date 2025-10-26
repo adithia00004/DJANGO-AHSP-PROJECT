@@ -26,7 +26,8 @@
     displayMode: 'percentage', // 'percentage' or 'volume'
     timeColumns: [],           // Array of time period objects
 
-    expandedNodes: new Set(),  // Set of expanded node IDs
+    expandedNodes: new Set(),  // Set of expanded node IDs (for grid tree)
+    collapsedGanttNodes: new Set(),  // Set of collapsed node IDs (for Gantt hierarchy)
     modifiedCells: new Map(),  // Track changes: "pekerjaanId-timeId" -> value
     currentCell: null,         // Currently focused cell
 
@@ -1453,6 +1454,120 @@
   // =========================================================================
 
   /**
+   * Calculate timeline (start, end, progress) for a specific pekerjaan
+   * Based on all tahapan assignments for this pekerjaan
+   *
+   * @param {number} pekerjaanId - The pekerjaan ID to calculate timeline for
+   * @returns {Object|null} - {startDate, endDate, progress} or null if not scheduled
+   */
+  function calculatePekerjaanTimeline(pekerjaanId) {
+    const assignedTahapan = [];
+
+    // Find all assigned tahapan for this pekerjaan
+    state.assignmentMap.forEach((value, key) => {
+      // Key format: "pekerjaanId-colId" where colId = "tahap-tahapanId"
+      const firstDashIndex = key.indexOf('-');
+      if (firstDashIndex === -1) return;
+
+      const keyPekerjaanId = key.substring(0, firstDashIndex);
+      const colId = key.substring(firstDashIndex + 1);
+
+      if (keyPekerjaanId == pekerjaanId && parseFloat(value) > 0) {
+        // Find the column and tahapan
+        const column = state.timeColumns.find(c => c.id === colId);
+        if (column && column.startDate && column.endDate) {
+          assignedTahapan.push({
+            tahapanId: column.tahapanId,
+            startDate: new Date(column.startDate),
+            endDate: new Date(column.endDate),
+            proportion: parseFloat(value)
+          });
+        }
+      }
+    });
+
+    if (assignedTahapan.length === 0) {
+      return null; // Not scheduled yet
+    }
+
+    // Sort by start date
+    assignedTahapan.sort((a, b) => a.startDate - b.startDate);
+
+    // Calculate overall timeline
+    const startDate = assignedTahapan[0].startDate;
+    const endDate = assignedTahapan[assignedTahapan.length - 1].endDate;
+    const avgProgress = assignedTahapan.reduce((sum, t) => sum + t.proportion, 0) / assignedTahapan.length;
+
+    return {
+      startDate,
+      endDate,
+      progress: Math.round(avgProgress)
+    };
+  }
+
+  /**
+   * Calculate timeline for a group (klasifikasi or sub-klasifikasi)
+   * Aggregates timelines from all children
+   *
+   * @param {Object} node - The klasifikasi or sub node
+   * @returns {Object|null} - {startDate, endDate} or null if no children scheduled
+   */
+  function calculateGroupTimeline(node) {
+    const childTimelines = [];
+
+    // Recursively collect timelines from all descendants
+    function collectTimelines(n) {
+      if (n.type === 'pekerjaan') {
+        const timeline = calculatePekerjaanTimeline(n.id);
+        if (timeline) {
+          childTimelines.push(timeline);
+        }
+      } else if (n.children) {
+        n.children.forEach(child => collectTimelines(child));
+      }
+    }
+
+    collectTimelines(node);
+
+    if (childTimelines.length === 0) {
+      return null;
+    }
+
+    // Find earliest start and latest end
+    const startDate = new Date(Math.min(...childTimelines.map(t => t.startDate)));
+    const endDate = new Date(Math.max(...childTimelines.map(t => t.endDate)));
+
+    return { startDate, endDate };
+  }
+
+  /**
+   * Calculate average progress for a group
+   *
+   * @param {Object} node - The klasifikasi or sub node
+   * @returns {number} - Average progress percentage
+   */
+  function calculateGroupProgress(node) {
+    const childProgresses = [];
+
+    function collectProgresses(n) {
+      if (n.type === 'pekerjaan') {
+        const timeline = calculatePekerjaanTimeline(n.id);
+        if (timeline) {
+          childProgresses.push(timeline.progress);
+        }
+      } else if (n.children) {
+        n.children.forEach(child => collectProgresses(child));
+      }
+    }
+
+    collectProgresses(node);
+
+    if (childProgresses.length === 0) return 0;
+
+    return Math.round(childProgresses.reduce((sum, p) => sum + p, 0) / childProgresses.length);
+  }
+
+  /**
    * Calculate progress percentage for a specific tahapan
    * Based on assignment allocations from all pekerjaan
    *
@@ -1534,66 +1649,209 @@
   // =========================================================================
 
   /**
-   * Initialize Gantt Chart with real assignment data
-   * Shows timeline of tahapan with progress based on actual assignments
+   * Build hierarchical Gantt data from pekerjaan tree
+   * Creates nested structure: Klasifikasi > Sub > Pekerjaan
+   *
+   * @returns {Array} - Array of Gantt task objects with hierarchy
+   */
+  function buildGanttHierarchyData() {
+    const ganttData = [];
+    let hasScheduledTasks = false;
+
+    // Iterate through klasifikasi
+    state.pekerjaanTree.forEach(klasifikasi => {
+      const klasTimeline = calculateGroupTimeline(klasifikasi);
+
+      // Skip klasifikasi with no scheduled pekerjaan
+      if (!klasTimeline) return;
+
+      hasScheduledTasks = true;
+      const klasId = `klas-${klasifikasi.id}`;
+      const isCollapsed = state.collapsedGanttNodes.has(klasId);
+
+      // Add Klasifikasi row (summary bar)
+      ganttData.push({
+        id: klasId,
+        name: `📦 ${klasifikasi.kode_klasifikasi}. ${klasifikasi.nama_klasifikasi}`,
+        start: klasTimeline.startDate.toISOString().split('T')[0],
+        end: klasTimeline.endDate.toISOString().split('T')[0],
+        progress: 0, // No progress fill for summary bars
+        custom_class: 'gantt-klasifikasi',
+        type: 'klasifikasi',
+        level: 0,
+        isCollapsed: isCollapsed
+      });
+
+      // Only show children if not collapsed
+      if (!isCollapsed && klasifikasi.children) {
+        klasifikasi.children.forEach(sub => {
+          const subTimeline = calculateGroupTimeline(sub);
+
+          // Skip sub with no scheduled pekerjaan
+          if (!subTimeline) return;
+
+          // Add Sub-Klasifikasi row
+          ganttData.push({
+            id: `sub-${sub.id}`,
+            name: `  📁 ${sub.kode_sub}. ${sub.nama_sub}`,
+            start: subTimeline.startDate.toISOString().split('T')[0],
+            end: subTimeline.endDate.toISOString().split('T')[0],
+            progress: calculateGroupProgress(sub),
+            custom_class: 'gantt-sub',
+            type: 'sub',
+            level: 1
+          });
+
+          // Add Pekerjaan rows
+          if (sub.children) {
+            sub.children.forEach(pekerjaan => {
+              const timeline = calculatePekerjaanTimeline(pekerjaan.id);
+
+              // Skip unscheduled pekerjaan
+              if (!timeline) return;
+
+              // Determine progress range for styling
+              let progressRange = '0';
+              if (timeline.progress > 0 && timeline.progress <= 50) progressRange = '1-50';
+              else if (timeline.progress > 50 && timeline.progress < 100) progressRange = '51-99';
+              else if (timeline.progress === 100) progressRange = '100';
+
+              ganttData.push({
+                id: `pek-${pekerjaan.id}`,
+                name: `    └ ${pekerjaan.kode_pekerjaan} ${pekerjaan.uraian}`,
+                start: timeline.startDate.toISOString().split('T')[0],
+                end: timeline.endDate.toISOString().split('T')[0],
+                progress: timeline.progress,
+                custom_class: `gantt-pekerjaan gantt-progress-${progressRange}`,
+                type: 'pekerjaan',
+                level: 2,
+                pekerjaanData: pekerjaan
+              });
+            });
+          }
+        });
+      }
+    });
+
+    return { ganttData, hasScheduledTasks };
+  }
+
+  /**
+   * Initialize Gantt Chart with hierarchical pekerjaan display
+   * Shows Klasifikasi > Sub > Pekerjaan with timeline visualization
    */
   function initGanttChart() {
     try {
-      showLoading('Generating Gantt Chart...', 'Calculating progress for each tahapan');
+      showLoading('Generating Gantt Chart...', 'Building work schedule hierarchy');
 
-      // Use timeColumns (filtered tahapan) instead of full tahapanList
-      const ganttData = state.timeColumns.map(col => {
-        // Find corresponding tahapan for dates
-        const tahap = state.tahapanList.find(t => t.tahapan_id === col.tahapanId);
+      const chartContainer = document.getElementById('gantt-chart');
+      if (!chartContainer) {
+        console.warn('Gantt chart container not found');
+        return;
+      }
 
-        // Calculate real progress from assignments
-        const progress = calculateTahapanProgress(col.tahapanId);
+      // Build hierarchical Gantt data
+      const { ganttData, hasScheduledTasks } = buildGanttHierarchyData();
 
-        return {
-          id: col.id,
-          name: col.label,
-          start: tahap?.tanggal_mulai || new Date().toISOString().split('T')[0],
-          end: tahap?.tanggal_selesai || new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0],
-          progress: progress, // ✅ Real progress from assignments!
-        };
-      });
+      console.log('Gantt Chart hierarchy data:', ganttData);
 
-      console.log('Gantt Chart data:', ganttData);
+      if (!hasScheduledTasks) {
+        chartContainer.innerHTML = '<div class="alert alert-info m-3">No work items have been scheduled yet. Please assign pekerjaan to tahapan in the Grid View tab.</div>';
+        showLoading(false);
+        return;
+      }
 
-      if (ganttData.length > 0 && window.Gantt) {
-        const chartContainer = document.getElementById('gantt-chart');
-        if (chartContainer) {
-          // Clear previous instance
-          chartContainer.innerHTML = '';
+      if (ganttData.length === 0) {
+        chartContainer.innerHTML = '<div class="alert alert-warning m-3">No tahapan data available. Please switch to a time scale mode to generate tahapan.</div>';
+        showLoading(false);
+        return;
+      }
 
-          state.ganttInstance = new Gantt('#gantt-chart', ganttData, {
-            view_mode: 'Week',
-            language: 'id',
-            bar_height: 30,
-            bar_corner_radius: 3,
-            arrow_curve: 5,
-            padding: 18,
-            view_modes: ['Day', 'Week', 'Month'],
-            custom_popup_html: function(task) {
-              return `
-                <div class="gantt-popup">
-                  <h5>${task.name}</h5>
-                  <p><strong>Progress:</strong> ${task.progress}%</p>
-                  <p><strong>Start:</strong> ${task._start.toLocaleDateString('id-ID')}</p>
-                  <p><strong>End:</strong> ${task._end.toLocaleDateString('id-ID')}</p>
-                </div>
+      if (window.Gantt) {
+        // Clear previous instance
+        chartContainer.innerHTML = '';
+
+        // Add collapse/expand controls
+        const controlsHtml = `
+          <div class="gantt-controls mb-2 p-2 bg-light">
+            <button id="gantt-expand-all" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-arrows-expand"></i> Expand All
+            </button>
+            <button id="gantt-collapse-all" class="btn btn-sm btn-outline-primary ms-2">
+              <i class="bi bi-arrows-collapse"></i> Collapse All
+            </button>
+            <span class="ms-3 text-muted">
+              <i class="bi bi-info-circle"></i>
+              Click 📦 Klasifikasi to expand/collapse
+            </span>
+          </div>
+          <div id="gantt-chart-svg"></div>
+        `;
+        chartContainer.innerHTML = controlsHtml;
+
+        state.ganttInstance = new Gantt('#gantt-chart-svg', ganttData, {
+          view_mode: 'Week',
+          language: 'id',
+          bar_height: 28,
+          bar_corner_radius: 3,
+          arrow_curve: 5,
+          padding: 18,
+          view_modes: ['Day', 'Week', 'Month'],
+          custom_popup_html: function(task) {
+            let html = `<div class="gantt-popup">`;
+
+            if (task.type === 'pekerjaan') {
+              html += `
+                <h6>${task.name.trim()}</h6>
+                <p class="mb-1"><strong>Progress:</strong> ${task.progress}%</p>
+                <p class="mb-1"><strong>Start:</strong> ${task._start.toLocaleDateString('id-ID')}</p>
+                <p class="mb-1"><strong>End:</strong> ${task._end.toLocaleDateString('id-ID')}</p>
+                <p class="mb-0 text-muted small">Duration: ${Math.ceil((task._end - task._start) / (1000 * 60 * 60 * 24))} days</p>
+              `;
+            } else if (task.type === 'sub') {
+              html += `
+                <h6>${task.name.trim()}</h6>
+                <p class="mb-1"><strong>Avg Progress:</strong> ${task.progress}%</p>
+                <p class="mb-1"><strong>Period:</strong> ${task._start.toLocaleDateString('id-ID')} - ${task._end.toLocaleDateString('id-ID')}</p>
+              `;
+            } else {
+              html += `
+                <h6>${task.name.trim()}</h6>
+                <p class="mb-1"><strong>Overall Period</strong></p>
+                <p class="mb-0">${task._start.toLocaleDateString('id-ID')} - ${task._end.toLocaleDateString('id-ID')}</p>
               `;
             }
-          });
 
-          console.log('✅ Gantt Chart initialized successfully');
-        }
-      } else if (ganttData.length === 0) {
-        console.warn('No tahapan data available for Gantt Chart');
-        const chartContainer = document.getElementById('gantt-chart');
-        if (chartContainer) {
-          chartContainer.innerHTML = '<div class="alert alert-warning m-3">No tahapan data available. Please switch to a time scale mode to generate tahapan.</div>';
-        }
+            html += `</div>`;
+            return html;
+          },
+          on_click: function(task) {
+            // Toggle collapse/expand on klasifikasi click
+            if (task.type === 'klasifikasi') {
+              if (state.collapsedGanttNodes.has(task.id)) {
+                state.collapsedGanttNodes.delete(task.id);
+              } else {
+                state.collapsedGanttNodes.add(task.id);
+              }
+              initGanttChart(); // Refresh
+            }
+          }
+        });
+
+        // Bind control buttons
+        document.getElementById('gantt-expand-all')?.addEventListener('click', () => {
+          state.collapsedGanttNodes.clear();
+          initGanttChart();
+        });
+
+        document.getElementById('gantt-collapse-all')?.addEventListener('click', () => {
+          state.pekerjaanTree.forEach(k => {
+            state.collapsedGanttNodes.add(`klas-${k.id}`);
+          });
+          initGanttChart();
+        });
+
+        console.log('✅ Gantt Chart initialized successfully with hierarchy');
       }
     } catch (error) {
       console.error('Failed to initialize Gantt Chart:', error);
