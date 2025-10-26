@@ -117,6 +117,55 @@
   }
 
   // =========================================================================
+  // DATE UTILITY FUNCTIONS (for time scale modes)
+  // =========================================================================
+
+  function getProjectTimeline() {
+    // Get from app context or use defaults
+    const today = new Date();
+
+    // Try to get from project data passed via context
+    const projectData = window.projectData || {};
+
+    const start = projectData.tanggal_mulai
+      ? new Date(projectData.tanggal_mulai)
+      : today;
+
+    const end = projectData.tanggal_selesai
+      ? new Date(projectData.tanggal_selesai)
+      : new Date(start.getFullYear(), 11, 31); // Dec 31
+
+    return { start, end };
+  }
+
+  function addDays(date, days) {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  }
+
+  function formatDate(date, format = 'short') {
+    if (format === 'short') {
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = date.toLocaleString('id-ID', { month: 'short' });
+      return `${day} ${month}`;
+    } else if (format === 'iso') {
+      return date.toISOString().split('T')[0];
+    }
+    return date.toLocaleDateString('id-ID');
+  }
+
+  function getWeekNumber(date, startDate) {
+    const diff = date - startDate;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    return Math.floor(days / 7) + 1;
+  }
+
+  function getMonthName(date) {
+    return date.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+  }
+
+  // =========================================================================
   // DATA LOADING
   // =========================================================================
 
@@ -313,16 +362,172 @@
 
   function generateTimeColumns() {
     state.timeColumns = [];
-    console.log(`Generating time columns from ${state.tahapanList.length} tahapan`);
 
-    // Generate columns from tahapan (not calendar weeks!)
-    // Each column represents one tahapan
+    // Check current time scale mode
+    const timeScale = state.timeScale || 'custom';
+    console.log(`Generating time columns for mode: ${timeScale}`);
+
+    switch (timeScale) {
+      case 'daily':
+        generateDailyColumns();
+        break;
+      case 'weekly':
+        generateWeeklyColumns();
+        break;
+      case 'monthly':
+        generateMonthlyColumns();
+        break;
+      case 'custom':
+      default:
+        generateCustomColumns();
+        break;
+    }
+
+    console.log(`Generated ${state.timeColumns.length} time columns`);
+  }
+
+  function generateDailyColumns() {
+    const { start, end } = getProjectTimeline();
+    console.log(`  Daily mode: ${formatDate(start, 'iso')} to ${formatDate(end, 'iso')}`);
+
+    let currentDate = new Date(start);
+    let dayNum = 1;
+
+    while (currentDate <= end) {
+      const column = {
+        id: `day-${dayNum}`,
+        tahapanId: null, // Will be mapped to actual tahapan
+        label: `Day ${dayNum}`,
+        sublabel: formatDate(currentDate, 'short'),
+        type: 'daily',
+        index: dayNum - 1,
+        startDate: new Date(currentDate),
+        endDate: new Date(currentDate),
+        dateKey: formatDate(currentDate, 'iso')
+      };
+
+      state.timeColumns.push(column);
+      currentDate = addDays(currentDate, 1);
+      dayNum++;
+    }
+  }
+
+  function generateWeeklyColumns() {
+    const { start, end } = getProjectTimeline();
+    const weekEndDay = state.weekEndDay || 0; // 0 = Sunday (default)
+
+    console.log(`  Weekly mode: ${formatDate(start, 'iso')} to ${formatDate(end, 'iso')}`);
+
+    let currentStart = new Date(start);
+    let weekNum = 1;
+
+    while (currentStart <= end) {
+      // Find end of week (next occurrence of weekEndDay)
+      let currentEnd = new Date(currentStart);
+      const daysUntilWeekEnd = (weekEndDay - currentStart.getDay() + 7) % 7;
+
+      if (daysUntilWeekEnd === 0 && currentStart.getDay() === weekEndDay) {
+        // Already on week end day - this is a 1-day week
+        currentEnd = new Date(currentStart);
+      } else {
+        currentEnd = addDays(currentStart, daysUntilWeekEnd);
+      }
+
+      // Don't exceed project end
+      if (currentEnd > end) {
+        currentEnd = new Date(end);
+      }
+
+      const startDay = currentStart.getDate().toString().padStart(2, '0');
+      const endDay = currentEnd.getDate().toString().padStart(2, '0');
+      const startMonth = currentStart.toLocaleString('id-ID', { month: 'short' });
+      const endMonth = currentEnd.toLocaleString('id-ID', { month: 'short' });
+
+      let label;
+      if (startMonth === endMonth && currentStart.getDate() === currentEnd.getDate()) {
+        label = `W${weekNum} (${startDay} ${startMonth})`;
+      } else if (startMonth === endMonth) {
+        label = `W${weekNum} (${startDay}-${endDay} ${startMonth})`;
+      } else {
+        label = `W${weekNum} (${startDay} ${startMonth}-${endDay} ${endMonth})`;
+      }
+
+      const column = {
+        id: `week-${weekNum}`,
+        tahapanId: null,
+        label: label,
+        type: 'weekly',
+        index: weekNum - 1,
+        startDate: new Date(currentStart),
+        endDate: new Date(currentEnd),
+        weekNumber: weekNum
+      };
+
+      state.timeColumns.push(column);
+
+      // Move to day after week end
+      currentStart = addDays(currentEnd, 1);
+      weekNum++;
+
+      // Safety check
+      if (weekNum > 100) break; // Prevent infinite loop
+    }
+  }
+
+  function generateMonthlyColumns() {
+    const { start, end } = getProjectTimeline();
+    console.log(`  Monthly mode: ${formatDate(start, 'iso')} to ${formatDate(end, 'iso')}`);
+
+    let currentDate = new Date(start);
+    let monthNum = 1;
+
+    while (currentDate <= end) {
+      // Start of month (or project start if mid-month)
+      const monthStart = new Date(currentDate);
+
+      // End of month
+      const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+
+      // Don't exceed project end
+      const actualEnd = monthEnd > end ? new Date(end) : monthEnd;
+
+      const monthName = currentDate.toLocaleString('id-ID', { month: 'long' });
+      const year = currentDate.getFullYear();
+
+      const column = {
+        id: `month-${monthNum}`,
+        tahapanId: null,
+        label: `${monthName} ${year}`,
+        type: 'monthly',
+        index: monthNum - 1,
+        startDate: new Date(monthStart),
+        endDate: new Date(actualEnd),
+        monthNumber: monthNum
+      };
+
+      state.timeColumns.push(column);
+
+      // Move to first day of next month
+      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      monthNum++;
+
+      // Safety check
+      if (monthNum > 24) break; // Max 2 years
+    }
+  }
+
+  function generateCustomColumns() {
+    // Generate from user-defined tahapan
+    console.log(`  Custom mode: Generating from ${state.tahapanList.length} tahapan`);
+
     state.tahapanList.forEach((tahap, index) => {
       const column = {
         id: `tahap-${tahap.tahapan_id}`,
-        tahapanId: tahap.tahapan_id,  // ✅ CRITICAL: Link to tahapan
+        tahapanId: tahap.tahapan_id,  // ✅ Link to tahapan
         label: tahap.nama || `Tahap ${index + 1}`,
-        type: 'tahapan',
+        type: 'custom',
+        isAutoGenerated: tahap.is_auto_generated || false,
+        generationMode: tahap.generation_mode || 'custom',
         index: index,
         startDate: tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null,
         endDate: tahap.tanggal_selesai ? new Date(tahap.tanggal_selesai) : null,
@@ -332,8 +537,6 @@
       console.log(`  Column ${index}: ${column.id} (tahapanId=${column.tahapanId}, label="${column.label}")`);
       state.timeColumns.push(column);
     });
-
-    console.log(`Generated ${state.timeColumns.length} time columns`);
   }
 
   function generateWeeklyColumns() {
