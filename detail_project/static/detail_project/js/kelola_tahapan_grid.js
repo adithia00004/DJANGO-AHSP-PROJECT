@@ -34,6 +34,9 @@
     scurveChart: null,         // ECharts instance
   };
 
+  // Expose state to window for debugging
+  window.jadwalPekerjaanState = state;
+
   // DOM Elements
   const $leftTable = document.getElementById('left-table');
   const $rightTable = document.getElementById('right-table');
@@ -1244,7 +1247,17 @@
       const changesByPekerjaan = new Map();
 
       state.modifiedCells.forEach((value, key) => {
-        const [pekerjaanId, colId] = key.split('-');
+        // Parse cellKey: format is "pekerjaanId-colId" where colId may contain dashes (e.g., "322-tahap-841")
+        // Split only on FIRST dash to separate pekerjaanId from colId
+        const firstDashIndex = key.indexOf('-');
+        if (firstDashIndex === -1) {
+          console.warn(`Invalid cellKey format: ${key}`);
+          return;
+        }
+
+        const pekerjaanId = key.substring(0, firstDashIndex);
+        const colId = key.substring(firstDashIndex + 1);
+
         if (!changesByPekerjaan.has(pekerjaanId)) {
           changesByPekerjaan.set(pekerjaanId, {});
         }
@@ -1253,6 +1266,8 @@
         const column = state.timeColumns.find(c => c.id === colId);
         if (column && column.tahapanId) {
           changesByPekerjaan.get(pekerjaanId)[column.tahapanId] = value;
+        } else {
+          console.warn(`Column not found for colId: ${colId}, or missing tahapanId`);
         }
       });
 
@@ -1273,7 +1288,13 @@
         state.assignmentMap.set(key, value);
 
         // Update cell data-saved-value attribute
-        const [pekerjaanId, colId] = key.split('-');
+        // Parse cellKey: format is "pekerjaanId-colId" where colId may contain dashes
+        const firstDashIndex = key.indexOf('-');
+        if (firstDashIndex === -1) return;
+
+        const pekerjaanId = key.substring(0, firstDashIndex);
+        const colId = key.substring(firstDashIndex + 1);
+
         const cell = document.querySelector(
           `.time-cell[data-node-id="${pekerjaanId}"][data-col-id="${colId}"]`
         );
