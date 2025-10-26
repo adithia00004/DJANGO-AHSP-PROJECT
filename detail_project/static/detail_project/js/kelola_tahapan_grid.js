@@ -1396,7 +1396,7 @@
     radio.addEventListener('change', (e) => {
       state.timeScale = e.target.value;
       generateTimeColumns();
-      renderTimePanel();
+      renderGrid();
     });
   });
 
@@ -1404,7 +1404,7 @@
   document.querySelectorAll('input[name="displayMode"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
       state.displayMode = e.target.value;
-      renderTimePanel();
+      renderGrid();
     });
   });
 
