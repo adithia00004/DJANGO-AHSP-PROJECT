@@ -1872,9 +1872,13 @@
         `;
         chartContainer.innerHTML = controlsHtml;
 
+        // Log the data before passing to Gantt for debugging
+        console.log('📊 Initializing Gantt with data:', JSON.stringify(validatedData, null, 2));
+
         state.ganttInstance = new Gantt('#gantt-chart-svg', validatedData, {
           view_mode: 'Week',
-          language: 'id',
+          // Remove language setting as it may cause date parsing issues
+          // language: 'id',
           bar_height: 28,
           bar_corner_radius: 3,
           arrow_curve: 5,

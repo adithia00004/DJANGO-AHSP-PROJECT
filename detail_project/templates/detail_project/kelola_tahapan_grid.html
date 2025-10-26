@@ -10,8 +10,8 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/kelola_tahapan_grid.css' %}">
-<!-- Frappe Gantt CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+<!-- Frappe Gantt CSS (Upgraded to v1.0.0 for better date parsing) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@1.0.0/dist/frappe-gantt.css">
 {% endblock %}
 
 {% block dp_content %}
@@ -199,8 +199,8 @@
 
 {% block extra_js %}
 {{ block.super }}
-<!-- Frappe Gantt JS -->
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<!-- Frappe Gantt JS (Upgraded to v1.0.0 for better date parsing) -->
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@1.0.0/dist/frappe-gantt.js"></script>
 <!-- ECharts for Kurva S -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <!-- Main Grid JS -->
