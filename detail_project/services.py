@@ -536,6 +536,8 @@ def get_tahapan_summary(project):
             'tanggal_mulai': tahap.tanggal_mulai.isoformat() if tahap.tanggal_mulai else None,
             'tanggal_selesai': tahap.tanggal_selesai.isoformat() if tahap.tanggal_selesai else None,
             'created_at': tahap.created_at.isoformat() if tahap.created_at else None,
+            'is_auto_generated': tahap.is_auto_generated,
+            'generation_mode': tahap.generation_mode,
         })
     
     return result
