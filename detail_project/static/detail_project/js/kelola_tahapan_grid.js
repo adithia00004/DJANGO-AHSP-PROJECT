@@ -1670,11 +1670,23 @@
       const isCollapsed = state.collapsedGanttNodes.has(klasId);
 
       // Add Klasifikasi row (summary bar)
+      let klasStart, klasEnd;
+      try {
+        klasStart = klasTimeline.startDate.toISOString().split('T')[0];
+        klasEnd = klasTimeline.endDate.toISOString().split('T')[0];
+      } catch (error) {
+        console.error(`Error converting klasifikasi dates for ${klasId}:`, error);
+        console.log('  klasTimeline:', klasTimeline);
+        // Use fallback dates
+        klasStart = new Date().toISOString().split('T')[0];
+        klasEnd = new Date().toISOString().split('T')[0];
+      }
+
       ganttData.push({
         id: klasId,
         name: `📦 ${klasifikasi.kode_klasifikasi}. ${klasifikasi.nama_klasifikasi}`,
-        start: klasTimeline.startDate.toISOString().split('T')[0],
-        end: klasTimeline.endDate.toISOString().split('T')[0],
+        start: klasStart,
+        end: klasEnd,
         progress: 0, // No progress fill for summary bars
         custom_class: 'gantt-klasifikasi',
         type: 'klasifikasi',
@@ -1691,11 +1703,23 @@
           if (!subTimeline) return;
 
           // Add Sub-Klasifikasi row
+          let subStart, subEnd;
+          try {
+            subStart = subTimeline.startDate.toISOString().split('T')[0];
+            subEnd = subTimeline.endDate.toISOString().split('T')[0];
+          } catch (error) {
+            console.error(`Error converting sub dates for sub-${sub.id}:`, error);
+            console.log('  subTimeline:', subTimeline);
+            // Use fallback dates
+            subStart = new Date().toISOString().split('T')[0];
+            subEnd = new Date().toISOString().split('T')[0];
+          }
+
           ganttData.push({
             id: `sub-${sub.id}`,
             name: `  📁 ${sub.kode_sub}. ${sub.nama_sub}`,
-            start: subTimeline.startDate.toISOString().split('T')[0],
-            end: subTimeline.endDate.toISOString().split('T')[0],
+            start: subStart,
+            end: subEnd,
             progress: calculateGroupProgress(sub),
             custom_class: 'gantt-sub',
             type: 'sub',
@@ -1716,11 +1740,24 @@
               else if (timeline.progress > 50 && timeline.progress < 100) progressRange = '51-99';
               else if (timeline.progress === 100) progressRange = '100';
 
+              // Safely convert dates
+              let pekStart, pekEnd;
+              try {
+                pekStart = timeline.startDate.toISOString().split('T')[0];
+                pekEnd = timeline.endDate.toISOString().split('T')[0];
+              } catch (error) {
+                console.error(`Error converting pekerjaan dates for pek-${pekerjaan.id}:`, error);
+                console.log('  timeline:', timeline);
+                // Use fallback dates
+                pekStart = new Date().toISOString().split('T')[0];
+                pekEnd = new Date().toISOString().split('T')[0];
+              }
+
               ganttData.push({
                 id: `pek-${pekerjaan.id}`,
                 name: `    └ ${pekerjaan.kode_pekerjaan} ${pekerjaan.uraian}`,
-                start: timeline.startDate.toISOString().split('T')[0],
-                end: timeline.endDate.toISOString().split('T')[0],
+                start: pekStart,
+                end: pekEnd,
                 progress: timeline.progress,
                 custom_class: `gantt-pekerjaan gantt-progress-${progressRange}`,
                 type: 'pekerjaan',
@@ -1767,6 +1804,52 @@
         return;
       }
 
+      // Validate date formats before passing to Gantt
+      const validatedData = ganttData.map((task, index) => {
+        // Ensure dates are valid strings in YYYY-MM-DD format
+        let startDate = task.start;
+        let endDate = task.end;
+
+        console.log(`Validating task #${index} (${task.id}): start="${startDate}", end="${endDate}"`);
+
+        // Validate start date
+        if (!startDate || typeof startDate !== 'string' || startDate === 'Invalid Date' || startDate.length !== 10 || !startDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          console.warn(`⚠️ Invalid start date for task ${task.id} (${task.name}):`, startDate);
+          startDate = new Date().toISOString().split('T')[0];
+          console.log(`  → Fixed to: ${startDate}`);
+        }
+
+        // Validate end date
+        if (!endDate || typeof endDate !== 'string' || endDate === 'Invalid Date' || endDate.length !== 10 || !endDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          console.warn(`⚠️ Invalid end date for task ${task.id} (${task.name}):`, endDate);
+          const start = new Date(startDate);
+          start.setDate(start.getDate() + 7); // Default 7 days duration
+          endDate = start.toISOString().split('T')[0];
+          console.log(`  → Fixed to: ${endDate}`);
+        }
+
+        // Verify dates are parseable
+        const startTest = new Date(startDate);
+        const endTest = new Date(endDate);
+        if (isNaN(startTest.getTime()) || isNaN(endTest.getTime())) {
+          console.error(`❌ Dates still invalid after fix for task ${task.id}:`, startDate, endDate);
+          // Use today and tomorrow as absolute fallback
+          startDate = new Date().toISOString().split('T')[0];
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          endDate = tomorrow.toISOString().split('T')[0];
+          console.log(`  → Using fallback: ${startDate} to ${endDate}`);
+        }
+
+        return {
+          ...task,
+          start: startDate,
+          end: endDate
+        };
+      });
+
+      console.log('✅ Validated Gantt data:', validatedData);
+
       if (window.Gantt) {
         // Clear previous instance
         chartContainer.innerHTML = '';
@@ -1789,7 +1872,7 @@
         `;
         chartContainer.innerHTML = controlsHtml;
 
-        state.ganttInstance = new Gantt('#gantt-chart-svg', ganttData, {
+        state.ganttInstance = new Gantt('#gantt-chart-svg', validatedData, {
           view_mode: 'Week',
           language: 'id',
           bar_height: 28,
