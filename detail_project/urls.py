@@ -172,9 +172,14 @@ urlpatterns = [
          name='api_unassigned_pekerjaan'),
     
     # Rekap Kebutuhan Enhanced (dapat replace yang lama atau jadi endpoint terpisah)
-    path('api/project/<int:project_id>/rekap-kebutuhan-enhanced/', 
-         views_api_tahapan.api_get_rekap_kebutuhan_enhanced, 
+    path('api/project/<int:project_id>/rekap-kebutuhan-enhanced/',
+         views_api_tahapan.api_get_rekap_kebutuhan_enhanced,
          name='api_get_rekap_kebutuhan_enhanced'),
+
+    # Time Scale Mode: Tahapan Auto-Generation (NEW - Phase 3)
+    path('api/project/<int:project_id>/regenerate-tahapan/',
+         views_api_tahapan.api_regenerate_tahapan,
+         name='api_regenerate_tahapan'),
 
 ]
 

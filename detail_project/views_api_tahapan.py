@@ -633,3 +633,297 @@ def api_get_rekap_kebutuhan_enhanced(request, project_id):
         "rows": rows,
         "meta": meta
     })
+
+
+# ============================================================================
+# TIME SCALE MODE: TAHAPAN AUTO-GENERATION
+# ============================================================================
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_regenerate_tahapan(request, project_id):
+    """
+    Regenerate tahapan based on time scale mode.
+
+    POST Body:
+        {
+            "mode": "daily" | "weekly" | "monthly" | "custom",
+            "week_end_day": 0-6 (optional, default 0=Sunday for weekly mode),
+            "convert_assignments": true | false (optional, default true)
+        }
+
+    Process:
+        1. Delete old auto-generated tahapan (is_auto_generated=True)
+        2. Generate new tahapan based on mode
+        3. (Optional) Convert existing assignments to new tahapan
+
+    Returns:
+        {
+            "ok": true,
+            "mode": "weekly",
+            "tahapan_created": 10,
+            "tahapan_deleted": 8,
+            "assignments_converted": 50,
+            "tahapan": [...]
+        }
+    """
+    from datetime import datetime, timedelta, date
+    from decimal import Decimal
+
+    project = _owner_or_404(project_id, request.user)
+
+    try:
+        data = json.loads(request.body)
+        mode = data.get('mode', 'custom')
+        week_end_day = data.get('week_end_day', 0)  # 0 = Sunday
+        convert_assignments = data.get('convert_assignments', True)
+
+        # Validate mode
+        if mode not in ['daily', 'weekly', 'monthly', 'custom']:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Invalid mode. Must be: daily, weekly, monthly, or custom'
+            }, status=400)
+
+        # Validate project timeline
+        if not project.tanggal_mulai or not project.tanggal_selesai:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Project timeline not set. Please set tanggal_mulai and tanggal_selesai first.'
+            }, status=400)
+
+        if project.tanggal_selesai < project.tanggal_mulai:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Invalid timeline: tanggal_selesai must be >= tanggal_mulai'
+            }, status=400)
+
+        # For custom mode, no generation needed - keep existing tahapan
+        if mode == 'custom':
+            existing_tahapan = TahapPelaksanaan.objects.filter(
+                project=project
+            ).order_by('urutan')
+
+            return JsonResponse({
+                'ok': True,
+                'mode': 'custom',
+                'message': 'Custom mode - using existing tahapan',
+                'tahapan_count': existing_tahapan.count(),
+                'tahapan': [
+                    {
+                        'tahapan_id': t.id,
+                        'nama': t.nama,
+                        'urutan': t.urutan,
+                        'tanggal_mulai': t.tanggal_mulai.isoformat() if t.tanggal_mulai else None,
+                        'tanggal_selesai': t.tanggal_selesai.isoformat() if t.tanggal_selesai else None,
+                        'is_auto_generated': t.is_auto_generated,
+                        'generation_mode': t.generation_mode
+                    }
+                    for t in existing_tahapan
+                ]
+            })
+
+        # STEP 1: Backup old assignments (if conversion needed)
+        old_assignments = []
+        if convert_assignments:
+            old_assignments = list(
+                PekerjaanTahapan.objects.filter(
+                    tahapan__project=project,
+                    tahapan__is_auto_generated=True
+                ).select_related('pekerjaan', 'tahapan').values(
+                    'pekerjaan_id',
+                    'tahapan__tanggal_mulai',
+                    'tahapan__tanggal_selesai',
+                    'proporsi_volume'
+                )
+            )
+
+        # STEP 2: Delete old auto-generated tahapan
+        deleted_count, _ = TahapPelaksanaan.objects.filter(
+            project=project,
+            is_auto_generated=True
+        ).delete()
+
+        # STEP 3: Generate new tahapan based on mode
+        new_tahapan = []
+
+        if mode == 'daily':
+            new_tahapan = _generate_daily_tahapan(project)
+        elif mode == 'weekly':
+            new_tahapan = _generate_weekly_tahapan(project, week_end_day)
+        elif mode == 'monthly':
+            new_tahapan = _generate_monthly_tahapan(project)
+
+        # Bulk create
+        created_tahapan = TahapPelaksanaan.objects.bulk_create(new_tahapan)
+
+        # STEP 4: Convert assignments (if requested)
+        assignments_converted = 0
+        if convert_assignments and old_assignments:
+            # TODO: Implement assignment conversion in Phase 3.3
+            # For now, skip conversion
+            pass
+
+        # Return response
+        return JsonResponse({
+            'ok': True,
+            'mode': mode,
+            'tahapan_deleted': deleted_count,
+            'tahapan_created': len(created_tahapan),
+            'assignments_converted': assignments_converted,
+            'message': f'Successfully generated {len(created_tahapan)} tahapan for {mode} mode',
+            'tahapan': [
+                {
+                    'tahapan_id': t.id,
+                    'nama': t.nama,
+                    'urutan': t.urutan,
+                    'tanggal_mulai': t.tanggal_mulai.isoformat() if t.tanggal_mulai else None,
+                    'tanggal_selesai': t.tanggal_selesai.isoformat() if t.tanggal_selesai else None,
+                    'is_auto_generated': t.is_auto_generated,
+                    'generation_mode': t.generation_mode
+                }
+                for t in created_tahapan
+            ]
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+def _generate_daily_tahapan(project):
+    """Generate one tahapan per day"""
+    from datetime import timedelta
+
+    tahapan_list = []
+    current_date = project.tanggal_mulai
+    day_num = 1
+
+    while current_date <= project.tanggal_selesai:
+        tahap = TahapPelaksanaan(
+            project=project,
+            nama=f"Day {day_num}",
+            urutan=day_num - 1,
+            tanggal_mulai=current_date,
+            tanggal_selesai=current_date,
+            is_auto_generated=True,
+            generation_mode='daily'
+        )
+        tahapan_list.append(tahap)
+
+        current_date += timedelta(days=1)
+        day_num += 1
+
+        # Safety limit
+        if day_num > 1000:
+            break
+
+    return tahapan_list
+
+
+def _generate_weekly_tahapan(project, week_end_day=0):
+    """Generate one tahapan per week"""
+    from datetime import timedelta
+
+    tahapan_list = []
+    current_start = project.tanggal_mulai
+    week_num = 1
+
+    while current_start <= project.tanggal_selesai:
+        # Calculate week end
+        days_until_week_end = (week_end_day - current_start.weekday() + 7) % 7
+
+        if days_until_week_end == 0 and current_start.weekday() == week_end_day:
+            current_end = current_start
+        else:
+            current_end = current_start + timedelta(days=days_until_week_end)
+
+        # Don't exceed project end
+        if current_end > project.tanggal_selesai:
+            current_end = project.tanggal_selesai
+
+        # Format label
+        start_str = current_start.strftime("%d %b")
+        end_str = current_end.strftime("%d %b")
+        label = f"Week {week_num}: {start_str} - {end_str}"
+
+        tahap = TahapPelaksanaan(
+            project=project,
+            nama=label,
+            urutan=week_num - 1,
+            tanggal_mulai=current_start,
+            tanggal_selesai=current_end,
+            is_auto_generated=True,
+            generation_mode='weekly'
+        )
+        tahapan_list.append(tahap)
+
+        # Move to next week
+        current_start = current_end + timedelta(days=1)
+        week_num += 1
+
+        # Safety limit
+        if week_num > 100:
+            break
+
+    return tahapan_list
+
+
+def _generate_monthly_tahapan(project):
+    """Generate one tahapan per month"""
+    from datetime import date
+    import calendar
+
+    tahapan_list = []
+    current_date = project.tanggal_mulai
+    month_num = 1
+
+    while current_date <= project.tanggal_selesai:
+        # Month start is current_date
+        month_start = current_date
+
+        # Month end is last day of the month
+        last_day = calendar.monthrange(current_date.year, current_date.month)[1]
+        month_end = date(current_date.year, current_date.month, last_day)
+
+        # Don't exceed project end
+        if month_end > project.tanggal_selesai:
+            month_end = project.tanggal_selesai
+
+        # Format label (Indonesian month names)
+        month_names = {
+            1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
+            5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
+            9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+        }
+        month_name = month_names.get(current_date.month, str(current_date.month))
+        label = f"{month_name} {current_date.year}"
+
+        tahap = TahapPelaksanaan(
+            project=project,
+            nama=label,
+            urutan=month_num - 1,
+            tanggal_mulai=month_start,
+            tanggal_selesai=month_end,
+            is_auto_generated=True,
+            generation_mode='monthly'
+        )
+        tahapan_list.append(tahap)
+
+        # Move to next month
+        if current_date.month == 12:
+            current_date = date(current_date.year + 1, 1, 1)
+        else:
+            current_date = date(current_date.year, current_date.month + 1, 1)
+
+        month_num += 1
+
+        # Safety limit
+        if month_num > 24:
+            break
+
+    return tahapan_list
