@@ -72,6 +72,15 @@
   }
 
   async function apiCall(url, options = {}) {
+    // Add CSRF token for POST/PUT/DELETE/PATCH requests
+    const method = (options.method || 'GET').toUpperCase();
+    const needsCSRF = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method);
+
+    if (needsCSRF) {
+      options.headers = options.headers || {};
+      options.headers['X-CSRFToken'] = getCookie('csrftoken');
+    }
+
     const response = await fetch(url, {
       credentials: 'same-origin',
       ...options
