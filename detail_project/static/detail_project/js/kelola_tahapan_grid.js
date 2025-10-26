@@ -1420,7 +1420,7 @@
         body: JSON.stringify({
           mode: newMode,
           week_end_day: state.weekEndDay || 0,
-          convert_assignments: false  // Skip conversion for now (Phase 3.3)
+          convert_assignments: true  // Phase 3.3: Enable assignment conversion
         })
       });
 

@@ -761,9 +761,19 @@ def api_regenerate_tahapan(request, project_id):
         # STEP 4: Convert assignments (if requested)
         assignments_converted = 0
         if convert_assignments and old_assignments:
-            # TODO: Implement assignment conversion in Phase 3.3
-            # For now, skip conversion
-            pass
+            try:
+                assignments_converted = _convert_assignments(
+                    old_assignments,
+                    created_tahapan,
+                    project
+                )
+                print(f"Converted {assignments_converted} assignments")
+            except Exception as e:
+                print(f"Assignment conversion failed: {e}")
+                import traceback
+                traceback.print_exc()
+                # Don't fail the whole operation if conversion fails
+                # User can manually reassign if needed
 
         # Return response
         return JsonResponse({
@@ -927,3 +937,138 @@ def _generate_monthly_tahapan(project):
             break
 
     return tahapan_list
+
+
+def _convert_assignments(old_assignments, new_tahapan_list, project):
+    """
+    Convert assignments from old tahapan to new tahapan.
+
+    Strategy: Daily Distribution Method
+    1. Build a daily proportion map from old assignments
+    2. Aggregate daily proportions into new tahapan
+
+    This handles all conversion types:
+    - Daily → Weekly: Sum daily values into weeks
+    - Daily → Monthly: Sum daily values into months
+    - Weekly → Daily: Divide week proportions across days
+    - Monthly → Daily: Divide month proportions across days
+    - Custom → Any: Works for any date range
+
+    Args:
+        old_assignments: List of dicts with keys:
+            - pekerjaan_id
+            - tahapan__tanggal_mulai
+            - tahapan__tanggal_selesai
+            - proporsi_volume
+        new_tahapan_list: List of TahapPelaksanaan objects (newly created)
+        project: Project instance
+
+    Returns:
+        Number of assignments converted
+    """
+    from datetime import timedelta
+    from decimal import Decimal
+    from collections import defaultdict
+
+    if not old_assignments or not new_tahapan_list:
+        return 0
+
+    # Group old assignments by pekerjaan
+    pekerjaan_groups = defaultdict(list)
+    for assignment in old_assignments:
+        pekerjaan_id = assignment['pekerjaan_id']
+        pekerjaan_groups[pekerjaan_id].append(assignment)
+
+    # Convert assignments for each pekerjaan
+    new_assignments_to_create = []
+
+    for pekerjaan_id, assignments in pekerjaan_groups.items():
+        converted = _convert_pekerjaan_assignments(
+            pekerjaan_id,
+            assignments,
+            new_tahapan_list
+        )
+        new_assignments_to_create.extend(converted)
+
+    # Bulk create new assignments
+    if new_assignments_to_create:
+        PekerjaanTahapan.objects.bulk_create(new_assignments_to_create)
+
+    return len(new_assignments_to_create)
+
+
+def _convert_pekerjaan_assignments(pekerjaan_id, old_assignments, new_tahapan_list):
+    """
+    Convert assignments for a single pekerjaan using daily distribution.
+
+    Args:
+        pekerjaan_id: ID of pekerjaan
+        old_assignments: List of old assignments for this pekerjaan
+        new_tahapan_list: List of new TahapPelaksanaan objects
+
+    Returns:
+        List of PekerjaanTahapan objects ready to be created
+    """
+    from datetime import timedelta, date
+    from decimal import Decimal, ROUND_HALF_UP
+
+    # STEP 1: Build daily distribution map
+    daily_map = {}  # date -> Decimal proportion
+
+    for assignment in old_assignments:
+        start_date = assignment['tahapan__tanggal_mulai']
+        end_date = assignment['tahapan__tanggal_selesai']
+        total_proportion = Decimal(str(assignment['proporsi_volume']))
+
+        # Skip invalid assignments
+        if not start_date or not end_date or total_proportion <= 0:
+            continue
+
+        # Calculate number of days in this period
+        num_days = (end_date - start_date).days + 1
+
+        # Divide proportion equally across days
+        daily_proportion = total_proportion / Decimal(num_days)
+
+        # Distribute to each day
+        current_date = start_date
+        while current_date <= end_date:
+            if current_date not in daily_map:
+                daily_map[current_date] = Decimal('0')
+            daily_map[current_date] += daily_proportion
+            current_date += timedelta(days=1)
+
+    # STEP 2: Aggregate daily map into new tahapan
+    new_assignments = []
+
+    for tahap in new_tahapan_list:
+        if not tahap.tanggal_mulai or not tahap.tanggal_selesai:
+            continue
+
+        # Sum all daily proportions that fall within this tahapan's date range
+        total_proportion = Decimal('0')
+
+        current_date = tahap.tanggal_mulai
+        while current_date <= tahap.tanggal_selesai:
+            if current_date in daily_map:
+                total_proportion += daily_map[current_date]
+            current_date += timedelta(days=1)
+
+        # Only create assignment if proportion is meaningful (> 0.01%)
+        if total_proportion > Decimal('0.01'):
+            # Round to 2 decimal places
+            total_proportion = total_proportion.quantize(
+                Decimal('0.01'),
+                rounding=ROUND_HALF_UP
+            )
+
+            new_assignments.append(
+                PekerjaanTahapan(
+                    pekerjaan_id=pekerjaan_id,
+                    tahapan=tahap,
+                    proporsi_volume=total_proportion,
+                    catatan='Auto-converted from previous tahapan'
+                )
+            )
+
+    return new_assignments
