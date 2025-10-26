@@ -54,7 +54,7 @@ class Command(BaseCommand):
 
             if dry_run:
                 self.stdout.write(
-                    f'  [DRY RUN] Project "{project.nama_project}" would be updated:\n'
+                    f'  [DRY RUN] Project ID {project.id} would be updated:\n'
                     f'    - tanggal_mulai: {project.tanggal_mulai}\n'
                     f'    - tanggal_selesai: {project.tanggal_selesai}\n'
                     f'    - durasi_hari: {project.durasi_hari}'
@@ -64,7 +64,7 @@ class Command(BaseCommand):
                 updated += 1
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f'  ✓ Updated Project "{project.nama_project}"\n'
+                        f'  ✓ Updated Project ID {project.id}\n'
                         f'    - tanggal_mulai: {project.tanggal_mulai}\n'
                         f'    - tanggal_selesai: {project.tanggal_selesai}\n'
                         f'    - durasi_hari: {project.durasi_hari}'
