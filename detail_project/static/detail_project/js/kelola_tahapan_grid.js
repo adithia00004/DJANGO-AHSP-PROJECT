@@ -55,9 +55,41 @@
   // UTILITY FUNCTIONS
   // =========================================================================
 
-  function showLoading(show = true) {
-    if ($loadingOverlay) {
-      $loadingOverlay.classList.toggle('d-none', !show);
+  /**
+   * Show/hide loading overlay with optional custom messages
+   * @param {boolean|string} show - true/false to show/hide, or string message to show with loading
+   * @param {string} submessage - Optional secondary message (shown in smaller text)
+   */
+  function showLoading(show = true, submessage = '') {
+    if (!$loadingOverlay) return;
+
+    const $message = document.getElementById('loading-message');
+    const $submessage = document.getElementById('loading-submessage');
+
+    if (show === false) {
+      // Hide loading overlay
+      $loadingOverlay.classList.add('d-none');
+      if ($submessage) {
+        $submessage.classList.add('d-none');
+      }
+    } else {
+      // Show loading overlay
+      $loadingOverlay.classList.remove('d-none');
+
+      // Update message if provided
+      if (typeof show === 'string' && $message) {
+        $message.textContent = show;
+      } else if ($message) {
+        $message.textContent = 'Processing...';
+      }
+
+      // Update submessage if provided
+      if (submessage && $submessage) {
+        $submessage.textContent = submessage;
+        $submessage.classList.remove('d-none');
+      } else if ($submessage) {
+        $submessage.classList.add('d-none');
+      }
     }
   }
 
@@ -182,22 +214,25 @@
   // =========================================================================
 
   async function loadAllData() {
-    showLoading(true);
     try {
-      // Load base data first
+      // Step 1: Load base data
+      showLoading('Loading project data...', 'Fetching tahapan, pekerjaan, and volumes');
       await Promise.all([
         loadTahapan(),
         loadPekerjaan(),
         loadVolumes()
       ]);
 
-      // Generate time columns (needed for assignment mapping)
+      // Step 2: Generate time columns
+      showLoading('Generating time columns...', 'Mapping tahapan to grid structure');
       generateTimeColumns();
 
-      // Load assignments after time columns are ready
+      // Step 3: Load assignments
+      showLoading('Loading assignments...', 'Fetching progress data for all pekerjaan');
       await loadAssignments();
 
-      // Render grid with all data
+      // Step 4: Render grid
+      showLoading('Rendering grid...', 'Building table structure');
       renderGrid();
       updateStatusBar();
 
@@ -1259,10 +1294,9 @@
       return;
     }
 
-    showLoading(true);
-
     try {
-      // Group changes by pekerjaan
+      // Step 1: Group changes by pekerjaan
+      showLoading('Preparing changes...', `Processing ${state.modifiedCells.size} modified cell(s)`);
       const changesByPekerjaan = new Map();
 
       state.modifiedCells.forEach((value, key) => {
@@ -1292,15 +1326,24 @@
 
       console.log('Changes grouped by pekerjaan:', Array.from(changesByPekerjaan.entries()));
 
-      // Save each pekerjaan
+      // Step 2: Save each pekerjaan with progress updates
+      const totalPekerjaan = changesByPekerjaan.size;
       let successCount = 0;
+
       for (const [pekerjaanId, assignments] of changesByPekerjaan.entries()) {
+        showLoading(
+          `Saving changes...`,
+          `Pekerjaan ${successCount + 1} of ${totalPekerjaan}`
+        );
         console.log(`Saving pekerjaan ${pekerjaanId}:`, assignments);
         await savePekerjaanAssignments(pekerjaanId, assignments);
         successCount++;
       }
 
       console.log(`Successfully saved ${successCount} pekerjaan assignments`);
+
+      // Step 3: Update UI
+      showLoading('Updating UI...', 'Applying saved changes to grid');
 
       // SUCCESS: Move modified values to assignmentMap
       state.modifiedCells.forEach((value, key) => {
@@ -1493,15 +1536,10 @@
   async function switchTimeScaleMode(newMode) {
     console.log(`Switching time scale mode to: ${newMode}`);
 
-    // Show loading state
-    const gridContainer = document.getElementById('grid-container');
-    if (gridContainer) {
-      gridContainer.style.opacity = '0.5';
-      gridContainer.style.pointerEvents = 'none';
-    }
-
     try {
-      // Call backend API to regenerate tahapan
+      // Step 1: Regenerate tahapan on backend
+      showLoading(`Switching to ${newMode} mode...`, 'Regenerating tahapan and converting assignments');
+
       const response = await apiCall(`/detail_project/api/project/${projectId}/regenerate-tahapan/`, {
         method: 'POST',
         headers: {
@@ -1520,34 +1558,34 @@
         // Update state
         state.timeScale = newMode;
 
-        // Reload tahapan list from backend
+        // Step 2: Reload tahapan list
+        showLoading(`Switching to ${newMode} mode...`, 'Loading updated tahapan list');
         await loadTahapan();
 
-        // Regenerate time columns from new tahapan
+        // Step 3: Regenerate time columns
+        showLoading(`Switching to ${newMode} mode...`, 'Generating time columns');
         generateTimeColumns();
 
-        // Reload assignments
+        // Step 4: Reload assignments
+        showLoading(`Switching to ${newMode} mode...`, 'Loading converted assignments');
         await loadAssignments();
 
-        // Re-render grid
+        // Step 5: Re-render grid
+        showLoading(`Switching to ${newMode} mode...`, 'Rendering updated grid');
         renderGrid();
 
         // Show success message
-        alert(`Mode switched to ${newMode}. ${response.message || ''}`);
+        showToast(`Mode switched to ${newMode}. ${response.message || ''}`, 'success');
       } else {
         console.error('Failed to regenerate tahapan:', response.error);
-        alert(`Error: ${response.error || 'Failed to switch mode'}`);
+        showToast(`Error: ${response.error || 'Failed to switch mode'}`, 'danger');
       }
 
     } catch (error) {
       console.error('Error switching mode:', error);
-      alert(`Error switching mode: ${error.message}`);
+      showToast(`Error switching mode: ${error.message}`, 'danger');
     } finally {
-      // Remove loading state
-      if (gridContainer) {
-        gridContainer.style.opacity = '1';
-        gridContainer.style.pointerEvents = 'auto';
-      }
+      showLoading(false);
     }
   }
 
