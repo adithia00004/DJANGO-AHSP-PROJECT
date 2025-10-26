@@ -654,9 +654,11 @@ def api_regenerate_tahapan(request, project_id):
         }
 
     Process:
-        1. Delete old auto-generated tahapan (is_auto_generated=True)
-        2. Generate new tahapan based on mode
-        3. (Optional) Convert existing assignments to new tahapan
+        1. Backup all existing assignments (if convert_assignments=true)
+        2. Delete all old assignments (will be recreated via conversion)
+        3. Delete old auto-generated tahapan (is_auto_generated=True)
+        4. Generate new tahapan based on mode
+        5. Convert backed-up assignments to new tahapan (if convert_assignments=true)
 
     Returns:
         {
@@ -727,10 +729,11 @@ def api_regenerate_tahapan(request, project_id):
         # STEP 1: Backup old assignments (if conversion needed)
         old_assignments = []
         if convert_assignments:
+            # Backup ALL assignments for this project (not just auto-generated)
+            # This ensures we don't lose custom tahapan assignments
             old_assignments = list(
                 PekerjaanTahapan.objects.filter(
-                    tahapan__project=project,
-                    tahapan__is_auto_generated=True
+                    tahapan__project=project
                 ).select_related('pekerjaan', 'tahapan').values(
                     'pekerjaan_id',
                     'tahapan__tanggal_mulai',
@@ -738,14 +741,22 @@ def api_regenerate_tahapan(request, project_id):
                     'proporsi_volume'
                 )
             )
+            print(f"Backed up {len(old_assignments)} assignments for conversion")
 
-        # STEP 2: Delete old auto-generated tahapan
+        # STEP 2: Delete ALL old assignments (will be recreated via conversion)
+        if convert_assignments and old_assignments:
+            old_assignments_deleted = PekerjaanTahapan.objects.filter(
+                tahapan__project=project
+            ).delete()[0]
+            print(f"Deleted {old_assignments_deleted} old assignments")
+
+        # STEP 3: Delete old auto-generated tahapan
         deleted_count, _ = TahapPelaksanaan.objects.filter(
             project=project,
             is_auto_generated=True
         ).delete()
 
-        # STEP 3: Generate new tahapan based on mode
+        # STEP 4: Generate new tahapan based on mode
         new_tahapan = []
 
         if mode == 'daily':
@@ -758,7 +769,7 @@ def api_regenerate_tahapan(request, project_id):
         # Bulk create
         created_tahapan = TahapPelaksanaan.objects.bulk_create(new_tahapan)
 
-        # STEP 4: Convert assignments (if requested)
+        # STEP 5: Convert assignments (if requested)
         assignments_converted = 0
         if convert_assignments and old_assignments:
             try:
