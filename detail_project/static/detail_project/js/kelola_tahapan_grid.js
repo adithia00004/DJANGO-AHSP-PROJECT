@@ -1658,6 +1658,9 @@
     const ganttData = [];
     let hasScheduledTasks = false;
 
+    console.log('🔍 Building Gantt hierarchy from tree:', state.pekerjaanTree);
+    console.log('📋 First klasifikasi structure:', state.pekerjaanTree[0]);
+
     // Iterate through klasifikasi
     state.pekerjaanTree.forEach(klasifikasi => {
       const klasTimeline = calculateGroupTimeline(klasifikasi);
@@ -1666,7 +1669,7 @@
       if (!klasTimeline) return;
 
       hasScheduledTasks = true;
-      const klasId = `klas-${klasifikasi.id}`;
+      const klasId = klasifikasi.id; // Already has 'klas-' prefix from buildPekerjaanTree
       const isCollapsed = state.collapsedGanttNodes.has(klasId);
 
       // Add Klasifikasi row (summary bar)
@@ -1684,7 +1687,7 @@
 
       ganttData.push({
         id: klasId,
-        name: `📦 ${klasifikasi.kode_klasifikasi}. ${klasifikasi.nama_klasifikasi}`,
+        name: `📦 ${klasifikasi.nama || 'Klasifikasi'}`,
         start: klasStart,
         end: klasEnd,
         progress: 0, // No progress fill for summary bars
@@ -1708,7 +1711,7 @@
             subStart = subTimeline.startDate.toISOString().split('T')[0];
             subEnd = subTimeline.endDate.toISOString().split('T')[0];
           } catch (error) {
-            console.error(`Error converting sub dates for sub-${sub.id}:`, error);
+            console.error(`Error converting sub dates for ${sub.id}:`, error);
             console.log('  subTimeline:', subTimeline);
             // Use fallback dates
             subStart = new Date().toISOString().split('T')[0];
@@ -1716,8 +1719,8 @@
           }
 
           ganttData.push({
-            id: `sub-${sub.id}`,
-            name: `  📁 ${sub.kode_sub}. ${sub.nama_sub}`,
+            id: sub.id, // Already has 'sub-' prefix from buildPekerjaanTree
+            name: `  📁 ${sub.nama || 'Sub-Klasifikasi'}`,
             start: subStart,
             end: subEnd,
             progress: calculateGroupProgress(sub),
@@ -1755,7 +1758,7 @@
 
               ganttData.push({
                 id: `pek-${pekerjaan.id}`,
-                name: `    └ ${pekerjaan.kode_pekerjaan} ${pekerjaan.uraian}`,
+                name: `    └ ${pekerjaan.kode || ''} ${pekerjaan.nama || 'Pekerjaan'}`,
                 start: pekStart,
                 end: pekEnd,
                 progress: timeline.progress,
