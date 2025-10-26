@@ -36,6 +36,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Found {count} project(s) without timeline.')
 
         updated = 0
+        skipped = 0
         for project in projects_without_timeline:
             # Set defaults
             today = timezone.now().date()
@@ -44,13 +45,26 @@ class Command(BaseCommand):
                 project.tanggal_mulai = today
 
             if not project.tanggal_selesai:
-                # Default: 31 Desember tahun project
-                year = project.tahun_project if project.tahun_project else project.tanggal_mulai.year
+                # Default: 31 Desember tahun dari tanggal_mulai (bukan tahun_project!)
+                # Ini menghindari durasi negatif untuk old projects
+                year = project.tanggal_mulai.year
                 project.tanggal_selesai = date(year, 12, 31)
 
             if not project.durasi_hari:
                 delta = (project.tanggal_selesai - project.tanggal_mulai).days + 1
                 project.durasi_hari = delta
+
+            # Skip if durasi would be negative (shouldn't happen now, but safety check)
+            if project.durasi_hari < 1:
+                skipped += 1
+                self.stdout.write(
+                    self.style.WARNING(
+                        f'  ⚠ Skipped Project ID {project.id} (tahun_project: {project.tahun_project})\n'
+                        f'    - Calculated durasi_hari would be negative: {project.durasi_hari}\n'
+                        f'    - Please set timeline manually for this project'
+                    )
+                )
+                continue
 
             if dry_run:
                 self.stdout.write(
@@ -72,15 +86,13 @@ class Command(BaseCommand):
                 )
 
         if dry_run:
-            self.stdout.write(
-                self.style.WARNING(
-                    f'\nDry run complete. {count} project(s) would be updated.\n'
-                    f'Run without --dry-run to apply changes.'
-                )
-            )
+            message = f'\nDry run complete. {count} project(s) found.'
+            if skipped > 0:
+                message += f'\n{skipped} project(s) would be skipped (negative duration).'
+            message += '\nRun without --dry-run to apply changes.'
+            self.stdout.write(self.style.WARNING(message))
         else:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f'\n✓ Successfully updated {updated} project(s).'
-                )
-            )
+            message = f'\n✓ Successfully updated {updated} project(s).'
+            if skipped > 0:
+                message += f'\n⚠ Skipped {skipped} project(s) (negative duration).'
+            self.stdout.write(self.style.SUCCESS(message))
