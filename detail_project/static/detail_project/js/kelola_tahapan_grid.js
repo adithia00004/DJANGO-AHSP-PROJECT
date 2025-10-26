@@ -1379,6 +1379,9 @@
       showToast(`All changes saved successfully (${successCount} pekerjaan)`, 'success');
       updateStatusBar();
 
+      // Refresh charts if they are currently visible (D.4: Auto-refresh charts after save)
+      refreshChartsIfVisible();
+
     } catch (error) {
       console.error('Save failed:', error);
       showToast('Failed to save: ' + error.message, 'danger');
@@ -1446,23 +1449,160 @@
   }
 
   // =========================================================================
+  // CHART CALCULATION HELPERS
+  // =========================================================================
+
+  /**
+   * Calculate progress percentage for a specific tahapan
+   * Based on assignment allocations from all pekerjaan
+   *
+   * @param {number} tahapanId - The tahapan ID to calculate progress for
+   * @returns {number} - Progress percentage (0-100)
+   */
+  function calculateTahapanProgress(tahapanId) {
+    // Find the column for this tahapan
+    const column = state.timeColumns.find(col => col.tahapanId === tahapanId);
+    if (!column) return 0;
+
+    // Collect all assignments for this tahapan from all pekerjaan
+    const assignments = [];
+
+    state.assignmentMap.forEach((value, key) => {
+      // Key format: "pekerjaanId-tahap-tahapanId"
+      if (key.includes(`-${column.id}`)) {
+        assignments.push(parseFloat(value) || 0);
+      }
+    });
+
+    // Calculate average progress
+    if (assignments.length === 0) return 0;
+
+    const totalProgress = assignments.reduce((sum, val) => sum + val, 0);
+    const avgProgress = totalProgress / assignments.length;
+
+    // Return as percentage (0-100)
+    return Math.min(Math.round(avgProgress), 100);
+  }
+
+  /**
+   * Calculate cumulative progress data for S-Curve
+   * Generates planned and actual cumulative progress across all tahapan
+   *
+   * @returns {Object} - Object containing labels, planned, and actual arrays
+   */
+  function calculateCumulativeProgress() {
+    // Sort columns by date (or urutan if no dates)
+    const sortedColumns = [...state.timeColumns].sort((a, b) => {
+      if (a.startDate && b.startDate) {
+        return a.startDate - b.startDate;
+      }
+      return a.urutan - b.urutan;
+    });
+
+    const labels = [];
+    const planned = [];
+    const actual = [];
+
+    // Calculate total number of pekerjaan that should be assigned
+    const totalPekerjaan = state.flatPekerjaan.filter(n => n.type === 'pekerjaan').length;
+    const targetPercentagePerTahapan = totalPekerjaan > 0 ? 100 / sortedColumns.length : 0;
+
+    let cumulativePlanned = 0;
+    let cumulativeActual = 0;
+
+    sortedColumns.forEach((col, index) => {
+      // Label: Use short name for X-axis
+      const labelParts = col.label.split(':');
+      const shortLabel = labelParts[0] || col.label;
+      labels.push(shortLabel);
+
+      // Planned: Even distribution across all tahapan (ideal scenario)
+      cumulativePlanned += targetPercentagePerTahapan;
+      planned.push(Math.min(Math.round(cumulativePlanned * 100) / 100, 100));
+
+      // Actual: Based on real assignments
+      const progress = calculateTahapanProgress(col.tahapanId);
+      cumulativeActual += (progress * totalPekerjaan / 100) / totalPekerjaan * 100;
+      actual.push(Math.min(Math.round(cumulativeActual * 100) / 100, 100));
+    });
+
+    return { labels, planned, actual };
+  }
+
+  // =========================================================================
   // GANTT CHART
   // =========================================================================
 
+  /**
+   * Initialize Gantt Chart with real assignment data
+   * Shows timeline of tahapan with progress based on actual assignments
+   */
   function initGanttChart() {
-    const ganttData = state.tahapanList.map(tahap => ({
-      id: `tahap-${tahap.tahapan_id}`,
-      name: tahap.nama,
-      start: tahap.tanggal_mulai || new Date().toISOString().split('T')[0],
-      end: tahap.tanggal_selesai || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-      progress: 50 // Calculate from assignments
-    }));
+    try {
+      showLoading('Generating Gantt Chart...', 'Calculating progress for each tahapan');
 
-    if (ganttData.length > 0 && window.Gantt) {
-      state.ganttInstance = new Gantt('#gantt-chart', ganttData, {
-        view_mode: 'Week',
-        language: 'id'
+      // Use timeColumns (filtered tahapan) instead of full tahapanList
+      const ganttData = state.timeColumns.map(col => {
+        // Find corresponding tahapan for dates
+        const tahap = state.tahapanList.find(t => t.tahapan_id === col.tahapanId);
+
+        // Calculate real progress from assignments
+        const progress = calculateTahapanProgress(col.tahapanId);
+
+        return {
+          id: col.id,
+          name: col.label,
+          start: tahap?.tanggal_mulai || new Date().toISOString().split('T')[0],
+          end: tahap?.tanggal_selesai || new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0],
+          progress: progress, // ✅ Real progress from assignments!
+        };
       });
+
+      console.log('Gantt Chart data:', ganttData);
+
+      if (ganttData.length > 0 && window.Gantt) {
+        const chartContainer = document.getElementById('gantt-chart');
+        if (chartContainer) {
+          // Clear previous instance
+          chartContainer.innerHTML = '';
+
+          state.ganttInstance = new Gantt('#gantt-chart', ganttData, {
+            view_mode: 'Week',
+            language: 'id',
+            bar_height: 30,
+            bar_corner_radius: 3,
+            arrow_curve: 5,
+            padding: 18,
+            view_modes: ['Day', 'Week', 'Month'],
+            custom_popup_html: function(task) {
+              return `
+                <div class="gantt-popup">
+                  <h5>${task.name}</h5>
+                  <p><strong>Progress:</strong> ${task.progress}%</p>
+                  <p><strong>Start:</strong> ${task._start.toLocaleDateString('id-ID')}</p>
+                  <p><strong>End:</strong> ${task._end.toLocaleDateString('id-ID')}</p>
+                </div>
+              `;
+            }
+          });
+
+          console.log('✅ Gantt Chart initialized successfully');
+        }
+      } else if (ganttData.length === 0) {
+        console.warn('No tahapan data available for Gantt Chart');
+        const chartContainer = document.getElementById('gantt-chart');
+        if (chartContainer) {
+          chartContainer.innerHTML = '<div class="alert alert-warning m-3">No tahapan data available. Please switch to a time scale mode to generate tahapan.</div>';
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize Gantt Chart:', error);
+      const chartContainer = document.getElementById('gantt-chart');
+      if (chartContainer) {
+        chartContainer.innerHTML = `<div class="alert alert-danger m-3">Failed to load Gantt Chart: ${error.message}</div>`;
+      }
+    } finally {
+      showLoading(false);
     }
   }
 
@@ -1470,63 +1610,173 @@
   // KURVA S CHART
   // =========================================================================
 
+  /**
+   * Initialize S-Curve Chart with real cumulative progress data
+   * Shows planned vs actual cumulative progress across all tahapan
+   */
   function initScurveChart() {
-    if (!window.echarts) return;
+    try {
+      if (!window.echarts) {
+        console.warn('ECharts library not loaded');
+        return;
+      }
 
-    const chartDom = document.getElementById('scurve-chart');
-    if (!chartDom) return;
+      const chartDom = document.getElementById('scurve-chart');
+      if (!chartDom) {
+        console.warn('S-Curve chart container not found');
+        return;
+      }
 
-    state.scurveChart = echarts.init(chartDom);
+      showLoading('Generating S-Curve...', 'Calculating cumulative progress');
 
-    // Sample data - replace with real calculations
-    const option = {
-      title: {
-        text: 'Kurva S - Progress Project'
-      },
-      tooltip: {
-        trigger: 'axis'
-      },
-      legend: {
-        data: ['Planned', 'Actual']
-      },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        containLabel: true
-      },
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6']
-      },
-      yAxis: {
-        type: 'value',
-        max: 100,
-        axisLabel: {
-          formatter: '{value}%'
-        }
-      },
-      series: [
-        {
-          name: 'Planned',
-          type: 'line',
-          smooth: true,
-          data: [0, 15, 35, 55, 75, 100],
-          lineStyle: { color: '#0d6efd', width: 2, type: 'dashed' }
+      // Dispose existing chart instance if any
+      if (state.scurveChart) {
+        state.scurveChart.dispose();
+      }
+
+      state.scurveChart = echarts.init(chartDom);
+
+      // Calculate real cumulative progress data
+      const progressData = calculateCumulativeProgress();
+
+      console.log('S-Curve data:', progressData);
+
+      if (progressData.labels.length === 0) {
+        chartDom.innerHTML = '<div class="alert alert-warning m-3">No tahapan data available. Please switch to a time scale mode to generate tahapan.</div>';
+        showLoading(false);
+        return;
+      }
+
+      // Configure S-Curve chart with real data
+      const option = {
+        title: {
+          text: 'Kurva S - Progress Project',
+          left: 'center',
+          textStyle: {
+            fontSize: 16,
+            fontWeight: 'bold'
+          }
         },
-        {
-          name: 'Actual',
-          type: 'line',
-          smooth: true,
-          data: [0, 10, 30, 50, 68, 85],
-          lineStyle: { color: '#198754', width: 3 },
-          areaStyle: { color: 'rgba(25, 135, 84, 0.1)' }
-        }
-      ]
-    };
+        tooltip: {
+          trigger: 'axis',
+          formatter: function(params) {
+            let tooltip = `<strong>${params[0].axisValue}</strong><br/>`;
+            params.forEach(param => {
+              tooltip += `${param.marker} ${param.seriesName}: ${param.value}%<br/>`;
+            });
+            return tooltip;
+          }
+        },
+        legend: {
+          data: ['Planned', 'Actual'],
+          top: '35px',
+          left: 'center'
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          top: '80px',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: progressData.labels, // ✅ Real tahapan labels!
+          axisLabel: {
+            rotate: 45,
+            fontSize: 10
+          }
+        },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          max: 100,
+          axisLabel: {
+            formatter: '{value}%'
+          }
+        },
+        series: [
+          {
+            name: 'Planned',
+            type: 'line',
+            smooth: true,
+            data: progressData.planned, // ✅ Real planned cumulative data!
+            lineStyle: {
+              color: '#0d6efd',
+              width: 2,
+              type: 'dashed'
+            },
+            symbol: 'circle',
+            symbolSize: 6,
+            itemStyle: {
+              color: '#0d6efd'
+            }
+          },
+          {
+            name: 'Actual',
+            type: 'line',
+            smooth: true,
+            data: progressData.actual, // ✅ Real actual cumulative data!
+            lineStyle: {
+              color: '#198754',
+              width: 3
+            },
+            areaStyle: {
+              color: 'rgba(25, 135, 84, 0.1)'
+            },
+            symbol: 'circle',
+            symbolSize: 8,
+            itemStyle: {
+              color: '#198754'
+            }
+          }
+        ]
+      };
 
-    state.scurveChart.setOption(option);
+      state.scurveChart.setOption(option);
+      console.log('✅ S-Curve Chart initialized successfully');
+
+    } catch (error) {
+      console.error('Failed to initialize S-Curve Chart:', error);
+      const chartDom = document.getElementById('scurve-chart');
+      if (chartDom) {
+        chartDom.innerHTML = `<div class="alert alert-danger m-3">Failed to load S-Curve: ${error.message}</div>`;
+      }
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  /**
+   * Refresh charts if they are currently visible in their tabs
+   * Called after save or mode switch to update visualizations with new data
+   */
+  function refreshChartsIfVisible() {
+    try {
+      // Check if Gantt Chart tab is active
+      const ganttTab = document.getElementById('gantt-tab');
+      const ganttPane = document.getElementById('gantt');
+      if (ganttTab && ganttPane && ganttPane.classList.contains('active')) {
+        console.log('Refreshing Gantt Chart...');
+        initGanttChart();
+      }
+
+      // Check if S-Curve tab is active
+      const scurveTab = document.getElementById('scurve-tab');
+      const scurvePane = document.getElementById('scurve');
+      if (scurveTab && scurvePane && scurvePane.classList.contains('active')) {
+        console.log('Refreshing S-Curve Chart...');
+        initScurveChart();
+      }
+
+      // If neither tab is active, still refresh in background if charts exist
+      if (state.ganttInstance || state.scurveChart) {
+        console.log('Charts exist but not visible - will refresh when tab is opened');
+      }
+    } catch (error) {
+      console.error('Error refreshing charts:', error);
+    }
   }
 
   // =========================================================================
@@ -1573,6 +1823,9 @@
         // Step 5: Re-render grid
         showLoading(`Switching to ${newMode} mode...`, 'Rendering updated grid');
         renderGrid();
+
+        // Step 6: Refresh charts with new data
+        refreshChartsIfVisible();
 
         // Show success message
         showToast(`Mode switched to ${newMode}. ${response.message || ''}`, 'success');
