@@ -372,6 +372,18 @@
   // TIME COLUMNS GENERATION
   // =========================================================================
 
+  /**
+   * Generate time columns from loaded tahapan data
+   *
+   * Maps database tahapan to grid time columns based on current time scale mode.
+   *
+   * FILTERING LOGIC:
+   * - daily/weekly/monthly: Shows ONLY auto-generated tahapan with matching generation_mode
+   * - custom: Shows ALL tahapan (both auto-generated and manually created)
+   *
+   * CRITICAL: Each column MUST have tahapanId for save functionality to work!
+   * Without tahapanId, assignments cannot be linked to database tahapan.
+   */
   function generateTimeColumns() {
     state.timeColumns = [];
 
@@ -393,8 +405,12 @@
         // Custom mode: include all tahapan
         shouldInclude = true;
       } else {
-        // Daily/weekly/monthly: only include matching generation_mode
-        shouldInclude = (tahap.generation_mode === timeScale);
+        // Daily/weekly/monthly: only include AUTO-GENERATED tahapan with matching generation_mode
+        // This filters out old custom tahapan when in auto-generated modes
+        shouldInclude = (
+          tahap.is_auto_generated === true &&
+          tahap.generation_mode === timeScale
+        );
       }
 
       if (shouldInclude) {
@@ -415,9 +431,12 @@
       }
     });
 
-    // FALLBACK: If no columns generated (no matching tahapan), show all tahapan
+    // FALLBACK: If no columns generated, show all tahapan
+    // This can happen if user is in daily/weekly/monthly mode but hasn't generated tahapan yet
     if (state.timeColumns.length === 0 && state.tahapanList.length > 0) {
-      console.warn(`  ⚠️ No tahapan found for mode "${timeScale}". Showing all ${state.tahapanList.length} tahapan as fallback.`);
+      console.warn(`  ⚠️ No auto-generated tahapan found for mode "${timeScale}".`);
+      console.warn(`  Showing all ${state.tahapanList.length} tahapan as fallback.`);
+      console.warn(`  💡 Tip: Switch to ${timeScale} mode to auto-generate proper tahapan.`);
 
       state.tahapanList.forEach((tahap, index) => {
         const column = {
