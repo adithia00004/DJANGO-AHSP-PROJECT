@@ -1388,15 +1388,87 @@
   }
 
   // =========================================================================
+  // TIME SCALE MODE SWITCHING (with backend regeneration)
+  // =========================================================================
+
+  async function switchTimeScaleMode(newMode) {
+    console.log(`Switching time scale mode to: ${newMode}`);
+
+    // Show loading state
+    const gridContainer = document.getElementById('grid-container');
+    if (gridContainer) {
+      gridContainer.style.opacity = '0.5';
+      gridContainer.style.pointerEvents = 'none';
+    }
+
+    try {
+      // Call backend API to regenerate tahapan
+      const response = await apiCall(`/detail_project/api/project/${projectId}/regenerate-tahapan/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: newMode,
+          week_end_day: state.weekEndDay || 0,
+          convert_assignments: false  // Skip conversion for now (Phase 3.3)
+        })
+      });
+
+      console.log(`Regenerate response:`, response);
+
+      if (response.ok) {
+        // Update state
+        state.timeScale = newMode;
+
+        // Reload tahapan list from backend
+        await loadTahapan();
+
+        // Regenerate time columns from new tahapan
+        generateTimeColumns();
+
+        // Reload assignments
+        await loadAssignments();
+
+        // Re-render grid
+        renderGrid();
+
+        // Show success message
+        alert(`Mode switched to ${newMode}. ${response.message || ''}`);
+      } else {
+        console.error('Failed to regenerate tahapan:', response.error);
+        alert(`Error: ${response.error || 'Failed to switch mode'}`);
+      }
+
+    } catch (error) {
+      console.error('Error switching mode:', error);
+      alert(`Error switching mode: ${error.message}`);
+    } finally {
+      // Remove loading state
+      if (gridContainer) {
+        gridContainer.style.opacity = '1';
+        gridContainer.style.pointerEvents = 'auto';
+      }
+    }
+  }
+
+  // =========================================================================
   // EVENT BINDINGS
   // =========================================================================
 
   // Time scale toggle
   document.querySelectorAll('input[name="timeScale"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
-      state.timeScale = e.target.value;
-      generateTimeColumns();
-      renderGrid();
+      const newMode = e.target.value;
+
+      // Confirm mode switch (since it will regenerate tahapan)
+      const confirmMsg = `Switch to ${newMode} mode? This will regenerate tahapan.`;
+      if (confirm(confirmMsg)) {
+        switchTimeScaleMode(newMode);
+      } else {
+        // Revert radio selection
+        document.querySelector(`input[name="timeScale"][value="${state.timeScale}"]`).checked = true;
+      }
     });
   });
 
