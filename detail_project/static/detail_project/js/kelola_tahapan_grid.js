@@ -1296,6 +1296,113 @@
   // SAVE FUNCTIONALITY
   // =========================================================================
 
+  /**
+   * Calculate total progress for a pekerjaan
+   * @param {string} pekerjaanId - Pekerjaan ID
+   * @param {Object} pendingChanges - Optional pending changes not yet saved
+   * @returns {number} Total progress percentage
+   */
+  function calculateTotalProgress(pekerjaanId, pendingChanges = {}) {
+    let total = 0;
+
+    // Add all saved values
+    state.assignmentMap.forEach((value, key) => {
+      if (key.startsWith(`${pekerjaanId}-`)) {
+        total += parseFloat(value) || 0;
+      }
+    });
+
+    // Add pending modified values (replace saved values)
+    state.modifiedCells.forEach((value, key) => {
+      if (key.startsWith(`${pekerjaanId}-`)) {
+        // Subtract old value if exists
+        const savedValue = state.assignmentMap.get(key);
+        if (savedValue) {
+          total -= parseFloat(savedValue) || 0;
+        }
+        // Add new value
+        total += parseFloat(value) || 0;
+      }
+    });
+
+    // Add additional pending changes
+    Object.entries(pendingChanges).forEach(([tahapanId, value]) => {
+      const key = `${pekerjaanId}-tahap-${tahapanId}`;
+      // If not already counted in modifiedCells
+      if (!state.modifiedCells.has(key)) {
+        const savedValue = state.assignmentMap.get(key);
+        if (savedValue) {
+          total -= parseFloat(savedValue) || 0;
+        }
+        total += parseFloat(value) || 0;
+      }
+    });
+
+    return Math.round(total * 100) / 100; // Round to 2 decimals
+  }
+
+  /**
+   * Validate and apply visual feedback for progress totals
+   * @param {Map} changesByPekerjaan - Map of pekerjaan changes
+   * @returns {Object} Validation result {isValid, errors}
+   */
+  function validateProgressTotals(changesByPekerjaan) {
+    const errors = [];
+    const warnings = [];
+
+    changesByPekerjaan.forEach((assignments, pekerjaanId) => {
+      const total = calculateTotalProgress(pekerjaanId, assignments);
+
+      if (total > 100) {
+        errors.push({
+          pekerjaanId,
+          total,
+          message: `Pekerjaan ${pekerjaanId}: Total ${total.toFixed(2)}% melebihi 100%`
+        });
+      } else if (total < 100 && total > 0) {
+        warnings.push({
+          pekerjaanId,
+          total,
+          message: `Pekerjaan ${pekerjaanId}: Total ${total.toFixed(2)}% kurang dari 100%`
+        });
+      }
+    });
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * Update visual feedback (border colors) for pekerjaan rows
+   * @param {string} pekerjaanId - Pekerjaan ID
+   * @param {number} total - Total progress percentage
+   */
+  function updateProgressVisualFeedback(pekerjaanId, total) {
+    const leftRow = document.querySelector(`#left-tbody tr[data-node-id="${pekerjaanId}"]`);
+    const rightRow = document.querySelector(`#right-tbody tr[data-node-id="${pekerjaanId}"]`);
+
+    if (!leftRow || !rightRow) return;
+
+    // Remove all status classes
+    leftRow.classList.remove('progress-over-100', 'progress-under-100', 'progress-complete-100');
+    rightRow.classList.remove('progress-over-100', 'progress-under-100', 'progress-complete-100');
+
+    // Apply appropriate class
+    if (total > 100) {
+      leftRow.classList.add('progress-over-100');
+      rightRow.classList.add('progress-over-100');
+    } else if (total < 100 && total > 0) {
+      leftRow.classList.add('progress-under-100');
+      rightRow.classList.add('progress-under-100');
+    } else if (total === 100) {
+      leftRow.classList.add('progress-complete-100');
+      rightRow.classList.add('progress-complete-100');
+    }
+  }
+
   async function saveAllChanges() {
     console.log('Save All clicked. Modified cells:', state.modifiedCells.size);
     console.log('Modified cells map:', Array.from(state.modifiedCells.entries()));
@@ -1337,7 +1444,39 @@
 
       console.log('Changes grouped by pekerjaan:', Array.from(changesByPekerjaan.entries()));
 
-      // Step 2: Save each pekerjaan with progress updates
+      // Step 2: Validate total progress ≤ 100%
+      showLoading('Validating...', 'Checking progress totals');
+      const validation = validateProgressTotals(changesByPekerjaan);
+
+      // Update visual feedback for all affected pekerjaan
+      changesByPekerjaan.forEach((assignments, pekerjaanId) => {
+        const total = calculateTotalProgress(pekerjaanId, assignments);
+        updateProgressVisualFeedback(pekerjaanId, total);
+      });
+
+      // Show warnings (don't block save)
+      if (validation.warnings.length > 0) {
+        console.warn('Progress warnings:', validation.warnings);
+        // Show toast but don't block
+        showToast(
+          `⚠️ ${validation.warnings.length} pekerjaan memiliki progress < 100%`,
+          'warning'
+        );
+      }
+
+      // Block save if errors
+      if (!validation.isValid) {
+        showLoading(false);
+        const errorMessages = validation.errors.map(e => e.message).join('\n');
+        showToast(
+          `❌ Tidak bisa menyimpan!\n\n${errorMessages}\n\nTotal progress tidak boleh melebihi 100%`,
+          'danger'
+        );
+        console.error('Validation errors:', validation.errors);
+        return; // Don't save
+      }
+
+      // Step 3: Save each pekerjaan with progress updates
       const totalPekerjaan = changesByPekerjaan.size;
       let successCount = 0;
 
@@ -1401,37 +1540,142 @@
   async function savePekerjaanAssignments(pekerjaanId, assignments) {
     // IMPORTANT: Save to CANONICAL STORAGE (weekly) for lossless data preservation!
     // Strategy:
-    // 1. Convert tahapan assignments to weekly format
+    // 1. Convert tahapan assignments to weekly format (different logic for each mode)
     // 2. Save to PekerjaanProgressWeekly (canonical)
     // 3. Backend will automatically sync to PekerjaanTahapan (view layer)
 
     const weeklyAssignments = [];
+    const projectStart = new Date(window.projectData?.tanggal_mulai || state.tahapanList[0]?.tanggal_mulai);
 
-    // Convert tahapan assignments to weekly format
-    for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-      if (parseFloat(proporsi) <= 0) continue; // Skip zero values
+    console.log(`  Converting ${state.timeScale} mode assignments to weekly canonical format...`);
 
-      // Find tahapan to get date range
-      const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
-      if (!tahapan || !tahapan.tanggal_mulai) {
-        console.warn(`Tahapan ${tahapanId} not found or missing dates, skipping`);
-        continue;
+    if (state.timeScale === 'weekly') {
+      // WEEKLY MODE: Direct 1:1 mapping
+      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
+        if (parseFloat(proporsi) <= 0) continue;
+
+        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
+        if (!tahapan || !tahapan.tanggal_mulai) {
+          console.warn(`Tahapan ${tahapanId} not found, skipping`);
+          continue;
+        }
+
+        // Calculate week number from tahapan start date
+        const tahapStart = new Date(tahapan.tanggal_mulai);
+        const diffDays = Math.floor((tahapStart - projectStart) / (1000 * 60 * 60 * 24));
+        const weekNumber = Math.floor(diffDays / 7) + 1;
+
+        console.log(`  - Week ${weekNumber}: ${proporsi}%`);
+
+        weeklyAssignments.push({
+          pekerjaan_id: parseInt(pekerjaanId),
+          week_number: weekNumber,
+          proportion: parseFloat(proporsi),
+          notes: `Saved from ${state.timeScale} mode`
+        });
       }
 
-      // Calculate week number from tahapan start date
-      const projectStart = new Date(window.projectData?.tanggal_mulai || state.tahapanList[0]?.tanggal_mulai);
-      const tahapStart = new Date(tahapan.tanggal_mulai);
-      const diffDays = Math.floor((tahapStart - projectStart) / (1000 * 60 * 60 * 24));
-      const weekNumber = Math.floor(diffDays / 7) + 1;
+    } else if (state.timeScale === 'daily') {
+      // DAILY MODE: Aggregate days into weeks
+      console.log(`  Aggregating ${Object.keys(assignments).length} daily values into weeks...`);
 
-      console.log(`  - Tahapan ${tahapanId} (${tahapan.nama}) → Week ${weekNumber}: ${proporsi}%`);
+      // Group daily assignments by week
+      const weeklyProportions = new Map();
 
-      weeklyAssignments.push({
-        pekerjaan_id: parseInt(pekerjaanId),
-        week_number: weekNumber,
-        proportion: parseFloat(proporsi),
-        notes: `Saved from ${state.timeScale} mode`
+      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
+        if (parseFloat(proporsi) <= 0) continue;
+
+        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
+        if (!tahapan || !tahapan.tanggal_mulai) continue;
+
+        // Calculate which week this day belongs to
+        const dayDate = new Date(tahapan.tanggal_mulai);
+        const diffDays = Math.floor((dayDate - projectStart) / (1000 * 60 * 60 * 24));
+        const weekNumber = Math.floor(diffDays / 7) + 1;
+
+        // Accumulate proportions for this week
+        const current = weeklyProportions.get(weekNumber) || 0;
+        weeklyProportions.set(weekNumber, current + parseFloat(proporsi));
+
+        console.log(`  - Day ${tahapan.nama} → Week ${weekNumber}: +${proporsi}%`);
+      }
+
+      // Convert accumulated weekly proportions to assignments
+      weeklyProportions.forEach((proportion, weekNumber) => {
+        console.log(`  → Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from daily)`);
+        weeklyAssignments.push({
+          pekerjaan_id: parseInt(pekerjaanId),
+          week_number: weekNumber,
+          proportion: Math.round(proportion * 100) / 100, // Round to 2 decimals
+          notes: `Saved from ${state.timeScale} mode (aggregated from daily)`
+        });
       });
+
+    } else if (state.timeScale === 'monthly') {
+      // MONTHLY MODE: Split monthly to daily, then aggregate to weekly
+      console.log(`  Splitting ${Object.keys(assignments).length} monthly values to daily, then aggregating to weekly...`);
+
+      const weeklyProportions = new Map();
+
+      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
+        if (parseFloat(proporsi) <= 0) continue;
+
+        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
+        if (!tahapan || !tahapan.tanggal_mulai || !tahapan.tanggal_selesai) continue;
+
+        const monthStart = new Date(tahapan.tanggal_mulai);
+        const monthEnd = new Date(tahapan.tanggal_selesai);
+
+        // Calculate days in this month
+        const daysInMonth = Math.floor((monthEnd - monthStart) / (1000 * 60 * 60 * 24)) + 1;
+        const dailyProportion = parseFloat(proporsi) / daysInMonth;
+
+        console.log(`  - Month ${tahapan.nama}: ${proporsi}% / ${daysInMonth} days = ${dailyProportion.toFixed(4)}% per day`);
+
+        // Distribute to each day, then aggregate to weeks
+        let currentDate = new Date(monthStart);
+        while (currentDate <= monthEnd) {
+          const diffDays = Math.floor((currentDate - projectStart) / (1000 * 60 * 60 * 24));
+          const weekNumber = Math.floor(diffDays / 7) + 1;
+
+          const current = weeklyProportions.get(weekNumber) || 0;
+          weeklyProportions.set(weekNumber, current + dailyProportion);
+
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+      }
+
+      // Convert accumulated weekly proportions to assignments
+      weeklyProportions.forEach((proportion, weekNumber) => {
+        console.log(`  → Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from monthly→daily)`);
+        weeklyAssignments.push({
+          pekerjaan_id: parseInt(pekerjaanId),
+          week_number: weekNumber,
+          proportion: Math.round(proportion * 100) / 100, // Round to 2 decimals
+          notes: `Saved from ${state.timeScale} mode (split from monthly)`
+        });
+      });
+
+    } else {
+      // CUSTOM MODE: Use week-based calculation as fallback
+      console.warn('  Custom mode: Using week-based calculation');
+      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
+        if (parseFloat(proporsi) <= 0) continue;
+
+        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
+        if (!tahapan || !tahapan.tanggal_mulai) continue;
+
+        const tahapStart = new Date(tahapan.tanggal_mulai);
+        const diffDays = Math.floor((tahapStart - projectStart) / (1000 * 60 * 60 * 24));
+        const weekNumber = Math.floor(diffDays / 7) + 1;
+
+        weeklyAssignments.push({
+          pekerjaan_id: parseInt(pekerjaanId),
+          week_number: weekNumber,
+          proportion: parseFloat(proporsi),
+          notes: `Saved from ${state.timeScale} mode`
+        });
+      }
     }
 
     console.log(`  - Saving ${weeklyAssignments.length} weekly assignments to canonical storage`);
@@ -1637,6 +1881,18 @@
       if (response.ok) {
         // Update state
         state.timeScale = newMode;
+
+        // Update canonical storage banner
+        const modeBadge = document.getElementById('current-mode-badge');
+        if (modeBadge) {
+          const modeNames = {
+            'daily': 'Daily',
+            'weekly': 'Weekly',
+            'monthly': 'Monthly',
+            'custom': 'Custom'
+          };
+          modeBadge.textContent = `Mode: ${modeNames[newMode] || newMode}`;
+        }
 
         // Step 2: Reload tahapan list
         showLoading(`Switching to ${newMode} mode...`, 'Loading updated tahapan list');

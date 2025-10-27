@@ -203,6 +203,39 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'notes': notes
             })
 
+        # STEP 2: Validate total progress per pekerjaan ≤ 100%
+        # Group new assignments by pekerjaan_id
+        from collections import defaultdict
+        pekerjaan_totals = defaultdict(Decimal)
+
+        for item in assignments:
+            pekerjaan_id = item.get('pekerjaan_id')
+            proportion = item.get('proportion')
+
+            if pekerjaan_id and proportion is not None:
+                try:
+                    pekerjaan_totals[pekerjaan_id] += Decimal(str(proportion))
+                except (InvalidOperation, ValueError):
+                    pass  # Already handled in validation above
+
+        # Check if any pekerjaan exceeds 100%
+        validation_errors = []
+        for pekerjaan_id, total in pekerjaan_totals.items():
+            if total > Decimal('100.00'):
+                validation_errors.append({
+                    'error': f'Total progress {float(total):.2f}% exceeds 100%',
+                    'pekerjaan_id': pekerjaan_id,
+                    'total': float(total),
+                    'max_allowed': 100.0
+                })
+
+        if validation_errors:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Validation failed: Total progress exceeds 100%',
+                'validation_errors': validation_errors
+            }, status=400)
+
         # If errors, return them
         if errors:
             return JsonResponse({
