@@ -40,21 +40,21 @@ def calculate_week_number(target_date: date, project_start: date) -> int:
     return week_num
 
 
-def get_week_date_range(week_number: int, project_start: date, week_end_day: int = 0) -> Tuple[date, date]:
+def get_week_date_range(week_number: int, project_start: date, week_end_day: int = 6) -> Tuple[date, date]:
     """
     Get start and end date for a given week number.
 
     Args:
         week_number: Week number (1-indexed)
         project_start: Project start date
-        week_end_day: Day of week for week boundary (0=Sunday, 6=Saturday)
+        week_end_day: Day of week for week boundary (Python weekday: 0=Monday, 6=Sunday)
 
     Returns:
         Tuple of (week_start_date, week_end_date)
 
     Example:
         week_number = 1, project_start = 2025-01-01 (Wednesday)
-        week_end_day = 0 (Sunday)
+        week_end_day = 6 (Sunday)
         returns: (2025-01-01, 2025-01-05) - Wed to Sun
     """
     # Calculate week start (first day of the week)
@@ -165,7 +165,7 @@ def get_weekly_progress_for_monthly_view(
 def sync_weekly_to_tahapan(
     project_id: int,
     mode: str = 'weekly',
-    week_end_day: int = 0
+    week_end_day: int = 6
 ) -> int:
     """
     Synchronize PekerjaanProgressWeekly (canonical) to PekerjaanTahapan (view layer).
@@ -182,7 +182,7 @@ def sync_weekly_to_tahapan(
     Args:
         project_id: Project ID
         mode: Time scale mode ('daily', 'weekly', 'monthly', 'custom')
-        week_end_day: Week boundary day (0=Sunday, 6=Saturday)
+        week_end_day: Week boundary day (Python weekday: 0=Monday, 6=Sunday)
 
     Returns:
         Number of PekerjaanTahapan records created
