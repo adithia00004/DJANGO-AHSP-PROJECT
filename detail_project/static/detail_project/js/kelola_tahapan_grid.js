@@ -927,7 +927,8 @@
 
     // Calculate display value
     let displayValue = '';
-    if (currentValue > 0) {
+    // Show value if > 0, OR if explicitly set to 0 (clearing a previous value)
+    if (currentValue > 0 || (currentValue === 0 && savedValue > 0)) {
       if (state.displayMode === 'percentage') {
         displayValue = `<span class="cell-value percentage">${currentValue.toFixed(1)}</span>`;
       } else {
@@ -1189,7 +1190,8 @@
 
       // Calculate and update display
       let displayValue = '';
-      if (newValue > 0) {
+      // Show value if > 0, OR if explicitly set to 0 (clearing a previous value)
+      if (newValue > 0 || (newValue === 0 && savedValue !== 0)) {
         if (state.displayMode === 'percentage') {
           displayValue = `<span class="cell-value percentage">${newValue.toFixed(1)}</span>`;
         } else {
@@ -1552,7 +1554,7 @@
     if (state.timeScale === 'weekly') {
       // WEEKLY MODE: Direct 1:1 mapping
       for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) <= 0) continue;
+        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
 
         const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
         if (!tahapan || !tahapan.tanggal_mulai) {
@@ -1583,7 +1585,7 @@
       const weeklyProportions = new Map();
 
       for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) <= 0) continue;
+        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
 
         const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
         if (!tahapan || !tahapan.tanggal_mulai) continue;
@@ -1618,7 +1620,7 @@
       const weeklyProportions = new Map();
 
       for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) <= 0) continue;
+        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
 
         const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
         if (!tahapan || !tahapan.tanggal_mulai || !tahapan.tanggal_selesai) continue;
@@ -1660,7 +1662,7 @@
       // CUSTOM MODE: Use week-based calculation as fallback
       console.warn('  Custom mode: Using week-based calculation');
       for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) <= 0) continue;
+        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
 
         const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
         if (!tahapan || !tahapan.tanggal_mulai) continue;
