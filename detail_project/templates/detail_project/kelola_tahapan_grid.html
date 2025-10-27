@@ -70,7 +70,9 @@
 <!-- Main App Container -->
 <div id="tahapan-grid-app"
      data-project-id="{{ project.id }}"
-     data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/">
+     data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/"
+     data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
+     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}">
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">

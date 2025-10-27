@@ -14,6 +14,13 @@
   const projectId = parseInt(app.dataset.projectId);
   const apiBase = app.dataset.apiBase;
 
+  // Project data for canonical storage calculations
+  window.projectData = {
+    id: projectId,
+    tanggal_mulai: app.dataset.projectStart,
+    tanggal_selesai: app.dataset.projectEnd
+  };
+
   // State Management
   const state = {
     tahapanList: [],           // List of tahapan with dates
@@ -1388,61 +1395,76 @@
   }
 
   async function savePekerjaanAssignments(pekerjaanId, assignments) {
-    // Separate assignments into two groups: assign (proporsi > 0) and unassign (proporsi = 0)
-    const toAssign = [];
-    const toUnassign = [];
+    // IMPORTANT: Save to CANONICAL STORAGE (weekly) for lossless data preservation!
+    // Strategy:
+    // 1. Convert tahapan assignments to weekly format
+    // 2. Save to PekerjaanProgressWeekly (canonical)
+    // 3. Backend will automatically sync to PekerjaanTahapan (view layer)
 
+    const weeklyAssignments = [];
+
+    // Convert tahapan assignments to weekly format
     for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-      if (parseFloat(proporsi) > 0) {
-        toAssign.push({ tahapanId, proporsi: parseFloat(proporsi) });
-      } else {
-        toUnassign.push(tahapanId);
+      if (parseFloat(proporsi) <= 0) continue; // Skip zero values
+
+      // Find tahapan to get date range
+      const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
+      if (!tahapan || !tahapan.tanggal_mulai) {
+        console.warn(`Tahapan ${tahapanId} not found or missing dates, skipping`);
+        continue;
       }
-    }
 
-    console.log(`  - To assign (${toAssign.length}):`, toAssign);
-    console.log(`  - To unassign (${toUnassign.length}):`, toUnassign);
+      // Calculate week number from tahapan start date
+      const projectStart = new Date(window.projectData?.tanggal_mulai || state.tahapanList[0]?.tanggal_mulai);
+      const tahapStart = new Date(tahapan.tanggal_mulai);
+      const diffDays = Math.floor((tahapStart - projectStart) / (1000 * 60 * 60 * 24));
+      const weekNumber = Math.floor(diffDays / 7) + 1;
 
-    // Handle assignments (proporsi > 0)
-    for (const { tahapanId, proporsi } of toAssign) {
-      const url = `${apiBase}${tahapanId}/assign/`;
-      const payload = {
-        assignments: [{
-          pekerjaan_id: parseInt(pekerjaanId),
-          proporsi: proporsi
-        }]
-      };
-      console.log(`  - POST ${url}`, payload);
+      console.log(`  - Tahapan ${tahapanId} (${tahapan.nama}) → Week ${weekNumber}: ${proporsi}%`);
 
-      const response = await apiCall(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify(payload)
+      weeklyAssignments.push({
+        pekerjaan_id: parseInt(pekerjaanId),
+        week_number: weekNumber,
+        proportion: parseFloat(proporsi),
+        notes: `Saved from ${state.timeScale} mode`
       });
-      console.log(`  - Response:`, response);
     }
 
-    // Handle unassignments (proporsi = 0)
-    for (const tahapanId of toUnassign) {
-      const url = `${apiBase}${tahapanId}/unassign/`;
-      const payload = {
-        pekerjaan_ids: [parseInt(pekerjaanId)]
-      };
-      console.log(`  - POST ${url}`, payload);
+    console.log(`  - Saving ${weeklyAssignments.length} weekly assignments to canonical storage`);
 
-      const response = await apiCall(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCookie('csrftoken')
-        },
-        body: JSON.stringify(payload)
-      });
-      console.log(`  - Response:`, response);
+    if (weeklyAssignments.length === 0) {
+      console.warn(`  - No assignments to save for pekerjaan ${pekerjaanId}`);
+      return;
     }
+
+    // Save to canonical storage (API V2)
+    const url = `/detail_project/api/v2/project/${projectId}/assign-weekly/`;
+    const payload = {
+      assignments: weeklyAssignments
+    };
+    console.log(`  - POST ${url}`, payload);
+
+    const response = await apiCall(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken')
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log(`  - Weekly canonical save response:`, response);
+
+    if (!response.ok) {
+      throw new Error(response.error || 'Failed to save to canonical storage');
+    }
+
+    console.log(`  ✓ Successfully saved to canonical storage: ${response.created_count} created, ${response.updated_count} updated`);
+
+    // After saving to canonical, sync to view layer (PekerjaanTahapan)
+    // This is done automatically by the backend when mode switching happens,
+    // but we can trigger an explicit sync here if needed
+    console.log(`  ✓ View layer will be synced on next mode operation`);
   }
 
   // =========================================================================
@@ -1538,17 +1560,20 @@
 
     try {
       // Step 1: Regenerate tahapan on backend
-      showLoading(`Switching to ${newMode} mode...`, 'Regenerating tahapan and converting assignments');
+      showLoading(`Switching to ${newMode} mode...`, 'Regenerating tahapan and syncing from canonical storage');
 
-      const response = await apiCall(`/detail_project/api/project/${projectId}/regenerate-tahapan/`, {
+      // IMPORTANT: Use API V2 for lossless mode switching!
+      // API V2 syncs from PekerjaanProgressWeekly (canonical storage)
+      // instead of converting from PekerjaanTahapan (view layer)
+      const response = await apiCall(`/detail_project/api/v2/project/${projectId}/regenerate-tahapan/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           mode: newMode,
-          week_end_day: state.weekEndDay || 0,
-          convert_assignments: true  // Phase 3.3: Enable assignment conversion
+          week_end_day: state.weekEndDay || 0
+          // NOTE: No convert_assignments flag - V2 always syncs from canonical!
         })
       });
 
