@@ -1449,20 +1449,291 @@
   // GANTT CHART
   // =========================================================================
 
-  function initGanttChart() {
-    const ganttData = state.tahapanList.map(tahap => ({
-      id: `tahap-${tahap.tahapan_id}`,
-      name: tahap.nama,
-      start: tahap.tanggal_mulai || new Date().toISOString().split('T')[0],
-      end: tahap.tanggal_selesai || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-      progress: 50 // Calculate from assignments
-    }));
+  /**
+   * Calculate progress percentage for a tahapan based on assignments
+   * @param {number} tahapanId - ID of the tahapan
+   * @returns {number} Progress percentage (0-100)
+   */
+  function calculateTahapanProgress(tahapanId) {
+    let totalAssigned = 0;
+    let totalPekerjaan = 0;
 
-    if (ganttData.length > 0 && window.Gantt) {
-      state.ganttInstance = new Gantt('#gantt-chart', ganttData, {
-        view_mode: 'Week',
-        language: 'id'
+    // Loop through all pekerjaan assignments
+    state.assignmentMap.forEach((assignments, pekerjaanId) => {
+      if (assignments[tahapanId]) {
+        const percentage = parseFloat(assignments[tahapanId]) || 0;
+        totalAssigned += percentage;
+        totalPekerjaan++;
+      }
+    });
+
+    // Calculate average progress
+    // If no pekerjaan assigned, return 0
+    if (totalPekerjaan === 0) {
+      return 0;
+    }
+
+    // Average assignment percentage
+    return Math.round(totalAssigned / totalPekerjaan);
+  }
+
+  /**
+   * Get smart date fallback for tahapan
+   * @param {object} tahap - Tahapan object
+   * @param {string} type - 'start' or 'end'
+   * @param {number} index - Index in tahapanList
+   * @returns {string} Date in YYYY-MM-DD format
+   */
+  function getSmartDateFallback(tahap, type, index) {
+    const today = new Date();
+
+    if (type === 'start') {
+      // If no start date, use today + (index * 7 days)
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() + (index * 7));
+      return startDate.toISOString().split('T')[0];
+    } else {
+      // If no end date, use start date + 7 days
+      const startDateStr = tahap.tanggal_mulai || getSmartDateFallback(tahap, 'start', index);
+      const endDate = new Date(startDateStr);
+      endDate.setDate(endDate.getDate() + 7);
+      return endDate.toISOString().split('T')[0];
+    }
+  }
+
+  /**
+   * Initialize or re-render Gantt Chart
+   * @param {string} viewMode - 'Day', 'Week', 'Month', 'Year' (default: 'Week')
+   */
+  function initGanttChart(viewMode = 'Week') {
+    console.log('Initializing Gantt Chart...', {
+      tahapanCount: state.tahapanList.length,
+      viewMode: viewMode
+    });
+
+    try {
+      // Validate container exists
+      const container = document.getElementById('gantt-chart');
+      if (!container) {
+        console.error('Gantt container not found!');
+        return;
+      }
+
+      // Validate Frappe Gantt library is loaded
+      if (!window.Gantt) {
+        console.error('Frappe Gantt library not loaded!');
+        showGanttError('Library Gantt Chart tidak ter-load. Silakan refresh halaman.');
+        return;
+      }
+
+      // Check if we have data
+      if (!state.tahapanList || state.tahapanList.length === 0) {
+        console.warn('No tahapan data available for Gantt Chart');
+        showGanttEmptyState();
+        return;
+      }
+
+      // Hide empty state if visible
+      hideGanttEmptyState();
+
+      // Prepare Gantt data with proper validation
+      const ganttData = state.tahapanList.map((tahap, index) => {
+        // Get dates with smart fallback
+        const startDate = tahap.tanggal_mulai || getSmartDateFallback(tahap, 'start', index);
+        const endDate = tahap.tanggal_selesai || getSmartDateFallback(tahap, 'end', index);
+
+        // Calculate real progress from assignments
+        const progress = calculateTahapanProgress(tahap.tahapan_id);
+
+        // Prepare custom popup HTML
+        const customPopup = `
+          <div class="gantt-popup">
+            <h5>${tahap.nama}</h5>
+            <p><strong>Periode:</strong> ${formatDate(startDate)} - ${formatDate(endDate)}</p>
+            <p><strong>Progress:</strong> ${progress}%</p>
+            <p><strong>Pekerjaan:</strong> ${tahap.jumlah_pekerjaan || 0} item</p>
+          </div>
+        `;
+
+        return {
+          id: `tahap-${tahap.tahapan_id}`,
+          name: tahap.nama || `Tahap ${index + 1}`,
+          start: startDate,
+          end: endDate,
+          progress: progress,
+          custom_class: tahap.is_auto_generated ? 'gantt-auto-generated' : 'gantt-custom',
+          dependencies: '' // Add dependencies if needed
+        };
       });
+
+      console.log('Gantt data prepared:', ganttData);
+
+      // Destroy existing instance if any
+      if (state.ganttInstance) {
+        console.log('Destroying existing Gantt instance...');
+        // Frappe Gantt doesn't have a destroy method, so we clear the container
+        container.innerHTML = '';
+      }
+
+      // Create new Gantt instance
+      state.ganttInstance = new Gantt(container, ganttData, {
+        view_mode: viewMode,
+        date_format: 'YYYY-MM-DD',
+        language: 'id',
+        custom_popup_html: function(task) {
+          // Find corresponding tahapan
+          const tahapId = parseInt(task.id.replace('tahap-', ''));
+          const tahap = state.tahapanList.find(t => t.tahapan_id === tahapId);
+
+          if (!tahap) return task.name;
+
+          return `
+            <div class="gantt-popup-title">${task.name}</div>
+            <div class="gantt-popup-subtitle">
+              ${formatDate(task._start)} - ${formatDate(task._end)}
+            </div>
+            <div class="gantt-popup-progress">
+              Progress: ${task.progress}%
+            </div>
+            <div class="gantt-popup-info">
+              Pekerjaan: ${tahap.jumlah_pekerjaan || 0} item
+            </div>
+          `;
+        },
+        on_click: function(task) {
+          console.log('Gantt task clicked:', task);
+          // You can add custom click behavior here
+          // For example, scroll to the tahapan in the grid view
+        },
+        on_date_change: function(task, start, end) {
+          console.log('Gantt date changed:', task, start, end);
+          // You can add date change handler here
+          // For example, update the tahapan dates via API
+        },
+        on_progress_change: function(task, progress) {
+          console.log('Gantt progress changed:', task, progress);
+          // You can add progress change handler here
+        },
+        on_view_change: function(mode) {
+          console.log('Gantt view changed to:', mode);
+        }
+      });
+
+      console.log('Gantt Chart initialized successfully');
+
+      // Update active view mode button
+      updateGanttViewButtons(viewMode);
+
+    } catch (error) {
+      console.error('Error initializing Gantt Chart:', error);
+      showGanttError('Gagal menampilkan Gantt Chart: ' + error.message);
+    }
+  }
+
+  /**
+   * Show empty state message in Gantt container
+   */
+  function showGanttEmptyState() {
+    const container = document.querySelector('.gantt-container');
+    if (!container) return;
+
+    let emptyState = container.querySelector('.gantt-empty-state');
+    if (!emptyState) {
+      emptyState = document.createElement('div');
+      emptyState.className = 'gantt-empty-state';
+      emptyState.innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-calendar3 display-1 text-muted"></i>
+          <h5 class="mt-3">Tidak Ada Data Tahapan</h5>
+          <p class="text-muted">
+            Belum ada tahapan yang dibuat untuk project ini.<br>
+            Silakan buat tahapan terlebih dahulu atau gunakan mode auto-generate.
+          </p>
+          <div class="mt-3">
+            <small class="text-muted">
+              💡 Tips: Gunakan salah satu Time Scale mode (Daily/Weekly/Monthly) untuk auto-generate tahapan
+            </small>
+          </div>
+        </div>
+      `;
+      container.appendChild(emptyState);
+    }
+    emptyState.style.display = 'block';
+  }
+
+  /**
+   * Hide empty state message
+   */
+  function hideGanttEmptyState() {
+    const emptyState = document.querySelector('.gantt-empty-state');
+    if (emptyState) {
+      emptyState.style.display = 'none';
+    }
+  }
+
+  /**
+   * Show error message in Gantt container
+   */
+  function showGanttError(message) {
+    const container = document.querySelector('.gantt-container');
+    if (!container) return;
+
+    let errorState = container.querySelector('.gantt-error-state');
+    if (!errorState) {
+      errorState = document.createElement('div');
+      errorState.className = 'gantt-error-state alert alert-danger';
+      container.appendChild(errorState);
+    }
+    errorState.innerHTML = `
+      <i class="bi bi-exclamation-triangle"></i>
+      <strong>Error:</strong> ${message}
+    `;
+    errorState.style.display = 'block';
+  }
+
+  /**
+   * Update active state of Gantt view buttons
+   */
+  function updateGanttViewButtons(activeMode) {
+    document.querySelectorAll('[data-gantt-view]').forEach(btn => {
+      const btnMode = btn.getAttribute('data-gantt-view');
+      if (btnMode === activeMode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  /**
+   * Format date for display
+   */
+  function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+
+  /**
+   * Change Gantt view mode
+   */
+  function changeGanttView(viewMode) {
+    if (!state.ganttInstance) {
+      initGanttChart(viewMode);
+    } else {
+      try {
+        state.ganttInstance.change_view_mode(viewMode);
+        updateGanttViewButtons(viewMode);
+        console.log('Gantt view changed to:', viewMode);
+      } catch (error) {
+        console.error('Error changing Gantt view:', error);
+        // Reinitialize if change fails
+        initGanttChart(viewMode);
+      }
     }
   }
 
@@ -1666,6 +1937,15 @@
     } else {
       state.scurveChart.resize();
     }
+  });
+
+  // Gantt view mode buttons
+  document.querySelectorAll('[data-gantt-view]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const viewMode = e.target.getAttribute('data-gantt-view');
+      console.log('Gantt view button clicked:', viewMode);
+      changeGanttView(viewMode);
+    });
   });
 
   // Prevent accidental page closure with unsaved changes
