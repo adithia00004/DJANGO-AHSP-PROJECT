@@ -33,6 +33,10 @@
     displayMode: 'percentage', // 'percentage' or 'volume'
     timeColumns: [],           // Array of time period objects
 
+    // Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
+    weekStartDay: 0,           // Default: Monday (Senin)
+    weekEndDay: 6,             // Default: Sunday (Minggu)
+
     expandedNodes: new Set(),  // Set of expanded node IDs
     modifiedCells: new Map(),  // Track changes: "pekerjaanId-timeId" -> value
     currentCell: null,         // Currently focused cell
@@ -1622,7 +1626,8 @@
         },
         body: JSON.stringify({
           mode: newMode,
-          week_end_day: state.weekEndDay || 0
+          week_start_day: state.weekStartDay || 0,  // Default: Monday
+          week_end_day: state.weekEndDay || 6       // Default: Sunday
           // NOTE: No convert_assignments flag - V2 always syncs from canonical!
         })
       });
