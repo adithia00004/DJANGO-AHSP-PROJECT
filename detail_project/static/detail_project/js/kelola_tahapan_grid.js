@@ -1513,7 +1513,7 @@
       console.error('Reset progress error:', error);
       showToast(`Error resetting progress: ${error.message}`, 'error');
     } finally {
-      hideLoading();
+      showLoading(false);
     }
   }
 
