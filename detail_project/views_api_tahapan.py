@@ -678,7 +678,11 @@ def api_regenerate_tahapan(request, project_id):
     try:
         data = json.loads(request.body)
         mode = data.get('mode', 'custom')
-        week_end_day = data.get('week_end_day', 0)  # 0 = Sunday
+
+        # Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
+        week_start_day = data.get('week_start_day', 0)  # Default: 0 = Monday (Senin)
+        week_end_day = data.get('week_end_day', 6)     # Default: 6 = Sunday (Minggu)
+
         convert_assignments = data.get('convert_assignments', True)
 
         # Validate mode
@@ -762,7 +766,7 @@ def api_regenerate_tahapan(request, project_id):
         if mode == 'daily':
             new_tahapan = _generate_daily_tahapan(project)
         elif mode == 'weekly':
-            new_tahapan = _generate_weekly_tahapan(project, week_end_day)
+            new_tahapan = _generate_weekly_tahapan(project, week_start_day, week_end_day)
         elif mode == 'monthly':
             new_tahapan = _generate_monthly_tahapan(project)
 
@@ -817,22 +821,40 @@ def api_regenerate_tahapan(request, project_id):
 
 
 def _generate_daily_tahapan(project):
-    """Generate one tahapan per day"""
+    """
+    Generate daily tahapan with Indonesian day names.
+
+    Format: dd/mm (NamaHari)
+    Example: 26/10 (Rabu), 27/10 (Kamis)
+
+    Daily is calculated from weekly canonical storage:
+    - Daily proportion = Weekly proportion / days_in_week
+    - Handles partial weeks (first/last week) correctly
+    """
     from datetime import timedelta
 
     tahapan_list = []
     current_date = project.tanggal_mulai
     day_num = 1
 
+    # Indonesian day names
+    day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+
     while current_date <= project.tanggal_selesai:
+        # Format: dd/mm (NamaHari)
+        date_str = current_date.strftime("%d/%m")
+        day_name = day_names_id[current_date.weekday()]
+        label = f"{date_str} ({day_name})"
+
         tahap = TahapPelaksanaan(
             project=project,
-            nama=f"Day {day_num}",
+            nama=label,
             urutan=day_num - 1,
             tanggal_mulai=current_date,
             tanggal_selesai=current_date,
             is_auto_generated=True,
-            generation_mode='daily'
+            generation_mode='daily',
+            deskripsi=f"Hari ke-{day_num}"
         )
         tahapan_list.append(tahap)
 
@@ -846,31 +868,68 @@ def _generate_daily_tahapan(project):
     return tahapan_list
 
 
-def _generate_weekly_tahapan(project, week_end_day=0):
-    """Generate one tahapan per week"""
+def _generate_weekly_tahapan(project, week_start_day=0, week_end_day=6):
+    """
+    Generate weekly tahapan with configurable week boundaries.
+
+    Args:
+        project: Project instance
+        week_start_day: Day of week for week start (0=Monday, 6=Sunday). Default: 0 (Monday)
+        week_end_day: Day of week for week end (0=Monday, 6=Sunday). Default: 6 (Sunday)
+
+    Default: Senin (0) - Minggu (6)
+
+    Exceptions:
+        - First week: Starts at project.tanggal_mulai (could be any day)
+        - Last week: Ends at project.tanggal_selesai (could be any day)
+
+    Examples:
+        - Project start: Wednesday 26 Oct
+        - Week 1: Wed 26 Oct - Sun 27 Oct (2 days) - EXCEPTION
+        - Week 2: Mon 28 Oct - Sun 03 Nov (7 days) - NORMAL
+        - Week 3: Mon 04 Nov - Sun 10 Nov (7 days) - NORMAL
+        - Project end: Tuesday 12 Nov
+        - Week last: Mon 11 Nov - Tue 12 Nov (2 days) - EXCEPTION
+    """
     from datetime import timedelta
 
     tahapan_list = []
     current_start = project.tanggal_mulai
     week_num = 1
 
+    # Helper: Indonesian day names
+    day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
+
     while current_start <= project.tanggal_selesai:
         # Calculate week end
-        days_until_week_end = (week_end_day - current_start.weekday() + 7) % 7
-
-        if days_until_week_end == 0 and current_start.weekday() == week_end_day:
-            current_end = current_start
+        if week_num == 1:
+            # FIRST WEEK EXCEPTION: Start from project start, find next week_end_day
+            days_until_end = (week_end_day - current_start.weekday()) % 7
+            if days_until_end == 0:
+                # Already on end day, this is a 1-day week
+                current_end = current_start
+            else:
+                current_end = current_start + timedelta(days=days_until_end)
         else:
-            current_end = current_start + timedelta(days=days_until_week_end)
+            # NORMAL WEEK: Should start on week_start_day and end on week_end_day
+            # Calculate days in a normal week cycle
+            days_in_cycle = ((week_end_day - week_start_day) % 7) + 1
+            current_end = current_start + timedelta(days=days_in_cycle - 1)
 
-        # Don't exceed project end
+        # LAST WEEK EXCEPTION: Don't exceed project end
         if current_end > project.tanggal_selesai:
             current_end = project.tanggal_selesai
 
-        # Format label
-        start_str = current_start.strftime("%d %b")
-        end_str = current_end.strftime("%d %b")
-        label = f"Week {week_num}: {start_str} - {end_str}"
+        # Calculate actual days in this week
+        days_in_week = (current_end - current_start).days + 1
+
+        # Format label with dd/mm format
+        start_str = current_start.strftime("%d/%m")
+        end_str = current_end.strftime("%d/%m")
+        start_day_name = day_names_id[current_start.weekday()]
+        end_day_name = day_names_id[current_end.weekday()]
+
+        label = f"Week {week_num}: {start_str} ({start_day_name}) - {end_str} ({end_day_name})"
 
         tahap = TahapPelaksanaan(
             project=project,
@@ -879,12 +938,20 @@ def _generate_weekly_tahapan(project, week_end_day=0):
             tanggal_mulai=current_start,
             tanggal_selesai=current_end,
             is_auto_generated=True,
-            generation_mode='weekly'
+            generation_mode='weekly',
+            deskripsi=f"{days_in_week} hari"
         )
         tahapan_list.append(tahap)
 
-        # Move to next week
+        # Move to next week start (should be week_start_day)
         current_start = current_end + timedelta(days=1)
+
+        # Adjust to week_start_day if not already
+        if current_start.weekday() != week_start_day and current_start <= project.tanggal_selesai:
+            days_to_start = (week_start_day - current_start.weekday()) % 7
+            if days_to_start > 0:
+                current_start = current_start + timedelta(days=days_to_start)
+
         week_num += 1
 
         # Safety limit
@@ -895,34 +962,71 @@ def _generate_weekly_tahapan(project, week_end_day=0):
 
 
 def _generate_monthly_tahapan(project):
-    """Generate one tahapan per month"""
-    from datetime import date
-    import calendar
+    """
+    Generate monthly tahapan with FIXED start date (1st of month).
+
+    Rules:
+        - Monthly starts: ALWAYS tanggal 1 (01/01, 01/02, 01/03, ...)
+        - Monthly ends: Next month start - 1 day
+        - Example: Jan = 01/01 to 31/01 (because 01/02 - 1 = 31/01)
+        - Example: Feb = 01/02 to 28/02 or 29/02 (leap year)
+
+    Exceptions:
+        - First month: May start mid-month if project.tanggal_mulai != 1st
+        - Last month: May end mid-month if project.tanggal_selesai != last day
+
+    Monthly progress is aggregated from DAILY values (not weekly) to handle
+    partial weeks at month boundaries correctly.
+    """
+    from datetime import date, timedelta
 
     tahapan_list = []
-    current_date = project.tanggal_mulai
     month_num = 1
 
-    while current_date <= project.tanggal_selesai:
-        # Month start is current_date
-        month_start = current_date
+    # Indonesian month names
+    month_names = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
+        5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
+        9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }
 
-        # Month end is last day of the month
-        last_day = calendar.monthrange(current_date.year, current_date.month)[1]
-        month_end = date(current_date.year, current_date.month, last_day)
+    # Start from the 1st of the month containing project start
+    current_year = project.tanggal_mulai.year
+    current_month = project.tanggal_mulai.month
 
-        # Don't exceed project end
+    while True:
+        # Month start: ALWAYS 1st of month
+        month_start = date(current_year, current_month, 1)
+
+        # Calculate next month for end date calculation
+        if current_month == 12:
+            next_month_start = date(current_year + 1, 1, 1)
+        else:
+            next_month_start = date(current_year, current_month + 1, 1)
+
+        # Month end: Next month start - 1 day
+        month_end = next_month_start - timedelta(days=1)
+
+        # FIRST MONTH EXCEPTION: Adjust start if project starts mid-month
+        if month_num == 1 and project.tanggal_mulai > month_start:
+            month_start = project.tanggal_mulai
+
+        # LAST MONTH EXCEPTION: Adjust end if project ends mid-month
         if month_end > project.tanggal_selesai:
             month_end = project.tanggal_selesai
 
-        # Format label (Indonesian month names)
-        month_names = {
-            1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
-            5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
-            9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
-        }
-        month_name = month_names.get(current_date.month, str(current_date.month))
-        label = f"{month_name} {current_date.year}"
+        # Stop if we've passed project end
+        if month_start > project.tanggal_selesai:
+            break
+
+        # Calculate actual days in this month cycle
+        days_in_month = (month_end - month_start).days + 1
+
+        # Format label with dd/mm format
+        month_name = month_names.get(current_month, str(current_month))
+        start_str = month_start.strftime("%d/%m")
+        end_str = month_end.strftime("%d/%m")
+        label = f"{month_name} {current_year}: {start_str} - {end_str}"
 
         tahap = TahapPelaksanaan(
             project=project,
@@ -931,15 +1035,17 @@ def _generate_monthly_tahapan(project):
             tanggal_mulai=month_start,
             tanggal_selesai=month_end,
             is_auto_generated=True,
-            generation_mode='monthly'
+            generation_mode='monthly',
+            deskripsi=f"{days_in_month} hari"
         )
         tahapan_list.append(tahap)
 
         # Move to next month
-        if current_date.month == 12:
-            current_date = date(current_date.year + 1, 1, 1)
+        if current_month == 12:
+            current_year += 1
+            current_month = 1
         else:
-            current_date = date(current_date.year, current_date.month + 1, 1)
+            current_month += 1
 
         month_num += 1
 

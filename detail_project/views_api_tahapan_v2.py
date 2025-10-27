@@ -148,12 +148,33 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 })
                 continue
 
-            # Calculate week date range
-            week_start, week_end = get_week_date_range(
-                week_number,
-                project.tanggal_mulai,
-                week_end_day=0  # Sunday default
-            )
+            # Get week date range from corresponding tahapan for consistency
+            # Look for weekly tahapan with matching week number (inferred from urutan)
+            try:
+                weekly_tahapan = TahapPelaksanaan.objects.filter(
+                    project=project,
+                    is_auto_generated=True,
+                    generation_mode='weekly',
+                    urutan=week_number - 1  # urutan is 0-indexed
+                ).first()
+
+                if weekly_tahapan:
+                    week_start = weekly_tahapan.tanggal_mulai
+                    week_end = weekly_tahapan.tanggal_selesai
+                else:
+                    # Fallback: calculate from project start if tahapan not found
+                    week_start, week_end = get_week_date_range(
+                        week_number,
+                        project.tanggal_mulai,
+                        week_end_day=6  # Sunday
+                    )
+            except Exception:
+                # Fallback: calculate from project start
+                week_start, week_end = get_week_date_range(
+                    week_number,
+                    project.tanggal_mulai,
+                    week_end_day=6  # Sunday
+                )
 
             # Create or update weekly progress (CANONICAL STORAGE)
             wp, created = PekerjaanProgressWeekly.objects.update_or_create(
@@ -412,7 +433,10 @@ def api_regenerate_tahapan_v2(request, project_id):
     try:
         data = json.loads(request.body)
         mode = data.get('mode', 'custom')
-        week_end_day = data.get('week_end_day', 0)
+
+        # Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
+        week_start_day = data.get('week_start_day', 0)  # Default: 0 = Monday (Senin)
+        week_end_day = data.get('week_end_day', 6)     # Default: 6 = Sunday (Minggu)
 
         # Validate mode
         if mode not in ['daily', 'weekly', 'monthly', 'custom']:
@@ -458,7 +482,7 @@ def api_regenerate_tahapan_v2(request, project_id):
         if mode == 'daily':
             new_tahapan = _generate_daily_tahapan(project)
         elif mode == 'weekly':
-            new_tahapan = _generate_weekly_tahapan(project, week_end_day)
+            new_tahapan = _generate_weekly_tahapan(project, week_start_day, week_end_day)
         elif mode == 'monthly':
             new_tahapan = _generate_monthly_tahapan(project)
 
