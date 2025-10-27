@@ -2,7 +2,8 @@
 from django.contrib import admin
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
-    HargaItemProject, DetailAHSPProject
+    HargaItemProject, DetailAHSPProject,
+    TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
 )
 
 @admin.register(Klasifikasi)
@@ -56,3 +57,56 @@ class DetailAHSPProjectAdmin(admin.ModelAdmin):
     search_fields = ("kode", "uraian", "pekerjaan__snapshot_kode", "pekerjaan__snapshot_uraian", "project__nama")
     ordering = ("project", "pekerjaan__ordering_index", "kode")
     raw_id_fields = ("project", "pekerjaan", "harga_item")
+
+
+# ===== Jadwal Pekerjaan (Work Schedule) =====
+
+@admin.register(TahapPelaksanaan)
+class TahapPelaksanaanAdmin(admin.ModelAdmin):
+    list_display = ("id", "project", "nama", "urutan", "tanggal_mulai", "tanggal_selesai",
+                    "is_auto_generated", "generation_mode")
+    list_filter = ("project", "is_auto_generated", "generation_mode")
+    search_fields = ("nama", "deskripsi", "project__nama")
+    ordering = ("project", "urutan", "id")
+    raw_id_fields = ("project",)
+    date_hierarchy = "tanggal_mulai"
+
+
+@admin.register(PekerjaanTahapan)
+class PekerjaanTahapanAdmin(admin.ModelAdmin):
+    list_display = ("id", "pekerjaan", "tahapan", "proporsi_volume", "created_at", "updated_at")
+    list_filter = ("tahapan__project", "tahapan")
+    search_fields = ("pekerjaan__snapshot_kode", "pekerjaan__snapshot_uraian",
+                     "tahapan__nama", "tahapan__project__nama")
+    ordering = ("tahapan__project", "tahapan__urutan", "pekerjaan__ordering_index")
+    raw_id_fields = ("pekerjaan", "tahapan")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(PekerjaanProgressWeekly)
+class PekerjaanProgressWeeklyAdmin(admin.ModelAdmin):
+    list_display = ("id", "pekerjaan", "project", "week_number", "week_start_date",
+                    "week_end_date", "proportion", "created_at", "updated_at")
+    list_filter = ("project", "week_number")
+    search_fields = ("pekerjaan__snapshot_kode", "pekerjaan__snapshot_uraian",
+                     "project__nama", "notes")
+    ordering = ("project", "pekerjaan__ordering_index", "week_number")
+    raw_id_fields = ("pekerjaan", "project")
+    readonly_fields = ("created_at", "updated_at")
+    date_hierarchy = "week_start_date"
+
+    fieldsets = (
+        ("Pekerjaan Info", {
+            "fields": ("pekerjaan", "project")
+        }),
+        ("Week Info", {
+            "fields": ("week_number", "week_start_date", "week_end_date")
+        }),
+        ("Progress Data", {
+            "fields": ("proportion", "notes")
+        }),
+        ("Metadata", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",)
+        }),
+    )

@@ -4,6 +4,7 @@ from . import views
 from . import views_api
 from . import views_export  # ← Clean import at root level!
 from . import views_api_tahapan  # NEW IMPORT
+from . import views_api_tahapan_v2  # V2 API with weekly canonical storage
 
 app_name = "detail_project"
 
@@ -180,6 +181,29 @@ urlpatterns = [
     path('api/project/<int:project_id>/regenerate-tahapan/',
          views_api_tahapan.api_regenerate_tahapan,
          name='api_regenerate_tahapan'),
+
+    # ===== API V2: Weekly Canonical Storage (NEW - Phase 4) =====
+    # These endpoints use PekerjaanProgressWeekly as single source of truth
+
+    # Assign progress in weekly units (canonical)
+    path('api/v2/project/<int:project_id>/assign-weekly/',
+         views_api_tahapan_v2.api_assign_pekerjaan_weekly,
+         name='api_v2_assign_weekly'),
+
+    # Get weekly progress (canonical storage)
+    path('api/v2/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/weekly-progress/',
+         views_api_tahapan_v2.api_get_pekerjaan_weekly_progress,
+         name='api_v2_get_weekly_progress'),
+
+    # Get assignments in any view mode (daily/weekly/monthly)
+    path('api/v2/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/assignments/',
+         views_api_tahapan_v2.api_get_pekerjaan_assignments_v2,
+         name='api_v2_get_assignments'),
+
+    # Regenerate tahapan and sync from canonical storage
+    path('api/v2/project/<int:project_id>/regenerate-tahapan/',
+         views_api_tahapan_v2.api_regenerate_tahapan_v2,
+         name='api_v2_regenerate_tahapan'),
 
 ]
 

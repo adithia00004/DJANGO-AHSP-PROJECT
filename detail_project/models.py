@@ -446,31 +446,133 @@ class TahapPelaksanaan(models.Model):
         return self.pekerjaan_items.select_related('pekerjaan').order_by('pekerjaan__ordering_index')
 
 
+class PekerjaanProgressWeekly(models.Model):
+    """
+    CANONICAL STORAGE: Weekly progress for pekerjaan (single source of truth).
+
+    This model stores progress in weekly units INDEPENDENT of TahapPelaksanaan.
+    Weekly is the canonical unit - other views (daily/monthly) are calculated from this.
+
+    Why weekly?
+    - Most construction projects track progress per week
+    - Avoids rounding errors when switching between time scale modes
+    - Simple and maintainable
+
+    IMPORTANT: This data is NEVER deleted when switching time scale modes!
+    Only TahapPelaksanaan records are regenerated, not this canonical data.
+    """
+    pekerjaan = models.ForeignKey(
+        'Pekerjaan',
+        on_delete=models.CASCADE,
+        related_name='weekly_progress'
+    )
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='pekerjaan_weekly_progress',
+        help_text="Denormalized for easier querying"
+    )
+
+    # Week identification (relative to project start date)
+    week_number = models.IntegerField(
+        help_text="Week number starting from 1 (relative to project start date)"
+    )
+    week_start_date = models.DateField(
+        help_text="Start date of this week"
+    )
+    week_end_date = models.DateField(
+        help_text="End date of this week"
+    )
+
+    # Progress data
+    proportion = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(0.01), MaxValueValidator(100.00)],
+        help_text="Proportion of work (%) completed in this week. Range: 0.01 - 100.00"
+    )
+
+    # Metadata
+    notes = models.TextField(
+        blank=True,
+        help_text="Optional notes for this week's progress"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('pekerjaan', 'week_number')]
+        ordering = ['pekerjaan', 'week_number']
+        verbose_name = 'Weekly Progress Pekerjaan'
+        verbose_name_plural = 'Weekly Progress Pekerjaan'
+        indexes = [
+            models.Index(fields=['pekerjaan', 'week_number']),
+            models.Index(fields=['project', 'week_number']),
+            models.Index(fields=['week_start_date', 'week_end_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} ({self.proportion}%)"
+
+    def clean(self):
+        """Validation"""
+        if self.proportion < 0.01 or self.proportion > 100:
+            raise ValidationError({
+                'proportion': 'Proportion must be between 0.01% - 100%'
+            })
+
+        # Validate week dates
+        if self.week_end_date < self.week_start_date:
+            raise ValidationError({
+                'week_end_date': 'Week end date must be >= start date'
+            })
+
+    def save(self, *args, **kwargs):
+        """Auto-populate project field from pekerjaan"""
+        if not self.project_id:
+            # Get project from pekerjaan's volume_pekerjaan
+            try:
+                volume = self.pekerjaan.volume
+                self.project = volume.project
+            except:
+                raise ValidationError('Cannot determine project from pekerjaan')
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
 class PekerjaanTahapan(models.Model):
     """
     Junction table untuk many-to-many relationship dengan proporsi volume.
     Memungkinkan satu pekerjaan di-split ke multiple tahapan.
-    
+
+    IMPORTANT: Starting from the weekly canonical storage implementation,
+    this model is DERIVED from PekerjaanProgressWeekly and should be
+    considered a VIEW layer for backward compatibility.
+
+    Data in this table can be regenerated from PekerjaanProgressWeekly
+    when switching time scale modes.
+
     Contoh: Pekerjaan "Pasang Besi D13" bisa 60% di Tahap 1, 40% di Tahap 2
     """
     pekerjaan = models.ForeignKey(
-        'Pekerjaan', 
+        'Pekerjaan',
         on_delete=models.CASCADE,
         related_name='tahapan_assignments'
     )
     tahapan = models.ForeignKey(
-        TahapPelaksanaan, 
+        TahapPelaksanaan,
         on_delete=models.CASCADE,
         related_name='pekerjaan_items'
     )
     proporsi_volume = models.DecimalField(
-        max_digits=5, 
+        max_digits=5,
         decimal_places=2,
         validators=[MinValueValidator(0.01), MaxValueValidator(100.00)],
         help_text="Proporsi volume (%) untuk tahap ini. Range: 0.01 - 100.00"
     )
     catatan = models.TextField(
-        blank=True, 
+        blank=True,
         help_text="Catatan split volume (opsional)"
     )
     created_at = models.DateTimeField(auto_now_add=True)
