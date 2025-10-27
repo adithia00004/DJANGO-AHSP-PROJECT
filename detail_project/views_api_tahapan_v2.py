@@ -520,3 +520,54 @@ def api_regenerate_tahapan_v2(request, project_id):
         import traceback
         traceback.print_exc()
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_reset_progress(request, project_id):
+    """
+    Reset all pekerjaan progress to 0 by deleting all weekly canonical storage.
+
+    This operation:
+    1. Deletes all PekerjaanProgressWeekly records for this project
+    2. Deletes all PekerjaanTahapan assignments for this project
+    3. Cannot be undone!
+
+    POST Body: {} (empty)
+
+    Returns:
+        {
+            "ok": true,
+            "deleted_count": 30,
+            "assignments_deleted": 42,
+            "message": "Progress reset successful"
+        }
+    """
+    try:
+        from detail_project.models import PekerjaanProgressWeekly, PekerjaanTahapan
+        from dashboard.models import Project
+
+        # Get project
+        try:
+            project = Project.objects.get(id=project_id)
+        except Project.DoesNotExist:
+            return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
+
+        # Delete all weekly canonical storage for this project
+        weekly_deleted, _ = PekerjaanProgressWeekly.objects.filter(project=project).delete()
+
+        # Delete all pekerjaan tahapan assignments for this project
+        assignments_deleted, _ = PekerjaanTahapan.objects.filter(tahapan__project=project).delete()
+
+        return JsonResponse({
+            'ok': True,
+            'deleted_count': weekly_deleted,
+            'assignments_deleted': assignments_deleted,
+            'message': f'Progress reset successful: {weekly_deleted} weekly records and {assignments_deleted} assignments deleted'
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)

@@ -205,5 +205,10 @@ urlpatterns = [
          views_api_tahapan_v2.api_regenerate_tahapan_v2,
          name='api_v2_regenerate_tahapan'),
 
+    # Reset all progress
+    path('api/v2/project/<int:project_id>/reset-progress/',
+         views_api_tahapan_v2.api_reset_progress,
+         name='api_v2_reset_progress'),
+
 ]
 

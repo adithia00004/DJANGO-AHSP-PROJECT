@@ -1468,6 +1468,56 @@
   }
 
   // =========================================================================
+  // RESET PROGRESS FUNCTIONALITY
+  // =========================================================================
+
+  async function resetAllProgress() {
+    // Confirm with user before resetting
+    const confirmMessage = 'Apakah Anda yakin ingin mereset semua progress pekerjaan ke 0?\n\n' +
+                          'Tindakan ini akan menghapus semua data progress yang telah disimpan.\n\n' +
+                          'Data tidak dapat dikembalikan setelah direset!';
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      showLoading('Resetting all progress...', 'Please wait while we reset all pekerjaan progress');
+
+      // Call API to reset progress
+      const response = await apiCall(`/detail_project/api/v2/project/${projectId}/reset-progress/`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (response.ok) {
+        console.log('Progress reset successful:', response);
+
+        // Clear all assignments and modified cells
+        state.assignmentMap.clear();
+        state.modifiedCells.clear();
+
+        // Re-render grid to show empty progress
+        renderGrid();
+
+        showToast(
+          `Progress reset berhasil! ${response.deleted_count || 0} record dihapus.`,
+          'success'
+        );
+        updateStatusBar();
+      } else {
+        throw new Error(response.error || 'Failed to reset progress');
+      }
+
+    } catch (error) {
+      console.error('Reset progress error:', error);
+      showToast(`Error resetting progress: ${error.message}`, 'error');
+    } finally {
+      hideLoading();
+    }
+  }
+
+  // =========================================================================
   // GANTT CHART
   // =========================================================================
 
@@ -1677,6 +1727,9 @@
 
   // Save button
   document.getElementById('btn-save-all')?.addEventListener('click', saveAllChanges);
+
+  // Reset progress button
+  document.getElementById('btn-reset-progress')?.addEventListener('click', resetAllProgress);
 
   // Tab switch events
   document.getElementById('gantt-tab')?.addEventListener('shown.bs.tab', () => {
