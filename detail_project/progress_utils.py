@@ -16,13 +16,14 @@ from django.db import transaction
 from django.db.models import Q
 
 
-def calculate_week_number(target_date: date, project_start: date) -> int:
+def calculate_week_number(target_date: date, project_start: date, week_end_day: int = 6) -> int:
     """
     Calculate week number relative to project start date.
 
     Args:
         target_date: The date to calculate week number for
         project_start: Project start date
+        week_end_day: Day of week marking the end of the week (0=Monday .. 6=Sunday)
 
     Returns:
         Week number starting from 1
@@ -35,8 +36,19 @@ def calculate_week_number(target_date: date, project_start: date) -> int:
     if target_date < project_start:
         return 1
 
-    days_diff = (target_date - project_start).days
-    week_num = (days_diff // 7) + 1
+    if week_end_day not in range(7):
+        week_end_day = 6
+
+    # Determine the end date of the first (possibly partial) week
+    offset_to_end = (week_end_day - project_start.weekday() + 7) % 7
+    first_week_end = project_start + timedelta(days=offset_to_end)
+
+    if target_date <= first_week_end:
+        return 1
+
+    days_after_first = (target_date - first_week_end).days
+    # Each subsequent week spans 7 days
+    week_num = 1 + ((days_after_first + 6) // 7)
     return week_num
 
 
@@ -76,7 +88,8 @@ def get_week_date_range(week_number: int, project_start: date, week_end_day: int
 def get_weekly_progress_for_daily_view(
     pekerjaan_id: int,
     target_date: date,
-    project_start: date
+    project_start: date,
+    week_end_day: int = 6
 ) -> Decimal:
     """
     Calculate daily progress from weekly canonical storage.
@@ -87,13 +100,14 @@ def get_weekly_progress_for_daily_view(
         pekerjaan_id: Pekerjaan ID
         target_date: The date to get progress for
         project_start: Project start date
+        week_end_day: Day of week marking the end of the week (0=Monday .. 6=Sunday)
 
     Returns:
         Progress proportion for that day (Decimal)
     """
     from detail_project.models import PekerjaanProgressWeekly
 
-    week_num = calculate_week_number(target_date, project_start)
+    week_num = calculate_week_number(target_date, project_start, week_end_day)
 
     try:
         weekly_progress = PekerjaanProgressWeekly.objects.get(
@@ -227,11 +241,13 @@ def sync_weekly_to_tahapan(
                 proportion = get_weekly_progress_for_daily_view(
                     pekerjaan_id,
                     tahap.tanggal_mulai,
-                    project.tanggal_mulai
+                    project.tanggal_mulai,
+                    week_end_day
                 )
             elif mode == 'weekly':
                 # Weekly: Direct mapping from canonical storage
-                week_num = calculate_week_number(tahap.tanggal_mulai, project.tanggal_mulai)
+                urutan_index = tahap.urutan if tahap.urutan is not None else 0
+                week_num = urutan_index + 1
                 try:
                     weekly_rec = next(w for w in weekly_records if w.week_number == week_num)
                     proportion = weekly_rec.proportion
@@ -336,18 +352,20 @@ def migrate_existing_data_to_weekly_canonical(project_id: int) -> Dict[str, int]
     # Step 3: Aggregate daily map into weekly canonical format
     weekly_records_to_create = []
 
+    week_end_day = 6  # Default week boundary (Sunday); adjust if project stores a custom value
+
     for pekerjaan_id, daily_map in pekerjaan_daily_map.items():
         # Group daily data by week
         week_proportions = defaultdict(Decimal)
         week_dates = {}  # week_num -> (start, end)
 
         for day, prop in daily_map.items():
-            week_num = calculate_week_number(day, project.tanggal_mulai)
+            week_num = calculate_week_number(day, project.tanggal_mulai, week_end_day=week_end_day)
             week_proportions[week_num] += prop
 
             # Track week date range
             if week_num not in week_dates:
-                week_start, week_end = get_week_date_range(week_num, project.tanggal_mulai)
+                week_start, week_end = get_week_date_range(week_num, project.tanggal_mulai, week_end_day)
                 week_dates[week_num] = (week_start, week_end)
 
         # Create weekly records

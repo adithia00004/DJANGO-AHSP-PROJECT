@@ -27,6 +27,7 @@ from detail_project.models import (
     VolumePekerjaan,
 )
 from dashboard.models import Project
+from detail_project.progress_utils import calculate_week_number
 
 User = get_user_model()
 
@@ -111,6 +112,27 @@ def monthly_tahapan(db, project_sunday_start):
     tahapan_list = _generate_monthly_tahapan(project_sunday_start)
     created = TahapPelaksanaan.objects.bulk_create(tahapan_list)
     return created
+
+
+# =============================================================================
+# REGRESSION Checks
+# =============================================================================
+
+def test_calculate_week_number_for_short_first_week():
+    """
+    Regression guard: project starts on Sunday (26/10) with week_end_day Sunday,
+    so week #1 spans a single day (26/10). The following day (27/10) must advance
+    to week #2 to avoid duplicating progress across weeks.
+    """
+    project_start = date(2025, 10, 26)  # Sunday
+    first_week_day = project_start
+    second_week_day = project_start + timedelta(days=1)
+
+    week1 = calculate_week_number(first_week_day, project_start)
+    week2 = calculate_week_number(second_week_day, project_start)
+
+    assert week1 == 1
+    assert week2 == 2
 
 
 @pytest.fixture
@@ -466,6 +488,73 @@ class TestAPIV2Endpoints:
         assert data['deleted_count'] == 2
 
         assert PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).count() == 0
+
+    def test_assign_weekly_persists_distinct_weeks(self, client, project_sunday_start, test_pekerjaan):
+        """
+        Saving different proportions for consecutive weeks must keep their values distinct
+        in both canonical storage and the legacy assignments endpoint.
+        """
+        client.force_login(project_sunday_start.owner)
+
+        # Ensure weekly tahapan exist
+        regen_url = reverse('detail_project:api_v2_regenerate_tahapan', kwargs={'project_id': project_sunday_start.id})
+        regen_payload = {
+            'mode': 'weekly',
+            'week_start_day': 0,
+            'week_end_day': 6
+        }
+        regen_response = client.post(regen_url, regen_payload, content_type='application/json')
+        assert regen_response.status_code == 200
+
+        assign_url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 1, 'proportion': 20.0},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 35.0},
+            ],
+            'mode': 'weekly',
+            'week_end_day': 6
+        }
+        response = client.post(assign_url, payload, content_type='application/json')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['ok'] is True
+        assert data.get('synced_assignments', 0) >= 2
+
+        # Canonical storage should have distinct week entries
+        weekly = list(
+            PekerjaanProgressWeekly.objects.filter(
+                pekerjaan=test_pekerjaan
+            ).order_by('week_number')
+        )
+        assert len(weekly) == 2
+        assert [float(w.proportion) for w in weekly] == [20.0, 35.0]
+
+        # Legacy view layer must mirror the same separation
+        tahapan_weekly = list(
+            TahapPelaksanaan.objects.filter(
+                project=project_sunday_start,
+                is_auto_generated=True,
+                generation_mode='weekly'
+            ).order_by('urutan')
+        )
+        assert len(tahapan_weekly) >= 2
+
+        assignments = list(
+            PekerjaanTahapan.objects.filter(
+                pekerjaan=test_pekerjaan
+            ).order_by('tahapan__urutan')
+        )
+        assert [float(a.proporsi_volume) for a in assignments] == [20.0, 35.0]
+
+        # API used by the grid should report the same values
+        assignments_url = f'/detail_project/api/project/{project_sunday_start.id}/pekerjaan/{test_pekerjaan.id}/assignments/'
+        legacy_response = client.get(assignments_url)
+        assert legacy_response.status_code == 200
+        legacy_data = legacy_response.json()
+        assert legacy_data['ok'] is True
+        legacy_values = [entry['proporsi'] for entry in legacy_data['assignments']]
+        assert legacy_values == [20.0, 35.0]
 
 
 # =============================================================================

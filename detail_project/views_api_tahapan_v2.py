@@ -29,7 +29,6 @@ from detail_project.models import (
     Pekerjaan
 )
 from detail_project.progress_utils import (
-    calculate_week_number,
     get_week_date_range,
     sync_weekly_to_tahapan,
     get_weekly_progress_for_daily_view,
@@ -415,7 +414,8 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
             )
         elif mode == 'weekly':
             # Weekly: Direct from canonical
-            week_num = calculate_week_number(tahap.tanggal_mulai, project.tanggal_mulai)
+            urutan_index = tahap.urutan if tahap.urutan is not None else 0
+            week_num = urutan_index + 1
             try:
                 wp = next(w for w in weekly_progress if w.week_number == week_num)
                 proporsi = wp.proportion
