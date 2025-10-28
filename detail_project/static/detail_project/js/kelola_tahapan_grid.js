@@ -1140,8 +1140,13 @@
   }
 
   function exitEditMode(cell, input) {
-    const newValue = parseFloat(input.value) || 0;
-    const savedValue = parseFloat(cell.dataset.savedValue) || 0;
+    // Parse input safely so empty strings fallback to 0 (makes "clear" intuitive).
+    const parsedInput = parseFloat(input.value);
+    const newValue = Number.isFinite(parsedInput) ? parsedInput : 0;
+
+    const savedValueRaw = parseFloat(cell.dataset.savedValue);
+    const savedValue = Number.isFinite(savedValueRaw) ? savedValueRaw : 0;
+
     const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
 
     console.log(`exitEditMode: cellKey=${cellKey}, newValue=${newValue}, savedValue=${savedValue}`);
@@ -1157,9 +1162,17 @@
       return;
     }
 
-    // Determine if value changed from saved value
-    const hasChanged = newValue !== savedValue;
-    console.log(`  hasChanged=${hasChanged}`);
+    // Determine "last shown" value so clearing to 0 after typing >0 counts as a change.
+    const currentValueRaw = parseFloat(cell.dataset.value);
+    const currentValue = Number.isFinite(currentValueRaw) ? currentValueRaw : savedValue;
+    // Prefer pending modified value over rendered value so toggling back to 0 is detected.
+    const modifiedValueRaw = state.modifiedCells.has(cellKey)
+      ? parseFloat(state.modifiedCells.get(cellKey))
+      : null;
+    const previousValue = Number.isFinite(modifiedValueRaw) ? modifiedValueRaw : currentValue;
+
+    const hasChanged = Math.abs(newValue - previousValue) > 0.0001;
+    console.log(`  hasChanged=${hasChanged} (previousValue=${previousValue})`);
 
     if (hasChanged) {
       // Update modifiedCells Map
@@ -1690,7 +1703,9 @@
     // Save to canonical storage (API V2)
     const url = `/detail_project/api/v2/project/${projectId}/assign-weekly/`;
     const payload = {
-      assignments: weeklyAssignments
+      assignments: weeklyAssignments,
+      mode: state.timeScale,        // tell backend which grid view is active so it can sync PekerjaanTahapan
+      week_end_day: state.weekEndDay
     };
     console.log(`  - POST ${url}`, payload);
 

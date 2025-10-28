@@ -85,6 +85,15 @@ def api_assign_pekerjaan_weekly(request, project_id):
     try:
         data = json.loads(request.body)
         assignments = data.get('assignments', [])
+        mode = (data.get('mode') or 'weekly').lower()
+        if mode not in {'daily', 'weekly', 'monthly', 'custom'}:
+            mode = 'weekly'
+
+        week_end_day = data.get('week_end_day', 6)
+        try:
+            week_end_day = int(week_end_day)
+        except (TypeError, ValueError):
+            week_end_day = 6
 
         if not isinstance(assignments, list):
             return JsonResponse({
@@ -245,13 +254,28 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'saved': saved_assignments
             }, status=400)
 
-        # Success
+        # Success: keep PekerjaanTahapan (view layer) in sync so legacy reads stay accurate.
+        try:
+            synced_count = sync_weekly_to_tahapan(project.id, mode=mode, week_end_day=week_end_day)
+        except Exception as sync_error:
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'ok': False,
+                'error': f'Assignments saved, but failed to sync view layer: {sync_error}',
+                'created_count': created_count,
+                'updated_count': updated_count,
+                'assignments': saved_assignments
+            }, status=500)
+
         return JsonResponse({
             'ok': True,
             'message': f'{created_count} created, {updated_count} updated',
             'created_count': created_count,
             'updated_count': updated_count,
-            'assignments': saved_assignments
+            'assignments': saved_assignments,
+            'synced_assignments': synced_count,
+            'synced_mode': mode
         })
 
     except json.JSONDecodeError:
