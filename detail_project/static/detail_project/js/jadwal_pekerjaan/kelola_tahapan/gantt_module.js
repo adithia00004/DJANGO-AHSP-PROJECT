@@ -29,6 +29,8 @@
 
   const globalModules = window.KelolaTahapanPageModules = window.KelolaTahapanPageModules || {};
   const moduleStore = globalModules.gantt = Object.assign({}, globalModules.gantt || {});
+  moduleStore.viewMode = moduleStore.viewMode || 'Week';
+
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
   function resolveState(stateOverride) {
@@ -50,13 +52,12 @@
 
   function resolveDom(state) {
     const domRefs = state.domRefs || {};
-
     const chart = domRefs.ganttChart || document.getElementById('gantt-chart');
 
     if (!domRefs.ganttChart && chart) {
       domRefs.ganttChart = chart;
       if (!chart.style.height) {
-        chart.style.height = '500px';
+        chart.style.height = '520px';
       }
       if (!chart.style.width) {
         chart.style.width = '100%';
@@ -127,6 +128,42 @@
     return utils;
   }
 
+  function normalizeViewMode(mode) {
+    if (!mode) return 'Week';
+    const value = String(mode).trim().toLowerCase();
+    if (value === 'day') return 'Day';
+    if (value === 'month') return 'Month';
+    return 'Week';
+  }
+
+  function getViewMode() {
+    return normalizeViewMode(moduleStore.viewMode);
+  }
+
+  function setViewMode(mode, context = {}) {
+    const normalized = normalizeViewMode(mode);
+    moduleStore.viewMode = normalized;
+
+    const state = resolveState(context.state);
+    if (state) {
+      state.cache = state.cache || {};
+      state.cache.ganttViewMode = normalized;
+    }
+
+    if (moduleStore.ganttInstance && typeof moduleStore.ganttInstance.change_view_mode === 'function') {
+      try {
+        moduleStore.ganttInstance.change_view_mode(normalized);
+      } catch (error) {
+        console.warn('Kelola Tahapan Gantt: change_view_mode failed', error);
+      }
+    }
+
+    if (context.refresh !== false) {
+      return moduleStore.refresh(Object.assign({}, context, { state }));
+    }
+    return normalized;
+  }
+
   function buildPekerjaanPathMaps(state) {
     const nodeMap = new Map();
     const pathMap = new Map();
@@ -165,6 +202,7 @@
     });
 
     const { nodeMap, pathMap } = buildPekerjaanPathMaps(state);
+
     const weightedByTahapan = new Map();
     const volumeByTahapan = new Map();
     const percentSumByTahapan = new Map();
@@ -188,54 +226,34 @@
         continue;
       }
 
-      if (!weightedByTahapan.has(tahapanId)) {
-        weightedByTahapan.set(tahapanId, 0);
-      }
-      if (!volumeByTahapan.has(tahapanId)) {
-        volumeByTahapan.set(tahapanId, 0);
-      }
-
-      const pekerjaanVolume = state.volumeMap instanceof Map
-        ? (state.volumeMap.get(Number(pekerjaanId)) || state.volumeMap.get(pekerjaanId) || 0)
+      const node = nodeMap.get(pekerjaanId);
+      const path = pathMap.get(pekerjaanId) || [];
+      const totalVolume = state.volumeMap instanceof Map
+        ? state.volumeMap.get(Number(pekerjaanId)) || 0
         : 0;
 
-      if (pekerjaanVolume > 0) {
-        const currentWeighted = weightedByTahapan.get(tahapanId) || 0;
-        weightedByTahapan.set(tahapanId, currentWeighted + pekerjaanVolume * percent);
+      weightedByTahapan.set(tahapanId, (weightedByTahapan.get(tahapanId) || 0) + (totalVolume * percent));
+      volumeByTahapan.set(tahapanId, (volumeByTahapan.get(tahapanId) || 0) + totalVolume);
+      percentSumByTahapan.set(tahapanId, (percentSumByTahapan.get(tahapanId) || 0) + percent);
+      countByTahapan.set(tahapanId, (countByTahapan.get(tahapanId) || 0) + 1);
 
-        const currentVolume = volumeByTahapan.get(tahapanId) || 0;
-        volumeByTahapan.set(tahapanId, currentVolume + pekerjaanVolume);
-      }
-
-      const percentSum = percentSumByTahapan.get(tahapanId) || 0;
-      percentSumByTahapan.set(tahapanId, percentSum + percent);
-
-      const count = countByTahapan.get(tahapanId) || 0;
-      countByTahapan.set(tahapanId, count + 1);
-
-      if (!pekerjaanDetailsByTahapan.has(tahapanId)) {
-        pekerjaanDetailsByTahapan.set(tahapanId, new Map());
-      }
-      const pekerjaanMap = pekerjaanDetailsByTahapan.get(tahapanId);
-      const pekerjaanKey = String(pekerjaanId);
-      if (!pekerjaanMap.has(pekerjaanKey)) {
-        const node = nodeMap.get(pekerjaanKey) || {};
-        const pathParts = pathMap.get(pekerjaanKey) || [node.nama || node.name || pekerjaanKey];
-        pekerjaanMap.set(pekerjaanKey, {
-          pekerjaanId: pekerjaanKey,
-          nama: node.nama || node.name || node.kode || `Pekerjaan ${pekerjaanKey}`,
-          path: pathParts.join(' / '),
-          percent: 0
-        });
-      }
-      const detail = pekerjaanMap.get(pekerjaanKey);
-      detail.percent += percent;
+      const pekerjaanMap = pekerjaanDetailsByTahapan.get(tahapanId) || new Map();
+      pekerjaanMap.set(pekerjaanId, {
+        pekerjaanId,
+        nama: node ? (node.nama || node.name || node.kode || pekerjaanId) : pekerjaanId,
+        path,
+        percent,
+      });
+      pekerjaanDetailsByTahapan.set(tahapanId, pekerjaanMap);
     }
 
     const progressMap = new Map();
 
-    (state.tahapanList || []).forEach(tahap => {
-      const tahapanId = tahap.tahapan_id;
+    const tahapanList = state.tahapanList || [];
+    tahapanList.forEach((tahap) => {
+      const tahapanId = tahap.id || tahap.tahapan_id || tahap.uuid || tahap.pk;
+      if (!tahapanId) return;
+
       const weighted = weightedByTahapan.get(tahapanId) || 0;
       const totalVolume = volumeByTahapan.get(tahapanId) || 0;
       const percentSum = percentSumByTahapan.get(tahapanId) || 0;
@@ -260,7 +278,7 @@
             pekerjaanId: detail.pekerjaanId,
             nama: detail.nama,
             path: detail.path,
-            percent: Math.round(detail.percent * 100) / 100
+            percent: Math.round(detail.percent * 100) / 100,
           }))
         : [];
 
@@ -268,7 +286,7 @@
         progress,
         totalVolume,
         sampleCount: count,
-        pekerjaan: pekerjaanDetails
+        pekerjaan: pekerjaanDetails,
       });
     });
 
@@ -282,7 +300,7 @@
     if (!state) return [];
 
     const utils = prepareUtils(context.utils);
-    moduleStore.calculateProgress(Object.assign({}, context, { state, utils }));
+    calculateProgress(Object.assign({}, context, { state, utils }));
     const pekerjaanList = buildPekerjaanHierarchy(state);
     const tasks = buildPekerjaanTasks(state, utils, pekerjaanList);
 
@@ -388,7 +406,7 @@
     const projectStartSafe = new Date(projectRange.min);
     const projectEndSafe = new Date(projectRange.max);
 
-    pekerjaanList.forEach((pekerjaan, index) => {
+    pekerjaanList.forEach((pekerjaan) => {
       const pekerjaanId = pekerjaan.id;
       const bucket = buckets.get(pekerjaanId);
       const node = nodeMap.get(pekerjaanId);
@@ -428,9 +446,8 @@
         name,
         start: startISO,
         end: endISO,
-        startValue,
-        endValue,
         progress,
+        custom_class: progress >= 100 ? 'gantt-task-complete' : '',
         metadata: {
           pekerjaanId,
           label: displayLabel,
@@ -445,72 +462,6 @@
     return tasks;
   }
 
-  function buildChartDataset(tasks, state) {
-    const categories = [];
-    const data = [];
-    let minStart = Number.POSITIVE_INFINITY;
-    let maxEnd = Number.NEGATIVE_INFINITY;
-
-    tasks.forEach((task, index) => {
-      const label = task.metadata && task.metadata.label
-        ? task.metadata.label
-        : task.name || `Pekerjaan ${index + 1}`;
-
-      categories.push(label);
-
-      const startValue = Number.isFinite(task.startValue) ? task.startValue : Date.parse(task.start);
-      const endValueRaw = Number.isFinite(task.endValue) ? task.endValue : Date.parse(task.end);
-      const endValue = Number.isFinite(endValueRaw) && endValueRaw > startValue
-        ? endValueRaw
-        : startValue + ONE_DAY_MS;
-
-      data.push({
-        value: [startValue, endValue, index],
-        task,
-      });
-
-      if (startValue < minStart) minStart = startValue;
-      if (endValue > maxEnd) maxEnd = endValue;
-    });
-
-    if (!Number.isFinite(minStart) || !Number.isFinite(maxEnd)) {
-      const projectStart = state && state.projectStart ? new Date(state.projectStart) : null;
-      const projectEnd = state && state.projectEnd ? new Date(state.projectEnd) : null;
-      if (projectStart instanceof Date && !Number.isNaN(projectStart.getTime())) {
-        minStart = projectStart.getTime();
-      }
-      if (projectEnd instanceof Date && !Number.isNaN(projectEnd.getTime())) {
-        maxEnd = projectEnd.getTime();
-      }
-    }
-
-    if ((!Number.isFinite(minStart) || !Number.isFinite(maxEnd)) || maxEnd <= minStart) {
-      const stateRange = computeProjectRange(state);
-      minStart = stateRange.min;
-      maxEnd = stateRange.max;
-    }
-
-    if (!categories.length) {
-      categories.push('Belum ada pekerjaan');
-      data.push({
-        value: [minStart, minStart + ONE_DAY_MS, 0],
-        task: {
-          progress: 0,
-          metadata: {
-            label: 'Belum ada pekerjaan',
-            pathParts: [],
-            segments: [],
-            start: new Date(minStart).toISOString().split('T')[0],
-            end: new Date(minStart + ONE_DAY_MS).toISOString().split('T')[0],
-          },
-        },
-        placeholder: true,
-      });
-    }
-
-    return { categories, data, range: { min: minStart, max: maxEnd } };
-  }
-
   function computeProjectRange(state) {
     const start = state && state.projectStart ? new Date(state.projectStart) : null;
     const end = state && state.projectEnd ? new Date(state.projectEnd) : null;
@@ -523,88 +474,6 @@
     return { min: startSafe, max: endSafe };
   }
 
-  function renderGanttItem(params, api) {
-    const categoryIndex = api.value(2);
-    const startCoord = api.coord([api.value(0), categoryIndex]);
-    const endCoord = api.coord([api.value(1), categoryIndex]);
-    const barHeight = Math.max(api.size([0, 1])[1] * 0.6, 6);
-
-    const x = startCoord[0];
-    const y = startCoord[1] - barHeight / 2;
-    const totalWidth = Math.max(endCoord[0] - startCoord[0], 3);
-
-    const dataItem = params && params.data ? params.data : null;
-    if (!dataItem || !dataItem.task) {
-      return {
-        type: 'group',
-        children: [],
-      };
-    }
-
-    const task = dataItem.task || {};
-    const progressRaw = Number(task.progress);
-    const progress = Number.isFinite(progressRaw) ? Math.min(Math.max(progressRaw, 0), 100) : 0;
-    const progressWidth = Math.max(totalWidth * (progress / 100), 0);
-
-    const isComplete = progress >= 100;
-    const fillColor = isComplete ? '#198754' : '#0d6efd';
-    const borderColor = isComplete ? '#146c43' : '#0a58ca';
-
-    const children = [
-      {
-        type: 'rect',
-        shape: { x, y, width: totalWidth, height: barHeight },
-        style: {
-          fill: '#e9ecef',
-          stroke: '#ced4da',
-        },
-      },
-      {
-        type: 'rect',
-        shape: { x, y, width: progressWidth, height: barHeight },
-        style: {
-          fill: fillColor,
-          stroke: borderColor,
-        },
-      },
-    ];
-
-    const progressLabel = progress.toFixed(progress % 1 === 0 ? 0 : 1);
-    if (totalWidth > 60) {
-      children.push({
-        type: 'text',
-        style: {
-          text: `${progressLabel}%`,
-          fill: '#ffffff',
-          fontWeight: 'bold',
-          fontSize: 12,
-          align: 'center',
-          verticalAlign: 'middle',
-          x: x + totalWidth / 2,
-          y: startCoord[1],
-        },
-      });
-    } else {
-      children.push({
-        type: 'text',
-        style: {
-          text: `${progressLabel}%`,
-          fill: '#6c757d',
-          fontSize: 12,
-          align: 'left',
-          verticalAlign: 'middle',
-          x: x + totalWidth + 6,
-          y: startCoord[1],
-        },
-      });
-    }
-
-    return {
-      type: 'group',
-      children,
-    };
-  }
-
   function safeHtml(text, utils) {
     const value = text || '';
     return utils && typeof utils.escapeHtml === 'function'
@@ -612,215 +481,130 @@
       : String(value);
   }
 
-  function createChartOption({ utils, dataset, range }) {
-    const todayValue = Date.now();
-    const minAxis = range && Number.isFinite(range.min) ? range.min : undefined;
-    const maxAxis = range && Number.isFinite(range.max) ? range.max : undefined;
+  function buildPopupHtml(task, utils) {
+    const meta = task.metadata || {};
+    const title = safeHtml(meta.label || task.name || 'Pekerjaan', utils);
+    const progressValue = Number(task.progress) || 0;
+    const progressLabel = `${progressValue.toFixed(progressValue % 1 === 0 ? 0 : 1)}%`;
+    const startLabel = safeHtml(meta.start || task.start || '', utils);
+    const endLabel = safeHtml(meta.end || task.end || '', utils);
+
+    const segments = Array.isArray(meta.segments) ? meta.segments : [];
+    const segmentsHtml = segments.length
+      ? `<ul class="gantt-popup-segments">${segments.map((detail) => {
+          const percentLabel = Number.isFinite(detail.percent)
+            ? `${detail.percent.toFixed(detail.percent % 1 === 0 ? 0 : 1)}%`
+            : '';
+          const label = detail.label || `${detail.start} - ${detail.end}`;
+          return `<li><span class="gantt-popup-segment-label">${safeHtml(label, utils)}</span>${percentLabel ? `<span class="gantt-popup-segment-percent">${percentLabel}</span>` : ''}</li>`;
+        }).join('')}</ul>`
+      : '<p class="mb-0 text-muted"><em>Belum ada distribusi progres</em></p>';
+
+    return `
+      <div class="gantt-popup">
+        <h5>${title}</h5>
+        <div class="gantt-popup-section">
+          <strong>Periode:</strong> ${startLabel} s/d ${endLabel}
+        </div>
+        <div class="gantt-popup-section">
+          <strong>Progress:</strong> ${progressLabel}
+        </div>
+        <div class="gantt-popup-section">
+          <strong>Distribusi:</strong>
+          ${segmentsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  function emitSelectionEvent(task, state) {
+    if (!task) return;
+    let pekerjaanId = null;
+    if (task.id) {
+      const match = String(task.id).match(/^pekerjaan-(.+)$/);
+      if (match) {
+        pekerjaanId = match[1];
+      }
+    }
+    if (window.KelolaTahapanPage && window.KelolaTahapanPage.events && typeof window.KelolaTahapanPage.events.emit === 'function') {
+      window.KelolaTahapanPage.events.emit('gantt:select', {
+        pekerjaanId,
+        task,
+        state,
+      });
+    }
+  }
+
+  function buildGanttOptions(state, utils) {
+    const viewMode = getViewMode();
 
     return {
-      animation: false,
-      tooltip: {
-        enterable: true,
-        confine: true,
-        backgroundColor: '#ffffff',
-        borderColor: '#ced4da',
-        borderWidth: 1,
-        textStyle: {
-          color: '#212529',
-        },
-        formatter: (params) => {
-          const task = (params && params.data && params.data.task) || {};
-          const meta = task.metadata || {};
-          const segments = Array.isArray(meta.segments) ? meta.segments : [];
-
-          const segmentsHtml = segments.length
-            ? `<ul class="gantt-tooltip-jobs">${segments.map((detail) => {
-                const percentLabel = Number.isFinite(detail.percent)
-                  ? `${detail.percent.toFixed(1).replace(/\\.0$/, '')}%`
-                  : '';
-                const label = detail.label || `${detail.start} - ${detail.end}`;
-                return `<li><span class="gantt-tooltip-job">${safeHtml(label, utils)}</span>${percentLabel ? `<span class="gantt-tooltip-percent">${percentLabel}</span>` : ''}</li>`;
-              }).join('')}</ul>`
-            : '<p class="mb-0"><em>Belum ada distribusi progres</em></p>';
-
-          const progressValue = Number(task.progress) || 0;
-          const progressLabel = `${progressValue.toFixed(progressValue % 1 === 0 ? 0 : 1)}%`;
-
-          const startLabel = safeHtml(meta.start || task.start || '', utils);
-          const endLabel = safeHtml(meta.end || task.end || '', utils);
-          const title = safeHtml(meta.label || task.name || 'Pekerjaan', utils);
-
-          return `
-            <div class="gantt-tooltip">
-              <div class="gantt-tooltip-title">${title}</div>
-              <div><strong>Periode:</strong> ${startLabel} s/d ${endLabel}</div>
-              <div><strong>Progress:</strong> ${progressLabel}</div>
-              <div class="gantt-tooltip-section">
-                <strong>Distribusi:</strong>
-                ${segmentsHtml}
-              </div>
-            </div>
-          `;
-        },
+      view_mode: viewMode,
+      date_format: 'YYYY-MM-DD',
+      custom_popup_html: (task) => buildPopupHtml(task, utils),
+      on_click(task) {
+        emitSelectionEvent(task, state);
       },
-      dataZoom: [
-        {
-          type: 'slider',
-          xAxisIndex: 0,
-          height: 20,
-          bottom: 12,
-        },
-        {
-          type: 'inside',
-          xAxisIndex: 0,
-        },
-      ],
-      grid: {
-        left: 220,
-        right: 32,
-        top: 32,
-        bottom: 60,
-        containLabel: true,
+      on_view_change(mode) {
+        const normalized = normalizeViewMode(mode);
+        moduleStore.viewMode = normalized;
+        if (state) {
+          state.cache = state.cache || {};
+          state.cache.ganttViewMode = normalized;
+        }
+        moduleStore.emitViewChange?.(normalized);
       },
-      xAxis: {
-        type: 'time',
-        min: minAxis,
-        max: maxAxis,
-        axisLine: { lineStyle: { color: '#dee2e6' } },
-        splitLine: { lineStyle: { color: '#f1f3f5' } },
-        axisLabel: {
-          formatter: (value) => {
-            const date = new Date(value);
-            if (Number.isNaN(date.getTime())) return '';
-            return date.toLocaleDateString('id-ID', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            });
-          },
-        },
-      },
-      yAxis: {
-        type: 'category',
-        inverse: true,
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: {
-          align: 'left',
-          margin: 12,
-          formatter: (value) => value,
-        },
-        data: dataset.categories,
-      },
-      series: [
-        {
-          name: 'Pekerjaan',
-          type: 'custom',
-          renderItem: renderGanttItem,
-          encode: { x: [0, 1], y: 2 },
-          data: dataset.data,
-          itemStyle: {
-            opacity: 1,
-          },
-          emphasis: {
-            focus: 'series',
-          },
-          markLine: {
-            symbol: ['none', 'none'],
-            lineStyle: {
-              color: '#dc3545',
-              width: 1.5,
-              type: 'dashed',
-            },
-            data: [
-              [
-                { coord: [todayValue, -0.5] },
-                { coord: [todayValue, dataset.categories.length - 0.5] },
-              ],
-            ],
-          },
-        },
-      ],
     };
   }
 
-  function ensureChart(state) {
+  function bindResizeHandler(state, utils) {
+    if (moduleStore.resizeHandler) {
+      return;
+    }
+    moduleStore.resizeHandler = () => {
+      if (moduleStore.ganttInstance && typeof moduleStore.ganttInstance.refresh === 'function') {
+        try {
+          moduleStore.ganttInstance.refresh(state.ganttTasks || []);
+          moduleStore.ganttInstance.change_view_mode(getViewMode());
+        } catch (error) {
+          console.warn('Kelola Tahapan Gantt: resize refresh failed', error);
+        }
+      }
+    };
+    window.addEventListener('resize', moduleStore.resizeHandler);
+  }
+
+  function ensureGantt(state, tasks, utils, options = {}) {
     const dom = resolveDom(state);
     if (!dom.chart) {
       return null;
     }
 
-    if (!window.echarts || typeof window.echarts.init !== 'function') {
-      console.warn('Kelola Tahapan Gantt: ECharts is not available.');
-      return null;
+    if (typeof window.Gantt !== 'function') {
+      console.warn('Kelola Tahapan Gantt: Frappe Gantt tidak tersedia. Pastikan script Frappe Gantt sudah dimuat.');
+      return 'legacy';
     }
 
-    if (state.ganttInstance && typeof state.ganttInstance.getOption !== 'function') {
+    const viewMode = getViewMode();
+    if (moduleStore.ganttInstance && typeof moduleStore.ganttInstance.refresh === 'function') {
       try {
-        if (typeof state.ganttInstance.destroy === 'function') {
-          state.ganttInstance.destroy();
-        }
-      } catch (err) {
-        console.warn('Kelola Tahapan Gantt: failed to cleanup legacy gantt instance.', err);
+        moduleStore.ganttInstance.refresh(tasks);
+        moduleStore.ganttInstance.change_view_mode(viewMode);
+        moduleStore.ganttInstance.options.custom_popup_html = (task) => buildPopupHtml(task, utils);
+        return moduleStore.ganttInstance;
+      } catch (error) {
+        console.warn('Kelola Tahapan Gantt: gagal me-refresh instance Frappe, membuat ulang.', error);
+        moduleStore.ganttInstance = null;
+        state.ganttInstance = null;
       }
-      state.ganttInstance = null;
     }
 
-    let chart = window.echarts.getInstanceByDom(dom.chart);
-    if (chart && chart.isDisposed?.()) {
-      chart = null;
-    }
-
-    if (!chart) {
-      dom.chart.innerHTML = '';
-      chart = window.echarts.init(dom.chart);
-    }
-
-    state.ganttInstance = chart;
-
-    registerChartInteractions(chart, state);
-
-    if (!moduleStore.resizeHandler) {
-      moduleStore.resizeHandler = () => {
-        if (state.ganttInstance && !state.ganttInstance.isDisposed?.()) {
-          state.ganttInstance.resize();
-        }
-      };
-      window.addEventListener('resize', moduleStore.resizeHandler);
-    }
-
-    return chart;
-  }
-
-  function registerChartInteractions(chart, state) {
-    if (!chart || chart.__kelolaTahapanBound) {
-      return;
-    }
-
-    chart.on('click', (params) => {
-      const dataItem = params && params.data ? params.data : null;
-      if (!dataItem || dataItem.placeholder) {
-        return;
-      }
-      const task = dataItem.task;
-      if (!task) return;
-      let pekerjaanId = null;
-      if (task.id) {
-        const match = String(task.id).match(/^pekerjaan-(.+)$/);
-        if (match) {
-          pekerjaanId = match[1];
-        }
-      }
-      if (window.KelolaTahapanPage && window.KelolaTahapanPage.events && typeof window.KelolaTahapanPage.events.emit === 'function') {
-        window.KelolaTahapanPage.events.emit('gantt:select', {
-          pekerjaanId,
-          task,
-          state,
-        });
-      }
-    });
-
-    chart.__kelolaTahapanBound = true;
+    dom.chart.innerHTML = '';
+    const gantt = new Gantt(dom.chart, tasks, Object.assign({}, buildGanttOptions(state, utils), options));
+    moduleStore.ganttInstance = gantt;
+    state.ganttInstance = gantt;
+    bindResizeHandler(state, utils);
+    return gantt;
   }
 
   function refresh(context = {}) {
@@ -834,39 +618,27 @@
       : moduleStore.buildTasks(Object.assign({}, context, { state, utils }));
 
     state.ganttTasks = tasks;
-    if (!window.echarts || typeof window.echarts.init !== 'function') {
-      console.warn('Kelola Tahapan Gantt: ECharts tidak tersedia. Pastikan script ECharts sudah dimuat.');
-      return 'legacy';
-    }
 
     if (!tasks || tasks.length === 0) {
-      if (state.ganttInstance && typeof state.ganttInstance.clear === 'function') {
-        state.ganttInstance.clear();
+      if (state.ganttInstance && typeof state.ganttInstance.refresh === 'function') {
+        try {
+          state.ganttInstance.refresh([]);
+        } catch (error) {
+          console.warn('Kelola Tahapan Gantt: gagal membersihkan gantt kosong', error);
+        }
       }
       return [];
     }
 
-    const chart = ensureChart(state);
-    if (!chart) {
-      return 'legacy';
+    const gantt = ensureGantt(state, tasks, utils, context.options);
+    if (gantt && gantt !== 'legacy') {
+      moduleStore.tasks = tasks;
+      bootstrap.log.info('Kelola Tahapan Gantt: render completed', {
+        taskCount: tasks.length,
+        viewMode: getViewMode(),
+      });
     }
-
-    const dataset = buildChartDataset(tasks, state);
-    const option = createChartOption({
-      utils,
-      dataset,
-      range: dataset.range,
-    });
-
-    chart.setOption(option, true);
-    try {
-      chart.resize();
-    } catch (resizeError) {
-      console.warn('Kelola Tahapan Gantt: resize failed', resizeError);
-    }
-    moduleStore.chartOption = option;
-
-    return chart;
+    return gantt;
   }
 
   function init(context = {}) {
@@ -876,8 +648,21 @@
     return moduleStore.refresh(Object.assign({}, context, { state }));
   }
 
-  function getSidebarElement() {
-    return null;
+  function destroy() {
+    if (moduleStore.ganttInstance) {
+      try {
+        if (typeof moduleStore.ganttInstance.destroy === 'function') {
+          moduleStore.ganttInstance.destroy();
+        }
+      } catch (error) {
+        console.warn('Kelola Tahapan Gantt: destroy failed', error);
+      }
+    }
+    moduleStore.ganttInstance = null;
+    if (moduleStore.resizeHandler) {
+      window.removeEventListener('resize', moduleStore.resizeHandler);
+      moduleStore.resizeHandler = null;
+    }
   }
 
   Object.assign(moduleStore, {
@@ -887,6 +672,9 @@
     buildTasks,
     refresh,
     init,
+    destroy,
+    setViewMode,
+    getViewMode,
   });
 
   bootstrap.registerModule(meta.id, {
@@ -910,5 +698,8 @@
     calculateProgress: (...args) => (moduleStore.calculateProgress || bridge().calculateProgress || noop)(...args),
     getTasks: (...args) => (moduleStore.buildTasks || bridge().getTasks || bridge().buildTasks || noop)(...args),
     getProgressMap: (...args) => (moduleStore.calculateProgress || bridge().getProgressMap || bridge().calculateProgress || noop)(...args),
+    setViewMode: (...args) => (moduleStore.setViewMode || bridge().setViewMode || noop)(...args),
+    getViewMode: (...args) => (moduleStore.getViewMode || bridge().getViewMode || noop)(...args),
+    destroy: (...args) => (moduleStore.destroy || bridge().destroy || noop)(...args),
   });
 })();

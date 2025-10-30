@@ -1,0 +1,66 @@
+{# Grid View Tab Content #}
+<div class="tab-pane fade show active" id="grid-view" role="tabpanel">
+
+  <!-- Canonical Storage Info Banner -->
+  <div class="canonical-storage-banner" id="canonical-banner">
+    <i class="bi bi-info-circle-fill"></i>
+    <span>
+      <strong>Data Progress:</strong> Disimpan dalam format <span class="badge">Weekly Canonical</span>
+    </span>
+    <span id="current-mode-badge" class="badge ms-auto">Mode: Weekly</span>
+  </div>
+
+  <div class="grid-container">
+    <!-- Split Panel Container -->
+    <div class="split-panel-wrapper">
+
+      <!-- LEFT PANEL (Frozen) -->
+      <div class="left-panel-wrapper">
+        <div class="left-panel-scroll">
+          <table class="grid-table left-table" id="left-table">
+            <thead id="left-thead">
+              <tr>
+                <th class="col-tree" style="width: 40px;"></th>
+                <th class="col-uraian" style="width: 400px;">Uraian Pekerjaan</th>
+                <th class="col-volume" style="width: 100px;">Volume</th>
+                <th class="col-satuan" style="width: 80px;">Satuan</th>
+              </tr>
+            </thead>
+            <tbody id="left-tbody">
+              <!-- Rows populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- RIGHT PANEL (Scrollable) -->
+      <div class="right-panel-wrapper">
+        <div class="right-panel-scroll">
+          <table class="grid-table right-table" id="right-table">
+            <thead id="right-thead">
+              <tr id="time-header-row">
+                <!-- Time columns dynamically inserted here -->
+              </tr>
+            </thead>
+            <tbody id="right-tbody">
+              <!-- Rows populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-left">
+        <span id="status-message">Ready</span>
+      </div>
+      <div class="status-right">
+        <span>Items: <strong id="item-count">0</strong></span>
+        <span class="ms-3">Modified: <strong id="modified-count">0</strong></span>
+        <span class="ms-3">Total Progress: <strong id="total-progress">0%</strong></span>
+      </div>
+    </div>
+  </div>
+</div>

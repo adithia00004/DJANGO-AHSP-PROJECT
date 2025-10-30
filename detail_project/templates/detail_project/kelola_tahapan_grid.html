@@ -99,99 +99,9 @@
 
   <!-- Tab Content -->
   <div class="tab-content mt-3" id="viewTabsContent">
-
-    <!-- GRID VIEW TAB -->
-    <div class="tab-pane fade show active" id="grid-view" role="tabpanel">
-
-      <!-- Canonical Storage Info Banner -->
-      <div class="canonical-storage-banner" id="canonical-banner">
-        <i class="bi bi-info-circle-fill"></i>
-        <span>
-          <strong>Data Progress:</strong> Disimpan dalam format <span class="badge">Weekly Canonical</span>
-        </span>
-        <span id="current-mode-badge" class="badge ms-auto">Mode: Weekly</span>
-      </div>
-
-      <div class="grid-container">
-        <!-- Split Panel Container -->
-        <div class="split-panel-wrapper">
-
-          <!-- LEFT PANEL (Frozen) -->
-          <div class="left-panel-wrapper">
-            <div class="left-panel-scroll">
-              <table class="grid-table left-table" id="left-table">
-                <thead id="left-thead">
-                  <tr>
-                    <th class="col-tree" style="width: 40px;"></th>
-                    <th class="col-uraian" style="width: 400px;">Uraian Pekerjaan</th>
-                    <th class="col-volume" style="width: 100px;">Volume</th>
-                    <th class="col-satuan" style="width: 80px;">Satuan</th>
-                  </tr>
-                </thead>
-                <tbody id="left-tbody">
-                  <!-- Rows populated by JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- RIGHT PANEL (Scrollable) -->
-          <div class="right-panel-wrapper">
-            <div class="right-panel-scroll">
-              <table class="grid-table right-table" id="right-table">
-                <thead id="right-thead">
-                  <tr id="time-header-row">
-                    <!-- Time columns dynamically inserted here -->
-                  </tr>
-                </thead>
-                <tbody id="right-tbody">
-                  <!-- Rows populated by JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Status Bar -->
-        <div class="status-bar">
-          <div class="status-left">
-            <span id="status-message">Ready</span>
-          </div>
-          <div class="status-right">
-            <span>Items: <strong id="item-count">0</strong></span>
-            <span class="ms-3">Modified: <strong id="modified-count">0</strong></span>
-            <span class="ms-3">Total Progress: <strong id="total-progress">0%</strong></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- GANTT VIEW TAB -->
-    <div class="tab-pane fade" id="gantt-view" role="tabpanel">
-      <div class="gantt-container">
-        <div class="gantt-chart-panel">
-          <div class="gantt-toolbar mb-3">
-            <div class="btn-group btn-group-sm" role="group">
-              <button type="button" class="btn btn-outline-secondary" data-gantt-view="Day">Day</button>
-              <button type="button" class="btn btn-outline-secondary active" data-gantt-view="Week">Week</button>
-              <button type="button" class="btn btn-outline-secondary" data-gantt-view="Month">Month</button>
-            </div>
-          </div>
-          <div class="gantt-chart-wrapper">
-            <div id="gantt-chart" class="gantt-chart-canvas"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- KURVA S TAB -->
-    <div class="tab-pane fade" id="scurve-view" role="tabpanel">
-      <div class="scurve-container">
-        <div id="scurve-chart" style="width: 100%; height: 500px;"></div>
-      </div>
-    </div>
-
+    {% include "detail_project/kelola_tahapan/_grid_tab.html" %}
+    {% include "detail_project/kelola_tahapan/_gantt_tab.html" %}
+    {% include "detail_project/kelola_tahapan/_kurva_s_tab.html" %}
   </div>
 
   <!-- Loading Overlay -->
@@ -220,8 +130,33 @@
 {% block extra_js %}
 {{ block.super }}
 <!-- Frappe Gantt JS -->
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+
 <!-- ECharts for Kurva S -->
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"
+        onerror="window.__loadLocalEcharts && window.__loadLocalEcharts();"></script>
+
+<script>
+  window.__loadLocalEcharts = function loadLocalEchartsFallback() {
+    if (window.__echartsFallbackLoaded) {
+      return;
+    }
+    window.__echartsFallbackLoaded = true;
+    const fallbackSrc = "{% static 'detail_project/js/vendor/echarts.min.js' %}";
+    const script = document.createElement('script');
+    script.src = fallbackSrc;
+    script.onload = function onEchartsFallbackLoaded() {
+      console.info('[KelolaTahapan] ECharts loaded from local fallback.');
+    };
+    script.onerror = function onEchartsFallbackError() {
+      console.error('[KelolaTahapan] Failed to load ECharts from CDN and local fallback.');
+    };
+    document.head.appendChild(script);
+  };
+  if (typeof window.echarts === 'undefined') {
+    window.__loadLocalEcharts();
+  }
+</script>
 
 <!-- Kelola Tahapan Page App bootstrap -->
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan_page_bootstrap.js' %}" defer></script>
@@ -243,4 +178,8 @@
 
 <!-- Main Grid JS (Orchestrator - Load last) -->
 <script src="{% static 'detail_project/js/kelola_tahapan_grid.js' %}" defer></script>
+<!-- Tab Controllers -->
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_tab.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_tab.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_tab.js' %}" defer></script>
 {% endblock %}

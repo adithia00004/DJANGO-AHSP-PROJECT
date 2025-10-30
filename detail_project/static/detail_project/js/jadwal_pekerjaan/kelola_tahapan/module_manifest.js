@@ -64,6 +64,29 @@
         scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js',
       },
 
+      // Tab Entry Modules
+      gridTab: {
+        id: 'kelolaTahapanGridTab',
+        namespace: 'kelola_tahapan.tab.grid',
+        label: 'Kelola Tahapan - Grid Tab Controller',
+        description: 'Manages UI bindings and interactions specific to the grid tab.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_tab.js',
+      },
+      ganttTab: {
+        id: 'kelolaTahapanGanttTab',
+        namespace: 'kelola_tahapan.tab.gantt',
+        label: 'Kelola Tahapan - Gantt Tab Controller',
+        description: 'Handles Gantt tab toolbar actions and tab lifecycle events.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_tab.js',
+      },
+      kurvaSTab: {
+        id: 'kelolaTahapanKurvaSTab',
+        namespace: 'kelola_tahapan.tab.kurva_s',
+        label: 'Kelola Tahapan - Kurva S Tab Controller',
+        description: 'Controls Kurva S tab activation behaviour and resize handling.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_tab.js',
+      },
+
       // Shared Utilities
       shared: {
         id: 'kelolaTahapanShared',

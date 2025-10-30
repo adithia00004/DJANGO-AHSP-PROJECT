@@ -597,6 +597,15 @@
   border: 1px solid #e5e7eb;
   padding: 1rem;
   overflow: auto;
+  --gantt-grid-bg: #f8f9fa;
+  --gantt-grid-alt-bg: #ffffff;
+  --gantt-grid-line: #dee2e6;
+  --gantt-header-bg: #f1f3f5;
+  --gantt-header-text: #495057;
+  --gantt-bar-fill: #0d6efd;
+  --gantt-bar-stroke: #0a58ca;
+  --gantt-progress-fill: rgba(13, 110, 253, 0.75);
+  --gantt-progress-stroke: rgba(10, 88, 202, 0.9);
 }
 
 #gantt-chart {
@@ -611,6 +620,18 @@
 
 [data-bs-theme="dark"] .gantt-container {
   background: #0f172a;
+}
+
+[data-bs-theme="dark"] .gantt-chart-wrapper {
+  --gantt-grid-bg: #1f2937;
+  --gantt-grid-alt-bg: #111827;
+  --gantt-grid-line: #374151;
+  --gantt-header-bg: #1f2937;
+  --gantt-header-text: #e5e7eb;
+  --gantt-bar-fill: #38bdf8;
+  --gantt-bar-stroke: #0ea5e9;
+  --gantt-progress-fill: rgba(14, 165, 233, 0.7);
+  --gantt-progress-stroke: rgba(56, 189, 248, 0.85);
 }
 
 .gantt-popup {
@@ -632,6 +653,58 @@
 .gantt-popup-section ul {
   padding-left: 1.1rem;
   margin-bottom: 0;
+}
+
+.gantt .bar-wrapper.gantt-task-complete .bar {
+  fill: #198754 !important;
+  stroke: #146c43 !important;
+}
+
+.gantt .bar-wrapper.gantt-task-complete .bar-progress {
+  fill: rgba(25, 135, 84, 0.8) !important;
+}
+
+.gantt .grid-row {
+  fill: var(--gantt-grid-bg) !important;
+}
+
+.gantt .grid-row:nth-child(even) {
+  fill: var(--gantt-grid-alt-bg) !important;
+}
+
+.gantt .grid-row line {
+  stroke: var(--gantt-grid-line) !important;
+}
+
+.gantt .grid-header {
+  fill: var(--gantt-header-bg) !important;
+}
+
+.gantt .grid-header text {
+  fill: var(--gantt-header-text) !important;
+  font-weight: 600;
+}
+
+.gantt .bar {
+  fill: var(--gantt-bar-fill) !important;
+  stroke: var(--gantt-bar-stroke) !important;
+}
+
+.gantt .bar-progress {
+  fill: var(--gantt-progress-fill) !important;
+  stroke: var(--gantt-progress-stroke) !important;
+}
+
+.gantt .bar-label {
+  fill: #fff !important;
+}
+
+[data-bs-theme="dark"] .gantt .bar-label {
+  fill: #0f172a !important;
+}
+
+.gantt .grid-header .grid-header-label {
+  font-size: 0.75rem;
 }
 
 /* ===== Kurva S Container ===== */

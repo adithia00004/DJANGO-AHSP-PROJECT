@@ -425,14 +425,43 @@
       throw new Error('[DataLoader] State is required');
     }
 
+    const helpers = context.helpers || {};
+    const showLoading = typeof helpers.showLoading === 'function' ? helpers.showLoading : null;
+    const options = context.options || {};
+
     try {
       state.assignmentMap.clear();
       bootstrap.log.info('DataLoader: Loading assignments for pekerjaan...');
 
-      // Load assignments for all pekerjaan
-      const promises = state.flatPekerjaan
-        .filter(node => node.type === 'pekerjaan')
-        .map(async (node) => {
+      const pekerjaanNodes = state.flatPekerjaan.filter(node => node.type === 'pekerjaan');
+      const totalNodes = pekerjaanNodes.length;
+      if (totalNodes === 0) {
+        bootstrap.log.info('DataLoader: No pekerjaan nodes found for assignments.');
+        return state.assignmentMap;
+      }
+
+      const maxConcurrency = Math.min(
+        Math.max(Number(options.assignmentConcurrency) || 6, 1),
+        10
+      );
+      let completed = 0;
+      let cursor = 0;
+      const progressStep = Math.max(1, Math.floor(totalNodes / 10));
+
+      const updateProgress = () => {
+        if (!showLoading) return;
+        showLoading('Loading assignments...', `Loaded ${completed} / ${totalNodes} pekerjaan`);
+      };
+
+      const worker = async () => {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const index = cursor;
+          if (index >= totalNodes) {
+            return;
+          }
+          cursor += 1;
+          const node = pekerjaanNodes[index];
           try {
             const data = await apiCall(`/detail_project/api/project/${state.projectId}/pekerjaan/${node.id}/assignments/`);
 
@@ -441,10 +470,8 @@
                 const tahapanId = a.tahapan_id;
                 const proporsi = parseFloat(a.proporsi) || 0;
 
-                // Map tahapanId to corresponding timeColumns
                 state.timeColumns.forEach(col => {
                   if (col.tahapanId === tahapanId) {
-                    // Use cellKey format: "pekerjaanId-colId"
                     const cellKey = `${node.id}-${col.id}`;
                     state.assignmentMap.set(cellKey, proporsi);
                   }
@@ -453,10 +480,19 @@
             }
           } catch (error) {
             bootstrap.log.warn(`DataLoader: Failed to load assignments for pekerjaan ${node.id}`, error);
+          } finally {
+            completed += 1;
+            if (completed === totalNodes || (completed % progressStep === 0)) {
+              updateProgress();
+            }
           }
-        });
+        }
+      };
 
-      await Promise.all(promises);
+      const workerCount = Math.min(maxConcurrency, totalNodes) || 1;
+      const workers = Array.from({ length: workerCount }, () => worker());
+      await Promise.all(workers);
+
       bootstrap.log.info(`DataLoader: Total assignments loaded: ${state.assignmentMap.size}`);
       return state.assignmentMap;
     } catch (error) {

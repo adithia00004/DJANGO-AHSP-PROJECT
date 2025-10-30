@@ -253,6 +253,9 @@
         updateStatusBar: (options.helpers && typeof options.helpers.updateStatusBar === 'function')
           ? options.helpers.updateStatusBar
           : () => {},
+        onProgressChange: (options.helpers && typeof options.helpers.onProgressChange === 'function')
+          ? options.helpers.onProgressChange
+          : () => {},
       },
       moduleStore.helpers || {},
       options.helpers || {},
@@ -526,6 +529,20 @@
       cell.innerHTML = displayValue;
 
       ctx.helpers.updateStatusBar();
+      if (typeof ctx.helpers.onProgressChange === 'function') {
+        try {
+          ctx.helpers.onProgressChange({
+            cellKey,
+            pekerjaanId: cell.dataset.nodeId,
+            columnId: cell.dataset.colId,
+            newValue,
+            previousValue,
+            savedValue,
+          });
+        } catch (err) {
+          console.warn('[KelolaTahapan][Grid] onProgressChange handler failed', err);
+        }
+      }
     } else {
       cell.innerHTML = cell._originalContent;
     }

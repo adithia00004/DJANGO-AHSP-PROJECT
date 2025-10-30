@@ -570,6 +570,9 @@
       });
       if (Array.isArray(tasks)) {
         state.ganttTasks = tasks;
+        logger.info('Kelola Tahapan Page: buildGanttTasks completed', {
+          taskCount: tasks.length,
+        });
         return tasks;
       }
       logger.warn('Kelola Tahapan Page: gantt module returned non-array tasks');
@@ -605,6 +608,118 @@
     }
   }
 
+  function normalizeGanttViewMode(mode) {
+    if (!mode) return 'Week';
+    const value = String(mode).trim().toLowerCase();
+    if (value === 'day') return 'Day';
+    if (value === 'month') return 'Month';
+    return 'Week';
+  }
+
+  function getGanttViewMode() {
+    const ganttModule = getGanttModule();
+    if (ganttModule && typeof ganttModule.getViewMode === 'function') {
+      try {
+        return normalizeGanttViewMode(ganttModule.getViewMode({ state }));
+      } catch (error) {
+        logger.warn('Kelola Tahapan Page: failed to read gantt view mode', error);
+      }
+    }
+    if (state.cache && state.cache.ganttViewMode) {
+      return normalizeGanttViewMode(state.cache.ganttViewMode);
+    }
+    return 'Week';
+  }
+
+  function refreshGanttView({ reason = 'manual', rebuildTasks = true, forceRecreate = false } = {}) {
+    let shouldRebuild = rebuildTasks;
+    if (!Array.isArray(state.ganttTasks) || state.ganttTasks.length === 0) {
+      shouldRebuild = true;
+    }
+    if (shouldRebuild) {
+      buildGanttTasks({ reason });
+    }
+    logger.info('Kelola Tahapan Page: refreshGanttView', {
+      reason,
+      rebuildTasks: shouldRebuild,
+      existingTaskCount: Array.isArray(state.ganttTasks) ? state.ganttTasks.length : 0,
+      viewMode: getGanttViewMode(),
+    });
+    const result = updateGanttChart(forceRecreate);
+    updateGanttToolbarActive(getGanttViewMode());
+    return result;
+  }
+
+  function refreshKurvaS({ reason = 'manual', rebuild = true } = {}) {
+    const kurvaModule = getKurvaSModule();
+    if (!kurvaModule || typeof kurvaModule.refresh !== 'function') {
+      logger.error('Kelola Tahapan Page: kurva S module unavailable for refresh');
+      return null;
+    }
+
+    try {
+      return kurvaModule.refresh({
+        state,
+        options: {
+          reason,
+          rebuild,
+        },
+      });
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: refresh kurva S threw an error', error);
+      return null;
+    }
+  }
+
+  function handleProgressChange(event = {}) {
+    const reason = event.reason || 'cell-edit';
+    refreshGanttView({ reason, rebuildTasks: true });
+    refreshKurvaS({ reason, rebuild: true });
+  }
+
+  function setGanttViewMode(mode, { refresh = true, rebuildTasks = false } = {}) {
+    const normalized = normalizeGanttViewMode(mode);
+    const ganttModule = getGanttModule();
+    try {
+      if (ganttModule && typeof ganttModule.setViewMode === 'function') {
+        ganttModule.setViewMode(normalized, {
+          state,
+          refresh: false,
+        });
+      } else {
+        state.cache = state.cache || {};
+        state.cache.ganttViewMode = normalized;
+      }
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: setViewMode failed', error);
+    }
+
+    state.cache = state.cache || {};
+    state.cache.ganttViewMode = normalized;
+
+    if (refresh) {
+      refreshGanttView({ reason: 'view-switch', rebuildTasks, forceRecreate: true });
+    }
+    return normalized;
+  }
+
+  function updateGanttToolbarActive(mode, buttonList) {
+    const buttons = buttonList || document.querySelectorAll('.gantt-toolbar [data-gantt-view]');
+    if (!buttons || typeof buttons.forEach !== 'function') {
+      return;
+    }
+    const normalized = normalizeGanttViewMode(mode);
+    buttons.forEach((button) => {
+      if (!button || typeof button.getAttribute !== 'function') return;
+      const buttonMode = normalizeGanttViewMode(button.getAttribute('data-gantt-view'));
+      if (buttonMode === normalized) {
+        button.classList.add('active');
+      } else {
+        button.classList.remove('active');
+      }
+    });
+  }
+
 
   // =========================================================================
   // DATA LOADING (Delegated to data_loader_module.js)
@@ -636,6 +751,8 @@
       showLoading('Rendering grid...', 'Building table structure');
       renderGrid();
       updateStatusBar();
+      refreshGanttView({ reason: 'initial-load', rebuildTasks: true, forceRecreate: true });
+      refreshKurvaS({ reason: 'initial-load', rebuild: true });
 
       showToast('Data loaded successfully', 'success');
       return result;
@@ -667,9 +784,13 @@
     return dataLoader ? dataLoader.loadVolumes({ state }) : null;
   }
 
-  async function loadAssignments() {
+  async function loadAssignments(options = {}) {
     const dataLoader = getDataLoaderModule();
-    return dataLoader ? dataLoader.loadAssignments({ state }) : null;
+    return dataLoader ? dataLoader.loadAssignments({
+      state,
+      helpers: { showLoading },
+      options,
+    }) : null;
   }
 
   function buildPekerjaanTree(response) {
@@ -890,6 +1011,7 @@
         helpers: {
           showToast,
           updateStatusBar,
+          onProgressChange: handleProgressChange,
         },
       });
     } catch (error) {
@@ -1055,7 +1177,7 @@
     // - Converting to canonical storage
     // - API calls
     // - UI updates
-    return await saveHandler.saveAllChanges({
+    const result = await saveHandler.saveAllChanges({
       state,  // Current application state
       helpers: {
         showLoading,      // Loading overlay helper
@@ -1063,6 +1185,10 @@
         updateStatusBar   // Status bar update helper
       }
     });
+
+    refreshGanttView({ reason: 'save-all', rebuildTasks: true });
+    refreshKurvaS({ reason: 'save-all', rebuild: true });
+    return result;
   }
 
   /**
@@ -1197,7 +1323,7 @@
     // - Call reset API endpoint
     // - Clear state maps
     // - Trigger grid re-render
-    return await saveHandler.resetAllProgress({
+    const result = await saveHandler.resetAllProgress({
       state,
       helpers: {
         showLoading,      // Loading overlay
@@ -1206,6 +1332,10 @@
         renderGrid        // Grid re-render function
       }
     });
+
+    refreshGanttView({ reason: 'reset-progress', rebuildTasks: true, forceRecreate: true });
+    refreshKurvaS({ reason: 'reset-progress', rebuild: true });
+    return result;
   }
 
   // =========================================================================
@@ -1250,6 +1380,7 @@
           getDefaultOption: context.getDefaultOption,
         });
         if (result !== 'legacy') {
+          refreshKurvaS({ reason: context.reason || 'init', rebuild: true });
           return result;
         }
       } catch (error) {
@@ -1310,6 +1441,9 @@
         // Step 5: Re-render grid
         showLoading(`Switching to ${newMode} mode...`, 'Rendering updated grid');
         renderGrid();
+        updateStatusBar();
+        refreshGanttView({ reason: 'time-scale-switch', rebuildTasks: true, forceRecreate: true });
+        refreshKurvaS({ reason: 'time-scale-switch', rebuild: true });
 
         // Show success message
         showToast(`Mode switched to ${newMode}. ${response.message || ''}`, 'success');
@@ -1329,85 +1463,7 @@
   // =========================================================================
   // EVENT BINDINGS
   // =========================================================================
-
-  // Time scale toggle
-  document.querySelectorAll('input[name="timeScale"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      const newMode = e.target.value;
-
-      // Check for unsaved changes
-      const hasUnsavedChanges = state.modifiedCells.size > 0;
-
-      let confirmMsg;
-      if (hasUnsavedChanges) {
-        // Show detailed warning about unsaved changes
-        confirmMsg = `ΓÜá∩╕Å WARNING: You have ${state.modifiedCells.size} unsaved change(s).\n\n` +
-                     `Switching to ${newMode} mode will:\n` +
-                     `  ΓÇó Regenerate tahapan based on the new time scale\n` +
-                     `  ΓÇó Convert existing assignments to the new mode\n` +
-                     `  ΓÇó DISCARD all unsaved changes\n\n` +
-                     `Do you want to continue?\n\n` +
-                     `≡ƒÆí TIP: Click "Cancel", then "Save All Changes" to save your work first.`;
-      } else {
-        // Standard confirmation for mode switch
-        confirmMsg = `Switch to ${newMode} mode?\n\n` +
-                     `This will regenerate tahapan and convert existing assignments ` +
-                     `to the new time scale.`;
-      }
-
-      if (confirm(confirmMsg)) {
-        switchTimeScaleMode(newMode);
-      } else {
-        // Revert radio selection
-        updateTimeScaleControls(state.timeScale);
-      }
-    });
-  });
-
-  // Display mode toggle
-  document.querySelectorAll('input[name="displayMode"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      state.displayMode = e.target.value;
-      renderGrid();
-    });
-  });
-
-  // Collapse/Expand all
-  document.getElementById('btn-collapse-all')?.addEventListener('click', () => {
-    state.expandedNodes.clear();
-    renderGrid();
-  });
-
-  document.getElementById('btn-expand-all')?.addEventListener('click', () => {
-    state.flatPekerjaan.forEach(node => {
-      if (node.children && node.children.length > 0) {
-        state.expandedNodes.add(node.id);
-      }
-    });
-    renderGrid();
-  });
-
-  // Save button
-  document.getElementById('btn-save-all')?.addEventListener('click', saveAllChanges);
-
-  // Reset progress button
-  document.getElementById('btn-reset-progress')?.addEventListener('click', resetAllProgress);
-
-  // Tab switch events
-  document.getElementById('gantt-tab')?.addEventListener('shown.bs.tab', () => {
-    if (!state.ganttInstance) {
-      initGanttChart();
-    }
-  });
-
-  document.getElementById('scurve-tab')?.addEventListener('shown.bs.tab', () => {
-    if (!state.scurveChart) {
-      initScurveChart();
-    } else {
-      state.scurveChart.resize();
-    }
-  });
-
+  // Moved to tab-specific modules (grid_tab.js, gantt_tab.js, kurva_s_tab.js)
   // Prevent accidental page closure with unsaved changes
   window.addEventListener('beforeunload', (e) => {
     if (state.modifiedCells.size > 0) {
@@ -1419,36 +1475,6 @@
   });
 
   // =========================================================================
-  // PANEL SCROLL SHADOW EFFECT
-  // =========================================================================
-
-  const $leftThead = document.getElementById('left-thead');
-  const $rightThead = document.getElementById('right-thead');
-
-  /**
-   * Handle shadow effect when content scrolls under table headers
-   * Headers are sticky to panel top (not viewport)
-   * Toolbar sticky handled by dp-sticky-topbar class (pure CSS)
-   */
-  function handlePanelScrollShadow() {
-    if ($leftPanelScroll && $leftThead) {
-      const scrollTop = $leftPanelScroll.scrollTop;
-      $leftThead.classList.toggle('scrolled', scrollTop > 0);
-    }
-
-    if ($rightPanelScroll && $rightThead) {
-      const scrollTop = $rightPanelScroll.scrollTop;
-      $rightThead.classList.toggle('scrolled', scrollTop > 0);
-    }
-  }
-
-  // Attach panel scroll listeners for shadow effect
-  if ($leftPanelScroll) {
-    $leftPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
-  }
-  if ($rightPanelScroll) {
-    $rightPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
-  }
 
   if (appContext && typeof appContext.registerModule === 'function') {
     const gridMeta = getModuleMeta('grid', { id: 'kelolaTahapanGridView', namespace: 'kelola_tahapan.grid' });
@@ -1460,6 +1486,7 @@
         init: () => loadAllData(),
         refresh: renderGrid,
         updateStatusBar,
+        updateTimeScaleControls,
         saveAllChanges,
         resetAllProgress,
         switchTimeScaleMode,
@@ -1478,6 +1505,8 @@
         description: ganttMeta.description,
         init: initGanttChart,
         refresh: updateGanttChart,
+        setViewMode: (mode, options) => setGanttViewMode(mode, Object.assign({ refresh: true, rebuildTasks: false }, options || {})),
+        getViewMode: getGanttViewMode,
         getTasks: () => state.ganttTasks.slice(),
         getProgressMap: () => state.tahapanProgressMap,
       });
@@ -1519,6 +1548,7 @@
       loadAllData,
       renderGrid,
       updateStatusBar,
+      updateTimeScaleControls,
       switchTimeScaleMode,
       saveAllChanges,
       resetAllProgress,
@@ -1532,7 +1562,7 @@
         return gridHelpers.attachEvents({
           state,
           utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
-          helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+          helpers: Object.assign({ showToast, updateStatusBar, onProgressChange: handleProgressChange }, context.helpers || {}),
         });
       },
       enterEditMode: (cell, initialValue = '', context = {}) => {
@@ -1542,7 +1572,7 @@
           {
             state,
             utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
-            helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+            helpers: Object.assign({ showToast, updateStatusBar, onProgressChange: handleProgressChange }, context.helpers || {}),
           },
           initialValue
         );
@@ -1552,7 +1582,7 @@
         return gridHelpers.exitEditMode(cell, input, {
           state,
           utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
-          helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+          helpers: Object.assign({ showToast, updateStatusBar, onProgressChange: handleProgressChange }, context.helpers || {}),
         });
       },
       navigateCell: (direction, context = {}) => {
@@ -1560,7 +1590,7 @@
         return gridHelpers.navigateCell({
           state,
           utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
-          helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+          helpers: Object.assign({ showToast, updateStatusBar, onProgressChange: handleProgressChange }, context.helpers || {}),
         }, direction);
       },
       renderTables: (context = {}) => {
@@ -1581,11 +1611,18 @@
       calculateProgress: (context = {}) => calculateTahapanProgress(context),
       getTasks: () => state.ganttTasks.slice(),
       getProgressMap: () => state.tahapanProgressMap,
+      setViewMode: (mode, options) => setGanttViewMode(mode, Object.assign({ refresh: true }, options || {})),
+      getViewMode: getGanttViewMode,
+      refreshView: (options = {}) => refreshGanttView(Object.assign({ rebuildTasks: false }, options)),
     }),
     kurvaS: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.kurvaS) || {}, {
       init: (context = {}) => {
         if (!kurvaHelpers || typeof kurvaHelpers.init !== 'function') return null;
         return kurvaHelpers.init(Object.assign({ state }, context || {}));
+      },
+      refresh: (context = {}) => {
+        if (!kurvaHelpers || typeof kurvaHelpers.refresh !== 'function') return null;
+        return kurvaHelpers.refresh(Object.assign({ state }, context || {}));
       },
       resize: (context = {}) => {
         if (!kurvaHelpers || typeof kurvaHelpers.resize !== 'function') return null;
@@ -1595,6 +1632,7 @@
         if (!kurvaHelpers || typeof kurvaHelpers.getChart !== 'function') return state.scurveChart;
         return kurvaHelpers.getChart({ state });
       },
+      refreshView: (options = {}) => refreshKurvaS(Object.assign({ rebuild: true }, options)),
     }),
     shared: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.shared) || {}, {
       emit: emitPageEvent,
@@ -1612,8 +1650,4 @@
   // =========================================================================
 
   loadAllData();
-
 })();
-
-
-
