@@ -492,8 +492,23 @@ def api_regenerate_tahapan_v2(request, project_id):
         mode = data.get('mode', 'custom')
 
         # Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
-        week_start_day = data.get('week_start_day', 0)  # Default: 0 = Monday (Senin)
-        week_end_day = data.get('week_end_day', 6)     # Default: 6 = Sunday (Minggu)
+        week_end_day_raw = data.get('week_end_day', 6)
+        week_start_day_raw = data.get('week_start_day')
+
+        try:
+            week_end_day = int(week_end_day_raw)
+        except (TypeError, ValueError):
+            week_end_day = 6
+
+        week_end_day %= 7
+
+        if week_start_day_raw is None:
+            week_start_day = (week_end_day + 1) % 7
+        else:
+            try:
+                week_start_day = int(week_start_day_raw) % 7
+            except (TypeError, ValueError):
+                week_start_day = (week_end_day + 1) % 7
 
         # Validate mode
         if mode not in ['daily', 'weekly', 'monthly', 'custom']:

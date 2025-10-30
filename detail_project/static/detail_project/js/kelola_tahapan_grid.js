@@ -1,15 +1,118 @@
-// static/detail_project/js/kelola_tahapan_grid.js
+﻿// static/detail_project/js/kelola_tahapan_grid.js
 // Excel-like Grid View for Project Scheduling with Gantt & S-Curve
 
 (function() {
   'use strict';
+
+  const appContext = window.KelolaTahapanPageApp || window.JadwalPekerjaanApp || null;
+  const moduleManifest = window.KelolaTahapanModuleManifest || null;
+  const logger = appContext && appContext.log ? appContext.log : console;
+  const EVENT_NAMESPACE = {
+    primary: 'kelolaTahapan',
+    legacy: 'jadwal',
+  };
+
+  function emitPageEvent(eventKey, payload) {
+    if (!appContext || typeof appContext.emit !== 'function') {
+      return;
+    }
+    const primaryEvent = `${EVENT_NAMESPACE.primary}:${eventKey}`;
+    const aliasMap = (appContext && appContext.constants && appContext.constants.events && appContext.constants.events.LEGACY_ALIASES)
+      ? appContext.constants.events.LEGACY_ALIASES
+      : {};
+    const eventsToEmit = [primaryEvent];
+
+    if (!aliasMap[primaryEvent] && EVENT_NAMESPACE.legacy) {
+      eventsToEmit.push(`${EVENT_NAMESPACE.legacy}:${eventKey}`);
+    }
+
+    eventsToEmit.forEach((eventName) => {
+      try {
+        appContext.emit(eventName, payload);
+      } catch (error) {
+        logger.error('Kelola Tahapan Page emit error for event', eventName, error);
+      }
+    });
+  }
+
+  function getModuleMeta(key, fallback) {
+    if (moduleManifest && moduleManifest.modules && moduleManifest.modules[key]) {
+      return moduleManifest.modules[key];
+    }
+    return fallback;
+  }
+
+  const hasRegisteredModule = (id) => {
+    if (!appContext) return false;
+    if (typeof appContext.hasModule === 'function') {
+      return appContext.hasModule(id);
+    }
+    if (appContext.modules instanceof Map) {
+      return appContext.modules.has(id);
+    }
+    return false;
+  };
+
+  function ensureStateShape(baseState) {
+    const target = (baseState && typeof baseState === 'object') ? baseState : {};
+
+    const arrayKeys = [
+      'tahapanList',
+      'pekerjaanTree',
+      'flatPekerjaan',
+      'timeColumns',
+      'ganttTasks',
+    ];
+    arrayKeys.forEach((key) => {
+      if (!Array.isArray(target[key])) {
+        target[key] = [];
+      }
+    });
+
+    if (!(target.volumeMap instanceof Map)) target.volumeMap = new Map();
+    if (!(target.assignmentMap instanceof Map)) target.assignmentMap = new Map();
+    if (!(target.expandedNodes instanceof Set)) target.expandedNodes = new Set();
+    if (!(target.modifiedCells instanceof Map)) target.modifiedCells = new Map();
+    if (!(target.tahapanProgressMap instanceof Map)) target.tahapanProgressMap = new Map();
+
+    if (typeof target.weekStartDay !== 'number') target.weekStartDay = 0;
+    if (typeof target.weekEndDay !== 'number') target.weekEndDay = 6;
+    if (!target.timeScale) target.timeScale = 'weekly';
+    if (!target.displayMode) target.displayMode = 'percentage';
+
+    if (!Object.prototype.hasOwnProperty.call(target, 'currentCell')) target.currentCell = null;
+    if (!Object.prototype.hasOwnProperty.call(target, 'ganttInstance')) target.ganttInstance = null;
+    if (!Object.prototype.hasOwnProperty.call(target, 'scurveChart')) target.scurveChart = null;
+    if (!(target.flags instanceof Map)) target.flags = new Map();
+    if (!target.domRefs || typeof target.domRefs !== 'object') target.domRefs = {};
+    if (!target.cache || typeof target.cache !== 'object') target.cache = {};
+
+    return target;
+  }
+
+  function getGridModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.grid) || null;
+  }
+
+  function getGanttModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.gantt) || null;
+  }
+
+  function getKurvaSModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.kurvaS) || null;
+  }
 
   // =========================================================================
   // CONFIGURATION & STATE
   // =========================================================================
 
   const app = document.getElementById('tahapan-grid-app');
-  if (!app) return;
+  if (!app) {
+    if (appContext) {
+      logger.warn('Kelola Tahapan Page: root app element not found, aborting init.');
+    }
+    return;
+  }
 
   const projectId = parseInt(app.dataset.projectId);
   const apiBase = app.dataset.apiBase;
@@ -19,35 +122,32 @@
   // Project data for canonical storage calculations
   window.projectData = {
     id: projectId,
+    nama: app.dataset.projectName || '',
     tanggal_mulai: app.dataset.projectStart,
     tanggal_selesai: app.dataset.projectEnd
   };
 
   // State Management
-  const state = {
-    tahapanList: [],           // List of tahapan with dates
-    pekerjaanTree: [],         // Hierarchical tree: Klasifikasi > Sub > Pekerjaan
-    flatPekerjaan: [],         // Flattened list for easy access
-    volumeMap: new Map(),      // pekerjaan_id -> volume
-    assignmentMap: new Map(),  // pekerjaan_id -> { tahapan_id: percentage }
+  const state = ensureStateShape(appContext ? appContext.state : null);
+  state.projectId = projectId;
+  state.apiBase = apiBase;
+  state.projectStart = app.dataset.projectStart;
+  state.projectEnd = app.dataset.projectEnd;
+  state.domRefs = state.domRefs || {};
+  state.meta = state.meta || {};
+  state.meta.project = Object.assign({}, state.meta.project, {
+    id: projectId,
+    tanggal_mulai: app.dataset.projectStart,
+    tanggal_selesai: app.dataset.projectEnd,
+    name: app.dataset.projectName || '',
+  });
 
-    timeScale: 'weekly',       // 'daily', 'weekly', 'monthly', 'custom'
-    displayMode: 'percentage', // 'percentage' or 'volume'
-    timeColumns: [],           // Array of time period objects
+  if (appContext) {
+    appContext.state = state;
+  }
 
-    // Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
-    weekStartDay: 0,           // Default: Monday (Senin)
-    weekEndDay: 6,             // Default: Sunday (Minggu)
-
-    expandedNodes: new Set(),  // Set of expanded node IDs
-    modifiedCells: new Map(),  // Track changes: "pekerjaanId-timeId" -> value
-    currentCell: null,         // Currently focused cell
-
-    ganttInstance: null,       // Frappe Gantt instance
-    scurveChart: null,         // ECharts instance
-  };
-
-  // Expose state to window for debugging
+  // Expose state to window for debugging and backwards compatibility
+  window.kelolaTahapanPageState = state;
   window.jadwalPekerjaanState = state;
 
   // DOM Elements
@@ -64,6 +164,30 @@
   const $statusMessage = document.getElementById('status-message');
   const $loadingOverlay = document.getElementById('loading-overlay');
 
+  const domRefs = {
+    app,
+    leftThead: document.getElementById('left-thead'),
+    rightThead: document.getElementById('right-thead'),
+    leftTable: $leftTable,
+    rightTable: $rightTable,
+    leftTbody: $leftTbody,
+    rightTbody: $rightTbody,
+    timeHeaderRow: $timeHeaderRow,
+    leftPanelScroll: $leftPanelScroll,
+    rightPanelScroll: $rightPanelScroll,
+    itemCount: $itemCount,
+    modifiedCount: $modifiedCount,
+    totalProgress: $totalProgress,
+    statusMessage: $statusMessage,
+    loadingOverlay: $loadingOverlay,
+  };
+
+  state.domRefs = Object.assign({}, state.domRefs, domRefs);
+  if (appContext) {
+    appContext.state.domRefs = state.domRefs;
+    emitPageEvent('dom-ready', { domRefs, state });
+  }
+
   // =========================================================================
   // UTILITY FUNCTIONS
   // =========================================================================
@@ -78,32 +202,138 @@
 
     const $message = document.getElementById('loading-message');
     const $submessage = document.getElementById('loading-submessage');
+    state.cache = state.cache || {};
+
+    const previousMessage = state.cache.lastLoadingMessage || ($message ? $message.textContent : 'Processing...') || 'Processing...';
+    const previousSubmessage = state.cache.lastLoadingSubmessage || ($submessage ? $submessage.textContent : '') || '';
 
     if (show === false) {
-      // Hide loading overlay
       $loadingOverlay.classList.add('d-none');
       if ($submessage) {
         $submessage.classList.add('d-none');
       }
-    } else {
-      // Show loading overlay
-      $loadingOverlay.classList.remove('d-none');
+      state.cache.lastLoadingVisible = false;
+      emitPageEvent('loading', {
+        visible: false,
+        message: previousMessage,
+        submessage: previousSubmessage,
+      });
+      return;
+    }
 
-      // Update message if provided
-      if (typeof show === 'string' && $message) {
-        $message.textContent = show;
-      } else if ($message) {
-        $message.textContent = 'Processing...';
+    $loadingOverlay.classList.remove('d-none');
+
+    let messageText = previousMessage;
+    if (typeof show === 'string' && $message) {
+      $message.textContent = show;
+      messageText = show;
+    } else if ($message && !$message.textContent) {
+      $message.textContent = 'Processing...';
+      messageText = $message.textContent;
+    }
+
+    let activeSubmessage = submessage || '';
+    if (activeSubmessage && $submessage) {
+      $submessage.textContent = activeSubmessage;
+      $submessage.classList.remove('d-none');
+    } else if ($submessage) {
+      $submessage.classList.add('d-none');
+    }
+
+    state.cache.lastLoadingMessage = messageText;
+    state.cache.lastLoadingSubmessage = activeSubmessage;
+    state.cache.lastLoadingVisible = true;
+
+    emitPageEvent('loading', {
+      visible: true,
+      message: messageText,
+      submessage: activeSubmessage,
+    });
+  }
+
+  function deriveTimeScaleFromTahapan(tahapanList, fallbackMode = 'weekly') {
+    if (!Array.isArray(tahapanList) || tahapanList.length === 0) {
+      return fallbackMode;
+    }
+
+    const autoCounts = { daily: 0, weekly: 0, monthly: 0 };
+    let autoTotal = 0;
+    let manualCount = 0;
+
+    tahapanList.forEach((tahap) => {
+      if (tahap && tahap.is_auto_generated && typeof tahap.generation_mode === 'string') {
+        const mode = tahap.generation_mode.toLowerCase();
+        if (autoCounts.hasOwnProperty(mode)) {
+          autoCounts[mode] += 1;
+          autoTotal += 1;
+        }
+      } else {
+        manualCount += 1;
       }
+    });
 
-      // Update submessage if provided
-      if (submessage && $submessage) {
-        $submessage.textContent = submessage;
-        $submessage.classList.remove('d-none');
-      } else if ($submessage) {
-        $submessage.classList.add('d-none');
+    if (autoTotal > 0) {
+      const dominantMode = Object.entries(autoCounts).reduce((bestMode, entry) => {
+        const [mode, count] = entry;
+        if (!bestMode) return mode;
+        if (count > autoCounts[bestMode]) return mode;
+        return bestMode;
+      }, '');
+
+      if (dominantMode && autoCounts[dominantMode] > 0) {
+        return dominantMode;
       }
     }
+
+    if (manualCount > 0) {
+      return 'custom';
+    }
+
+    return fallbackMode;
+  }
+
+  function updateTimeScaleControls(mode) {
+    const radio = document.querySelector(`input[name="timeScale"][value="${mode}"]`);
+    if (radio) {
+      radio.checked = true;
+    }
+
+    const modeBadge = document.getElementById('current-mode-badge');
+    if (modeBadge) {
+      const modeNames = {
+        daily: 'Daily',
+        weekly: 'Weekly',
+        monthly: 'Monthly',
+        custom: 'Custom',
+      };
+      modeBadge.textContent = `Mode: ${modeNames[mode] || mode}`;
+    }
+  }
+
+  function initialiseExpandedNodes(tree) {
+    if (!Array.isArray(tree) || tree.length === 0) {
+      return;
+    }
+
+    if (!(state.expandedNodes instanceof Set)) {
+      state.expandedNodes = new Set();
+    }
+
+    if (state.expandedNodes.size > 0) {
+      return;
+    }
+
+    const collectIds = (nodes) => {
+      nodes.forEach((node) => {
+        if (!node || !node.id) return;
+        if (node.children && node.children.length > 0) {
+          state.expandedNodes.add(node.id);
+          collectIds(node.children);
+        }
+      });
+    };
+
+    collectIds(tree);
   }
 
   function showToast(message, type = 'success') {
@@ -252,11 +482,131 @@
     return `${day}/${month}`;
   }
 
+  function normalizeToISODate(value, fallbackISO) {
+    if (!value) {
+      return fallbackISO || null;
+    }
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) {
+        return fallbackISO || null;
+      }
+      return value.toISOString().split('T')[0];
+    }
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString().split('T')[0];
+      }
+    }
+    return fallbackISO || null;
+  }
+
+  function calculateTahapanProgress(options = {}) {
+    const ganttModule = getGanttModule();
+    if (!ganttModule || typeof ganttModule.calculateProgress !== 'function') {
+      logger.error('Kelola Tahapan Page: gantt module unavailable for calculateProgress');
+      return state.tahapanProgressMap instanceof Map ? state.tahapanProgressMap : new Map();
+    }
+
+    try {
+      const result = ganttModule.calculateProgress({
+        state,
+        utils: {
+          formatNumber,
+          escapeHtml,
+          normalizeToISODate,
+        },
+        options,
+      });
+
+      if (result instanceof Map) {
+        state.tahapanProgressMap = result;
+        return result;
+      }
+
+      logger.warn('Kelola Tahapan Page: gantt module returned non-Map progress result');
+      return state.tahapanProgressMap instanceof Map ? state.tahapanProgressMap : new Map();
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: calculateProgress threw an error', error);
+      return state.tahapanProgressMap instanceof Map ? state.tahapanProgressMap : new Map();
+    }
+  }
+
+  function buildGanttTasks(options = {}) {
+    const ganttModule = getGanttModule();
+    if (!ganttModule || typeof ganttModule.buildTasks !== 'function') {
+      logger.error('Kelola Tahapan Page: gantt module unavailable for buildTasks');
+      return Array.isArray(state.ganttTasks) ? state.ganttTasks : [];
+    }
+
+    try {
+      const tasks = ganttModule.buildTasks({
+        state,
+        utils: {
+          normalizeToISODate,
+          getProjectStartDate,
+        },
+        options,
+      });
+      if (Array.isArray(tasks)) {
+        state.ganttTasks = tasks;
+        return tasks;
+      }
+      logger.warn('Kelola Tahapan Page: gantt module returned non-array tasks');
+      return Array.isArray(state.ganttTasks) ? state.ganttTasks : [];
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: buildTasks threw an error', error);
+      return Array.isArray(state.ganttTasks) ? state.ganttTasks : [];
+    }
+  }
+
+  function updateGanttChart(forceRecreate = false) {
+    const ganttModule = getGanttModule();
+    if (!ganttModule || typeof ganttModule.refresh !== 'function') {
+      logger.error('Kelola Tahapan Page: gantt module unavailable for refresh');
+      return null;
+    }
+
+    try {
+      return ganttModule.refresh({
+        state,
+        utils: {
+          escapeHtml,
+          normalizeToISODate,
+          getProjectStartDate,
+        },
+        options: {
+          forceRecreate,
+        },
+      });
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: refresh gantt threw an error', error);
+      return null;
+    }
+  }
+
+
   // =========================================================================
   // DATA LOADING
   // =========================================================================
 
-  async function loadAllData() {
+  async function loadAllData(options = {}) {
+    state.cache = state.cache || {};
+    if (state.cache.initialLoadInProgress) {
+      logger.info('Kelola Tahapan Page: loadAllData skipped (already in progress).');
+      return null;
+    }
+    if (!options.force && state.cache.initialLoadCompleted && options.skipIfLoaded) {
+      logger.info('Kelola Tahapan Page: loadAllData skipped (already completed).');
+      return state.cache.initialLoadResult || null;
+    }
+
+    state.cache.initialLoadInProgress = true;
+    emitPageEvent('data-load:start', {
+      projectId,
+      timeScale: state.timeScale,
+      displayMode: state.displayMode,
+    });
     try {
       // Step 1: Load base data
       showLoading('Loading project data...', 'Fetching tahapan, pekerjaan, and volumes');
@@ -280,10 +630,27 @@
       updateStatusBar();
 
       showToast('Data loaded successfully', 'success');
+      state.cache.initialLoadCompleted = true;
+      state.cache.initialLoadResult = {
+        completedAt: Date.now(),
+        tahapanCount: state.tahapanList.length,
+        pekerjaanCount: state.flatPekerjaan.filter(node => node.type === 'pekerjaan').length,
+      };
+      emitPageEvent('data-load:success', {
+        projectId,
+        result: state.cache.initialLoadResult,
+        stateSnapshot: {
+          timeScale: state.timeScale,
+          displayMode: state.displayMode,
+        },
+      });
     } catch (error) {
       console.error('Load data failed:', error);
       showToast('Failed to load data: ' + error.message, 'danger');
+      state.cache.initialLoadError = error;
+      emitPageEvent('data-load:error', { projectId, error });
     } finally {
+      state.cache.initialLoadInProgress = false;
       showLoading(false);
     }
   }
@@ -292,6 +659,11 @@
     try {
       const data = await apiCall(apiBase);
       state.tahapanList = (data.tahapan || []).sort((a, b) => a.urutan - b.urutan);
+
+      const detectedMode = deriveTimeScaleFromTahapan(state.tahapanList, state.timeScale || 'weekly');
+      state.timeScale = detectedMode;
+      updateTimeScaleControls(detectedMode);
+
       return state.tahapanList;
     } catch (error) {
       console.error('Failed to load tahapan:', error);
@@ -309,6 +681,7 @@
 
       // Flatten for easy access
       state.flatPekerjaan = flattenTree(tree);
+      initialiseExpandedNodes(tree);
 
       return state.pekerjaanTree;
     } catch (error) {
@@ -530,7 +903,7 @@
 
         const column = {
           id: `tahap-${tahap.tahapan_id}`,
-          tahapanId: tahap.tahapan_id,  // ✅ CRITICAL: Link to database tahapan!
+          tahapanId: tahap.tahapan_id,  // Γ£à CRITICAL: Link to database tahapan!
           label,
           rangeLabel,
           tooltip,
@@ -551,9 +924,9 @@
     // FALLBACK: If no columns generated, show all tahapan
     // This can happen if user is in daily/weekly/monthly mode but hasn't generated tahapan yet
     if (state.timeColumns.length === 0 && state.tahapanList.length > 0) {
-      console.warn(`  ⚠️ No auto-generated tahapan found for mode "${timeScale}".`);
+      console.warn(`  [fallback] No auto-generated tahapan found for mode "${timeScale}".`);
       console.warn(`  Showing all ${state.tahapanList.length} tahapan as fallback.`);
-      console.warn(`  💡 Tip: Switch to ${timeScale} mode to auto-generate proper tahapan.`);
+      console.warn(`  [tip] Use the ${timeScale} mode switcher to regenerate auto tahapan before editing.`);
 
       state.tahapanList.forEach((tahap, index) => {
         const startDate = tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null;
@@ -561,6 +934,7 @@
         let label = tahap.nama || `Tahap ${index + 1}`;
         let rangeLabel = '';
         let tooltip = label;
+        let weekNumber = null;
 
         if (
           tahap.is_auto_generated === true &&
@@ -755,7 +1129,7 @@
     state.tahapanList.forEach((tahap, index) => {
       const column = {
         id: `tahap-${tahap.tahapan_id}`,
-        tahapanId: tahap.tahapan_id,  // ✅ Link to tahapan
+        tahapanId: tahap.tahapan_id,  // Γ£à Link to tahapan
         label: tahap.nama || `Tahap ${index + 1}`,
         type: 'custom',
         isAutoGenerated: tahap.is_auto_generated || false,
@@ -858,27 +1232,65 @@
   function renderGrid() {
     if (!$leftTbody || !$rightTbody || !$timeHeaderRow) return;
 
-    // Render time column headers
-    renderTimeHeaders();
+    const gridModule = getGridModule();
+    if (!gridModule || typeof gridModule.renderTables !== 'function') {
+      logger.error('Kelola Tahapan Page: grid module unavailable for renderTables.');
+      showToast('Gagal menampilkan grid jadwal.', 'danger');
+      return;
+    }
 
-    // Render both tables
-    renderLeftTable();
-    renderRightTable();
+    let gridRenderResult;
+    try {
+      gridRenderResult = gridModule.renderTables({
+        state,
+        utils: {
+          formatNumber,
+          escapeHtml,
+        },
+      });
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: grid_module.renderTables failed', error);
+      showToast('Gagal menampilkan grid jadwal.', 'danger');
+      return;
+    }
 
-    // Sync header heights between frozen and scrollable panels
+    if (!gridRenderResult || typeof gridRenderResult !== 'object') {
+      logger.error('Kelola Tahapan Page: grid module returned invalid render result.');
+      showToast('Gagal menampilkan grid jadwal.', 'danger');
+      return;
+    }
+
+    const leftHTML = typeof gridRenderResult.leftHTML === 'string' ? gridRenderResult.leftHTML : '';
+    const rightHTML = typeof gridRenderResult.rightHTML === 'string' ? gridRenderResult.rightHTML : '';
+
+    $leftTbody.innerHTML = leftHTML;
+    $rightTbody.innerHTML = rightHTML;
+
+    if (gridModule && typeof gridModule.renderTimeHeaders === 'function') {
+      try {
+        gridModule.renderTimeHeaders({
+          state,
+          utils: {
+            escapeHtml,
+          },
+        });
+      } catch (error) {
+        logger.error('Kelola Tahapan Page: grid_module.renderTimeHeaders failed', error);
+      }
+    }
     syncHeaderHeights();
-
-    // CRITICAL: Sync row heights after render
     syncRowHeights();
-
-    // Setup scroll sync
     setupScrollSync();
-
-    // Attach events
     attachGridEvents();
   }
 
   function syncHeaderHeights() {
+    const gridModule = getGridModule();
+    if (gridModule && typeof gridModule.syncHeaderHeights === 'function') {
+      gridModule.syncHeaderHeights(state);
+      return;
+    }
+
     const leftHeaderRow = document.querySelector('#left-thead tr');
     const rightHeaderRow = document.querySelector('#right-thead tr');
 
@@ -893,196 +1305,70 @@
   }
 
   function syncRowHeights() {
-    // Get all rows from both tables
+    const gridModule = getGridModule();
+    if (gridModule && typeof gridModule.syncRowHeights === 'function') {
+      gridModule.syncRowHeights(state);
+      return;
+    }
+
     const leftRows = $leftTbody.querySelectorAll('tr');
     const rightRows = $rightTbody.querySelectorAll('tr');
 
-    // Sync each row height
     leftRows.forEach((leftRow, index) => {
       const rightRow = rightRows[index];
       if (!rightRow) return;
 
-      // Clear any previous inline height
       leftRow.style.height = '';
       rightRow.style.height = '';
 
-      // Force browser to calculate natural height
       const leftHeight = leftRow.offsetHeight;
       const rightHeight = rightRow.offsetHeight;
-
-      // Use the maximum height of both
       const maxHeight = Math.max(leftHeight, rightHeight);
 
-      // Apply to both rows for perfect alignment
       leftRow.style.height = `${maxHeight}px`;
       rightRow.style.height = `${maxHeight}px`;
     });
   }
 
-  function renderTimeHeaders() {
-    // Clear existing headers
-    $timeHeaderRow.innerHTML = '';
+  function setupScrollSync() {
+    const gridModule = getGridModule();
+    if (gridModule && typeof gridModule.setupScrollSync === 'function') {
+      gridModule.setupScrollSync(state);
+      return;
+    }
 
-    // Add time columns
-    const fragment = document.createDocumentFragment();
-    state.timeColumns.forEach(col => {
-      const th = document.createElement('th');
-      th.dataset.colId = col.id;
+    const domCache = state.domRefs || {};
+    const leftPanel = domCache.leftPanelScroll || document.querySelector('.left-panel-scroll');
+    const rightPanel = domCache.rightPanelScroll || document.querySelector('.right-panel-scroll');
 
-      const line1 = col.label || '';
-      const line2 = col.rangeLabel || col.subLabel || '';
+    if (!leftPanel || !rightPanel) {
+      return;
+    }
 
-      if (line2) {
-        const safeLine1 = escapeHtml(line1);
-        const safeLine2 = escapeHtml(line2);
-        th.innerHTML = (
-          `<span class="time-header-line1">${safeLine1}</span>` +
-          '<br>' +
-          `<span class="time-header-line2">${safeLine2}</span>`
-        );
-      } else {
-        th.textContent = line1;
+    state.cache = state.cache || {};
+    if (state.cache.legacyScrollSyncBound) {
+      return;
+    }
+
+    const syncFromRight = () => {
+      if (leftPanel.scrollTop !== rightPanel.scrollTop) {
+        leftPanel.scrollTop = rightPanel.scrollTop;
       }
+    };
 
-      th.title = col.tooltip || `${line1} ${line2}`.trim();
-      fragment.appendChild(th);
-    });
-
-    $timeHeaderRow.appendChild(fragment);
-  }
-
-  function renderLeftTable() {
-    const rows = [];
-    state.pekerjaanTree.forEach(node => {
-      renderLeftRow(node, rows);
-    });
-
-    $leftTbody.innerHTML = rows.join('');
-  }
-
-  function renderRightTable() {
-    const rows = [];
-    state.pekerjaanTree.forEach(node => {
-      renderRightRow(node, rows);
-    });
-
-    $rightTbody.innerHTML = rows.join('');
-  }
-
-  function renderLeftRow(node, rows, parentExpanded = true) {
-    const isExpanded = state.expandedNodes.has(node.id) !== false;
-    const isVisible = parentExpanded;
-    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
-    const levelClass = `level-${node.level}`;
-
-    let toggleIcon = '';
-    if (node.children && node.children.length > 0) {
-      toggleIcon = `<span class="tree-toggle ${isExpanded ? '' : 'collapsed'}" data-node-id="${node.id}">
-        <i class="bi bi-caret-down-fill"></i>
-      </span>`;
-    }
-
-    const volume = node.type === 'pekerjaan' ? formatNumber(state.volumeMap.get(node.id) || 0) : '';
-    const satuan = node.type === 'pekerjaan' ? escapeHtml(node.satuan) : '';
-
-    rows.push(`
-      <tr class="${rowClass}" data-node-id="${node.id}" data-row-index="${rows.length}">
-        <td class="col-tree">
-          ${toggleIcon}
-        </td>
-        <td class="col-uraian ${levelClass}">
-          <div class="tree-node">
-            ${escapeHtml(node.nama)}
-          </div>
-        </td>
-        <td class="col-volume text-right">${volume}</td>
-        <td class="col-satuan">${satuan}</td>
-      </tr>
-    `);
-
-    // Render children
-    if (node.children && node.children.length > 0) {
-      node.children.forEach(child => {
-        renderLeftRow(child, rows, isExpanded && isVisible);
-      });
-    }
-  }
-
-  function renderRightRow(node, rows, parentExpanded = true) {
-    const isExpanded = state.expandedNodes.has(node.id) !== false;
-    const isVisible = parentExpanded;
-    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`;
-
-    // Time cells
-    const timeCells = state.timeColumns.map(col => renderTimeCell(node, col)).join('');
-
-    rows.push(`
-      <tr class="${rowClass}" data-node-id="${node.id}" data-row-index="${rows.length}">
-        ${timeCells}
-      </tr>
-    `);
-
-    // Render children
-    if (node.children && node.children.length > 0) {
-      node.children.forEach(child => {
-        renderRightRow(child, rows, isExpanded && isVisible);
-      });
-    }
-  }
-
-  function renderTimeCell(node, column) {
-    if (node.type !== 'pekerjaan') {
-      // Readonly for klasifikasi/sub-klasifikasi
-      return `<td class="time-cell readonly" data-node-id="${node.id}" data-col-id="${column.id}"></td>`;
-    }
-
-    const cellKey = `${node.id}-${column.id}`;
-
-    // Get saved value from assignmentMap (from database)
-    const savedValue = state.assignmentMap.get(cellKey) || 0;
-
-    // Get modified value (pending changes)
-    const modifiedValue = state.modifiedCells.get(cellKey);
-
-    // Current value to display: modified if exists, otherwise saved
-    const currentValue = modifiedValue !== undefined ? modifiedValue : savedValue;
-
-    // Determine cell state classes
-    let cellClasses = 'time-cell editable';
-
-    // State 3: Saved (nilai > 0 di database)
-    if (savedValue > 0) {
-      cellClasses += ' saved';
-    }
-
-    // State 2: Modified (ada perubahan pending)
-    if (modifiedValue !== undefined && modifiedValue !== savedValue) {
-      cellClasses += ' modified';
-    }
-
-    // State 1: Default (empty) - no additional class needed
-
-    // Calculate display value
-    let displayValue = '';
-    // Show value if > 0, OR if explicitly set to 0 (clearing a previous value)
-    if (currentValue > 0 || (currentValue === 0 && savedValue > 0)) {
-      if (state.displayMode === 'percentage') {
-        displayValue = `<span class="cell-value percentage">${currentValue.toFixed(1)}</span>`;
-      } else {
-        const volume = state.volumeMap.get(node.id) || 0;
-        const volValue = (volume * currentValue / 100).toFixed(2);
-        displayValue = `<span class="cell-value volume">${volValue}</span>`;
+    const syncFromLeft = () => {
+      if (rightPanel.scrollTop !== leftPanel.scrollTop) {
+        rightPanel.scrollTop = leftPanel.scrollTop;
       }
-    }
+    };
 
-    return `<td class="${cellClasses}"
-                data-node-id="${node.id}"
-                data-col-id="${column.id}"
-                data-value="${currentValue}"
-                data-saved-value="${savedValue}"
-                tabindex="0">
-              ${displayValue}
-            </td>`;
+    rightPanel.addEventListener('scroll', syncFromRight, { passive: true });
+    leftPanel.addEventListener('scroll', syncFromLeft, { passive: true });
+
+    state.cache.legacyScrollSyncBound = {
+      syncFromRight,
+      syncFromLeft,
+    };
   }
 
   // =========================================================================
@@ -1090,338 +1376,26 @@
   // =========================================================================
 
   function attachGridEvents() {
-    // Tree toggle
-    document.querySelectorAll('.tree-toggle').forEach(toggle => {
-      toggle.addEventListener('click', handleTreeToggle);
-    });
-
-    // Cell editing
-    document.querySelectorAll('.time-cell.editable').forEach(cell => {
-      cell.addEventListener('click', handleCellClick);
-      cell.addEventListener('dblclick', handleCellDoubleClick);
-      cell.addEventListener('keydown', handleCellKeydown);
-    });
-  }
-
-  function handleTreeToggle(e) {
-    e.stopPropagation();
-    const nodeId = this.dataset.nodeId;
-    const isExpanded = !this.classList.contains('collapsed');
-
-    if (isExpanded) {
-      state.expandedNodes.delete(nodeId);
-      this.classList.add('collapsed');
-    } else {
-      state.expandedNodes.add(nodeId);
-      this.classList.remove('collapsed');
+    const gridModule = getGridModule();
+    if (!gridModule || typeof gridModule.attachEvents !== 'function') {
+      logger.error('Kelola Tahapan Page: grid module unavailable for attachEvents.');
+      return;
     }
 
-    // Toggle children visibility
-    toggleNodeChildren(nodeId, !isExpanded);
-
-    // CRITICAL: Re-sync row heights after toggle
-    // Use setTimeout to ensure DOM has updated
-    setTimeout(() => syncRowHeights(), 10);
-  }
-
-  function toggleNodeChildren(nodeId, show) {
-    // Find all children rows in both tables
-    const leftRows = $leftTbody.querySelectorAll(`tr[data-node-id]`);
-    const rightRows = $rightTbody.querySelectorAll(`tr[data-node-id]`);
-
-    let foundParent = false;
-    let parentLevel = -1;
-
-    leftRows.forEach((row, index) => {
-      if (row.dataset.nodeId === nodeId) {
-        foundParent = true;
-        const levelClass = row.querySelector('.col-uraian').className.match(/level-(\d+)/);
-        parentLevel = levelClass ? parseInt(levelClass[1]) : -1;
-        return;
-      }
-
-      if (foundParent) {
-        const rowLevelClass = row.querySelector('.col-uraian')?.className.match(/level-(\d+)/);
-        const rowLevel = rowLevelClass ? parseInt(rowLevelClass[1]) : -1;
-
-        if (rowLevel > parentLevel) {
-          // This is a child - toggle both left and right rows
-          if (show) {
-            row.classList.remove('row-hidden');
-            rightRows[index]?.classList.remove('row-hidden');
-          } else {
-            row.classList.add('row-hidden');
-            rightRows[index]?.classList.add('row-hidden');
-          }
-        } else {
-          // No longer a child
-          foundParent = false;
-        }
-      }
-    });
-  }
-
-  function setupScrollSync() {
-    if (!$leftPanelScroll || !$rightPanelScroll) return;
-
-    // Sync vertical scrolling from right to left
-    $rightPanelScroll.addEventListener('scroll', () => {
-      $leftPanelScroll.scrollTop = $rightPanelScroll.scrollTop;
-    });
-
-    // Sync vertical scrolling from left to right (if user scrolls left via keyboard/touch)
-    $leftPanelScroll.addEventListener('scroll', () => {
-      $rightPanelScroll.scrollTop = $leftPanelScroll.scrollTop;
-    });
-  }
-
-  function handleCellClick(e) {
-    // Select cell
-    document.querySelectorAll('.time-cell.selected').forEach(c => c.classList.remove('selected'));
-    this.classList.add('selected');
-    state.currentCell = this;
-  }
-
-  function handleCellDoubleClick(e) {
-    // Enter edit mode
-    enterEditMode(this);
-  }
-
-  function handleCellKeydown(e) {
-    if (!this.classList.contains('editing')) {
-      // Navigation mode
-      switch(e.key) {
-        case 'Enter':
-          enterEditMode(this);
-          e.preventDefault();
-          break;
-        case 'Tab':
-          navigateCell(e.shiftKey ? 'left' : 'right');
-          e.preventDefault();
-          break;
-        case 'ArrowUp':
-          navigateCell('up');
-          e.preventDefault();
-          break;
-        case 'ArrowDown':
-          navigateCell('down');
-          e.preventDefault();
-          break;
-        case 'ArrowLeft':
-          if (!e.shiftKey) {
-            navigateCell('left');
-            e.preventDefault();
-          }
-          break;
-        case 'ArrowRight':
-          if (!e.shiftKey) {
-            navigateCell('right');
-            e.preventDefault();
-          }
-          break;
-        default:
-          // Start typing
-          if (e.key.length === 1 && /[0-9]/.test(e.key)) {
-            enterEditMode(this, e.key);
-            e.preventDefault();
-          }
-      }
-    }
-  }
-
-  function enterEditMode(cell, initialValue = '') {
-    if (cell.classList.contains('readonly')) return;
-
-    cell.classList.add('editing');
-    const currentValue = initialValue || cell.dataset.value || '';
-
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.step = '0.01';
-    input.min = '0';
-    input.max = '100';
-    input.value = initialValue || currentValue;
-    input.className = 'cell-input';
-
-    input.addEventListener('blur', () => {
-      // Only exit if not already exiting (prevent race condition)
-      if (!cell._isExiting) {
-        exitEditMode(cell, input);
-      }
-    });
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        cell._isExiting = true; // Prevent blur from calling exitEditMode again
-        exitEditMode(cell, input);
-        navigateCell('down');
-        e.preventDefault();
-      } else if (e.key === 'Escape') {
-        cell._isExiting = true; // Prevent blur from calling exitEditMode again
-        cell.classList.remove('editing');
-        cell.innerHTML = cell._originalContent;
-        cell.focus();
-      } else if (e.key === 'Tab') {
-        const direction = e.shiftKey ? 'left' : 'right';
-        cell._pendingNavigation = direction; // Skip restoring focus; we'll handle navigation manually.
-        cell._isExiting = true; // Prevent blur from calling exitEditMode again
-        const applied = exitEditMode(cell, input);
-        if (applied !== false) {
-          navigateCell(direction);
-        }
-        cell._pendingNavigation = null;
-        e.preventDefault();
-      }
-    });
-
-    cell._originalContent = cell.innerHTML;
-    cell.innerHTML = '';
-    cell.appendChild(input);
-    input.focus();
-    input.select();
-  }
-
-  function exitEditMode(cell, input) {
-    // Parse input safely so empty strings fallback to 0 (makes "clear" intuitive).
-    const parsedInput = parseFloat(input.value);
-    const newValue = Number.isFinite(parsedInput) ? parsedInput : 0;
-
-    const savedValueRaw = parseFloat(cell.dataset.savedValue);
-    const savedValue = Number.isFinite(savedValueRaw) ? savedValueRaw : 0;
-
-    const cellKey = `${cell.dataset.nodeId}-${cell.dataset.colId}`;
-
-    console.log(`exitEditMode: cellKey=${cellKey}, newValue=${newValue}, savedValue=${savedValue}`);
-
-    cell.classList.remove('editing');
-
-    // Validate range
-    if (newValue < 0 || newValue > 100) {
-      showToast('Value must be between 0-100', 'danger');
-      cell.innerHTML = cell._originalContent;
-      cell._isExiting = false; // Reset flag
-      cell._pendingNavigation = null;
-      cell.focus();
-      return false;
-    }
-
-    // Determine "last shown" value so clearing to 0 after typing >0 counts as a change.
-    const currentValueRaw = parseFloat(cell.dataset.value);
-    const currentValue = Number.isFinite(currentValueRaw) ? currentValueRaw : savedValue;
-    // Prefer pending modified value over rendered value so toggling back to 0 is detected.
-    const modifiedValueRaw = state.modifiedCells.has(cellKey)
-      ? parseFloat(state.modifiedCells.get(cellKey))
-      : null;
-    const previousValue = Number.isFinite(modifiedValueRaw) ? modifiedValueRaw : currentValue;
-
-    const hasChanged = Math.abs(newValue - previousValue) > 0.0001;
-    console.log(`  hasChanged=${hasChanged} (previousValue=${previousValue})`);
-
-    if (hasChanged) {
-      // Update modifiedCells Map
-      if (newValue === 0 && savedValue === 0) {
-        // Both zero - remove from modified
-        console.log(`  Both zero - removing from modifiedCells`);
-        state.modifiedCells.delete(cellKey);
-      } else {
-        console.log(`  Adding to modifiedCells: ${cellKey} = ${newValue}`);
-        state.modifiedCells.set(cellKey, newValue);
-      }
-
-      // Update cell classes based on 3-state system
-      cell.classList.remove('saved', 'modified');
-
-      // State 3: Saved
-      if (savedValue > 0) {
-        cell.classList.add('saved');
-      }
-
-      // State 2: Modified
-      if (newValue !== savedValue) {
-        cell.classList.add('modified');
-      }
-
-      // Update data attribute
-      cell.dataset.value = newValue;
-
-      // Calculate and update display
-      let displayValue = '';
-      // Show value if > 0, OR if explicitly set to 0 (clearing a previous value)
-      if (newValue > 0 || (newValue === 0 && savedValue !== 0)) {
-        if (state.displayMode === 'percentage') {
-          displayValue = `<span class="cell-value percentage">${newValue.toFixed(1)}</span>`;
-        } else {
-          const node = state.flatPekerjaan.find(n => n.id == cell.dataset.nodeId);
-          const volume = state.volumeMap.get(node?.id) || 0;
-          const volValue = (volume * newValue / 100).toFixed(2);
-          displayValue = `<span class="cell-value volume">${volValue}</span>`;
-        }
-      }
-      cell.innerHTML = displayValue;
-
-      updateStatusBar();
-    } else {
-      // No change - restore original
-      cell.innerHTML = cell._originalContent;
-    }
-
-    // Reset flag for next edit
-    const pendingNavigation = cell._pendingNavigation;
-    cell._isExiting = false;
-    // Restore focus only when no keyboard navigation (e.g., Tab) is queued.
-    if (!pendingNavigation) {
-      cell.focus();
-    }
-    cell._pendingNavigation = null;
-    return true;
-  }
-
-  function navigateCell(direction) {
-    if (!state.currentCell) return;
-
-    const currentRow = state.currentCell.closest('tr');
-    const currentIndex = Array.from(currentRow.children).indexOf(state.currentCell);
-    let nextCell = null;
-
-    switch(direction) {
-      case 'up': {
-        const prevRow = currentRow.previousElementSibling;
-        if (prevRow && !prevRow.classList.contains('row-hidden')) {
-          nextCell = prevRow.children[currentIndex];
-        }
-        break;
-      }
-      case 'down': {
-        const nextRow = currentRow.nextElementSibling;
-        if (nextRow && !nextRow.classList.contains('row-hidden')) {
-          nextCell = nextRow.children[currentIndex];
-        }
-        break;
-      }
-      case 'left': {
-        nextCell = state.currentCell.previousElementSibling;
-        break;
-      }
-      case 'right': {
-        nextCell = state.currentCell.nextElementSibling;
-        break;
-      }
-    }
-
-    if (nextCell && nextCell.classList.contains('time-cell')) {
-      nextCell.focus();
-      nextCell.click();
-    }
-  }
-
-  function syncScrolling() {
-    // Sync vertical scrolling between frozen and time tables
-    if ($frozenTbody && $timeTbody) {
-      const frozenPanel = document.querySelector('.left-panel');
-      const timePanel = document.querySelector('.right-panel');
-
-      // Not needed if tables are in same container with overflow
-      // For now, tables are separate, we need manual sync
+    try {
+      gridModule.attachEvents({
+        state,
+        utils: {
+          formatNumber,
+          escapeHtml,
+        },
+        helpers: {
+          showToast,
+          updateStatusBar,
+        },
+      });
+    } catch (error) {
+      logger.error('Kelola Tahapan Page: grid_module.attachEvents failed', error);
     }
   }
 
@@ -1608,7 +1582,7 @@
 
       console.log('Changes grouped by pekerjaan:', Array.from(changesByPekerjaan.entries()));
 
-      // Step 2: Validate total progress ≤ 100%
+      // Step 2: Validate total progress Γëñ 100%
       showLoading('Validating...', 'Checking progress totals');
       const validation = validateProgressTotals(changesByPekerjaan);
 
@@ -1623,7 +1597,7 @@
         console.warn('Progress warnings:', validation.warnings);
         // Show toast but don't block
         showToast(
-          `⚠️ ${validation.warnings.length} pekerjaan memiliki progress < 100%`,
+          `ΓÜá∩╕Å ${validation.warnings.length} pekerjaan memiliki progress < 100%`,
           'warning'
         );
       }
@@ -1633,7 +1607,7 @@
         showLoading(false);
         const errorMessages = validation.errors.map(e => e.message).join('\n');
         showToast(
-          `❌ Tidak bisa menyimpan!\n\n${errorMessages}\n\nTotal progress tidak boleh melebihi 100%`,
+          `Γ¥î Tidak bisa menyimpan!\n\n${errorMessages}\n\nTotal progress tidak boleh melebihi 100%`,
           'danger'
         );
         console.error('Validation errors:', validation.errors);
@@ -1771,12 +1745,12 @@
         const current = weeklyProportions.get(weekNumber) || 0;
         weeklyProportions.set(weekNumber, current + parseFloat(proporsi));
 
-        console.log(`  - Day ${tahapan.nama} → Week ${weekNumber}: +${proporsi}%`);
+        console.log(`  - Day ${tahapan.nama} ΓåÆ Week ${weekNumber}: +${proporsi}%`);
       }
 
       // Convert accumulated weekly proportions to assignments
       weeklyProportions.forEach((proportion, weekNumber) => {
-        console.log(`  → Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from daily)`);
+        console.log(`  ΓåÆ Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from daily)`);
         weeklyAssignments.push({
           pekerjaan_id: parseInt(pekerjaanId),
           week_number: weekNumber,
@@ -1820,7 +1794,7 @@
 
       // Convert accumulated weekly proportions to assignments
       weeklyProportions.forEach((proportion, weekNumber) => {
-        console.log(`  → Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from monthly→daily)`);
+        console.log(`  ΓåÆ Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from monthlyΓåÆdaily)`);
         weeklyAssignments.push({
           pekerjaan_id: parseInt(pekerjaanId),
           week_number: weekNumber,
@@ -1881,12 +1855,12 @@
       throw new Error(response.error || 'Failed to save to canonical storage');
     }
 
-    console.log(`  ✓ Successfully saved to canonical storage: ${response.created_count} created, ${response.updated_count} updated`);
+    console.log(`  Γ£ô Successfully saved to canonical storage: ${response.created_count} created, ${response.updated_count} updated`);
 
     // After saving to canonical, sync to view layer (PekerjaanTahapan)
     // This is done automatically by the backend when mode switching happens,
     // but we can trigger an explicit sync here if needed
-    console.log(`  ✓ View layer will be synced on next mode operation`);
+    console.log(`  Γ£ô View layer will be synced on next mode operation`);
   }
 
   // =========================================================================
@@ -1944,83 +1918,52 @@
   // =========================================================================
 
   function initGanttChart() {
-    const ganttData = state.tahapanList.map(tahap => ({
-      id: `tahap-${tahap.tahapan_id}`,
-      name: tahap.nama,
-      start: tahap.tanggal_mulai || new Date().toISOString().split('T')[0],
-      end: tahap.tanggal_selesai || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-      progress: 50 // Calculate from assignments
-    }));
-
-    if (ganttData.length > 0 && window.Gantt) {
-      state.ganttInstance = new Gantt('#gantt-chart', ganttData, {
-        view_mode: 'Week',
-        language: 'id'
-      });
+    const ganttModule = getGanttModule();
+    if (ganttModule && typeof ganttModule.init === 'function') {
+      try {
+        const result = ganttModule.init({
+          state,
+          utils: {
+            normalizeToISODate,
+            getProjectStartDate,
+            escapeHtml,
+          },
+        });
+        if (result !== 'legacy') {
+          return result;
+        }
+      } catch (error) {
+        logger.error('Kelola Tahapan Page: init gantt via module failed', error);
+      }
     }
+    logger.warn('Kelola Tahapan Page: gantt module requested legacy fallback, but legacyInitGanttChart is no longer available.');
+    showToast('Gagal menampilkan Gantt chart: modul tidak siap.', 'warning');
+    return null;
   }
 
   // =========================================================================
   // KURVA S CHART
   // =========================================================================
 
-  function initScurveChart() {
-    if (!window.echarts) return;
-
-    const chartDom = document.getElementById('scurve-chart');
-    if (!chartDom) return;
-
-    state.scurveChart = echarts.init(chartDom);
-
-    // Sample data - replace with real calculations
-    const option = {
-      title: {
-        text: 'Kurva S - Progress Project'
-      },
-      tooltip: {
-        trigger: 'axis'
-      },
-      legend: {
-        data: ['Planned', 'Actual']
-      },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        containLabel: true
-      },
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6']
-      },
-      yAxis: {
-        type: 'value',
-        max: 100,
-        axisLabel: {
-          formatter: '{value}%'
+  function initScurveChart(context = {}) {
+    const kurvaModule = getKurvaSModule();
+    if (kurvaModule && typeof kurvaModule.init === 'function') {
+      try {
+        const result = kurvaModule.init({
+          state,
+          option: context.option,
+          getDefaultOption: context.getDefaultOption,
+        });
+        if (result !== 'legacy') {
+          return result;
         }
-      },
-      series: [
-        {
-          name: 'Planned',
-          type: 'line',
-          smooth: true,
-          data: [0, 15, 35, 55, 75, 100],
-          lineStyle: { color: '#0d6efd', width: 2, type: 'dashed' }
-        },
-        {
-          name: 'Actual',
-          type: 'line',
-          smooth: true,
-          data: [0, 10, 30, 50, 68, 85],
-          lineStyle: { color: '#198754', width: 3 },
-          areaStyle: { color: 'rgba(25, 135, 84, 0.1)' }
-        }
-      ]
-    };
-
-    state.scurveChart.setOption(option);
+      } catch (error) {
+        logger.error('Kelola Tahapan Page: init Kurva S via module failed', error);
+      }
+    }
+    logger.warn('Kelola Tahapan Page: kurva S module requested legacy fallback, but legacyInitScurveChart is no longer available.');
+    showToast('Kurva S tidak dapat dimuat: modul tidak siap.', 'warning');
+    return null;
   }
 
   // =========================================================================
@@ -2055,18 +1998,7 @@
       if (response.ok) {
         // Update state
         state.timeScale = newMode;
-
-        // Update canonical storage banner
-        const modeBadge = document.getElementById('current-mode-badge');
-        if (modeBadge) {
-          const modeNames = {
-            'daily': 'Daily',
-            'weekly': 'Weekly',
-            'monthly': 'Monthly',
-            'custom': 'Custom'
-          };
-          modeBadge.textContent = `Mode: ${modeNames[newMode] || newMode}`;
-        }
+        updateTimeScaleControls(newMode);
 
         // Step 2: Reload tahapan list
         showLoading(`Switching to ${newMode} mode...`, 'Loading updated tahapan list');
@@ -2114,13 +2046,13 @@
       let confirmMsg;
       if (hasUnsavedChanges) {
         // Show detailed warning about unsaved changes
-        confirmMsg = `⚠️ WARNING: You have ${state.modifiedCells.size} unsaved change(s).\n\n` +
+        confirmMsg = `ΓÜá∩╕Å WARNING: You have ${state.modifiedCells.size} unsaved change(s).\n\n` +
                      `Switching to ${newMode} mode will:\n` +
-                     `  • Regenerate tahapan based on the new time scale\n` +
-                     `  • Convert existing assignments to the new mode\n` +
-                     `  • DISCARD all unsaved changes\n\n` +
+                     `  ΓÇó Regenerate tahapan based on the new time scale\n` +
+                     `  ΓÇó Convert existing assignments to the new mode\n` +
+                     `  ΓÇó DISCARD all unsaved changes\n\n` +
                      `Do you want to continue?\n\n` +
-                     `💡 TIP: Click "Cancel", then "Save All Changes" to save your work first.`;
+                     `≡ƒÆí TIP: Click "Cancel", then "Save All Changes" to save your work first.`;
       } else {
         // Standard confirmation for mode switch
         confirmMsg = `Switch to ${newMode} mode?\n\n` +
@@ -2132,7 +2064,7 @@
         switchTimeScaleMode(newMode);
       } else {
         // Revert radio selection
-        document.querySelector(`input[name="timeScale"][value="${state.timeScale}"]`).checked = true;
+        updateTimeScaleControls(state.timeScale);
       }
     });
   });
@@ -2223,6 +2155,163 @@
     $rightPanelScroll.addEventListener('scroll', handlePanelScrollShadow, { passive: true });
   }
 
+  if (appContext && typeof appContext.registerModule === 'function') {
+    const gridMeta = getModuleMeta('grid', { id: 'kelolaTahapanGridView', namespace: 'kelola_tahapan.grid' });
+    if (!hasRegisteredModule(gridMeta.id)) {
+      appContext.registerModule(gridMeta.id, {
+        namespace: gridMeta.namespace || 'kelola_tahapan.grid',
+        pageId: moduleManifest?.pageId || 'kelola_tahapan',
+        description: gridMeta.description,
+        init: () => loadAllData(),
+        refresh: renderGrid,
+        updateStatusBar,
+        saveAllChanges,
+        resetAllProgress,
+        switchTimeScaleMode,
+        getState: () => state,
+        getAssignments: () => state.assignmentMap,
+      });
+    } else {
+      logger.info('Kelola Tahapan Page: grid module already provided. Skipping auto registration.');
+    }
+
+    const ganttMeta = getModuleMeta('gantt', { id: 'kelolaTahapanGanttView', namespace: 'kelola_tahapan.gantt' });
+    if (!hasRegisteredModule(ganttMeta.id)) {
+      appContext.registerModule(ganttMeta.id, {
+        namespace: ganttMeta.namespace || 'kelola_tahapan.gantt',
+        pageId: moduleManifest?.pageId || 'kelola_tahapan',
+        description: ganttMeta.description,
+        init: initGanttChart,
+        refresh: updateGanttChart,
+        getTasks: () => state.ganttTasks.slice(),
+        getProgressMap: () => state.tahapanProgressMap,
+      });
+    } else {
+      logger.info('Kelola Tahapan Page: gantt module already provided. Skipping auto registration.');
+    }
+
+    const kurvaMeta = getModuleMeta('kurvaS', { id: 'kelolaTahapanKurvaSView', namespace: 'kelola_tahapan.kurva_s' });
+    if (!hasRegisteredModule(kurvaMeta.id)) {
+      appContext.registerModule(kurvaMeta.id, {
+        namespace: kurvaMeta.namespace || 'kelola_tahapan.kurva_s',
+        pageId: moduleManifest?.pageId || 'kelola_tahapan',
+        description: kurvaMeta.description,
+        init: initScurveChart,
+        resize() {
+          if (state.scurveChart) {
+            state.scurveChart.resize();
+          }
+        },
+        getChart: () => state.scurveChart,
+      });
+    } else {
+      logger.info('Kelola Tahapan Page: kurva S module already provided. Skipping auto registration.');
+    }
+
+    emitPageEvent('modules-registered', { state, manifest: moduleManifest });
+  }
+
+  const gridHelpers = getGridModule();
+  const ganttHelpers = getGanttModule();
+  const kurvaHelpers = getKurvaSModule();
+
+  window.KelolaTahapanPage = Object.assign({}, window.KelolaTahapanPage || {}, {
+    pageId: 'kelola_tahapan',
+    manifest: moduleManifest,
+    getState: () => state,
+    state,
+    grid: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.grid) || {}, {
+      loadAllData,
+      renderGrid,
+      updateStatusBar,
+      switchTimeScaleMode,
+      saveAllChanges,
+      resetAllProgress,
+      getState: () => state,
+      getAssignments: () => state.assignmentMap,
+      syncHeaderHeights: () => gridHelpers && gridHelpers.syncHeaderHeights ? gridHelpers.syncHeaderHeights(state) : undefined,
+      syncRowHeights: () => gridHelpers && gridHelpers.syncRowHeights ? gridHelpers.syncRowHeights(state) : undefined,
+      setupScrollSync: () => gridHelpers && gridHelpers.setupScrollSync ? gridHelpers.setupScrollSync(state) : undefined,
+      attachEvents: (context = {}) => {
+        if (!gridHelpers || typeof gridHelpers.attachEvents !== 'function') return;
+        return gridHelpers.attachEvents({
+          state,
+          utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
+          helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+        });
+      },
+      enterEditMode: (cell, initialValue = '', context = {}) => {
+        if (!gridHelpers || typeof gridHelpers.enterEditMode !== 'function') return;
+        return gridHelpers.enterEditMode(
+          cell,
+          {
+            state,
+            utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
+            helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+          },
+          initialValue
+        );
+      },
+      exitEditMode: (cell, input, context = {}) => {
+        if (!gridHelpers || typeof gridHelpers.exitEditMode !== 'function') return;
+        return gridHelpers.exitEditMode(cell, input, {
+          state,
+          utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
+          helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+        });
+      },
+      navigateCell: (direction, context = {}) => {
+        if (!gridHelpers || typeof gridHelpers.navigateCell !== 'function') return;
+        return gridHelpers.navigateCell({
+          state,
+          utils: Object.assign({ formatNumber, escapeHtml }, context.utils || {}),
+          helpers: Object.assign({ showToast, updateStatusBar }, context.helpers || {}),
+        }, direction);
+      },
+      renderTables: (context = {}) => {
+        if (!gridHelpers || typeof gridHelpers.renderTables !== 'function') return null;
+        return gridHelpers.renderTables(Object.assign({ state }, context || {}));
+      },
+    }),
+    gantt: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.gantt) || {}, {
+      init: (context = {}) => {
+        if (!ganttHelpers || typeof ganttHelpers.init !== 'function') return null;
+        return ganttHelpers.init(Object.assign({ state }, context || {}));
+      },
+      refresh: (context = {}) => {
+        if (!ganttHelpers || typeof ganttHelpers.refresh !== 'function') return null;
+        return ganttHelpers.refresh(Object.assign({ state }, context || {}));
+      },
+      buildTasks: (context = {}) => buildGanttTasks(context),
+      calculateProgress: (context = {}) => calculateTahapanProgress(context),
+      getTasks: () => state.ganttTasks.slice(),
+      getProgressMap: () => state.tahapanProgressMap,
+    }),
+    kurvaS: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.kurvaS) || {}, {
+      init: (context = {}) => {
+        if (!kurvaHelpers || typeof kurvaHelpers.init !== 'function') return null;
+        return kurvaHelpers.init(Object.assign({ state }, context || {}));
+      },
+      resize: (context = {}) => {
+        if (!kurvaHelpers || typeof kurvaHelpers.resize !== 'function') return null;
+        return kurvaHelpers.resize(Object.assign({ state }, context || {}));
+      },
+      getChart: () => {
+        if (!kurvaHelpers || typeof kurvaHelpers.getChart !== 'function') return state.scurveChart;
+        return kurvaHelpers.getChart({ state });
+      },
+    }),
+    shared: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.shared) || {}, {
+      emit: emitPageEvent,
+      manifest: moduleManifest,
+      bootstrap: appContext,
+    }),
+    events: Object.assign({}, (window.KelolaTahapanPage && window.KelolaTahapanPage.events) || {}, {
+      emit: emitPageEvent,
+    }),
+  });
+
+
   // =========================================================================
   // INITIALIZATION
   // =========================================================================
@@ -2230,3 +2319,6 @@
   loadAllData();
 
 })();
+
+
+

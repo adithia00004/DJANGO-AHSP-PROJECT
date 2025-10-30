@@ -1466,3 +1466,44 @@ body[data-page="rekap_rab"]{
 }
 
 /* Note: Mobile (< 576px) tidak difokuskan sesuai requirement */
+.gantt-chart-wrapper {
+  position: relative;
+  background-color: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.gantt-chart-canvas {
+  width: 100%;
+  height: 500px;
+}
+
+.gantt-tooltip {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.gantt-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.gantt-tooltip-section {
+  margin-top: 0.6rem;
+}
+
+.gantt-tooltip-jobs {
+  padding-left: 1.25rem;
+  margin: 0.25rem 0 0;
+}
+
+.gantt-tooltip-job {
+  display: inline-block;
+}
+
+.gantt-tooltip-percent {
+  float: right;
+  font-weight: 600;
+  color: #0d6efd;
+}

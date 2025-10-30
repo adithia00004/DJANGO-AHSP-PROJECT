@@ -677,10 +677,13 @@ class TestRegenerateTahapanAPI:
 
     def test_regenerate_project_without_timeline(self, client_logged, project):
         """Test regenerate API with project that has no timeline"""
-        # Ensure project has no timeline
-        project.tanggal_mulai = None
-        project.tanggal_selesai = None
-        project.save()
+        # Ensure project has no timeline (bypass model defaults)
+        project.__class__.objects.filter(pk=project.pk).update(
+            tanggal_mulai=None,
+            tanggal_selesai=None,
+            durasi_hari=None
+        )
+        project.refresh_from_db()
 
         url = reverse('detail_project:api_regenerate_tahapan', args=[project.id])
 
@@ -694,12 +697,11 @@ class TestRegenerateTahapanAPI:
             content_type='application/json'
         )
 
-        # NOTE: Current implementation doesn't validate timeline before processing
-        # This test documents current behavior - may want to add validation later
-        assert response.status_code == 200
+        # Timeline validation should block regeneration when dates are missing
+        assert response.status_code == 400
         data = response.json()
-        # With no timeline, no tahapan will be generated
-        assert data['tahapan_created'] == 0
+        assert data['ok'] is False
+        assert 'timeline' in data.get('error', '').lower()
 
 
 # =============================================================================

@@ -680,8 +680,23 @@ def api_regenerate_tahapan(request, project_id):
         mode = data.get('mode', 'custom')
 
         # Week boundary configuration (Python weekday: 0=Monday, 6=Sunday)
-        week_start_day = data.get('week_start_day', 0)  # Default: 0 = Monday (Senin)
-        week_end_day = data.get('week_end_day', 6)     # Default: 6 = Sunday (Minggu)
+        week_end_day_raw = data.get('week_end_day', 6)
+        week_start_day_raw = data.get('week_start_day')
+
+        try:
+            week_end_day = int(week_end_day_raw)
+        except (TypeError, ValueError):
+            week_end_day = 6
+
+        week_end_day %= 7
+
+        if week_start_day_raw is None:
+            week_start_day = (week_end_day + 1) % 7
+        else:
+            try:
+                week_start_day = int(week_start_day_raw) % 7
+            except (TypeError, ValueError):
+                week_start_day = (week_end_day + 1) % 7
 
         convert_assignments = data.get('convert_assignments', True)
 
@@ -841,20 +856,21 @@ def _generate_daily_tahapan(project):
     day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
 
     while current_date <= project.tanggal_selesai:
-        # Format: dd/mm (NamaHari)
+        # Format label as sequential day number; keep date information in description
         date_str = current_date.strftime("%d/%m")
         day_name = day_names_id[current_date.weekday()]
-        label = f"{date_str} ({day_name})"
+        label = f"Day {day_num}"
+        description = f"Hari ke-{day_num} - {date_str} ({day_name})"
 
         tahap = TahapPelaksanaan(
             project=project,
             nama=label,
-            urutan=day_num - 1,
+            urutan=day_num,
             tanggal_mulai=current_date,
             tanggal_selesai=current_date,
             is_auto_generated=True,
             generation_mode='daily',
-            deskripsi=f"Hari ke-{day_num}"
+            deskripsi=description
         )
         tahapan_list.append(tahap)
 
@@ -870,30 +886,22 @@ def _generate_daily_tahapan(project):
 
 def _generate_weekly_tahapan(project, week_start_day=0, week_end_day=6):
     """
-    Generate weekly tahapan with configurable week boundaries.
+    Generate weekly tahapan ensuring no gaps in project coverage.
 
     Args:
         project: Project instance
-        week_start_day: Day of week for week start (0=Monday, 6=Sunday). Default: 0 (Monday)
-        week_end_day: Day of week for week end (0=Monday, 6=Sunday). Default: 6 (Sunday)
-
-    Default: Senin (0) - Minggu (6)
-
-    Exceptions:
-        - First week: Starts at project.tanggal_mulai (could be any day)
-        - Last week: Ends at project.tanggal_selesai (could be any day)
-
-    Examples:
-        - Project start: Wednesday 26 Oct
-        - Week 1: Wed 26 Oct - Sun 27 Oct (2 days) - EXCEPTION
-        - Week 2: Mon 28 Oct - Sun 03 Nov (7 days) - NORMAL
-        - Week 3: Mon 04 Nov - Sun 10 Nov (7 days) - NORMAL
-        - Project end: Tuesday 12 Nov
-        - Week last: Mon 11 Nov - Tue 12 Nov (2 days) - EXCEPTION
+        week_start_day: (Optional) Python weekday (0=Monday) for week start
+        week_end_day: Python weekday (0=Monday) for week end
     """
     from datetime import timedelta
 
     tahapan_list = []
+    if not project.tanggal_mulai or not project.tanggal_selesai:
+        return tahapan_list
+
+    week_end_day = week_end_day % 7
+    week_start_day = week_start_day % 7
+
     current_start = project.tanggal_mulai
     week_num = 1
 
@@ -901,22 +909,10 @@ def _generate_weekly_tahapan(project, week_start_day=0, week_end_day=6):
     day_names_id = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']
 
     while current_start <= project.tanggal_selesai:
-        # Calculate week end
-        if week_num == 1:
-            # FIRST WEEK EXCEPTION: Start from project start, find next week_end_day
-            days_until_end = (week_end_day - current_start.weekday()) % 7
-            if days_until_end == 0:
-                # Already on end day, this is a 1-day week
-                current_end = current_start
-            else:
-                current_end = current_start + timedelta(days=days_until_end)
-        else:
-            # NORMAL WEEK: Should start on week_start_day and end on week_end_day
-            # Calculate days in a normal week cycle
-            days_in_cycle = ((week_end_day - week_start_day) % 7) + 1
-            current_end = current_start + timedelta(days=days_in_cycle - 1)
+        # Find the next occurrence of week_end_day on or after current_start
+        days_until_end = (week_end_day - current_start.weekday()) % 7
+        current_end = current_start + timedelta(days=days_until_end)
 
-        # LAST WEEK EXCEPTION: Don't exceed project end
         if current_end > project.tanggal_selesai:
             current_end = project.tanggal_selesai
 
@@ -943,15 +939,7 @@ def _generate_weekly_tahapan(project, week_start_day=0, week_end_day=6):
         )
         tahapan_list.append(tahap)
 
-        # Move to next week start (should be week_start_day)
         current_start = current_end + timedelta(days=1)
-
-        # Adjust to week_start_day if not already
-        if current_start.weekday() != week_start_day and current_start <= project.tanggal_selesai:
-            days_to_start = (week_start_day - current_start.weekday()) % 7
-            if days_to_start > 0:
-                current_start = current_start + timedelta(days=days_to_start)
-
         week_num += 1
 
         # Safety limit

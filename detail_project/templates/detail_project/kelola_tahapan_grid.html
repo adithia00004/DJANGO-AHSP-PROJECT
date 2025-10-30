@@ -74,6 +74,7 @@
 <div id="tahapan-grid-app"
      data-project-id="{{ project.id }}"
      data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/"
+     data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
      data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}">
 
@@ -169,14 +170,18 @@
     <!-- GANTT VIEW TAB -->
     <div class="tab-pane fade" id="gantt-view" role="tabpanel">
       <div class="gantt-container">
-        <div class="gantt-toolbar mb-3">
-          <div class="btn-group btn-group-sm" role="group">
-            <button type="button" class="btn btn-outline-secondary" data-gantt-view="Day">Day</button>
-            <button type="button" class="btn btn-outline-secondary active" data-gantt-view="Week">Week</button>
-            <button type="button" class="btn btn-outline-secondary" data-gantt-view="Month">Month</button>
+        <div class="gantt-chart-panel">
+          <div class="gantt-toolbar mb-3">
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-secondary" data-gantt-view="Day">Day</button>
+              <button type="button" class="btn btn-outline-secondary active" data-gantt-view="Week">Week</button>
+              <button type="button" class="btn btn-outline-secondary" data-gantt-view="Month">Month</button>
+            </div>
+          </div>
+          <div class="gantt-chart-wrapper">
+            <div id="gantt-chart" class="gantt-chart-canvas"></div>
           </div>
         </div>
-        <svg id="gantt-chart"></svg>
       </div>
     </div>
 
@@ -215,9 +220,17 @@
 {% block extra_js %}
 {{ block.super }}
 <!-- Frappe Gantt JS -->
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <!-- ECharts for Kurva S -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<!-- Kelola Tahapan Page App bootstrap -->
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan_page_bootstrap.js' %}" defer></script>
+<!-- Kelola Tahapan Module manifest -->
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/module_manifest.js' %}" defer></script>
+<!-- Kelola Tahapan modular bridge (shared + views) -->
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/shared_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js' %}" defer></script>
 <!-- Main Grid JS -->
 <script src="{% static 'detail_project/js/kelola_tahapan_grid.js' %}" defer></script>
 {% endblock %}
