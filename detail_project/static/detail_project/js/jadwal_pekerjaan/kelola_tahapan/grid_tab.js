@@ -175,9 +175,19 @@
   function bindControls() {
     const grid = getGridFacade();
     const state = getState();
-    if (!grid || !state || moduleStore.bound) {
+
+    // If already bound, just sync radios and exit
+    if (moduleStore.bound) {
       if (grid && state) {
         syncRadios(grid, state);
+      }
+      return;
+    }
+
+    // If grid or state not ready yet, log and exit
+    if (!grid || !state) {
+      if (bootstrap && bootstrap.log) {
+        bootstrap.log.warn('Grid tab: grid facade or state not ready yet, skipping bind');
       }
       return;
     }
@@ -185,6 +195,7 @@
     const timeScaleRadios = Array.from(document.querySelectorAll('input[name="timeScale"]'));
     const displayModeRadios = Array.from(document.querySelectorAll('input[name="displayMode"]'));
 
+    // Bind all controls
     bindTimeScale(timeScaleRadios, grid, state);
     bindDisplayMode(displayModeRadios, grid, state);
     bindActionButtons(grid, state);
@@ -192,6 +203,10 @@
     syncRadios(grid, state);
 
     moduleStore.bound = true;
+
+    if (bootstrap && bootstrap.log) {
+      bootstrap.log.info('Grid tab: All button controls bound successfully');
+    }
   }
 
   bootstrap.registerModule(meta.id, {

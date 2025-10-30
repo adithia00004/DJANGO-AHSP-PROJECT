@@ -1533,6 +1533,25 @@
     }
 
     emitPageEvent('modules-registered', { state, manifest: moduleManifest });
+
+    // Initialize tab controller modules after registration
+    // This ensures button event bindings are attached after facade is ready
+    if (typeof requestAnimationFrame !== 'undefined') {
+      requestAnimationFrame(() => {
+        const tabModuleIds = ['kelolaTahapanGridTab', 'kelolaTahapanGanttTab', 'kelolaTahapanKurvaSTab'];
+        tabModuleIds.forEach((moduleId) => {
+          const mod = appContext.getModule(moduleId);
+          if (mod && typeof mod.init === 'function') {
+            try {
+              mod.init();
+              logger.info(`Kelola Tahapan Page: Initialized tab module ${moduleId}`);
+            } catch (error) {
+              logger.error(`Kelola Tahapan Page: Failed to init ${moduleId}`, error);
+            }
+          }
+        });
+      });
+    }
   }
 
   const gridHelpers = getGridModule();
