@@ -89,6 +89,85 @@
     return response.json();
   }
 
+  /**
+   * Show success modal with custom message
+   * @param {string} title - Modal title
+   * @param {string} message - Main message
+   * @param {string} detail - Detail message (optional)
+   */
+  function showSuccessModal(title, message, detail = '') {
+    const modalEl = document.getElementById('successModal');
+    if (!modalEl) {
+      bootstrap.log.warn('[SaveHandler] Success modal not found, falling back to toast');
+      return;
+    }
+
+    // Update modal content
+    const titleEl = document.getElementById('successModalTitle');
+    const messageEl = document.getElementById('successModalMessage');
+    const detailEl = document.getElementById('successModalDetail');
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    if (detailEl) {
+      detailEl.textContent = detail;
+      detailEl.style.display = detail ? 'block' : 'none';
+    }
+
+    // Show modal
+    const modal = new window.bootstrap.Modal(modalEl);
+    modal.show();
+  }
+
+  /**
+   * Show confirmation modal and return promise that resolves with user's choice
+   * @returns {Promise<boolean>} True if user confirms, false if cancels
+   */
+  function showResetConfirmationModal() {
+    return new Promise((resolve) => {
+      const modalEl = document.getElementById('resetProgressModal');
+      if (!modalEl) {
+        bootstrap.log.warn('[SaveHandler] Reset modal not found, falling back to confirm()');
+        const result = confirm(
+          'Apakah Anda yakin ingin mereset semua progress pekerjaan ke 0?\n\n' +
+          'Tindakan ini akan menghapus semua data progress yang telah disimpan.\n\n' +
+          'Data tidak dapat dikembalikan setelah direset!'
+        );
+        resolve(result);
+        return;
+      }
+
+      const confirmBtn = document.getElementById('confirmResetBtn');
+      const modal = new window.bootstrap.Modal(modalEl);
+
+      // Handler for confirm button
+      const handleConfirm = () => {
+        modal.hide();
+        cleanup();
+        resolve(true);
+      };
+
+      // Handler for cancel (close button or backdrop click)
+      const handleCancel = () => {
+        cleanup();
+        resolve(false);
+      };
+
+      // Cleanup event listeners
+      const cleanup = () => {
+        confirmBtn.removeEventListener('click', handleConfirm);
+        modalEl.removeEventListener('hidden.bs.modal', handleCancel);
+      };
+
+      // Attach event listeners
+      confirmBtn.addEventListener('click', handleConfirm);
+      modalEl.addEventListener('hidden.bs.modal', handleCancel);
+
+      // Show modal
+      modal.show();
+    });
+  }
+
   function getWeekNumberForDate(targetDate, projectStart, weekEndDay = 6) {
     if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) {
       return 1;
@@ -270,7 +349,15 @@
       // Clear modified cells after successful save
       state.modifiedCells.clear();
 
-      showToast(`All changes saved successfully (${successCount} pekerjaan)`, 'success');
+      // Show success modal instead of toast for better visibility
+      showSuccessModal(
+        'Progress Berhasil Disimpan!',
+        `Semua perubahan telah disimpan dengan sukses.`,
+        `${successCount} pekerjaan telah diperbarui progress-nya.`
+      );
+
+      // Also show toast for quick notification (optional)
+      showToast(`✓ ${successCount} pekerjaan berhasil disimpan`, 'success');
       updateStatusBar();
 
       return {
@@ -498,12 +585,11 @@
     const updateStatusBar = context.helpers?.updateStatusBar || (() => {});
     const renderGrid = context.helpers?.renderGrid || (() => {});
 
-    // Confirm with user before resetting
-    const confirmMessage = 'Apakah Anda yakin ingin mereset semua progress pekerjaan ke 0?\n\n' +
-                          'Tindakan ini akan menghapus semua data progress yang telah disimpan.\n\n' +
-                          'Data tidak dapat dikembalikan setelah direset!';
+    // Show confirmation modal and wait for user response
+    const userConfirmed = await showResetConfirmationModal();
 
-    if (!confirm(confirmMessage)) {
+    if (!userConfirmed) {
+      bootstrap.log.info('[SaveHandler] Reset cancelled by user');
       return null;
     }
 
@@ -526,8 +612,16 @@
         // Re-render grid to show empty progress
         renderGrid();
 
+        // Show success modal
+        showSuccessModal(
+          'Progress Berhasil Direset!',
+          'Semua progress pekerjaan telah direset ke 0.',
+          `${response.deleted_count || 0} record progress telah dihapus dari database.`
+        );
+
+        // Also show toast
         showToast(
-          `Progress reset berhasil! ${response.deleted_count || 0} record dihapus.`,
+          `✓ Progress berhasil direset (${response.deleted_count || 0} record dihapus)`,
           'success'
         );
         updateStatusBar();
@@ -558,6 +652,9 @@
     saveAllChanges,
     savePekerjaanAssignments,
     resetAllProgress,
+    // UI Helpers
+    showSuccessModal,
+    showResetConfirmationModal,
     // Utilities
     getWeekNumberForDate,
     getProjectStartDate,
