@@ -975,376 +975,237 @@
     return validation.updateProgressVisualFeedback(pekerjaanId, total);
   }
 
+  // =========================================================================
+  // SAVE FUNCTIONALITY (Delegated to save_handler_module.js)
+  // =========================================================================
+  //
+  // OVERVIEW:
+  // All save operations are now handled by the save_handler_module.js for better
+  // code organization and reusability. This section contains thin wrapper functions
+  // that delegate to the module while maintaining backward compatibility.
+  //
+  // ARCHITECTURE:
+  // - saveAllChanges(): Main entry point for saving all modified cells
+  // - savePekerjaanAssignments(): Save single pekerjaan (used internally)
+  // - resetAllProgress(): Clear all progress data (dangerous operation!)
+  //
+  // DELEGATION PATTERN:
+  // Each function:
+  // 1. Gets the save_handler_module instance
+  // 2. Checks if module is available (fail-fast if not)
+  // 3. Delegates to module with proper context (state + helpers)
+  // 4. Returns result directly to caller
+  //
+  // WHY DELEGATION?
+  // - Keeps main file clean and focused on orchestration
+  // - Allows independent testing of save logic
+  // - Enables reuse in other pages/components
+  // - Makes debugging easier (module has single responsibility)
+  //
+  // =========================================================================
+
+  /**
+   * Save all changes to server with validation and canonical storage conversion
+   *
+   * FLOW:
+   * 1. Checks if there are modified cells
+   * 2. Groups changes by pekerjaan ID
+   * 3. Validates total progress <= 100% for each pekerjaan
+   * 4. Saves each pekerjaan with canonical weekly storage conversion
+   * 5. Updates UI to reflect saved state
+   *
+   * CANONICAL STORAGE:
+   * All modes (daily/weekly/monthly/custom) are converted to weekly format before
+   * saving to ensure lossless data preservation. See save_handler_module.js for
+   * detailed conversion logic.
+   *
+   * ERROR HANDLING:
+   * - Shows user-friendly error messages
+   * - Blocks save if validation fails (total > 100%)
+   * - Allows save with warnings if total < 100% (incomplete)
+   *
+   * @async
+   * @returns {Promise<Object|null>} Save result with success count, or null if no changes
+   *
+   * @example
+   * // Called when user clicks "Save All" button
+   * await saveAllChanges();
+   * // Returns: { success: true, savedCount: 5, totalPekerjaan: 5 }
+   *
+   * @throws {Error} If save_handler_module is not available or save operation fails
+   *
+   * @see save_handler_module.js for implementation details
+   * @see validation_module.js for validation logic
+   */
   async function saveAllChanges() {
-    console.log('Save All clicked. Modified cells:', state.modifiedCells.size);
-    console.log('Modified cells map:', Array.from(state.modifiedCells.entries()));
+    // Get the save handler module
+    const saveHandler = getSaveHandlerModule();
 
-    if (state.modifiedCells.size === 0) {
-      showToast('No changes to save', 'warning');
-      return;
+    // Fail-fast if module not loaded
+    if (!saveHandler) {
+      logger.error('SaveHandler module not available. Ensure save_handler_module.js is loaded.');
+      showToast('System error: Save module not available', 'danger');
+      return null;
     }
 
-    try {
-      // Step 1: Group changes by pekerjaan
-      showLoading('Preparing changes...', `Processing ${state.modifiedCells.size} modified cell(s)`);
-      const changesByPekerjaan = new Map();
-
-      state.modifiedCells.forEach((value, key) => {
-        // Parse cellKey: format is "pekerjaanId-colId" where colId may contain dashes (e.g., "322-tahap-841")
-        // Split only on FIRST dash to separate pekerjaanId from colId
-        const firstDashIndex = key.indexOf('-');
-        if (firstDashIndex === -1) {
-          console.warn(`Invalid cellKey format: ${key}`);
-          return;
-        }
-
-        const pekerjaanId = key.substring(0, firstDashIndex);
-        const colId = key.substring(firstDashIndex + 1);
-
-        if (!changesByPekerjaan.has(pekerjaanId)) {
-          changesByPekerjaan.set(pekerjaanId, {});
-        }
-
-        // Find tahapan ID from column
-        const column = state.timeColumns.find(c => c.id === colId);
-        if (column && column.tahapanId) {
-          changesByPekerjaan.get(pekerjaanId)[column.tahapanId] = value;
-        } else {
-          console.warn(`Column not found for colId: ${colId}, or missing tahapanId`);
-        }
-      });
-
-      console.log('Changes grouped by pekerjaan:', Array.from(changesByPekerjaan.entries()));
-
-      // Step 2: Validate total progress Γëñ 100%
-      showLoading('Validating...', 'Checking progress totals');
-      const validation = validateProgressTotals(changesByPekerjaan);
-
-      // Update visual feedback for all affected pekerjaan
-      changesByPekerjaan.forEach((assignments, pekerjaanId) => {
-        const total = calculateTotalProgress(pekerjaanId, assignments);
-        updateProgressVisualFeedback(pekerjaanId, total);
-      });
-
-      // Show warnings (don't block save)
-      if (validation.warnings.length > 0) {
-        console.warn('Progress warnings:', validation.warnings);
-        // Show toast but don't block
-        showToast(
-          `ΓÜá∩╕Å ${validation.warnings.length} pekerjaan memiliki progress < 100%`,
-          'warning'
-        );
+    // Delegate to module with all required context
+    // The module will handle:
+    // - Validation
+    // - Grouping changes
+    // - Converting to canonical storage
+    // - API calls
+    // - UI updates
+    return await saveHandler.saveAllChanges({
+      state,  // Current application state
+      helpers: {
+        showLoading,      // Loading overlay helper
+        showToast,        // Notification helper
+        updateStatusBar   // Status bar update helper
       }
-
-      // Block save if errors
-      if (!validation.isValid) {
-        showLoading(false);
-        const errorMessages = validation.errors.map(e => e.message).join('\n');
-        showToast(
-          `Γ¥î Tidak bisa menyimpan!\n\n${errorMessages}\n\nTotal progress tidak boleh melebihi 100%`,
-          'danger'
-        );
-        console.error('Validation errors:', validation.errors);
-        return; // Don't save
-      }
-
-      // Step 3: Save each pekerjaan with progress updates
-      const totalPekerjaan = changesByPekerjaan.size;
-      let successCount = 0;
-
-      for (const [pekerjaanId, assignments] of changesByPekerjaan.entries()) {
-        showLoading(
-          `Saving changes...`,
-          `Pekerjaan ${successCount + 1} of ${totalPekerjaan}`
-        );
-        console.log(`Saving pekerjaan ${pekerjaanId}:`, assignments);
-        await savePekerjaanAssignments(pekerjaanId, assignments);
-        successCount++;
-      }
-
-      console.log(`Successfully saved ${successCount} pekerjaan assignments`);
-
-      // Step 3: Update UI
-      showLoading('Updating UI...', 'Applying saved changes to grid');
-
-      // SUCCESS: Move modified values to assignmentMap
-      state.modifiedCells.forEach((value, key) => {
-        state.assignmentMap.set(key, value);
-
-        // Update cell data-saved-value attribute
-        // Parse cellKey: format is "pekerjaanId-colId" where colId may contain dashes
-        const firstDashIndex = key.indexOf('-');
-        if (firstDashIndex === -1) return;
-
-        const pekerjaanId = key.substring(0, firstDashIndex);
-        const colId = key.substring(firstDashIndex + 1);
-
-        const cell = document.querySelector(
-          `.time-cell[data-node-id="${pekerjaanId}"][data-col-id="${colId}"]`
-        );
-        if (cell) {
-          cell.dataset.savedValue = value;
-
-          // Update classes: remove modified, add saved if value > 0
-          cell.classList.remove('modified');
-          if (value > 0) {
-            cell.classList.add('saved');
-          } else {
-            cell.classList.remove('saved');
-          }
-        }
-      });
-
-      // Clear modified cells after successful save
-      state.modifiedCells.clear();
-
-      showToast(`All changes saved successfully (${successCount} pekerjaan)`, 'success');
-      updateStatusBar();
-
-    } catch (error) {
-      console.error('Save failed:', error);
-      showToast('Failed to save: ' + error.message, 'danger');
-    } finally {
-      showLoading(false);
-    }
-  }
-
-  async function savePekerjaanAssignments(pekerjaanId, assignments) {
-    // IMPORTANT: Save to CANONICAL STORAGE (weekly) for lossless data preservation!
-    // Strategy:
-    // 1. Convert tahapan assignments to weekly format (different logic for each mode)
-    // 2. Save to PekerjaanProgressWeekly (canonical)
-    // 3. Backend will automatically sync to PekerjaanTahapan (view layer)
-
-    const weeklyAssignments = [];
-    const projectStart = getProjectStartDate();
-
-    console.log(`  Converting ${state.timeScale} mode assignments to weekly canonical format...`);
-
-    if (state.timeScale === 'weekly') {
-      // WEEKLY MODE: Direct 1:1 mapping
-      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
-
-        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
-        if (!tahapan || !tahapan.tanggal_mulai) {
-          console.warn(`Tahapan ${tahapanId} not found, skipping`);
-          continue;
-        }
-
-        const column = state.timeColumns.find(col => col.tahapanId == tahapan.tahapan_id);
-        let weekNumber = column?.weekNumber;
-
-        if (!weekNumber && typeof column?.urutan === 'number') {
-          weekNumber = column.urutan + 1;
-        }
-
-        if (!weekNumber && typeof tahapan.urutan === 'number') {
-          weekNumber = tahapan.urutan + 1;
-        }
-
-        if (!weekNumber) {
-          const tahapStart = new Date(tahapan.tanggal_mulai);
-          weekNumber = getWeekNumberForDate(tahapStart, projectStart);
-        }
-
-        console.log(`  - Week ${weekNumber}: ${proporsi}%`);
-
-        weeklyAssignments.push({
-          pekerjaan_id: parseInt(pekerjaanId),
-          week_number: weekNumber,
-          proportion: parseFloat(proporsi),
-          notes: `Saved from ${state.timeScale} mode`
-        });
-      }
-
-    } else if (state.timeScale === 'daily') {
-      // DAILY MODE: Aggregate days into weeks
-      console.log(`  Aggregating ${Object.keys(assignments).length} daily values into weeks...`);
-
-      // Group daily assignments by week
-      const weeklyProportions = new Map();
-
-      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
-
-        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
-        if (!tahapan || !tahapan.tanggal_mulai) continue;
-
-        // Calculate which week this day belongs to
-        const dayDate = new Date(tahapan.tanggal_mulai);
-        const weekNumber = getWeekNumberForDate(dayDate, projectStart);
-
-        // Accumulate proportions for this week
-        const current = weeklyProportions.get(weekNumber) || 0;
-        weeklyProportions.set(weekNumber, current + parseFloat(proporsi));
-
-        console.log(`  - Day ${tahapan.nama} ΓåÆ Week ${weekNumber}: +${proporsi}%`);
-      }
-
-      // Convert accumulated weekly proportions to assignments
-      weeklyProportions.forEach((proportion, weekNumber) => {
-        console.log(`  ΓåÆ Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from daily)`);
-        weeklyAssignments.push({
-          pekerjaan_id: parseInt(pekerjaanId),
-          week_number: weekNumber,
-          proportion: Math.round(proportion * 100) / 100, // Round to 2 decimals
-          notes: `Saved from ${state.timeScale} mode (aggregated from daily)`
-        });
-      });
-
-    } else if (state.timeScale === 'monthly') {
-      // MONTHLY MODE: Split monthly to daily, then aggregate to weekly
-      console.log(`  Splitting ${Object.keys(assignments).length} monthly values to daily, then aggregating to weekly...`);
-
-      const weeklyProportions = new Map();
-
-      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
-
-        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
-        if (!tahapan || !tahapan.tanggal_mulai || !tahapan.tanggal_selesai) continue;
-
-        const monthStart = new Date(tahapan.tanggal_mulai);
-        const monthEnd = new Date(tahapan.tanggal_selesai);
-
-        // Calculate days in this month
-        const daysInMonth = Math.floor((monthEnd - monthStart) / (1000 * 60 * 60 * 24)) + 1;
-        const dailyProportion = parseFloat(proporsi) / daysInMonth;
-
-        console.log(`  - Month ${tahapan.nama}: ${proporsi}% / ${daysInMonth} days = ${dailyProportion.toFixed(4)}% per day`);
-
-        // Distribute to each day, then aggregate to weeks
-        let currentDate = new Date(monthStart);
-        while (currentDate <= monthEnd) {
-          const weekNumber = getWeekNumberForDate(currentDate, projectStart);
-
-          const current = weeklyProportions.get(weekNumber) || 0;
-          weeklyProportions.set(weekNumber, current + dailyProportion);
-
-          currentDate.setDate(currentDate.getDate() + 1);
-        }
-      }
-
-      // Convert accumulated weekly proportions to assignments
-      weeklyProportions.forEach((proportion, weekNumber) => {
-        console.log(`  ΓåÆ Week ${weekNumber}: ${proportion.toFixed(2)}% (aggregated from monthlyΓåÆdaily)`);
-        weeklyAssignments.push({
-          pekerjaan_id: parseInt(pekerjaanId),
-          week_number: weekNumber,
-          proportion: Math.round(proportion * 100) / 100, // Round to 2 decimals
-          notes: `Saved from ${state.timeScale} mode (split from monthly)`
-        });
-      });
-
-    } else {
-      // CUSTOM MODE: Use week-based calculation as fallback
-      console.warn('  Custom mode: Using week-based calculation');
-      for (const [tahapanId, proporsi] of Object.entries(assignments)) {
-        if (parseFloat(proporsi) < 0) continue;  // Allow 0 to clear assignments
-
-        const tahapan = state.tahapanList.find(t => t.tahapan_id == tahapanId);
-        if (!tahapan || !tahapan.tanggal_mulai) continue;
-
-        const tahapStart = new Date(tahapan.tanggal_mulai);
-        const weekNumber = getWeekNumberForDate(tahapStart, projectStart);
-
-        weeklyAssignments.push({
-          pekerjaan_id: parseInt(pekerjaanId),
-          week_number: weekNumber,
-          proportion: parseFloat(proporsi),
-          notes: `Saved from ${state.timeScale} mode`
-        });
-      }
-    }
-
-    console.log(`  - Saving ${weeklyAssignments.length} weekly assignments to canonical storage`);
-
-    if (weeklyAssignments.length === 0) {
-      console.warn(`  - No assignments to save for pekerjaan ${pekerjaanId}`);
-      return;
-    }
-
-    // Save to canonical storage (API V2)
-    const url = `/detail_project/api/v2/project/${projectId}/assign-weekly/`;
-    const payload = {
-      assignments: weeklyAssignments,
-      mode: state.timeScale,        // tell backend which grid view is active so it can sync PekerjaanTahapan
-      week_end_day: state.weekEndDay
-    };
-    console.log(`  - POST ${url}`, payload);
-
-    const response = await apiCall(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCookie('csrftoken')
-      },
-      body: JSON.stringify(payload)
     });
+  }
 
-    console.log(`  - Weekly canonical save response:`, response);
+  /**
+   * Save assignments for a single pekerjaan with canonical storage conversion
+   *
+   * INTERNAL FUNCTION:
+   * This function is typically called by saveAllChanges() for each pekerjaan.
+   * It can also be called directly if you need to save a single pekerjaan.
+   *
+   * CANONICAL STORAGE CONVERSION:
+   * Converts assignments from current mode to weekly canonical format:
+   * - Weekly: Direct 1:1 mapping (no conversion needed)
+   * - Daily: Aggregates daily values into weekly totals
+   * - Monthly: Splits monthly evenly to daily, then aggregates to weekly
+   * - Custom: Calculates week number from tahapan dates
+   *
+   * WHY WEEKLY CANONICAL?
+   * - Lossless: Can reconstruct any view (daily/weekly/monthly) from weekly data
+   * - Efficient: Balanced granularity (not too fine, not too coarse)
+   * - Standard: Industry standard for project scheduling
+   *
+   * @async
+   * @param {string|number} pekerjaanId - ID of the pekerjaan to save
+   * @param {Object} assignments - Assignments by tahapan ID { tahapanId: proportion }
+   * @returns {Promise<void>}
+   *
+   * @example
+   * // Save progress for pekerjaan 123
+   * await savePekerjaanAssignments(123, {
+   *   841: 50,  // Tahapan 841: 50% progress
+   *   842: 30   // Tahapan 842: 30% progress
+   * });
+   *
+   * @throws {Error} If save_handler_module not available or API call fails
+   *
+   * @see save_handler_module.js#savePekerjaanAssignments for conversion details
+   */
+  async function savePekerjaanAssignments(pekerjaanId, assignments) {
+    // Get the save handler module
+    const saveHandler = getSaveHandlerModule();
 
-    if (!response.ok) {
-      throw new Error(response.error || 'Failed to save to canonical storage');
+    // Fail-fast if module not loaded
+    if (!saveHandler) {
+      logger.error('SaveHandler module not available');
+      throw new Error('SaveHandler module not available. Cannot save pekerjaan assignments.');
     }
 
-    console.log(`  Γ£ô Successfully saved to canonical storage: ${response.created_count} created, ${response.updated_count} updated`);
-
-    // After saving to canonical, sync to view layer (PekerjaanTahapan)
-    // This is done automatically by the backend when mode switching happens,
-    // but we can trigger an explicit sync here if needed
-    console.log(`  Γ£ô View layer will be synced on next mode operation`);
+    // Delegate to module
+    // The module will:
+    // - Convert assignments to weekly canonical format
+    // - Call API endpoint with proper payload
+    // - Handle errors gracefully
+    return await saveHandler.savePekerjaanAssignments(pekerjaanId, assignments, {
+      state,
+      helpers: {}  // This function doesn't need UI helpers (called internally)
+    });
   }
 
   // =========================================================================
-  // RESET PROGRESS FUNCTIONALITY
+  // RESET PROGRESS FUNCTIONALITY (Delegated to save_handler_module.js)
+  // =========================================================================
+  //
+  // DANGER ZONE!
+  // This operation is IRREVERSIBLE and will delete ALL progress data for ALL
+  // pekerjaan in the current project.
+  //
+  // SAFETY MEASURES:
+  // 1. Requires user confirmation via browser confirm() dialog
+  // 2. Shows clear warning message about data loss
+  // 3. Logs all operations for audit trail
+  //
+  // USE CASES:
+  // - Starting over with fresh data
+  // - Fixing corrupted data
+  // - Testing/development scenarios
+  //
+  // ALTERNATIVES:
+  // - If you only want to clear specific pekerjaan, use cell editing (set to 0)
+  // - If you want to preserve old data, consider creating a backup first
+  //
   // =========================================================================
 
+  /**
+   * Reset all progress to 0 for all pekerjaan (DANGEROUS OPERATION!)
+   *
+   * DANGER: This operation is IRREVERSIBLE!
+   * All progress data will be permanently deleted from the database.
+   *
+   * FLOW:
+   * 1. Shows confirmation dialog with clear warning
+   * 2. If confirmed, calls API to delete all progress records
+   * 3. Clears in-memory state (assignmentMap, modifiedCells)
+   * 4. Re-renders grid to show empty state
+   *
+   * WHAT GETS DELETED:
+   * - All PekerjaanProgressWeekly records (canonical storage)
+   * - All PekerjaanTahapan records (view layer)
+   * - All in-memory progress data
+   *
+   * WHAT IS PRESERVED:
+   * - Pekerjaan definitions (uraian, volume, satuan)
+   * - Tahapan definitions (dates, names)
+   * - Project metadata
+   *
+   * @async
+   * @returns {Promise<Object|null>} Reset result with deleted count, or null if cancelled
+   *
+   * @example
+   * // Called when user clicks "Reset All Progress" button
+   * const result = await resetAllProgress();
+   * // Returns: { success: true, deletedCount: 450 }
+   * // Or null if user cancelled
+   *
+   * @throws {Error} If save_handler_module not available or API call fails
+   *
+   * @see save_handler_module.js#resetAllProgress for implementation
+   */
   async function resetAllProgress() {
-    // Confirm with user before resetting
-    const confirmMessage = 'Apakah Anda yakin ingin mereset semua progress pekerjaan ke 0?\n\n' +
-                          'Tindakan ini akan menghapus semua data progress yang telah disimpan.\n\n' +
-                          'Data tidak dapat dikembalikan setelah direset!';
+    // Get the save handler module
+    const saveHandler = getSaveHandlerModule();
 
-    if (!confirm(confirmMessage)) {
-      return;
+    // Fail-fast if module not loaded
+    if (!saveHandler) {
+      logger.error('SaveHandler module not available');
+      showToast('System error: Save module not available', 'danger');
+      return null;
     }
 
-    try {
-      showLoading('Resetting all progress...', 'Please wait while we reset all pekerjaan progress');
-
-      // Call API to reset progress
-      const response = await apiCall(`/detail_project/api/v2/project/${projectId}/reset-progress/`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (response.ok) {
-        console.log('Progress reset successful:', response);
-
-        // Clear all assignments and modified cells
-        state.assignmentMap.clear();
-        state.modifiedCells.clear();
-
-        // Re-render grid to show empty progress
-        renderGrid();
-
-        showToast(
-          `Progress reset berhasil! ${response.deleted_count || 0} record dihapus.`,
-          'success'
-        );
-        updateStatusBar();
-      } else {
-        throw new Error(response.error || 'Failed to reset progress');
+    // Delegate to module
+    // The module will:
+    // - Show confirmation dialog
+    // - Call reset API endpoint
+    // - Clear state maps
+    // - Trigger grid re-render
+    return await saveHandler.resetAllProgress({
+      state,
+      helpers: {
+        showLoading,      // Loading overlay
+        showToast,        // Notifications
+        updateStatusBar,  // Status bar
+        renderGrid        // Grid re-render function
       }
-
-    } catch (error) {
-      console.error('Reset progress error:', error);
-      showToast(`Error resetting progress: ${error.message}`, 'error');
-    } finally {
-      showLoading(false);
-    }
+    });
   }
 
   // =========================================================================
