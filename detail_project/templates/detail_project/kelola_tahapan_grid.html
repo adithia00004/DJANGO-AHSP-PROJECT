@@ -222,15 +222,25 @@
 <!-- Frappe Gantt JS -->
 <!-- ECharts for Kurva S -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
 <!-- Kelola Tahapan Page App bootstrap -->
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan_page_bootstrap.js' %}" defer></script>
+
 <!-- Kelola Tahapan Module manifest -->
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/module_manifest.js' %}" defer></script>
-<!-- Kelola Tahapan modular bridge (shared + views) -->
+
+<!-- Core Data & Logic Modules (Load first - dependencies) -->
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/data_loader_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/time_column_generator_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/validation_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/save_handler_module.js' %}" defer></script>
+
+<!-- View Modules (Load after core modules) -->
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/shared_module.js' %}" defer></script>
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_module.js' %}" defer></script>
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_module.js' %}" defer></script>
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js' %}" defer></script>
-<!-- Main Grid JS -->
+
+<!-- Main Grid JS (Orchestrator - Load last) -->
 <script src="{% static 'detail_project/js/kelola_tahapan_grid.js' %}" defer></script>
 {% endblock %}

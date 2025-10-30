@@ -11,6 +11,37 @@
       facade: 'KelolaTahapanPage',
     },
     modules: {
+      // Core Data & Logic Modules
+      dataLoader: {
+        id: 'kelolaTahapanDataLoader',
+        namespace: 'kelola_tahapan.data_loader',
+        label: 'Kelola Tahapan - Data Loader',
+        description: 'Handles all data loading operations: tahapan, pekerjaan, volumes, assignments.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/data_loader_module.js',
+      },
+      timeColumnGenerator: {
+        id: 'kelolaTahapanTimeColumnGenerator',
+        namespace: 'kelola_tahapan.time_column_generator',
+        label: 'Kelola Tahapan - Time Column Generator',
+        description: 'Generates time columns for different modes: daily, weekly, monthly, custom.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/time_column_generator_module.js',
+      },
+      validation: {
+        id: 'kelolaTahapanValidation',
+        namespace: 'kelola_tahapan.validation',
+        label: 'Kelola Tahapan - Validation',
+        description: 'Validates progress totals, cell values, and provides visual feedback.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/validation_module.js',
+      },
+      saveHandler: {
+        id: 'kelolaTahapanSaveHandler',
+        namespace: 'kelola_tahapan.save_handler',
+        label: 'Kelola Tahapan - Save Handler',
+        description: 'Handles save operations with canonical storage conversion.',
+        scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/save_handler_module.js',
+      },
+
+      // View Modules
       grid: {
         id: 'kelolaTahapanGridView',
         namespace: 'kelola_tahapan.grid',
@@ -32,6 +63,8 @@
         description: 'ECharts S-curve visualisation utilities.',
         scriptPath: 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js',
       },
+
+      // Shared Utilities
       shared: {
         id: 'kelolaTahapanShared',
         namespace: 'kelola_tahapan.shared',
