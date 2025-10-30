@@ -90,6 +90,10 @@
     return target;
   }
 
+  // =========================================================================
+  // MODULE ACCESSORS
+  // =========================================================================
+
   function getGridModule() {
     return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.grid) || null;
   }
@@ -100,6 +104,22 @@
 
   function getKurvaSModule() {
     return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.kurvaS) || null;
+  }
+
+  function getDataLoaderModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.dataLoader) || null;
+  }
+
+  function getTimeColumnGeneratorModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.timeColumnGenerator) || null;
+  }
+
+  function getValidationModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.validation) || null;
+  }
+
+  function getSaveHandlerModule() {
+    return (window.KelolaTahapanPageModules && window.KelolaTahapanPageModules.saveHandler) || null;
   }
 
   // =========================================================================
@@ -587,642 +607,120 @@
 
 
   // =========================================================================
-  // DATA LOADING
+  // DATA LOADING (Delegated to data_loader_module.js)
   // =========================================================================
 
+  /**
+   * Load all data for the page
+   * MIGRATED: Delegates to data_loader_module.js
+   */
   async function loadAllData(options = {}) {
-    state.cache = state.cache || {};
-    if (state.cache.initialLoadInProgress) {
-      logger.info('Kelola Tahapan Page: loadAllData skipped (already in progress).');
-      return null;
-    }
-    if (!options.force && state.cache.initialLoadCompleted && options.skipIfLoaded) {
-      logger.info('Kelola Tahapan Page: loadAllData skipped (already completed).');
-      return state.cache.initialLoadResult || null;
+    const dataLoader = getDataLoaderModule();
+    if (!dataLoader) {
+      logger.error('Data loader module not available');
+      throw new Error('Data loader module not available');
     }
 
-    state.cache.initialLoadInProgress = true;
-    emitPageEvent('data-load:start', {
-      projectId,
-      timeScale: state.timeScale,
-      displayMode: state.displayMode,
-    });
     try {
-      // Step 1: Load base data
-      showLoading('Loading project data...', 'Fetching tahapan, pekerjaan, and volumes');
-      await Promise.all([
-        loadTahapan(),
-        loadPekerjaan(),
-        loadVolumes()
-      ]);
+      const result = await dataLoader.loadAllData({
+        state,
+        options,
+        helpers: {
+          showLoading,
+          emitEvent: emitPageEvent,
+          updateTimeScaleControls,
+        }
+      });
 
-      // Step 2: Generate time columns
-      showLoading('Generating time columns...', 'Mapping tahapan to grid structure');
-      generateTimeColumns();
-
-      // Step 3: Load assignments
-      showLoading('Loading assignments...', 'Fetching progress data for all pekerjaan');
-      await loadAssignments();
-
-      // Step 4: Render grid
+      // Step 4: Render grid (not handled by dataLoader)
       showLoading('Rendering grid...', 'Building table structure');
       renderGrid();
       updateStatusBar();
 
       showToast('Data loaded successfully', 'success');
-      state.cache.initialLoadCompleted = true;
-      state.cache.initialLoadResult = {
-        completedAt: Date.now(),
-        tahapanCount: state.tahapanList.length,
-        pekerjaanCount: state.flatPekerjaan.filter(node => node.type === 'pekerjaan').length,
-      };
-      emitPageEvent('data-load:success', {
-        projectId,
-        result: state.cache.initialLoadResult,
-        stateSnapshot: {
-          timeScale: state.timeScale,
-          displayMode: state.displayMode,
-        },
-      });
+      return result;
     } catch (error) {
-      console.error('Load data failed:', error);
+      logger.error('Load data failed:', error);
       showToast('Failed to load data: ' + error.message, 'danger');
-      state.cache.initialLoadError = error;
-      emitPageEvent('data-load:error', { projectId, error });
+      throw error;
     } finally {
-      state.cache.initialLoadInProgress = false;
       showLoading(false);
     }
   }
 
+  /**
+   * Legacy wrapper functions for backward compatibility
+   * These delegate to data_loader_module.js
+   */
   async function loadTahapan() {
-    try {
-      const data = await apiCall(apiBase);
-      state.tahapanList = (data.tahapan || []).sort((a, b) => a.urutan - b.urutan);
-
-      const detectedMode = deriveTimeScaleFromTahapan(state.tahapanList, state.timeScale || 'weekly');
-      state.timeScale = detectedMode;
-      updateTimeScaleControls(detectedMode);
-
-      return state.tahapanList;
-    } catch (error) {
-      console.error('Failed to load tahapan:', error);
-      throw error;
-    }
+    const dataLoader = getDataLoaderModule();
+    return dataLoader ? dataLoader.loadTahapan({ state, helpers: { updateTimeScaleControls } }) : null;
   }
 
   async function loadPekerjaan() {
-    try {
-      const response = await apiCall(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`);
-
-      // Build hierarchical tree
-      const tree = buildPekerjaanTree(response);
-      state.pekerjaanTree = tree;
-
-      // Flatten for easy access
-      state.flatPekerjaan = flattenTree(tree);
-      initialiseExpandedNodes(tree);
-
-      return state.pekerjaanTree;
-    } catch (error) {
-      console.error('Failed to load pekerjaan:', error);
-      throw error;
-    }
-  }
-
-  function buildPekerjaanTree(response) {
-    const tree = [];
-    const data = response.klasifikasi || response;
-
-    if (!Array.isArray(data)) return tree;
-
-    data.forEach(klas => {
-      const klasNode = {
-        id: `klas-${klas.id || klas.nama}`,
-        type: 'klasifikasi',
-        nama: klas.name || klas.nama || 'Klasifikasi',
-        children: [],
-        level: 0,
-        expanded: true
-      };
-
-      if (klas.sub && Array.isArray(klas.sub)) {
-        klas.sub.forEach(sub => {
-          const subNode = {
-            id: `sub-${sub.id || sub.nama}`,
-            type: 'sub-klasifikasi',
-            nama: sub.name || sub.nama || 'Sub-Klasifikasi',
-            children: [],
-            level: 1,
-            expanded: true
-          };
-
-          if (sub.pekerjaan && Array.isArray(sub.pekerjaan)) {
-            sub.pekerjaan.forEach(pkj => {
-              const pkjNode = {
-                id: pkj.id || pkj.pekerjaan_id,
-                type: 'pekerjaan',
-                kode: pkj.snapshot_kode || pkj.kode || '',
-                nama: pkj.snapshot_uraian || pkj.uraian || '',
-                volume: pkj.volume || 0,
-                satuan: pkj.snapshot_satuan || pkj.satuan || '-',
-                level: 2
-              };
-              subNode.children.push(pkjNode);
-            });
-          }
-
-          klasNode.children.push(subNode);
-        });
-      }
-
-      tree.push(klasNode);
-    });
-
-    return tree;
-  }
-
-  function flattenTree(tree, result = []) {
-    tree.forEach(node => {
-      result.push(node);
-      if (node.children && node.children.length > 0) {
-        flattenTree(node.children, result);
-      }
-    });
-    return result;
+    const dataLoader = getDataLoaderModule();
+    return dataLoader ? dataLoader.loadPekerjaan({ state }) : null;
   }
 
   async function loadVolumes() {
-    try {
-      const data = await apiCall(`/detail_project/api/project/${projectId}/volume-pekerjaan/list/`);
-      state.volumeMap.clear();
-
-      const volumes = data.items || data.volumes || data.data || [];
-      if (Array.isArray(volumes)) {
-        volumes.forEach(v => {
-          const pkjId = v.pekerjaan_id || v.id;
-          const qty = parseFloat(v.quantity || v.volume || v.qty) || 0;
-          if (pkjId) {
-            state.volumeMap.set(pkjId, qty);
-          }
-        });
-      }
-
-      return state.volumeMap;
-    } catch (error) {
-      console.error('Failed to load volumes:', error);
-      return state.volumeMap;
-    }
+    const dataLoader = getDataLoaderModule();
+    return dataLoader ? dataLoader.loadVolumes({ state }) : null;
   }
 
   async function loadAssignments() {
-    try {
-      state.assignmentMap.clear();
-      console.log('Loading assignments for pekerjaan...');
+    const dataLoader = getDataLoaderModule();
+    return dataLoader ? dataLoader.loadAssignments({ state }) : null;
+  }
 
-      // Load assignments for all pekerjaan
-      const promises = state.flatPekerjaan
-        .filter(node => node.type === 'pekerjaan')
-        .map(async (node) => {
-          try {
-            const data = await apiCall(`/detail_project/api/project/${projectId}/pekerjaan/${node.id}/assignments/`);
+  function buildPekerjaanTree(response) {
+    const dataLoader = getDataLoaderModule();
+    return dataLoader ? dataLoader.buildPekerjaanTree(response) : [];
+  }
 
-            if (data.assignments && Array.isArray(data.assignments)) {
-              console.log(`  Pekerjaan ${node.id} has ${data.assignments.length} assignments:`, data.assignments);
-              data.assignments.forEach(a => {
-                const tahapanId = a.tahapan_id;
-                const proporsi = parseFloat(a.proporsi) || 0;
-
-                // Map tahapanId to corresponding timeColumns
-                state.timeColumns.forEach(col => {
-                  if (col.tahapanId === tahapanId) {
-                    // Use cellKey format: "pekerjaanId-colId"
-                    const cellKey = `${node.id}-${col.id}`;
-                    console.log(`    Mapped: ${cellKey} = ${proporsi}`);
-                    state.assignmentMap.set(cellKey, proporsi);
-                  }
-                });
-              });
-            }
-          } catch (error) {
-            console.warn(`Failed to load assignments for pekerjaan ${node.id}:`, error);
-          }
-        });
-
-      await Promise.all(promises);
-      console.log(`Total assignments loaded: ${state.assignmentMap.size}`);
-      console.log('Assignment map:', Array.from(state.assignmentMap.entries()));
-      return state.assignmentMap;
-    } catch (error) {
-      console.error('Failed to load assignments:', error);
-      return state.assignmentMap;
-    }
+  function flattenTree(tree, result = []) {
+    const dataLoader = getDataLoaderModule();
+    return dataLoader ? dataLoader.flattenTree(tree, result) : result || [];
   }
 
   // =========================================================================
-  // TIME COLUMNS GENERATION
+  // TIME COLUMNS GENERATION (Delegated to time_column_generator_module.js)
   // =========================================================================
 
   /**
    * Generate time columns from loaded tahapan data
-   *
-   * Maps database tahapan to grid time columns based on current time scale mode.
-   *
-   * FILTERING LOGIC:
-   * - daily/weekly/monthly: Shows ONLY auto-generated tahapan with matching generation_mode
-   * - custom: Shows ALL tahapan (both auto-generated and manually created)
-   *
-   * CRITICAL: Each column MUST have tahapanId for save functionality to work!
-   * Without tahapanId, assignments cannot be linked to database tahapan.
+   * MIGRATED: Delegates to time_column_generator_module.js
    */
   function generateTimeColumns() {
-    state.timeColumns = [];
-
-    // Check current time scale mode
-    const timeScale = state.timeScale || 'custom';
-    console.log(`Generating time columns for mode: ${timeScale}`);
-    console.log(`  Available tahapan in database: ${state.tahapanList.length}`);
-
-    // ALL modes now pull from database tahapan (loaded in state.tahapanList)
-    // Backend has already created the appropriate tahapan for each mode
-    // We just map tahapan to time columns with proper tahapanId
-
-    state.tahapanList.forEach((tahap, index) => {
-      // For daily/weekly/monthly modes, only include tahapan with matching generation_mode
-      // For custom mode, include all tahapan
-      let shouldInclude = false;
-
-      if (timeScale === 'custom') {
-        // Custom mode: include all tahapan
-        shouldInclude = true;
-      } else {
-        // Daily/weekly/monthly: only include AUTO-GENERATED tahapan with matching generation_mode
-        // This filters out old custom tahapan when in auto-generated modes
-        shouldInclude = (
-          tahap.is_auto_generated === true &&
-          tahap.generation_mode === timeScale
-        );
-      }
-
-      if (shouldInclude) {
-        const startDate = tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null;
-        const endDate = tahap.tanggal_selesai ? new Date(tahap.tanggal_selesai) : null;
-        let label = tahap.nama || `Tahap ${index + 1}`;
-        let rangeLabel = '';
-        let tooltip = label;
-        let weekNumber = null;
-
-
-        if (
-          tahap.is_auto_generated === true &&
-          tahap.generation_mode === 'weekly' &&
-          startDate &&
-          endDate
-        ) {
-          const baseIndex = Number.isInteger(tahap.urutan) ? tahap.urutan : state.timeColumns.length;
-          weekNumber = baseIndex + 1;
-          const shortStart = formatDayMonth(startDate);
-          const shortEnd = formatDayMonth(endDate);
-          label = `Week ${weekNumber}`;
-          rangeLabel = `( ${shortStart} - ${shortEnd} )`;
-
-          const longStart = startDate.toLocaleDateString('id-ID', {
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          });
-          const longEnd = endDate.toLocaleDateString('id-ID', {
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          });
-          tooltip = `Week ${weekNumber}: ${longStart} - ${longEnd}`;
-        }
-
-        const column = {
-          id: `tahap-${tahap.tahapan_id}`,
-          tahapanId: tahap.tahapan_id,  // Γ£à CRITICAL: Link to database tahapan!
-          label,
-          rangeLabel,
-          tooltip,
-          type: tahap.generation_mode || 'custom',
-          isAutoGenerated: tahap.is_auto_generated || false,
-          generationMode: tahap.generation_mode || 'custom',
-          index: state.timeColumns.length,
-          weekNumber,
-          startDate: startDate,
-          endDate: endDate,
-          urutan: tahap.urutan || index
-        };
-
-        state.timeColumns.push(column);
-      }
-    });
-
-    // FALLBACK: If no columns generated, show all tahapan
-    // This can happen if user is in daily/weekly/monthly mode but hasn't generated tahapan yet
-    if (state.timeColumns.length === 0 && state.tahapanList.length > 0) {
-      console.warn(`  [fallback] No auto-generated tahapan found for mode "${timeScale}".`);
-      console.warn(`  Showing all ${state.tahapanList.length} tahapan as fallback.`);
-      console.warn(`  [tip] Use the ${timeScale} mode switcher to regenerate auto tahapan before editing.`);
-
-      state.tahapanList.forEach((tahap, index) => {
-        const startDate = tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null;
-        const endDate = tahap.tanggal_selesai ? new Date(tahap.tanggal_selesai) : null;
-        let label = tahap.nama || `Tahap ${index + 1}`;
-        let rangeLabel = '';
-        let tooltip = label;
-        let weekNumber = null;
-
-        if (
-          tahap.is_auto_generated === true &&
-          tahap.generation_mode === 'weekly' &&
-          startDate &&
-          endDate
-        ) {
-          const baseIndex = Number.isInteger(tahap.urutan) ? tahap.urutan : index;
-          weekNumber = baseIndex + 1;
-          const shortStart = formatDayMonth(startDate);
-          const shortEnd = formatDayMonth(endDate);
-          label = `Week ${weekNumber}`;
-          rangeLabel = `( ${shortStart} - ${shortEnd} )`;
-
-          const longStart = startDate.toLocaleDateString('id-ID', {
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          });
-          const longEnd = endDate.toLocaleDateString('id-ID', {
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-          });
-          tooltip = `Week ${weekNumber}: ${longStart} - ${longEnd}`;
-        }
-
-        const column = {
-          id: `tahap-${tahap.tahapan_id}`,
-          tahapanId: tahap.tahapan_id,
-          label,
-          rangeLabel,
-          tooltip,
-          type: tahap.generation_mode || 'custom',
-          isAutoGenerated: tahap.is_auto_generated || false,
-          generationMode: tahap.generation_mode || 'custom',
-          index: index,
-          weekNumber,
-          startDate: startDate,
-          endDate: endDate,
-          urutan: tahap.urutan || index
-        };
-
-        state.timeColumns.push(column);
-      });
+    const timeColumnGen = getTimeColumnGeneratorModule();
+    if (!timeColumnGen) {
+      logger.error('Time column generator module not available');
+      return [];
     }
-
-    console.log(`Generated ${state.timeColumns.length} time columns with tahapanId`);
-
-    // Debug: Show breakdown by generation_mode
-    const modeBreakdown = {};
-    state.timeColumns.forEach(col => {
-      const mode = col.generationMode || 'unknown';
-      modeBreakdown[mode] = (modeBreakdown[mode] || 0) + 1;
-    });
-    console.log(`  Breakdown:`, modeBreakdown);
+    return timeColumnGen.generateTimeColumns({ state });
   }
 
+  /**
+   * Legacy wrapper functions for backward compatibility
+   * These delegate to time_column_generator_module.js
+   */
   function generateDailyColumns() {
-    const { start, end } = getProjectTimeline();
-    console.log(`  Daily mode: ${formatDate(start, 'iso')} to ${formatDate(end, 'iso')}`);
-
-    let currentDate = new Date(start);
-    let dayNum = 1;
-
-    while (currentDate <= end) {
-      const column = {
-        id: `day-${dayNum}`,
-        tahapanId: null, // Will be mapped to actual tahapan
-        label: `Day ${dayNum}`,
-        sublabel: formatDate(currentDate, 'short'),
-        type: 'daily',
-        index: dayNum - 1,
-        startDate: new Date(currentDate),
-        endDate: new Date(currentDate),
-        dateKey: formatDate(currentDate, 'iso')
-      };
-
-      state.timeColumns.push(column);
-      currentDate = addDays(currentDate, 1);
-      dayNum++;
-    }
+    const timeColumnGen = getTimeColumnGeneratorModule();
+    return timeColumnGen ? timeColumnGen.generateDailyColumns({ state }) : [];
   }
 
   function generateWeeklyColumns() {
-    const { start, end } = getProjectTimeline();
-    const weekEndDay = state.weekEndDay || 0; // 0 = Sunday (default)
-
-    console.log(`  Weekly mode: ${formatDate(start, 'iso')} to ${formatDate(end, 'iso')}`);
-
-    let currentStart = new Date(start);
-    let weekNum = 1;
-
-    while (currentStart <= end) {
-      // Find end of week (next occurrence of weekEndDay)
-      let currentEnd = new Date(currentStart);
-      const daysUntilWeekEnd = (weekEndDay - currentStart.getDay() + 7) % 7;
-
-      if (daysUntilWeekEnd === 0 && currentStart.getDay() === weekEndDay) {
-        // Already on week end day - this is a 1-day week
-        currentEnd = new Date(currentStart);
-      } else {
-        currentEnd = addDays(currentStart, daysUntilWeekEnd);
-      }
-
-      // Don't exceed project end
-      if (currentEnd > end) {
-        currentEnd = new Date(end);
-      }
-
-      const startDay = currentStart.getDate().toString().padStart(2, '0');
-      const endDay = currentEnd.getDate().toString().padStart(2, '0');
-      const startMonthNum = (currentStart.getMonth() + 1).toString().padStart(2, '0');
-      const endMonthNum = (currentEnd.getMonth() + 1).toString().padStart(2, '0');
-
-      const rangeLabel = `( ${startDay}/${startMonthNum} - ${endDay}/${endMonthNum} )`;
-      const longRange = `${startDay}/${startMonthNum}/${currentStart.getFullYear()} - ${endDay}/${endMonthNum}/${currentEnd.getFullYear()}`;
-      const label = `Week ${weekNum}`;
-
-      const column = {
-        id: `week-${weekNum}`,
-        tahapanId: null,
-        label: label,
-        rangeLabel,
-        tooltip: `Week ${weekNum}: ${longRange}`, // full date range for hover
-        type: 'weekly',
-        index: weekNum - 1,
-        startDate: new Date(currentStart),
-        endDate: new Date(currentEnd),
-        weekNumber: weekNum
-      };
-
-      state.timeColumns.push(column);
-
-      // Move to day after week end
-      currentStart = addDays(currentEnd, 1);
-      weekNum++;
-
-      // Safety check
-      if (weekNum > 100) break; // Prevent infinite loop
-    }
+    const timeColumnGen = getTimeColumnGeneratorModule();
+    return timeColumnGen ? timeColumnGen.generateWeeklyColumns({ state }) : [];
   }
 
   function generateMonthlyColumns() {
-    const { start, end } = getProjectTimeline();
-    console.log(`  Monthly mode: ${formatDate(start, 'iso')} to ${formatDate(end, 'iso')}`);
-
-    let currentDate = new Date(start);
-    let monthNum = 1;
-
-    while (currentDate <= end) {
-      // Start of month (or project start if mid-month)
-      const monthStart = new Date(currentDate);
-
-      // End of month
-      const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-
-      // Don't exceed project end
-      const actualEnd = monthEnd > end ? new Date(end) : monthEnd;
-
-      const monthName = currentDate.toLocaleString('id-ID', { month: 'long' });
-      const year = currentDate.getFullYear();
-
-      const column = {
-        id: `month-${monthNum}`,
-        tahapanId: null,
-        label: `${monthName} ${year}`,
-        type: 'monthly',
-        index: monthNum - 1,
-        startDate: new Date(monthStart),
-        endDate: new Date(actualEnd),
-        monthNumber: monthNum
-      };
-
-      state.timeColumns.push(column);
-
-      // Move to first day of next month
-      currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-      monthNum++;
-
-      // Safety check
-      if (monthNum > 24) break; // Max 2 years
-    }
-  }
-
-  function generateCustomColumns() {
-    // Generate from user-defined tahapan
-    console.log(`  Custom mode: Generating from ${state.tahapanList.length} tahapan`);
-
-    state.tahapanList.forEach((tahap, index) => {
-      const column = {
-        id: `tahap-${tahap.tahapan_id}`,
-        tahapanId: tahap.tahapan_id,  // Γ£à Link to tahapan
-        label: tahap.nama || `Tahap ${index + 1}`,
-        type: 'custom',
-        isAutoGenerated: tahap.is_auto_generated || false,
-        generationMode: tahap.generation_mode || 'custom',
-        index: index,
-        startDate: tahap.tanggal_mulai ? new Date(tahap.tanggal_mulai) : null,
-        endDate: tahap.tanggal_selesai ? new Date(tahap.tanggal_selesai) : null,
-        urutan: tahap.urutan || index
-      };
-
-      console.log(`  Column ${index}: ${column.id} (tahapanId=${column.tahapanId}, label="${column.label}")`);
-      state.timeColumns.push(column);
-    });
-  }
-
-  function generateWeeklyColumns() {
-    // Generate 52 weeks starting from project start date or current date
-    const startDate = getProjectStartDate();
-    const weeksToGenerate = 52; // 1 year
-
-    for (let i = 0; i < weeksToGenerate; i++) {
-      const weekStart = new Date(startDate);
-      weekStart.setDate(weekStart.getDate() + (i * 7));
-
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-
-      // Format: "W1 (01-07 Jan)"
-      const weekNum = i + 1;
-      const startDay = weekStart.getDate().toString().padStart(2, '0');
-      const endDay = weekEnd.getDate().toString().padStart(2, '0');
-      const startMonth = weekStart.toLocaleString('id-ID', { month: 'short' });
-      const endMonth = weekEnd.toLocaleString('id-ID', { month: 'short' });
-
-      let label;
-      if (startMonth === endMonth) {
-        label = `W${weekNum} (${startDay}-${endDay} ${startMonth})`;
-      } else {
-        label = `W${weekNum} (${startDay} ${startMonth}-${endDay} ${endMonth})`;
-      }
-
-      state.timeColumns.push({
-        id: `week-${weekNum}`,
-        label: label,
-        type: 'week',
-        index: i,
-        startDate: new Date(weekStart),
-        endDate: new Date(weekEnd)
-      });
-    }
+    const timeColumnGen = getTimeColumnGeneratorModule();
+    return timeColumnGen ? timeColumnGen.generateMonthlyColumns({ state }) : [];
   }
 
   function getProjectStartDate() {
-    // Try to get from first tahapan
-    if (state.tahapanList.length > 0 && state.tahapanList[0].tanggal_mulai) {
-      return new Date(state.tahapanList[0].tanggal_mulai);
-    }
-
-    // Default to start of current year
-    const now = new Date();
-    return new Date(now.getFullYear(), 0, 1); // Jan 1st
-  }
-
-  function generateDailyColumns() {
-    // TODO: Implement daily view
-    generateWeeklyColumns(); // Fallback for now
-  }
-
-  function generateMonthlyColumns() {
-    const startDate = getProjectStartDate();
-    const monthsToGenerate = 12; // 1 year
-
-    for (let i = 0; i < monthsToGenerate; i++) {
-      const monthStart = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
-      const monthEnd = new Date(startDate.getFullYear(), startDate.getMonth() + i + 1, 0);
-
-      const monthName = monthStart.toLocaleString('id-ID', { month: 'long' });
-      const year = monthStart.getFullYear();
-
-      state.timeColumns.push({
-        id: `month-${i}`,
-        label: `${monthName} ${year}`,
-        type: 'month',
-        index: i,
-        startDate: new Date(monthStart),
-        endDate: new Date(monthEnd)
-      });
-    }
-  }
-
-  function generateCustomColumns() {
-    // TODO: Implement custom date range
-    generateWeeklyColumns(); // Fallback for now
+    const timeColumnGen = getTimeColumnGeneratorModule();
+    return timeColumnGen ? timeColumnGen.getProjectStartDate(state) : new Date();
   }
 
   // =========================================================================
@@ -1434,111 +932,47 @@
   // SAVE FUNCTIONALITY
   // =========================================================================
 
+  // =========================================================================
+  // VALIDATION (Delegated to validation_module.js)
+  // =========================================================================
+
   /**
    * Calculate total progress for a pekerjaan
-   * @param {string} pekerjaanId - Pekerjaan ID
-   * @param {Object} pendingChanges - Optional pending changes not yet saved
-   * @returns {number} Total progress percentage
+   * MIGRATED: Delegates to validation_module.js
    */
   function calculateTotalProgress(pekerjaanId, pendingChanges = {}) {
-    let total = 0;
-
-    // Add all saved values
-    state.assignmentMap.forEach((value, key) => {
-      if (key.startsWith(`${pekerjaanId}-`)) {
-        total += parseFloat(value) || 0;
-      }
-    });
-
-    // Add pending modified values (replace saved values)
-    state.modifiedCells.forEach((value, key) => {
-      if (key.startsWith(`${pekerjaanId}-`)) {
-        // Subtract old value if exists
-        const savedValue = state.assignmentMap.get(key);
-        if (savedValue) {
-          total -= parseFloat(savedValue) || 0;
-        }
-        // Add new value
-        total += parseFloat(value) || 0;
-      }
-    });
-
-    // Add additional pending changes
-    Object.entries(pendingChanges).forEach(([tahapanId, value]) => {
-      const key = `${pekerjaanId}-tahap-${tahapanId}`;
-      // If not already counted in modifiedCells
-      if (!state.modifiedCells.has(key)) {
-        const savedValue = state.assignmentMap.get(key);
-        if (savedValue) {
-          total -= parseFloat(savedValue) || 0;
-        }
-        total += parseFloat(value) || 0;
-      }
-    });
-
-    return Math.round(total * 100) / 100; // Round to 2 decimals
+    const validation = getValidationModule();
+    if (!validation) {
+      logger.error('Validation module not available');
+      return 0;
+    }
+    return validation.calculateTotalProgress(pekerjaanId, pendingChanges, state);
   }
 
   /**
    * Validate and apply visual feedback for progress totals
-   * @param {Map} changesByPekerjaan - Map of pekerjaan changes
-   * @returns {Object} Validation result {isValid, errors}
+   * MIGRATED: Delegates to validation_module.js
    */
   function validateProgressTotals(changesByPekerjaan) {
-    const errors = [];
-    const warnings = [];
-
-    changesByPekerjaan.forEach((assignments, pekerjaanId) => {
-      const total = calculateTotalProgress(pekerjaanId, assignments);
-
-      if (total > 100) {
-        errors.push({
-          pekerjaanId,
-          total,
-          message: `Pekerjaan ${pekerjaanId}: Total ${total.toFixed(2)}% melebihi 100%`
-        });
-      } else if (total < 100 && total > 0) {
-        warnings.push({
-          pekerjaanId,
-          total,
-          message: `Pekerjaan ${pekerjaanId}: Total ${total.toFixed(2)}% kurang dari 100%`
-        });
-      }
-    });
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
+    const validation = getValidationModule();
+    if (!validation) {
+      logger.error('Validation module not available');
+      return { isValid: true, errors: [], warnings: [] };
+    }
+    return validation.validateProgressTotals(changesByPekerjaan, state);
   }
 
   /**
    * Update visual feedback (border colors) for pekerjaan rows
-   * @param {string} pekerjaanId - Pekerjaan ID
-   * @param {number} total - Total progress percentage
+   * MIGRATED: Delegates to validation_module.js
    */
   function updateProgressVisualFeedback(pekerjaanId, total) {
-    const leftRow = document.querySelector(`#left-tbody tr[data-node-id="${pekerjaanId}"]`);
-    const rightRow = document.querySelector(`#right-tbody tr[data-node-id="${pekerjaanId}"]`);
-
-    if (!leftRow || !rightRow) return;
-
-    // Remove all status classes
-    leftRow.classList.remove('progress-over-100', 'progress-under-100', 'progress-complete-100');
-    rightRow.classList.remove('progress-over-100', 'progress-under-100', 'progress-complete-100');
-
-    // Apply appropriate class
-    if (total > 100) {
-      leftRow.classList.add('progress-over-100');
-      rightRow.classList.add('progress-over-100');
-    } else if (total < 100 && total > 0) {
-      leftRow.classList.add('progress-under-100');
-      rightRow.classList.add('progress-under-100');
-    } else if (total === 100) {
-      leftRow.classList.add('progress-complete-100');
-      rightRow.classList.add('progress-complete-100');
+    const validation = getValidationModule();
+    if (!validation) {
+      logger.warn('Validation module not available');
+      return;
     }
+    return validation.updateProgressVisualFeedback(pekerjaanId, total);
   }
 
   async function saveAllChanges() {
