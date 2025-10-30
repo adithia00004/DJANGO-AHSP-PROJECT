@@ -96,11 +96,15 @@
    * @param {string} detail - Detail message (optional)
    */
   function showSuccessModal(title, message, detail = '') {
+    bootstrap.log.info('[SaveHandler] showSuccessModal called:', { title, message, detail });
+
     const modalEl = document.getElementById('successModal');
     if (!modalEl) {
-      bootstrap.log.warn('[SaveHandler] Success modal not found, falling back to toast');
+      bootstrap.log.warn('[SaveHandler] Success modal element not found in DOM');
       return;
     }
+
+    bootstrap.log.info('[SaveHandler] Modal element found, updating content');
 
     // Update modal content
     const titleEl = document.getElementById('successModalTitle');
@@ -114,9 +118,63 @@
       detailEl.style.display = detail ? 'block' : 'none';
     }
 
-    // Show modal
-    const modal = new window.bootstrap.Modal(modalEl);
-    modal.show();
+    // Try multiple methods to show modal
+    bootstrap.log.info('[SaveHandler] Checking Bootstrap availability...');
+    bootstrap.log.info('[SaveHandler] window.bootstrap:', !!window.bootstrap);
+    bootstrap.log.info('[SaveHandler] window.bootstrap.Modal:', !!(window.bootstrap && window.bootstrap.Modal));
+
+    try {
+      // Method 1: Bootstrap 5 JS API
+      if (window.bootstrap && window.bootstrap.Modal) {
+        bootstrap.log.info('[SaveHandler] Using Bootstrap 5 Modal API');
+        const modal = new window.bootstrap.Modal(modalEl);
+        modal.show();
+        bootstrap.log.info('[SaveHandler] Modal shown successfully via Bootstrap 5');
+        return;
+      }
+
+      // Method 2: jQuery Bootstrap
+      if (window.$ && typeof window.$.fn.modal === 'function') {
+        bootstrap.log.info('[SaveHandler] Using jQuery Bootstrap modal');
+        window.$(modalEl).modal('show');
+        bootstrap.log.info('[SaveHandler] Modal shown via jQuery');
+        return;
+      }
+
+      // Method 3: Manual DOM manipulation
+      bootstrap.log.warn('[SaveHandler] Bootstrap Modal API not available, using manual DOM');
+      modalEl.classList.add('show');
+      modalEl.classList.add('fade');
+      modalEl.style.display = 'block';
+      modalEl.setAttribute('aria-modal', 'true');
+      modalEl.removeAttribute('aria-hidden');
+
+      // Add backdrop
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop fade show';
+      backdrop.id = 'successModalBackdrop';
+      document.body.appendChild(backdrop);
+      document.body.classList.add('modal-open');
+
+      bootstrap.log.info('[SaveHandler] Modal shown manually');
+
+      // Close handler
+      const okBtn = modalEl.querySelector('[data-bs-dismiss="modal"]');
+      if (okBtn) {
+        okBtn.onclick = () => {
+          modalEl.classList.remove('show');
+          modalEl.style.display = 'none';
+          modalEl.setAttribute('aria-hidden', 'true');
+          modalEl.removeAttribute('aria-modal');
+          const bd = document.getElementById('successModalBackdrop');
+          if (bd) bd.remove();
+          document.body.classList.remove('modal-open');
+        };
+      }
+
+    } catch (error) {
+      bootstrap.log.error('[SaveHandler] Error showing success modal:', error);
+    }
   }
 
   /**
@@ -124,10 +182,12 @@
    * @returns {Promise<boolean>} True if user confirms, false if cancels
    */
   function showResetConfirmationModal() {
+    bootstrap.log.info('[SaveHandler] showResetConfirmationModal called');
+
     return new Promise((resolve) => {
       const modalEl = document.getElementById('resetProgressModal');
       if (!modalEl) {
-        bootstrap.log.warn('[SaveHandler] Reset modal not found, falling back to confirm()');
+        bootstrap.log.warn('[SaveHandler] Reset modal not found, using confirm()');
         const result = confirm(
           'Apakah Anda yakin ingin mereset semua progress pekerjaan ke 0?\n\n' +
           'Tindakan ini akan menghapus semua data progress yang telah disimpan.\n\n' +
@@ -138,33 +198,106 @@
       }
 
       const confirmBtn = document.getElementById('confirmResetBtn');
-      const modal = new window.bootstrap.Modal(modalEl);
+      if (!confirmBtn) {
+        bootstrap.log.error('[SaveHandler] Confirm button not found');
+        resolve(false);
+        return;
+      }
 
-      // Handler for confirm button
+      bootstrap.log.info('[SaveHandler] Modal and button found');
+      bootstrap.log.info('[SaveHandler] Checking Bootstrap availability...');
+      bootstrap.log.info('[SaveHandler] window.bootstrap:', !!window.bootstrap);
+      bootstrap.log.info('[SaveHandler] window.bootstrap.Modal:', !!(window.bootstrap && window.bootstrap.Modal));
+
+      let modal = null;
+      let isResolved = false;
+
       const handleConfirm = () => {
-        modal.hide();
+        if (isResolved) return;
+        bootstrap.log.info('[SaveHandler] User confirmed reset');
+        isResolved = true;
+        hideModal();
         cleanup();
         resolve(true);
       };
 
-      // Handler for cancel (close button or backdrop click)
       const handleCancel = () => {
+        if (isResolved) return;
+        bootstrap.log.info('[SaveHandler] User cancelled reset');
+        isResolved = true;
         cleanup();
         resolve(false);
       };
 
-      // Cleanup event listeners
+      const hideModal = () => {
+        if (modal && typeof modal.hide === 'function') {
+          modal.hide();
+        } else if (window.$ && typeof window.$.fn.modal === 'function') {
+          window.$(modalEl).modal('hide');
+        } else {
+          modalEl.classList.remove('show');
+          modalEl.style.display = 'none';
+          modalEl.setAttribute('aria-hidden', 'true');
+          modalEl.removeAttribute('aria-modal');
+          const backdrop = document.querySelector('.modal-backdrop');
+          if (backdrop) backdrop.remove();
+          document.body.classList.remove('modal-open');
+        }
+      };
+
       const cleanup = () => {
         confirmBtn.removeEventListener('click', handleConfirm);
         modalEl.removeEventListener('hidden.bs.modal', handleCancel);
+        const cancelBtns = modalEl.querySelectorAll('[data-bs-dismiss="modal"]');
+        cancelBtns.forEach(btn => btn.removeEventListener('click', handleCancel));
       };
 
-      // Attach event listeners
+      // Attach listeners
       confirmBtn.addEventListener('click', handleConfirm);
-      modalEl.addEventListener('hidden.bs.modal', handleCancel);
+      modalEl.addEventListener('hidden.bs.modal', handleCancel, { once: true });
 
-      // Show modal
-      modal.show();
+      const cancelBtns = modalEl.querySelectorAll('[data-bs-dismiss="modal"]');
+      cancelBtns.forEach(btn => btn.addEventListener('click', handleCancel));
+
+      // Show modal - try multiple methods
+      try {
+        // Method 1: Bootstrap 5 JS API
+        if (window.bootstrap && window.bootstrap.Modal) {
+          bootstrap.log.info('[SaveHandler] Showing reset modal via Bootstrap 5');
+          modal = new window.bootstrap.Modal(modalEl);
+          modal.show();
+          bootstrap.log.info('[SaveHandler] Reset modal shown via Bootstrap 5');
+          return;
+        }
+
+        // Method 2: jQuery Bootstrap
+        if (window.$ && typeof window.$.fn.modal === 'function') {
+          bootstrap.log.info('[SaveHandler] Showing reset modal via jQuery');
+          window.$(modalEl).modal('show');
+          bootstrap.log.info('[SaveHandler] Reset modal shown via jQuery');
+          return;
+        }
+
+        // Method 3: Manual DOM
+        bootstrap.log.warn('[SaveHandler] Showing reset modal manually');
+        modalEl.classList.add('show');
+        modalEl.classList.add('fade');
+        modalEl.style.display = 'block';
+        modalEl.setAttribute('aria-modal', 'true');
+        modalEl.removeAttribute('aria-hidden');
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop fade show';
+        document.body.appendChild(backdrop);
+        document.body.classList.add('modal-open');
+
+        bootstrap.log.info('[SaveHandler] Reset modal shown manually');
+
+      } catch (error) {
+        bootstrap.log.error('[SaveHandler] Error showing reset modal:', error);
+        cleanup();
+        resolve(false);
+      }
     });
   }
 
