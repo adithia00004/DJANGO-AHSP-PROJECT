@@ -169,6 +169,250 @@
     return ids;
   }
 
+  /**
+   * Calculate volume-based planned curve from pekerjaan assignments
+   *
+   * ALGORITHM:
+   * For each time period (column):
+   *   1. Identify pekerjaan that have assignments in this period
+   *   2. Sum their TOTAL volumes (not progress, full volume)
+   *   3. Accumulate to get cumulative planned volume
+   *   4. Convert to percentage of total project volume
+   *
+   * ASSUMPTION:
+   * If a pekerjaan is assigned to a period (even with partial progress),
+   * we assume the FULL volume of that pekerjaan should be completed
+   * by the end of that period according to the plan.
+   *
+   * EXAMPLE:
+   * Project with 3 pekerjaan (100m², 200m², 100m² = 400m² total)
+   * - Pekerjaan A (100m²) assigned to Column 0
+   * - Pekerjaan B (200m²) assigned to Column 1
+   * - Pekerjaan C (100m²) assigned to Column 2
+   *
+   * Result:
+   * - Column 0: 25% (100/400)
+   * - Column 1: 75% (300/400)
+   * - Column 2: 100% (400/400)
+   *
+   * @param {Array} columns - Array of time column objects
+   * @param {Map} volumeLookup - Map of pekerjaanId → volume
+   * @param {Map} cellValues - Map of cellKey → percentage value
+   * @param {number} totalVolume - Total project volume
+   * @param {Function} getVolumeForPekerjaan - Helper to get volume
+   * @returns {Array<number>} Array of cumulative planned percentages
+   */
+  function calculateVolumeBasedPlannedCurve(columns, volumeLookup, cellValues, totalVolume, getVolumeForPekerjaan) {
+    // Build mapping of column index to assigned pekerjaan IDs
+    const columnIndexById = new Map();
+    columns.forEach((col, index) => {
+      columnIndexById.set(String(col.id), index);
+    });
+
+    const columnAssignments = new Map(); // columnIndex → Set<pekerjaanId>
+
+    // Iterate through all cell assignments
+    cellValues.forEach((value, key) => {
+      const [pekerjaanId, columnId] = String(key).split('-');
+      const columnIndex = columnIndexById.get(columnId);
+
+      if (columnIndex !== undefined && pekerjaanId) {
+        if (!columnAssignments.has(columnIndex)) {
+          columnAssignments.set(columnIndex, new Set());
+        }
+        columnAssignments.get(columnIndex).add(pekerjaanId);
+      }
+    });
+
+    // Calculate cumulative planned volume for each column
+    let cumulativePlannedVolume = 0;
+    const plannedSeries = [];
+    const assignedPekerjaan = new Set(); // Track already counted pekerjaan
+
+    columns.forEach((col, index) => {
+      // Get pekerjaan assigned to this column
+      const assignedInThisColumn = columnAssignments.get(index) || new Set();
+
+      // Add volumes of newly assigned pekerjaan (not counted before)
+      assignedInThisColumn.forEach((pekerjaanId) => {
+        if (!assignedPekerjaan.has(pekerjaanId)) {
+          const volume = getVolumeForPekerjaan(volumeLookup, pekerjaanId, 1);
+          cumulativePlannedVolume += volume;
+          assignedPekerjaan.add(pekerjaanId);
+        }
+      });
+
+      // Calculate percentage
+      const plannedPercent = totalVolume > 0
+        ? Math.min(100, Math.max(0, (cumulativePlannedVolume / totalVolume) * 100))
+        : 0;
+
+      plannedSeries.push(Number(plannedPercent.toFixed(2)));
+    });
+
+    return plannedSeries;
+  }
+
+  /**
+   * Calculate ideal S-Curve using sigmoid (logistic) function
+   *
+   * MATHEMATICAL FORMULA:
+   * P(t) = 100 / (1 + e^(-k*(t - t₀)))
+   *
+   * Where:
+   * - t = time period index (0 to n-1)
+   * - t₀ = midpoint of timeline (n/2)
+   * - k = steepness factor (controls curve shape)
+   * - P(t) = cumulative percentage at time t
+   *
+   * CURVE PROPERTIES:
+   * - Starts near 0% (slow ramp-up phase)
+   * - Accelerates in middle (peak productivity)
+   * - Slows down near 100% (completion/tapering)
+   * - Smooth continuous curve (realistic S-shape)
+   *
+   * STEEPNESS FACTOR (k):
+   * - k = 0.5: Gentle S-curve (gradual progress)
+   * - k = 0.8: Moderate S-curve (default, balanced)
+   * - k = 1.2: Steep S-curve (aggressive schedule)
+   *
+   * USE CASE:
+   * This is used when no assignment data exists (new projects)
+   * to provide a realistic planned curve based on typical project
+   * progress patterns.
+   *
+   * @param {Array} columns - Array of time column objects
+   * @param {number} steepnessFactor - Controls curve steepness (default: 0.8)
+   * @returns {Array<number>} Array of cumulative planned percentages
+   */
+  function calculateIdealSCurve(columns, steepnessFactor = 0.8) {
+    const n = columns.length;
+    if (n === 0) return [];
+
+    const midpoint = n / 2;
+    const plannedSeries = [];
+
+    // Apply sigmoid function to each time period
+    columns.forEach((col, index) => {
+      const t = index;
+      // Sigmoid formula: 100 / (1 + e^(-k*(t - midpoint)))
+      const exponent = -steepnessFactor * (t - midpoint);
+      const sigmoid = 100 / (1 + Math.exp(exponent));
+      plannedSeries.push(Number(sigmoid.toFixed(2)));
+    });
+
+    return plannedSeries;
+  }
+
+  /**
+   * Calculate linear planned curve (fallback method)
+   *
+   * ALGORITHM:
+   * Divides 100% equally across all time periods.
+   * Progress increases linearly: Period 1 = n%, Period 2 = 2n%, etc.
+   *
+   * FORMULA:
+   * P(t) = (100 / n) * (t + 1)
+   *
+   * Where:
+   * - n = total number of periods
+   * - t = period index (0-based)
+   * - P(t) = cumulative percentage at period t
+   *
+   * USE CASE:
+   * Used as last resort fallback when other methods cannot be applied.
+   * Not realistic but provides basic functionality.
+   *
+   * @param {Array} columns - Array of time column objects
+   * @returns {Array<number>} Array of cumulative planned percentages
+   */
+  function calculateLinearPlannedCurve(columns) {
+    const plannedStep = columns.length > 0 ? 100 / columns.length : 0;
+    const plannedSeries = [];
+
+    columns.forEach((col, index) => {
+      const plannedPercent = Math.min(100, Math.max(0, plannedStep * (index + 1)));
+      plannedSeries.push(Number(plannedPercent.toFixed(2)));
+    });
+
+    return plannedSeries;
+  }
+
+  /**
+   * Calculate planned curve using best available method
+   *
+   * STRATEGY (Hybrid Approach):
+   * 1. If assignments exist → Volume-based calculation (most accurate)
+   * 2. If no assignments → Ideal S-curve (realistic for new projects)
+   * 3. Fallback → Linear distribution (backwards compatible)
+   *
+   * WHY HYBRID?
+   * - Volume-based: Reflects actual project plan when data available
+   * - Ideal S-curve: Provides realistic curve for new/empty projects
+   * - Linear fallback: Ensures functionality in all edge cases
+   *
+   * DECISION FLOW:
+   * ```
+   * Has assignments? ─Yes→ Volume-based planned curve
+   *        │
+   *        No
+   *        ↓
+   * Use ideal curve? ─Yes→ Sigmoid S-curve
+   *        │
+   *        No
+   *        ↓
+   * Linear fallback
+   * ```
+   *
+   * @param {Array} columns - Array of time column objects
+   * @param {Map} volumeLookup - Map of pekerjaanId → volume
+   * @param {Map} cellValues - Map of cellKey → percentage value
+   * @param {number} totalVolume - Total project volume
+   * @param {Function} getVolumeForPekerjaan - Helper to get volume
+   * @param {Object} options - Configuration options
+   * @param {boolean} [options.useIdealCurve=true] - Use sigmoid if no assignments
+   * @param {number} [options.steepnessFactor=0.8] - Sigmoid steepness (0.5-1.5)
+   * @param {boolean} [options.fallbackToLinear=true] - Use linear as last resort
+   * @returns {Array<number>} Array of cumulative planned percentages
+   */
+  function calculatePlannedCurve(columns, volumeLookup, cellValues, totalVolume, getVolumeForPekerjaan, options = {}) {
+    // Default options
+    const useIdealCurve = options.useIdealCurve !== false;
+    const steepnessFactor = options.steepnessFactor || 0.8;
+    const fallbackToLinear = options.fallbackToLinear !== false;
+
+    // Strategy 1: Volume-based (if assignments exist)
+    const hasAssignments = cellValues && cellValues.size > 0;
+
+    if (hasAssignments) {
+      const volumeBased = calculateVolumeBasedPlannedCurve(
+        columns,
+        volumeLookup,
+        cellValues,
+        totalVolume,
+        getVolumeForPekerjaan
+      );
+
+      // Validate result (should have values and reach reasonable progress)
+      if (volumeBased.length > 0 && volumeBased[volumeBased.length - 1] > 0) {
+        return volumeBased;
+      }
+    }
+
+    // Strategy 2: Ideal S-curve (for new projects or when preferred)
+    if (useIdealCurve) {
+      return calculateIdealSCurve(columns, steepnessFactor);
+    }
+
+    // Strategy 3: Linear fallback (last resort)
+    if (fallbackToLinear) {
+      return calculateLinearPlannedCurve(columns);
+    }
+
+    // Ultimate fallback: empty array
+    return [];
+  }
+
   function buildDataset(state, context = {}) {
     const columns = getColumns(state);
     if (!columns.length) {
@@ -213,27 +457,37 @@
       return `Week ${index + 1}`;
     });
 
-    const plannedSeries = [];
-    const actualSeries = [];
-    const details = [];
+    // Calculate PLANNED curve using hybrid approach
+    // This will automatically choose the best method based on available data
+    const plannedSeries = calculatePlannedCurve(
+      columns,
+      volumeLookup,
+      cellValues,
+      totalVolume,
+      getVolumeForPekerjaan,
+      context.scurveOptions || {}
+    );
 
+    // Calculate ACTUAL curve (volume-weighted from assignments)
+    const actualSeries = [];
     let cumulativeActualVolume = 0;
-    const plannedStep = columns.length > 0 ? 100 / columns.length : 0;
 
     columns.forEach((col, index) => {
       cumulativeActualVolume += columnTotals[index] || 0;
       const actualPercent = totalVolume > 0
         ? Math.min(100, Math.max(0, (cumulativeActualVolume / totalVolume) * 100))
         : 0;
-      const plannedPercent = Math.min(100, Math.max(0, plannedStep * (index + 1)));
-
-      plannedSeries.push(Number(plannedPercent.toFixed(2)));
       actualSeries.push(Number(actualPercent.toFixed(2)));
+    });
 
+    // Build detailed data for tooltips
+    const details = [];
+    columns.forEach((col, index) => {
       details.push({
         label: labels[index],
-        planned: plannedSeries[index],
-        actual: actualSeries[index],
+        planned: plannedSeries[index] || 0,
+        actual: actualSeries[index] || 0,
+        variance: Number(((actualSeries[index] || 0) - (plannedSeries[index] || 0)).toFixed(2)),
         start: col.startDate instanceof Date ? col.startDate : (col.startDate ? new Date(col.startDate) : null),
         end: col.endDate instanceof Date ? col.endDate : (col.endDate ? new Date(col.endDate) : null),
         tooltip: col.tooltip || labels[index],
@@ -288,14 +542,32 @@
           const label = detail.label || data.labels[index];
           const planned = data.planned[index] ?? 0;
           const actual = data.actual[index] ?? 0;
+          const variance = detail.variance ?? (actual - planned);
           const start = formatDateLabel(detail.start);
           const end = formatDateLabel(detail.end);
 
+          // Determine variance status and color
+          let varianceText = '';
+          let varianceColor = '';
+          if (variance > 5) {
+            varianceText = `+${variance.toFixed(1)}% (Ahead of schedule)`;
+            varianceColor = '#22c55e'; // Green
+          } else if (variance < -5) {
+            varianceText = `${variance.toFixed(1)}% (Behind schedule)`;
+            varianceColor = '#ef4444'; // Red
+          } else {
+            varianceText = `${variance >= 0 ? '+' : ''}${variance.toFixed(1)}% (On track)`;
+            varianceColor = '#3b82f6'; // Blue
+          }
+
           return [
             `<strong>${label}</strong>`,
-            start && end ? `<div>Periode: ${start} - ${end}</div>` : '',
-            `<div>Planned: ${planned.toFixed(1)}%</div>`,
-            `<div>Actual: ${actual.toFixed(1)}%</div>`,
+            start && end ? `<div style="font-size:0.85em;color:#6b7280;margin:4px 0;">Periode: ${start} - ${end}</div>` : '',
+            '<div style="margin-top:8px;">',
+            `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong></div>`,
+            `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong></div>`,
+            `<div style="margin:4px 0;color:${varianceColor};">Variance: <strong>${varianceText}</strong></div>`,
+            '</div>',
           ].filter(Boolean).join('');
         },
       },
