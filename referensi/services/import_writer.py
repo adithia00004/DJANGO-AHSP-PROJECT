@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from django.db import transaction
 
 from referensi.models import AHSPReferensi, RincianReferensi
+from .import_utils import canonicalize_kategori
 
 
 @dataclass
@@ -56,7 +57,9 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
         for job in parse_result.jobs:
             defaults = {
                 "nama_ahsp": job.nama_ahsp,
-                "satuan": "",
+                "satuan": job.satuan or "",
+                "klasifikasi": job.klasifikasi or "",
+                "sub_klasifikasi": job.sub_klasifikasi or "",
                 "source_file": source_file,
             }
             ahsp_obj, created = AHSPReferensi.objects.get_or_create(
@@ -72,6 +75,18 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 if ahsp_obj.nama_ahsp != job.nama_ahsp:
                     ahsp_obj.nama_ahsp = job.nama_ahsp
                     updated_fields.append("nama_ahsp")
+                if job.klasifikasi is not None and ahsp_obj.klasifikasi != job.klasifikasi:
+                    ahsp_obj.klasifikasi = job.klasifikasi or ""
+                    updated_fields.append("klasifikasi")
+                if (
+                    job.sub_klasifikasi is not None
+                    and ahsp_obj.sub_klasifikasi != job.sub_klasifikasi
+                ):
+                    ahsp_obj.sub_klasifikasi = job.sub_klasifikasi or ""
+                    updated_fields.append("sub_klasifikasi")
+                if job.satuan is not None and ahsp_obj.satuan != job.satuan:
+                    ahsp_obj.satuan = job.satuan or ""
+                    updated_fields.append("satuan")
                 if source_file and ahsp_obj.source_file != source_file:
                     ahsp_obj.source_file = source_file
                     updated_fields.append("source_file")
@@ -88,7 +103,7 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 try:
                     fields = dict(
                         ahsp=ahsp_obj,
-                        kategori=detail.kategori,
+                        kategori=canonicalize_kategori(detail.kategori or detail.kategori_source),
                         kode_item=detail.kode_item,
                         uraian_item=detail.uraian_item,
                         satuan_item=detail.satuan_item,
@@ -99,7 +114,7 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                     else:  # pragma: no cover - fallback untuk skema lama
                         legacy_fields = dict(
                             ahsp=ahsp_obj,
-                            kategori=detail.kategori,
+                            kategori=canonicalize_kategori(detail.kategori or detail.kategori_source),
                             kode_item_lookup=detail.kode_item,
                             item=detail.uraian_item,
                             satuan=detail.satuan_item,

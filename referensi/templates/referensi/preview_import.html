@@ -3,6 +3,25 @@
 
 {% block title %}Preview Import AHSP Referensi{% endblock %}
 
+{% block extra_css %}
+<style>
+    .preview-table table th,
+    .preview-table table td {
+        white-space: normal;
+        vertical-align: top;
+    }
+
+    .preview-table {
+        max-height: 420px;
+        overflow: auto;
+    }
+
+    .preview-table table {
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row g-4">
     <div class="col-lg-5">
@@ -84,52 +103,97 @@
                             </div>
                         {% endif %}
                         {% if parse_result.jobs %}
-                            <div class="accordion" id="previewAccordion">
-                                {% for job in parse_result.jobs %}
-                                    <div class="accordion-item">
-                                        <h2 class="accordion-header" id="heading-{{ forloop.counter }}">
-                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ forloop.counter }}" aria-expanded="false" aria-controls="collapse-{{ forloop.counter }}">
-                                                <span class="fw-semibold">[{{ job.sumber }}] {{ job.kode_ahsp }}</span>
-                                                <span class="ms-2 text-muted">{{ job.nama_ahsp }}</span>
-                                                <span class="badge text-bg-secondary ms-auto">{{ job.rincian_count }} rincian</span>
-                                            </button>
-                                        </h2>
-                                        <div id="collapse-{{ forloop.counter }}" class="accordion-collapse collapse" aria-labelledby="heading-{{ forloop.counter }}" data-bs-parent="#previewAccordion">
-                                            <div class="accordion-body p-0">
-                                                {% if job.rincian %}
-                                                    <div class="table-responsive">
-                                                        <table class="table table-sm align-middle mb-0">
-                                                            <thead class="table-light">
-                                                                <tr>
-                                                                    <th style="width:7%">#</th>
-                                                                    <th style="width:12%">Kategori</th>
-                                                                    <th style="width:15%">Kode Item</th>
-                                                                    <th>Uraian</th>
-                                                                    <th style="width:10%">Satuan</th>
-                                                                    <th style="width:14%" class="text-end">Koefisien</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {% for item in job.rincian %}
-                                                                    <tr>
-                                                                        <td class="text-muted">{{ item.row_number }}</td>
-                                                                        <td>{{ item.kategori }}</td>
-                                                                        <td>{{ item.kode_item|default:"-" }}</td>
-                                                                        <td>{{ item.uraian_item }}</td>
-                                                                        <td>{{ item.satuan_item|default:"-" }}</td>
-                                                                        <td class="text-end">{{ item.koef_display }}</td>
-                                                                    </tr>
-                                                                {% endfor %}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                {% else %}
-                                                    <div class="p-3 text-muted">Tidak ada rincian untuk pekerjaan ini.</div>
-                                                {% endif %}
-                                            </div>
-                                        </div>
+                            <ul class="nav nav-pills small" id="previewTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="tab-ahsp" data-bs-toggle="tab" data-bs-target="#pane-ahsp" type="button" role="tab" aria-controls="pane-ahsp" aria-selected="true">
+                                        AHSP Referensi ({{ parse_result.total_jobs }})
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="tab-rincian" data-bs-toggle="tab" data-bs-target="#pane-rincian" type="button" role="tab" aria-controls="pane-rincian" aria-selected="false">
+                                        Rincian Item ({{ parse_result.total_rincian }})
+                                    </button>
+                                </li>
+                            </ul>
+                            <div class="tab-content border rounded-3 border-light-subtle mt-3">
+                                <div class="tab-pane fade show active" id="pane-ahsp" role="tabpanel" aria-labelledby="tab-ahsp">
+                                    <div class="table-responsive small text-wrap preview-table">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th style="width:8%">Baris</th>
+                                                    <th style="width:12%">Sumber</th>
+                                                    <th style="width:12%">Kode</th>
+                                                    <th>Nama Pekerjaan</th>
+                                                    <th style="width:14%">Klasifikasi</th>
+                                                    <th style="width:14%">Sub-klasifikasi</th>
+                                                    <th style="width:10%">Satuan</th>
+                                                    <th style="width:12%" class="text-end">Jumlah Rincian</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for job in parse_result.jobs %}
+                                                    <tr>
+                                                        <td class="text-muted">{{ job.row_number }}</td>
+                                                        <td>{{ job.sumber }}</td>
+                                                        <td class="fw-semibold">{{ job.kode_ahsp }}</td>
+                                                        <td>{{ job.nama_ahsp }}</td>
+                                                        <td>{{ job.klasifikasi|default:"-" }}</td>
+                                                        <td>{{ job.sub_klasifikasi|default:"-" }}</td>
+                                                        <td>{{ job.satuan|default:"-" }}</td>
+                                                        <td class="text-end">{{ job.rincian_count }}</td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
                                     </div>
-                                {% endfor %}
+                                </div>
+                                <div class="tab-pane fade" id="pane-rincian" role="tabpanel" aria-labelledby="tab-rincian">
+                                    {% if parse_result.total_rincian %}
+                                        <div class="table-responsive small text-wrap preview-table">
+                                            <table class="table table-sm align-middle mb-0">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th style="width:7%">Baris</th>
+                                                        <th style="width:12%">Kode AHSP</th>
+                                                        <th>Nama Pekerjaan</th>
+                                                        <th style="width:12%">Kategori (DB)</th>
+                                                        <th style="width:16%">Kategori Sumber</th>
+                                                        <th style="width:14%">Kode Item</th>
+                                                        <th>Uraian</th>
+                                                        <th style="width:10%">Satuan</th>
+                                                        <th style="width:10%" class="text-end">Koefisien</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for job in parse_result.jobs %}
+                                                        {% for item in job.rincian %}
+                                                            <tr>
+                                                                <td class="text-muted">{{ item.row_number }}</td>
+                                                                <td class="fw-semibold">{{ job.kode_ahsp }}</td>
+                                                                <td>{{ job.nama_ahsp }}</td>
+                                                                <td>{{ item.kategori_display }}</td>
+                                                                <td>
+                                                                    {% if item.kategori_source %}
+                                                                        {{ item.kategori_source }}
+                                                                    {% else %}
+                                                                        <span class="text-muted">(otomatis)</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td>{{ item.kode_item|default:"-" }}</td>
+                                                                <td>{{ item.uraian_item }}</td>
+                                                                <td>{{ item.satuan_item|default:"-" }}</td>
+                                                                <td class="text-end">{{ item.koef_display }}</td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="p-3 text-muted">Tidak ada rincian yang terdeteksi pada file ini.</div>
+                                    {% endif %}
+                                </div>
                             </div>
                         {% endif %}
                     {% endif %}
