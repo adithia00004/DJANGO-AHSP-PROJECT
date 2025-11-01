@@ -88,3 +88,35 @@ class RincianReferensi(models.Model):
     def __str__(self):
         uraian = (self.uraian_item or "")[:50]
         return f"{self.ahsp.kode_ahsp} | {self.get_kategori_display()} | {uraian}"
+
+
+class KodeItemReferensi(models.Model):
+    class Meta:
+        db_table = "referensi_kode_item"
+        verbose_name = "Kode Item Referensi"
+        verbose_name_plural = "Kode Item Referensi"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kategori", "uraian_item", "satuan_item"],
+                name="uniq_kode_item_kombinasi",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["kategori"]),
+            models.Index(fields=["kode_item"]),
+        ]
+
+    kategori = models.CharField(
+        max_length=50,
+        choices=RincianReferensi.Kategori.choices,
+    )
+    uraian_item = models.TextField()
+    satuan_item = models.CharField(max_length=20)
+    kode_item = models.CharField(max_length=50)
+
+    def __str__(self):
+        uraian = (self.uraian_item or "")[:50]
+        return f"{self.kode_item} | {self.get_kategori_display()} | {uraian}"
+
+    def get_kategori_display(self) -> str:  # pragma: no cover - passthrough helper
+        return RincianReferensi.Kategori(self.kategori).label
