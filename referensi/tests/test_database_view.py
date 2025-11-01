@@ -57,13 +57,13 @@ class AHSPDatabaseViewTests(TestCase):
         response = self.client.get(reverse("referensi:ahsp_database"))
 
         self.assertEqual(response.status_code, 200)
-        jobs = response.context["jobs"]
-        self.assertEqual(len(jobs), 1)
-        first_row = jobs[0]
-        self.assertFalse(first_row["has_anomaly"])
+        jobs_context = response.context["jobs"]
+        self.assertEqual(len(jobs_context["rows"]), 1)
+        first_row = jobs_context["rows"][0]
         self.assertEqual(first_row["category_counts"]["TK"], 1)
         self.assertEqual(first_row["category_counts"]["BHN"], 1)
-        summary = response.context["summary"]
+        self.assertEqual(first_row["anomaly_reasons"], [])
+        summary = jobs_context["summary"]
         self.assertEqual(summary["total_filtered"], 1)
         self.assertEqual(summary["anomaly_displayed"], 0)
 
@@ -93,9 +93,97 @@ class AHSPDatabaseViewTests(TestCase):
         )
 
         self.client.force_login(self.staff_user)
-        response = self.client.get(reverse("referensi:ahsp_database"), {"anomali": "1"})
+        response = self.client.get(
+            reverse("referensi:ahsp_database"),
+            {"job_anomali": "1"},
+        )
 
-        jobs = response.context["jobs"]
+        jobs = response.context["jobs"]["rows"]
         self.assertEqual(len(jobs), 1)
-        self.assertTrue(jobs[0]["has_anomaly"])
         self.assertEqual(jobs[0]["object"].kode_ahsp, "03.01")
+        self.assertTrue(jobs[0]["anomaly_reasons"]) 
+
+    def test_staff_can_update_job_inline(self):
+        job = self._create_job(nama_ahsp="Lama")
+        self.client.force_login(self.staff_user)
+        response = self.client.get(reverse("referensi:ahsp_database"))
+
+        jobs_context = response.context["jobs"]
+        formset = jobs_context["formset"]
+        self.assertEqual(formset.total_form_count(), 1)
+
+        data = {
+            "active_tab": "jobs",
+            "tab": "jobs",
+            "job_q": jobs_context["filters"]["search"],
+            "job_sumber": jobs_context["filters"]["sumber"],
+            "job_klasifikasi": jobs_context["filters"]["klasifikasi"],
+            "job_kategori": jobs_context["filters"]["kategori"],
+            "job_anomali": "1" if jobs_context["filters"]["anomali"] else "",
+        }
+
+        for field in formset.management_form:
+            data[field.html_name] = field.value()
+
+        prefix = formset.prefix
+        data[f"{prefix}-0-id"] = str(job.id)
+        data[f"{prefix}-0-kode_ahsp"] = job.kode_ahsp
+        data[f"{prefix}-0-nama_ahsp"] = "Nama Baru"
+        data[f"{prefix}-0-klasifikasi"] = job.klasifikasi or ""
+        data[f"{prefix}-0-sub_klasifikasi"] = job.sub_klasifikasi or ""
+        data[f"{prefix}-0-satuan"] = job.satuan or ""
+        data[f"{prefix}-0-sumber"] = job.sumber
+        data[f"{prefix}-0-source_file"] = job.source_file or ""
+
+        response = self.client.post(reverse("referensi:ahsp_database"), data)
+        self.assertEqual(response.status_code, 302)
+
+        job.refresh_from_db()
+        self.assertEqual(job.nama_ahsp, "Nama Baru")
+
+    def test_staff_can_update_item_inline(self):
+        job = self._create_job()
+        item = RincianReferensi.objects.create(
+            ahsp=job,
+            kategori=RincianReferensi.Kategori.TK,
+            kode_item="T-001",
+            uraian_item="Mandor",
+            satuan_item="OH",
+            koefisien=Decimal("1"),
+        )
+
+        self.client.force_login(self.staff_user)
+        response = self.client.get(
+            reverse("referensi:ahsp_database"),
+            {"tab": "items", "item_job": job.id},
+        )
+
+        items_context = response.context["items"]
+        formset = items_context["formset"]
+        self.assertEqual(formset.total_form_count(), 1)
+
+        data = {
+            "active_tab": "items",
+            "tab": "items",
+            "item_q": items_context["filters"]["search"],
+            "item_kategori": items_context["filters"]["kategori"],
+            "item_job": items_context["filters"]["job_value"],
+        }
+
+        for field in formset.management_form:
+            data[field.html_name] = field.value()
+
+        prefix = formset.prefix
+        data[f"{prefix}-0-id"] = str(item.id)
+        data[f"{prefix}-0-kategori"] = RincianReferensi.Kategori.TK
+        data[f"{prefix}-0-kode_item"] = "T-001"
+        data[f"{prefix}-0-uraian_item"] = "Mandor Updated"
+        data[f"{prefix}-0-satuan_item"] = "OH"
+        data[f"{prefix}-0-koefisien"] = "2"
+
+        response = self.client.post(reverse("referensi:ahsp_database"), data)
+        self.assertEqual(response.status_code, 302)
+
+        item.refresh_from_db()
+        self.assertEqual(item.uraian_item, "Mandor Updated")
+        self.assertEqual(item.koefisien, Decimal("2"))
