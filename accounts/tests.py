@@ -4,7 +4,7 @@ from django.test import RequestFactory, SimpleTestCase
 from django.urls import reverse
 
 from config.adapters import AccountAdapter
-from config.urls import home_redirect
+from config.urls import home_redirect, admin_login_redirect
 
 
 class DummyUser(SimpleNamespace):
@@ -54,3 +54,26 @@ class AdminRedirectTests(SimpleTestCase):
         request = self._make_request(self.regular_user)
         adapter = AccountAdapter()
         self.assertEqual(adapter.get_login_redirect_url(request), reverse("dashboard:dashboard"))
+
+    def test_account_adapter_respects_next_parameter(self):
+        request = self.factory.get("/", {"next": "/admin/"})
+        request.user = self.superuser
+        adapter = AccountAdapter()
+        self.assertEqual(adapter.get_login_redirect_url(request), "/admin/")
+
+
+class AdminLoginRedirectTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_redirects_to_allauth_with_explicit_next(self):
+        request = self.factory.get("/admin/login/", {"next": "/admin/"})
+        response = admin_login_redirect(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('account_login')}?next=%2Fadmin%2F")
+
+    def test_redirects_to_admin_index_when_next_missing(self):
+        request = self.factory.get("/admin/login/")
+        response = admin_login_redirect(request)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('account_login')}?next=%2Fadmin%2F")

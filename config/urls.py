@@ -3,8 +3,9 @@ URL configuration for config project.
 """
 
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, reverse
 from django.shortcuts import redirect
+from django.utils.http import urlencode
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -18,8 +19,18 @@ def home_redirect(request):
     return redirect('account_login')
 
 
+def admin_login_redirect(request):
+    """Redirect Django admin login to allauth login to avoid CSRF confusion."""
+
+    next_url = request.GET.get("next") or request.POST.get("next") or reverse("admin:index")
+    query = urlencode({"next": next_url}) if next_url else ""
+    login_url = f"{reverse('account_login')}{'?' + query if query else ''}"
+    return redirect(login_url)
+
+
 urlpatterns = [
     # Admin
+    path('admin/login/', admin_login_redirect, name='admin_login_redirect'),
     path('admin/', admin.site.urls),
 
     # Authentication (django-allauth)
