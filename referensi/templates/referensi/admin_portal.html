@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Panel Admin Referensi{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-12">
+        <div class="alert alert-primary shadow-sm" role="alert">
+            <h4 class="alert-heading mb-1">Selamat datang, {{ request.user.get_full_name|default:request.user.username }}!</h4>
+            <p class="mb-0 small">
+                Halaman ini hanya tersedia untuk admin/superuser. Gunakan tautan di bawah untuk meninjau
+                dan memelihara database referensi sebelum perubahan diterapkan ke seluruh sistem.
+            </p>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-body-tertiary d-flex align-items-center">
+                <i class="bi bi-database-gear text-primary fs-4 me-3"></i>
+                <div>
+                    <h5 class="mb-0">Kelola Database Referensi</h5>
+                    <small class="text-muted">Buka Django Admin untuk mengubah data yang sudah ada.</small>
+                </div>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <p class="text-muted flex-grow-1">
+                    Gunakan antarmuka Django Admin untuk mengedit pekerjaan AHSP, rincian, atau entitas pendukung lainnya
+                    secara langsung. Semua perubahan tersimpan instan di database.
+                </p>
+                <div class="d-grid d-sm-flex justify-content-sm-end gap-2">
+                    <a class="btn btn-outline-primary" href="{% url 'admin:index' %}">
+                        <i class="bi bi-box-arrow-up-right"></i> Buka Django Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-body-tertiary d-flex align-items-center">
+                <i class="bi bi-cloud-arrow-up text-success fs-4 me-3"></i>
+                <div>
+                    <h5 class="mb-0">Impor Data Referensi Baru</h5>
+                    <small class="text-muted">Preview hasil parsing Excel sebelum disimpan.</small>
+                </div>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <p class="text-muted flex-grow-1">
+                    Unggah file Excel AHSP untuk memeriksa hasil parsing secara visual. Setelah memastikan data benar,
+                    lanjutkan dengan konfirmasi agar sistem menulis data ke database referensi.
+                </p>
+                <div class="d-grid d-sm-flex justify-content-sm-end gap-2">
+                    <a class="btn btn-success" href="{% url 'referensi:preview_import' %}">
+                        <i class="bi bi-search"></i> Mulai Preview Import
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-body-tertiary">
+                <h5 class="mb-0">Pengembangan Selanjutnya</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-0">
+                    Ruang ini dapat diisi dengan alat tambahan untuk aktivitas admin lain seperti audit perubahan,
+                    sinkronisasi sumber data eksternal, atau pelaporan khusus. Silakan jadwalkan fitur berikutnya
+                    sesuai kebutuhan operasional Anda.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

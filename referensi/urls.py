@@ -3,6 +3,7 @@ from django.urls import path
 from . import views, views_api
 
 urlpatterns = [
+    path('admin-portal/', views.admin_portal, name='admin_portal'),
     path('import/preview/', views.preview_import, name='preview_import'),
     path('import/commit/', views.commit_import, name='commit_import'),
     # Endpoint untuk Select2 (List Pekerjaan, cari kode/nama AHSP)

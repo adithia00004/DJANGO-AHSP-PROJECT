@@ -14,6 +14,7 @@ from referensi.services.import_writer import ImportSummary
 from referensi.views import (
     PENDING_IMPORT_SESSION_KEY,
     _cleanup_pending_import,
+    admin_portal,
     commit_import,
     preview_import,
 )
@@ -25,12 +26,49 @@ class DummyUser(SimpleNamespace):
         return True
 
 
+class AdminPortalViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.superuser = DummyUser(is_superuser=True, is_staff=True)
+        self.staff_user = DummyUser(is_superuser=False, is_staff=True)
+        self.regular_user = DummyUser(is_superuser=False, is_staff=False)
+
+    def test_requires_superuser(self):
+        request = self.factory.get("/referensi/admin-portal/")
+        request.user = self.regular_user
+        with self.assertRaises(PermissionDenied):
+            admin_portal(request)
+
+    def test_renders_template(self):
+        request = self.factory.get("/referensi/admin-portal/")
+        request.user = self.superuser
+        with mock.patch(
+            "referensi.views.render",
+            wraps=lambda req, template, context=None, **kwargs: HttpResponse(),
+        ) as mocked_render:
+            admin_portal(request)
+
+        mocked_render.assert_called_once()
+        self.assertEqual(mocked_render.call_args[0][1], "referensi/admin_portal.html")
+
+    def test_staff_user_allowed(self):
+        request = self.factory.get("/referensi/admin-portal/")
+        request.user = self.staff_user
+        with mock.patch(
+            "referensi.views.render",
+            wraps=lambda req, template, context=None, **kwargs: HttpResponse(),
+        ) as mocked_render:
+            admin_portal(request)
+
+        mocked_render.assert_called_once()
+
+
 @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
 class PreviewImportViewTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
-        self.superuser = DummyUser(is_superuser=True)
-        self.regular_user = DummyUser(is_superuser=False)
+        self.superuser = DummyUser(is_superuser=True, is_staff=True)
+        self.regular_user = DummyUser(is_superuser=False, is_staff=False)
         self._requests: list = []
 
     def tearDown(self):
@@ -76,6 +114,17 @@ class PreviewImportViewTests(SimpleTestCase):
         request = self._prepare_request("get", "/import/preview/", user=self.regular_user)
         with self.assertRaises(PermissionDenied):
             preview_import(request)
+
+    def test_preview_allows_staff(self):
+        staff_user = DummyUser(is_superuser=False, is_staff=True)
+        request = self._prepare_request("get", "/import/preview/", user=staff_user)
+        with mock.patch(
+            "referensi.views.render",
+            wraps=lambda req, template, context=None, **kwargs: HttpResponse(),
+        ) as mocked_render:
+            preview_import(request)
+
+        mocked_render.assert_called_once()
 
     def test_preview_stores_pending_result(self):
         parse_result = self._build_parse_result()

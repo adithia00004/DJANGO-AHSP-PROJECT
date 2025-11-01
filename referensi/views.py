@@ -17,6 +17,14 @@ from .services.import_writer import write_parse_result_to_db
 PENDING_IMPORT_SESSION_KEY = "referensi_pending_import"
 
 
+@login_required
+def admin_portal(request):
+    if not (request.user.is_superuser or request.user.is_staff):
+        raise PermissionDenied
+
+    return render(request, "referensi/admin_portal.html")
+
+
 def _cleanup_pending_import(session) -> None:
     data = session.pop(PENDING_IMPORT_SESSION_KEY, None)
     if not data:
@@ -64,7 +72,7 @@ def _load_pending_result(data) -> tuple[ParseResult, str, str]:
 
 @login_required
 def preview_import(request):
-    if not request.user.is_superuser:
+    if not (request.user.is_superuser or request.user.is_staff):
         raise PermissionDenied
 
     form = AHSPPreviewUploadForm(request.POST or None, request.FILES or None)
@@ -120,7 +128,7 @@ def preview_import(request):
 
 @login_required
 def commit_import(request):
-    if not request.user.is_superuser:
+    if not (request.user.is_superuser or request.user.is_staff):
         raise PermissionDenied
 
     if request.method != "POST":

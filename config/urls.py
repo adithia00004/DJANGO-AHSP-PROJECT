@@ -12,6 +12,8 @@ from django.conf.urls.static import static
 # Redirect root URL -> dashboard (jika login) atau login page
 def home_redirect(request):
     if request.user.is_authenticated:
+        if request.user.is_superuser or request.user.is_staff:
+            return redirect("referensi:admin_portal")
         return redirect('dashboard:dashboard')  # pastikan dashboard/urls.py punya name="dashboard"
     return redirect('account_login')
 

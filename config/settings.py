@@ -173,6 +173,8 @@ AUTHENTICATION_BACKENDS = [
 
 SITE_ID = 1
 
+ACCOUNT_ADAPTER = "config.adapters.AccountAdapter"
+
 # Redirects
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGIN_URL = "/accounts/login/"
