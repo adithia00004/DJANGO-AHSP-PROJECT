@@ -38,18 +38,23 @@ class AHSPReferensiInlineForm(forms.ModelForm):
             "source_file",
         ]
         widgets = {
-            "kode_ahsp": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "kode_ahsp": forms.TextInput(
+                attrs={"class": "form-control form-control-sm ahsp-input text-break", "readonly": True}
+            ),
             "nama_ahsp": forms.Textarea(
                 attrs={
-                    "class": "form-control form-control-sm",
+                    "class": "form-control form-control-sm ahsp-input ahsp-textarea",
                     "rows": 2,
+                    "wrap": "soft",
                 }
             ),
-            "klasifikasi": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "sub_klasifikasi": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "satuan": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "sumber": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
-            "source_file": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "klasifikasi": forms.TextInput(attrs={"class": "form-control form-control-sm ahsp-input text-break"}),
+            "sub_klasifikasi": forms.TextInput(attrs={"class": "form-control form-control-sm ahsp-input text-break"}),
+            "satuan": forms.TextInput(attrs={"class": "form-control form-control-sm ahsp-input text-break"}),
+            "sumber": forms.TextInput(
+                attrs={"class": "form-control form-control-sm ahsp-input text-break", "readonly": True}
+            ),
+            "source_file": forms.TextInput(attrs={"class": "form-control form-control-sm ahsp-input text-break"}),
         }
 
 
@@ -64,18 +69,19 @@ class RincianReferensiInlineForm(forms.ModelForm):
             "koefisien",
         ]
         widgets = {
-            "kategori": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "kode_item": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "kategori": forms.Select(attrs={"class": "form-select form-select-sm ahsp-input"}),
+            "kode_item": forms.TextInput(attrs={"class": "form-control form-control-sm ahsp-input text-break"}),
             "uraian_item": forms.Textarea(
                 attrs={
-                    "class": "form-control form-control-sm",
+                    "class": "form-control form-control-sm ahsp-input ahsp-textarea",
                     "rows": 2,
+                    "wrap": "soft",
                 }
             ),
-            "satuan_item": forms.TextInput(attrs={"class": "form-control form-control-sm"}),
+            "satuan_item": forms.TextInput(attrs={"class": "form-control form-control-sm ahsp-input text-break"}),
             "koefisien": forms.NumberInput(
                 attrs={
-                    "class": "form-control form-control-sm text-end",
+                    "class": "form-control form-control-sm text-end ahsp-input",
                     "step": "0.000001",
                     "min": "0",
                 }
