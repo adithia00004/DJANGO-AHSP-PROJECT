@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from referensi.models import AHSPReferensi, RincianReferensi
+from referensi.models import AHSPReferensi, KodeItemReferensi, RincianReferensi
 from referensi.services.ahsp_parser import AHSPPreview, ParseResult, RincianPreview
 from referensi.services.import_writer import write_parse_result_to_db
 
@@ -61,6 +61,16 @@ def test_write_parse_result_creates_jobs_and_details():
     assert len(details) == 2
     categories = {d.kategori for d in details}
     assert categories == {"TK", "LAIN"}
+    detail_by_kategori = {d.kategori: d for d in details}
+    assert detail_by_kategori["TK"].kode_item == "TK-01"
+    assert detail_by_kategori["LAIN"].kode_item.startswith("LN-")
+
+    kode_items = {
+        (entry.kategori, entry.uraian_item, entry.satuan_item): entry.kode_item
+        for entry in KodeItemReferensi.objects.all()
+    }
+    assert kode_items[("TK", "Pekerja", "OH")] == "TK-01"
+    assert kode_items[("LAIN", "Biaya Lain", "ls")].startswith("LN-")
 
 
 @pytest.mark.django_db
@@ -124,3 +134,8 @@ def test_write_parse_result_replaces_existing_details():
     assert len(details) == 1
     assert details[0].kategori == "BHN"
     assert details[0].uraian_item == "Material"
+    kode_entries = {
+        (entry.kategori, entry.uraian_item, entry.satuan_item): entry.kode_item
+        for entry in KodeItemReferensi.objects.all()
+    }
+    assert kode_entries[("BHN", "Material", "kg")] == "MAT-01"

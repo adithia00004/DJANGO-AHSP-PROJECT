@@ -36,7 +36,7 @@ dan `RincianReferensi`.
 | Kolom (wajib?) | Alias header yang diterima | Tipe data | Keterangan |
 | --- | --- | --- | --- |
 | `kategori` ✅ | `kategori`, `kelompok` | Teks (`TK`, `BHN`, `ALT`, `LAIN` atau sinonim) | Kategori item; variasi teks akan dipetakan otomatis. |
-| `kode_item` ✅ | `kode_item`, `kode_item_lookup` | Teks ≤ 50 karakter | Kode item terkait pekerjaan. |
+| `kode_item` ✅ | `kode_item`, `kode_item_lookup` | Teks ≤ 50 karakter | Kode item terkait pekerjaan; boleh dikosongkan untuk digenerasikan otomatis dari kombinasi kategori, uraian, dan satuan. |
 | `uraian_item` ✅ | `uraian_item`, `item` | Teks bebas | Deskripsi item/material. |
 | `satuan_item` ✅ | `satuan_item`, `satuan` | Teks ≤ 20 karakter | Satuan item. |
 | `koefisien` ✅ | `koefisien`, `koef`, `qty` | Angka desimal ≥ 0 | Koefisien pemakaian item. |

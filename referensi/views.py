@@ -10,12 +10,14 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect, render
-from django.forms import modelformset_factory
+from django.forms import formset_factory, modelformset_factory
 from django.urls import reverse
 
 from .forms import (
     AHSPPreviewUploadForm,
     AHSPReferensiInlineForm,
+    PreviewDetailForm,
+    PreviewJobForm,
     RincianReferensiInlineForm,
 )
 from .models import AHSPReferensi, RincianReferensi
@@ -24,6 +26,7 @@ from .services.ahsp_parser import (
     get_column_schema,
     load_preview_from_file,
 )
+from .services.item_code_registry import assign_item_codes
 from .services.import_writer import write_parse_result_to_db
 
 
@@ -32,6 +35,80 @@ TAB_JOBS = "jobs"
 TAB_ITEMS = "items"
 JOB_DISPLAY_LIMIT = 150
 ITEM_DISPLAY_LIMIT = 150
+
+
+PreviewJobFormSet = formset_factory(PreviewJobForm, extra=0)
+PreviewDetailFormSet = formset_factory(PreviewDetailForm, extra=0)
+
+
+def _preview_initial_data(parse_result: ParseResult):
+    job_initial: list[dict] = []
+    detail_initial: list[dict] = []
+
+    for job_index, job in enumerate(parse_result.jobs):
+        job_initial.append(
+            {
+                "job_index": job_index,
+                "sumber": job.sumber,
+                "kode_ahsp": job.kode_ahsp,
+                "nama_ahsp": job.nama_ahsp,
+                "klasifikasi": job.klasifikasi or "",
+                "sub_klasifikasi": job.sub_klasifikasi or "",
+                "satuan": job.satuan or "",
+            }
+        )
+
+        for detail_index, detail in enumerate(job.rincian):
+            detail_initial.append(
+                {
+                    "job_index": job_index,
+                    "detail_index": detail_index,
+                    "kategori": detail.kategori,
+                    "kode_item": detail.kode_item,
+                    "uraian_item": detail.uraian_item,
+                    "satuan_item": detail.satuan_item,
+                    "koefisien": detail.koefisien,
+                }
+            )
+
+    return job_initial, detail_initial
+
+
+def _build_preview_formsets(parse_result: ParseResult):
+    job_initial, detail_initial = _preview_initial_data(parse_result)
+    job_formset = PreviewJobFormSet(prefix="jobs", initial=job_initial)
+    detail_formset = PreviewDetailFormSet(prefix="details", initial=detail_initial)
+    return job_formset, detail_formset
+
+
+def _preview_job_rows(parse_result: ParseResult, job_formset):
+    rows = []
+    for job_index, job in enumerate(parse_result.jobs):
+        form = job_formset.forms[job_index]
+        rows.append({"job": job, "form": form, "job_index": job_index})
+    return rows
+
+
+def _preview_detail_rows(parse_result: ParseResult, detail_formset):
+    rows: list[dict] = []
+    form_index = 0
+    forms = detail_formset.forms
+    for job_index, job in enumerate(parse_result.jobs):
+        for detail_index, detail in enumerate(job.rincian):
+            if form_index >= len(forms):
+                break
+            form = forms[form_index]
+            rows.append(
+                {
+                    "form": form,
+                    "detail": detail,
+                    "job": job,
+                    "job_index": job_index,
+                    "detail_index": detail_index,
+                }
+            )
+            form_index += 1
+    return rows
 
 
 @login_required
@@ -453,6 +530,22 @@ def _load_pending_result(data) -> tuple[ParseResult, str, str]:
     return parse_result, uploaded_name, token
 
 
+def _rewrite_pending_import(session, parse_result: ParseResult) -> str:
+    data = session.get(PENDING_IMPORT_SESSION_KEY)
+    if not data:
+        raise FileNotFoundError("Pending import tidak ditemukan")
+
+    parse_path = data.get("parse_path")
+    if not parse_path:
+        raise FileNotFoundError("Path preview kosong")
+
+    with open(parse_path, "wb") as handle:
+        pickle.dump(parse_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    session.modified = True
+    return data.get("token", "")
+
+
 @login_required
 def preview_import(request):
     if not (request.user.is_superuser or request.user.is_staff):
@@ -462,8 +555,72 @@ def preview_import(request):
     parse_result: ParseResult | None = None
     uploaded_name: str | None = None
     import_token: str | None = None
+    job_formset = None
+    detail_formset = None
+    job_rows: list[dict] = []
+    detail_rows: list[dict] = []
 
-    if request.method == "POST":
+    action = request.POST.get("action")
+
+    if request.method == "POST" and action == "update_preview":
+        pending = request.session.get(PENDING_IMPORT_SESSION_KEY)
+        if not pending:
+            messages.error(request, "Tidak ada data preview yang siap diedit.")
+            return redirect("referensi:preview_import")
+
+        try:
+            parse_result, uploaded_name, import_token = _load_pending_result(pending)
+        except Exception:
+            _cleanup_pending_import(request.session)
+            messages.error(request, "Data preview tidak ditemukan. Unggah ulang file Excel.")
+            return redirect("referensi:preview_import")
+
+        job_formset = PreviewJobFormSet(request.POST, prefix="jobs")
+        detail_formset = PreviewDetailFormSet(request.POST, prefix="details")
+
+        if job_formset.is_valid() and detail_formset.is_valid():
+            for job_data in job_formset.cleaned_data:
+                if not job_data:
+                    continue
+                job_index = job_data["job_index"]
+                if job_index >= len(parse_result.jobs):
+                    continue
+                job = parse_result.jobs[job_index]
+                job.sumber = job_data["sumber"]
+                job.kode_ahsp = job_data["kode_ahsp"]
+                job.nama_ahsp = job_data["nama_ahsp"]
+                job.klasifikasi = job_data.get("klasifikasi") or ""
+                job.sub_klasifikasi = job_data.get("sub_klasifikasi") or ""
+                job.satuan = job_data.get("satuan") or ""
+
+            for detail_data in detail_formset.cleaned_data:
+                if not detail_data:
+                    continue
+                job_index = detail_data["job_index"]
+                detail_index = detail_data["detail_index"]
+                if job_index >= len(parse_result.jobs):
+                    continue
+                job = parse_result.jobs[job_index]
+                if detail_index >= len(job.rincian):
+                    continue
+                detail = job.rincian[detail_index]
+                detail.kategori = detail_data["kategori"]
+                detail.kode_item = detail_data.get("kode_item", "") or ""
+                detail.uraian_item = detail_data["uraian_item"]
+                detail.satuan_item = detail_data["satuan_item"]
+                detail.koefisien = detail_data["koefisien"]
+                detail.kode_item_source = "manual" if detail.kode_item else "missing"
+
+            assign_item_codes(parse_result)
+            _rewrite_pending_import(request.session, parse_result)
+            job_formset, detail_formset = _build_preview_formsets(parse_result)
+            job_rows = _preview_job_rows(parse_result, job_formset)
+            detail_rows = _preview_detail_rows(parse_result, detail_formset)
+            messages.success(request, "Perubahan preview berhasil disimpan.")
+        else:
+            job_rows = _preview_job_rows(parse_result, job_formset)
+            detail_rows = _preview_detail_rows(parse_result, detail_formset)
+    elif request.method == "POST":
         if form.is_valid():
             excel_file = form.cleaned_data["excel_file"]
             uploaded_name = excel_file.name
@@ -474,10 +631,14 @@ def preview_import(request):
                 for error in parse_result.errors:
                     messages.error(request, error)
             else:
+                assign_item_codes(parse_result)
                 _cleanup_pending_import(request.session)
                 import_token = _store_pending_import(
                     request.session, parse_result, uploaded_name
                 )
+                job_formset, detail_formset = _build_preview_formsets(parse_result)
+                job_rows = _preview_job_rows(parse_result, job_formset)
+                detail_rows = _preview_detail_rows(parse_result, detail_formset)
                 messages.success(
                     request,
                     (
@@ -494,11 +655,19 @@ def preview_import(request):
         if pending:
             try:
                 parse_result, uploaded_name, import_token = _load_pending_result(pending)
+                job_formset, detail_formset = _build_preview_formsets(parse_result)
+                job_rows = _preview_job_rows(parse_result, job_formset)
+                detail_rows = _preview_detail_rows(parse_result, detail_formset)
             except Exception:
                 _cleanup_pending_import(request.session)
                 parse_result = None
                 uploaded_name = None
                 import_token = None
+
+    if parse_result and job_formset is None:
+        job_formset, detail_formset = _build_preview_formsets(parse_result)
+        job_rows = _preview_job_rows(parse_result, job_formset)
+        detail_rows = _preview_detail_rows(parse_result, detail_formset)
 
     context = {
         "form": form,
@@ -506,6 +675,10 @@ def preview_import(request):
         "uploaded_name": uploaded_name,
         "import_token": import_token,
         "column_schema": get_column_schema(),
+        "job_formset": job_formset,
+        "detail_formset": detail_formset,
+        "job_rows": job_rows,
+        "detail_rows": detail_rows,
     }
     return render(request, "referensi/preview_import.html", context)
 
@@ -538,6 +711,8 @@ def commit_import(request):
         _cleanup_pending_import(request.session)
         messages.error(request, "Data preview korup. Silakan unggah ulang file Excel.")
         return redirect("referensi:preview_import")
+
+    assign_item_codes(parse_result)
 
     try:
         summary = write_parse_result_to_db(parse_result, uploaded_name)

@@ -199,6 +199,8 @@ class RincianPreview:
     koefisien: Decimal
     row_number: int
     kategori_source: str = ""
+    kode_item_source: str = "input"
+    kode_item_original: str = ""
 
     @property
     def koef_display(self) -> str:
@@ -395,6 +397,8 @@ def parse_excel_dataframe(df) -> ParseResult:
                     kategori=kategori,
                     kategori_source=kategori_source,
                     kode_item=kode_item,
+                    kode_item_source="manual" if kode_item else "missing",
+                    kode_item_original=kode_item,
                     uraian_item=uraian_item,
                     satuan_item=satuan_item,
                     koefisien=koef,

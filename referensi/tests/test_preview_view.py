@@ -14,6 +14,8 @@ from referensi.services.import_writer import ImportSummary
 from referensi.views import (
     PENDING_IMPORT_SESSION_KEY,
     _cleanup_pending_import,
+    _load_pending_result,
+    _store_pending_import,
     admin_portal,
     commit_import,
     preview_import,
@@ -137,7 +139,7 @@ class PreviewImportViewTests(SimpleTestCase):
 
         with mock.patch("referensi.views.AHSPPreviewUploadForm", return_value=form), mock.patch(
             "referensi.views.load_preview_from_file", return_value=parse_result
-        ), mock.patch(
+        ), mock.patch("referensi.views.assign_item_codes") as mocked_assign, mock.patch(
             "referensi.views.render", wraps=lambda req, template, context: HttpResponse()
         ) as mocked_render:
             preview_import(request)
@@ -147,6 +149,7 @@ class PreviewImportViewTests(SimpleTestCase):
         self.assertIs(context["parse_result"], parse_result)
         self.assertEqual(context["uploaded_name"], "data.xlsx")
         self.assertTrue(context["import_token"])
+        mocked_assign.assert_called_once_with(parse_result)
 
         pending = request.session[PENDING_IMPORT_SESSION_KEY]
         self.assertEqual(pending["uploaded_name"], "data.xlsx")
@@ -163,7 +166,7 @@ class PreviewImportViewTests(SimpleTestCase):
 
         with mock.patch("referensi.views.AHSPPreviewUploadForm", return_value=form), mock.patch(
             "referensi.views.load_preview_from_file", return_value=parse_result
-        ), mock.patch(
+        ), mock.patch("referensi.views.assign_item_codes"), mock.patch(
             "referensi.views.render", wraps=lambda req, template, context: HttpResponse()
         ):
             preview_import(request_preview)
@@ -181,9 +184,65 @@ class PreviewImportViewTests(SimpleTestCase):
 
         summary = ImportSummary(jobs_created=1, jobs_updated=0, rincian_written=1)
 
-        with mock.patch("referensi.views.write_parse_result_to_db", return_value=summary) as mocked_writer:
+        with mock.patch("referensi.views.assign_item_codes"), mock.patch(
+            "referensi.views.write_parse_result_to_db", return_value=summary
+        ) as mocked_writer:
             response = commit_import(request_commit)
 
         self.assertEqual(response.status_code, 302)
         mocked_writer.assert_called_once()
         self.assertNotIn(PENDING_IMPORT_SESSION_KEY, request_commit.session)
+
+    def test_preview_update_applies_form_changes(self):
+        parse_result = self._build_parse_result()
+        base_request = self._prepare_request("get", "/import/preview/")
+        _store_pending_import(base_request.session, parse_result, "data.xlsx")
+
+        update_payload = {
+            "action": "update_preview",
+            "jobs-TOTAL_FORMS": "1",
+            "jobs-INITIAL_FORMS": "1",
+            "jobs-MIN_NUM_FORMS": "0",
+            "jobs-MAX_NUM_FORMS": "1000",
+            "jobs-0-job_index": "0",
+            "jobs-0-sumber": "Sumber Baru",
+            "jobs-0-kode_ahsp": "1.1.1",
+            "jobs-0-nama_ahsp": "Pekerjaan Tanah Direvisi",
+            "jobs-0-klasifikasi": "Sipil",
+            "jobs-0-sub_klasifikasi": "Tanah",
+            "jobs-0-satuan": "m3",
+            "details-TOTAL_FORMS": "1",
+            "details-INITIAL_FORMS": "1",
+            "details-MIN_NUM_FORMS": "0",
+            "details-MAX_NUM_FORMS": "1000",
+            "details-0-job_index": "0",
+            "details-0-detail_index": "0",
+            "details-0-kategori": "TK",
+            "details-0-kode_item": "",
+            "details-0-uraian_item": "Pekerja",
+            "details-0-satuan_item": "OH",
+            "details-0-koefisien": "1.50",
+        }
+
+        update_request = self._prepare_request("post", "/import/preview/", data=update_payload)
+        update_request.session[PENDING_IMPORT_SESSION_KEY] = base_request.session[PENDING_IMPORT_SESSION_KEY]
+
+        def fake_assign(result):
+            for job in result.jobs:
+                for detail in job.rincian:
+                    if not detail.kode_item:
+                        detail.kode_item = "TK-0001"
+                        detail.kode_item_source = "generated"
+
+        with mock.patch("referensi.views.assign_item_codes", side_effect=fake_assign), mock.patch(
+            "referensi.views.render", wraps=lambda req, template, context: HttpResponse()
+        ):
+            preview_import(update_request)
+
+        pending = update_request.session[PENDING_IMPORT_SESSION_KEY]
+        updated_result, _, _ = _load_pending_result(pending)
+        self.assertEqual(updated_result.jobs[0].sumber, "Sumber Baru")
+        self.assertEqual(updated_result.jobs[0].nama_ahsp, "Pekerjaan Tanah Direvisi")
+        detail = updated_result.jobs[0].rincian[0]
+        self.assertEqual(detail.koefisien, Decimal("1.50"))
+        self.assertEqual(detail.kode_item, "TK-0001")

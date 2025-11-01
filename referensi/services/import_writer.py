@@ -9,6 +9,7 @@ from django.db import transaction
 
 from referensi.models import AHSPReferensi, RincianReferensi
 from .import_utils import canonicalize_kategori
+from .item_code_registry import assign_item_codes, persist_item_codes
 
 
 @dataclass
@@ -53,7 +54,10 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     if source_file:
         source_file = os.path.basename(source_file)
 
+    assign_item_codes(parse_result)
+
     with transaction.atomic():
+        persist_item_codes(parse_result)
         for job in parse_result.jobs:
             defaults = {
                 "nama_ahsp": job.nama_ahsp,
