@@ -1,7 +1,10 @@
-import pandas as pd
 from decimal import Decimal
+
+import pytest
 from django.core.management import call_command
 from django.test import TestCase
+
+pd = pytest.importorskip("pandas")
 from referensi.models import AHSPReferensi, RincianReferensi
 
 class ImportAHSPTests(TestCase):
