@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 from django.test import SimpleTestCase
 
-from referensi.services.ahsp_parser import parse_excel_dataframe
+from referensi.services.ahsp_parser import get_column_schema, parse_excel_dataframe
 
 pd = pytest.importorskip("pandas")
 
@@ -76,7 +76,14 @@ class AHSPPreviewParserTests(SimpleTestCase):
         result = parse_excel_dataframe(df)
 
         self.assertTrue(result.errors)
-        self.assertIn("Kolom wajib hilang", result.errors[0])
+        self.assertTrue(
+            any("sumber_ahsp" in err for err in result.errors),
+            result.errors,
+        )
+        self.assertTrue(
+            any("kategori" in err for err in result.errors),
+            result.errors,
+        )
         self.assertEqual(result.total_jobs, 0)
 
     def test_category_mapping_is_reported(self):
@@ -101,3 +108,36 @@ class AHSPPreviewParserTests(SimpleTestCase):
         self.assertEqual(result.total_rincian, 1)
         self.assertEqual(result.jobs[0].rincian[0].kategori, "TK")
         self.assertIn("dipetakan ke kode standar", " ".join(result.warnings))
+
+    def test_invalid_koefisien_values_raise_error(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "sumber_ahsp": "Sumber",
+                    "kode_ahsp": "J1",
+                    "nama_ahsp": "Pekerjaan",
+                    "kategori": "TK",
+                    "item": "Pekerja",
+                    "satuan": "OH",
+                    "koefisien": "angka salah",
+                }
+            ]
+        )
+
+        result = parse_excel_dataframe(df)
+
+        self.assertTrue(result.errors)
+        self.assertTrue(
+            any("koefisien" in err and "tidak valid" in err for err in result.errors)
+        )
+        self.assertEqual(result.total_rincian, 0)
+
+    def test_column_schema_export_contains_expected_groups(self):
+        schema = get_column_schema()
+
+        self.assertIn("jobs", schema)
+        self.assertIn("details", schema)
+        self.assertTrue(any(spec.canonical == "kode_ahsp" for spec in schema["jobs"]))
+        self.assertTrue(
+            any(spec.canonical == "koefisien" for spec in schema["details"])
+        )

@@ -19,7 +19,11 @@ from .forms import (
     RincianReferensiInlineForm,
 )
 from .models import AHSPReferensi, RincianReferensi
-from .services.ahsp_parser import ParseResult, load_preview_from_file
+from .services.ahsp_parser import (
+    ParseResult,
+    get_column_schema,
+    load_preview_from_file,
+)
 from .services.import_writer import write_parse_result_to_db
 
 
@@ -501,6 +505,7 @@ def preview_import(request):
         "parse_result": parse_result,
         "uploaded_name": uploaded_name,
         "import_token": import_token,
+        "column_schema": get_column_schema(),
     }
     return render(request, "referensi/preview_import.html", context)
 

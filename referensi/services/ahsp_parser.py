@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from .import_utils import (
     canonicalize_kategori,
@@ -20,6 +20,174 @@ from .import_utils import (
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     import pandas as pd
+
+
+@dataclass(frozen=True)
+class ColumnSpec:
+    canonical: str
+    aliases: Tuple[str, ...]
+    required: bool
+    data_type: str
+    description: str
+    max_length: int | None = None
+    allowed_values: Tuple[str, ...] | None = None
+
+
+JOB_COLUMN_SPECS: Tuple[ColumnSpec, ...] = (
+    ColumnSpec(
+        canonical="sumber_ahsp",
+        aliases=("sumber_ahsp",),
+        required=True,
+        data_type="Teks (maks. 100 karakter)",
+        description="Nama sumber AHSP, mis. 'AHSP SNI 2025'",
+        max_length=100,
+    ),
+    ColumnSpec(
+        canonical="kode_ahsp",
+        aliases=("kode_ahsp", "kode"),
+        required=True,
+        data_type="Teks (maks. 50 karakter)",
+        description="Kode pekerjaan unik dalam satu sumber",
+        max_length=50,
+    ),
+    ColumnSpec(
+        canonical="nama_ahsp",
+        aliases=("nama_ahsp", "nama"),
+        required=True,
+        data_type="Teks (bebas)",
+        description="Nama/uraian pekerjaan AHSP",
+    ),
+    ColumnSpec(
+        canonical="klasifikasi",
+        aliases=("klasifikasi",),
+        required=False,
+        data_type="Teks (maks. 100 karakter)",
+        description="Klasifikasi pekerjaan (opsional)",
+        max_length=100,
+    ),
+    ColumnSpec(
+        canonical="sub_klasifikasi",
+        aliases=("sub_klasifikasi", "sub klasifikasi", "subklasifikasi"),
+        required=False,
+        data_type="Teks (maks. 100 karakter)",
+        description="Sub-klasifikasi pekerjaan (opsional)",
+        max_length=100,
+    ),
+    ColumnSpec(
+        canonical="satuan_pekerjaan",
+        aliases=("satuan_pekerjaan", "satuan_ahsp", "satuan_pekerjaan_ahsp"),
+        required=False,
+        data_type="Teks (maks. 50 karakter)",
+        description="Satuan kerja untuk pekerjaan AHSP",
+        max_length=50,
+    ),
+)
+
+
+DETAIL_COLUMN_SPECS: Tuple[ColumnSpec, ...] = (
+    ColumnSpec(
+        canonical="kategori",
+        aliases=("kategori", "kelompok"),
+        required=True,
+        data_type="Teks (TK/BHN/ALT/LAIN)",
+        description="Kategori item; variasi teks akan dipetakan otomatis",
+        allowed_values=("TK", "BHN", "ALT", "LAIN"),
+    ),
+    ColumnSpec(
+        canonical="kode_item",
+        aliases=("kode_item", "kode_item_lookup"),
+        required=True,
+        data_type="Teks (maks. 50 karakter)",
+        description="Kode item pada rincian",
+        max_length=50,
+    ),
+    ColumnSpec(
+        canonical="uraian_item",
+        aliases=("uraian_item", "item"),
+        required=True,
+        data_type="Teks (bebas)",
+        description="Uraian item/material",
+    ),
+    ColumnSpec(
+        canonical="satuan_item",
+        aliases=("satuan_item", "satuan"),
+        required=True,
+        data_type="Teks (maks. 20 karakter)",
+        description="Satuan untuk item",
+        max_length=20,
+    ),
+    ColumnSpec(
+        canonical="koefisien",
+        aliases=("koefisien", "koef", "qty"),
+        required=True,
+        data_type="Angka desimal ≥ 0", 
+        description="Koefisien pemakaian item",
+    ),
+)
+
+
+COLUMN_SCHEMA: Dict[str, Tuple[ColumnSpec, ...]] = {
+    "jobs": JOB_COLUMN_SPECS,
+    "details": DETAIL_COLUMN_SPECS,
+}
+
+
+_COLUMN_SPEC_MAP: Dict[str, ColumnSpec] = {
+    spec.canonical: spec
+    for specs in COLUMN_SCHEMA.values()
+    for spec in specs
+}
+
+
+def _resolve_column_mapping(df) -> Tuple[Dict[str, Dict[str, str]], List[str]]:
+    mapping: Dict[str, Dict[str, str]] = {"jobs": {}, "details": {}}
+    errors: List[str] = []
+
+    for group_name, specs in COLUMN_SCHEMA.items():
+        for spec in specs:
+            column = pick_first_col(df, list(spec.aliases))
+            if column is None:
+                if spec.required:
+                    errors.append(
+                        (
+                            "Kolom '{canonical}' tidak ditemukan. Gunakan salah satu header: {aliases}."
+                        ).format(
+                            canonical=spec.canonical,
+                            aliases=", ".join(spec.aliases),
+                        )
+                    )
+                continue
+            mapping[group_name][spec.canonical] = column
+
+    return mapping, errors
+
+
+def _read_optional_text(row, column_name: str | None, canonical: str) -> str:
+    if not column_name:
+        return ""
+    value = norm_text(row.get(column_name, ""))
+    return value
+
+
+def _validate_text_length(
+    value: str, canonical: str, row_number: int, errors: List[str]
+) -> None:
+    if not value:
+        return
+    spec = _COLUMN_SPEC_MAP.get(canonical)
+    if not spec or not spec.max_length:
+        return
+    if len(value) > spec.max_length:
+        errors.append(
+            (
+                "Baris {row}: kolom '{canonical}' melebihi {limit} karakter (panjang {length})."
+            ).format(
+                row=row_number,
+                canonical=canonical,
+                limit=spec.max_length,
+                length=len(value),
+            )
+        )
 
 
 @dataclass
@@ -92,46 +260,13 @@ def parse_excel_dataframe(df) -> ParseResult:
 
     result = ParseResult()
 
-    col_sumber = pick_first_col(df, ["sumber_ahsp"])
-    col_kode = pick_first_col(df, ["kode_ahsp", "kode"])
-    col_nama = pick_first_col(df, ["nama_ahsp", "nama"])
-    col_kategori = pick_first_col(df, ["kategori", "kelompok"])
-    col_kode_item = pick_first_col(df, ["kode_item_lookup", "kode_item"])
-    col_item = pick_first_col(df, ["item", "uraian_item"])
-    col_satuan_job = pick_first_col(
-        df,
-        [
-            "satuan_pekerjaan",
-            "satuan_ahsp",
-            "satuan_pekerjaan_ahsp",
-            "satuan",
-        ],
-    )
-    col_satuan_detail = pick_first_col(df, ["satuan_item", "satuan"])
-    col_koef = pick_first_col(df, ["koefisien", "koef", "qty"])
-    col_klasifikasi = pick_first_col(df, ["klasifikasi"])
-    col_sub_klasifikasi = pick_first_col(
-        df,
-        ["sub_klasifikasi", "sub klasifikasi", "subklasifikasi"],
-    )
-
-    missing = [
-        name
-        for name, col in (
-            ("sumber_ahsp", col_sumber),
-            ("kode_ahsp", col_kode),
-            ("nama_ahsp", col_nama),
-        )
-        if col is None
-    ]
-    if missing:
-        result.errors.append(
-            "Kolom wajib hilang: {}. Pastikan header Excel minimal: "
-            "sumber_ahsp, kode_ahsp, nama_ahsp".format(
-                ", ".join(missing)
-            )
-        )
+    column_map, column_errors = _resolve_column_mapping(df)
+    if column_errors:
+        result.errors.extend(column_errors)
         return result
+
+    job_cols = column_map["jobs"]
+    detail_cols = column_map["details"]
 
     current_src = ""
     current_job: AHSPPreview | None = None
@@ -142,28 +277,22 @@ def parse_excel_dataframe(df) -> ParseResult:
     for idx, row in df.iterrows():
         row_number = idx + 2  # header dianggap baris pertama
 
-        sumber_ahsp = norm_text(row.get(col_sumber, ""))
+        sumber_ahsp = norm_text(row.get(job_cols.get("sumber_ahsp", ""), ""))
         if sumber_ahsp:
             current_src = sumber_ahsp
 
-        kode = norm_text(row.get(col_kode, ""))
-        nama = norm_text(row.get(col_nama, ""))
+        kode = norm_text(row.get(job_cols.get("kode_ahsp", ""), ""))
+        nama = norm_text(row.get(job_cols.get("nama_ahsp", ""), ""))
 
         if kode and nama:
-            klasifikasi = (
-                norm_text(row.get(col_klasifikasi, ""))
-                if col_klasifikasi
-                else ""
+            klasifikasi = _read_optional_text(
+                row, job_cols.get("klasifikasi"), "klasifikasi"
             )
-            sub_klasifikasi = (
-                norm_text(row.get(col_sub_klasifikasi, ""))
-                if col_sub_klasifikasi
-                else ""
+            sub_klasifikasi = _read_optional_text(
+                row, job_cols.get("sub_klasifikasi"), "sub_klasifikasi"
             )
-            satuan_job = (
-                norm_text(row.get(col_satuan_job, ""))
-                if col_satuan_job
-                else ""
+            satuan_job = _read_optional_text(
+                row, job_cols.get("satuan_pekerjaan"), "satuan_pekerjaan"
             )
             if not current_src:
                 result.errors.append(
@@ -171,6 +300,33 @@ def parse_excel_dataframe(df) -> ParseResult:
                 )
                 current_job = None
                 continue
+
+            _validate_text_length(
+                current_src,
+                "sumber_ahsp",
+                row_number,
+                result.errors,
+            )
+            _validate_text_length(kode, "kode_ahsp", row_number, result.errors)
+            _validate_text_length(nama, "nama_ahsp", row_number, result.errors)
+            _validate_text_length(
+                klasifikasi,
+                "klasifikasi",
+                row_number,
+                result.errors,
+            )
+            _validate_text_length(
+                sub_klasifikasi,
+                "sub_klasifikasi",
+                row_number,
+                result.errors,
+            )
+            _validate_text_length(
+                satuan_job,
+                "satuan_pekerjaan",
+                row_number,
+                result.errors,
+            )
 
             current_job = AHSPPreview(
                 sumber=current_src,
@@ -188,26 +344,44 @@ def parse_excel_dataframe(df) -> ParseResult:
             # Abaikan noise sebelum pekerjaan pertama, tapi catat bila ada data
             if any(
                 norm_text(row.get(col_name, ""))
-                for col_name in (col_kategori, col_item, col_satuan_detail, col_koef)
-                if col_name
+                for col_name in detail_cols.values()
             ):
                 result.warnings.append(
                     f"Baris {row_number}: rincian diabaikan karena belum ada pekerjaan aktif."
                 )
             continue
 
-        kategori_source = (
-            norm_text(row.get(col_kategori, "")) if col_kategori else ""
+        kategori_source = norm_text(
+            row.get(detail_cols.get("kategori", ""), "")
         )
         kategori = canonicalize_kategori(kategori_source)
-        kode_item = norm_text(row.get(col_kode_item, "")) if col_kode_item else ""
-        uraian_item = norm_text(row.get(col_item, "")) if col_item else ""
-        satuan_item = (
-            norm_text(row.get(col_satuan_detail, "")) if col_satuan_detail else ""
+        kode_item = norm_text(row.get(detail_cols.get("kode_item", ""), ""))
+        uraian_item = norm_text(row.get(detail_cols.get("uraian_item", ""), ""))
+        satuan_item = norm_text(
+            row.get(detail_cols.get("satuan_item", ""), "")
         )
-        koef = normalize_num(row.get(col_koef, "")) if col_koef else None
-        if koef is None:
-            koef = Decimal("0")
+        raw_koef = row.get(detail_cols.get("koefisien", ""), "")
+        koef = Decimal("0")
+        if raw_koef not in ("", None):
+            normalized = normalize_num(raw_koef)
+            if normalized is None:
+                result.errors.append(
+                    (
+                        "Baris {row}: nilai koefisien '{value}' tidak valid. "
+                        "Gunakan angka desimal dengan pemisah koma atau titik."
+                    ).format(row=row_number, value=raw_koef)
+                )
+                continue
+            if normalized < 0:
+                result.errors.append(
+                    f"Baris {row_number}: koefisien tidak boleh bernilai negatif."
+                )
+                continue
+            koef = normalized
+
+        _validate_text_length(kode_item, "kode_item", row_number, result.errors)
+        _validate_text_length(uraian_item, "uraian_item", row_number, result.errors)
+        _validate_text_length(satuan_item, "satuan_item", row_number, result.errors)
 
         if uraian_item:
             if kategori_source and kategori_source != kategori:
@@ -275,10 +449,18 @@ def load_preview_from_file(excel_file) -> ParseResult:
     return parse_excel_dataframe(df)
 
 
+def get_column_schema() -> Dict[str, Tuple["ColumnSpec", ...]]:
+    """Mengembalikan skema kolom standar untuk keperluan UI/dokumentasi."""
+
+    return COLUMN_SCHEMA
+
+
 __all__ = [
     "AHSPPreview",
+    "ColumnSpec",
     "ParseResult",
     "RincianPreview",
+    "get_column_schema",
     "load_preview_from_file",
     "parse_excel_dataframe",
 ]
