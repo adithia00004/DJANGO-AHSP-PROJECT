@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Database Referensi AHSP{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4">
+    <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+        <div>
+            <h1 class="h3 mb-1">Database Referensi AHSP</h1>
+            <p class="text-muted mb-0">
+                Tinjau pekerjaan AHSP yang sudah tersimpan di sistem, lengkap dengan ringkasan rincian dan indikator
+                anomali. Gunakan filter di bawah untuk memfokuskan pencarian sebelum melakukan perubahan manual atau
+                impor ulang.
+            </p>
+        </div>
+        <div class="d-flex flex-column flex-sm-row gap-2">
+            <a class="btn btn-outline-secondary" href="{% url 'admin:index' %}" target="_blank" rel="noopener">
+                <i class="bi bi-box-arrow-up-right"></i> Buka Django Admin
+            </a>
+            <a class="btn btn-success" href="{% url 'referensi:preview_import' %}">
+                <i class="bi bi-cloud-arrow-up"></i> Impor / Update Data
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-uppercase text-muted small">Total Data</span>
+                    <div class="display-6 fw-semibold">{{ summary.total_filtered|intcomma }}</div>
+                    <p class="text-muted small mb-0">Jumlah pekerjaan yang cocok dengan filter aktif.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-uppercase text-muted small">Ditampilkan</span>
+                    <div class="display-6 fw-semibold">{{ summary.displayed_jobs|intcomma }}</div>
+                    <p class="text-muted small mb-0">Baris yang terlihat pada tabel di bawah.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-uppercase text-muted small">Menandakan Anomali</span>
+                    <div class="display-6 fw-semibold text-warning">{{ summary.anomaly_displayed|intcomma }}</div>
+                    <p class="text-muted small mb-0">Pekerjaan dengan potensi masalah data.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-uppercase text-muted small">Status</span>
+                    {% if summary.truncated %}
+                        <div class="display-6 fw-semibold text-danger">Terbatas</div>
+                        <p class="text-muted small mb-0">Hanya {{ summary.limit }} baris pertama yang ditampilkan. Sesuaikan filter untuk melihat data lainnya.</p>
+                    {% else %}
+                        <div class="display-6 fw-semibold text-success">Lengkap</div>
+                        <p class="text-muted small mb-0">Seluruh hasil filter sedang ditampilkan.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form method="get" class="card shadow-sm border-0">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-4">
+                    <label class="form-label" for="filter-search">Cari kode/nama</label>
+                    <input type="text" id="filter-search" name="q" value="{{ filters.search }}" class="form-control" placeholder="Contoh: 02.01 atau Beton Bertulang">
+                </div>
+                <div class="col-lg-3">
+                    <label class="form-label" for="filter-sumber">Sumber</label>
+                    <select class="form-select" id="filter-sumber" name="sumber">
+                        <option value="">Semua sumber</option>
+                        {% for sumber in filter_options.sumber %}
+                            <option value="{{ sumber }}" {% if filters.sumber == sumber %}selected{% endif %}>{{ sumber }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3">
+                    <label class="form-label" for="filter-klasifikasi">Klasifikasi</label>
+                    <select class="form-select" id="filter-klasifikasi" name="klasifikasi">
+                        <option value="">Semua klasifikasi</option>
+                        {% for klasifikasi in filter_options.klasifikasi %}
+                            <option value="{{ klasifikasi }}" {% if filters.klasifikasi == klasifikasi %}selected{% endif %}>{{ klasifikasi }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-2">
+                    <label class="form-label" for="filter-kategori">Kategori Rincian</label>
+                    <select class="form-select" id="filter-kategori" name="kategori">
+                        <option value="">Semua kategori</option>
+                        {% for value, label in filter_options.kategori %}
+                            <option value="{{ value }}" {% if filters.kategori == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-12 d-flex align-items-center gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1" id="filter-anomali" name="anomali" {% if filters.anomali %}checked{% endif %}>
+                        <label class="form-check-label" for="filter-anomali">
+                            Tampilkan hanya data dengan indikasi anomali
+                        </label>
+                    </div>
+                    <div class="ms-auto d-flex gap-2">
+                        <a class="btn btn-light" href="{% url 'referensi:ahsp_database' %}">Reset</a>
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-funnel"></i> Terapkan Filter</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            {% if jobs %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 12rem;">Kode</th>
+                                <th>Nama Pekerjaan</th>
+                                <th style="width: 10rem;">Klasifikasi</th>
+                                <th style="width: 10rem;">Sub-klasifikasi</th>
+                                <th style="width: 8rem;">Satuan</th>
+                                <th style="width: 8rem;">Sumber</th>
+                                <th style="width: 14rem;">Rincian (TK/BHN/ALT/LAIN)</th>
+                                <th style="width: 10rem;">Status Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in jobs %}
+                                {% with job=row.object counts=row.category_counts %}
+                                    <tr class="{% if row.has_anomaly %}table-warning{% endif %}">
+                                        <td class="fw-semibold">
+                                            {{ job.kode_ahsp }}
+                                            {% if row.has_anomaly %}
+                                                <span class="badge bg-warning text-dark ms-1">Anomali</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="fw-semibold">{{ job.nama_ahsp }}</div>
+                                            <div class="small text-muted">File sumber: {{ job.source_file|default:"-" }}</div>
+                                        </td>
+                                        <td>{{ job.klasifikasi|default:"-" }}</td>
+                                        <td>{{ job.sub_klasifikasi|default:"-" }}</td>
+                                        <td>{{ job.satuan|default:"-" }}</td>
+                                        <td>{{ job.sumber }}</td>
+                                        <td>
+                                            <div class="d-flex flex-column">
+                                                <span class="badge bg-primary-subtle text-primary-emphasis">TK: {{ counts.TK|intcomma }}</span>
+                                                <span class="badge bg-info-subtle text-info-emphasis">BHN: {{ counts.BHN|intcomma }}</span>
+                                                <span class="badge bg-secondary-subtle text-secondary-emphasis">ALT: {{ counts.ALT|intcomma }}</span>
+                                                <span class="badge bg-dark-subtle text-dark-emphasis">LAIN: {{ counts.LAIN|intcomma }}</span>
+                                                <span class="badge bg-body-secondary text-body fw-semibold mt-1">Total: {{ job.rincian_total|intcomma }}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if row.has_anomaly %}
+                                                <ul class="list-unstyled mb-0 small">
+                                                    {% for reason in row.anomaly_reasons %}
+                                                        <li><i class="bi bi-exclamation-triangle-fill text-warning"></i> {{ reason }}</li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% else %}
+                                                <span class="badge bg-success-subtle text-success-emphasis"><i class="bi bi-check-circle"></i> Data terlihat normal</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endwith %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="p-5 text-center text-muted">
+                    <i class="bi bi-database-x fs-1 d-block mb-2"></i>
+                    <p class="mb-1">Tidak ada data yang cocok dengan filter saat ini.</p>
+                    <p class="small mb-0">Coba longgarkan kata kunci atau pilih sumber/klasifikasi yang berbeda.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="alert alert-info shadow-sm">
+        <div class="d-flex align-items-start">
+            <i class="bi bi-lightbulb-fill fs-4 me-3"></i>
+            <div>
+                <h5 class="alert-heading">Langkah Berikutnya</h5>
+                <p class="mb-2">
+                    Nantinya halaman ini dapat diperluas dengan aksi langsung (edit inline, bulk update, ekspor) dan log audit.
+                    Sampaikan prioritas Anda agar kami dapat menambahkan kontrol lanjutan secara bertahap.
+                </p>
+                <ul class="mb-0 small text-muted">
+                    <li>Gunakan tombol "Impor / Update Data" untuk sinkronisasi dari Excel terbaru.</li>
+                    <li>Buka Django Admin bila membutuhkan akses penuh terhadap semua field dan relasi.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

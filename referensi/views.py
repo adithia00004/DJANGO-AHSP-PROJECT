@@ -6,10 +6,12 @@ import tempfile
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count, Q
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect, render
 
 from .forms import AHSPPreviewUploadForm
+from .models import AHSPReferensi, RincianReferensi
 from .services.ahsp_parser import ParseResult, load_preview_from_file
 from .services.import_writer import write_parse_result_to_db
 
@@ -23,6 +25,158 @@ def admin_portal(request):
         raise PermissionDenied
 
     return render(request, "referensi/admin_portal.html")
+
+
+def _base_ahsp_queryset():
+    return AHSPReferensi.objects.annotate(
+        rincian_total=Count("rincian", distinct=True),
+        tk_count=Count(
+            "rincian",
+            filter=Q(rincian__kategori=RincianReferensi.Kategori.TK),
+            distinct=True,
+        ),
+        bhn_count=Count(
+            "rincian",
+            filter=Q(rincian__kategori=RincianReferensi.Kategori.BHN),
+            distinct=True,
+        ),
+        alt_count=Count(
+            "rincian",
+            filter=Q(rincian__kategori=RincianReferensi.Kategori.ALT),
+            distinct=True,
+        ),
+        lain_count=Count(
+            "rincian",
+            filter=Q(rincian__kategori=RincianReferensi.Kategori.LAIN),
+            distinct=True,
+        ),
+        zero_coef_count=Count(
+            "rincian",
+            filter=Q(rincian__koefisien=0),
+            distinct=True,
+        ),
+        missing_unit_count=Count(
+            "rincian",
+            filter=Q(rincian__satuan_item__isnull=True)
+            | Q(rincian__satuan_item=""),
+            distinct=True,
+        ),
+    )
+
+
+@login_required
+def ahsp_database(request):
+    if not (request.user.is_superuser or request.user.is_staff):
+        raise PermissionDenied
+
+    search_query = (request.GET.get("q") or "").strip()
+    sumber_filter = (request.GET.get("sumber") or "").strip()
+    klasifikasi_filter = (request.GET.get("klasifikasi") or "").strip()
+    kategori_filter = (request.GET.get("kategori") or "").strip()
+    anomaly_only = (request.GET.get("anomali") or "") == "1"
+
+    queryset = _base_ahsp_queryset()
+
+    if search_query:
+        queryset = queryset.filter(
+            Q(kode_ahsp__icontains=search_query)
+            | Q(nama_ahsp__icontains=search_query)
+            | Q(sub_klasifikasi__icontains=search_query)
+        )
+
+    if sumber_filter:
+        queryset = queryset.filter(sumber=sumber_filter)
+
+    if klasifikasi_filter:
+        queryset = queryset.filter(klasifikasi=klasifikasi_filter)
+
+    if kategori_filter:
+        queryset = queryset.filter(rincian__kategori=kategori_filter)
+
+    if anomaly_only:
+        queryset = queryset.filter(
+            Q(rincian_total=0)
+            | Q(zero_coef_count__gt=0)
+            | Q(missing_unit_count__gt=0)
+            | Q(satuan__isnull=True)
+            | Q(satuan="")
+        )
+
+    total_filtered = queryset.count()
+
+    limit = 200
+    jobs = list(queryset.order_by("kode_ahsp")[: limit + 1])
+    truncated = len(jobs) > limit
+    jobs = jobs[:limit]
+
+    job_rows = []
+    anomaly_count = 0
+    for job in jobs:
+        anomaly_reasons = []
+        if getattr(job, "rincian_total", 0) == 0:
+            anomaly_reasons.append("Tidak memiliki rincian")
+        if getattr(job, "zero_coef_count", 0):
+            anomaly_reasons.append("Koefisien bernilai 0")
+        if getattr(job, "missing_unit_count", 0):
+            anomaly_reasons.append("Rincian tanpa satuan")
+        if not (job.satuan or ""):
+            anomaly_reasons.append("Satuan pekerjaan kosong")
+
+        has_anomaly = bool(anomaly_reasons)
+        if has_anomaly:
+            anomaly_count += 1
+
+        job_rows.append(
+            {
+                "object": job,
+                "category_counts": {
+                    "TK": getattr(job, "tk_count", 0),
+                    "BHN": getattr(job, "bhn_count", 0),
+                    "ALT": getattr(job, "alt_count", 0),
+                    "LAIN": getattr(job, "lain_count", 0),
+                },
+                "anomaly_reasons": anomaly_reasons,
+                "has_anomaly": has_anomaly,
+            }
+        )
+
+    available_sources = list(
+        AHSPReferensi.objects.order_by("sumber")
+        .values_list("sumber", flat=True)
+        .distinct()
+    )
+    available_klasifikasi = list(
+        AHSPReferensi.objects.exclude(klasifikasi__isnull=True)
+        .exclude(klasifikasi="")
+        .order_by("klasifikasi")
+        .values_list("klasifikasi", flat=True)
+        .distinct()
+    )
+
+    context = {
+        "jobs": job_rows,
+        "summary": {
+            "displayed_jobs": len(job_rows),
+            "total_filtered": total_filtered,
+            "anomaly_displayed": anomaly_count,
+            "truncated": truncated,
+            "limit": limit,
+        },
+        "filters": {
+            "search": search_query,
+            "sumber": sumber_filter,
+            "klasifikasi": klasifikasi_filter,
+            "kategori": kategori_filter,
+            "anomali": anomaly_only,
+        },
+        "filter_options": {
+            "sumber": available_sources,
+            "klasifikasi": available_klasifikasi,
+            "kategori": RincianReferensi.Kategori.choices,
+        },
+    }
+
+    return render(request, "referensi/ahsp_database.html", context)
 
 
 def _cleanup_pending_import(session) -> None:

@@ -14,30 +14,30 @@
         </div>
     </div>
 
-    <div class="col-lg-6">
+    <div class="col-lg-4">
         <div class="card h-100 shadow-sm">
             <div class="card-header bg-body-tertiary d-flex align-items-center">
-                <i class="bi bi-database-gear text-primary fs-4 me-3"></i>
+                <i class="bi bi-layout-text-window-reverse text-primary fs-4 me-3"></i>
                 <div>
                     <h5 class="mb-0">Kelola Database Referensi</h5>
-                    <small class="text-muted">Buka Django Admin untuk mengubah data yang sudah ada.</small>
+                    <small class="text-muted">Antarmuka kustom untuk meninjau dan menyunting data AHSP.</small>
                 </div>
             </div>
             <div class="card-body d-flex flex-column">
                 <p class="text-muted flex-grow-1">
-                    Gunakan antarmuka Django Admin untuk mengedit pekerjaan AHSP, rincian, atau entitas pendukung lainnya
-                    secara langsung. Semua perubahan tersimpan instan di database.
+                    Buka halaman ringkasan database referensi untuk melihat pekerjaan AHSP, rincian per kategori, serta
+                    indikator anomali. Halaman ini akan menjadi pusat kontrol bagi aktivitas kurasi data.
                 </p>
                 <div class="d-grid d-sm-flex justify-content-sm-end gap-2">
-                    <a class="btn btn-outline-primary" href="{% url 'admin:index' %}">
-                        <i class="bi bi-box-arrow-up-right"></i> Buka Django Admin
+                    <a class="btn btn-primary" href="{% url 'referensi:ahsp_database' %}">
+                        <i class="bi bi-table"></i> Buka Database Referensi
                     </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-lg-6">
+    <div class="col-lg-4">
         <div class="card h-100 shadow-sm">
             <div class="card-header bg-body-tertiary d-flex align-items-center">
                 <i class="bi bi-cloud-arrow-up text-success fs-4 me-3"></i>
@@ -54,6 +54,29 @@
                 <div class="d-grid d-sm-flex justify-content-sm-end gap-2">
                     <a class="btn btn-success" href="{% url 'referensi:preview_import' %}">
                         <i class="bi bi-search"></i> Mulai Preview Import
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-body-tertiary d-flex align-items-center">
+                <i class="bi bi-database-gear text-secondary fs-4 me-3"></i>
+                <div>
+                    <h5 class="mb-0">Akses Django Admin</h5>
+                    <small class="text-muted">Gunakan antarmuka bawaan Django untuk kebutuhan lanjutan.</small>
+                </div>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <p class="text-muted flex-grow-1">
+                    Untuk pengaturan tingkat lanjut, buka Django Admin di tab baru. Anda tetap dapat kembali ke portal ini
+                    kapan saja melalui menu utama aplikasi.
+                </p>
+                <div class="d-grid d-sm-flex justify-content-sm-end gap-2">
+                    <a class="btn btn-outline-secondary" href="{% url 'admin:index' %}">
+                        <i class="bi bi-box-arrow-up-right"></i> Buka Django Admin
                     </a>
                 </div>
             </div>
