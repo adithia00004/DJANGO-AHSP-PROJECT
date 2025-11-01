@@ -1,5 +1,4 @@
 from decimal import Decimal
-from decimal import Decimal
 from types import SimpleNamespace
 from unittest import mock
 
@@ -7,6 +6,7 @@ from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from referensi.services.ahsp_parser import AHSPPreview, ParseResult, RincianPreview
@@ -198,8 +198,17 @@ class PreviewImportViewTests(SimpleTestCase):
         base_request = self._prepare_request("get", "/import/preview/")
         _store_pending_import(base_request.session, parse_result, "data.xlsx")
 
-        update_payload = {
-            "action": "update_preview",
+        def fake_assign(result):
+            for job in result.jobs:
+                for detail in job.rincian:
+                    if not detail.kode_item:
+                        detail.kode_item = "TK-0001"
+                        detail.kode_item_source = "generated"
+
+        job_payload = {
+            "action": "update_jobs",
+            "jobs_page": "1",
+            "details_page": "1",
             "jobs-TOTAL_FORMS": "1",
             "jobs-INITIAL_FORMS": "1",
             "jobs-MIN_NUM_FORMS": "0",
@@ -211,6 +220,26 @@ class PreviewImportViewTests(SimpleTestCase):
             "jobs-0-klasifikasi": "Sipil",
             "jobs-0-sub_klasifikasi": "Tanah",
             "jobs-0-satuan": "m3",
+        }
+
+        jobs_request = self._prepare_request("post", "/import/preview/", data=job_payload)
+        jobs_request.session[PENDING_IMPORT_SESSION_KEY] = base_request.session[PENDING_IMPORT_SESSION_KEY]
+
+        with mock.patch("referensi.views.assign_item_codes", side_effect=fake_assign), mock.patch(
+            "referensi.views.redirect", wraps=redirect
+        ):
+            response = preview_import(jobs_request)
+
+        self.assertEqual(response.status_code, 302)
+        pending = jobs_request.session[PENDING_IMPORT_SESSION_KEY]
+        updated_result, _, _ = _load_pending_result(pending)
+        self.assertEqual(updated_result.jobs[0].sumber, "Sumber Baru")
+        self.assertEqual(updated_result.jobs[0].nama_ahsp, "Pekerjaan Tanah Direvisi")
+
+        detail_payload = {
+            "action": "update_details",
+            "jobs_page": "1",
+            "details_page": "1",
             "details-TOTAL_FORMS": "1",
             "details-INITIAL_FORMS": "1",
             "details-MIN_NUM_FORMS": "0",
@@ -224,25 +253,17 @@ class PreviewImportViewTests(SimpleTestCase):
             "details-0-koefisien": "1.50",
         }
 
-        update_request = self._prepare_request("post", "/import/preview/", data=update_payload)
-        update_request.session[PENDING_IMPORT_SESSION_KEY] = base_request.session[PENDING_IMPORT_SESSION_KEY]
-
-        def fake_assign(result):
-            for job in result.jobs:
-                for detail in job.rincian:
-                    if not detail.kode_item:
-                        detail.kode_item = "TK-0001"
-                        detail.kode_item_source = "generated"
+        detail_request = self._prepare_request("post", "/import/preview/", data=detail_payload)
+        detail_request.session[PENDING_IMPORT_SESSION_KEY] = pending
 
         with mock.patch("referensi.views.assign_item_codes", side_effect=fake_assign), mock.patch(
-            "referensi.views.render", wraps=lambda req, template, context: HttpResponse()
+            "referensi.views.redirect", wraps=redirect
         ):
-            preview_import(update_request)
+            response = preview_import(detail_request)
 
-        pending = update_request.session[PENDING_IMPORT_SESSION_KEY]
+        self.assertEqual(response.status_code, 302)
+        pending = detail_request.session[PENDING_IMPORT_SESSION_KEY]
         updated_result, _, _ = _load_pending_result(pending)
-        self.assertEqual(updated_result.jobs[0].sumber, "Sumber Baru")
-        self.assertEqual(updated_result.jobs[0].nama_ahsp, "Pekerjaan Tanah Direvisi")
         detail = updated_result.jobs[0].rincian[0]
         self.assertEqual(detail.koefisien, Decimal("1.50"))
         self.assertEqual(detail.kode_item, "TK-0001")

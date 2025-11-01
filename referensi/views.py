@@ -8,8 +8,11 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import redirect, render
+from django.template.loader import render_to_string
+from math import ceil
+
 from django.forms import formset_factory, modelformset_factory
 from django.urls import reverse
 
@@ -40,13 +43,36 @@ ITEM_DISPLAY_LIMIT = 150
 PreviewJobFormSet = formset_factory(PreviewJobForm, extra=0)
 PreviewDetailFormSet = formset_factory(PreviewDetailForm, extra=0)
 
+JOB_PAGE_SIZE = 50
+DETAIL_PAGE_SIZE = 100
 
-def _preview_initial_data(parse_result: ParseResult):
-    job_initial: list[dict] = []
-    detail_initial: list[dict] = []
 
-    for job_index, job in enumerate(parse_result.jobs):
-        job_initial.append(
+def _paginate(total: int, page: int, per_page: int) -> tuple[int, int, int, int]:
+    if total <= 0:
+        return 0, 0, 1, 1
+
+    total_pages = max(1, ceil(total / per_page))
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    end = min(start + per_page, total)
+    return start, end, page, total_pages
+
+
+def _build_job_page(
+    parse_result: ParseResult,
+    page: int,
+    *,
+    data=None,
+):
+    jobs = parse_result.jobs if parse_result else []
+    total = len(jobs)
+    start, end, page, total_pages = _paginate(total, page, JOB_PAGE_SIZE)
+
+    initial: list[dict] = []
+    rows_meta: list[dict] = []
+    for job_index in range(start, end):
+        job = jobs[job_index]
+        initial.append(
             {
                 "job_index": job_index,
                 "sumber": job.sumber,
@@ -57,58 +83,108 @@ def _preview_initial_data(parse_result: ParseResult):
                 "satuan": job.satuan or "",
             }
         )
+        rows_meta.append({"job": job, "job_index": job_index})
 
-        for detail_index, detail in enumerate(job.rincian):
-            detail_initial.append(
-                {
-                    "job_index": job_index,
-                    "detail_index": detail_index,
-                    "kategori": detail.kategori,
-                    "kode_item": detail.kode_item,
-                    "uraian_item": detail.uraian_item,
-                    "satuan_item": detail.satuan_item,
-                    "koefisien": detail.koefisien,
-                }
-            )
+    if data is not None:
+        formset = PreviewJobFormSet(data, prefix="jobs", initial=initial)
+    else:
+        formset = PreviewJobFormSet(prefix="jobs", initial=initial)
 
-    return job_initial, detail_initial
-
-
-def _build_preview_formsets(parse_result: ParseResult):
-    job_initial, detail_initial = _preview_initial_data(parse_result)
-    job_formset = PreviewJobFormSet(prefix="jobs", initial=job_initial)
-    detail_formset = PreviewDetailFormSet(prefix="details", initial=detail_initial)
-    return job_formset, detail_formset
-
-
-def _preview_job_rows(parse_result: ParseResult, job_formset):
-    rows = []
-    for job_index, job in enumerate(parse_result.jobs):
-        form = job_formset.forms[job_index]
-        rows.append({"job": job, "form": form, "job_index": job_index})
-    return rows
-
-
-def _preview_detail_rows(parse_result: ParseResult, detail_formset):
     rows: list[dict] = []
-    form_index = 0
-    forms = detail_formset.forms
-    for job_index, job in enumerate(parse_result.jobs):
-        for detail_index, detail in enumerate(job.rincian):
-            if form_index >= len(forms):
+    for meta, form in zip(rows_meta, formset.forms):
+        rows.append({"job": meta["job"], "form": form, "job_index": meta["job_index"]})
+
+    page_info = {
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total,
+        "start_index": (start + 1) if total else 0,
+        "end_index": end,
+    }
+    return formset, rows, page_info
+
+
+def _build_detail_page(
+    parse_result: ParseResult,
+    page: int,
+    *,
+    data=None,
+):
+    jobs = parse_result.jobs if parse_result else []
+    total = parse_result.total_rincian if parse_result else 0
+    start, end, page, total_pages = _paginate(total, page, DETAIL_PAGE_SIZE)
+
+    initial: list[dict] = []
+    rows_meta: list[dict] = []
+
+    if total:
+        flat_index = 0
+        for job_index, job in enumerate(jobs):
+            for detail_index, detail in enumerate(job.rincian):
+                if flat_index >= end:
+                    break
+                if flat_index >= start:
+                    initial.append(
+                        {
+                            "job_index": job_index,
+                            "detail_index": detail_index,
+                            "kategori": detail.kategori,
+                            "kode_item": detail.kode_item,
+                            "uraian_item": detail.uraian_item,
+                            "satuan_item": detail.satuan_item,
+                            "koefisien": detail.koefisien,
+                        }
+                    )
+                    rows_meta.append(
+                        {
+                            "job": job,
+                            "detail": detail,
+                            "job_index": job_index,
+                            "detail_index": detail_index,
+                        }
+                    )
+                flat_index += 1
+            if flat_index >= end:
                 break
-            form = forms[form_index]
-            rows.append(
-                {
-                    "form": form,
-                    "detail": detail,
-                    "job": job,
-                    "job_index": job_index,
-                    "detail_index": detail_index,
-                }
-            )
-            form_index += 1
-    return rows
+
+    if data is not None:
+        formset = PreviewDetailFormSet(data, prefix="details", initial=initial)
+    else:
+        formset = PreviewDetailFormSet(prefix="details", initial=initial)
+
+    rows: list[dict] = []
+    for meta, form in zip(rows_meta, formset.forms):
+        rows.append(
+            {
+                "form": form,
+                "detail": meta["detail"],
+                "job": meta["job"],
+                "job_index": meta["job_index"],
+                "detail_index": meta["detail_index"],
+            }
+        )
+
+    page_info = {
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total,
+        "start_index": (start + 1) if total else 0,
+        "end_index": end,
+    }
+    return formset, rows, page_info
+
+
+def _render_messages_html(request, messages_list=None) -> str:
+    if messages_list is None:
+        messages_list = list(messages.get_messages(request))
+    else:
+        messages_list = list(messages_list)
+
+    return render_to_string(
+        "referensi/partials/ajax_messages.html",
+        {"messages": messages_list},
+        request=request,
+    )
 
 
 @login_required
@@ -551,6 +627,29 @@ def preview_import(request):
     if not (request.user.is_superuser or request.user.is_staff):
         raise PermissionDenied
 
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get(
+        "format"
+    )
+    section = request.GET.get("section") or request.POST.get("section") or ""
+
+    def _get_page(param: str, default: int = 1) -> int:
+        if request.method == "POST":
+            candidate = request.POST.get(param)
+        else:
+            candidate = None
+        if candidate is None:
+            candidate = request.GET.get(param)
+        try:
+            value = int(candidate)
+            if value < 1:
+                return default
+            return value
+        except (TypeError, ValueError):
+            return default
+
+    jobs_page = _get_page("jobs_page", 1)
+    details_page = _get_page("details_page", 1)
+
     form = AHSPPreviewUploadForm(request.POST or None, request.FILES or None)
     parse_result: ParseResult | None = None
     uploaded_name: str | None = None
@@ -559,13 +658,32 @@ def preview_import(request):
     detail_formset = None
     job_rows: list[dict] = []
     detail_rows: list[dict] = []
+    job_page_info = {
+        "page": jobs_page,
+        "total_pages": 1,
+        "total_items": 0,
+        "start_index": 0,
+        "end_index": 0,
+    }
+    detail_page_info = {
+        "page": details_page,
+        "total_pages": 1,
+        "total_items": 0,
+        "start_index": 0,
+        "end_index": 0,
+    }
 
-    action = request.POST.get("action")
+    pending = request.session.get(PENDING_IMPORT_SESSION_KEY)
+    action = request.POST.get("action") if request.method == "POST" else ""
 
-    if request.method == "POST" and action == "update_preview":
-        pending = request.session.get(PENDING_IMPORT_SESSION_KEY)
+    if request.method == "POST" and action in {"update_jobs", "update_details"}:
         if not pending:
             messages.error(request, "Tidak ada data preview yang siap diedit.")
+            if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
+                return JsonResponse(
+                    {"html": "", "messages_html": _render_messages_html(request)},
+                    status=400,
+                )
             return redirect("referensi:preview_import")
 
         try:
@@ -573,53 +691,100 @@ def preview_import(request):
         except Exception:
             _cleanup_pending_import(request.session)
             messages.error(request, "Data preview tidak ditemukan. Unggah ulang file Excel.")
+            if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
+                return JsonResponse(
+                    {"html": "", "messages_html": _render_messages_html(request)},
+                    status=400,
+                )
             return redirect("referensi:preview_import")
 
-        job_formset = PreviewJobFormSet(request.POST, prefix="jobs")
-        detail_formset = PreviewDetailFormSet(request.POST, prefix="details")
+        if action == "update_jobs":
+            job_formset, job_rows, job_page_info = _build_job_page(
+                parse_result, jobs_page, data=request.POST
+            )
+            if job_formset.is_valid():
+                for cleaned in job_formset.cleaned_data:
+                    if not cleaned:
+                        continue
+                    job_index = cleaned["job_index"]
+                    if job_index >= len(parse_result.jobs):
+                        continue
+                    job = parse_result.jobs[job_index]
+                    job.sumber = cleaned["sumber"]
+                    job.kode_ahsp = cleaned["kode_ahsp"]
+                    job.nama_ahsp = cleaned["nama_ahsp"]
+                    job.klasifikasi = cleaned.get("klasifikasi") or ""
+                    job.sub_klasifikasi = cleaned.get("sub_klasifikasi") or ""
+                    job.satuan = cleaned.get("satuan") or ""
 
-        if job_formset.is_valid() and detail_formset.is_valid():
-            for job_data in job_formset.cleaned_data:
-                if not job_data:
-                    continue
-                job_index = job_data["job_index"]
-                if job_index >= len(parse_result.jobs):
-                    continue
-                job = parse_result.jobs[job_index]
-                job.sumber = job_data["sumber"]
-                job.kode_ahsp = job_data["kode_ahsp"]
-                job.nama_ahsp = job_data["nama_ahsp"]
-                job.klasifikasi = job_data.get("klasifikasi") or ""
-                job.sub_klasifikasi = job_data.get("sub_klasifikasi") or ""
-                job.satuan = job_data.get("satuan") or ""
+                assign_item_codes(parse_result)
+                _rewrite_pending_import(request.session, parse_result)
+                messages.success(
+                    request, "Perubahan pekerjaan berhasil disimpan pada preview."
+                )
 
-            for detail_data in detail_formset.cleaned_data:
-                if not detail_data:
-                    continue
-                job_index = detail_data["job_index"]
-                detail_index = detail_data["detail_index"]
-                if job_index >= len(parse_result.jobs):
-                    continue
-                job = parse_result.jobs[job_index]
-                if detail_index >= len(job.rincian):
-                    continue
-                detail = job.rincian[detail_index]
-                detail.kategori = detail_data["kategori"]
-                detail.kode_item = detail_data.get("kode_item", "") or ""
-                detail.uraian_item = detail_data["uraian_item"]
-                detail.satuan_item = detail_data["satuan_item"]
-                detail.koefisien = detail_data["koefisien"]
-                detail.kode_item_source = "manual" if detail.kode_item else "missing"
+                if not is_ajax:
+                    query = urlencode({
+                        "jobs_page": job_page_info["page"],
+                        "details_page": details_page,
+                    })
+                    return redirect(f"{reverse('referensi:preview_import')}?{query}#pane-ahsp")
 
-            assign_item_codes(parse_result)
-            _rewrite_pending_import(request.session, parse_result)
-            job_formset, detail_formset = _build_preview_formsets(parse_result)
-            job_rows = _preview_job_rows(parse_result, job_formset)
-            detail_rows = _preview_detail_rows(parse_result, detail_formset)
-            messages.success(request, "Perubahan preview berhasil disimpan.")
+                job_formset, job_rows, job_page_info = _build_job_page(
+                    parse_result, jobs_page
+                )
+            else:
+                messages.error(
+                    request,
+                    "Beberapa entri pekerjaan tidak valid. Periksa pesan kesalahan pada tabel.",
+                )
         else:
-            job_rows = _preview_job_rows(parse_result, job_formset)
-            detail_rows = _preview_detail_rows(parse_result, detail_formset)
+            detail_formset, detail_rows, detail_page_info = _build_detail_page(
+                parse_result, details_page, data=request.POST
+            )
+            if detail_formset.is_valid():
+                for cleaned in detail_formset.cleaned_data:
+                    if not cleaned:
+                        continue
+                    job_index = cleaned["job_index"]
+                    detail_index = cleaned["detail_index"]
+                    if job_index >= len(parse_result.jobs):
+                        continue
+                    job = parse_result.jobs[job_index]
+                    if detail_index >= len(job.rincian):
+                        continue
+                    detail = job.rincian[detail_index]
+                    detail.kategori = cleaned["kategori"]
+                    kode_item = cleaned.get("kode_item") or ""
+                    detail.kode_item = kode_item
+                    detail.kode_item_source = "manual" if kode_item else "missing"
+                    detail.uraian_item = cleaned["uraian_item"]
+                    detail.satuan_item = cleaned["satuan_item"]
+                    detail.koefisien = cleaned["koefisien"]
+
+                assign_item_codes(parse_result)
+                _rewrite_pending_import(request.session, parse_result)
+                messages.success(
+                    request, "Perubahan rincian berhasil disimpan pada preview."
+                )
+
+                if not is_ajax:
+                    query = urlencode({
+                        "jobs_page": jobs_page,
+                        "details_page": detail_page_info["page"],
+                    })
+                    return redirect(
+                        f"{reverse('referensi:preview_import')}?{query}#pane-rincian"
+                    )
+
+                detail_formset, detail_rows, detail_page_info = _build_detail_page(
+                    parse_result, details_page
+                )
+            else:
+                messages.error(
+                    request,
+                    "Beberapa rincian tidak valid. Periksa pesan kesalahan pada tabel.",
+                )
     elif request.method == "POST":
         if form.is_valid():
             excel_file = form.cleaned_data["excel_file"]
@@ -636,9 +801,8 @@ def preview_import(request):
                 import_token = _store_pending_import(
                     request.session, parse_result, uploaded_name
                 )
-                job_formset, detail_formset = _build_preview_formsets(parse_result)
-                job_rows = _preview_job_rows(parse_result, job_formset)
-                detail_rows = _preview_detail_rows(parse_result, detail_formset)
+                jobs_page = 1
+                details_page = 1
                 messages.success(
                     request,
                     (
@@ -651,13 +815,9 @@ def preview_import(request):
         else:
             _cleanup_pending_import(request.session)
     else:
-        pending = request.session.get(PENDING_IMPORT_SESSION_KEY)
         if pending:
             try:
                 parse_result, uploaded_name, import_token = _load_pending_result(pending)
-                job_formset, detail_formset = _build_preview_formsets(parse_result)
-                job_rows = _preview_job_rows(parse_result, job_formset)
-                detail_rows = _preview_detail_rows(parse_result, detail_formset)
             except Exception:
                 _cleanup_pending_import(request.session)
                 parse_result = None
@@ -665,9 +825,42 @@ def preview_import(request):
                 import_token = None
 
     if parse_result and job_formset is None:
-        job_formset, detail_formset = _build_preview_formsets(parse_result)
-        job_rows = _preview_job_rows(parse_result, job_formset)
-        detail_rows = _preview_detail_rows(parse_result, detail_formset)
+        job_formset, job_rows, job_page_info = _build_job_page(parse_result, jobs_page)
+    elif job_formset is None:
+        job_formset, job_rows, job_page_info = _build_job_page(None, jobs_page)
+
+    if parse_result and detail_formset is None:
+        detail_formset, detail_rows, detail_page_info = _build_detail_page(
+            parse_result, details_page
+        )
+    elif detail_formset is None:
+        detail_formset, detail_rows, detail_page_info = _build_detail_page(None, details_page)
+
+    if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
+        if section == TAB_JOBS:
+            template_name = "referensi/preview/_jobs_table.html"
+            partial_context = {
+                "parse_result": parse_result,
+                "job_formset": job_formset,
+                "job_rows": job_rows,
+                "job_page_info": job_page_info,
+                "details_page": details_page,
+            }
+        else:
+            template_name = "referensi/preview/_details_table.html"
+            partial_context = {
+                "parse_result": parse_result,
+                "detail_formset": detail_formset,
+                "detail_rows": detail_rows,
+                "detail_page_info": detail_page_info,
+                "jobs_page": jobs_page,
+            }
+
+        html = render_to_string(template_name, partial_context, request=request)
+        return JsonResponse(
+            {"html": html, "messages_html": _render_messages_html(request)},
+            status=200,
+        )
 
     context = {
         "form": form,
@@ -679,6 +872,10 @@ def preview_import(request):
         "detail_formset": detail_formset,
         "job_rows": job_rows,
         "detail_rows": detail_rows,
+        "job_page_info": job_page_info,
+        "detail_page_info": detail_page_info,
+        "jobs_page": jobs_page,
+        "details_page": details_page,
     }
     return render(request, "referensi/preview_import.html", context)
 

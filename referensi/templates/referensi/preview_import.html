@@ -22,6 +22,116 @@
 </style>
 {% endblock %}
 
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const previewRoot = document.getElementById('preview-root');
+            if (!previewRoot || !window.fetch) {
+                return;
+            }
+
+            const messageTarget = document.getElementById('ajax-messages');
+
+            const renderMessages = (html) => {
+                if (!messageTarget) {
+                    return;
+                }
+                messageTarget.innerHTML = html || '';
+            };
+
+            const showGenericError = () => {
+                renderMessages(
+                    '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                        'Terjadi kesalahan saat memuat data. Silakan muat ulang halaman.' +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                    '</div>'
+                );
+            };
+
+            const updateSection = (section, html) => {
+                const targetId = section === 'jobs' ? 'jobs-preview-container' : 'details-preview-container';
+                const container = document.getElementById(targetId);
+                if (container && typeof html === 'string') {
+                    container.innerHTML = html;
+                }
+            };
+
+            const requestSection = (section, url, options = {}) => {
+                const targetId = section === 'jobs' ? 'jobs-preview-container' : 'details-preview-container';
+                const container = document.getElementById(targetId);
+                if (container) {
+                    container.classList.add('opacity-50');
+                }
+
+                return fetch(url, options)
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error('Request failed');
+                        }
+                        return response.json();
+                    })
+                    .then((payload) => {
+                        updateSection(section, payload.html || '');
+                        renderMessages(payload.messages_html || '');
+                    })
+                    .catch(() => {
+                        showGenericError();
+                    })
+                    .finally(() => {
+                        if (container) {
+                            container.classList.remove('opacity-50');
+                        }
+                    });
+            };
+
+            previewRoot.addEventListener('click', function (event) {
+                const link = event.target.closest('[data-preview-link]');
+                if (!link) {
+                    return;
+                }
+
+                const section = link.getAttribute('data-preview-section');
+                if (!section) {
+                    return;
+                }
+
+                event.preventDefault();
+                const requestUrl = new URL(link.href, window.location.href);
+                requestUrl.searchParams.set('section', section);
+                requestUrl.searchParams.set('format', 'json');
+
+                requestSection(section, requestUrl.toString(), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+            });
+
+            previewRoot.addEventListener('submit', function (event) {
+                const form = event.target.closest('.js-preview-form');
+                if (!form) {
+                    return;
+                }
+
+                const section = form.getAttribute('data-preview-section');
+                if (!section) {
+                    return;
+                }
+
+                event.preventDefault();
+                const formData = new FormData(form);
+                formData.set('section', section);
+
+                const action = form.getAttribute('action') || window.location.href;
+                requestSection(section, action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+            });
+        });
+    </script>
+{% endblock %}
+
 {% block content %}
 <div class="row g-4">
     <div class="col-lg-5">
@@ -122,7 +232,7 @@
         {% endif %}
     </div>
 
-    <div class="col-lg-7">
+    <div class="col-lg-7" id="preview-root">
         {% if parse_result %}
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
@@ -150,6 +260,7 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <div id="ajax-messages" class="mb-3"></div>
                     {% if parse_result.errors %}
                         <div class="alert alert-danger">
                             <h6 class="alert-heading">Terjadi masalah:</h6>
@@ -176,187 +287,30 @@
                                 </ul>
                             </div>
                         {% endif %}
-                        {% if parse_result.jobs %}
-                            <form method="post" class="mt-3">
-                                {% csrf_token %}
-                                <input type="hidden" name="action" value="update_preview">
-                                {{ job_formset.management_form }}
-                                {{ detail_formset.management_form }}
-                                {% if job_formset.non_form_errors %}
-                                    <div class="alert alert-danger small mb-3">
-                                        {{ job_formset.non_form_errors|join:" " }}
-                                    </div>
-                                {% endif %}
-                                {% if detail_formset.non_form_errors %}
-                                    <div class="alert alert-danger small mb-3">
-                                        {{ detail_formset.non_form_errors|join:" " }}
-                                    </div>
-                                {% endif %}
-                                <ul class="nav nav-pills small" id="previewTabs" role="tablist">
-                                    <li class="nav-item" role="presentation">
-                                        <button class="nav-link active" id="tab-ahsp" data-bs-toggle="tab" data-bs-target="#pane-ahsp" type="button" role="tab" aria-controls="pane-ahsp" aria-selected="true">
-                                            AHSP Referensi ({{ parse_result.total_jobs }})
-                                        </button>
-                                    </li>
-                                    <li class="nav-item" role="presentation">
-                                        <button class="nav-link" id="tab-rincian" data-bs-toggle="tab" data-bs-target="#pane-rincian" type="button" role="tab" aria-controls="pane-rincian" aria-selected="false">
-                                            Rincian Item ({{ parse_result.total_rincian }})
-                                        </button>
-                                    </li>
-                                </ul>
-                                <div class="tab-content border rounded-3 border-light-subtle mt-3">
-                                    <div class="tab-pane fade show active" id="pane-ahsp" role="tabpanel" aria-labelledby="tab-ahsp">
-                                        <div class="table-responsive small text-wrap preview-table">
-                                            <table class="table table-sm align-middle mb-0">
-                                                <thead class="table-light">
-                                                    <tr>
-                                                        <th style="width:8%">Baris</th>
-                                                        <th style="width:14%">Sumber</th>
-                                                        <th style="width:12%">Kode</th>
-                                                        <th>Nama Pekerjaan</th>
-                                                        <th style="width:14%">Klasifikasi</th>
-                                                        <th style="width:14%">Sub-klasifikasi</th>
-                                                        <th style="width:10%">Satuan</th>
-                                                        <th style="width:12%" class="text-end">Jumlah Rincian</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {% for row in job_rows %}
-                                                        {{ row.form.job_index }}
-                                                        <tr>
-                                                            <td class="text-muted">{{ row.job.row_number }}</td>
-                                                            <td>
-                                                                {{ row.form.sumber }}
-                                                                {% if row.form.sumber.errors %}
-                                                                    <div class="invalid-feedback d-block small">{{ row.form.sumber.errors|join:', ' }}</div>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td>
-                                                                {{ row.form.kode_ahsp }}
-                                                                {% if row.form.kode_ahsp.errors %}
-                                                                    <div class="invalid-feedback d-block small">{{ row.form.kode_ahsp.errors|join:', ' }}</div>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td>
-                                                                {{ row.form.nama_ahsp }}
-                                                                {% if row.form.nama_ahsp.errors %}
-                                                                    <div class="invalid-feedback d-block small">{{ row.form.nama_ahsp.errors|join:', ' }}</div>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td>
-                                                                {{ row.form.klasifikasi }}
-                                                                {% if row.form.klasifikasi.errors %}
-                                                                    <div class="invalid-feedback d-block small">{{ row.form.klasifikasi.errors|join:', ' }}</div>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td>
-                                                                {{ row.form.sub_klasifikasi }}
-                                                                {% if row.form.sub_klasifikasi.errors %}
-                                                                    <div class="invalid-feedback d-block small">{{ row.form.sub_klasifikasi.errors|join:', ' }}</div>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td>
-                                                                {{ row.form.satuan }}
-                                                                {% if row.form.satuan.errors %}
-                                                                    <div class="invalid-feedback d-block small">{{ row.form.satuan.errors|join:', ' }}</div>
-                                                                {% endif %}
-                                                            </td>
-                                                            <td class="text-end">{{ row.job.rincian_count }}</td>
-                                                        </tr>
-                                                    {% endfor %}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                    <div class="tab-pane fade" id="pane-rincian" role="tabpanel" aria-labelledby="tab-rincian">
-                                        {% if parse_result.total_rincian %}
-                                            <div class="table-responsive small text-wrap preview-table">
-                                                <table class="table table-sm align-middle mb-0">
-                                                    <thead class="table-light">
-                                                        <tr>
-                                                            <th style="width:7%">Baris</th>
-                                                            <th style="width:12%">Kode AHSP</th>
-                                                            <th>Nama Pekerjaan</th>
-                                                            <th style="width:12%">Kategori</th>
-                                                            <th style="width:16%">Kategori Sumber</th>
-                                                            <th style="width:16%">Kode Item</th>
-                                                            <th>Uraian</th>
-                                                            <th style="width:10%">Satuan</th>
-                                                            <th style="width:10%" class="text-end">Koefisien</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {% for row in detail_rows %}
-                                                            {{ row.form.job_index }}
-                                                            {{ row.form.detail_index }}
-                                                            <tr>
-                                                                <td class="text-muted">{{ row.detail.row_number }}</td>
-                                                                <td class="fw-semibold">{{ row.job.kode_ahsp }}</td>
-                                                                <td>{{ row.job.nama_ahsp }}</td>
-                                                                <td>
-                                                                    {{ row.form.kategori }}
-                                                                    {% if row.form.kategori.errors %}
-                                                                        <div class="invalid-feedback d-block small">{{ row.form.kategori.errors|join:', ' }}</div>
-                                                                    {% endif %}
-                                                                </td>
-                                                                <td>
-                                                                    {% if row.detail.kategori_source %}
-                                                                        {{ row.detail.kategori_source }}
-                                                                    {% else %}
-                                                                        <span class="text-muted">(otomatis)</span>
-                                                                    {% endif %}
-                                                                </td>
-                                                                <td>
-                                                                    {{ row.form.kode_item }}
-                                                                    {% if row.detail.kode_item_source == 'generated' %}
-                                                                        <span class="badge text-bg-info ms-1">Otomatis</span>
-                                                                    {% elif row.detail.kode_item_source == 'existing' %}
-                                                                        <span class="badge text-bg-secondary ms-1">Referensi</span>
-                                                                    {% elif row.detail.kode_item_source == 'manual' and row.detail.kode_item_original %}
-                                                                        <span class="badge text-bg-warning ms-1">Manual</span>
-                                                                    {% endif %}
-                                                                    {% if row.detail.kode_item_original and row.detail.kode_item_original != row.detail.kode_item %}
-                                                                        <div class="form-text">Asal file: {{ row.detail.kode_item_original }}</div>
-                                                                    {% endif %}
-                                                                    {% if row.form.kode_item.errors %}
-                                                                        <div class="invalid-feedback d-block small">{{ row.form.kode_item.errors|join:', ' }}</div>
-                                                                    {% endif %}
-                                                                </td>
-                                                                <td>
-                                                                    {{ row.form.uraian_item }}
-                                                                    {% if row.form.uraian_item.errors %}
-                                                                        <div class="invalid-feedback d-block small">{{ row.form.uraian_item.errors|join:', ' }}</div>
-                                                                    {% endif %}
-                                                                </td>
-                                                                <td>
-                                                                    {{ row.form.satuan_item }}
-                                                                    {% if row.form.satuan_item.errors %}
-                                                                        <div class="invalid-feedback d-block small">{{ row.form.satuan_item.errors|join:', ' }}</div>
-                                                                    {% endif %}
-                                                                </td>
-                                                                <td class="text-end">
-                                                                    {{ row.form.koefisien }}
-                                                                    {% if row.form.koefisien.errors %}
-                                                                        <div class="invalid-feedback d-block small text-start">{{ row.form.koefisien.errors|join:', ' }}</div>
-                                                                    {% endif %}
-                                                                </td>
-                                                            </tr>
-                                                        {% endfor %}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        {% else %}
-                                            <div class="p-3 text-muted">Tidak ada rincian yang terdeteksi pada file ini.</div>
-                                        {% endif %}
-                                    </div>
+                        <ul class="nav nav-pills small" id="previewTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="tab-ahsp" data-bs-toggle="tab" data-bs-target="#pane-ahsp" type="button" role="tab" aria-controls="pane-ahsp" aria-selected="true">
+                                    AHSP Referensi ({{ parse_result.total_jobs }})
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="tab-rincian" data-bs-toggle="tab" data-bs-target="#pane-rincian" type="button" role="tab" aria-controls="pane-rincian" aria-selected="false">
+                                    Rincian Item ({{ parse_result.total_rincian }})
+                                </button>
+                            </li>
+                        </ul>
+                        <div class="tab-content border rounded-3 border-light-subtle mt-3">
+                            <div class="tab-pane fade show active" id="pane-ahsp" role="tabpanel" aria-labelledby="tab-ahsp">
+                                <div id="jobs-preview-container">
+                                    {% include "referensi/preview/_jobs_table.html" with parse_result=parse_result job_formset=job_formset job_rows=job_rows job_page_info=job_page_info details_page=details_page %}
                                 </div>
-                                <div class="d-flex justify-content-end mt-3">
-                                    <button type="submit" class="btn btn-primary btn-sm">
-                                        <i class="bi bi-save"></i> Simpan Perubahan Preview
-                                    </button>
+                            </div>
+                            <div class="tab-pane fade" id="pane-rincian" role="tabpanel" aria-labelledby="tab-rincian">
+                                <div id="details-preview-container">
+                                    {% include "referensi/preview/_details_table.html" with parse_result=parse_result detail_formset=detail_formset detail_rows=detail_rows detail_page_info=detail_page_info jobs_page=jobs_page %}
                                 </div>
-                            </form>
-                        {% endif %}
+                            </div>
+                        </div>
                     {% endif %}
                 </div>
             </div>
