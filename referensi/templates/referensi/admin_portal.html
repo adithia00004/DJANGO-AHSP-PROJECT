@@ -1,6 +1,11 @@
-{% extends "base.html" %}
+﻿{% extends "referensi/base.html" %}
+{% load static %}
 
 {% block title %}Panel Admin Referensi{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{% static 'referensi/css/admin_portal.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="row g-4">

@@ -1,12 +1,19 @@
 # referensi/urls.py
 from django.urls import path
-from . import views, views_api
+
+from .views import (
+    admin_portal,
+    ahsp_database,
+    commit_import,
+    preview_import,
+)
+from .views.api import api_search_ahsp
 
 urlpatterns = [
-    path('admin-portal/', views.admin_portal, name='admin_portal'),
-    path('admin/database/', views.ahsp_database, name='ahsp_database'),
-    path('import/preview/', views.preview_import, name='preview_import'),
-    path('import/commit/', views.commit_import, name='commit_import'),
+    path("admin-portal/", admin_portal, name="admin_portal"),
+    path("admin/database/", ahsp_database, name="ahsp_database"),
+    path("import/preview/", preview_import, name="preview_import"),
+    path("import/commit/", commit_import, name="commit_import"),
     # Endpoint untuk Select2 (List Pekerjaan, cari kode/nama AHSP)
-    path('api/search', views_api.api_search_ahsp, name='api_search_ahsp'),
+    path("api/search", api_search_ahsp, name="api_search_ahsp"),
 ]

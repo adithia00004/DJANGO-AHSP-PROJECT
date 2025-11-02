@@ -1,4 +1,4 @@
-# referensi/services/import_utils.py
+﻿# referensi/services/import_utils.py
 from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 import math
@@ -48,11 +48,27 @@ def normalize_num(val) -> Decimal | None:
     except InvalidOperation:
         return None
 
-def pick_first_col(df, candidates: list[str]) -> str | None:
-    cols = {c.lower(): c for c in df.columns}
-    for c in candidates:
-        if c.lower() in cols:
-            return cols[c.lower()]
+def pick_first_col(columns_source, candidates: list[str]) -> str | None:
+    if hasattr(columns_source, "columns"):
+        raw_columns = list(getattr(columns_source, "columns"))
+    else:
+        raw_columns = list(columns_source or [])
+
+    lookup: dict[str, str] = {}
+    for column in raw_columns:
+        if column is None:
+            continue
+        column_str = str(column).strip()
+        if not column_str:
+            continue
+        lowered = column_str.lower()
+        if lowered not in lookup:
+            lookup[lowered] = column_str
+
+    for candidate in candidates:
+        lowered = candidate.lower()
+        if lowered in lookup:
+            return lookup[lowered]
     return None
 
 

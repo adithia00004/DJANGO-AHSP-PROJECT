@@ -18,7 +18,7 @@ class AHSPPreviewParserTests(SimpleTestCase):
                     "nama_ahsp": "Pekerjaan Tanah",
                     "klasifikasi": "SIPIL",
                     "sub_klasifikasi": "Pekerjaan Tanah",
-                    "satuan": "m3",
+                    "satuan_pekerjaan": "m3",
                     "kategori": "",
                     "item": "",
                     "satuan": "",

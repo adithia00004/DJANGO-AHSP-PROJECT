@@ -1,4 +1,4 @@
-"""Manajemen kode item referensi (generate & sinkronisasi)."""
+﻿"""Manajemen kode item referensi (generate & sinkronisasi)."""
 
 from __future__ import annotations
 
@@ -78,8 +78,10 @@ def assign_item_codes(parse_result) -> CodeAssignmentStats:
     max_seq: Dict[str, int] = defaultdict(int)
 
     if categories:
-        qs = KodeItemReferensi.objects.filter(kategori__in=categories).values_list(
-            "kategori", "uraian_item", "satuan_item", "kode_item"
+        qs = (
+            KodeItemReferensi.objects.filter(kategori__in=categories)
+            .values_list("kategori", "uraian_item", "satuan_item", "kode_item")
+            .iterator(chunk_size=1000)
         )
         for kategori, uraian, satuan, kode in qs:
             prefix = _prefix_for_category(kategori)
@@ -92,7 +94,6 @@ def assign_item_codes(parse_result) -> CodeAssignmentStats:
 
     generated_cache: Dict[Tuple[str, str, str], str] = {}
 
-    # Perhitungkan kode yang sudah ada di parse_result agar counter tidak bentrok.
     for detail, key in details:
         if detail.kode_item:
             prefix = _prefix_for_category(detail.kategori)
@@ -141,7 +142,7 @@ def assign_item_codes(parse_result) -> CodeAssignmentStats:
 
 
 def persist_item_codes(parse_result) -> int:
-    """Simpan mapping kategori+uraian+satuan → kode ke database."""
+    """Simpan mapping kategori+uraian+satuan -> kode ke database."""
 
     if not parse_result or not getattr(parse_result, "jobs", None):
         return 0
@@ -164,16 +165,50 @@ def persist_item_codes(parse_result) -> int:
                 )
             pending[key] = kode
 
+    if not pending:
+        return 0
+
+    categories = {kategori for kategori, _, _ in pending}
+    uraian_values = {uraian for _, uraian, _ in pending}
+    satuan_values = {satuan for _, _, satuan in pending}
+
+    existing_map: Dict[Tuple[str, str, str], KodeItemReferensi] = {}
+    existing_qs = KodeItemReferensi.objects.filter(
+        kategori__in=categories,
+        uraian_item__in=uraian_values,
+        satuan_item__in=satuan_values,
+    ).iterator(chunk_size=500)
+    for obj in existing_qs:
+        key = (obj.kategori, obj.uraian_item, obj.satuan_item)
+        existing_map[key] = obj
+
+    to_create: list[KodeItemReferensi] = []
+    to_update: list[KodeItemReferensi] = []
+
+    for (kategori, uraian, satuan), kode in pending.items():
+        existing = existing_map.get((kategori, uraian, satuan))
+        if existing:
+            if existing.kode_item != kode:
+                existing.kode_item = kode
+                to_update.append(existing)
+        else:
+            to_create.append(
+                KodeItemReferensi(
+                    kategori=kategori,
+                    uraian_item=uraian,
+                    satuan_item=satuan,
+                    kode_item=kode,
+                )
+            )
+
     saved = 0
     with transaction.atomic():
-        for (kategori, uraian, satuan), kode in pending.items():
-            _, created = KodeItemReferensi.objects.update_or_create(
-                kategori=kategori,
-                uraian_item=uraian,
-                satuan_item=satuan,
-                defaults={"kode_item": kode},
-            )
-            saved += 1
+        if to_create:
+            KodeItemReferensi.objects.bulk_create(to_create, batch_size=500, ignore_conflicts=True)
+            saved += len(to_create)
+        if to_update:
+            KodeItemReferensi.objects.bulk_update(to_update, ["kode_item"], batch_size=500)
+            saved += len(to_update)
     return saved
 
 

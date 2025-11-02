@@ -1,4 +1,4 @@
-"""Utility untuk menulis hasil parse AHSP ke database."""
+﻿"""Utility untuk menulis hasil parse AHSP ke database."""
 
 from __future__ import annotations
 
@@ -25,21 +25,11 @@ class ImportSummary:
 def _log(stdout, message: str) -> None:
     if stdout is None:
         return
-    stdout.write(message)
+    stdout.write(f"{message}\n")
 
 
 def write_parse_result_to_db(parse_result, source_file: str | None = None, *, stdout=None) -> ImportSummary:
-    """Persisten ParseResult ke database.
-
-    Parameters
-    ----------
-    parse_result: referensi.services.ahsp_parser.ParseResult
-        Hasil parsing Excel AHSP.
-    source_file: str | None
-        Nama file sumber untuk disimpan ke model (opsional).
-    stdout:
-        Handler stdout (misal dari BaseCommand) untuk logging progres.
-    """
+    """Persisten ParseResult ke database."""
 
     from referensi.services.ahsp_parser import ParseResult  # menghindari import siklik
 
@@ -98,38 +88,51 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                     ahsp_obj.save(update_fields=updated_fields)
                 summary.jobs_updated += 1
 
-            _log(stdout, f"➡️  [{job.sumber}] {job.kode_ahsp} - {job.nama_ahsp}")
+            _log(stdout, f"[job] {job.sumber} :: {job.kode_ahsp} - {job.nama_ahsp}")
 
-            # Kosongkan rincian lama sebelum tulis ulang
             RincianReferensi.objects.filter(ahsp=ahsp_obj).delete()
 
+            pending_details: list[tuple[RincianReferensi, int]] = []
             for detail in job.rincian:
                 try:
+                    kategori = canonicalize_kategori(detail.kategori or detail.kategori_source)
                     fields = dict(
                         ahsp=ahsp_obj,
-                        kategori=canonicalize_kategori(detail.kategori or detail.kategori_source),
+                        kategori=kategori,
                         kode_item=detail.kode_item,
                         uraian_item=detail.uraian_item,
                         satuan_item=detail.satuan_item,
                         koefisien=detail.koefisien,
                     )
-                    if hasattr(RincianReferensi, "uraian_item"):
-                        RincianReferensi.objects.create(**fields)
-                    else:  # pragma: no cover - fallback untuk skema lama
-                        legacy_fields = dict(
-                            ahsp=ahsp_obj,
-                            kategori=canonicalize_kategori(detail.kategori or detail.kategori_source),
-                            kode_item_lookup=detail.kode_item,
-                            item=detail.uraian_item,
-                            satuan=detail.satuan_item,
-                            koefisien=detail.koefisien,
-                        )
-                        RincianReferensi.objects.create(**legacy_fields)
-                    summary.rincian_written += 1
-                except Exception as exc:  # pragma: no cover - dependensi DB
-                    message = f"⚠️  Gagal import rincian baris {detail.row_number}: {exc}"
-                    _log(stdout, message)
+                    pending_details.append((RincianReferensi(**fields), detail.row_number))
+                except Exception as exc:  # pragma: no cover - validasi runtime
+                    message = f"[!] Gagal menyiapkan rincian baris {detail.row_number}: {exc}"
                     summary.detail_errors.append(message)
+                    _log(stdout, message)
+
+            if not pending_details:
+                continue
+
+            instances = [instance for instance, _ in pending_details]
+            try:
+                RincianReferensi.objects.bulk_create(instances, batch_size=500)
+            except Exception as exc:  # pragma: no cover - DB specific failure
+                fallback_msg = (
+                    f"[!] Bulk create rincian gagal untuk {job.kode_ahsp}: {exc}. "
+                    "Insert satu-per-satu akan dicoba."
+                )
+                summary.detail_errors.append(fallback_msg)
+                _log(stdout, fallback_msg)
+                for instance, row_number in pending_details:
+                    try:
+                        instance.save(force_insert=True)
+                        summary.rincian_written += 1
+                    except Exception as inner_exc:  # pragma: no cover - DB specific
+                        message = f"[!] Gagal import rincian baris {row_number}: {inner_exc}"
+                        summary.detail_errors.append(message)
+                        _log(stdout, message)
+            else:
+                summary.rincian_written += len(instances)
 
     return summary
 

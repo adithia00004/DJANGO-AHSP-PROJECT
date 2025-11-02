@@ -1,0 +1,26 @@
+﻿.preview-table table th,
+.preview-table table td {
+    white-space: normal;
+    vertical-align: top;
+}
+
+.preview-table {
+    max-height: 420px;
+    overflow: auto;
+}
+
+.preview-table table {
+    font-size: 0.85rem;
+}
+
+#preview-toolbar .btn {
+    min-width: 80px;
+}
+
+#preview-toolbar .btn.active {
+    pointer-events: none;
+}
+
+.table-preview-summary tbody th {
+    width: 35%;
+}

@@ -1,9 +1,8 @@
-# referensi/management/commands/import_ahsp.py
+﻿# referensi/management/commands/import_ahsp.py
 import os
-import pandas as pd
 from django.core.management.base import BaseCommand
 
-from referensi.services.ahsp_parser import parse_excel_dataframe
+from referensi.services.ahsp_parser import parse_excel_dataframe, parse_excel_stream
 from referensi.services.import_writer import write_parse_result_to_db
 
 
@@ -16,27 +15,49 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         excel_path = kwargs["excel_path"]
 
-        # Baca sebagai string agar tidak ada auto-konversi koma/titik.
-        # Biarkan pd.read_excel yang melempar jika file tidak ada – ini
-        # kompatibel dengan test yang memonkeypatch read_excel.
-        try:
-            df = pd.read_excel(excel_path, header=0, dtype=str, keep_default_na=False)
-        except FileNotFoundError:
-            self.stdout.write(self.style.ERROR(f"❌ File tidak ditemukan: {excel_path}"))
-            return
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"❌ Gagal membaca Excel: {e}"))
-            return
+        parse_result = None
+        streaming_note: str | None = None
 
-        parse_result = parse_excel_dataframe(df)
+        try:
+            with open(excel_path, "rb") as handle:
+                parse_result = parse_excel_stream(handle)
+        except FileNotFoundError:
+            streaming_note = f"Berkas '{excel_path}' tidak ditemukan; mencoba fallback pandas."
+        except ModuleNotFoundError:
+            streaming_note = "Parser streaming membutuhkan paket openpyxl."
+        except Exception as exc:
+            streaming_note = f"Parser streaming gagal: {exc}"
+
+        if parse_result is None:
+            try:
+                import pandas as pd  # type: ignore
+            except ModuleNotFoundError:
+                self.stdout.write(self.style.ERROR("[x] Dependensi pandas belum terpasang."))
+                if streaming_note:
+                    self.stdout.write(self.style.WARNING(streaming_note))
+                return
+
+            try:
+                df = pd.read_excel(excel_path, header=0, dtype=str, keep_default_na=False)
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(f"[x] Gagal membaca Excel: {exc}"))
+                if streaming_note:
+                    self.stdout.write(self.style.WARNING(streaming_note))
+                return
+
+            parse_result = parse_excel_dataframe(df)
+            if streaming_note:
+                parse_result.warnings.insert(0, streaming_note)
+        elif streaming_note:
+            parse_result.warnings.insert(0, streaming_note)
 
         if parse_result.errors:
             for error in parse_result.errors:
-                self.stdout.write(self.style.ERROR(f"❌ {error}"))
+                self.stdout.write(self.style.ERROR(f"[x] {error}"))
             return
 
         for warning in parse_result.warnings:
-            self.stdout.write(self.style.WARNING(f"⚠️  {warning}"))
+            self.stdout.write(self.style.WARNING(f"[!] {warning}"))
 
         summary = write_parse_result_to_db(
             parse_result,
@@ -49,10 +70,9 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                "✅ Import selesai. "
+                "[OK] Import selesai. "
                 f"Pekerjaan baru: {summary.jobs_created}, "
                 f"Pekerjaan diperbarui: {summary.jobs_updated}, "
                 f"Total rincian ditulis: {summary.rincian_written}"
             )
         )
-

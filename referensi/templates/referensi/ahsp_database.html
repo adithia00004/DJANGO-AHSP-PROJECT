@@ -1,62 +1,9 @@
-{% extends "base.html" %}
+{% extends "referensi/base.html" %}
 {% load humanize %}
+{% load static %}
 
 {% block extra_css %}
-    <style>
-        .ahsp-table-responsive {
-            width: 100%;
-            overflow-x: auto;
-        }
-
-        .ahsp-database-table {
-            min-width: 1100px;
-            width: 100%;
-            font-size: 0.875rem;
-        }
-
-        .ahsp-database-table thead th {
-            font-weight: 600;
-            vertical-align: middle;
-        }
-
-        .ahsp-database-table td,
-        .ahsp-database-table th {
-            white-space: normal;
-            word-break: break-word;
-            vertical-align: top;
-        }
-
-        .ahsp-database-table .form-control,
-        .ahsp-database-table .form-select {
-            font-size: 0.875rem;
-            white-space: normal;
-        }
-
-        .ahsp-database-table .ahsp-input {
-            width: 100%;
-        }
-
-        .ahsp-database-table .ahsp-textarea {
-            white-space: normal;
-        }
-
-        .ahsp-database-table textarea.form-control {
-            min-height: 2.75rem;
-            resize: vertical;
-        }
-
-        .ahsp-database-table .badge,
-        .ahsp-database-table .small,
-        .ahsp-database-table .text-muted {
-            font-size: 0.8125rem;
-        }
-
-        @media (min-width: 1400px) {
-            .ahsp-database-table {
-                min-width: 100%;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="{% static 'referensi/css/ahsp_database.css' %}">
 {% endblock %}
 
 {% block title %}Database Referensi AHSP{% endblock %}

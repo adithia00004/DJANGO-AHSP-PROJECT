@@ -11,7 +11,7 @@ class ImportAHSPTests(TestCase):
     def setUp(self):
         self.df = pd.DataFrame([
             {"sumber_ahsp":"SNI 2025", "kode_ahsp":"1.1.1", "nama_ahsp":"Pekerjaan Tanah",
-             "kategori":"", "item":"", "satuan":"", "koefisien":""},
+             "satuan_pekerjaan":"m3", "kategori":"", "item":"", "satuan":"", "koefisien":""},
             {"sumber_ahsp":"", "kode_ahsp":"", "nama_ahsp":"",
              "kategori":"TK", "item":"Pekerja", "satuan":"OH", "koefisien":"26,406"},
             {"sumber_ahsp":"", "kode_ahsp":"", "nama_ahsp":"",

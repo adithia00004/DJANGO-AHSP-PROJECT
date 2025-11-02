@@ -11,18 +11,20 @@ from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from referensi.services.ahsp_parser import AHSPPreview, ParseResult, RincianPreview
 from referensi.services.import_writer import ImportSummary
-from referensi.views import (
-    PENDING_IMPORT_SESSION_KEY,
+from referensi.views import admin_portal, commit_import, preview_import
+from referensi.views.constants import TAB_ITEMS, TAB_JOBS, PENDING_IMPORT_SESSION_KEY
+from referensi.views.preview import (
     _cleanup_pending_import,
     _load_pending_result,
     _store_pending_import,
-    admin_portal,
-    commit_import,
-    preview_import,
 )
 
 
 class DummyUser(SimpleNamespace):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("username", "tester")
+        super().__init__(**kwargs)
+
     @property
     def is_authenticated(self) -> bool:  # pragma: no cover - property access only
         return True
@@ -45,7 +47,7 @@ class AdminPortalViewTests(SimpleTestCase):
         request = self.factory.get("/referensi/admin-portal/")
         request.user = self.superuser
         with mock.patch(
-            "referensi.views.render",
+            "referensi.views.admin_portal.render",
             wraps=lambda req, template, context=None, **kwargs: HttpResponse(),
         ) as mocked_render:
             admin_portal(request)
@@ -57,7 +59,7 @@ class AdminPortalViewTests(SimpleTestCase):
         request = self.factory.get("/referensi/admin-portal/")
         request.user = self.staff_user
         with mock.patch(
-            "referensi.views.render",
+            "referensi.views.admin_portal.render",
             wraps=lambda req, template, context=None, **kwargs: HttpResponse(),
         ) as mocked_render:
             admin_portal(request)
@@ -112,6 +114,17 @@ class PreviewImportViewTests(SimpleTestCase):
         )
         return ParseResult(jobs=[job])
 
+    def _build_upload_form_mock(self, upload, *, is_valid=True):
+        widget = mock.Mock()
+        widget.attrs = {}
+        field = mock.Mock()
+        field.widget = widget
+        form = mock.Mock()
+        form.is_valid.return_value = is_valid
+        form.cleaned_data = {"excel_file": upload}
+        form.fields = {"excel_file": field}
+        return form
+
     def test_preview_requires_superuser(self):
         request = self._prepare_request("get", "/import/preview/", user=self.regular_user)
         with self.assertRaises(PermissionDenied):
@@ -121,7 +134,7 @@ class PreviewImportViewTests(SimpleTestCase):
         staff_user = DummyUser(is_superuser=False, is_staff=True)
         request = self._prepare_request("get", "/import/preview/", user=staff_user)
         with mock.patch(
-            "referensi.views.render",
+            "referensi.views.preview.render",
             wraps=lambda req, template, context=None, **kwargs: HttpResponse(),
         ) as mocked_render:
             preview_import(request)
@@ -131,16 +144,14 @@ class PreviewImportViewTests(SimpleTestCase):
     def test_preview_stores_pending_result(self):
         parse_result = self._build_parse_result()
         upload = SimpleNamespace(name="data.xlsx")
-        form = mock.Mock()
-        form.is_valid.return_value = True
-        form.cleaned_data = {"excel_file": upload}
+        form = self._build_upload_form_mock(upload)
 
         request = self._prepare_request("post", "/import/preview/")
 
-        with mock.patch("referensi.views.AHSPPreviewUploadForm", return_value=form), mock.patch(
-            "referensi.views.load_preview_from_file", return_value=parse_result
-        ), mock.patch("referensi.views.assign_item_codes") as mocked_assign, mock.patch(
-            "referensi.views.render", wraps=lambda req, template, context: HttpResponse()
+        with mock.patch("referensi.views.preview.AHSPPreviewUploadForm", return_value=form), mock.patch(
+            "referensi.views.preview.load_preview_from_file", return_value=parse_result
+        ), mock.patch("referensi.views.preview.assign_item_codes") as mocked_assign, mock.patch(
+            "referensi.views.preview.render", wraps=lambda req, template, context: HttpResponse()
         ) as mocked_render:
             preview_import(request)
 
@@ -158,16 +169,14 @@ class PreviewImportViewTests(SimpleTestCase):
         parse_result = self._build_parse_result()
 
         upload = SimpleNamespace(name="data.xlsx")
-        form = mock.Mock()
-        form.is_valid.return_value = True
-        form.cleaned_data = {"excel_file": upload}
+        form = self._build_upload_form_mock(upload)
 
         request_preview = self._prepare_request("post", "/import/preview/")
 
-        with mock.patch("referensi.views.AHSPPreviewUploadForm", return_value=form), mock.patch(
-            "referensi.views.load_preview_from_file", return_value=parse_result
-        ), mock.patch("referensi.views.assign_item_codes"), mock.patch(
-            "referensi.views.render", wraps=lambda req, template, context: HttpResponse()
+        with mock.patch("referensi.views.preview.AHSPPreviewUploadForm", return_value=form), mock.patch(
+            "referensi.views.preview.load_preview_from_file", return_value=parse_result
+        ), mock.patch("referensi.views.preview.assign_item_codes"), mock.patch(
+            "referensi.views.preview.render", wraps=lambda req, template, context: HttpResponse()
         ):
             preview_import(request_preview)
 
@@ -184,8 +193,8 @@ class PreviewImportViewTests(SimpleTestCase):
 
         summary = ImportSummary(jobs_created=1, jobs_updated=0, rincian_written=1)
 
-        with mock.patch("referensi.views.assign_item_codes"), mock.patch(
-            "referensi.views.write_parse_result_to_db", return_value=summary
+        with mock.patch("referensi.views.preview.assign_item_codes"), mock.patch(
+            "referensi.views.preview.write_parse_result_to_db", return_value=summary
         ) as mocked_writer:
             response = commit_import(request_commit)
 
@@ -225,8 +234,8 @@ class PreviewImportViewTests(SimpleTestCase):
         jobs_request = self._prepare_request("post", "/import/preview/", data=job_payload)
         jobs_request.session[PENDING_IMPORT_SESSION_KEY] = base_request.session[PENDING_IMPORT_SESSION_KEY]
 
-        with mock.patch("referensi.views.assign_item_codes", side_effect=fake_assign), mock.patch(
-            "referensi.views.redirect", wraps=redirect
+        with mock.patch("referensi.views.preview.assign_item_codes", side_effect=fake_assign), mock.patch(
+            "referensi.views.preview.redirect", wraps=redirect
         ):
             response = preview_import(jobs_request)
 
@@ -256,8 +265,8 @@ class PreviewImportViewTests(SimpleTestCase):
         detail_request = self._prepare_request("post", "/import/preview/", data=detail_payload)
         detail_request.session[PENDING_IMPORT_SESSION_KEY] = pending
 
-        with mock.patch("referensi.views.assign_item_codes", side_effect=fake_assign), mock.patch(
-            "referensi.views.redirect", wraps=redirect
+        with mock.patch("referensi.views.preview.assign_item_codes", side_effect=fake_assign), mock.patch(
+            "referensi.views.preview.redirect", wraps=redirect
         ):
             response = preview_import(detail_request)
 

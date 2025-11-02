@@ -1,0 +1,2516 @@
+[
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 1,
+  "fields": {
+    "kode_ahsp": "1.1.1.1",
+    "nama_ahsp": "Pembuatan 1 m3 pagar sementara dari kayu tinggi 2 meter (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.1.1 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 2,
+  "fields": {
+    "kode_ahsp": "1.1.1.2",
+    "nama_ahsp": "Pembuatan 1 m3 pagar sementara dari seng gelombang rangka kayu tinggi  2  meter  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.1.2 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 3,
+  "fields": {
+    "kode_ahsp": "1.1.1.3",
+    "nama_ahsp": "Pembuatan 1 m3 pagar sementara dari kawat duri tinggi 2 meter (Lihat   Peraturan   Menteri   Pekerjaan   Umum   dan   Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.1.3 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 4,
+  "fields": {
+    "kode_ahsp": "1.1.1.4",
+    "nama_ahsp": "Pembuatan  1  m3  pagar  sementara  seng  gelombang  rangka  baja L.40.40.4, tinggi pagar 1,8 m3 (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.1.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 5,
+  "fields": {
+    "kode_ahsp": "1.1.1.5",
+    "nama_ahsp": "Pembuatan  1  m2   Pagar  BRC  Galvanis  (Lihat  Peraturan  Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.1.1.6 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 6,
+  "fields": {
+    "kode_ahsp": "1.1.1.6",
+    "nama_ahsp": "Pemasangan 1 m2  Panel Beton Pracetak 50x50x240 untuk Pagar (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.1.7 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 7,
+  "fields": {
+    "kode_ahsp": "1.3.3.6",
+    "nama_ahsp": "1 m3  Timbunan dan Pemadatan Makadam secara Semi Mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 8,
+  "fields": {
+    "kode_ahsp": "1.1.2.1",
+    "nama_ahsp": "1  buah   papan  nama   pekerjaan   ukuran   0,8x1,2  menggunakan multiflex  18  mm,  frame  besi  siku  dan  tiang  kayu  8/12  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.f.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 9,
+  "fields": {
+    "kode_ahsp": "1.1.2.2",
+    "nama_ahsp": "1  buah  papan  nama  pekerjaan  ukuran  0,6x0,8  menggunakan multiplex  10  mm,  frame  aluminium  siku  &  tiang  kayu  5/7, printing banner plastik (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.f.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 10,
+  "fields": {
+    "kode_ahsp": "1.1.2.3",
+    "nama_ahsp": "Pembuatan 1 m2 kantor sementara/rumah jaga/gudang semen dan peralatan   lantai   plesteran,   dinding   setengah   tembok   (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.c (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 11,
+  "fields": {
+    "kode_ahsp": "1.1.2.5",
+    "nama_ahsp": "Pembuatan 1 m2 Jalan sementara Lapis Macadam (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.g.4 (b))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 13,
+  "fields": {
+    "kode_ahsp": "1.1.2.4",
+    "nama_ahsp": "Pembuatan 1 m2  direksi keet (Kantor), los kerja dan gudang",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 15,
+  "fields": {
+    "kode_ahsp": "1.1.2.6",
+    "nama_ahsp": "Pembuatan 1 m2 Jalan sementara (Jalan Tanah) (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.g.2 (b))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 16,
+  "fields": {
+    "kode_ahsp": "1.1.2.7",
+    "nama_ahsp": "Pembuatan 1 m2 Jalan sementara (Jalan Kerikil) (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.g.3 (b))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 17,
+  "fields": {
+    "kode_ahsp": "1.1.3.1",
+    "nama_ahsp": "1 m2 pembersihan dan pengupasan permukaan tanah (Striping) s.d. tanaman  ∅   2  cm  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.1.a (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 18,
+  "fields": {
+    "kode_ahsp": "1.1.3.2",
+    "nama_ahsp": "Tebas tebang 1 m2  tanaman/tumbuhan ∅  < 5 cm (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.1.b (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 19,
+  "fields": {
+    "kode_ahsp": "1.1.3.3",
+    "nama_ahsp": "Tebas  tebang  1  m2   tanaman/tumbuhan  ∅   >5  s.d.  15  cm  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.1.c (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 20,
+  "fields": {
+    "kode_ahsp": "1.1.3.4",
+    "nama_ahsp": "Tebas tebang 1 batang pohon/tumbuhan ∅  >15 s.d. 30 cm (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.1.d (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 21,
+  "fields": {
+    "kode_ahsp": "1.1.3.5",
+    "nama_ahsp": "Tebas tebang 1 batang pohon/tumbuhan ∅  > 30 s.d 50 cm (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.1.e (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 22,
+  "fields": {
+    "kode_ahsp": "1.1.3.6",
+    "nama_ahsp": "Tebas tebang 1 batang pohon/tumbuhan ∅ > 50 s.d 75 cm (diameter pohon  diukur  1  m  di  atas  permukaan  tanah)  (Lihat  Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.1.g (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 25,
+  "fields": {
+    "kode_ahsp": "1.1.3.7",
+    "nama_ahsp": "Tebas tebang 1 batang pohon/tumbuhan ∅ > 75 cm (diameter pohon diukur  1  m  di  atas  permukaan  tanah)  (Lihat  Peraturan  Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.3.1.h (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 26,
+  "fields": {
+    "kode_ahsp": "1.1.3.8",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras  ∅  > 5 s.d. 15 cm (termasuk pembuangan sisa tunggul tanpa menutup kembali bekas lubang) (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.a (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 27,
+  "fields": {
+    "kode_ahsp": "1.1.3.9",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 15 cm  s.d. 30 cm  (termasuk  pembuangan  sisa  tunggul  tanpa  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.b (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 28,
+  "fields": {
+    "kode_ahsp": "1.1.3.10",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 30 cm  s.d. 50 cm (termasuk pembuangan sisa tunggul tanpa menutup kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.c (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 29,
+  "fields": {
+    "kode_ahsp": "1.1.3.11",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 50 cm  s.d. 75 cm (termasuk pembuangan sisa tunggul tanpa menutup kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.d (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 30,
+  "fields": {
+    "kode_ahsp": "1.1.3.12",
+    "nama_ahsp": "Gali  dan  cabut  1  tunggul  pohon  tanaman  keras  ∅   >  75  cm (termasuk pembuangan sisa tunggul tanpa menutup kembali bekas lubang) (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.e (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 31,
+  "fields": {
+    "kode_ahsp": "1.1.3.13",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 5 s.d. 15 cm (termasuk  pembuangan  sisa  tunggul  dengan  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.3.a (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 32,
+  "fields": {
+    "kode_ahsp": "1.1.4.3",
+    "nama_ahsp": "Patok  kayu  (kaso  5/7)  panjang  0,5  m'  (Lihat  Peraturan  Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.1.2.1.e.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 33,
+  "fields": {
+    "kode_ahsp": "1.1.3.14",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 15 cm s.d. 30 cm (termasuk pembuangan sisa tunggul dengan menutup kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.3.b (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 34,
+  "fields": {
+    "kode_ahsp": "1.1.3.15",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 30 cm s.d. 50 cm (termasuk pembuangan sisa tunggul dengan menutup kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.3.c (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 35,
+  "fields": {
+    "kode_ahsp": "1.1.3.16",
+    "nama_ahsp": "Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 50 cm s.d. 75 cm (termasuk pembuangan sisa tunggul dengan menutup kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.3.d (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 36,
+  "fields": {
+    "kode_ahsp": "1.1.3.17",
+    "nama_ahsp": "Gali  dan  cabut  1  tunggul  pohon  tanaman  keras  ∅   >  75  cm (termasuk  pembuangan  sisa  tunggul  dengan  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.3.e (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 37,
+  "fields": {
+    "kode_ahsp": "1.1.4.1",
+    "nama_ahsp": "Pengukuran Ulang Topografi Seluas 1 Ha",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 38,
+  "fields": {
+    "kode_ahsp": "1.1.4.2",
+    "nama_ahsp": "Pasangan  1  m3  Bouwplank  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.2.1.d (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 40,
+  "fields": {
+    "kode_ahsp": "1.1.4.4",
+    "nama_ahsp": "1 buah patok kayu (kaso 5/7) panjang 1 m' (Lihat Peraturan Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.1.2.1.e.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 41,
+  "fields": {
+    "kode_ahsp": "1.1.4.5",
+    "nama_ahsp": "Patok  Tetap  Bantu  (PTB)  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.2.1.e.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 42,
+  "fields": {
+    "kode_ahsp": "1.1.4.6",
+    "nama_ahsp": "Patok  Tetap  Utama  (PTU)  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.2.1.e.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 43,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.1",
+    "nama_ahsp": "Penggalian 1 m3 tanah biasa sedalam s.d. 1 m untuk volume s.d. 200 m3  cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.1.a.1 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 44,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.2",
+    "nama_ahsp": "Penggalian 1 m3 tanah biasa sedalam s.d. 1 m untuk volume 200 m3 s.d 2000 m3 cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.2 (a)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 45,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.3",
+    "nama_ahsp": "Penggalian 1 m3  tanah biasa sedalam s.d. 1 m untuk volume > 2000 m3 cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B  U.3.4.1.a.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 46,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.4",
+    "nama_ahsp": "Penggalian  1  m3   tanah  biasa  sedalam  >  1  m  s.d.  2  m  untuk volume  s.d  200  m3 cara  manual  (Lihat  Peraturan  Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 47,
+  "fields": {
+    "kode_ahsp": "1.2.2.1.3",
+    "nama_ahsp": "Penggalian 1 m3 pasir sedalam > 2 m s.d. 3 m cara manual (Lihat Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan  Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.a.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 49,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.5",
+    "nama_ahsp": "Penggalian  1  m3   tanah  biasa  sedalam  >  1  m  s.d.  2  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.5 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 50,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.6",
+    "nama_ahsp": "Penggalian  1  m3   tanah  biasa  sedalam  >  2  m  s.d.  3  m  untuk volume  s.d  200  m3 cara  manual  (Lihat  Peraturan  Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.6 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 51,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.7",
+    "nama_ahsp": "Penggalian  1  m3   tanah  biasa  sedalam  >  2  m  s.d.  3  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.7 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 52,
+  "fields": {
+    "kode_ahsp": "1.2.1.1.8",
+    "nama_ahsp": "Penggalian  1  m3   tanah  biasa  sedalam  >  3  m,  setiap  tambah kedalaman 1 m cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.8 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 53,
+  "fields": {
+    "kode_ahsp": "1.2.1.2.1",
+    "nama_ahsp": "Penggalian 1 m3  tanah biasa sedalam > 0 s.d. 1 m dengan cara semi  mekanis  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan   Rakyat   Nomor   8   Tahun   2023   Lampiran   B U.3.4.1.b.1)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 54,
+  "fields": {
+    "kode_ahsp": "1.2.1.2.2",
+    "nama_ahsp": "Penggalian 1 m3 tanah biasa sedalam > 1 m s.d 2 m dengan cara semi  mekanis  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan   Rakyat   Nomor   8   Tahun   2023   Lampiran   B U.3.4.1.b.2)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 55,
+  "fields": {
+    "kode_ahsp": "1.2.1.2.3",
+    "nama_ahsp": "Penggalian 1 m3 tanah biasa sedalam > 2 m s.d 3 m dengan cara semi  mekanis  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan   Rakyat   Nomor   8   Tahun   2023   Lampiran   B U.3.4.1.b.3)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 56,
+  "fields": {
+    "kode_ahsp": "1.2.1.2.4",
+    "nama_ahsp": "Penggalian 1 m3  tanah biasa > 3 m untuk setiap penambahan kedalaman  1  m  dengan  cara  semi  mekanis  (Lihat  Peraturan Menteri  Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8 Tahun 2023 Lampiran B U.3.4.1.b.4)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 57,
+  "fields": {
+    "kode_ahsp": "1.2.2.1.1",
+    "nama_ahsp": "Penggalian 1 m3  pasir sedalam > 0 s.d. 1 m cara manual (Lihat Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan  Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.a.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 58,
+  "fields": {
+    "kode_ahsp": "1.2.2.1.2",
+    "nama_ahsp": "Penggalian 1 m3 pasir sedalam > 1 m s.d. 2 m cara manual (Lihat Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan  Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.a.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 60,
+  "fields": {
+    "kode_ahsp": "1.3.3.5",
+    "nama_ahsp": "1 m3  Timbunan dan Pemadatan batu kerikil menggunakan mesin Stamper Kodok",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 61,
+  "fields": {
+    "kode_ahsp": "1.2.2.1.4",
+    "nama_ahsp": "Penggalian 1 m3  pasir kedalaman > 3 m tiap tambah dalam 1 m cara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.a.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 62,
+  "fields": {
+    "kode_ahsp": "1.2.2.2.1",
+    "nama_ahsp": "Penggalian 1 m3  pasir sedalam > 0 s.d. 1 m cara semi mekanis (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.b.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 63,
+  "fields": {
+    "kode_ahsp": "1.2.2.2.2",
+    "nama_ahsp": "Penggalian 1 m3 pasir sedalam > 1 m s.d. 2 m cara semi mekanis (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.b.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 64,
+  "fields": {
+    "kode_ahsp": "1.2.2.2.3",
+    "nama_ahsp": "Penggalian 1 m3 pasir sedalam > 2 m s.d. 3 m cara semi mekanis (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.b.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 65,
+  "fields": {
+    "kode_ahsp": "1.2.2.2.4",
+    "nama_ahsp": "Penggalian 1 m3 pasir sedalam > 3 m untuk setiap tambah dalam 1  m  cara  semi  mekanis  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.5.b.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 66,
+  "fields": {
+    "kode_ahsp": "1.2.3.1.1",
+    "nama_ahsp": "Penggalian 1 m3 tanah berbatu sedalam > 0 s.d. 1 m dengan cara manual   (Lihat   Peraturan   Menteri   Pekerjaan   Umum   dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.2.a.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 67,
+  "fields": {
+    "kode_ahsp": "1.2.3.1.2",
+    "nama_ahsp": "Penggalian 1 m3  tanah berbatu sedalam > 1 m s.d. 2 m dengan cara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.2.a.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 68,
+  "fields": {
+    "kode_ahsp": "1.2.3.1.3",
+    "nama_ahsp": "Penggalian 1 m3  tanah berbatu sedalam > 2 m s.d. 3 m dengan cara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.2.a.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 69,
+  "fields": {
+    "kode_ahsp": "1.2.3.1.4",
+    "nama_ahsp": "Penggalian 1 m3  tanah berbatu > 3 m, setiap tambah dalam 1 m dengan cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.2.a.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 70,
+  "fields": {
+    "kode_ahsp": "1.2.3.2.1",
+    "nama_ahsp": "Penggalian 1 m3 tanah berbatu sedalam > 0 s.d. 1 m dengan cara semi  mekanis  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.2.b.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 71,
+  "fields": {
+    "kode_ahsp": "1.2.3.2.2",
+    "nama_ahsp": "Penggalian 1 m3  tanah berbatu sedalam > 1 m s.d. 2 m dengan cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.2.b.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 72,
+  "fields": {
+    "kode_ahsp": "1.2.3.2.3",
+    "nama_ahsp": "Penggalian 1 m3  tanah berbatu sedalam > 2 m s.d. 3 m dengan cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.2.b.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 73,
+  "fields": {
+    "kode_ahsp": "1.2.3.2.4",
+    "nama_ahsp": "Penggalian 1 m3  tanah berbatu > 3 m, setiap tambah dalam 1 m dengan cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.2.b.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 74,
+  "fields": {
+    "kode_ahsp": "1.2.4.1.1",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 0 s.d. 1 m untuk volume s.d 200 m3  cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.a.1 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 75,
+  "fields": {
+    "kode_ahsp": "1.2.4.1.2",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 0 s.d. 1 m untuk volume > 200 m3  cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.a.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 76,
+  "fields": {
+    "kode_ahsp": "1.2.4.1.3",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 1 m s.d. 2 m untuk volume s.d 200 m3  cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.a.3 (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 77,
+  "fields": {
+    "kode_ahsp": "1.2.4.1.4",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 1 m s.d. 2 m untuk volume > 200 m3  cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.a.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 78,
+  "fields": {
+    "kode_ahsp": "1.2.4.1.5",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 2 m s.d 3 m untuk volume s.d 200 m3  cara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.a.5 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 79,
+  "fields": {
+    "kode_ahsp": "1.2.4.1.6",
+    "nama_ahsp": "Penggalian  1  m3  cadas  atau  tanah  keras  sedalam  >  3  m  tiap tambah  dalam  1  m  cara  manual  (Lihat  Peraturan  Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.a.6 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 80,
+  "fields": {
+    "kode_ahsp": "1.2.4.2.1",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 0 s.d. 1 m cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.3.b.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 81,
+  "fields": {
+    "kode_ahsp": "1.2.4.2.2",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 1 m s.d. 2 m cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.3.b.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 82,
+  "fields": {
+    "kode_ahsp": "1.2.4.2.3",
+    "nama_ahsp": "Penggalian 1 m3  cadas atau tanah keras sedalam > 2 m s.d. 3 m cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.3.b.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 85,
+  "fields": {
+    "kode_ahsp": "1.2.4.2.4",
+    "nama_ahsp": "Penggalian 1 m3 cadas atau tanah keras > 3 m tiap tambah dalam 1  m  cara  semi  mekanis  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.3.b.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 86,
+  "fields": {
+    "kode_ahsp": "1.2.5.1.1",
+    "nama_ahsp": "Penggalian  1  m3   galian  lumpur  sedalam  >  0  s.d.  1  m  untuk volume  s.d  200  m3 cara  manual  (Lihat  Peraturan  Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.a.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 87,
+  "fields": {
+    "kode_ahsp": "1.2.5.1.2",
+    "nama_ahsp": "Penggalian  1  m3   galian  lumpur  sedalam  >  0  s.d.  1  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.a.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 88,
+  "fields": {
+    "kode_ahsp": "1.2.5.1.3",
+    "nama_ahsp": "Penggalian 1 m3  galian lumpur sedalam > 1 m s.d. 2 m untuk volume  s.d  200  m3 cara  manual  (Lihat  Peraturan  Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.a.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 89,
+  "fields": {
+    "kode_ahsp": "1.2.5.1.4",
+    "nama_ahsp": "Penggalian 1 m3  galian lumpur sedalam > 1 m s.d. 2 m untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.a.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 90,
+  "fields": {
+    "kode_ahsp": "1.2.5.1.5",
+    "nama_ahsp": "Penggalian  1  m3  galian  lumpur  sedalam  >  2  m  s.d.  3  m  cara manual   (Lihat   Peraturan   Menteri   Pekerjaan   Umum   dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.a.5 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 91,
+  "fields": {
+    "kode_ahsp": "1.2.5.1.6",
+    "nama_ahsp": "Penggalian 1 m3  galian lumpur > 3 m setiap tambah dalam 1 m cara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.a.6 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 92,
+  "fields": {
+    "kode_ahsp": "1.2.5.2.1",
+    "nama_ahsp": "Penggalian 1 m3 lumpur sedalam > 0 s.d. 1 m cara semi mekanis (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.b.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 93,
+  "fields": {
+    "kode_ahsp": "1.2.5.2.2",
+    "nama_ahsp": "Penggalian  1  m3   lumpur  sedalam  >  1  m  s.d.  2  m  cara  semi mekanis   (Lihat   Peraturan   Menteri   Pekerjaan   Umum   dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.b.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 94,
+  "fields": {
+    "kode_ahsp": "1.2.5.2.3",
+    "nama_ahsp": "Penggalian  1  m3   lumpur  sedalam  >  2  m  s.d.  3  m  cara  semi mekanis   (Lihat   Peraturan   Menteri   Pekerjaan   Umum   dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.4.b.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 95,
+  "fields": {
+    "kode_ahsp": "1.2.5.2.4",
+    "nama_ahsp": "Penggalian 1 m3  lumpur > 3 m setiap tambah kedalaman 1 m cara semi mekanis (Lihat Peraturan Menteri Pekerjaan Umum dan  Perumahan  Rakyat  Nomor  8  Tahun  2023  Lampiran  B U.3.4.4.b.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 96,
+  "fields": {
+    "kode_ahsp": "1.3.1.1",
+    "nama_ahsp": "1  m3 Urukan  Kembali  Galian  Tanah  (>0  s.d.  200  m3)  tanpa pemadatan  secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023  Lampiran B U.3.5.1.a (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 97,
+  "fields": {
+    "kode_ahsp": "1.3.1.2",
+    "nama_ahsp": "1 m3  Urukan dengan Pasir Uruk untuk volume s.d 200 m3  tanpa pemadatan  secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.b (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 98,
+  "fields": {
+    "kode_ahsp": "1.3.1.3",
+    "nama_ahsp": "1  m3   Urukan  dengan  Pasir  Uruk  untuk  volume  >  200  m3   tanpa pemadatan  secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.c (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 99,
+  "fields": {
+    "kode_ahsp": "1.3.1.4",
+    "nama_ahsp": "1 m3  Urukan tanah biasa atau tanah liat berpasir tanpa pemadatan secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.d (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 100,
+  "fields": {
+    "kode_ahsp": "1.3.1.5",
+    "nama_ahsp": "1 m3  Urukan tanah liat (lempung) tanpa pemadatan secara manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.e (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 101,
+  "fields": {
+    "kode_ahsp": "1.3.1.6",
+    "nama_ahsp": "1m3 Urukan Batu Kerikil Tanpa Pemadatan Secara Manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 102,
+  "fields": {
+    "kode_ahsp": "1.3.1.7",
+    "nama_ahsp": "1 m3 Urukan tanah subur tanpa pemadatan secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 103,
+  "fields": {
+    "kode_ahsp": "1.3.2.1",
+    "nama_ahsp": "1  m3   Pemadatan  Tanah  per  20  cm  menggunakan  alat  timbris secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.2.a (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 104,
+  "fields": {
+    "kode_ahsp": "1.3.2.2",
+    "nama_ahsp": "1  m3 Timbunan  dan  Pemadatan  Sirtu  secara  manual  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.2.b (c))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 105,
+  "fields": {
+    "kode_ahsp": "1.3.3.1",
+    "nama_ahsp": "1  m3 Pemadatan  tanah  setebal  10  cm  menggunakan  mesin Stamper  Kuda  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.3.a (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 106,
+  "fields": {
+    "kode_ahsp": "1.3.3.2",
+    "nama_ahsp": "1 m3 Pemadatan pasir setebal 15 cm menggunakan mesin Stamper Kodok (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.3.b (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 107,
+  "fields": {
+    "kode_ahsp": "1.3.3.3",
+    "nama_ahsp": "1 m3 Pemadatan pasir setebal 20 cm menggunakan mesin Stamper VRR-550  kg   (Lihat  Peraturan  Menteri  Pekerjaan   Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.3.c (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 108,
+  "fields": {
+    "kode_ahsp": "1.3.3.4",
+    "nama_ahsp": "1 m3  Pemadatan pasir setebal 20 cm menggunakan mesin Stamper VRR-1,5   Ton   (Lihat   Peraturan   Menteri   Pekerjaan   Umum   dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.3.d (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 111,
+  "fields": {
+    "kode_ahsp": "1.4.1.1",
+    "nama_ahsp": "Mengangkut  1  m3   tanah  lepas,  jarak  angkut  s.d  10  m  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.1 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 112,
+  "fields": {
+    "kode_ahsp": "1.4.1.2",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >10 s.d 20 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.2 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 113,
+  "fields": {
+    "kode_ahsp": "1.4.1.3",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >20 s.d 30 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.3 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 114,
+  "fields": {
+    "kode_ahsp": "1.4.1.4",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >30 s.d 40 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.4 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 115,
+  "fields": {
+    "kode_ahsp": "1.4.1.5",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >40 s.d 50 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.5 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 116,
+  "fields": {
+    "kode_ahsp": "1.4.1.6",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >50 s.d 100 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.6 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 117,
+  "fields": {
+    "kode_ahsp": "1.4.1.7",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >100 s.d 200 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.7 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 118,
+  "fields": {
+    "kode_ahsp": "1.4.1.8",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut >200 s.d 300 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.8 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 119,
+  "fields": {
+    "kode_ahsp": "1.4.1.9",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut > 300 s.d 400 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.9 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 120,
+  "fields": {
+    "kode_ahsp": "1.4.1.10",
+    "nama_ahsp": "Mengangkut 1 m3 tanah lepas, jarak angkut > 400 s.d 500 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.10 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 121,
+  "fields": {
+    "kode_ahsp": "1.4.1.11",
+    "nama_ahsp": "Mengangkut 1 m3 tanah lepas, jarak angkut > 500 s.d 600 m (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.6.a.11 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 122,
+  "fields": {
+    "kode_ahsp": "1.4.1.12",
+    "nama_ahsp": "Mengangkut 1 m3  tanah lepas, jarak angkut > 600 m untuk setiap penambahan   jarak   angkut   100   m   (Lihat   Peraturan   Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.3.6.a.12 (a))",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 123,
+  "fields": {
+    "kode_ahsp": "1.4.2.1",
+    "nama_ahsp": "1 m3  Pembuangan tanah lumpur sejauh 1 km",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 124,
+  "fields": {
+    "kode_ahsp": "1.4.2.2",
+    "nama_ahsp": "1 m3  Pembuangan tanah lumpur sejauh 2 km",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 125,
+  "fields": {
+    "kode_ahsp": "1.4.2.3",
+    "nama_ahsp": "1 m3  Pembuangan tanah lumpur sejauh 3 km",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 126,
+  "fields": {
+    "kode_ahsp": "1.4.2.4",
+    "nama_ahsp": "1 m3  Pembuangan tanah lumpur sejauh 4 km",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 127,
+  "fields": {
+    "kode_ahsp": "1.4.2.5",
+    "nama_ahsp": "1 m3  Pembuangan tanah lumpur sejauh 5 km",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 128,
+  "fields": {
+    "kode_ahsp": "1.5.1",
+    "nama_ahsp": "1 m2 Pasangan geotekstil, Tipis ( > 100 s.d. < 400 gr/m2), secara manual (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 129,
+  "fields": {
+    "kode_ahsp": "1.5.2",
+    "nama_ahsp": "1 m2 Pasangan geotekstil,Tipis (> 100 s.d. < 400 gr/m2), secara semi mekanis (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 130,
+  "fields": {
+    "kode_ahsp": "1.5.3",
+    "nama_ahsp": "1  m2  Pasangan  geotekstil,  Tebal  Sedang  (>  400  s/d  <  800  gr/m2), secara Manual (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 131,
+  "fields": {
+    "kode_ahsp": "1.5.4",
+    "nama_ahsp": "1  m2  Pasangan  geotekstil,  Tebal  Sedang  (>  400  s/d  <  800  gr/m2), secara Semi Mekanis (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 132,
+  "fields": {
+    "kode_ahsp": "1.5.5",
+    "nama_ahsp": "1 m2 Pasangan geotekstil, Tebal (> 800 gr/m2), secara manual (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 133,
+  "fields": {
+    "kode_ahsp": "1.5.6",
+    "nama_ahsp": "1 m2 Pasangan geotekstil, Tebal (> 800 gr/m2), secara semi mekanis (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 134,
+  "fields": {
+    "kode_ahsp": "1.5.7",
+    "nama_ahsp": "1 m2 Pemasangan Geomembran, t = 1,5 mm, secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 135,
+  "fields": {
+    "kode_ahsp": "3.1.1.4",
+    "nama_ahsp": "Pemasangan 1 m2  Atap Genteng Beton",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 137,
+  "fields": {
+    "kode_ahsp": "1.5.8",
+    "nama_ahsp": "1 m2 Pemasangan Geosynthetic Clay Liner (GCL), secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 138,
+  "fields": {
+    "kode_ahsp": "1.6.1",
+    "nama_ahsp": "Bongkar 1 m3  pasangan batu (manual) untuk bangunan gedung",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 139,
+  "fields": {
+    "kode_ahsp": "1.6.2",
+    "nama_ahsp": "Bongkar 1 m3  pasangan batu dengan jack hammer untuk bangunan gedung",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 140,
+  "fields": {
+    "kode_ahsp": "1.6.3",
+    "nama_ahsp": "Bongkar 1 m3  beton mutu rendah f3c < 20 MPa secara Manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.4.10.1)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 141,
+  "fields": {
+    "kode_ahsp": "1.6.4",
+    "nama_ahsp": "Bongkar 1 m3  beton mutu sedang f3c ≥ 20 MPa secara Manual (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.4.10.2)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 142,
+  "fields": {
+    "kode_ahsp": "1.6.5",
+    "nama_ahsp": "Bongkar 1 m3  beton mutu rendah f3c < 20 MPa dengan Jack hammer (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan  Perumahan  Rakyat Nomor 8 Tahun 2023 Lampiran B U.4.10.3)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 143,
+  "fields": {
+    "kode_ahsp": "1.6.6",
+    "nama_ahsp": "Bongkar 1 m3  beton mutu sedang 20 MPa ≤ f3c ≤ 40 MPa dengan Jack hammer (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.4.10.4)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 144,
+  "fields": {
+    "kode_ahsp": "2.1.2.6",
+    "nama_ahsp": "Pemasangan 1 m2  Rangka Atap Sirap, Kayu Kelas II",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 146,
+  "fields": {
+    "kode_ahsp": "1.6.7",
+    "nama_ahsp": "Bongkar 1 m3  pasangan bata merah secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 147,
+  "fields": {
+    "kode_ahsp": "1.6.8",
+    "nama_ahsp": "Bongkar 1 m3  pasangan bata merah dengan jack hammer",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 148,
+  "fields": {
+    "kode_ahsp": "1.6.9",
+    "nama_ahsp": "Bongkar  1  m2  rangka  atap/  reng/  kaso  struktur  kayu  dan ditempatkan   di   penyimpanan   sementara   (bongkaran   tidak dipakai kembali)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 149,
+  "fields": {
+    "kode_ahsp": "1.6.10",
+    "nama_ahsp": "Bongkar 1 m3 kuda-kuda/ gording/ balok kayu dan ditempatkan di penyimpanan sementara (bongkaran dipakai kembali)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 150,
+  "fields": {
+    "kode_ahsp": "1.6.11",
+    "nama_ahsp": "Bongkar 1 m3 kuda-kuda/ gording/ balok kayu dan ditempatkan di penyimpanan sementara (bongkaran tidak dipakai kembali)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 151,
+  "fields": {
+    "kode_ahsp": "1.6.12",
+    "nama_ahsp": "Bongkar   1   m2   Plafond   termasuk   rangka   kayu/hollow   dan ditempatkan   di   penyimpanan   sementara   (bongkaran   tidak dipakai kembali)*)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 152,
+  "fields": {
+    "kode_ahsp": "1.6.13",
+    "nama_ahsp": "Bongkar   1   m2   Plafond   termasuk   rangka   kayu/hollow   dan ditempatkan  di  penyimpanan  sementara   (bongkaran  dipakai kembali) *)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 153,
+  "fields": {
+    "kode_ahsp": "2.1.1.1",
+    "nama_ahsp": "Pemasangan 1 m2  Atap Pelana Rangka Atap Baja Ringan (Canai Dingin) profil C75",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 154,
+  "fields": {
+    "kode_ahsp": "2.1.1.2",
+    "nama_ahsp": "Pemasangan 1 m2  Atap Jurai/Limasan Rangka Atap Baja Ringan (Canai Dingin) Profil C75",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 155,
+  "fields": {
+    "kode_ahsp": "2.1.1.3",
+    "nama_ahsp": "Pemasangan 1 m Kaso Baja Ringan C75 tebal 0,75 mm",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 156,
+  "fields": {
+    "kode_ahsp": "2.1.1.4",
+    "nama_ahsp": "Pemasangan 1 m Reng Baja Ringan R.32 tebal 0,45 mm",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 157,
+  "fields": {
+    "kode_ahsp": "2.1.2.1",
+    "nama_ahsp": "Pemasangan 1 m3  Konstruksi Kuda-Kuda Konvensional, Kayu Kelas I, II dan III Bentang Sampai Dengan 6 Meter",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 158,
+  "fields": {
+    "kode_ahsp": "2.1.2.2",
+    "nama_ahsp": "Pemasangan 1 m3  Konstruksi Kuda-kuda Expose, Kayu Kelas I",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 159,
+  "fields": {
+    "kode_ahsp": "2.1.2.3",
+    "nama_ahsp": "Pemasangan 1 m3  Konstruksi Gordeng, Kayu kelas II",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 160,
+  "fields": {
+    "kode_ahsp": "2.1.2.4",
+    "nama_ahsp": "Pemasangan 1 m2  Rangka Atap Genteng Keramik, Kayu kelas II",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 161,
+  "fields": {
+    "kode_ahsp": "2.1.2.5",
+    "nama_ahsp": "Pemasangan 1 m2  Rangka Atap Genteng Beton, Kayu Kelas II",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 163,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.1",
+    "nama_ahsp": "1 kg Penulangan slab untuk BjTS diameter < 12 mm, cara Manual (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 164,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.2",
+    "nama_ahsp": "1 kg Penulangan slab untuk BjTS diameter ≥ 12 mm, cara Semi mekanis (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 165,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.3",
+    "nama_ahsp": "1 kg Penulangan kolom, balok, ring balk, dan sloof untuk BjTS diameter < 12 mm, cara Manual (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 166,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.4",
+    "nama_ahsp": "1 kg Penulangan kolom, balok, ring balk, sloof, dan shearwall untuk BjTS diameter ≥ 12 mm, cara Semi mekanis (untuk bangunan gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 167,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.5",
+    "nama_ahsp": "1 kg Penulangan Wiremesh M10 untuk slab atau dinding atau Ferrocement secara manual (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 168,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.6",
+    "nama_ahsp": "1 kg Penulangan Wiremesh M9 untuk slab atau dinding atau Ferrocement secara semi mekanis (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 169,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.3",
+    "nama_ahsp": "Pemasangan 1 m2 bekisting untuk sloof (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 171,
+  "fields": {
+    "kode_ahsp": "2.2.1.1",
+    "nama_ahsp": "1 kg Penulangan Wiremesh M10 untuk slab atau dinding atau Ferrocement secara semi mekanis (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 172,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.7",
+    "nama_ahsp": "Menaikkan 1 kg tulangan setiap kenaikan vertikal 4 m ke tapak pemasangan secara manual (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 173,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.8",
+    "nama_ahsp": "Mengangkut 1 kg tulangan setiap tambahan jarak horizontal 25 m ke tapak pemasangan secara manual (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 174,
+  "fields": {
+    "kode_ahsp": "2.2.1.1.9",
+    "nama_ahsp": "Mengangkut/menaikkan 1 kg tulangan setiap kenaikan vertikal 4 m atau tambahan jarak horizontal 25 m ke tapak pemasangan secara mekanis (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 175,
+  "fields": {
+    "kode_ahsp": "2.2.1.2.1",
+    "nama_ahsp": "Pemasangan 1 m3 PVC Waterstop lebar 150 mm (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 176,
+  "fields": {
+    "kode_ahsp": "2.2.1.2.2",
+    "nama_ahsp": "Pemasangan 1 m3 PVC Waterstop lebar 200 mm (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 177,
+  "fields": {
+    "kode_ahsp": "2.2.1.2.3",
+    "nama_ahsp": "Pemasangan 1 m' PVC Waterstop lebar 230 mm – 320 mm (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 178,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.1",
+    "nama_ahsp": "Pemasangan dan Pembongkaran Bekisting  Pemasangan 1 m2  bekisting untuk fondasi telapak (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 180,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.4",
+    "nama_ahsp": "Pemasangan 1 m2 bekisting untuk kolom (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 181,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.5",
+    "nama_ahsp": "Pemasangan 1 m2 bekisting untuk balok (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 182,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.6",
+    "nama_ahsp": "Pemasangan 1 m2 bekisting untuk plat lantai (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 183,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.7",
+    "nama_ahsp": "Pemasangan 1 m2 bekisting untuk dinding shearwall (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 184,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.8",
+    "nama_ahsp": "Pemasangan 1 m2 bekisting untuk tangga (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 185,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.9",
+    "nama_ahsp": "Pemasangan bekisting 1 m2  Jembatan untuk Pengecoran Beton (3 kali pakai)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 186,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.10",
+    "nama_ahsp": "Bongkar 1 m2 bekisting secara biasa pada bangunan gedung (termasuk membersihkan dan membereskan puing-puing)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 187,
+  "fields": {
+    "kode_ahsp": "2.2.1.3.11",
+    "nama_ahsp": "Bongkar 1 m2 bekisting secara hati - hati pada bangunan gedung (untuk beton Expose dan/atau pemanfaatan kembali bekisting)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 188,
+  "fields": {
+    "kode_ahsp": "2.2.1.4.1",
+    "nama_ahsp": "Pembuatan s.d. Pengecoran Campuran Beton Secara Manual  1 m3  beton mutu rendah f'c 7,5 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 189,
+  "fields": {
+    "kode_ahsp": "2.2.1.4.2",
+    "nama_ahsp": "1 m3  beton mutu rendah f'c 10 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 190,
+  "fields": {
+    "kode_ahsp": "2.2.1.4.3",
+    "nama_ahsp": "1 m3  beton mutu rendah f'c 15 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 191,
+  "fields": {
+    "kode_ahsp": "2.2.1.4.4",
+    "nama_ahsp": "1 m3  beton mutu rendah f'c 17 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 192,
+  "fields": {
+    "kode_ahsp": "2.2.1.4.5",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 20 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 193,
+  "fields": {
+    "kode_ahsp": "2.2.1.4.6",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 21 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 194,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.1",
+    "nama_ahsp": "Pembuatan s.d. Pengecoran Campuran Beton Secara Semi Mekanis  1 m3  beton mutu rendah f'c 10 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 195,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.2",
+    "nama_ahsp": "1 m3  beton mutu rendah f'c 15 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 196,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.3",
+    "nama_ahsp": "1 m3  beton mutu rendah f'c 17 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 197,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.4",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 20 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 198,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.5",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 21 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 199,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.6",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 25 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 200,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.7",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 28 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 201,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.8",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 30 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 202,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.9",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 31 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 203,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.10",
+    "nama_ahsp": "1 m3  beton mutu sedang f'c 35 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 204,
+  "fields": {
+    "kode_ahsp": "2.2.1.5.11",
+    "nama_ahsp": "1 m3  Beton Kedap Air dengan Aditif secara semi mekanis",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 205,
+  "fields": {
+    "kode_ahsp": "2.2.1.6.1",
+    "nama_ahsp": "Pengecoran Campuran Beton Ready Mix  1 m³ Pengecoran Beton menggunakan Ready Mixed (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 206,
+  "fields": {
+    "kode_ahsp": "2.2.1.7.1",
+    "nama_ahsp": "Angkat dan Angkut Campuran Beton  1m3 beton dicorkan pada tapak setiap tambah jarak 25 m3, secara Manual (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 207,
+  "fields": {
+    "kode_ahsp": "2.2.1.7.2",
+    "nama_ahsp": "1m3 beton dicorkan pada tapak setiap kenaikan 4 m3, secara Manual (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 208,
+  "fields": {
+    "kode_ahsp": "2.2.1.7.3",
+    "nama_ahsp": "Pengecoran pakai pompa beton ø1,5\"; 5 KW; 8 bar; T = 5 m' (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 209,
+  "fields": {
+    "kode_ahsp": "2.2.1.7.4",
+    "nama_ahsp": "Pengecoran pakai Pompa beton ø2,5\", 20 KW, 20 bar, T = 18m' (untuk Bangunan Gedung)",
+    "klasifikasi": null,
+    "sub_klasifikasi": null,
+    "satuan": "",
+    "sumber": "old ref ahsp 2025",
+    "source_file": "SNI_2025_AHSP.xlsx"
+  }
+},
+{
+  "model": "referensi.ahspreferensi",
+  "pk": 210,
+  "fields": {
+    "kode_ahsp": "2.2.1.7.5",
+    "nama_ahsp": 
