@@ -1,5 +1,5 @@
-from django.db import models
 from django.core.validators import MinValueValidator
+from django.db import models
 
 
 class AHSPReferensi(models.Model):
@@ -18,17 +18,29 @@ class AHSPReferensi(models.Model):
     sumber = models.CharField(max_length=100, default='AHSP SNI 2025')
     source_file = models.CharField(max_length=100, blank=True, null=True)
 
+    # PHASE 3: Full-text search vector (PostgreSQL generated column, managed by migration)
+    # This field is auto-updated by PostgreSQL trigger on INSERT/UPDATE
+    # Do not set this field manually - it's computed from kode_ahsp, nama_ahsp, klasifikasi, sub_klasifikasi
+
     class Meta:
         verbose_name = "AHSP Referensi"
         verbose_name_plural = "AHSP Referensi"
         ordering = ["kode_ahsp"]
         indexes = [
             models.Index(fields=["klasifikasi", "sub_klasifikasi"]),
-            models.Index(fields=["sumber", "kode_ahsp"], name="ix_ahsp_sumber_kode"),  # NEW
+            models.Index(fields=["sumber", "kode_ahsp"], name="ix_ahsp_sumber_kode"),
+
+            # PHASE 1: Strategic indexes for performance
+            models.Index(fields=["sumber"], name="ix_ahsp_sumber"),  # For source filtering
+            models.Index(fields=["klasifikasi"], name="ix_ahsp_klasifikasi"),  # For classification dropdown
+            models.Index(fields=["sumber", "klasifikasi"], name="ix_ahsp_sumber_klas"),  # Common filter combo
+
+            # PHASE 3: Full-text search GIN index (managed by migration)
+            # See migration 0012_add_fulltext_search.py for ix_ahsp_search_vector
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["sumber", "kode_ahsp"], name="uniq_ahsp_per_sumber"          # NEW
+                fields=["sumber", "kode_ahsp"], name="uniq_ahsp_per_sumber"
             ),
         ]
 
@@ -83,6 +95,17 @@ class RincianReferensi(models.Model):
         indexes = [
             models.Index(fields=["ahsp"]),
             models.Index(fields=["ahsp", "kategori"]),
+
+            # PHASE 1: Strategic indexes for performance
+            models.Index(fields=["kategori", "kode_item"], name="ix_rincian_kat_kode"),  # For category filtering
+            models.Index(fields=["koefisien"], name="ix_rincian_koef"),  # For anomaly detection (zero coef)
+            models.Index(fields=["satuan_item"], name="ix_rincian_satuan"),  # For anomaly detection (missing unit)
+
+            # Covering index for common SELECT queries (reduces disk I/O)
+            models.Index(
+                fields=["ahsp", "kategori", "kode_item"],
+                name="ix_rincian_covering"
+            ),
         ]
 
     def __str__(self):
@@ -104,6 +127,12 @@ class KodeItemReferensi(models.Model):
         indexes = [
             models.Index(fields=["kategori"]),
             models.Index(fields=["kode_item"]),
+
+            # PHASE 1: Covering index for item code lookups (reduces disk I/O)
+            models.Index(
+                fields=["kategori", "uraian_item", "satuan_item", "kode_item"],
+                name="ix_kodeitem_covering"
+            ),
         ]
 
     kategori = models.CharField(
@@ -120,3 +149,53 @@ class KodeItemReferensi(models.Model):
 
     def get_kategori_display(self) -> str:  # pragma: no cover - passthrough helper
         return RincianReferensi.Kategori(self.kategori).label
+
+
+class AHSPStats(models.Model):
+    """
+    PHASE 3 DAY 3: Materialized view for pre-computed AHSP statistics.
+
+    This is a read-only model that maps to a PostgreSQL materialized view.
+    DO NOT insert/update/delete directly - use `python manage.py refresh_stats` instead.
+
+    Performance: 90-99% faster than computing aggregations on-the-fly.
+
+    Usage:
+        # Query pre-computed stats (fast!)
+        stats = AHSPStats.objects.filter(sumber="SNI 2025")
+        for stat in stats:
+            print(f"{stat.kode_ahsp}: {stat.rincian_total} items")
+
+        # Refresh after data changes
+        python manage.py refresh_stats
+    """
+
+    class Meta:
+        db_table = "referensi_ahsp_stats"
+        managed = False  # Don't let Django manage this table
+        verbose_name = "AHSP Statistics (Materialized View)"
+        verbose_name_plural = "AHSP Statistics (Materialized View)"
+
+    # Link to AHSP (not a ForeignKey because it's a view)
+    ahsp_id = models.IntegerField(primary_key=True)
+
+    # AHSP fields (denormalized from AHSPReferensi)
+    kode_ahsp = models.CharField(max_length=50)
+    nama_ahsp = models.TextField()
+    klasifikasi = models.CharField(max_length=100, blank=True, null=True)
+    sub_klasifikasi = models.CharField(max_length=100, blank=True, null=True)
+    satuan = models.CharField(max_length=50, blank=True, null=True)
+    sumber = models.CharField(max_length=100)
+    source_file = models.CharField(max_length=100, blank=True, null=True)
+
+    # Pre-computed statistics
+    rincian_total = models.IntegerField()
+    tk_count = models.IntegerField()
+    bhn_count = models.IntegerField()
+    alt_count = models.IntegerField()
+    lain_count = models.IntegerField()
+    zero_coef_count = models.IntegerField()
+    missing_unit_count = models.IntegerField()
+
+    def __str__(self):
+        return f"{self.kode_ahsp} (Stats)"

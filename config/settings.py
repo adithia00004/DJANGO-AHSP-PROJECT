@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "django.contrib.sites",
+    "django.contrib.postgres",  # PHASE 0: Enable PostgreSQL features
     "django_extensions",
 
     # Third-party
@@ -76,6 +77,15 @@ INSTALLED_APPS = [
     "referensi",
 ]
 
+# PHASE 0: Add Debug Toolbar for development only
+if DEBUG:
+    try:
+        import debug_toolbar  # type: ignore  # noqa: F401
+    except ImportError:
+        debug_toolbar = None
+    else:
+        INSTALLED_APPS += ["debug_toolbar"]
+
 AUTH_USER_MODEL = "accounts.CustomUser"
 
 MIDDLEWARE = [
@@ -91,6 +101,11 @@ MIDDLEWARE = [
     # Allauth
     "allauth.account.middleware.AccountMiddleware",
 ]
+
+# PHASE 0: Add Debug Toolbar middleware for development only
+if DEBUG and "debug_toolbar" in INSTALLED_APPS:
+    MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]
+    INTERNAL_IPS = ["127.0.0.1", "localhost"]
 
 ROOT_URLCONF = "config.urls"
 
@@ -137,6 +152,11 @@ else:
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", "password"),
             "HOST": os.getenv("POSTGRES_HOST", "localhost"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            # PHASE 0: Enable connection pooling for better performance
+            "CONN_MAX_AGE": 600,  # 10 minutes - reuse connections
+            "OPTIONS": {
+                "connect_timeout": 10,
+            },
         }
     }
 
@@ -187,6 +207,16 @@ ACCOUNT_SIGNUP_FIELDS = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_EMAIL_VERIFICATION = "optional"           # bisa "none" jika ingin tanpa verifikasi
 ACCOUNT_SESSION_REMEMBER = True
 
+# === Session Configuration ===
+# PHASE 3 DAY 4: Optimized session storage using cached_db backend
+# Hybrid approach: cache for reads (fast), database for persistence (reliable)
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+SESSION_CACHE_ALIAS = 'default'  # Use default cache (DatabaseCache)
+SESSION_COOKIE_AGE = 1209600  # 2 weeks (default)
+SESSION_SAVE_EVERY_REQUEST = False  # Only save when modified (performance)
+SESSION_COOKIE_HTTPONLY = True  # Security: prevent JavaScript access
+SESSION_COOKIE_SAMESITE = 'Lax'  # Security: CSRF protection
+
 # === Crispy Forms ===
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
@@ -218,3 +248,51 @@ CSRF_TRUSTED_ORIGINS = [
 # Enable Whitenoise finders in dev so static works without collectstatic
 WHITENOISE_USE_FINDERS = True
 
+# ============================================================================
+# PHASE 0: PERFORMANCE OPTIMIZATION SETUP
+# ============================================================================
+
+# === Cache Configuration ===
+# Using database cache for now (no Redis dependency)
+# Can upgrade to Redis later for better performance
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache_table',
+        'TIMEOUT': 3600,  # 1 hour default
+        'OPTIONS': {
+            'MAX_ENTRIES': 10000,
+        }
+    }
+}
+
+# Optional: Use local memory cache for development (faster but not persistent)
+if DEBUG:
+    CACHES['locmem'] = {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+        'TIMEOUT': 300,  # 5 minutes
+    }
+
+# === Referensi App Configuration ===
+# Centralized configuration for referensi app
+REFERENSI_CONFIG = {
+    'page_sizes': {
+        'jobs': 25,
+        'details': 50,
+    },
+    'display_limits': {
+        'jobs': 50,
+        'items': 100,
+    },
+    'file_upload': {
+        'max_size_mb': 10,
+        'allowed_extensions': ['.xlsx', '.xls'],
+    },
+    'api': {
+        'search_limit': 30,
+    },
+    'cache': {
+        'timeout': 3600,  # 1 hour
+    },
+}

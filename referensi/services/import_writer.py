@@ -29,7 +29,13 @@ def _log(stdout, message: str) -> None:
 
 
 def write_parse_result_to_db(parse_result, source_file: str | None = None, *, stdout=None) -> ImportSummary:
-    """Persisten ParseResult ke database."""
+    """Persisten ParseResult ke database.
+
+    PHASE 1 OPTIMIZATION:
+    - Increased batch_size from 500 to 1000 (optimal for RincianReferensi with 6 fields)
+    - Collect all rincian across jobs before bulk insert (reduces DB round-trips)
+    - Better error handling and logging
+    """
 
     from referensi.services.ahsp_parser import ParseResult  # menghindari import siklik
 
@@ -48,6 +54,12 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
 
     with transaction.atomic():
         persist_item_codes(parse_result)
+
+        # PHASE 1: Collect all rincian first, then bulk insert once
+        all_rincian_to_delete = []
+        all_pending_details = []
+
+        # First pass: Create/update AHSP and collect rincian
         for job in parse_result.jobs:
             defaults = {
                 "nama_ahsp": job.nama_ahsp,
@@ -90,9 +102,10 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
 
             _log(stdout, f"[job] {job.sumber} :: {job.kode_ahsp} - {job.nama_ahsp}")
 
-            RincianReferensi.objects.filter(ahsp=ahsp_obj).delete()
+            # Mark for deletion
+            all_rincian_to_delete.append(ahsp_obj.id)
 
-            pending_details: list[tuple[RincianReferensi, int]] = []
+            # Prepare rincian instances
             for detail in job.rincian:
                 try:
                     kategori = canonicalize_kategori(detail.kategori or detail.kategori_source)
@@ -104,26 +117,37 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                         satuan_item=detail.satuan_item,
                         koefisien=detail.koefisien,
                     )
-                    pending_details.append((RincianReferensi(**fields), detail.row_number))
+                    all_pending_details.append((RincianReferensi(**fields), detail.row_number))
                 except Exception as exc:  # pragma: no cover - validasi runtime
                     message = f"[!] Gagal menyiapkan rincian baris {detail.row_number}: {exc}"
                     summary.detail_errors.append(message)
                     _log(stdout, message)
 
-            if not pending_details:
-                continue
+        # PHASE 1: Bulk delete all old rincian in one query
+        if all_rincian_to_delete:
+            deleted_count = RincianReferensi.objects.filter(
+                ahsp_id__in=all_rincian_to_delete
+            ).delete()[0]
+            _log(stdout, f"[bulk] Deleted {deleted_count} old rincian records")
 
-            instances = [instance for instance, _ in pending_details]
+        # PHASE 1: Bulk insert all new rincian with optimal batch size
+        if all_pending_details:
+            instances = [instance for instance, _ in all_pending_details]
             try:
-                RincianReferensi.objects.bulk_create(instances, batch_size=500)
+                # PHASE 1: Increased batch_size from 500 to 1000
+                # RincianReferensi has 6 fields → optimal batch ~1000-2000
+                RincianReferensi.objects.bulk_create(instances, batch_size=1000)
+                summary.rincian_written = len(instances)
+                _log(stdout, f"[bulk] Inserted {len(instances)} rincian records")
             except Exception as exc:  # pragma: no cover - DB specific failure
                 fallback_msg = (
-                    f"[!] Bulk create rincian gagal untuk {job.kode_ahsp}: {exc}. "
-                    "Insert satu-per-satu akan dicoba."
+                    f"[!] Bulk create failed: {exc}. Trying individual inserts..."
                 )
                 summary.detail_errors.append(fallback_msg)
                 _log(stdout, fallback_msg)
-                for instance, row_number in pending_details:
+
+                # Fallback to individual inserts
+                for instance, row_number in all_pending_details:
                     try:
                         instance.save(force_insert=True)
                         summary.rincian_written += 1
@@ -131,10 +155,35 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                         message = f"[!] Gagal import rincian baris {row_number}: {inner_exc}"
                         summary.detail_errors.append(message)
                         _log(stdout, message)
-            else:
-                summary.rincian_written += len(instances)
+
+    # PHASE 3 DAY 3: Refresh materialized view after import
+    _refresh_materialized_view(stdout)
 
     return summary
+
+
+def _refresh_materialized_view(stdout=None) -> None:
+    """
+    Refresh AHSP statistics materialized view after data changes.
+
+    PHASE 3 DAY 3: Auto-refresh materialized view for instant stats.
+    """
+    from django.db import connection
+
+    _log(stdout, "\n[Materialized View] Refreshing AHSP statistics...")
+
+    try:
+        import time
+        start_time = time.time()
+
+        with connection.cursor() as cursor:
+            # Use standard refresh (faster, but locks view briefly)
+            cursor.execute("REFRESH MATERIALIZED VIEW referensi_ahsp_stats")
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        _log(stdout, f"[Materialized View] Refreshed in {elapsed_ms:.2f}ms")
+    except Exception as exc:  # pragma: no cover - DB specific
+        _log(stdout, f"[!] Failed to refresh materialized view: {exc}")
 
 
 __all__ = [

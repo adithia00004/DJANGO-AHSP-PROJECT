@@ -10,14 +10,10 @@ from django.shortcuts import redirect
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from referensi.services.ahsp_parser import AHSPPreview, ParseResult, RincianPreview
+from referensi.services.preview_service import ImportSessionManager
 from referensi.services.import_writer import ImportSummary
 from referensi.views import admin_portal, commit_import, preview_import
 from referensi.views.constants import TAB_ITEMS, TAB_JOBS, PENDING_IMPORT_SESSION_KEY
-from referensi.views.preview import (
-    _cleanup_pending_import,
-    _load_pending_result,
-    _store_pending_import,
-)
 
 
 class DummyUser(SimpleNamespace):
@@ -74,10 +70,17 @@ class PreviewImportViewTests(SimpleTestCase):
         self.superuser = DummyUser(is_superuser=True, is_staff=True)
         self.regular_user = DummyUser(is_superuser=False, is_staff=False)
         self._requests: list = []
+        self.session_manager = ImportSessionManager()
 
     def tearDown(self):
         for request in self._requests:
-            _cleanup_pending_import(getattr(request, "session", {}))
+            session = getattr(request, "session", None)
+            if session is not None:
+                try:
+                    self.session_manager.cleanup(session)
+                except Exception:
+                    # Session may have been cleaned already inside view
+                    pass
 
     def _prepare_request(self, method: str, path: str, data=None, user=None):
         if method.lower() == "post":
@@ -151,6 +154,8 @@ class PreviewImportViewTests(SimpleTestCase):
         with mock.patch("referensi.views.preview.AHSPPreviewUploadForm", return_value=form), mock.patch(
             "referensi.views.preview.load_preview_from_file", return_value=parse_result
         ), mock.patch("referensi.views.preview.assign_item_codes") as mocked_assign, mock.patch(
+            "referensi.services.preview_service.assign_item_codes"
+        ), mock.patch(
             "referensi.views.preview.render", wraps=lambda req, template, context: HttpResponse()
         ) as mocked_render:
             preview_import(request)
@@ -176,6 +181,8 @@ class PreviewImportViewTests(SimpleTestCase):
         with mock.patch("referensi.views.preview.AHSPPreviewUploadForm", return_value=form), mock.patch(
             "referensi.views.preview.load_preview_from_file", return_value=parse_result
         ), mock.patch("referensi.views.preview.assign_item_codes"), mock.patch(
+            "referensi.services.preview_service.assign_item_codes"
+        ), mock.patch(
             "referensi.views.preview.render", wraps=lambda req, template, context: HttpResponse()
         ):
             preview_import(request_preview)
@@ -194,6 +201,8 @@ class PreviewImportViewTests(SimpleTestCase):
         summary = ImportSummary(jobs_created=1, jobs_updated=0, rincian_written=1)
 
         with mock.patch("referensi.views.preview.assign_item_codes"), mock.patch(
+            "referensi.services.preview_service.assign_item_codes"
+        ), mock.patch(
             "referensi.views.preview.write_parse_result_to_db", return_value=summary
         ) as mocked_writer:
             response = commit_import(request_commit)
@@ -204,8 +213,6 @@ class PreviewImportViewTests(SimpleTestCase):
 
     def test_preview_update_applies_form_changes(self):
         parse_result = self._build_parse_result()
-        base_request = self._prepare_request("get", "/import/preview/")
-        _store_pending_import(base_request.session, parse_result, "data.xlsx")
 
         def fake_assign(result):
             for job in result.jobs:
@@ -232,16 +239,17 @@ class PreviewImportViewTests(SimpleTestCase):
         }
 
         jobs_request = self._prepare_request("post", "/import/preview/", data=job_payload)
-        jobs_request.session[PENDING_IMPORT_SESSION_KEY] = base_request.session[PENDING_IMPORT_SESSION_KEY]
+        self.session_manager.store(jobs_request.session, parse_result, "data.xlsx")
 
-        with mock.patch("referensi.views.preview.assign_item_codes", side_effect=fake_assign), mock.patch(
-            "referensi.views.preview.redirect", wraps=redirect
-        ):
+        with mock.patch(
+            "referensi.views.preview.assign_item_codes", side_effect=fake_assign
+        ), mock.patch(
+            "referensi.services.preview_service.assign_item_codes", side_effect=fake_assign
+        ), mock.patch("referensi.views.preview.redirect", wraps=redirect):
             response = preview_import(jobs_request)
 
         self.assertEqual(response.status_code, 302)
-        pending = jobs_request.session[PENDING_IMPORT_SESSION_KEY]
-        updated_result, _, _ = _load_pending_result(pending)
+        updated_result, _, _ = self.session_manager.retrieve(jobs_request.session)
         self.assertEqual(updated_result.jobs[0].sumber, "Sumber Baru")
         self.assertEqual(updated_result.jobs[0].nama_ahsp, "Pekerjaan Tanah Direvisi")
 
@@ -263,16 +271,19 @@ class PreviewImportViewTests(SimpleTestCase):
         }
 
         detail_request = self._prepare_request("post", "/import/preview/", data=detail_payload)
-        detail_request.session[PENDING_IMPORT_SESSION_KEY] = pending
+        detail_request.session[PENDING_IMPORT_SESSION_KEY] = jobs_request.session[
+            PENDING_IMPORT_SESSION_KEY
+        ].copy()
 
-        with mock.patch("referensi.views.preview.assign_item_codes", side_effect=fake_assign), mock.patch(
-            "referensi.views.preview.redirect", wraps=redirect
-        ):
+        with mock.patch(
+            "referensi.views.preview.assign_item_codes", side_effect=fake_assign
+        ), mock.patch(
+            "referensi.services.preview_service.assign_item_codes", side_effect=fake_assign
+        ), mock.patch("referensi.views.preview.redirect", wraps=redirect):
             response = preview_import(detail_request)
 
         self.assertEqual(response.status_code, 302)
-        pending = detail_request.session[PENDING_IMPORT_SESSION_KEY]
-        updated_result, _, _ = _load_pending_result(pending)
+        updated_result, _, _ = self.session_manager.retrieve(detail_request.session)
         detail = updated_result.jobs[0].rincian[0]
         self.assertEqual(detail.koefisien, Decimal("1.50"))
         self.assertEqual(detail.kode_item, "TK-0001")

@@ -10,11 +10,8 @@ except ModuleNotFoundError:  # pragma: no cover - fallback tanpa pandas
 
 _NUM_CANON = re.compile(r"^-?\d+(?:\.\d+)?$")
 
-_KATEGORI_PATTERNS = (
-    ("TK", ("tk", "tenaga", "tenaga kerja", "upah", "labor", "pekerja")),
-    ("BHN", ("bhn", "bahan", "material", "mat")),
-    ("ALT", ("alt", "alat", "peralatan", "equipment", "mesin", "tools")),
-)
+# PHASE 2: Import normalizer for category normalization (single source of truth)
+from referensi.services.normalizers import KategoriNormalizer
 
 def norm_text(val) -> str:
     if val is None:
@@ -73,20 +70,13 @@ def pick_first_col(columns_source, candidates: list[str]) -> str | None:
 
 
 def canonicalize_kategori(value: str) -> str:
-    """Map berbagai penulisan kategori ke kode standar (TK/BHN/ALT/LAIN)."""
+    """
+    Map berbagai penulisan kategori ke kode standar (TK/BHN/ALT/LAIN).
 
-    s = norm_text(value)
-    if not s:
-        return "LAIN"
-
-    lowered = s.lower()
-    for code, patterns in _KATEGORI_PATTERNS:
-        if lowered == code.lower():
-            return code
-        if any(lowered == p or lowered.startswith(p) or p in lowered for p in patterns):
-            return code
-
-    return "LAIN"
+    PHASE 2: Now delegates to KategoriNormalizer for single source of truth.
+    This function kept for backward compatibility.
+    """
+    return KategoriNormalizer.normalize(value)
 
 
 __all__ = [

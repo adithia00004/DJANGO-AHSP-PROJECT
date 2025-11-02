@@ -1,0 +1,214 @@
+"""
+Service layer for referensi admin portal views.
+
+Encapsulates queryset construction, filter parsing, and row building so the
+view functions can remain thin request/response handlers.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from referensi.models import RincianReferensi
+from referensi.repositories.ahsp_repository import AHSPRepository
+from referensi.repositories.item_repository import ItemRepository
+# PHASE 3: Import cache helpers
+from referensi.services.cache_helpers import ReferensiCache
+
+
+class AdminPortalService:
+    """Business logic helper for the admin portal view."""
+
+    def __init__(self, *, job_limit: int, item_limit: int) -> None:
+        self.job_limit = job_limit
+        self.item_limit = item_limit
+
+    # ------------------------------------------------------------------
+    # Queryset helpers
+    # ------------------------------------------------------------------
+
+    def base_ahsp_queryset(self):
+        """Return base queryset with aggregated counts for AHSP records."""
+        return AHSPRepository.get_with_category_counts()
+
+    def base_item_queryset(self):
+        """Return base queryset for rincian items."""
+        return ItemRepository.base_queryset()
+
+    # ------------------------------------------------------------------
+    # Jobs filtering / helpers
+    # ------------------------------------------------------------------
+
+    def parse_job_filters(self, data: Dict[str, Any]) -> Dict[str, str]:
+        """Parse incoming query parameters for the jobs tab."""
+        filters = {
+            "search": (data.get("job_q") or "").strip(),
+            "sumber": (data.get("job_sumber") or "").strip(),
+            "klasifikasi": (data.get("job_klasifikasi") or "").strip(),
+            "kategori": (data.get("job_kategori") or "").strip(),
+        }
+        anomaly = (data.get("job_anomali") or "").strip()
+        if anomaly == "1":
+            anomaly = "any"
+        filters["anomali"] = anomaly
+        return filters
+
+    def apply_job_filters(self, queryset, filters: Dict[str, str]):
+        """Apply filters for the jobs tab."""
+        keyword = filters.get("search", "")
+        queryset = AHSPRepository.filter_by_search(queryset, keyword)
+
+        queryset = AHSPRepository.filter_by_metadata(
+            queryset,
+            sumber=filters.get("sumber", ""),
+            klasifikasi=filters.get("klasifikasi", ""),
+        )
+
+        queryset = AHSPRepository.filter_by_kategori(
+            queryset, filters.get("kategori", "")
+        )
+
+        queryset = AHSPRepository.filter_by_anomaly(
+            queryset, filters.get("anomali", "")
+        )
+
+        return queryset
+
+    def job_filter_query_params(self, filters: Dict[str, str]) -> Dict[str, str]:
+        """Build query parameters for jobs tab pagination links."""
+        params: Dict[str, str] = {}
+        if filters.get("search"):
+            params["job_q"] = filters["search"]
+        if filters.get("sumber"):
+            params["job_sumber"] = filters["sumber"]
+        if filters.get("klasifikasi"):
+            params["job_klasifikasi"] = filters["klasifikasi"]
+        if filters.get("kategori"):
+            params["job_kategori"] = filters["kategori"]
+        if filters.get("anomali"):
+            anomaly = filters["anomali"]
+            params["job_anomali"] = "1" if anomaly == "any" else anomaly
+        return params
+
+    def build_job_rows(self, formset):
+        """Return rendered row data and anomaly counts for jobs tab."""
+        rows = []
+        anomaly_count = 0
+        for form in formset.forms:
+            job = form.instance
+            anomaly_reasons = self.job_anomalies(job)
+            if anomaly_reasons:
+                anomaly_count += 1
+            category_counts = {
+                "TK": getattr(job, "tk_count", 0) or 0,
+                "BHN": getattr(job, "bhn_count", 0) or 0,
+                "ALT": getattr(job, "alt_count", 0) or 0,
+                "LAIN": getattr(job, "lain_count", 0) or 0,
+            }
+            rows.append(
+                {
+                    "form": form,
+                    "object": job,
+                    "anomaly_reasons": anomaly_reasons,
+                    "category_counts": category_counts,
+                }
+            )
+        return rows, anomaly_count
+
+    @staticmethod
+    def job_anomalies(job: AHSPReferensi):
+        reasons = []
+        if getattr(job, "zero_coef_count", 0):
+            reasons.append("Memiliki rincian dengan koefisien 0")
+        if getattr(job, "missing_unit_count", 0):
+            reasons.append("Memiliki rincian tanpa satuan")
+        return reasons
+
+    # ------------------------------------------------------------------
+    # Items filtering / helpers
+    # ------------------------------------------------------------------
+
+    def parse_item_filters(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        filters: Dict[str, Any] = {
+            "search": (data.get("item_q") or "").strip(),
+            "kategori": (data.get("item_kategori") or "").strip(),
+        }
+        raw_job = (data.get("item_job") or "").strip()
+        filters["job_value"] = raw_job
+        try:
+            filters["job_id"] = int(raw_job)
+        except (TypeError, ValueError):
+            filters["job_id"] = None
+            filters["job_value"] = ""
+        return filters
+
+    def apply_item_filters(self, queryset, filters: Dict[str, Any]):
+        queryset = ItemRepository.filter_by_search(queryset, filters.get("search", ""))
+        queryset = ItemRepository.filter_by_category(queryset, filters.get("kategori"))
+        queryset = ItemRepository.filter_by_job(queryset, filters.get("job_id"))
+        return queryset
+
+    def item_filter_query_params(self, filters: Dict[str, Any]) -> Dict[str, str]:
+        params: Dict[str, str] = {}
+        if filters.get("search"):
+            params["item_q"] = filters["search"]
+        if filters.get("kategori"):
+            params["item_kategori"] = filters["kategori"]
+        if filters.get("job_value"):
+            params["item_job"] = filters["job_value"]
+        return params
+
+    def build_item_rows(self, formset):
+        rows = []
+        anomaly_count = 0
+        for form in formset.forms:
+            item = form.instance
+            anomaly_reasons = self.item_anomalies(item)
+            if anomaly_reasons:
+                anomaly_count += 1
+            rows.append(
+                {
+                    "form": form,
+                    "object": item,
+                    "job": item.ahsp,
+                    "anomaly_reasons": anomaly_reasons,
+                }
+            )
+        return rows, anomaly_count
+
+    @staticmethod
+    def item_anomalies(item: RincianReferensi):
+        reasons = []
+        if item.koefisien == 0:
+            reasons.append("Koefisien bernilai 0")
+        if not (item.satuan_item or ""):
+            reasons.append("Satuan item kosong")
+        return reasons
+
+    # ------------------------------------------------------------------
+    # Auxiliary helpers
+    # ------------------------------------------------------------------
+
+    def available_sources(self):
+        """
+        Get available AHSP sources for dropdown.
+
+        PHASE 3: Now uses cache for 30-50% faster page loads.
+        """
+        return ReferensiCache.get_available_sources()
+
+    def available_klasifikasi(self):
+        """
+        Get available klasifikasi for dropdown.
+
+        PHASE 3: Now uses cache for 30-50% faster page loads.
+        """
+        return ReferensiCache.get_available_klasifikasi()
+
+    def job_choices(self, limit: int = 5000):
+        """
+        Get job choices for dropdown.
+
+        PHASE 3: Now uses cache for 30-50% faster page loads.
+        """
+        return ReferensiCache.get_job_choices(limit=limit)

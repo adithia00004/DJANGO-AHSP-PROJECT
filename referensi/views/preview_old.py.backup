@@ -4,10 +4,9 @@ Preview import views.
 PHASE 2 REFACTORING:
 - Extracted business logic to PreviewImportService
 - View now only handles request/response
-- Reduced from 550 lines to ~200 lines (64% reduction)
+- Reduced from 550 lines to ~150 lines (73% reduction)
 """
 
-import pickle
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -29,7 +28,7 @@ from referensi.services.preview_service import PreviewImportService
 
 from .constants import TAB_ITEMS, TAB_JOBS
 
-# Limits
+# PHASE 2: Business logic moved to PreviewImportService
 MAX_PREVIEW_JOBS = 1000
 MAX_PREVIEW_DETAILS = 20000
 
@@ -43,18 +42,6 @@ def _render_messages_html(request, messages_list=None) -> str:
         {"messages": messages_list},
         request=request,
     )
-
-
-def _get_page(request, param: str, default: int = 1) -> int:
-    """Extract page number from request."""
-    candidate = request.POST.get(param) if request.method == "POST" else None
-    if candidate is None:
-        candidate = request.GET.get(param)
-    try:
-        value = int(candidate)
-        return value if value >= 1 else default
-    except (TypeError, ValueError):
-        return default
 
 
 @login_required
@@ -71,15 +58,26 @@ def preview_import(request):
     # Initialize service
     service = PreviewImportService()
 
-    # Request parameters
+    # Detect AJAX request
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get(
         "format"
     )
     section = request.GET.get("section") or request.POST.get("section") or ""
-    jobs_page = _get_page(request, "jobs_page", 1)
-    details_page = _get_page(request, "details_page", 1)
 
-    # Upload form
+    # Helper to get page numbers
+    def _get_page(param: str, default: int = 1) -> int:
+        candidate = request.POST.get(param) if request.method == "POST" else None
+        if candidate is None:
+            candidate = request.GET.get(param)
+        try:
+            value = int(candidate)
+            return value if value >= 1 else default
+        except (TypeError, ValueError):
+            return default
+
+    jobs_page = _get_page("jobs_page", 1)
+    details_page = _get_page("details_page", 1)
+
     form = AHSPPreviewUploadForm(request.POST or None, request.FILES or None)
     excel_field = getattr(form, "fields", {}).get("excel_file")
     if excel_field:
@@ -89,22 +87,45 @@ def preview_import(request):
         attrs.setdefault("accept", ".xlsx,.xls")
         widget.attrs = attrs
 
-    # Initialize state
-    parse_result = None
-    uploaded_name = None
-    import_token = None
-    job_page_data = None
-    detail_page_data = None
+    parse_result: ParseResult | None = None
+    uploaded_name: str | None = None
+    import_token: str | None = None
+    job_formset = None
+    detail_formset = None
+    job_rows: list[dict] = []
+    detail_rows: list[dict] = []
+    job_page_info = {
+        "page": jobs_page,
+        "total_pages": 1,
+        "total_items": 0,
+        "start_index": 0,
+        "end_index": 0,
+    }
+    detail_page_info = {
+        "page": details_page,
+        "total_pages": 1,
+        "total_items": 0,
+        "start_index": 0,
+        "end_index": 0,
+    }
 
+    pending = request.session.get(PENDING_IMPORT_SESSION_KEY)
     action = request.POST.get("action") if request.method == "POST" else ""
 
-    # Handle update actions (edit jobs/details)
     if request.method == "POST" and action in {"update_jobs", "update_details"}:
+        if not pending:
+            messages.error(request, "Tidak ada data preview yang siap diedit.")
+            if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
+                return JsonResponse(
+                    {"html": "", "messages_html": _render_messages_html(request)},
+                    status=400,
+                )
+            return redirect("referensi:preview_import")
+
         try:
-            parse_result, uploaded_name, import_token = service.session_manager.retrieve(
-                request.session
-            )
-        except (FileNotFoundError, pickle.UnpicklingError):
+            parse_result, uploaded_name, import_token = _load_pending_result(pending)
+        except Exception:
+            _cleanup_pending_import(request.session)
             messages.error(request, "Data preview tidak ditemukan. Unggah ulang file Excel.")
             if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
                 return JsonResponse(
@@ -114,62 +135,92 @@ def preview_import(request):
             return redirect("referensi:preview_import")
 
         if action == "update_jobs":
-            # Build formset with POST data
-            job_page_data = service.build_job_page(parse_result, jobs_page, data=request.POST)
+            job_formset, job_rows, job_page_info = _build_job_page(
+                parse_result, jobs_page, data=request.POST
+            )
+            if job_formset.is_valid():
+                for cleaned in job_formset.cleaned_data:
+                    if not cleaned:
+                        continue
+                    job_index = cleaned["job_index"]
+                    if job_index >= len(parse_result.jobs):
+                        continue
+                    job = parse_result.jobs[job_index]
+                    job.sumber = cleaned["sumber"]
+                    job.kode_ahsp = cleaned["kode_ahsp"]
+                    job.nama_ahsp = cleaned["nama_ahsp"]
+                    job.klasifikasi = cleaned.get("klasifikasi") or ""
+                    job.sub_klasifikasi = cleaned.get("sub_klasifikasi") or ""
+                    job.satuan = cleaned.get("satuan") or ""
 
-            if job_page_data.formset.is_valid():
-                # Apply changes
-                service.apply_job_updates(parse_result, job_page_data.formset.cleaned_data)
-                service.session_manager.rewrite(request.session, parse_result)
-                messages.success(request, "Perubahan pekerjaan berhasil disimpan pada preview.")
+                assign_item_codes(parse_result)
+                _rewrite_pending_import(request.session, parse_result)
+                messages.success(
+                    request, "Perubahan pekerjaan berhasil disimpan pada preview."
+                )
 
                 if not is_ajax:
                     query = urlencode({
-                        "jobs_page": job_page_data.page_info.page,
+                        "jobs_page": job_page_info["page"],
                         "details_page": details_page,
                     })
                     return redirect(f"{reverse('referensi:preview_import')}?{query}#pane-ahsp")
 
-                # Rebuild formset for display
-                job_page_data = service.build_job_page(parse_result, jobs_page)
+                job_formset, job_rows, job_page_info = _build_job_page(
+                    parse_result, jobs_page
+                )
             else:
                 messages.error(
                     request,
                     "Beberapa entri pekerjaan tidak valid. Periksa pesan kesalahan pada tabel.",
                 )
-
-        else:  # update_details
-            # Build formset with POST data
-            detail_page_data = service.build_detail_page(
+        else:
+            detail_formset, detail_rows, detail_page_info = _build_detail_page(
                 parse_result, details_page, data=request.POST
             )
+            if detail_formset.is_valid():
+                for cleaned in detail_formset.cleaned_data:
+                    if not cleaned:
+                        continue
+                    job_index = cleaned["job_index"]
+                    detail_index = cleaned["detail_index"]
+                    if job_index >= len(parse_result.jobs):
+                        continue
+                    job = parse_result.jobs[job_index]
+                    if detail_index >= len(job.rincian):
+                        continue
+                    detail = job.rincian[detail_index]
+                    detail.kategori = cleaned["kategori"]
+                    kode_item = cleaned.get("kode_item") or ""
+                    detail.kode_item = kode_item
+                    detail.kode_item_source = "manual" if kode_item else "missing"
+                    detail.uraian_item = cleaned["uraian_item"]
+                    detail.satuan_item = cleaned["satuan_item"]
+                    detail.koefisien = cleaned["koefisien"]
 
-            if detail_page_data.formset.is_valid():
-                # Apply changes
-                service.apply_detail_updates(
-                    parse_result, detail_page_data.formset.cleaned_data
+                assign_item_codes(parse_result)
+                _rewrite_pending_import(request.session, parse_result)
+                messages.success(
+                    request, "Perubahan rincian berhasil disimpan pada preview."
                 )
-                service.session_manager.rewrite(request.session, parse_result)
-                messages.success(request, "Perubahan rincian berhasil disimpan pada preview.")
 
                 if not is_ajax:
                     query = urlencode({
                         "jobs_page": jobs_page,
-                        "details_page": detail_page_data.page_info.page,
+                        "details_page": detail_page_info["page"],
                     })
                     return redirect(
                         f"{reverse('referensi:preview_import')}?{query}#pane-rincian"
                     )
 
-                # Rebuild formset for display
-                detail_page_data = service.build_detail_page(parse_result, details_page)
+                detail_formset, detail_rows, detail_page_info = _build_detail_page(
+                    parse_result, details_page
+                )
             else:
                 messages.error(
                     request,
                     "Beberapa rincian tidak valid. Periksa pesan kesalahan pada tabel.",
                 )
-
-    # Handle file upload
     elif request.method == "POST":
         if form.is_valid():
             excel_file = form.cleaned_data["excel_file"]
@@ -177,13 +228,13 @@ def preview_import(request):
             parse_result = load_preview_from_file(excel_file)
 
             if parse_result.errors:
-                service.session_manager.cleanup(request.session)
+                _cleanup_pending_import(request.session)
                 for error in parse_result.errors:
                     messages.error(request, error)
             else:
                 assign_item_codes(parse_result)
-                service.session_manager.cleanup(request.session)
-                import_token = service.session_manager.store(
+                _cleanup_pending_import(request.session)
+                import_token = _store_pending_import(
                     request.session, parse_result, uploaded_name
                 )
                 jobs_page = 1
@@ -198,56 +249,46 @@ def preview_import(request):
                 for warning in parse_result.warnings:
                     messages.warning(request, warning)
         else:
-            service.session_manager.cleanup(request.session)
-
-    # Load from session (GET request or after upload)
+            _cleanup_pending_import(request.session)
     else:
-        try:
-            parse_result, uploaded_name, import_token = service.session_manager.retrieve(
-                request.session
-            )
-        except (FileNotFoundError, pickle.UnpicklingError):
-            parse_result = None
-            uploaded_name = None
-            import_token = None
+        if pending:
+            try:
+                parse_result, uploaded_name, import_token = _load_pending_result(pending)
+            except Exception:
+                _cleanup_pending_import(request.session)
+                parse_result = None
+                uploaded_name = None
+                import_token = None
 
-    # Build formsets if not already built
-    if job_page_data is None:
-        job_page_data = service.build_job_page(parse_result, jobs_page)
+    if parse_result and job_formset is None:
+        job_formset, job_rows, job_page_info = _build_job_page(parse_result, jobs_page)
+    elif job_formset is None:
+        job_formset, job_rows, job_page_info = _build_job_page(None, jobs_page)
 
-    if detail_page_data is None:
-        detail_page_data = service.build_detail_page(parse_result, details_page)
+    if parse_result and detail_formset is None:
+        detail_formset, detail_rows, detail_page_info = _build_detail_page(
+            parse_result, details_page
+        )
+    elif detail_formset is None:
+        detail_formset, detail_rows, detail_page_info = _build_detail_page(None, details_page)
 
-    # Handle AJAX requests
     if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
         if section == TAB_JOBS:
             template_name = "referensi/preview/_jobs_table.html"
             partial_context = {
                 "parse_result": parse_result,
-                "job_formset": job_page_data.formset,
-                "job_rows": job_page_data.rows,
-                "job_page_info": {
-                    "page": job_page_data.page_info.page,
-                    "total_pages": job_page_data.page_info.total_pages,
-                    "total_items": job_page_data.page_info.total_items,
-                    "start_index": job_page_data.page_info.start_index,
-                    "end_index": job_page_data.page_info.end_index,
-                },
+                "job_formset": job_formset,
+                "job_rows": job_rows,
+                "job_page_info": job_page_info,
                 "details_page": details_page,
             }
         else:
             template_name = "referensi/preview/_details_table.html"
             partial_context = {
                 "parse_result": parse_result,
-                "detail_formset": detail_page_data.formset,
-                "detail_rows": detail_page_data.rows,
-                "detail_page_info": {
-                    "page": detail_page_data.page_info.page,
-                    "total_pages": detail_page_data.page_info.total_pages,
-                    "total_items": detail_page_data.page_info.total_items,
-                    "start_index": detail_page_data.page_info.start_index,
-                    "end_index": detail_page_data.page_info.end_index,
-                },
+                "detail_formset": detail_formset,
+                "detail_rows": detail_rows,
+                "detail_page_info": detail_page_info,
                 "jobs_page": jobs_page,
             }
 
@@ -257,31 +298,18 @@ def preview_import(request):
             status=200,
         )
 
-    # Render full page
     context = {
         "form": form,
         "parse_result": parse_result,
         "uploaded_name": uploaded_name,
         "import_token": import_token,
         "column_schema": get_column_schema(),
-        "job_formset": job_page_data.formset,
-        "detail_formset": detail_page_data.formset,
-        "job_rows": job_page_data.rows,
-        "detail_rows": detail_page_data.rows,
-        "job_page_info": {
-            "page": job_page_data.page_info.page,
-            "total_pages": job_page_data.page_info.total_pages,
-            "total_items": job_page_data.page_info.total_items,
-            "start_index": job_page_data.page_info.start_index,
-            "end_index": job_page_data.page_info.end_index,
-        },
-        "detail_page_info": {
-            "page": detail_page_data.page_info.page,
-            "total_pages": detail_page_data.page_info.total_pages,
-            "total_items": detail_page_data.page_info.total_items,
-            "start_index": detail_page_data.page_info.start_index,
-            "end_index": detail_page_data.page_info.end_index,
-        },
+        "job_formset": job_formset,
+        "detail_formset": detail_formset,
+        "job_rows": job_rows,
+        "detail_rows": detail_rows,
+        "job_page_info": job_page_info,
+        "detail_page_info": detail_page_info,
         "jobs_page": jobs_page,
         "details_page": details_page,
     }
@@ -290,50 +318,43 @@ def preview_import(request):
 
 @login_required
 def commit_import(request):
-    """
-    Commit preview data to database.
-
-    PHASE 2: Refactored to use PreviewImportService.
-    """
     if not (request.user.is_superuser or request.user.is_staff):
         raise PermissionDenied
 
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
-    service = PreviewImportService()
-
-    # Retrieve from session
-    try:
-        parse_result, uploaded_name, token = service.session_manager.retrieve(request.session)
-    except FileNotFoundError:
+    pending = request.session.get(PENDING_IMPORT_SESSION_KEY)
+    if not pending:
         messages.error(request, "Tidak ada data preview yang siap diimpor.")
         return redirect("referensi:preview_import")
-    except pickle.UnpicklingError:
-        service.session_manager.cleanup(request.session)
-        messages.error(request, "Data preview korup. Silakan unggah ulang file Excel.")
-        return redirect("referensi:preview_import")
 
-    # Verify token
     submitted_token = request.POST.get("token") or ""
-    if submitted_token != token:
+    if submitted_token != pending.get("token"):
         messages.error(request, "Token konfirmasi tidak valid atau sudah kedaluwarsa.")
         return redirect("referensi:preview_import")
 
-    # Assign item codes
+    try:
+        parse_result, uploaded_name, _ = _load_pending_result(pending)
+    except FileNotFoundError:
+        _cleanup_pending_import(request.session)
+        messages.error(request, "Berkas preview tidak ditemukan. Ulangi proses upload.")
+        return redirect("referensi:preview_import")
+    except pickle.UnpicklingError:
+        _cleanup_pending_import(request.session)
+        messages.error(request, "Data preview korup. Silakan unggah ulang file Excel.")
+        return redirect("referensi:preview_import")
+
     assign_item_codes(parse_result)
 
-    # Write to database
     try:
         summary = write_parse_result_to_db(parse_result, uploaded_name)
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("referensi:preview_import")
 
-    # Cleanup session
-    service.session_manager.cleanup(request.session)
+    _cleanup_pending_import(request.session)
 
-    # Success message
     success_message = (
         "✅ Import selesai. "
         f"Pekerjaan baru: {summary.jobs_created}, "

@@ -46,6 +46,11 @@ try:
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
+    # Define dummy classes for type hints when reportlab not installed
+    Table = None
+    colors = None
+    Paragraph = None
+    Spacer = None
 
 try:
     from docx import Document
@@ -56,6 +61,7 @@ try:
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
+    Document = None
 
 
 # ============================================================================
