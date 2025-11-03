@@ -263,6 +263,10 @@ LOGGING = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Increase field limit for formsets with 200 rows
+# Each row has ~20 fields → 200 rows × 20 = 4000 fields
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
+
 REFERENSI_CONFIG = {
     "page_sizes": {
         "jobs": 25,

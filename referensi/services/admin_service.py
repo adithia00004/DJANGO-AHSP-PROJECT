@@ -325,7 +325,7 @@ class AdminPortalService:
         rincian_deleted = deleted_info[1].get('referensi.RincianReferensi', 0)
 
         # Clear cache after delete
-        ReferensiCache.clear_all()
+        ReferensiCache.invalidate_all()
 
         return {
             "jobs_deleted": jobs_count,
