@@ -1,0 +1,157 @@
+﻿/* Table Container */
+.ahsp-table-responsive {
+    width: 100%;
+    overflow-x: auto;
+}
+
+/* Base Table Styles */
+.ahsp-database-table {
+    min-width: 1100px;
+    width: 100%;
+    font-size: 0.875rem;
+}
+
+.ahsp-database-table thead th {
+    font-weight: 600;
+    vertical-align: middle;
+    position: relative;
+}
+
+/* Sortable Headers */
+.ahsp-database-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.ahsp-database-table th.sortable:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.ahsp-database-table th.sortable i {
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+}
+
+/* Table Cells */
+.ahsp-database-table td,
+.ahsp-database-table th {
+    white-space: normal;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+/* Form Controls in Table */
+.ahsp-database-table .form-control,
+.ahsp-database-table .form-select {
+    font-size: 0.875rem;
+    white-space: normal;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ahsp-database-table .ahsp-input {
+    width: 100%;
+}
+
+.ahsp-database-table .ahsp-textarea {
+    white-space: normal;
+}
+
+.ahsp-database-table textarea.form-control {
+    min-height: 2.75rem;
+    resize: vertical;
+}
+
+/* Change Tracking - Modified Fields */
+.ahsp-database-table .is-modified {
+    border-color: #ffc107 !important;
+    background-color: #fff9e6;
+    box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.15);
+}
+
+.ahsp-database-table .is-modified:focus {
+    border-color: #ffc107 !important;
+    box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.25);
+}
+
+/* Badges & Small Text */
+.ahsp-database-table .badge,
+.ahsp-database-table .small,
+.ahsp-database-table .text-muted {
+    font-size: 0.8125rem;
+}
+
+/* Modal Improvements */
+.modal.fade.show {
+    z-index: 99999 !important; /* Higher than topbar */
+}
+
+.modal-backdrop.show {
+    z-index: 99998 !important;
+}
+
+#modalBulkDelete .modal-header {
+    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+#modalBulkDelete .list-group-item {
+    border-left: none;
+    border-right: none;
+}
+
+#modalBulkDelete .list-group-item:first-child {
+    border-top: none;
+}
+
+#modalBulkDelete .list-group-item:last-child {
+    border-bottom: none;
+}
+
+/* Save Button States */
+button[type="submit"].btn-warning {
+    animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 0.5rem rgba(255, 193, 7, 0);
+    }
+}
+
+/* Loading States */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
+
+/* Responsive Adjustments */
+@media (min-width: 1400px) {
+    .ahsp-database-table {
+        min-width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .ahsp-database-table {
+        font-size: 0.8125rem;
+    }
+
+    .ahsp-database-table th.sortable i {
+        display: block;
+        margin-left: 0;
+        margin-top: 0.25rem;
+    }
+}
+
+/* Utility: Toast Notifications */
+.alert.position-fixed {
+    min-width: 300px;
+    max-width: 500px;
+    z-index: 9999;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}

@@ -1,8 +1,11 @@
-﻿.ahsp-table-responsive {
+﻿/* Table Container */
+.ahsp-table-responsive {
     width: 100%;
     overflow-x: auto;
+    /* overflow-y cannot be visible when overflow-x is auto - CSS limitation */
 }
 
+/* Base Table Styles */
 .ahsp-database-table {
     min-width: 1100px;
     width: 100%;
@@ -12,8 +15,27 @@
 .ahsp-database-table thead th {
     font-weight: 600;
     vertical-align: middle;
+    position: relative;
 }
 
+/* Sortable Headers */
+.ahsp-database-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.ahsp-database-table th.sortable:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.ahsp-database-table th.sortable i {
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+}
+
+/* Table Cells */
 .ahsp-database-table td,
 .ahsp-database-table th {
     white-space: normal;
@@ -21,10 +43,12 @@
     vertical-align: top;
 }
 
+/* Form Controls in Table */
 .ahsp-database-table .form-control,
 .ahsp-database-table .form-select {
     font-size: 0.875rem;
     white-space: normal;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ahsp-database-table .ahsp-input {
@@ -40,14 +64,595 @@
     resize: vertical;
 }
 
+/* Change Tracking - Modified Fields */
+.ahsp-database-table .is-modified {
+    border-left: 3px solid #ffc107 !important;
+    border-color: #ffc107 !important;
+    /* No background color - works in both light and dark mode */
+}
+
+.ahsp-database-table .is-modified:focus {
+    border-left: 3px solid #ffc107 !important;
+    border-color: #ffc107 !important;
+    box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.25);
+}
+
+/* Badges & Small Text */
 .ahsp-database-table .badge,
 .ahsp-database-table .small,
 .ahsp-database-table .text-muted {
     font-size: 0.8125rem;
 }
 
+/* Modal Improvements */
+.modal.fade.show {
+    z-index: 99999 !important; /* Higher than topbar */
+}
+
+.modal-backdrop.show {
+    z-index: 99998 !important;
+}
+
+#modalBulkDelete .modal-header {
+    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+#modalBulkDelete .list-group-item {
+    border-left: none;
+    border-right: none;
+}
+
+#modalBulkDelete .list-group-item:first-child {
+    border-top: none;
+}
+
+#modalBulkDelete .list-group-item:last-child {
+    border-bottom: none;
+}
+
+/* Save Button States */
+button[type="submit"].btn-warning {
+    animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 0.5rem rgba(255, 193, 7, 0);
+    }
+}
+
+/* Loading States */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
+
+/* Responsive Adjustments */
 @media (min-width: 1400px) {
     .ahsp-database-table {
         min-width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .ahsp-database-table {
+        font-size: 0.8125rem;
+    }
+
+    .ahsp-database-table th.sortable i {
+        display: block;
+        margin-left: 0;
+        margin-top: 0.25rem;
+    }
+}
+
+/* Utility: Toast Notifications */
+.alert.position-fixed {
+    min-width: 300px;
+    max-width: 500px;
+    z-index: 9999;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+
+/* ===================================================== */
+/* AUTOCOMPLETE DROPDOWN */
+/* ===================================================== */
+
+.autocomplete-dropdown {
+    position: fixed; /* Changed from absolute to fixed to escape overflow clipping */
+    /* top, left, width will be dynamically set by JavaScript */
+    z-index: 9999;
+    display: none;
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-top: none;
+    border-radius: 0 0 0.375rem 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    color: var(--bs-body-color);
+}
+
+.autocomplete-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item:hover {
+    background-color: var(--bs-secondary-bg);
+    transform: translateX(2px);
+}
+
+.autocomplete-item.active {
+    background-color: var(--bs-primary);
+    color: var(--bs-white);
+    transform: translateX(4px);
+}
+
+.autocomplete-item.active mark {
+    background-color: rgba(255, 255, 255, 0.3);
+    color: var(--bs-white);
+}
+
+.autocomplete-item mark {
+    background-color: var(--bs-warning-bg-subtle);
+    color: var(--bs-warning-text);
+    padding: 0.1em 0.3em;
+    border-radius: 0.2em;
+    font-weight: 600;
+}
+
+.autocomplete-dropdown::-webkit-scrollbar {
+    width: 8px;
+}
+
+.autocomplete-dropdown::-webkit-scrollbar-track {
+    background: var(--bs-secondary-bg);
+}
+
+.autocomplete-dropdown::-webkit-scrollbar-thumb {
+    background: var(--bs-border-color);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.autocomplete-dropdown::-webkit-scrollbar-thumb:hover {
+    background: var(--bs-secondary-color);
+}
+
+/* ===================================================== */
+/* ROW HIGHLIGHT ANIMATION */
+/* ===================================================== */
+
+.row-highlighted {
+    background-color: #fff3cd !important;
+    animation: highlightPulse 0.6s ease-in-out;
+    box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+    position: relative;
+    z-index: 10;
+}
+
+@keyframes highlightPulse {
+    0%, 100% {
+        background-color: #fff3cd;
+    }
+    50% {
+        background-color: #ffd970;
+    }
+}
+
+.table-striped tbody .row-highlighted {
+    background-color: #fff3cd !important;
+}
+
+/* ===================================================== */
+/* TABLE IMPROVEMENTS - Compact & Resizable */
+/* ===================================================== */
+
+/* Compact table spacing */
+.ahsp-database-table td,
+.ahsp-database-table th {
+    padding: 0.375rem 0.5rem !important;
+    vertical-align: middle !important;
+    line-height: 1.3;
+}
+
+/* Specific adjustments for form controls in cells */
+.ahsp-database-table .form-control,
+.ahsp-database-table .form-select {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.813rem;
+    line-height: 1.3;
+    min-height: auto;
+}
+
+.ahsp-database-table textarea.form-control {
+    min-height: 2.25rem !important;
+    padding: 0.375rem 0.5rem !important;
+}
+
+/* Remove excessive spacing */
+.ahsp-database-table .text-danger.small {
+    margin-top: 0.125rem !important;
+    line-height: 1.2;
+}
+
+/* Badge adjustments */
+.ahsp-database-table .badge {
+    padding: 0.25em 0.5em;
+    font-size: 0.75rem;
+}
+
+/* ===================================================== */
+/* RESIZABLE COLUMNS */
+/* ===================================================== */
+
+.ahsp-database-table th {
+    position: relative;
+    user-select: none;
+}
+
+.column-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 1;
+}
+
+.column-resizer:hover,
+.column-resizer.resizing {
+    background-color: #0d6efd;
+}
+
+.column-resizer::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 3px;
+    height: 30%;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+}
+
+/* Prevent text selection during resize */
+body.column-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+/* ===================================================== */
+/* COLUMN VISIBILITY */
+/* ===================================================== */
+
+.column-hidden {
+    display: none !important;
+}
+
+/* Column toggle list */
+#columnToggleList .list-group-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+#columnToggleList .list-group-item:hover {
+    background-color: #f8f9fa;
+}
+
+#columnToggleList .form-check {
+    margin-bottom: 0;
+}
+
+#columnToggleList .form-check-input {
+    cursor: pointer;
+}
+
+#columnToggleList .form-check-label {
+    cursor: pointer;
+    width: 100%;
+}
+
+/* ===================================================== */
+/* ROW LIMIT SELECTOR */
+/* ===================================================== */
+
+#rowLimitJobs,
+#rowLimitItems {
+    min-width: 70px;
+    font-size: 0.813rem;
+}
+
+
+/* ===================================================== */
+/* PROFESSIONAL POLISH & SMOOTH ANIMATIONS */
+/* ===================================================== */
+
+/* Smooth transitions for all interactive elements */
+.card-header button,
+.form-select,
+.form-control,
+.list-group-item,
+.modal {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Save button smooth state transitions */
+.card-header button[type="submit"] {
+    position: relative;
+    overflow: hidden;
+}
+
+.card-header button[type="submit"]::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.card-header button[type="submit"]:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* Modal entrance animation */
+.modal.show .modal-dialog {
+    animation: modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Toast notification smooth entrance */
+.alert.position-fixed {
+    animation: toastSlideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes toastSlideDown {
+    from {
+        transform: translate(-50%, -100%);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
+}
+
+/* Table row hover effect */
+.ahsp-database-table tbody tr {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.ahsp-database-table tbody tr:hover {
+    background-color: var(--bs-secondary-bg) !important;
+    transform: scale(1.001);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Input focus smooth transition */
+.ahsp-database-table .form-control:focus,
+.ahsp-database-table .form-select:focus {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Modified field - removed pulse animation (too distracting)
+   Now using subtle left border indicator instead */
+
+/* Button hover lift effect */
+.btn {
+    transition: all 0.2s ease;
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Column toggle list item smooth transition */
+#columnToggleList .list-group-item {
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+}
+
+#columnToggleList .list-group-item:hover {
+    border-left-color: var(--bs-primary);
+    padding-left: 1.25rem;
+}
+
+/* Dropdown select smooth opening */
+.form-select {
+    cursor: pointer;
+}
+
+.form-select:hover {
+    border-color: var(--bs-primary);
+}
+
+/* Smooth scrollbar */
+.ahsp-table-responsive {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bs-border-color) var(--bs-secondary-bg);
+}
+
+.ahsp-table-responsive::-webkit-scrollbar {
+    height: 8px;
+}
+
+.ahsp-table-responsive::-webkit-scrollbar-track {
+    background: var(--bs-secondary-bg);
+    border-radius: 4px;
+}
+
+.ahsp-table-responsive::-webkit-scrollbar-thumb {
+    background: var(--bs-border-color);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.ahsp-table-responsive::-webkit-scrollbar-thumb:hover {
+    background: var(--bs-secondary-color);
+}
+
+/* Loading state for buttons */
+.btn.loading {
+    position: relative;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    border-right-color: transparent;
+    animation: btnSpinner 0.6s linear infinite;
+}
+
+@keyframes btnSpinner {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Card header smooth gradient on hover */
+.card-header {
+    position: relative;
+    overflow: hidden;
+}
+
+.card-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(var(--bs-primary-rgb), 0.05),
+        transparent
+    );
+    transition: left 0.5s ease;
+}
+
+.card-header:hover::before {
+    left: 100%;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+}
+
+/* Smooth page transitions */
+@media (prefers-reduced-motion: no-preference) {
+    * {
+        scroll-behavior: smooth;
+    }
+}
+
+/* Dark mode specific polish */
+@media (prefers-color-scheme: dark) {
+    .ahsp-database-table tbody tr:hover {
+        box-shadow: 0 2px 4px rgba(255, 255, 255, 0.05);
+    }
+    
+    .btn:hover:not(:disabled) {
+        box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* Badge animations in save modal */
+.badge {
+    transition: all 0.2s ease;
+}
+
+.badge:hover {
+    transform: scale(1.05);
+}
+
+/* Icon spin animation for refresh/reset buttons */
+.btn .bi-arrow-counterclockwise,
+.btn .bi-arrow-clockwise {
+    transition: transform 0.3s ease;
+}
+
+.btn:hover .bi-arrow-counterclockwise,
+.btn:hover .bi-arrow-clockwise {
+    transform: rotate(180deg);
+}
+
+/* Subtle glow effect on primary actions */
+.btn-primary,
+.btn-success {
+    box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0.5);
+    transition: box-shadow 0.3s ease;
+}
+
+.btn-primary:hover,
+.btn-success:hover {
+    box-shadow: 0 0 20px 0 rgba(var(--bs-primary-rgb), 0.3);
+}
+
+/* Improve modal backdrop transition */
+.modal-backdrop.show {
+    animation: backdropFadeIn 0.3s ease;
+}
+
+@keyframes backdropFadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 0.5;
     }
 }

@@ -269,8 +269,8 @@ REFERENSI_CONFIG = {
         "details": 50,
     },
     "display_limits": {
-        "jobs": 50,
-        "items": 100,
+        "jobs": 200,  # Increased from 50 to support row limit dropdown
+        "items": 200,  # Increased from 100 to support row limit dropdown
     },
     "file_upload": {
         "max_size_mb": 10,

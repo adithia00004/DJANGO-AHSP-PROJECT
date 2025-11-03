@@ -234,3 +234,103 @@ class AdminPortalService:
     def job_choices(self, limit: int = 5000):
         """Return cached job choices for the rincian filter dropdown."""
         return ReferensiCache.get_job_choices(limit=limit)
+
+    # ------------------------------------------------------------------
+    # Bulk operations
+    # ------------------------------------------------------------------
+
+    def get_delete_preview(self, *, sumber: str = "", source_file: str = "") -> Dict[str, Any]:
+        """
+        Preview what will be deleted based on filters.
+
+        Args:
+            sumber: Filter by sumber field
+            source_file: Filter by source_file field
+
+        Returns:
+            dict: Summary of records to be deleted
+        """
+        from referensi.models import AHSPReferensi
+        from django.db.models import Count
+
+        queryset = AHSPReferensi.objects.all()
+
+        if sumber:
+            queryset = queryset.filter(sumber__iexact=sumber.strip())
+        if source_file:
+            queryset = queryset.filter(source_file__iexact=source_file.strip())
+
+        # Count what will be deleted
+        jobs_count = queryset.count()
+        rincian_count = 0
+
+        if jobs_count > 0:
+            rincian_count = queryset.aggregate(
+                total=Count('rincian')
+            )['total'] or 0
+
+        # Get list of affected sources for display
+        affected_sources = list(queryset.values_list('sumber', flat=True).distinct()[:10])
+        affected_files = list(queryset.values_list('source_file', flat=True).distinct()[:10])
+
+        return {
+            "jobs_count": jobs_count,
+            "rincian_count": rincian_count,
+            "affected_sources": affected_sources,
+            "affected_files": [f for f in affected_files if f],
+            "sumber_filter": sumber,
+            "source_file_filter": source_file,
+        }
+
+    def bulk_delete_by_source(self, *, sumber: str = "", source_file: str = "") -> Dict[str, Any]:
+        """
+        Delete AHSP records and their rincian based on filters.
+
+        Args:
+            sumber: Filter by sumber field
+            source_file: Filter by source_file field
+
+        Returns:
+            dict: Summary of deleted records
+        """
+        from referensi.models import AHSPReferensi
+
+        if not sumber and not source_file:
+            raise ValueError("Minimal satu filter (sumber atau source_file) harus diisi")
+
+        queryset = AHSPReferensi.objects.all()
+
+        if sumber:
+            queryset = queryset.filter(sumber__iexact=sumber.strip())
+        if source_file:
+            queryset = queryset.filter(source_file__iexact=source_file.strip())
+
+        # Get count before delete
+        jobs_count = queryset.count()
+
+        if jobs_count == 0:
+            return {
+                "jobs_deleted": 0,
+                "rincian_deleted": 0,
+                "total_deleted": 0,
+                "sumber": sumber,
+                "source_file": source_file,
+            }
+
+        # Delete (CASCADE will handle rincian)
+        deleted_info = queryset.delete()
+
+        # deleted_info is a tuple: (total_deleted, {model_name: count})
+        total_deleted = deleted_info[0]
+        rincian_deleted = deleted_info[1].get('referensi.RincianReferensi', 0)
+
+        # Clear cache after delete
+        ReferensiCache.clear_all()
+
+        return {
+            "jobs_deleted": jobs_count,
+            "rincian_deleted": rincian_deleted,
+            "total_deleted": total_deleted,
+            "sumber": sumber,
+            "source_file": source_file,
+        }
