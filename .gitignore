@@ -41,4 +41,5 @@ __pycache__/
 *.pyc
 
 
-*.map
+*.map__pycache__/
+*.pyc
