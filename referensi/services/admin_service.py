@@ -40,7 +40,15 @@ class AdminPortalService:
     # ------------------------------------------------------------------
 
     def parse_job_filters(self, data: Dict[str, Any]) -> Dict[str, str]:
-        """Parse incoming query parameters for the jobs tab."""
+        """Normalize query parameters submitted from the jobs tab.
+
+        Args:
+            data: Dict-like object (e.g., QueryDict) containing request parameters.
+
+        Returns:
+            dict: Sanitized filter values keyed by `search`, `sumber`, `klasifikasi`,
+            `kategori`, and `anomali`.
+        """
         filters = {
             "search": (data.get("job_q") or "").strip(),
             "sumber": (data.get("job_sumber") or "").strip(),
@@ -54,7 +62,15 @@ class AdminPortalService:
         return filters
 
     def apply_job_filters(self, queryset, filters: Dict[str, str]):
-        """Apply filters for the jobs tab."""
+        """Apply jobs tab filters to an annotated AHSP queryset.
+
+        Args:
+            queryset: Annotated queryset from :meth:`base_ahsp_queryset`.
+            filters: Normalized filters produced by :meth:`parse_job_filters`.
+
+        Returns:
+            QuerySet: Filtered queryset ready for pagination/formset binding.
+        """
         keyword = filters.get("search", "")
         queryset = AHSPRepository.filter_by_search(queryset, keyword)
 
@@ -91,7 +107,14 @@ class AdminPortalService:
         return params
 
     def build_job_rows(self, formset):
-        """Return rendered row data and anomaly counts for jobs tab."""
+        """Return rendered row information for the jobs tab.
+
+        Args:
+            formset: Bound formset containing AHSP instances.
+
+        Returns:
+            tuple[list[dict], int]: Render-ready row metadata list and anomaly count.
+        """
         rows = []
         anomaly_count = 0
         for form in formset.forms:
@@ -129,6 +152,7 @@ class AdminPortalService:
     # ------------------------------------------------------------------
 
     def parse_item_filters(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize request parameters for the rincian items tab."""
         filters: Dict[str, Any] = {
             "search": (data.get("item_q") or "").strip(),
             "kategori": (data.get("item_kategori") or "").strip(),
@@ -143,6 +167,7 @@ class AdminPortalService:
         return filters
 
     def apply_item_filters(self, queryset, filters: Dict[str, Any]):
+        """Apply item filters (search/kategori/job) to a rincian queryset."""
         queryset = ItemRepository.filter_by_search(queryset, filters.get("search", ""))
         queryset = ItemRepository.filter_by_category(queryset, filters.get("kategori"))
         queryset = ItemRepository.filter_by_job(queryset, filters.get("job_id"))
@@ -159,6 +184,7 @@ class AdminPortalService:
         return params
 
     def build_item_rows(self, formset):
+        """Return rendered row information for the rincian tab."""
         rows = []
         anomaly_count = 0
         for form in formset.forms:
@@ -206,9 +232,5 @@ class AdminPortalService:
         return ReferensiCache.get_available_klasifikasi()
 
     def job_choices(self, limit: int = 5000):
-        """
-        Get job choices for dropdown.
-
-        PHASE 3: Now uses cache for 30-50% faster page loads.
-        """
+        """Return cached job choices for the rincian filter dropdown."""
         return ReferensiCache.get_job_choices(limit=limit)

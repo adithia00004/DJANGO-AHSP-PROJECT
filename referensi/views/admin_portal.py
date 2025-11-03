@@ -3,8 +3,7 @@
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.contrib.auth.decorators import login_required, permission_required
 from django.forms import modelformset_factory
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -17,18 +16,20 @@ from .constants import ITEM_DISPLAY_LIMIT, JOB_DISPLAY_LIMIT, TAB_ITEMS, TAB_JOB
 
 
 @login_required
+@permission_required(
+    ("referensi.view_ahspreferensi", "referensi.change_ahspreferensi"),
+    raise_exception=True,
+)
 def admin_portal(request):
-    if not (request.user.is_superuser or request.user.is_staff):
-        raise PermissionDenied
-
     return render(request, "referensi/admin_portal.html")
 
 
 @login_required
+@permission_required(
+    ("referensi.view_ahspreferensi", "referensi.change_ahspreferensi"),
+    raise_exception=True,
+)
 def ahsp_database(request):
-    if not (request.user.is_superuser or request.user.is_staff):
-        raise PermissionDenied
-
     service = AdminPortalService(
         job_limit=JOB_DISPLAY_LIMIT,
         item_limit=ITEM_DISPLAY_LIMIT,

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
@@ -13,6 +14,17 @@ class AHSPDatabaseViewTests(TestCase):
         self.staff_user = User.objects.create_user(
             username="staff", email="staff@example.com", password="pass", is_staff=True
         )
+        perms = Permission.objects.filter(
+            codename__in=[
+                "view_ahspreferensi",
+                "change_ahspreferensi",
+                "view_rincianreferensi",
+                "change_rincianreferensi",
+                "view_ahsp_stats",
+            ]
+        )
+        self.staff_user.user_permissions.add(*perms)
+
         self.regular_user = User.objects.create_user(
             username="user", email="user@example.com", password="pass"
         )

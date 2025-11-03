@@ -17,20 +17,36 @@ from referensi.views.constants import TAB_ITEMS, TAB_JOBS, PENDING_IMPORT_SESSIO
 
 
 class DummyUser(SimpleNamespace):
-    def __init__(self, **kwargs):
+    def __init__(self, perms=None, **kwargs):
         kwargs.setdefault("username", "tester")
+        self._perms = set(perms or [])
         super().__init__(**kwargs)
 
     @property
     def is_authenticated(self) -> bool:  # pragma: no cover - property access only
         return True
 
+    def has_perm(self, perm: str) -> bool:
+        if getattr(self, "is_superuser", False):
+            return True
+        return perm in self._perms
+
+    def has_perms(self, perms) -> bool:
+        return all(self.has_perm(perm) for perm in perms)
+
 
 class AdminPortalViewTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
         self.superuser = DummyUser(is_superuser=True, is_staff=True)
-        self.staff_user = DummyUser(is_superuser=False, is_staff=True)
+        self.staff_user = DummyUser(
+            is_superuser=False,
+            is_staff=True,
+            perms={
+                "referensi.view_ahspreferensi",
+                "referensi.change_ahspreferensi",
+            },
+        )
         self.regular_user = DummyUser(is_superuser=False, is_staff=False)
 
     def test_requires_superuser(self):
@@ -68,6 +84,14 @@ class PreviewImportViewTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
         self.superuser = DummyUser(is_superuser=True, is_staff=True)
+        self.staff_user = DummyUser(
+            is_superuser=False,
+            is_staff=True,
+            perms={
+                "referensi.view_ahspreferensi",
+                "referensi.import_ahsp_data",
+            },
+        )
         self.regular_user = DummyUser(is_superuser=False, is_staff=False)
         self._requests: list = []
         self.session_manager = ImportSessionManager()
@@ -134,8 +158,7 @@ class PreviewImportViewTests(SimpleTestCase):
             preview_import(request)
 
     def test_preview_allows_staff(self):
-        staff_user = DummyUser(is_superuser=False, is_staff=True)
-        request = self._prepare_request("get", "/import/preview/", user=staff_user)
+        request = self._prepare_request("get", "/import/preview/", user=self.staff_user)
         with mock.patch(
             "referensi.views.preview.render",
             wraps=lambda req, template, context=None, **kwargs: HttpResponse(),

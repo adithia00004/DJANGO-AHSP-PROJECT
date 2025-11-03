@@ -14,10 +14,9 @@ SEARCH_LIMIT = REFERENSI_CONFIG.get('api', {}).get('search_limit', 30)
 @login_required
 @require_GET
 def api_search_ahsp(request):
-    """
-    Response format kompatibel Select2:
-    {"results": [{"id": int, "text": "KODE – NAMA"}, ...]}
-    """
+    """Return AHSP search results in Select2 JSON format."""
+
+    # Response schema: {"results": [{"id": int, "text": "KODE - NAMA"}, ...]}
     query = (request.GET.get("q") or "").strip()
     queryset = AHSPReferensi.objects.all()
     if query:
@@ -26,6 +25,6 @@ def api_search_ahsp(request):
         )
     queryset = queryset.order_by("kode_ahsp")[:SEARCH_LIMIT]
     results = [
-        {"id": obj.id, "text": f"{obj.kode_ahsp} – {obj.nama_ahsp}"} for obj in queryset
+        {"id": obj.id, "text": f"{obj.kode_ahsp} - {obj.nama_ahsp}"} for obj in queryset
     ]
     return JsonResponse({"results": results})

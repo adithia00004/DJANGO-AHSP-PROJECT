@@ -1,5 +1,6 @@
 from django.core.validators import MinValueValidator
 from django.db import models
+from simple_history.models import HistoricalRecords
 
 
 class AHSPReferensi(models.Model):
@@ -22,6 +23,8 @@ class AHSPReferensi(models.Model):
     # This field is auto-updated by PostgreSQL trigger on INSERT/UPDATE
     # Do not set this field manually - it's computed from kode_ahsp, nama_ahsp, klasifikasi, sub_klasifikasi
 
+    history = HistoricalRecords()
+
     class Meta:
         verbose_name = "AHSP Referensi"
         verbose_name_plural = "AHSP Referensi"
@@ -43,10 +46,15 @@ class AHSPReferensi(models.Model):
                 fields=["sumber", "kode_ahsp"], name="uniq_ahsp_per_sumber"
             ),
         ]
+        permissions = [
+            ("view_ahsp_stats", "Can view AHSP statistics"),
+            ("import_ahsp_data", "Can import AHSP data"),
+            ("export_ahsp_data", "Can export AHSP data"),
+        ]
 
     def __str__(self):
         nama = (self.nama_ahsp or "")[:60]
-        return f"{self.kode_ahsp} — {nama}"
+        return f"{self.kode_ahsp} - {nama}"
 
 
 class RincianReferensi(models.Model):
@@ -80,6 +88,8 @@ class RincianReferensi(models.Model):
         decimal_places=6,
         validators=[MinValueValidator(0)]
     )
+
+    history = HistoricalRecords()
 
     class Meta:
         verbose_name = "Rincian Item AHSP"
@@ -142,6 +152,8 @@ class KodeItemReferensi(models.Model):
     uraian_item = models.TextField()
     satuan_item = models.CharField(max_length=20)
     kode_item = models.CharField(max_length=50)
+
+    history = HistoricalRecords()
 
     def __str__(self):
         uraian = (self.uraian_item or "")[:50]

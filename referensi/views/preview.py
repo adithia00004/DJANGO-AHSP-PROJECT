@@ -11,8 +11,7 @@ import pickle
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.contrib.auth.decorators import login_required, permission_required
 from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -58,6 +57,10 @@ def _get_page(request, param: str, default: int = 1) -> int:
 
 
 @login_required
+@permission_required(
+    ("referensi.view_ahspreferensi", "referensi.import_ahsp_data"),
+    raise_exception=True,
+)
 def preview_import(request):
     """
     Handle AHSP preview import workflow.
@@ -65,9 +68,6 @@ def preview_import(request):
     PHASE 2: Refactored to use PreviewImportService.
     View now only handles request/response logic.
     """
-    if not (request.user.is_superuser or request.user.is_staff):
-        raise PermissionDenied
-
     # Initialize service
     service = PreviewImportService()
 
@@ -289,15 +289,13 @@ def preview_import(request):
 
 
 @login_required
+@permission_required("referensi.import_ahsp_data", raise_exception=True)
 def commit_import(request):
     """
     Commit preview data to database.
 
     PHASE 2: Refactored to use PreviewImportService.
     """
-    if not (request.user.is_superuser or request.user.is_staff):
-        raise PermissionDenied
-
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 

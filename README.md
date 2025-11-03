@@ -16,3 +16,11 @@
 |------------|---------------|-------------|------------|
 | `26,406`   | `26.406`      | `"26.406"`  | `26,406`   |
 | `1.234,56` | `1234.56`     | `"1234.56"` | `1.234,56` |
+
+## Development Quick Start
+
+- **Install dependencies:** `pip install -r requirements.txt`
+- **Run tests + coverage:** `pytest` (fails if referensi app coverage < 80%)
+- **Local permissions:** assign users to the new `Referensi Viewer`, `Editor`, or `Admin` groups (see `docs/PERMISSIONS.md`)
+- **Audit history:** every AHSP & Rincian change is available via the Django admin “History” view (django-simple-history)
+- **CI:** GitHub Actions workflow (`.github/workflows/ci.yml`) runs pytest on pushes and pull requests
