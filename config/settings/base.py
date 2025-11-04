@@ -246,6 +246,22 @@ IMPORT_RATE_LIMIT_PATHS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Full-Text Search Configuration (Phase 3)
+# ---------------------------------------------------------------------------
+
+# PostgreSQL full-text search settings
+FTS_LANGUAGE = os.getenv("FTS_LANGUAGE", "simple")  # or 'indonesian' if available
+FTS_MAX_RESULTS = int(os.getenv("FTS_MAX_RESULTS", "1000"))
+FTS_MIN_QUERY_LENGTH = int(os.getenv("FTS_MIN_QUERY_LENGTH", "2"))
+FTS_FUZZY_THRESHOLD = float(os.getenv("FTS_FUZZY_THRESHOLD", "0.3"))  # Trigram similarity threshold
+FTS_AUTOCOMPLETE_LIMIT = int(os.getenv("FTS_AUTOCOMPLETE_LIMIT", "20"))
+
+# Search performance settings
+FTS_ENABLE_SUGGESTIONS = os.getenv("FTS_ENABLE_SUGGESTIONS", "True").lower() == "true"
+FTS_CACHE_RESULTS = os.getenv("FTS_CACHE_RESULTS", "True").lower() == "true"
+FTS_CACHE_TTL = int(os.getenv("FTS_CACHE_TTL", "300"))  # 5 minutes
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
