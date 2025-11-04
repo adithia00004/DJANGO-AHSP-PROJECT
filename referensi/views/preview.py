@@ -17,14 +17,18 @@ from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 
+from django.core.exceptions import ValidationError
+
 from referensi.forms import AHSPPreviewUploadForm
 from referensi.services.ahsp_parser import (
     get_column_schema,
     load_preview_from_file,
 )
+from referensi.services.audit_logger import audit_logger
 from referensi.services.import_writer import write_parse_result_to_db
 from referensi.services.item_code_registry import assign_item_codes
 from referensi.services.preview_service import PreviewImportService
+from referensi.validators import validate_ahsp_file
 
 from .constants import TAB_ITEMS, TAB_JOBS
 
@@ -68,9 +72,6 @@ def preview_import(request):
     PHASE 2: Refactored to use PreviewImportService.
     View now only handles request/response logic.
     """
-    # Initialize service
-    service = PreviewImportService()
-
     # Request parameters
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get(
         "format"
@@ -78,6 +79,18 @@ def preview_import(request):
     section = request.GET.get("section") or request.POST.get("section") or ""
     jobs_page = _get_page(request, "jobs_page", 1)
     details_page = _get_page(request, "details_page", 1)
+
+    # Get search queries from request
+    search_jobs_query = request.GET.get("search_jobs", "").strip()
+    search_details_query = request.GET.get("search_details", "").strip()
+
+    # Initialize service with search queries
+    service = PreviewImportService(
+        search_queries={
+            "jobs": search_jobs_query,
+            "details": search_details_query
+        }
+    )
 
     # Upload form
     form = AHSPPreviewUploadForm(request.POST or None, request.FILES or None)
@@ -174,29 +187,87 @@ def preview_import(request):
         if form.is_valid():
             excel_file = form.cleaned_data["excel_file"]
             uploaded_name = excel_file.name
-            parse_result = load_preview_from_file(excel_file)
 
-            if parse_result.errors:
+            # Validate file security before processing
+            try:
+                validate_ahsp_file(excel_file)
+
+                # Log successful validation
+                audit_logger.log_file_validation(
+                    request=request,
+                    filename=uploaded_name,
+                    success=True,
+                    file_size=excel_file.size
+                )
+
+            except ValidationError as e:
                 service.session_manager.cleanup(request.session)
-                for error in parse_result.errors:
-                    messages.error(request, error)
+
+                # Log validation failure
+                error_messages = e.messages if hasattr(e, 'messages') else [str(e)]
+                reason = '; '.join(error_messages)
+
+                # Check for malicious content indicators
+                is_malicious = any(
+                    keyword in reason.lower()
+                    for keyword in ['zip bomb', 'formula berbahaya', 'malicious', 'dangerous']
+                )
+
+                if is_malicious:
+                    # Log as malicious file detection
+                    threat_type = 'unknown'
+                    if 'zip bomb' in reason.lower():
+                        threat_type = 'zip_bomb'
+                    elif 'formula' in reason.lower():
+                        threat_type = 'dangerous_formula'
+
+                    audit_logger.log_malicious_file_detected(
+                        request=request,
+                        filename=uploaded_name,
+                        threat_type=threat_type,
+                        reason=reason,
+                        file_size=excel_file.size
+                    )
+                else:
+                    # Log as normal validation failure
+                    audit_logger.log_file_validation(
+                        request=request,
+                        filename=uploaded_name,
+                        success=False,
+                        file_size=excel_file.size,
+                        reason=reason
+                    )
+
+                # Display all validation errors
+                for error_message in error_messages:
+                    messages.error(request, error_message)
+                # Skip further processing
+                parse_result = None
             else:
-                assign_item_codes(parse_result)
-                service.session_manager.cleanup(request.session)
-                import_token = service.session_manager.store(
-                    request.session, parse_result, uploaded_name
-                )
-                jobs_page = 1
-                details_page = 1
-                messages.success(
-                    request,
-                    (
-                        f"Berhasil membaca {parse_result.total_jobs} pekerjaan "
-                        f"dengan {parse_result.total_rincian} rincian."
-                    ),
-                )
-                for warning in parse_result.warnings:
-                    messages.warning(request, warning)
+                # File is valid, proceed with parsing
+                parse_result = load_preview_from_file(excel_file)
+
+                if parse_result.errors:
+                    service.session_manager.cleanup(request.session)
+                    for error in parse_result.errors:
+                        messages.error(request, error)
+                else:
+                    assign_item_codes(parse_result)
+                    service.session_manager.cleanup(request.session)
+                    import_token = service.session_manager.store(
+                        request.session, parse_result, uploaded_name
+                    )
+                    jobs_page = 1
+                    details_page = 1
+                    messages.success(
+                        request,
+                        (
+                            f"Berhasil membaca {parse_result.total_jobs} pekerjaan "
+                            f"dengan {parse_result.total_rincian} rincian."
+                        ),
+                    )
+                    for warning in parse_result.warnings:
+                        messages.warning(request, warning)
         else:
             service.session_manager.cleanup(request.session)
 
@@ -324,6 +395,18 @@ def commit_import(request):
     # Write to database
     try:
         summary = write_parse_result_to_db(parse_result, uploaded_name)
+
+        # Log successful import operation
+        audit_logger.log_import_operation(
+            request=request,
+            filename=uploaded_name,
+            jobs_count=summary.jobs_created + summary.jobs_updated,
+            details_count=summary.rincian_written,
+            jobs_created=summary.jobs_created,
+            jobs_updated=summary.jobs_updated,
+            detail_errors=len(summary.detail_errors) if summary.detail_errors else 0
+        )
+
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("referensi:preview_import")

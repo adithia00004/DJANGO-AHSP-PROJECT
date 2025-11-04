@@ -235,13 +235,14 @@ class PreviewImportService:
     - Session management
     """
 
-    def __init__(self, page_sizes: Optional[dict] = None):
+    def __init__(self, page_sizes: Optional[dict] = None, search_queries: Optional[dict] = None):
         """
         Initialize service.
 
         Args:
             page_sizes: Dict with 'jobs' and 'details' page sizes.
                        If None, uses defaults from settings.
+            search_queries: Dict with 'jobs' and 'details' search queries.
         """
         from django.conf import settings
 
@@ -251,8 +252,14 @@ class PreviewImportService:
             referensi_config = getattr(settings, "REFERENSI_CONFIG", {})
             page_sizes = referensi_config.get("page_sizes", {})
 
-        self.job_page_size = page_sizes.get("jobs", 25)
+        self.job_page_size = page_sizes.get("jobs", 50)  # Changed from 25 to 50
         self.detail_page_size = page_sizes.get("details", 50)
+
+        # Store search queries
+        if search_queries is None:
+            search_queries = {}
+        self.search_jobs_query = search_queries.get("jobs", "").strip()
+        self.search_details_query = search_queries.get("details", "").strip()
 
     def paginate(
         self, total: int, page: int, per_page: int
@@ -277,6 +284,74 @@ class PreviewImportService:
         end = min(start + per_page, total)
         return start, end, page, total_pages
 
+    def filter_jobs(self, jobs: list, query: str) -> list:
+        """
+        Filter jobs by search query.
+
+        Searches in: sumber, kode_ahsp, nama_ahsp
+
+        Args:
+            jobs: List of job objects
+            query: Search query string
+
+        Returns:
+            Filtered list of jobs
+        """
+        if not query:
+            return jobs
+
+        query_lower = query.lower()
+        filtered = []
+
+        for job in jobs:
+            # Build searchable text from all relevant fields
+            searchable_parts = [
+                str(job.sumber or ''),
+                str(job.kode_ahsp or ''),
+                str(job.nama_ahsp or ''),
+            ]
+            searchable_text = ' '.join(searchable_parts).lower()
+
+            # Check if query exists in searchable text
+            if query_lower in searchable_text:
+                filtered.append(job)
+
+        return filtered
+
+    def filter_details(self, details: list, query: str) -> list:
+        """
+        Filter details by search query.
+
+        Searches in: kode_rincian, uraian_rincian
+
+        Args:
+            details: List of detail objects
+            query: Search query string
+
+        Returns:
+            Filtered list of details
+        """
+        if not query:
+            return details
+
+        query_lower = query.lower()
+        filtered = []
+
+        for detail in details:
+            # Build searchable text from all relevant fields
+            searchable_parts = [
+                str(detail.kode_rincian or ''),
+                str(detail.uraian_rincian or ''),
+                str(detail.satuan_rincian or ''),
+            ]
+            searchable_text = ' '.join(searchable_parts).lower()
+
+            # Check if query exists in searchable text
+            if query_lower in searchable_text:
+                filtered.append(detail)
+
+        return filtered
+
     def build_job_page(
         self, parse_result: Optional[ParseResult], page: int, *, data=None
     ) -> PageData:
@@ -292,6 +367,11 @@ class PreviewImportService:
             PageData: Formset, rows, and pagination info
         """
         jobs = parse_result.jobs if parse_result else []
+
+        # Apply search filter if query exists
+        if self.search_jobs_query:
+            jobs = self.filter_jobs(jobs, self.search_jobs_query)
+
         total = len(jobs)
         start, end, page, total_pages = self.paginate(
             total, page, self.job_page_size
@@ -359,16 +439,67 @@ class PreviewImportService:
             PageData: Formset, rows, and pagination info
         """
         jobs = parse_result.jobs if parse_result else []
-        total = parse_result.total_rincian if parse_result else 0
+
+        # Flatten all details first for filtering
+        all_details_with_context = []
+        if jobs:
+            for job_index, job in enumerate(jobs):
+                for detail_index, detail in enumerate(job.rincian):
+                    all_details_with_context.append({
+                        'detail': detail,
+                        'job': job,
+                        'job_index': job_index,
+                        'detail_index': detail_index
+                    })
+
+        # Apply search filter if query exists
+        if self.search_details_query:
+            query_lower = self.search_details_query.lower()
+            filtered_details = []
+            for item in all_details_with_context:
+                detail = item['detail']
+                searchable_parts = [
+                    str(detail.kode_item or ''),
+                    str(detail.uraian_item or ''),
+                    str(detail.satuan_item or ''),
+                ]
+                searchable_text = ' '.join(searchable_parts).lower()
+                if query_lower in searchable_text:
+                    filtered_details.append(item)
+            all_details_with_context = filtered_details
+
+        total = len(all_details_with_context)
         start, end, page, total_pages = self.paginate(
             total, page, self.detail_page_size
         )
 
-        # Flatten details across all jobs
+        # Paginate the filtered/unfiltered details
         initial = []
         rows_meta = []
 
-        if total:
+        for item in all_details_with_context[start:end]:
+            detail = item['detail']
+            initial.append(
+                {
+                    "job_index": item['job_index'],
+                    "detail_index": item['detail_index'],
+                    "kategori": detail.kategori,
+                    "kode_item": detail.kode_item,
+                    "uraian_item": detail.uraian_item,
+                    "satuan_item": detail.satuan_item,
+                    "koefisien": detail.koefisien,
+                }
+            )
+            rows_meta.append(
+                {
+                    "detail": detail,
+                    "job": item['job'],
+                    "job_index": item['job_index'],
+                }
+            )
+
+        # OLD CODE - keeping structure below
+        if False:  # Disable old flattening logic
             flat_index = 0
             for job_index, job in enumerate(jobs):
                 for detail_index, detail in enumerate(job.rincian):

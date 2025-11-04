@@ -1,0 +1,220 @@
+/* ===================================================
+   IMPORT LOADING OVERLAY
+   =================================================== */
+
+.import-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    z-index: 99999;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.loading-content {
+    background: var(--bs-body-bg);
+    border-radius: 1rem;
+    padding: 3rem 2rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.loading-spinner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.loading-title {
+    color: var(--bs-body-color);
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.loading-message {
+    color: var(--bs-secondary-color);
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+.progress-container {
+    margin: 0 auto;
+}
+
+.progress {
+    background-color: var(--bs-secondary-bg);
+}
+
+.progress-bar {
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: width 0.3s ease;
+}
+
+#importProgressDetails {
+    color: var(--bs-secondary-color);
+    margin-top: 0.5rem;
+}
+
+/* ===================================================
+   IMPORT STAGES
+   =================================================== */
+
+#importStageInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    text-align: left;
+    max-width: 300px;
+    margin: 0 auto;
+    padding: 1rem;
+    background: var(--bs-secondary-bg);
+    border-radius: 0.5rem;
+}
+
+.stage-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--bs-body-color);
+}
+
+.stage-item i {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.stage-item i.spin {
+    animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ===================================================
+   LOAD MORE BUTTON
+   =================================================== */
+
+.load-more-row {
+    background: var(--bs-light);
+    border-top: 2px solid var(--bs-border-color);
+}
+
+.load-more-row:hover {
+    background: var(--bs-secondary-bg);
+}
+
+.load-more-row td {
+    border: none !important;
+}
+
+/* ===================================================
+   DARK MODE
+   =================================================== */
+
+[data-bs-theme="dark"] .loading-content {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+}
+
+[data-bs-theme="dark"] .import-loading-overlay {
+    background: rgba(0, 0, 0, 0.85);
+}
+
+/* ===================================================
+   RESPONSIVE
+   =================================================== */
+
+@media (max-width: 576px) {
+    .loading-content {
+        padding: 2rem 1.5rem;
+    }
+
+    .loading-title {
+        font-size: 1.25rem;
+    }
+
+    .progress-container {
+        width: 100% !important;
+    }
+
+    #importStageInfo {
+        font-size: 0.85rem;
+    }
+}
+
+/* ===================================================
+   MEMORY WARNING
+   =================================================== */
+
+.memory-warning-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 99998;
+    min-width: 300px;
+    animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ===================================================
+   PERFORMANCE OPTIMIZATIONS
+   =================================================== */
+
+/* Reduce repaints during scrolling */
+.preview-table {
+    will-change: scroll-position;
+    contain: layout style paint;
+}
+
+/* Optimize table rendering */
+.preview-table table {
+    table-layout: fixed;
+}
+
+/* Reduce GPU usage */
+.import-loading-overlay *,
+.loading-content * {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}

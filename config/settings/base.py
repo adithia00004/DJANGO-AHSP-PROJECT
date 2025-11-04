@@ -74,6 +74,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "referensi.middleware.ImportRateLimitMiddleware",  # Rate limiting for imports
 ]
 
 # ---------------------------------------------------------------------------
@@ -233,6 +234,18 @@ CACHES = {
 PERFORMANCE_LOG_THRESHOLD = float(os.getenv("DJANGO_PERF_THRESHOLD", "1.0"))
 
 # ---------------------------------------------------------------------------
+# Rate Limiting (Phase 1 Security)
+# ---------------------------------------------------------------------------
+
+# Import rate limiting configuration
+IMPORT_RATE_LIMIT = int(os.getenv("IMPORT_RATE_LIMIT", "10"))  # Max imports per window
+IMPORT_RATE_WINDOW = int(os.getenv("IMPORT_RATE_WINDOW", "3600"))  # Time window in seconds (1 hour)
+IMPORT_RATE_LIMIT_PATHS = [
+    "/referensi/preview/",
+    "/referensi/admin/import/",
+]
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
@@ -265,7 +278,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Increase field limit for formsets with 200 rows
 # Each row has ~20 fields → 200 rows × 20 = 4000 fields
-DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 99999
 
 REFERENSI_CONFIG = {
     "page_sizes": {

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ error_title }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        {{ error_title }}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning" role="alert">
+                        <h5 class="alert-heading">Rate Limit Exceeded</h5>
+                        <p class="mb-0">{{ error_message }}</p>
+                    </div>
+
+                    <div class="mt-4">
+                        <h6>Informasi Rate Limit:</h6>
+                        <ul>
+                            <li><strong>Batas:</strong> {{ rate_limit }} permintaan per {{ rate_window }}</li>
+                            <li><strong>Status:</strong> Anda telah mencapai batas maksimum</li>
+                        </ul>
+                    </div>
+
+                    <div class="mt-4">
+                        <h6>Apa yang bisa dilakukan?</h6>
+                        <ul>
+                            <li>Tunggu beberapa saat sebelum mencoba lagi</li>
+                            <li>Periksa kembali file yang akan diimport</li>
+                            <li>Hubungi administrator jika Anda memerlukan batas yang lebih tinggi</li>
+                        </ul>
+                    </div>
+
+                    <div class="mt-4 d-flex gap-2">
+                        <a href="{% url 'referensi:admin_database' %}" class="btn btn-primary">
+                            <i class="bi bi-arrow-left"></i> Kembali ke Database
+                        </a>
+                        <button onclick="window.location.reload()" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-clockwise"></i> Coba Lagi
+                        </button>
+                    </div>
+                </div>
+                <div class="card-footer text-muted">
+                    <small>
+                        <i class="bi bi-info-circle"></i>
+                        Rate limiting membantu menjaga performa dan keamanan aplikasi
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

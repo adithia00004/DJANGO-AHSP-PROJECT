@@ -6,11 +6,14 @@
 
 {% block extra_css %}
     <link rel="stylesheet" href="{% static 'referensi/css/preview_import.css' %}">
+    <link rel="stylesheet" href="{% static 'referensi/css/import_progress.css' %}">
 {% endblock %}
 
 {% block extra_js %}
     {{ block.super }}
     <script src="{% static 'referensi/js/preview_import.js' %}" defer></script>
+    <script src="{% static 'referensi/js/preview_import_v2.js' %}" defer></script>
+    <script src="{% static 'referensi/js/import_progress.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
