@@ -287,6 +287,51 @@ FTS_CACHE_RESULTS = os.getenv("FTS_CACHE_RESULTS", "True").lower() == "true"
 FTS_CACHE_TTL = int(os.getenv("FTS_CACHE_TTL", "300"))  # 5 minutes
 
 # ---------------------------------------------------------------------------
+# Celery Configuration (Phase 5: Async Tasks)
+# ---------------------------------------------------------------------------
+
+# Celery broker and result backend (using Redis)
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/0")
+
+# Celery task settings
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE  # Use Django timezone
+CELERY_ENABLE_UTC = True
+
+# Task execution settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes max
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes soft limit
+CELERY_TASK_ACKS_LATE = True  # Acknowledge after task completion
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # One task at a time per worker
+
+# Result backend settings
+CELERY_RESULT_EXPIRES = 3600  # Results expire after 1 hour
+CELERY_RESULT_PERSISTENT = True
+
+# Email settings for notifications (configure in .env)
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend"  # Default: print to console
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@ahsp.example.com")
+
+# Audit alert settings
+AUDIT_ALERT_EMAIL_RECIPIENTS = [
+    email.strip()
+    for email in os.getenv("AUDIT_ALERT_EMAIL_RECIPIENTS", "admin@example.com").split(",")
+    if email.strip()
+]
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
