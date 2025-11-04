@@ -28,6 +28,72 @@ def _log(stdout, message: str) -> None:
     stdout.write(f"{message}\n")
 
 
+def _validate_ahsp_uniqueness(parse_result, stdout) -> None:
+    """
+    Validate AHSP uniqueness: (sumber, kode_ahsp, nama_ahsp) should be unique.
+
+    PHASE 4 FIX: Warn if same (sumber, kode_ahsp) but different nama_ahsp.
+    """
+    seen = {}  # (sumber, kode_ahsp) -> nama_ahsp
+
+    for job in parse_result.jobs:
+        key = (job.sumber, job.kode_ahsp)
+        if key in seen:
+            existing_nama = seen[key]
+            if existing_nama != job.nama_ahsp:
+                warning = (
+                    f"[!] PERINGATAN: Pekerjaan dengan sumber '{job.sumber}' "
+                    f"dan kode '{job.kode_ahsp}' memiliki nama berbeda:\n"
+                    f"    - Nama 1: {existing_nama}\n"
+                    f"    - Nama 2: {job.nama_ahsp}\n"
+                    f"    Hanya nama terakhir yang akan disimpan."
+                )
+                _log(stdout, warning)
+        else:
+            seen[key] = job.nama_ahsp
+
+
+def _deduplicate_rincian(rincian_list, job, stdout):
+    """
+    Remove duplicate rincian within a single AHSP.
+
+    Deduplication key: (kategori, kode_item, uraian_item, satuan_item)
+    Keep the first occurrence, discard later duplicates.
+
+    PHASE 4 FIX: Prevents unique constraint violation on bulk insert.
+    """
+    seen = set()
+    unique = []
+    duplicates = []
+
+    for detail in rincian_list:
+        # Normalize kategori for comparison
+        kategori = canonicalize_kategori(detail.kategori or detail.kategori_source)
+        key = (
+            kategori,
+            detail.kode_item,
+            detail.uraian_item,
+            detail.satuan_item,
+        )
+
+        if key in seen:
+            duplicates.append(
+                f"    Baris {detail.row_number}: {kategori} - {detail.uraian_item} ({detail.satuan_item})"
+            )
+        else:
+            seen.add(key)
+            unique.append(detail)
+
+    if duplicates:
+        warning = (
+            f"[!] PERINGATAN: Duplikat rincian diabaikan untuk AHSP '{job.kode_ahsp} - {job.nama_ahsp}':\n"
+            + "\n".join(duplicates)
+        )
+        _log(stdout, warning)
+
+    return unique
+
+
 def write_parse_result_to_db(parse_result, source_file: str | None = None, *, stdout=None) -> ImportSummary:
     """Persisten ParseResult ke database.
 
@@ -35,6 +101,11 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     - Increased batch_size from 500 to 1000 (optimal for RincianReferensi with 6 fields)
     - Collect all rincian across jobs before bulk insert (reduces DB round-trips)
     - Better error handling and logging
+
+    PHASE 4 FIX:
+    - Deduplicate rincian within each AHSP before bulk insert
+    - Use savepoint for graceful error recovery on bulk insert failure
+    - Validate AHSP uniqueness (sumber + kode_ahsp + nama_ahsp)
     """
 
     from referensi.services.ahsp_parser import ParseResult  # menghindari import siklik
@@ -51,6 +122,9 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
         source_file = os.path.basename(source_file)
 
     assign_item_codes(parse_result)
+
+    # PHASE 4 FIX: Validate AHSP uniqueness (sumber, kode_ahsp, nama_ahsp)
+    _validate_ahsp_uniqueness(parse_result, stdout)
 
     with transaction.atomic():
         persist_item_codes(parse_result)
@@ -105,8 +179,11 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
             # Mark for deletion
             all_rincian_to_delete.append(ahsp_obj.id)
 
+            # PHASE 4 FIX: Deduplicate rincian within this AHSP
+            unique_rincian = _deduplicate_rincian(job.rincian, job, stdout)
+
             # Prepare rincian instances
-            for detail in job.rincian:
+            for detail in unique_rincian:
                 try:
                     kategori = canonicalize_kategori(detail.kategori or detail.kategori_source)
                     fields = dict(
@@ -133,20 +210,27 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
         # PHASE 1: Bulk insert all new rincian with optimal batch size
         if all_pending_details:
             instances = [instance for instance, _ in all_pending_details]
+
+            # PHASE 4 FIX: Use savepoint to allow fallback on error
+            sid = transaction.savepoint()
             try:
                 # PHASE 1: Increased batch_size from 500 to 1000
                 # RincianReferensi has 6 fields → optimal batch ~1000-2000
                 RincianReferensi.objects.bulk_create(instances, batch_size=1000)
                 summary.rincian_written = len(instances)
                 _log(stdout, f"[bulk] Inserted {len(instances)} rincian records")
+                transaction.savepoint_commit(sid)
             except Exception as exc:  # pragma: no cover - DB specific failure
+                # PHASE 4 FIX: Rollback to savepoint to recover from error
+                transaction.savepoint_rollback(sid)
+
                 fallback_msg = (
                     f"[!] Bulk create failed: {exc}. Trying individual inserts..."
                 )
                 summary.detail_errors.append(fallback_msg)
                 _log(stdout, fallback_msg)
 
-                # Fallback to individual inserts
+                # Fallback to individual inserts (transaction is now clean)
                 for instance, row_number in all_pending_details:
                     try:
                         instance.save(force_insert=True)
