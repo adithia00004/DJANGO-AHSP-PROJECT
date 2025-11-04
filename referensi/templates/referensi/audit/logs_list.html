@@ -1,0 +1,288 @@
+{% extends "referensi/base.html" %}
+{% load static %}
+
+{% block title %}Audit Logs{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-panel {
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+}
+.severity-badge-critical { background-color: #dc3545; }
+.severity-badge-error { background-color: #fd7e14; }
+.severity-badge-warning { background-color: #ffc107; color: #000; }
+.severity-badge-info { background-color: #17a2b8; }
+.log-row:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">Security Audit Logs</h2>
+            <p class="text-muted mb-0">View and filter all security events</p>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'referensi:audit_dashboard' %}" class="btn btn-outline-primary">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </a>
+            <a href="{% url 'referensi:export_audit_logs' %}?{{ request.GET.urlencode }}" class="btn btn-outline-success">
+                <i class="bi bi-download"></i> Export CSV
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card filter-panel mb-4">
+        <div class="card-body">
+            <form method="get" action="{% url 'referensi:audit_logs_list' %}" id="filterForm">
+                <div class="row g-3">
+                    <!-- Search -->
+                    <div class="col-md-3">
+                        <label for="search" class="form-label small text-muted">Search</label>
+                        <input type="text"
+                               class="form-control"
+                               id="search"
+                               name="search"
+                               value="{{ filters.search }}"
+                               placeholder="Message, event type, user...">
+                    </div>
+
+                    <!-- Severity -->
+                    <div class="col-md-2">
+                        <label for="severity" class="form-label small text-muted">Severity</label>
+                        <select class="form-select" id="severity" name="severity">
+                            <option value="">All Severities</option>
+                            {% for value, label in severity_choices %}
+                                <option value="{{ value }}" {% if filters.severity == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Category -->
+                    <div class="col-md-2">
+                        <label for="category" class="form-label small text-muted">Category</label>
+                        <select class="form-select" id="category" name="category">
+                            <option value="">All Categories</option>
+                            {% for value, label in category_choices %}
+                                <option value="{{ value }}" {% if filters.category == value %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Resolved Status -->
+                    <div class="col-md-2">
+                        <label for="resolved" class="form-label small text-muted">Status</label>
+                        <select class="form-select" id="resolved" name="resolved">
+                            <option value="">All</option>
+                            <option value="false" {% if filters.resolved == "false" %}selected{% endif %}>Unresolved</option>
+                            <option value="true" {% if filters.resolved == "true" %}selected{% endif %}>Resolved</option>
+                        </select>
+                    </div>
+
+                    <!-- Date From -->
+                    <div class="col-md-2">
+                        <label for="date_from" class="form-label small text-muted">From Date</label>
+                        <input type="date"
+                               class="form-control"
+                               id="date_from"
+                               name="date_from"
+                               value="{{ filters.date_from }}">
+                    </div>
+
+                    <!-- Date To -->
+                    <div class="col-md-2">
+                        <label for="date_to" class="form-label small text-muted">To Date</label>
+                        <input type="date"
+                               class="form-control"
+                               id="date_to"
+                               name="date_to"
+                               value="{{ filters.date_to }}">
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-funnel"></i> Apply Filters
+                        </button>
+                        <a href="{% url 'referensi:audit_logs_list' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Clear Filters
+                        </a>
+                        <span class="ms-3 text-muted small">
+                            <i class="bi bi-info-circle"></i> Showing {{ page_obj.paginator.count }} result{{ page_obj.paginator.count|pluralize }}
+                        </span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card">
+        <div class="card-header bg-white">
+            <h5 class="card-title mb-0">
+                Audit Logs
+                {% if page_obj.paginator.count > 0 %}
+                    <span class="text-muted small">({{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }})</span>
+                {% endif %}
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 140px;">Timestamp</th>
+                            <th style="width: 100px;">Severity</th>
+                            <th style="width: 120px;">Category</th>
+                            <th style="width: 150px;">Event Type</th>
+                            <th style="width: 120px;">User</th>
+                            <th style="width: 120px;">IP Address</th>
+                            <th>Message</th>
+                            <th style="width: 90px;">Status</th>
+                            <th style="width: 80px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in page_obj %}
+                        <tr class="log-row" onclick="window.location='{% url 'referensi:audit_log_detail' log.id %}';">
+                            <td class="text-nowrap small">
+                                {{ log.timestamp|date:"Y-m-d" }}<br>
+                                <span class="text-muted">{{ log.timestamp|date:"H:i:s" }}</span>
+                            </td>
+                            <td>
+                                <span class="badge severity-badge-{{ log.severity }}">
+                                    {{ log.get_severity_display }}
+                                </span>
+                            </td>
+                            <td><small>{{ log.get_category_display }}</small></td>
+                            <td><small class="font-monospace">{{ log.event_type|truncatechars:20 }}</small></td>
+                            <td>
+                                <small>
+                                    {% if log.user %}
+                                        <i class="bi bi-person-fill"></i> {{ log.username }}
+                                    {% else %}
+                                        <i class="bi bi-person"></i> <span class="text-muted">Anonymous</span>
+                                    {% endif %}
+                                </small>
+                            </td>
+                            <td><small class="font-monospace">{{ log.ip_address|default:"N/A" }}</small></td>
+                            <td><small>{{ log.message|truncatewords:12 }}</small></td>
+                            <td>
+                                {% if log.resolved %}
+                                    <span class="badge bg-success" title="Resolved by {{ log.resolved_by.username|default:'system' }}">
+                                        <i class="bi bi-check-circle"></i> Resolved
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="bi bi-clock"></i> Pending
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'referensi:audit_log_detail' log.id %}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   onclick="event.stopPropagation();">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-5">
+                                <i class="bi bi-inbox fs-1"></i>
+                                <p class="mt-2">No audit logs found matching your filters</p>
+                                <a href="{% url 'referensi:audit_logs_list' %}" class="btn btn-sm btn-outline-primary">Clear Filters</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer bg-white">
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">
+                                <i class="bi bi-chevron-double-left"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">
+                                <i class="bi bi-chevron-left"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+
+                    {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ num }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">
+                                    {{ num }}
+                                </a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">
+                                <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.urlencode %}&{{ request.GET.urlencode }}{% endif %}">
+                                <i class="bi bi-chevron-double-right"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            <div class="text-center mt-2 small text-muted">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-submit form on filter change (optional)
+document.querySelectorAll('#filterForm select').forEach(select => {
+    select.addEventListener('change', function() {
+        // Uncomment to enable auto-submit
+        // document.getElementById('filterForm').submit();
+    });
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    // Ctrl+F or Cmd+F focuses search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        document.getElementById('search').focus();
+    }
+});
+</script>
+{% endblock %}

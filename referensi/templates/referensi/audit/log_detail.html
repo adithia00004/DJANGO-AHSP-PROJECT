@@ -1,0 +1,357 @@
+{% extends "referensi/base.html" %}
+{% load static %}
+
+{% block title %}Audit Log Detail - {{ log.event_type }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.severity-badge-critical { background-color: #dc3545; font-size: 1rem; }
+.severity-badge-error { background-color: #fd7e14; font-size: 1rem; }
+.severity-badge-warning { background-color: #ffc107; color: #000; font-size: 1rem; }
+.severity-badge-info { background-color: #17a2b8; font-size: 1rem; }
+.detail-label {
+    font-weight: 600;
+    color: #6c757d;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.detail-value {
+    font-size: 1rem;
+    color: #212529;
+}
+.metadata-json {
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.resolution-card {
+    border-left: 4px solid #28a745;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-2">
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:audit_dashboard' %}">Dashboard</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:audit_logs_list' %}">Logs</a></li>
+                    <li class="breadcrumb-item active">{{ log.event_type }}</li>
+                </ol>
+            </nav>
+            <h2 class="mb-0">Audit Log Detail</h2>
+        </div>
+        <div class="btn-group">
+            <a href="{% url 'referensi:audit_logs_list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to List
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Main Details -->
+        <div class="col-lg-8">
+            <!-- Event Header -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h4 class="mb-2">{{ log.event_type }}</h4>
+                            <div class="mb-2">
+                                <span class="badge severity-badge-{{ log.severity }} me-2">
+                                    {{ log.get_severity_display }}
+                                </span>
+                                <span class="badge bg-secondary">
+                                    {{ log.get_category_display }}
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            {% if log.resolved %}
+                                <span class="badge bg-success" style="font-size: 1rem;">
+                                    <i class="bi bi-check-circle"></i> Resolved
+                                </span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark" style="font-size: 1rem;">
+                                    <i class="bi bi-clock"></i> Unresolved
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="alert alert-{{ log.severity }} mb-0" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Message:</strong> {{ log.message }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Details -->
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Event Information</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="detail-label mb-1">Timestamp</div>
+                            <div class="detail-value">
+                                <i class="bi bi-clock"></i>
+                                {{ log.timestamp|date:"F d, Y" }} at {{ log.timestamp|date:"H:i:s" }}
+                                <br>
+                                <small class="text-muted">({{ log.timestamp|timesince }} ago)</small>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="detail-label mb-1">Event ID</div>
+                            <div class="detail-value font-monospace">{{ log.id }}</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="detail-label mb-1">User</div>
+                            <div class="detail-value">
+                                {% if log.user %}
+                                    <i class="bi bi-person-fill text-primary"></i>
+                                    {{ log.username }}
+                                    {% if log.user.email %}
+                                        <br><small class="text-muted">{{ log.user.email }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <i class="bi bi-person text-muted"></i>
+                                    <span class="text-muted">Anonymous</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="detail-label mb-1">IP Address</div>
+                            <div class="detail-value font-monospace">
+                                {{ log.ip_address|default:"N/A" }}
+                            </div>
+                        </div>
+
+                        {% if log.path %}
+                        <div class="col-md-12">
+                            <div class="detail-label mb-1">Request Path</div>
+                            <div class="detail-value font-monospace">
+                                <span class="badge bg-secondary">{{ log.method|default:"GET" }}</span>
+                                {{ log.path }}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if log.user_agent %}
+                        <div class="col-md-12">
+                            <div class="detail-label mb-1">User Agent</div>
+                            <div class="detail-value small font-monospace text-muted">
+                                {{ log.user_agent|truncatechars:150 }}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metadata -->
+            {% if log.metadata %}
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Additional Metadata</h5>
+                </div>
+                <div class="card-body">
+                    <div class="metadata-json">
+                        <pre class="mb-0">{{ log.metadata|safe }}</pre>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Resolution Notes -->
+            {% if log.resolved %}
+            <div class="card resolution-card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-check-circle"></i> Resolution Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="detail-label mb-1">Resolved At</div>
+                            <div class="detail-value">
+                                {{ log.resolved_at|date:"F d, Y H:i:s" }}
+                                <br>
+                                <small class="text-muted">({{ log.resolved_at|timesince }} ago)</small>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="detail-label mb-1">Resolved By</div>
+                            <div class="detail-value">
+                                {% if log.resolved_by %}
+                                    <i class="bi bi-person-check-fill text-success"></i>
+                                    {{ log.resolved_by.username }}
+                                {% else %}
+                                    <span class="text-muted">System</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        {% if log.notes %}
+                        <div class="col-md-12">
+                            <div class="detail-label mb-1">Resolution Notes</div>
+                            <div class="detail-value">
+                                <div class="alert alert-light mb-0">
+                                    {{ log.notes }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Quick Actions -->
+            {% if not log.resolved and perms.referensi.import_ahsp_data %}
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Actions</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'referensi:mark_log_resolved' log.id %}" id="resolveForm">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Resolution Notes</label>
+                            <textarea class="form-control"
+                                      id="notes"
+                                      name="notes"
+                                      rows="4"
+                                      placeholder="Describe how this issue was resolved..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-check-circle"></i> Mark as Resolved
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Event Statistics -->
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Event Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="detail-label mb-1">Severity Level</div>
+                    <div class="mb-3">
+                        <div class="progress" style="height: 25px;">
+                            {% if log.severity == 'critical' %}
+                                <div class="progress-bar bg-danger" style="width: 100%;">Critical</div>
+                            {% elif log.severity == 'error' %}
+                                <div class="progress-bar bg-warning" style="width: 75%;">Error</div>
+                            {% elif log.severity == 'warning' %}
+                                <div class="progress-bar bg-warning" style="width: 50%;">Warning</div>
+                            {% else %}
+                                <div class="progress-bar bg-info" style="width: 25%;">Info</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="detail-label mb-1">Category</div>
+                    <div class="mb-3">
+                        <span class="badge bg-secondary" style="font-size: 0.9rem;">
+                            {{ log.get_category_display }}
+                        </span>
+                    </div>
+
+                    <div class="detail-label mb-1">Status</div>
+                    <div>
+                        {% if log.resolved %}
+                            <span class="badge bg-success" style="font-size: 0.9rem;">
+                                <i class="bi bi-check-circle"></i> Resolved
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark" style="font-size: 0.9rem;">
+                                <i class="bi bi-clock"></i> Unresolved
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Related Events -->
+            <div class="card">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0">Quick Links</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group list-group-flush">
+                        <a href="{% url 'referensi:audit_logs_list' %}?severity={{ log.severity }}"
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-filter"></i> Similar Severity Events
+                        </a>
+                        <a href="{% url 'referensi:audit_logs_list' %}?category={{ log.category }}"
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-tag"></i> Same Category Events
+                        </a>
+                        <a href="{% url 'referensi:audit_logs_list' %}?search={{ log.event_type }}"
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-search"></i> Same Event Type
+                        </a>
+                        {% if log.username %}
+                        <a href="{% url 'referensi:audit_logs_list' %}?search={{ log.username }}"
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-person"></i> User's Events
+                        </a>
+                        {% endif %}
+                        {% if log.ip_address %}
+                        <a href="{% url 'referensi:audit_logs_list' %}?search={{ log.ip_address }}"
+                           class="list-group-item list-group-item-action">
+                            <i class="bi bi-geo"></i> Same IP Events
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Format JSON metadata
+document.addEventListener('DOMContentLoaded', function() {
+    const metadataEl = document.querySelector('.metadata-json pre');
+    if (metadataEl) {
+        try {
+            const jsonText = metadataEl.textContent;
+            const jsonObj = JSON.parse(jsonText);
+            metadataEl.textContent = JSON.stringify(jsonObj, null, 2);
+        } catch (e) {
+            // Leave as-is if not valid JSON
+        }
+    }
+});
+
+// Confirm resolution
+document.getElementById('resolveForm')?.addEventListener('submit', function(e) {
+    if (!confirm('Mark this event as resolved?')) {
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}
