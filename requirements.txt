@@ -24,3 +24,13 @@ openpyxl==3.1.5
 pytest==8.3.4
 pytest-django==4.9.0
 pytest-cov==6.0.0
+
+# Phase 4: Redis Cache Layer
+redis==5.2.1
+django-redis==5.4.0
+hiredis==3.0.0  # C parser for better performance
+
+# Phase 5: Celery Async Tasks
+celery==5.4.0
+celery[redis]==5.4.0
+flower==2.0.1  # Celery monitoring

@@ -219,17 +219,42 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Cache
+# Cache (Phase 4: Redis Cache Layer)
 # ---------------------------------------------------------------------------
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
-        "LOCATION": os.getenv("DJANGO_CACHE_LOCATION", "django_cache_table"),
-        "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "3600")),
-        "OPTIONS": {"MAX_ENTRIES": int(os.getenv("DJANGO_CACHE_MAX_ENTRIES", "10000"))},
+# Redis cache backend for high performance
+CACHE_BACKEND = os.getenv("CACHE_BACKEND", "redis")  # 'redis' or 'db' for fallback
+
+if CACHE_BACKEND == "redis":
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": os.getenv("REDIS_URL", "redis://127.0.0.1:6379/1"),
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "SOCKET_CONNECT_TIMEOUT": 5,
+                "SOCKET_TIMEOUT": 5,
+                "CONNECTION_POOL_KWARGS": {
+                    "max_connections": 50,
+                    "retry_on_timeout": True,
+                },
+                "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+                "PARSER_CLASS": "redis.connection.HiredisParser",  # Faster C parser
+            },
+            "KEY_PREFIX": "ahsp",
+            "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "300")),  # 5 minutes default
+        }
     }
-}
+else:
+    # Fallback to database cache
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": os.getenv("DJANGO_CACHE_LOCATION", "django_cache_table"),
+            "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "3600")),
+            "OPTIONS": {"MAX_ENTRIES": int(os.getenv("DJANGO_CACHE_MAX_ENTRIES", "10000"))},
+        }
+    }
 
 PERFORMANCE_LOG_THRESHOLD = float(os.getenv("DJANGO_PERF_THRESHOLD", "1.0"))
 

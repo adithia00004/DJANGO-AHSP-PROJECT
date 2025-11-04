@@ -10,6 +10,7 @@ from django.db import transaction
 from referensi.models import AHSPReferensi, RincianReferensi
 from .import_utils import canonicalize_kategori
 from .item_code_registry import assign_item_codes, persist_item_codes
+from .cache_service import CacheService
 
 
 @dataclass
@@ -242,6 +243,11 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
 
     # PHASE 3 DAY 3: Refresh materialized view after import
     _refresh_materialized_view(stdout)
+
+    # PHASE 4: Invalidate search cache after import
+    cache = CacheService()
+    invalidated = cache.invalidate_search_cache()
+    _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
 
     return summary
 
