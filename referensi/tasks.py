@@ -2,9 +2,11 @@
 Celery tasks for AHSP referensi app.
 
 PHASE 5: Celery Async Tasks
+PHASE 6: Export Tasks
 
 Provides background tasks for:
 - Async AHSP import
+- Async export (Excel, PDF)
 - Audit log cleanup
 - Email notifications
 - Cache warmup
@@ -365,6 +367,142 @@ def cleanup_stale_cache_task() -> Dict[str, Any]:
         'total_keys_before': stats_before.get('total_keys', 0),
         'memory_before': stats_before.get('used_memory', 'N/A'),
     }
+
+
+# =============================================================================
+# EXPORT TASKS (Phase 6)
+# =============================================================================
+
+@shared_task(bind=True, name='referensi.tasks.async_export_task')
+def async_export_task(self, **params) -> Dict[str, Any]:
+    """
+    Async task for large export operations.
+
+    Args:
+        export_type: 'search' or 'multiple'
+        format: 'excel' or 'pdf'
+        user_id: User ID who initiated export
+        ... (other parameters based on export_type)
+
+    Returns:
+        dict: Export result with file path or download URL
+    """
+    from referensi.services.export_service import excel_export_service
+    from referensi.services.pdf_export_service import pdf_export_service
+    from referensi.services.ahsp_repository import ahsp_repository
+    from referensi.models import AHSPReferensi
+    import os
+    import uuid
+    from django.conf import settings
+
+    export_type = params.get('export_type')
+    format = params.get('format')
+    user_id = params.get('user_id')
+
+    # Update task state
+    self.update_state(state='PROGRESS', meta={'status': 'Preparing export...'})
+
+    try:
+        # Perform export based on type
+        if export_type == 'search':
+            query = params.get('query', '')
+            sumber = params.get('sumber')
+            klasifikasi = params.get('klasifikasi')
+            limit = params.get('limit', 10000)
+
+            # Search
+            results = ahsp_repository.search_ahsp(
+                query,
+                sumber=sumber if sumber else None,
+                klasifikasi=klasifikasi if klasifikasi else None,
+                limit=limit
+            )
+
+            filters = {}
+            if sumber:
+                filters['sumber'] = sumber
+            if klasifikasi:
+                filters['klasifikasi'] = klasifikasi
+
+            self.update_state(state='PROGRESS', meta={'status': f'Exporting {len(list(results))} results...'})
+
+            if format == 'excel':
+                output = excel_export_service.export_search_results(results, query, filters)
+                filename = f"AHSP_Search_{uuid.uuid4().hex[:8]}.xlsx"
+            else:
+                output = pdf_export_service.export_search_results(results, query, filters)
+                filename = f"AHSP_Search_{uuid.uuid4().hex[:8]}.pdf"
+
+        elif export_type == 'multiple':
+            job_ids = params.get('job_ids', [])
+            include_rincian = params.get('include_rincian', False)
+
+            jobs = AHSPReferensi.objects.filter(pk__in=job_ids)
+
+            self.update_state(state='PROGRESS', meta={'status': f'Exporting {jobs.count()} jobs...'})
+
+            if format == 'excel':
+                output = excel_export_service.export_multiple_jobs(jobs, include_rincian=include_rincian)
+                filename = f"AHSP_Export_{uuid.uuid4().hex[:8]}.xlsx"
+            else:
+                output = pdf_export_service.export_multiple_jobs(jobs)
+                filename = f"AHSP_Export_{uuid.uuid4().hex[:8]}.pdf"
+
+        else:
+            raise ValueError(f"Invalid export_type: {export_type}")
+
+        # Save file to media/exports
+        exports_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
+        os.makedirs(exports_dir, exist_ok=True)
+
+        file_path = os.path.join(exports_dir, filename)
+        with open(file_path, 'wb') as f:
+            f.write(output.read())
+
+        logger.info(f"Export completed: {filename} for user {user_id}")
+
+        # Send email notification
+        if user_id:
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.get(pk=user_id)
+
+                download_url = f"{settings.ALLOWED_HOSTS[0]}/media/exports/{filename}"
+
+                send_mail(
+                    subject='AHSP Export Ready',
+                    message=f'''
+Your AHSP export is ready!
+
+Export type: {export_type}
+Format: {format.upper()}
+File: {filename}
+
+Download: {download_url}
+
+This file will be available for 24 hours.
+
+---
+AHSP System
+                    ''',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                    fail_silently=True,
+                )
+            except Exception as email_exc:
+                logger.error(f"Failed to send export email: {email_exc}")
+
+        return {
+            'status': 'success',
+            'filename': filename,
+            'file_path': file_path,
+            'download_url': f'/media/exports/{filename}',
+        }
+
+    except Exception as exc:
+        logger.error(f"Export failed: {exc}")
+        raise
 
 
 # =============================================================================

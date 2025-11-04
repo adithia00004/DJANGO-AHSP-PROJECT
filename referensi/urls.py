@@ -16,6 +16,13 @@ from .views.audit_dashboard import (
     export_audit_logs,
     mark_log_resolved,
 )
+from .views.export_views import (
+    ExportSingleJobView,
+    ExportMultipleJobsView,
+    ExportSearchResultsView,
+    ExportAsyncView,
+    export_task_status,
+)
 
 urlpatterns = [
     path("admin-portal/", admin_portal, name="admin_portal"),
@@ -35,4 +42,11 @@ urlpatterns = [
     path("api/search", api_search_ahsp, name="api_search_ahsp"),
     path("api/delete/preview", api_delete_preview, name="api_delete_preview"),
     path("api/delete/execute", api_bulk_delete, name="api_bulk_delete"),
+
+    # Export Endpoints (Phase 6)
+    path("export/single/<int:pk>/<str:format>/", ExportSingleJobView.as_view(), name="export_single_job"),
+    path("export/multiple/<str:format>/", ExportMultipleJobsView.as_view(), name="export_multiple_jobs"),
+    path("export/search/<str:format>/", ExportSearchResultsView.as_view(), name="export_search_results"),
+    path("export/async/", ExportAsyncView.as_view(), name="export_async"),
+    path("export/task-status/<str:task_id>/", export_task_status, name="export_task_status"),
 ]
