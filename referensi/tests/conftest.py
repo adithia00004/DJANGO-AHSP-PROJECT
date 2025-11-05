@@ -28,16 +28,16 @@ def create_postgres_extensions(django_db_setup, django_db_blocker):
                 try:
                     # Create pg_trgm extension for trigram similarity
                     cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
-                    print("\n✅ Created pg_trgm extension in test database")
+                    print("\n[OK] Created pg_trgm extension in test database")
                 except Exception as e:
-                    print(f"\n⚠️  Could not create pg_trgm extension: {e}")
+                    print(f"\n[WARNING] Could not create pg_trgm extension: {e}")
 
                 try:
                     # Create btree_gin extension for GIN indexes
                     cursor.execute("CREATE EXTENSION IF NOT EXISTS btree_gin;")
-                    print("✅ Created btree_gin extension in test database")
+                    print("[OK] Created btree_gin extension in test database")
                 except Exception as e:
-                    print(f"⚠️  Could not create btree_gin extension: {e}")
+                    print(f"[WARNING] Could not create btree_gin extension: {e}")
 
                 # Verify extensions created
                 cursor.execute("""
@@ -48,11 +48,11 @@ def create_postgres_extensions(django_db_setup, django_db_blocker):
                 """)
                 extensions = cursor.fetchall()
                 if extensions:
-                    print("\n📦 PostgreSQL Extensions in Test Database:")
+                    print("\n[INFO] PostgreSQL Extensions in Test Database:")
                     for ext_name, ext_version in extensions:
                         print(f"   - {ext_name} (v{ext_version})")
                 else:
-                    print("\n⚠️  No extensions found in test database")
+                    print("\n[WARNING] No extensions found in test database")
 
 
 @pytest.fixture(autouse=True)
