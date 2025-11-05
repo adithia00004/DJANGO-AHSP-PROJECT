@@ -12,6 +12,12 @@ from .views_export import (
     export_csv,
     export_project_pdf,
 )
+from .views_bulk import (
+    bulk_delete,
+    bulk_archive,
+    bulk_unarchive,
+    bulk_export_excel,
+)
 
 app_name = "dashboard"
 
@@ -32,4 +38,10 @@ urlpatterns = [
     path("export/excel/", export_excel, name="export_excel"),
     path("export/csv/", export_csv, name="export_csv"),
     path("project/<int:pk>/export/pdf/", export_project_pdf, name="export_project_pdf"),
+
+    # FASE 2.3: Bulk operations
+    path("bulk/delete/", bulk_delete, name="bulk_delete"),
+    path("bulk/archive/", bulk_archive, name="bulk_archive"),
+    path("bulk/unarchive/", bulk_unarchive, name="bulk_unarchive"),
+    path("bulk/export/excel/", bulk_export_excel, name="bulk_export_excel"),
 ]

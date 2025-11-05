@@ -36,11 +36,40 @@
   </div>
 </div>
 
+<!-- FASE 2.3: Bulk Actions Bar -->
+<div class="card shadow-sm mb-3" id="bulkActionsBar" style="display: none;">
+  <div class="card-body py-2">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <span id="selectedCount" class="badge bg-primary me-2">0</span>
+        <span class="text-muted">project dipilih</span>
+      </div>
+      <div class="btn-group btn-group-sm" role="group">
+        <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
+          <i class="fas fa-trash"></i> Hapus
+        </button>
+        <button type="button" class="btn btn-outline-warning" id="bulkArchiveBtn" title="Archive project terpilih">
+          <i class="fas fa-archive"></i> Archive
+        </button>
+        <button type="button" class="btn btn-outline-success" id="bulkUnarchiveBtn" title="Aktifkan kembali project terpilih">
+          <i class="fas fa-check-circle"></i> Aktifkan
+        </button>
+        <button type="button" class="btn btn-outline-info" id="bulkExportBtn" title="Export project terpilih">
+          <i class="fas fa-file-excel"></i> Export
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Tabel Proyek Ringkasan -->
 <div class="dashboard-table-wrapper table-responsive shadow-sm ux-scrollbar">
   <table class="dashboard-project-table table table-hover table-bordered align-middle text-nowrap">
     <thead class="table-light dp-thead-sticky">
       <tr>
+        <th class="text-center" style="width: 40px;">
+          <input type="checkbox" id="selectAll" class="form-check-input" title="Pilih semua">
+        </th>
         <th>Kode</th>
         <th>Nama Project</th>
         <th>Tahun</th>
@@ -58,6 +87,9 @@
     <tbody>
       {% for project in projects %}
       <tr>
+        <td class="text-center">
+          <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}" data-project-name="{{ project.nama }}">
+        </td>
         <td><strong>{{ project.index_project|default:"—" }}</strong></td>
         <td>{{ project.nama|default:"—" }}</td>
         <td>{{ project.tahun_project|default:"—" }}</td>
@@ -135,7 +167,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="12" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
+        <td colspan="13" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -181,3 +213,170 @@
 </nav>
 {% endwith %}
 {% endif %}
+
+<!-- FASE 2.3: Bulk Actions JavaScript -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const projectCheckboxes = document.querySelectorAll('.project-checkbox');
+    const bulkActionsBar = document.getElementById('bulkActionsBar');
+    const selectedCountSpan = document.getElementById('selectedCount');
+
+    // Function to update UI based on selection
+    function updateBulkActionsUI() {
+        const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
+        const count = checkedBoxes.length;
+
+        selectedCountSpan.textContent = count;
+
+        if (count > 0) {
+            bulkActionsBar.style.display = 'block';
+        } else {
+            bulkActionsBar.style.display = 'none';
+        }
+
+        // Update "Select All" checkbox state
+        if (count === projectCheckboxes.length && projectCheckboxes.length > 0) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else if (count > 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+    }
+
+    // Select All functionality
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            projectCheckboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+            });
+            updateBulkActionsUI();
+        });
+    }
+
+    // Individual checkbox change
+    projectCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateBulkActionsUI);
+    });
+
+    // Get selected project IDs
+    function getSelectedProjectIds() {
+        const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
+        return Array.from(checkedBoxes).map(cb => cb.value);
+    }
+
+    // Get CSRF token
+    function getCSRFToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value ||
+               document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    }
+
+    // Bulk Delete
+    document.getElementById('bulkDeleteBtn').addEventListener('click', function() {
+        const selectedIds = getSelectedProjectIds();
+        if (selectedIds.length === 0) return;
+
+        if (confirm(`Yakin ingin menghapus ${selectedIds.length} project terpilih? Project akan di-archive (soft delete).`)) {
+            fetch('{% url "dashboard:bulk_delete" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ project_ids: selectedIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Berhasil menghapus ${data.deleted_count} project.`);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Terjadi kesalahan saat menghapus project.');
+            });
+        }
+    });
+
+    // Bulk Archive
+    document.getElementById('bulkArchiveBtn').addEventListener('click', function() {
+        const selectedIds = getSelectedProjectIds();
+        if (selectedIds.length === 0) return;
+
+        if (confirm(`Yakin ingin meng-archive ${selectedIds.length} project terpilih?`)) {
+            fetch('{% url "dashboard:bulk_archive" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ project_ids: selectedIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Berhasil meng-archive ${data.archived_count} project.`);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Terjadi kesalahan saat meng-archive project.');
+            });
+        }
+    });
+
+    // Bulk Unarchive
+    document.getElementById('bulkUnarchiveBtn').addEventListener('click', function() {
+        const selectedIds = getSelectedProjectIds();
+        if (selectedIds.length === 0) return;
+
+        if (confirm(`Yakin ingin mengaktifkan kembali ${selectedIds.length} project terpilih?`)) {
+            fetch('{% url "dashboard:bulk_unarchive" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ project_ids: selectedIds })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Berhasil mengaktifkan ${data.unarchived_count} project.`);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Terjadi kesalahan saat mengaktifkan project.');
+            });
+        }
+    });
+
+    // Bulk Export
+    document.getElementById('bulkExportBtn').addEventListener('click', function() {
+        const selectedIds = getSelectedProjectIds();
+        if (selectedIds.length === 0) return;
+
+        // Build export URL with selected IDs as query parameters
+        const idsParam = selectedIds.map(id => `ids=${id}`).join('&');
+        const exportUrl = `{% url 'dashboard:bulk_export_excel' %}?${idsParam}`;
+
+        // Open in new window to trigger download
+        window.location.href = exportUrl;
+    });
+});
+</script>
