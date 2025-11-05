@@ -111,6 +111,10 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     PHASE 5 FIX (Nov 2025):
     - Fixed TransactionManagementError by moving materialized view refresh inside atomic block
     - Enhanced logging for debugging import failures
+
+    PHASE 6 FIX (Nov 2025):
+    - Fixed duplicate AHSP in Excel causing IntegrityError on rincian bulk insert
+    - Merge rincian from duplicate AHSP entries before processing
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -139,6 +143,24 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     # PHASE 4 FIX: Validate AHSP uniqueness (sumber, kode_ahsp, nama_ahsp)
     _validate_ahsp_uniqueness(parse_result, stdout)
 
+    # PHASE 6 FIX: Merge duplicate AHSP in Excel file
+    # If Excel has same AHSP multiple times, merge their rincian
+    merged_jobs = {}  # (sumber, kode_ahsp) -> merged JobPreview
+    for job in parse_result.jobs:
+        key = (job.sumber, job.kode_ahsp)
+        if key in merged_jobs:
+            # Merge rincian from duplicate AHSP
+            existing_job = merged_jobs[key]
+            existing_job.rincian.extend(job.rincian)
+            _log(stdout, f"[MERGE] Duplicate AHSP found in Excel: {job.kode_ahsp} - merging rincian")
+            logger.warning(f"Duplicate AHSP in Excel: {job.sumber} :: {job.kode_ahsp} - merging {len(job.rincian)} rincian")
+        else:
+            merged_jobs[key] = job
+
+    # Use merged jobs for processing
+    jobs_to_process = list(merged_jobs.values())
+    _log(stdout, f"[INFO] After merging duplicates: {len(jobs_to_process)} unique AHSP")
+
     with transaction.atomic():
         persist_item_codes(parse_result)
 
@@ -147,7 +169,7 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
         all_pending_details = []
 
         # First pass: Create/update AHSP and collect rincian
-        for job in parse_result.jobs:
+        for job in jobs_to_process:
             defaults = {
                 "nama_ahsp": job.nama_ahsp,
                 "satuan": job.satuan or "",
