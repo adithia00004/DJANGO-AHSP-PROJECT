@@ -224,8 +224,8 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
         if all_pending_details:
             instances = [instance for instance, _ in all_pending_details]
 
-            # PHASE 4 FIX: Use savepoint to allow fallback on error
-            sid = transaction.savepoint()
+            # SIMPLIFIED: No savepoint - let atomic block handle errors
+            # If bulk insert fails, transaction will rollback and user gets clear error message
             try:
                 # PHASE 1: Increased batch_size from 500 to 1000
                 # For very large imports (>10K), use larger batch size
@@ -237,65 +237,45 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 summary.rincian_written = len(instances)
                 _log(stdout, f"[bulk] ✓ Inserted {len(instances)} rincian records")
                 logger.info(f"Successfully inserted {len(instances)} rincian records")
-                transaction.savepoint_commit(sid)
+
             except Exception as exc:  # pragma: no cover - DB specific failure
-                # PHASE 4 FIX: Rollback to savepoint to recover from error
-                transaction.savepoint_rollback(sid)
+                # Log error and re-raise to let atomic block handle cleanup
+                error_type = type(exc).__name__
+                error_msg = str(exc)
+                logger.error(f"Bulk insert failed: {error_type}: {error_msg}", exc_info=True)
 
-                fallback_msg = (
-                    f"[!] Bulk create failed: {type(exc).__name__}: {exc}. Trying individual inserts..."
+                # Add user-friendly error message
+                summary.detail_errors.append(
+                    f"Bulk insert gagal: {error_type}. "
+                    f"Periksa data Anda untuk duplikat atau format yang tidak valid."
                 )
-                summary.detail_errors.append(fallback_msg)
-                _log(stdout, fallback_msg)
-                logger.warning(f"Bulk insert failed, falling back to individual inserts: {exc}", exc_info=True)
 
-                # Fallback to individual inserts with per-record savepoint
-                # CRITICAL: Each insert gets its own savepoint to prevent transaction corruption
-                for instance, row_number in all_pending_details:
-                    # Create savepoint for this individual insert
-                    individual_sp = transaction.savepoint()
-                    try:
-                        instance.save(force_insert=True)
-                        summary.rincian_written += 1
-                        transaction.savepoint_commit(individual_sp)
-                    except Exception as inner_exc:  # pragma: no cover - DB specific
-                        # Rollback this individual insert's savepoint
-                        transaction.savepoint_rollback(individual_sp)
-                        message = f"[!] Gagal import rincian baris {row_number}: {inner_exc}"
-                        summary.detail_errors.append(message)
-                        _log(stdout, message)
-                        logger.warning(f"Individual insert failed for row {row_number}: {inner_exc}")
+                # Re-raise to trigger transaction rollback
+                raise
 
         # PHASE 3 DAY 3: Refresh materialized view after import
-        # CRITICAL FIX: Must be inside atomic block AND wrapped in savepoint
-        # Only refresh if we successfully wrote some data
+        # SIMPLIFIED: Try to refresh, but don't fail import if this fails
         if summary.rincian_written > 0:
-            refresh_sp = transaction.savepoint()
             try:
                 _refresh_materialized_view(stdout)
-                transaction.savepoint_commit(refresh_sp)
             except Exception as exc:
-                transaction.savepoint_rollback(refresh_sp)
                 error_msg = f"[!] Failed to refresh materialized view: {exc}"
                 _log(stdout, error_msg)
                 logger.warning(f"Materialized view refresh failed: {exc}", exc_info=True)
-                # Don't append to detail_errors - this is not critical for import success
+                # Don't fail the import for this
 
         # PHASE 4: Invalidate search cache after import
-        # CRITICAL FIX: Must be inside atomic block AND wrapped in savepoint
+        # SIMPLIFIED: Try to invalidate, but don't fail import if this fails
         if summary.rincian_written > 0:
-            cache_sp = transaction.savepoint()
             try:
                 cache = CacheService()
                 invalidated = cache.invalidate_search_cache()
                 _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
-                transaction.savepoint_commit(cache_sp)
             except Exception as exc:
-                transaction.savepoint_rollback(cache_sp)
                 error_msg = f"[!] Failed to invalidate cache: {exc}"
                 _log(stdout, error_msg)
                 logger.warning(f"Cache invalidation failed: {exc}", exc_info=True)
-                # Don't append to detail_errors - this is not critical for import success
+                # Don't fail the import for this
 
     # Log import summary
     _log(stdout, "\n[COMPLETE] Import finished successfully!")
