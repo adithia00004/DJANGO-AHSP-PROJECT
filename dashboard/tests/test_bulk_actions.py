@@ -31,12 +31,13 @@ User = get_user_model()
 @pytest.fixture
 def multiple_active_projects(user):
     """Create 5 active projects for bulk operations testing."""
+    from datetime import date
     projects = []
     for i in range(1, 6):
         project = Project.objects.create(
             owner=user,
             nama=f'Bulk Test Project {i}',
-            tahun_project=2025,
+            tanggal_mulai=date.today(),
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client=f'Client {i}',
@@ -50,12 +51,13 @@ def multiple_active_projects(user):
 @pytest.fixture
 def multiple_archived_projects(user):
     """Create 3 archived projects for unarchive testing."""
+    from datetime import date
     projects = []
     for i in range(1, 4):
         project = Project.objects.create(
             owner=user,
             nama=f'Archived Project {i}',
-            tahun_project=2024,
+            tanggal_mulai=date.today(),
             sumber_dana='APBD',
             lokasi_project='Bandung',
             nama_client=f'Archived Client {i}',
@@ -69,6 +71,7 @@ def multiple_archived_projects(user):
 @pytest.fixture
 def mixed_projects(user):
     """Create mix of active and archived projects."""
+    from datetime import date
     active = []
     archived = []
 
@@ -77,7 +80,7 @@ def mixed_projects(user):
         project = Project.objects.create(
             owner=user,
             nama=f'Active Mixed {i}',
-            tahun_project=2025,
+            tanggal_mulai=date.today(),
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -91,7 +94,7 @@ def mixed_projects(user):
         project = Project.objects.create(
             owner=user,
             nama=f'Archived Mixed {i}',
-            tahun_project=2024,
+            tanggal_mulai=date.today(),
             sumber_dana='APBD',
             lokasi_project='Bandung',
             nama_client='Client',
@@ -179,12 +182,13 @@ class TestBulkDelete:
 
     def test_bulk_delete_user_isolation(self, client, user, other_user, multiple_active_projects):
         """Test user cannot delete another user's projects."""
+        from datetime import date
         # Create projects owned by other_user
         other_projects = [
             Project.objects.create(
                 owner=other_user,
                 nama='Other User Project',
-                tahun_project=2025,
+                tanggal_mulai=date.today(),
                 sumber_dana='APBN',
                 lokasi_project='Jakarta',
                 nama_client='Client',
@@ -479,11 +483,12 @@ class TestBulkExport:
 
     def test_bulk_export_user_isolation(self, client, user, other_user):
         """Test user cannot export another user's projects."""
+        from datetime import date
         # Create projects owned by other_user
         other_project = Project.objects.create(
             owner=other_user,
             nama='Other User Project',
-            tahun_project=2025,
+            tanggal_mulai=date.today(),
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -572,13 +577,14 @@ class TestBulkActionsEdgeCases:
 
     def test_bulk_export_large_selection(self, client, user):
         """Test bulk export with many projects (50+)."""
+        from datetime import date
         # Create 50 projects
         projects = []
         for i in range(50):
             project = Project.objects.create(
                 owner=user,
                 nama=f'Large Export Test {i}',
-                tahun_project=2025,
+                tanggal_mulai=date.today(),
                 sumber_dana='APBN',
                 lokasi_project='Jakarta',
                 nama_client='Client',

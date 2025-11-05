@@ -51,7 +51,6 @@ def project_data():
     """Valid project data for tests."""
     return {
         'nama': 'Test Project',
-        'tahun_project': 2025,
         'sumber_dana': 'APBN',
         'lokasi_project': 'Jakarta',
         'nama_client': 'Test Client',
@@ -69,7 +68,7 @@ def minimal_project_data():
     """Minimal valid project data (only required fields)."""
     return {
         'nama': 'Minimal Project',
-        'tahun_project': 2025,
+        'tanggal_mulai': date.today(),
         'sumber_dana': 'APBN',
         'lokasi_project': 'Jakarta',
         'nama_client': 'Test Client',
@@ -98,7 +97,6 @@ def multiple_projects(db, user):
         proj = Project.objects.create(
             owner=user,
             nama=f'Test Project {i+1}',
-            tahun_project=2025,
             sumber_dana='APBN' if i % 2 == 0 else 'APBD',
             lokasi_project=f'Location {i+1}',
             nama_client=f'Client {i+1}',
@@ -119,7 +117,7 @@ def archived_project(db, user):
     return Project.objects.create(
         owner=user,
         nama='Archived Project',
-        tahun_project=2024,
+        tanggal_mulai=date.today() - timedelta(days=365),
         sumber_dana='APBN',
         lokasi_project='Jakarta',
         nama_client='Old Client',
@@ -136,7 +134,6 @@ def overdue_project(db, user):
     return Project.objects.create(
         owner=user,
         nama='Overdue Project',
-        tahun_project=2024,
         sumber_dana='APBN',
         lokasi_project='Jakarta',
         nama_client='Test Client',
@@ -155,7 +152,6 @@ def future_project(db, user):
     return Project.objects.create(
         owner=user,
         nama='Future Project',
-        tahun_project=2025,
         sumber_dana='APBN',
         lokasi_project='Jakarta',
         nama_client='Test Client',

@@ -38,7 +38,6 @@ class Project(models.Model):
     # === Timeline Pelaksanaan Project ===
     tanggal_mulai = models.DateField(
         'Tanggal Mulai Pelaksanaan',
-        default=timezone.now,
         help_text='Tanggal mulai pelaksanaan project (wajib, tahun akan diambil dari field ini)'
     )
     tanggal_selesai = models.DateField(
