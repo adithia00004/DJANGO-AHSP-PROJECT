@@ -117,11 +117,76 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
                 suggestions.append("   3. Hubungi administrator jika masalah berlanjut")
 
     elif 'IntegrityError' in error_type:
-        user_message = "🔄 Ada data yang duplikat atau konflik"
+        user_message = "🔄 Data yang Anda coba import SUDAH ADA di database"
 
         # Extract field name and value from error message
-        if 'UNIQUE constraint' in error_message:
-            # Try to extract field name
+        # Support both SQLite and PostgreSQL formats
+        unique_constraint_found = False
+
+        # PostgreSQL format: duplicate key value violates unique constraint "constraint_name"
+        # DETAIL:  Key (field1, field2)=(value1, value2) already exists.
+        if 'duplicate key value' in error_message or 'unique constraint' in error_message.lower():
+            unique_constraint_found = True
+
+            # Try to extract constraint name
+            constraint_match = re.search(r'unique constraint ["\'](\w+)["\']', error_message, re.IGNORECASE)
+            if constraint_match:
+                constraint_name = constraint_match.group(1)
+                affected_fields.append(constraint_name)
+
+            # Try to extract field names from DETAIL line (PostgreSQL)
+            fields_match = re.search(r'Key \(([^)]+)\)=\(([^)]+)\)', error_message)
+            if fields_match:
+                field_names_str = fields_match.group(1)
+                field_values_str = fields_match.group(2)
+
+                # Parse fields and values
+                field_list = [f.strip() for f in field_names_str.split(',')]
+                value_list = [v.strip() for v in field_values_str.split(',')]
+
+                # User-friendly field names
+                friendly_names = {
+                    'ahsp_id': 'ID AHSP',
+                    'kode_ahsp': 'Kode AHSP',
+                    'kode_item': 'Kode Item',
+                    'nama_ahsp': 'Nama Pekerjaan',
+                    'uraian_item': 'Uraian Item',
+                    'satuan_item': 'Satuan',
+                    'kategori': 'Kategori'
+                }
+
+                suggestions.append("\n❌ PENYEBAB ERROR:")
+                suggestions.append("   Data dengan kombinasi nilai berikut SUDAH ADA di database:")
+                suggestions.append("")
+                for field, value in zip(field_list, value_list):
+                    friendly = friendly_names.get(field, field)
+                    suggestions.append(f"      • {friendly}: {value}")
+
+                suggestions.append("\n🔍 KEMUNGKINAN PENYEBAB:")
+                suggestions.append("   1. ✅ Anda sudah pernah import file ini sebelumnya")
+                suggestions.append("   2. ✅ Data ini sudah ada dari import sebelumnya")
+                suggestions.append("   3. ⚠️ File Excel memiliki duplikat internal")
+
+                suggestions.append("\n📝 SOLUSI - Pilih salah satu:")
+                suggestions.append("")
+                suggestions.append("   OPSI 1: Hapus data lama terlebih dahulu")
+                suggestions.append("   -------")
+                suggestions.append("   1. Buka menu Master Data AHSP")
+                suggestions.append("   2. Cari dan hapus data yang duplikat")
+                suggestions.append("   3. Kemudian import ulang file Anda")
+                suggestions.append("")
+                suggestions.append("   OPSI 2: Upload file dengan data BARU")
+                suggestions.append("   -------")
+                suggestions.append("   1. Pastikan file berisi data yang belum pernah diimport")
+                suggestions.append("   2. Atau edit file untuk mengubah kode/nilai yang duplikat")
+                suggestions.append("")
+                suggestions.append("   OPSI 3: Abaikan jika data sudah benar")
+                suggestions.append("   -------")
+                suggestions.append("   • Jika data memang sudah ada dan benar, tidak perlu import ulang")
+
+        # SQLite format: UNIQUE constraint failed: table.field
+        elif 'UNIQUE constraint failed' in error_message:
+            unique_constraint_found = True
             unique_match = re.search(r'UNIQUE constraint failed: \w+\.(\w+)', error_message)
             if unique_match:
                 field = unique_match.group(1)
@@ -156,7 +221,8 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
                 suggestions.append("   4. Hapus atau ubah nilai yang duplikat")
                 suggestions.append("   5. Save dan upload ulang")
 
-        elif 'FOREIGN KEY constraint' in error_message:
+        # Handle FOREIGN KEY constraints
+        if 'FOREIGN KEY constraint' in error_message:
             suggestions.append("\n❌ Data referensi tidak valid")
             suggestions.append("\n🔍 Masalahnya:")
             suggestions.append("   • Ada data yang merujuk ke data lain yang tidak ada")
@@ -166,7 +232,8 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
             suggestions.append("   2. Atau import master data terlebih dahulu")
             suggestions.append("   3. Baru import data detail")
 
-        else:
+        # If no specific constraint info found, show generic message
+        elif not unique_constraint_found and not suggestions:
             # Generic integrity error
             suggestions.append("\n❌ Data tidak sesuai dengan aturan database")
             if affected_rows:
