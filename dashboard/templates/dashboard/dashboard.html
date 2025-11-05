@@ -321,12 +321,11 @@
               <thead class="table-light dp-thead-sticky">
                 <tr>
                   <th>Nama Project <span class="text-danger">*</span></th>
-                  <th>Tahun Project <span class="text-danger">*</span></th>
                   <th>Sumber Dana <span class="text-danger">*</span></th>
                   <th>Lokasi Project <span class="text-danger">*</span></th>
                   <th>Nama Client <span class="text-danger">*</span></th>
                   <th>Anggaran Owner <span class="text-danger">*</span></th>
-                  <th>Tanggal Mulai</th>
+                  <th>Tanggal Mulai <span class="text-danger">*</span></th>
                   <th>Tanggal Selesai</th>
                   <th>Durasi (hari)</th>
                   <th>Ket 1</th>
@@ -350,10 +349,6 @@
                       {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
                       {{ form.nama }}
                       {% for err in form.nama.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
-                    </td>
-                    <td class="{% if form.tahun_project.errors %}table-danger{% endif %}">
-                      {{ form.tahun_project }}
-                      {% for err in form.tahun_project.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
                     </td>
                     <td class="{% if form.sumber_dana.errors %}table-danger{% endif %}">
                       {{ form.sumber_dana }}
@@ -419,7 +414,6 @@
               {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
               {{ formset.empty_form.nama }}
             </td>
-            <td>{{ formset.empty_form.tahun_project }}</td>
             <td>{{ formset.empty_form.sumber_dana }}</td>
             <td>{{ formset.empty_form.lokasi_project }}</td>
             <td>{{ formset.empty_form.nama_client }}</td>
