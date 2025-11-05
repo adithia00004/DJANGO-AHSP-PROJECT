@@ -169,7 +169,11 @@ class PreviewImportViewTests(SimpleTestCase):
 
     def test_preview_stores_pending_result(self):
         parse_result = self._build_parse_result()
-        upload = SimpleNamespace(name="data.xlsx")
+        upload = mock.Mock()
+        upload.name = "data.xlsx"
+        upload.size = 1024
+        upload.content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        upload.seek = mock.Mock(return_value=0)
         form = self._build_upload_form_mock(upload)
 
         request = self._prepare_request("post", "/import/preview/")
@@ -178,6 +182,8 @@ class PreviewImportViewTests(SimpleTestCase):
             "referensi.views.preview.load_preview_from_file", return_value=parse_result
         ), mock.patch("referensi.views.preview.assign_item_codes") as mocked_assign, mock.patch(
             "referensi.services.preview_service.assign_item_codes"
+        ), mock.patch(
+            "referensi.views.preview.validate_ahsp_file"
         ), mock.patch(
             "referensi.views.preview.render", wraps=lambda req, template, context: HttpResponse()
         ) as mocked_render:
@@ -196,7 +202,11 @@ class PreviewImportViewTests(SimpleTestCase):
     def test_commit_import_uses_writer_and_clears_session(self):
         parse_result = self._build_parse_result()
 
-        upload = SimpleNamespace(name="data.xlsx")
+        upload = mock.Mock()
+        upload.name = "data.xlsx"
+        upload.size = 1024
+        upload.content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        upload.seek = mock.Mock(return_value=0)
         form = self._build_upload_form_mock(upload)
 
         request_preview = self._prepare_request("post", "/import/preview/")
@@ -205,6 +215,8 @@ class PreviewImportViewTests(SimpleTestCase):
             "referensi.views.preview.load_preview_from_file", return_value=parse_result
         ), mock.patch("referensi.views.preview.assign_item_codes"), mock.patch(
             "referensi.services.preview_service.assign_item_codes"
+        ), mock.patch(
+            "referensi.views.preview.validate_ahsp_file"
         ), mock.patch(
             "referensi.views.preview.render", wraps=lambda req, template, context: HttpResponse()
         ):

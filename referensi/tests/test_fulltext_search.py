@@ -18,6 +18,11 @@ from django.db import connection
 from referensi.models import AHSPReferensi, RincianReferensi
 from referensi.services.ahsp_repository import AHSPRepository, ahsp_repository
 
+pytestmark = pytest.mark.skipif(
+    connection.vendor != "postgresql",
+    reason="Full-text search tests require PostgreSQL backend.",
+)
+
 
 @pytest.mark.django_db
 class TestFullTextSearchSetup(TestCase):

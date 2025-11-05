@@ -187,6 +187,7 @@ def preview_import(request):
         if form.is_valid():
             excel_file = form.cleaned_data["excel_file"]
             uploaded_name = excel_file.name
+            file_size = getattr(excel_file, "size", None)
 
             # Validate file security before processing
             try:
@@ -197,7 +198,7 @@ def preview_import(request):
                     request=request,
                     filename=uploaded_name,
                     success=True,
-                    file_size=excel_file.size
+                    file_size=file_size
                 )
 
             except ValidationError as e:
@@ -226,7 +227,7 @@ def preview_import(request):
                         filename=uploaded_name,
                         threat_type=threat_type,
                         reason=reason,
-                        file_size=excel_file.size
+                        file_size=file_size
                     )
                 else:
                     # Log as normal validation failure
@@ -234,7 +235,7 @@ def preview_import(request):
                         request=request,
                         filename=uploaded_name,
                         success=False,
-                        file_size=excel_file.size,
+                        file_size=file_size,
                         reason=reason
                     )
 

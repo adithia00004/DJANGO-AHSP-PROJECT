@@ -223,7 +223,15 @@ CSRF_TRUSTED_ORIGINS = [
 # ---------------------------------------------------------------------------
 
 # Redis cache backend for high performance
-CACHE_BACKEND = os.getenv("CACHE_BACKEND", "redis")  # 'redis' or 'db' for fallback
+CACHE_BACKEND = os.getenv("CACHE_BACKEND", "redis")  # 'redis', 'db', or 'locmem'
+
+if CACHE_BACKEND == "redis":
+    try:
+        import importlib
+
+        importlib.import_module("django_redis")
+    except ModuleNotFoundError:
+        CACHE_BACKEND = "locmem"
 
 if CACHE_BACKEND == "redis":
     CACHES = {
@@ -245,7 +253,7 @@ if CACHE_BACKEND == "redis":
             "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "300")),  # 5 minutes default
         }
     }
-else:
+elif CACHE_BACKEND == "db":
     # Fallback to database cache
     CACHES = {
         "default": {
@@ -253,6 +261,15 @@ else:
             "LOCATION": os.getenv("DJANGO_CACHE_LOCATION", "django_cache_table"),
             "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "3600")),
             "OPTIONS": {"MAX_ENTRIES": int(os.getenv("DJANGO_CACHE_MAX_ENTRIES", "10000"))},
+        }
+    }
+else:
+    # Safe default for tests or minimal environments
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "ahsp-local",
+            "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "300")),
         }
     }
 

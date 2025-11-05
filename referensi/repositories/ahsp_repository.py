@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib.postgres.search import SearchQuery, SearchRank
-from django.db import models
-from django.db.models import F, QuerySet
+from django.db import connection, models
+from django.db.models import QuerySet, Q, FloatField, BooleanField, F
+from django.db.models.expressions import Func, RawSQL, Value
+from django.db.utils import ProgrammingError, OperationalError
 
 from referensi.models import AHSPReferensi, AHSPStats, RincianReferensi
+
+
+class TsMatch(Func):
+    """Custom function for @@ operator (full-text search match)."""
+    function = ''
+    template = "%(expressions)s"
+    arg_joiner = ' @@ '
+    output_field = BooleanField()
 
 
 class AHSPRepository:
@@ -126,27 +137,44 @@ class AHSPRepository:
         if not keyword:
             return queryset
 
-        # Create search query with Indonesian language support
-        # 'websearch' type allows natural queries like: "beton OR aspal", "jalan -tol"
-        search_query = SearchQuery(keyword, config='indonesian', search_type='websearch')
+        keyword = keyword.strip()
+        if connection.vendor != "postgresql" or not getattr(connection.features, "has_full_text_search", False):
+            fallback = (
+                Q(kode_ahsp__icontains=keyword)
+                | Q(nama_ahsp__icontains=keyword)
+                | Q(klasifikasi__icontains=keyword)
+                | Q(sub_klasifikasi__icontains=keyword)
+            )
+            return queryset.filter(fallback).annotate(
+                search_rank=Value(0.0, output_field=FloatField())
+            ).distinct().order_by("kode_ahsp")
 
-        # Use raw SQL to query against search_vector (generated column)
-        # We use extra() because search_vector is not a Django field
-        return queryset.extra(
-            select={
-                # Calculate relevance rank for ordering
-                'search_rank': """
-                    ts_rank(search_vector, to_tsquery('indonesian', %s))
-                """
-            },
-            select_params=[keyword],
-            where=[
-                # Match against search_vector using @@ operator
-                "search_vector @@ to_tsquery('indonesian', %s)"
-            ],
-            params=[keyword],
-            order_by=['-search_rank'],
+        search_query = SearchQuery(
+            keyword,
+            config=getattr(settings, "FTS_LANGUAGE", "simple"),
+            search_type="websearch",
         )
+
+        try:
+            # Use RawSQL to reference the search_vector column
+            table_name = AHSPReferensi._meta.db_table
+            vector = RawSQL(f"{table_name}.search_vector", [])
+
+            return queryset.annotate(
+                search_rank=SearchRank(vector, search_query),
+                _match=TsMatch(vector, search_query)
+            ).filter(
+                _match=True
+            ).order_by("-search_rank", "kode_ahsp")
+        except (ProgrammingError, OperationalError):
+            return queryset.filter(
+                Q(kode_ahsp__icontains=keyword)
+                | Q(nama_ahsp__icontains=keyword)
+                | Q(klasifikasi__icontains=keyword)
+                | Q(sub_klasifikasi__icontains=keyword)
+            ).annotate(
+                search_rank=Value(0.0, output_field=FloatField())
+            ).distinct().order_by("kode_ahsp")
 
     @staticmethod
     def filter_by_metadata(

@@ -14,18 +14,34 @@ Performance:
 
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 from typing import Optional, List, Dict, Any
-from django.db.models import QuerySet, Q, F
+
+from django.db import connection
+from django.db.models import QuerySet, Q, Value, Case, When, BooleanField
+from django.db.models import FloatField, IntegerField
+from django.db.models.expressions import Func, RawSQL
 from django.contrib.postgres.search import (
     SearchQuery,
-    SearchRank,
-    SearchVector,
     TrigramSimilarity
 )
 from django.conf import settings
+from django.db.utils import ProgrammingError, OperationalError
 
 from referensi.models import AHSPReferensi, RincianReferensi
 from referensi.services.cache_service import CacheService
+
+
+class TsMatch(Func):
+    function = ''
+    template = "%(expressions)s"
+    arg_joiner = ' @@ '
+    output_field = BooleanField()
+
+
+class TsRank(Func):
+    function = 'ts_rank'
+    output_field = FloatField()
 
 
 class AHSPRepository:
@@ -39,9 +55,91 @@ class AHSPRepository:
     def __init__(self):
         self.default_limit = 1000
         self.min_query_length = 2
-        self.cache_enabled = getattr(settings, 'FTS_CACHE_RESULTS', True)
         self.cache_ttl = getattr(settings, 'FTS_CACHE_TTL', 300)  # 5 minutes
         self.cache = CacheService()
+        self.search_config = getattr(settings, 'FTS_LANGUAGE', 'simple')
+        self.postgres_fts = (
+            connection.vendor == 'postgresql'
+            and getattr(connection.features, 'has_full_text_search', False)
+        )
+        self.ahsp_table = AHSPReferensi._meta.db_table
+        self.rincian_table = RincianReferensi._meta.db_table
+
+    @property
+    def cache_enabled(self) -> bool:
+        """Check cache setting dynamically to support test fixtures."""
+        return getattr(settings, 'FTS_CACHE_RESULTS', True)
+
+    # --------------------------------------------------------------------
+    # Internal helpers
+    # --------------------------------------------------------------------
+
+    def _should_use_postgres_fts(self) -> bool:
+        return self.postgres_fts
+
+    def _fallback_filter_ahsp(self, query: str) -> Q:
+        """Simple fallback lookup when PostgreSQL FTS is unavailable."""
+        query = query.strip()
+        return (
+            Q(kode_ahsp__icontains=query)
+            | Q(nama_ahsp__icontains=query)
+            | Q(klasifikasi__icontains=query)
+            | Q(sub_klasifikasi__icontains=query)
+        )
+
+    def _fallback_filter_rincian(self, query: str) -> Q:
+        query = query.strip()
+        return (
+            Q(kode_item__icontains=query)
+            | Q(uraian_item__icontains=query)
+        )
+
+    def _python_similarity_queryset(
+        self,
+        query: str,
+        threshold: float,
+        limit: int
+    ) -> QuerySet[AHSPReferensi]:
+        """Compute similarity scores in Python as a safe fallback."""
+        matches: List[tuple[int, float]] = []
+        query_lower = query.lower()
+
+        for obj in AHSPReferensi.objects.all():
+            name_score = SequenceMatcher(None, (obj.nama_ahsp or "").lower(), query_lower).ratio()
+            code_score = SequenceMatcher(None, (obj.kode_ahsp or "").lower(), query_lower).ratio()
+            similarity = max(name_score, code_score)
+            if similarity >= threshold:
+                matches.append((obj.pk, similarity))
+
+        if not matches:
+            return AHSPReferensi.objects.none()
+
+        matches.sort(key=lambda item: item[1], reverse=True)
+        matches = matches[:limit]
+        ordered_pks = [pk for pk, _ in matches]
+        similarity_cases = [
+            When(pk=pk, then=Value(score, output_field=FloatField()))
+            for pk, score in matches
+        ]
+        order_cases = [
+            When(pk=pk, then=Value(idx, output_field=IntegerField()))
+            for idx, pk in enumerate(ordered_pks)
+        ]
+
+        return (
+            AHSPReferensi.objects.filter(pk__in=ordered_pks)
+            .annotate(
+                similarity=Case(
+                    *similarity_cases,
+                    default=Value(0.0, output_field=FloatField()),
+                ),
+                _order_position=Case(
+                    *order_cases,
+                    default=Value(len(ordered_pks), output_field=IntegerField()),
+                ),
+            )
+            .order_by("_order_position", "-similarity")
+        )
 
     # ========================================================================
     # Full-Text Search Methods
@@ -97,15 +195,26 @@ class AHSPRepository:
             if cached_results is not None:
                 return cached_results
 
-        # Create search query
-        search_query = SearchQuery(query, search_type=search_type, config='simple')
+        qs = AHSPReferensi.objects.all()
 
-        # Build queryset with ranking
-        qs = AHSPReferensi.objects.annotate(
-            rank=SearchRank(F('search_vector'), search_query)
-        ).filter(
-            search_vector=search_query
-        )
+        if self._should_use_postgres_fts():
+            search_query = SearchQuery(query, search_type=search_type, config=self.search_config)
+            vector = RawSQL(f"{self.ahsp_table}.search_vector", [])
+            try:
+                qs = qs.annotate(
+                    rank=TsRank(vector, search_query),
+                    _match=TsMatch(vector, search_query),
+                ).filter(_match=True)
+            except (ProgrammingError, OperationalError):
+                # Extension (e.g. pg_trgm) might be missing; fall back gracefully.
+                self.postgres_fts = False
+                qs = AHSPReferensi.objects.filter(self._fallback_filter_ahsp(query)).annotate(
+                    rank=Value(0.0, output_field=FloatField())
+                )
+        else:
+            qs = AHSPReferensi.objects.filter(self._fallback_filter_ahsp(query)).annotate(
+                rank=Value(0.0, output_field=FloatField())
+            )
 
         # Apply filters
         if sumber:
@@ -170,15 +279,25 @@ class AHSPRepository:
             if cached_results is not None:
                 return cached_results
 
-        # Create search query
-        search_query = SearchQuery(query, search_type=search_type, config='simple')
+        qs = RincianReferensi.objects.all()
 
-        # Build queryset with ranking
-        qs = RincianReferensi.objects.annotate(
-            rank=SearchRank(F('search_vector'), search_query)
-        ).filter(
-            search_vector=search_query
-        )
+        if self._should_use_postgres_fts():
+            search_query = SearchQuery(query, search_type=search_type, config=self.search_config)
+            vector = RawSQL(f"{self.rincian_table}.search_vector", [])
+            try:
+                qs = qs.annotate(
+                    rank=TsRank(vector, search_query),
+                    _match=TsMatch(vector, search_query),
+                ).filter(_match=True)
+            except (ProgrammingError, OperationalError):
+                self.postgres_fts = False
+                qs = RincianReferensi.objects.filter(self._fallback_filter_rincian(query)).annotate(
+                    rank=Value(0.0, output_field=FloatField())
+                )
+        else:
+            qs = RincianReferensi.objects.filter(self._fallback_filter_rincian(query)).annotate(
+                rank=Value(0.0, output_field=FloatField())
+            )
 
         # Apply filters
         if kategori:
@@ -243,12 +362,30 @@ class AHSPRepository:
             if cached_results is not None:
                 return cached_results
 
-        qs = AHSPReferensi.objects.annotate(
-            similarity=TrigramSimilarity('nama_ahsp', query) +
-                      TrigramSimilarity('kode_ahsp', query)
-        ).filter(
-            similarity__gt=threshold
-        ).order_by('-similarity')[:limit]
+        if self._should_use_postgres_fts():
+            try:
+                qs = AHSPReferensi.objects.annotate(
+                    similarity=TrigramSimilarity('nama_ahsp', query) +
+                              TrigramSimilarity('kode_ahsp', query)
+                ).filter(
+                    similarity__gte=threshold
+                ).order_by('-similarity', 'kode_ahsp')[:limit]
+            except (ProgrammingError, OperationalError):
+                # Make a best-effort attempt to enable pg_trgm once.
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+                    qs = AHSPReferensi.objects.annotate(
+                        similarity=TrigramSimilarity('nama_ahsp', query) +
+                                  TrigramSimilarity('kode_ahsp', query)
+                    ).filter(
+                        similarity__gte=threshold
+                    ).order_by('-similarity', 'kode_ahsp')[:limit]
+                except Exception:
+                    self.postgres_fts = False
+                    qs = self._python_similarity_queryset(query, threshold, limit)
+        else:
+            qs = self._python_similarity_queryset(query, threshold, limit)
 
         # Cache results if enabled
         if self.cache_enabled:
@@ -344,12 +481,22 @@ class AHSPRepository:
 
         # Apply full-text search if query provided
         if query and len(query.strip()) >= self.min_query_length:
-            search_query = SearchQuery(query, search_type='websearch', config='simple')
-            qs = qs.annotate(
-                rank=SearchRank(F('search_vector'), search_query)
-            ).filter(
-                search_vector=search_query
-            ).order_by('-rank', 'kode_ahsp')
+            if self._should_use_postgres_fts():
+                search_query = SearchQuery(query, search_type='websearch', config=self.search_config)
+                try:
+                    qs = qs.annotate(
+                        rank=TsRank(RawSQL(f"{self.ahsp_table}.search_vector", []), search_query),
+                        _match=TsMatch(RawSQL(f"{self.ahsp_table}.search_vector", []), search_query),
+                    ).filter(_match=True).order_by('-rank', 'kode_ahsp')
+                except (ProgrammingError, OperationalError):
+                    self.postgres_fts = False
+                    qs = AHSPReferensi.objects.filter(self._fallback_filter_ahsp(query)).annotate(
+                        rank=Value(0.0, output_field=FloatField())
+                    ).order_by('kode_ahsp')
+            else:
+                qs = AHSPReferensi.objects.filter(self._fallback_filter_ahsp(query)).annotate(
+                    rank=Value(0.0, output_field=FloatField())
+                ).order_by('kode_ahsp')
         else:
             qs = qs.order_by('kode_ahsp')
 
@@ -463,13 +610,32 @@ class AHSPRepository:
         if not queries:
             return AHSPReferensi.objects.none()
 
-        search_queries = [
-            SearchQuery(q, search_type='websearch', config='simple')
-            for q in queries if q and len(q.strip()) >= self.min_query_length
+        normalized_queries = [
+            q.strip() for q in queries if q and len(q.strip()) >= self.min_query_length
         ]
 
-        if not search_queries:
+        if not normalized_queries:
             return AHSPReferensi.objects.none()
+
+        if not self._should_use_postgres_fts():
+            if combine == 'OR':
+                condition = Q()
+                for q in normalized_queries:
+                    condition |= self._fallback_filter_ahsp(q)
+            elif combine == 'AND':
+                condition = Q()
+                for q in normalized_queries:
+                    condition &= self._fallback_filter_ahsp(q)
+            else:
+                raise ValueError(f"Invalid combine option: {combine}")
+
+            return AHSPReferensi.objects.filter(condition).distinct().order_by('kode_ahsp')
+
+        search_queries = [
+            SearchQuery(q, search_type='websearch', config=self.search_config)
+            for q in normalized_queries
+        ]
+
 
         # Combine queries
         if combine == 'OR':
@@ -483,11 +649,23 @@ class AHSPRepository:
         else:
             raise ValueError(f"Invalid combine option: {combine}")
 
-        qs = AHSPReferensi.objects.annotate(
-            rank=SearchRank(F('search_vector'), combined_query)
-        ).filter(
-            search_vector=combined_query
-        ).order_by('-rank', 'kode_ahsp')
+        try:
+            vector = RawSQL(f"{self.ahsp_table}.search_vector", [])
+            qs = AHSPReferensi.objects.annotate(
+                rank=TsRank(vector, combined_query),
+                _match=TsMatch(vector, combined_query),
+            ).filter(_match=True).order_by('-rank', 'kode_ahsp')
+        except (ProgrammingError, OperationalError):
+            self.postgres_fts = False
+            if combine == 'OR':
+                condition = Q()
+                for q in normalized_queries:
+                    condition |= self._fallback_filter_ahsp(q)
+            else:
+                condition = Q()
+                for q in normalized_queries:
+                    condition &= self._fallback_filter_ahsp(q)
+            qs = AHSPReferensi.objects.filter(condition).distinct().order_by('kode_ahsp')
 
         return qs
 
