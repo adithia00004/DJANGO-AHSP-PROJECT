@@ -115,13 +115,24 @@
             const level = msg.level || 'info';
             const color = MESSAGE_LEVEL_MAP[level] || 'info';
             const icon = MESSAGE_ICON_MAP[level] || 'bi-info-circle';
+            const tags = msg.tags || '';
 
-            // Split message by newlines for better formatting
-            const messageLines = msg.message.split('\n');
-            const messageHtml = messageLines.map(line => {
-                if (!line.trim()) return '';
-                return `<p class="mb-2">${line}</p>`;
-            }).join('');
+            let messageHtml;
+
+            // Check if this is an import-error with HTML content
+            if (tags.includes('import-error')) {
+                // Render HTML directly (it's already safe from mark_safe)
+                messageHtml = msg.message;
+            } else {
+                // Split message by newlines for better formatting
+                const messageLines = msg.message.split('\n');
+                messageHtml = messageLines.map(line => {
+                    if (!line.trim()) return '';
+                    // Escape HTML for safety
+                    const escaped = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<p class="mb-2">${escaped}</p>`;
+                }).join('');
+            }
 
             html += `
                 <div class="alert alert-${color} mb-3" role="alert">

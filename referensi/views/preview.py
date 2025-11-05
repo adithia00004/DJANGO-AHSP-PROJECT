@@ -16,6 +16,7 @@ from django.http import HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 
 from django.core.exceptions import ValidationError
 
@@ -28,7 +29,7 @@ from referensi.services.audit_logger import audit_logger
 from referensi.services.import_writer import write_parse_result_to_db
 from referensi.services.import_error_analyzer import (
     analyze_import_exception,
-    format_error_for_user
+    format_error_as_html
 )
 from referensi.services.item_code_registry import assign_item_codes
 from referensi.services.preview_service import PreviewImportService
@@ -443,20 +444,12 @@ def commit_import(request):
         logger = logging.getLogger(__name__)
         logger.error(f"Validation error for {uploaded_name}: {exc}", exc_info=True)
 
-        # Analyze error
+        # Analyze error and format as HTML
         analysis = analyze_import_exception(exc, parse_result, summary)
-        error_messages = format_error_for_user(analysis)
+        error_html = format_error_as_html(analysis)
 
-        # Display to user
-        messages.error(request, error_messages[0])
-        for msg in error_messages[1:]:
-            if msg.strip():
-                if '❌' in msg or 'Error' in msg:
-                    messages.error(request, msg)
-                elif '⚠️' in msg or 'Warning' in msg or 'bermasalah' in msg.lower():
-                    messages.warning(request, msg)
-                else:
-                    messages.info(request, msg)
+        # Display to user as safe HTML in modal
+        messages.error(request, mark_safe(error_html), extra_tags='import-error')
 
         return redirect("referensi:preview_import")
 
@@ -470,21 +463,10 @@ def commit_import(request):
 
         # ANALYZE THE ERROR IN DETAIL
         analysis = analyze_import_exception(exc, parse_result, summary)
-        error_messages = format_error_for_user(analysis)
+        error_html = format_error_as_html(analysis)
 
-        # Display detailed error to user
-        messages.error(request, "❌ Import Gagal")
-        for msg in error_messages:
-            if msg.strip():
-                # Categorize message by content
-                if '❌' in msg or 'Error' in msg or 'Gagal' in msg:
-                    messages.error(request, msg)
-                elif '⚠️' in msg or 'Warning' in msg or 'bermasalah' in msg.lower():
-                    messages.warning(request, msg)
-                elif '✅' in msg or 'Berhasil' in msg:
-                    messages.success(request, msg)
-                else:
-                    messages.info(request, msg)
+        # Display detailed error to user as safe HTML in modal
+        messages.error(request, mark_safe(error_html), extra_tags='import-error')
 
         # Log technical details for admin
         logger.error(f"Technical details:\n{analysis.technical_details}")

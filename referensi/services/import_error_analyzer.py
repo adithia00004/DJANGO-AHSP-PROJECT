@@ -444,9 +444,166 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
     )
 
 
+def format_error_as_html(analysis: ErrorAnalysis) -> str:
+    """
+    Format error analysis as clean, user-friendly HTML.
+
+    Returns:
+        Single HTML string with beautiful formatting
+    """
+    html_parts = []
+
+    # Main error message with icon
+    icon_map = {
+        'critical': '🔴',
+        'warning': '⚠️',
+        'info': 'ℹ️'
+    }
+    icon = icon_map.get(analysis.severity, 'ℹ️')
+
+    html_parts.append(f'<div class="error-message-container">')
+    html_parts.append(f'<h5 class="error-title">{icon} {analysis.user_message}</h5>')
+
+    # Parse suggestions which contain structured data
+    if analysis.suggestions:
+        suggestion_text = '\n'.join(analysis.suggestions)
+
+        # Check if it's an IntegrityError with duplicate data
+        if 'PENYEBAB ERROR:' in suggestion_text and 'Key' not in suggestion_text:
+            # Extract duplicate field values
+            lines = suggestion_text.split('\n')
+
+            current_section = None
+            for line in lines:
+                line = line.strip()
+
+                if '❌ PENYEBAB ERROR:' in line:
+                    html_parts.append('<div class="error-section">')
+                    html_parts.append('<h6 class="section-title">❌ Penyebab Error:</h6>')
+                    current_section = 'cause'
+                    continue
+
+                elif 'Data dengan kombinasi nilai berikut SUDAH ADA' in line:
+                    html_parts.append('<p class="section-desc">Data dengan kombinasi nilai berikut <strong>SUDAH ADA</strong> di database:</p>')
+                    html_parts.append('<div class="duplicate-data-box">')
+                    current_section = 'data'
+                    continue
+
+                elif '🔍 KEMUNGKINAN PENYEBAB:' in line:
+                    if current_section == 'data':
+                        html_parts.append('</div>')  # Close duplicate-data-box
+                    html_parts.append('</div>')  # Close error-section
+                    html_parts.append('<div class="error-section">')
+                    html_parts.append('<h6 class="section-title">🔍 Kemungkinan Penyebab:</h6>')
+                    html_parts.append('<ul class="cause-list">')
+                    current_section = 'reason'
+                    continue
+
+                elif '📝 SOLUSI - Pilih salah satu:' in line:
+                    if current_section == 'reason':
+                        html_parts.append('</ul>')
+                    html_parts.append('</div>')  # Close error-section
+                    html_parts.append('<div class="error-section">')
+                    html_parts.append('<h6 class="section-title">📝 Solusi - Pilih Salah Satu:</h6>')
+                    current_section = 'solution'
+                    continue
+
+                elif 'OPSI' in line:
+                    # Extract option number and title
+                    if 'OPSI 1' in line:
+                        html_parts.append('<div class="solution-option">')
+                        html_parts.append('<div class="option-header">Opsi 1: Hapus data lama terlebih dahulu</div>')
+                        html_parts.append('<ol class="option-steps">')
+                        current_section = 'option1'
+                    elif 'OPSI 2' in line:
+                        html_parts.append('</ol></div>')  # Close previous option
+                        html_parts.append('<div class="solution-option">')
+                        html_parts.append('<div class="option-header">Opsi 2: Upload file dengan data BARU</div>')
+                        html_parts.append('<ol class="option-steps">')
+                        current_section = 'option2'
+                    elif 'OPSI 3' in line:
+                        html_parts.append('</ol></div>')  # Close previous option
+                        html_parts.append('<div class="solution-option">')
+                        html_parts.append('<div class="option-header">Opsi 3: Abaikan jika data sudah benar</div>')
+                        html_parts.append('<ul class="option-steps">')
+                        current_section = 'option3'
+                    continue
+
+                elif line.startswith('-------') or not line:
+                    continue
+
+                # Content lines
+                if current_section == 'data' and line.startswith('•'):
+                    # Duplicate data field
+                    html_parts.append(f'<div class="field-value">{line}</div>')
+
+                elif current_section == 'reason' and line.startswith(('1.', '2.', '3.')):
+                    # Remove number and checkmark/warning icon
+                    clean_line = line[3:].strip()
+                    if clean_line.startswith('✅'):
+                        clean_line = clean_line[2:].strip()
+                        html_parts.append(f'<li class="likely">✅ {clean_line}</li>')
+                    elif clean_line.startswith('⚠️'):
+                        clean_line = clean_line[2:].strip()
+                        html_parts.append(f'<li class="possible">⚠️ {clean_line}</li>')
+                    else:
+                        html_parts.append(f'<li>{clean_line}</li>')
+
+                elif current_section in ('option1', 'option2') and line.startswith(('1.', '2.', '3.', '4.')):
+                    clean_line = line[3:].strip()
+                    html_parts.append(f'<li>{clean_line}</li>')
+
+                elif current_section == 'option3' and line.startswith('•'):
+                    clean_line = line[2:].strip()
+                    html_parts.append(f'<li>{clean_line}</li>')
+
+            # Close any open tags
+            if current_section == 'option3':
+                html_parts.append('</ul></div>')
+            elif current_section in ('option1', 'option2'):
+                html_parts.append('</ol></div>')
+            html_parts.append('</div>')  # Close error-section
+
+        else:
+            # Generic error formatting
+            html_parts.append('<div class="error-details">')
+
+            # Technical details
+            if analysis.error_type != 'Unknown':
+                html_parts.append(f'<p><strong>🔧 Tipe Error:</strong> <code>{analysis.error_type}</code></p>')
+
+            # Affected rows
+            if analysis.affected_rows:
+                rows_str = ', '.join(map(str, analysis.affected_rows[:10]))
+                if len(analysis.affected_rows) > 10:
+                    rows_str += f", ... (+{len(analysis.affected_rows) - 10} lainnya)"
+                html_parts.append(f'<p><strong>📍 Baris bermasalah:</strong> {rows_str}</p>')
+
+            # Suggestions
+            if analysis.suggestions:
+                html_parts.append('<div class="suggestions">')
+                html_parts.append('<h6>💡 Langkah Perbaikan:</h6>')
+                html_parts.append('<ul>')
+                for suggestion in analysis.suggestions:
+                    clean_suggestion = suggestion.strip()
+                    if clean_suggestion and not clean_suggestion.startswith(('📝', '🔧', '💡')):
+                        html_parts.append(f'<li>{clean_suggestion}</li>')
+                html_parts.append('</ul>')
+                html_parts.append('</div>')
+
+            html_parts.append('</div>')
+
+    html_parts.append('</div>')  # Close error-message-container
+
+    return '\n'.join(html_parts)
+
+
 def format_error_for_user(analysis: ErrorAnalysis) -> List[str]:
     """
     Format error analysis as user-friendly messages.
+
+    DEPRECATED: Use format_error_as_html() for better formatting.
+    Kept for backward compatibility.
 
     Returns:
         List of message strings to display to user
@@ -491,5 +648,6 @@ def format_error_for_user(analysis: ErrorAnalysis) -> List[str]:
 __all__ = [
     'ErrorAnalysis',
     'analyze_import_exception',
-    'format_error_for_user'
+    'format_error_for_user',
+    'format_error_as_html'
 ]
