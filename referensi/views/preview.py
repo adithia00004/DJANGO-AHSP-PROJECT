@@ -343,9 +343,9 @@ def preview_import(request):
         )
 
     # Get debugging stats
-    from referensi.models import AnalisisHargaSatuan, RincianReferensi
+    from referensi.models import AHSPReferensi, RincianReferensi
     debug_stats = {
-        'db_jobs_count': AnalisisHargaSatuan.objects.count(),
+        'db_jobs_count': AHSPReferensi.objects.count(),
         'db_rincian_count': RincianReferensi.objects.count(),
         'file_jobs_count': parse_result.total_jobs if parse_result else 0,
         'file_rincian_count': parse_result.total_rincian if parse_result else 0,
@@ -533,18 +533,18 @@ def debug_clear_data(request):
         return HttpResponseNotAllowed(["POST"])
 
     import logging
-    from referensi.models import AnalisisHargaSatuan, RincianReferensi
+    from referensi.models import AHSPReferensi, RincianReferensi
 
     logger = logging.getLogger(__name__)
 
     try:
         # Count before deletion
-        jobs_count = AnalisisHargaSatuan.objects.count()
+        jobs_count = AHSPReferensi.objects.count()
         rincian_count = RincianReferensi.objects.count()
 
         # Delete all data
         RincianReferensi.objects.all().delete()
-        AnalisisHargaSatuan.objects.all().delete()
+        AHSPReferensi.objects.all().delete()
 
         # Log the action
         logger.warning(
