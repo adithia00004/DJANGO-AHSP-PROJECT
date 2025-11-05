@@ -65,27 +65,32 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
 
         # Check if this is a secondary operation failure (view refresh, cache)
         if 'materialized view' in error_message.lower() or 'materialized view' in technical_details.lower():
-            user_message = "📊 Masalah refresh statistik database (bukan masalah data Anda)"
+            user_message = "🔧 MASALAH SISTEM: Gagal refresh statistik database"
             suggestions.append("\n✅ KABAR BAIK: Data Anda kemungkinan SUDAH TERSIMPAN!")
-            suggestions.append("⚠️ Hanya statistik database yang gagal di-refresh")
-            suggestions.append("\n📝 Apa yang harus dilakukan:")
-            suggestions.append("   1. Refresh halaman browser (F5)")
-            suggestions.append("   2. Cek apakah data sudah ada di database")
-            suggestions.append("   3. Jika belum ada, coba import ulang")
+            suggestions.append("⚙️ JENIS MASALAH: Sistem (bukan kesalahan file atau data Anda)")
+            suggestions.append("🔍 PENJELASAN: Statistik database gagal di-update, tapi data sudah masuk")
+            suggestions.append("\n📝 Yang harus Anda lakukan:")
+            suggestions.append("   1. Refresh halaman browser (tekan F5)")
+            suggestions.append("   2. Cek apakah data Anda sudah muncul di daftar AHSP")
+            suggestions.append("   3. Jika data BELUM ada, coba import ulang")
+            suggestions.append("   4. Jika data SUDAH ada, berarti import berhasil (abaikan error ini)")
             severity = 'warning'
 
         elif 'cache' in error_message.lower() or 'cache' in technical_details.lower():
-            user_message = "🗄️ Masalah cache database (bukan masalah data Anda)"
+            user_message = "🔧 MASALAH SISTEM: Gagal membersihkan cache"
             suggestions.append("\n✅ KABAR BAIK: Data Anda kemungkinan SUDAH TERSIMPAN!")
-            suggestions.append("⚠️ Hanya cache yang gagal dibersihkan")
-            suggestions.append("\n📝 Apa yang harus dilakukan:")
+            suggestions.append("⚙️ JENIS MASALAH: Sistem (bukan kesalahan file atau data Anda)")
+            suggestions.append("🔍 PENJELASAN: Cache sistem gagal dibersihkan, tapi data sudah masuk")
+            suggestions.append("\n📝 Yang harus Anda lakukan:")
             suggestions.append("   1. Logout dan login kembali")
             suggestions.append("   2. Atau tunggu 5-10 menit (cache akan auto-refresh)")
+            suggestions.append("   3. Data Anda sudah tersimpan dengan aman")
             severity = 'warning'
 
         else:
             # This is an actual data import failure
-            suggestions.append("\n❌ Ada masalah dengan data Anda")
+            suggestions.append("\n📝 JENIS MASALAH: Data Anda")
+            suggestions.append("❌ Ada masalah dengan data yang Anda upload")
 
             # Show detail errors if available
             if summary and hasattr(summary, 'detail_errors') and summary.detail_errors:
@@ -117,7 +122,9 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
                 suggestions.append("   3. Hubungi administrator jika masalah berlanjut")
 
     elif 'IntegrityError' in error_type:
-        user_message = "🔄 Data yang Anda coba import SUDAH ADA di database"
+        user_message = "💾 TABRAKAN DATABASE: Data sudah ada sebelumnya"
+        suggestions.append("⚙️ JENIS MASALAH: Database (data yang sama sudah pernah diinput)")
+        suggestions.append("🔍 PENJELASAN: File Anda benar, tapi data dengan kode yang sama sudah ada di database")
 
         # Extract field name and value from error message
         # Support both SQLite and PostgreSQL formats
@@ -245,14 +252,15 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
             suggestions.append("   • Semua field wajib terisi")
 
     elif 'OperationalError' in error_type:
-        user_message = "⏱️ Masalah dengan operasi database"
+        user_message = "🔧 MASALAH SISTEM: Database timeout atau overload"
 
         if 'timeout' in error_message.lower() or 'time' in error_message.lower():
-            suggestions.append("\n❌ Database timeout - proses terlalu lama")
-            suggestions.append("\n🔍 Kemungkinan penyebab:")
-            suggestions.append("   • File Anda terlalu besar")
-            suggestions.append("   • Server database sedang sibuk")
-            suggestions.append("   • Koneksi internet lambat")
+            suggestions.append("⚙️ JENIS MASALAH: Sistem/Server (waktu proses terlalu lama)")
+            suggestions.append("🔍 PENJELASAN: Server kehabisan waktu saat memproses file Anda")
+            suggestions.append("\n❌ Kemungkinan penyebab:")
+            suggestions.append("   • File Anda terlalu besar untuk kapasitas server")
+            suggestions.append("   • Server database sedang sibuk (banyak user aktif)")
+            suggestions.append("   • Koneksi internet Anda lambat/tidak stabil")
 
             # Check file size from parse_result
             if parse_result and hasattr(parse_result, 'total_rincian'):
@@ -273,20 +281,29 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
             suggestions.append("   3. Pastikan koneksi internet stabil")
 
         elif 'lock' in error_message.lower():
-            suggestions.append("\n🔒 Database sedang dikunci (locked)")
-            suggestions.append("\n🔍 Kemungkinan penyebab:")
-            suggestions.append("   • Ada proses import lain yang sedang berjalan")
-            suggestions.append("   • Proses backup database sedang jalan")
-            suggestions.append("\n📝 Solusi:")
+            suggestions.append("⚙️ JENIS MASALAH: Sistem/Server (database sedang digunakan)")
+            suggestions.append("🔍 PENJELASAN: Database sedang dikunci oleh proses lain")
+            suggestions.append("\n❌ Kemungkinan penyebab:")
+            suggestions.append("   • Ada user lain yang sedang import data")
+            suggestions.append("   • Proses backup database sedang berjalan")
+            suggestions.append("   • Maintenance sistem sedang berlangsung")
+            suggestions.append("\n📝 Yang harus Anda lakukan:")
             suggestions.append("   1. Tunggu 2-5 menit")
-            suggestions.append("   2. Coba lagi")
-            suggestions.append("   3. Pastikan tidak ada user lain yang sedang import")
+            suggestions.append("   2. Refresh halaman dan coba lagi")
+            suggestions.append("   3. Koordinasi dengan tim agar tidak import bersamaan")
+            suggestions.append("   4. Hubungi administrator jika masih terkunci setelah 10 menit")
 
         elif 'disk' in error_message.lower() or 'space' in error_message.lower():
-            suggestions.append("\n💾 Disk space habis")
-            suggestions.append("\n📝 Hubungi administrator:")
-            suggestions.append("   • Server kehabisan disk space")
-            suggestions.append("   • Perlu pembersihan atau upgrade storage")
+            suggestions.append("⚙️ JENIS MASALAH: Sistem/Server (kapasitas penuh)")
+            suggestions.append("🔍 PENJELASAN: Server kehabisan ruang penyimpanan")
+            suggestions.append("\n❌ INI BUKAN KESALAHAN ANDA!")
+            suggestions.append("   • File Anda tidak bermasalah")
+            suggestions.append("   • Server perlu dibersihkan atau upgrade storage")
+            suggestions.append("\n📝 Yang harus Anda lakukan:")
+            suggestions.append("   1. Screenshot error ini")
+            suggestions.append("   2. SEGERA hubungi administrator sistem")
+            suggestions.append("   3. Sertakan screenshot saat melapor")
+            suggestions.append("   4. Tunggu admin membersihkan storage server")
 
         else:
             suggestions.append(f"\n❌ Error operasional database")
@@ -297,7 +314,9 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
             suggestions.append("   3. Sertakan screenshot saat melapor")
 
     elif 'ValidationError' in error_type or 'ValueError' in error_type:
-        user_message = "📝 Ada data yang tidak valid (format salah)"
+        user_message = "📝 MASALAH FILE ANDA: Format data tidak valid"
+        suggestions.append("⚙️ JENIS MASALAH: File yang Anda upload (format atau isi data salah)")
+        suggestions.append("🔍 PENJELASAN: Ada data di file Excel Anda yang tidak sesuai format yang dibutuhkan")
 
         # Parse validation errors
         if 'koefisien' in error_message.lower():
@@ -306,6 +325,7 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
             suggestions.append("\n🔍 Masalah pada kolom: Koefisien")
             suggestions.append("   • Koefisien harus berupa angka")
             suggestions.append("   • Harus positif (tidak boleh negatif)")
+            suggestions.append("   • Tidak boleh berisi huruf atau karakter khusus")
             suggestions.append("\n✅ Format yang BENAR:")
             suggestions.append("   • 0.5")
             suggestions.append("   • 1.25")
@@ -349,40 +369,50 @@ def analyze_import_exception(exc: Exception, parse_result=None, summary=None) ->
             suggestions.append("   5. Save dan upload ulang")
 
     elif 'AttributeError' in error_type or 'TypeError' in error_type:
-        user_message = "⚙️ Kesalahan teknis sistem"
-        suggestions.append("\n❌ Terjadi kesalahan teknis internal")
-        suggestions.append("\n📝 Ini bukan kesalahan Anda!")
-        suggestions.append("   • Kemungkinan bug di sistem")
-        suggestions.append("   • Atau format data di luar ekspektasi")
-        suggestions.append("\n📝 Yang harus dilakukan:")
-        suggestions.append("   1. Screenshot error ini dengan lengkap")
+        user_message = "🔧 MASALAH SISTEM: Bug atau error teknis internal"
+        suggestions.append("⚙️ JENIS MASALAH: Sistem (bug aplikasi atau format tidak terduga)")
+        suggestions.append("🔍 PENJELASAN: Terjadi kesalahan teknis di dalam aplikasi")
+        suggestions.append("\n❌ INI BUKAN KESALAHAN ANDA!")
+        suggestions.append("   • Kemungkinan ada bug di sistem")
+        suggestions.append("   • Atau format file Anda di luar ekspektasi sistem")
+        suggestions.append("   • File Anda mungkin valid, tapi sistem belum mendukungnya")
+        suggestions.append("\n📝 Yang harus Anda lakukan:")
+        suggestions.append("   1. Screenshot error ini LENGKAP (termasuk detail teknis)")
         suggestions.append("   2. Simpan file Excel yang Anda upload")
-        suggestions.append("   3. Hubungi administrator dengan info:")
-        suggestions.append("      - Screenshot error")
-        suggestions.append("      - File Excel yang diupload")
-        suggestions.append("      - Waktu kejadian")
+        suggestions.append("   3. Hubungi administrator/developer dengan informasi:")
+        suggestions.append("      • Screenshot error yang Anda dapat")
+        suggestions.append("      • File Excel yang diupload (kirim ke admin)")
+        suggestions.append("      • Waktu kejadian error")
+        suggestions.append("      • Langkah-langkah yang Anda lakukan")
 
     elif 'MemoryError' in error_type:
-        user_message = "💾 Kehabisan memori"
-        suggestions.append("\n❌ File terlalu besar untuk diproses")
+        user_message = "🔧 MASALAH SISTEM: Server kehabisan memori"
+        suggestions.append("⚙️ JENIS MASALAH: Kombinasi File + Server (file terlalu besar untuk kapasitas server)")
+        suggestions.append("🔍 PENJELASAN: File Anda terlalu besar untuk kapasitas RAM server")
         if parse_result and hasattr(parse_result, 'total_rincian'):
             total = parse_result.total_rincian
-            suggestions.append(f"\n📊 File Anda: {total} rincian")
+            suggestions.append(f"\n📊 Ukuran file Anda: {total} rincian")
             if total > 20000:
                 suggestions.append("   ⚠️ File SANGAT BESAR!")
+        suggestions.append("\n❌ File Anda tidak salah, tapi terlalu besar!")
         suggestions.append("\n📝 Solusi WAJIB:")
-        suggestions.append("   1. PECAH file menjadi bagian lebih kecil")
-        suggestions.append("   2. Maksimal 3000 baris per file")
-        suggestions.append("   3. Import satu per satu")
-        suggestions.append("   4. Atau hubungi admin untuk upgrade server")
+        suggestions.append("   1. PECAH file menjadi beberapa file lebih kecil")
+        suggestions.append("   2. Target: maksimal 2.000-3.000 baris per file")
+        suggestions.append("   3. Import file satu per satu secara bertahap")
+        suggestions.append("   4. Atau minta admin untuk upgrade kapasitas server")
 
     elif 'PermissionError' in error_type or 'PermissionDenied' in error_type:
-        user_message = "🔒 Tidak punya izin"
-        suggestions.append("\n❌ Anda tidak memiliki izin untuk import data")
-        suggestions.append("\n📝 Yang harus dilakukan:")
+        user_message = "🔒 MASALAH AKSES: Anda tidak punya izin"
+        suggestions.append("⚙️ JENIS MASALAH: Hak akses (user Anda tidak memiliki permission)")
+        suggestions.append("🔍 PENJELASAN: Akun Anda tidak memiliki izin untuk melakukan import data")
+        suggestions.append("\n❌ INI BUKAN KESALAHAN FILE ANDA!")
+        suggestions.append("   • File Anda benar")
+        suggestions.append("   • Tapi akun Anda tidak diberi hak akses import")
+        suggestions.append("\n📝 Yang harus Anda lakukan:")
         suggestions.append("   1. Hubungi administrator sistem")
-        suggestions.append("   2. Minta akses/permission untuk import AHSP")
-        suggestions.append("   3. Atau login dengan user yang memiliki akses")
+        suggestions.append("   2. Minta diberikan hak akses/permission untuk import AHSP")
+        suggestions.append("   3. Atau login dengan akun user lain yang memiliki akses")
+        suggestions.append("   4. Setelah diberi akses, coba import ulang file Anda")
 
     else:
         # Generic catch-all error handler

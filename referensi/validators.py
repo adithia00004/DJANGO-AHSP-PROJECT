@@ -126,13 +126,14 @@ class AHSPFileValidator:
         """
         if not file:
             raise ValidationError(
-                _("Tidak ada file yang diunggah."),
+                _("📁 File tidak ditemukan. Silakan pilih file Excel dari komputer Anda."),
                 code='no_file'
             )
 
         if file.size == 0:
             raise ValidationError(
-                _("File kosong atau rusak."),
+                _("📄 File yang Anda pilih kosong atau rusak.\n"
+                  "💡 Solusi: Periksa kembali file Excel Anda, pastikan file berisi data."),
                 code='empty_file'
             )
 
@@ -150,8 +151,12 @@ class AHSPFileValidator:
             max_size_mb = self.max_file_size / (1024 * 1024)
             actual_size_mb = file.size / (1024 * 1024)
             raise ValidationError(
-                _(f"File terlalu besar ({actual_size_mb:.2f} MB). "
-                  f"Ukuran maksimum: {max_size_mb:.0f} MB."),
+                _(f"📦 Ukuran file terlalu besar ({actual_size_mb:.2f} MB)\n\n"
+                  f"❌ MASALAH: File yang Anda upload melebihi batas maksimum ({max_size_mb:.0f} MB)\n\n"
+                  f"💡 SOLUSI:\n"
+                  f"  • Bagi data menjadi beberapa file lebih kecil (idealnya 2-5 MB per file)\n"
+                  f"  • Hapus kolom atau sheet yang tidak diperlukan\n"
+                  f"  • Simpan sebagai file .xlsx (bukan .xls) untuk kompresi lebih baik"),
                 code='file_too_large'
             )
 
@@ -171,8 +176,12 @@ class AHSPFileValidator:
         if extension not in self.allowed_extensions:
             allowed_str = ', '.join(self.allowed_extensions)
             raise ValidationError(
-                _(f"Ekstensi file tidak didukung. "
-                  f"Hanya file {allowed_str} yang diperbolehkan."),
+                _(f"❌ Format file tidak didukung (file: .{extension})\n\n"
+                  f"📝 MASALAH: File yang Anda upload bukan file Excel\n\n"
+                  f"💡 SOLUSI:\n"
+                  f"  • Pastikan file berformat: {allowed_str}\n"
+                  f"  • Jika file dari Google Sheets, download sebagai 'Microsoft Excel (.xlsx)'\n"
+                  f"  • Jika file .csv, buka di Excel lalu 'Save As' dengan format .xlsx"),
                 code='invalid_extension'
             )
 
@@ -195,7 +204,13 @@ class AHSPFileValidator:
         # Accept if either matches
         if mime_type not in self.ALLOWED_MIME_TYPES and guessed_type not in self.ALLOWED_MIME_TYPES:
             raise ValidationError(
-                "Tipe file tidak valid. File harus berupa Excel (.xlsx atau .xls).",
+                _("⚠️ File terdeteksi bukan file Excel asli\n\n"
+                  "❌ MASALAH: File yang Anda upload sepertinya bukan file Excel yang valid, "
+                  "meskipun ekstensinya .xlsx atau .xls\n\n"
+                  "💡 SOLUSI:\n"
+                  "  • File mungkin diubah namanya dari format lain (misal: .csv atau .txt)\n"
+                  "  • Buka file di Microsoft Excel atau LibreOffice Calc\n"
+                  "  • Kemudian 'Save As' dengan format 'Excel Workbook (.xlsx)'"),
                 code='invalid_mime_type'
             )
 
@@ -229,8 +244,14 @@ class AHSPFileValidator:
                 # Check uncompressed size
                 if uncompressed_size > self.MAX_UNCOMPRESSED_SIZE:
                     raise ValidationError(
-                        _(f"File terlalu besar setelah diekstrak. "
-                          f"Kemungkinan file berbahaya (zip bomb)."),
+                        _(f"🚨 File terdeteksi tidak aman (zip bomb)\n\n"
+                          f"❌ MASALAH KEAMANAN: File ini memiliki ukuran tersembunyi yang sangat besar "
+                          f"setelah diekstrak, yang merupakan tanda file berbahaya\n\n"
+                          f"💡 SOLUSI:\n"
+                          f"  • JANGAN gunakan file ini!\n"
+                          f"  • Buat file Excel baru dan copy data secara manual\n"
+                          f"  • Scan komputer Anda dengan antivirus\n"
+                          f"  • Jika file dari orang lain, laporkan ke administrator"),
                         code='zip_bomb_size'
                     )
 
@@ -239,14 +260,26 @@ class AHSPFileValidator:
                     ratio = uncompressed_size / compressed_size
                     if ratio > self.MAX_COMPRESSION_RATIO:
                         raise ValidationError(
-                            _(f"Rasio kompresi file mencurigakan ({ratio:.0f}x). "
-                              f"Kemungkinan file berbahaya (zip bomb)."),
+                            _(f"🚨 File terdeteksi tidak aman (rasio kompresi: {ratio:.0f}x)\n\n"
+                              f"❌ MASALAH KEAMANAN: Rasio kompresi file mencurigakan, "
+                              f"kemungkinan file berbahaya (zip bomb)\n\n"
+                              f"💡 SOLUSI:\n"
+                              f"  • JANGAN gunakan file ini!\n"
+                              f"  • Buat file Excel baru dan copy data secara manual\n"
+                              f"  • Scan komputer Anda dengan antivirus\n"
+                              f"  • Jika file dari orang lain, laporkan ke administrator"),
                             code='zip_bomb_ratio'
                         )
 
         except zipfile.BadZipFile:
             raise ValidationError(
-                _("File Excel rusak atau tidak valid."),
+                _("❌ File Excel rusak atau tidak valid\n\n"
+                  "📝 MASALAH: File tidak bisa dibaca karena struktur file rusak\n\n"
+                  "💡 SOLUSI:\n"
+                  "  • Coba buka file di Excel, jika bisa dibuka, 'Save As' dengan nama baru\n"
+                  "  • Jika tidak bisa dibuka di Excel, file memang rusak\n"
+                  "  • Download ulang file jika dari internet atau email\n"
+                  "  • Gunakan backup file jika ada"),
                 code='corrupted_file'
             )
 
@@ -293,8 +326,14 @@ class AHSPFileValidator:
                                 for pattern in self.DANGEROUS_FORMULA_PATTERNS:
                                     if pattern in formula_upper:
                                         raise ValidationError(
-                                            _(f"File mengandung formula berbahaya: {pattern}. "
-                                              f"File tidak dapat diproses untuk keamanan."),
+                                            _(f"🚨 File mengandung formula berbahaya: {pattern}\n\n"
+                                              f"❌ MASALAH KEAMANAN: File Excel ini mengandung formula yang dapat "
+                                              f"mengakses internet atau menjalankan perintah sistem\n\n"
+                                              f"💡 SOLUSI:\n"
+                                              f"  • JANGAN gunakan file ini!\n"
+                                              f"  • Hapus formula berbahaya atau copy hanya nilai (Paste Special > Values)\n"
+                                              f"  • Jika file dari orang lain, laporkan ke administrator\n"
+                                              f"  • Formula yang aman: SUM, AVERAGE, VLOOKUP, IF, dll"),
                                             code='dangerous_formula'
                                         )
 
@@ -303,7 +342,14 @@ class AHSPFileValidator:
 
         except Exception as e:
             raise ValidationError(
-                _(f"Gagal memvalidasi konten file: {str(e)}"),
+                _(f"⚠️ Gagal memeriksa keamanan file\n\n"
+                  f"❌ MASALAH: Sistem tidak dapat memeriksa isi file secara menyeluruh\n"
+                  f"Detail teknis: {str(e)}\n\n"
+                  f"💡 SOLUSI:\n"
+                  f"  • File mungkin menggunakan format Excel yang tidak standar\n"
+                  f"  • Coba buka di Excel dan 'Save As' dengan format .xlsx standar\n"
+                  f"  • Pastikan file tidak ter-password protect\n"
+                  f"  • Hubungi administrator jika masalah berlanjut"),
                 code='content_validation_error'
             )
 
@@ -339,15 +385,25 @@ class AHSPFileValidator:
 
                 if max_row > self.max_rows:
                     raise ValidationError(
-                        _(f"File memiliki terlalu banyak baris ({max_row:,}). "
-                          f"Maksimum: {self.max_rows:,} baris."),
+                        _(f"📊 File terlalu besar ({max_row:,} baris)\n\n"
+                          f"❌ MASALAH: Data yang Anda upload terlalu banyak. "
+                          f"Maksimum: {self.max_rows:,} baris per file\n\n"
+                          f"💡 SOLUSI:\n"
+                          f"  • Bagi data menjadi beberapa file (idealnya 2.000-3.000 baris per file)\n"
+                          f"  • Hapus baris kosong di bagian bawah file Excel\n"
+                          f"  • Hapus data yang tidak diperlukan\n"
+                          f"  • Upload file secara bertahap"),
                         code='too_many_rows'
                     )
 
                 if max_col > self.max_columns:
                     raise ValidationError(
-                        _(f"File memiliki terlalu banyak kolom ({max_col}). "
-                          f"Maksimum: {self.max_columns} kolom."),
+                        _(f"📊 File memiliki terlalu banyak kolom ({max_col})\n\n"
+                          f"❌ MASALAH: Jumlah kolom melebihi batas. Maksimum: {self.max_columns} kolom\n\n"
+                          f"💡 SOLUSI:\n"
+                          f"  • Hapus kolom yang tidak diperlukan\n"
+                          f"  • Pastikan tidak ada kolom kosong di sebelah kanan\n"
+                          f"  • Gunakan template yang disediakan"),
                         code='too_many_columns'
                     )
 

@@ -29,12 +29,16 @@ class AHSPPreviewUploadForm(forms.Form):
 
         if not any(filename.endswith(ext) for ext in self.ALLOWED_EXTENSIONS):
             raise forms.ValidationError(
-                f"Hanya file Excel ({', '.join(self.ALLOWED_EXTENSIONS)}) yang diperbolehkan."
+                f"❌ Format file tidak sesuai\n\n"
+                f"File yang Anda pilih bukan file Excel. Hanya file {', '.join(self.ALLOWED_EXTENSIONS)} yang dapat diproses."
             )
 
         if uploaded.size and uploaded.size > self.MAX_SIZE_MB * 1024 * 1024:
+            actual_mb = uploaded.size / (1024 * 1024)
             raise forms.ValidationError(
-                f"Ukuran file melebihi {self.MAX_SIZE_MB} MB. Potong file atau bagi menjadi beberapa bagian."
+                f"📦 File terlalu besar ({actual_mb:.1f} MB)\n\n"
+                f"Ukuran maksimum: {self.MAX_SIZE_MB} MB. Silakan bagi data menjadi beberapa file yang lebih kecil "
+                f"atau hapus data yang tidak diperlukan."
             )
 
         return uploaded
@@ -96,21 +100,30 @@ class PreviewJobForm(forms.Form):
         """Validate and clean sumber field."""
         sumber = self.cleaned_data.get('sumber', '')
         if not sumber:
-            raise forms.ValidationError("Sumber AHSP tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Sumber AHSP kosong\n\n"
+                "Field 'Sumber AHSP' wajib diisi. Contoh: AHSP 2022, SNI 2024, dll."
+            )
         return sumber.strip()
 
     def clean_kode_ahsp(self):
         """Validate and clean kode AHSP field."""
         kode = self.cleaned_data.get('kode_ahsp', '')
         if not kode:
-            raise forms.ValidationError("Kode AHSP tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Kode AHSP kosong\n\n"
+                "Field 'Kode AHSP' wajib diisi. Contoh: 6.1.1, A.1.2.3, dll."
+            )
         return kode.strip()
 
     def clean_nama_ahsp(self):
         """Validate and clean nama AHSP field."""
         nama = self.cleaned_data.get('nama_ahsp', '')
         if not nama:
-            raise forms.ValidationError("Nama AHSP tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Nama pekerjaan kosong\n\n"
+                "Field 'Nama Pekerjaan' wajib diisi dengan deskripsi pekerjaan."
+            )
         return nama.strip()
 
 
@@ -161,7 +174,10 @@ class PreviewDetailForm(forms.Form):
         """Validate and normalize kategori using KategoriNormalizer."""
         kategori = self.cleaned_data.get('kategori', '')
         if not kategori:
-            raise forms.ValidationError("Kategori tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Kategori kosong\n\n"
+                "Field 'Kategori' wajib diisi."
+            )
 
         # Normalize the kategori value
         normalized = KategoriNormalizer.normalize(kategori)
@@ -170,6 +186,7 @@ class PreviewDetailForm(forms.Form):
         if not KategoriNormalizer.is_valid(normalized):
             valid_codes = ', '.join(KategoriNormalizer.get_all_codes())
             raise forms.ValidationError(
+                f"❌ Kategori tidak valid: '{kategori}'\n\n"
                 f"Kategori harus salah satu dari: {valid_codes}"
             )
 
@@ -179,21 +196,33 @@ class PreviewDetailForm(forms.Form):
         """Validate and clean uraian item field."""
         uraian = self.cleaned_data.get('uraian_item', '')
         if not uraian:
-            raise forms.ValidationError("Uraian item tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Uraian item kosong\n\n"
+                "Field 'Uraian Item' wajib diisi dengan deskripsi material/upah/alat."
+            )
         return uraian.strip()
 
     def clean_satuan_item(self):
         """Validate and clean satuan item field."""
         satuan = self.cleaned_data.get('satuan_item', '')
         if not satuan:
-            raise forms.ValidationError("Satuan item tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Satuan item kosong\n\n"
+                "Field 'Satuan' wajib diisi. Contoh: m3, kg, unit, OH, dll."
+            )
         return satuan.strip()
 
     def clean_koefisien(self):
         """Validate koefisien is non-negative."""
         koef = self.cleaned_data.get('koefisien')
         if koef is None:
-            raise forms.ValidationError("Koefisien tidak boleh kosong")
+            raise forms.ValidationError(
+                "📝 Koefisien kosong\n\n"
+                "Field 'Koefisien' wajib diisi dengan angka. Contoh: 1.5, 0.25, dll."
+            )
         if koef < 0:
-            raise forms.ValidationError("Koefisien tidak boleh negatif")
+            raise forms.ValidationError(
+                "❌ Koefisien tidak boleh negatif\n\n"
+                "Koefisien harus berupa angka positif. Contoh: 1.5, 0.25, 2, dll."
+            )
         return koef

@@ -90,7 +90,7 @@ def preview_import(request):
     if reset_action:
         service = PreviewImportService()
         service.session_manager.cleanup(request.session)
-        messages.info(request, "Preview data telah dibersihkan.")
+        messages.info(request, "✅ Preview data telah dibersihkan. Anda bisa upload file baru sekarang.")
         return redirect("referensi:preview_import")
 
     # Get search queries from request
@@ -131,7 +131,9 @@ def preview_import(request):
                 request.session
             )
         except (FileNotFoundError, pickle.UnpicklingError):
-            messages.error(request, "Data preview tidak ditemukan. Unggah ulang file Excel.")
+            messages.error(request,
+                "❌ Data preview tidak ditemukan (mungkin session habis)\n\n"
+                "Silakan upload file Excel Anda kembali.")
             if is_ajax and section in {TAB_JOBS, TAB_ITEMS}:
                 return JsonResponse(
                     {"html": "", "messages_html": _render_messages_html(request)},
@@ -147,7 +149,9 @@ def preview_import(request):
                 # Apply changes
                 service.apply_job_updates(parse_result, job_page_data.formset.cleaned_data)
                 service.session_manager.rewrite(request.session, parse_result)
-                messages.success(request, "Perubahan pekerjaan berhasil disimpan pada preview.")
+                messages.success(request,
+                    "✅ Perubahan pekerjaan berhasil disimpan di preview\n\n"
+                    "Data belum masuk database. Klik 'Commit Import' untuk menyimpan ke database.")
 
                 if not is_ajax:
                     query = urlencode({
@@ -161,7 +165,8 @@ def preview_import(request):
             else:
                 messages.error(
                     request,
-                    "Beberapa entri pekerjaan tidak valid. Periksa pesan kesalahan pada tabel.",
+                    "❌ Ada field pekerjaan yang tidak valid\n\n"
+                    "Periksa pesan error berwarna merah di tabel dan perbaiki data.",
                 )
 
         else:  # update_details
@@ -176,7 +181,9 @@ def preview_import(request):
                     parse_result, detail_page_data.formset.cleaned_data
                 )
                 service.session_manager.rewrite(request.session, parse_result)
-                messages.success(request, "Perubahan rincian berhasil disimpan pada preview.")
+                messages.success(request,
+                    "✅ Perubahan rincian berhasil disimpan di preview\n\n"
+                    "Data belum masuk database. Klik 'Commit Import' untuk menyimpan ke database.")
 
                 if not is_ajax:
                     query = urlencode({
@@ -192,7 +199,8 @@ def preview_import(request):
             else:
                 messages.error(
                     request,
-                    "Beberapa rincian tidak valid. Periksa pesan kesalahan pada tabel.",
+                    "❌ Ada field rincian yang tidak valid\n\n"
+                    "Periksa pesan error berwarna merah di tabel dan perbaiki data.",
                 )
 
     # Handle file upload
@@ -276,8 +284,10 @@ def preview_import(request):
                     messages.success(
                         request,
                         (
-                            f"Berhasil membaca {parse_result.total_jobs} pekerjaan "
-                            f"dengan {parse_result.total_rincian} rincian."
+                            f"✅ File berhasil diproses!\n\n"
+                            f"Ditemukan {parse_result.total_jobs} pekerjaan "
+                            f"dengan {parse_result.total_rincian} rincian.\n\n"
+                            f"Silakan review data di bawah, lalu klik 'Commit Import' untuk menyimpan ke database."
                         ),
                     )
                     for warning in parse_result.warnings:
@@ -400,17 +410,23 @@ def commit_import(request):
     try:
         parse_result, uploaded_name, token = service.session_manager.retrieve(request.session)
     except FileNotFoundError:
-        messages.error(request, "Tidak ada data preview yang siap diimpor.")
+        messages.error(request,
+            "❌ Tidak ada data preview\n\n"
+            "Silakan upload file Excel terlebih dahulu sebelum melakukan commit import.")
         return redirect("referensi:preview_import")
     except pickle.UnpicklingError:
         service.session_manager.cleanup(request.session)
-        messages.error(request, "Data preview korup. Silakan unggah ulang file Excel.")
+        messages.error(request,
+            "❌ Data preview rusak\n\n"
+            "Session data terkorupsi. Silakan upload file Excel Anda kembali.")
         return redirect("referensi:preview_import")
 
     # Verify token
     submitted_token = request.POST.get("token") or ""
     if submitted_token != token:
-        messages.error(request, "Token konfirmasi tidak valid atau sudah kedaluwarsa.")
+        messages.error(request,
+            "🔒 Token konfirmasi tidak valid\n\n"
+            "Kemungkinan session sudah expired. Silakan upload file kembali dan coba lagi.")
         return redirect("referensi:preview_import")
 
     # Assign item codes
@@ -506,10 +522,12 @@ def commit_import(request):
 
     # Success message
     success_message = (
-        "✅ Import selesai. "
-        f"Pekerjaan baru: {summary.jobs_created}, "
-        f"Pekerjaan diperbarui: {summary.jobs_updated}, "
-        f"Total rincian ditulis: {summary.rincian_written}"
+        "🎉 Import berhasil! Data sudah tersimpan di database.\n\n"
+        f"📊 Ringkasan:\n"
+        f"• Pekerjaan baru: {summary.jobs_created}\n"
+        f"• Pekerjaan diperbarui: {summary.jobs_updated}\n"
+        f"• Total rincian tersimpan: {summary.rincian_written}\n\n"
+        f"Silakan cek menu Master Data AHSP untuk melihat hasilnya."
     )
     messages.success(request, success_message)
 
