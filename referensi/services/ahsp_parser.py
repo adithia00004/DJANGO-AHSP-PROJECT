@@ -264,6 +264,14 @@ def _parse_rows(
         _validate_text_length(uraian_item, "uraian_item", row_number, result.errors)
         _validate_text_length(satuan_item, "satuan_item", row_number, result.errors)
 
+        # CRITICAL FIX: Warn user when uraian_item is empty
+        if not uraian_item:
+            result.warnings.append(
+                f"⚠️ Baris {row_number}: Rincian diabaikan karena 'Uraian Item' kosong. "
+                f"Field uraian item wajib diisi untuk setiap rincian."
+            )
+            continue
+
         if uraian_item:
             if kategori_source and kategori_source != kategori:
                 mapped_categories[(kategori_source, kategori)] = (

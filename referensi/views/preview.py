@@ -520,15 +520,30 @@ def commit_import(request):
     # Cleanup session
     service.session_manager.cleanup(request.session)
 
-    # Success message
+    # Success message with detailed breakdown
+    total_from_file = parse_result.total_rincian
+    skipped = total_from_file - summary.rincian_written
+
     success_message = (
         "🎉 Import berhasil! Data sudah tersimpan di database.\n\n"
         f"📊 Ringkasan:\n"
         f"• Pekerjaan baru: {summary.jobs_created}\n"
         f"• Pekerjaan diperbarui: {summary.jobs_updated}\n"
-        f"• Total rincian tersimpan: {summary.rincian_written}\n\n"
-        f"Silakan cek menu Master Data AHSP untuk melihat hasilnya."
+        f"• Rincian tersimpan: {summary.rincian_written} dari {total_from_file} baris\n"
     )
+
+    # Add skipped rows breakdown if any
+    if skipped > 0:
+        success_message += f"\n⚠️ Baris yang diabaikan: {skipped}\n"
+        if summary.rincian_duplicated > 0:
+            success_message += f"   • Duplikat: {summary.rincian_duplicated} baris\n"
+        other_skipped = skipped - summary.rincian_duplicated
+        if other_skipped > 0:
+            success_message += f"   • Lainnya (uraian kosong, dll): {other_skipped} baris\n"
+        success_message += "\n💡 Periksa warning di bawah untuk detail baris yang diabaikan.\n"
+
+    success_message += "\nSilakan cek menu Master Data AHSP untuk melihat hasilnya."
+
     messages.success(request, success_message)
 
     for warning in parse_result.warnings:

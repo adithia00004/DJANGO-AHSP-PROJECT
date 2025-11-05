@@ -20,6 +20,7 @@ class ImportSummary:
     jobs_created: int = 0
     jobs_updated: int = 0
     rincian_written: int = 0
+    rincian_duplicated: int = 0  # Number of duplicate rincian skipped
     detail_errors: list[str] = field(default_factory=list)
 
 
@@ -62,6 +63,9 @@ def _deduplicate_rincian(rincian_list, job, stdout):
     Keep the first occurrence, discard later duplicates.
 
     PHASE 4 FIX: Prevents unique constraint violation on bulk insert.
+
+    Returns:
+        tuple: (unique_rincian_list, duplicate_count)
     """
     seen = set()
     unique = []
@@ -79,7 +83,7 @@ def _deduplicate_rincian(rincian_list, job, stdout):
 
         if key in seen:
             duplicates.append(
-                f"    Baris {detail.row_number}: {kategori} - {detail.uraian_item} ({detail.satuan_item})"
+                f"    📍 Baris {detail.row_number}: {kategori} - {detail.uraian_item} ({detail.satuan_item}) - DUPLIKAT, hanya yang pertama disimpan"
             )
         else:
             seen.add(key)
@@ -87,12 +91,24 @@ def _deduplicate_rincian(rincian_list, job, stdout):
 
     if duplicates:
         warning = (
-            f"[!] PERINGATAN: Duplikat rincian diabaikan untuk AHSP '{job.kode_ahsp} - {job.nama_ahsp}':\n"
-            + "\n".join(duplicates)
+            f"⚠️ DUPLIKASI DITEMUKAN: {len(duplicates)} rincian duplikat diabaikan untuk AHSP '{job.kode_ahsp} - {job.nama_ahsp}':\n"
+            f"📝 PENJELASAN: Rincian dengan kategori, kode item, uraian, dan satuan yang sama dianggap duplikat.\n"
+            f"              Hanya kemunculan pertama yang disimpan, sisanya diabaikan.\n\n"
+            f"📋 Daftar baris yang diabaikan (maksimal 10 ditampilkan):\n"
+            + "\n".join(duplicates[:10])
+        )
+        if len(duplicates) > 10:
+            warning += f"\n    ... dan {len(duplicates) - 10} duplikat lainnya\n"
+
+        warning += (
+            f"\n💡 SARAN:\n"
+            f"   • Periksa file Excel Anda, mungkin ada copy-paste yang tidak disengaja\n"
+            f"   • Atau hapus baris duplikat jika memang tidak diperlukan\n"
+            f"   • Total: {len(unique)} rincian unik dari {len(rincian_list)} baris\n"
         )
         _log(stdout, warning)
 
-    return unique
+    return unique, len(duplicates)
 
 
 def write_parse_result_to_db(parse_result, source_file: str | None = None, *, stdout=None) -> ImportSummary:
@@ -215,7 +231,8 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
             all_rincian_to_delete.append(ahsp_obj.id)
 
             # PHASE 4 FIX: Deduplicate rincian within this AHSP
-            unique_rincian = _deduplicate_rincian(job.rincian, job, stdout)
+            unique_rincian, dup_count = _deduplicate_rincian(job.rincian, job, stdout)
+            summary.rincian_duplicated += dup_count
 
             # Prepare rincian instances
             for detail in unique_rincian:
@@ -299,18 +316,39 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 logger.warning(f"Cache invalidation failed: {exc}", exc_info=True)
                 # Don't fail the import for this
 
-    # Log import summary
-    _log(stdout, "\n[COMPLETE] Import finished successfully!")
-    _log(stdout, f"[SUMMARY] Jobs created: {summary.jobs_created}, Jobs updated: {summary.jobs_updated}")
-    _log(stdout, f"[SUMMARY] Total rincian written: {summary.rincian_written}")
+    # Log import summary with detailed breakdown
+    _log(stdout, "\n" + "="*80)
+    _log(stdout, "[COMPLETE] Import finished successfully!")
+    _log(stdout, "="*80)
+    _log(stdout, f"\n📊 RINGKASAN IMPORT:")
+    _log(stdout, f"   • Pekerjaan dibuat: {summary.jobs_created}")
+    _log(stdout, f"   • Pekerjaan diperbarui: {summary.jobs_updated}")
+    _log(stdout, f"   • Rincian tersimpan: {summary.rincian_written}")
+
+    # Show skipped rows breakdown
+    total_from_file = parse_result.total_rincian
+    if summary.rincian_duplicated > 0 or summary.rincian_written < total_from_file:
+        _log(stdout, f"\n⚠️ BARIS YANG DIABAIKAN:")
+        if summary.rincian_duplicated > 0:
+            _log(stdout, f"   • Duplikat: {summary.rincian_duplicated} baris")
+        skipped_other = total_from_file - summary.rincian_written - summary.rincian_duplicated
+        if skipped_other > 0:
+            _log(stdout, f"   • Lainnya (uraian kosong, error format): {skipped_other} baris")
+        _log(stdout, f"   • Total diabaikan: {total_from_file - summary.rincian_written} dari {total_from_file} baris")
+        _log(stdout, f"\n💡 PERIKSA WARNING DI ATAS untuk detail baris yang diabaikan!")
+
     if summary.detail_errors:
-        _log(stdout, f"[SUMMARY] Errors encountered: {len(summary.detail_errors)}")
+        _log(stdout, f"\n❌ Errors encountered: {len(summary.detail_errors)}")
+
+    _log(stdout, "="*80)
 
     logger.info(
         f"Import completed: {source_file}, "
         f"Jobs created: {summary.jobs_created}, "
         f"Jobs updated: {summary.jobs_updated}, "
         f"Rincian written: {summary.rincian_written}, "
+        f"Rincian duplicated: {summary.rincian_duplicated}, "
+        f"Total from file: {total_from_file}, "
         f"Errors: {len(summary.detail_errors)}"
     )
 
