@@ -163,7 +163,6 @@ def project_minimal_data(user):
         lokasi_project='Jakarta',
         nama_client='Client',
         anggaran_owner=Decimal('1000000000.00'),
-        tanggal_mulai=timezone.now().date(),
         # Optional fields left blank - tanggal_selesai and durasi_hari will be auto-calculated
         deskripsi='',
         ket_project1='',
