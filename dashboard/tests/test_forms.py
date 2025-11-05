@@ -45,7 +45,7 @@ class TestProjectForm:
 
         # Check that required fields have errors
         required_fields = [
-            'nama', 'tahun_project', 'sumber_dana',
+            'nama', 'tanggal_mulai', 'sumber_dana',
             'lokasi_project', 'nama_client', 'anggaran_owner'
         ]
 
@@ -71,25 +71,25 @@ class TestProjectForm:
         form = ProjectForm(data=data)
         assert not form.is_valid()
 
-    def test_tahun_project_range_validation(self, minimal_project_data):
-        """Test tahun_project must be between 1900-2100."""
-        # Valid: 2025
+    def test_tahun_project_auto_calculated(self, minimal_project_data, user):
+        """Test that tahun_project is auto-calculated from tanggal_mulai."""
+        # Note: tahun_project is now auto-calculated in model save(), not in form
+        # This test validates that form accepts tanggal_mulai and model handles tahun_project
+        from dashboard.models import Project
+
         data = minimal_project_data.copy()
-        data['tahun_project'] = 2025
-        form = ProjectForm(data=data)
-        assert form.is_valid()
+        data['tanggal_mulai'] = date(2023, 6, 15)
 
-        # Invalid: < 1900
-        data['tahun_project'] = 1899
         form = ProjectForm(data=data)
-        assert not form.is_valid()
-        assert 'tahun_project' in form.errors
+        assert form.is_valid(), form.errors
 
-        # Invalid: > 2100
-        data['tahun_project'] = 2101
-        form = ProjectForm(data=data)
-        assert not form.is_valid()
-        assert 'tahun_project' in form.errors
+        # Save the project through the model
+        project = form.save(commit=False)
+        project.owner = user
+        project.save()
+
+        # Verify tahun_project was auto-calculated
+        assert project.tahun_project == 2023
 
     def test_anggaran_parsing_numeric(self, minimal_project_data):
         """Test anggaran parsing with plain numbers."""
@@ -235,21 +235,21 @@ class TestProjectForm:
         expected_end = start + timedelta(days=364)  # 365 days including start
         assert form.cleaned_data['tanggal_selesai'] == expected_end
 
-    def test_timeline_tanggal_mulai_from_durasi(self, minimal_project_data):
-        """Test that tanggal_mulai is calculated from tanggal_selesai - durasi."""
+    def test_timeline_tanggal_selesai_from_durasi(self, minimal_project_data):
+        """Test that tanggal_selesai is calculated from tanggal_mulai + durasi."""
         data = minimal_project_data.copy()
 
-        end = date(2025, 12, 31)
-        data['tanggal_selesai'] = end
+        start = date(2025, 1, 1)
+        data['tanggal_mulai'] = start
         data['durasi_hari'] = 365
-        # Don't provide tanggal_mulai
+        # Don't provide tanggal_selesai
 
         form = ProjectForm(data=data)
         assert form.is_valid()
 
-        # Should calculate tanggal_mulai
-        expected_start = end - timedelta(days=364)
-        assert form.cleaned_data['tanggal_mulai'] == expected_start
+        # Should calculate tanggal_selesai (durasi - 1 because day 1 is included)
+        expected_end = start + timedelta(days=364)
+        assert form.cleaned_data['tanggal_selesai'] == expected_end
 
     def test_form_strips_whitespace(self, minimal_project_data):
         """Test that form strips whitespace from text fields."""

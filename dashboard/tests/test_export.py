@@ -15,7 +15,7 @@ import pytest
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 import io
 
@@ -100,7 +100,7 @@ def multiple_projects(user):
             durasi_hari=60,
             is_active=True,
         ),
-        # Project 3: Terlambat (overdue)
+        # Project 3: Terlambat (overdue) - 2024
         Project.objects.create(
             owner=user,
             nama='Project Overdue',
@@ -108,12 +108,12 @@ def multiple_projects(user):
             lokasi_project='Surabaya',
             nama_client='Client C',
             anggaran_owner=Decimal('1000000000.00'),
-            tanggal_mulai=today - timedelta(days=120),
-            tanggal_selesai=today - timedelta(days=10),
+            tanggal_mulai=date(2024, 1, 1),  # Explicitly set to 2024
+            tanggal_selesai=date(2024, 4, 30),
             durasi_hari=110,
             is_active=True,
         ),
-        # Project 4: Different year
+        # Project 4: Different year (2024)
         Project.objects.create(
             owner=user,
             nama='Project 2024',
@@ -121,8 +121,8 @@ def multiple_projects(user):
             lokasi_project='Medan',
             nama_client='Client D',
             anggaran_owner=Decimal('500000000.00'),
-            tanggal_mulai=today - timedelta(days=200),
-            tanggal_selesai=today - timedelta(days=100),
+            tanggal_mulai=date(2024, 6, 1),  # Explicitly set to 2024
+            tanggal_selesai=date(2024, 9, 1),
             durasi_hari=100,
             is_active=False,  # Archived
         ),

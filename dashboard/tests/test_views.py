@@ -16,6 +16,7 @@ Coverage:
 import pytest
 from django.urls import reverse
 from django.test import Client
+from django.utils import timezone
 from decimal import Decimal
 from datetime import date
 from io import BytesIO
@@ -199,7 +200,7 @@ class TestProjectEditView:
 
         data = {
             'nama': 'Updated Project Name',
-            'tahun_project': 2025,
+            'tanggal_mulai': '2025-01-01',
             'sumber_dana': 'APBD',  # Changed
             'lokasi_project': 'Bandung',  # Changed
             'nama_client': 'Updated Client',
@@ -297,7 +298,7 @@ class TestProjectDuplicateView:
 
         data = {
             'nama': 'Duplicated Project',
-            'tahun_project': project.tahun_project,
+            'tanggal_mulai': str(project.tanggal_mulai),
             'sumber_dana': project.sumber_dana,
             'lokasi_project': project.lokasi_project,
             'nama_client': project.nama_client,
@@ -345,7 +346,7 @@ class TestFormsetSubmission:
             'form-MIN_NUM_FORMS': '0',
             'form-MAX_NUM_FORMS': '1000',
             'form-0-nama': 'Formset Project',
-            'form-0-tahun_project': '2025',
+            'form-0-tanggal_mulai': '2025-01-01',
             'form-0-sumber_dana': 'APBN',
             'form-0-lokasi_project': 'Jakarta',
             'form-0-nama_client': 'Client',
@@ -378,21 +379,21 @@ class TestFormsetSubmission:
             'form-MAX_NUM_FORMS': '1000',
             # Project 1
             'form-0-nama': 'Project A',
-            'form-0-tahun_project': '2025',
+            'form-0-tanggal_mulai': '2025-01-01',
             'form-0-sumber_dana': 'APBN',
             'form-0-lokasi_project': 'Jakarta',
             'form-0-nama_client': 'Client A',
             'form-0-anggaran_owner': '1000000000',
             # Project 2
             'form-1-nama': 'Project B',
-            'form-1-tahun_project': '2025',
+            'form-1-tanggal_mulai': '2025-01-01',
             'form-1-sumber_dana': 'APBD',
             'form-1-lokasi_project': 'Bandung',
             'form-1-nama_client': 'Client B',
             'form-1-anggaran_owner': '2000000000',
             # Project 3
             'form-2-nama': 'Project C',
-            'form-2-tahun_project': '2025',
+            'form-2-tanggal_mulai': '2025-01-01',
             'form-2-sumber_dana': 'APBN',
             'form-2-lokasi_project': 'Surabaya',
             'form-2-nama_client': 'Client C',

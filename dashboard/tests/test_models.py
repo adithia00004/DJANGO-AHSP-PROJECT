@@ -258,6 +258,7 @@ class TestProjectModel:
         project = Project.objects.create(
             owner=user,
             nama='Large Budget Project',
+            tanggal_mulai=date.today(),
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',

@@ -11,6 +11,7 @@ Coverage:
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from decimal import Decimal
 
 
@@ -32,12 +33,11 @@ class TestFullCRUDWorkflow:
             'form-MIN_NUM_FORMS': '0',
             'form-MAX_NUM_FORMS': '1000',
             'form-0-nama': 'Integration Test Project',
-            'form-0-tahun_project': '2025',
+            'form-0-tanggal_mulai': '2025-01-01',
             'form-0-sumber_dana': 'APBN',
             'form-0-lokasi_project': 'Jakarta',
             'form-0-nama_client': 'Test Client',
             'form-0-anggaran_owner': '1000000000',
-            'form-0-tanggal_mulai': '2025-01-01',
             'form-0-tanggal_selesai': '2025-12-31',
         }
 
@@ -221,7 +221,7 @@ class TestUserIsolationWorkflow:
             'form-MIN_NUM_FORMS': '0',
             'form-MAX_NUM_FORMS': '1000',
             'form-0-nama': 'User Private Project',
-            'form-0-tahun_project': '2025',
+            'form-0-tanggal_mulai': '2025-01-01',
             'form-0-sumber_dana': 'APBN',
             'form-0-lokasi_project': 'Jakarta',
             'form-0-nama_client': 'Client',
