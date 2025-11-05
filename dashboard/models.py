@@ -71,23 +71,30 @@ class Project(models.Model):
         return f"{self.index_project or 'PRJ-NEW'} — {self.nama}"
 
     def save(self, *args, **kwargs):
+        from datetime import date, timedelta
+
         creating = self._state.adding and not self.index_project
 
         # Set default timeline if not provided
         if not self.tanggal_mulai:
-            from django.utils import timezone
             self.tanggal_mulai = timezone.now().date()
 
         if not self.tanggal_selesai:
-            # Default: 31 Desember tahun ini (atau tahun project)
-            from datetime import date
+            # Default: 31 Desember tahun project, or 1 year from start if that's in the past
             year = self.tahun_project if self.tahun_project else self.tanggal_mulai.year
-            self.tanggal_selesai = date(year, 12, 31)
+            proposed_end = date(year, 12, 31)
+
+            # Ensure tanggal_selesai is after tanggal_mulai
+            if proposed_end <= self.tanggal_mulai:
+                # If proposed end date is in the past, set to 1 year from start
+                self.tanggal_selesai = self.tanggal_mulai + timedelta(days=365)
+            else:
+                self.tanggal_selesai = proposed_end
 
         if not self.durasi_hari:
-            # Calculate duration from dates
+            # Calculate duration from dates (ensure it's positive)
             delta = (self.tanggal_selesai - self.tanggal_mulai).days + 1
-            self.durasi_hari = delta
+            self.durasi_hari = max(1, delta)  # Ensure minimum 1 day
 
         super().save(*args, **kwargs)
 

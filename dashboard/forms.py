@@ -15,6 +15,14 @@ class ProjectForm(forms.ModelForm):
         "anggaran_owner",
     ]
 
+    # Override anggaran_owner to accept string input with custom parsing
+    anggaran_owner = forms.CharField(
+        label="Anggaran Owner",
+        required=False,  # We handle required in clean()
+        widget=forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric', 'placeholder': 'Contoh: Rp 1.000.000.000 atau 1000000000'}),
+        help_text="Format: angka biasa, Rp 1.000.000, atau 1,000,000.00"
+    )
+
     class Meta:
         model = Project
         fields = "__all__"
@@ -25,7 +33,6 @@ class ProjectForm(forms.ModelForm):
             "sumber_dana": forms.TextInput(attrs={"class": "form-control"}),
             "lokasi_project": forms.TextInput(attrs={"class": "form-control"}),
             "nama_client": forms.TextInput(attrs={"class": "form-control"}),
-            "anggaran_owner": forms.TextInput(attrs={'class': 'form-control', 'inputmode': 'numeric'}),
             "deskripsi": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
             "kategori": forms.TextInput(attrs={"class": "form-control"}),
             # Timeline fields
