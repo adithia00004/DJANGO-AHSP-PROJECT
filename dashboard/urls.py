@@ -7,6 +7,11 @@ from .views import (
     project_duplicate,
     project_upload_view,
 )
+from .views_export import (
+    export_excel,
+    export_csv,
+    export_project_pdf,
+)
 
 app_name = "dashboard"
 
@@ -22,4 +27,9 @@ urlpatterns = [
 
     # Mass upload via Excel
     path("upload/", project_upload_view, name="project_upload"),
+
+    # FASE 2.4: Export features
+    path("export/excel/", export_excel, name="export_excel"),
+    path("export/csv/", export_csv, name="export_csv"),
+    path("project/<int:pk>/export/pdf/", export_project_pdf, name="export_project_pdf"),
 ]

@@ -31,6 +31,10 @@
                 <i class="fas fa-project-diagram"></i> {{ project.nama }}
             </h4>
             <div class="btn-group">
+                <!-- FASE 2.4: PDF Export -->
+                <a href="{% url 'dashboard:export_project_pdf' project.pk %}" class="btn btn-sm btn-info" title="Export detail project ke PDF">
+                    <i class="fas fa-file-pdf"></i> Export PDF
+                </a>
                 <a href="{% url 'dashboard:project_edit' project.pk %}" class="btn btn-sm btn-warning">
                     <i class="fas fa-edit"></i> Edit
                 </a>

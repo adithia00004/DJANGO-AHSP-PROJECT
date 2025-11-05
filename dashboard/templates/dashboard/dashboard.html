@@ -415,12 +415,26 @@
     {% include 'dashboard/_project_stats_and_table.html' %}
   </div>
 
-  <!-- Tombol Upload Excel -->
-  <div class="mb-3 d-flex justify-content-end">
-    <a href="{% url 'dashboard:project_upload' %}" class="btn btn-outline-primary btn-sm">
-      <i class="fas fa-file-upload"></i> Upload dari Excel
-    </a>
+  <!-- ========== FASE 2.4: EXPORT & UPLOAD ACTIONS ========== -->
+  <div class="mb-3 d-flex justify-content-between align-items-center">
+    <!-- Export Buttons (Left side) -->
+    <div class="d-flex gap-2">
+      <a href="{% url 'dashboard:export_excel' %}?{{ request.GET.urlencode }}" class="btn btn-success btn-sm" title="Export data yang terfilter ke Excel">
+        <i class="fas fa-file-excel"></i> Export Excel
+      </a>
+      <a href="{% url 'dashboard:export_csv' %}?{{ request.GET.urlencode }}" class="btn btn-info btn-sm" title="Export data yang terfilter ke CSV">
+        <i class="fas fa-file-csv"></i> Export CSV
+      </a>
+    </div>
+
+    <!-- Upload Button (Right side) -->
+    <div>
+      <a href="{% url 'dashboard:project_upload' %}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-file-upload"></i> Upload dari Excel
+      </a>
+    </div>
   </div>
+  <!-- ========== END EXPORT & UPLOAD ACTIONS ========== -->
 
 </section>
 {% endblock %}
