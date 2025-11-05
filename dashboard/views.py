@@ -36,17 +36,20 @@ def _get_safe_next(request, default_name='dashboard:dashboard'):
 
 @login_required
 def dashboard_view(request):
-    queryset = Project.objects.filter(owner=request.user, is_active=True)
-    filter_form = ProjectFilterForm(request.GET)
+    # Start with all projects owned by user
+    queryset = Project.objects.filter(owner=request.user)
+
+    # Initialize filter form with user for dynamic choices
+    filter_form = ProjectFilterForm(request.GET, user=request.user)
 
     # Info ramah saat navigasi tanpa project terpilih
     if request.GET.get("need_project") == "1":
         messages.info(request, "Silakan pilih project dari tabel, lalu buka halaman Detail Project.")
 
-
+    # === FASE 2.2: Advanced Filtering ===
     if filter_form.is_valid():
+        # Basic search
         search = filter_form.cleaned_data.get('search')
-        sort_by = filter_form.cleaned_data.get('sort_by') or '-updated_at'
         if search:
             queryset = queryset.filter(
                 Q(nama__icontains=search) |
@@ -56,7 +59,67 @@ def dashboard_view(request):
                 Q(nama_client__icontains=search) |
                 Q(kategori__icontains=search)
             )
+
+        # Filter by year
+        tahun = filter_form.cleaned_data.get('tahun_project')
+        if tahun:
+            queryset = queryset.filter(tahun_project=tahun)
+
+        # Filter by sumber dana
+        sumber = filter_form.cleaned_data.get('sumber_dana')
+        if sumber:
+            queryset = queryset.filter(sumber_dana=sumber)
+
+        # Filter by timeline status
+        status = filter_form.cleaned_data.get('status_timeline')
+        if status:
+            today = date.today()
+            if status == 'belum_mulai':
+                queryset = queryset.filter(tanggal_mulai__gt=today)
+            elif status == 'berjalan':
+                queryset = queryset.filter(
+                    tanggal_mulai__lte=today,
+                    tanggal_selesai__gte=today
+                )
+            elif status == 'terlambat':
+                queryset = queryset.filter(tanggal_selesai__lt=today)
+            elif status == 'selesai':
+                # Projects that finished on time (ended in the past, but not marked overdue)
+                queryset = queryset.filter(
+                    tanggal_selesai__lt=today,
+                    tanggal_mulai__lte=today
+                )
+
+        # Filter by budget range
+        anggaran_min = filter_form.cleaned_data.get('anggaran_min')
+        anggaran_max = filter_form.cleaned_data.get('anggaran_max')
+        if anggaran_min is not None:
+            queryset = queryset.filter(anggaran_owner__gte=anggaran_min)
+        if anggaran_max is not None:
+            queryset = queryset.filter(anggaran_owner__lte=anggaran_max)
+
+        # Filter by date range
+        tanggal_from = filter_form.cleaned_data.get('tanggal_mulai_from')
+        tanggal_to = filter_form.cleaned_data.get('tanggal_mulai_to')
+        if tanggal_from:
+            queryset = queryset.filter(tanggal_mulai__gte=tanggal_from)
+        if tanggal_to:
+            queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
+
+        # Filter by active status
+        is_active_filter = filter_form.cleaned_data.get('is_active')
+        if is_active_filter == 'true':
+            queryset = queryset.filter(is_active=True)
+        elif is_active_filter == 'false':
+            queryset = queryset.filter(is_active=False)
+        # else: show all (don't filter)
+
+        # Sorting
+        sort_by = filter_form.cleaned_data.get('sort_by') or '-updated_at'
         queryset = queryset.order_by(sort_by)
+    else:
+        # Default: only show active projects if no filter applied
+        queryset = queryset.filter(is_active=True).order_by('-updated_at')
 
     ProjectFormSet = modelformset_factory(
         Project,

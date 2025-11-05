@@ -154,6 +154,113 @@
   </div>
   <!-- ========== END ANALYTICS & STATISTICS ========== -->
 
+  <!-- ========== FASE 2.2: ADVANCED FILTERING ========== -->
+  <div class="mb-4">
+    <div class="card shadow-sm">
+      <div class="card-header bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">
+            <i class="fas fa-filter"></i> Filter & Pencarian
+          </h6>
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
+            <i class="fas fa-chevron-down"></i> Toggle Filter
+          </button>
+        </div>
+      </div>
+      <div class="collapse" id="filterPanel">
+        <div class="card-body">
+          <form method="get" action="{% url 'dashboard:dashboard' %}" id="filterForm">
+            <div class="row g-3">
+              <!-- Basic Search -->
+              <div class="col-md-6">
+                <label for="{{ filter_form.search.id_for_label }}" class="form-label">
+                  {{ filter_form.search.label }}
+                </label>
+                {{ filter_form.search }}
+              </div>
+
+              <!-- Sort By -->
+              <div class="col-md-3">
+                <label for="{{ filter_form.sort_by.id_for_label }}" class="form-label">
+                  {{ filter_form.sort_by.label }}
+                </label>
+                {{ filter_form.sort_by }}
+              </div>
+
+              <!-- Active Status -->
+              <div class="col-md-3">
+                <label for="{{ filter_form.is_active.id_for_label }}" class="form-label">
+                  {{ filter_form.is_active.label }}
+                </label>
+                {{ filter_form.is_active }}
+              </div>
+
+              <!-- Year Filter -->
+              <div class="col-md-3">
+                <label for="{{ filter_form.tahun_project.id_for_label }}" class="form-label">
+                  {{ filter_form.tahun_project.label }}
+                </label>
+                {{ filter_form.tahun_project }}
+              </div>
+
+              <!-- Sumber Dana Filter -->
+              <div class="col-md-3">
+                <label for="{{ filter_form.sumber_dana.id_for_label }}" class="form-label">
+                  {{ filter_form.sumber_dana.label }}
+                </label>
+                {{ filter_form.sumber_dana }}
+              </div>
+
+              <!-- Timeline Status Filter -->
+              <div class="col-md-3">
+                <label for="{{ filter_form.status_timeline.id_for_label }}" class="form-label">
+                  {{ filter_form.status_timeline.label }}
+                </label>
+                {{ filter_form.status_timeline }}
+              </div>
+
+              <!-- Budget Range -->
+              <div class="col-md-3">
+                <label class="form-label">Rentang Anggaran</label>
+                <div class="input-group input-group-sm">
+                  {{ filter_form.anggaran_min }}
+                  <span class="input-group-text">s/d</span>
+                  {{ filter_form.anggaran_max }}
+                </div>
+              </div>
+
+              <!-- Date Range -->
+              <div class="col-md-6">
+                <label class="form-label">Tanggal Mulai</label>
+                <div class="input-group input-group-sm">
+                  {{ filter_form.tanggal_mulai_from }}
+                  <span class="input-group-text">s/d</span>
+                  {{ filter_form.tanggal_mulai_to }}
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="col-12">
+                <div class="d-flex gap-2">
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fas fa-search"></i> Terapkan Filter
+                  </button>
+                  <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-secondary btn-sm" id="resetFilter">
+                    <i class="fas fa-redo"></i> Reset
+                  </a>
+                  <small class="text-muted align-self-center ms-auto">
+                    Menampilkan {{ total_projects }} project
+                  </small>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ========== END ADVANCED FILTERING ========== -->
+
   <!-- FORMSET INPUT PROJECT -->
   <div class="mb-5">
     <div class="card">
@@ -404,6 +511,68 @@
               }
             }
           });
+        }
+      }
+    });
+  </script>
+
+  <!-- FASE 2.2: Advanced Filter JavaScript -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Auto-expand filter panel if any filter is active
+      const filterForm = document.getElementById('filterForm');
+      const filterPanel = document.getElementById('filterPanel');
+
+      if (filterForm && filterPanel) {
+        // Check if URL has any query parameters (excluding page)
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasActiveFilters = Array.from(urlParams.keys()).some(key =>
+          key !== 'page' && urlParams.get(key) !== ''
+        );
+
+        // Auto-expand if filters are active
+        if (hasActiveFilters) {
+          const collapseInstance = new bootstrap.Collapse(filterPanel, {
+            toggle: false
+          });
+          collapseInstance.show();
+        }
+
+        // Update toggle button icon
+        const toggleBtn = document.querySelector('[data-bs-target="#filterPanel"]');
+        if (toggleBtn) {
+          filterPanel.addEventListener('show.bs.collapse', function () {
+            toggleBtn.querySelector('i').classList.replace('fa-chevron-down', 'fa-chevron-up');
+          });
+
+          filterPanel.addEventListener('hide.bs.collapse', function () {
+            toggleBtn.querySelector('i').classList.replace('fa-chevron-up', 'fa-chevron-down');
+          });
+        }
+      }
+
+      // Optional: Save filter preferences to localStorage
+      // (Can be implemented later if needed)
+
+      // Highlight active filter count
+      if (filterForm) {
+        const formData = new FormData(filterForm);
+        let activeFilterCount = 0;
+
+        for (let [key, value] of formData.entries()) {
+          if (value && value.trim() !== '' && key !== 'csrfmiddlewaretoken') {
+            activeFilterCount++;
+          }
+        }
+
+        if (activeFilterCount > 0) {
+          const filterHeader = document.querySelector('.card-header h6');
+          if (filterHeader && !filterHeader.querySelector('.badge')) {
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-primary ms-2';
+            badge.textContent = activeFilterCount;
+            filterHeader.appendChild(badge);
+          }
         }
       }
     });

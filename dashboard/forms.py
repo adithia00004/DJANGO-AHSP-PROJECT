@@ -169,11 +169,17 @@ class ProjectForm(forms.ModelForm):
 
 # ====== Filter & Sort ======
 class ProjectFilterForm(forms.Form):
+    # Basic search
     search = forms.CharField(
         required=False,
         label="Cari Proyek",
-        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Cari nama/kategori/lokasi/sumber dana"}),
+        widget=forms.TextInput(attrs={
+            "class": "form-control",
+            "placeholder": "Cari nama/kategori/lokasi/sumber dana"
+        }),
     )
+
+    # Sort by
     sort_by = forms.ChoiceField(
         required=False,
         choices=[
@@ -183,10 +189,122 @@ class ProjectFilterForm(forms.Form):
             ("-nama", "Nama Z–A"),
             ("-tahun_project", "Tahun ↓"),
             ("tahun_project", "Tahun ↑"),
+            ("-anggaran_owner", "Anggaran Terbesar"),
+            ("anggaran_owner", "Anggaran Terkecil"),
         ],
         label="Urutkan",
-        widget=forms.Select(attrs={"class": "form-select"}),
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
+
+    # FASE 2.2: Advanced Filters
+
+    # Filter by year
+    tahun_project = forms.ChoiceField(
+        required=False,
+        choices=[],  # Will be populated dynamically
+        label="Tahun Project",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+
+    # Filter by sumber dana
+    sumber_dana = forms.ChoiceField(
+        required=False,
+        choices=[],  # Will be populated dynamically
+        label="Sumber Dana",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+
+    # Filter by timeline status
+    status_timeline = forms.ChoiceField(
+        required=False,
+        choices=[
+            ('', 'Semua Status'),
+            ('belum_mulai', 'Belum Mulai'),
+            ('berjalan', 'Sedang Berjalan'),
+            ('terlambat', 'Terlambat'),
+            ('selesai', 'Selesai'),
+        ],
+        label="Status Timeline",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+
+    # Filter by budget range
+    anggaran_min = forms.DecimalField(
+        required=False,
+        label="Anggaran Min (Rp)",
+        widget=forms.NumberInput(attrs={
+            "class": "form-control form-control-sm",
+            "placeholder": "Min"
+        }),
+    )
+
+    anggaran_max = forms.DecimalField(
+        required=False,
+        label="Anggaran Max (Rp)",
+        widget=forms.NumberInput(attrs={
+            "class": "form-control form-control-sm",
+            "placeholder": "Max"
+        }),
+    )
+
+    # Filter by date range
+    tanggal_mulai_from = forms.DateField(
+        required=False,
+        label="Tanggal Mulai Dari",
+        widget=forms.DateInput(attrs={
+            "class": "form-control form-control-sm",
+            "type": "date"
+        }),
+    )
+
+    tanggal_mulai_to = forms.DateField(
+        required=False,
+        label="Tanggal Mulai Sampai",
+        widget=forms.DateInput(attrs={
+            "class": "form-control form-control-sm",
+            "type": "date"
+        }),
+    )
+
+    # Filter by active status
+    is_active = forms.ChoiceField(
+        required=False,
+        choices=[
+            ('', 'Semua'),
+            ('true', 'Aktif'),
+            ('false', 'Archived'),
+        ],
+        label="Status",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        # Extract user for dynamic choices
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+
+        if user:
+            from .models import Project
+
+            # Populate tahun_project choices
+            years = Project.objects.filter(owner=user).values_list(
+                'tahun_project', flat=True
+            ).distinct().order_by('-tahun_project')
+
+            year_choices = [('', 'Semua Tahun')]
+            year_choices.extend([(year, str(year)) for year in years if year])
+            self.fields['tahun_project'].choices = year_choices
+
+            # Populate sumber_dana choices
+            sumber_danas = Project.objects.filter(owner=user).values_list(
+                'sumber_dana', flat=True
+            ).distinct().order_by('sumber_dana')
+
+            sumber_choices = [('', 'Semua Sumber Dana')]
+            sumber_choices.extend([
+                (sd, sd) for sd in sumber_danas if sd and sd.strip()
+            ])
+            self.fields['sumber_dana'].choices = sumber_choices
 
 
 # ====== Upload Excel ======
