@@ -37,7 +37,7 @@ def normalize_num(val) -> Decimal | None:
     - Standard decimal: 123.456, 0.000008
     - Comma as decimal separator: 123,456
     - Mixed thousand separators: 1.234,56 or 1,234.56
-    - Scientific notation: 8e-05, 1.23E+10 (for very small/large Excel values)
+    - Scientific notation: 8e-05, 1.23E+10, 8e-5 (for very small/large Excel values)
 
     Returns:
         Decimal object or None if invalid
@@ -58,7 +58,19 @@ def normalize_num(val) -> Decimal | None:
     if s == "":
         return None
 
-    # Normalize comma/dot separators (skip if scientific notation detected)
+    # ENHANCED: Try parsing as scientific notation FIRST
+    # This handles Excel exports like "8e-05" or "1.23E+10"
+    if "e" in s.lower():
+        try:
+            # Convert via float first to handle scientific notation
+            float_val = float(s)
+            # Then convert to Decimal for precision
+            return Decimal(str(float_val))
+        except (ValueError, InvalidOperation):
+            # If scientific notation parsing fails, continue to standard parsing
+            pass
+
+    # Normalize comma/dot separators (only for non-scientific notation)
     if "e" not in s.lower():
         if "." in s and "," in s:
             # Determine which is decimal separator based on position

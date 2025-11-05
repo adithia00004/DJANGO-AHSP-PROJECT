@@ -43,6 +43,39 @@
     {% block extra_css %}{% endblock %}
     <meta name="color-scheme" content="light dark">
 
+    <!-- Messages Modal Styles -->
+    <style>
+        #messagesModal .modal-dialog {
+            max-width: 600px;
+        }
+        #messagesModal .modal-body {
+            max-height: 70vh;
+        }
+        #messagesModal .messages-list .alert:last-child {
+            margin-bottom: 0 !important;
+        }
+        #messagesModal .modal-header.bg-success,
+        #messagesModal .modal-header.bg-danger,
+        #messagesModal .modal-header.bg-info {
+            border-bottom: none;
+        }
+        #messagesModal .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        #messagesModal .modal-header.bg-warning .btn-close {
+            filter: none;
+        }
+        /* Better text wrapping in messages */
+        #messagesModal .alert p {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        /* Icon styling */
+        #messagesModal .alert .bi {
+            margin-top: 0.125rem;
+        }
+    </style>
+
     <!-- Favicon (inline fallback; tidak 404 meskipun file statik belum ada) -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230d6efd'/%3E%3Ctext x='50%25' y='54%25' font-size='36' text-anchor='middle' fill='white' font-family='Arial,Helvetica,sans-serif'%3EA%3C/text%3E%3C/svg%3E">
     {# Jika nanti punya file, boleh ganti/link-kan ulang: #}
@@ -113,17 +146,41 @@
 
     <!-- Main Content -->
     <main id="main-content" class="container my-4">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Messages Modal - Pop-up untuk notifikasi -->
+    <div class="modal fade" id="messagesModal" tabindex="-1" aria-labelledby="messagesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" id="messagesModalHeader">
+                    <h5 class="modal-title" id="messagesModalLabel">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <span id="messagesModalTitle">Notifikasi</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="messagesModalBody">
+                    <!-- Messages will be injected here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden messages data for JavaScript -->
+    {% if messages %}
+        <div id="django-messages-data" style="display: none;">
+            {% for message in messages %}
+                <div class="message-item"
+                     data-level="{{ message.level }}"
+                     data-tags="{{ message.tags }}"
+                     data-message="{{ message|escapejs }}"></div>
+            {% endfor %}
+        </div>
+    {% endif %}
 
     <!-- Footer -->
     <footer class="mt-auto text-center py-3 bg-body border-top">
@@ -133,7 +190,9 @@
 
     <script defer src="{% static 'detail_project/js/theme.js' %}"></script>
     <!-- Bootstrap JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Messages Modal Handler -->
+    <script defer src="{% static 'detail_project/js/messages_modal.js' %}"></script>
 
 
     {% block extra_js %}
