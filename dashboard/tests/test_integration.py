@@ -129,6 +129,7 @@ class TestExcelUploadWorkflow:
         """Test uploading Excel file and verifying imported projects."""
         import openpyxl
         from io import BytesIO
+        from django.core.files.uploadedfile import SimpleUploadedFile
         from dashboard.models import Project
 
         client.force_login(user)
@@ -157,9 +158,17 @@ class TestExcelUploadWorkflow:
                 f'Description {i}', 'Infrastructure'
             ])
 
-        excel_file = BytesIO()
-        wb.save(excel_file)
-        excel_file.seek(0)
+        # Save to BytesIO and wrap in SimpleUploadedFile
+        excel_buffer = BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+
+        # Create SimpleUploadedFile with proper content type
+        excel_file = SimpleUploadedFile(
+            'test_projects.xlsx',
+            excel_buffer.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
 
         # 2. Upload Excel file
         upload_url = reverse('dashboard:project_upload')

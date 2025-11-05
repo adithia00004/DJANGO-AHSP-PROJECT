@@ -436,6 +436,7 @@ class TestExcelUpload:
     def test_excel_upload_valid_file(self, client, user):
         """Test uploading a valid Excel file."""
         from dashboard.models import Project
+        from django.core.files.uploadedfile import SimpleUploadedFile
 
         # Create Excel file in memory
         wb = openpyxl.Workbook()
@@ -460,15 +461,22 @@ class TestExcelUpload:
             '', '', '', '', '', '', '', '', '', '', 'Test', 'Infra'
         ])
 
-        # Save to BytesIO
-        excel_file = BytesIO()
-        wb.save(excel_file)
-        excel_file.seek(0)
+        # Save to BytesIO and wrap in SimpleUploadedFile
+        excel_buffer = BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+
+        # Create SimpleUploadedFile with proper content type
+        excel_file = SimpleUploadedFile(
+            'test_projects.xlsx',
+            excel_buffer.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
 
         client.force_login(user)
         url = reverse('dashboard:project_upload')
 
-        response = client.post(url, {'file': excel_file}, format='multipart')
+        response = client.post(url, {'file': excel_file})
 
         # Should redirect (success)
         assert response.status_code == 302
