@@ -156,8 +156,9 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                         summary.detail_errors.append(message)
                         _log(stdout, message)
 
-    # PHASE 3 DAY 3: Refresh materialized view after import
-    _refresh_materialized_view(stdout)
+        # PHASE 3 DAY 3: Refresh materialized view after import
+        # Must be inside atomic block to avoid TransactionManagementError
+        _refresh_materialized_view(stdout)
 
     return summary
 
