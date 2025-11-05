@@ -1,0 +1,993 @@
+# 📋 DASHBOARD IMPROVEMENT ROADMAP
+
+**Project:** DJANGO-AHSP-PROJECT
+**App:** Dashboard
+**Created:** 2025-11-05
+**Estimated Duration:** 12-16 minggu
+**Status:** In Progress
+
+---
+
+## 📊 EXECUTIVE SUMMARY
+
+Roadmap ini menyusun penyempurnaan dan penambahan fitur untuk apps Dashboard dalam 6 FASE:
+
+- **FASE 0:** Critical Fixes (3 hari) - Fix timeline UI yang sudah ada
+- **FASE 1:** Foundation (1-2 minggu) - Testing & Admin panel
+- **FASE 2:** Enhancement (2-3 minggu) - Analytics, Filtering, Export
+- **FASE 3:** Deep Copy Feature (3-4 minggu) - Full project duplication
+- **FASE 4:** Polish (1-2 minggu) - Performance & Documentation
+- **FASE 5:** API (2 minggu) - REST API (optional)
+
+**Total Estimated Effort:** 12-16 minggu
+
+---
+
+## 🔍 INITIAL ASSESSMENT
+
+### Current State (Baseline)
+
+**Strengths:**
+- ✅ Model structure well-designed
+- ✅ CRUD operations complete
+- ✅ Excel import functionality
+- ✅ Timeline fields exist in database
+- ✅ Form validation robust
+- ✅ User isolation (per-owner filtering)
+
+**Critical Issues:**
+- ❌ Timeline fields NOT VISIBLE in UI (despite being in database)
+- ❌ No testing suite (0% coverage)
+- ❌ No admin panel registration
+- ❌ No export functionality
+- ❌ No dashboard analytics
+- ❌ Limited filtering options
+- ❌ No deep copy feature
+
+**Metrics:**
+```
+✅ CRUD Operations:        100% (Complete)
+✅ Data Validation:         85% (Strong)
+✅ UI/UX:                   90% (Excellent)
+✅ Integration:             95% (Solid)
+⚠️ Testing:                  0% (None)
+⚠️ Admin Tools:             20% (Minimal)
+⚠️ Analytics:               10% (Basic count only)
+⚠️ API:                      0% (None)
+⚠️ Export:                   0% (Import only)
+⚠️ Audit/Logging:            0% (None)
+
+Overall Score: 50/100 (Functional tapi butuh improvement)
+```
+
+---
+
+## 🎯 FASE 0: CRITICAL FIXES (URGENT - 3 hari)
+
+**Priority:** 🔴 IMMEDIATE
+**Risk:** 🟢 Low
+**Effort:** 3 hari
+
+### Problem Statement
+
+Field timeline (`tanggal_mulai`, `tanggal_selesai`, `durasi_hari`) sudah ada di:
+- ✅ Database model (models.py:39-56)
+- ✅ Migration (0007_project_timeline_fields.py)
+- ✅ Form widgets (forms.py:32-34)
+- ✅ Form validation (forms.py:133-158)
+- ✅ Management command (set_project_timeline_defaults.py)
+
+Tapi **TIDAK MUNCUL** di:
+- ❌ Dashboard table
+- ❌ Dashboard formset
+- ❌ Project detail page
+- ❌ Excel upload
+
+### Tasks
+
+#### Task 0.1: Show Timeline Fields in UI (1 hari)
+
+**Files to modify:**
+```
+dashboard/templates/dashboard/_project_stats_and_table.html
+dashboard/templates/dashboard/dashboard.html
+dashboard/templates/dashboard/project_detail.html
+dashboard/templates/dashboard/project_form.html (verify only)
+```
+
+**Changes:**
+
+1. **Dashboard Table** (_project_stats_and_table.html)
+   - Add 3 columns: Tanggal Mulai, Tanggal Selesai, Durasi
+   - Format dates with Django template filters
+   - Add status badge (Belum Mulai / Berjalan / Selesai / Terlambat)
+
+2. **Dashboard Formset** (dashboard.html)
+   - Add 3 columns to formset table
+   - DateInput widgets for timeline fields
+   - Auto-calculation via JavaScript (optional)
+
+3. **Project Detail** (project_detail.html)
+   - Timeline info card
+   - Visual progress bar
+   - Status indicator
+
+**Deliverables:**
+- Timeline visible di dashboard table
+- Timeline editable di formset
+- Timeline shown in detail page
+
+---
+
+#### Task 0.2: Timeline in Upload Excel (0.5 hari)
+
+**Files to modify:**
+```
+dashboard/views.py (project_upload_view function)
+dashboard/static/dashboard/sample/project_upload_template.xlsx
+```
+
+**Changes:**
+
+1. Add timeline columns to expected headers:
+   ```python
+   expected = [
+       "nama","tahun_project","sumber_dana","lokasi_project","nama_client","anggaran_owner",
+       "tanggal_mulai","tanggal_selesai","durasi_hari",  # NEW
+       "ket_project1","ket_project2",
+       # ... rest
+   ]
+   ```
+
+2. Update Excel template with timeline columns
+
+**Deliverables:**
+- Excel upload supports timeline
+- Updated template file
+
+---
+
+#### Task 0.3: Timeline Visual Indicators (0.5 hari)
+
+**Files to modify:**
+```
+dashboard/templates/dashboard/_project_stats_and_table.html
+dashboard/static/dashboard/css/dashboard.css
+```
+
+**Features:**
+
+1. **Status Badge:**
+   ```python
+   if tanggal_selesai < today:
+       status = "Terlambat" (red badge)
+   elif tanggal_mulai > today:
+       status = "Belum Mulai" (secondary badge)
+   else:
+       status = "Berjalan" (success badge)
+   ```
+
+2. **Progress Bar:**
+   ```python
+   progress_percent = (today - tanggal_mulai) / (tanggal_selesai - tanggal_mulai) * 100
+   ```
+
+3. **Color Coding:**
+   - Red: Overdue projects
+   - Yellow: Deadline < 7 days
+   - Green: On track
+
+**Deliverables:**
+- Visual status indicators
+- Progress bars
+- Color-coded timeline info
+
+---
+
+#### Task 0.4: Quick Data Migration (1 hari)
+
+**Action:**
+```bash
+python manage.py set_project_timeline_defaults
+```
+
+**Verify:**
+- All existing projects have timeline data
+- No null values in timeline fields
+- Dates are logical (tanggal_selesai > tanggal_mulai)
+
+**Deliverables:**
+- All existing data migrated
+- No database errors
+- Data integrity verified
+
+---
+
+### FASE 0 Success Criteria
+
+- [ ] Timeline fields visible in dashboard table
+- [ ] Timeline fields editable in formset
+- [ ] Timeline shown in project detail page
+- [ ] Timeline supported in Excel upload
+- [ ] Visual status indicators working
+- [ ] All existing projects have timeline data
+- [ ] No UI/UX regressions
+
+**Estimated Completion:** Day 3
+
+---
+
+## 🏗️ FASE 1: FOUNDATION - TESTING & ADMIN (1-2 minggu)
+
+**Priority:** 🔴 HIGH
+**Risk:** 🟡 Medium
+**Effort:** 1-2 minggu
+
+### Task 1.1: Testing Suite (1 minggu)
+
+**Goal:** Achieve 80%+ test coverage
+
+**Test Files to Create:**
+```
+dashboard/tests/__init__.py
+dashboard/tests/test_models.py
+dashboard/tests/test_forms.py
+dashboard/tests/test_views.py
+dashboard/tests/test_integration.py
+dashboard/tests/conftest.py
+```
+
+**Test Coverage:**
+
+1. **Model Tests** (test_models.py)
+   - test_project_creation
+   - test_index_project_auto_generation
+   - test_timeline_auto_calculation
+   - test_soft_delete
+   - test_unique_constraints
+   - test_ordering
+
+2. **Form Tests** (test_forms.py)
+   - test_required_fields_validation
+   - test_anggaran_parsing (various formats)
+   - test_timeline_validation
+   - test_timeline_auto_calculation
+   - test_kategori_validation
+   - test_clean_methods
+
+3. **View Tests** (test_views.py)
+   - test_dashboard_view_authenticated
+   - test_dashboard_view_anonymous_redirect
+   - test_project_create
+   - test_project_edit
+   - test_project_delete
+   - test_project_duplicate
+   - test_formset_submit
+   - test_upload_excel_valid
+   - test_upload_excel_invalid
+   - test_user_isolation (user can't see other user's projects)
+   - test_filtering
+   - test_sorting
+   - test_pagination
+
+4. **Integration Tests** (test_integration.py)
+   - test_full_workflow_create_to_delete
+   - test_excel_upload_workflow
+   - test_duplicate_preserves_data
+
+**Deliverables:**
+- Test suite with 80%+ coverage
+- CI/CD ready
+- Regression prevention
+
+---
+
+### Task 1.2: Admin Panel Registration (2 hari)
+
+**File to modify:**
+```
+dashboard/admin.py
+```
+
+**Features:**
+
+1. **List Display:**
+   - index_project, nama, owner, tahun_project
+   - tanggal_mulai, tanggal_selesai, durasi_hari
+   - anggaran_owner, is_active, created_at
+
+2. **Filters:**
+   - is_active
+   - tahun_project
+   - created_at (date hierarchy)
+   - tanggal_mulai (DateFieldListFilter)
+   - tanggal_selesai (DateFieldListFilter)
+
+3. **Search:**
+   - nama, index_project, lokasi_project, sumber_dana, nama_client
+
+4. **Fieldsets:**
+   - Identitas Project
+   - Data Wajib
+   - Timeline (collapsible)
+   - Data Tambahan (collapsible)
+   - Metadata
+   - System (collapsible)
+
+5. **Custom Actions:**
+   - Activate/Deactivate selected projects
+   - Export as CSV
+
+**Deliverables:**
+- Full admin CRUD
+- Advanced filtering
+- Batch operations
+
+---
+
+## 🚀 FASE 2: ENHANCEMENT - UX & FEATURES (2-3 minggu)
+
+**Priority:** 🟡 MEDIUM-HIGH
+**Risk:** 🟡 Medium
+**Effort:** 2-3 minggu
+
+### Task 2.1: Dashboard Analytics & Statistics (1 minggu)
+
+**Features:**
+
+1. **Summary Cards:**
+   - Total Projects (active)
+   - Total Anggaran (sum)
+   - Projects This Year
+   - Active Projects (deadline < 30 hari)
+
+2. **Charts** (Chart.js or ECharts):
+   - Projects by Year (bar chart)
+   - Projects by Sumber Dana (pie chart)
+   - Anggaran by Year (line chart)
+   - Timeline Gantt (upcoming deadlines)
+
+3. **Recent Activity:**
+   - 5 recent created projects
+   - 5 recent updated projects
+
+**Files to modify:**
+```
+dashboard/views.py
+dashboard/templates/dashboard/dashboard.html
+dashboard/static/dashboard/js/charts.js (new)
+```
+
+**Deliverables:**
+- Visual analytics dashboard
+- Interactive charts
+- Better insights
+
+---
+
+### Task 2.2: Advanced Filtering (3 hari)
+
+**New Filters:**
+- tahun_project (dropdown)
+- sumber_dana (multi-select)
+- status_timeline (dropdown)
+- anggaran_min / anggaran_max (range)
+- date_range_start / date_range_end
+- is_active (dropdown)
+
+**UI:**
+- Collapsible filter panel
+- Reset filter button
+- Save filter preferences (localStorage)
+
+**Deliverables:**
+- Multi-criteria filtering
+- Better data discovery
+- Saved filters
+
+---
+
+### Task 2.3: Bulk Actions (3 hari)
+
+**Features:**
+1. Select multiple projects (checkbox)
+2. Bulk delete
+3. Bulk archive/unarchive
+4. Bulk export to Excel
+5. Bulk update (tahun, sumber dana, etc.)
+
+**Implementation:**
+- JavaScript for checkbox selection
+- Backend views for bulk operations
+- CSRF protection
+- Transaction safety
+
+**Deliverables:**
+- Checkbox selection UI
+- Bulk operations backend
+- Performance for 100+ selections
+
+---
+
+### Task 2.4: Export Data (4 hari)
+
+**Export Formats:**
+
+1. **Excel Export** (openpyxl):
+   - All project data
+   - Formatted headers
+   - Auto-column width
+   - Filters & formulas
+
+2. **CSV Export:**
+   - Simple comma-separated
+   - Import-friendly
+
+3. **PDF Export** (ReportLab/WeasyPrint):
+   - Project detail report
+   - Summary statistics
+   - Professional formatting
+
+**Files to create:**
+```
+dashboard/views_export.py (new)
+dashboard/templates/dashboard/export/
+```
+
+**URLs:**
+```
+/dashboard/export/excel/
+/dashboard/export/csv/
+/dashboard/project/<pk>/export/pdf/
+```
+
+**Deliverables:**
+- 3 export formats
+- Same filtering as dashboard
+- Professional formatting
+
+---
+
+## 🔄 FASE 3: ADVANCED - DEEP COPY FEATURE (3-4 minggu)
+
+**Priority:** 🟡 MEDIUM
+**Risk:** 🔴 HIGH
+**Effort:** 3-4 minggu
+
+### Architecture Assessment
+
+**Dependency Tree:**
+```
+Project
+├─► ProjectPricing (OneToOne)
+├─► Klasifikasi (FK)
+│   └─► SubKlasifikasi (FK)
+│       └─► Pekerjaan (FK)
+│           ├─► VolumePekerjaan (OneToOne)
+│           ├─► VolumeFormulaState (FK)
+│           ├─► DetailAHSPProject (FK)
+│           │   └─► HargaItemProject (FK - SHARED)
+│           ├─► PekerjaanTahapan (M2M junction)
+│           │   └─► TahapPelaksanaan (FK)
+│           └─► PekerjaanProgressWeekly (FK)
+├─► HargaItemProject (FK - SHARED RESOURCE)
+└─► TahapPelaksanaan (FK)
+```
+
+**Complexity:**
+- 5-level deep nesting
+- Shared resources (HargaItemProject)
+- M2M relationships via junction table
+- Weekly progress with date calculations
+- Estimated 2,000-20,000 records per project
+
+---
+
+### Task 3.1: Service Layer - Deep Copy Engine (2 minggu)
+
+**File to create:**
+```
+dashboard/services/__init__.py
+dashboard/services/deep_copy.py
+```
+
+**Implementation:**
+
+```python
+class ProjectDeepCopyService:
+    """
+    Deep copy project dengan semua relasi detail_project.
+
+    Strategy:
+    1. Project metadata (shallow)
+    2. ProjectPricing (1:1)
+    3. HargaItemProject (smart copy - only used items)
+    4. Klasifikasi → SubKlasifikasi (hierarchy)
+    5. Pekerjaan + VolumePekerjaan + VolumeFormulaState
+    6. DetailAHSPProject (bulk create for performance)
+    7. TahapPelaksanaan
+    8. PekerjaanTahapan (M2M junction)
+    9. PekerjaanProgressWeekly (with date recalculation)
+    """
+
+    def __init__(self, original_project, new_owner, new_nama):
+        self.original = original_project
+        self.new_owner = new_owner
+        self.new_nama = new_nama
+
+        # Mapping tables: old_id → new_id
+        self.harga_map = {}
+        self.klas_map = {}
+        self.subklas_map = {}
+        self.pkj_map = {}
+        self.tahap_map = {}
+
+        # Statistics
+        self.stats = defaultdict(int)
+
+    @transaction.atomic
+    def execute(self, copy_options=None):
+        # Step 1: Copy Project
+        # Step 2: Copy ProjectPricing
+        # Step 3: Copy HargaItemProject
+        # Step 4: Copy Klasifikasi hierarchy
+        # Step 5: Copy Pekerjaan + related
+        # Step 6: Copy DetailAHSPProject (bulk)
+        # Step 7: Copy TahapPelaksanaan
+        # Step 8: Copy PekerjaanTahapan
+        # Step 9: Copy PekerjaanProgressWeekly
+
+        return new_project
+```
+
+**Copy Options:**
+```python
+copy_options = {
+    'copy_timeline': bool,           # Copy timeline atau reset
+    'copy_weekly_progress': bool,    # Copy weekly progress atau skip
+    'recalculate_dates': bool,       # Recalculate week dates
+    'copy_harga_items': bool,        # Copy all atau smart (used only)
+}
+```
+
+**Performance Optimization:**
+- Bulk create (batch_size=500)
+- Disable signals during copy
+- Use select_related/prefetch_related
+- Transaction atomic
+- Progress tracking
+
+**Deliverables:**
+- Complete deep copy engine
+- Configurable options
+- FK mapping preserved
+- Memory-efficient
+- Error handling & logging
+
+---
+
+### Task 3.2: Views & URLs (3 hari)
+
+**Files to modify:**
+```
+dashboard/views.py
+dashboard/forms.py
+dashboard/urls.py
+dashboard/templates/dashboard/project_confirm_deep_duplicate.html
+```
+
+**View:**
+```python
+@login_required
+def project_deep_duplicate(request, pk):
+    original = get_object_or_404(Project, pk=pk, owner=request.user)
+
+    if request.method == 'POST':
+        form = DeepDuplicateForm(request.POST)
+        if form.is_valid():
+            new_project = deep_copy_project(
+                original,
+                request.user,
+                form.cleaned_data['new_nama'],
+                copy_options={...}
+            )
+            messages.success(request, f'Project duplicated: {new_project.nama}')
+            return redirect('dashboard:project_detail', pk=new_project.pk)
+    else:
+        form = DeepDuplicateForm(initial={'new_nama': f"{original.nama} (Deep Copy)"})
+
+    return render(request, 'dashboard/project_confirm_deep_duplicate.html', {
+        'form': form,
+        'original_project': original,
+        'stats': get_project_stats(original),
+    })
+```
+
+**URL:**
+```python
+path("project/<int:pk>/deep-duplicate/", project_deep_duplicate, name="project_deep_duplicate"),
+```
+
+**Deliverables:**
+- Deep duplicate UI
+- Configuration form
+- Progress feedback
+- Error messages
+
+---
+
+### Task 3.3: Testing Deep Copy (1 minggu)
+
+**Test File:**
+```
+dashboard/tests/test_deep_copy.py
+```
+
+**Test Cases:**
+
+1. test_basic_deep_copy
+   - Verify all data copied
+   - FK relationships preserved
+   - No data loss
+
+2. test_copy_without_timeline
+   - Timeline reset to defaults
+
+3. test_copy_smart_harga_items
+   - Only used items copied
+
+4. test_deep_copy_preserves_relationships
+   - FK correctly remapped
+   - No cross-project references
+
+5. test_deep_copy_performance
+   - Benchmark for 100-1000 pekerjaan
+   - Target: < 10 seconds for 1000 details
+
+6. test_deep_copy_error_handling
+   - Rollback on failure
+   - No partial data
+
+**Deliverables:**
+- Comprehensive test suite
+- Performance benchmarks
+- Edge case coverage
+
+---
+
+### Task 3.4: Async Deep Copy (Optional - 3 hari)
+
+For very large projects (>1000 pekerjaan):
+
+**Implementation:**
+- Celery task
+- Progress tracking
+- Real-time UI updates
+- Task status polling
+
+**Files to create:**
+```
+dashboard/tasks.py (new)
+dashboard/templates/dashboard/deep_copy_progress.html
+dashboard/static/dashboard/js/deep-copy-progress.js
+```
+
+**Deliverables:**
+- Async task support
+- Progress bar UI
+- Task monitoring
+
+---
+
+## 🎨 FASE 4: POLISH - DOCUMENTATION & OPTIMIZATION (1-2 minggu)
+
+**Priority:** 🟢 LOW-MEDIUM
+**Risk:** 🟡 Medium
+**Effort:** 1-2 minggu
+
+### Task 4.1: Performance Optimization (1 minggu)
+
+**Optimizations:**
+
+1. **Query Optimization:**
+   - Use select_related & prefetch_related
+   - Eliminate N+1 queries
+   - Add database indexes
+
+2. **Caching:**
+   - Cache dashboard stats (5 min TTL)
+   - Cache filter options
+   - Cache chart data
+
+3. **Database Indexes:**
+   ```python
+   indexes = [
+       models.Index(fields=['owner', '-updated_at']),
+       models.Index(fields=['owner', 'is_active', '-created_at']),
+       models.Index(fields=['tahun_project', 'is_active']),
+   ]
+   ```
+
+4. **Pagination:**
+   - Optimize queryset
+   - "Load More" button
+   - Infinite scroll (optional)
+
+**Deliverables:**
+- Faster page loads
+- Reduced database queries
+- Better scalability
+
+---
+
+### Task 4.2: Documentation (3 hari)
+
+**Files to create:**
+```
+dashboard/README.md
+dashboard/CHANGELOG.md
+docs/DASHBOARD_API.md (if API implemented)
+```
+
+**README.md Contents:**
+- Overview
+- Features
+- Models
+- Testing
+- Performance notes
+- Development guide
+
+**Docstrings:**
+- Add to all functions (Google/NumPy style)
+- Type hints
+- Usage examples
+
+**Deliverables:**
+- Complete documentation
+- API documentation (if applicable)
+- Developer onboarding guide
+
+---
+
+## 📝 FASE 5: API (OPTIONAL - 2 minggu)
+
+**Priority:** 🟢 LOW
+**Risk:** 🟡 Medium
+**Effort:** 2 minggu
+**Note:** Only if external integration needed
+
+### Task 5.1: REST API with Django REST Framework (1.5 minggu)
+
+**Installation:**
+```bash
+pip install djangorestframework django-filter
+```
+
+**Files to create:**
+```
+dashboard/serializers.py
+dashboard/viewsets.py
+dashboard/api_urls.py
+```
+
+**API Endpoints:**
+```
+GET    /api/dashboard/projects/                      # List
+POST   /api/dashboard/projects/                      # Create
+GET    /api/dashboard/projects/{id}/                 # Detail
+PUT    /api/dashboard/projects/{id}/                 # Update
+DELETE /api/dashboard/projects/{id}/                 # Delete
+POST   /api/dashboard/projects/{id}/duplicate/       # Shallow duplicate
+POST   /api/dashboard/projects/{id}/deep_duplicate/  # Deep duplicate
+GET    /api/dashboard/projects/stats/                # Dashboard stats
+```
+
+**Features:**
+- Token authentication
+- Filtering & search
+- Pagination
+- Permissions (owner-only)
+- API documentation (Swagger/ReDoc)
+
+**Deliverables:**
+- REST API endpoints
+- API documentation
+- Authentication & permissions
+
+---
+
+## 📊 IMPLEMENTATION SCHEDULE
+
+### Week 1
+- **Day 1-3:** FASE 0 - Critical Fixes
+  - Timeline UI implementation
+  - Excel support
+  - Visual indicators
+  - Data migration
+
+### Week 2-3
+- **Week 2:** FASE 1 - Testing Suite
+  - Model tests
+  - Form tests
+  - View tests
+  - Integration tests
+
+- **Week 3:** FASE 1 - Admin Panel
+  - Admin registration
+  - Custom actions
+  - Testing admin
+
+### Week 4-6
+- **Week 4:** FASE 2.1 - Analytics
+  - Summary cards
+  - Charts implementation
+  - Recent activity
+
+- **Week 5:** FASE 2.2 & 2.3
+  - Advanced filtering
+  - Bulk actions
+
+- **Week 6:** FASE 2.4 - Export
+  - Excel export
+  - CSV export
+  - PDF export
+
+### Week 7-10
+- **Week 7-8:** FASE 3.1 - Deep Copy Service
+  - Service layer implementation
+  - FK mapping
+  - Performance optimization
+
+- **Week 9:** FASE 3.2 & 3.3
+  - Views & UI
+  - Testing suite
+
+- **Week 10:** FASE 3.4 (Optional)
+  - Async implementation
+
+### Week 11-12
+- **Week 11:** FASE 4.1 - Performance
+  - Query optimization
+  - Caching
+  - Database indexes
+
+- **Week 12:** FASE 4.2 - Documentation
+  - README
+  - Docstrings
+  - API docs
+
+### Week 13-14 (Optional)
+- **Week 13-14:** FASE 5 - API
+  - DRF setup
+  - Endpoints
+  - Documentation
+
+---
+
+## 📈 SUCCESS METRICS
+
+### FASE 0 (Timeline UI)
+- [ ] Timeline visible in all views
+- [ ] Visual indicators working
+- [ ] 100% existing data migrated
+- [ ] No UI regressions
+
+### FASE 1 (Foundation)
+- [ ] Test coverage ≥ 80%
+- [ ] All tests passing
+- [ ] Admin panel fully functional
+- [ ] Zero critical bugs
+
+### FASE 2 (Enhancement)
+- [ ] Dashboard analytics operational
+- [ ] Advanced filters working
+- [ ] Export functionality tested
+- [ ] User satisfaction improved
+
+### FASE 3 (Deep Copy)
+- [ ] Deep copy working for all project sizes
+- [ ] Performance: < 10s for 1000 detail items
+- [ ] Data integrity: 100%
+- [ ] Zero data loss
+
+### FASE 4 (Polish)
+- [ ] Page load time reduced by 30%
+- [ ] Database queries optimized
+- [ ] Documentation complete
+- [ ] Code quality: A grade
+
+### FASE 5 (API - Optional)
+- [ ] All endpoints functional
+- [ ] API documentation complete
+- [ ] Authentication working
+- [ ] Integration tested
+
+---
+
+## 🚨 RISKS & MITIGATION
+
+### High Risk Items
+
+1. **Deep Copy Complexity** (FASE 3)
+   - **Risk:** Data loss, FK corruption, performance issues
+   - **Mitigation:**
+     - Comprehensive testing
+     - Transaction atomic
+     - Rollback mechanism
+     - Progress monitoring
+
+2. **Performance Degradation** (FASE 2, 3)
+   - **Risk:** Slow queries, memory issues
+   - **Mitigation:**
+     - Query optimization
+     - Bulk operations
+     - Caching
+     - Load testing
+
+3. **Testing Coverage** (FASE 1)
+   - **Risk:** Hard to achieve 80% coverage
+   - **Mitigation:**
+     - Start early
+     - TDD approach
+     - Dedicated testing time
+
+### Medium Risk Items
+
+1. **Timeline Data Migration** (FASE 0)
+   - **Risk:** Invalid dates, null values
+   - **Mitigation:**
+     - Validation before migration
+     - Dry-run testing
+     - Backup database
+
+2. **Excel Export** (FASE 2)
+   - **Risk:** Large files, memory issues
+   - **Mitigation:**
+     - Pagination
+     - Async export for large datasets
+     - File size limits
+
+---
+
+## 📝 CHANGE LOG
+
+### 2025-11-05
+- ✅ Initial roadmap created
+- ✅ Architecture assessment completed
+- ✅ Timeline issue identified and documented
+- 🔄 FASE 0 ready to begin
+
+---
+
+## 🎯 NEXT STEPS
+
+**Immediate Actions:**
+1. ✅ Create roadmap documentation (DONE)
+2. 🔄 Begin FASE 0 implementation
+3. Fix timeline UI visibility
+4. Update Excel upload
+5. Add visual indicators
+6. Run data migration
+
+**Owner:** Development Team
+**Stakeholders:** Product Owner, QA Team
+**Review Schedule:** End of each FASE
+
+---
+
+## 📞 CONTACTS & RESOURCES
+
+**Documentation:**
+- Main Repo: adithia00004/DJANGO-AHSP-PROJECT
+- Branch: `claude/check-main-branch-011CUpcdbJTospboGng9QZ3T`
+
+**References:**
+- Django Documentation: https://docs.djangoproject.com/
+- DRF Documentation: https://www.django-rest-framework.org/
+- Testing Best Practices: https://docs.pytest.org/
+
+---
+
+**Last Updated:** 2025-11-05
+**Version:** 1.0
+**Status:** Active Development

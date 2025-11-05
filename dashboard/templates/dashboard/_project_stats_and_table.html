@@ -48,6 +48,10 @@
         <th>Lokasi</th>
         <th>Nama Client</th>
         <th>Anggaran</th>
+        <th>Tanggal Mulai</th>
+        <th>Tanggal Selesai</th>
+        <th>Durasi (hari)</th>
+        <th>Status</th>
         <th class="text-center">Aksi</th>
       </tr>
     </thead>
@@ -61,6 +65,24 @@
         <td>{{ project.lokasi_project|default:"—" }}</td>
         <td>{{ project.nama_client|default:"—" }}</td>
         <td>Rp{{ project.anggaran_owner|default:0|floatformat:0|intcomma }}</td>
+        <td>{{ project.tanggal_mulai|date:"d M Y"|default:"—" }}</td>
+        <td>{{ project.tanggal_selesai|date:"d M Y"|default:"—" }}</td>
+        <td class="text-center">{{ project.durasi_hari|default:"—" }}</td>
+        <td>
+          {% load tz %}
+          {% now "Y-m-d" as today_str %}
+          {% if project.tanggal_selesai and project.tanggal_mulai %}
+            {% if project.tanggal_selesai|date:"Y-m-d" < today_str %}
+              <span class="badge bg-danger">Terlambat</span>
+            {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
+              <span class="badge bg-secondary">Belum Mulai</span>
+            {% else %}
+              <span class="badge bg-success">Berjalan</span>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-light text-dark">—</span>
+          {% endif %}
+        </td>
         <td class="text-center">
           <!-- Detail (dashboard) -->
           <a href="{% url 'dashboard:project_detail' project.pk %}" class="btn btn-sm btn-outline-info" title="Lihat Detail">
@@ -113,7 +135,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="8" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
+        <td colspan="12" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
       </tr>
       {% endfor %}
     </tbody>

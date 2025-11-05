@@ -198,6 +198,7 @@ def project_upload_view(request):
 
                 expected = [
                     "nama","tahun_project","sumber_dana","lokasi_project","nama_client","anggaran_owner",
+                    "tanggal_mulai","tanggal_selesai","durasi_hari",
                     "ket_project1","ket_project2","jabatan_client","instansi_client",
                     "nama_kontraktor","instansi_kontraktor",
                     "nama_konsultan_perencana","instansi_konsultan_perencana",

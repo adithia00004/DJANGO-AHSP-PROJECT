@@ -42,6 +42,9 @@
                   <th>Lokasi Project <span class="text-danger">*</span></th>
                   <th>Nama Client <span class="text-danger">*</span></th>
                   <th>Anggaran Owner <span class="text-danger">*</span></th>
+                  <th>Tanggal Mulai</th>
+                  <th>Tanggal Selesai</th>
+                  <th>Durasi (hari)</th>
                   <th>Ket 1</th>
                   <th>Ket 2</th>
                   <th>Jabatan Client</th>
@@ -84,6 +87,18 @@
                       {{ form.anggaran_owner }}
                       {% for err in form.anggaran_owner.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
                     </td>
+                    <td class="{% if form.tanggal_mulai.errors %}table-danger{% endif %}">
+                      {{ form.tanggal_mulai }}
+                      {% for err in form.tanggal_mulai.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
+                    </td>
+                    <td class="{% if form.tanggal_selesai.errors %}table-danger{% endif %}">
+                      {{ form.tanggal_selesai }}
+                      {% for err in form.tanggal_selesai.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
+                    </td>
+                    <td class="{% if form.durasi_hari.errors %}table-danger{% endif %}">
+                      {{ form.durasi_hari }}
+                      {% for err in form.durasi_hari.errors %}<div class="text-danger small">⚠️ {{ err }}</div>{% endfor %}
+                    </td>
                     <td>{{ form.ket_project1 }}</td>
                     <td>{{ form.ket_project2 }}</td>
                     <td>{{ form.jabatan_client }}</td>
@@ -125,6 +140,9 @@
             <td>{{ formset.empty_form.lokasi_project }}</td>
             <td>{{ formset.empty_form.nama_client }}</td>
             <td>{{ formset.empty_form.anggaran_owner }}</td>
+            <td>{{ formset.empty_form.tanggal_mulai }}</td>
+            <td>{{ formset.empty_form.tanggal_selesai }}</td>
+            <td>{{ formset.empty_form.durasi_hari }}</td>
             <td>{{ formset.empty_form.ket_project1 }}</td>
             <td>{{ formset.empty_form.ket_project2 }}</td>
             <td>{{ formset.empty_form.jabatan_client }}</td>
