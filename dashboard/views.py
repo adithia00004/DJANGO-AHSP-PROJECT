@@ -112,7 +112,10 @@ def dashboard_view(request):
             queryset = queryset.filter(is_active=True)
         elif is_active_filter == 'false':
             queryset = queryset.filter(is_active=False)
-        # else: show all (don't filter)
+        elif 'is_active' not in request.GET:
+            # Default: show only active projects when no filter is explicitly set
+            queryset = queryset.filter(is_active=True)
+        # else: if is_active='' (user selected "Semua"), show all (don't filter)
 
         # Sorting
         sort_by = filter_form.cleaned_data.get('sort_by') or '-updated_at'
