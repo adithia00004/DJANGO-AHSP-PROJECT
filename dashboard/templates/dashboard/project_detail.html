@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 {% load humanize %}
+{% load dashboard_filters %}
 
 {% block title %}{{ project.nama }} - Detail Proyek{% endblock %}
 
@@ -93,7 +94,7 @@
                                 </span>
 
                                 <!-- Progress Bar -->
-                                {% widthratio project.tanggal_mulai|timesince_days:project.tanggal_selesai 1 1 as days_passed %}
+                                {% widthratio project.tanggal_mulai|timesince_days 1 1 as days_passed %}
                                 {% widthratio days_passed project.durasi_hari 100 as progress_percent %}
                                 <div class="progress mt-2" style="height: 20px;">
                                     <div class="progress-bar bg-success" role="progressbar"
