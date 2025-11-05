@@ -107,7 +107,13 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     - Deduplicate rincian within each AHSP before bulk insert
     - Use savepoint for graceful error recovery on bulk insert failure
     - Validate AHSP uniqueness (sumber + kode_ahsp + nama_ahsp)
+
+    PHASE 5 FIX (Nov 2025):
+    - Fixed TransactionManagementError by moving materialized view refresh inside atomic block
+    - Enhanced logging for debugging import failures
     """
+    import logging
+    logger = logging.getLogger(__name__)
 
     from referensi.services.ahsp_parser import ParseResult  # menghindari import siklik
 
@@ -121,6 +127,12 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
 
     if source_file:
         source_file = os.path.basename(source_file)
+
+    # Log import start
+    logger.info(f"Starting import: {source_file}, Jobs: {len(parse_result.jobs)}, Total rincian: {parse_result.total_rincian}")
+    _log(stdout, f"[START] Import file: {source_file}")
+    _log(stdout, f"[INFO] Total jobs to import: {len(parse_result.jobs)}")
+    _log(stdout, f"[INFO] Total rincian to import: {parse_result.total_rincian}")
 
     assign_item_codes(parse_result)
 
@@ -219,20 +231,23 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 # For very large imports (>10K), use larger batch size
                 batch_size = 2000 if len(instances) > 10000 else 1000
                 _log(stdout, f"[bulk] Inserting {len(instances)} rincian records (batch_size={batch_size})...")
+                logger.info(f"Bulk creating {len(instances)} rincian records with batch_size={batch_size}")
 
                 RincianReferensi.objects.bulk_create(instances, batch_size=batch_size)
                 summary.rincian_written = len(instances)
                 _log(stdout, f"[bulk] ✓ Inserted {len(instances)} rincian records")
+                logger.info(f"Successfully inserted {len(instances)} rincian records")
                 transaction.savepoint_commit(sid)
             except Exception as exc:  # pragma: no cover - DB specific failure
                 # PHASE 4 FIX: Rollback to savepoint to recover from error
                 transaction.savepoint_rollback(sid)
 
                 fallback_msg = (
-                    f"[!] Bulk create failed: {exc}. Trying individual inserts..."
+                    f"[!] Bulk create failed: {type(exc).__name__}: {exc}. Trying individual inserts..."
                 )
                 summary.detail_errors.append(fallback_msg)
                 _log(stdout, fallback_msg)
+                logger.warning(f"Bulk insert failed, falling back to individual inserts: {exc}", exc_info=True)
 
                 # Fallback to individual inserts (transaction is now clean)
                 for instance, row_number in all_pending_details:
@@ -244,23 +259,42 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                         summary.detail_errors.append(message)
                         _log(stdout, message)
 
-    # PHASE 3 DAY 3: Refresh materialized view after import
-    try:
-        _refresh_materialized_view(stdout)
-    except Exception as exc:
-        error_msg = f"[!] Failed to refresh materialized view: {exc}"
-        _log(stdout, error_msg)
-        summary.detail_errors.append(error_msg)
+        # PHASE 3 DAY 3: Refresh materialized view after import
+        # CRITICAL FIX: Must be inside atomic block to avoid TransactionManagementError
+        # If called outside atomic block after an exception, Django will raise
+        # TransactionManagementError: "Can't execute queries until end of atomic block"
+        try:
+            _refresh_materialized_view(stdout)
+        except Exception as exc:
+            error_msg = f"[!] Failed to refresh materialized view: {exc}"
+            _log(stdout, error_msg)
+            summary.detail_errors.append(error_msg)
 
-    # PHASE 4: Invalidate search cache after import
-    try:
-        cache = CacheService()
-        invalidated = cache.invalidate_search_cache()
-        _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
-    except Exception as exc:
-        error_msg = f"[!] Failed to invalidate cache: {exc}"
-        _log(stdout, error_msg)
-        summary.detail_errors.append(error_msg)
+        # PHASE 4: Invalidate search cache after import
+        # CRITICAL FIX: Must be inside atomic block to avoid TransactionManagementError
+        try:
+            cache = CacheService()
+            invalidated = cache.invalidate_search_cache()
+            _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
+        except Exception as exc:
+            error_msg = f"[!] Failed to invalidate cache: {exc}"
+            _log(stdout, error_msg)
+            summary.detail_errors.append(error_msg)
+
+    # Log import summary
+    _log(stdout, "\n[COMPLETE] Import finished successfully!")
+    _log(stdout, f"[SUMMARY] Jobs created: {summary.jobs_created}, Jobs updated: {summary.jobs_updated}")
+    _log(stdout, f"[SUMMARY] Total rincian written: {summary.rincian_written}")
+    if summary.detail_errors:
+        _log(stdout, f"[SUMMARY] Errors encountered: {len(summary.detail_errors)}")
+
+    logger.info(
+        f"Import completed: {source_file}, "
+        f"Jobs created: {summary.jobs_created}, "
+        f"Jobs updated: {summary.jobs_updated}, "
+        f"Rincian written: {summary.rincian_written}, "
+        f"Errors: {len(summary.detail_errors)}"
+    )
 
     return summary
 
