@@ -77,22 +77,22 @@ class Project(models.Model):
         if self.tanggal_mulai:
             self.tahun_project = self.tanggal_mulai.year
 
-        if not self.tanggal_selesai:
-            # Default: 31 Desember tahun project, or 1 year from start if that's in the past
-            year = self.tanggal_mulai.year
-            proposed_end = date(year, 12, 31)
+            if not self.tanggal_selesai:
+                # Default: 31 Desember tahun project, or 1 year from start if that's in the past
+                year = self.tanggal_mulai.year
+                proposed_end = date(year, 12, 31)
 
-            # Ensure tanggal_selesai is after tanggal_mulai
-            if proposed_end <= self.tanggal_mulai:
-                # If proposed end date is in the past, set to 1 year from start
-                self.tanggal_selesai = self.tanggal_mulai + timedelta(days=365)
-            else:
-                self.tanggal_selesai = proposed_end
+                # Ensure tanggal_selesai is after tanggal_mulai
+                if proposed_end <= self.tanggal_mulai:
+                    # If proposed end date is in the past, set to 1 year from start
+                    self.tanggal_selesai = self.tanggal_mulai + timedelta(days=365)
+                else:
+                    self.tanggal_selesai = proposed_end
 
-        if not self.durasi_hari:
-            # Calculate duration from dates (ensure it's positive)
-            delta = (self.tanggal_selesai - self.tanggal_mulai).days + 1
-            self.durasi_hari = max(1, delta)  # Ensure minimum 1 day
+            if not self.durasi_hari and self.tanggal_selesai:
+                # Calculate duration from dates (ensure it's positive)
+                delta = (self.tanggal_selesai - self.tanggal_mulai).days + 1
+                self.durasi_hari = max(1, delta)  # Ensure minimum 1 day
 
         super().save(*args, **kwargs)
 

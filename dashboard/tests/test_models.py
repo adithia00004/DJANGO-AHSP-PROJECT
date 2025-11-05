@@ -80,7 +80,6 @@ class TestProjectModel:
         project = Project.objects.create(
             owner=user,
             nama='Auto Timeline Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',
@@ -109,7 +108,6 @@ class TestProjectModel:
         project = Project.objects.create(
             owner=user,
             nama='Duration Test Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',
@@ -173,7 +171,6 @@ class TestProjectModel:
         project1 = Project.objects.create(
             owner=user,
             nama='User Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',
@@ -184,7 +181,6 @@ class TestProjectModel:
         project2 = Project.objects.create(
             owner=other_user,
             nama='Other User Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',
@@ -230,7 +226,6 @@ class TestProjectModel:
         project = Project.objects.create(
             owner=user,
             nama='No Timeline Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',
@@ -259,7 +254,6 @@ class TestProjectModel:
         project = Project.objects.create(
             owner=user,
             nama='Large Budget Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Test Client',
@@ -286,5 +280,4 @@ class TestProjectModel:
         assert projects_by_name.count() >= 5
 
         # Query by tahun_project (should use index)
-        projects_by_year = Project.objects.filter(tahun_project=2025)
         assert projects_by_year.count() >= 5

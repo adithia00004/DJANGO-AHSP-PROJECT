@@ -78,8 +78,16 @@
         <td class="text-center">
           <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}" data-project-name="{{ project.nama }}">
         </td>
-        <td><strong>{{ project.index_project|default:"—" }}</strong></td>
-        <td>{{ project.nama|default:"—" }}</td>
+        <td>
+          <a href="{% url 'detail_project:list_pekerjaan' project.pk %}" class="text-decoration-none fw-bold text-primary" title="Lihat daftar pekerjaan">
+            {{ project.index_project|default:"—" }}
+          </a>
+        </td>
+        <td>
+          <a href="{% url 'detail_project:list_pekerjaan' project.pk %}" class="text-decoration-none" title="Lihat daftar pekerjaan">
+            {{ project.nama|default:"—" }}
+          </a>
+        </td>
         <td>{{ project.tahun_project|default:"—" }}</td>
         <td>{{ project.sumber_dana|default:"—" }}</td>
         <td>{{ project.lokasi_project|default:"—" }}</td>

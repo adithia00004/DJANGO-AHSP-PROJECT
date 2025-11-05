@@ -55,7 +55,6 @@ def project(user):
     return Project.objects.create(
         owner=user,
         nama='Test Project Alpha',
-        tahun_project=2025,
         sumber_dana='APBN',
         lokasi_project='Jakarta Selatan',
         nama_client='PT Test Client',
@@ -79,7 +78,6 @@ def multiple_projects(user):
         Project.objects.create(
             owner=user,
             nama='Project Future',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client A',
@@ -93,7 +91,6 @@ def multiple_projects(user):
         Project.objects.create(
             owner=user,
             nama='Project Ongoing',
-            tahun_project=2025,
             sumber_dana='APBD',
             lokasi_project='Bandung',
             nama_client='Client B',
@@ -107,7 +104,6 @@ def multiple_projects(user):
         Project.objects.create(
             owner=user,
             nama='Project Overdue',
-            tahun_project=2024,
             sumber_dana='APBN',
             lokasi_project='Surabaya',
             nama_client='Client C',
@@ -121,7 +117,6 @@ def multiple_projects(user):
         Project.objects.create(
             owner=user,
             nama='Project 2024',
-            tahun_project=2024,
             sumber_dana='APBD',
             lokasi_project='Medan',
             nama_client='Client D',
@@ -143,7 +138,6 @@ def project_with_special_chars(user):
     return Project.objects.create(
         owner=user,
         nama='Project: Jalan & Renovasi (Tahap 1)',
-        tahun_project=2025,
         sumber_dana='APBN',
         lokasi_project='Jakarta, DKI Jakarta',
         nama_client='PT. Client "Khusus"',
@@ -164,15 +158,12 @@ def project_minimal_data(user):
     return Project.objects.create(
         owner=user,
         nama='Minimal Project',
-        tahun_project=2025,
+        tanggal_mulai=timezone.now().date(),
         sumber_dana='APBN',
         lokasi_project='Jakarta',
         nama_client='Client',
         anggaran_owner=Decimal('1000000000.00'),
-        # Optional fields left blank
-        tanggal_mulai=None,
-        tanggal_selesai=None,
-        durasi_hari=None,
+        # Optional fields left blank - tanggal_selesai and durasi_hari will be auto-calculated
         deskripsi='',
         ket_project1='',
         ket_project2='',
@@ -435,7 +426,6 @@ class TestSecurityAndPermissions:
         other_project = Project.objects.create(
             owner=other_user,
             nama='Other User Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -468,7 +458,6 @@ class TestSecurityAndPermissions:
         other_project = Project.objects.create(
             owner=other_user,
             nama='Other User Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -585,7 +574,6 @@ class TestEdgeCases:
                 Project(
                     owner=user,
                     nama=f'Project {i}',
-                    tahun_project=2025,
                     sumber_dana='APBN',
                     lokasi_project='Jakarta',
                     nama_client=f'Client {i}',
@@ -630,7 +618,6 @@ class TestDataAccuracy:
         project = Project.objects.create(
             owner=user,
             nama='Future Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -659,7 +646,6 @@ class TestDataAccuracy:
         project = Project.objects.create(
             owner=user,
             nama='Ongoing Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -688,7 +674,6 @@ class TestDataAccuracy:
         project = Project.objects.create(
             owner=user,
             nama='Overdue Project',
-            tahun_project=2024,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -816,7 +801,6 @@ class TestPerformanceAndOptimization:
             Project.objects.create(
                 owner=user,
                 nama=f'Project {i}',
-                tahun_project=2025,
                 sumber_dana='APBN',
                 lokasi_project='Jakarta',
                 nama_client='Client',

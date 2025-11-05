@@ -53,7 +53,6 @@ class TestDashboardView:
         user_project = Project.objects.create(
             owner=user,
             nama='User Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -64,7 +63,6 @@ class TestDashboardView:
         other_project = Project.objects.create(
             owner=other_user,
             nama='Other Project',
-            tahun_project=2025,
             sumber_dana='APBN',
             lokasi_project='Jakarta',
             nama_client='Client',
@@ -127,7 +125,6 @@ class TestDashboardView:
             Project.objects.create(
                 owner=user,
                 nama=f'Project {i:02d}',
-                tahun_project=2025,
                 sumber_dana='APBN',
                 lokasi_project='Jakarta',
                 nama_client='Client',
