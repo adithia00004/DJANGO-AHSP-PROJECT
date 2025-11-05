@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 class ProjectForm(forms.ModelForm):
     REQUIRED_FIELDS = [
         "nama",
-        "tahun_project",
+        "tanggal_mulai",  # Changed: tanggal_mulai is now required instead of tahun_project
         "sumber_dana",
         "lokasi_project",
         "nama_client",
@@ -26,10 +26,9 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = "__all__"
-        exclude = ["owner", "index_project", "is_active", "created_at", "updated_at"]
+        exclude = ["owner", "index_project", "is_active", "created_at", "updated_at", "tahun_project"]
         widgets = {
             "nama": forms.TextInput(attrs={"class": "form-control", "placeholder": "Masukkan nama project"}),
-            "tahun_project": forms.NumberInput(attrs={"class": "form-control", "min": 1900, "max": 2100}),
             "sumber_dana": forms.TextInput(attrs={"class": "form-control"}),
             "lokasi_project": forms.TextInput(attrs={"class": "form-control"}),
             "nama_client": forms.TextInput(attrs={"class": "form-control"}),
@@ -65,12 +64,6 @@ class ProjectForm(forms.ModelForm):
         if len(nama) < 3:
             raise forms.ValidationError("Nama project minimal 3 karakter.")
         return nama
-
-    def clean_tahun_project(self):
-        tahun = self.cleaned_data.get("tahun_project")
-        if tahun is None or tahun < 1900 or tahun > 2100:
-            raise forms.ValidationError("Tahun project harus antara 1900–2100.")
-        return tahun
 
     def clean_anggaran_owner(self):
         raw = self.cleaned_data.get("anggaran_owner")

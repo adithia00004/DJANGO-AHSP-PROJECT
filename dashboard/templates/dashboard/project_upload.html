@@ -22,7 +22,10 @@
       <div class="card-body">
         <p class="text-muted mb-3">
           Gunakan template dengan header berikut (case-insensitive, urutan bebas):
-          <code>nama, tahun_project, sumber_dana, lokasi_project, nama_client, anggaran_owner, ket_project1, ket_project2, jabatan_client, instansi_client, nama_kontraktor, instansi_kontraktor, nama_konsultan_perencana, instansi_konsultan_perencana, nama_konsultan_pengawas, instansi_konsultan_pengawas, deskripsi, kategori</code>
+          <code>nama, tanggal_mulai, sumber_dana, lokasi_project, nama_client, anggaran_owner, ket_project1, ket_project2, jabatan_client, instansi_client, nama_kontraktor, instansi_kontraktor, nama_konsultan_perencana, instansi_konsultan_perencana, nama_konsultan_pengawas, instansi_konsultan_pengawas, deskripsi, kategori, tanggal_selesai, durasi_hari</code>
+        </p>
+        <p class="text-muted small">
+          <strong>Catatan:</strong> Kolom <code>tanggal_mulai</code> wajib diisi (format: YYYY-MM-DD atau DD/MM/YYYY). Tahun project akan otomatis diambil dari tanggal ini.
         </p>
 
         <form id="upload-form" method="post" enctype="multipart/form-data" class="row g-3">

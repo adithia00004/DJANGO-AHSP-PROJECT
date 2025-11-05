@@ -11,10 +11,22 @@
 {% block content %}
 <section class="dashboard-section">
 
-  <!-- ========== FASE 2.1: ANALYTICS & STATISTICS ========== -->
+  <!-- ========== FASE 2.1: ANALYTICS & STATISTICS (Collapsible) ========== -->
   <div class="mb-4">
-    <!-- Summary Cards -->
-    <div class="row g-3 mb-4">
+    <!-- Toggle Button for Analytics -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0">
+        <i class="fas fa-chart-line"></i> Analytics & Statistics
+      </h5>
+      <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#analyticsSection" aria-expanded="false" aria-controls="analyticsSection">
+        <i class="fas fa-chevron-down" id="analyticsChevron"></i> <span id="analyticsToggleText">Tampilkan</span>
+      </button>
+    </div>
+
+    <!-- Collapsible Analytics Content (Default Hidden) -->
+    <div class="collapse" id="analyticsSection">
+      <!-- Summary Cards -->
+      <div class="row g-3 mb-4">
       <!-- Total Projects -->
       <div class="col-md-3">
         <div class="card border-primary shadow-sm h-100">
@@ -151,8 +163,30 @@
       </div>
       {% endif %}
     </div>
+    </div><!-- End collapse -->
   </div>
   <!-- ========== END ANALYTICS & STATISTICS ========== -->
+
+  <!-- JavaScript for Analytics Toggle -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const analyticsSection = document.getElementById('analyticsSection');
+      const analyticsChevron = document.getElementById('analyticsChevron');
+      const analyticsToggleText = document.getElementById('analyticsToggleText');
+
+      analyticsSection.addEventListener('show.bs.collapse', function () {
+        analyticsChevron.classList.remove('fa-chevron-down');
+        analyticsChevron.classList.add('fa-chevron-up');
+        analyticsToggleText.textContent = 'Sembunyikan';
+      });
+
+      analyticsSection.addEventListener('hide.bs.collapse', function () {
+        analyticsChevron.classList.remove('fa-chevron-up');
+        analyticsChevron.classList.add('fa-chevron-down');
+        analyticsToggleText.textContent = 'Tampilkan';
+      });
+    });
+  </script>
 
   <!-- ========== FASE 2.2: ADVANCED FILTERING ========== -->
   <div class="mb-4">
@@ -417,14 +451,23 @@
 
   <!-- ========== FASE 2.4: EXPORT & UPLOAD ACTIONS ========== -->
   <div class="mb-3 d-flex justify-content-between align-items-center">
-    <!-- Export Buttons (Left side) -->
-    <div class="d-flex gap-2">
-      <a href="{% url 'dashboard:export_excel' %}?{{ request.GET.urlencode }}" class="btn btn-success btn-sm" title="Export data yang terfilter ke Excel">
-        <i class="fas fa-file-excel"></i> Export Excel
-      </a>
-      <a href="{% url 'dashboard:export_csv' %}?{{ request.GET.urlencode }}" class="btn btn-info btn-sm" title="Export data yang terfilter ke CSV">
-        <i class="fas fa-file-csv"></i> Export CSV
-      </a>
+    <!-- Export Dropdown (Left side) -->
+    <div class="btn-group">
+      <button type="button" class="btn btn-success btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fas fa-download"></i> Export Data
+      </button>
+      <ul class="dropdown-menu">
+        <li>
+          <a class="dropdown-item" href="{% url 'dashboard:export_excel' %}?{{ request.GET.urlencode }}">
+            <i class="fas fa-file-excel text-success"></i> Export ke Excel (.xlsx)
+          </a>
+        </li>
+        <li>
+          <a class="dropdown-item" href="{% url 'dashboard:export_csv' %}?{{ request.GET.urlencode }}">
+            <i class="fas fa-file-csv text-info"></i> Export ke CSV (.csv)
+          </a>
+        </li>
+      </ul>
     </div>
 
     <!-- Upload Button (Right side) -->

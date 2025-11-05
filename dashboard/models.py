@@ -13,7 +13,7 @@ class Project(models.Model):
 
     # === 6 Kolom Wajib ===
     nama = models.CharField("Nama Project", max_length=200)  # wajib
-    tahun_project = models.PositiveIntegerField()            # wajib
+    tahun_project = models.PositiveIntegerField(editable=False, null=True, blank=True)  # auto-calculated from tanggal_mulai
     sumber_dana = models.CharField(max_length=255)           # wajib
     lokasi_project = models.CharField(max_length=255)        # wajib
     nama_client = models.CharField(max_length=255)           # wajib
@@ -38,9 +38,8 @@ class Project(models.Model):
     # === Timeline Pelaksanaan Project ===
     tanggal_mulai = models.DateField(
         'Tanggal Mulai Pelaksanaan',
-        null=True,
-        blank=True,
-        help_text='Tanggal mulai pelaksanaan project'
+        default=timezone.now,
+        help_text='Tanggal mulai pelaksanaan project (wajib, tahun akan diambil dari field ini)'
     )
     tanggal_selesai = models.DateField(
         'Tanggal Target Selesai',
@@ -75,13 +74,13 @@ class Project(models.Model):
 
         creating = self._state.adding and not self.index_project
 
-        # Set default timeline if not provided
-        if not self.tanggal_mulai:
-            self.tanggal_mulai = timezone.now().date()
+        # Auto-calculate tahun_project from tanggal_mulai
+        if self.tanggal_mulai:
+            self.tahun_project = self.tanggal_mulai.year
 
         if not self.tanggal_selesai:
             # Default: 31 Desember tahun project, or 1 year from start if that's in the past
-            year = self.tahun_project if self.tahun_project else self.tanggal_mulai.year
+            year = self.tanggal_mulai.year
             proposed_end = date(year, 12, 31)
 
             # Ensure tanggal_selesai is after tanggal_mulai

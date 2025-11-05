@@ -49,7 +49,14 @@
                 {{ form.nama.label_tag }} {{ form.nama }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.tahun_project.label_tag }} {{ form.tahun_project }}
+                {{ form.tanggal_mulai.label_tag }} {{ form.tanggal_mulai }}
+                <small class="form-text text-muted">Tahun project akan otomatis diambil dari tanggal ini</small>
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.tanggal_selesai.label_tag }} {{ form.tanggal_selesai }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.durasi_hari.label_tag }} {{ form.durasi_hari }}
               </div>
               <div class="col-md-6 mb-3">
                 {{ form.lokasi_project.label_tag }} {{ form.lokasi_project }}
