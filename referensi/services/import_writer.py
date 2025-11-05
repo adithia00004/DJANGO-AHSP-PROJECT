@@ -249,37 +249,53 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 _log(stdout, fallback_msg)
                 logger.warning(f"Bulk insert failed, falling back to individual inserts: {exc}", exc_info=True)
 
-                # Fallback to individual inserts (transaction is now clean)
+                # Fallback to individual inserts with per-record savepoint
+                # CRITICAL: Each insert gets its own savepoint to prevent transaction corruption
                 for instance, row_number in all_pending_details:
+                    # Create savepoint for this individual insert
+                    individual_sp = transaction.savepoint()
                     try:
                         instance.save(force_insert=True)
                         summary.rincian_written += 1
+                        transaction.savepoint_commit(individual_sp)
                     except Exception as inner_exc:  # pragma: no cover - DB specific
+                        # Rollback this individual insert's savepoint
+                        transaction.savepoint_rollback(individual_sp)
                         message = f"[!] Gagal import rincian baris {row_number}: {inner_exc}"
                         summary.detail_errors.append(message)
                         _log(stdout, message)
+                        logger.warning(f"Individual insert failed for row {row_number}: {inner_exc}")
 
         # PHASE 3 DAY 3: Refresh materialized view after import
-        # CRITICAL FIX: Must be inside atomic block to avoid TransactionManagementError
-        # If called outside atomic block after an exception, Django will raise
-        # TransactionManagementError: "Can't execute queries until end of atomic block"
-        try:
-            _refresh_materialized_view(stdout)
-        except Exception as exc:
-            error_msg = f"[!] Failed to refresh materialized view: {exc}"
-            _log(stdout, error_msg)
-            summary.detail_errors.append(error_msg)
+        # CRITICAL FIX: Must be inside atomic block AND wrapped in savepoint
+        # Only refresh if we successfully wrote some data
+        if summary.rincian_written > 0:
+            refresh_sp = transaction.savepoint()
+            try:
+                _refresh_materialized_view(stdout)
+                transaction.savepoint_commit(refresh_sp)
+            except Exception as exc:
+                transaction.savepoint_rollback(refresh_sp)
+                error_msg = f"[!] Failed to refresh materialized view: {exc}"
+                _log(stdout, error_msg)
+                logger.warning(f"Materialized view refresh failed: {exc}", exc_info=True)
+                # Don't append to detail_errors - this is not critical for import success
 
         # PHASE 4: Invalidate search cache after import
-        # CRITICAL FIX: Must be inside atomic block to avoid TransactionManagementError
-        try:
-            cache = CacheService()
-            invalidated = cache.invalidate_search_cache()
-            _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
-        except Exception as exc:
-            error_msg = f"[!] Failed to invalidate cache: {exc}"
-            _log(stdout, error_msg)
-            summary.detail_errors.append(error_msg)
+        # CRITICAL FIX: Must be inside atomic block AND wrapped in savepoint
+        if summary.rincian_written > 0:
+            cache_sp = transaction.savepoint()
+            try:
+                cache = CacheService()
+                invalidated = cache.invalidate_search_cache()
+                _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
+                transaction.savepoint_commit(cache_sp)
+            except Exception as exc:
+                transaction.savepoint_rollback(cache_sp)
+                error_msg = f"[!] Failed to invalidate cache: {exc}"
+                _log(stdout, error_msg)
+                logger.warning(f"Cache invalidation failed: {exc}", exc_info=True)
+                # Don't append to detail_errors - this is not critical for import success
 
     # Log import summary
     _log(stdout, "\n[COMPLETE] Import finished successfully!")
