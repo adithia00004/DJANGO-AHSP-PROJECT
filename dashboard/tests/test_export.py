@@ -163,6 +163,7 @@ def project_minimal_data(user):
         lokasi_project='Jakarta',
         nama_client='Client',
         anggaran_owner=Decimal('1000000000.00'),
+        tanggal_mulai=timezone.now().date(),
         # Optional fields left blank - tanggal_selesai and durasi_hari will be auto-calculated
         deskripsi='',
         ket_project1='',
@@ -430,6 +431,7 @@ class TestSecurityAndPermissions:
             lokasi_project='Jakarta',
             nama_client='Client',
             anggaran_owner=Decimal('1000000000.00'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         # Login as first user
@@ -462,6 +464,7 @@ class TestSecurityAndPermissions:
             lokasi_project='Jakarta',
             nama_client='Client',
             anggaran_owner=Decimal('1000000000.00'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         # Login as first user and try to access other_user's project
@@ -578,6 +581,7 @@ class TestEdgeCases:
                     lokasi_project='Jakarta',
                     nama_client=f'Client {i}',
                     anggaran_owner=Decimal('1000000000.00'),
+                    tanggal_mulai=timezone.now().date(),
                 )
             )
         Project.objects.bulk_create(projects)
@@ -805,6 +809,7 @@ class TestPerformanceAndOptimization:
                 lokasi_project='Jakarta',
                 nama_client='Client',
                 anggaran_owner=Decimal('1000000000.00'),
+                tanggal_mulai=timezone.now().date(),
             )
 
         client.force_login(user)

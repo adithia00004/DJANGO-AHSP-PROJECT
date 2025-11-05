@@ -84,6 +84,7 @@ class TestProjectModel:
             lokasi_project='Jakarta',
             nama_client='Test Client',
             anggaran_owner=Decimal('1000000000.00'),
+            tanggal_mulai=timezone.now().date(),
             # No timeline fields provided
         )
 
@@ -175,6 +176,7 @@ class TestProjectModel:
             lokasi_project='Jakarta',
             nama_client='Test Client',
             anggaran_owner=Decimal('1000000000.00'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         # Create project for other_user
@@ -185,6 +187,7 @@ class TestProjectModel:
             lokasi_project='Jakarta',
             nama_client='Test Client',
             anggaran_owner=Decimal('1000000000.00'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         # User should only see their own project
@@ -230,6 +233,7 @@ class TestProjectModel:
             lokasi_project='Jakarta',
             nama_client='Test Client',
             anggaran_owner=Decimal('1000000000.00'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         # Timeline should be auto-set, but test that model allows null

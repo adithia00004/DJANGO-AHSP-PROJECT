@@ -57,6 +57,7 @@ class TestDashboardView:
             lokasi_project='Jakarta',
             nama_client='Client',
             anggaran_owner=Decimal('1000000000'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         # Create project for other_user
@@ -67,6 +68,7 @@ class TestDashboardView:
             lokasi_project='Jakarta',
             nama_client='Client',
             anggaran_owner=Decimal('1000000000'),
+            tanggal_mulai=timezone.now().date(),
         )
 
         client.force_login(user)
@@ -129,6 +131,7 @@ class TestDashboardView:
                 lokasi_project='Jakarta',
                 nama_client='Client',
                 anggaran_owner=Decimal('1000000000'),
+                tanggal_mulai=timezone.now().date(),
             )
 
         client.force_login(user)

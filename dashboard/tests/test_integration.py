@@ -296,6 +296,7 @@ class TestFilteringSortingPaginationWorkflow:
                 lokasi_project='Jakarta',
                 nama_client='Client',
                 anggaran_owner=Decimal(data['anggaran']),
+                tanggal_mulai=timezone.now().date(),
             )
 
         url = reverse('dashboard:dashboard')
