@@ -540,11 +540,21 @@ def commit_import(request):
         other_skipped = skipped - summary.rincian_duplicated
         if other_skipped > 0:
             success_message += f"   • Lainnya (uraian kosong, dll): {other_skipped} baris\n"
+
+        # Add download link for duplicate report if available
+        if summary.duplicate_report_path:
+            from django.conf import settings
+            report_url = settings.MEDIA_URL + summary.duplicate_report_path
+            success_message += f"\n📥 DOWNLOAD LAPORAN DETAIL:\n"
+            success_message += f'   <a href="{report_url}" download class="btn btn-sm btn-outline-primary mt-2">'
+            success_message += f'   📄 Download CSV Laporan Duplikat</a>\n'
+            success_message += f"   Laporan berisi detail semua baris yang diabaikan dengan alasannya.\n"
+
         success_message += "\n💡 Periksa warning di bawah untuk detail baris yang diabaikan.\n"
 
     success_message += "\nSilakan cek menu Master Data AHSP untuk melihat hasilnya."
 
-    messages.success(request, success_message)
+    messages.success(request, mark_safe(success_message))
 
     for warning in parse_result.warnings:
         messages.warning(request, warning)

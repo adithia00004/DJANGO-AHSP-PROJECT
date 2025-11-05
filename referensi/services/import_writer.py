@@ -11,6 +11,12 @@ from referensi.models import AHSPReferensi, RincianReferensi
 from .import_utils import canonicalize_kategori
 from .item_code_registry import assign_item_codes, persist_item_codes
 from .cache_service import CacheService
+from .duplicate_report import (
+    DuplicateEntry,
+    SkippedEntry,
+    ImportReport,
+    generate_duplicate_report_csv,
+)
 
 
 @dataclass
@@ -21,7 +27,9 @@ class ImportSummary:
     jobs_updated: int = 0
     rincian_written: int = 0
     rincian_duplicated: int = 0  # Number of duplicate rincian skipped
+    rincian_skipped: int = 0  # Number of rows skipped (empty uraian, etc)
     detail_errors: list[str] = field(default_factory=list)
+    duplicate_report_path: str = ""  # Path to CSV report file
 
 
 def _log(stdout, message: str) -> None:
@@ -65,11 +73,12 @@ def _deduplicate_rincian(rincian_list, job, stdout):
     PHASE 4 FIX: Prevents unique constraint violation on bulk insert.
 
     Returns:
-        tuple: (unique_rincian_list, duplicate_count)
+        tuple: (unique_rincian_list, duplicate_count, duplicate_entries_list)
     """
-    seen = set()
+    seen = {}  # key -> (first_detail, first_row_number)
     unique = []
     duplicates = []
+    duplicate_entries = []  # For CSV export
 
     for detail in rincian_list:
         # Normalize kategori for comparison
@@ -82,11 +91,25 @@ def _deduplicate_rincian(rincian_list, job, stdout):
         )
 
         if key in seen:
+            first_detail, first_row = seen[key]
             duplicates.append(
-                f"    📍 Baris {detail.row_number}: {kategori} - {detail.uraian_item} ({detail.satuan_item}) - DUPLIKAT, hanya yang pertama disimpan"
+                f"    📍 Baris {detail.row_number}: {kategori} - {detail.uraian_item} ({detail.satuan_item}) - DUPLIKAT dari baris {first_row}"
             )
+            # Collect for CSV export
+            duplicate_entries.append(DuplicateEntry(
+                row_number=detail.row_number,
+                ahsp_kode=job.kode_ahsp,
+                ahsp_nama=job.nama_ahsp,
+                kategori=kategori,
+                kode_item=detail.kode_item,
+                uraian_item=detail.uraian_item,
+                satuan_item=detail.satuan_item,
+                koefisien=str(detail.koefisien),
+                duplicate_of_row=first_row,
+                reason=f"Sama persis dengan baris {first_row} (kategori + kode_item + uraian + satuan)"
+            ))
         else:
-            seen.add(key)
+            seen[key] = (detail, detail.row_number)
             unique.append(detail)
 
     if duplicates:
@@ -105,10 +128,11 @@ def _deduplicate_rincian(rincian_list, job, stdout):
             f"   • Periksa file Excel Anda, mungkin ada copy-paste yang tidak disengaja\n"
             f"   • Atau hapus baris duplikat jika memang tidak diperlukan\n"
             f"   • Total: {len(unique)} rincian unik dari {len(rincian_list)} baris\n"
+            f"   • 📄 Download laporan detail: Cek link di pesan sukses import\n"
         )
         _log(stdout, warning)
 
-    return unique, len(duplicates)
+    return unique, len(duplicates), duplicate_entries
 
 
 def write_parse_result_to_db(parse_result, source_file: str | None = None, *, stdout=None) -> ImportSummary:
@@ -177,6 +201,12 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     jobs_to_process = list(merged_jobs.values())
     _log(stdout, f"[INFO] After merging duplicates: {len(jobs_to_process)} unique AHSP")
 
+    # Initialize import report for duplicate tracking
+    import_report = ImportReport(
+        filename=source_file or "unknown.xlsx",
+        timestamp=logger.info.__self__.name if hasattr(logger.info, '__self__') else ""
+    )
+
     with transaction.atomic():
         persist_item_codes(parse_result)
 
@@ -231,8 +261,9 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
             all_rincian_to_delete.append(ahsp_obj.id)
 
             # PHASE 4 FIX: Deduplicate rincian within this AHSP
-            unique_rincian, dup_count = _deduplicate_rincian(job.rincian, job, stdout)
+            unique_rincian, dup_count, dup_entries = _deduplicate_rincian(job.rincian, job, stdout)
             summary.rincian_duplicated += dup_count
+            import_report.duplicates.extend(dup_entries)
 
             # Prepare rincian instances
             for detail in unique_rincian:
@@ -316,6 +347,22 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                 logger.warning(f"Cache invalidation failed: {exc}", exc_info=True)
                 # Don't fail the import for this
 
+    # Calculate totals for report
+    total_from_file = parse_result.total_rincian
+
+    # Generate duplicate report CSV if there are any duplicates or skipped rows
+    if import_report.duplicates or (total_from_file - summary.rincian_written) > 0:
+        try:
+            report_path = generate_duplicate_report_csv(import_report, source_file or "unknown.xlsx")
+            summary.duplicate_report_path = report_path
+            _log(stdout, f"\n📄 Laporan duplikat tersimpan: {report_path}")
+            logger.info(f"Duplicate report generated: {report_path}")
+        except Exception as exc:
+            error_msg = f"[!] Failed to generate duplicate report: {exc}"
+            _log(stdout, error_msg)
+            logger.warning(f"Duplicate report generation failed: {exc}", exc_info=True)
+            # Don't fail the import for this
+
     # Log import summary with detailed breakdown
     _log(stdout, "\n" + "="*80)
     _log(stdout, "[COMPLETE] Import finished successfully!")
@@ -326,7 +373,6 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
     _log(stdout, f"   • Rincian tersimpan: {summary.rincian_written}")
 
     # Show skipped rows breakdown
-    total_from_file = parse_result.total_rincian
     if summary.rincian_duplicated > 0 or summary.rincian_written < total_from_file:
         _log(stdout, f"\n⚠️ BARIS YANG DIABAIKAN:")
         if summary.rincian_duplicated > 0:
