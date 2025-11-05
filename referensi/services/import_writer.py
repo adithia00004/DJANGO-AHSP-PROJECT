@@ -216,10 +216,13 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
             sid = transaction.savepoint()
             try:
                 # PHASE 1: Increased batch_size from 500 to 1000
-                # RincianReferensi has 6 fields → optimal batch ~1000-2000
-                RincianReferensi.objects.bulk_create(instances, batch_size=1000)
+                # For very large imports (>10K), use larger batch size
+                batch_size = 2000 if len(instances) > 10000 else 1000
+                _log(stdout, f"[bulk] Inserting {len(instances)} rincian records (batch_size={batch_size})...")
+
+                RincianReferensi.objects.bulk_create(instances, batch_size=batch_size)
                 summary.rincian_written = len(instances)
-                _log(stdout, f"[bulk] Inserted {len(instances)} rincian records")
+                _log(stdout, f"[bulk] ✓ Inserted {len(instances)} rincian records")
                 transaction.savepoint_commit(sid)
             except Exception as exc:  # pragma: no cover - DB specific failure
                 # PHASE 4 FIX: Rollback to savepoint to recover from error
@@ -242,12 +245,22 @@ def write_parse_result_to_db(parse_result, source_file: str | None = None, *, st
                         _log(stdout, message)
 
     # PHASE 3 DAY 3: Refresh materialized view after import
-    _refresh_materialized_view(stdout)
+    try:
+        _refresh_materialized_view(stdout)
+    except Exception as exc:
+        error_msg = f"[!] Failed to refresh materialized view: {exc}"
+        _log(stdout, error_msg)
+        summary.detail_errors.append(error_msg)
 
     # PHASE 4: Invalidate search cache after import
-    cache = CacheService()
-    invalidated = cache.invalidate_search_cache()
-    _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
+    try:
+        cache = CacheService()
+        invalidated = cache.invalidate_search_cache()
+        _log(stdout, f"[cache] Invalidated {invalidated} search cache keys")
+    except Exception as exc:
+        error_msg = f"[!] Failed to invalidate cache: {exc}"
+        _log(stdout, error_msg)
+        summary.detail_errors.append(error_msg)
 
     return summary
 

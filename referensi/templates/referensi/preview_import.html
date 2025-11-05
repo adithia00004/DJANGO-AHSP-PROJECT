@@ -51,7 +51,8 @@
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="bi bi-search"></i> Preview Data
                     </button>
-                    <a href="{% url 'referensi:preview_import' %}" class="btn btn-outline-secondary btn-sm">
+                    <a href="{% url 'referensi:preview_import' %}?reset=1" class="btn btn-outline-secondary btn-sm"
+                       onclick="return confirm('Apakah Anda yakin ingin membersihkan preview data?')">
                         <i class="bi bi-x-circle"></i> Reset
                     </a>
                 </div>

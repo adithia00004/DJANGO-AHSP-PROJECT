@@ -80,6 +80,14 @@ def preview_import(request):
     jobs_page = _get_page(request, "jobs_page", 1)
     details_page = _get_page(request, "details_page", 1)
 
+    # Handle reset/clear action
+    reset_action = request.GET.get("reset") or request.GET.get("clear")
+    if reset_action:
+        service = PreviewImportService()
+        service.session_manager.cleanup(request.session)
+        messages.info(request, "Preview data telah dibersihkan.")
+        return redirect("referensi:preview_import")
+
     # Get search queries from request
     search_jobs_query = request.GET.get("search_jobs", "").strip()
     search_details_query = request.GET.get("search_details", "").strip()
@@ -393,24 +401,63 @@ def commit_import(request):
     # Assign item codes
     assign_item_codes(parse_result)
 
-    # Write to database
+    # Write to database with optimizations for large imports
+    import sys
+    import gc
+
+    # Increase recursion limit for large datasets
+    old_recursion_limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(5000)
+
     try:
+        # Force garbage collection before import
+        gc.collect()
+
         summary = write_parse_result_to_db(parse_result, uploaded_name)
 
         # Log successful import operation
-        audit_logger.log_import_operation(
-            request=request,
-            filename=uploaded_name,
-            jobs_count=summary.jobs_created + summary.jobs_updated,
-            details_count=summary.rincian_written,
-            jobs_created=summary.jobs_created,
-            jobs_updated=summary.jobs_updated,
-            detail_errors=len(summary.detail_errors) if summary.detail_errors else 0
-        )
+        try:
+            audit_logger.log_import_operation(
+                request=request,
+                filename=uploaded_name,
+                jobs_count=summary.jobs_created + summary.jobs_updated,
+                details_count=summary.rincian_written,
+                jobs_created=summary.jobs_created,
+                jobs_updated=summary.jobs_updated,
+                detail_errors=len(summary.detail_errors) if summary.detail_errors else 0
+            )
+        except Exception as audit_exc:
+            # Don't fail import if audit logging fails
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to log import operation: {audit_exc}")
 
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("referensi:preview_import")
+    except Exception as exc:
+        # Catch any other database errors
+        messages.error(request, f"Gagal mengimpor data: {str(exc)}")
+
+        # Try to log the failed import (outside transaction)
+        try:
+            audit_logger.log_import_operation(
+                request=request,
+                filename=uploaded_name,
+                jobs_count=0,
+                details_count=0,
+                jobs_created=0,
+                jobs_updated=0,
+                detail_errors=1,
+                success=False
+            )
+        except Exception:
+            pass  # Ignore audit logging errors
+
+        return redirect("referensi:preview_import")
+    finally:
+        # Restore recursion limit
+        sys.setrecursionlimit(old_recursion_limit)
 
     # Cleanup session
     service.session_manager.cleanup(request.session)
