@@ -4,13 +4,26 @@ from django.core.paginator import Paginator
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+from django.utils.safestring import mark_safe
+from datetime import date, timedelta
+import json
+import decimal
 
 from .forms import ProjectForm, ProjectFilterForm, UploadProjectForm
 from .models import Project
 
 import openpyxl
+
+
+# Custom JSON Encoder for Decimal types
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 
 def _get_safe_next(request, default_name='dashboard:dashboard'):
@@ -99,11 +112,77 @@ def dashboard_view(request):
     page_number = request.GET.get('page')
     paginated_projects = paginator.get_page(page_number)
 
+    # === FASE 2.1: Analytics & Statistics ===
+    all_active_projects = Project.objects.filter(owner=request.user, is_active=True)
+    current_year = timezone.now().year
+    today = date.today()
+
+    # Summary Statistics
+    total_projects = all_active_projects.count()
+    total_anggaran = all_active_projects.aggregate(total=Sum('anggaran_owner'))['total'] or 0
+    projects_this_year = all_active_projects.filter(tahun_project=current_year).count()
+
+    # Active projects (with deadline in next 30 days or currently running)
+    deadline_threshold = today + timedelta(days=30)
+    active_projects_count = all_active_projects.filter(
+        tanggal_mulai__lte=today,
+        tanggal_selesai__gte=today
+    ).count()
+
+    # Projects by Year (for chart)
+    projects_by_year = all_active_projects.values('tahun_project').annotate(
+        count=Count('id')
+    ).order_by('tahun_project')
+
+    # Projects by Sumber Dana (for chart)
+    projects_by_sumber = all_active_projects.values('sumber_dana').annotate(
+        count=Count('id')
+    ).order_by('-count')[:10]  # Top 10
+
+    # Budget by Year (for chart)
+    budget_by_year = all_active_projects.values('tahun_project').annotate(
+        total_budget=Sum('anggaran_owner')
+    ).order_by('tahun_project')
+
+    # Recent Activity
+    recent_created = all_active_projects.order_by('-created_at')[:5]
+    recent_updated = all_active_projects.order_by('-updated_at')[:5]
+
+    # Projects with upcoming deadlines (next 7 days)
+    upcoming_deadline_threshold = today + timedelta(days=7)
+    upcoming_deadlines = all_active_projects.filter(
+        tanggal_selesai__gte=today,
+        tanggal_selesai__lte=upcoming_deadline_threshold
+    ).order_by('tanggal_selesai')[:5]
+
+    # Overdue projects
+    overdue_projects = all_active_projects.filter(
+        tanggal_selesai__lt=today
+    ).order_by('tanggal_selesai')[:5]
+
     context = {
         'projects': paginated_projects,
         'filter_form': filter_form,
         'formset': formset,
         'total_projects': queryset.count(),
+        # Analytics data
+        'analytics': {
+            'total_projects': total_projects,
+            'total_anggaran': total_anggaran,
+            'projects_this_year': projects_this_year,
+            'active_projects_count': active_projects_count,
+            'upcoming_deadlines': upcoming_deadlines,
+            'overdue_projects': overdue_projects,
+        },
+        # Chart data (JSON serialized for JavaScript)
+        'chart_data': {
+            'projects_by_year': mark_safe(json.dumps(list(projects_by_year), cls=DecimalEncoder)),
+            'projects_by_sumber': mark_safe(json.dumps(list(projects_by_sumber), cls=DecimalEncoder)),
+            'budget_by_year': mark_safe(json.dumps(list(budget_by_year), cls=DecimalEncoder)),
+        },
+        # Recent activity
+        'recent_created': recent_created,
+        'recent_updated': recent_updated,
     }
     return render(request, 'dashboard/dashboard.html', context)
 

@@ -11,6 +11,149 @@
 {% block content %}
 <section class="dashboard-section">
 
+  <!-- ========== FASE 2.1: ANALYTICS & STATISTICS ========== -->
+  <div class="mb-4">
+    <!-- Summary Cards -->
+    <div class="row g-3 mb-4">
+      <!-- Total Projects -->
+      <div class="col-md-3">
+        <div class="card border-primary shadow-sm h-100">
+          <div class="card-body text-center">
+            <div class="d-flex align-items-center justify-content-center mb-2">
+              <i class="fas fa-project-diagram fa-2x text-primary me-2"></i>
+              <h3 class="mb-0 text-primary">{{ analytics.total_projects }}</h3>
+            </div>
+            <p class="text-muted mb-0 small">Total Projects</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Total Budget -->
+      <div class="col-md-3">
+        <div class="card border-success shadow-sm h-100">
+          <div class="card-body text-center">
+            <div class="d-flex align-items-center justify-content-center mb-2">
+              <i class="fas fa-money-bill-wave fa-2x text-success me-2"></i>
+              <h3 class="mb-0 text-success">Rp {{ analytics.total_anggaran|floatformat:0|intcomma }}</h3>
+            </div>
+            <p class="text-muted mb-0 small">Total Anggaran</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects This Year -->
+      <div class="col-md-3">
+        <div class="card border-info shadow-sm h-100">
+          <div class="card-body text-center">
+            <div class="d-flex align-items-center justify-content-center mb-2">
+              <i class="fas fa-calendar-alt fa-2x text-info me-2"></i>
+              <h3 class="mb-0 text-info">{{ analytics.projects_this_year }}</h3>
+            </div>
+            <p class="text-muted mb-0 small">Projects Tahun Ini</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Projects -->
+      <div class="col-md-3">
+        <div class="card border-warning shadow-sm h-100">
+          <div class="card-body text-center">
+            <div class="d-flex align-items-center justify-content-center mb-2">
+              <i class="fas fa-tasks fa-2x text-warning me-2"></i>
+              <h3 class="mb-0 text-warning">{{ analytics.active_projects_count }}</h3>
+            </div>
+            <p class="text-muted mb-0 small">Projects Aktif</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row g-3 mb-4">
+      <!-- Projects by Year Chart -->
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Projects per Tahun</h6>
+          </div>
+          <div class="card-body">
+            <canvas id="projectsByYearChart" height="200"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects by Sumber Dana Chart -->
+      <div class="col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Projects per Sumber Dana</h6>
+          </div>
+          <div class="card-body">
+            <canvas id="projectsBySumberChart" height="200"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts Row -->
+    <div class="row g-3 mb-4">
+      <!-- Upcoming Deadlines -->
+      {% if analytics.upcoming_deadlines %}
+      <div class="col-lg-6">
+        <div class="card border-warning shadow-sm">
+          <div class="card-header bg-warning text-dark">
+            <h6 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Deadline Terdekat (7 Hari)</h6>
+          </div>
+          <div class="card-body">
+            <div class="list-group list-group-flush">
+              {% for project in analytics.upcoming_deadlines %}
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                <div>
+                  <a href="{% url 'dashboard:project_detail' project.pk %}" class="text-decoration-none">
+                    <strong>{{ project.nama|truncatewords:5 }}</strong>
+                  </a>
+                  <br>
+                  <small class="text-muted">{{ project.tanggal_selesai|date:"d M Y" }}</small>
+                </div>
+                <span class="badge bg-warning text-dark">{{ project.tanggal_selesai|timeuntil }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Overdue Projects -->
+      {% if analytics.overdue_projects %}
+      <div class="col-lg-6">
+        <div class="card border-danger shadow-sm">
+          <div class="card-header bg-danger text-white">
+            <h6 class="mb-0"><i class="fas fa-clock"></i> Projects Terlambat</h6>
+          </div>
+          <div class="card-body">
+            <div class="list-group list-group-flush">
+              {% for project in analytics.overdue_projects %}
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                <div>
+                  <a href="{% url 'dashboard:project_detail' project.pk %}" class="text-decoration-none">
+                    <strong>{{ project.nama|truncatewords:5 }}</strong>
+                  </a>
+                  <br>
+                  <small class="text-muted">Deadline: {{ project.tanggal_selesai|date:"d M Y" }}</small>
+                </div>
+                <span class="badge bg-danger">{{ project.tanggal_selesai|timesince }} lalu</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <!-- ========== END ANALYTICS & STATISTICS ========== -->
+
   <!-- FORMSET INPUT PROJECT -->
   <div class="mb-5">
     <div class="card">
@@ -176,6 +319,96 @@
 {% endblock %}
 
 {% block extra_js %}
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- FASE 2.1: Charts -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Projects by Year Chart
+      const projectsByYearData = {{ chart_data.projects_by_year|safe }};
+      if (projectsByYearData && projectsByYearData.length > 0) {
+        const ctx1 = document.getElementById('projectsByYearChart');
+        if (ctx1) {
+          new Chart(ctx1, {
+            type: 'bar',
+            data: {
+              labels: projectsByYearData.map(item => item.tahun_project || 'N/A'),
+              datasets: [{
+                label: 'Jumlah Projects',
+                data: projectsByYearData.map(item => item.count),
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              plugins: {
+                legend: {
+                  display: false
+                },
+                title: {
+                  display: false
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    precision: 0
+                  }
+                }
+              }
+            }
+          });
+        }
+      }
+
+      // Projects by Sumber Dana Chart
+      const projectsBySumberData = {{ chart_data.projects_by_sumber|safe }};
+      if (projectsBySumberData && projectsBySumberData.length > 0) {
+        const ctx2 = document.getElementById('projectsBySumberChart');
+        if (ctx2) {
+          // Generate random colors for each sumber dana
+          const colors = projectsBySumberData.map((item, index) => {
+            const hue = (index * 137.5) % 360; // Golden angle for color distribution
+            return `hsla(${hue}, 70%, 60%, 0.7)`;
+          });
+
+          new Chart(ctx2, {
+            type: 'pie',
+            data: {
+              labels: projectsBySumberData.map(item => item.sumber_dana || 'N/A'),
+              datasets: [{
+                data: projectsBySumberData.map(item => item.count),
+                backgroundColor: colors,
+                borderWidth: 1,
+                borderColor: '#fff'
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              plugins: {
+                legend: {
+                  position: 'right',
+                  labels: {
+                    boxWidth: 15,
+                    font: {
+                      size: 11
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+      }
+    });
+  </script>
+
   <script src="{% static 'dashboard/js/formset.js' %}" defer></script>
   <script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
 {% endblock %}
