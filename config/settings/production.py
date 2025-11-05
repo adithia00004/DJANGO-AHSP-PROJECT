@@ -42,6 +42,8 @@ WHITENOISE_USE_FINDERS = False
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Cached template loader for faster rendering
+# Must disable APP_DIRS when using custom loaders
+TEMPLATES[0]["APP_DIRS"] = False
 TEMPLATES[0]["OPTIONS"]["loaders"] = [
     (
         "django.template.loaders.cached.Loader",

@@ -7,7 +7,7 @@ from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.shortcuts import redirect
-from django.test import RequestFactory, SimpleTestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 
 from referensi.services.ahsp_parser import AHSPPreview, ParseResult, RincianPreview
 from referensi.services.preview_service import ImportSessionManager
@@ -80,7 +80,13 @@ class AdminPortalViewTests(SimpleTestCase):
 
 
 @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
-class PreviewImportViewTests(SimpleTestCase):
+class PreviewImportViewTests(TestCase):
+    """
+    Tests for preview import functionality.
+
+    Note: Uses TestCase instead of SimpleTestCase because the view code
+    may trigger database queries through signals or middleware.
+    """
     def setUp(self):
         self.factory = RequestFactory()
         self.superuser = DummyUser(is_superuser=True, is_staff=True)
