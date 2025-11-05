@@ -26,6 +26,10 @@ from referensi.services.ahsp_parser import (
 )
 from referensi.services.audit_logger import audit_logger
 from referensi.services.import_writer import write_parse_result_to_db
+from referensi.services.import_error_analyzer import (
+    analyze_import_exception,
+    format_error_for_user
+)
 from referensi.services.item_code_registry import assign_item_codes
 from referensi.services.preview_service import PreviewImportService
 from referensi.validators import validate_ahsp_file
@@ -409,6 +413,7 @@ def commit_import(request):
     old_recursion_limit = sys.getrecursionlimit()
     sys.setrecursionlimit(5000)
 
+    summary = None
     try:
         # Force garbage collection before import
         gc.collect()
@@ -434,77 +439,55 @@ def commit_import(request):
 
     except ValueError as exc:
         # Validation or parsing error
-        messages.error(
-            request,
-            f"❌ Validasi data gagal: {str(exc)}"
-        )
-        messages.info(
-            request,
-            "💡 Saran: Periksa kembali format file Excel Anda dan pastikan semua kolom sesuai dengan template AHSP."
-        )
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Validation error for {uploaded_name}: {exc}", exc_info=True)
+
+        # Analyze error
+        analysis = analyze_import_exception(exc, parse_result, summary)
+        error_messages = format_error_for_user(analysis)
+
+        # Display to user
+        messages.error(request, error_messages[0])
+        for msg in error_messages[1:]:
+            if msg.strip():
+                if '❌' in msg or 'Error' in msg:
+                    messages.error(request, msg)
+                elif '⚠️' in msg or 'Warning' in msg or 'bermasalah' in msg.lower():
+                    messages.warning(request, msg)
+                else:
+                    messages.info(request, msg)
+
         return redirect("referensi:preview_import")
+
     except Exception as exc:
-        # Catch any other database errors with more helpful messages
+        # Catch any other database errors with DETAILED analysis
         import logging
         logger = logging.getLogger(__name__)
 
         # Log full error for debugging
         logger.error(f"Import failed for {uploaded_name}: {exc}", exc_info=True)
 
-        # Determine error type and provide specific guidance
-        error_type = type(exc).__name__
-        error_msg = str(exc)
+        # ANALYZE THE ERROR IN DETAIL
+        analysis = analyze_import_exception(exc, parse_result, summary)
+        error_messages = format_error_for_user(analysis)
 
-        # Provide user-friendly error messages based on error type
-        if "TransactionManagementError" in error_type:
-            messages.error(
-                request,
-                "❌ Terjadi kesalahan transaksi database saat mengimpor data."
-            )
-            messages.warning(
-                request,
-                f"Detail teknis: {error_msg}"
-            )
-            messages.info(
-                request,
-                "💡 Saran: Coba lagi. Jika masalah berlanjut, hubungi administrator sistem."
-            )
-        elif "IntegrityError" in error_type:
-            messages.error(
-                request,
-                "❌ Data duplikat atau konflik dengan data yang sudah ada di database."
-            )
-            messages.warning(
-                request,
-                f"Detail: {error_msg}"
-            )
-            messages.info(
-                request,
-                "💡 Saran: Periksa apakah ada data duplikat dalam file Excel, atau data dengan kode yang sama sudah ada di database."
-            )
-        elif "OperationalError" in error_type:
-            messages.error(
-                request,
-                "❌ Koneksi ke database bermasalah atau timeout."
-            )
-            messages.info(
-                request,
-                "💡 Saran: File terlalu besar atau server sedang sibuk. Coba pecah file menjadi bagian lebih kecil (maksimal 5000 baris per file)."
-            )
-        else:
-            # Generic error
-            messages.error(
-                request,
-                f"❌ Gagal mengimpor data: {error_type}"
-            )
-            messages.warning(
-                request,
-                f"Detail kesalahan: {error_msg}"
-            )
-            messages.info(
-                request,
-                "💡 Saran: Screenshot pesan error ini dan hubungi administrator untuk bantuan."
-            )
+        # Display detailed error to user
+        messages.error(request, "❌ Import Gagal")
+        for msg in error_messages:
+            if msg.strip():
+                # Categorize message by content
+                if '❌' in msg or 'Error' in msg or 'Gagal' in msg:
+                    messages.error(request, msg)
+                elif '⚠️' in msg or 'Warning' in msg or 'bermasalah' in msg.lower():
+                    messages.warning(request, msg)
+                elif '✅' in msg or 'Berhasil' in msg:
+                    messages.success(request, msg)
+                else:
+                    messages.info(request, msg)
+
+        # Log technical details for admin
+        logger.error(f"Technical details:\n{analysis.technical_details}")
 
         # Try to log the failed import (outside transaction)
         try:
