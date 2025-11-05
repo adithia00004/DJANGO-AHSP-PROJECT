@@ -733,9 +733,9 @@ items_queryset = RincianReferensi.objects.select_related("ahsp").only(
   - `test_database_view.py`
   - `test_preview_view.py`
   - `tests/api/test_lookup_api.py`
-- [ ] Write repository tests:
-  - `test_ahsp_repository.py`
-  - `test_item_repository.py`
+- [x] Write repository tests:
+  - `test_ahsp_repository.py` (3 test methods, 82 lines)
+  - `test_item_repository.py` (2 test methods, 63 lines)
 - [x] Write performance tests:
   - Import 5000 AHSP benchmark (`referensi/tests/performance/test_referensi_performance.py::test_session_manager_handles_large_payload_fast`)
   - Search performance benchmark (`referensi/tests/performance/test_referensi_performance.py::test_api_search_remains_snappy`)
