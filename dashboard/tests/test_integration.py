@@ -64,12 +64,11 @@ class TestFullCRUDWorkflow:
         edit_url = reverse('dashboard:project_edit', kwargs={'pk': project.pk})
         update_data = {
             'nama': 'Updated Integration Project',
-            'tahun_project': '2025',
+            'tanggal_mulai': '2025-01-01',
             'sumber_dana': 'APBD',  # Changed
             'lokasi_project': 'Bandung',  # Changed
             'nama_client': 'Updated Client',
             'anggaran_owner': '2000000000',  # Changed
-            'tanggal_mulai': '2025-01-01',
             'tanggal_selesai': '2025-12-31',
         }
 
@@ -87,7 +86,7 @@ class TestFullCRUDWorkflow:
         duplicate_url = reverse('dashboard:project_duplicate', kwargs={'pk': project.pk})
         duplicate_data = {
             'nama': 'Duplicated Project',
-            'tahun_project': '2025',
+            'tanggal_mulai': '2025-01-01',
             'sumber_dana': 'APBD',
             'lokasi_project': 'Bandung',
             'nama_client': 'Updated Client',

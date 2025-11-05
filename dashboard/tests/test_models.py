@@ -285,4 +285,7 @@ class TestProjectModel:
         assert projects_by_name.count() >= 5
 
         # Query by tahun_project (should use index)
+        from datetime import date
+        current_year = date.today().year
+        projects_by_year = Project.objects.filter(tahun_project=current_year)
         assert projects_by_year.count() >= 5
