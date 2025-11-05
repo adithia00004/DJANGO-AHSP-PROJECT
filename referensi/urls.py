@@ -7,6 +7,7 @@ from .views import (
     commit_import,
     preview_import,
 )
+from .views.preview import debug_clear_data
 from .views.api import api_bulk_delete, api_delete_preview, api_search_ahsp
 from .views.audit_dashboard import (
     audit_dashboard,
@@ -29,6 +30,7 @@ urlpatterns = [
     path("admin/database/", ahsp_database, name="ahsp_database"),
     path("import/preview/", preview_import, name="preview_import"),
     path("import/commit/", commit_import, name="commit_import"),
+    path("debug/clear-data/", debug_clear_data, name="debug_clear_data"),
 
     # Audit Dashboard (Phase 2)
     path("audit/", audit_dashboard, name="audit_dashboard"),

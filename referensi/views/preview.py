@@ -342,6 +342,15 @@ def preview_import(request):
             status=200,
         )
 
+    # Get debugging stats
+    from referensi.models import AnalisisHargaSatuan, RincianReferensi
+    debug_stats = {
+        'db_jobs_count': AnalisisHargaSatuan.objects.count(),
+        'db_rincian_count': RincianReferensi.objects.count(),
+        'file_jobs_count': parse_result.total_jobs if parse_result else 0,
+        'file_rincian_count': parse_result.total_rincian if parse_result else 0,
+    }
+
     # Render full page
     context = {
         "form": form,
@@ -369,6 +378,7 @@ def preview_import(request):
         },
         "jobs_page": jobs_page,
         "details_page": details_page,
+        "debug_stats": debug_stats,
     }
     return render(request, "referensi/preview_import.html", context)
 
@@ -508,5 +518,48 @@ def commit_import(request):
 
     for detail_error in summary.detail_errors:
         messages.warning(request, detail_error)
+
+    return redirect("referensi:preview_import")
+
+
+@login_required
+@permission_required("referensi.import_ahsp_data", raise_exception=True)
+def debug_clear_data(request):
+    """
+    Clear all AHSP and Rincian data for testing purposes.
+    WARNING: This is a dangerous operation!
+    """
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    import logging
+    from referensi.models import AnalisisHargaSatuan, RincianReferensi
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Count before deletion
+        jobs_count = AnalisisHargaSatuan.objects.count()
+        rincian_count = RincianReferensi.objects.count()
+
+        # Delete all data
+        RincianReferensi.objects.all().delete()
+        AnalisisHargaSatuan.objects.all().delete()
+
+        # Log the action
+        logger.warning(
+            f"[DEBUG] User {request.user.username} cleared ALL data: "
+            f"{jobs_count} jobs, {rincian_count} rincian"
+        )
+
+        messages.success(
+            request,
+            f"✅ Data berhasil dihapus: {jobs_count} pekerjaan, {rincian_count} rincian. "
+            f"Database sekarang kosong dan siap untuk testing."
+        )
+
+    except Exception as exc:
+        logger.error(f"[DEBUG] Failed to clear data: {exc}", exc_info=True)
+        messages.error(request, f"❌ Gagal menghapus data: {exc}")
 
     return redirect("referensi:preview_import")

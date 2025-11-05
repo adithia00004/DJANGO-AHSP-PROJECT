@@ -135,6 +135,87 @@
         </div>
     {% endif %}
 
+    {# Debugging Stats Panel #}
+    {% if debug_stats %}
+    <div id="debug-stats-card" class="card shadow-sm border-info d-none">
+        <div class="card-header bg-info-subtle">
+            <h6 class="mb-0 text-info">
+                <i class="bi bi-bug"></i> Debugging Information
+            </h6>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Informasi ini membantu mengidentifikasi penyebab error import.
+                Jika terjadi duplicate error, bandingkan jumlah database dengan file Anda.
+            </p>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title text-primary">
+                                <i class="bi bi-database"></i> Data di Database
+                            </h6>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted">Pekerjaan AHSP:</span>
+                                <span class="badge bg-primary fs-6">{{ debug_stats.db_jobs_count|default:0 }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">Rincian Item:</span>
+                                <span class="badge bg-primary fs-6">{{ debug_stats.db_rincian_count|default:0 }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title text-success">
+                                <i class="bi bi-file-earmark-excel"></i> Data di File Excel
+                            </h6>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted">Pekerjaan AHSP:</span>
+                                <span class="badge bg-success fs-6">{{ debug_stats.file_jobs_count|default:0 }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">Rincian Item:</span>
+                                <span class="badge bg-success fs-6">{{ debug_stats.file_rincian_count|default:0 }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-3 mb-0">
+                <h6 class="alert-heading">
+                    <i class="bi bi-lightbulb"></i> Tips Debugging:
+                </h6>
+                <ul class="mb-0 small">
+                    <li><strong>Duplicate Error:</strong> Jika ada error duplikat, kemungkinan data di file sudah ada di database. Hapus data lama atau gunakan file dengan data baru.</li>
+                    <li><strong>Database Kosong:</strong> Jika database kosong (0 records) tapi import gagal, ada masalah dengan format file atau validasi data.</li>
+                    <li><strong>Test dengan File Kecil:</strong> Coba test dengan 100-500 baris terlebih dahulu sebelum import file besar.</li>
+                    <li><strong>Periksa Logs:</strong> Lihat console Django untuk error details lengkap.</li>
+                </ul>
+            </div>
+
+            {% if debug_stats.db_rincian_count > 0 %}
+            <div class="alert alert-warning mt-3 mb-0">
+                <strong><i class="bi bi-exclamation-triangle"></i> Perhatian:</strong>
+                Database sudah berisi {{ debug_stats.db_rincian_count }} rincian.
+                Jika Anda ingin test import dari awal, gunakan tombol di bawah untuk menghapus semua data.
+                <form method="post" action="{% url 'referensi:debug_clear_data' %}" class="mt-2" onsubmit="return confirm('⚠️ PERINGATAN: Ini akan menghapus SEMUA data AHSP dan Rincian dari database!\n\nApakah Anda yakin? Tindakan ini tidak dapat dibatalkan!');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-danger">
+                        <i class="bi bi-trash"></i> Hapus Semua Data untuk Testing
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="card shadow-sm" id="preview-summary-card">
         {% if parse_result or import_token %}
             <div class="card-header bg-body-tertiary d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-center">

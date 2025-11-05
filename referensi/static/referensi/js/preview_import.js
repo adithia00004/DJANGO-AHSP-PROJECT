@@ -6,6 +6,7 @@
 
     const messageTarget = document.getElementById('ajax-messages');
     const schemaCard = document.getElementById('excel-schema-card');
+    const debugStatsCard = document.getElementById('debug-stats-card');
     const toolbar = document.getElementById('preview-toolbar');
 
     const renderMessages = (html) => {
@@ -112,16 +113,30 @@
 
             const action = button.getAttribute('data-action');
             if (action === 'toggle-info') {
-                if (!schemaCard) {
+                if (!schemaCard && !debugStatsCard) {
                     return;
                 }
-                const hidden = schemaCard.classList.toggle('d-none');
+
+                // Toggle both schema and debug stats cards
+                let hidden = true;
+                if (schemaCard) {
+                    hidden = schemaCard.classList.toggle('d-none');
+                }
+                if (debugStatsCard) {
+                    debugStatsCard.classList.toggle('d-none');
+                }
+
                 button.setAttribute('aria-pressed', hidden ? 'false' : 'true');
                 button.classList.toggle('btn-outline-secondary', hidden);
                 button.classList.toggle('btn-secondary', !hidden);
                 button.classList.toggle('active', !hidden);
+
                 if (!hidden) {
-                    schemaCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Scroll to debug stats if available, otherwise schema
+                    const scrollTarget = debugStatsCard || schemaCard;
+                    if (scrollTarget) {
+                        scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
                 }
             } else if (action === 'refresh-preview') {
                 window.location.reload();
