@@ -1151,16 +1151,18 @@ class DeepCopyService:
 
     def _copy_project_parameters(self, new_project):
         """
-        Step 3: Copy ProjectParameter instances.
+        Step 3: Copy ProjectParameter instances (Optimized with bulk_create).
+
+        Performance: O(1) queries instead of O(n) queries.
 
         Args:
             new_project: The newly created project
         """
         parameters = ProjectParameter.objects.filter(project=self.source)
 
+        # Prepare instances for bulk creation
+        items_to_create = []
         for old_param in parameters:
-            old_id = old_param.id
-
             new_param = ProjectParameter(
                 project=new_project,
                 name=old_param.name,
@@ -1169,10 +1171,17 @@ class DeepCopyService:
                 unit=old_param.unit,
                 description=old_param.description,
             )
-            new_param.save()
+            items_to_create.append((old_param.id, new_param))
 
-            self.mappings['parameter'][old_id] = new_param.id
-            self.stats['parameter_copied'] += 1
+        # Bulk create all at once
+        created = self._bulk_create_with_mapping(
+            ProjectParameter,
+            items_to_create,
+            'parameter',
+            batch_size=500
+        )
+
+        self.stats['parameter_copied'] = len(created)
 
     def _copy_klasifikasi(self, new_project):
         """
@@ -1342,12 +1351,18 @@ class DeepCopyService:
 
     def _copy_volume_pekerjaan(self, new_project):
         """
-        Step 7: Copy VolumePekerjaan instances.
+        Step 7: Copy VolumePekerjaan instances (Optimized with bulk_create + skip tracking).
+
+        Performance: O(1) queries instead of O(n) queries.
 
         Args:
             new_project: The newly created project
         """
         volume_list = VolumePekerjaan.objects.filter(project=self.source)
+
+        # Prepare instances for bulk creation and track skipped items
+        items_to_create = []
+        skipped = []
 
         for old_volume in volume_list:
             old_id = old_volume.id
@@ -1362,23 +1377,40 @@ class DeepCopyService:
                     pekerjaan_id=new_pekerjaan_id,
                     quantity=old_volume.quantity,
                 )
-                new_volume.save()
+                items_to_create.append((old_id, new_volume))
+            else:
+                # Track skipped item - parent Pekerjaan not found
+                skipped.append({
+                    'id': old_id,
+                    'reason': 'Parent Pekerjaan not found or not copied',
+                    'missing_parent_id': old_pekerjaan_id
+                })
 
-                self.mappings['volume'][old_id] = new_volume.id
-                self.stats['volume_copied'] += 1
+        # Bulk create all valid items at once
+        created = self._bulk_create_with_mapping(
+            VolumePekerjaan,
+            items_to_create,
+            'volume',
+            batch_size=500
+        )
+
+        self.stats['volume_copied'] = len(created)
+        self.skipped_items['volume'].extend(skipped)
 
     def _copy_harga_item(self, new_project):
         """
-        Step 8: Copy HargaItem using HargaItemProject model.
+        Step 8: Copy HargaItem using HargaItemProject model (Optimized with bulk_create).
+
+        Performance: O(1) queries instead of O(n) queries.
 
         Args:
             new_project: The newly created project
         """
         harga_list = HargaItemProject.objects.filter(project=self.source)
 
+        # Prepare instances for bulk creation
+        items_to_create = []
         for old_harga in harga_list:
-            old_id = old_harga.id
-
             new_harga = HargaItemProject(
                 project=new_project,
                 kode_item=old_harga.kode_item,
@@ -1387,19 +1419,33 @@ class DeepCopyService:
                 satuan=old_harga.satuan,
                 harga_satuan=old_harga.harga_satuan,
             )
-            new_harga.save()
+            items_to_create.append((old_harga.id, new_harga))
 
-            self.mappings['harga_item'][old_id] = new_harga.id
-            self.stats['harga_item_copied'] += 1
+        # Bulk create all at once
+        created = self._bulk_create_with_mapping(
+            HargaItemProject,
+            items_to_create,
+            'harga_item',
+            batch_size=500
+        )
+
+        self.stats['harga_item_copied'] = len(created)
 
     def _copy_ahsp_template(self, new_project):
         """
-        Step 9: Copy DetailAHSPProject instances.
+        Step 9: Copy DetailAHSPProject instances (Optimized with bulk_create + skip tracking).
+
+        Performance: O(1) queries instead of O(n) queries.
+        Critical: This is usually the largest data volume (5-10x pekerjaan count).
 
         Args:
             new_project: The newly created project
         """
         ahsp_list = DetailAHSPProject.objects.filter(project=self.source)
+
+        # Prepare instances for bulk creation and track skipped items
+        items_to_create = []
+        skipped = []
 
         for old_ahsp in ahsp_list:
             old_id = old_ahsp.id
@@ -1422,13 +1468,31 @@ class DeepCopyService:
                     koefisien=old_ahsp.koefisien,
                 )
                 # Copy ref_ahsp_id if exists (for bundle items)
-                if hasattr(old_ahsp, 'ref_ahsp_id'):
+                if hasattr(old_ahsp, 'ref_ahsp_id') and old_ahsp.ref_ahsp_id:
                     new_ahsp.ref_ahsp_id = old_ahsp.ref_ahsp_id
 
-                new_ahsp.save()
+                items_to_create.append((old_id, new_ahsp))
+            else:
+                # Track skipped item - parent FK not found
+                skipped.append({
+                    'id': old_id,
+                    'kode': old_ahsp.kode,
+                    'uraian': old_ahsp.uraian,
+                    'reason': 'Parent Pekerjaan or HargaItem not found',
+                    'missing_pekerjaan_id': old_pekerjaan_id if not new_pekerjaan_id else None,
+                    'missing_harga_item_id': old_harga_item_id if not new_harga_item_id else None
+                })
 
-                self.mappings['ahsp_template'][old_id] = new_ahsp.id
-                self.stats['ahsp_template_copied'] += 1
+        # Bulk create all valid items at once
+        created = self._bulk_create_with_mapping(
+            DetailAHSPProject,
+            items_to_create,
+            'ahsp_template',
+            batch_size=500
+        )
+
+        self.stats['ahsp_template_copied'] = len(created)
+        self.skipped_items['ahsp_template'].extend(skipped)
 
     def _copy_rincian_ahsp(self, new_project):
         """
@@ -1488,13 +1552,18 @@ class DeepCopyService:
 
     def _copy_jadwal_pekerjaan(self, new_project):
         """
-        Step 12: Copy PekerjaanTahapan instances.
+        Step 12: Copy PekerjaanTahapan instances (Optimized with bulk_create).
+
+        Performance: O(1) queries instead of O(n) queries.
 
         Args:
             new_project: The newly created project
         """
         # Filter by tahapan__project since PekerjaanTahapan doesn't have project field
         jadwal_list = PekerjaanTahapan.objects.filter(tahapan__project=self.source)
+
+        # Prepare instances for bulk creation
+        items_to_create = []
 
         for old_jadwal in jadwal_list:
             old_id = old_jadwal.id
@@ -1515,10 +1584,17 @@ class DeepCopyService:
                 if hasattr(old_jadwal, 'catatan') and old_jadwal.catatan:
                     new_jadwal.catatan = old_jadwal.catatan
 
-                new_jadwal.save()
+                items_to_create.append((old_id, new_jadwal))
 
-                self.mappings['jadwal'][old_id] = new_jadwal.id
-                self.stats['jadwal_copied'] += 1
+        # Bulk create all at once
+        created = self._bulk_create_with_mapping(
+            PekerjaanTahapan,
+            items_to_create,
+            'jadwal',
+            batch_size=500
+        )
+
+        self.stats['jadwal_copied'] = len(created)
 
     # =========================================================================
     # PERFORMANCE OPTIMIZATION HELPERS (FASE 4.1)
