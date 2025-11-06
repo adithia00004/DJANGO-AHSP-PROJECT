@@ -6,6 +6,7 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
+  <link rel="stylesheet" href="{% static 'dashboard/css/ux-enhancements.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -188,17 +189,76 @@
     });
   </script>
 
+  <!-- ========== QUICK FILTERS BAR (UX Enhancement) ========== -->
+  <div class="mb-4">
+    <div class="quick-filters-bar">
+      <!-- Quick Search -->
+      <div class="quick-search-box">
+        <i class="bi bi-search search-icon"></i>
+        <input type="text"
+               class="form-control quick-search-input"
+               id="quickSearchInput"
+               placeholder="Cari project... (Ctrl + K)"
+               aria-label="Quick search">
+        <button type="button" class="btn-clear-search" id="clearSearchBtn" style="display: none;">
+          <i class="bi bi-x-circle"></i>
+        </button>
+        <div class="search-shortcut-hint">
+          <kbd>Ctrl</kbd> + <kbd>K</kbd>
+        </div>
+      </div>
+
+      <!-- Quick Filter Pills -->
+      <div class="quick-filters-pills">
+        <button type="button" class="filter-pill" data-filter="all" data-active="true">
+          <i class="bi bi-grid-3x3-gap"></i>
+          <span>Semua</span>
+        </button>
+        <button type="button" class="filter-pill" data-filter="active">
+          <i class="bi bi-play-circle"></i>
+          <span>Aktif</span>
+        </button>
+        <button type="button" class="filter-pill" data-filter="overdue">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span>Terlambat</span>
+        </button>
+        <button type="button" class="filter-pill" data-filter="upcoming">
+          <i class="bi bi-clock-history"></i>
+          <span>Akan Datang</span>
+        </button>
+        <button type="button" class="filter-pill" data-filter="thisyear">
+          <i class="bi bi-calendar-check"></i>
+          <span>Tahun Ini</span>
+        </button>
+      </div>
+
+      <!-- Advanced Filter Toggle -->
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
+        <i class="bi bi-funnel"></i> Filter Lanjutan
+      </button>
+    </div>
+
+    <!-- Active Filters Display -->
+    <div class="active-filters-container" id="activeFiltersContainer" style="display: none;">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="text-muted small">Filter aktif:</span>
+        <div class="active-filters-list" id="activeFiltersList"></div>
+        <button type="button" class="btn btn-sm btn-link text-danger" id="clearAllFilters">
+          <i class="bi bi-x-circle"></i> Hapus Semua
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- ========== END QUICK FILTERS BAR ========== -->
+
   <!-- ========== FASE 2.2: ADVANCED FILTERING ========== -->
   <div class="mb-4">
     <div class="card shadow-sm">
       <div class="card-header bg-light">
         <div class="d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
-            <i class="fas fa-filter"></i> Filter & Pencarian
+            <i class="fas fa-filter"></i> Filter & Pencarian Lanjutan
           </h6>
-          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
-            <i class="fas fa-chevron-down"></i> Toggle Filter
-          </button>
         </div>
       </div>
       <div class="collapse" id="filterPanel">
@@ -473,6 +533,34 @@
   </div>
   <!-- ========== END EXPORT & UPLOAD ACTIONS ========== -->
 
+  <!-- ========== FLOATING ACTION BUTTON (FAB) ========== -->
+  <div class="quick-actions-fab">
+    <button type="button" class="fab-main" id="fabMainBtn" aria-label="Quick Actions" title="Quick Actions">
+      <i class="bi bi-plus-lg fab-icon"></i>
+    </button>
+
+    <!-- FAB Menu -->
+    <div class="fab-menu" id="fabMenu" style="display: none;">
+      <a href="#" class="fab-action" id="fabScrollToForm" title="Tambah Project via Form">
+        <i class="bi bi-file-earmark-plus"></i>
+        <span class="fab-label">Tambah via Form</span>
+      </a>
+      <a href="{% url 'dashboard:project_upload' %}" class="fab-action" title="Upload dari Excel">
+        <i class="bi bi-file-earmark-arrow-up"></i>
+        <span class="fab-label">Upload Excel</span>
+      </a>
+      <a href="#" class="fab-action" id="fabScrollToTop" title="Kembali ke Atas">
+        <i class="bi bi-arrow-up-circle"></i>
+        <span class="fab-label">Ke Atas</span>
+      </a>
+      <button type="button" class="fab-action" id="fabToggleAnalytics" title="Toggle Analytics">
+        <i class="bi bi-bar-chart-line"></i>
+        <span class="fab-label">Analytics</span>
+      </button>
+    </div>
+  </div>
+  <!-- ========== END FLOATING ACTION BUTTON ========== -->
+
 </section>
 {% endblock %}
 
@@ -631,4 +719,6 @@
 
   <script src="{% static 'dashboard/js/formset.js' %}" defer></script>
   <script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
+  <!-- UX Enhancements JavaScript -->
+  <script src="{% static 'dashboard/js/ux-enhancements.js' %}" defer></script>
 {% endblock %}
