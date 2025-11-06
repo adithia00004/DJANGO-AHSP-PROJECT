@@ -118,13 +118,49 @@ class TestProjectParameterModel:
             value=Decimal('10.000')
         )
 
-        # Try to create duplicate (should fail)
-        with pytest.raises(IntegrityError):
+        # Try to create duplicate (should fail with ValidationError)
+        # Note: Model calls full_clean() in save(), so ValidationError is raised
+        # before database IntegrityError
+        with pytest.raises(ValidationError) as exc_info:
             ProjectParameter.objects.create(
                 project=project,
                 name='panjang',  # Same name!
                 value=Decimal('20.000')
             )
+
+        # Verify it's the unique constraint error
+        assert '__all__' in exc_info.value.message_dict
+
+    def test_database_unique_constraint(self, user):
+        """Test that database-level unique constraint works (bypass model validation)."""
+        from datetime import date
+        project = Project.objects.create(
+            owner=user,
+            nama='Test Project',
+            tanggal_mulai=date.today(),
+            sumber_dana='APBN',
+            lokasi_project='Jakarta',
+            nama_client='Client',
+            anggaran_owner=Decimal('1000000000')
+        )
+
+        # Create first parameter
+        ProjectParameter.objects.create(
+            project=project,
+            name='panjang',
+            value=Decimal('10.000')
+        )
+
+        # Bypass model validation to test database constraint
+        # Use bulk_create which doesn't call save() or full_clean()
+        with pytest.raises(IntegrityError):
+            ProjectParameter.objects.bulk_create([
+                ProjectParameter(
+                    project=project,
+                    name='panjang',  # Same name!
+                    value=Decimal('20.000')
+                )
+            ])
 
     def test_same_name_different_projects_allowed(self, user, other_user):
         """Test that same parameter name is allowed for different projects."""

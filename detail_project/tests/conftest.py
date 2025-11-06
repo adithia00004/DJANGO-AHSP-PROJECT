@@ -59,6 +59,17 @@ def user(db):
 
 
 @pytest.fixture
+def other_user(db):
+    """Create a second user for multi-user testing."""
+    User = get_user_model()
+    return User.objects.create_user(
+        username="other_tester",
+        email="other@example.com",
+        password="secret",
+    )
+
+
+@pytest.fixture
 def client_logged(db, user):
     c = Client()
     c.force_login(user)
