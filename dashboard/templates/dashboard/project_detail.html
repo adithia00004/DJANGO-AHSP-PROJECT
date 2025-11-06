@@ -35,6 +35,10 @@
                 <a href="{% url 'dashboard:export_project_pdf' project.pk %}" class="btn btn-sm btn-info" title="Export detail project ke PDF">
                     <i class="fas fa-file-pdf"></i> Export PDF
                 </a>
+                <!-- FASE 3.1: Deep Copy -->
+                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#copyProjectModal" title="Copy seluruh project dengan data lengkap">
+                    <i class="fas fa-copy"></i> Copy Project
+                </button>
                 <a href="{% url 'dashboard:project_edit' project.pk %}" class="btn btn-sm btn-warning">
                     <i class="fas fa-edit"></i> Edit
                 </a>
@@ -191,4 +195,199 @@
         </div>
     </div>
 </div>
+
+<!-- ============================================================================
+     FASE 3.1: Copy Project Modal
+     ============================================================================ -->
+<div class="modal fade" id="copyProjectModal" tabindex="-1" aria-labelledby="copyProjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="copyProjectModalLabel">
+                    <i class="fas fa-copy"></i> Copy Project
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Deep Copy:</strong> Seluruh data project akan dicopy termasuk:
+                    <ul class="mb-0 mt-2 small">
+                        <li>List Pekerjaan (Klasifikasi, Sub, Pekerjaan)</li>
+                        <li>Volume Pekerjaan & Parameter</li>
+                        <li>Harga Items & Template AHSP</li>
+                        <li>Rincian AHSP & Rekap RAB</li>
+                        <li>Jadwal Pelaksanaan (opsional)</li>
+                    </ul>
+                </div>
+
+                <form id="copyProjectForm">
+                    {% csrf_token %}
+
+                    <!-- Project Name -->
+                    <div class="mb-3">
+                        <label for="newProjectName" class="form-label">
+                            Nama Project Baru <span class="text-danger">*</span>
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="newProjectName"
+                               name="new_name"
+                               placeholder="Masukkan nama project baru"
+                               value="{{ project.nama }} (Copy)"
+                               required>
+                        <div class="invalid-feedback">
+                            Nama project tidak boleh kosong
+                        </div>
+                    </div>
+
+                    <!-- Start Date (Optional) -->
+                    <div class="mb-3">
+                        <label for="newTanggalMulai" class="form-label">
+                            Tanggal Mulai Baru <small class="text-muted">(opsional)</small>
+                        </label>
+                        <input type="date"
+                               class="form-control"
+                               id="newTanggalMulai"
+                               name="new_tanggal_mulai">
+                        <small class="form-text text-muted">
+                            Kosongkan untuk menggunakan tanggal mulai dari project asli
+                        </small>
+                    </div>
+
+                    <!-- Copy Schedule Option -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="copyJadwal"
+                                   name="copy_jadwal"
+                                   checked>
+                            <label class="form-check-label" for="copyJadwal">
+                                Copy Jadwal Pelaksanaan
+                            </label>
+                            <div class="form-text">
+                                Centang untuk menyalin tahapan dan jadwal pekerjaan
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Progress Alert (Hidden by default) -->
+                <div id="copyProgressAlert" class="alert alert-primary d-none" role="alert">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div>Sedang melakukan copy project...</div>
+                    </div>
+                </div>
+
+                <!-- Error Alert (Hidden by default) -->
+                <div id="copyErrorAlert" class="alert alert-danger d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Batal
+                </button>
+                <button type="button" class="btn btn-primary" id="btnConfirmCopy">
+                    <i class="fas fa-copy"></i> Copy Project
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('copyProjectModal');
+    const form = document.getElementById('copyProjectForm');
+    const btnConfirm = document.getElementById('btnConfirmCopy');
+    const progressAlert = document.getElementById('copyProgressAlert');
+    const errorAlert = document.getElementById('copyErrorAlert');
+
+    // Reset modal on open
+    modal.addEventListener('show.bs.modal', function() {
+        form.reset();
+        document.getElementById('newProjectName').value = '{{ project.nama }} (Copy)';
+        progressAlert.classList.add('d-none');
+        errorAlert.classList.add('d-none');
+        btnConfirm.disabled = false;
+    });
+
+    // Handle copy button click
+    btnConfirm.addEventListener('click', async function() {
+        // Validate form
+        if (!form.checkValidity()) {
+            form.classList.add('was-validated');
+            return;
+        }
+
+        // Get form data
+        const formData = new FormData(form);
+        const newName = formData.get('new_name').trim();
+        const newTanggalMulai = formData.get('new_tanggal_mulai') || null;
+        const copyJadwal = document.getElementById('copyJadwal').checked;
+
+        if (!newName) {
+            errorAlert.textContent = 'Nama project tidak boleh kosong';
+            errorAlert.classList.remove('d-none');
+            return;
+        }
+
+        // Show progress, disable button
+        progressAlert.classList.remove('d-none');
+        errorAlert.classList.add('d-none');
+        btnConfirm.disabled = true;
+
+        try {
+            // Call API
+            const response = await fetch(`/detail-project/api/project/{{ project.pk }}/deep-copy/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                },
+                body: JSON.stringify({
+                    new_name: newName,
+                    new_tanggal_mulai: newTanggalMulai,
+                    copy_jadwal: copyJadwal
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.error || `HTTP error! status: ${response.status}`);
+            }
+
+            // Success - redirect to new project detail
+            progressAlert.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-check-circle me-2 text-success"></i>
+                    <div>
+                        <strong>Berhasil!</strong> Project berhasil dicopy.
+                        <br><small>Redirecting...</small>
+                    </div>
+                </div>
+            `;
+
+            // Redirect after 1 second
+            setTimeout(() => {
+                window.location.href = `/project/${data.new_project.id}/`;
+            }, 1000);
+
+        } catch (error) {
+            console.error('Copy error:', error);
+            progressAlert.classList.add('d-none');
+            errorAlert.textContent = `Error: ${error.message}`;
+            errorAlert.classList.remove('d-none');
+            btnConfirm.disabled = false;
+        }
+    });
+});
+</script>
 {% endblock %}
