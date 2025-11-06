@@ -613,8 +613,21 @@ def get_unassigned_pekerjaan(project):
 
 
 # ==============================================================================
-# Deep Copy Service - FASE 3.1
+# Deep Copy Service - FASE 3.1 (Enhanced with Error Handling)
 # ==============================================================================
+
+import logging
+from .exceptions import (
+    DeepCopyValidationError,
+    DeepCopyBusinessError,
+    DeepCopyDatabaseError,
+    DeepCopySystemError,
+    classify_database_error,
+    classify_system_error,
+)
+
+logger = logging.getLogger(__name__)
+
 
 class DeepCopyService:
     """
@@ -622,6 +635,13 @@ class DeepCopyService:
 
     Implements a 12-step dependency-ordered copy process with ID mapping
     to handle foreign key relationships correctly.
+
+    Enhanced Features (FASE 3.1.1):
+        - Comprehensive input validation
+        - Skip tracking for orphaned data
+        - Warnings collection for user feedback
+        - Detailed error classification
+        - Structured logging
 
     Usage:
         service = DeepCopyService(source_project)
@@ -632,11 +652,16 @@ class DeepCopyService:
             copy_jadwal=True
         )
 
+        # Check warnings
+        warnings = service.get_warnings()
+        skipped = service.get_skipped_items()
+
     Architecture:
         1. Uses transaction.atomic for data integrity
         2. Maintains ID mappings to remap FKs correctly
         3. Follows dependency order to avoid FK constraint violations
         4. Validates all copied data before saving
+        5. Tracks skipped items and generates warnings
     """
 
     def __init__(self, source_project):
@@ -647,14 +672,49 @@ class DeepCopyService:
             source_project: The project to copy from
 
         Raises:
-            ValidationError: If source_project is invalid
+            DeepCopyValidationError: If source_project is invalid
+            DeepCopyBusinessError: If project is too large (warning only)
         """
-        from django.core.exceptions import ValidationError as DjangoValidationError
+        # Validate source project exists
+        if not source_project:
+            raise DeepCopyValidationError(
+                code=3002,
+                message="Source project is None",
+                details={"project": None}
+            )
 
-        if not source_project or not source_project.id:
-            raise DjangoValidationError("Source project must be a saved instance")
+        if not source_project.id:
+            raise DeepCopyValidationError(
+                code=3002,
+                message="Source project is not saved (no ID)",
+                details={"project": str(source_project)}
+            )
 
         self.source = source_project
+
+        # Validate project size and log warning for large projects
+        from .models import Pekerjaan
+        pekerjaan_count = Pekerjaan.objects.filter(project=source_project).count()
+
+        if pekerjaan_count > 1000:
+            logger.warning(
+                f"Large project copy initiated: {pekerjaan_count} pekerjaan",
+                extra={
+                    'project_id': source_project.id,
+                    'pekerjaan_count': pekerjaan_count,
+                    'source': 'DeepCopyService.__init__'
+                }
+            )
+            # Don't block, just warn - business decides if this is acceptable
+
+        # Initialize tracking structures
+        self.warnings = []
+        self.skipped_items = {
+            'subklasifikasi': [],
+            'pekerjaan': [],
+            'volume': [],
+            'ahsp_template': [],
+        }
 
         # ID mapping dictionaries for FK remapping
         # Format: {old_id: new_id}
@@ -695,7 +755,7 @@ class DeepCopyService:
         copy_jadwal=True
     ):
         """
-        Perform deep copy of project with all related data.
+        Perform deep copy of project with all related data (Enhanced).
 
         Args:
             new_owner: User who will own the copied project
@@ -707,50 +767,203 @@ class DeepCopyService:
             The newly created project instance
 
         Raises:
-            ValidationError: If validation fails
-            IntegrityError: If database constraints are violated
+            DeepCopyValidationError: If input validation fails
+            DeepCopyBusinessError: If business rules violated
+            DeepCopyDatabaseError: If database operation fails
+            DeepCopySystemError: If system resource error occurs
         """
-        # Import Project model locally to avoid circular imports
         from dashboard.models import Project
+        from django.db import IntegrityError, OperationalError, ProgrammingError
+        import re
 
-        # Step 1: Copy Project
-        new_project = self._copy_project(new_owner, new_name, new_tanggal_mulai)
+        # ===== INPUT VALIDATION =====
 
-        # Step 2: Copy ProjectPricing
-        self._copy_project_pricing(new_project)
+        # Validate new_name is not empty
+        if not new_name or not new_name.strip():
+            raise DeepCopyValidationError(
+                code=1001,
+                message="Project name is empty",
+                details={'new_name': new_name}
+            )
 
-        # Step 3: Copy ProjectParameter
-        self._copy_project_parameters(new_project)
+        new_name = new_name.strip()
 
-        # Step 4: Copy Klasifikasi
-        self._copy_klasifikasi(new_project)
+        # Validate name length
+        if len(new_name) > 200:
+            raise DeepCopyValidationError(
+                code=1004,
+                message=f"Project name too long: {len(new_name)} characters",
+                details={'length': len(new_name), 'max': 200, 'name': new_name}
+            )
 
-        # Step 5: Copy SubKlasifikasi
-        self._copy_subklasifikasi(new_project)
+        # XSS prevention - check for HTML tags
+        if re.search(r'[<>]', new_name):
+            raise DeepCopyValidationError(
+                code=1007,
+                message=f"Project name contains invalid characters: {new_name}",
+                details={'name': new_name, 'invalid_chars': '<>'}
+            )
 
-        # Step 6: Copy Pekerjaan
-        self._copy_pekerjaan(new_project)
+        # Validate date range if provided
+        if new_tanggal_mulai:
+            if new_tanggal_mulai.year > 2100 or new_tanggal_mulai.year < 1900:
+                raise DeepCopyValidationError(
+                    code=1003,
+                    message=f"Invalid date range: {new_tanggal_mulai}",
+                    details={'date': str(new_tanggal_mulai), 'valid_range': '1900-2100'}
+                )
 
-        # Step 7: Copy VolumePekerjaan
-        self._copy_volume_pekerjaan(new_project)
+        # ===== BUSINESS RULE VALIDATION =====
 
-        # Step 8: Copy HargaItem
-        self._copy_harga_item(new_project)
+        # Check for duplicate project name
+        if Project.objects.filter(owner=new_owner, nama=new_name).exists():
+            raise DeepCopyBusinessError(
+                code=3001,
+                message=f"Project with name '{new_name}' already exists for user {new_owner.id}",
+                details={
+                    'owner_id': new_owner.id,
+                    'owner_username': new_owner.username,
+                    'project_name': new_name
+                }
+            )
 
-        # Step 9: Copy AhspTemplate (using existing model)
-        self._copy_ahsp_template(new_project)
+        # Log copy initiation
+        logger.info(
+            f"Starting deep copy of project {self.source.id}",
+            extra={
+                'source_project_id': self.source.id,
+                'source_project_name': self.source.nama,
+                'new_owner_id': new_owner.id,
+                'new_project_name': new_name,
+                'copy_jadwal': copy_jadwal
+            }
+        )
 
-        # Step 10: Copy RincianAhsp (using DetailAHSPProject model)
-        self._copy_rincian_ahsp(new_project)
+        # ===== EXECUTE COPY WITH ERROR HANDLING =====
 
-        # Step 11: Copy Tahapan (if copy_jadwal=True)
-        if copy_jadwal:
-            self._copy_tahapan(new_project)
+        try:
+            # Step 1: Copy Project
+            new_project = self._copy_project(new_owner, new_name, new_tanggal_mulai)
 
-            # Step 12: Copy JadwalPekerjaan (if copy_jadwal=True)
-            self._copy_jadwal_pekerjaan(new_project)
+            # Step 2: Copy ProjectPricing
+            self._copy_project_pricing(new_project)
 
-        return new_project
+            # Step 3: Copy ProjectParameter
+            self._copy_project_parameters(new_project)
+
+            # Step 4: Copy Klasifikasi
+            self._copy_klasifikasi(new_project)
+
+            # Step 5: Copy SubKlasifikasi
+            self._copy_subklasifikasi(new_project)
+
+            # Step 6: Copy Pekerjaan
+            self._copy_pekerjaan(new_project)
+
+            # Step 7: Copy VolumePekerjaan
+            self._copy_volume_pekerjaan(new_project)
+
+            # Step 8: Copy HargaItem
+            self._copy_harga_item(new_project)
+
+            # Step 9: Copy AhspTemplate (using existing model)
+            self._copy_ahsp_template(new_project)
+
+            # Step 10: Copy RincianAhsp (using DetailAHSPProject model)
+            self._copy_rincian_ahsp(new_project)
+
+            # Step 11: Copy Tahapan (if copy_jadwal=True)
+            if copy_jadwal:
+                self._copy_tahapan(new_project)
+
+                # Step 12: Copy JadwalPekerjaan (if copy_jadwal=True)
+                self._copy_jadwal_pekerjaan(new_project)
+
+            # Check if any items were skipped and generate warnings
+            if any(self.skipped_items.values()):
+                skipped_summary = {k: len(v) for k, v in self.skipped_items.items() if v}
+                logger.warning(
+                    f"Some items were skipped during copy",
+                    extra={
+                        'source_project_id': self.source.id,
+                        'new_project_id': new_project.id,
+                        'skipped_summary': skipped_summary
+                    }
+                )
+
+                self.warnings.append({
+                    'code': 3005,
+                    'message': f"Beberapa data tidak lengkap: {', '.join([f'{k}: {v}' for k, v in skipped_summary.items()])}",
+                    'details': skipped_summary
+                })
+
+            # Log success
+            stats = self.get_stats()
+            logger.info(
+                f"Deep copy completed successfully",
+                extra={
+                    'source_project_id': self.source.id,
+                    'new_project_id': new_project.id,
+                    'new_project_name': new_project.nama,
+                    'stats': stats,
+                    'warnings_count': len(self.warnings)
+                }
+            )
+
+            return new_project
+
+        except (IntegrityError, OperationalError, ProgrammingError) as e:
+            # Classify database errors
+            logger.error(
+                f"Database error during copy",
+                extra={
+                    'source_project_id': self.source.id,
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)
+                },
+                exc_info=True
+            )
+            raise classify_database_error(e)
+
+        except (MemoryError, TimeoutError, OSError) as e:
+            # Classify system errors
+            logger.critical(
+                f"System error during copy",
+                extra={
+                    'source_project_id': self.source.id,
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)
+                },
+                exc_info=True
+            )
+            raise classify_system_error(e)
+
+        except (DeepCopyValidationError, DeepCopyBusinessError, DeepCopyDatabaseError, DeepCopySystemError):
+            # Re-raise our custom exceptions as-is
+            raise
+
+        except Exception as e:
+            # Unknown error - log and convert to DeepCopyError
+            logger.exception(
+                f"Unexpected error during copy",
+                extra={
+                    'source_project_id': self.source.id,
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)
+                }
+            )
+
+            from .exceptions import DeepCopyError, USER_MESSAGES
+            raise DeepCopyError(
+                code=9999,
+                message=f"Unknown error during copy: {str(e)}",
+                user_message=USER_MESSAGES[9999],
+                details={
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'source_project_id': self.source.id
+                }
+            )
 
     def batch_copy(
         self,
@@ -984,7 +1197,7 @@ class DeepCopyService:
 
     def _copy_subklasifikasi(self, new_project):
         """
-        Step 5: Copy SubKlasifikasi instances.
+        Step 5: Copy SubKlasifikasi instances (Enhanced with skip tracking).
 
         Args:
             new_project: The newly created project
@@ -1008,10 +1221,28 @@ class DeepCopyService:
 
                 self.mappings['subklasifikasi'][old_id] = new_subklas.id
                 self.stats['subklasifikasi_copied'] += 1
+            else:
+                # Track skipped item - parent Klasifikasi not found or not copied
+                self.skipped_items['subklasifikasi'].append({
+                    'id': old_id,
+                    'name': old_subklas.name,
+                    'reason': 'Parent Klasifikasi not found or not copied',
+                    'missing_parent_id': old_klasifikasi_id
+                })
+
+                logger.warning(
+                    f"Skipped SubKlasifikasi during copy - parent missing",
+                    extra={
+                        'source_project_id': self.source.id,
+                        'subklasifikasi_id': old_id,
+                        'subklasifikasi_name': old_subklas.name,
+                        'missing_klasifikasi_id': old_klasifikasi_id
+                    }
+                )
 
     def _copy_pekerjaan(self, new_project):
         """
-        Step 6: Copy Pekerjaan instances.
+        Step 6: Copy Pekerjaan instances (Enhanced with skip tracking).
 
         Args:
             new_project: The newly created project
@@ -1049,6 +1280,26 @@ class DeepCopyService:
 
                 self.mappings['pekerjaan'][old_id] = new_pekerjaan.id
                 self.stats['pekerjaan_copied'] += 1
+            else:
+                # Track skipped item - parent SubKlasifikasi not found or not copied
+                self.skipped_items['pekerjaan'].append({
+                    'id': old_id,
+                    'kode': old_pekerjaan.snapshot_kode,
+                    'uraian': old_pekerjaan.snapshot_uraian,
+                    'reason': 'Parent SubKlasifikasi not found or not copied',
+                    'missing_parent_id': old_subklas_id
+                })
+
+                logger.warning(
+                    f"Skipped Pekerjaan during copy - parent missing",
+                    extra={
+                        'source_project_id': self.source.id,
+                        'pekerjaan_id': old_id,
+                        'pekerjaan_kode': old_pekerjaan.snapshot_kode,
+                        'pekerjaan_uraian': old_pekerjaan.snapshot_uraian,
+                        'missing_subklasifikasi_id': old_subklas_id
+                    }
+                )
 
     def _copy_volume_pekerjaan(self, new_project):
         """
@@ -1228,3 +1479,31 @@ class DeepCopyService:
             Dictionary with counts of copied objects
         """
         return self.stats.copy()
+
+    def get_warnings(self):
+        """
+        Get warnings collected during copy operation.
+
+        Warnings indicate non-fatal issues that occurred during copy,
+        such as skipped items due to missing parent references.
+
+        Returns:
+            List of warning dictionaries with code, message, and details
+        """
+        return self.warnings.copy()
+
+    def get_skipped_items(self):
+        """
+        Get detailed information about items that were skipped during copy.
+
+        Returns:
+            Dictionary mapping item type to list of skipped items with details:
+            {
+                'subklasifikasi': [{'id': 1, 'name': '...', 'reason': '...'}],
+                'pekerjaan': [{'id': 2, 'name': '...', 'reason': '...'}],
+                ...
+            }
+        """
+        return {
+            k: v.copy() for k, v in self.skipped_items.items() if v
+        }
