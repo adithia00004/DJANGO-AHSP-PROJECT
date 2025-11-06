@@ -200,7 +200,8 @@ class TestDeepCopyServiceInit:
         with pytest.raises(DeepCopyValidationError) as exc_info:
             DeepCopyService(unsaved_project)
 
-        assert exc_info.value.code == 3003
+        # Both None and unsaved projects use error code 3002 (SOURCE_PROJECT_INVALID)
+        assert exc_info.value.code == 3002
 
 
 @pytest.mark.django_db

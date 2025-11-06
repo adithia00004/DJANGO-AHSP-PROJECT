@@ -355,7 +355,7 @@ class TestSkipTracking:
         # Delete Klasifikasi to create orphan situation
         # Note: Due to CASCADE, SubKlasifikasi and Pekerjaan will also be deleted
         # So we need to test with fresh data after deletion
-        project.klasifikasi_set.all().delete()
+        project.klasifikasi_list.all().delete()
 
         service = DeepCopyService(project)
         new_project = service.copy(user, "Copy Project Skip Tracking")
