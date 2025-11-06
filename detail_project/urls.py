@@ -66,6 +66,9 @@ urlpatterns = [
     path('api/project/<int:project_id>/volume/formula/',       views_api.api_volume_formula_state, name='api_volume_formula_state'),
     path('api/project/<int:project_id>/volume-formula-state/', views_api.api_volume_formula_state, name='api_volume_formula_state_alias'),
 
+    # ===== API: Deep Copy (FASE 3.1) =====
+    path('api/project/<int:project_id>/deep-copy/', views_api.api_deep_copy_project, name='api_deep_copy_project'),
+
 
     # Export endpoints
     # Export Rekap RAB

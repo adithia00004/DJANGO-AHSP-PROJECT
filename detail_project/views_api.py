@@ -2201,3 +2201,126 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
 
+
+# ============================================================================
+# DEEP COPY PROJECT (FASE 3.1)
+# ============================================================================
+
+@login_required
+@require_POST
+def api_deep_copy_project(request: HttpRequest, project_id: int):
+    """
+    Deep copy a project with all related data.
+
+    POST /api/project/<project_id>/deep-copy/
+
+    Body (JSON):
+    {
+        "new_name": "Project Copy Name",
+        "new_tanggal_mulai": "2025-06-01" (optional),
+        "copy_jadwal": true (optional, default: true)
+    }
+
+    Response:
+    {
+        "ok": true,
+        "new_project": {
+            "id": 123,
+            "nama_project": "Project Copy Name",
+            "owner_id": 1,
+            "tanggal_mulai": "2025-06-01",
+            "durasi": 90,
+            "status": "active"
+        },
+        "stats": {
+            "parameter_copied": 2,
+            "klasifikasi_copied": 3,
+            "subklasifikasi_copied": 5,
+            "pekerjaan_copied": 15,
+            "volume_copied": 15,
+            "harga_item_copied": 20,
+            "ahsp_template_copied": 45,
+            "tahapan_copied": 4,
+            "jadwal_copied": 15
+        }
+    }
+    """
+    from datetime import datetime
+    from .services import DeepCopyService
+
+    # Verify ownership of source project
+    source_project = _owner_or_404(project_id, request.user)
+
+    # Parse JSON body
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({
+            "ok": False,
+            "error": "Invalid JSON payload"
+        }, status=400)
+
+    # Validate required fields
+    new_name = payload.get("new_name", "").strip()
+    if not new_name:
+        return JsonResponse({
+            "ok": False,
+            "error": "Field 'new_name' is required and cannot be empty"
+        }, status=400)
+
+    # Parse optional parameters
+    new_tanggal_mulai = None
+    if payload.get("new_tanggal_mulai"):
+        try:
+            new_tanggal_mulai = datetime.strptime(
+                payload["new_tanggal_mulai"],
+                "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            return JsonResponse({
+                "ok": False,
+                "error": "Field 'new_tanggal_mulai' must be in YYYY-MM-DD format"
+            }, status=400)
+
+    copy_jadwal = payload.get("copy_jadwal", True)
+    if not isinstance(copy_jadwal, bool):
+        return JsonResponse({
+            "ok": False,
+            "error": "Field 'copy_jadwal' must be a boolean"
+        }, status=400)
+
+    # Perform deep copy
+    try:
+        service = DeepCopyService(source_project)
+
+        new_project = service.copy(
+            new_owner=request.user,
+            new_name=new_name,
+            new_tanggal_mulai=new_tanggal_mulai,
+            copy_jadwal=copy_jadwal,
+        )
+
+        stats = service.get_stats()
+
+        return JsonResponse({
+            "ok": True,
+            "new_project": {
+                "id": new_project.id,
+                "nama_project": new_project.nama_project,
+                "owner_id": new_project.owner_id,
+                "lokasi_project": new_project.lokasi_project,
+                "tanggal_mulai": new_project.tanggal_mulai.isoformat() if new_project.tanggal_mulai else None,
+                "durasi": new_project.durasi,
+                "status": new_project.status,
+            },
+            "stats": stats,
+        }, status=201)
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            "ok": False,
+            "error": f"Deep copy failed: {str(e)}"
+        }, status=500)
+
