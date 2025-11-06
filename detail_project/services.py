@@ -770,15 +770,39 @@ class DeepCopyService:
 
         old_id = self.source.id
 
-        # Create new project instance
+        # Create new project instance with required fields
         new_project = Project(
             owner=new_owner,
-            nama_project=new_name,
+            nama=new_name,
+            sumber_dana=self.source.sumber_dana,
             lokasi_project=self.source.lokasi_project,
+            nama_client=self.source.nama_client,
+            anggaran_owner=self.source.anggaran_owner,
             tanggal_mulai=new_tanggal_mulai or self.source.tanggal_mulai,
-            durasi=self.source.durasi,
-            status=self.source.status,
+            is_active=self.source.is_active,
         )
+
+        # Copy optional fields if they exist
+        if hasattr(self.source, 'durasi_hari') and self.source.durasi_hari:
+            new_project.durasi_hari = self.source.durasi_hari
+        if hasattr(self.source, 'deskripsi') and self.source.deskripsi:
+            new_project.deskripsi = self.source.deskripsi
+        if hasattr(self.source, 'kategori') and self.source.kategori:
+            new_project.kategori = self.source.kategori
+
+        # Copy additional optional fields
+        optional_fields = [
+            'ket_project1', 'ket_project2', 'jabatan_client', 'instansi_client',
+            'nama_kontraktor', 'instansi_kontraktor', 'nama_konsultan_perencana',
+            'instansi_konsultan_perencana', 'nama_konsultan_pengawas',
+            'instansi_konsultan_pengawas'
+        ]
+        for field in optional_fields:
+            if hasattr(self.source, field):
+                value = getattr(self.source, field)
+                if value:
+                    setattr(new_project, field, value)
+
         new_project.save()
 
         # Map IDs

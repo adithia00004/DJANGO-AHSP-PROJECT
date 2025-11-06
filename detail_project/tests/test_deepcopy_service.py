@@ -41,11 +41,14 @@ def sample_project(user):
     """Create a sample project with minimal data for testing."""
     return Project.objects.create(
         owner=user,
-        nama_project="Test Project Original",
+        nama="Test Project Original",
+        sumber_dana="APBN",
         lokasi_project="Jakarta",
+        nama_client="Client Test",
+        anggaran_owner=Decimal("1000000000"),
         tanggal_mulai=date(2025, 1, 1),
-        durasi=90,
-        status="active",
+        durasi_hari=90,
+        is_active=True,
     )
 
 
@@ -55,11 +58,14 @@ def full_project(user):
     # Create project
     project = Project.objects.create(
         owner=user,
-        nama_project="Full Test Project",
+        nama="Full Test Project",
+        sumber_dana="APBN",
         lokasi_project="Bandung",
+        nama_client="Client Full Test",
+        anggaran_owner=Decimal("5000000000"),
         tanggal_mulai=date(2025, 2, 1),
-        durasi=120,
-        status="active",
+        durasi_hari=120,
+        is_active=True,
     )
 
     # Create pricing
@@ -186,7 +192,12 @@ class TestDeepCopyServiceInit:
         """Test initialization with unsaved project raises ValidationError."""
         unsaved_project = Project(
             owner=user,
-            nama_project="Unsaved",
+            nama="Unsaved",
+            sumber_dana="APBN",
+            lokasi_project="Jakarta",
+            nama_client="Test Client",
+            anggaran_owner=Decimal("1000000"),
+            tanggal_mulai=date(2025, 1, 1),
         )
 
         with pytest.raises(ValidationError) as exc_info:
@@ -211,9 +222,9 @@ class TestDeepCopyBasic:
         # Verify new project created
         assert new_project.id != sample_project.id
         assert new_project.owner == other_user
-        assert new_project.nama_project == "Test Project Copy"
+        assert new_project.nama == "Test Project Copy"
         assert new_project.lokasi_project == sample_project.lokasi_project
-        assert new_project.durasi == sample_project.durasi
+        assert new_project.durasi_hari == sample_project.durasi_hari
 
     def test_copy_with_new_tanggal_mulai(self, sample_project, other_user):
         """Test copying with new start date."""
@@ -554,7 +565,11 @@ class TestDeepCopyComplexScenarios:
         # Create project with multiple pekerjaan
         project = Project.objects.create(
             owner=user,
-            nama_project="Multi Pekerjaan Project",
+            nama="Multi Pekerjaan Project",
+            sumber_dana="APBN",
+            lokasi_project="Jakarta",
+            nama_client="Client Multi",
+            anggaran_owner=Decimal("2000000000"),
             tanggal_mulai=date(2025, 1, 1),
         )
 

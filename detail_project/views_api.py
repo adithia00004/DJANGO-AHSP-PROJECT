@@ -2226,11 +2226,15 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
         "ok": true,
         "new_project": {
             "id": 123,
-            "nama_project": "Project Copy Name",
+            "nama": "Project Copy Name",
             "owner_id": 1,
+            "lokasi_project": "Jakarta",
+            "sumber_dana": "APBN",
+            "nama_client": "Client ABC",
             "tanggal_mulai": "2025-06-01",
-            "durasi": 90,
-            "status": "active"
+            "tanggal_selesai": "2025-09-30",
+            "durasi_hari": 120,
+            "is_active": true
         },
         "stats": {
             "parameter_copied": 2,
@@ -2306,12 +2310,15 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
             "ok": True,
             "new_project": {
                 "id": new_project.id,
-                "nama_project": new_project.nama_project,
+                "nama": new_project.nama,
                 "owner_id": new_project.owner_id,
                 "lokasi_project": new_project.lokasi_project,
+                "sumber_dana": new_project.sumber_dana,
+                "nama_client": new_project.nama_client,
                 "tanggal_mulai": new_project.tanggal_mulai.isoformat() if new_project.tanggal_mulai else None,
-                "durasi": new_project.durasi,
-                "status": new_project.status,
+                "tanggal_selesai": new_project.tanggal_selesai.isoformat() if new_project.tanggal_selesai else None,
+                "durasi_hari": new_project.durasi_hari,
+                "is_active": new_project.is_active,
             },
             "stats": stats,
         }, status=201)
