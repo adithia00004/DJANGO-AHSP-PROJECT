@@ -46,35 +46,47 @@
           <div class="tab-pane fade show active" id="identitas" role="tabpanel">
             <div class="row">
               <div class="col-md-6 mb-3">
-                {{ form.nama.label_tag }} {{ form.nama }}
+                {{ form.nama.label_tag }} <span class="text-danger">*</span>
+                {{ form.nama }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.tanggal_mulai.label_tag }} {{ form.tanggal_mulai }}
+                {{ form.tanggal_mulai.label_tag }} <span class="text-danger">*</span>
+                {{ form.tanggal_mulai }}
                 <small class="form-text text-muted">Tahun project akan otomatis diambil dari tanggal ini</small>
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.tanggal_selesai.label_tag }} {{ form.tanggal_selesai }}
+                {{ form.tanggal_selesai.label_tag }}
+                {{ form.tanggal_selesai }}
+                <small class="form-text text-muted">Kosongkan untuk auto-set ke 31 Des tahun project</small>
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.durasi_hari.label_tag }} {{ form.durasi_hari }}
+                {{ form.durasi_hari.label_tag }}
+                {{ form.durasi_hari }}
+                <small class="form-text text-muted">Kosongkan untuk dihitung otomatis</small>
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.lokasi_project.label_tag }} {{ form.lokasi_project }}
+                {{ form.lokasi_project.label_tag }} <span class="text-danger">*</span>
+                {{ form.lokasi_project }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.anggaran_owner.label_tag }} {{ form.anggaran_owner }}
+                {{ form.anggaran_owner.label_tag }} <span class="text-danger">*</span>
+                {{ form.anggaran_owner }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.ket_project1.label_tag }} {{ form.ket_project1 }}
+                {{ form.ket_project1.label_tag }}
+                {{ form.ket_project1 }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.ket_project2.label_tag }} {{ form.ket_project2 }}
+                {{ form.ket_project2.label_tag }}
+                {{ form.ket_project2 }}
               </div>
               <div class="col-md-12 mb-3">
-                {{ form.deskripsi.label_tag }} {{ form.deskripsi }}
+                {{ form.deskripsi.label_tag }}
+                {{ form.deskripsi }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.kategori.label_tag }} {{ form.kategori }}
+                {{ form.kategori.label_tag }}
+                {{ form.kategori }}
               </div>
             </div>
           </div>
@@ -83,13 +95,20 @@
           <div class="tab-pane fade" id="pemilik" role="tabpanel">
             <div class="row">
               <div class="col-md-6 mb-3">
-                {{ form.nama_client.label_tag }} {{ form.nama_client }}
+                {{ form.nama_client.label_tag }} <span class="text-danger">*</span>
+                {{ form.nama_client }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.instansi_client.label_tag }} {{ form.instansi_client }}
+                {{ form.jabatan_client.label_tag }}
+                {{ form.jabatan_client }}
               </div>
               <div class="col-md-6 mb-3">
-                {{ form.sumber_dana.label_tag }} {{ form.sumber_dana }}
+                {{ form.instansi_client.label_tag }}
+                {{ form.instansi_client }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.sumber_dana.label_tag }} <span class="text-danger">*</span>
+                {{ form.sumber_dana }}
               </div>
             </div>
           </div>

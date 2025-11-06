@@ -32,14 +32,9 @@
       isOpen = !isOpen;
 
       if (isOpen) {
-        fabMenu.style.display = 'flex';
+        fabMenu.classList.add('active');
         fabIcon.classList.replace('bi-plus-lg', 'bi-x-lg');
         fabMainBtn.classList.add('fab-open');
-
-        // Animate menu items
-        setTimeout(() => {
-          fabMenu.classList.add('fab-menu-open');
-        }, 10);
       } else {
         closeFABMenu();
       }
@@ -47,14 +42,9 @@
 
     // Close FAB menu
     function closeFABMenu() {
-      fabMenu.classList.remove('fab-menu-open');
+      fabMenu.classList.remove('active');
       fabIcon.classList.replace('bi-x-lg', 'bi-plus-lg');
       fabMainBtn.classList.remove('fab-open');
-
-      setTimeout(() => {
-        fabMenu.style.display = 'none';
-      }, 300);
-
       isOpen = false;
     }
 
@@ -693,6 +683,210 @@
   }
 
   // ============================================================================
+  // 11. MASS EDIT FUNCTIONALITY
+  // ============================================================================
+
+  function initMassEdit() {
+    const massEditModal = document.getElementById('massEditModal');
+    const massEditForm = document.getElementById('massEditForm');
+    const massEditSubmitBtn = document.getElementById('massEditSubmitBtn');
+    const fabMassEdit = document.getElementById('fabMassEdit');
+
+    if (!massEditModal || !massEditForm) return;
+
+    // Enable/disable inputs based on checkbox state
+    const checkboxes = massEditForm.querySelectorAll('.form-check-input');
+    checkboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', function() {
+        const inputId = this.id.replace('update', 'massEdit');
+        const input = document.getElementById(inputId) ||
+                     document.querySelector(`[name="${this.id.replace('update', '').toLowerCase().replace(/([A-Z])/g, '_$1').slice(1)}"]`);
+
+        if (input) {
+          input.disabled = !this.checked;
+          if (this.checked) {
+            input.focus();
+          }
+        }
+      });
+    });
+
+    // Populate selected project IDs when modal opens
+    massEditModal.addEventListener('show.bs.modal', function() {
+      const selectedCheckboxes = document.querySelectorAll('.project-checkbox:checked');
+      const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+      const selectedCount = selectedIds.length;
+
+      // Update selected count display
+      const countDisplay = document.getElementById('massEditSelectedCount');
+      const alertInfo = massEditModal.querySelector('.alert-info');
+      const alertWarning = massEditModal.querySelector('.alert-warning');
+
+      if (countDisplay) {
+        countDisplay.textContent = selectedCount;
+      }
+
+      if (selectedCount > 0) {
+        if (alertInfo) alertInfo.style.display = 'block';
+        if (alertWarning) alertWarning.style.display = 'none';
+
+        // Populate hidden input with project IDs
+        let projectIdsInput = document.getElementById('massEditProjectIds');
+        if (!projectIdsInput) {
+          projectIdsInput = document.createElement('input');
+          projectIdsInput.type = 'hidden';
+          projectIdsInput.id = 'massEditProjectIds';
+          projectIdsInput.name = 'project_ids';
+          massEditForm.appendChild(projectIdsInput);
+        }
+        projectIdsInput.value = selectedIds.join(',');
+      } else {
+        if (alertInfo) alertInfo.style.display = 'none';
+        if (alertWarning) alertWarning.style.display = 'block';
+        massEditSubmitBtn.disabled = true;
+      }
+    });
+
+    // Reset form when modal closes
+    massEditModal.addEventListener('hidden.bs.modal', function() {
+      massEditForm.reset();
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+        const inputId = checkbox.id.replace('update', 'massEdit');
+        const input = document.getElementById(inputId) ||
+                     document.querySelector(`[name="${checkbox.id.replace('update', '').toLowerCase().replace(/([A-Z])/g, '_$1').slice(1)}"]`);
+        if (input) {
+          input.disabled = true;
+        }
+      });
+      massEditSubmitBtn.disabled = false;
+    });
+
+    // Handle form submission
+    massEditSubmitBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+
+      // Get selected project IDs
+      const projectIdsInput = document.getElementById('massEditProjectIds');
+      if (!projectIdsInput || !projectIdsInput.value) {
+        showToast('Tidak ada project yang dipilih', 'warning');
+        return;
+      }
+
+      // Collect enabled fields
+      const formData = new FormData();
+      formData.append('project_ids', projectIdsInput.value);
+
+      // Get CSRF token
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+      formData.append('csrfmiddlewaretoken', csrfToken);
+
+      // Add only checked fields
+      let hasChanges = false;
+      checkboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+          const fieldName = checkbox.id.replace('update', '').toLowerCase().replace(/([A-Z])/g, '_$1').slice(1);
+          const input = massEditForm.querySelector(`[name="${fieldName}"]`);
+
+          if (input) {
+            formData.append(fieldName, input.value);
+            formData.append(`update_${fieldName}`, 'true');
+            hasChanges = true;
+          }
+        }
+      });
+
+      if (!hasChanges) {
+        showToast('Pilih minimal satu field untuk di-update', 'warning');
+        return;
+      }
+
+      // Disable submit button
+      massEditSubmitBtn.disabled = true;
+      massEditSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Menyimpan...';
+
+      // Submit via AJAX
+      fetch(massEditForm.dataset.url || '/dashboard/mass-edit/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showToast(`${data.count} project berhasil diupdate`, 'success');
+
+          // Close modal
+          const modalInstance = bootstrap.Modal.getInstance(massEditModal);
+          modalInstance.hide();
+
+          // Reload page after short delay
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } else {
+          showToast(data.message || 'Terjadi kesalahan', 'error');
+          massEditSubmitBtn.disabled = false;
+          massEditSubmitBtn.innerHTML = 'Simpan Perubahan';
+        }
+      })
+      .catch(error => {
+        console.error('Mass edit error:', error);
+        showToast('Terjadi kesalahan saat menyimpan', 'error');
+        massEditSubmitBtn.disabled = false;
+        massEditSubmitBtn.innerHTML = 'Simpan Perubahan';
+      });
+    });
+
+    // Update "Select All" checkbox functionality
+    const selectAllCheckbox = document.getElementById('selectAllProjects');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.addEventListener('change', function() {
+        const projectCheckboxes = document.querySelectorAll('.project-checkbox');
+        projectCheckboxes.forEach(cb => {
+          cb.checked = this.checked;
+          const row = cb.closest('tr');
+          if (row) {
+            if (this.checked) {
+              row.classList.add('selected');
+            } else {
+              row.classList.remove('selected');
+            }
+          }
+        });
+
+        // Update count badge if exists
+        updateSelectedCount();
+      });
+    }
+
+    // Update selected count on individual checkbox change
+    document.addEventListener('change', function(e) {
+      if (e.target.classList.contains('project-checkbox')) {
+        updateSelectedCount();
+      }
+    });
+
+    function updateSelectedCount() {
+      const selectedCheckboxes = document.querySelectorAll('.project-checkbox:checked');
+      const count = selectedCheckboxes.length;
+
+      // Update count badge in FAB button if exists
+      const countBadge = document.getElementById('massEditCountBadge');
+      if (countBadge) {
+        if (count > 0) {
+          countBadge.textContent = count;
+          countBadge.style.display = 'inline-block';
+        } else {
+          countBadge.style.display = 'none';
+        }
+      }
+    }
+  }
+
+  // ============================================================================
   // INITIALIZATION
   // ============================================================================
 
@@ -708,6 +902,7 @@
     initSmoothScrolling();
     initResponsiveEnhancements();
     initAccessibility();
+    initMassEdit();
 
     console.log('✅ UX Enhancements initialized successfully');
 

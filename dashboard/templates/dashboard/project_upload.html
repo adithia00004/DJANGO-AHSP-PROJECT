@@ -20,13 +20,54 @@
         </a>
       </div>
       <div class="card-body">
-        <p class="text-muted mb-3">
-          Gunakan template dengan header berikut (case-insensitive, urutan bebas):
-          <code>nama, tanggal_mulai, sumber_dana, lokasi_project, nama_client, anggaran_owner, ket_project1, ket_project2, jabatan_client, instansi_client, nama_kontraktor, instansi_kontraktor, nama_konsultan_perencana, instansi_konsultan_perencana, nama_konsultan_pengawas, instansi_konsultan_pengawas, deskripsi, kategori, tanggal_selesai, durasi_hari</code>
-        </p>
-        <p class="text-muted small">
-          <strong>Catatan:</strong> Kolom <code>tanggal_mulai</code> wajib diisi (format: YYYY-MM-DD atau DD/MM/YYYY). Tahun project akan otomatis diambil dari tanggal ini.
-        </p>
+        <div class="alert alert-info">
+          <h6 class="alert-heading"><i class="fas fa-info-circle"></i> Panduan Upload</h6>
+          <p class="mb-2">Template Excel harus memiliki header berikut (urutan bebas, case-insensitive):</p>
+
+          <div class="row">
+            <div class="col-md-6">
+              <strong class="text-danger">Kolom Wajib (6):</strong>
+              <ol class="small mb-2">
+                <li><code>nama</code> - Nama project</li>
+                <li><code>tanggal_mulai</code> - Format: YYYY-MM-DD atau DD/MM/YYYY</li>
+                <li><code>sumber_dana</code> - Sumber pendanaan</li>
+                <li><code>lokasi_project</code> - Lokasi pelaksanaan</li>
+                <li><code>nama_client</code> - Nama pemilik/client</li>
+                <li><code>anggaran_owner</code> - Angka (tanpa titik/koma)</li>
+              </ol>
+            </div>
+            <div class="col-md-6">
+              <strong class="text-muted">Kolom Opsional (14):</strong>
+              <ul class="small mb-2" style="column-count: 2;">
+                <li><code>tanggal_selesai</code></li>
+                <li><code>durasi_hari</code></li>
+                <li><code>ket_project1</code></li>
+                <li><code>ket_project2</code></li>
+                <li><code>jabatan_client</code></li>
+                <li><code>instansi_client</code></li>
+                <li><code>nama_kontraktor</code></li>
+                <li><code>instansi_kontraktor</code></li>
+                <li><code>nama_konsultan_perencana</code></li>
+                <li><code>instansi_konsultan_perencana</code></li>
+                <li><code>nama_konsultan_pengawas</code></li>
+                <li><code>instansi_konsultan_pengawas</code></li>
+                <li><code>deskripsi</code></li>
+                <li><code>kategori</code></li>
+              </ul>
+            </div>
+          </div>
+
+          <hr class="my-2">
+          <p class="small mb-0">
+            <strong>Catatan:</strong>
+            <ul class="small mb-0">
+              <li><code>tahun_project</code> akan otomatis diambil dari <code>tanggal_mulai</code></li>
+              <li>Jika <code>tanggal_selesai</code> kosong, akan diset ke 31 Desember tahun project</li>
+              <li>Jika <code>durasi_hari</code> kosong, akan dihitung otomatis dari selisih tanggal</li>
+              <li>Maksimal 2000 baris data per upload</li>
+            </ul>
+          </p>
+        </div>
 
         <form id="upload-form" method="post" enctype="multipart/form-data" class="row g-3">
           {% csrf_token %}

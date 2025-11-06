@@ -57,6 +57,17 @@
   flex-direction: column;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 1rem;
+  border-radius: var(--corp-radius-xl);
+  box-shadow: var(--corp-shadow-xl);
+  border: 1px solid var(--dp-c-border);
+}
+
+/* Dark mode background */
+:root[data-bs-theme="dark"] .fab-menu {
+  background: rgba(30, 30, 30, 0.95);
 }
 
 .fab-menu.active {
@@ -75,6 +86,49 @@
   }
 }
 
+/* FAB Action items styling (matches template class) */
+.fab-action {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--dp-c-surface);
+  padding: 0.75rem 1.25rem;
+  border-radius: 2rem;
+  box-shadow: var(--corp-shadow-sm);
+  border: 1px solid var(--dp-c-border);
+  cursor: pointer;
+  transition: all var(--corp-duration-200) var(--corp-ease-out);
+  white-space: nowrap;
+  text-decoration: none;
+  color: var(--dp-c-text);
+}
+
+.fab-action:hover {
+  transform: translateX(-5px);
+  box-shadow: var(--corp-shadow-md);
+  border-color: var(--dp-c-primary);
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-text);
+  text-decoration: none;
+}
+
+.fab-action i {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dp-c-primary);
+  font-size: 1rem;
+}
+
+.fab-action .fab-label {
+  font-size: var(--corp-font-sm);
+  font-weight: var(--corp-font-medium);
+  color: var(--dp-c-text);
+}
+
+/* Legacy support for fab-item class */
 .fab-item {
   display: flex;
   align-items: center;

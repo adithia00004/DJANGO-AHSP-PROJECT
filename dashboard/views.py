@@ -391,3 +391,87 @@ def project_upload_view(request):
 
     context['error_rows'] = error_rows
     return render(request, 'dashboard/project_upload.html', context)
+
+
+@login_required
+def mass_edit_projects(request):
+    """
+    Mass edit multiple projects at once
+    Receives project IDs and update fields via POST request
+    Returns JSON response for AJAX handling
+    """
+    from django.http import JsonResponse
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=400)
+
+    # Get project IDs from request
+    project_ids_str = request.POST.get('project_ids', '')
+    if not project_ids_str:
+        return JsonResponse({'success': False, 'message': 'No projects selected'}, status=400)
+
+    try:
+        project_ids = [int(pid.strip()) for pid in project_ids_str.split(',') if pid.strip()]
+    except ValueError:
+        return JsonResponse({'success': False, 'message': 'Invalid project IDs'}, status=400)
+
+    if not project_ids:
+        return JsonResponse({'success': False, 'message': 'No valid project IDs provided'}, status=400)
+
+    # Get projects (only owner's active projects)
+    projects = Project.objects.filter(pk__in=project_ids, owner=request.user, is_active=True)
+
+    if not projects.exists():
+        return JsonResponse({'success': False, 'message': 'No valid projects found'}, status=404)
+
+    # Collect fields to update
+    update_fields = {}
+
+    # Check which fields should be updated
+    if request.POST.get('update_sumber_dana') == 'true':
+        sumber_dana = request.POST.get('sumber_dana', '').strip()
+        if sumber_dana:
+            update_fields['sumber_dana'] = sumber_dana
+
+    if request.POST.get('update_lokasi_project') == 'true':
+        lokasi_project = request.POST.get('lokasi_project', '').strip()
+        if lokasi_project:
+            update_fields['lokasi_project'] = lokasi_project
+
+    if request.POST.get('update_nama_client') == 'true':
+        nama_client = request.POST.get('nama_client', '').strip()
+        if nama_client:
+            update_fields['nama_client'] = nama_client
+
+    if request.POST.get('update_instansi_client') == 'true':
+        instansi_client = request.POST.get('instansi_client', '').strip()
+        if instansi_client:
+            update_fields['instansi_client'] = instansi_client
+
+    if request.POST.get('update_kategori') == 'true':
+        kategori = request.POST.get('kategori', '').strip()
+        if kategori:
+            update_fields['kategori'] = kategori
+
+    if request.POST.get('update_is_active') == 'true':
+        is_active = request.POST.get('is_active', 'true').lower() == 'true'
+        update_fields['is_active'] = is_active
+
+    if not update_fields:
+        return JsonResponse({'success': False, 'message': 'No fields to update'}, status=400)
+
+    # Perform bulk update
+    try:
+        with transaction.atomic():
+            count = projects.update(**update_fields)
+
+        return JsonResponse({
+            'success': True,
+            'count': count,
+            'message': f'{count} projects updated successfully'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error updating projects: {str(e)}'
+        }, status=500)
