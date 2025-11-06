@@ -641,3 +641,75 @@ class PekerjaanTahapan(models.Model):
             return volume_total * (self.proporsi_volume / Decimal('100'))
         except Exception:
             return Decimal('0')
+
+
+class ProjectParameter(TimeStampedModel):
+    """
+    Store project-level parameters for volume formula calculations.
+
+    Previously stored in browser localStorage, now persisted in database.
+    These parameters are used in volume formulas (e.g., "panjang * lebar * tinggi").
+
+    Examples:
+        - name="panjang", value=10.000, label="Panjang (m)", unit="meter"
+        - name="lebar", value=5.000, label="Lebar (m)", unit="meter"
+        - name="koef_beton", value=1.2, label="Koefisien Beton", unit=""
+    """
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='parameters',
+        help_text="Project yang memiliki parameter ini"
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Nama variabel parameter (lowercase, no spaces, e.g., 'panjang', 'lebar')"
+    )
+    value = models.DecimalField(
+        max_digits=18,
+        decimal_places=3,
+        validators=[MinValueValidator(0)],
+        help_text="Nilai parameter (numeric)"
+    )
+    label = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Label tampilan untuk UI (e.g., 'Panjang (m)')"
+    )
+    unit = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Satuan parameter (e.g., 'meter', 'm²', 'm³')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Deskripsi detail parameter (opsional)"
+    )
+
+    class Meta:
+        unique_together = [('project', 'name')]
+        ordering = ['name']
+        verbose_name = 'Parameter Project'
+        verbose_name_plural = 'Parameter Project'
+        indexes = [
+            models.Index(fields=['project', 'name']),
+        ]
+
+    def __str__(self):
+        return f"{self.project.index_project} - {self.name} = {self.value} {self.unit}"
+
+    def clean(self):
+        """Validation"""
+        # Ensure name is lowercase and no spaces
+        if self.name:
+            if ' ' in self.name:
+                raise ValidationError({
+                    'name': 'Parameter name cannot contain spaces. Use underscore instead (e.g., "koef_beton")'
+                })
+            # Auto-lowercase
+            self.name = self.name.lower()
+
+    def save(self, *args, **kwargs):
+        """Override save for validation"""
+        self.full_clean()
+        super().save(*args, **kwargs)
