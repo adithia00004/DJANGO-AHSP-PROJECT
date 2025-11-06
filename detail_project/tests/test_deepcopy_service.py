@@ -31,6 +31,7 @@ from detail_project.models import (
     PekerjaanTahapan,
 )
 from detail_project.services import DeepCopyService
+from detail_project.exceptions import DeepCopyValidationError
 
 
 User = get_user_model()
@@ -178,14 +179,14 @@ class TestDeepCopyServiceInit:
         assert service.stats['parameter_copied'] == 0
 
     def test_init_with_none(self):
-        """Test initialization with None raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
+        """Test initialization with None raises DeepCopyValidationError."""
+        with pytest.raises(DeepCopyValidationError) as exc_info:
             DeepCopyService(None)
 
-        assert "Source project must be a saved instance" in str(exc_info.value)
+        assert exc_info.value.code == 3002
 
     def test_init_with_unsaved_project(self, user):
-        """Test initialization with unsaved project raises ValidationError."""
+        """Test initialization with unsaved project raises DeepCopyValidationError."""
         unsaved_project = Project(
             owner=user,
             nama="Unsaved",
@@ -196,10 +197,10 @@ class TestDeepCopyServiceInit:
             tanggal_mulai=date(2025, 1, 1),
         )
 
-        with pytest.raises(ValidationError) as exc_info:
+        with pytest.raises(DeepCopyValidationError) as exc_info:
             DeepCopyService(unsaved_project)
 
-        assert "Source project must be a saved instance" in str(exc_info.value)
+        assert exc_info.value.code == 3003
 
 
 @pytest.mark.django_db
