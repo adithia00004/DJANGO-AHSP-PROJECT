@@ -2203,14 +2203,14 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
 
 
 # ============================================================================
-# DEEP COPY PROJECT (FASE 3.1)
+# DEEP COPY PROJECT (FASE 3.1.1 - Enhanced Error Handling)
 # ============================================================================
 
 @login_required
 @require_POST
 def api_deep_copy_project(request: HttpRequest, project_id: int):
     """
-    Deep copy a project with all related data.
+    Deep copy a project with all related data (Enhanced with detailed error handling).
 
     POST /api/project/<project_id>/deep-copy/
 
@@ -2221,56 +2221,89 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
         "copy_jadwal": true (optional, default: true)
     }
 
-    Response:
+    Success Response (201):
     {
         "ok": true,
-        "new_project": {
-            "id": 123,
-            "nama": "Project Copy Name",
-            "owner_id": 1,
-            "lokasi_project": "Jakarta",
-            "sumber_dana": "APBN",
-            "nama_client": "Client ABC",
-            "tanggal_mulai": "2025-06-01",
-            "tanggal_selesai": "2025-09-30",
-            "durasi_hari": 120,
-            "is_active": true
-        },
-        "stats": {
-            "parameter_copied": 2,
-            "klasifikasi_copied": 3,
-            "subklasifikasi_copied": 5,
-            "pekerjaan_copied": 15,
-            "volume_copied": 15,
-            "harga_item_copied": 20,
-            "ahsp_template_copied": 45,
-            "tahapan_copied": 4,
-            "jadwal_copied": 15
-        }
+        "new_project": {...},
+        "stats": {...},
+        "warnings": [...] (if any),
+        "skipped_items": {...} (if any)
+    }
+
+    Error Response (400/403/500):
+    {
+        "ok": false,
+        "error_code": 1001,
+        "error": "User-friendly error message",
+        "error_type": "EMPTY_PROJECT_NAME",
+        "details": {...} (optional),
+        "support_message": "..." (for critical errors),
+        "error_id": "ERR-1234567890" (for support tracking)
     }
     """
+    import logging
+    import time
     from datetime import datetime
     from .services import DeepCopyService
+    from .exceptions import (
+        DeepCopyError,
+        DeepCopyValidationError,
+        DeepCopyPermissionError,
+        DeepCopyBusinessError,
+        DeepCopyDatabaseError,
+        DeepCopySystemError,
+        get_error_response,
+    )
+
+    logger = logging.getLogger(__name__)
+
+    # Log incoming request
+    logger.info(
+        f"Deep copy API request received",
+        extra={
+            'user_id': request.user.id,
+            'username': request.user.username,
+            'project_id': project_id,
+            'ip': request.META.get('REMOTE_ADDR')
+        }
+    )
 
     # Verify ownership of source project
-    source_project = _owner_or_404(project_id, request.user)
+    try:
+        source_project = _owner_or_404(project_id, request.user)
+    except Http404:
+        logger.warning(
+            f"Project not found or access denied",
+            extra={
+                'user_id': request.user.id,
+                'project_id': project_id
+            }
+        )
+        return JsonResponse({
+            "ok": False,
+            "error_code": 2001,
+            "error": "Project tidak ditemukan atau Anda tidak memiliki akses.",
+            "error_type": "PROJECT_NOT_FOUND"
+        }, status=404)
 
     # Parse JSON body
     try:
         payload = json.loads(request.body.decode("utf-8"))
-    except Exception:
+    except json.JSONDecodeError as e:
+        logger.warning(
+            f"Invalid JSON payload",
+            extra={'user_id': request.user.id, 'error': str(e)}
+        )
         return JsonResponse({
             "ok": False,
-            "error": "Invalid JSON payload"
+            "error_code": 1008,
+            "error": "Format data tidak valid. Pastikan data dikirim dalam format JSON yang benar.",
+            "error_type": "INVALID_JSON_PAYLOAD",
+            "details": {"json_error": str(e)}
         }, status=400)
 
-    # Validate required fields
-    new_name = payload.get("new_name", "").strip()
-    if not new_name:
-        return JsonResponse({
-            "ok": False,
-            "error": "Field 'new_name' is required and cannot be empty"
-        }, status=400)
+    # Basic validation (detailed validation in service layer)
+    new_name = payload.get("new_name", "").strip() if payload.get("new_name") else ""
 
     # Parse optional parameters
     new_tanggal_mulai = None
@@ -2280,20 +2313,25 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
                 payload["new_tanggal_mulai"],
                 "%Y-%m-%d"
             ).date()
-        except ValueError:
+        except ValueError as e:
             return JsonResponse({
                 "ok": False,
-                "error": "Field 'new_tanggal_mulai' must be in YYYY-MM-DD format"
+                "error_code": 1002,
+                "error": "Format tanggal tidak valid. Gunakan format YYYY-MM-DD (contoh: 2025-06-15).",
+                "error_type": "INVALID_DATE_FORMAT",
+                "details": {"date_value": payload["new_tanggal_mulai"]}
             }, status=400)
 
     copy_jadwal = payload.get("copy_jadwal", True)
     if not isinstance(copy_jadwal, bool):
         return JsonResponse({
             "ok": False,
-            "error": "Field 'copy_jadwal' must be a boolean"
+            "error_code": 1005,
+            "error": "Nilai copy_jadwal harus berupa true atau false.",
+            "error_type": "INVALID_BOOLEAN_VALUE"
         }, status=400)
 
-    # Perform deep copy
+    # Perform deep copy with comprehensive error handling
     try:
         service = DeepCopyService(source_project)
 
@@ -2305,8 +2343,24 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
         )
 
         stats = service.get_stats()
+        warnings = service.get_warnings()
+        skipped = service.get_skipped_items()
 
-        return JsonResponse({
+        # Log success
+        logger.info(
+            f"Deep copy successful",
+            extra={
+                'user_id': request.user.id,
+                'source_project_id': project_id,
+                'new_project_id': new_project.id,
+                'new_project_name': new_project.nama,
+                'stats': stats,
+                'warnings_count': len(warnings),
+                'skipped_count': sum(len(v) for v in skipped.values())
+            }
+        )
+
+        response_data = {
             "ok": True,
             "new_project": {
                 "id": new_project.id,
@@ -2316,19 +2370,112 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
                 "sumber_dana": new_project.sumber_dana,
                 "nama_client": new_project.nama_client,
                 "tanggal_mulai": new_project.tanggal_mulai.isoformat() if new_project.tanggal_mulai else None,
-                "tanggal_selesai": new_project.tanggal_selesai.isoformat() if new_project.tanggal_selesai else None,
-                "durasi_hari": new_project.durasi_hari,
+                "tanggal_selesai": new_project.tanggal_selesai.isoformat() if hasattr(new_project, 'tanggal_selesai') and new_project.tanggal_selesai else None,
+                "durasi_hari": new_project.durasi_hari if hasattr(new_project, 'durasi_hari') else None,
                 "is_active": new_project.is_active,
             },
             "stats": stats,
-        }, status=201)
+        }
 
+        # Add warnings if any
+        if warnings:
+            response_data["warnings"] = warnings
+
+        # Add skipped items summary if any
+        if skipped:
+            response_data["skipped_items"] = {
+                k: len(v) for k, v in skipped.items()
+            }
+
+        return JsonResponse(response_data, status=201)
+
+    # Handle custom exceptions with detailed error responses
+    except (DeepCopyValidationError, DeepCopyBusinessError) as e:
+        logger.warning(
+            f"Validation/Business error during copy",
+            extra={
+                'user_id': request.user.id,
+                'project_id': project_id,
+                'error_code': e.code,
+                'error_message': e.message
+            }
+        )
+        response, status = get_error_response(e)
+        return JsonResponse(response, status=status)
+
+    except DeepCopyPermissionError as e:
+        logger.warning(
+            f"Permission error during copy",
+            extra={
+                'user_id': request.user.id,
+                'project_id': project_id,
+                'error_code': e.code
+            }
+        )
+        response, status = get_error_response(e)
+        return JsonResponse(response, status=status)
+
+    except (DeepCopyDatabaseError, DeepCopySystemError) as e:
+        # Generate unique error ID for support tracking
+        error_id = f"ERR-{int(time.time())}"
+
+        logger.error(
+            f"Critical error during copy",
+            extra={
+                'user_id': request.user.id,
+                'project_id': project_id,
+                'error_code': e.code,
+                'error_id': error_id,
+                'error_message': e.message
+            },
+            exc_info=True
+        )
+
+        response, status = get_error_response(e, error_id=error_id)
+        return JsonResponse(response, status=status)
+
+    except DeepCopyError as e:
+        # Generic deep copy error
+        error_id = f"ERR-{int(time.time())}"
+
+        logger.exception(
+            f"Deep copy error",
+            extra={
+                'user_id': request.user.id,
+                'project_id': project_id,
+                'error_code': e.code,
+                'error_id': error_id
+            }
+        )
+
+        response, status = get_error_response(e, error_id=error_id)
+        return JsonResponse(response, status=status)
+
+    # Fallback for truly unexpected errors
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
+        error_id = f"ERR-{int(time.time())}"
+
+        logger.exception(
+            f"Unexpected error during copy",
+            extra={
+                'user_id': request.user.id,
+                'project_id': project_id,
+                'error_id': error_id,
+                'error_type': type(e).__name__
+            }
+        )
+
         return JsonResponse({
             "ok": False,
-            "error": f"Deep copy failed: {str(e)}"
+            "error_code": 9999,
+            "error": "Terjadi kesalahan tidak terduga. Silakan hubungi administrator dengan kode error dan waktu kejadian.",
+            "error_type": "UNKNOWN_ERROR",
+            "error_id": error_id,
+            "support_message": f"Hubungi support dengan error_id: {error_id}",
+            "details": {
+                "error_class": type(e).__name__,
+                "timestamp": datetime.now().isoformat()
+            }
         }, status=500)
 
 
