@@ -463,29 +463,173 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
 
             if (!response.ok || !data.ok) {
-                throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                // Enhanced error handling with detailed information
+                progressAlert.classList.add('d-none');
+
+                let errorHtml = '<div>';
+
+                // Error icon and main message
+                errorHtml += '<div class="d-flex align-items-start mb-2">';
+                errorHtml += '<i class="fas fa-exclamation-circle me-2 text-danger" style="margin-top: 2px;"></i>';
+                errorHtml += '<div class="flex-grow-1">';
+                errorHtml += `<strong>Gagal Copy Project</strong><br>`;
+                errorHtml += `<span>${data.error || 'Terjadi kesalahan'}</span>`;
+                errorHtml += '</div>';
+                errorHtml += '</div>';
+
+                // Error code and type
+                if (data.error_code || data.error_type) {
+                    errorHtml += '<div class="mt-2 p-2 bg-light border rounded">';
+                    errorHtml += '<small class="text-muted">';
+                    if (data.error_code) {
+                        errorHtml += `<strong>Kode Error:</strong> ${data.error_code}`;
+                    }
+                    if (data.error_type) {
+                        errorHtml += data.error_code ? ' | ' : '';
+                        errorHtml += `<strong>Tipe:</strong> ${data.error_type}`;
+                    }
+                    errorHtml += '</small>';
+                    errorHtml += '</div>';
+                }
+
+                // Details (if any)
+                if (data.details && Object.keys(data.details).length > 0) {
+                    errorHtml += '<div class="mt-2">';
+                    errorHtml += '<small class="text-muted"><strong>Detail:</strong></small><br>';
+                    errorHtml += '<small>';
+                    for (const [key, value] of Object.entries(data.details)) {
+                        errorHtml += `<span class="badge bg-secondary me-1">${key}: ${value}</span>`;
+                    }
+                    errorHtml += '</small>';
+                    errorHtml += '</div>';
+                }
+
+                // Support message (for critical errors)
+                if (data.support_message) {
+                    errorHtml += '<div class="mt-2 alert alert-warning mb-0 py-2">';
+                    errorHtml += '<small>';
+                    errorHtml += '<i class="fas fa-info-circle me-1"></i>';
+                    errorHtml += data.support_message;
+                    errorHtml += '</small>';
+                    errorHtml += '</div>';
+                }
+
+                // Error ID (for support tracking)
+                if (data.error_id) {
+                    errorHtml += '<div class="mt-2">';
+                    errorHtml += '<small class="text-muted font-monospace">';
+                    errorHtml += `<strong>Error ID:</strong> ${data.error_id}`;
+                    errorHtml += ' <i class="fas fa-copy ms-1" style="cursor: pointer;" ';
+                    errorHtml += `onclick="navigator.clipboard.writeText('${data.error_id}'); this.classList.remove('fa-copy'); this.classList.add('fa-check');" `;
+                    errorHtml += 'title="Copy Error ID"></i>';
+                    errorHtml += '</small>';
+                    errorHtml += '</div>';
+                }
+
+                errorHtml += '</div>';
+
+                errorAlert.innerHTML = errorHtml;
+                errorAlert.classList.remove('d-none');
+                btnConfirm.disabled = false;
+                return;
             }
 
-            // Success - redirect to new project detail
-            progressAlert.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-check-circle me-2 text-success"></i>
-                    <div>
-                        <strong>Berhasil!</strong> Project berhasil dicopy.
-                        <br><small>Redirecting...</small>
-                    </div>
-                </div>
-            `;
+            // Success - show result with warnings and skipped items
+            let successHtml = '<div>';
 
-            // Redirect after 1 second
+            // Success icon and message
+            successHtml += '<div class="d-flex align-items-start mb-2">';
+            successHtml += '<i class="fas fa-check-circle me-2 text-success" style="margin-top: 2px;"></i>';
+            successHtml += '<div class="flex-grow-1">';
+            successHtml += '<strong>Berhasil!</strong> Project berhasil dicopy.<br>';
+            successHtml += `<small>Project baru: <strong>${data.new_project.nama}</strong></small>`;
+            successHtml += '</div>';
+            successHtml += '</div>';
+
+            // Copy statistics
+            if (data.stats) {
+                successHtml += '<div class="mt-2">';
+                successHtml += '<small class="text-muted"><strong>Yang dicopy:</strong></small><br>';
+                successHtml += '<small>';
+                const stats = data.stats;
+                if (stats.pekerjaan_copied > 0) {
+                    successHtml += `<span class="badge bg-primary me-1">${stats.pekerjaan_copied} Pekerjaan</span>`;
+                }
+                if (stats.harga_item_copied > 0) {
+                    successHtml += `<span class="badge bg-info me-1">${stats.harga_item_copied} Harga Items</span>`;
+                }
+                if (stats.ahsp_template_copied > 0) {
+                    successHtml += `<span class="badge bg-success me-1">${stats.ahsp_template_copied} AHSP</span>`;
+                }
+                if (stats.tahapan_copied > 0) {
+                    successHtml += `<span class="badge bg-secondary me-1">${stats.tahapan_copied} Tahapan</span>`;
+                }
+                successHtml += '</small>';
+                successHtml += '</div>';
+            }
+
+            // Warnings (if any)
+            if (data.warnings && data.warnings.length > 0) {
+                successHtml += '<div class="mt-2 alert alert-warning mb-0 py-2">';
+                successHtml += '<small>';
+                successHtml += '<i class="fas fa-exclamation-triangle me-1"></i>';
+                successHtml += '<strong>Peringatan:</strong><br>';
+                data.warnings.forEach(warning => {
+                    successHtml += `• ${warning.message}<br>`;
+                });
+                successHtml += '</small>';
+                successHtml += '</div>';
+            }
+
+            // Skipped items (if any)
+            if (data.skipped_items && Object.keys(data.skipped_items).length > 0) {
+                successHtml += '<div class="mt-2">';
+                successHtml += '<small class="text-warning">';
+                successHtml += '<i class="fas fa-info-circle me-1"></i>';
+                successHtml += '<strong>Beberapa item dilewati:</strong> ';
+                const skipped = [];
+                for (const [key, count] of Object.entries(data.skipped_items)) {
+                    skipped.push(`${count} ${key}`);
+                }
+                successHtml += skipped.join(', ');
+                successHtml += '</small>';
+                successHtml += '</div>';
+            }
+
+            successHtml += '<div class="mt-2"><small class="text-muted">Redirecting...</small></div>';
+            successHtml += '</div>';
+
+            progressAlert.innerHTML = successHtml;
+            progressAlert.classList.remove('alert-primary');
+            progressAlert.classList.add('alert-success');
+
+            // Redirect after 2 seconds (give time to read warnings)
             setTimeout(() => {
                 window.location.href = `/project/${data.new_project.id}/`;
-            }, 1000);
+            }, 2000);
 
         } catch (error) {
             console.error('Copy error:', error);
             progressAlert.classList.add('d-none');
-            errorAlert.textContent = `Error: ${error.message}`;
+
+            // Network or unexpected error
+            errorAlert.innerHTML = `
+                <div>
+                    <div class="d-flex align-items-start mb-2">
+                        <i class="fas fa-exclamation-circle me-2 text-danger" style="margin-top: 2px;"></i>
+                        <div>
+                            <strong>Error Koneksi</strong><br>
+                            <span>${error.message}</span>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        <strong>Kemungkinan penyebab:</strong><br>
+                        • Koneksi internet terputus<br>
+                        • Server tidak merespon<br>
+                        • Browser memblokir request
+                    </small>
+                </div>
+            `;
             errorAlert.classList.remove('d-none');
             btnConfirm.disabled = false;
         }
