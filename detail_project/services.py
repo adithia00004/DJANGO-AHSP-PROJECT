@@ -969,19 +969,8 @@ class DeepCopyService:
                 new_volume = VolumePekerjaan(
                     project=new_project,
                     pekerjaan_id=new_pekerjaan_id,
+                    quantity=old_volume.quantity,
                 )
-                # Copy fields that exist
-                if hasattr(old_volume, 'formula'):
-                    new_volume.formula = old_volume.formula
-                if hasattr(old_volume, 'volume_calculated'):
-                    new_volume.volume_calculated = old_volume.volume_calculated
-                if hasattr(old_volume, 'volume_manual'):
-                    new_volume.volume_manual = old_volume.volume_manual
-                if hasattr(old_volume, 'use_manual'):
-                    new_volume.use_manual = old_volume.use_manual
-                if hasattr(old_volume, 'quantity'):
-                    new_volume.quantity = old_volume.quantity
-
                 new_volume.save()
 
                 self.mappings['volume'][old_id] = new_volume.id

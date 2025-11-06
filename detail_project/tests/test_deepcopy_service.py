@@ -120,8 +120,6 @@ def full_project(user):
     VolumePekerjaan.objects.create(
         project=project,
         pekerjaan=pekerjaan,
-        formula="panjang * lebar * 2",
-        volume_calculated=Decimal("10000.000"),
         quantity=Decimal("10000.000"),
     )
 
@@ -383,7 +381,6 @@ class TestDeepCopyVolume:
 
         # Verify volume copied
         assert new_volume.id != old_volume.id
-        assert new_volume.formula == old_volume.formula
         assert new_volume.quantity == old_volume.quantity
 
         # Verify FK remapped correctly
