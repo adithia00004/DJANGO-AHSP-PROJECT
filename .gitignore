@@ -43,3 +43,4 @@ __pycache__/
 
 *.map__pycache__/
 *.pyc
+dump.rdb
