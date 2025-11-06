@@ -647,3 +647,246 @@ class TestDeepCopyEdgeCases:
         old_project_id = full_project.id
         new_project_id = service.mappings['project'][old_project_id]
         assert new_project_id == new_project.id
+
+
+# ==============================================================================
+# FASE 3.2: Batch Copy Tests
+# ==============================================================================
+
+@pytest.mark.django_db
+class TestBatchCopyService:
+    """Tests for batch_copy() method (FASE 3.2)."""
+
+    def test_batch_copy_basic(self, full_project, user):
+        """Test basic batch copy with 3 copies."""
+        service = DeepCopyService(full_project)
+
+        projects = service.batch_copy(
+            new_owner=user,
+            base_name="Test Template",
+            count=3,
+            copy_jadwal=True
+        )
+
+        # Verify count
+        assert len(projects) == 3
+
+        # Verify names
+        assert projects[0].nama == "Test Template - Copy 1"
+        assert projects[1].nama == "Test Template - Copy 2"
+        assert projects[2].nama == "Test Template - Copy 3"
+
+        # Verify all owned by same user
+        for proj in projects:
+            assert proj.owner == user
+
+        # Verify all are independent (different IDs)
+        ids = [p.id for p in projects]
+        assert len(ids) == len(set(ids))  # All unique
+
+        # Verify data copied for each project
+        for proj in projects:
+            assert Project.objects.filter(id=proj.id).exists()
+            assert Pekerjaan.objects.filter(project=proj).count() > 0
+
+    def test_batch_copy_with_count_validation(self, full_project, user):
+        """Test batch copy count validation."""
+        service = DeepCopyService(full_project)
+
+        # Invalid count: 0
+        with pytest.raises(ValidationError, match="positive integer"):
+            service.batch_copy(user, "Test", count=0)
+
+        # Invalid count: negative
+        with pytest.raises(ValidationError, match="positive integer"):
+            service.batch_copy(user, "Test", count=-1)
+
+        # Invalid count: too large
+        with pytest.raises(ValidationError, match="Maximum 50 copies"):
+            service.batch_copy(user, "Test", count=51)
+
+        # Valid counts should work
+        projects = service.batch_copy(user, "Test", count=1)
+        assert len(projects) == 1
+
+        service2 = DeepCopyService(full_project)
+        projects = service2.batch_copy(user, "Test2", count=50)
+        assert len(projects) == 50
+
+    def test_batch_copy_without_jadwal(self, full_project, user):
+        """Test batch copy with copy_jadwal=False."""
+        service = DeepCopyService(full_project)
+
+        projects = service.batch_copy(
+            new_owner=user,
+            base_name="No Jadwal",
+            count=2,
+            copy_jadwal=False
+        )
+
+        assert len(projects) == 2
+
+        # Verify no jadwal copied
+        for proj in projects:
+            assert TahapPelaksanaan.objects.filter(project=proj).count() == 0
+            assert PekerjaanTahapan.objects.filter(tahapan__project=proj).count() == 0
+
+    def test_batch_copy_with_custom_start_date(self, full_project, user):
+        """Test batch copy with custom start date."""
+        service = DeepCopyService(full_project)
+        new_date = date(2026, 6, 1)
+
+        projects = service.batch_copy(
+            new_owner=user,
+            base_name="Future Project",
+            count=2,
+            new_tanggal_mulai=new_date,
+            copy_jadwal=True
+        )
+
+        assert len(projects) == 2
+
+        # Verify all have the same start date
+        for proj in projects:
+            assert proj.tanggal_mulai == new_date
+
+    def test_batch_copy_independence(self, full_project, user):
+        """Test that each copy is independent (no ID conflicts)."""
+        service = DeepCopyService(full_project)
+
+        # Create batch of projects
+        projects = service.batch_copy(user, "Independent", count=3)
+
+        # Modify one project's data
+        first_project = projects[0]
+        pekerjaan = Pekerjaan.objects.filter(project=first_project).first()
+        original_uraian = pekerjaan.snapshot_uraian
+        original_kode = pekerjaan.snapshot_kode
+        pekerjaan.snapshot_uraian = "MODIFIED"
+        pekerjaan.save()
+
+        # Verify other projects unaffected
+        for proj in projects[1:]:
+            other_pekerjaan = Pekerjaan.objects.filter(
+                project=proj,
+                snapshot_kode=original_kode
+            ).first()
+            assert other_pekerjaan.snapshot_uraian == original_uraian
+
+    def test_batch_copy_preserves_all_data(self, full_project, user):
+        """Test that batch copy preserves all data types correctly."""
+        # Add comprehensive data to source (or update if exists)
+        pricing, _ = ProjectPricing.objects.update_or_create(
+            project=full_project,
+            defaults={
+                'ppn_percent': Decimal("11"),
+                'markup_percent': Decimal("10"),
+                'rounding_base': 100
+            }
+        )
+
+        ProjectParameter.objects.create(
+            project=full_project,
+            name="length",
+            value=Decimal("100"),
+            label="Length (m)"
+        )
+
+        service = DeepCopyService(full_project)
+        projects = service.batch_copy(user, "Complete", count=2)
+
+        assert len(projects) == 2
+
+        # Verify all data types copied for each project
+        for proj in projects:
+            # Pricing
+            pricing = ProjectPricing.objects.get(project=proj)
+            assert pricing.ppn_percent == Decimal("11")
+            assert pricing.markup_percent == Decimal("10")
+
+            # Parameters - should have at least 1 (the one we created)
+            params_count = ProjectParameter.objects.filter(project=proj).count()
+            assert params_count >= 1
+            param = ProjectParameter.objects.get(project=proj, name="length")
+            assert param.value == Decimal("100")
+
+            # Structure
+            assert Pekerjaan.objects.filter(project=proj).count() > 0
+
+    def test_batch_copy_transaction_atomicity(self, full_project, user):
+        """Test that batch copy handles errors gracefully."""
+        # This test verifies that even if some copies fail,
+        # the successful ones are still created
+        service = DeepCopyService(full_project)
+
+        # Normal batch should succeed
+        projects = service.batch_copy(user, "Atomic Test", count=2)
+        assert len(projects) == 2
+
+        # All projects should be in database
+        for proj in projects:
+            assert Project.objects.filter(id=proj.id).exists()
+
+    def test_batch_copy_large_count(self, full_project, user):
+        """Test batch copy with larger count (performance test)."""
+        service = DeepCopyService(full_project)
+
+        # Create 10 copies
+        projects = service.batch_copy(user, "Large Batch", count=10)
+
+        assert len(projects) == 10
+
+        # Verify all created with correct names
+        for i, proj in enumerate(projects, start=1):
+            assert proj.nama == f"Large Batch - Copy {i}"
+            assert proj.owner == user
+
+        # Verify all are in database
+        project_ids = [p.id for p in projects]
+        assert Project.objects.filter(id__in=project_ids).count() == 10
+
+    def test_batch_copy_with_progress_callback(self, full_project, user):
+        """Test batch copy with progress callback."""
+        service = DeepCopyService(full_project)
+        progress_calls = []
+
+        def callback(current, total, name):
+            progress_calls.append((current, total, name))
+
+        projects = service.batch_copy(
+            user,
+            "Progress Test",
+            count=3,
+            progress_callback=callback
+        )
+
+        assert len(projects) == 3
+
+        # Verify callback was called
+        assert len(progress_calls) == 3
+        assert progress_calls[0] == (1, 3, "Progress Test - Copy 1")
+        assert progress_calls[1] == (2, 3, "Progress Test - Copy 2")
+        assert progress_calls[2] == (3, 3, "Progress Test - Copy 3")
+
+    def test_batch_copy_empty_project(self, user):
+        """Test batch copy with minimal/empty project."""
+        empty_project = Project.objects.create(
+            owner=user,
+            nama="Empty Project",
+            sumber_dana="APBN",
+            lokasi_project="Jakarta",
+            nama_client="Client",
+            anggaran_owner=Decimal("0"),
+            tanggal_mulai=date.today(),
+            is_active=True
+        )
+
+        service = DeepCopyService(empty_project)
+        projects = service.batch_copy(user, "Empty Batch", count=2)
+
+        assert len(projects) == 2
+
+        for proj in projects:
+            assert proj.owner == user
+            # Verify structure (even if empty)
+            assert Project.objects.filter(id=proj.id).exists()

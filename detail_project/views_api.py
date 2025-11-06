@@ -2331,3 +2331,159 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
             "error": f"Deep copy failed: {str(e)}"
         }, status=500)
 
+
+# ============================================================================
+# BATCH COPY PROJECT (FASE 3.2)
+# ============================================================================
+
+@login_required
+@require_POST
+def api_batch_copy_project(request: HttpRequest, project_id: int):
+    """
+    Create multiple copies of a project in one operation (FASE 3.2).
+
+    POST /api/project/<project_id>/batch-copy/
+
+    Body (JSON):
+    {
+        "base_name": "Project Template",
+        "count": 3,
+        "new_tanggal_mulai": "2025-06-01" (optional),
+        "copy_jadwal": true (optional, default: true)
+    }
+
+    Response:
+    {
+        "ok": true,
+        "projects": [
+            {
+                "id": 123,
+                "nama": "Project Template - Copy 1",
+                "owner_id": 1,
+                ...
+            },
+            {
+                "id": 124,
+                "nama": "Project Template - Copy 2",
+                "owner_id": 1,
+                ...
+            },
+            ...
+        ],
+        "summary": {
+            "requested": 3,
+            "successful": 3,
+            "failed": 0,
+            "errors": []
+        }
+    }
+    """
+    from datetime import datetime
+    from .services import DeepCopyService
+
+    # Verify ownership of source project
+    source_project = _owner_or_404(project_id, request.user)
+
+    # Parse JSON body
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({
+            "ok": False,
+            "error": "Invalid JSON payload"
+        }, status=400)
+
+    # Validate required fields
+    base_name = payload.get("base_name", "").strip()
+    if not base_name:
+        return JsonResponse({
+            "ok": False,
+            "error": "Field 'base_name' is required and cannot be empty"
+        }, status=400)
+
+    count = payload.get("count")
+    if not isinstance(count, int) or count < 1:
+        return JsonResponse({
+            "ok": False,
+            "error": "Field 'count' must be a positive integer"
+        }, status=400)
+
+    if count > 50:
+        return JsonResponse({
+            "ok": False,
+            "error": "Maximum 50 copies allowed in one batch (count <= 50)"
+        }, status=400)
+
+    # Parse optional parameters
+    new_tanggal_mulai = None
+    if payload.get("new_tanggal_mulai"):
+        try:
+            new_tanggal_mulai = datetime.strptime(
+                payload["new_tanggal_mulai"],
+                "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            return JsonResponse({
+                "ok": False,
+                "error": "Field 'new_tanggal_mulai' must be in YYYY-MM-DD format"
+            }, status=400)
+
+    copy_jadwal = payload.get("copy_jadwal", True)
+    if not isinstance(copy_jadwal, bool):
+        return JsonResponse({
+            "ok": False,
+            "error": "Field 'copy_jadwal' must be a boolean"
+        }, status=400)
+
+    # Perform batch copy
+    try:
+        service = DeepCopyService(source_project)
+
+        # Use batch_copy method
+        projects = service.batch_copy(
+            new_owner=request.user,
+            base_name=base_name,
+            count=count,
+            new_tanggal_mulai=new_tanggal_mulai,
+            copy_jadwal=copy_jadwal,
+        )
+
+        # Calculate summary
+        successful_count = len(projects)
+        failed_count = count - successful_count
+
+        # Build response
+        projects_data = []
+        for proj in projects:
+            projects_data.append({
+                "id": proj.id,
+                "nama": proj.nama,
+                "owner_id": proj.owner_id,
+                "lokasi_project": proj.lokasi_project,
+                "sumber_dana": proj.sumber_dana,
+                "nama_client": proj.nama_client,
+                "tanggal_mulai": proj.tanggal_mulai.isoformat() if proj.tanggal_mulai else None,
+                "tanggal_selesai": proj.tanggal_selesai.isoformat() if proj.tanggal_selesai else None,
+                "durasi_hari": proj.durasi_hari,
+                "is_active": proj.is_active,
+            })
+
+        return JsonResponse({
+            "ok": True,
+            "projects": projects_data,
+            "summary": {
+                "requested": count,
+                "successful": successful_count,
+                "failed": failed_count,
+                "errors": [] if failed_count == 0 else ["Some copies failed - check server logs"]
+            }
+        }, status=201)
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            "ok": False,
+            "error": f"Batch copy failed: {str(e)}"
+        }, status=500)
+

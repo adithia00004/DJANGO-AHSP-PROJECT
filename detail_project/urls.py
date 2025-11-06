@@ -69,6 +69,9 @@ urlpatterns = [
     # ===== API: Deep Copy (FASE 3.1) =====
     path('api/project/<int:project_id>/deep-copy/', views_api.api_deep_copy_project, name='api_deep_copy_project'),
 
+    # ===== API: Batch Copy (FASE 3.2) =====
+    path('api/project/<int:project_id>/batch-copy/', views_api.api_batch_copy_project, name='api_batch_copy_project'),
+
 
     # Export endpoints
     # Export Rekap RAB

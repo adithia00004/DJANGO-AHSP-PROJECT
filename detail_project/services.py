@@ -7,6 +7,9 @@ from collections import defaultdict
 from django.db.models import Q
 from .numeric import to_dp_str, DECIMAL_SPEC
 from django.core.cache import cache
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     Klasifikasi,
@@ -748,6 +751,104 @@ class DeepCopyService:
             self._copy_jadwal_pekerjaan(new_project)
 
         return new_project
+
+    def batch_copy(
+        self,
+        new_owner,
+        base_name,
+        count,
+        new_tanggal_mulai=None,
+        copy_jadwal=True,
+        progress_callback=None
+    ):
+        """
+        Copy project multiple times in one operation (FASE 3.2).
+
+        Creates multiple copies with auto-incrementing names.
+        Each copy is independent and uses a fresh DeepCopyService instance
+        to avoid ID mapping conflicts.
+
+        Args:
+            new_owner: User who will own the copied projects
+            base_name: Base name for projects (will append " - Copy 1", " - Copy 2", etc.)
+            count: Number of copies to create (1-50)
+            new_tanggal_mulai: Start date for new projects (optional)
+            copy_jadwal: Whether to copy schedule data (default: True)
+            progress_callback: Optional callback function(current, total, project_name)
+
+        Returns:
+            List of newly created project instances
+
+        Raises:
+            ValueError: If count is invalid
+            ValidationError: If any validation fails
+
+        Example:
+            service = DeepCopyService(source_project)
+            projects = service.batch_copy(
+                new_owner=request.user,
+                base_name="Monthly Project Template",
+                count=3,
+                copy_jadwal=True
+            )
+            # Creates:
+            #   - "Monthly Project Template - Copy 1"
+            #   - "Monthly Project Template - Copy 2"
+            #   - "Monthly Project Template - Copy 3"
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        # Validate count
+        if not isinstance(count, int) or count < 1:
+            raise DjangoValidationError("Count must be a positive integer")
+        if count > 50:
+            raise DjangoValidationError("Maximum 50 copies allowed in one batch")
+
+        projects = []
+        errors = []
+
+        for i in range(1, count + 1):
+            # Generate unique name for this copy
+            copy_name = f"{base_name} - Copy {i}"
+
+            # Report progress
+            if progress_callback:
+                progress_callback(i, count, copy_name)
+
+            try:
+                # Create fresh service instance for each copy to avoid ID mapping conflicts
+                service = DeepCopyService(self.source)
+
+                # Perform the copy
+                new_project = service.copy(
+                    new_owner=new_owner,
+                    new_name=copy_name,
+                    new_tanggal_mulai=new_tanggal_mulai,
+                    copy_jadwal=copy_jadwal
+                )
+
+                projects.append(new_project)
+
+            except Exception as e:
+                # Record error but continue with remaining copies
+                error_msg = f"Failed to create copy {i} '{copy_name}': {str(e)}"
+                errors.append(error_msg)
+                logger.error(error_msg)
+
+        # If all copies failed, raise an error
+        if len(projects) == 0:
+            raise DjangoValidationError(
+                f"All {count} copies failed. Errors: {'; '.join(errors)}"
+            )
+
+        # If some copies failed, log warning
+        if errors:
+            logger.warning(
+                f"Batch copy completed with {len(projects)}/{count} successes. "
+                f"Errors: {'; '.join(errors)}"
+            )
+
+        return projects
 
     def _copy_project(
         self,
