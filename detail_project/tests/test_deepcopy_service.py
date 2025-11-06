@@ -71,10 +71,9 @@ def full_project(user):
     # Create pricing
     ProjectPricing.objects.create(
         project=project,
-        ppn=Decimal("11.00"),
-        overhead=Decimal("10.00"),
-        keuntungan=Decimal("15.00"),
+        ppn_percent=Decimal("11.00"),
         markup_percent=Decimal("12.50"),
+        rounding_base=10000,
     )
 
     # Create parameters
@@ -159,7 +158,6 @@ def full_project(user):
 
     # Create pekerjaan tahapan
     PekerjaanTahapan.objects.create(
-        project=project,
         pekerjaan=pekerjaan,
         tahapan=tahapan,
         proporsi_volume=Decimal("100.00"),
@@ -271,10 +269,9 @@ class TestDeepCopyProjectPricing:
         new_pricing = ProjectPricing.objects.get(project=new_project)
 
         assert new_pricing.id != old_pricing.id
-        assert new_pricing.ppn == old_pricing.ppn
-        assert new_pricing.overhead == old_pricing.overhead
-        assert new_pricing.keuntungan == old_pricing.keuntungan
+        assert new_pricing.ppn_percent == old_pricing.ppn_percent
         assert new_pricing.markup_percent == old_pricing.markup_percent
+        assert new_pricing.rounding_base == old_pricing.rounding_base
 
     def test_copy_project_without_pricing(self, sample_project, other_user):
         """Test copying project without pricing (should not fail)."""

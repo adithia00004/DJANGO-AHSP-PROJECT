@@ -823,14 +823,10 @@ class DeepCopyService:
 
             new_pricing = ProjectPricing(
                 project=new_project,
-                ppn=old_pricing.ppn,
-                overhead=old_pricing.overhead,
-                keuntungan=old_pricing.keuntungan,
+                ppn_percent=old_pricing.ppn_percent,
+                markup_percent=old_pricing.markup_percent,
+                rounding_base=old_pricing.rounding_base,
             )
-            # Copy markup_percent if it exists
-            if hasattr(old_pricing, 'markup_percent'):
-                new_pricing.markup_percent = old_pricing.markup_percent
-
             new_pricing.save()
 
             self.mappings['pricing'][old_id] = new_pricing.id
@@ -1107,7 +1103,8 @@ class DeepCopyService:
         Args:
             new_project: The newly created project
         """
-        jadwal_list = PekerjaanTahapan.objects.filter(project=self.source)
+        # Filter by tahapan__project since PekerjaanTahapan doesn't have project field
+        jadwal_list = PekerjaanTahapan.objects.filter(tahapan__project=self.source)
 
         for old_jadwal in jadwal_list:
             old_id = old_jadwal.id
@@ -1120,11 +1117,14 @@ class DeepCopyService:
 
             if new_pekerjaan_id and new_tahapan_id:
                 new_jadwal = PekerjaanTahapan(
-                    project=new_project,
                     pekerjaan_id=new_pekerjaan_id,
                     tahapan_id=new_tahapan_id,
                     proporsi_volume=old_jadwal.proporsi_volume,
                 )
+                # Copy optional fields if they exist
+                if hasattr(old_jadwal, 'catatan') and old_jadwal.catatan:
+                    new_jadwal.catatan = old_jadwal.catatan
+
                 new_jadwal.save()
 
                 self.mappings['jadwal'][old_id] = new_jadwal.id
