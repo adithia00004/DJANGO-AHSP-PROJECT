@@ -447,8 +447,8 @@ class TestDeepCopyTahapan:
         assert new_tahapan.tanggal_mulai == old_tahapan.tanggal_mulai
 
         # Verify jadwal pekerjaan copied
-        old_jadwal = PekerjaanTahapan.objects.get(project=full_project)
-        new_jadwal = PekerjaanTahapan.objects.get(project=new_project)
+        old_jadwal = PekerjaanTahapan.objects.get(tahapan__project=full_project)
+        new_jadwal = PekerjaanTahapan.objects.get(tahapan__project=new_project)
 
         assert new_jadwal.id != old_jadwal.id
         assert new_jadwal.proporsi_volume == old_jadwal.proporsi_volume
@@ -473,7 +473,7 @@ class TestDeepCopyTahapan:
 
         # Verify tahapan NOT copied
         assert not TahapPelaksanaan.objects.filter(project=new_project).exists()
-        assert not PekerjaanTahapan.objects.filter(project=new_project).exists()
+        assert not PekerjaanTahapan.objects.filter(tahapan__project=new_project).exists()
 
         # Verify stats
         assert service.stats['tahapan_copied'] == 0
