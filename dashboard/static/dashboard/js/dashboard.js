@@ -79,3 +79,51 @@ document.addEventListener('hidden.bs.modal', function () {
   document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
   document.body.classList.remove('modal-open');
 });
+
+// ============================================================================
+// FORM MODE TOGGLE (Simple vs Full Mode)
+// ============================================================================
+document.addEventListener('DOMContentLoaded', function() {
+  const formTable = document.getElementById('formset-table');
+  const btnSimple = document.getElementById('formModeSimple');
+  const btnFull = document.getElementById('formModeFull');
+
+  if (!formTable || !btnSimple || !btnFull) return;
+
+  // Set default mode to Simple
+  formTable.classList.add('mode-simple');
+
+  // Simple Mode Button
+  btnSimple.addEventListener('click', function() {
+    formTable.classList.remove('mode-full');
+    formTable.classList.add('mode-simple');
+    btnSimple.classList.add('active');
+    btnFull.classList.remove('active');
+
+    // Save preference to localStorage
+    try {
+      localStorage.setItem('formMode', 'simple');
+    } catch(e) {}
+  });
+
+  // Full Mode Button
+  btnFull.addEventListener('click', function() {
+    formTable.classList.remove('mode-simple');
+    formTable.classList.add('mode-full');
+    btnFull.classList.add('active');
+    btnSimple.classList.remove('active');
+
+    // Save preference to localStorage
+    try {
+      localStorage.setItem('formMode', 'full');
+    } catch(e) {}
+  });
+
+  // Load saved preference from localStorage
+  try {
+    const savedMode = localStorage.getItem('formMode');
+    if (savedMode === 'full') {
+      btnFull.click();
+    }
+  } catch(e) {}
+});

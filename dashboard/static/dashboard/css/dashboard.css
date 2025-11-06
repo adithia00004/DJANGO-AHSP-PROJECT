@@ -660,3 +660,31 @@ table .dp-thead-sticky th{
     background: #2d2d2d;
   }
 }
+
+/* ============================================================================
+   FORM MODE TOGGLE (Simple vs Full Mode)
+   ============================================================================ */
+
+/* Default: Simple Mode - Hide optional fields */
+#formset-table.mode-simple .field-optional {
+  display: none;
+}
+
+/* Full Mode - Show all fields */
+#formset-table.mode-full .field-optional {
+  display: table-cell;
+}
+
+/* Mode button states */
+#formModeSimple.active,
+#formModeFull.active {
+  background-color: var(--dp-c-primary, #0d6efd);
+  color: white;
+  border-color: var(--dp-c-primary, #0d6efd);
+}
+
+/* Smooth transition for field visibility */
+#formset-table th,
+#formset-table td {
+  transition: opacity 0.2s ease-in-out;
+}
