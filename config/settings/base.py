@@ -247,7 +247,8 @@ if CACHE_BACKEND == "redis":
                     "retry_on_timeout": True,
                 },
                 "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
-                "PARSER_CLASS": "redis.connection.HiredisParser",  # Faster C parser
+                # Note: PARSER_CLASS removed - HiredisParser no longer available in redis-py 5.x
+                # Default PythonParser will be used automatically
             },
             "KEY_PREFIX": "ahsp",
             "TIMEOUT": int(os.getenv("DJANGO_CACHE_TIMEOUT", "300")),  # 5 minutes default
