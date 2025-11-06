@@ -100,6 +100,10 @@ def project(db, user):
     if "tahun_project" in fields and not kw.get("tahun_project"):
         kw["tahun_project"] = date.today().year
 
+    # Pastikan tanggal_mulai terisi bila NOT NULL (required field)
+    if "tanggal_mulai" in fields and not kw.get("tanggal_mulai"):
+        kw["tanggal_mulai"] = date.today()
+
     return Project.objects.create(**kw)
 
 

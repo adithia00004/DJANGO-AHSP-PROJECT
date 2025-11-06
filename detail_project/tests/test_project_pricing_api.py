@@ -19,6 +19,7 @@ def test_pricing_get_and_set(client, django_user_model):
         is_active=True,
         tahun_project=timezone.now().year,  # NEW
         anggaran_owner=Decimal('0'),
+        tanggal_mulai=timezone.now().date(),  # REQUIRED FIELD
     )
 
     # GET default
