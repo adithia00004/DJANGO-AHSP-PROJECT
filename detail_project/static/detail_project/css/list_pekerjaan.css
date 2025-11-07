@@ -560,7 +560,7 @@ body.lp-overlay-open{ overflow:hidden; }
   border-spacing: 0;
   border: 1px solid var(--dp-c-border);
   border-radius: var(--dp-radius-md);
-  overflow: hidden;
+  /* overflow: hidden removed - FIX: allows Select2 dropdown to render without clipping */
 }
 
 #klas-list table.list-pekerjaan thead th{
