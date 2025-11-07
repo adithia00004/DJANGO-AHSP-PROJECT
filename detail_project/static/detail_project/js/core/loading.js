@@ -272,6 +272,98 @@ class LoadingManager {
     }
 
     /**
+     * Show error overlay with retry option
+     * @param {Object} options - Error options
+     * @param {string} options.title - Error title
+     * @param {string} options.message - Error message
+     * @param {Array} options.actions - Array of action buttons
+     * @param {Function} options.onClose - Callback when closed
+     */
+    showError(options = {}) {
+        const {
+            title = 'Terjadi Kesalahan',
+            message = 'Silakan coba lagi',
+            actions = [],
+            onClose = null
+        } = options;
+
+        // Hide any existing overlay
+        this.hide();
+
+        // Create error overlay
+        const overlay = document.createElement('div');
+        overlay.id = this.overlayId;
+        overlay.className = 'dp-loading-overlay with-backdrop show';
+
+        // Build action buttons HTML
+        let actionsHtml = '';
+        if (actions.length > 0) {
+            actionsHtml = '<div class="mt-4 d-flex gap-2 justify-content-center">';
+            actions.forEach((action, index) => {
+                const btnClass = action.primary ? 'btn-primary' : 'btn-outline-secondary';
+                actionsHtml += `
+                    <button type="button"
+                            class="btn ${btnClass}"
+                            data-action-index="${index}">
+                        ${this._escapeHtml(action.label)}
+                    </button>
+                `;
+            });
+            actionsHtml += '</div>';
+        } else {
+            // Default close button
+            actionsHtml = `
+                <div class="mt-4">
+                    <button type="button" class="btn btn-primary" data-action="close">
+                        Tutup
+                    </button>
+                </div>
+            `;
+        }
+
+        overlay.innerHTML = `
+            <div class="dp-loading-content">
+                <div class="text-danger mb-3">
+                    <i class="bi bi-exclamation-triangle-fill" style="font-size: 3rem;"></i>
+                </div>
+                <h5 class="mb-3">${this._escapeHtml(title)}</h5>
+                <div class="dp-loading-message">${this._escapeHtml(message)}</div>
+                ${actionsHtml}
+            </div>
+        `;
+
+        // Add to DOM
+        document.body.appendChild(overlay);
+        this.currentOverlay = overlay;
+        this.isShowing = true;
+
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
+
+        // Attach action handlers
+        if (actions.length > 0) {
+            overlay.querySelectorAll('[data-action-index]').forEach((btn) => {
+                const index = parseInt(btn.dataset.actionIndex);
+                const action = actions[index];
+                btn.addEventListener('click', () => {
+                    if (action.onClick) {
+                        action.onClick();
+                    }
+                    if (action.closeAfter !== false) {
+                        this.hide();
+                        if (onClose) onClose();
+                    }
+                });
+            });
+        } else {
+            overlay.querySelector('[data-action="close"]')?.addEventListener('click', () => {
+                this.hide();
+                if (onClose) onClose();
+            });
+        }
+    }
+
+    /**
      * Escape HTML to prevent XSS
      * @private
      */
