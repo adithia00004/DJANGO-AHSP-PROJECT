@@ -1,0 +1,191 @@
+/* detail_project/static/detail_project/css/loading.css */
+/**
+ * Loading Overlay Styles
+ *
+ * Provides consistent loading UI across the application
+ */
+
+/* Loading Overlay */
+.dp-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+/* Backdrop */
+.dp-loading-overlay.with-backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+/* Show state */
+.dp-loading-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+}
+
+/* Loading Content */
+.dp-loading-content {
+    background: var(--bs-body-bg);
+    border-radius: 12px;
+    padding: 2rem 3rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    max-width: 400px;
+    min-width: 300px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .dp-loading-content {
+        background: var(--bs-dark);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    }
+}
+
+/* Loading Message */
+.dp-loading-message {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--bs-body-color);
+    margin: 0;
+}
+
+/* Spinner sizes */
+.spinner-border-lg {
+    width: 3rem;
+    height: 3rem;
+    border-width: 0.35em;
+}
+
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
+
+/* Progress bar container */
+.dp-loading-progress {
+    margin-top: 1rem;
+}
+
+.dp-loading-progress .progress {
+    height: 1.5rem;
+    border-radius: 0.5rem;
+}
+
+.dp-loading-progress .progress-bar {
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: width 0.3s ease;
+}
+
+/* Inline loading states */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.btn-loading::after {
+    content: "";
+    position: absolute;
+    width: 1rem;
+    height: 1rem;
+    margin-left: 0.5rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-border 0.75s linear infinite;
+}
+
+/* Animation */
+@keyframes spinner-border {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Skeleton loaders for inline content */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--bs-gray-200) 25%,
+        var(--bs-gray-300) 50%,
+        var(--bs-gray-200) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.skeleton-text {
+    height: 1rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.skeleton-text:last-child {
+    width: 80%;
+}
+
+/* Dark mode skeleton */
+@media (prefers-color-scheme: dark) {
+    .skeleton {
+        background: linear-gradient(
+            90deg,
+            var(--bs-gray-700) 25%,
+            var(--bs-gray-600) 50%,
+            var(--bs-gray-700) 75%
+        );
+        background-size: 200% 100%;
+    }
+}
+
+/* Loading dots animation */
+.loading-dots::after {
+    content: '';
+    animation: loading-dots 1.5s infinite;
+}
+
+@keyframes loading-dots {
+    0%, 20% {
+        content: '.';
+    }
+    40% {
+        content: '..';
+    }
+    60%, 100% {
+        content: '...';
+    }
+}
+
+/* Pulse animation for loading states */
+.pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
