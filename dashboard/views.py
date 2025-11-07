@@ -394,82 +394,135 @@ def project_upload_view(request):
 
 
 @login_required
-def mass_edit_projects(request):
+def mass_edit_bulk_update(request):
     """
-    Mass edit multiple projects at once
-    Receives project IDs and update fields via POST request
+    Mass edit bulk update endpoint
+    Handles inline table editing with full field validation
+    Receives array of project changes from mass-edit-toggle.js
     Returns JSON response for AJAX handling
     """
     from django.http import JsonResponse
+    from datetime import datetime
 
     if request.method != 'POST':
         return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=400)
 
-    # Get project IDs from request
-    project_ids_str = request.POST.get('project_ids', '')
-    if not project_ids_str:
-        return JsonResponse({'success': False, 'message': 'No projects selected'}, status=400)
-
     try:
-        project_ids = [int(pid.strip()) for pid in project_ids_str.split(',') if pid.strip()]
-    except ValueError:
-        return JsonResponse({'success': False, 'message': 'Invalid project IDs'}, status=400)
+        data = json.loads(request.body)
+        changes = data.get('changes', [])
 
-    if not project_ids:
-        return JsonResponse({'success': False, 'message': 'No valid project IDs provided'}, status=400)
+        if not changes:
+            return JsonResponse({'success': False, 'message': 'No changes provided'}, status=400)
 
-    # Get projects (only owner's active projects)
-    projects = Project.objects.filter(pk__in=project_ids, owner=request.user, is_active=True)
+        updated_count = 0
 
-    if not projects.exists():
-        return JsonResponse({'success': False, 'message': 'No valid projects found'}, status=404)
-
-    # Collect fields to update
-    update_fields = {}
-
-    # Check which fields should be updated
-    if request.POST.get('update_sumber_dana') == 'true':
-        sumber_dana = request.POST.get('sumber_dana', '').strip()
-        if sumber_dana:
-            update_fields['sumber_dana'] = sumber_dana
-
-    if request.POST.get('update_lokasi_project') == 'true':
-        lokasi_project = request.POST.get('lokasi_project', '').strip()
-        if lokasi_project:
-            update_fields['lokasi_project'] = lokasi_project
-
-    if request.POST.get('update_nama_client') == 'true':
-        nama_client = request.POST.get('nama_client', '').strip()
-        if nama_client:
-            update_fields['nama_client'] = nama_client
-
-    if request.POST.get('update_instansi_client') == 'true':
-        instansi_client = request.POST.get('instansi_client', '').strip()
-        if instansi_client:
-            update_fields['instansi_client'] = instansi_client
-
-    if request.POST.get('update_kategori') == 'true':
-        kategori = request.POST.get('kategori', '').strip()
-        if kategori:
-            update_fields['kategori'] = kategori
-
-    if request.POST.get('update_is_active') == 'true':
-        is_active = request.POST.get('is_active', 'true').lower() == 'true'
-        update_fields['is_active'] = is_active
-
-    if not update_fields:
-        return JsonResponse({'success': False, 'message': 'No fields to update'}, status=400)
-
-    # Perform bulk update
-    try:
         with transaction.atomic():
-            count = projects.update(**update_fields)
+            for change_data in changes:
+                project_id = change_data.get('id')
+                if not project_id:
+                    continue
+
+                # Get project (only owner's projects)
+                try:
+                    project = Project.objects.get(pk=project_id, owner=request.user)
+                except Project.DoesNotExist:
+                    continue
+
+                # Update fields
+                # Required fields
+                if 'nama' in change_data:
+                    project.nama = change_data['nama'].strip()
+
+                if 'sumber_dana' in change_data:
+                    project.sumber_dana = change_data['sumber_dana'].strip()
+
+                if 'lokasi_project' in change_data:
+                    project.lokasi_project = change_data['lokasi_project'].strip()
+
+                if 'nama_client' in change_data:
+                    project.nama_client = change_data['nama_client'].strip()
+
+                if 'anggaran_owner' in change_data:
+                    try:
+                        project.anggaran_owner = decimal.Decimal(change_data['anggaran_owner'])
+                    except (ValueError, decimal.InvalidOperation):
+                        pass
+
+                if 'tanggal_mulai' in change_data:
+                    try:
+                        project.tanggal_mulai = datetime.strptime(change_data['tanggal_mulai'], '%Y-%m-%d').date()
+                    except ValueError:
+                        pass
+
+                # Optional fields
+                if 'tanggal_selesai' in change_data:
+                    val = change_data['tanggal_selesai'].strip()
+                    if val:
+                        try:
+                            project.tanggal_selesai = datetime.strptime(val, '%Y-%m-%d').date()
+                        except ValueError:
+                            pass
+                    else:
+                        project.tanggal_selesai = None
+
+                if 'durasi_hari' in change_data:
+                    val = change_data['durasi_hari'].strip()
+                    if val:
+                        try:
+                            project.durasi_hari = int(val)
+                        except ValueError:
+                            pass
+                    else:
+                        project.durasi_hari = None
+
+                if 'ket_project1' in change_data:
+                    project.ket_project1 = change_data['ket_project1'].strip() or None
+
+                if 'ket_project2' in change_data:
+                    project.ket_project2 = change_data['ket_project2'].strip() or None
+
+                if 'jabatan_client' in change_data:
+                    project.jabatan_client = change_data['jabatan_client'].strip() or None
+
+                if 'instansi_client' in change_data:
+                    project.instansi_client = change_data['instansi_client'].strip() or None
+
+                if 'nama_kontraktor' in change_data:
+                    project.nama_kontraktor = change_data['nama_kontraktor'].strip() or None
+
+                if 'instansi_kontraktor' in change_data:
+                    project.instansi_kontraktor = change_data['instansi_kontraktor'].strip() or None
+
+                if 'nama_konsultan_perencana' in change_data:
+                    project.nama_konsultan_perencana = change_data['nama_konsultan_perencana'].strip() or None
+
+                if 'instansi_konsultan_perencana' in change_data:
+                    project.instansi_konsultan_perencana = change_data['instansi_konsultan_perencana'].strip() or None
+
+                if 'nama_konsultan_pengawas' in change_data:
+                    project.nama_konsultan_pengawas = change_data['nama_konsultan_pengawas'].strip() or None
+
+                if 'instansi_konsultan_pengawas' in change_data:
+                    project.instansi_konsultan_pengawas = change_data['instansi_konsultan_pengawas'].strip() or None
+
+                if 'deskripsi' in change_data:
+                    project.deskripsi = change_data['deskripsi'].strip() or None
+
+                if 'kategori' in change_data:
+                    project.kategori = change_data['kategori'].strip() or None
+
+                # Save project (tahun_project will be auto-calculated)
+                project.save()
+                updated_count += 1
 
         return JsonResponse({
             'success': True,
-            'count': count,
-            'message': f'{count} projects updated successfully'
+            'updated_count': updated_count,
+            'message': f'{updated_count} project(s) successfully updated'
         })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Invalid JSON data'}, status=400)
     except Exception as e:
         return JsonResponse({
             'success': False,

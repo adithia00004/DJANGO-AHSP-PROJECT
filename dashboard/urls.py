@@ -6,7 +6,7 @@ from .views import (
     project_detail,
     project_duplicate,
     project_upload_view,
-    mass_edit_projects,
+    mass_edit_bulk_update,
 )
 from .views_export import (
     export_excel,
@@ -35,8 +35,8 @@ urlpatterns = [
     # Mass upload via Excel
     path("upload/", project_upload_view, name="project_upload"),
 
-    # Mass edit projects
-    path("mass-edit/", mass_edit_projects, name="mass_edit"),
+    # Mass edit bulk update
+    path("mass-edit-bulk/", mass_edit_bulk_update, name="mass_edit_bulk"),
 
     # FASE 2.4: Export features
     path("export/excel/", export_excel, name="export_excel"),
