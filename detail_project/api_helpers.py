@@ -22,37 +22,98 @@ logger = logging.getLogger(__name__)
 # RATE LIMITING
 # ============================================================================
 
-def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None):
+# Category-based rate limits for different endpoint types
+RATE_LIMIT_CATEGORIES = {
+    'bulk': {
+        'max_requests': 5,
+        'window': 300,  # 5 minutes
+        'description': 'Bulk operations (deep copy, batch operations)'
+    },
+    'write': {
+        'max_requests': 20,
+        'window': 60,  # 1 minute
+        'description': 'Normal write operations (save, update)'
+    },
+    'read': {
+        'max_requests': 100,
+        'window': 60,  # 1 minute
+        'description': 'Read operations (search, list, get)'
+    },
+    'export': {
+        'max_requests': 10,
+        'window': 60,  # 1 minute
+        'description': 'Export operations (PDF, Excel, CSV)'
+    },
+}
+
+
+def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None, category: str = None):
     """
-    Rate limiting decorator for API endpoints.
+    Rate limiting decorator for API endpoints with category support.
 
     Args:
         max_requests: Maximum number of requests allowed in the time window
         window: Time window in seconds (default: 60 seconds)
         key_prefix: Custom prefix for cache key (default: use view name)
+        category: Rate limit category ('bulk', 'write', 'read', 'export')
+                 If provided, overrides max_requests and window with category defaults
 
     Returns:
         Decorator function
 
     Usage:
+        # Using explicit limits
         @rate_limit(max_requests=10, window=60)
-        @login_required
         def my_api_view(request, project_id):
             ...
 
+        # Using category (recommended)
+        @rate_limit(category='bulk')
+        def deep_copy_view(request, project_id):
+            # Automatically gets: 5 requests per 5 minutes
+            ...
+
+    Categories:
+        - 'bulk': 5 requests per 5 minutes (expensive operations)
+        - 'write': 20 requests per minute (normal saves)
+        - 'read': 100 requests per minute (searches, lists)
+        - 'export': 10 requests per minute (PDF/Excel generation)
+
     Example:
-        # Limit to 10 requests per minute per user
-        @rate_limit(max_requests=10, window=60)
-        def expensive_operation(request):
+        # Deep copy - expensive operation
+        @rate_limit(category='bulk')
+        def api_deep_copy_project(request):
+            ...
+
+        # Normal save - moderate limit
+        @rate_limit(category='write')
+        def api_save_pekerjaan(request):
+            ...
+
+        # Search - high limit
+        @rate_limit(category='read')
+        def api_search_ahsp(request):
             ...
     """
+    # Apply category limits if specified
+    if category and category in RATE_LIMIT_CATEGORIES:
+        limits = RATE_LIMIT_CATEGORIES[category]
+        max_requests = limits['max_requests']
+        window = limits['window']
+        logger.debug(
+            f"Applying category '{category}' limits: {max_requests} req/{window}s"
+        )
+
     def decorator(view_func):
         @functools.wraps(view_func)
         def wrapped_view(request, *args, **kwargs):
             # Generate cache key based on user and endpoint
             user_id = getattr(request.user, 'id', 'anonymous')
             endpoint = key_prefix or view_func.__name__
-            cache_key = f"rate_limit:{user_id}:{endpoint}"
+
+            # Include category in cache key to separate limits
+            cache_suffix = f":{category}" if category else ""
+            cache_key = f"rate_limit:{user_id}:{endpoint}{cache_suffix}"
 
             # Get current request count
             current_count = cache.get(cache_key, 0)
@@ -64,18 +125,28 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
                     extra={
                         'user_id': user_id,
                         'endpoint': endpoint,
+                        'category': category,
                         'count': current_count,
-                        'limit': max_requests
+                        'limit': max_requests,
+                        'window': window
                     }
                 )
+
+                # User-friendly message based on window
+                if window >= 300:
+                    time_msg = f"{window // 60} menit"
+                else:
+                    time_msg = f"{window} detik"
+
                 return APIResponse.error(
-                    message=f"Terlalu banyak permintaan. Silakan coba lagi dalam {window} detik.",
+                    message=f"Terlalu banyak permintaan. Silakan coba lagi dalam {time_msg}.",
                     code='RATE_LIMIT_EXCEEDED',
                     status=429,
                     details={
                         'max_requests': max_requests,
                         'window_seconds': window,
-                        'current_count': current_count
+                        'current_count': current_count,
+                        'category': category or 'default'
                     }
                 )
 
@@ -344,7 +415,7 @@ def validate_choice(value, choices: list, field_name: str = 'value') -> tuple[bo
 # DECORATOR COMBINATIONS
 # ============================================================================
 
-def api_endpoint(max_requests: int = 100, window: int = 60):
+def api_endpoint(max_requests: int = 100, window: int = 60, category: str = None):
     """
     Combined decorator for common API endpoint requirements.
 
@@ -353,14 +424,26 @@ def api_endpoint(max_requests: int = 100, window: int = 60):
     - rate_limit
 
     Usage:
+        # Explicit limits
         @api_endpoint(max_requests=10, window=60)
         def my_api_view(request, project_id):
             ...
+
+        # Using category (recommended)
+        @api_endpoint(category='bulk')
+        def deep_copy_view(request, project_id):
+            ...
+
+    Categories:
+        - 'bulk': 5 requests per 5 minutes
+        - 'write': 20 requests per minute
+        - 'read': 100 requests per minute
+        - 'export': 10 requests per minute
     """
     def decorator(view_func):
         @functools.wraps(view_func)
         @login_required
-        @rate_limit(max_requests=max_requests, window=window)
+        @rate_limit(max_requests=max_requests, window=window, category=category)
         def wrapped_view(request, *args, **kwargs):
             return view_func(request, *args, **kwargs)
         return wrapped_view
