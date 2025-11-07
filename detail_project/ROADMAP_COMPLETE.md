@@ -22,7 +22,9 @@
 ### Production Readiness:
 - **Code:** 100% ready ✅ (All phases complete)
 - **Documentation:** 100% complete ✅ (monitoring guides added)
-- **Infrastructure:** 100% code ready, 0% deployed ⚠️ (needs Redis installation)
+- **Infrastructure:** 100% code ready, 0% deployed ⚠️ (needs cache backend)
+  - **Recommended Cache:** Garnet (Microsoft) - 100% FREE, native Windows, faster than Redis
+  - Alternative: Valkey (Linux Foundation) - 100% FREE, 100% Redis-compatible
 - **Testing:** 100% framework ready, 0% executed ⏳ (ready to run)
   - Integration tests: 20+ tests ready
   - Load tests: 3 user scenarios ready
@@ -167,17 +169,21 @@ LoadingManager.updateProgress(50);
 **What We Fixed:**
 
 ### 3.1 Cache Backend Configuration (CRITICAL)
-**Problem:** Rate limiting won't work without Redis/Memcached!
+**Problem:** Rate limiting won't work without cache backend!
 
 **Fix:**
 - Complete deployment guide (400+ lines)
-- Redis/Memcached configuration
+- **Recommended:** Garnet (Microsoft) - 100% FREE, native Windows, faster
+- Alternative: Valkey (Linux Foundation) - 100% FREE, Redis-compatible
+- Alternative: Redis - still FREE and widely used
 - Docker Compose examples
 - Health check endpoint
 - Troubleshooting guide
 
 **Deliverables:**
 - ✅ `DEPLOYMENT_GUIDE.md` (400+ lines)
+- ✅ `VALKEY_GARNET_ALTERNATIVES.md` (comprehensive guide)
+- ✅ `WHY_REDIS_REQUIRED.md` (cache backend explanation)
 
 ### 3.2 Toast Integration Mismatch
 **Problem:** Documentation didn't match actual API
@@ -1426,18 +1432,21 @@ else:
 # 🚧 BLOCKERS & DEPENDENCIES
 
 ## Critical Blockers:
-1. **Redis Server** - Need untuk rate limiting
-   - Solution: Install Redis (Docker atau native)
-   - Owner: DevOps/Infrastructure team
-   - ETA: Day 1 of Phase 4
+1. **Cache Backend** - Need untuk rate limiting
+   - **Recommended:** Garnet (Microsoft) - Native Windows, 100% FREE, faster
+   - Alternative: Valkey - 100% FREE, Redis-compatible
+   - Alternative: Redis - Still FREE and widely used
+   - Solution: Install Garnet (`dotnet tool install -g Microsoft.Garnet`)
+   - Owner: Development team
+   - ETA: 5-10 minutes installation
 
 2. **Server Access** - Need untuk deployment
-   - Solution: Request access
+   - Solution: Request access or use Oracle Cloud Free Tier
    - Owner: IT/Security team
    - ETA: ASAP
 
 3. **SSL Certificate** - Need untuk HTTPS
-   - Solution: Let's Encrypt atau commercial cert
+   - Solution: Let's Encrypt (100% FREE forever)
    - Owner: IT team
    - ETA: Before production
 
@@ -1453,9 +1462,25 @@ else:
 
 ## Immediate (This Week):
 
-### Day 1 (Tomorrow):
-1. ✅ **Install Redis** on development machine
+### Day 1 (Today):
+1. ✅ **Install Garnet** (Microsoft) - Native Windows, 100% FREE
+   ```powershell
+   # Install .NET 8 (if not installed)
+   winget install Microsoft.DotNet.SDK.8
+
+   # Install Garnet
+   dotnet tool install -g Microsoft.Garnet
+
+   # Run Garnet
+   garnet --port 6379
+   ```
+
+   **Alternative (Valkey/Redis):**
    ```bash
+   # Option A: Valkey (Linux Foundation)
+   sudo apt install valkey
+
+   # Option B: Redis
    docker run -d -p 6379:6379 redis:7-alpine
    ```
 
@@ -1464,7 +1489,7 @@ else:
    CACHES = {
        'default': {
            'BACKEND': 'django_redis.cache.RedisCache',
-           'LOCATION': 'redis://127.0.0.1:6379/1',
+           'LOCATION': 'redis://127.0.0.1:6379/1',  # Works with Garnet, Valkey, Redis
        }
    }
    ```
@@ -1481,10 +1506,15 @@ else:
    assert cache.get('test') == 'OK'
    ```
 
+5. ✅ **Run tests**
+   ```bash
+   pytest detail_project/tests/test_phase4_infrastructure.py -v
+   ```
+
 ### Day 2-3:
 1. **Setup staging environment**
-   - Request server access
-   - Install Redis on staging
+   - Request server access or use Oracle Cloud Free Tier
+   - Install Garnet/Valkey on staging
    - Deploy code to staging
    - Run tests on staging
 
@@ -1531,8 +1561,9 @@ Before proceeding, we need answers to:
 
 1. **Infrastructure:**
    - Do you have access to a server for deployment?
-   - Can you install Redis? (Docker or native?)
-   - What's your hosting platform? (AWS, DigitalOcean, VPS, etc.)
+   - **Recommended:** Use Garnet (Microsoft) - 100% FREE, native Windows
+   - Alternative: Valkey (Linux Foundation) - 100% FREE, Redis-compatible
+   - What's your hosting platform? (Oracle Cloud Free, AWS, VPS, etc.)
 
 2. **Timeline:**
    - Is 3-week timeline acceptable?
