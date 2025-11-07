@@ -643,8 +643,8 @@
       console.log(`🔍 Collecting data for project ${projectId}...`);
 
       ALL_FIELDS.forEach(field => {
-        // More specific selector to find the input
-        const input = table.querySelector(`[data-project-id="${projectId}"][data-field="${field.name}"]`);
+        // Find INPUT or TEXTAREA element specifically (not TD which also has data attributes)
+        const input = table.querySelector(`input[data-project-id="${projectId}"][data-field="${field.name}"], textarea[data-project-id="${projectId}"][data-field="${field.name}"]`);
 
         if (input) {
           const value = input.value;
