@@ -144,6 +144,9 @@
     // Add edit mode class to table
     table.classList.add('mass-edit-mode');
 
+    // Disable all other UI interactions
+    disableUIInteractions();
+
     // Rebuild table with ALL fields
     rebuildTableForEdit(table);
 
@@ -153,6 +156,111 @@
     // Show success message
     if (window.showToast) {
       window.showToast('Mode edit aktif. Edit langsung di tabel, lalu klik Simpan Semua.', 'info', 4000);
+    }
+  }
+
+  // ============================================================================
+  // DISABLE/ENABLE UI INTERACTIONS
+  // ============================================================================
+
+  function disableUIInteractions() {
+    // Disable FAB menu
+    const fabMainBtn = document.getElementById('fabMainBtn');
+    const fabMenu = document.getElementById('fabMenu');
+    if (fabMainBtn) {
+      fabMainBtn.disabled = true;
+      fabMainBtn.style.pointerEvents = 'none';
+      fabMainBtn.style.opacity = '0.5';
+    }
+    if (fabMenu) {
+      fabMenu.style.display = 'none';
+    }
+
+    // Disable filter panel
+    const filterPanel = document.getElementById('filterPanel');
+    if (filterPanel) {
+      const filterInputs = filterPanel.querySelectorAll('input, select, button');
+      filterInputs.forEach(input => {
+        input.disabled = true;
+        input.style.opacity = '0.5';
+      });
+    }
+
+    // Disable pagination
+    const pagination = document.querySelector('.pagination');
+    if (pagination) {
+      const paginationLinks = pagination.querySelectorAll('a, button');
+      paginationLinks.forEach(link => {
+        link.style.pointerEvents = 'none';
+        link.style.opacity = '0.5';
+      });
+    }
+
+    // Disable all action buttons in table
+    const actionButtons = document.querySelectorAll('.dashboard-project-table .btn');
+    actionButtons.forEach(btn => {
+      btn.disabled = true;
+      btn.style.pointerEvents = 'none';
+      btn.style.opacity = '0.5';
+    });
+
+    // Add overlay to body to prevent clicks
+    const overlay = document.createElement('div');
+    overlay.id = 'massEditOverlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.05);
+      z-index: var(--z-sticky, 1010);
+      pointer-events: none;
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  function enableUIInteractions() {
+    // Enable FAB menu
+    const fabMainBtn = document.getElementById('fabMainBtn');
+    if (fabMainBtn) {
+      fabMainBtn.disabled = false;
+      fabMainBtn.style.pointerEvents = '';
+      fabMainBtn.style.opacity = '';
+    }
+
+    // Enable filter panel
+    const filterPanel = document.getElementById('filterPanel');
+    if (filterPanel) {
+      const filterInputs = filterPanel.querySelectorAll('input, select, button');
+      filterInputs.forEach(input => {
+        input.disabled = false;
+        input.style.opacity = '';
+      });
+    }
+
+    // Enable pagination
+    const pagination = document.querySelector('.pagination');
+    if (pagination) {
+      const paginationLinks = pagination.querySelectorAll('a, button');
+      paginationLinks.forEach(link => {
+        link.style.pointerEvents = '';
+        link.style.opacity = '';
+      });
+    }
+
+    // Enable all action buttons in table
+    const actionButtons = document.querySelectorAll('.dashboard-project-table .btn');
+    actionButtons.forEach(btn => {
+      btn.disabled = false;
+      btn.style.pointerEvents = '';
+      btn.style.opacity = '';
+    });
+
+    // Remove overlay
+    const overlay = document.getElementById('massEditOverlay');
+    if (overlay) {
+      overlay.remove();
     }
   }
 
@@ -209,7 +317,8 @@
       ALL_FIELDS.forEach(field => {
         // Convert field name to camelCase for dataset access
         const camelCaseName = snakeToCamel(field.name);
-        const value = row.dataset[camelCaseName] || '';
+        // Use !== undefined to preserve '0' values
+        const value = row.dataset[camelCaseName] !== undefined ? row.dataset[camelCaseName] : '';
         originalRowData[field.name] = value;
       });
       originalData.set(projectId, originalRowData);
