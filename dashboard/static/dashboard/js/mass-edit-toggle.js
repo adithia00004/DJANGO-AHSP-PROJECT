@@ -91,6 +91,14 @@
     // Toggle Edit Mode
     toggleBtn.addEventListener('click', function() {
       if (!isEditMode) {
+        // Check if any checkboxes are selected
+        const selectedCheckboxes = document.querySelectorAll('.project-checkbox:checked');
+
+        if (selectedCheckboxes.length === 0) {
+          alert('Pilih minimal satu project dengan mencentang checkbox untuk memulai mass edit.');
+          return;
+        }
+
         enterEditMode();
       } else {
         exitEditMode(false); // false = don't save changes
@@ -112,6 +120,40 @@
         }
       });
     }
+
+    // Auto-cancel mass edit when navigating away
+    window.addEventListener('beforeunload', function(e) {
+      if (isEditMode && editedCells.size > 0) {
+        // Show browser's default confirmation dialog
+        e.preventDefault();
+        e.returnValue = 'Ada perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?';
+        return e.returnValue;
+      }
+    });
+
+    // Auto-cancel when clicking any link that navigates away
+    document.addEventListener('click', function(e) {
+      if (isEditMode) {
+        const target = e.target.closest('a');
+        if (target && target.href && !target.href.includes('#')) {
+          // Check if it's not a same-page link
+          const currentUrl = window.location.href.split('#')[0];
+          const targetUrl = target.href.split('#')[0];
+
+          if (targetUrl !== currentUrl) {
+            if (editedCells.size > 0) {
+              if (!confirm('Ada perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?')) {
+                e.preventDefault();
+                return;
+              }
+            }
+            // Auto-cancel mass edit mode before navigation
+            isEditMode = false;
+            enableUIInteractions();
+          }
+        }
+      }
+    });
 
     console.log('✅ Mass Edit Toggle initialized');
   });

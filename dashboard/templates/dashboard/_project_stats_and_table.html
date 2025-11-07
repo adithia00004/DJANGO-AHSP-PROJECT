@@ -444,13 +444,17 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const selectAllCheckbox = document.getElementById('selectAll');
-    const projectCheckboxes = document.querySelectorAll('.project-checkbox');
+    const desktopTable = document.querySelector('.dashboard-project-table');
+
+    // Only get checkboxes from desktop table to avoid counting mobile duplicates
+    const projectCheckboxes = desktopTable ? desktopTable.querySelectorAll('.project-checkbox') : [];
     const bulkActionsBar = document.getElementById('bulkActionsBar');
     const selectedCountSpan = document.getElementById('selectedCount');
 
     // Function to update UI based on selection
     function updateBulkActionsUI() {
-        const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
+        // Only count checked boxes in desktop table
+        const checkedBoxes = desktopTable ? desktopTable.querySelectorAll('.project-checkbox:checked') : [];
         const count = checkedBoxes.length;
 
         selectedCountSpan.textContent = count;
