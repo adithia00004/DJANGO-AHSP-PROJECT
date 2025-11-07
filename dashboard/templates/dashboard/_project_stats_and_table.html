@@ -116,6 +116,9 @@
         <span class="text-muted">project dipilih</span>
       </div>
       <div class="btn-group btn-group-sm" role="group">
+        <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn" title="Edit langsung di tabel">
+          <i class="fas fa-edit"></i> Mass Edit
+        </button>
         <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
           <i class="fas fa-trash"></i> Hapus
         </button>
@@ -127,6 +130,27 @@
         </button>
         <button type="button" class="btn btn-outline-info" id="bulkExportBtn" title="Export project terpilih">
           <i class="fas fa-file-excel"></i> Export
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mass Edit Mode Action Bar -->
+<div class="card shadow-sm mb-3 border-warning" id="massEditActionBar" style="display: none;">
+  <div class="card-body py-2 bg-light">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <i class="fas fa-edit text-warning me-2"></i>
+        <strong class="text-warning">Mode Edit Aktif</strong>
+        <small class="text-muted ms-2">| Edit langsung di tabel, lalu simpan semua perubahan</small>
+      </div>
+      <div class="btn-group btn-group-sm" role="group">
+        <button type="button" class="btn btn-success" id="massEditSaveAllBtn" title="Simpan semua perubahan">
+          <i class="fas fa-save"></i> Simpan Semua
+        </button>
+        <button type="button" class="btn btn-secondary" id="massEditCancelBtn" title="Batal dan kembali ke mode view">
+          <i class="fas fa-times"></i> Batal
         </button>
       </div>
     </div>

@@ -385,10 +385,6 @@
 
     <!-- FAB Menu -->
     <div class="fab-menu" id="fabMenu">
-      <button type="button" class="fab-action" id="fabMassEdit" title="Mass Edit Selected Projects" data-bs-toggle="modal" data-bs-target="#massEditModal">
-        <i class="bi bi-pencil-square"></i>
-        <span class="fab-label">Mass Edit</span>
-      </button>
       <a href="#" class="fab-action" id="fabScrollToForm" title="Tambah Project via Form">
         <i class="bi bi-file-earmark-plus"></i>
         <span class="fab-label">Tambah via Form</span>
@@ -408,115 +404,6 @@
     </div>
   </div>
   <!-- ========== END FLOATING ACTION BUTTON ========== -->
-
-  <!-- ========== MASS EDIT MODAL ========== -->
-  <div class="modal fade" id="massEditModal" tabindex="-1" aria-labelledby="massEditModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="massEditModalLabel">
-            <i class="bi bi-pencil-square"></i> Mass Edit Projects
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i>
-            <strong>Pilih project terlebih dahulu</strong> dengan mencentang checkbox pada tabel project, lalu pilih field yang ingin diedit.
-            Hanya field yang dicentang yang akan diupdate.
-          </div>
-
-          <div id="massEditSelectedInfo" class="alert alert-warning" style="display: none;">
-            <i class="bi bi-check2-square"></i>
-            <span id="massEditSelectedCount">0</span> project terpilih
-          </div>
-
-          <form id="massEditForm" data-url="{% url 'dashboard:mass_edit' %}">
-            {% csrf_token %}
-            <input type="hidden" name="project_ids" id="massEditProjectIds">
-
-            <div class="row g-3">
-              <!-- Sumber Dana -->
-              <div class="col-md-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="updateSumberDana">
-                  <label class="form-check-label fw-bold" for="updateSumberDana">
-                    Sumber Dana
-                  </label>
-                </div>
-                <input type="text" class="form-control mt-2" name="sumber_dana" id="massEditSumberDana" disabled>
-              </div>
-
-              <!-- Lokasi Project -->
-              <div class="col-md-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="updateLokasiProject">
-                  <label class="form-check-label fw-bold" for="updateLokasiProject">
-                    Lokasi Project
-                  </label>
-                </div>
-                <input type="text" class="form-control mt-2" name="lokasi_project" id="massEditLokasiProject" disabled>
-              </div>
-
-              <!-- Nama Client -->
-              <div class="col-md-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="updateNamaClient">
-                  <label class="form-check-label fw-bold" for="updateNamaClient">
-                    Nama Client
-                  </label>
-                </div>
-                <input type="text" class="form-control mt-2" name="nama_client" id="massEditNamaClient" disabled>
-              </div>
-
-              <!-- Instansi Client -->
-              <div class="col-md-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="updateInstansiClient">
-                  <label class="form-check-label fw-bold" for="updateInstansiClient">
-                    Instansi Client
-                  </label>
-                </div>
-                <input type="text" class="form-control mt-2" name="instansi_client" id="massEditInstansiClient" disabled>
-              </div>
-
-              <!-- Kategori -->
-              <div class="col-md-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="updateKategori">
-                  <label class="form-check-label fw-bold" for="updateKategori">
-                    Kategori
-                  </label>
-                </div>
-                <input type="text" class="form-control mt-2" name="kategori" id="massEditKategori" disabled>
-              </div>
-
-              <!-- Status Aktif -->
-              <div class="col-md-6">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="updateIsActive">
-                  <label class="form-check-label fw-bold" for="updateIsActive">
-                    Status Aktif
-                  </label>
-                </div>
-                <select class="form-select mt-2" name="is_active" id="massEditIsActive" disabled>
-                  <option value="true">Aktif</option>
-                  <option value="false">Non-aktif</option>
-                </select>
-              </div>
-            </div>
-          </form>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-          <button type="button" class="btn btn-primary" id="massEditSubmitBtn">
-            <i class="bi bi-check-circle"></i> Simpan Perubahan
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <!-- ========== END MASS EDIT MODAL ========== -->
 
 </section>
 {% endblock %}
