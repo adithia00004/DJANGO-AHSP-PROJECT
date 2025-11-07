@@ -52,12 +52,12 @@
     { name: 'sumber_dana', label: 'Sumber Dana', type: 'text', required: true },
     { name: 'lokasi_project', label: 'Lokasi Project', type: 'text', required: true },
     { name: 'nama_client', label: 'Nama Client', type: 'text', required: true },
-    { name: 'anggaran_owner', label: 'Anggaran Owner', type: 'number', required: true },
+    { name: 'anggaran_owner', label: 'Anggaran Owner', type: 'text', required: true, isNumeric: true, allowDecimal: true },
     { name: 'tanggal_mulai', label: 'Tanggal Mulai', type: 'date', required: true },
 
     // 14 Optional
     { name: 'tanggal_selesai', label: 'Tanggal Selesai', type: 'date', required: false },
-    { name: 'durasi_hari', label: 'Durasi (hari)', type: 'number', required: false },
+    { name: 'durasi_hari', label: 'Durasi (hari)', type: 'text', required: false, isNumeric: true, allowDecimal: false },
     { name: 'ket_project1', label: 'Ket Project 1', type: 'text', required: false },
     { name: 'ket_project2', label: 'Ket Project 2', type: 'text', required: false },
     { name: 'jabatan_client', label: 'Jabatan Client', type: 'text', required: false },
@@ -374,8 +374,56 @@
       input.type = field.type;
       input.className = 'form-control form-control-sm';
 
-      if (field.type === 'number') {
-        input.step = field.name === 'anggaran_owner' ? '0.01' : '1';
+      // Special handling for numeric fields (using type="text" for better control)
+      if (field.isNumeric) {
+        // Use appropriate inputmode for mobile keyboards
+        input.inputMode = field.allowDecimal ? 'decimal' : 'numeric';
+
+        // Add pattern for validation
+        if (field.allowDecimal) {
+          input.pattern = '^[0-9]+(\\.[0-9]{1,2})?$'; // Allow up to 2 decimal places
+          input.placeholder = 'Contoh: 1000000.50';
+        } else {
+          input.pattern = '^[0-9]+$'; // Only integers
+          input.placeholder = 'Contoh: 365';
+        }
+
+        // Prevent non-numeric input on keypress
+        input.addEventListener('keypress', function(e) {
+          const char = e.key;
+          const currentValue = this.value;
+
+          // Allow: backspace, delete, tab, escape, enter
+          if ([8, 9, 27, 13].includes(e.keyCode)) {
+            return;
+          }
+
+          // Allow decimal point only for decimal fields and only once
+          if (field.allowDecimal && char === '.') {
+            if (currentValue.includes('.')) {
+              e.preventDefault();
+              return;
+            }
+            return;
+          }
+
+          // Only allow digits
+          if (!/^\d$/.test(char)) {
+            e.preventDefault();
+          }
+        });
+
+        // Format on blur for better display
+        input.addEventListener('blur', function() {
+          let val = this.value.trim();
+          if (val && field.allowDecimal) {
+            // Try to parse as float and format
+            const num = parseFloat(val);
+            if (!isNaN(num)) {
+              this.value = num.toString();
+            }
+          }
+        });
       }
     }
 
@@ -394,7 +442,7 @@
       handleFieldChange(this, field);
     });
 
-    // Validate on blur
+    // Validate on blur (after numeric blur handler)
     input.addEventListener('blur', function() {
       validateField(this, field);
     });
@@ -447,13 +495,30 @@
 
     // Type-specific validation
     if (value) {
-      if (field.type === 'number') {
+      // Numeric field validation (using type="text" but isNumeric flag)
+      if (field.isNumeric) {
         const num = parseFloat(value);
         if (isNaN(num) || num < 0) {
           hasError = true;
         }
+
+        // Check decimal places for decimal fields
+        if (!hasError && field.allowDecimal) {
+          const parts = value.split('.');
+          if (parts.length > 1 && parts[1].length > 2) {
+            hasError = true; // Max 2 decimal places
+          }
+        }
+
+        // Check pattern for integer fields
+        if (!hasError && !field.allowDecimal) {
+          if (!/^[0-9]+$/.test(value)) {
+            hasError = true;
+          }
+        }
       }
 
+      // Date validation
       if (field.type === 'date') {
         const date = new Date(value);
         if (isNaN(date.getTime())) {
