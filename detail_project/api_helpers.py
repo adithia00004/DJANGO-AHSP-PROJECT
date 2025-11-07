@@ -170,19 +170,17 @@ class APIResponse:
 
     Success format:
         {
-            "ok": true,
+            "success": true,
             "data": {...},
             "message": "Optional success message"
         }
 
     Error format:
         {
-            "ok": false,
-            "error": {
-                "message": "User-friendly error message",
-                "code": "ERROR_CODE",
-                "details": {...}
-            }
+            "success": false,
+            "message": "User-friendly error message",
+            "code": "ERROR_CODE",
+            "details": {...}
         }
     """
 
@@ -210,16 +208,37 @@ class APIResponse:
             )
         """
         payload = {
-            'ok': True,
+            'success': True,
+            'message': message,
         }
 
         if data is not None:
             payload['data'] = data
 
-        if message:
-            payload['message'] = message
-
         return JsonResponse(payload, status=status)
+
+    @staticmethod
+    def created(
+        data: Any = None,
+        message: str = None
+    ) -> JsonResponse:
+        """
+        Create a successful API response for resource creation (HTTP 201).
+
+        Args:
+            data: Response data (dict, list, or any JSON-serializable type)
+            message: Optional success message
+
+        Returns:
+            JsonResponse with standardized format and 201 status
+
+        Example:
+            return APIResponse.created(
+                data={'id': 123, 'name': 'New Item'},
+                message='Resource created successfully'
+            )
+        """
+        return APIResponse.success(data=data, message=message, status=201)
 
     @staticmethod
     def error(
@@ -249,15 +268,13 @@ class APIResponse:
             )
         """
         payload = {
-            'ok': False,
-            'error': {
-                'message': message,
-                'code': code or 'GENERIC_ERROR',
-            }
+            'success': False,
+            'message': message,
+            'code': code or 'GENERIC_ERROR',
         }
 
         if details:
-            payload['error']['details'] = details
+            payload['details'] = details
 
         return JsonResponse(payload, status=status)
 
