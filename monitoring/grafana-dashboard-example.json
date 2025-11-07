@@ -1,0 +1,283 @@
+{
+  "dashboard": {
+    "title": "AHSP Application Monitoring",
+    "tags": ["django", "ahsp", "production"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (req/s)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{endpoint}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "reqps", "label": "Requests/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Response Time (p95)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 - {{endpoint}}"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99 - {{endpoint}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Response Time"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "High Response Time",
+          "conditions": [
+            {
+              "type": "query",
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"type": "avg"},
+              "evaluator": {"type": "gt", "params": [2]}
+            }
+          ],
+          "frequency": "1m",
+          "handler": 1,
+          "message": "Response time p95 is above 2 seconds",
+          "noDataState": "no_data",
+          "executionErrorState": "alerting"
+        }
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (%)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "(rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m])) * 100",
+            "legendFormat": "5xx errors"
+          },
+          {
+            "expr": "(rate(http_requests_total{status=~\"4..\"}[5m]) / rate(http_requests_total[5m])) * 100",
+            "legendFormat": "4xx errors"
+          }
+        ],
+        "yaxes": [
+          {"format": "percent", "label": "Error Rate"},
+          {"format": "short"}
+        ],
+        "thresholds": [
+          {"value": 1, "colorMode": "warning"},
+          {"value": 5, "colorMode": "critical"}
+        ],
+        "alert": {
+          "name": "High Error Rate",
+          "conditions": [
+            {
+              "type": "query",
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"type": "avg"},
+              "evaluator": {"type": "gt", "params": [5]}
+            }
+          ],
+          "frequency": "1m",
+          "handler": 1,
+          "message": "Error rate is above 5%",
+          "noDataState": "no_data",
+          "executionErrorState": "alerting"
+        }
+      },
+      {
+        "id": 4,
+        "title": "Rate Limit Hits",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(rate_limit_hits_total[5m])",
+            "legendFormat": "{{endpoint}}"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Hits/sec"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "High Rate Limit Hits",
+          "conditions": [
+            {
+              "type": "query",
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"type": "avg"},
+              "evaluator": {"type": "gt", "params": [100]}
+            }
+          ],
+          "frequency": "1m",
+          "handler": 1,
+          "message": "Rate limit hits are above 100/min",
+          "noDataState": "no_data",
+          "executionErrorState": "alerting"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Cache Hit Rate (%)",
+        "type": "singlestat",
+        "gridPos": {"x": 0, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "(cache_hits / (cache_hits + cache_misses)) * 100"
+          }
+        ],
+        "valueName": "current",
+        "format": "percent",
+        "thresholds": "50,80",
+        "colors": ["#d44a3a", "#e0b400", "#299c46"],
+        "sparkline": {"show": true}
+      },
+      {
+        "id": 6,
+        "title": "Database Connections",
+        "type": "singlestat",
+        "gridPos": {"x": 6, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "db_connection_pool_usage"
+          }
+        ],
+        "valueName": "current",
+        "format": "short",
+        "thresholds": "40,80",
+        "colors": ["#299c46", "#e0b400", "#d44a3a"]
+      },
+      {
+        "id": 7,
+        "title": "Active Users",
+        "type": "singlestat",
+        "gridPos": {"x": 12, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "active_users_count"
+          }
+        ],
+        "valueName": "current",
+        "format": "short",
+        "sparkline": {"show": true}
+      },
+      {
+        "id": 8,
+        "title": "System Health",
+        "type": "singlestat",
+        "gridPos": {"x": 18, "y": 16, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "health_check_status"
+          }
+        ],
+        "valueName": "current",
+        "format": "short",
+        "valueMaps": [
+          {"value": "1", "text": "Healthy"},
+          {"value": "0", "text": "Unhealthy"}
+        ],
+        "colorBackground": true,
+        "colors": ["#d44a3a", "#e0b400", "#299c46"],
+        "thresholds": "0.5,1"
+      },
+      {
+        "id": 9,
+        "title": "Top Endpoints by Request Count",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(10, sum by (endpoint) (rate(http_requests_total[5m])))",
+            "format": "table"
+          }
+        ],
+        "transform": "table",
+        "styles": [
+          {
+            "pattern": "endpoint",
+            "type": "string",
+            "alias": "Endpoint"
+          },
+          {
+            "pattern": "Value",
+            "type": "number",
+            "alias": "Requests/sec",
+            "decimals": 2
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Slowest Endpoints",
+        "type": "table",
+        "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "topk(10, histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])))",
+            "format": "table"
+          }
+        ],
+        "transform": "table",
+        "styles": [
+          {
+            "pattern": "endpoint",
+            "type": "string",
+            "alias": "Endpoint"
+          },
+          {
+            "pattern": "Value",
+            "type": "number",
+            "alias": "p95 Response Time (s)",
+            "decimals": 3
+          }
+        ]
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "environment",
+          "label": "Environment",
+          "type": "query",
+          "query": "label_values(environment)",
+          "current": {"text": "production", "value": "production"}
+        },
+        {
+          "name": "endpoint",
+          "label": "Endpoint",
+          "type": "query",
+          "query": "label_values(http_requests_total, endpoint)",
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Deployments",
+          "datasource": "Prometheus",
+          "expr": "deployment_event",
+          "tagKeys": "version",
+          "textFormat": "Deployed {{version}}"
+        }
+      ]
+    }
+  }
+}
