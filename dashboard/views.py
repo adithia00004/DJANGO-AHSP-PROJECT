@@ -403,29 +403,46 @@ def mass_edit_bulk_update(request):
     """
     from django.http import JsonResponse
     from datetime import datetime
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info('📥 Mass edit bulk update request received')
+    logger.info(f'User: {request.user}')
+    logger.info(f'Method: {request.method}')
 
     if request.method != 'POST':
+        logger.warning('❌ Invalid request method')
         return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=400)
 
     try:
+        logger.info(f'Request body: {request.body[:500]}')  # Log first 500 chars
         data = json.loads(request.body)
+        logger.info(f'Parsed data: {data}')
+
         changes = data.get('changes', [])
+        logger.info(f'Number of changes: {len(changes)}')
 
         if not changes:
+            logger.warning('❌ No changes provided')
             return JsonResponse({'success': False, 'message': 'No changes provided'}, status=400)
 
         updated_count = 0
 
         with transaction.atomic():
-            for change_data in changes:
+            for idx, change_data in enumerate(changes):
+                logger.info(f'Processing change {idx + 1}/{len(changes)}: {change_data}')
+
                 project_id = change_data.get('id')
                 if not project_id:
+                    logger.warning(f'Skipping change {idx + 1}: No project ID')
                     continue
 
                 # Get project (only owner's projects)
                 try:
                     project = Project.objects.get(pk=project_id, owner=request.user)
+                    logger.info(f'Found project: {project.nama} (ID: {project_id})')
                 except Project.DoesNotExist:
+                    logger.warning(f'Project not found or not owned: ID {project_id}')
                     continue
 
                 # Update fields
@@ -512,8 +529,12 @@ def mass_edit_bulk_update(request):
                     project.kategori = change_data['kategori'].strip() or None
 
                 # Save project (tahun_project will be auto-calculated)
+                logger.info(f'Saving project {project_id}...')
                 project.save()
                 updated_count += 1
+                logger.info(f'✅ Successfully saved project {project_id}')
+
+        logger.info(f'✅ All changes saved successfully. Total updated: {updated_count}')
 
         return JsonResponse({
             'success': True,
@@ -521,9 +542,12 @@ def mass_edit_bulk_update(request):
             'message': f'{updated_count} project(s) successfully updated'
         })
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(f'❌ JSON decode error: {str(e)}')
         return JsonResponse({'success': False, 'message': 'Invalid JSON data'}, status=400)
     except Exception as e:
+        logger.error(f'❌ Unexpected error: {str(e)}')
+        logger.exception(e)  # This will log the full stack trace
         return JsonResponse({
             'success': False,
             'message': f'Error updating projects: {str(e)}'

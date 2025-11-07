@@ -656,6 +656,9 @@
   // ============================================================================
 
   function sendBulkUpdate(changes) {
+    console.log('📤 Sending bulk update...');
+    console.log('Changes to send:', changes);
+
     const saveBtn = document.getElementById('massEditSaveAllBtn');
     if (saveBtn) {
       saveBtn.disabled = true;
@@ -666,6 +669,11 @@
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
+    console.log('CSRF Token:', csrfToken ? 'Found' : 'NOT FOUND');
+
+    const requestBody = { changes: changes };
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+
     fetch('/dashboard/mass-edit-bulk/', {
       method: 'POST',
       headers: {
@@ -673,11 +681,27 @@
         'X-CSRFToken': csrfToken,
         'X-Requested-With': 'XMLHttpRequest'
       },
-      body: JSON.stringify({ changes: changes })
+      body: JSON.stringify(requestBody)
     })
-    .then(response => response.json())
+    .then(response => {
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
+      if (!response.ok) {
+        return response.text().then(text => {
+          console.error('Response error text:', text);
+          throw new Error(`HTTP ${response.status}: ${text}`);
+        });
+      }
+
+      return response.json();
+    })
     .then(data => {
+      console.log('Response data:', data);
+
       if (data.success) {
+        console.log('✅ Success! Updated count:', data.updated_count);
+
         if (window.showToast) {
           window.showToast(`${data.updated_count} project berhasil diupdate`, 'success');
         }
@@ -687,6 +711,7 @@
           window.location.reload();
         }, 1500);
       } else {
+        console.error('❌ Failed:', data.message);
         alert('Error: ' + (data.message || 'Terjadi kesalahan saat menyimpan'));
         if (saveBtn) {
           saveBtn.disabled = false;
@@ -695,8 +720,9 @@
       }
     })
     .catch(error => {
-      console.error('Error saving changes:', error);
-      alert('Terjadi kesalahan saat menyimpan perubahan.');
+      console.error('❌ Error saving changes:', error);
+      console.error('Error stack:', error.stack);
+      alert('Terjadi kesalahan saat menyimpan perubahan: ' + error.message);
       if (saveBtn) {
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Semua';
