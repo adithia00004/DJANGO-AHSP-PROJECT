@@ -1,0 +1,41 @@
+# Base Requirements - Shared across all environments
+# Core Django and essential packages
+
+# Django & Core
+Django==5.2.4
+asgiref==3.9.1
+sqlparse==0.5.3
+tzdata==2025.2
+
+# Authentication
+django-allauth==65.10.0
+
+# Forms & UI
+django-crispy-forms==2.4
+crispy-bootstrap5==2025.6
+django-widget-tweaks==1.5.0
+
+# Database
+psycopg2-binary==2.9.10
+
+# History & Auditing
+django-simple-history==3.8.0
+
+# Static Files
+whitenoise==6.7.0
+
+# Configuration
+python-dotenv==1.0.1
+
+# Excel/Document Processing
+openpyxl==3.1.5
+python-docx==1.1.0
+Pillow==11.1.0
+
+# PDF Generation
+reportlab==4.0.9
+
+# Cache Layer (Redis)
+redis==5.2.1
+django-redis==5.4.0
+hiredis==3.0.0

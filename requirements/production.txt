@@ -1,0 +1,32 @@
+# Production Requirements
+# Include base requirements plus production-specific packages
+
+-r base.txt
+
+# WSGI Server
+gunicorn==22.0.0
+
+# Monitoring & Error Tracking
+sentry-sdk==2.10.0
+
+# Performance Monitoring
+django-silk==5.1.0  # Optional: SQL query profiling
+
+# Security
+django-csp==3.8  # Content Security Policy
+django-cors-headers==4.4.0  # CORS handling
+
+# Async Tasks (Production)
+celery==5.4.0
+celery[redis]==5.4.0
+
+# Celery Monitoring
+flower==2.0.1
+
+# Production Utilities
+django-health-check==3.18.3  # Enhanced health checks
+django-environ==0.11.2  # Better env variable handling
+
+# Backup & Storage (optional)
+# boto3==1.34.144  # AWS S3 for media/static files
+# django-storages==1.14.4  # Storage backends

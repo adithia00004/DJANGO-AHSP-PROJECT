@@ -1,0 +1,43 @@
+# Development Requirements
+# Include base requirements plus development tools
+
+-r base.txt
+
+# Development Server
+waitress==3.0.0  # Windows-friendly development server
+
+# Development Tools
+django-extensions==3.2.3  # shell_plus, show_urls, etc.
+django-debug-toolbar==4.4.6  # Query debugging
+
+# Code Quality
+black==24.8.0  # Code formatter
+flake8==7.1.1  # Linting
+isort==5.13.2  # Import sorting
+pylint==3.2.7  # Advanced linting
+pylint-django==2.5.5  # Django-specific linting
+
+# Testing
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-cov==6.0.0
+pytest-xdist==3.6.1  # Parallel test execution
+factory-boy==3.3.1  # Test fixtures
+faker==30.8.2  # Fake data generation
+
+# Development Utilities
+ipython==8.29.0  # Better Python shell
+ipdb==0.13.13  # Debugger
+watchdog==5.0.3  # File system monitoring
+
+# Documentation
+sphinx==8.1.3  # Documentation generator
+sphinx-rtd-theme==3.0.2  # ReadTheDocs theme
+
+# Type Checking
+mypy==1.13.0  # Static type checker
+django-stubs==5.1.1  # Django type stubs
+
+# Performance Profiling
+django-silk==5.1.0  # SQL profiling
+memory-profiler==0.61.0  # Memory profiling
