@@ -23,6 +23,18 @@
   let editedCells = new Set(); // Tracks which cells have been edited
   let errorCells = new Set(); // Tracks cells with validation errors
 
+  // ============================================================================
+  // HELPER FUNCTIONS
+  // ============================================================================
+
+  /**
+   * Convert snake_case to camelCase for dataset access
+   * Example: sumber_dana -> sumberDana
+   */
+  function snakeToCamel(str) {
+    return str.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+  }
+
   // Required fields (from Project model)
   const REQUIRED_FIELDS = [
     'nama',
@@ -192,11 +204,13 @@
       const projectId = row.querySelector('.project-checkbox')?.value;
       if (!projectId) return;
 
-      // Store original data
+      // Store original data from data attributes
       const originalRowData = {};
       ALL_FIELDS.forEach(field => {
-        const cell = row.querySelector(`[data-field="${field.name}"]`);
-        originalRowData[field.name] = cell ? cell.textContent.trim() : '';
+        // Convert field name to camelCase for dataset access
+        const camelCaseName = snakeToCamel(field.name);
+        const value = row.dataset[camelCaseName] || '';
+        originalRowData[field.name] = value;
       });
       originalData.set(projectId, originalRowData);
 

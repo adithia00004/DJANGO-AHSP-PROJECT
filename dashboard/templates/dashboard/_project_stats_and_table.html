@@ -181,7 +181,27 @@
     </thead>
     <tbody>
       {% for project in projects %}
-      <tr>
+      <tr data-project-id="{{ project.pk }}"
+          data-nama="{{ project.nama|default:'' }}"
+          data-sumber-dana="{{ project.sumber_dana|default:'' }}"
+          data-lokasi-project="{{ project.lokasi_project|default:'' }}"
+          data-nama-client="{{ project.nama_client|default:'' }}"
+          data-anggaran-owner="{{ project.anggaran_owner|default:'' }}"
+          data-tanggal-mulai="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
+          data-tanggal-selesai="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}"
+          data-durasi-hari="{{ project.durasi_hari|default:'' }}"
+          data-ket-project1="{{ project.ket_project1|default:'' }}"
+          data-ket-project2="{{ project.ket_project2|default:'' }}"
+          data-jabatan-client="{{ project.jabatan_client|default:'' }}"
+          data-instansi-client="{{ project.instansi_client|default:'' }}"
+          data-nama-kontraktor="{{ project.nama_kontraktor|default:'' }}"
+          data-instansi-kontraktor="{{ project.instansi_kontraktor|default:'' }}"
+          data-nama-konsultan-perencana="{{ project.nama_konsultan_perencana|default:'' }}"
+          data-instansi-konsultan-perencana="{{ project.instansi_konsultan_perencana|default:'' }}"
+          data-nama-konsultan-pengawas="{{ project.nama_konsultan_pengawas|default:'' }}"
+          data-instansi-konsultan-pengawas="{{ project.instansi_konsultan_pengawas|default:'' }}"
+          data-deskripsi="{{ project.deskripsi|default:'' }}"
+          data-kategori="{{ project.kategori|default:'' }}">
         <td class="text-center">
           <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}" data-project-name="{{ project.nama }}">
         </td>

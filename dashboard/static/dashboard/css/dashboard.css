@@ -1,6 +1,48 @@
 /* dashboard/static/dashboard/css/dashboard.css */
 /* Selaraskan tampilan dashboard dengan halaman detail_project (core.css) */
 
+/* ============================================================================
+   Z-INDEX HIERARCHY SYSTEM
+   ============================================================================
+   Standardized z-index layers to prevent overlap issues
+   All popups, modals, and overlays should use these variables
+
+   Layer Structure:
+   - Base content: 1-99
+   - Dropdowns & selects: 1000-1009
+   - Sticky elements (headers, sidebars): 1010-1019
+   - Fixed elements (FAB, toolbars): 1020-1029
+   - Popovers & tooltips: 1030-1039
+   - Modal backdrops: 1040-1049
+   - Modals: 1050-1059
+   - Alerts & toasts: 1060-1069
+   - Critical overlays: 1070+
+   ============================================================================ */
+
+:root {
+  /* Base layers */
+  --z-base: 1;
+  --z-dropdown: 1000;
+  --z-sticky: 1010;
+  --z-fixed: 1020;
+
+  /* Overlay layers */
+  --z-popover: 1030;
+  --z-tooltip: 1035;
+
+  /* Modal layers */
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-modal-nested: 1055;
+
+  /* Notification layers */
+  --z-toast: 1060;
+  --z-alert: 1065;
+
+  /* Critical layers */
+  --z-critical: 1070;
+}
+
 /* Formset table wrapper mengikuti utilitas scroll yang dipakai di halaman lain */
 .dashboard-form-table-wrapper{
   overflow: auto;
@@ -924,4 +966,62 @@ table .dp-thead-sticky th{
     font-size: 0.75rem;
     padding: 0.25rem 0.375rem;
   }
+}
+
+/* ============================================================================
+   APPLY Z-INDEX SYSTEM TO ALL MODALS AND POPUPS
+   ============================================================================ */
+
+/* Bootstrap Modal Backdrop */
+.modal-backdrop {
+  z-index: var(--z-modal-backdrop, 1040) !important;
+}
+
+/* Bootstrap Modal */
+.modal {
+  z-index: var(--z-modal, 1050) !important;
+}
+
+/* Nested Modals (if any) */
+.modal.show ~ .modal {
+  z-index: var(--z-modal-nested, 1055) !important;
+}
+
+/* Bootstrap Popover */
+.popover {
+  z-index: var(--z-popover, 1030) !important;
+}
+
+/* Bootstrap Tooltip */
+.tooltip {
+  z-index: var(--z-tooltip, 1035) !important;
+}
+
+/* Bootstrap Dropdown */
+.dropdown-menu {
+  z-index: var(--z-dropdown, 1000) !important;
+}
+
+/* Toast notifications */
+.toast-container-modern {
+  z-index: var(--z-toast, 1060) !important;
+}
+
+/* FAB Menu */
+.fab-menu {
+  z-index: calc(var(--z-fixed, 1020) + 1) !important;
+}
+
+/* Sticky table headers */
+.dashboard-table-wrapper .dp-thead-sticky th {
+  z-index: var(--z-sticky, 1010) !important;
+}
+
+/* Select2 dropdown (if used) */
+.select2-container--open {
+  z-index: var(--z-dropdown, 1000) !important;
+}
+
+.select2-dropdown {
+  z-index: var(--z-dropdown, 1000) !important;
 }
