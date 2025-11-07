@@ -241,12 +241,13 @@ cd prometheus-2.45.0.linux-amd64
 
 ### **What You Need:**
 
-1. **VPS/Server** (only thing you pay for)
+1. **VPS/Server** (only thing you pay for - OR FREE!)
+   - **Oracle Cloud Free Tier: ✅ FREE FOREVER** (1GB RAM, 2 VMs) - **BEST OPTION!**
+   - AWS EC2 Free Tier: FREE for 1 year (t2.micro)
+   - Contabo: €4/month (4GB RAM) - cheapest paid option
+   - Vultr: $6/month (1GB RAM)
    - DigitalOcean Droplet: $6/month (1GB RAM)
    - Linode: $5/month (1GB RAM)
-   - Vultr: $6/month (1GB RAM)
-   - Contabo: €4/month (4GB RAM) - cheapest
-   - AWS EC2 Free Tier: FREE for 1 year (t2.micro)
 
 2. **Domain Name** (optional)
    - Namecheap: $10/year
@@ -314,20 +315,85 @@ echo "Total cost: $0/month (software)"
 
 ## 📊 COST COMPARISON
 
-### **Option A: All Self-Hosted (RECOMMENDED)**
+### **Option A: Oracle Cloud Free Tier (BEST!)** ⭐
 - **Software Cost:** $0/month ✅
-- **Server Cost:** $5-10/month (VPS)
-- **SSL:** $0/month (Let's Encrypt)
-- **Total:** $5-10/month
+- **Server Cost:** $0/month ✅ (FREE FOREVER)
+- **SSL:** $0/month ✅ (Let's Encrypt)
+- **Total:** ✅ **$0/month**
 
-### **Option B: Managed Services**
+### **Option B: Cheap VPS Self-Hosted**
+- **Software Cost:** $0/month ✅
+- **Server Cost:** €4-6/month (VPS)
+- **SSL:** $0/month ✅ (Let's Encrypt)
+- **Total:** €4-6/month (~$4-6/month)
+
+### **Option C: Managed Services** ❌
 - **Heroku:** $25/month
 - **Managed DB:** $15/month
 - **Managed Redis:** $15/month
 - **Sentry Cloud:** $26/month
 - **Total:** $81/month ❌
 
-**Savings:** $71/month = $852/year by self-hosting! 💰
+**Savings with Oracle Free:** $81/month = $972/year! 💰
+**Savings with Cheap VPS:** $75/month = $900/year! 💰
+
+---
+
+## 🌟 ORACLE CLOUD FREE TIER - 100% FREE FOREVER
+
+### **What Is It?**
+
+Oracle Cloud offers an "Always Free" tier that is **genuinely FREE forever** (not a trial!).
+
+### **What You Get (FREE Forever):**
+
+- **2x Compute VMs:**
+  - 1GB RAM each (or 1x 2GB RAM)
+  - 1/8 OCPU each
+  - Ubuntu/Oracle Linux
+  - Up to 24GB RAM total across VMs
+
+- **Storage:**
+  - 200GB block volumes
+  - 10GB object storage
+
+- **Networking:**
+  - 10TB outbound data transfer/month
+  - Public IP addresses
+
+- **No Time Limit:** ✅ FREE FOREVER (not 12 months trial like AWS)
+- **No Credit Card Required:** After trial period ends
+- **Always Free Services:** Never expire, never charged
+
+### **Is It Really Free?**
+
+✅ **YES!** Oracle's Always Free tier is:
+- Permanent (no expiration)
+- No payment required after trial
+- Widely used by developers
+- Well-documented
+- Reliable
+
+### **Perfect For:**
+- Small to medium Django apps ✅
+- PostgreSQL database ✅
+- Redis cache ✅
+- Development/staging/production ✅
+- Your AHSP project ✅
+
+### **How to Get It:**
+
+1. Sign up: https://www.oracle.com/cloud/free/
+2. Complete registration (credit card for trial only)
+3. After trial ends, Always Free services remain FREE
+4. Create Ubuntu VM
+5. Install Redis, PostgreSQL, Nginx (all FREE)
+6. Deploy your app
+
+### **Resources:**
+- Official: https://www.oracle.com/cloud/free/
+- FAQ: https://www.oracle.com/cloud/free/faq.html
+- Docs: https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm
 
 ---
 
