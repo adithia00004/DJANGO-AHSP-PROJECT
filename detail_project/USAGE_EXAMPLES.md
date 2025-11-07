@@ -374,7 +374,7 @@ def api_save_pekerjaan_improved(request, project_id):
 // Import utilities
 import LoadingManager from '/static/detail_project/js/core/loading.js';
 import { jfetch } from '/static/detail_project/js/core/http.js';
-import { toast } from '/static/detail_project/js/core/toast.js';
+import toast from '/static/detail_project/js/core/toast-wrapper.js';
 
 /**
  * Save pekerjaan data with loading state
