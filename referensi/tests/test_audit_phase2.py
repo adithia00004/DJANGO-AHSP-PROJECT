@@ -108,8 +108,8 @@ def audit_log_factory(db):
     """Factory for creating audit logs."""
     def create_log(**kwargs):
         defaults = {
-            'severity': SecurityAuditLog.Severity.INFO,
-            'category': SecurityAuditLog.Category.FILE_UPLOAD,
+            'severity': SecurityAuditLog.SEVERITY_INFO,
+            'category': SecurityAuditLog.CATEGORY_FILE_UPLOAD,
             'event_type': 'test_event',
             'message': 'Test audit log',
             'ip_address': '127.0.0.1',
@@ -177,7 +177,7 @@ class TestAuditLoggerFileValidation:
 
         assert log is not None
         assert log.event_type == 'file_validation_success'
-        assert log.severity == SecurityAuditLog.Severity.INFO
+        assert log.severity == SecurityAuditLog.SEVERITY_INFO
         assert log.user == mock_request.user
         assert 'test.xlsx' in log.message
         assert log.metadata['file_size'] == 1024
@@ -193,7 +193,7 @@ class TestAuditLoggerFileValidation:
 
         assert log is not None
         assert log.event_type == 'file_validation_failure'
-        assert log.severity == SecurityAuditLog.Severity.WARNING
+        assert log.severity == SecurityAuditLog.SEVERITY_WARNING
         assert 'File too large' in log.message
 
     def test_log_malicious_file_detected(self, mock_request):
@@ -207,7 +207,7 @@ class TestAuditLoggerFileValidation:
 
             assert log is not None
             assert log.event_type == 'malicious_file_detected'
-            assert log.severity == SecurityAuditLog.Severity.CRITICAL
+            assert log.severity == SecurityAuditLog.SEVERITY_CRITICAL
             assert 'virus.xlsx' in log.message
             assert log.metadata['threat_type'] == 'dangerous_formula'
 
@@ -228,7 +228,7 @@ class TestAuditLoggerRateLimiting:
 
         assert log is not None
         assert log.event_type == 'rate_limit_exceeded'
-        assert log.severity == SecurityAuditLog.Severity.WARNING
+        assert log.severity == SecurityAuditLog.SEVERITY_WARNING
         assert log.metadata['limit'] == 10
         assert log.metadata['window'] == 3600
         assert log.ip_address == '127.0.0.1'
@@ -247,7 +247,7 @@ class TestAuditLoggerXSS:
 
         assert log is not None
         assert log.event_type == 'xss_attempt'
-        assert log.severity == SecurityAuditLog.Severity.WARNING
+        assert log.severity == SecurityAuditLog.SEVERITY_WARNING
         assert log.metadata['input_field'] == 'nama_ahsp'
         assert '<script>' in log.metadata['dangerous_content']
 
@@ -267,7 +267,7 @@ class TestAuditLoggerImport:
 
         assert log is not None
         assert log.event_type == 'import_success'
-        assert log.severity == SecurityAuditLog.Severity.INFO
+        assert log.severity == SecurityAuditLog.SEVERITY_INFO
         assert log.metadata['jobs_count'] == 100
         assert log.metadata['details_count'] == 500
 
@@ -281,8 +281,8 @@ class TestAuditLoggerGeneric:
             request=mock_request,
             event_type='custom_event',
             message='Custom event message',
-            severity=SecurityAuditLog.Severity.INFO,
-            category=SecurityAuditLog.Category.SYSTEM,
+            severity=SecurityAuditLog.SEVERITY_INFO,
+            category=SecurityAuditLog.CATEGORY_SYSTEM,
             custom_field='custom_value'
         )
 
@@ -293,16 +293,21 @@ class TestAuditLoggerGeneric:
 
     def test_log_batch(self, mock_request):
         """Test batch logging."""
+        # Batch logging expects raw data, not request objects
         events = [
             {
-                'request': mock_request,
+                'severity': SecurityAuditLog.SEVERITY_INFO,
+                'category': SecurityAuditLog.CATEGORY_SYSTEM,
                 'event_type': 'batch_event_1',
                 'message': 'Batch message 1',
+                'ip_address': '127.0.0.1',
             },
             {
-                'request': mock_request,
+                'severity': SecurityAuditLog.SEVERITY_INFO,
+                'category': SecurityAuditLog.CATEGORY_SYSTEM,
                 'event_type': 'batch_event_2',
                 'message': 'Batch message 2',
+                'ip_address': '127.0.0.1',
             },
         ]
 
@@ -387,9 +392,9 @@ class TestAuditDashboardViews:
     def test_dashboard_displays_statistics(self, audit_log_factory):
         """Test dashboard displays statistics."""
         # Create some test logs
-        audit_log_factory(severity=SecurityAuditLog.Severity.CRITICAL)
-        audit_log_factory(severity=SecurityAuditLog.Severity.WARNING)
-        audit_log_factory(severity=SecurityAuditLog.Severity.INFO)
+        audit_log_factory(severity=SecurityAuditLog.SEVERITY_CRITICAL)
+        audit_log_factory(severity=SecurityAuditLog.SEVERITY_WARNING)
+        audit_log_factory(severity=SecurityAuditLog.SEVERITY_INFO)
 
         response = self.client.get(reverse('referensi:audit_dashboard'))
 
@@ -411,34 +416,34 @@ class TestAuditDashboardViews:
 
     def test_logs_list_filtering_by_severity(self, audit_log_factory):
         """Test filtering logs by severity."""
-        audit_log_factory(severity=SecurityAuditLog.Severity.CRITICAL, message='Critical log')
-        audit_log_factory(severity=SecurityAuditLog.Severity.INFO, message='Info log')
+        audit_log_factory(severity=SecurityAuditLog.SEVERITY_CRITICAL, message='Critical log')
+        audit_log_factory(severity=SecurityAuditLog.SEVERITY_INFO, message='Info log')
 
         response = self.client.get(
             reverse('referensi:audit_logs_list'),
-            {'severity': SecurityAuditLog.Severity.CRITICAL}
+            {'severity': SecurityAuditLog.SEVERITY_CRITICAL}
         )
 
         assert response.status_code == 200
         content = response.content.decode()
         assert 'Critical log' in content or SecurityAuditLog.objects.filter(
-            severity=SecurityAuditLog.Severity.CRITICAL
+            severity=SecurityAuditLog.SEVERITY_CRITICAL
         ).exists()
 
     def test_logs_list_filtering_by_category(self, audit_log_factory):
         """Test filtering logs by category."""
         audit_log_factory(
-            category=SecurityAuditLog.Category.FILE_UPLOAD,
+            category=SecurityAuditLog.CATEGORY_FILE_UPLOAD,
             message='Upload log'
         )
         audit_log_factory(
-            category=SecurityAuditLog.Category.RATE_LIMIT,
+            category=SecurityAuditLog.CATEGORY_RATE_LIMIT,
             message='Rate limit log'
         )
 
         response = self.client.get(
             reverse('referensi:audit_logs_list'),
-            {'category': SecurityAuditLog.Category.FILE_UPLOAD}
+            {'category': SecurityAuditLog.CATEGORY_FILE_UPLOAD}
         )
 
         assert response.status_code == 200
@@ -513,9 +518,9 @@ class TestAuditDashboardViews:
         """Test statistics view."""
         # Create various logs
         for _ in range(5):
-            audit_log_factory(severity=SecurityAuditLog.Severity.INFO)
+            audit_log_factory(severity=SecurityAuditLog.SEVERITY_INFO)
         for _ in range(3):
-            audit_log_factory(severity=SecurityAuditLog.Severity.WARNING)
+            audit_log_factory(severity=SecurityAuditLog.SEVERITY_WARNING)
 
         response = self.client.get(reverse('referensi:audit_statistics'))
 
@@ -546,8 +551,8 @@ class TestSecurityAuditLogModel:
     def test_security_audit_log_creation(self, user):
         """Test creating a security audit log."""
         log = SecurityAuditLog.objects.create(
-            severity=SecurityAuditLog.Severity.INFO,
-            category=SecurityAuditLog.Category.FILE_UPLOAD,
+            severity=SecurityAuditLog.SEVERITY_INFO,
+            category=SecurityAuditLog.CATEGORY_FILE_UPLOAD,
             event_type='test_event',
             message='Test message',
             user=user,
@@ -556,14 +561,14 @@ class TestSecurityAuditLogModel:
 
         assert log.id is not None
         assert log.user == user
-        assert log.severity == SecurityAuditLog.Severity.INFO
+        assert log.severity == SecurityAuditLog.SEVERITY_INFO
         assert not log.resolved
 
     def test_auto_populate_username(self, user):
         """Test username is auto-populated from user."""
         log = SecurityAuditLog.objects.create(
-            severity=SecurityAuditLog.Severity.INFO,
-            category=SecurityAuditLog.Category.SYSTEM,
+            severity=SecurityAuditLog.SEVERITY_INFO,
+            category=SecurityAuditLog.CATEGORY_SYSTEM,
             event_type='test',
             message='Test',
             user=user,
@@ -591,7 +596,7 @@ class TestSecurityAuditLogModel:
         old_log.save()
 
         # Create critical old log (should be kept longer)
-        critical_log = audit_log_factory(severity=SecurityAuditLog.Severity.CRITICAL)
+        critical_log = audit_log_factory(severity=SecurityAuditLog.SEVERITY_CRITICAL)
         critical_log.timestamp = timezone.now() - timedelta(days=100)
         critical_log.save()
 
@@ -636,19 +641,19 @@ class TestSecurityAuditLogModel:
 
     def test_severity_choices(self):
         """Test severity choices."""
-        choices = [choice[0] for choice in SecurityAuditLog.Severity.choices]
-        assert SecurityAuditLog.Severity.INFO in choices
-        assert SecurityAuditLog.Severity.WARNING in choices
-        assert SecurityAuditLog.Severity.ERROR in choices
-        assert SecurityAuditLog.Severity.CRITICAL in choices
+        choices = [choice[0] for choice in SecurityAuditLog.SEVERITY_CHOICES]
+        assert SecurityAuditLog.SEVERITY_INFO in choices
+        assert SecurityAuditLog.SEVERITY_WARNING in choices
+        assert SecurityAuditLog.SEVERITY_ERROR in choices
+        assert SecurityAuditLog.SEVERITY_CRITICAL in choices
 
     def test_category_choices(self):
         """Test category choices."""
-        choices = [choice[0] for choice in SecurityAuditLog.Category.choices]
-        assert SecurityAuditLog.Category.FILE_UPLOAD in choices
-        assert SecurityAuditLog.Category.RATE_LIMIT in choices
-        assert SecurityAuditLog.Category.XSS in choices
-        assert SecurityAuditLog.Category.IMPORT in choices
+        choices = [choice[0] for choice in SecurityAuditLog.CATEGORY_CHOICES]
+        assert SecurityAuditLog.CATEGORY_FILE_UPLOAD in choices
+        assert SecurityAuditLog.CATEGORY_RATE_LIMIT in choices
+        assert SecurityAuditLog.CATEGORY_XSS in choices
+        assert SecurityAuditLog.CATEGORY_IMPORT in choices
 
     def test_string_representation(self, audit_log_factory):
         """Test __str__ method."""
@@ -720,7 +725,7 @@ class TestAuditIntegration:
     def test_import_creates_audit_log(self, mock_request):
         """Test that import operation creates audit log."""
         initial_count = SecurityAuditLog.objects.filter(
-            category=SecurityAuditLog.Category.IMPORT
+            category=SecurityAuditLog.CATEGORY_IMPORT
         ).count()
 
         audit_logger.log_import_operation(
@@ -732,7 +737,7 @@ class TestAuditIntegration:
         )
 
         final_count = SecurityAuditLog.objects.filter(
-            category=SecurityAuditLog.Category.IMPORT
+            category=SecurityAuditLog.CATEGORY_IMPORT
         ).count()
 
         assert final_count == initial_count + 1
@@ -745,8 +750,8 @@ class TestAuditIntegration:
             threat_type='dangerous_formula'
         )
 
-        assert log.severity == SecurityAuditLog.Severity.CRITICAL
-        assert log.category == SecurityAuditLog.Category.FILE_UPLOAD
+        assert log.severity == SecurityAuditLog.SEVERITY_CRITICAL
+        assert log.category == SecurityAuditLog.CATEGORY_FILE_UPLOAD
         assert not log.resolved  # Should start unresolved
 
     def test_dashboard_shows_recent_events(self, client, admin_user, audit_log_factory):
