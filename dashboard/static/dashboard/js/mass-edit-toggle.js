@@ -592,7 +592,7 @@
 
     // Validate all fields first
     const table = document.querySelector('.dashboard-project-table');
-    const allInputs = table.querySelectorAll('input, textarea');
+    const allInputs = table.querySelectorAll('input, textarea, select');
     let hasErrors = false;
 
     allInputs.forEach(input => {
@@ -623,6 +623,7 @@
     const changes = [];
     const projectIds = new Set();
 
+    // First, identify which projects have changes
     allInputs.forEach(input => {
       const projectId = input.getAttribute('data-project-id');
       const fieldName = input.getAttribute('data-field');
@@ -633,19 +634,36 @@
       }
     });
 
-    // For each modified project, collect all its field values
+    console.log('📋 Projects with changes:', Array.from(projectIds));
+
+    // For each modified project, collect ALL field values
     projectIds.forEach(projectId => {
       const projectData = { id: projectId };
 
+      console.log(`🔍 Collecting data for project ${projectId}...`);
+
       ALL_FIELDS.forEach(field => {
+        // More specific selector to find the input
         const input = table.querySelector(`[data-project-id="${projectId}"][data-field="${field.name}"]`);
+
         if (input) {
-          projectData[field.name] = input.value;
+          const value = input.value;
+          console.log(`  - ${field.name}: "${value}"`);
+
+          // Only include field if it has a value (don't send empty strings for optional fields)
+          if (value || field.required) {
+            projectData[field.name] = value;
+          }
+        } else {
+          console.warn(`  - ${field.name}: INPUT NOT FOUND`);
         }
       });
 
+      console.log(`✅ Project ${projectId} data:`, projectData);
       changes.push(projectData);
     });
+
+    console.log('📤 Total changes to send:', changes);
 
     // Send to server
     sendBulkUpdate(changes);
@@ -705,6 +723,12 @@
         if (window.showToast) {
           window.showToast(`${data.updated_count} project berhasil diupdate`, 'success');
         }
+
+        // Clear editedCells to prevent beforeunload alert
+        editedCells.clear();
+        isEditMode = false;
+
+        console.log('🔄 Reloading page...');
 
         // Reload page after short delay
         setTimeout(() => {
