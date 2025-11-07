@@ -528,6 +528,8 @@ body.lp-overlay-open{ overflow:hidden; }
 #klas-list .card-body{
   padding: 1rem;
   background: var(--dp-c-bg);
+  /* FIX: Allow Select2 dropdown to escape card boundaries */
+  overflow: visible;
 }
 
 /* Input nama Klas/Sub - PERBAIKAN FONT WEIGHT HIERARKI */
@@ -551,6 +553,8 @@ body.lp-overlay-open{ overflow:hidden; }
   padding: .75rem;
   margin-bottom: .75rem;
   box-shadow: var(--dp-shadow-sm);
+  /* FIX: Allow Select2 dropdown to escape sub-wrap boundaries */
+  overflow: visible;
 }
 
 /* Tabel lokal di dalam Sub (kompak, mirip v1) - PERBAIKAN BORDER */
