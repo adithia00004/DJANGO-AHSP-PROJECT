@@ -247,7 +247,7 @@ class TestAuditLoggerXSS:
 
         assert log is not None
         assert log.event_type == 'xss_attempt'
-        assert log.severity == SecurityAuditLog.SEVERITY_WARNING
+        assert log.severity == SecurityAuditLog.SEVERITY_ERROR
         assert log.metadata['input_field'] == 'nama_ahsp'
         assert '<script>' in log.metadata['dangerous_content']
 
@@ -581,11 +581,11 @@ class TestSecurityAuditLogModel:
         """Test mark_resolved method."""
         log = audit_log_factory(resolved=False)
 
-        log.mark_resolved(resolved_by=admin_user, notes='Fixed the issue')
+        log.mark_resolved(user=admin_user, notes='Fixed the issue')
 
         assert log.resolved is True
         assert log.resolved_by == admin_user
-        assert log.resolution_notes == 'Fixed the issue'
+        assert log.notes == 'Fixed the issue'
         assert log.resolved_at is not None
 
     def test_cleanup_old_logs(self, audit_log_factory):
