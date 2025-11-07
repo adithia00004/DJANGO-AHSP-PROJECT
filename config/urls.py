@@ -9,6 +9,14 @@ from django.utils.http import urlencode
 from django.conf import settings
 from django.conf.urls.static import static
 
+# Health check views
+from detail_project.views_health import (
+    health_check,
+    health_check_simple,
+    readiness_check,
+    liveness_check
+)
+
 
 # Redirect root URL -> dashboard (jika login) atau login page
 def home_redirect(request):
@@ -29,6 +37,12 @@ def admin_login_redirect(request):
 
 
 urlpatterns = [
+    # Health Check Endpoints (for monitoring & load balancers)
+    path('health/', health_check, name='health_check'),
+    path('health/simple/', health_check_simple, name='health_check_simple'),
+    path('health/ready/', readiness_check, name='readiness_check'),
+    path('health/live/', liveness_check, name='liveness_check'),
+
     # Admin
     path('admin/login/', admin_login_redirect, name='admin_login_redirect'),
     path('admin/', admin.site.urls),

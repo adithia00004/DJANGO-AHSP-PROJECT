@@ -1,0 +1,34 @@
+# Staging Requirements
+# Include base requirements plus staging-specific packages
+
+-r base.txt
+
+# WSGI Server
+gunicorn==22.0.0
+
+# Monitoring & Error Tracking (optional for staging)
+sentry-sdk==2.10.0
+
+# Development/Testing Tools (for staging testing)
+django-extensions==3.2.3
+django-debug-toolbar==4.4.6  # Can be enabled selectively
+
+# Performance Profiling (for identifying bottlenecks)
+django-silk==5.1.0
+
+# Testing (for automated testing in staging)
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-cov==6.0.0
+
+# Async Tasks
+celery==5.4.0
+celery[redis]==5.4.0
+flower==2.0.1
+
+# Utilities
+django-environ==0.11.2
+django-health-check==3.18.3
+
+# Load Testing (optional)
+# locust==2.29.1  # Load testing framework
