@@ -28,6 +28,7 @@
   max-width:none !important; width:100% !important;
   flex:1 1 clamp(24rem, 50vw, 48rem) !important; min-width:0 !important;
 }
+/* Toolbar search input & button - STANDARDIZED HEIGHT (FIX #3) */
 #lp-app .lp-toolbar-search .form-control,
 #lp-app .lp-toolbar-search .input-group-text,
 #lp-toolbar-find{
@@ -36,6 +37,11 @@
   padding-top: var(--lp-toolbar-py) !important;
   padding-bottom: var(--lp-toolbar-py) !important;
   transition: all var(--ux-duration-200) var(--ux-ease);
+
+  /* Ensure pixel-perfect alignment with buttons */
+  height: calc(1.5em + (var(--lp-toolbar-py) * 2) + 2px);
+  display: flex;
+  align-items: center;
 }
 
 #lp-app .lp-toolbar-search .input-group-text {
@@ -59,19 +65,33 @@
 /* Font default kontrol interaktif (kompak) */
 #lp-app .form-control,
 #lp-app .form-select,
-#lp-app .input-group-text,
-#lp-app .btn.lp-btn{
+#lp-app .input-group-text {
   font-size: var(--ux-font-xs);
   transition: all var(--ux-duration-200) var(--ux-ease);
 }
 
-/* Tombol aksi cepat - DIPERBAIKI UNTUK PROPORSI */
-#btn-add-klas{
-  white-space: nowrap;
+/* ===== STANDARDIZE ALL TOOLBAR BUTTONS (FIX #3) ===== */
+#lp-app .btn.lp-btn {
   font-size: var(--ux-font-xs);
   line-height: 1.5;
-  padding: .375rem .75rem;
+  padding: var(--lp-toolbar-py) .75rem;  /* Consistent padding */
   border-radius: var(--dp-radius-md);
+  white-space: nowrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+
+  /* Ensure consistent height across all buttons */
+  min-height: calc(1.5em + (var(--lp-toolbar-py) * 2) + 2px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+
+/* Specific toolbar buttons - inherit from .lp-btn */
+#btn-add-klas,
+#btn-save,
+#btn-compact {
+  /* Properties inherited from .lp-btn above */
   box-shadow: var(--dp-shadow-sm);
 }
 
@@ -631,6 +651,18 @@ body.lp-overlay-open{ overflow:hidden; }
 .list-pekerjaan .select2-host{ position:relative; z-index:auto; }
 .list-pekerjaan .select2-host.s2-open{ z-index: calc(var(--lp-z-select2) - 1) !important; }
 .list-pekerjaan .select2-host.s2-open .select2-dropdown{ z-index: var(--dp-z-dropdown) !important; }
+
+/* ===== FIX #1: Ensure Select2 Dropdown Always Above Cards ===== */
+/* Pastikan dropdown keluar dari stacking context card */
+.list-pekerjaan .select2-container--open {
+  position: relative;
+  z-index: var(--dp-z-dropdown) !important;
+}
+
+/* Pastikan dropdown selalu terlihat di atas semua card elements */
+.list-pekerjaan .select2-container--open .select2-dropdown {
+  z-index: var(--dp-z-dropdown) !important;
+}
 
 /* Kolom “Referensi” clamp 2 baris (selection) */
 #klas-list td.col-ref .select2-container .select2-selection--single{
