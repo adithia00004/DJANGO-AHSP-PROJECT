@@ -143,8 +143,8 @@ def setup_source_change_test(db, user, project, sub_klas):
     VolumeFormulaState.objects.create(
         project=project,
         pekerjaan=pekerjaan_custom,
-        formula_text="50",
-        is_formula=False,
+        raw="50",
+        is_fx=False,
     )
 
     return {
