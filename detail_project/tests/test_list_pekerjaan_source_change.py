@@ -19,7 +19,7 @@ from dashboard.models import Project
 from detail_project.models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan,
     DetailAHSPProject, HargaItemProject, VolumePekerjaan,
-    PekerjaanTahapan, VolumeFormulaState
+    PekerjaanTahapan, VolumeFormulaState, TahapPelaksanaan
 )
 
 User = get_user_model()
@@ -127,11 +127,10 @@ def setup_source_change_test(db, user, project, sub_klas):
     )
 
     # Add to tahapan (jadwal)
-    from detail_project.models import Tahapan
-    tahapan = Tahapan.objects.create(
+    tahapan = TahapPelaksanaan.objects.create(
         project=project,
         nama="Minggu 1",
-        ordering_index=1,
+        urutan=1,
     )
 
     PekerjaanTahapan.objects.create(
