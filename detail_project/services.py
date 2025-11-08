@@ -1,5 +1,5 @@
 # detail_project/services.py
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 from django.db import transaction
 from django.db.models import Sum, F as DJF, DecimalField, ExpressionWrapper
 from decimal import Decimal
@@ -63,6 +63,112 @@ def _upsert_harga_item(project, kategori: str, kode_item: str, uraian: str, satu
     if changed:
         obj.save(update_fields=["kategori", "uraian", "satuan", "updated_at"])
     return obj
+
+
+def check_circular_dependency_pekerjaan(pekerjaan_id: int, ref_pekerjaan_id: int, project) -> tuple[bool, list[int]]:
+    """
+    Check apakah reference ke ref_pekerjaan_id akan create circular dependency.
+
+    Returns:
+        (is_circular, path):
+            - is_circular: True jika circular dependency detected
+            - path: List pekerjaan_id yang membentuk cycle (jika circular)
+
+    Examples:
+        >>> check_circular_dependency_pekerjaan(1, 2, project)
+        (False, [])  # OK, tidak circular
+
+        >>> # Pekerjaan 1 → 2 → 3 → 1 (circular!)
+        >>> check_circular_dependency_pekerjaan(1, 2, project)
+        (True, [1, 2, 3, 1])
+    """
+    # Self-reference adalah circular paling simple
+    if pekerjaan_id == ref_pekerjaan_id:
+        return (True, [pekerjaan_id, ref_pekerjaan_id])
+
+    # BFS untuk detect cycle
+    visited = set()
+    path = [pekerjaan_id]
+    queue = [(ref_pekerjaan_id, [pekerjaan_id, ref_pekerjaan_id])]
+
+    while queue:
+        current_id, current_path = queue.pop(0)
+
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+
+        # Check apakah current_id references back ke pekerjaan_id
+        refs = DetailAHSPProject.objects.filter(
+            project=project,
+            pekerjaan_id=current_id,
+            kategori='LAIN',
+            ref_pekerjaan__isnull=False
+        ).values_list('ref_pekerjaan_id', flat=True)
+
+        for next_id in refs:
+            if next_id == pekerjaan_id:
+                # Found cycle!
+                return (True, current_path + [pekerjaan_id])
+
+            if next_id not in visited:
+                queue.append((next_id, current_path + [next_id]))
+
+    return (False, [])
+
+
+def validate_bundle_reference(pekerjaan_id: int, ref_kind: str, ref_id: int, project) -> tuple[bool, str]:
+    """
+    Validate bundle reference untuk prevent circular dependency dan invalid reference.
+
+    Returns:
+        (is_valid, error_message):
+            - is_valid: True jika valid
+            - error_message: Pesan error jika tidak valid, empty string jika valid
+
+    Validations:
+        1. Self-reference (Pekerjaan tidak boleh reference ke diri sendiri)
+        2. Circular dependency (A → B → C → A)
+        3. Reference exists
+        4. Reference dalam project yang sama (untuk ref_kind='job')
+    """
+    if ref_kind == 'job':
+        ref_pekerjaan_id = ref_id
+
+        # Validation 1: Self-reference
+        if pekerjaan_id == ref_pekerjaan_id:
+            return (False, "Pekerjaan tidak boleh mereferensi diri sendiri")
+
+        # Validation 2: Check existence & same project
+        try:
+            ref_pekerjaan = Pekerjaan.objects.get(id=ref_pekerjaan_id, project=project)
+        except Pekerjaan.DoesNotExist:
+            return (False, f"Pekerjaan reference #{ref_pekerjaan_id} tidak ditemukan dalam project ini")
+
+        # Validation 3: Circular dependency
+        is_circular, cycle_path = check_circular_dependency_pekerjaan(pekerjaan_id, ref_pekerjaan_id, project)
+        if is_circular:
+            # Build readable error message
+            pekerjaan_codes = []
+            for pid in cycle_path:
+                try:
+                    p = Pekerjaan.objects.get(id=pid)
+                    pekerjaan_codes.append(f"{p.snapshot_kode or pid}")
+                except Pekerjaan.DoesNotExist:
+                    pekerjaan_codes.append(str(pid))
+
+            cycle_str = " → ".join(pekerjaan_codes)
+            return (False, f"Circular dependency detected: {cycle_str}")
+
+    elif ref_kind == 'ahsp':
+        # AHSP reference validation (existing logic)
+        try:
+            if AHSPReferensi:
+                AHSPReferensi.objects.get(id=ref_id)
+        except Exception:
+            return (False, f"AHSP reference #{ref_id} tidak ditemukan")
+
+    return (True, "")
 
 
 def generate_custom_code(project) -> str:
@@ -151,6 +257,139 @@ def clone_ref_pekerjaan(
         if bulk_details:
             DetailAHSPProject.objects.bulk_create(bulk_details, ignore_conflicts=True)
     return pkj
+
+def expand_bundle_recursive(
+    detail_dict: dict,
+    base_koefisien: Decimal,
+    project,
+    depth: int = 0,
+    visited: Optional[Set[tuple]] = None
+) -> list[tuple]:
+    """
+    Recursively expand bundle item ke unit terkecil (TK/BHN/ALT).
+
+    Args:
+        detail_dict: Dict containing kategori, ref_ahsp_id, ref_pekerjaan_id, koefisien
+        base_koefisien: Koefisien multiplier dari parent (accumulated)
+        project: Project instance
+        depth: Current recursion depth (untuk prevent infinite loop)
+        visited: Set of visited (ref_kind, ref_id) untuk circular detection
+
+    Returns:
+        List of tuples: (kategori, kode, uraian, satuan, koefisien_total)
+
+    Raises:
+        ValueError: Jika circular dependency detected atau max depth exceeded
+    """
+    if visited is None:
+        visited = set()
+
+    MAX_DEPTH = 10  # Safety limit
+    if depth > MAX_DEPTH:
+        logger.error(
+            f"Max recursion depth {MAX_DEPTH} exceeded during bundle expansion",
+            extra={'detail': detail_dict, 'project_id': project.id}
+        )
+        raise ValueError(f"Maksimum kedalaman bundle ({MAX_DEPTH} level) terlampaui. Periksa struktur pekerjaan gabungan Anda.")
+
+    hasil = []
+    detail_koef = Decimal(str(detail_dict.get('koefisien', 0)))
+    total_koef = base_koefisien * detail_koef
+
+    # Case 1: Reference ke AHSPReferensi
+    ref_ahsp_id = detail_dict.get('ref_ahsp_id')
+    if ref_ahsp_id and RincianReferensi:
+        bundle_key = ('ahsp', ref_ahsp_id)
+
+        # Circular dependency check
+        if bundle_key in visited:
+            logger.error(
+                f"Circular dependency detected: AHSP #{ref_ahsp_id}",
+                extra={'visited': list(visited), 'project_id': project.id}
+            )
+            raise ValueError(f"Circular dependency detected pada AHSP Referensi #{ref_ahsp_id}")
+
+        visited.add(bundle_key)
+
+        try:
+            # Get rincian dari AHSP Referensi
+            ref_items = RincianReferensi.objects.filter(ahsp_id=ref_ahsp_id).values(
+                'kategori', 'kode_item', 'uraian_item', 'satuan_item', 'koefisien'
+            )
+
+            for ref_item in ref_items:
+                if ref_item['kategori'] in ['TK', 'BHN', 'ALT']:
+                    # Base case: sudah level terkecil
+                    ref_koef = Decimal(str(ref_item['koefisien']))
+                    final_koef = total_koef * ref_koef
+                    hasil.append((
+                        ref_item['kategori'],
+                        ref_item['kode_item'],
+                        ref_item['uraian_item'],
+                        ref_item['satuan_item'],
+                        final_koef
+                    ))
+                # Note: RincianReferensi biasanya tidak memiliki kategori LAIN yang recursive
+        finally:
+            visited.remove(bundle_key)
+
+    # Case 2: Reference ke Pekerjaan dalam project (NEW!)
+    ref_pekerjaan_id = detail_dict.get('ref_pekerjaan_id')
+    if ref_pekerjaan_id:
+        bundle_key = ('job', ref_pekerjaan_id)
+
+        # Circular dependency check
+        if bundle_key in visited:
+            # Get pekerjaan codes for better error message
+            try:
+                pkj = Pekerjaan.objects.get(id=ref_pekerjaan_id)
+                pkj_code = pkj.snapshot_kode or f"#{ref_pekerjaan_id}"
+            except Pekerjaan.DoesNotExist:
+                pkj_code = f"#{ref_pekerjaan_id}"
+
+            logger.error(
+                f"Circular dependency detected: Pekerjaan {pkj_code}",
+                extra={'visited': list(visited), 'project_id': project.id}
+            )
+            raise ValueError(f"Circular dependency detected pada Pekerjaan {pkj_code}")
+
+        visited.add(bundle_key)
+
+        try:
+            # Get detail dari Pekerjaan yang di-reference
+            ref_details = DetailAHSPProject.objects.filter(
+                project=project,
+                pekerjaan_id=ref_pekerjaan_id
+            ).values('kategori', 'kode', 'uraian', 'satuan', 'koefisien', 'ref_ahsp_id', 'ref_pekerjaan_id')
+
+            for ref_detail in ref_details:
+                if ref_detail['kategori'] in ['TK', 'BHN', 'ALT']:
+                    # Base case: sudah level terkecil
+                    ref_koef = Decimal(str(ref_detail['koefisien']))
+                    final_koef = total_koef * ref_koef
+                    hasil.append((
+                        ref_detail['kategori'],
+                        ref_detail['kode'],
+                        ref_detail['uraian'],
+                        ref_detail['satuan'],
+                        final_koef
+                    ))
+                elif ref_detail['kategori'] == 'LAIN':
+                    # Recursive case: expand lagi
+                    if ref_detail['ref_ahsp_id'] or ref_detail['ref_pekerjaan_id']:
+                        sub_items = expand_bundle_recursive(
+                            ref_detail,
+                            total_koef,
+                            project,
+                            depth + 1,
+                            visited
+                        )
+                        hasil.extend(sub_items)
+        finally:
+            visited.remove(bundle_key)
+
+    return hasil
+
 
 def _get_markup_percent(project) -> Decimal:
     # ⬇️ Tambahkan import lokal ini
@@ -377,68 +616,60 @@ def compute_kebutuhan_items(
         project=project,
         pekerjaan_id__in=pekerjaan_ids
     ).select_related('harga_item').values(
-        'pekerjaan_id', 
-        'kategori', 
-        'kode', 
-        'uraian', 
-        'satuan', 
-        'koefisien', 
-        'ref_ahsp_id'
+        'pekerjaan_id',
+        'kategori',
+        'kode',
+        'uraian',
+        'satuan',
+        'koefisien',
+        'ref_ahsp_id',
+        'ref_pekerjaan_id'  # NEW: bundle support untuk Pekerjaan
     )
-    
-    # Kumpulkan ref_ahsp_id untuk bundle items (kategori LAIN)
-    ahsp_ids = {d['ref_ahsp_id'] for d in details if d['ref_ahsp_id']}
-    
-    # Get bundle items dari RincianReferensi
-    ref_map = {}
-    if ahsp_ids and RincianReferensi is not None:
-        ref_items = RincianReferensi.objects.filter(
-            ahsp_id__in=ahsp_ids,
-            kategori__in=['TK', 'BHN', 'ALT']
-        ).values(
-            'ahsp_id', 
-            'kategori', 
-            'kode_item', 
-            'uraian_item', 
-            'satuan_item', 
-            'koefisien'
-        )
-        
-        for r in ref_items:
-            ref_map.setdefault(r['ahsp_id'], []).append(r)
-    
+
     # Process each detail item
     for detail in details:
         pekerjaan_id = detail['pekerjaan_id']
-        
+
         # Get volume dan proporsi
         volume_total = Decimal(str(vol_map.get(pekerjaan_id, 0) or 0))
         proporsi = pekerjaan_proporsi.get(pekerjaan_id, Decimal('1.0'))
-        
+
         # Volume efektif dengan proporsi
         volume_efektif = volume_total * proporsi
-        
+
         if volume_efektif == 0:
             continue
-        
+
         kategori = detail['kategori']
         koefisien = Decimal(str(detail['koefisien'] or 0))
-        
-        # Handle bundle items (LAIN dengan ref_ahsp)
-        if detail['ref_ahsp_id'] and kategori == 'LAIN':
-            # Bundle: multiply with ref items
-            multiplier = koefisien
-            for ref_item in ref_map.get(detail['ref_ahsp_id'], []):
-                key = (
-                    ref_item['kategori'],
-                    ref_item['kode_item'],
-                    ref_item['uraian_item'],
-                    ref_item['satuan_item']
+
+        # Handle bundle items (LAIN dengan ref_ahsp ATAU ref_pekerjaan)
+        if kategori == 'LAIN' and (detail['ref_ahsp_id'] or detail['ref_pekerjaan_id']):
+            try:
+                # Use recursive expansion untuk handle nested bundles
+                expanded_items = expand_bundle_recursive(
+                    detail_dict=detail,
+                    base_koefisien=Decimal('1.0'),  # Start with 1, will multiply with detail koefisien inside
+                    project=project,
+                    depth=0,
+                    visited=None
                 )
-                ref_koef = Decimal(str(ref_item['koefisien']))
-                qty = multiplier * ref_koef * volume_efektif
-                aggregated[key] += qty
-        
+
+                # Aggregate expanded items
+                for (exp_kat, exp_kode, exp_uraian, exp_satuan, exp_koef) in expanded_items:
+                    key = (exp_kat, exp_kode, exp_uraian, exp_satuan)
+                    qty = exp_koef * volume_efektif
+                    aggregated[key] += qty
+
+            except ValueError as e:
+                # Circular dependency atau max depth exceeded
+                logger.error(
+                    f"Bundle expansion error for pekerjaan {pekerjaan_id}: {str(e)}",
+                    extra={'detail': detail, 'project_id': project.id}
+                )
+                # Skip this bundle item, continue with others
+                continue
+
         # Handle normal items (TK/BHN/ALT)
         elif kategori in ('TK', 'BHN', 'ALT'):
             key = (

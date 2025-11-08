@@ -278,12 +278,22 @@ class DetailAHSPProject(TimeStampedModel):
     
 
     # bundle target (hanya dipakai saat kategori = 'LAIN')
-    
+    # Support 2 jenis reference: AHSP Referensi OR Pekerjaan dalam project
+
     ref_ahsp = models.ForeignKey(
         'referensi.AHSPReferensi',
         on_delete=models.PROTECT,
         null=True, blank=True,
-        related_name='detail_bundles'
+        related_name='detail_bundles',
+        help_text='Reference to AHSP master (bundle support for LAIN category)'
+    )
+
+    ref_pekerjaan = models.ForeignKey(
+        Pekerjaan,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='bundle_references',
+        help_text='Reference to another Pekerjaan in same project (bundle support for LAIN category)'
     )
 
     class Meta:
@@ -294,10 +304,15 @@ class DetailAHSPProject(TimeStampedModel):
         ]
         unique_together = ("project", "pekerjaan", "kode")
         constraints = [
-            # NEW: hanya baris kategori 'LAIN' yang boleh punya ref_ahsp (atau kosong)
+            # Hanya kategori 'LAIN' yang boleh punya bundle reference
             models.CheckConstraint(
-                name="ref_ahsp_only_for_lain",
-                condition=Q(ref_ahsp__isnull=True) | Q(kategori='LAIN')
+                name="bundle_ref_only_for_lain",
+                condition=Q(ref_ahsp__isnull=True, ref_pekerjaan__isnull=True) | Q(kategori='LAIN')
+            ),
+            # Hanya boleh salah satu: ref_ahsp OR ref_pekerjaan (tidak boleh keduanya)
+            models.CheckConstraint(
+                name="bundle_ref_exclusive",
+                condition=~Q(ref_ahsp__isnull=False, ref_pekerjaan__isnull=False)
             ),
         ]
 

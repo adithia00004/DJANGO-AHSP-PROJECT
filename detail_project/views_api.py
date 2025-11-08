@@ -22,7 +22,7 @@ from .models import (
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
-    generate_custom_code, invalidate_rekap_cache,
+    generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
 )
 
 from .export_config import (
@@ -964,6 +964,7 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
                   'satuan',
                   'koefisien',
                   'ref_ahsp_id',
+                  'ref_pekerjaan_id',  # NEW: bundle support
                   'harga_item__harga_satuan'))
 
     # dp harga: fallback aman ke 2 desimal
@@ -978,6 +979,7 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
             "satuan": (it.get("satuan") or None),
             "koefisien": to_dp_str(it.get("koefisien"), dp_koef),
             "ref_ahsp_id": it.get("ref_ahsp_id"),
+            "ref_pekerjaan_id": it.get("ref_pekerjaan_id"),  # NEW: bundle support
             "harga_satuan": to_dp_str(it.get("harga_item__harga_satuan"), dp_harga),
         }
         for it in qs
@@ -1098,32 +1100,77 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             errors.append(_err(f"rows[{i}].kode", "Kode duplikat dalam pekerjaan ini")); continue
         seen_kode.add(kode)
 
-        # --- Bundle referensi (opsional) — hanya untuk CUSTOM.LAIN ---
+        # --- Bundle referensi (opsional) — 2 jenis: AHSP atau Pekerjaan ---
         ref_ahsp_obj = None
-        ref_ahsp_id_raw = r.get('ref_ahsp_id', None)
-        if ref_ahsp_id_raw not in (None, ''):
-            # harus integer
+        ref_pekerjaan_obj = None
+
+        # Check new format: ref_kind + ref_id (prioritas)
+        ref_kind = r.get('ref_kind', None)
+        ref_id_raw = r.get('ref_id', None)
+
+        if ref_kind and ref_id_raw:
+            # New format: ref_kind='ahsp' atau 'job'
             try:
-                ref_ahsp_id = int(ref_ahsp_id_raw)
+                ref_id = int(ref_id_raw)
             except (TypeError, ValueError):
-                errors.append(_err(f"rows[{i}].ref_ahsp_id", "Harus integer")); continue
+                errors.append(_err(f"rows[{i}].ref_id", "Harus integer")); continue
 
-            # hanya boleh pada pekerjaan custom
+            # Hanya boleh pada pekerjaan custom
             if pkj.source_type != Pekerjaan.SOURCE_CUSTOM:
-                errors.append(_err(f"rows[{i}].ref_ahsp_id", "Hanya boleh untuk pekerjaan custom")); continue
+                errors.append(_err(f"rows[{i}].ref_kind", "Hanya boleh untuk pekerjaan custom")); continue
 
-            # dan hanya pada kategori LAIN
+            # Hanya boleh pada kategori LAIN
             if kat != HargaItemProject.KATEGORI_LAIN:
-                errors.append(_err(f"rows[{i}].ref_ahsp_id", "Hanya boleh pada kategori 'Lain-lain'")); continue
+                errors.append(_err(f"rows[{i}].ref_kind", "Hanya boleh pada kategori 'Lain-lain'")); continue
 
-            # cek eksistensi referensi
-            try:
-                ref_ahsp_obj = AHSPReferensi.objects.get(id=ref_ahsp_id)
-            except AHSPReferensi.DoesNotExist:
-                errors.append(_err(f"rows[{i}].ref_ahsp_id", f"Referensi #{ref_ahsp_id} tidak ditemukan")); continue
+            # Validate bundle reference (circular dependency check)
+            is_valid, error_msg = validate_bundle_reference(pkj.id, ref_kind, ref_id, project)
+            if not is_valid:
+                errors.append(_err(f"rows[{i}].ref_{ref_kind}", error_msg)); continue
+
+            # Get reference object
+            if ref_kind == 'ahsp':
+                try:
+                    ref_ahsp_obj = AHSPReferensi.objects.get(id=ref_id)
+                except AHSPReferensi.DoesNotExist:
+                    errors.append(_err(f"rows[{i}].ref_id", f"AHSP #{ref_id} tidak ditemukan")); continue
+            elif ref_kind == 'job':
+                try:
+                    ref_pekerjaan_obj = Pekerjaan.objects.get(id=ref_id, project=project)
+                except Pekerjaan.DoesNotExist:
+                    errors.append(_err(f"rows[{i}].ref_id", f"Pekerjaan #{ref_id} tidak ditemukan")); continue
+            else:
+                errors.append(_err(f"rows[{i}].ref_kind", f"ref_kind '{ref_kind}' tidak valid (harus 'ahsp' atau 'job')")); continue
+
+        else:
+            # Old format fallback: ref_ahsp_id only
+            ref_ahsp_id_raw = r.get('ref_ahsp_id', None)
+            if ref_ahsp_id_raw not in (None, ''):
+                try:
+                    ref_ahsp_id = int(ref_ahsp_id_raw)
+                except (TypeError, ValueError):
+                    errors.append(_err(f"rows[{i}].ref_ahsp_id", "Harus integer")); continue
+
+                # Hanya boleh pada pekerjaan custom
+                if pkj.source_type != Pekerjaan.SOURCE_CUSTOM:
+                    errors.append(_err(f"rows[{i}].ref_ahsp_id", "Hanya boleh untuk pekerjaan custom")); continue
+
+                # Hanya boleh pada kategori LAIN
+                if kat != HargaItemProject.KATEGORI_LAIN:
+                    errors.append(_err(f"rows[{i}].ref_ahsp_id", "Hanya boleh pada kategori 'Lain-lain'")); continue
+
+                # Validate & get object
+                is_valid, error_msg = validate_bundle_reference(pkj.id, 'ahsp', ref_ahsp_id, project)
+                if not is_valid:
+                    errors.append(_err(f"rows[{i}].ref_ahsp_id", error_msg)); continue
+
+                try:
+                    ref_ahsp_obj = AHSPReferensi.objects.get(id=ref_ahsp_id)
+                except AHSPReferensi.DoesNotExist:
+                    errors.append(_err(f"rows[{i}].ref_ahsp_id", f"Referensi #{ref_ahsp_id} tidak ditemukan")); continue
 
         # --- Kumpulkan baris tervalidasi ---
-        normalized.append((kat, kode, uraian, satuan, koef, ref_ahsp_obj))
+        normalized.append((kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj))
 
     # Bila semua baris error → 400
     if errors and not normalized:
@@ -1134,7 +1181,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
     to_create = []
     dp_koef = DECIMAL_SPEC["KOEF"].dp  # default 6
-    for kat, kode, uraian, satuan, koef, ref_ahsp_obj in normalized:
+    for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
         hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
         to_create.append(DetailAHSPProject(
             project=project,
@@ -1145,8 +1192,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             uraian=uraian,
             satuan=satuan,
             koefisien=quantize_half_up(koef, dp_koef),  # HALF_UP dp=6
-            # Field baru: hanya isi untuk CUSTOM + LAIN (sesuai constraint)
+            # Field bundle: hanya isi untuk CUSTOM + LAIN (sesuai constraint)
             ref_ahsp=(ref_ahsp_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
+            ref_pekerjaan=(ref_pekerjaan_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
         ))
 
     if to_create:
