@@ -1,5 +1,18 @@
 # Cascade Reset Fix for List Pekerjaan Modification
 
+> **⚠️ UPDATED DOCUMENTATION:** For complete details, see [SOURCE_CHANGE_CASCADE_RESET.md](./SOURCE_CHANGE_CASCADE_RESET.md)
+>
+> This document provides overview. For comprehensive documentation including:
+> - Complete user flow diagrams
+> - All bug fixes with root cause analysis
+> - Frontend auto-reset implementation
+> - Complete test suite documentation
+> - API reference
+>
+> Please refer to the main documentation file.
+
+---
+
 ## Problem Statement
 
 **Bug Report:**
@@ -80,11 +93,8 @@ def _reset_pekerjaan_related_data(pobj):
     # 1. Hapus semua DetailAHSPProject (template AHSP)
     DetailAHSPProject.objects.filter(project=project, pekerjaan=pobj).delete()
 
-    # 2. Reset VolumePekerjaan (volume)
-    VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).update(
-        quantity=None,
-        formula=None
-    )
+    # 2. Hapus VolumePekerjaan (quantity field is NOT NULL, must DELETE not UPDATE)
+    VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).delete()
 
     # 3. Hapus dari semua tahapan (jadwal)
     PekerjaanTahapan.objects.filter(pekerjaan=pobj).delete()
