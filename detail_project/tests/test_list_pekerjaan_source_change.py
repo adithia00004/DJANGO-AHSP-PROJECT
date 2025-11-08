@@ -356,7 +356,8 @@ class TestSourceChangeCUSTOMtoREF:
 
         # Verify fields
         assert pekerjaan_custom.source_type == Pekerjaan.SOURCE_REF_MOD
-        assert pekerjaan_custom.snapshot_kode == "TEST.001"  # From AHSP
+        assert pekerjaan_custom.snapshot_kode.endswith("-TEST.001")  # Format: "mod.X-TEST.001"
+        assert pekerjaan_custom.snapshot_kode.startswith("mod.")  # REF_MODIFIED has "mod." prefix
         assert pekerjaan_custom.snapshot_uraian == "Custom Override Uraian"  # Custom override
         assert pekerjaan_custom.snapshot_satuan == "meter"  # Custom override
         assert pekerjaan_custom.ref_id == ahsp_ref.id
@@ -470,7 +471,9 @@ class TestSourceChangeREFtoCUSTOM:
         assert pekerjaan_ref.ref_id is None  # ref cleared
         assert pekerjaan_ref.snapshot_uraian == "My Custom Pekerjaan"
         assert pekerjaan_ref.snapshot_satuan == "piece"
-        assert pekerjaan_ref.snapshot_kode.startswith("CUST-")  # Auto-generated custom code
+        # snapshot_kode is preserved from REF (TEST.001), not regenerated
+        # Logic at views_api.py:765-766 only generates new code if snapshot_kode is empty
+        assert pekerjaan_ref.snapshot_kode == "TEST.001"  # Preserved from REF
 
         # Verify cascade reset occurred
         assert DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan_ref).count() == 0  # All deleted
