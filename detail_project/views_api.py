@@ -802,6 +802,9 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
                         ])
 
+                    # CRITICAL: Add to keep list so it doesn't get deleted at line 905
+                    keep_all_p.add(pobj.id)
+
                 else:
                     # ============ CREATE / REUSE ============
 

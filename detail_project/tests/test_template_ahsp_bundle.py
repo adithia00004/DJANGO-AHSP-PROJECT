@@ -825,7 +825,7 @@ class TestRekapWithBundles:
         result = {}
         for row in rows:
             key = (row['kategori'], row['kode'], row['uraian'], row['satuan'])
-            result[key] = row['quantity']
+            result[key] = row['quantity_decimal']  # Use Decimal, not string
 
         # Should have TK and BHN from job_a
         # TK: 5.0 (koef) * 5.0 (volume) = 25.0
@@ -909,7 +909,7 @@ class TestRekapWithBundles:
         result = {}
         for row in rows:
             key = (row['kategori'], row['kode'], row['uraian'], row['satuan'])
-            result[key] = row['quantity']
+            result[key] = row['quantity_decimal']  # Use Decimal, not string
 
         # Should have all expanded items with volume multiplication
         # TK: 5.0 * 1.0 = 5.0
