@@ -794,9 +794,23 @@
 
     function syncFields() {
       const v = srcSel?.value;
+      const oldSourceType = row.dataset.sourceType;  // Save old value before update
       row.dataset.sourceType = v || '';
       const isCustom  = (v === 'custom');
       const isRefLike = (v === 'ref' || v === 'ref_modified');
+
+      // AUTO-RESET: Reset uraian/satuan when changing FROM custom TO ref/ref_modified
+      // User expects fields to clear when switching from CUSTOM to REF
+      if (oldSourceType === 'custom' && isRefLike) {
+        if (uraianInput) {
+          uraianInput.value = '';
+          autoResize(uraianInput);  // Resize textarea after clear
+        }
+        if (satuanInput) satuanInput.value = '';
+        // Trigger preview update
+        const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
+        if (td) syncPreview(td);
+      }
 
       if (uraianInput) uraianInput.readOnly = !(isCustom || v === 'ref_modified');
       if (satuanInput) satuanInput.readOnly = !isCustom;

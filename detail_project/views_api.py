@@ -708,6 +708,13 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
                     # Ganti tipe sumber → pasti replace
                     if pobj.source_type != src:
+                        # Special case: ganti ke REF/REF_MOD tapi tidak ada ref_id
+                        if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and new_ref_id is None:
+                            errors.append(_err(
+                                f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                                "Wajib diisi saat mengganti source type ke ref/ref_modified"
+                            ))
+                            continue
                         replace = True
                     # Untuk REF/REF_MOD: hanya replace jika ref_id benar-benar BERBEDA
                     elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
