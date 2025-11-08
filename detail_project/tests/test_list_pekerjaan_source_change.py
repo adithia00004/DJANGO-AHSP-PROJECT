@@ -295,10 +295,8 @@ class TestSourceChangeCUSTOMtoREF:
         assert 'TK.CUSTOM' not in detail_codes  # Old custom detail deleted
         assert 'BHN.CUSTOM' not in detail_codes  # Old custom detail deleted
 
-        # 2. VolumePekerjaan: Reset to NULL
-        volume = VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan_custom)
-        assert volume.quantity is None  # Reset from 50.000 to NULL
-        assert volume.formula is None
+        # 2. VolumePekerjaan: Deleted (quantity field is NOT NULL, so can't be reset to NULL)
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan_custom).exists()
 
         # 3. PekerjaanTahapan: Deleted
         assert PekerjaanTahapan.objects.filter(pekerjaan=pekerjaan_custom).count() == 0
@@ -364,8 +362,7 @@ class TestSourceChangeCUSTOMtoREF:
         assert pekerjaan_custom.ref_id == ahsp_ref.id
 
         # Verify cascade reset still occurred
-        volume = VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan_custom)
-        assert volume.quantity is None  # Reset
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan_custom).exists()  # Deleted
         assert PekerjaanTahapan.objects.filter(pekerjaan=pekerjaan_custom).count() == 0  # Reset
 
 
@@ -477,8 +474,7 @@ class TestSourceChangeREFtoCUSTOM:
 
         # Verify cascade reset occurred
         assert DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan_ref).count() == 0  # All deleted
-        volume = VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan_ref)
-        assert volume.quantity is None  # Reset
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan_ref).exists()  # Deleted
 
 
 # ============================================================================
@@ -573,8 +569,7 @@ class TestSourceChangeRefIDChange:
         assert pekerjaan_ref.snapshot_satuan == "unit"  # From ahsp_ref_2, NOT "m3"
 
         # Verify cascade reset occurred
-        volume = VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan_ref)
-        assert volume.quantity is None  # Reset from 100.000 to NULL
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan_ref).exists()  # Deleted
 
 
 # ============================================================================
@@ -625,7 +620,7 @@ class TestSourceChangeIntegration:
         pekerjaan.refresh_from_db()
         assert pekerjaan.source_type == Pekerjaan.SOURCE_REF
         assert pekerjaan.snapshot_uraian == "Test AHSP - Pekerjaan Balok"  # Changed
-        assert VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan).quantity is None  # Reset
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan).exists()  # Deleted
 
         # Step 3: Change back to CUSTOM
         payload_custom = {
@@ -654,7 +649,7 @@ class TestSourceChangeIntegration:
         assert pekerjaan.snapshot_uraian == "Back to Custom"
         assert pekerjaan.ref_id is None
         assert DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan).count() == 0  # Reset
-        assert VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan).quantity is None  # Still reset
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan).exists()  # Still deleted
 
     def test_multiple_pekerjaan_source_change_isolated(self, client_logged, project, sub_klas, setup_source_change_test):
         """
@@ -716,8 +711,7 @@ class TestSourceChangeIntegration:
         # Verify pekerjaan_1 changed
         pekerjaan_1.refresh_from_db()
         assert pekerjaan_1.source_type == Pekerjaan.SOURCE_REF
-        vol_1 = VolumePekerjaan.objects.get(project=project, pekerjaan=pekerjaan_1)
-        assert vol_1.quantity is None  # Reset
+        assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan_1).exists()  # Deleted
 
         # Verify pekerjaan_2 NOT affected
         pekerjaan_2.refresh_from_db()

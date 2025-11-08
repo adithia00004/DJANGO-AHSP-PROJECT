@@ -577,10 +577,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         # 1. Hapus semua DetailAHSPProject (template AHSP)
         DetailAHSPProject.objects.filter(project=project, pekerjaan=pobj).delete()
 
-        # 2. Reset VolumePekerjaan (volume)
-        VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).update(
-            quantity=None
-        )
+        # 2. Hapus VolumePekerjaan (quantity field is NOT NULL, so delete instead of update)
+        VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).delete()
 
         # 3. Hapus dari semua tahapan (jadwal)
         PekerjaanTahapan.objects.filter(pekerjaan=pobj).delete()
