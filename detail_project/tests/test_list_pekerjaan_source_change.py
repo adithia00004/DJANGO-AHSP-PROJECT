@@ -50,18 +50,18 @@ def setup_source_change_test(db, user, project, sub_klas):
     rincian_tk = RincianReferensi.objects.create(
         ahsp=ahsp_ref,
         kategori="TK",
-        kode="TK.REF",
-        uraian="Pekerja Referensi",
-        satuan="OH",
+        kode_item="TK.REF",
+        uraian_item="Pekerja Referensi",
+        satuan_item="OH",
         koefisien=Decimal("1.500000"),
     )
 
     rincian_bhn = RincianReferensi.objects.create(
         ahsp=ahsp_ref,
         kategori="BHN",
-        kode="BHN.REF",
-        uraian="Semen Referensi",
-        satuan="Zak",
+        kode_item="BHN.REF",
+        uraian_item="Semen Referensi",
+        satuan_item="Zak",
         koefisien=Decimal("5.000000"),
     )
 
