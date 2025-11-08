@@ -579,8 +579,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
         # 2. Reset VolumePekerjaan (volume)
         VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).update(
-            quantity=None,
-            formula=None
+            quantity=None
         )
 
         # 3. Hapus dari semua tahapan (jadwal)
