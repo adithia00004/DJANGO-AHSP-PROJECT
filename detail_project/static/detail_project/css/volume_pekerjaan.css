@@ -269,6 +269,9 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
   margin-top: .25rem;
   font-size: var(--ux-font-2xs);
   color: var(--dp-c-muted);
+  /* FIX: Better wrapping for long formulas */
+  word-break: break-word;
+  overflow-wrap: break-word;
   /* Clamp 2 lines */
   display: -webkit-box;
   -webkit-box-orient: vertical;

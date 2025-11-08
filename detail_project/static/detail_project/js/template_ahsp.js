@@ -319,6 +319,11 @@
         $('input[data-field="ref_kind"]', tr).value = kind;
         $('input[data-field="ref_id"]', tr).value = String(refId || '');
         $('input[data-field="ref_ahsp_id"]', tr).value = (kind === 'ahsp' ? String(refId||'') : '');
+        // FIX: Set default koefisien = 1 jika kosong (prevent validation error)
+        const koefInput = $('input[data-field="koefisien"]', tr);
+        if (!koefInput.value.trim()) {
+          koefInput.value = __koefToUI('1.000000');
+        }
         const kodeTd = input.closest('td');
         if (kodeTd && !kodeTd.querySelector('.tag-bundle')) {
           kodeTd.insertAdjacentHTML('beforeend', ' <span class="tag-bundle">Bundle</span>');
@@ -420,6 +425,9 @@
       tr.dataset.kategori = seg;
       if ($('.ta-empty', body)) body.innerHTML = '';
       try { ensureSelectAffordance(tr); } catch(_){}
+      // FIX: Set default koefisien = 1 untuk row baru (prevent validation error)
+      const koefInput = $('input[data-field="koefisien"]', tr);
+      if (koefInput) koefInput.value = __koefToUI('1.000000');
       body.appendChild(tr);
       formatIndex();
       setDirty(true);
@@ -450,7 +458,11 @@
     const rows = gatherRows();
     const errs = validateClient(rows);
     if (errs.length) {
-      toast('Periksa isian: ada error', 'warn');
+      // FIX: Show more detailed error message
+      const firstErr = errs[0];
+      const errMsg = `Periksa isian: ${firstErr.path} - ${firstErr.message}`;
+      toast(errMsg, 'warn');
+      console.warn('Validation errors:', errs);
       return;
     }
 
