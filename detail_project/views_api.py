@@ -3,9 +3,12 @@
 # ================================
 import json
 import csv
+import logging
 from io import BytesIO
 from typing import Any
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
+
+logger = logging.getLogger(__name__)
 from django.http import JsonResponse, HttpRequest, HttpResponse
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.contrib.auth.decorators import login_required
@@ -23,6 +26,7 @@ from .models import (
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
+    expand_bundle_recursive,
 )
 
 from .export_config import (
@@ -1176,12 +1180,71 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     if errors and not normalized:
         return JsonResponse({"ok": False, "errors": errors}, status=400)
 
+    # ========================================================================
+    # EXPANSION: Expand bundle items (LAIN dengan ref) menjadi component items
+    # ========================================================================
+    expanded_normalized = []
+    dp_koef = DECIMAL_SPEC["KOEF"].dp  # default 6
+
+    for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
+        # Jika LAIN dengan bundle reference → expand ke component items
+        if kat == HargaItemProject.KATEGORI_LAIN and (ref_ahsp_obj or ref_pekerjaan_obj):
+            # Build detail_dict untuk expansion
+            detail_dict = {
+                'kategori': kat,
+                'kode': kode,
+                'uraian': uraian,
+                'satuan': satuan,
+                'koefisien': str(koef),
+                'ref_ahsp_id': ref_ahsp_obj.id if ref_ahsp_obj else None,
+                'ref_pekerjaan_id': ref_pekerjaan_obj.id if ref_pekerjaan_obj else None,
+            }
+
+            try:
+                # Expand bundle recursively
+                expanded_items = expand_bundle_recursive(
+                    detail_dict=detail_dict,
+                    base_koefisien=Decimal('1.0'),
+                    project=project,
+                    depth=0,
+                    visited=None
+                )
+
+                # Add expanded items to final list
+                # Format: (kategori, kode, uraian, satuan, koefisien_final)
+                for exp_kat, exp_kode, exp_uraian, exp_satuan, exp_koef in expanded_items:
+                    expanded_normalized.append((
+                        exp_kat,
+                        exp_kode,
+                        exp_uraian,
+                        exp_satuan,
+                        exp_koef,
+                        None,  # no ref_ahsp for expanded items
+                        None   # no ref_pekerjaan for expanded items
+                    ))
+
+            except ValueError as e:
+                # Expansion failed (circular dependency atau max depth)
+                logger.error(
+                    f"Bundle expansion failed during save for pekerjaan {pkj.id}: {str(e)}",
+                    extra={'kode': kode, 'uraian': uraian}
+                )
+                errors.append(_err(f"bundle.{kode}", f"Expansion error: {str(e)}"))
+                continue
+
+        else:
+            # Normal item (TK/BHN/ALT/BUK atau LAIN tanpa ref) → tambahkan langsung
+            expanded_normalized.append((kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj))
+
+    # Bila expansion menghasilkan error → return 400
+    if errors and not expanded_normalized:
+        return JsonResponse({"ok": False, "errors": errors}, status=400)
+
     # Replace-all: hapus lama, masukkan yang baru
     DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
 
     to_create = []
-    dp_koef = DECIMAL_SPEC["KOEF"].dp  # default 6
-    for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
+    for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in expanded_normalized:
         hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
         to_create.append(DetailAHSPProject(
             project=project,
@@ -1193,6 +1256,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             satuan=satuan,
             koefisien=quantize_half_up(koef, dp_koef),  # HALF_UP dp=6
             # Field bundle: hanya isi untuk CUSTOM + LAIN (sesuai constraint)
+            # NOTE: Expanded items tidak punya ref (sudah di-expand)
             ref_ahsp=(ref_ahsp_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
             ref_pekerjaan=(ref_pekerjaan_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
         ))
