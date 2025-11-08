@@ -516,9 +516,57 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         max_order = Pekerjaan.objects.filter(project=project).aggregate(Max("ordering_index"))["ordering_index__max"] or 0
         return max_order + 1_000_000
 
+    def _reset_pekerjaan_related_data(pobj):
+        """
+        Reset semua data terkait pekerjaan saat pekerjaan dimodifikasi (source_type atau ref_id berubah).
+
+        Cascade reset:
+        - DetailAHSPProject: hapus semua detail lama
+        - VolumePekerjaan: reset volume jadi NULL/0
+        - PekerjaanTahapan: hapus dari semua tahapan (jadwal)
+        - VolumeFormulaState: hapus formula state
+        - detail_ready flag: set ke False
+        """
+        from .models import DetailAHSPProject, VolumePekerjaan, PekerjaanTahapan, VolumeFormulaState
+
+        # 1. Hapus semua DetailAHSPProject (template AHSP)
+        DetailAHSPProject.objects.filter(project=project, pekerjaan=pobj).delete()
+
+        # 2. Reset VolumePekerjaan (volume)
+        VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).update(
+            quantity=None,
+            formula=None
+        )
+
+        # 3. Hapus dari semua tahapan (jadwal)
+        PekerjaanTahapan.objects.filter(pekerjaan=pobj).delete()
+
+        # 4. Hapus volume formula state
+        VolumeFormulaState.objects.filter(project=project, pekerjaan=pobj).delete()
+
+        # 5. Set detail_ready flag ke False
+        pobj.detail_ready = False
+        pobj.save(update_fields=['detail_ready'])
+
+        logger.info(
+            f"Reset all related data for pekerjaan {pobj.id} (kode: {pobj.snapshot_kode})",
+            extra={'project_id': project.id, 'pekerjaan_id': pobj.id}
+        )
+
     def _adopt_tmp_into(pobj, tmp, s_obj, order: int):
-        """Salin snapshot tmp → pobj, pindahkan seluruh detail tmp → pobj, lalu hapus tmp."""
+        """
+        Salin snapshot tmp → pobj, pindahkan seluruh detail tmp → pobj, lalu hapus tmp.
+
+        IMPORTANT: Karena pekerjaan berubah (source_type atau ref_id), reset semua data terkait:
+        - Volume, jadwal, formula state akan di-reset
+        - Detail AHSP akan diganti dengan detail dari referensi baru
+        """
         from .models import DetailAHSPProject
+
+        # CRITICAL: Reset semua data terkait sebelum adopt new data
+        _reset_pekerjaan_related_data(pobj)
+
+        # Copy snapshot from tmp to pobj
         pobj.sub_klasifikasi = s_obj
         pobj.source_type = tmp.source_type
         try:
@@ -533,19 +581,11 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             "sub_klasifikasi", "source_type", "ref",
             "snapshot_kode", "snapshot_uraian", "snapshot_satuan", "ordering_index"
         ])
-        # --- DEDUP DETAIL ---
-        # Hindari UniqueViolation (project, pekerjaan, kode) dengan melewatkan baris TMP
-        # yang 'kode'-nya sudah ada pada target.
-        existing_kodes = set(
-            DetailAHSPProject.objects
-            .filter(project=project, pekerjaan=pobj)
-            .values_list("kode", flat=True)
-        )
-        tmp_qs = DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp)
-        if existing_kodes:
-            tmp_qs = tmp_qs.exclude(kode__in=existing_kodes)
-        # Pindahkan hanya baris yang tidak bentrok
-        tmp_qs.update(pekerjaan=pobj)
+
+        # Move DetailAHSPProject from tmp to pobj
+        # (No dedup needed since we already deleted all old details)
+        DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp).update(pekerjaan=pobj)
+
         tmp.delete()
 
     # === Loop utama ===
@@ -666,6 +706,9 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                 _adopt_tmp_into(pobj, tmp, s_obj, order)
                             else:
                                 # ke CUSTOM: update in-place (ID tetap) + bersihkan FK ref
+                                # CRITICAL: Reset related data karena source_type berubah
+                                _reset_pekerjaan_related_data(pobj)
+
                                 uraian = (p.get("snapshot_uraian") or "").strip()
                                 if not uraian:
                                     errors.append(_err(
@@ -771,6 +814,10 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             satuan = (p.get("snapshot_satuan") or None)
                             pobj = _get_or_reuse_pekerjaan_for_order(order)
                             if pobj:
+                                # Check if source_type is changing - if yes, reset related data
+                                if pobj.source_type != src:
+                                    _reset_pekerjaan_related_data(pobj)
+
                                 pobj.sub_klasifikasi = s_obj
                                 pobj.source_type = src
                                 pobj.ref = None
