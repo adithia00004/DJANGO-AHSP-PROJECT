@@ -338,12 +338,45 @@ def _str_to_src(s):
 @login_required
 @require_GET
 def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
-    """Kembalikan struktur Klasifikasi → Sub → Pekerjaan yang sudah tersimpan."""
+    """
+    Kembalikan struktur Klasifikasi → Sub → Pekerjaan yang sudah tersimpan.
+
+    Query params:
+    - search (q): Filter pekerjaan by kode AHSP, referensi AHSP nama, atau uraian pekerjaan
+    """
     project = _owner_or_404(project_id, request.user)
+
+    # Get search query from request
+    search_query = request.GET.get('search') or request.GET.get('q') or ''
+    search_query = search_query.strip()
 
     k_qs = Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
     s_qs = SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
     p_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+
+    # Apply search filter if provided
+    if search_query:
+        from django.db.models import Q
+        # Search in: snapshot_kode, snapshot_uraian, and ref AHSP (kode_ahsp, nama_ahsp)
+        p_qs = p_qs.filter(
+            Q(snapshot_kode__icontains=search_query) |
+            Q(snapshot_uraian__icontains=search_query) |
+            Q(ref__kode_ahsp__icontains=search_query) |
+            Q(ref__nama_ahsp__icontains=search_query)
+        )
+
+        # If search is active, we need to filter klasifikasi and subklasifikasi
+        # to only show those that have matching pekerjaan
+        filtered_pkj_ids = list(p_qs.values_list('id', flat=True))
+        if filtered_pkj_ids:
+            filtered_sub_ids = set(p_qs.values_list('sub_klasifikasi_id', flat=True))
+            s_qs = s_qs.filter(id__in=filtered_sub_ids)
+
+            filtered_klas_ids = set(s_qs.values_list('klasifikasi_id', flat=True))
+            k_qs = k_qs.filter(id__in=filtered_klas_ids)
+        else:
+            # No matching pekerjaan found - return empty structure
+            return JsonResponse({"ok": True, "klasifikasi": [], "search_query": search_query, "match_count": 0})
 
     subs_by_klas = {}
     for s in s_qs:
@@ -354,6 +387,7 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
         pkj_by_sub.setdefault(p.sub_klasifikasi_id, []).append(p)
 
     data = []
+    total_pekerjaan_count = 0
     for k in k_qs:
         k_obj = {
             "id": k.id,
@@ -378,10 +412,21 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
                     "snapshot_satuan": p.snapshot_satuan,
                     "ref_id": getattr(p, "ref_id", None),
                 })
+                total_pekerjaan_count += 1
             k_obj["sub"].append(s_obj)
         data.append(k_obj)
 
-    return JsonResponse({"ok": True, "klasifikasi": data})
+    response_data = {
+        "ok": True,
+        "klasifikasi": data
+    }
+
+    # Add search metadata if search was performed
+    if search_query:
+        response_data["search_query"] = search_query
+        response_data["match_count"] = total_pekerjaan_count
+
+    return JsonResponse(response_data)
 
 
 
