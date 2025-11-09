@@ -313,7 +313,8 @@ class TestCUSTOMBundleDualStorage:
                     'uraian': 'Pemasangan Bekisting',
                     'satuan': 'm2',
                     'koefisien': '10.0',
-                    'ref_pekerjaan_id': bundle_pekerjaan.id
+                    'ref_kind': 'job',  # NEW FORMAT
+                    'ref_id': bundle_pekerjaan.id
                 }
             ]
         }
@@ -394,7 +395,8 @@ class TestCUSTOMBundleDualStorage:
                     'uraian': 'Pemasangan Bekisting',
                     'satuan': 'm2',
                     'koefisien': '10.0',
-                    'ref_pekerjaan_id': bundle_pekerjaan.id
+                    'ref_kind': 'job',  # NEW FORMAT
+                    'ref_id': bundle_pekerjaan.id
                 }
             ]
         }
@@ -504,7 +506,8 @@ class TestOverrideBugFixed:
                     'uraian': 'Bundle A',
                     'satuan': 'ls',
                     'koefisien': '2.0',
-                    'ref_pekerjaan_id': bundle_a.id
+                    'ref_kind': 'job',  # NEW FORMAT
+                    'ref_id': bundle_a.id
                 },
                 {
                     'kategori': 'LAIN',
@@ -512,7 +515,8 @@ class TestOverrideBugFixed:
                     'uraian': 'Bundle B',
                     'satuan': 'ls',
                     'koefisien': '1.5',
-                    'ref_pekerjaan_id': bundle_b.id
+                    'ref_kind': 'job',  # NEW FORMAT
+                    'ref_id': bundle_b.id
                 }
             ]
         }
