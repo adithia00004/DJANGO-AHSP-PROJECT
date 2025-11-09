@@ -642,6 +642,12 @@
     row.dataset.sourceType = mode || 'ref';
     if (ref_id) row.dataset.refId = String(ref_id);
 
+    // BUGFIX: Store original values for comparison during save
+    // This prevents false-negative change detection when dataset.refId
+    // is updated immediately on select2:select event
+    row.dataset.originalSourceType = mode || 'ref';
+    if (ref_id) row.dataset.originalRefId = String(ref_id);
+
     if (tbody) tbody.appendChild(row);
     renum(tbody);
 
@@ -1314,7 +1320,9 @@
           globalOrder += 1;
 
           const existingId    = tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined;
-          const originalRefId = (tr.dataset.refId ?? null); // di-seed saat load & saat select2:select
+          // BUGFIX: Use originalRefId (set at load) instead of refId (updated on select)
+          const originalRefId = (tr.dataset.originalRefId ?? null);
+          const originalSourceType = (tr.dataset.originalSourceType ?? 'custom');
           const isRefChanged  = (refIdNum != null) && (String(refIdNum) !== String(originalRefId ?? ''));
 
           const p = {
@@ -1328,11 +1336,20 @@
             p.snapshot_uraian = uraian;
             if (satuan) p.snapshot_satuan = satuan;
           } else if (src === 'ref_modified') {
-            if (!existingId || isRefChanged) p.ref_id = refIdNum;
+            // BUGFIX: Always send ref_id if:
+            // 1. New pekerjaan (!existingId)
+            // 2. ref_id changed (isRefChanged)
+            // 3. Source type changed (originalSourceType !== src)
+            if (!existingId || isRefChanged || originalSourceType !== src) {
+              p.ref_id = refIdNum;
+            }
             if (uraian) p.snapshot_uraian = uraian;
             if (satuan) p.snapshot_satuan = satuan;
           } else { // 'ref'
-            if (!existingId || isRefChanged) p.ref_id = refIdNum;
+            // BUGFIX: Same logic - send ref_id on source type change
+            if (!existingId || isRefChanged || originalSourceType !== src) {
+              p.ref_id = refIdNum;
+            }
           }
 
           s.pekerjaan.push(p);
@@ -1356,11 +1373,24 @@
     }
 
     try {
-      await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
+      const response = await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/upsert/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+
+      // BUGFIX: Check for validation errors in response
+      // Backend returns status 207 with errors array when validation fails
+      if (response && response.errors && response.errors.length > 0) {
+        console.error('[LP] Save validation errors:', response.errors);
+        const errorMsg = response.errors.map(e => `• ${e.field}: ${e.message}`).join('\n');
+        alert(`⚠️ Sebagian perubahan tidak tersimpan:\n\n${errorMsg}\n\nSilakan periksa dan coba lagi.`);
+
+        // Reload to show actual database state (changes were rejected)
+        await reloadAfterSave();
+        return;
+      }
+
       alert('✅ Perubahan tersimpan.');
       tbAnnounce && (tbAnnounce.textContent = 'Perubahan tersimpan');
       await reloadAfterSave();
