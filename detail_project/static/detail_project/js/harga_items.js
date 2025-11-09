@@ -762,56 +762,7 @@
   // ===== Init
   fetchList();
 
-  // ===== EXPORT INITIALIZATION =====
-  // Initialize unified export (CSV/PDF/Word) via ExportManager
-  function initExportButtons() {
-    if (typeof ExportManager === 'undefined') {
-      console.warn('[HargaItems] ⚠️ ExportManager not loaded - export buttons disabled');
-      return;
-    }
-
-    try {
-      const exporter = new ExportManager(projectId, 'harga-items');
-
-      const btnCSV = document.getElementById('btn-export-csv');
-      const btnPDF = document.getElementById('btn-export-pdf');
-      const btnWord = document.getElementById('btn-export-word');
-
-      if (btnCSV) {
-        btnCSV.addEventListener('click', async (e) => {
-          e.preventDefault();
-          console.log('[HargaItems] 📥 CSV export requested');
-          await exporter.exportAs('csv');
-        });
-      }
-
-      if (btnPDF) {
-        btnPDF.addEventListener('click', async (e) => {
-          e.preventDefault();
-          console.log('[HargaItems] 📄 PDF export requested');
-          await exporter.exportAs('pdf');
-        });
-      }
-
-      if (btnWord) {
-        btnWord.addEventListener('click', async (e) => {
-          e.preventDefault();
-          console.log('[HargaItems] 📝 Word export requested');
-          await exporter.exportAs('word');
-        });
-      }
-
-      console.log('[HargaItems] ✓ Export buttons initialized');
-    } catch (err) {
-      console.error('[HargaItems] Export initialization failed:', err);
-    }
-  }
-
-  // Run export initialization after DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initExportButtons);
-  } else {
-    initExportButtons();
-  }
+  // ===== Export buttons already initialized in initUnifiedExport() IIFE above =====
+  // (Removed duplicate initExportButtons function - it was causing projectId undefined error)
 
 })();

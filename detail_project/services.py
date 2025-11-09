@@ -239,8 +239,10 @@ def expand_bundle_to_components(
     ref_pekerjaan_id = detail_data.get('ref_pekerjaan_id')
     if not ref_pekerjaan_id:
         # Not a bundle - shouldn't happen, but return empty to be safe
-        logger.warning(f"expand_bundle_to_components called for non-bundle detail: {detail_data}")
+        logger.warning(f"[EXPAND_BUNDLE] Called for non-bundle detail (no ref_pekerjaan_id): {detail_data}")
         return []
+
+    logger.info(f"[EXPAND_BUNDLE] Depth={depth}, Bundle='{detail_data.get('kode')}', Ref_Pekerjaan_ID={ref_pekerjaan_id}, Koef={detail_data.get('koefisien')}, Base_Koef={base_koef}")
 
     # Check circular dependency
     if ref_pekerjaan_id in visited:
@@ -253,6 +255,7 @@ def expand_bundle_to_components(
                 visited_codes.append(str(pid))
 
         cycle_str = " → ".join(visited_codes)
+        logger.error(f"[EXPAND_BUNDLE] Circular dependency detected: {cycle_str}")
         raise ValueError(f"Circular dependency detected in bundle expansion: {cycle_str}")
 
     # Add to visited
@@ -264,13 +267,24 @@ def expand_bundle_to_components(
     # Fetch components dari ref_pekerjaan
     try:
         ref_pekerjaan = Pekerjaan.objects.get(id=ref_pekerjaan_id, project=project)
+        logger.info(f"[EXPAND_BUNDLE] Found ref_pekerjaan: {ref_pekerjaan.snapshot_kode} (ID: {ref_pekerjaan.id})")
     except Pekerjaan.DoesNotExist:
+        logger.error(f"[EXPAND_BUNDLE] Reference pekerjaan #{ref_pekerjaan_id} not found")
         raise ValueError(f"Reference pekerjaan #{ref_pekerjaan_id} tidak ditemukan")
 
     components = DetailAHSPProject.objects.filter(
         project=project,
         pekerjaan=ref_pekerjaan
     ).select_related('harga_item').order_by('id')
+
+    comp_count = components.count()
+    logger.info(f"[EXPAND_BUNDLE] Found {comp_count} components in ref_pekerjaan")
+
+    if comp_count == 0:
+        logger.warning(f"[EXPAND_BUNDLE] No components found in ref_pekerjaan {ref_pekerjaan.snapshot_kode} - returning empty")
+        # Remove from visited before returning
+        visited.discard(ref_pekerjaan_id)
+        return []
 
     result = []
 
@@ -311,6 +325,8 @@ def expand_bundle_to_components(
     # Remove from visited after processing (for backtracking)
     visited.discard(ref_pekerjaan_id)
 
+    logger.info(f"[EXPAND_BUNDLE] Expansion complete: {len(result)} base components returned")
+
     return result
 
 
@@ -341,14 +357,19 @@ def _populate_expanded_from_raw(project, pekerjaan):
     """
     from .models import DetailAHSPProject, DetailAHSPExpanded
 
+    logger.info(f"[POPULATE_EXPANDED] START - Project: {project.id}, Pekerjaan: {pekerjaan.id} ({pekerjaan.snapshot_kode})")
+
     # Delete old expanded data
+    old_count = DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pekerjaan).count()
     DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pekerjaan).delete()
+    logger.info(f"[POPULATE_EXPANDED] Deleted {old_count} old expanded rows")
 
     # Read from raw storage
     raw_details = DetailAHSPProject.objects.filter(
         project=project,
         pekerjaan=pekerjaan
     ).select_related('harga_item').order_by('id')
+    logger.info(f"[POPULATE_EXPANDED] Found {raw_details.count()} raw details to pass-through")
 
     # Pass-through to expanded storage (no bundle expansion for REF items)
     expanded_to_create = []
@@ -370,6 +391,9 @@ def _populate_expanded_from_raw(project, pekerjaan):
     # Bulk create
     if expanded_to_create:
         DetailAHSPExpanded.objects.bulk_create(expanded_to_create, ignore_conflicts=True)
+        logger.info(f"[POPULATE_EXPANDED] SUCCESS - Created {len(expanded_to_create)} expanded rows")
+    else:
+        logger.warning(f"[POPULATE_EXPANDED] No expanded rows to create")
 
 
 @transaction.atomic
@@ -393,11 +417,15 @@ def clone_ref_pekerjaan(
     - source_type == ref_modified → snapshot_kode = "mod.X-<kode_ref>" (X bertambah per proyek)
       dan boleh override uraian/satuan dari parameter.
     """
+    logger.info(f"[CLONE_REF_PKJ] START - Project: {project.id}, Source_Type: {source_type}, Auto_Load: {auto_load_rincian}")
+
     # Siapkan snapshot_kode sesuai mode
     rid = getattr(ref_obj, 'id', None)
     kode_ref   = getattr(ref_obj, 'kode_ahsp', None) or (f"REF-{rid}" if rid is not None else "REF")
     uraian_ref = getattr(ref_obj, 'nama_ahsp', None) or (f"AHSP {rid}" if rid is not None else "AHSP")
     satuan_ref = getattr(ref_obj, 'satuan', None)
+
+    logger.info(f"[CLONE_REF_PKJ] Ref_Obj: ID={rid}, Kode={kode_ref}, Uraian={uraian_ref}")
 
     if source_type == Pekerjaan.SOURCE_REF_MOD:
         # nomor bertambah per proyek berdasarkan jumlah ref_modified yang sudah ada
@@ -421,10 +449,12 @@ def clone_ref_pekerjaan(
         auto_load_rincian=auto_load_rincian,
         ordering_index=ordering_index,
     )
+    logger.info(f"[CLONE_REF_PKJ] Created Pekerjaan: ID={pkj.id}, Kode={snap_kode}, Source={source_type}")
 
     # Muat rincian dari referensi jika diminta
     if auto_load_rincian and RincianReferensi is not None:
         rincian_qs = RincianReferensi.objects.filter(ahsp=ref_obj).order_by('id')
+        logger.info(f"[CLONE_REF_PKJ] Loading rincian: Found {rincian_qs.count()} rows")
         bulk_details: List[DetailAHSPProject] = []
         for rr in rincian_qs:
             # Kategori sinkron dengan app referensi: TK/BHN/ALT/LAIN
@@ -447,11 +477,14 @@ def clone_ref_pekerjaan(
             ))
         if bulk_details:
             DetailAHSPProject.objects.bulk_create(bulk_details, ignore_conflicts=True)
+            logger.info(f"[CLONE_REF_PKJ] Created {len(bulk_details)} DetailAHSPProject rows")
 
             # DUAL STORAGE: Also populate DetailAHSPExpanded for REF/REF_MODIFIED
             # Items from referensi are direct input (TK/BHN/ALT), not bundles
             # So we pass-through to expanded storage
+            logger.info(f"[CLONE_REF_PKJ] Calling _populate_expanded_from_raw for dual storage...")
             _populate_expanded_from_raw(project, pkj)
+    logger.info(f"[CLONE_REF_PKJ] COMPLETE - Pekerjaan ID: {pkj.id}")
     return pkj
 
 def expand_bundle_recursive(

@@ -479,15 +479,45 @@
       credentials:'same-origin',
       headers:{ 'Content-Type':'application/json', 'X-CSRFToken': CSRF },
       body: JSON.stringify({rows: rowsCanon})
-    }).then(r=>r.json()).then(js=>{
-      if (!js.ok && !js.saved_rows) throw new Error('Gagal simpan');
+    }).then(r => {
+      // DEBUG: Log response status
+      console.log('[SAVE] HTTP Status:', r.status);
+      if (!r.ok) {
+        console.error('[SAVE] HTTP Error:', r.status, r.statusText);
+      }
+      return r.json();
+    }).then(js => {
+      // DEBUG: Log full response
+      console.log('[SAVE] Response:', js);
+
+      // Check for errors in response
+      if (js.errors && js.errors.length > 0) {
+        console.error('[SAVE] Server errors:', js.errors);
+        const firstError = js.errors[0];
+        const errorMsg = firstError.message || 'Unknown error';
+        const errorPath = firstError.path || '';
+        toast(`Save Failed: ${errorPath} - ${errorMsg}`, 'error');
+        console.error('[SAVE] Full error details:', js.errors);
+        return; // Don't throw, just return
+      }
+
+      if (!js.ok && !js.saved_raw_rows && !js.saved_expanded_rows) {
+        console.error('[SAVE] Save failed - no rows saved');
+        throw new Error('Gagal simpan - server returned ok=false');
+      }
+
+      // Success
+      console.log('[SAVE] Success - Raw:', js.saved_raw_rows, 'Expanded:', js.saved_expanded_rows);
       setDirty(false);
       rowsByJob[activeJobId] = rowsByJob[activeJobId] || {};
       rowsByJob[activeJobId].items = rows; // cache tampilan
       toast('Tersimpan', 'success');
-    }).catch(()=>{
-      toast('Gagal menyimpan', 'error');
-  }).finally(()=>{
+    }).catch((err) => {
+      // DEBUG: Log detailed error
+      console.error('[SAVE] Catch error:', err);
+      console.error('[SAVE] Error stack:', err.stack);
+      toast('Gagal menyimpan - lihat console untuk detail', 'error');
+    }).finally(() => {
       if (spin) spin.hidden = true;
       if (btnSave) btnSave.disabled = false;
     });

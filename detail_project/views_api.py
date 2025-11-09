@@ -1165,7 +1165,11 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     project = _owner_or_404(project_id, request.user)
     pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
 
+    # DEBUG LOG: Start
+    logger.info(f"[SAVE_DETAIL_AHSP] START - Project: {project.id}, Pekerjaan: {pkj.id} ({pkj.snapshot_kode}), Source: {pkj.source_type}")
+
     if pkj.source_type == Pekerjaan.SOURCE_REF:
+        logger.warning(f"[SAVE_DETAIL_AHSP] REJECTED - Pekerjaan {pkj.id} is REF (read-only)")
         return JsonResponse({
             "ok": False,
             "errors": [_err("source_type", "Pekerjaan referensi tidak bisa diubah di tahap ini (gunakan tahap Gabungan).")]
@@ -1174,7 +1178,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     # Parse payload
     try:
         payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
+        logger.info(f"[SAVE_DETAIL_AHSP] Payload received: {len(payload.get('rows', []))} rows")
+    except Exception as e:
+        logger.error(f"[SAVE_DETAIL_AHSP] JSON parse error: {str(e)}")
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
 
     rows = payload.get('rows') or []
@@ -1282,7 +1288,10 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
     # Bila semua baris error → 400
     if errors and not normalized:
+        logger.error(f"[SAVE_DETAIL_AHSP] All rows invalid: {len(errors)} errors")
         return JsonResponse({"ok": False, "errors": errors}, status=400)
+
+    logger.info(f"[SAVE_DETAIL_AHSP] Validation passed: {len(normalized)} rows valid, {len(errors)} errors")
 
     # ========================================================================
     # DUAL STORAGE IMPLEMENTATION
@@ -1295,6 +1304,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
     # STORAGE 1: Prepare raw input (keep bundles!)
     raw_details_to_create = []
+    logger.info(f"[SAVE_DETAIL_AHSP] Preparing STORAGE 1 (DetailAHSPProject - raw input)")
     for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
         # Upsert HargaItemProject (create master harga record)
         # For LAIN bundles, create placeholder with harga_satuan=0
@@ -1315,15 +1325,21 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         ))
 
     # Delete old & insert new (replace-all) for STORAGE 1
+    old_count = DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).count()
     DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
+    logger.info(f"[SAVE_DETAIL_AHSP] Deleted {old_count} old DetailAHSPProject rows")
 
     if raw_details_to_create:
         created_raw = DetailAHSPProject.objects.bulk_create(raw_details_to_create, ignore_conflicts=True)
+        logger.info(f"[SAVE_DETAIL_AHSP] Created {len(created_raw)} new DetailAHSPProject rows")
     else:
         created_raw = []
+        logger.warning(f"[SAVE_DETAIL_AHSP] No raw details to create")
 
     # STORAGE 2: Expand bundles to DetailAHSPExpanded
+    old_expanded_count = DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pkj).count()
     DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pkj).delete()
+    logger.info(f"[SAVE_DETAIL_AHSP] STORAGE 2: Deleted {old_expanded_count} old DetailAHSPExpanded rows")
 
     expanded_to_create = []
 
@@ -1332,10 +1348,14 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         project=project,
         pekerjaan=pkj
     ).select_related('harga_item', 'ref_pekerjaan').order_by('id')
+    logger.info(f"[SAVE_DETAIL_AHSP] Processing {saved_raw_details.count()} saved raw details for expansion")
 
     for detail_obj in saved_raw_details:
         if detail_obj.kategori == HargaItemProject.KATEGORI_LAIN and detail_obj.ref_pekerjaan:
             # BUNDLE - Expand to components
+            ref_pkj_kode = detail_obj.ref_pekerjaan.snapshot_kode if detail_obj.ref_pekerjaan else "Unknown"
+            logger.info(f"[SAVE_DETAIL_AHSP] BUNDLE detected: '{detail_obj.kode}' → ref_pekerjaan={ref_pkj_kode} (ID: {detail_obj.ref_pekerjaan_id})")
+
             detail_dict = {
                 'kategori': detail_obj.kategori,
                 'kode': detail_obj.kode,
@@ -1347,6 +1367,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
             try:
                 # Expand bundle recursively
+                logger.info(f"[SAVE_DETAIL_AHSP] Expanding bundle '{detail_obj.kode}' (koef={detail_obj.koefisien})...")
                 expanded_components = expand_bundle_to_components(
                     detail_data=detail_dict,
                     project=project,
@@ -1354,6 +1375,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                     depth=0,
                     visited=None
                 )
+                logger.info(f"[SAVE_DETAIL_AHSP] Expansion result: {len(expanded_components)} components")
 
                 # Check if expansion returned components
                 if not expanded_components:
@@ -1437,14 +1459,21 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     # Bulk create expanded components
     if expanded_to_create:
         DetailAHSPExpanded.objects.bulk_create(expanded_to_create, ignore_conflicts=True)
+        logger.info(f"[SAVE_DETAIL_AHSP] Created {len(expanded_to_create)} DetailAHSPExpanded rows")
+    else:
+        logger.warning(f"[SAVE_DETAIL_AHSP] No expanded components to create")
 
     # Update pekerjaan.detail_ready (based on expanded components count)
-    Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=(len(expanded_to_create) > 0))
+    detail_ready = len(expanded_to_create) > 0
+    Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=detail_ready)
+    logger.info(f"[SAVE_DETAIL_AHSP] Updated pekerjaan.detail_ready = {detail_ready}")
 
     # Invalidate rekap cache
     invalidate_rekap_cache(project)
 
     status_code = 207 if errors else 200
+    logger.info(f"[SAVE_DETAIL_AHSP] SUCCESS - Status: {status_code}, Raw: {len(saved_raw_details)}, Expanded: {len(expanded_to_create)}, Errors: {len(errors)}")
+
     return JsonResponse({
         "ok": status_code == 200,
         "saved_raw_rows": len(saved_raw_details),
