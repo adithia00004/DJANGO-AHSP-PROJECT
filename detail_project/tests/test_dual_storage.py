@@ -30,8 +30,7 @@ def ahsp_referensi(db):
     ahsp = AHSPReferensi.objects.create(
         kode_ahsp='1.1.4.1',
         nama_ahsp="Pekerjaan Beton f'c 15 MPa",
-        satuan='m3',
-        is_active=True
+        satuan='m3'
     )
 
     # Add components
@@ -73,7 +72,7 @@ def bundle_pekerjaan(db, project, sub_klas):
         source_type='custom',
         snapshot_kode='CUST-0001',
         snapshot_uraian='Bundle - 1 m2 Bekisting',
-        satuan='m2',
+        snapshot_satuan='m2',
         ordering_index=1
     )
 
@@ -301,7 +300,7 @@ class TestCUSTOMBundleDualStorage:
             source_type='custom',
             snapshot_kode='CUST-0002',
             snapshot_uraian='Pekerjaan Custom 1',
-            satuan='m2',
+            snapshot_satuan='m2',
             ordering_index=2
         )
 
@@ -383,7 +382,7 @@ class TestCUSTOMBundleDualStorage:
             source_type='custom',
             snapshot_kode='CUST-0002',
             snapshot_uraian='Test Bundle',
-            satuan='m2',
+            snapshot_satuan='m2',
             ordering_index=2
         )
 
@@ -436,7 +435,7 @@ class TestOverrideBugFixed:
             source_type='custom',
             snapshot_kode='CUST-0001',
             snapshot_uraian='Bundle A',
-            satuan='ls',
+            snapshot_satuan='ls',
             ordering_index=1
         )
 
@@ -467,7 +466,7 @@ class TestOverrideBugFixed:
             source_type='custom',
             snapshot_kode='CUST-0002',
             snapshot_uraian='Bundle B',
-            satuan='ls',
+            snapshot_satuan='ls',
             ordering_index=2
         )
 
@@ -493,7 +492,7 @@ class TestOverrideBugFixed:
             source_type='custom',
             snapshot_kode='CUST-0003',
             snapshot_uraian='Test Override',
-            satuan='ls',
+            snapshot_satuan='ls',
             ordering_index=3
         )
 
@@ -569,7 +568,7 @@ class TestDualStorageErrorCases:
             source_type='custom',
             snapshot_kode='CUST-TEST',
             snapshot_uraian='Test Error',
-            satuan='ls',
+            snapshot_satuan='ls',
             ordering_index=1
         )
 
