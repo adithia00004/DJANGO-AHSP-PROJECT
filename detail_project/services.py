@@ -324,6 +324,54 @@ def generate_custom_code(project) -> str:
     return f"CUST-{n:04d}"
 
 
+def _populate_expanded_from_raw(project, pekerjaan):
+    """
+    DUAL STORAGE HELPER: Populate DetailAHSPExpanded from DetailAHSPProject.
+
+    For REF/REF_MODIFIED pekerjaan, items are direct input (TK/BHN/ALT), not bundles.
+    We simply pass-through to expanded storage (no expansion needed).
+
+    This is called after:
+    - clone_ref_pekerjaan() creates DetailAHSPProject from referensi
+    - User manually edits REF_MODIFIED details
+
+    Args:
+        project: Project instance
+        pekerjaan: Pekerjaan instance
+    """
+    from .models import DetailAHSPProject, DetailAHSPExpanded
+
+    # Delete old expanded data
+    DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pekerjaan).delete()
+
+    # Read from raw storage
+    raw_details = DetailAHSPProject.objects.filter(
+        project=project,
+        pekerjaan=pekerjaan
+    ).select_related('harga_item').order_by('id')
+
+    # Pass-through to expanded storage (no bundle expansion for REF items)
+    expanded_to_create = []
+    for detail_obj in raw_details:
+        expanded_to_create.append(DetailAHSPExpanded(
+            project=project,
+            pekerjaan=pekerjaan,
+            source_detail=detail_obj,
+            harga_item=detail_obj.harga_item,
+            kategori=detail_obj.kategori,
+            kode=detail_obj.kode,
+            uraian=detail_obj.uraian,
+            satuan=detail_obj.satuan,
+            koefisien=detail_obj.koefisien,
+            source_bundle_kode=None,  # Not from bundle
+            expansion_depth=0,  # Direct input
+        ))
+
+    # Bulk create
+    if expanded_to_create:
+        DetailAHSPExpanded.objects.bulk_create(expanded_to_create, ignore_conflicts=True)
+
+
 @transaction.atomic
 def clone_ref_pekerjaan(
     project,
@@ -399,6 +447,11 @@ def clone_ref_pekerjaan(
             ))
         if bulk_details:
             DetailAHSPProject.objects.bulk_create(bulk_details, ignore_conflicts=True)
+
+            # DUAL STORAGE: Also populate DetailAHSPExpanded for REF/REF_MODIFIED
+            # Items from referensi are direct input (TK/BHN/ALT), not bundles
+            # So we pass-through to expanded storage
+            _populate_expanded_from_raw(project, pkj)
     return pkj
 
 def expand_bundle_recursive(

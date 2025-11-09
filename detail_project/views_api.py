@@ -1355,6 +1355,22 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                     visited=None
                 )
 
+                # Check if expansion returned components
+                if not expanded_components:
+                    # Bundle has no components (empty pekerjaan or expansion failed)
+                    ref_pkj_kode = detail_obj.ref_pekerjaan.snapshot_kode if detail_obj.ref_pekerjaan else "Unknown"
+                    logger.warning(
+                        f"Bundle expansion returned empty for pekerjaan {pkj.id}, "
+                        f"bundle '{detail_obj.kode}' (ref_pekerjaan: {ref_pkj_kode}). "
+                        f"Target pekerjaan may have no details."
+                    )
+                    errors.append(_err(
+                        f"bundle.{detail_obj.kode}",
+                        f"Pekerjaan gabungan '{detail_obj.uraian}' tidak memiliki komponen. "
+                        f"Pastikan pekerjaan yang direferensikan ('{ref_pkj_kode}') sudah memiliki detail AHSP."
+                    ))
+                    # Don't add to expanded - bundle without components is invalid
+
                 # Add expanded components to DetailAHSPExpanded
                 for comp in expanded_components:
                     # Upsert HargaItemProject for base components
@@ -1385,9 +1401,22 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                 logger.error(
                     f"Bundle expansion failed for pekerjaan {pkj.id}, bundle {detail_obj.kode}: {str(e)}"
                 )
-                errors.append(_err(f"bundle.{detail_obj.kode}", f"Expansion error: {str(e)}"))
+                errors.append(_err(f"bundle.{detail_obj.kode}", f"Error expansion: {str(e)}"))
                 # Continue - keep raw input even if expansion fails
                 # User can fix and re-save
+
+        elif detail_obj.kategori == HargaItemProject.KATEGORI_LAIN:
+            # LAIN item without ref_pekerjaan - invalid bundle
+            logger.warning(
+                f"LAIN item '{detail_obj.kode}' in pekerjaan {pkj.id} has no ref_pekerjaan. "
+                f"Bundle items must reference a pekerjaan. Skipping from expanded storage."
+            )
+            errors.append(_err(
+                f"item.{detail_obj.kode}",
+                f"Item LAIN '{detail_obj.uraian}' tidak memiliki referensi pekerjaan. "
+                f"Untuk pekerjaan gabungan, pilih pekerjaan dari dropdown."
+            ))
+            # Don't add to expanded - invalid bundle
 
         else:
             # DIRECT INPUT (TK/BHN/ALT) - Pass-through to expanded
