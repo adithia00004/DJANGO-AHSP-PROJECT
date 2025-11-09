@@ -1482,6 +1482,13 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 @require_POST
 @transaction.atomic
 def api_save_harga_items(request: HttpRequest, project_id: int):
+    """
+    Save/update Harga Items for this project.
+
+    DUAL STORAGE UPDATE:
+    - Validates items against DetailAHSPExpanded (expanded components)
+    - Only allows editing items that are actually used in expanded storage
+    """
     project = _owner_or_404(project_id, request.user)
     try:
         payload = json.loads(request.body.decode('utf-8'))
@@ -1492,8 +1499,9 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     errors = []
     updated = 0
 
+    # DUAL STORAGE: Check against expanded_refs (expanded components)
     allowed_ids = set(HargaItemProject.objects
-                      .filter(project=project, detail_refs__project=project)
+                      .filter(project=project, expanded_refs__project=project)
                       .values_list('id', flat=True)
                       .distinct())
 
@@ -1865,9 +1873,17 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
 
 @login_required
 def api_list_harga_items(request: HttpRequest, project_id: int):
+    """
+    List all Harga Items used in this project.
+
+    DUAL STORAGE UPDATE:
+    - Reads from DetailAHSPExpanded (expanded components) instead of DetailAHSPProject (raw input)
+    - Shows only base components (TK/BHN/ALT) from bundle expansion
+    - Bundle items (LAIN) are NOT shown (they're expanded to components)
+    """
     project = _owner_or_404(project_id, request.user)
     qs = (HargaItemProject.objects
-          .filter(project=project, detail_refs__project=project)
+          .filter(project=project, expanded_refs__project=project)  # DUAL STORAGE: expanded_refs instead of detail_refs
           .distinct()
           .order_by('kode_item'))
     items = list(qs.values('id','kode_item','kategori','uraian','satuan','harga_satuan'))

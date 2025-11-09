@@ -13,7 +13,14 @@ class HargaItemsAdapter:
         self.project = project
 
     def get_export_data(self) -> Dict[str, Any]:
-        """Transform Harga Items data for export"""
+        """
+        Transform Harga Items data for export.
+
+        DUAL STORAGE UPDATE:
+        - Reads from DetailAHSPExpanded (expanded components) instead of DetailAHSPProject (raw input)
+        - Shows only base components (TK/BHN/ALT) from bundle expansion
+        - Bundle items (LAIN) are NOT shown (they're expanded to components)
+        """
         from detail_project.models import HargaItemProject
 
         rows = []
@@ -30,10 +37,10 @@ class HargaItemsAdapter:
         # Column widths for A4 Portrait (210mm width - 20mm margins = 190mm usable)
         col_widths = [25, 25, 85, 25, 30]  # in mm (total: 190mm)
 
-        # Fetch harga items yang digunakan di project
+        # Fetch harga items yang digunakan di project (DUAL STORAGE: from expanded components)
         items_qs = (
             HargaItemProject.objects
-            .filter(project=self.project, detail_refs__project=self.project)
+            .filter(project=self.project, expanded_refs__project=self.project)
             .distinct()
             .order_by('kategori', 'kode_item')
         )
