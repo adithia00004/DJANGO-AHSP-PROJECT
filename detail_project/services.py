@@ -17,6 +17,7 @@ from .models import (
     Pekerjaan,
     VolumePekerjaan,
     DetailAHSPProject,
+    DetailAHSPExpanded,
     HargaItemProject,
     ProjectPricing,
     ProjectParameter,
@@ -169,6 +170,148 @@ def validate_bundle_reference(pekerjaan_id: int, ref_kind: str, ref_id: int, pro
             return (False, f"AHSP reference #{ref_id} tidak ditemukan")
 
     return (True, "")
+
+
+def expand_bundle_to_components(
+    detail_data: dict,
+    project,
+    base_koef: Decimal = Decimal('1.0'),
+    depth: int = 0,
+    visited: Optional[Set[int]] = None
+) -> List[dict]:
+    """
+    Expand bundle (LAIN dengan ref_pekerjaan) menjadi list komponen base (TK/BHN/ALT).
+
+    Supports nested bundles (multi-level) dengan recursive expansion.
+    Koefisien dikalikan secara hierarkis: Koef_Final = Koef_Bundle × Koef_Component.
+
+    Args:
+        detail_data: Dict dengan keys: kategori, kode, koefisien, ref_pekerjaan_id
+        project: Project instance
+        base_koef: Accumulated koefisien dari parent levels (untuk nested bundle)
+        depth: Current expansion depth (untuk tracking & limit)
+        visited: Set of pekerjaan_id untuk prevent infinite recursion
+
+    Returns:
+        List of dicts:
+        [{
+            'kategori': 'TK',
+            'kode': 'TK.001',
+            'uraian': 'Pekerja',
+            'satuan': 'OH',
+            'koefisien': Decimal('40.000000'),  # Already multiplied
+            'harga_item': HargaItemProject instance,
+            'depth': 1
+        }, ...]
+
+    Example:
+        detail_data = {
+            'kategori': 'LAIN',
+            'kode': 'PG_A',
+            'koefisien': Decimal('20.0'),
+            'ref_pekerjaan_id': 123
+        }
+
+        # Pekerjaan 123 (PG_A) has:
+        # - Bahan A (koef=1)
+        # - Tenaga A (koef=2)
+
+        Result:
+        [
+            {'kode': 'Bahan_A', 'koefisien': Decimal('20.0')},  # 1 × 20
+            {'kode': 'Tenaga_A', 'koefisien': Decimal('40.0')}, # 2 × 20
+        ]
+
+    Raises:
+        ValueError: Jika max depth exceeded atau circular dependency detected
+    """
+    MAX_DEPTH = 10
+
+    # Check max depth
+    if depth > MAX_DEPTH:
+        raise ValueError(f"Maksimum kedalaman bundle expansion terlampaui (max {MAX_DEPTH})")
+
+    # Initialize visited set
+    if visited is None:
+        visited = set()
+
+    # Get bundle reference
+    ref_pekerjaan_id = detail_data.get('ref_pekerjaan_id')
+    if not ref_pekerjaan_id:
+        # Not a bundle - shouldn't happen, but return empty to be safe
+        logger.warning(f"expand_bundle_to_components called for non-bundle detail: {detail_data}")
+        return []
+
+    # Check circular dependency
+    if ref_pekerjaan_id in visited:
+        visited_codes = []
+        for pid in visited:
+            try:
+                p = Pekerjaan.objects.get(id=pid)
+                visited_codes.append(p.snapshot_kode or str(pid))
+            except Pekerjaan.DoesNotExist:
+                visited_codes.append(str(pid))
+
+        cycle_str = " → ".join(visited_codes)
+        raise ValueError(f"Circular dependency detected in bundle expansion: {cycle_str}")
+
+    # Add to visited
+    visited.add(ref_pekerjaan_id)
+
+    # Get bundle koefisien
+    bundle_koef = Decimal(str(detail_data.get('koefisien', '1.0')))
+
+    # Fetch components dari ref_pekerjaan
+    try:
+        ref_pekerjaan = Pekerjaan.objects.get(id=ref_pekerjaan_id, project=project)
+    except Pekerjaan.DoesNotExist:
+        raise ValueError(f"Reference pekerjaan #{ref_pekerjaan_id} tidak ditemukan")
+
+    components = DetailAHSPProject.objects.filter(
+        project=project,
+        pekerjaan=ref_pekerjaan
+    ).select_related('harga_item').order_by('id')
+
+    result = []
+
+    for comp in components:
+        if comp.kategori == 'LAIN' and comp.ref_pekerjaan_id:
+            # Nested bundle - recursive expansion
+            nested_data = {
+                'kategori': comp.kategori,
+                'kode': comp.kode,
+                'koefisien': comp.koefisien,
+                'ref_pekerjaan_id': comp.ref_pekerjaan_id,
+            }
+
+            nested_components = expand_bundle_to_components(
+                detail_data=nested_data,
+                project=project,
+                base_koef=base_koef * bundle_koef,
+                depth=depth + 1,
+                visited=visited.copy()  # Copy to avoid mutation in sibling branches
+            )
+
+            result.extend(nested_components)
+
+        else:
+            # Base component (TK/BHN/ALT) - add with multiplied koefisien
+            final_koef = comp.koefisien * bundle_koef * base_koef
+
+            result.append({
+                'kategori': comp.kategori,
+                'kode': comp.kode,
+                'uraian': comp.uraian,
+                'satuan': comp.satuan,
+                'koefisien': final_koef,
+                'harga_item': comp.harga_item,
+                'depth': depth + 1
+            })
+
+    # Remove from visited after processing (for backtracking)
+    visited.discard(ref_pekerjaan_id)
+
+    return result
 
 
 def generate_custom_code(project) -> str:
@@ -426,11 +569,12 @@ def compute_rekap_for_project(project):
         pass
 
     # --- Agregasi nilai per kategori
+    # NEW: Read from DetailAHSPExpanded (dual storage - already expanded!)
     price = DJF('harga_item__harga_satuan')
-    coef  = DJF('koefisien')
+    coef  = DJF('koefisien')  # Already multiplied koef from expansion
     nilai = ExpressionWrapper(coef * price, output_field=DecimalField(max_digits=20, decimal_places=2))
 
-    base = (DetailAHSPProject.objects
+    base = (DetailAHSPExpanded.objects
             .filter(project=project)
             .values('pekerjaan_id', 'kategori')
             .annotate(jumlah=Sum(nilai)))
@@ -612,7 +756,8 @@ def compute_kebutuhan_items(
     aggregated = defaultdict(Decimal)
     
     # Get all detail items untuk pekerjaan dalam scope
-    details = DetailAHSPProject.objects.filter(
+    # NEW: Read from DetailAHSPExpanded (dual storage - already expanded!)
+    details = DetailAHSPExpanded.objects.filter(
         project=project,
         pekerjaan_id__in=pekerjaan_ids
     ).select_related('harga_item').values(
@@ -621,9 +766,9 @@ def compute_kebutuhan_items(
         'kode',
         'uraian',
         'satuan',
-        'koefisien',
-        'ref_ahsp_id',
-        'ref_pekerjaan_id'  # NEW: bundle support untuk Pekerjaan
+        'koefisien',  # Already multiplied koefisien from expansion!
+        'source_bundle_kode',  # For tracking
+        'expansion_depth'  # For debugging
     )
 
     # Process each detail item
@@ -641,45 +786,18 @@ def compute_kebutuhan_items(
             continue
 
         kategori = detail['kategori']
-        koefisien = Decimal(str(detail['koefisien'] or 0))
+        koefisien = Decimal(str(detail['koefisien'] or 0))  # Already expanded koef!
 
-        # Handle bundle items (LAIN dengan ref_ahsp ATAU ref_pekerjaan)
-        if kategori == 'LAIN' and (detail['ref_ahsp_id'] or detail['ref_pekerjaan_id']):
-            try:
-                # Use recursive expansion untuk handle nested bundles
-                expanded_items = expand_bundle_recursive(
-                    detail_dict=detail,
-                    base_koefisien=Decimal('1.0'),  # Start with 1, will multiply with detail koefisien inside
-                    project=project,
-                    depth=0,
-                    visited=None
-                )
-
-                # Aggregate expanded items
-                for (exp_kat, exp_kode, exp_uraian, exp_satuan, exp_koef) in expanded_items:
-                    key = (exp_kat, exp_kode, exp_uraian, exp_satuan)
-                    qty = exp_koef * volume_efektif
-                    aggregated[key] += qty
-
-            except ValueError as e:
-                # Circular dependency atau max depth exceeded
-                logger.error(
-                    f"Bundle expansion error for pekerjaan {pekerjaan_id}: {str(e)}",
-                    extra={'detail': detail, 'project_id': project.id}
-                )
-                # Skip this bundle item, continue with others
-                continue
-
-        # Handle normal items (TK/BHN/ALT)
-        elif kategori in ('TK', 'BHN', 'ALT'):
-            key = (
-                kategori,
-                detail['kode'],
-                detail['uraian'],
-                detail['satuan']
-            )
-            qty = koefisien * volume_efektif
-            aggregated[key] += qty
+        # No expansion needed - DetailAHSPExpanded already has expanded components!
+        # Just aggregate directly
+        key = (
+            kategori,
+            detail['kode'],
+            detail['uraian'],
+            detail['satuan']
+        )
+        qty = koefisien * volume_efektif
+        aggregated[key] += qty
     
     # ========================================================================
     # STEP 5: Apply kategori filter (jika ada)

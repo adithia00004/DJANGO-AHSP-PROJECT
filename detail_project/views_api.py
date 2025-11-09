@@ -21,12 +21,12 @@ from .numeric import parse_any, to_dp_str, quantize_half_up, DECIMAL_SPEC
 from referensi.models import AHSPReferensi
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
-    DetailAHSPProject, HargaItemProject,VolumeFormulaState, ProjectPricing, # NEW
+    DetailAHSPProject, DetailAHSPExpanded, HargaItemProject,VolumeFormulaState, ProjectPricing, # NEW
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
-    expand_bundle_recursive,
+    expand_bundle_to_components,  # NEW: Dual storage expansion
 )
 
 from .export_config import (
@@ -1285,72 +1285,22 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         return JsonResponse({"ok": False, "errors": errors}, status=400)
 
     # ========================================================================
-    # EXPANSION: Expand bundle items (LAIN dengan ref) menjadi component items
+    # DUAL STORAGE IMPLEMENTATION
     # ========================================================================
-    expanded_normalized = []
+    # STORAGE 1: Save RAW INPUT to DetailAHSPProject (keep LAIN bundles)
+    # STORAGE 2: Expand bundles to DetailAHSPExpanded (computed for rekap)
+    # ========================================================================
+
     dp_koef = DECIMAL_SPEC["KOEF"].dp  # default 6
 
+    # STORAGE 1: Prepare raw input (keep bundles!)
+    raw_details_to_create = []
     for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
-        # Jika LAIN dengan bundle reference → expand ke component items
-        if kat == HargaItemProject.KATEGORI_LAIN and (ref_ahsp_obj or ref_pekerjaan_obj):
-            # Build detail_dict untuk expansion
-            detail_dict = {
-                'kategori': kat,
-                'kode': kode,
-                'uraian': uraian,
-                'satuan': satuan,
-                'koefisien': str(koef),
-                'ref_ahsp_id': ref_ahsp_obj.id if ref_ahsp_obj else None,
-                'ref_pekerjaan_id': ref_pekerjaan_obj.id if ref_pekerjaan_obj else None,
-            }
-
-            try:
-                # Expand bundle recursively
-                expanded_items = expand_bundle_recursive(
-                    detail_dict=detail_dict,
-                    base_koefisien=Decimal('1.0'),
-                    project=project,
-                    depth=0,
-                    visited=None
-                )
-
-                # Add expanded items to final list
-                # Format: (kategori, kode, uraian, satuan, koefisien_final)
-                for exp_kat, exp_kode, exp_uraian, exp_satuan, exp_koef in expanded_items:
-                    expanded_normalized.append((
-                        exp_kat,
-                        exp_kode,
-                        exp_uraian,
-                        exp_satuan,
-                        exp_koef,
-                        None,  # no ref_ahsp for expanded items
-                        None   # no ref_pekerjaan for expanded items
-                    ))
-
-            except ValueError as e:
-                # Expansion failed (circular dependency atau max depth)
-                logger.error(
-                    f"Bundle expansion failed during save for pekerjaan {pkj.id}: {str(e)}",
-                    extra={'kode': kode, 'uraian': uraian}
-                )
-                errors.append(_err(f"bundle.{kode}", f"Expansion error: {str(e)}"))
-                continue
-
-        else:
-            # Normal item (TK/BHN/ALT/BUK atau LAIN tanpa ref) → tambahkan langsung
-            expanded_normalized.append((kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj))
-
-    # Bila expansion menghasilkan error → return 400
-    if errors and not expanded_normalized:
-        return JsonResponse({"ok": False, "errors": errors}, status=400)
-
-    # Replace-all: hapus lama, masukkan yang baru
-    DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
-
-    to_create = []
-    for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in expanded_normalized:
+        # Upsert HargaItemProject (create master harga record)
+        # For LAIN bundles, create placeholder with harga_satuan=0
         hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
-        to_create.append(DetailAHSPProject(
+
+        raw_details_to_create.append(DetailAHSPProject(
             project=project,
             pekerjaan=pkj,
             harga_item=hip,
@@ -1359,21 +1309,119 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             uraian=uraian,
             satuan=satuan,
             koefisien=quantize_half_up(koef, dp_koef),  # HALF_UP dp=6
-            # Field bundle: hanya isi untuk CUSTOM + LAIN (sesuai constraint)
-            # NOTE: Expanded items tidak punya ref (sudah di-expand)
+            # Field bundle: keep refs for LAIN bundles
             ref_ahsp=(ref_ahsp_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
             ref_pekerjaan=(ref_pekerjaan_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
         ))
 
-    if to_create:
-        DetailAHSPProject.objects.bulk_create(to_create, ignore_conflicts=True)
+    # Delete old & insert new (replace-all) for STORAGE 1
+    DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
 
-    # detail_ready untuk custom & ref_modified
-    Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=(len(to_create) > 0))
-    # NEW: detail berubah → rekap berubah
+    if raw_details_to_create:
+        created_raw = DetailAHSPProject.objects.bulk_create(raw_details_to_create, ignore_conflicts=True)
+    else:
+        created_raw = []
+
+    # STORAGE 2: Expand bundles to DetailAHSPExpanded
+    DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pkj).delete()
+
+    expanded_to_create = []
+
+    # Fetch created objects back dengan ID (untuk FK source_detail)
+    saved_raw_details = DetailAHSPProject.objects.filter(
+        project=project,
+        pekerjaan=pkj
+    ).select_related('harga_item', 'ref_pekerjaan').order_by('id')
+
+    for detail_obj in saved_raw_details:
+        if detail_obj.kategori == HargaItemProject.KATEGORI_LAIN and detail_obj.ref_pekerjaan:
+            # BUNDLE - Expand to components
+            detail_dict = {
+                'kategori': detail_obj.kategori,
+                'kode': detail_obj.kode,
+                'uraian': detail_obj.uraian,
+                'satuan': detail_obj.satuan,
+                'koefisien': detail_obj.koefisien,
+                'ref_pekerjaan_id': detail_obj.ref_pekerjaan_id,
+            }
+
+            try:
+                # Expand bundle recursively
+                expanded_components = expand_bundle_to_components(
+                    detail_data=detail_dict,
+                    project=project,
+                    base_koef=Decimal('1.0'),
+                    depth=0,
+                    visited=None
+                )
+
+                # Add expanded components to DetailAHSPExpanded
+                for comp in expanded_components:
+                    # Upsert HargaItemProject for base components
+                    comp_hip = _upsert_harga_item(
+                        project,
+                        comp['kategori'],
+                        comp['kode'],
+                        comp['uraian'],
+                        comp['satuan']
+                    )
+
+                    expanded_to_create.append(DetailAHSPExpanded(
+                        project=project,
+                        pekerjaan=pkj,
+                        source_detail=detail_obj,  # Link back to raw input
+                        harga_item=comp_hip,
+                        kategori=comp['kategori'],
+                        kode=comp['kode'],
+                        uraian=comp['uraian'],
+                        satuan=comp['satuan'],
+                        koefisien=quantize_half_up(comp['koefisien'], dp_koef),
+                        source_bundle_kode=detail_obj.kode,  # Bundle kode for tracking
+                        expansion_depth=comp['depth'],
+                    ))
+
+            except ValueError as e:
+                # Expansion failed (circular dependency atau max depth)
+                logger.error(
+                    f"Bundle expansion failed for pekerjaan {pkj.id}, bundle {detail_obj.kode}: {str(e)}"
+                )
+                errors.append(_err(f"bundle.{detail_obj.kode}", f"Expansion error: {str(e)}"))
+                # Continue - keep raw input even if expansion fails
+                # User can fix and re-save
+
+        else:
+            # DIRECT INPUT (TK/BHN/ALT) - Pass-through to expanded
+            expanded_to_create.append(DetailAHSPExpanded(
+                project=project,
+                pekerjaan=pkj,
+                source_detail=detail_obj,
+                harga_item=detail_obj.harga_item,
+                kategori=detail_obj.kategori,
+                kode=detail_obj.kode,
+                uraian=detail_obj.uraian,
+                satuan=detail_obj.satuan,
+                koefisien=detail_obj.koefisien,
+                source_bundle_kode=None,  # Not from bundle
+                expansion_depth=0,  # Direct input
+            ))
+
+    # Bulk create expanded components
+    if expanded_to_create:
+        DetailAHSPExpanded.objects.bulk_create(expanded_to_create, ignore_conflicts=True)
+
+    # Update pekerjaan.detail_ready (based on expanded components count)
+    Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=(len(expanded_to_create) > 0))
+
+    # Invalidate rekap cache
     invalidate_rekap_cache(project)
+
     status_code = 207 if errors else 200
-    return JsonResponse({"ok": status_code == 200, "saved_rows": len(to_create), "errors": errors}, status=status_code)
+    return JsonResponse({
+        "ok": status_code == 200,
+        "saved_raw_rows": len(saved_raw_details),
+        "saved_expanded_rows": len(expanded_to_create),
+        "errors": errors
+    }, status=status_code)
 
 @login_required
 @require_POST
