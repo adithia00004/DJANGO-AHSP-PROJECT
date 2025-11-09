@@ -2,7 +2,7 @@
 from django.contrib import admin
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
-    HargaItemProject, DetailAHSPProject,
+    HargaItemProject, DetailAHSPProject, DetailAHSPExpanded,
     TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
 )
 
@@ -52,11 +52,21 @@ class HargaItemProjectAdmin(admin.ModelAdmin):
 
 @admin.register(DetailAHSPProject)
 class DetailAHSPProjectAdmin(admin.ModelAdmin):
-    list_display = ("id", "project", "pekerjaan", "kategori", "kode", "uraian", "satuan", "koefisien")
+    list_display = ("id", "project", "pekerjaan", "kategori", "kode", "uraian", "satuan", "koefisien", "ref_pekerjaan")
     list_filter = ("project", "kategori", "pekerjaan")
     search_fields = ("kode", "uraian", "pekerjaan__snapshot_kode", "pekerjaan__snapshot_uraian", "project__nama")
     ordering = ("project", "pekerjaan__ordering_index", "kode")
-    raw_id_fields = ("project", "pekerjaan", "harga_item")
+    raw_id_fields = ("project", "pekerjaan", "harga_item", "ref_ahsp", "ref_pekerjaan")
+
+
+@admin.register(DetailAHSPExpanded)
+class DetailAHSPExpandedAdmin(admin.ModelAdmin):
+    list_display = ("id", "project", "pekerjaan", "kategori", "kode", "uraian", "koefisien", "source_bundle_kode", "expansion_depth")
+    list_filter = ("project", "kategori", "expansion_depth")
+    search_fields = ("kode", "uraian", "source_bundle_kode", "pekerjaan__snapshot_kode")
+    ordering = ("project", "pekerjaan__ordering_index", "source_detail", "kode")
+    raw_id_fields = ("project", "pekerjaan", "harga_item", "source_detail")
+    readonly_fields = ("created_at", "updated_at")
 
 
 # ===== Jadwal Pekerjaan (Work Schedule) =====

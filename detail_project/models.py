@@ -320,6 +320,93 @@ class DetailAHSPProject(TimeStampedModel):
         return f"{self.pekerjaan_id} / {self.kode} — {self.uraian}"
 
 
+class DetailAHSPExpanded(TimeStampedModel):
+    """
+    STORAGE 2: Expanded components dari bundle pekerjaan.
+
+    Purpose:
+    - Auto-generated dari DetailAHSPProject bundle expansion
+    - Digunakan untuk rekap computation
+    - Menghindari override conflict saat multiple bundle dengan kode sama
+
+    Relationship:
+    - 1 DetailAHSPProject (LAIN bundle) → N DetailAHSPExpanded (expanded components)
+    - 1 DetailAHSPProject (direct TK/BHN/ALT) → 1 DetailAHSPExpanded (pass-through)
+
+    Example:
+        DetailAHSPProject (RAW INPUT):
+        Row 1: LAIN | Bundle_A | ref_pekerjaan=A | koef=2.0
+        Row 2: LAIN | Bundle_B | ref_pekerjaan=B | koef=1.5
+        Row 3: TK   | L.01     | direct         | koef=1.0
+
+        DetailAHSPExpanded (COMPUTED):
+        Row 1: TK.001 | source_detail=Row1 | source_bundle='Bundle_A' | koef=5.0
+        Row 2: BHN.001| source_detail=Row1 | source_bundle='Bundle_A' | koef=20.0
+        Row 3: TK.001 | source_detail=Row2 | source_bundle='Bundle_B' | koef=4.5  ← No conflict!
+        Row 4: BHN.002| source_detail=Row2 | source_bundle='Bundle_B' | koef=12.0
+        Row 5: TK.001 | source_detail=Row3 | source_bundle=NULL        | koef=1.0
+    """
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='detail_ahsp_expanded'
+    )
+    pekerjaan = models.ForeignKey(
+        Pekerjaan,
+        on_delete=models.CASCADE,
+        related_name='detail_expanded_list'
+    )
+
+    # Link back to source DetailAHSPProject (for audit trail)
+    source_detail = models.ForeignKey(
+        DetailAHSPProject,
+        on_delete=models.CASCADE,
+        related_name='expanded_components',
+        help_text='Source raw input dari DetailAHSPProject'
+    )
+
+    # Expanded component data
+    harga_item = models.ForeignKey(
+        HargaItemProject,
+        on_delete=models.PROTECT,
+        related_name='expanded_refs'
+    )
+    kategori = models.CharField(max_length=10, choices=HargaItemProject.KATEGORI_CHOICES)
+    kode = models.CharField(max_length=100)
+    uraian = models.TextField()
+    satuan = models.CharField(max_length=50, blank=True, null=True)
+    koefisien = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        validators=[MinValueValidator(0)],
+        help_text='Koefisien final setelah expansion (sudah dikali multiplier)'
+    )
+
+    # Bundle metadata
+    source_bundle_kode = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text='Kode bundle LAIN yang di-expand (NULL jika direct input)'
+    )
+    expansion_depth = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='Kedalaman expansion (0=direct, 1=1-level bundle, 2=nested, dst)'
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["project", "pekerjaan"]),
+            models.Index(fields=["project", "pekerjaan", "kategori"]),
+            models.Index(fields=["source_detail"]),
+        ]
+        # NO unique constraint on kode! Multiple bundles can have same kode
+
+    def __str__(self):
+        bundle_info = f" [from {self.source_bundle_kode}]" if self.source_bundle_kode else ""
+        return f"{self.pekerjaan_id} / {self.kode} — {self.uraian}{bundle_info}"
+
+
 # === NEW: Volume Formula State (ringan; satu per project+pekerjaan) ===
 class VolumeFormulaState(TimeStampedModel):
     """
