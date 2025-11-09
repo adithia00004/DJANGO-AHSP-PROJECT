@@ -703,6 +703,11 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                 if p_id and p_id in existing_p and existing_p[p_id].project_id == project.id:
                     # ============ UPDATE EXISTING ============
                     pobj = existing_p[p_id]
+
+                    # CRITICAL FIX: Add to keep list IMMEDIATELY to prevent deletion
+                    # even if validation fails later (before any 'continue' statements)
+                    keep_all_p.add(pobj.id)
+
                     replace = False
                     new_ref_id = p.get("ref_id")
 
@@ -802,8 +807,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
                         ])
 
-                    # CRITICAL: Add to keep list so it doesn't get deleted at line 905
-                    keep_all_p.add(pobj.id)
+                    # NOTE: pobj.id already added to keep_all_p at line 709
+                    # (moved there to prevent deletion even if validation fails)
 
                 else:
                     # ============ CREATE / REUSE ============
