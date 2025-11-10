@@ -26,7 +26,8 @@ from .models import (
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
-    expand_bundle_to_components,  # NEW: Dual storage expansion
+    expand_bundle_to_components,  # NEW: Dual storage expansion (Pekerjaan)
+    expand_ahsp_bundle_to_components,  # NEW: Dual storage expansion (AHSP)
 )
 
 from .export_config import (
@@ -1427,16 +1428,76 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                 # Continue - keep raw input even if expansion fails
                 # User can fix and re-save
 
+        elif detail_obj.kategori == HargaItemProject.KATEGORI_LAIN and detail_obj.ref_ahsp:
+            # AHSP BUNDLE - Expand from Master AHSP
+            logger.info(f"[SAVE_DETAIL_AHSP] AHSP BUNDLE detected: '{detail_obj.kode}' → ref_ahsp_id={detail_obj.ref_ahsp_id}")
+
+            try:
+                # Expand AHSP bundle recursively
+                logger.info(f"[SAVE_DETAIL_AHSP] Expanding AHSP bundle '{detail_obj.kode}' (koef={detail_obj.koefisien})...")
+                expanded_components = expand_ahsp_bundle_to_components(
+                    ref_ahsp_id=detail_obj.ref_ahsp_id,
+                    project=project,
+                    base_koef=Decimal('1.0'),
+                    depth=0,
+                    visited=None
+                )
+                logger.info(f"[SAVE_DETAIL_AHSP] AHSP expansion result: {len(expanded_components)} components")
+
+                # Check if expansion returned components
+                if not expanded_components:
+                    logger.warning(
+                        f"AHSP bundle expansion returned empty for pekerjaan {pkj.id}, "
+                        f"bundle '{detail_obj.kode}'. AHSP may have no components."
+                    )
+                    errors.append(_err(
+                        f"bundle.{detail_obj.kode}",
+                        f"AHSP '{detail_obj.uraian}' tidak memiliki komponen."
+                    ))
+
+                # Add expanded components to DetailAHSPExpanded
+                for comp in expanded_components:
+                    # Upsert HargaItemProject for base components
+                    comp_hip = _upsert_harga_item(
+                        project,
+                        comp['kategori'],
+                        comp['kode'],
+                        comp['uraian'],
+                        comp['satuan']
+                    )
+
+                    expanded_to_create.append(DetailAHSPExpanded(
+                        project=project,
+                        pekerjaan=pkj,
+                        source_detail=detail_obj,  # Link back to raw input
+                        harga_item=comp_hip,
+                        kategori=comp['kategori'],
+                        kode=comp['kode'],
+                        uraian=comp['uraian'],
+                        satuan=comp['satuan'],
+                        koefisien=quantize_half_up(comp['koefisien'], dp_koef),
+                        source_bundle_kode=detail_obj.kode,  # Bundle kode for tracking
+                        expansion_depth=comp['depth'],
+                    ))
+
+            except ValueError as e:
+                # Expansion failed (circular dependency atau max depth)
+                logger.error(
+                    f"AHSP bundle expansion failed for pekerjaan {pkj.id}, bundle {detail_obj.kode}: {str(e)}"
+                )
+                errors.append(_err(f"bundle.{detail_obj.kode}", f"Error AHSP expansion: {str(e)}"))
+                # Continue - keep raw input even if expansion fails
+
         elif detail_obj.kategori == HargaItemProject.KATEGORI_LAIN:
-            # LAIN item without ref_pekerjaan - invalid bundle
+            # LAIN item without ref_pekerjaan AND without ref_ahsp - invalid bundle
             logger.warning(
-                f"LAIN item '{detail_obj.kode}' in pekerjaan {pkj.id} has no ref_pekerjaan. "
-                f"Bundle items must reference a pekerjaan. Skipping from expanded storage."
+                f"LAIN item '{detail_obj.kode}' in pekerjaan {pkj.id} has no ref_pekerjaan or ref_ahsp. "
+                f"Bundle items must reference a pekerjaan or AHSP. Skipping from expanded storage."
             )
             errors.append(_err(
                 f"item.{detail_obj.kode}",
-                f"Item LAIN '{detail_obj.uraian}' tidak memiliki referensi pekerjaan. "
-                f"Untuk pekerjaan gabungan, pilih pekerjaan dari dropdown."
+                f"Item LAIN '{detail_obj.uraian}' tidak memiliki referensi pekerjaan atau AHSP. "
+                f"Untuk pekerjaan gabungan, pilih pekerjaan atau AHSP dari dropdown."
             ))
             # Don't add to expanded - invalid bundle
 

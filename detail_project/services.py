@@ -330,6 +330,151 @@ def expand_bundle_to_components(
     return result
 
 
+def expand_ahsp_bundle_to_components(
+    ref_ahsp_id: int,
+    project,
+    base_koef: Decimal = Decimal('1.0'),
+    depth: int = 0,
+    visited: Optional[Set[str]] = None
+) -> List[dict]:
+    """
+    Expand bundle dari AHSPReferensi (Master AHSP) menjadi list komponen base (TK/BHN/ALT).
+
+    Similar to expand_bundle_to_components, tapi:
+    - Fetch dari RincianReferensi (bukan DetailAHSPProject)
+    - LAIN items reference other AHSP by kode_ahsp (string match)
+    - Create HargaItemProject on-the-fly untuk components
+    - Support nested AHSP bundles (recursive)
+
+    Args:
+        ref_ahsp_id: ID dari AHSPReferensi yang akan di-expand
+        project: Project instance (untuk create HargaItemProject)
+        base_koef: Accumulated koefisien dari parent levels
+        depth: Current expansion depth
+        visited: Set of ahsp kode_ahsp untuk prevent circular dependency
+
+    Returns:
+        List of dicts dengan struktur yang sama seperti expand_bundle_to_components:
+        [{
+            'kategori': 'TK',
+            'kode': 'TK-0001',
+            'uraian': 'Mandor',
+            'satuan': 'OH',
+            'koefisien': Decimal('0.013000'),
+            'harga_item': HargaItemProject instance,
+            'depth': 1
+        }, ...]
+
+    Raises:
+        ValueError: Jika max depth exceeded atau circular dependency detected
+    """
+    MAX_DEPTH = 3  # Same limit as Pekerjaan bundle expansion
+
+    # Check max depth
+    if depth > MAX_DEPTH:
+        raise ValueError(f"Maksimum kedalaman AHSP bundle expansion terlampaui (max {MAX_DEPTH})")
+
+    # Initialize visited set (track by kode_ahsp string, not ID)
+    if visited is None:
+        visited = set()
+
+    # Fetch AHSP Referensi
+    if not AHSPReferensi:
+        raise ValueError("AHSPReferensi model not available")
+
+    try:
+        ahsp = AHSPReferensi.objects.get(id=ref_ahsp_id)
+        logger.info(f"[EXPAND_AHSP_BUNDLE] Depth={depth}, AHSP='{ahsp.kode_ahsp}', ID={ref_ahsp_id}")
+    except AHSPReferensi.DoesNotExist:
+        logger.error(f"[EXPAND_AHSP_BUNDLE] AHSP Referensi #{ref_ahsp_id} not found")
+        raise ValueError(f"AHSP Referensi #{ref_ahsp_id} tidak ditemukan")
+
+    # Check circular dependency
+    if ahsp.kode_ahsp in visited:
+        visited_codes = list(visited)
+        cycle_str = " → ".join(visited_codes)
+        logger.error(f"[EXPAND_AHSP_BUNDLE] Circular dependency detected: {cycle_str}")
+        raise ValueError(f"Circular dependency detected in AHSP bundle expansion: {cycle_str}")
+
+    visited.add(ahsp.kode_ahsp)
+
+    # Fetch components from RincianReferensi
+    if not RincianReferensi:
+        raise ValueError("RincianReferensi model not available")
+
+    components = RincianReferensi.objects.filter(ahsp=ahsp).order_by('id')
+    comp_count = components.count()
+    logger.info(f"[EXPAND_AHSP_BUNDLE] Found {comp_count} components in AHSP '{ahsp.kode_ahsp}'")
+
+    if comp_count == 0:
+        logger.warning(f"[EXPAND_AHSP_BUNDLE] No components found in AHSP '{ahsp.kode_ahsp}' - returning empty")
+        visited.discard(ahsp.kode_ahsp)
+        return []
+
+    result = []
+
+    for comp in components:
+        if comp.kategori == 'LAIN':
+            # Nested AHSP bundle - lookup by kode_item (should match another kode_ahsp)
+            logger.info(f"[EXPAND_AHSP_BUNDLE] LAIN item detected: '{comp.kode_item}' (koef={comp.koefisien})")
+
+            try:
+                # Try to find AHSP by kode_ahsp matching kode_item
+                nested_ahsp = AHSPReferensi.objects.get(kode_ahsp=comp.kode_item)
+
+                # Recursive expansion
+                nested_components = expand_ahsp_bundle_to_components(
+                    ref_ahsp_id=nested_ahsp.id,
+                    project=project,
+                    base_koef=base_koef * comp.koefisien,
+                    depth=depth + 1,
+                    visited=visited.copy()  # Copy to avoid mutation in sibling branches
+                )
+
+                result.extend(nested_components)
+
+            except AHSPReferensi.DoesNotExist:
+                # LAIN item doesn't reference another AHSP - treat as base component
+                logger.warning(
+                    f"[EXPAND_AHSP_BUNDLE] LAIN item '{comp.kode_item}' doesn't match any AHSP kode. "
+                    f"Treating as base component."
+                )
+
+                # Treat as base component
+                final_koef = comp.koefisien * base_koef
+
+                result.append({
+                    'kategori': comp.kategori,
+                    'kode': comp.kode_item,
+                    'uraian': comp.uraian_item,
+                    'satuan': comp.satuan_item,
+                    'koefisien': final_koef,
+                    'harga_item': None,  # Will be created by caller
+                    'depth': depth + 1
+                })
+
+        else:
+            # Base component (TK/BHN/ALT)
+            final_koef = comp.koefisien * base_koef
+
+            result.append({
+                'kategori': comp.kategori,
+                'kode': comp.kode_item,
+                'uraian': comp.uraian_item,
+                'satuan': comp.satuan_item,
+                'koefisien': final_koef,
+                'harga_item': None,  # Will be created by caller
+                'depth': depth + 1
+            })
+
+    # Remove from visited after processing (backtracking)
+    visited.discard(ahsp.kode_ahsp)
+
+    logger.info(f"[EXPAND_AHSP_BUNDLE] Expansion complete: {len(result)} base components returned")
+
+    return result
+
+
 def generate_custom_code(project) -> str:
     """
     Hasilkan kode otomatis untuk pekerjaan kustom: CUST-0001, CUST-0002, ...

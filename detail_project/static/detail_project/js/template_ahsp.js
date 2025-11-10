@@ -313,14 +313,7 @@
           nama = d.nama_ahsp || '';
         }
 
-        // VALIDATION: Reject AHSP bundles for CUSTOM pekerjaan
-        // AHSP bundles are not supported for expansion in CUSTOM mode
-        if (activeSource === 'custom' && kind === 'ahsp') {
-          toast('⚠️ AHSP bundle tidak didukung untuk pekerjaan CUSTOM. Silakan pilih dari "Pekerjaan Proyek".', 'error');
-          // Clear the selection
-          $input.val(null).trigger('change');
-          return;
-        }
+        // AHSP bundles are now supported! Backend will expand them recursively
 
         input.value = kode;
         $('.cell-wrap', tr).textContent = nama;
