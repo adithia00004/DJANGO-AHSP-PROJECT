@@ -225,7 +225,7 @@ def expand_bundle_to_components(
     Raises:
         ValueError: Jika max depth exceeded atau circular dependency detected
     """
-    MAX_DEPTH = 10
+    MAX_DEPTH = 3  # Limit to 3 levels (sufficient for real-world use cases)
 
     # Check max depth
     if depth > MAX_DEPTH:
