@@ -16,7 +16,7 @@ DATABASES = {
 
 # Disable migrations for faster test execution
 # Tests will create tables directly from models
-class DisableMigrations:
+class DisableMigrations(dict):
     def __contains__(self, item):
         return True
 

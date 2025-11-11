@@ -129,10 +129,12 @@ def _ensure_project(user) -> int:
     """
     Pastikan project ada di TEST DB. Jika TEST_PROJECT_ID diset, gunakan PK tsb; bila belum ada -> create.
     Isi field wajib sesuai error yang kamu share:
-      owner(FK), nama(CharField), tahun_project(PositiveIntegerField), sumber_dana(CharField),
+      owner(FK), nama(CharField), tanggal_mulai(DateField), sumber_dana(CharField),
       lokasi_project(CharField), nama_client(CharField), anggaran_owner(DecimalField)
+    tahun_project akan dihitung otomatis dari tanggal_mulai.
     Bisa di-override via LP_PROJECT_CREATE_KW.
     """
+    from datetime import date
     Project = _project_model()
     pid = _env_pid()
 
@@ -141,7 +143,7 @@ def _ensure_project(user) -> int:
         # FK owner → ke user login
         "owner_id": getattr(user, "id", None),
         "nama": "LP Test Project",
-        "tahun_project": 2025,
+        "tanggal_mulai": date.today(),  # Field wajib
         "sumber_dana": "APBD",
         "lokasi_project": "Jakarta",
         "nama_client": "QA Client",

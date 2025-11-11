@@ -1,4 +1,15 @@
 # detail_project/tests/conftest.py
+"""
+Pytest fixtures for detail_project tests.
+
+Core business logic tests for:
+- Project detail management
+- List pekerjaan (API & UI)
+- Volume & pricing
+- Rekap & reports
+- Tahapan & scheduling
+"""
+
 import os
 import copy
 import json
@@ -10,6 +21,12 @@ from django.urls import reverse
 from django.test.client import Client
 from django.contrib.auth import get_user_model
 from django.db import models as djm, IntegrityError
+
+# Temporarily ignore UI tests (need browser/selenium)
+collect_ignore = [
+    "test_list_pekerjaan_page_ui.py",  # UI test - needs browser
+    "test_jadwal_pekerjaan_page_ui.py",  # UI test - needs browser
+]
 
 
 # ================= Helpers =================
@@ -90,7 +107,15 @@ def project(db, user):
     if "is_active" in fields:
         kw["is_active"] = True
     if "anggaran_owner" in fields:
-        kw["anggaran_owner"] = 0
+        kw["anggaran_owner"] = Decimal("1000000000.00")
+
+    # Field wajib lainnya dari model Project
+    if "sumber_dana" in fields and not kw.get("sumber_dana"):
+        kw["sumber_dana"] = "APBD"
+    if "lokasi_project" in fields and not kw.get("lokasi_project"):
+        kw["lokasi_project"] = "Jakarta"
+    if "nama_client" in fields and not kw.get("nama_client"):
+        kw["nama_client"] = "Client Test"
 
     # Override opsional via ENV (mis. field wajib lain)
     env_kw = _env_json("LP_PROJECT_CREATE_KW", {}) or {}

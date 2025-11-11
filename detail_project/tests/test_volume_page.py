@@ -9,7 +9,7 @@ from django.urls import reverse
 from dashboard.models import Project
 from detail_project.models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
-    HargaItemProject, DetailAHSPProject
+    HargaItemProject, DetailAHSPProject, DetailAHSPExpanded
 )
 
 User = get_user_model()
@@ -327,11 +327,22 @@ class VolumePekerjaanPageTests(TestCase):
             uraian="Tenaga Kerja A", satuan="OH",
             harga_satuan=Decimal("100.00"),
         )
-        DetailAHSPProject.objects.create(
+        detail = DetailAHSPProject.objects.create(
             project=self.project, pekerjaan=self.pkj1, harga_item=hip,
             kategori=HargaItemProject.KATEGORI_TK,
             kode="TK-001", uraian="TK A", satuan="OH",
             koefisien=Decimal("2.000000"),
+        )
+        # CRITICAL: Create DetailAHSPExpanded for dual storage
+        # Rekap reads from DetailAHSPExpanded, not DetailAHSPProject
+        DetailAHSPExpanded.objects.create(
+            project=self.project, pekerjaan=self.pkj1,
+            source_detail=detail, harga_item=hip,
+            kategori=HargaItemProject.KATEGORI_TK,
+            kode="TK-001", uraian="TK A", satuan="OH",
+            koefisien=Decimal("2.000000"),
+            source_bundle_kode=None,
+            expansion_depth=0,
         )
         VolumePekerjaan.objects.update_or_create(
             project=self.project, pekerjaan=self.pkj1,

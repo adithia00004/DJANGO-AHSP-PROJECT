@@ -59,13 +59,13 @@ def health_check(request):
         "timestamp": "2025-11-07T12:00:00Z"
     }
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     health = {
         'status': 'ok',
         'checks': {},
         'version': os.environ.get('APP_VERSION', 'dev'),
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
 
     # Check database connectivity

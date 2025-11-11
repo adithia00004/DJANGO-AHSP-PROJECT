@@ -50,12 +50,12 @@ def project_sunday_start(db, user):
     """
     Project starting on Sunday (2025-10-26) for testing week boundaries.
 
-    IMPORTANT: We avoid the Project.save() UnboundLocalError (conditional
-    import 'timezone' inside save) by:
-    1) Creating without tanggal_mulai/tanggal_selesai (so save runs fine),
-    2) Updating dates via QuerySet.update() (bypasses save()),
-    3) refresh_from_db() so all downstream code sees the correct dates.
+    Creates project with required fields including tanggal_mulai.
     """
+    start = date(2025, 10, 26)  # Sunday
+    end = date(2025, 12, 31)
+    durasi = (end - start).days + 1
+
     project = Project.objects.create(
         owner=user,
         nama="Test Project Weekly",
@@ -64,19 +64,10 @@ def project_sunday_start(db, user):
         lokasi_project="Kota X",
         nama_client="Client Y",
         anggaran_owner=Decimal("100000000"),
-        # intentionally omit tanggal_* to dodge the buggy save() path
-    )
-
-    start = date(2025, 10, 26)  # Sunday
-    end = date(2025, 12, 31)
-    durasi = (end - start).days + 1
-
-    Project.objects.filter(pk=project.pk).update(
         tanggal_mulai=start,
         tanggal_selesai=end,
         durasi_hari=durasi,
     )
-    project.refresh_from_db()
     return project
 
 

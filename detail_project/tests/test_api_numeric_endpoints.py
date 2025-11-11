@@ -30,6 +30,7 @@ class APINumericEndpointsTests(TestCase):
         self.client.force_login(self.user)
 
         # Project milik user (aktif) + pengisian field wajib minimal
+        from datetime import date
         base_kwargs = dict(
             owner=self.user,
             is_active=True,
@@ -38,6 +39,8 @@ class APINumericEndpointsTests(TestCase):
             tahun_project=2025,
             sumber_dana="APBD",
             lokasi_project="Makassar",
+            nama_client="Client Test",
+            tanggal_mulai=date.today(),
         )
 
         proj_fields = {f.name: f for f in Project._meta.fields}
@@ -47,9 +50,9 @@ class APINumericEndpointsTests(TestCase):
         # sehingga harus diisi angka, bukan string.
         if "anggaran_owner" in proj_fields:
             f = proj_fields["anggaran_owner"]
-            # Jika DecimalField → isi 0
+            # Jika DecimalField → isi nilai wajar
             if isinstance(f, DecimalField):
-                base_kwargs["anggaran_owner"] = Decimal("0")
+                base_kwargs["anggaran_owner"] = Decimal("1000000000.00")
             # Jika ternyata Char/Text pada skema lain → isi string
             elif isinstance(f, CharField) or isinstance(f, TextField):
                 base_kwargs["anggaran_owner"] = "Pemda"
@@ -57,9 +60,9 @@ class APINumericEndpointsTests(TestCase):
             elif getattr(f, "is_relation", False) and getattr(f, "related_model", None) == User:
                 base_kwargs["anggaran_owner"] = self.user
             else:
-                # Fallback aman: coba 0 (untuk numeric) atau biarkan kosong jika nullable
+                # Fallback aman: coba nilai wajar
                 if not f.null:
-                    base_kwargs["anggaran_owner"] = Decimal("0")
+                    base_kwargs["anggaran_owner"] = Decimal("1000000000.00")
 
         # (Jika setelah ini ada error NOT NULL untuk kolom lain,
         #  tinggal tambahkan pola serupa di sini untuk kolom tersebut.)
