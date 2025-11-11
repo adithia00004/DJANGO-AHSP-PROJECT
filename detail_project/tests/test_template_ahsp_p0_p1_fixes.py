@@ -33,7 +33,7 @@ from unittest.mock import patch, MagicMock
 from dashboard.models import Project
 from detail_project.models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan,
-    DetailAHSPProject, HargaItemProject
+    DetailAHSPProject, DetailAHSPExpanded, HargaItemProject
 )
 
 User = get_user_model()
@@ -99,6 +99,36 @@ def setup_template_ahsp_test(db, user, project, sub_klas):
         uraian="Semen",
         satuan="Zak",
         koefisien=Decimal("10.000000"),
+    )
+
+    # CRITICAL: Create DetailAHSPExpanded for dual storage integrity
+    # API endpoint validates against expanded storage, so we need it
+    DetailAHSPExpanded.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        source_detail=detail_tk,
+        harga_item=harga_tk,
+        kategori="TK",
+        kode="TK.001",
+        uraian="Pekerja",
+        satuan="OH",
+        koefisien=Decimal("2.500000"),
+        source_bundle_kode=None,
+        expansion_depth=0,
+    )
+
+    DetailAHSPExpanded.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        source_detail=detail_bhn,
+        harga_item=harga_bhn,
+        kategori="BHN",
+        kode="BHN.001",
+        uraian="Semen",
+        satuan="Zak",
+        koefisien=Decimal("10.000000"),
+        source_bundle_kode=None,
+        expansion_depth=0,
     )
 
     return {

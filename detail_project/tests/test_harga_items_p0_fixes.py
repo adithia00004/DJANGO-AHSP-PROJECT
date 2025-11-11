@@ -25,7 +25,7 @@ from unittest.mock import patch
 from dashboard.models import Project
 from detail_project.models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan,
-    DetailAHSPProject, HargaItemProject, ProjectPricing
+    DetailAHSPProject, DetailAHSPExpanded, HargaItemProject, ProjectPricing
 )
 
 User = get_user_model()
@@ -80,7 +80,7 @@ def setup_harga_items_test(db, user, project, sub_klas):
     )
 
     # Create detail AHSP to make items "used" in project
-    DetailAHSPProject.objects.create(
+    detail_tk = DetailAHSPProject.objects.create(
         project=project,
         pekerjaan=pekerjaan,
         harga_item=harga_tk,
@@ -91,7 +91,7 @@ def setup_harga_items_test(db, user, project, sub_klas):
         koefisien=Decimal("2.500000"),
     )
 
-    DetailAHSPProject.objects.create(
+    detail_bhn = DetailAHSPProject.objects.create(
         project=project,
         pekerjaan=pekerjaan,
         harga_item=harga_bhn,
@@ -102,7 +102,7 @@ def setup_harga_items_test(db, user, project, sub_klas):
         koefisien=Decimal("10.000000"),
     )
 
-    DetailAHSPProject.objects.create(
+    detail_alt = DetailAHSPProject.objects.create(
         project=project,
         pekerjaan=pekerjaan,
         harga_item=harga_alt,
@@ -111,6 +111,50 @@ def setup_harga_items_test(db, user, project, sub_klas):
         uraian="Excavator",
         satuan="Jam",
         koefisien=Decimal("1.500000"),
+    )
+
+    # CRITICAL: Create DetailAHSPExpanded for dual storage integrity
+    # API endpoint validates against expanded_refs, so we need expanded storage
+    DetailAHSPExpanded.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        source_detail=detail_tk,
+        harga_item=harga_tk,
+        kategori="TK",
+        kode="TK.001",
+        uraian="Pekerja",
+        satuan="OH",
+        koefisien=Decimal("2.500000"),
+        source_bundle_kode=None,
+        expansion_depth=0,
+    )
+
+    DetailAHSPExpanded.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        source_detail=detail_bhn,
+        harga_item=harga_bhn,
+        kategori="BHN",
+        kode="BHN.001",
+        uraian="Semen",
+        satuan="Zak",
+        koefisien=Decimal("10.000000"),
+        source_bundle_kode=None,
+        expansion_depth=0,
+    )
+
+    DetailAHSPExpanded.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        source_detail=detail_alt,
+        harga_item=harga_alt,
+        kategori="ALT",
+        kode="ALT.001",
+        uraian="Excavator",
+        satuan="Jam",
+        koefisien=Decimal("1.500000"),
+        source_bundle_kode=None,
+        expansion_depth=0,
     )
 
     # Create ProjectPricing for BUK testing
