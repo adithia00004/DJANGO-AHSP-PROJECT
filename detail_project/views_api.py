@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction, IntegrityError
 from django.db.models import Max, F, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from django.utils.timezone import now
 from .numeric import parse_any, to_dp_str, quantize_half_up, DECIMAL_SPEC
 from referensi.models import AHSPReferensi
@@ -1210,7 +1211,10 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         try:
             # Parse ISO format timestamp from client
             client_dt = datetime.fromisoformat(client_updated_at.replace('Z', '+00:00'))
-            server_dt = pkj.updated_at if hasattr(pkj, 'updated_at') and pkj.updated_at else None
+
+            # Refresh project to get latest timestamp
+            project.refresh_from_db()
+            server_dt = project.updated_at if hasattr(project, 'updated_at') and project.updated_at else None
 
             if server_dt and client_dt < server_dt:
                 # Data has been modified by another user since client loaded it
@@ -1605,6 +1609,12 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=detail_ready)
     logger.info(f"[SAVE_DETAIL_AHSP] Updated pekerjaan.detail_ready = {detail_ready}")
 
+    # OPSI A: Update project timestamp for optimistic locking
+    if len(saved_raw_details) > 0:
+        project.updated_at = timezone.now()
+        project.save(update_fields=['updated_at'])
+        logger.info(f"[PROJECT_TIMESTAMP] Updated project {project.id} timestamp after saving {len(saved_raw_details)} detail AHSP changes")
+
     # CRITICAL FIX: Invalidate cache AFTER transaction commits to avoid race condition
     # This ensures cache is invalidated only when data is actually committed to DB
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
@@ -1826,6 +1836,12 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
 
     # P0 FIX: Cache invalidation AFTER transaction commits
     if updated > 0 or pricing_saved:
+        # OPSI A: Update project timestamp for optimistic locking
+        # This ensures project.updated_at reflects when harga items were modified
+        project.updated_at = timezone.now()
+        project.save(update_fields=['updated_at'])
+        logger.info(f"[PROJECT_TIMESTAMP] Updated project {project.id} timestamp after {updated} harga changes")
+
         def invalidate_harga_cache():
             invalidate_rekap_cache(project)
             logger.info(f"[CACHE] Invalidated cache for project {project.id} after harga items update")
