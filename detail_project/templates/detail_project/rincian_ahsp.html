@@ -228,25 +228,114 @@
     </div>
   </div>
 
-  <!-- Modal: Bantuan Rincian AHSP -->
+  <!-- Modal: Bantuan Rincian AHSP (TIER 4: Enhanced with keyboard shortcuts) -->
   <div class="modal fade" id="raHelpModal" tabindex="-1" aria-labelledby="raHelpLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-scrollable modal-md">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="raHelpLabel">Bantuan Rincian AHSP</h5>
+          <h5 class="modal-title" id="raHelpLabel">
+            <i class="bi bi-question-circle-fill me-2"></i>Bantuan Rincian AHSP
+          </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <p class="mb-2">Detail komponen AHSP per pekerjaan dengan harga dan total.</p>
-          <ul>
-            <li>Pilih pekerjaan dari sidebar kiri untuk melihat rincian komponen.</li>
-            <li>Lihat detail harga satuan dan jumlah harga untuk setiap komponen (TK, BHN, ALT, LAIN).</li>
-            <li>Gunakan kontrol <strong>Override</strong> untuk mengatur Profit/Margin (BUK) kustom per pekerjaan.</li>
-            <li>Tombol <strong>Apply</strong> untuk menerapkan override, <strong>Clear</strong> untuk menghapus override, <strong>Reset</strong> untuk kembali ke referensi.</li>
+          <!-- Overview -->
+          <h6 class="fw-bold mb-2">📋 Gambaran Umum</h6>
+          <p class="mb-3">Halaman Rincian AHSP menampilkan detail komponen biaya per pekerjaan dengan harga satuan dan total. Anda dapat melihat breakdown lengkap komponen TK (Tenaga Kerja), BHN (Bahan), ALT (Peralatan), dan LAIN (Lainnya).</p>
+
+          <!-- Basic Usage -->
+          <h6 class="fw-bold mb-2">💡 Cara Penggunaan</h6>
+          <ul class="mb-3">
+            <li><strong>Pilih pekerjaan</strong> dari sidebar kiri untuk melihat rincian komponen.</li>
+            <li><strong>Lihat detail harga</strong> satuan dan jumlah harga untuk setiap komponen.</li>
+            <li><strong>Gunakan Override</strong> untuk mengatur Profit/Margin (BUK) kustom per pekerjaan.</li>
+            <li><strong>Export</strong> data ke CSV, PDF, atau Word untuk analisis lebih lanjut.</li>
           </ul>
+
+          <!-- Keyboard Shortcuts (TIER 3 Feature) -->
+          <h6 class="fw-bold mb-2">⌨️ Keyboard Shortcuts</h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 140px;">Shortcut</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><kbd>Ctrl</kbd> + <kbd>K</kbd></td>
+                  <td>Focus ke search bar (quick find)</td>
+                </tr>
+                <tr>
+                  <td><kbd>Shift</kbd> + <kbd>O</kbd></td>
+                  <td>Buka Override Modal (jika pekerjaan sudah dipilih)</td>
+                </tr>
+                <tr>
+                  <td><kbd>↑</kbd> / <kbd>↓</kbd></td>
+                  <td>Navigate pekerjaan (previous/next dengan smooth scroll)</td>
+                </tr>
+                <tr>
+                  <td><kbd>Enter</kbd></td>
+                  <td>Select pekerjaan yang difokus</td>
+                </tr>
+                <tr>
+                  <td><kbd>Esc</kbd></td>
+                  <td>Close modal / Cancel</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small text-muted mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            <em>Keyboard shortcuts bekerja bahkan saat tidak fokus di input field.</em>
+          </p>
+
+          <!-- Override BUK -->
+          <h6 class="fw-bold mb-2">🔧 Override Profit/Margin (BUK)</h6>
+          <ul class="mb-3">
+            <li><strong>Apply Override:</strong> Pilih pekerjaan → Klik <strong>Override</strong> → Masukkan nilai 0–100% → Klik <strong>Terapkan Override</strong></li>
+            <li><strong>Hapus Override:</strong> Klik <strong>Hapus Override</strong> untuk kembali ke default proyek</li>
+            <li><strong>Validasi:</strong> Nilai harus antara 0–100%, negatif atau >100% akan ditolak</li>
+            <li><strong>Indikator:</strong> Pekerjaan dengan override ditandai chip kuning pada list</li>
+          </ul>
+
+          <!-- Resizer -->
+          <h6 class="fw-bold mb-2">↔️ Resize Panel</h6>
+          <ul class="mb-3">
+            <li><strong>Drag resizer:</strong> Klik dan drag garis vertikal antara list dan detail</li>
+            <li><strong>Keyboard:</strong> Focus resizer → <kbd>←</kbd>/<kbd>→</kbd> untuk adjust (shift = faster)</li>
+            <li><strong>Reset:</strong> Double-click resizer atau tekan <kbd>R</kbd> saat focus untuk reset ke default</li>
+          </ul>
+
+          <!-- Tips -->
+          <h6 class="fw-bold mb-2">💎 Tips & Tricks</h6>
+          <ul class="mb-3">
+            <li>Gunakan <kbd>Ctrl+K</kbd> untuk quick search tanpa harus scroll ke toolbar</li>
+            <li>Navigate dengan arrow keys lebih cepat untuk power users</li>
+            <li>Grand Total di toolbar otomatis update saat override diterapkan</li>
+            <li>Resizer width tersimpan otomatis (localStorage) untuk session berikutnya</li>
+          </ul>
+
+          <!-- Troubleshooting -->
+          <h6 class="fw-bold mb-2">🔧 Troubleshooting</h6>
+          <div class="alert alert-warning small mb-0">
+            <p class="mb-1"><strong>Keyboard shortcuts tidak bekerja?</strong></p>
+            <ul class="mb-1 ps-3">
+              <li>Pastikan tidak sedang mengetik di input field</li>
+              <li>Refresh halaman jika masih bermasalah</li>
+            </ul>
+            <p class="mb-1"><strong>Grand Total tidak update?</strong></p>
+            <ul class="mb-0 ps-3">
+              <li>Grand Total otomatis reload setelah override diterapkan</li>
+              <li>Jika tidak update, refresh halaman</li>
+            </ul>
+          </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x-lg me-1"></i>Tutup
+          </button>
         </div>
       </div>
     </div>

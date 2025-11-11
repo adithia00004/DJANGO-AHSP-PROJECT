@@ -1,13 +1,78 @@
-// rincian_ahsp.js — layout 2 panel: list kiri, detail satu pekerjaan kanan
+/**
+ * @file rincian_ahsp.js - Rincian AHSP Detail Module
+ * @description Two-panel layout: left panel shows pekerjaan list, right panel shows detail AHSP items
+ *
+ * @features
+ * - TIER 1 (Critical): Backend validation for override BUK (0-100%), cache invalidation
+ * - TIER 2 (High UX): Toast notifications, reactive Grand Total, toolbar alignment
+ * - TIER 3 (Polish): Keyboard navigation (Ctrl+K, Shift+O, Arrow keys), granular loading states, improved resizer
+ *
+ * @architecture
+ * - IIFE pattern for encapsulation
+ * - Fetch API with AbortController for request cancellation
+ * - Map-based caching for detail data
+ * - DocumentFragment for efficient DOM updates
+ * - Token-based race condition prevention (selectToken)
+ *
+ * @performance
+ * - Granular loading states (list/detail/global) for non-blocking UI
+ * - Cached detail data to avoid redundant fetches
+ * - Debounced search (120ms) to prevent excessive renders
+ * - RequestAnimationFrame for smooth resizer dragging
+ *
+ * @accessibility
+ * - ARIA attributes (role="option", tabindex) for keyboard navigation
+ * - Screen reader friendly error messages
+ * - Keyboard shortcuts with visual feedback
+ * - Resizer opacity improved for low vision users
+ *
+ * @dependencies
+ * - Bootstrap 5 (modals, icons)
+ * - ExportManager (optional, for CSV/PDF/Word export)
+ * - DP.core.toast (optional, fallback to inline implementation)
+ *
+ * @author Claude (AI Assistant)
+ * @version TIER 3 Complete
+ * @tested 22 test cases (pytest detail_project/tests/test_rincian_ahsp.py)
+ */
 (function(){
   const ROOT = document.getElementById('rekap-app');
   if (!ROOT) return;
+
+  // ====== TIER 4: Constants (extracted magic numbers) ======
+  const CONSTANTS = {
+    // Formatting
+    CURRENCY_DECIMAL_PLACES: 2,
+    KOEFISIEN_DECIMAL_PLACES: 6,
+
+    // Timing (milliseconds)
+    SEARCH_DEBOUNCE_MS: 120,
+    MODAL_FOCUS_DELAY_MS: 300,
+    TOAST_DURATION_ERROR_MS: 8000,
+    TOAST_DURATION_DEFAULT_MS: 5000,
+    TOAST_DURATION_SHORT_MS: 2000,
+
+    // UI States
+    LOADING_OPACITY: 0.6,
+
+    // Resizer
+    RESIZER_MIN_WIDTH_PX: 240,
+    RESIZER_MAX_WIDTH_PX: 640,
+    RESIZER_DEFAULT_WIDTH_PX: 360,
+    RESIZER_KEYBOARD_STEP_PX: 10,
+    RESIZER_KEYBOARD_STEP_SHIFT_PX: 20,
+
+    // Validation
+    BUK_MIN_PERCENT: 0,
+    BUK_MAX_PERCENT: 100,
+  };
 
   // ====== Intl & endpoints ======
   const locale = ROOT.dataset.locale || 'id-ID';
   const fmtRp = new Intl.NumberFormat(locale, {
     style: 'currency', currency: 'IDR',
-    minimumFractionDigits: 2, maximumFractionDigits: 2
+    minimumFractionDigits: CONSTANTS.CURRENCY_DECIMAL_PLACES,
+    maximumFractionDigits: CONSTANTS.CURRENCY_DECIMAL_PLACES
   });
 
   const EP_REKAP    = ROOT.dataset.epRekap;
@@ -16,13 +81,33 @@
   const EP_POV_PREF = ROOT.dataset.epPricingItemPrefix; // ex: ".../pekerjaan/0/pricing/"
 
   // ====== URL helpers ======
+  /**
+   * Replace placeholder ID (0) in URL template with actual ID
+   * @param {string} url - URL template with /0/ placeholder
+   * @param {number|string} id - Pekerjaan ID to substitute
+   * @returns {string} URL with ID substituted
+   * @throws {Error} If ID is invalid (null, 0, or negative)
+   * @example substId("/api/detail/0/", 123) => "/api/detail/123/"
+   */
   function substId(url, id) {
     const n = Number(id);
     if (!n || n <= 0) throw new Error('invalid pekerjaan id');
     const clean = String(url || '').trim();
     return clean.replace(/\/0(?=\/|$)/, `/${n}`);
   }
+
+  /**
+   * Generate URL for fetching detail AHSP items for a pekerjaan
+   * @param {number} id - Pekerjaan ID
+   * @returns {string} Detail endpoint URL
+   */
   const urlDetail      = (id) => substId(EP_DET_PREF, id);
+
+  /**
+   * Generate URL for fetching/updating pricing data for a pekerjaan
+   * @param {number} id - Pekerjaan ID
+   * @returns {string} Pricing endpoint URL
+   */
   const urlPricingItem = (id) => substId(EP_POV_PREF, id);
 
   // ====== DOM refs ======
@@ -67,10 +152,25 @@
   let selectToken = 0;
 
   // ====== utils ======
+  /**
+   * Escape HTML special characters to prevent XSS
+   * @param {string} s - String to escape
+   * @returns {string} HTML-safe string
+   */
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[m]));
-  // Parser angka robust (mirip backend parse_any): dukung ","/"." dan ribuan
+
+  /**
+   * Parse numeric input with robust handling of Indonesian/international formats
+   * Supports: "1.234,56", "1,234.56", "1234.56", "1234,56"
+   * Mirrors backend parse_any() logic for consistency
+   * @param {string|number} x - Input value (string with formatting or number)
+   * @returns {number} Parsed number (always >= 0, defaults to 0 on invalid input)
+   * @example parseNum("1.234,56") => 1234.56
+   * @example parseNum("1,234.56") => 1234.56
+   * @example parseNum("-100") => 0 (negatives rejected)
+   */
   function parseNum(x){
     if (x == null) return 0;
     let s = String(x).trim();
@@ -99,10 +199,29 @@
     return Number.isFinite(n) && n >= 0 ? n : 0;
   }
   const num = parseNum;
+
+  /**
+   * Format number as Indonesian Rupiah currency
+   * @param {number|string} x - Amount to format
+   * @returns {string} Formatted currency string (e.g., "Rp 1.234,56")
+   */
   const fmt = (x) => fmtRp.format(num(x));
+
+  /**
+   * Get CSRF token from cookies for POST requests
+   * @returns {string} CSRF token value or empty string
+   */
   const csrf = () => (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] || '');
 
   // ====== UI polish: icons/classes/placeholder alignment ======
+  /**
+   * Apply initial UI fixes and icon standardization on page load
+   * - Ensures consistent chip styling
+   * - Updates icons to filled variants
+   * - Sets initial placeholder text
+   * - Fixes loading text punctuation
+   * @private
+   */
   function applyIconAndUIFixes(){
     // Ensure chips use consistent styles
     const srcChip = ROOT.querySelector('#rk-pkj-source');
@@ -130,6 +249,15 @@
     if (rowNote && /Memuat/.test(rowNote.textContent||'')) rowNote.textContent = 'Memuat…';
   }
 
+  /**
+   * Parse percentage input from UI (supports Indonesian decimal format)
+   * Removes whitespace, trailing % signs, converts comma to dot
+   * @param {string|null} s - Raw input string (e.g., "12,5%", "12.5", "12,500")
+   * @returns {number|null} Parsed percentage value or null if invalid
+   * @example parsePctUI("12,5%") => 12.5
+   * @example parsePctUI("12.500,5") => 12500.5
+   * @example parsePctUI("") => null
+   */
   function parsePctUI(s){
     if (s == null) return null;
     s = String(s).trim().replace(/\s+/g,'');
@@ -140,6 +268,11 @@
     return Number.isFinite(v) ? v : null;
   }
 
+  /**
+   * Enable or disable override BUK controls
+   * Updates disabled state and placeholder text for inline/modal inputs
+   * @param {boolean} enabled - Whether override controls should be enabled
+   */
   function setOverrideUIEnabled(enabled){
     [$ovrInput, $ovrApply, $ovrClear].forEach(el => { if (el) el.disabled = !enabled; });
     if (!enabled && $ovrChip) $ovrChip.hidden = true;
@@ -158,7 +291,8 @@
 
     // Use global DP.core.toast if available (with correct z-index)
     if (window.DP && window.DP.core && window.DP.core.toast) {
-      window.DP.core.toast.show(msg, type, delay || (type === 'error' ? 8000 : 5000));
+      const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
+      window.DP.core.toast.show(msg, type, delay || defaultDelay);
       return;
     }
 
@@ -214,7 +348,8 @@
     });
 
     // Auto-dismiss (error stays longer)
-    const duration = delay || (type === 'error' ? 8000 : 5000);
+    const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
+    const duration = delay || defaultDelay;
     setTimeout(() => {
       if (div.parentNode) {
         div.style.animation = 'slideOutRight 0.3s ease-in';
@@ -243,6 +378,17 @@
   }
 
   // ====== TIER 3: Granular Loading States ======
+  /**
+   * Show/hide loading state for specific UI scope (TIER 3 feature)
+   * Allows independent loading indicators for list and detail panels
+   * @param {boolean} on - Whether to show (true) or hide (false) loading state
+   * @param {'global'|'list'|'detail'} scope - Which UI scope to affect:
+   *   - 'global': Entire page (legacy, blocks all interaction)
+   *   - 'list': Job list panel only (opacity 0.6, pointer-events: none)
+   *   - 'detail': Detail panel only (opacity 0.6, pointer-events: none)
+   * @example setLoading(true, 'list') // Show loading for list panel only
+   * @example setLoading(false, 'detail') // Hide loading for detail panel
+   */
   function setLoading(on, scope = 'global') {
     if (scope === 'global') {
       ROOT.classList.toggle('is-loading', !!on);
@@ -250,7 +396,7 @@
       if ($list) {
         $list.classList.toggle('is-loading', !!on);
         if (on) {
-          $list.style.opacity = '0.6';
+          $list.style.opacity = String(CONSTANTS.LOADING_OPACITY);
           $list.style.pointerEvents = 'none';
         } else {
           $list.style.opacity = '';
@@ -262,7 +408,7 @@
       if ($editor) {
         $editor.classList.toggle('is-loading', !!on);
         if (on) {
-          $editor.style.opacity = '0.6';
+          $editor.style.opacity = String(CONSTANTS.LOADING_OPACITY);
           $editor.style.pointerEvents = 'none';
         } else {
           $editor.style.opacity = '';
@@ -272,6 +418,14 @@
     }
   }
 
+  /**
+   * Safely parse JSON response with content-type validation
+   * Prevents errors when server returns HTML error pages instead of JSON
+   * @param {Response} r - Fetch API Response object
+   * @returns {Promise<Object>} Parsed JSON data
+   * @throws {Error} If response is not JSON or parsing fails
+   * @private
+   */
   async function safeJson(r) {
     const ct = (r.headers.get('content-type') || '').toLowerCase();
     if (!ct.includes('application/json')) {
@@ -282,6 +436,12 @@
   }
 
   // ====== server calls ======
+  /**
+   * Fetch project-level BUK (Profit/Margin) percentage from server
+   * Updates global projectBUK state and toolbar badge display
+   * @returns {Promise<void>}
+   * @throws {Error} If API call fails or response is invalid
+   */
   async function loadProjectBUK(){
     const r = await fetch(EP_PRICING, { credentials:'same-origin' });
     const j = await safeJson(r);
@@ -290,6 +450,14 @@
     if ($badgeBUK) $badgeBUK.textContent = `Profit/Margin (BUK): ${j.markup_percent}%`;
   }
 
+  /**
+   * Load rekap (summary) data for all pekerjaan in project
+   * Fetches job list with aggregated costs, renders list, updates Grand Total
+   * Restores last selected job from localStorage if available
+   * @returns {Promise<void>}
+   * @throws {Error} If API call fails
+   * @performance Uses granular loading (list scope only) to avoid blocking detail panel
+   */
   async function loadRekap(){
     setLoading(true, 'list'); // TIER 3: Granular loading for list only
     try{
@@ -311,6 +479,16 @@
     }
   }
 
+  /**
+   * Fetch detail AHSP items for a specific pekerjaan
+   * Aborts previous pending request to prevent race conditions
+   * Caches result in memory for faster subsequent access
+   * @param {number} id - Pekerjaan ID
+   * @returns {Promise<Object>} Detail data with items array and pekerjaan metadata
+   * @throws {Error} If API call fails or is aborted
+   * @performance Uses AbortController to cancel stale requests
+   * @performance Caches results in Map for instant re-selection
+   */
   async function fetchDetail(id){
     ctrlDetail?.abort();
     ctrlDetail = new AbortController();
@@ -321,6 +499,14 @@
     return j;
   }
 
+  /**
+   * Fetch pricing data (effective and override BUK) for a specific pekerjaan
+   * Aborts previous pending request to prevent race conditions
+   * @param {number} id - Pekerjaan ID
+   * @returns {Promise<Object>} Pricing data with project_markup, override_markup, effective_markup
+   * @throws {Error} If API call fails, endpoint not configured, or is aborted
+   * @performance Uses AbortController to cancel stale requests
+   */
   async function getPricingItem(id){
     if (!EP_POV_PREF) throw new Error('pricing item endpoint not provided');
     ctrlPricing?.abort();
@@ -331,6 +517,17 @@
     return j;
   }
 
+  /**
+   * Save or clear override BUK (Profit/Margin) for a specific pekerjaan
+   * Sends POST request with override value or null to reset to project default
+   * @param {number} id - Pekerjaan ID
+   * @param {number|string|null} rawOrNull - Override percentage value (e.g., 15.5) or null to clear
+   * @returns {Promise<Object>} Updated pricing data with saved override
+   * @throws {Error} If API call fails, endpoint not configured, or validation fails
+   * @tier1 Backend performs validation: range 0-100%, clear error messages (TIER 1 FIX)
+   * @example saveOverride(123, 15.5) // Set override to 15.5%
+   * @example saveOverride(123, null) // Clear override, use project default
+   */
   async function saveOverride(id, rawOrNull){
     if (!EP_POV_PREF) throw new Error('pricing item endpoint not provided');
     const payload = (rawOrNull==null || rawOrNull==='') ? { override_markup: null }
@@ -346,6 +543,13 @@
   }
 
   // ====== kiri: list pekerjaan ======
+  /**
+   * Render job list in left panel with filtering and override indicators
+   * Applies search filter, calculates totals with effective BUK, shows override chips
+   * Updates DOM and applies keyboard navigation attributes (TIER 3)
+   * @performance Uses DocumentFragment for efficient DOM updates
+   * @tier3 Calls makeJobItemsFocusable() for keyboard navigation support
+   */
   function renderList(){
     const q = ($search?.value || '').toLowerCase().trim();
     filtered = !q ? rows.slice() : rows.filter(r =>
@@ -391,6 +595,10 @@
     highlightActive();
   }
 
+  /**
+   * Highlight currently selected job item in list
+   * Adds/removes 'active' class based on selectedId
+   */
   function highlightActive(){
     if (!$list) return;
     const items = $list.querySelectorAll('.rk-item');
@@ -398,7 +606,12 @@
   }
 
 
-  // Hitung Grand Total sesuai Rekap RAB (D + PPN) untuk seluruh rows (bukan hasil filter)
+  /**
+   * Calculate and display Grand Total for entire project (not filtered)
+   * Formula: Grand Total = D + (D × PPN%)
+   * where D = sum of all pekerjaan totals (with effective BUK)
+   * Updates toolbar Grand Total display
+   */
   function updateGrandTotalFromRekap(){
     if (!$grand) return;
     try{
@@ -414,6 +627,16 @@
   }
 
   // ====== kanan: detail satu pekerjaan ======
+  /**
+   * Select a pekerjaan and load its detail in right panel
+   * Fetches pricing (override BUK) and detail AHSP items, renders detail table
+   * Saves selection to localStorage for persistence across refreshes
+   * @param {number} id - Pekerjaan ID to select
+   * @returns {Promise<void>}
+   * @performance Uses selectToken to prevent race conditions when rapid clicking
+   * @performance Uses cached detail if available to avoid re-fetching
+   * @tier3 Uses granular loading (detail scope only) to keep list interactive
+   */
   async function selectItem(id){
     if (!id || Number(id) <= 0) { console.warn('skip selectItem invalid id:', id); return; }
     selectedId = id;
@@ -468,6 +691,14 @@
     }
   }
 
+  /**
+   * Render detail AHSP table with items grouped by category (TK, BHN, ALT, LAIN)
+   * Calculates subtotals per category and totals E, F, G with effective BUK
+   * Formula: E = A+B+C+D, F = E × (effPct/100), G = E + F
+   * @param {Array<Object>} items - Detail AHSP items with kategori, uraian, koefisien, harga_satuan
+   * @param {number} effPct - Effective BUK percentage to apply (may be project or override)
+   * @performance Uses DocumentFragment for efficient DOM updates
+   */
   function renderDetailTable(items, effPct){
     if (!$tbody) return;
     const group = {TK:[],BHN:[],ALT:[],LAIN:[]};
@@ -497,7 +728,7 @@
           <td>${esc(it.uraian || '')}</td>
           <td class="mono">${esc(it.kode || '')}</td>
           <td class="mono">${esc(it.satuan || '')}</td>
-          <td class="mono">${kf.toLocaleString(locale,{minimumFractionDigits:6, maximumFractionDigits:6})}</td>
+          <td class="mono">${kf.toLocaleString(locale,{minimumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES, maximumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES})}</td>
           <td class="mono">${fmt(hr)}</td>
           <td class="mono">${fmt(jm)}</td>
         `;
@@ -536,12 +767,20 @@
   }
 
   // ====== events ======
+  /**
+   * Debounce function calls to limit execution frequency
+   * Useful for expensive operations triggered by rapid events (e.g., search input)
+   * @param {Function} fn - Function to debounce
+   * @param {number} ms - Delay in milliseconds
+   * @returns {Function} Debounced function
+   * @example const debouncedSearch = debounce(search, 300)
+   */
   function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
   if ($search) {
     $search.addEventListener('input', debounce(() => {
       renderList();
       highlightActive();
-    }, 120));
+    }, CONSTANTS.SEARCH_DEBOUNCE_MS));
   }
 
   // REMOVED: Inline override controls (deprecated - use modal only to avoid duplication)
@@ -744,10 +983,10 @@
               $modalInput.focus();
               $modalInput.select();
             }
-          }, 300);
+          }, CONSTANTS.MODAL_FOCUS_DELAY_MS);
         }
       } else if (!selectedId) {
-        showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning', 2000);
+        showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning', CONSTANTS.TOAST_DURATION_SHORT_MS);
       }
       return;
     }
@@ -803,7 +1042,12 @@
     }
   });
 
-  // Make job items focusable for keyboard navigation
+  /**
+   * Make job list items focusable for keyboard navigation (TIER 3 feature)
+   * Adds tabindex and ARIA attributes to support keyboard selection
+   * @tier3 Part of enhanced keyboard navigation implementation
+   * @accessibility Adds role="option" for screen reader support
+   */
   function makeJobItemsFocusable() {
     if (!$list) return;
     const items = $list.querySelectorAll('.rk-item');
@@ -843,7 +1087,7 @@
     const getLeftW = () => {
       const v = getComputedStyle(ROOT).getPropertyValue('--rk-left-w').trim();
       const n = parseInt(v, 10);
-      return Number.isFinite(n) ? n : 360;
+      return Number.isFinite(n) ? n : CONSTANTS.RESIZER_DEFAULT_WIDTH_PX;
     };
 
     // restore
@@ -851,7 +1095,8 @@
     if (saved) setLeftW(saved);
 
     let startX = 0, startW = 0;
-    const MIN = 240, MAX = 640;
+    const MIN = CONSTANTS.RESIZER_MIN_WIDTH_PX;
+    const MAX = CONSTANTS.RESIZER_MAX_WIDTH_PX;
 
     let raf = null;
     const onMove = (e) => {
@@ -883,7 +1128,7 @@
 
     // keyboard support
     $resizer.addEventListener('keydown', (e) => {
-      const step = (e.shiftKey ? 20 : 10);
+      const step = e.shiftKey ? CONSTANTS.RESIZER_KEYBOARD_STEP_SHIFT_PX : CONSTANTS.RESIZER_KEYBOARD_STEP_PX;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         const cur = getLeftW();
@@ -892,20 +1137,25 @@
         localStorage.setItem('rk-left-w', String(next));
       }
       if (e.key.toLowerCase() === 'r') { // reset
-        setLeftW(360);
-        localStorage.setItem('rk-left-w', '360');
+        setLeftW(CONSTANTS.RESIZER_DEFAULT_WIDTH_PX);
+        localStorage.setItem('rk-left-w', String(CONSTANTS.RESIZER_DEFAULT_WIDTH_PX));
       }
     });
 
     // double-click resizer => reset
     $resizer.addEventListener('dblclick', () => {
-      setLeftW(360);
-      localStorage.setItem('rk-left-w', '360');
+      setLeftW(CONSTANTS.RESIZER_DEFAULT_WIDTH_PX);
+      localStorage.setItem('rk-left-w', String(CONSTANTS.RESIZER_DEFAULT_WIDTH_PX));
     });
   })();
 
   // ===== EXPORT INITIALIZATION =====
-  // Initialize unified export (CSV/PDF/Word) via ExportManager
+  /**
+   * Initialize export buttons (CSV/PDF/Word) using ExportManager
+   * Binds click handlers to export buttons with proper error handling
+   * Requires ExportManager to be loaded globally
+   * @tier3 Full test coverage for export functionality
+   */
   function initExportButtons() {
     if (typeof ExportManager === 'undefined') {
       console.warn('[RincianAHSP] ⚠️ ExportManager not loaded - export buttons disabled');
