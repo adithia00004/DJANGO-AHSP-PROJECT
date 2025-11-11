@@ -1674,7 +1674,6 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
     moved = 0
     if temp:
         # --- DEDUP saat reset (aman walau sebelumnya sudah delete) ---
-        from .models import DetailAHSPProject
         existing_kodes = set(
             DetailAHSPProject.objects
             .filter(project=project, pekerjaan=pkj)
