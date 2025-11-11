@@ -732,26 +732,85 @@
   // RESET (ref_modified)
   const resetBtn = $('#ta-btn-reset');
   if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
+    resetBtn.addEventListener('click', async () => {
       if (!activeJobId || activeSource !== 'ref_modified') return;
       if (!confirm('Reset rincian dari referensi? Perubahan lokal akan hilang.')) return;
+
       const url = urlFor(endpoints.reset, activeJobId);
-      fetch(url, {
-        method:'POST',
-        credentials:'same-origin',
-        headers:{ 'X-CSRFToken': CSRF }
-      }).then(r=>r.json()).then(js=>{
-        if (!js.ok) throw new Error('Gagal reset');
-        // GET ulang
-        fetch(urlFor(endpoints.get, activeJobId), {credentials:'same-origin'})
-          .then(r=>r.json()).then(js=>{
-            rowsByJob[activeJobId] = { items: js.items || [], kategoriMeta: js.meta?.kategori_opts || [], readOnly: !!js.meta?.read_only };
-            paint(rowsByJob[activeJobId].items);
-            setDirty(false);
-            setEditorModeBySource();
-            toast('Di-reset dari referensi', 'success');
-          });
-      }).catch(()=> toast('Gagal reset', 'error'));
+
+      try {
+        // Fetch with HTTP error checking
+        const response = await fetch(url, {
+          method:'POST',
+          credentials:'same-origin',
+          headers:{ 'X-CSRFToken': CSRF }
+        });
+
+        // Check HTTP status first
+        if (!response.ok) {
+          const text = await response.text();
+          let errorMsg = 'Gagal reset. Silakan coba lagi.';
+
+          if (response.status === 403) {
+            errorMsg = '⛔ Anda tidak memiliki akses untuk reset pekerjaan ini.';
+          } else if (response.status === 404) {
+            errorMsg = '❌ Pekerjaan atau referensi tidak ditemukan.';
+          } else if (response.status === 500) {
+            errorMsg = '⚠️ Server error. Hubungi administrator.';
+          } else if (text) {
+            errorMsg = `HTTP ${response.status}: ${text}`;
+          }
+
+          throw new Error(errorMsg);
+        }
+
+        const js = await response.json();
+
+        // Check API response status
+        if (!js.ok) {
+          // Extract specific error from server
+          const errorMsg = js.errors && js.errors.length > 0
+            ? js.errors.map(e => e.message).join('; ')
+            : js.user_message || 'Gagal reset. Silakan coba lagi.';
+          throw new Error(errorMsg);
+        }
+
+        // Success: reload data
+        const getResponse = await fetch(urlFor(endpoints.get, activeJobId), {credentials:'same-origin'});
+        const getData = await getResponse.json();
+
+        rowsByJob[activeJobId] = {
+          items: getData.items || [],
+          kategoriMeta: getData.meta?.kategori_opts || [],
+          readOnly: !!getData.meta?.read_only
+        };
+
+        paint(rowsByJob[activeJobId].items);
+        setDirty(false);
+        setEditorModeBySource();
+
+        // Show success with item count
+        const count = getData.items?.length || 0;
+        toast(`✅ Berhasil reset ${count} item dari referensi`, 'success');
+
+      } catch(err) {
+        // Comprehensive error handling
+        console.error('[RESET ERROR]', err);
+
+        let errorMsg = 'Gagal reset. Silakan coba lagi.';
+
+        if (err.message) {
+          if (err.message.includes('timeout') || err.message.includes('Failed to fetch')) {
+            errorMsg = '⏱️ Koneksi timeout. Periksa internet dan coba lagi.';
+          } else if (err.message.includes('NetworkError') || err.message.includes('Network request failed')) {
+            errorMsg = '🌐 Tidak ada koneksi internet. Periksa koneksi Anda.';
+          } else {
+            errorMsg = err.message; // Use specific error from server
+          }
+        }
+
+        toast(errorMsg, 'error');
+      }
     });
   }
 
@@ -776,15 +835,23 @@
     URL.revokeObjectURL(a.href);
   });
 
-  // toast minimal (pakai console; bisa diganti DP.core.toast jika ada)
+  // toast notification - use global DP.core.toast if available
   /**
    * Show toast notification with auto-dismiss
    * @param {string} msg - Message to display
    * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+   * @param {number} delay - Auto-dismiss delay in ms (default: 3000)
    */
-  function toast(msg, type='info') {
+  function toast(msg, type='info', delay=3000) {
     console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
 
+    // Use global DP.core.toast if available (with correct z-index)
+    if (window.DP && window.DP.core && window.DP.core.toast) {
+      window.DP.core.toast.show(msg, type, delay);
+      return;
+    }
+
+    // Fallback to inline implementation
     // Create toast container if not exists
     let container = document.getElementById('ta-toast-container');
     if (!container) {
@@ -794,7 +861,7 @@
         position: fixed;
         top: 80px;
         right: 20px;
-        z-index: 10000;
+        z-index: 13100;
         display: flex;
         flex-direction: column;
         gap: 10px;

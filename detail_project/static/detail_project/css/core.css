@@ -23,9 +23,9 @@
    =========================================================== */
 :root{
   /* Z-Index (mengikuti baseline milikmu) */
+  --dp-z-toast: 13100;            /* toast area - ALWAYS visible, even above modal */
   --dp-z-modal: 13000;            /* modal Bootstrap */
   --dp-z-backdrop: 12990;         /* backdrop di bawah modal */
-  --dp-z-toast: 12050;            /* toast area */
   --dp-z-sidebar: 12045;
   --dp-z-topbar: 12044;           /* bilah/topbar global */
   --dp-z-toolbar: 12041;          /* topbar/toolbar */

@@ -12,7 +12,7 @@
       area = document.createElement('div');
       area.id = 'dp-toast-area';
       area.className = 'position-fixed top-0 end-0 p-3';
-      area.style.zIndex = '12050'; // pertahankan z-index milikmu (tidak ubah layering)
+      area.style.zIndex = '13100'; // Above modal for always-visible feedback
       area.setAttribute('role', 'region');
       area.setAttribute('aria-label', 'Notifications');
       area.setAttribute('aria-live', 'polite');
