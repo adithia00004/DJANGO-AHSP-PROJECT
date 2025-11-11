@@ -492,33 +492,36 @@
       // DEBUG: Log full response
       console.log('[SAVE] Response:', js);
 
-      // Check for errors in response
-      if (js.errors && js.errors.length > 0) {
-        console.error('[SAVE] Server errors:', js.errors);
-        const firstError = js.errors[0];
-        const errorMsg = firstError.message || 'Unknown error';
-        const errorPath = firstError.path || '';
-        toast(`Save Failed: ${errorPath} - ${errorMsg}`, 'error');
-        console.error('[SAVE] Full error details:', js.errors);
+      // IMPROVED: Use user_message from server for better UX
+      if (!js.ok) {
+        // Server returned error with user-friendly message
+        const userMsg = js.user_message || 'Gagal menyimpan data. Silakan coba lagi.';
+        toast(userMsg, 'error');
+        console.error('[SAVE] Server errors:', js.errors || []);
         return; // Don't throw, just return
       }
 
-      if (!js.ok && !js.saved_raw_rows && !js.saved_expanded_rows) {
-        console.error('[SAVE] Save failed - no rows saved');
-        throw new Error('Gagal simpan - server returned ok=false');
+      // Partial success (status 207) - some errors but data saved
+      if (js.errors && js.errors.length > 0) {
+        const userMsg = js.user_message || `⚠️ Data tersimpan sebagian. ${js.errors.length} kesalahan ditemukan.`;
+        toast(userMsg, 'warning');
+        console.warn('[SAVE] Partial success with errors:', js.errors);
+      } else {
+        // Full success - use server's success message
+        const userMsg = js.user_message || '✅ Data berhasil disimpan!';
+        toast(userMsg, 'success');
+        console.log('[SAVE] Success - Raw:', js.saved_raw_rows, 'Expanded:', js.saved_expanded_rows);
       }
 
-      // Success
-      console.log('[SAVE] Success - Raw:', js.saved_raw_rows, 'Expanded:', js.saved_expanded_rows);
+      // Update state
       setDirty(false);
       rowsByJob[activeJobId] = rowsByJob[activeJobId] || {};
       rowsByJob[activeJobId].items = rows; // cache tampilan
-      toast('Tersimpan', 'success');
     }).catch((err) => {
-      // DEBUG: Log detailed error
+      // Network error or unexpected error
       console.error('[SAVE] Catch error:', err);
       console.error('[SAVE] Error stack:', err.stack);
-      toast('Gagal menyimpan - lihat console untuk detail', 'error');
+      toast('❌ Gagal menyimpan. Periksa koneksi internet Anda dan coba lagi.', 'error');
     }).finally(() => {
       if (spin) spin.hidden = true;
       if (btnSave) btnSave.disabled = false;
@@ -601,8 +604,116 @@
   });
 
   // toast minimal (pakai console; bisa diganti DP.core.toast jika ada)
+  /**
+   * Show toast notification with auto-dismiss
+   * @param {string} msg - Message to display
+   * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+   */
   function toast(msg, type='info') {
-    console.log(`[${type}] ${msg}`);
+    console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
+
+    // Create toast container if not exists
+    let container = document.getElementById('ta-toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'ta-toast-container';
+      container.style.cssText = `
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 400px;
+      `;
+      document.body.appendChild(container);
+    }
+
+    // Icon and color mapping
+    const config = {
+      success: { icon: 'bi-check-circle-fill', bg: '#28a745', color: '#fff' },
+      error: { icon: 'bi-x-circle-fill', bg: '#dc3545', color: '#fff' },
+      warning: { icon: 'bi-exclamation-triangle-fill', bg: '#ffc107', color: '#000' },
+      info: { icon: 'bi-info-circle-fill', bg: '#17a2b8', color: '#fff' }
+    };
+    const cfg = config[type] || config.info;
+
+    // Create toast element
+    const toastEl = document.createElement('div');
+    toastEl.className = 'ta-toast';
+    toastEl.style.cssText = `
+      background: ${cfg.bg};
+      color: ${cfg.color};
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 300px;
+      animation: slideInRight 0.3s ease-out;
+      font-size: 14px;
+      line-height: 1.4;
+    `;
+
+    toastEl.innerHTML = `
+      <i class="bi ${cfg.icon}" style="font-size: 20px; flex-shrink: 0;"></i>
+      <span style="flex: 1;">${escapeHtml(msg)}</span>
+      <button type="button" style="
+        background: none;
+        border: none;
+        color: ${cfg.color};
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        opacity: 0.7;
+        flex-shrink: 0;
+      " aria-label="Close">&times;</button>
+    `;
+
+    // Close button
+    const closeBtn = toastEl.querySelector('button');
+    closeBtn.addEventListener('click', () => {
+      toastEl.style.animation = 'slideOutRight 0.3s ease-in';
+      setTimeout(() => toastEl.remove(), 300);
+    });
+
+    // Auto-dismiss after 5 seconds (error stays longer)
+    const duration = type === 'error' ? 8000 : 5000;
+    setTimeout(() => {
+      if (toastEl.parentNode) {
+        toastEl.style.animation = 'slideOutRight 0.3s ease-in';
+        setTimeout(() => toastEl.remove(), 300);
+      }
+    }, duration);
+
+    container.appendChild(toastEl);
+  }
+
+  // Helper: Escape HTML to prevent XSS
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Add animations via <style>
+  if (!document.getElementById('ta-toast-animations')) {
+    const style = document.createElement('style');
+    style.id = 'ta-toast-animations';
+    style.textContent = `
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   // auto-select first job

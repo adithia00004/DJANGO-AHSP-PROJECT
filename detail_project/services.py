@@ -49,21 +49,53 @@ except Exception:
 def _upsert_harga_item(project, kategori: str, kode_item: str, uraian: str, satuan: str | None):
     """
     Upsert master harga unik per proyek (tanpa mengubah harga_satuan).
+
+    CRITICAL FIX: kategori is now IMMUTABLE to prevent data inconsistency.
+    If kode_item already exists with different kategori, raises ValidationError.
+    Uses select_for_update() to prevent race conditions.
     """
-    obj, _created = HargaItemProject.objects.get_or_create(
-        project=project, kode_item=kode_item,
-        defaults=dict(kategori=kategori, uraian=uraian, satuan=satuan)
-    )
-    changed = False
-    if obj.kategori != kategori:
-        obj.kategori = kategori; changed = True
-    if uraian and obj.uraian != uraian:
-        obj.uraian = uraian; changed = True
-    if (satuan or None) != obj.satuan:
-        obj.satuan = satuan or None; changed = True
-    if changed:
-        obj.save(update_fields=["kategori", "uraian", "satuan", "updated_at"])
-    return obj
+    from django.core.exceptions import ValidationError
+
+    try:
+        # Try to get existing with row-level lock
+        obj = HargaItemProject.objects.select_for_update().get(
+            project=project,
+            kode_item=kode_item
+        )
+
+        # CRITICAL: kategori is IMMUTABLE - cannot be changed once set
+        if obj.kategori != kategori:
+            raise ValidationError(
+                f"Kode '{kode_item}' sudah terdaftar dengan kategori '{obj.kategori}'. "
+                f"Tidak dapat diubah ke kategori '{kategori}'. "
+                f"Gunakan kode yang berbeda atau periksa kembali data Anda."
+            )
+
+        # Update metadata only (uraian, satuan)
+        changed = False
+        if uraian and obj.uraian != uraian:
+            obj.uraian = uraian
+            changed = True
+        if (satuan or None) != obj.satuan:
+            obj.satuan = satuan or None
+            changed = True
+
+        if changed:
+            obj.save(update_fields=["uraian", "satuan", "updated_at"])
+
+        return obj
+
+    except HargaItemProject.DoesNotExist:
+        # Create new - kategori set here and becomes immutable
+        obj = HargaItemProject.objects.create(
+            project=project,
+            kode_item=kode_item,
+            kategori=kategori,
+            uraian=uraian,
+            satuan=satuan
+        )
+        logger.info(f"[UPSERT_HARGA] Created new HargaItemProject: {kode_item} ({kategori})")
+        return obj
 
 
 def check_circular_dependency_pekerjaan(pekerjaan_id: int, ref_pekerjaan_id: int, project) -> tuple[bool, list[int]]:

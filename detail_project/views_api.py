@@ -1164,7 +1164,20 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     - detail_ready True bila ada baris valid.
     """
     project = _owner_or_404(project_id, request.user)
-    pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
+
+    # CRITICAL FIX: Lock pekerjaan row to prevent concurrent edit race condition
+    # This ensures only one user can edit this pekerjaan at a time, preventing silent data loss
+    try:
+        pkj = (Pekerjaan.objects
+               .select_for_update()  # Acquire row-level lock
+               .get(id=pekerjaan_id, project=project))
+    except Pekerjaan.DoesNotExist:
+        logger.error(f"[SAVE_DETAIL_AHSP] Pekerjaan {pekerjaan_id} not found")
+        return JsonResponse({
+            "ok": False,
+            "user_message": "Pekerjaan tidak ditemukan. Halaman mungkin sudah tidak valid.",
+            "errors": [_err("pekerjaan", "Tidak ditemukan")]
+        }, status=404)
 
     # DEBUG LOG: Start
     logger.info(f"[SAVE_DETAIL_AHSP] START - Project: {project.id}, Pekerjaan: {pkj.id} ({pkj.snapshot_kode}), Source: {pkj.source_type}")
@@ -1173,6 +1186,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         logger.warning(f"[SAVE_DETAIL_AHSP] REJECTED - Pekerjaan {pkj.id} is REF (read-only)")
         return JsonResponse({
             "ok": False,
+            "user_message": "Pekerjaan ini bersumber dari referensi dan tidak dapat diubah. Gunakan halaman Rincian AHSP Gabungan untuk modifikasi.",
             "errors": [_err("source_type", "Pekerjaan referensi tidak bisa diubah di tahap ini (gunakan tahap Gabungan).")]
         }, status=400)
 
@@ -1182,11 +1196,19 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         logger.info(f"[SAVE_DETAIL_AHSP] Payload received: {len(payload.get('rows', []))} rows")
     except Exception as e:
         logger.error(f"[SAVE_DETAIL_AHSP] JSON parse error: {str(e)}")
-        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+        return JsonResponse({
+            "ok": False,
+            "user_message": "Data yang dikirim tidak valid. Silakan refresh halaman dan coba lagi.",
+            "errors": [_err("$", "Payload JSON tidak valid")]
+        }, status=400)
 
     rows = payload.get('rows') or []
     if not isinstance(rows, list):
-        return JsonResponse({"ok": False, "errors": [_err("rows", "Harus list")]}, status=400)
+        return JsonResponse({
+            "ok": False,
+            "user_message": "Format data tidak valid. Silakan refresh halaman dan coba lagi.",
+            "errors": [_err("rows", "Harus list")]
+        }, status=400)
 
     # Normalisasi & validasi
     errors = []
@@ -1290,7 +1312,14 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     # Bila semua baris error → 400
     if errors and not normalized:
         logger.error(f"[SAVE_DETAIL_AHSP] All rows invalid: {len(errors)} errors")
-        return JsonResponse({"ok": False, "errors": errors}, status=400)
+        # Create user-friendly message
+        error_count = len(errors)
+        error_summary = f"Ditemukan {error_count} kesalahan pada data yang Anda masukkan. Mohon perbaiki dan coba lagi."
+        return JsonResponse({
+            "ok": False,
+            "user_message": error_summary,
+            "errors": errors
+        }, status=400)
 
     logger.info(f"[SAVE_DETAIL_AHSP] Validation passed: {len(normalized)} rows valid, {len(errors)} errors")
 
@@ -1306,12 +1335,17 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     # STORAGE 1: Prepare raw input (keep bundles!)
     raw_details_to_create = []
     logger.info(f"[SAVE_DETAIL_AHSP] Preparing STORAGE 1 (DetailAHSPProject - raw input)")
-    for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
-        # Upsert HargaItemProject (create master harga record)
-        # For LAIN bundles, create placeholder with harga_satuan=0
-        hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
 
-        raw_details_to_create.append(DetailAHSPProject(
+    # Catch ValidationError from _upsert_harga_item (kategori immutability check)
+    from django.core.exceptions import ValidationError
+    try:
+        for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
+            # Upsert HargaItemProject (create master harga record)
+            # For LAIN bundles, create placeholder with harga_satuan=0
+            # CRITICAL: This may raise ValidationError if kategori mismatch detected
+            hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
+
+            raw_details_to_create.append(DetailAHSPProject(
             project=project,
             pekerjaan=pkj,
             harga_item=hip,
@@ -1324,6 +1358,15 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             ref_ahsp=(ref_ahsp_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
             ref_pekerjaan=(ref_pekerjaan_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
         ))
+
+    except ValidationError as ve:
+        # Kategori mismatch detected by _upsert_harga_item
+        logger.error(f"[SAVE_DETAIL_AHSP] ValidationError during upsert: {str(ve)}")
+        return JsonResponse({
+            "ok": False,
+            "user_message": str(ve),
+            "errors": [_err("kategori", str(ve))]
+        }, status=400)
 
     # Delete old & insert new (replace-all) for STORAGE 1
     old_count = DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).count()
@@ -1529,14 +1572,22 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=detail_ready)
     logger.info(f"[SAVE_DETAIL_AHSP] Updated pekerjaan.detail_ready = {detail_ready}")
 
-    # Invalidate rekap cache
-    invalidate_rekap_cache(project)
+    # CRITICAL FIX: Invalidate cache AFTER transaction commits to avoid race condition
+    # This ensures cache is invalidated only when data is actually committed to DB
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
     status_code = 207 if errors else 200
     logger.info(f"[SAVE_DETAIL_AHSP] SUCCESS - Status: {status_code}, Raw: {len(saved_raw_details)}, Expanded: {len(expanded_to_create)}, Errors: {len(errors)}")
 
+    # Build user-friendly message
+    if status_code == 200:
+        user_message = f"✅ Data berhasil disimpan! {len(saved_raw_details)} baris komponen tersimpan."
+    else:
+        user_message = f"⚠️ Data tersimpan sebagian. {len(saved_raw_details)} baris berhasil, {len(errors)} kesalahan ditemukan."
+
     return JsonResponse({
         "ok": status_code == 200,
+        "user_message": user_message,
         "saved_raw_rows": len(saved_raw_details),
         "saved_expanded_rows": len(expanded_to_create),
         "errors": errors
