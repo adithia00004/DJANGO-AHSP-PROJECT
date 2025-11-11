@@ -1698,12 +1698,57 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     DUAL STORAGE UPDATE:
     - Validates items against DetailAHSPExpanded (expanded components)
     - Only allows editing items that are actually used in expanded storage
+
+    P0 FIXES (2025-11-11):
+    - Added row-level locking to prevent concurrent edit race conditions
+    - Added optimistic locking with timestamp checking
+    - Fixed cache invalidation timing
+    - Added user-friendly error messages
     """
     project = _owner_or_404(project_id, request.user)
     try:
         payload = json.loads(request.body.decode('utf-8'))
     except Exception:
-        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+        return JsonResponse({
+            "ok": False,
+            "user_message": "Data yang dikirim tidak valid. Silakan refresh halaman dan coba lagi.",
+            "errors": [_err("$", "Payload JSON tidak valid")]
+        }, status=400)
+
+    # P0 FIX: OPTIMISTIC LOCKING - Check client timestamp against server timestamp
+    client_updated_at = payload.get('client_updated_at')
+    if client_updated_at:
+        from datetime import datetime
+        try:
+            # Parse ISO format timestamp from client
+            client_dt = datetime.fromisoformat(client_updated_at.replace('Z', '+00:00'))
+
+            # Refresh project to get latest timestamp
+            project.refresh_from_db()
+            server_dt = project.updated_at if hasattr(project, 'updated_at') and project.updated_at else None
+
+            if server_dt and client_dt < server_dt:
+                # Data has been modified by another user since client loaded it
+                logger.warning(
+                    f"[SAVE_HARGA_ITEMS] CONFLICT - Project {project.id} modified by another user. "
+                    f"Client: {client_dt.isoformat()}, Server: {server_dt.isoformat()}"
+                )
+                return JsonResponse({
+                    "ok": False,
+                    "conflict": True,  # Special flag for conflict
+                    "user_message": (
+                        "⚠️ KONFLIK DATA TERDETEKSI!\n\n"
+                        "Data harga telah diubah oleh pengguna lain sejak Anda membukanya.\n\n"
+                        "Pilihan:\n"
+                        "• Muat Ulang: Refresh halaman untuk melihat perubahan terbaru (data Anda akan hilang)\n"
+                        "• Timpa: Simpan data Anda dan timpa perubahan pengguna lain (tidak disarankan)"
+                    ),
+                    "server_updated_at": server_dt.isoformat(),
+                    "errors": [_err("updated_at", "Data telah berubah sejak Anda membukanya")]
+                }, status=409)  # 409 Conflict
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"[SAVE_HARGA_ITEMS] Invalid client_updated_at format: {client_updated_at}, error: {e}")
+            # Continue without optimistic locking if timestamp is invalid
 
     items = payload.get('items') or []
     errors = []
@@ -1730,10 +1775,22 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         if dec is None:
             errors.append(_err(f"items[{i}].harga_satuan", "Harus ≥ 0 dan berupa angka yang valid")); continue
 
-        HargaItemProject.objects.filter(project=project, id=item_id).update(
-            harga_satuan=quantize_half_up(dec, dp)
-        )
-        updated += 1
+        # P0 FIX: ROW-LEVEL LOCKING - Prevent concurrent edit race condition
+        try:
+            # Acquire row-level lock with select_for_update()
+            obj = (HargaItemProject.objects
+                   .select_for_update()  # Lock this row
+                   .get(project=project, id=item_id))
+
+            # Update with lock held
+            new_price = quantize_half_up(dec, dp)
+            if obj.harga_satuan != new_price:
+                obj.harga_satuan = new_price
+                obj.save(update_fields=['harga_satuan', 'updated_at'])
+                updated += 1
+        except HargaItemProject.DoesNotExist:
+            errors.append(_err(f"items[{i}].id", "Item tidak ditemukan"))
+            continue
 
     # === NEW: Profit/Margin (opsional)
     pricing_saved = False
@@ -1757,18 +1814,40 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     else:
         status_code = 200
 
-    # NEW: rekap berubah jika ada harga, Profit/Margin yang berubah
+    # P0 FIX: Cache invalidation AFTER transaction commits
     if updated > 0 or pricing_saved:
-        invalidate_rekap_cache(project)
+        def invalidate_harga_cache():
+            invalidate_rekap_cache(project)
+            logger.info(f"[CACHE] Invalidated cache for project {project.id} after harga items update")
+
+        transaction.on_commit(invalidate_harga_cache)
+
+    # Build user-friendly message
+    if status_code == 200:
+        if updated > 0 and pricing_saved:
+            user_message = f"✅ Berhasil menyimpan {updated} perubahan harga dan profit/margin!"
+        elif updated > 0:
+            user_message = f"✅ Berhasil menyimpan {updated} perubahan harga!"
+        elif pricing_saved:
+            user_message = "✅ Berhasil menyimpan profit/margin!"
+        else:
+            user_message = "✅ Tidak ada perubahan untuk disimpan."
+    else:
+        user_message = f"⚠️ Data tersimpan sebagian. {len(errors)} kesalahan ditemukan."
+
+    # Refresh project to get updated timestamp
+    project.refresh_from_db()
 
     # kirim balik nilai Profit/Margin terbaru untuk sinkronisasi FE
     pricing = _get_or_create_pricing(project)
     return JsonResponse(
         {
             "ok": status_code == 200,
+            "user_message": user_message,
             "updated": updated,
             "pricing_saved": pricing_saved,
             "markup_percent": to_dp_str(pricing.markup_percent, 2),
+            "project_updated_at": project.updated_at.isoformat() if hasattr(project, 'updated_at') and project.updated_at else None,
             "errors": errors,
         },
         status=status_code
@@ -2090,6 +2169,9 @@ def api_list_harga_items(request: HttpRequest, project_id: int):
     - Reads from DetailAHSPExpanded (expanded components) instead of DetailAHSPProject (raw input)
     - Shows only base components (TK/BHN/ALT) from bundle expansion
     - Bundle items (LAIN) are NOT shown (they're expanded to components)
+
+    P0 FIX (2025-11-11):
+    - Added project_updated_at for optimistic locking
     """
     project = _owner_or_404(project_id, request.user)
     qs = (HargaItemProject.objects
@@ -2105,7 +2187,10 @@ def api_list_harga_items(request: HttpRequest, project_id: int):
 
     # === NEW: expose Profit/Margin default 10.00% sebagai string "10.00"
     pricing = _get_or_create_pricing(project)
-    meta = { "markup_percent": to_dp_str(pricing.markup_percent, 2) }
+    meta = {
+        "markup_percent": to_dp_str(pricing.markup_percent, 2),
+        "project_updated_at": project.updated_at.isoformat() if hasattr(project, 'updated_at') and project.updated_at else None
+    }
 
     return JsonResponse({"ok": True, "items": items, "meta": meta})
 

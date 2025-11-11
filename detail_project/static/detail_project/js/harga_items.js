@@ -40,12 +40,34 @@
   window.addEventListener('resize', debounce(syncToolbarH, 120));
   syncToolbarH();
 
+  // P0 FIX: Toast notification system (import from core)
+  const toast = window.DP && window.DP.core && window.DP.core.toast
+    ? (msg, variant='info', delay=3000) => window.DP.core.toast.show(msg, variant, delay)
+    : (msg) => console.log('[TOAST]', msg);
+
   // State
   const katMap = { TK:'Tenaga', BHN:'Bahan', ALT:'Alat', LAIN:'Lainnya' };
   const Dim = { MASS:'mass', VOL:'volume', COUNT:'count', OTHER:'other' };
   let rows = [];
   let viewRows = [];
   let bukCanonLoaded = "";
+
+  // P0 FIX: Dirty state tracking & optimistic locking
+  let dirty = false;
+  let projectUpdatedAt = null;  // Timestamp for optimistic locking
+
+  function setDirty(val) {
+    dirty = !!val;
+    if ($btnSave) {
+      if (dirty) {
+        $btnSave.classList.add('btn-warning');
+        $btnSave.classList.remove('btn-success');
+      } else {
+        $btnSave.classList.remove('btn-warning');
+        $btnSave.classList.add('btn-success');
+      }
+    }
+  }
 
   // ===== Helpers: numeric & format
   const toUI = (s)=> N ? N.formatForUI(N.enforceDp(s||'', DP)) : (s||'');
@@ -102,6 +124,16 @@
     return Dim.OTHER;
   }
 
+  // P0 FIX: Unsaved changes warning - prevent data loss on browser close/refresh
+  window.addEventListener('beforeunload', (e) => {
+    if (dirty) {
+      const msg = 'Anda memiliki perubahan harga yang belum disimpan. Yakin ingin meninggalkan halaman?';
+      e.preventDefault();
+      e.returnValue = msg;
+      return msg;
+    }
+  });
+
   // ===== Konversi: in-memory + localStorage per Kode
   const convStore = new Map(); // key: item.id -> profile
   const lsk = (kode)=> 'hiConv:' + kode;
@@ -140,7 +172,15 @@
         bukCanonLoaded = String(j.meta.markup_percent || '10.00');
         if ($bukInput) $bukInput.value = toUI2(bukCanonLoaded);
       }
+
+      // P0 FIX: OPTIMISTIC LOCKING - Store timestamp when data is loaded
+      if (j.meta && j.meta.project_updated_at) {
+        projectUpdatedAt = j.meta.project_updated_at;
+        console.log('[HARGA_ITEMS] Loaded timestamp:', projectUpdatedAt);
+      }
+
       renderTable(rows);
+      setDirty(false);  // Mark as clean after loading
     }catch(e){
       setEmpty('Gagal memuat data.');
       console.error(e);
@@ -253,7 +293,13 @@
     tr?.classList.toggle('hi-row-zero', isZero);
     // tandai dirty vs baseline
     const orig = tr?.dataset.origCanon || '';
-    setRowDirtyVisual(tr, !!canon && canon !== orig);
+    const isDirty = !!canon && canon !== orig;
+    setRowDirtyVisual(tr, isDirty);
+
+    // P0 FIX: Mark global dirty state when any input changes
+    if (isDirty || $bukInput?.value !== toUI2(bukCanonLoaded)) {
+      setDirty(true);
+    }
   });
 
   // ===== Blur: normalisasi ke display format
@@ -284,6 +330,14 @@
   }, true);
 
   // ===== Profit/Margin: enforce 2dp pada blur
+  // P0 FIX: Mark dirty when BUK/markup changes
+  $bukInput?.addEventListener('input', ()=>{
+    const canon = toCanon2($bukInput.value);
+    if (canon && canon !== bukCanonLoaded) {
+      setDirty(true);
+    }
+  });
+
   $bukInput?.addEventListener('blur', ()=>{
     const canon = toCanon2($bukInput.value);
     $bukInput.value = toUI2(canon || bukCanonLoaded);
@@ -315,7 +369,7 @@
       });
 
       if (invalidCount > 0){
-        toast(`Terdapat ${invalidCount} input tidak valid. Perbaiki sebelum menyimpan.`, 'warn');
+        toast(`Terdapat ${invalidCount} input tidak valid. Perbaiki sebelum menyimpan.`, 'warning');
         return;
       }
 
@@ -334,6 +388,11 @@
         return;
       }
 
+      // P0 FIX: OPTIMISTIC LOCKING - Include timestamp in payload
+      if (projectUpdatedAt) {
+        payload.client_updated_at = projectUpdatedAt;
+      }
+
       const spin = document.getElementById('hi-save-spin');
       $btnSave.disabled = true; spin?.removeAttribute('hidden');
 
@@ -344,12 +403,92 @@
         body: JSON.stringify(payload),
       });
       const j = await res.json();
+
+      // P0 FIX: OPTIMISTIC LOCKING - Handle conflict (409 status)
+      if (!j.ok && j.conflict) {
+        console.warn('[SAVE] Conflict detected - data modified by another user');
+
+        const confirmMsg = (
+          "⚠️ KONFLIK DATA TERDETEKSI!\n\n" +
+          "Data harga telah diubah oleh pengguna lain sejak Anda membukanya.\n\n" +
+          "Pilihan:\n" +
+          "• OK = Muat Ulang (lihat perubahan terbaru, data Anda akan hilang)\n" +
+          "• Cancel = Timpa (simpan data Anda, perubahan pengguna lain akan hilang)\n\n" +
+          "⚠️ Timpa hanya jika Anda yakin perubahan Anda lebih penting!"
+        );
+
+        if (confirm(confirmMsg)) {
+          // User chose to reload - refresh page
+          console.log('[SAVE] User chose to reload');
+          toast('🔄 Memuat ulang data terbaru...', 'info');
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          // User chose to force overwrite - retry without timestamp
+          console.log('[SAVE] User chose to force overwrite');
+          toast('⚠️ Menyimpan dengan mode timpa...', 'warning');
+
+          const retryPayload = { ...payload };
+          delete retryPayload.client_updated_at;
+
+          const retryRes = await fetch(EP_SAVE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+            credentials: 'same-origin',
+            body: JSON.stringify(retryPayload)
+          });
+          const retryJ = await retryRes.json();
+
+          if (retryJ.ok) {
+            const userMsg = retryJ.user_message || '✅ Data berhasil disimpan (mode timpa)';
+            toast(userMsg, 'success');
+            setDirty(false);
+
+            // Update stored timestamp
+            if (retryJ.project_updated_at) {
+              projectUpdatedAt = retryJ.project_updated_at;
+            }
+
+            // Visual feedback
+            idsSaving.forEach(({id, canon})=>{
+              const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
+              if (!tr) return;
+              tr.classList.add('hi-row-saved');
+              setTimeout(()=> tr.classList.remove('hi-row-saved'), 1200);
+              tr.classList.remove('hi-row-empty');
+              tr.classList.toggle('hi-row-zero', Number(canon) === 0);
+              setRowDirtyVisual(tr, false);
+              tr.dataset.origCanon = canon;
+              const input = tr.querySelector('.hi-input-price');
+              input?.classList.remove('ux-invalid');
+            });
+
+            setTimeout(()=> fetchList(), 900);
+          } else {
+            const errMsg = retryJ.user_message || 'Gagal menyimpan data.';
+            toast(errMsg, 'error');
+            console.error('[SAVE] Retry failed:', retryJ.errors);
+          }
+        }
+        return; // Exit early - conflict handled
+      }
+
+      // P0 FIX: Use user_message from server
       if (!res.ok || !j.ok){
-        console.warn(j);
-        toast('Sebagian gagal disimpan. Cek log.', 'warn');
+        const userMsg = j.user_message || 'Sebagian gagal disimpan. Silakan coba lagi.';
+        toast(userMsg, 'warning');
+        console.warn('[SAVE] Errors:', j.errors || []);
         fetchList(); // segarkan untuk sinkron
       } else {
-        toast(`Berhasil menyimpan ${j.updated ?? payload.items.length} item.`, 'success');
+        const userMsg = j.user_message || `✅ Berhasil menyimpan ${j.updated ?? payload.items.length} item.`;
+        toast(userMsg, 'success');
+        setDirty(false);  // Mark as clean after successful save
+
+        // P0 FIX: Update stored timestamp after successful save
+        if (j.project_updated_at) {
+          projectUpdatedAt = j.project_updated_at;
+          console.log('[SAVE] Updated timestamp:', projectUpdatedAt);
+        }
+
         // Tandai baris-baris yang tersimpan dan bersihkan status dirty/empty
         idsSaving.forEach(({id, canon})=>{
           const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
@@ -367,7 +506,8 @@
         setTimeout(()=> fetchList(), 900);
       }
     }catch(e){
-      console.error(e); toast('Gagal menyimpan.', 'error');
+      console.error(e);
+      toast('❌ Gagal menyimpan. Periksa koneksi internet Anda.', 'error');
       fetchList();
     }finally{
       const spin = document.getElementById('hi-save-spin');
