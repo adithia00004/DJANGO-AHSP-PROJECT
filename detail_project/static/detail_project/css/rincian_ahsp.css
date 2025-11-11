@@ -30,6 +30,8 @@
   gap: .5rem;
   flex-wrap: wrap;
 }
+
+/* TIER 2 FIX: Standardize button height with explicit calc */
 .ra-app .ra-toolbar .btn{
   white-space: nowrap;
   font-size: var(--ux-font-xs);
@@ -38,6 +40,12 @@
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-sm);
   transition: all var(--ux-duration-200) var(--ux-ease);
+  /* TIER 2 FIX: Ensure consistent height */
+  min-height: calc(1.5em + (.375rem * 2) + 2px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
 }
 .ra-app .ra-toolbar .btn:hover{
   transform: translateY(-1px);
@@ -58,6 +66,7 @@
 .ra-app .ra-toolbar-hint .kbd-hint kbd{ margin: 0 .1rem; }
 
 /* Input group sizing and theme in toolbar (SELARAS dengan Rekap RAB) */
+/* TIER 2 FIX: Standardize input height to match buttons */
 .ra-app #ra-toolbar .input-group .form-control,
 .ra-app #ra-toolbar .input-group .input-group-text{
   font-size: var(--ux-font-xs);
@@ -66,6 +75,10 @@
   padding-bottom: .375rem;
   border-color: var(--dp-c-border);
   transition: all var(--ux-duration-200) var(--ux-ease);
+  /* TIER 2 FIX: Explicit height to match buttons */
+  height: calc(1.5em + (.375rem * 2) + 2px);
+  display: flex;
+  align-items: center;
 }
 .ra-app #ra-toolbar .input-group .form-control{
   background: var(--dp-c-bg);

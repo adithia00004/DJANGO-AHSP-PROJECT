@@ -146,16 +146,100 @@
     if ($ovrInput) $ovrInput.placeholder = enabled ? "Override %" : "Override tidak tersedia";
   }
 
-  function showToast(msg, type = 'info') {
+  // Toast notification - aligned with Template AHSP pattern
+  /**
+   * Show toast notification with auto-dismiss
+   * @param {string} msg - Message to display
+   * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+   * @param {number} delay - Auto-dismiss delay in ms (default: based on type)
+   */
+  function showToast(msg, type = 'info', delay = null) {
+    console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
+
+    // Use global DP.core.toast if available (with correct z-index)
+    if (window.DP && window.DP.core && window.DP.core.toast) {
+      window.DP.core.toast.show(msg, type, delay || (type === 'error' ? 8000 : 5000));
+      return;
+    }
+
+    // Fallback to inline implementation
     if (!$toast) { console.log(`[${type}]`, msg); return; }
+
+    const config = {
+      success: { icon: 'bi-check-circle-fill', bg: '#28a745', color: '#fff' },
+      error: { icon: 'bi-x-circle-fill', bg: '#dc3545', color: '#fff' },
+      warning: { icon: 'bi-exclamation-triangle-fill', bg: '#ffc107', color: '#000' },
+      info: { icon: 'bi-info-circle-fill', bg: '#17a2b8', color: '#fff' }
+    };
+    const cfg = config[type] || config.info;
+
     const div = document.createElement('div');
     div.className = `rk-toast rk-toast-${type}`;
-    div.textContent = msg;
-    $toast.appendChild(div);
+    div.style.cssText = `
+      background: ${cfg.bg};
+      color: ${cfg.color};
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: slideInRight 0.3s ease-out;
+      font-size: 14px;
+      line-height: 1.4;
+      min-width: 300px;
+      max-width: 500px;
+    `;
+    div.innerHTML = `
+      <i class="bi ${cfg.icon}" style="font-size: 20px; flex-shrink: 0;"></i>
+      <span style="flex: 1; white-space: pre-wrap;">${esc(msg)}</span>
+      <button type="button" style="
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 24px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        opacity: 0.7;
+        flex-shrink: 0;
+      " aria-label="Close">&times;</button>
+    `;
+
+    const closeBtn = div.querySelector('button');
+    closeBtn.addEventListener('click', () => {
+      div.style.animation = 'slideOutRight 0.3s ease-in';
+      setTimeout(() => div.remove(), 300);
+    });
+
+    // Auto-dismiss (error stays longer)
+    const duration = delay || (type === 'error' ? 8000 : 5000);
     setTimeout(() => {
-      div.classList.add('out');
-      setTimeout(() => div.remove(), 250);
-    }, 1600);
+      if (div.parentNode) {
+        div.style.animation = 'slideOutRight 0.3s ease-in';
+        setTimeout(() => div.remove(), 300);
+      }
+    }, duration);
+
+    $toast.appendChild(div);
+  }
+
+  // Add animations via <style> if not exists
+  if (!document.getElementById('rk-toast-animations')) {
+    const style = document.createElement('style');
+    style.id = 'rk-toast-animations';
+    style.textContent = `
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   function setLoading(on){ ROOT.classList.toggle('is-loading', !!on); }
@@ -430,128 +514,176 @@
     }, 120));
   }
 
-  if ($ovrApply) {
-    $ovrApply.addEventListener('click', async () => {
-      if (selectedId == null) return;
-      const v = parsePctUI($ovrInput?.value);
-      if (v==null || v<0 || v>100){ showToast('Override Profit/Margin (BUK) harus 0..100', 'warn'); return; }
-      $ovrApply.disabled = true;
-      try{
-        await saveOverride(selectedId, v);
+  // REMOVED: Inline override controls (deprecated - use modal only to avoid duplication)
+
+  // Modal Apply handler - TIER 1 & 2 FIX
+  if ($modalApply) {
+    $modalApply.addEventListener('click', async () => {
+      if (selectedId == null) {
+        showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning');
+        return;
+      }
+
+      const rawValue = $modalInput?.value?.trim();
+      if (!rawValue) {
+        showToast('⚠️ Masukkan nilai Profit/Margin (BUK) atau kosongkan untuk reset', 'warning');
+        return;
+      }
+
+      const v = parsePctUI(rawValue);
+      if (v == null) {
+        showToast('❌ Format angka tidak valid', 'error');
+        return;
+      }
+      if (v < 0 || v > 100) {
+        showToast('❌ Profit/Margin (BUK) harus antara 0-100%', 'error');
+        return;
+      }
+
+      $modalApply.disabled = true;
+      const originalText = $modalApply.textContent;
+      $modalApply.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyimpan...';
+
+      try {
+        // Save override
+        const saveResp = await saveOverride(selectedId, v);
+
+        // TIER 1 FIX: Clear cache to force reload
+        cacheDetail.delete(selectedId);
+
+        // Get updated pricing
         const pp = await getPricingItem(selectedId);
+        const effMarkup = Number(pp.effective_markup);
+
+        // Update UI indicators
         if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
         if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
+        if ($modalInput) $modalInput.value = pp.override_markup || '';
 
+        // Update rows data with new effective markup
         const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
-        if (idx >= 0) rows[idx].markup_eff = Number(pp.effective_markup);
+        if (idx >= 0) rows[idx].markup_eff = effMarkup;
+
+        // Re-render list to show updated override chip
         renderList();
 
-        const det = cacheDetail.get(selectedId);
-        renderDetailTable(det?.items || [], Number(pp.effective_markup));
+        // TIER 2 FIX: Reload rekap to update Grand Total
+        try {
+          await loadRekap();
+        } catch (rekapErr) {
+          console.warn('[OVERRIDE] Failed to reload rekap, but override saved:', rekapErr);
+        }
 
-        updateGrandTotalFromRekap();
+        // Re-fetch and render detail with new markup
+        const detail = await fetchDetail(selectedId);
+        renderDetailTable(detail?.items || [], effMarkup);
 
-        showToast('Override Profit/Margin (BUK) tersimpan', 'success');
-      }catch(e){
-        console.error(e); showToast('Gagal menerapkan override', 'error');
-      }finally{ $ovrApply.disabled = false; }
-    });
-  }
+        // Close modal
+        if (window.bootstrap) {
+          const modalEl = document.getElementById('raOverrideModal');
+          window.bootstrap.Modal.getOrCreateInstance(modalEl)?.hide();
+        }
 
-  if ($ovrInput) {
-    $ovrInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !$ovrApply?.disabled) {
-        e.preventDefault();
-        $ovrApply?.click();
+        // Success notification
+        showToast(`✅ Override Profit/Margin (BUK) berhasil diterapkan: ${pp.effective_markup}%`, 'success');
+        console.log('[OVERRIDE] Applied successfully:', { pekerjaanId: selectedId, override: v, effective: effMarkup });
+
+      } catch (e) {
+        console.error('[OVERRIDE] Apply failed:', e);
+
+        // Show backend error message if available
+        let errorMsg = 'Gagal menerapkan override';
+        if (e.message) {
+          errorMsg = e.message;
+        } else if (typeof e === 'string') {
+          errorMsg = e;
+        }
+
+        showToast(`❌ ${errorMsg}`, 'error');
+
+      } finally {
+        $modalApply.disabled = false;
+        $modalApply.innerHTML = originalText;
       }
     });
   }
 
-  if ($ovrClear) {
-    $ovrClear.addEventListener('click', async () => {
-      if (selectedId == null) return;
-      $ovrClear.disabled = true;
-      try{
-        await saveOverride(selectedId, null);
-        const pp = await getPricingItem(selectedId);
-        if ($ovrInput) $ovrInput.value = '';
-        if ($eff)      $eff.textContent = `Profit: ${pp.effective_markup}%`;
-        if ($ovrChip)  $ovrChip.hidden = true;
-
-        const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
-        if (idx >= 0) rows[idx].markup_eff = Number(pp.effective_markup);
-        renderList();
-
-        const det = cacheDetail.get(selectedId);
-        renderDetailTable(det?.items || [], Number(pp.effective_markup));
-
-        updateGrandTotalFromRekap();
-
-        showToast('Override dihapus', 'info');
-      }catch(e){
-        console.error(e); showToast('Gagal menghapus override', 'error');
-      }finally{ $ovrClear.disabled = false; }
-    });
-  }
-
-  // Modal Apply handler
-  if ($modalApply) {
-    $modalApply.addEventListener('click', async () => {
-      if (selectedId == null) return;
-      const v = parsePctUI($modalInput?.value);
-      if (v==null || v<0 || v>100){ showToast('Override Profit/Margin (BUK) harus 0..100', 'warn'); return; }
-      $modalApply.disabled = true;
-      try{
-        await saveOverride(selectedId, v);
-        const pp = await getPricingItem(selectedId);
-        if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
-        if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
-
-        const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
-        if (idx >= 0) rows[idx].markup_eff = Number(pp.effective_markup);
-        renderList();
-
-        const det = cacheDetail.get(selectedId);
-        renderDetailTable(det?.items || [], Number(pp.effective_markup));
-
-        if (window.bootstrap) {
-          const modalEl = document.getElementById('raOverrideModal');
-          window.bootstrap.Modal.getOrCreateInstance(modalEl)?.hide();
-        }
-        showToast('Override Profit/Margin (BUK) tersimpan', 'success');
-      }catch(e){
-        console.error(e); showToast('Gagal menerapkan override', 'error');
-      }finally{ $modalApply.disabled = false; }
-    });
-  }
-
-  // Modal Clear handler
+  // Modal Clear handler - TIER 1 & 2 FIX
   if ($modalClear) {
     $modalClear.addEventListener('click', async () => {
-      if (selectedId == null) return;
+      if (selectedId == null) {
+        showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning');
+        return;
+      }
+
+      if (!confirm('Hapus override dan kembali ke Profit/Margin (BUK) default proyek?')) {
+        return;
+      }
+
       $modalClear.disabled = true;
-      try{
+      const originalText = $modalClear.textContent;
+      $modalClear.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menghapus...';
+
+      try {
+        // Clear override
         await saveOverride(selectedId, null);
+
+        // TIER 1 FIX: Clear cache to force reload
+        cacheDetail.delete(selectedId);
+
+        // Get updated pricing (should return to default)
         const pp = await getPricingItem(selectedId);
+        const effMarkup = Number(pp.effective_markup);
+
+        // Update UI indicators
         if ($modalInput) $modalInput.value = '';
         if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
         if ($ovrChip) $ovrChip.hidden = true;
 
+        // Update rows data with default markup
         const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
-        if (idx >= 0) rows[idx].markup_eff = Number(pp.effective_markup);
+        if (idx >= 0) rows[idx].markup_eff = effMarkup;
+
+        // Re-render list
         renderList();
 
-        const det = cacheDetail.get(selectedId);
-        renderDetailTable(det?.items || [], Number(pp.effective_markup));
+        // TIER 2 FIX: Reload rekap to update Grand Total
+        try {
+          await loadRekap();
+        } catch (rekapErr) {
+          console.warn('[OVERRIDE] Failed to reload rekap, but override cleared:', rekapErr);
+        }
 
+        // Re-fetch and render detail with default markup
+        const detail = await fetchDetail(selectedId);
+        renderDetailTable(detail?.items || [], effMarkup);
+
+        // Close modal
         if (window.bootstrap) {
           const modalEl = document.getElementById('raOverrideModal');
           window.bootstrap.Modal.getOrCreateInstance(modalEl)?.hide();
         }
-        showToast('Override dihapus', 'info');
-      }catch(e){
-        console.error(e); showToast('Gagal menghapus override', 'error');
-      }finally{ $modalClear.disabled = false; }
+
+        // Success notification
+        showToast(`✅ Override dihapus. Kembali ke default: ${pp.effective_markup}%`, 'info');
+        console.log('[OVERRIDE] Cleared successfully:', { pekerjaanId: selectedId, effectiveMarkup: effMarkup });
+
+      } catch (e) {
+        console.error('[OVERRIDE] Clear failed:', e);
+
+        let errorMsg = 'Gagal menghapus override';
+        if (e.message) {
+          errorMsg = e.message;
+        } else if (typeof e === 'string') {
+          errorMsg = e;
+        }
+
+        showToast(`❌ ${errorMsg}`, 'error');
+
+      } finally {
+        $modalClear.disabled = false;
+        $modalClear.innerHTML = originalText;
+      }
     });
   }
 

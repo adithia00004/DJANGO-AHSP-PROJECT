@@ -2463,15 +2463,57 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
         # clear override
         Pekerjaan.objects.filter(pk=pkj.pk).update(markup_override_percent=None)
         invalidate_rekap_cache(project)  # NEW  : rekap berubah bila ada override
-        return JsonResponse({"ok": True, "cleared": True})
 
-    dec = parse_any(raw)
-    if dec is None or dec < 0 or dec > 100:
-        return JsonResponse({"ok": False, "errors": [_err("override_markup","Harus angka 0–100")]} , status=400)
+        # Return updated effective_markup after clearing
+        eff = proj_mp
+        return JsonResponse({
+            "ok": True,
+            "cleared": True,
+            "project_markup": to_dp_str(proj_mp, 2),
+            "override_markup": None,
+            "effective_markup": to_dp_str(eff, 2)
+        })
 
+    # TIER 1 FIX: Robust validation for override BUK
+    try:
+        dec = parse_any(raw)
+    except Exception:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err("override_markup", "Format angka tidak valid")]
+        }, status=400)
+
+    # Validate range 0-100 with clear error message
+    if dec is None:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err("override_markup", "Format angka tidak valid")]
+        }, status=400)
+
+    if dec < 0:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err("override_markup", "Profit/Margin (BUK) tidak boleh negatif. Masukkan nilai 0–100")]
+        }, status=400)
+
+    if dec > 100:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err("override_markup", "Profit/Margin (BUK) maksimal 100%. Masukkan nilai 0–100")]
+        }, status=400)
+
+    # Save and return updated values
     Pekerjaan.objects.filter(pk=pkj.pk).update(markup_override_percent=dec)
     invalidate_rekap_cache(project)  # NEW
-    return JsonResponse({"ok": True, "saved": True, "override_markup": to_dp_str(dec, 2)})
+
+    eff = dec  # override becomes effective
+    return JsonResponse({
+        "ok": True,
+        "saved": True,
+        "project_markup": to_dp_str(proj_mp, 2),
+        "override_markup": to_dp_str(dec, 2),
+        "effective_markup": to_dp_str(eff, 2)
+    })
 
 
 # ---------- View 7 Volume Formula State (GET/POST di endpoint yang sama) ----------
