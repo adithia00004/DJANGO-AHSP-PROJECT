@@ -878,27 +878,6 @@
     return outCanon;
   }
 
-  // ===== Toast minimal (pakai komponen SSOT)
-  function toast(msg, level){
-    let wrap = document.getElementById('dp-toast-wrap');
-    if (!wrap){
-      wrap = document.createElement('div');
-      wrap.id = 'dp-toast-wrap';
-      wrap.className = 'dp-layer-toast';
-      Object.assign(wrap.style,{
-        position:'fixed', right:'16px', bottom:'16px',
-        display:'flex', flexDirection:'column', gap:'8px'
-      });
-      document.body.appendChild(wrap);
-    }
-    const card = document.createElement('div');
-    card.className = 'dp-card dp-border dp-surface ux-text-sm';
-    card.style.padding = '8px 12px';
-    card.innerHTML = `<strong>${(level||'info').toUpperCase()}:</strong> <span>${msg}</span>`;
-    wrap.appendChild(card);
-    setTimeout(()=>{ card.remove(); if (!wrap.childElementCount) wrap.remove(); }, 2200);
-  }
-
   // ===== Init
   fetchList();
 
