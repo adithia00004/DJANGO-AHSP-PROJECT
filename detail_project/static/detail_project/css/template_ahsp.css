@@ -142,10 +142,12 @@
   overflow:auto;
   position: relative;
   background-clip: padding-box;
+  scrollbar-gutter: stable both-edges;
 }
 .ta-app .ta-job-item{
   padding:8px; border-radius: var(--dp-radius-sm); cursor:pointer;
   border:1px solid transparent;
+  background: var(--dp-c-surface);
   transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 .ta-app .ta-job-item:hover{ background: var(--dp-c-surface-2); }
@@ -338,14 +340,40 @@
 }
 .ta-app .ta-reset-area .btn{ white-space: nowrap; }
 
-/* Sidebar list text weight (SELARAS dengan List Pekerjaan - hierarki jelas) */
-.ta-app .ta-job-item .primary .kode{
-  font-weight: 600;
-  font-size: var(--ux-font-xs);
+/* Sidebar list text styling (ENHANCED - selaras dengan Rincian AHSP) */
+.ta-app .ta-job-item .primary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-.ta-app .ta-job-item .primary .uraian{
+
+.ta-app .ta-job-item .primary .kode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--ux-font-xs);
+  font-weight: 600;
+  color: var(--dp-c-muted);
+}
+
+.ta-app .ta-job-item .primary .uraian {
   font-weight: 400;
+  line-height: 1.35;
   font-size: var(--ux-font-sm);
+  /* Line-clamp untuk mencegah overflow */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.ta-app .ta-job-item .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: var(--ux-font-xs);
+  color: var(--dp-c-muted);
+  margin-top: 4px;
 }
 
 /* Footer editor */
@@ -361,11 +389,52 @@
   content: none;
   display: none;
 }
-.ta-app .ta-job-list::before, .ta-app .ta-job-list::after{
-  content:""; position: sticky; left: 0; right: 0; height: 14px; pointer-events: none; z-index: 1;
+
+/* Scroll shadows untuk job list (ENHANCED - selaras dengan Rincian AHSP) */
+.ta-app .ta-job-list::before,
+.ta-app .ta-job-list::after {
+  content: "";
+  position: sticky;
+  left: 0;
+  right: 0;
+  height: 14px;
+  pointer-events: none;
+  z-index: 1;
 }
-.ta-app .ta-job-list::before{ top: 0; background: linear-gradient(to bottom, var(--ta-shadow-color, rgba(0,0,0,.10)), transparent); }
-.ta-app .ta-job-list::after { bottom: 0; background: linear-gradient(to top,    var(--ta-shadow-color, rgba(0,0,0,.10)), transparent); }
+
+.ta-app .ta-job-list::before {
+  top: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
+}
+
+.ta-app .ta-job-list::after {
+  bottom: 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
+}
+
+/* Custom scrollbar untuk job list (ENHANCED - selaras dengan Rincian AHSP) */
+.ta-app .ta-job-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ta-app .ta-job-list::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--dp-c-text) 20%, transparent);
+  border-radius: 8px;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.ta-app .ta-job-list::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--dp-c-text) 35%, transparent);
+}
+
+.ta-app .ta-job-list::-webkit-scrollbar-track {
+  background: transparent;
+  transition: background var(--ux-duration-200) var(--ux-ease);
+}
+
+.ta-app .ta-job-list:hover::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--dp-c-border) 20%, transparent);
+}
 
 /* Empty state */
 .ta-app .ta-table .ta-empty td{ color: var(--dp-c-muted); font-size: var(--ux-font-sm); text-align:center; }
