@@ -1660,9 +1660,13 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 
     # Buat pekerjaan TEMP agar services dapat auto-load rincian,
     # kemudian adopsi detail TEMP ke pekerjaan asli dan hapus TEMP.
+    # CRITICAL FIX: Use unique ordering_index for temp to avoid unique_together("project", "ordering_index") constraint violation
+    max_ordering = Pekerjaan.objects.filter(project=project).aggregate(Max('ordering_index'))['ordering_index__max'] or 0
+    temp_ordering = max_ordering + 1
+
     temp = clone_ref_pekerjaan(
         project, pkj.sub_klasifikasi, ref_obj, Pekerjaan.SOURCE_REF_MOD,
-        ordering_index=pkj.ordering_index, auto_load_rincian=True,
+        ordering_index=temp_ordering, auto_load_rincian=True,
         override_uraian=pkj.snapshot_uraian or None,
         override_satuan=pkj.snapshot_satuan or None,
     )
