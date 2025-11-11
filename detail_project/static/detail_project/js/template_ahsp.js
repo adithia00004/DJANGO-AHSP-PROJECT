@@ -293,7 +293,7 @@
         dropdownAutoWidth: true
       });
 
-      $input.on('select2:select', (e) => {
+      $input.on('select2:select', async (e) => {
         const d = e.params.data || {};
         let kind = 'ahsp';
         let refId = '';
@@ -311,6 +311,31 @@
           refId = sid.split(':')[1] || sid;
           kode = d.kode_ahsp || '';
           nama = d.nama_ahsp || '';
+        }
+
+        // CRITICAL VALIDATION: Check if job bundle has components
+        if (kind === 'job' && refId) {
+          try {
+            // Fetch job details to validate it has components
+            const validateUrl = urlFor(endpoints.get, parseInt(refId));
+            const resp = await fetch(validateUrl, {credentials:'same-origin'});
+            const data = await resp.json();
+
+            if (data.ok && (!data.items || data.items.length === 0)) {
+              // Bundle is empty - show warning and prevent selection
+              toast(`⚠️ Bundle Kosong: "${nama}" belum memiliki komponen AHSP.\n\nSilakan isi detail AHSP untuk pekerjaan tersebut terlebih dahulu sebelum menggunakan sebagai bundle.`, 'warning');
+              console.warn('[BUNDLE_VALIDATION] Empty bundle detected:', kode, nama);
+
+              // Clear the selection
+              $input.val(null).trigger('change');
+              return; // Don't proceed with selection
+            }
+
+            console.log('[BUNDLE_VALIDATION] Bundle valid:', kode, 'has', data.items?.length || 0, 'components');
+          } catch (err) {
+            console.error('[BUNDLE_VALIDATION] Error validating bundle:', err);
+            // Don't block - let backend handle validation
+          }
         }
 
         // AHSP bundles are now supported! Backend will expand them recursively
@@ -350,6 +375,40 @@
   function selectJob(li) {
     const id = +li.dataset.pekerjaanId;
     if (!id || id === activeJobId) return;
+
+    // CRITICAL SAFETY: Warn if current job has unsaved changes
+    if (dirty && activeJobId) {
+      const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
+      const currentKode = currentJobEl?.querySelector('.kode')?.textContent?.trim() || 'pekerjaan ini';
+      const targetKode = li.querySelector('.kode')?.textContent?.trim() || 'pekerjaan lain';
+
+      const confirmMsg = `⚠️ PERUBAHAN BELUM TERSIMPAN!\n\nAnda memiliki perubahan yang belum disimpan pada "${currentKode}".\n\nPilih tindakan:\n• OK = Simpan dulu, lalu pindah ke "${targetKode}"\n• Cancel = Tetap di "${currentKode}"`;
+
+      if (!confirm(confirmMsg)) {
+        console.log('[SELECT_JOB] User cancelled job switch due to unsaved changes');
+        return; // Stay on current job
+      }
+
+      // User chose to save first - trigger save then switch
+      console.log('[SELECT_JOB] Auto-saving before job switch...');
+      const btnSave = $('#ta-btn-save');
+      if (btnSave && !btnSave.disabled) {
+        btnSave.click(); // Trigger save
+        // Wait for save to complete, then switch
+        setTimeout(() => {
+          console.log('[SELECT_JOB] Save completed, switching job...');
+          selectJobInternal(li, id);
+        }, 1000); // Give save time to complete
+        return;
+      }
+    }
+
+    // No unsaved changes, proceed directly
+    selectJobInternal(li, id);
+  }
+
+  // Internal function to actually perform job selection (without checks)
+  function selectJobInternal(li, id) {
     activeJobId = id;
     activeSource = li.dataset.sourceType;
     $$('.ta-job-item').forEach(n => n.classList.toggle('is-active', n === li));
@@ -374,7 +433,11 @@
       const items = js.items || [];
       kategoriMeta = js.meta?.kategori_opts || kategoriMeta;
       readOnly = !!js.meta?.read_only;
-      rowsByJob[id] = {items, kategoriMeta, readOnly};
+
+      // OPTIMISTIC LOCKING: Store timestamp when data is loaded
+      const updatedAt = js.pekerjaan?.updated_at || null;
+
+      rowsByJob[id] = {items, kategoriMeta, readOnly, updatedAt};
       paint(items);
       setEditorModeBySource();
     }).catch(() => {
@@ -471,6 +534,13 @@
     const rowsCanon = rows.map(r => ({ ...r, koefisien: __koefToCanon(r.koefisien) }));
     const url = urlFor(endpoints.save, activeJobId);
 
+    // OPTIMISTIC LOCKING: Include timestamp from when data was loaded
+    const clientUpdatedAt = rowsByJob[activeJobId]?.updatedAt || null;
+    const payload = {
+      rows: rowsCanon,
+      client_updated_at: clientUpdatedAt
+    };
+
     const btnSave = $('#ta-btn-save');
     const spin = $('#ta-btn-save-spin');
     if (spin) spin.hidden = false;
@@ -480,7 +550,7 @@
       method:'POST',
       credentials:'same-origin',
       headers:{ 'Content-Type':'application/json', 'X-CSRFToken': CSRF },
-      body: JSON.stringify({rows: rowsCanon})
+      body: JSON.stringify(payload)
     }).then(r => {
       // DEBUG: Log response status
       console.log('[SAVE] HTTP Status:', r.status);
@@ -491,6 +561,64 @@
     }).then(js => {
       // DEBUG: Log full response
       console.log('[SAVE] Response:', js);
+
+      // OPTIMISTIC LOCKING: Handle conflict (409 status)
+      if (!js.ok && js.conflict) {
+        console.warn('[SAVE] Conflict detected - data modified by another user');
+
+        // Show conflict dialog with options
+        const confirmMsg = (
+          "⚠️ KONFLIK DATA TERDETEKSI!\n\n" +
+          "Data pekerjaan ini telah diubah oleh pengguna lain sejak Anda membukanya.\n\n" +
+          "Pilihan:\n" +
+          "• OK = Muat Ulang (lihat perubahan terbaru, data Anda akan hilang)\n" +
+          "• Cancel = Timpa (simpan data Anda, perubahan pengguna lain akan hilang)\n\n" +
+          "⚠️ Timpa hanya jika Anda yakin perubahan Anda lebih penting!"
+        );
+
+        if (confirm(confirmMsg)) {
+          // User chose to reload - refresh page to get latest data
+          console.log('[SAVE] User chose to reload page');
+          toast('🔄 Memuat ulang data terbaru...', 'info');
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else {
+          // User chose to force overwrite - retry save without timestamp
+          console.log('[SAVE] User chose to force overwrite - retrying without timestamp check');
+          toast('⚠️ Menyimpan dengan mode timpa...', 'warning');
+
+          // Retry save without client_updated_at (bypass optimistic locking)
+          setTimeout(() => {
+            const retryPayload = { rows: rowsCanon };
+            fetch(url, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+              body: JSON.stringify(retryPayload)
+            }).then(r => r.json()).then(retryJs => {
+              if (retryJs.ok) {
+                toast('✅ Data berhasil disimpan (mode timpa)', 'success');
+                setDirty(false);
+                // Update cached data with new timestamp
+                if (retryJs.pekerjaan?.updated_at) {
+                  rowsByJob[activeJobId].updatedAt = retryJs.pekerjaan.updated_at;
+                }
+              } else {
+                const errMsg = retryJs.user_message || 'Gagal menyimpan data. Silakan coba lagi.';
+                toast(errMsg, 'error');
+              }
+            }).catch(err => {
+              console.error('[SAVE] Retry failed:', err);
+              toast('❌ Gagal menyimpan. Periksa koneksi internet Anda dan coba lagi.', 'error');
+            }).finally(() => {
+              if (spin) spin.hidden = true;
+              if (btnSave) btnSave.disabled = false;
+            });
+          }, 500);
+        }
+        return; // Exit early - don't process as regular error
+      }
 
       // IMPROVED: Use user_message from server for better UX
       if (!js.ok) {
@@ -507,16 +635,36 @@
         toast(userMsg, 'warning');
         console.warn('[SAVE] Partial success with errors:', js.errors);
       } else {
-        // Full success - use server's success message
-        const userMsg = js.user_message || '✅ Data berhasil disimpan!';
+        // Full success - use server's success message with expansion feedback
+        let userMsg = js.user_message || '✅ Data berhasil disimpan!';
+
+        // ENHANCED: Show bundle expansion feedback
+        const rawRows = js.saved_raw_rows || 0;
+        const expandedRows = js.saved_expanded_rows || 0;
+
+        if (expandedRows > rawRows) {
+          // Bundles were expanded
+          const bundleCount = rawRows - (rows.filter(r => r.kategori !== 'LAIN').length);
+          const expandedCount = expandedRows - rawRows;
+          if (bundleCount > 0) {
+            userMsg += `\n\n📦 ${bundleCount} bundle di-expand menjadi ${expandedCount} komponen tambahan.`;
+          }
+        }
+
         toast(userMsg, 'success');
-        console.log('[SAVE] Success - Raw:', js.saved_raw_rows, 'Expanded:', js.saved_expanded_rows);
+        console.log('[SAVE] Success - Raw:', rawRows, 'Expanded:', expandedRows, 'Expansion:', expandedRows - rawRows);
       }
 
       // Update state
       setDirty(false);
       rowsByJob[activeJobId] = rowsByJob[activeJobId] || {};
       rowsByJob[activeJobId].items = rows; // cache tampilan
+
+      // OPTIMISTIC LOCKING: Update stored timestamp after successful save
+      if (js.pekerjaan?.updated_at) {
+        rowsByJob[activeJobId].updatedAt = js.pekerjaan.updated_at;
+        console.log('[SAVE] Updated timestamp stored:', js.pekerjaan.updated_at);
+      }
     }).catch((err) => {
       // Network error or unexpected error
       console.error('[SAVE] Catch error:', err);
@@ -528,7 +676,7 @@
     });
   });
 
-  // Hapus baris terseleksi per segmen
+  // Hapus baris terseleksi per segmen (ENHANCED: with confirmation)
   document.addEventListener('click', (e) => {
     const delBtn = e.target.closest('.ta-seg-del-selected');
     if (!delBtn) return;
@@ -538,6 +686,28 @@
     if (!body) return;
     const checked = body.querySelectorAll('.ta-row-check:checked');
     if (!checked.length) return;
+
+    // CRITICAL IMPROVEMENT: Show confirmation with preview
+    const count = checked.length;
+    const items = Array.from(checked).map(cb => {
+      const row = cb.closest('tr.ta-row');
+      const kode = row?.querySelector('input[data-field="kode"]')?.value || '?';
+      const uraian = row?.querySelector('.cell-wrap')?.textContent?.trim() || '?';
+      return { kode, uraian };
+    }).slice(0, 5); // Show max 5 items in preview
+
+    const preview = items.map(item => `• ${item.kode}: ${item.uraian}`).join('\n');
+    const moreText = count > 5 ? `\n... dan ${count - 5} baris lainnya` : '';
+
+    const confirmMsg = `⚠️ HAPUS ${count} BARIS TERPILIH?\n\n${preview}${moreText}\n\nTindakan ini tidak bisa dibatalkan (belum ada undo).`;
+
+    if (!confirm(confirmMsg)) {
+      console.log('[DELETE] User cancelled deletion');
+      return; // User cancelled
+    }
+
+    // Proceed with deletion
+    console.log(`[DELETE] Deleting ${count} rows from segment ${seg}`);
     checked.forEach(cb => cb.closest('tr.ta-row')?.remove());
     if (!body.querySelector('tr.ta-row')) {
       body.innerHTML = `<tr class=\"ta-empty\"><td colspan=\"5\">Belum ada item.</td></tr>`;
@@ -545,6 +715,9 @@
     formatIndex();
     setDirty(true);
     updateDelState(seg);
+
+    // Show feedback toast
+    toast(`🗑️ ${count} baris berhasil dihapus dari ${seg}`, 'info');
   });
 
   // Update state tombol hapus saat ceklis berubah
@@ -719,6 +892,21 @@
   // auto-select first job
   const first = $('#ta-job-list .ta-job-item:not([hidden])');
   if (first) selectJob(first);
+
+  // =========================
+  // CRITICAL SAFETY: Warn before leaving page with unsaved changes
+  // =========================
+  window.addEventListener('beforeunload', (e) => {
+    if (dirty) {
+      // Modern browsers ignore custom message and show default warning
+      // But we still need to set returnValue for compatibility
+      const msg = 'Anda memiliki perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?';
+      e.preventDefault();
+      e.returnValue = msg; // Required for Chrome/Firefox
+      console.log('[BEFOREUNLOAD] Warned user about unsaved changes');
+      return msg; // For older browsers
+    }
+  });
 
   // =========================
   // Sidebar Resizer (vertical)

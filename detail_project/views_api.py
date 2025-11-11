@@ -1143,6 +1143,7 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
             "satuan": pkj.snapshot_satuan,
             "source_type": source_str,
             "detail_ready": pkj.detail_ready,
+            "updated_at": pkj.updated_at.isoformat() if hasattr(pkj, 'updated_at') and pkj.updated_at else None,  # For optimistic locking
         },
         "items": items,
         "meta": {
@@ -1201,6 +1202,38 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             "user_message": "Data yang dikirim tidak valid. Silakan refresh halaman dan coba lagi.",
             "errors": [_err("$", "Payload JSON tidak valid")]
         }, status=400)
+
+    # OPTIMISTIC LOCKING: Check client timestamp against server timestamp
+    client_updated_at = payload.get('client_updated_at')
+    if client_updated_at:
+        from datetime import datetime
+        try:
+            # Parse ISO format timestamp from client
+            client_dt = datetime.fromisoformat(client_updated_at.replace('Z', '+00:00'))
+            server_dt = pkj.updated_at if hasattr(pkj, 'updated_at') and pkj.updated_at else None
+
+            if server_dt and client_dt < server_dt:
+                # Data has been modified by another user since client loaded it
+                logger.warning(
+                    f"[SAVE_DETAIL_AHSP] CONFLICT - Pekerjaan {pkj.id} modified by another user. "
+                    f"Client: {client_dt.isoformat()}, Server: {server_dt.isoformat()}"
+                )
+                return JsonResponse({
+                    "ok": False,
+                    "conflict": True,  # Special flag for conflict
+                    "user_message": (
+                        "⚠️ KONFLIK DATA TERDETEKSI!\n\n"
+                        "Data pekerjaan ini telah diubah oleh pengguna lain sejak Anda membukanya.\n\n"
+                        "Pilihan:\n"
+                        "• Muat Ulang: Refresh halaman untuk melihat perubahan terbaru (data Anda akan hilang)\n"
+                        "• Timpa: Simpan data Anda dan timpa perubahan pengguna lain (tidak disarankan)"
+                    ),
+                    "server_updated_at": server_dt.isoformat(),
+                    "errors": [_err("updated_at", "Data telah berubah sejak Anda membukanya")]
+                }, status=409)  # 409 Conflict
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"[SAVE_DETAIL_AHSP] Invalid client_updated_at format: {client_updated_at}, error: {e}")
+            # Continue without optimistic locking if timestamp is invalid
 
     rows = payload.get('rows') or []
     if not isinstance(rows, list):
@@ -1585,12 +1618,19 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     else:
         user_message = f"⚠️ Data tersimpan sebagian. {len(saved_raw_details)} baris berhasil, {len(errors)} kesalahan ditemukan."
 
+    # Refresh pekerjaan to get updated timestamp
+    pkj.refresh_from_db()
+
     return JsonResponse({
         "ok": status_code == 200,
         "user_message": user_message,
         "saved_raw_rows": len(saved_raw_details),
         "saved_expanded_rows": len(expanded_to_create),
-        "errors": errors
+        "errors": errors,
+        "pekerjaan": {
+            "id": pkj.id,
+            "updated_at": pkj.updated_at.isoformat() if hasattr(pkj, 'updated_at') and pkj.updated_at else None
+        }
     }, status=status_code)
 
 @login_required
