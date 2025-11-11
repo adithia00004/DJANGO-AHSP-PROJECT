@@ -242,7 +242,35 @@
     document.head.appendChild(style);
   }
 
-  function setLoading(on){ ROOT.classList.toggle('is-loading', !!on); }
+  // ====== TIER 3: Granular Loading States ======
+  function setLoading(on, scope = 'global') {
+    if (scope === 'global') {
+      ROOT.classList.toggle('is-loading', !!on);
+    } else if (scope === 'list') {
+      if ($list) {
+        $list.classList.toggle('is-loading', !!on);
+        if (on) {
+          $list.style.opacity = '0.6';
+          $list.style.pointerEvents = 'none';
+        } else {
+          $list.style.opacity = '';
+          $list.style.pointerEvents = '';
+        }
+      }
+    } else if (scope === 'detail') {
+      const $editor = ROOT.querySelector('.ra-editor');
+      if ($editor) {
+        $editor.classList.toggle('is-loading', !!on);
+        if (on) {
+          $editor.style.opacity = '0.6';
+          $editor.style.pointerEvents = 'none';
+        } else {
+          $editor.style.opacity = '';
+          $editor.style.pointerEvents = '';
+        }
+      }
+    }
+  }
 
   async function safeJson(r) {
     const ct = (r.headers.get('content-type') || '').toLowerCase();
@@ -263,7 +291,7 @@
   }
 
   async function loadRekap(){
-    setLoading(true);
+    setLoading(true, 'list'); // TIER 3: Granular loading for list only
     try{
       if ($list) $list.innerHTML = `<li class="rk-item"><div class="row-note">Memuat…</div></li>`;
       const r = await fetch(EP_REKAP, { credentials:'same-origin' });
@@ -279,7 +307,7 @@
       const target = (last && rows.some(x => String(x.pekerjaan_id)===last)) ? Number(last) : firstId;
       if (selectedId == null && target) selectItem(target);
     } finally {
-      setLoading(false);
+      setLoading(false, 'list'); // TIER 3: Clear list loading
     }
   }
 
@@ -393,7 +421,7 @@
     highlightActive();
     const myToken = ++selectToken;
 
-    setLoading(true);
+    setLoading(true, 'detail'); // TIER 3: Granular loading for detail panel only
     try{
       // header awal dari rows
       const r = rows.find(x => x.pekerjaan_id === id);
@@ -415,11 +443,13 @@
           if ($ovrInput) $ovrInput.value = (pp.override_markup ?? '');
           if ($ovrChip)  $ovrChip.hidden = !(pp.override_markup != null);
           if ($eff)      $eff.textContent = `Profit: ${pp.effective_markup}%`;
+          if ($modalInput) $modalInput.value = (pp.override_markup ?? ''); // Sync modal input
         }catch{
           if (myToken !== selectToken) return;
           if ($ovrInput) $ovrInput.value = '';
           if ($ovrChip)  $ovrChip.hidden = true;
           if ($eff)      $eff.textContent = `Profit: ${projectBUK.toFixed(2)}%`;
+          if ($modalInput) $modalInput.value = '';
         }
       }
 
@@ -434,7 +464,7 @@
       renderDetailTable(items, effPct);
       if ($src) $src.textContent = (detail.pekerjaan?.source_type || '—').toUpperCase();
     } finally {
-      setLoading(false);
+      setLoading(false, 'detail'); // TIER 3: Clear detail loading
     }
   }
 
@@ -687,13 +717,110 @@
     });
   }
 
+  // ====== TIER 3: Enhanced Keyboard Navigation ======
   document.addEventListener('keydown', (e) => {
+    // Ctrl+K / Cmd+K: Focus search
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       $search?.focus();
       $search?.select();
+      return;
+    }
+
+    // Shift+O: Toggle Override Modal (only if pekerjaan selected)
+    if (e.shiftKey && e.key.toLowerCase() === 'o' && !e.ctrlKey && !e.metaKey) {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return; // Don't trigger if typing in input
+      }
+      e.preventDefault();
+      if (selectedId && window.bootstrap) {
+        const modalEl = document.getElementById('raOverrideModal');
+        if (modalEl) {
+          const modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+          modal.show();
+          // Focus input after modal opens
+          setTimeout(() => {
+            if ($modalInput) {
+              $modalInput.focus();
+              $modalInput.select();
+            }
+          }, 300);
+        }
+      } else if (!selectedId) {
+        showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning', 2000);
+      }
+      return;
+    }
+
+    // Escape: Close modals
+    if (e.key === 'Escape') {
+      if (window.bootstrap) {
+        const modalEl = document.getElementById('raOverrideModal');
+        if (modalEl && modalEl.classList.contains('show')) {
+          window.bootstrap.Modal.getOrCreateInstance(modalEl)?.hide();
+        }
+      }
+      return;
+    }
+
+    // Arrow Up/Down: Navigate job list (only when not in input)
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA') {
+
+      if (filtered.length === 0) return;
+
+      e.preventDefault();
+
+      const currentIdx = filtered.findIndex(r => r.pekerjaan_id === selectedId);
+      let nextIdx;
+
+      if (e.key === 'ArrowUp') {
+        nextIdx = currentIdx <= 0 ? filtered.length - 1 : currentIdx - 1;
+      } else {
+        nextIdx = currentIdx >= filtered.length - 1 ? 0 : currentIdx + 1;
+      }
+
+      const nextItem = filtered[nextIdx];
+      if (nextItem) {
+        selectItem(nextItem.pekerjaan_id);
+
+        // Scroll into view
+        const listItem = $list?.querySelector(`[data-id="${nextItem.pekerjaan_id}"]`);
+        if (listItem) {
+          listItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+      return;
+    }
+
+    // Enter: Select focused job item (if hovering over list)
+    if (e.key === 'Enter' && document.activeElement?.classList.contains('rk-item')) {
+      e.preventDefault();
+      const id = document.activeElement.dataset.id;
+      if (id) selectItem(Number(id));
+      return;
     }
   });
+
+  // Make job items focusable for keyboard navigation
+  function makeJobItemsFocusable() {
+    if (!$list) return;
+    const items = $list.querySelectorAll('.rk-item');
+    items.forEach(item => {
+      if (!item.hasAttribute('tabindex')) {
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('role', 'option');
+      }
+    });
+  }
+
+  // Call after rendering list
+  const originalRenderList = renderList;
+  renderList = function(...args) {
+    originalRenderList.apply(this, args);
+    makeJobItemsFocusable();
+  };
 
   // ====== init ======
   (async () => {

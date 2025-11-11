@@ -342,7 +342,8 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(transparent 40%, color-mix(in srgb, var(--dp-c-text) 22%, transparent) 40% 60%, transparent 60%) center/2px 22px no-repeat;
-  opacity: .25;
+  /* TIER 3 FIX: Increase base opacity for better accessibility */
+  opacity: .4;
   transition: opacity var(--ux-duration-200) var(--ux-ease);
 }
 
@@ -350,7 +351,15 @@
 .ra-app .rk-resizer:focus::before,
 .ra-app .ux-resizer:hover::before,
 .ra-app .ux-resizer:focus::before {
-  opacity: .6;
+  /* TIER 3 FIX: More prominent hover state */
+  opacity: .8;
+}
+
+/* TIER 3 FIX: Add visual feedback for active drag */
+.ra-app .rk-resizer:active::before,
+.ra-app .ux-resizer:active::before {
+  opacity: 1;
+  background: linear-gradient(transparent 40%, var(--dp-c-primary) 40% 60%, transparent 60%) center/3px 22px no-repeat;
 }
 
 .ra-app .rk-resizer:focus,
