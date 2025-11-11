@@ -1683,6 +1683,13 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
         if existing_kodes:
             tmp_qs = tmp_qs.exclude(kode__in=existing_kodes)
         moved = tmp_qs.update(pekerjaan=pkj)
+
+        # CRITICAL: Re-populate expanded storage for original pekerjaan after move
+        # DetailAHSPExpanded for TEMP will be CASCADE deleted with temp.delete()
+        # We must re-create expanded storage for PKJ to maintain dual storage integrity
+        from .services import _populate_expanded_from_raw
+        _populate_expanded_from_raw(project, pkj)
+
         temp.delete()
 
     # Tandai ready bila ada baris
