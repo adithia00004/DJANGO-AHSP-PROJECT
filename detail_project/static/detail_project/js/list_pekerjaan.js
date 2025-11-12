@@ -1237,7 +1237,10 @@
   }
 
   async function handleSave() {
-    if (!projectId) { alert('Project ID tidak ditemukan.'); return; }
+    if (!projectId) {
+      tShow('Project ID tidak ditemukan.', 'error');
+      return;
+    }
 
     const btn  = document.querySelector('#btn-save');
     const orig = btn?.textContent;
@@ -1362,12 +1365,12 @@
     });
 
     if (!payload.klasifikasi.length) {
-      alert('Tidak ada data yang layak disimpan.');
+      tShow('Tidak ada data yang layak disimpan.', 'warning');
       if (btn) { btn.disabled = false; btn.textContent = orig; }
       return;
     }
     if (hasError) {
-      alert('❌ Periksa baris merah. Pastikan ref_id numerik & nama K/Sub tidak kosong (fallback Kx/Kx.y aktif).');
+      tShow('Periksa baris merah. Pastikan ref_id numerik & nama K/Sub tidak kosong (fallback Kx/Kx.y aktif).', 'warning');
       if (btn) { btn.disabled = false; btn.textContent = orig; }
       return;
     }
@@ -1383,22 +1386,53 @@
       // Backend returns status 207 with errors array when validation fails
       if (response && response.errors && response.errors.length > 0) {
         console.error('[LP] Save validation errors:', response.errors);
-        const errorMsg = response.errors.map(e => `• ${e.field}: ${e.message}`).join('\n');
-        alert(`⚠️ Sebagian perubahan tidak tersimpan:\n\n${errorMsg}\n\nSilakan periksa dan coba lagi.`);
+
+        // Build user-friendly error messages
+        let errorMessages = [];
+        response.errors.forEach(e => {
+          let userMsg = e.message;
+
+          // Make common errors more understandable
+          if (e.message && e.message.includes('ordering_index')) {
+            userMsg = 'Terjadi konflik urutan pekerjaan. Coba simpan sekali lagi.';
+          } else if (e.message && e.message.includes('ref_id')) {
+            userMsg = `${e.field}: Referensi AHSP tidak valid atau tidak ditemukan`;
+          } else if (e.message && e.message.includes('cascade reset')) {
+            userMsg = `${e.field}: Data terkait telah dihapus karena perubahan sumber`;
+          }
+
+          errorMessages.push(`• ${userMsg}`);
+        });
+
+        const errorMsg = errorMessages.join('\n');
+        tShow(`Sebagian perubahan tidak tersimpan:\n\n${errorMsg}\n\nSilakan periksa dan coba lagi.`, 'warning');
 
         // Reload to show actual database state (changes were rejected)
         await reloadAfterSave();
         return;
       }
 
-      alert('✅ Perubahan tersimpan.');
+      tShow('Perubahan tersimpan.', 'success');
       tbAnnounce && (tbAnnounce.textContent = 'Perubahan tersimpan');
       await reloadAfterSave();
     } catch (e) {
       const raw = (e && e.body && typeof e.body === 'string') ? e.body : (e?.message || '');
       const clean = String(raw).replace(/<[^>]+>/g, '').slice(0, 800);
-      alert(`❌ Gagal simpan (${e?.status || ''}). ${clean || 'Cek log server.'}`);
-      console.error('[LP] Save failed:', e);
+
+      // Make error message more user-friendly
+      let errorMsg = 'Gagal menyimpan perubahan.';
+      if (e?.status === 500) {
+        errorMsg = 'Terjadi kesalahan server. Silakan coba lagi atau hubungi administrator.';
+      } else if (e?.status === 403) {
+        errorMsg = 'Anda tidak memiliki izin untuk menyimpan perubahan ini.';
+      } else if (e?.status === 404) {
+        errorMsg = 'Data tidak ditemukan. Halaman mungkin sudah tidak valid.';
+      } else if (clean) {
+        errorMsg = `Gagal menyimpan: ${clean}`;
+      }
+
+      tShow(errorMsg, 'error');
+      console.error('[LP] Save failed:', e, '\nStatus:', e?.status, '\nBody:', clean);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = orig; }
     }
