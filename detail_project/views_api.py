@@ -324,7 +324,10 @@ def api_save_list_pekerjaan(request: HttpRequest, project_id: int):
         "sub": len(id_map['sub']),
         "pekerjaan": len(id_map['pekerjaan']),
     }
-    invalidate_rekap_cache(project)  # NEW
+
+    # CACHE FIX: Invalidate cache AFTER transaction commits
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+
     return JsonResponse({"ok": True, "id_map": id_map, "summary": summary})
 
 # helper untuk normalisasi source_type
@@ -930,7 +933,10 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         "sub": SubKlasifikasi.objects.filter(project=project).count(),
         "pekerjaan": Pekerjaan.objects.filter(project=project).count(),
     }
-    invalidate_rekap_cache(project)  # NEW
+
+    # CACHE FIX: Invalidate cache AFTER transaction commits
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+
     return JsonResponse({"ok": status == 200, "errors": errors, "summary": summary}, status=status)
 
 
@@ -1001,8 +1007,9 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
         )
         saved += 1
 
+    # CACHE FIX: Invalidate cache AFTER transaction commits
     if saved:
-        invalidate_rekap_cache(project)
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
     # Partial success → 200. Semua gagal → 400.
 
@@ -1714,7 +1721,10 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 
     # Tandai ready bila ada baris
     Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=(moved > 0))
-    invalidate_rekap_cache(project)  # NEW
+
+    # CACHE FIX: Invalidate cache AFTER transaction commits
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+
     return JsonResponse({"ok": True, "cloned_count": int(moved)})
 
 # ---------- View 4: Harga Items ----------
@@ -1961,7 +1971,10 @@ def api_project_pricing(request: HttpRequest, project_id: int):
     if updated_fields:
         updated_fields.append("updated_at")
         obj.save(update_fields=updated_fields)
-        invalidate_rekap_cache(project)  # perubahan pricing memengaruhi rekap
+
+        # CACHE FIX: Invalidate cache AFTER transaction commits
+        # Pricing changes affect rekap calculations
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
     return JsonResponse({
         "ok": True,
@@ -2021,8 +2034,9 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
             DetailAHSPProject.objects.bulk_create(to_create, ignore_conflicts=True)
         total_saved += saved_here
 
+    # CACHE FIX: Invalidate cache AFTER transaction commits
     if total_saved > 0:
-        invalidate_rekap_cache(project)  # NEW
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
     status_code = 200 if not all_errors else (207 if total_saved > 0 else 400)
     return JsonResponse({"ok": status_code == 200, "saved_rows": total_saved, "errors": all_errors}, status=status_code)
@@ -2472,7 +2486,10 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
     if raw in (None, ""):
         # clear override
         Pekerjaan.objects.filter(pk=pkj.pk).update(markup_override_percent=None)
-        invalidate_rekap_cache(project)  # NEW  : rekap berubah bila ada override
+
+        # CACHE FIX: Invalidate cache AFTER transaction commits
+        # Rekap berubah bila ada override
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
         # Return updated effective_markup after clearing
         eff = proj_mp
@@ -2514,7 +2531,9 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
 
     # Save and return updated values
     Pekerjaan.objects.filter(pk=pkj.pk).update(markup_override_percent=dec)
-    invalidate_rekap_cache(project)  # NEW
+
+    # CACHE FIX: Invalidate cache AFTER transaction commits
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
     eff = dec  # override becomes effective
     return JsonResponse({

@@ -198,6 +198,12 @@
     const resetBtnEl = $('#ta-btn-reset');
     if (resetBtnEl) resetBtnEl.hidden = !canReset;
 
+    // CACHE FIX: Enable reload button whenever a job is active
+    const reloadBtnEl = $('#ta-btn-reload');
+    if (reloadBtnEl) {
+      reloadBtnEl.disabled = !activeJobId; // Enable if job selected
+    }
+
     const editable = canSave;
 
     // Enable/disable input & contenteditable
@@ -408,7 +414,8 @@
   }
 
   // Internal function to actually perform job selection (without checks)
-  function selectJobInternal(li, id) {
+  // forceRefresh: if true, bypass cache and fetch fresh data from server
+  function selectJobInternal(li, id, forceRefresh = false) {
     activeJobId = id;
     activeSource = li.dataset.sourceType;
     $$('.ta-job-item').forEach(n => n.classList.toggle('is-active', n === li));
@@ -418,7 +425,8 @@
     $('#ta-active-source').innerHTML = `<span class="badge">${activeSource}</span>`;
     setDirty(false);
 
-    if (rowsByJob[id]) {
+    // CACHE FIX: Check cache only if not forcing refresh
+    if (!forceRefresh && rowsByJob[id]) {
       paint(rowsByJob[id].items);
       kategoriMeta = rowsByJob[id].kategoriMeta || kategoriMeta;
       readOnly = rowsByJob[id].readOnly || false;
@@ -631,8 +639,19 @@
 
       // Partial success (status 207) - some errors but data saved
       if (js.errors && js.errors.length > 0) {
-        const userMsg = js.user_message || `⚠️ Data tersimpan sebagian. ${js.errors.length} kesalahan ditemukan.`;
-        toast(userMsg, 'warning');
+        let userMsg = js.user_message || `⚠️ Data tersimpan sebagian. ${js.errors.length} kesalahan ditemukan.`;
+
+        // BUNDLE ERROR FIX: Show details for bundle errors to help user understand issue
+        const bundleErrors = js.errors.filter(e => e.field && e.field.startsWith('bundle.'));
+        if (bundleErrors.length > 0) {
+          const bundleDetails = bundleErrors.map(e => `• ${e.message}`).slice(0, 3).join('\n');
+          userMsg += '\n\nDetail:\n' + bundleDetails;
+          if (bundleErrors.length > 3) {
+            userMsg += `\n... dan ${bundleErrors.length - 3} error lainnya.`;
+          }
+        }
+
+        toast(userMsg, 'warning', 5000); // Longer duration for error messages
         console.warn('[SAVE] Partial success with errors:', js.errors);
       } else {
         // Full success - use server's success message with expansion feedback
@@ -657,13 +676,17 @@
 
       // Update state
       setDirty(false);
-      rowsByJob[activeJobId] = rowsByJob[activeJobId] || {};
-      rowsByJob[activeJobId].items = rows; // cache tampilan
 
-      // OPTIMISTIC LOCKING: Update stored timestamp after successful save
-      if (js.pekerjaan?.updated_at) {
-        rowsByJob[activeJobId].updatedAt = js.pekerjaan.updated_at;
-        console.log('[SAVE] Updated timestamp stored:', js.pekerjaan.updated_at);
+      // CACHE FIX: Clear cache for this job to force fresh data fetch on next selection
+      // This ensures data is always fresh and synchronized with server
+      delete rowsByJob[activeJobId];
+      console.log('[SAVE] Cache cleared for pekerjaan:', activeJobId);
+
+      // Re-fetch fresh data from server immediately after save
+      const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
+      if (currentJobEl) {
+        console.log('[SAVE] Re-fetching fresh data...');
+        selectJobInternal(currentJobEl, activeJobId, true); // forceRefresh = true
       }
     }).catch((err) => {
       // Network error or unexpected error
@@ -810,6 +833,47 @@
         }
 
         toast(errorMsg, 'error');
+      }
+    });
+  }
+
+  // RELOAD - Force refresh data dari server (CACHE FIX)
+  const reloadBtn = $('#ta-btn-reload');
+  if (reloadBtn) {
+    reloadBtn.addEventListener('click', () => {
+      if (!activeJobId) {
+        toast('⚠️ Tidak ada pekerjaan yang dipilih', 'warning');
+        return;
+      }
+
+      // Konfirmasi jika ada perubahan yang belum disimpan
+      if (dirty) {
+        const confirmMsg = (
+          "⚠️ PERUBAHAN BELUM TERSIMPAN!\n\n" +
+          "Anda memiliki perubahan yang belum disimpan.\n\n" +
+          "Pilihan:\n" +
+          "• OK = Buang perubahan dan muat ulang data terbaru dari server\n" +
+          "• Cancel = Batalkan reload dan simpan dulu\n\n" +
+          "⚠️ Perubahan yang belum disimpan akan hilang!"
+        );
+
+        if (!confirm(confirmMsg)) {
+          console.log('[RELOAD] User cancelled reload - has unsaved changes');
+          return;
+        }
+      }
+
+      // Clear cache dan force refresh
+      console.log('[RELOAD] Force refreshing data for pekerjaan:', activeJobId);
+      delete rowsByJob[activeJobId]; // Clear cache
+
+      // Re-fetch dari server dengan forceRefresh = true
+      const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
+      if (currentJobEl) {
+        toast('🔄 Memuat ulang data terbaru...', 'info');
+        selectJobInternal(currentJobEl, activeJobId, true); // forceRefresh = true
+      } else {
+        toast('❌ Pekerjaan tidak ditemukan', 'error');
       }
     });
   }
