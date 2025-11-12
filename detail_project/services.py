@@ -521,8 +521,9 @@ def _populate_expanded_from_raw(project, pekerjaan):
     """
     DUAL STORAGE HELPER: Populate DetailAHSPExpanded from DetailAHSPProject.
 
-    For REF/REF_MODIFIED pekerjaan, items are direct input (TK/BHN/ALT), not bundles.
-    We simply pass-through to expanded storage (no expansion needed).
+    BUG FIX #2: Now handles bundle expansion for LAIN items with ref_ahsp or ref_pekerjaan.
+    Previously, this function only passed through items without expansion, causing bundle
+    items to show 0 value in rekap calculations.
 
     This is called after:
     - clone_ref_pekerjaan() creates DetailAHSPProject from referensi
@@ -533,6 +534,7 @@ def _populate_expanded_from_raw(project, pekerjaan):
         pekerjaan: Pekerjaan instance
     """
     from .models import DetailAHSPProject, DetailAHSPExpanded
+    from .numeric import quantize_half_up, DECIMAL_SPEC
 
     logger.info(f"[POPULATE_EXPANDED] START - Project: {project.id}, Pekerjaan: {pekerjaan.id} ({pekerjaan.snapshot_kode})")
 
@@ -545,25 +547,122 @@ def _populate_expanded_from_raw(project, pekerjaan):
     raw_details = DetailAHSPProject.objects.filter(
         project=project,
         pekerjaan=pekerjaan
-    ).select_related('harga_item').order_by('id')
-    logger.info(f"[POPULATE_EXPANDED] Found {raw_details.count()} raw details to pass-through")
+    ).select_related('harga_item', 'ref_ahsp', 'ref_pekerjaan').order_by('id')
+    logger.info(f"[POPULATE_EXPANDED] Found {raw_details.count()} raw details")
 
-    # Pass-through to expanded storage (no bundle expansion for REF items)
+    dp_koef = DECIMAL_SPEC["KOEF"].dp
+
+    # Process each item: expand bundles or pass-through direct items
     expanded_to_create = []
     for detail_obj in raw_details:
-        expanded_to_create.append(DetailAHSPExpanded(
-            project=project,
-            pekerjaan=pekerjaan,
-            source_detail=detail_obj,
-            harga_item=detail_obj.harga_item,
-            kategori=detail_obj.kategori,
-            kode=detail_obj.kode,
-            uraian=detail_obj.uraian,
-            satuan=detail_obj.satuan,
-            koefisien=detail_obj.koefisien,
-            source_bundle_kode=None,  # Not from bundle
-            expansion_depth=0,  # Direct input
-        ))
+        if detail_obj.kategori == 'LAIN' and detail_obj.ref_ahsp_id:
+            # AHSP BUNDLE - expand from master AHSP
+            logger.info(f"[POPULATE_EXPANDED] AHSP bundle detected: '{detail_obj.kode}' → ref_ahsp_id={detail_obj.ref_ahsp_id}")
+
+            try:
+                expanded_components = expand_ahsp_bundle_to_components(
+                    ref_ahsp_id=detail_obj.ref_ahsp_id,
+                    project=project,
+                    base_koef=Decimal('1.0'),
+                    depth=0,
+                    visited=None
+                )
+                logger.info(f"[POPULATE_EXPANDED] AHSP expansion: {len(expanded_components)} components")
+
+                # Add expanded components
+                for comp in expanded_components:
+                    comp_hip = _upsert_harga_item(
+                        project,
+                        comp['kategori'],
+                        comp['kode'],
+                        comp['uraian'],
+                        comp['satuan']
+                    )
+
+                    expanded_to_create.append(DetailAHSPExpanded(
+                        project=project,
+                        pekerjaan=pekerjaan,
+                        source_detail=detail_obj,
+                        harga_item=comp_hip,
+                        kategori=comp['kategori'],
+                        kode=comp['kode'],
+                        uraian=comp['uraian'],
+                        satuan=comp['satuan'],
+                        koefisien=quantize_half_up(comp['koefisien'], dp_koef),
+                        source_bundle_kode=detail_obj.kode,
+                        expansion_depth=comp['depth'],
+                    ))
+
+            except ValueError as e:
+                logger.error(f"[POPULATE_EXPANDED] AHSP bundle expansion failed for '{detail_obj.kode}': {e}")
+                # Continue - don't crash the entire populate process
+
+        elif detail_obj.kategori == 'LAIN' and detail_obj.ref_pekerjaan_id:
+            # PEKERJAAN BUNDLE - expand from another pekerjaan
+            logger.info(f"[POPULATE_EXPANDED] Pekerjaan bundle detected: '{detail_obj.kode}' → ref_pekerjaan_id={detail_obj.ref_pekerjaan_id}")
+
+            detail_dict = {
+                'kategori': detail_obj.kategori,
+                'kode': detail_obj.kode,
+                'uraian': detail_obj.uraian,
+                'satuan': detail_obj.satuan,
+                'koefisien': detail_obj.koefisien,
+                'ref_pekerjaan_id': detail_obj.ref_pekerjaan_id,
+            }
+
+            try:
+                expanded_components = expand_bundle_to_components(
+                    detail_data=detail_dict,
+                    project=project,
+                    base_koef=Decimal('1.0'),
+                    depth=0,
+                    visited=None
+                )
+                logger.info(f"[POPULATE_EXPANDED] Pekerjaan expansion: {len(expanded_components)} components")
+
+                # Add expanded components
+                for comp in expanded_components:
+                    comp_hip = _upsert_harga_item(
+                        project,
+                        comp['kategori'],
+                        comp['kode'],
+                        comp['uraian'],
+                        comp['satuan']
+                    )
+
+                    expanded_to_create.append(DetailAHSPExpanded(
+                        project=project,
+                        pekerjaan=pekerjaan,
+                        source_detail=detail_obj,
+                        harga_item=comp_hip,
+                        kategori=comp['kategori'],
+                        kode=comp['kode'],
+                        uraian=comp['uraian'],
+                        satuan=comp['satuan'],
+                        koefisien=quantize_half_up(comp['koefisien'], dp_koef),
+                        source_bundle_kode=detail_obj.kode,
+                        expansion_depth=comp['depth'],
+                    ))
+
+            except ValueError as e:
+                logger.error(f"[POPULATE_EXPANDED] Pekerjaan bundle expansion failed for '{detail_obj.kode}': {e}")
+                # Continue - don't crash the entire populate process
+
+        else:
+            # DIRECT INPUT (TK/BHN/ALT or LAIN without ref) - pass through
+            expanded_to_create.append(DetailAHSPExpanded(
+                project=project,
+                pekerjaan=pekerjaan,
+                source_detail=detail_obj,
+                harga_item=detail_obj.harga_item,
+                kategori=detail_obj.kategori,
+                kode=detail_obj.kode,
+                uraian=detail_obj.uraian,
+                satuan=detail_obj.satuan,
+                koefisien=detail_obj.koefisien,
+                source_bundle_kode=None,  # Not from bundle
+                expansion_depth=0,  # Direct input
+            ))
 
     # Bulk create
     if expanded_to_create:
@@ -641,6 +740,20 @@ def clone_ref_pekerjaan(
             satuan = rr.satuan_item
             koef = rr.koefisien
 
+            # BUG FIX #2: For LAIN items (bundles), resolve ref_ahsp from kode_item
+            # In RincianReferensi, LAIN items store the referenced AHSP's kode_ahsp in kode_item field
+            ref_ahsp_obj = None
+            if kategori == 'LAIN' and AHSPReferensi is not None:
+                try:
+                    # Try to find AHSP by kode_ahsp matching kode_item
+                    ref_ahsp_obj = AHSPReferensi.objects.filter(kode_ahsp=kode).first()
+                    if ref_ahsp_obj:
+                        logger.info(f"[CLONE_REF_PKJ] LAIN item '{kode}' resolved to AHSP '{ref_ahsp_obj.kode_ahsp}' (ID: {ref_ahsp_obj.id})")
+                    else:
+                        logger.warning(f"[CLONE_REF_PKJ] LAIN item '{kode}' doesn't match any AHSP - treating as non-bundle LAIN")
+                except Exception as e:
+                    logger.warning(f"[CLONE_REF_PKJ] Error resolving AHSP for LAIN item '{kode}': {e}")
+
             hip = _upsert_harga_item(project, kategori, kode, uraian, satuan)
             bulk_details.append(DetailAHSPProject(
                 project=project,
@@ -651,6 +764,7 @@ def clone_ref_pekerjaan(
                 uraian=uraian,
                 satuan=satuan,
                 koefisien=koef,
+                ref_ahsp=ref_ahsp_obj,  # Set ref_ahsp for LAIN items
             ))
         if bulk_details:
             DetailAHSPProject.objects.bulk_create(bulk_details, ignore_conflicts=True)
