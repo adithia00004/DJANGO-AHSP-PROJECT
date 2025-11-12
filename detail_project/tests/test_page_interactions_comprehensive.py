@@ -36,7 +36,7 @@ from detail_project.models import (
     VolumePekerjaan, DetailAHSPProject, DetailAHSPExpanded,
     HargaItemProject, ProjectPricing
 )
-from referensi.models import AHSPReferensi, DetailAHSPReferensi
+from referensi.models import AHSPReferensi, RincianReferensi
 
 User = get_user_model()
 
@@ -118,25 +118,24 @@ def ahsp_referensi():
     ahsp = AHSPReferensi.objects.create(
         kode_ahsp='TEST-001',
         nama_ahsp='Test AHSP Referensi',
-        satuan='M2',
-        tipe='Pekerjaan'
+        satuan='M2'
     )
 
     # Add some detail components
-    DetailAHSPReferensi.objects.create(
+    RincianReferensi.objects.create(
         ahsp=ahsp,
         kategori='TK',
         kode_item='L.01',
-        uraian='Pekerja',
-        satuan='OH',
+        uraian_item='Pekerja',
+        satuan_item='OH',
         koefisien=Decimal('0.5')
     )
-    DetailAHSPReferensi.objects.create(
+    RincianReferensi.objects.create(
         ahsp=ahsp,
         kategori='BHN',
         kode_item='B.01',
-        uraian='Semen',
-        satuan='Zak',
+        uraian_item='Semen',
+        satuan_item='Zak',
         koefisien=Decimal('10')
     )
 
