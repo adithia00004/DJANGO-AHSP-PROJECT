@@ -556,6 +556,13 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     existing_s = {s.id: s for s in SubKlasifikasi.objects.filter(project=project)}
     existing_p = {p.id: p for p in Pekerjaan.objects.filter(project=project)}
 
+    # BUG FIX #3: Set temporary negative ordering_index to avoid UniqueViolation
+    # When deleting/reordering pekerjaan, we need to temporarily free up ordering_index values
+    # to prevent constraint violations during the update process
+    for idx, pobj in enumerate(Pekerjaan.objects.filter(project=project).order_by('id'), start=1):
+        pobj.ordering_index = -(idx)  # Set to negative temporary value (-1, -2, -3, ...)
+        pobj.save(update_fields=['ordering_index'])
+
     def _get_or_reuse_pekerjaan_for_order(order: int):
         return Pekerjaan.objects.filter(project=project, ordering_index=order).first()
 

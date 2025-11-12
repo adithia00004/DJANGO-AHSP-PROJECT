@@ -569,8 +569,8 @@
       const bukEff = (r.markup_eff != null ? Number(r.markup_eff) : projectBUK);
       const F = E * (bukEff/100);
       const G = E + F;
-      const total = G * num(r.volume);
-      
+      // BUG FIX #1: Display G (HSP per satuan) instead of total (G × volume)
+
       const li = document.createElement('li');
       li.className = 'rk-item';
       li.dataset.id = r.pekerjaan_id;
@@ -580,7 +580,7 @@
           <span class="mono">${esc(r.kode || '')}</span>
           ${Math.abs(bukEff - projectBUK) > 1e-6 ? `<span class="rk-chip rk-chip-warn mono">${bukEff.toFixed(2)}%</span>` : ''}
           <span class="rk-chip mono">${esc(r.satuan || '')}</span>
-          <span class="row-note">Total:</span><span class="mono">${fmt(total)}</span>
+          <span class="row-note">HSP:</span><span class="mono">${fmt(G)}</span>
         </div>
       `;
       li.addEventListener('click', () => selectItem(r.pekerjaan_id));
