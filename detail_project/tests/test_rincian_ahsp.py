@@ -55,10 +55,12 @@ def other_user():
 @pytest.fixture
 def project(user):
     """Create test project with pricing"""
+    from datetime import date
     proj = Project.objects.create(
         nama='Test Project Rincian AHSP',
         owner=user,
-        lokasi='Test Location'
+        lokasi_project='Test Location',  # Correct field name
+        tanggal_mulai=date(2025, 1, 1)  # Required field
     )
     # Create default pricing
     ProjectPricing.objects.create(
@@ -72,10 +74,12 @@ def project(user):
 @pytest.fixture
 def other_project(other_user):
     """Create project owned by other user"""
+    from datetime import date
     return Project.objects.create(
         nama='Other Project',
         owner=other_user,
-        lokasi='Other Location'
+        lokasi_project='Other Location',  # Correct field name
+        tanggal_mulai=date(2025, 1, 1)  # Required field
     )
 
 
