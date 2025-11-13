@@ -168,9 +168,73 @@ PRICING (HargaItemProject):
 - Mencegah duplikasi input manual
 
 **Use Cases:**
-- Pekerjaan berulang (misal: kolom struktural yang sama dipakai berkali-kali)
+- Pekerjaan berulang (misal: kolom struktural CUSTOM yang user buat untuk dipakai berkali-kali)
 - Pekerjaan komposit (misal: "Finishing Lengkap" terdiri dari beberapa sub-pekerjaan)
 - Template work packages
+
+**CATATAN PENTING:** Bundle hanya bisa ditambahkan ke **pekerjaan CUSTOM** (pekerjaan yang dibuat user), TIDAK bisa ke pekerjaan dari AHSP Referensi. Lihat penjelasan source_type di bawah.
+
+---
+
+### PENTING: Jenis Pekerjaan (source_type)
+
+Sebelum menggunakan bundle, pahami dulu 3 jenis pekerjaan dalam sistem:
+
+| source_type | Nama | Asal | Editable di Template AHSP? | Bisa Pakai Bundle? |
+|-------------|------|------|----------------------------|-------------------|
+| **REF** | Referensi | Import dari AHSP Referensi | ❌ READ-ONLY | ❌ Tidak bisa |
+| **CUSTOM** | Custom | Dibuat user dari nol | ✓ Full edit | ✓ Bisa |
+| **REF_MODIFIED** | Ref Modified | Clone dari REF + modifikasi | ⚠️ Edit di page lain | ❌ Di page ini tidak |
+
+**Penjelasan Detail:**
+
+1. **SOURCE_REF (Referensi)**
+   - Pekerjaan yang di-import dari AHSP Referensi standard
+   - Status: **READ-ONLY** di halaman Template AHSP
+   - Tidak bisa edit komponen, tidak bisa tambah bundle
+   - Untuk modifikasi: gunakan halaman "Rincian AHSP Gabungan"
+
+2. **SOURCE_CUSTOM (Custom)**
+   - Pekerjaan yang dibuat user dari nol
+   - Status: **FULLY EDITABLE** di halaman Template AHSP
+   - Bisa edit komponen, bisa tambah bundle
+   - **INI SATU-SATUNYA jenis pekerjaan yang bisa pakai bundle di page ini**
+
+3. **SOURCE_REF_MOD (Ref Modified)**
+   - Clone dari pekerjaan REF yang sudah dimodifikasi
+   - Status: Editable di halaman "Rincian AHSP Gabungan", TIDAK di Template AHSP
+   - Workflow berbeda (tidak dibahas di dokumen ini)
+
+**Mengapa Bundle Hanya untuk CUSTOM?**
+
+Rule "Only for CUSTOM" bukan arbitrary restriction, tapi konsistensi dengan read-only policy:
+- Pekerjaan REF = read-only di page ini → tidak bisa edit apapun (termasuk tambah bundle)
+- Pekerjaan REF_MODIFIED = edit di workflow lain → tidak ditampilkan untuk edit di page ini
+- Pekerjaan CUSTOM = fully editable → bisa tambah bundle
+
+**Contoh Workflow yang Benar:**
+```
+Scenario: User ingin pakai bundle untuk "Kolom Standard" yang dipakai 10x
+
+✓ BENAR:
+1. User buat Pekerjaan CUSTOM baru: "Kolom Standard A"
+   → source_type = 'custom'
+2. Isi komponen: TK, BHN, ALT
+3. Di 10 pekerjaan lain (yang juga CUSTOM), tambahkan bundle:
+   → LAIN, Bundle_Kolom_A, ref_pekerjaan = "Kolom Standard A"
+4. System auto-expand ke 10 pekerjaan tersebut
+
+✗ SALAH:
+1. User import pekerjaan dari AHSP Referensi
+   → source_type = 'ref' (READ-ONLY)
+2. User coba tambah bundle
+   → ERROR: "Hanya boleh untuk pekerjaan custom"
+```
+
+**Summary:**
+- "Pekerjaan berulang" dalam dokumentasi = **CUSTOM pekerjaan yang user CREATE untuk reuse**
+- BUKAN pekerjaan dari AHSP Referensi standard
+- Bundle adalah fitur untuk pekerjaan yang **user kontrol penuh (CUSTOM)**
 
 ---
 
@@ -482,18 +546,29 @@ A: Ya, bisa sampai max 3 levels (A→B→C). Lebih dari itu akan di-reject.
 **Q: Apa yang terjadi jika saya hapus pekerjaan yang di-reference sebagai bundle?**
 A: System akan block deletion jika pekerjaan masih di-reference. User harus hapus bundle reference dulu sebelum menghapus pekerjaan target.
 
+**Q: Kenapa error "Hanya boleh untuk pekerjaan custom" saat saya coba tambah bundle?**
+A: Bundle hanya bisa ditambahkan ke pekerjaan dengan source_type='CUSTOM' (pekerjaan yang dibuat user dari nol). Pekerjaan dari AHSP Referensi (source_type='REF') adalah read-only di page ini dan tidak bisa ditambahkan bundle. Jika Anda ingin pakai bundle, buat pekerjaan CUSTOM baru dulu, lalu tambahkan bundle di situ.
+
+**Q: Dokumentasi bilang "pekerjaan berulang" bisa pakai bundle, tapi pekerjaan saya dari referensi ditolak?**
+A: "Pekerjaan berulang" yang dimaksud adalah **CUSTOM pekerjaan yang user buat untuk dipakai berulang kali**, BUKAN pekerjaan dari AHSP Referensi standard. Workflow yang benar: Buat pekerjaan CUSTOM → isi komponen → pakai sebagai bundle di pekerjaan lain.
+
 ---
 
 ### Validation Rules untuk Bundle
 
-| Rule | Check | Error Message |
-|------|-------|---------------|
-| Target Exists | ref_pekerjaan_id valid? | "Pekerjaan #... tidak ditemukan" |
-| **Target Not Empty** | Target has components? | **"Pekerjaan '...' tidak memiliki komponen"** (BARU!) |
-| No Circular | A→B→A not allowed | "Circular dependency detected: ..." |
-| Max Depth | depth <= 3 | "Maksimum kedalaman bundle terlampaui" |
-| Only for LAIN | kategori == 'LAIN' | "Hanya boleh pada kategori 'Lain-lain'" |
-| Only for CUSTOM | source_type == 'CUSTOM' | "Hanya boleh untuk pekerjaan custom" |
+| Rule | Check | Error Message | Penjelasan |
+|------|-------|---------------|------------|
+| Target Exists | ref_pekerjaan_id valid? | "Pekerjaan #... tidak ditemukan" | Target bundle harus ada di database |
+| **Target Not Empty** | Target has components? | **"Pekerjaan '...' tidak memiliki komponen"** (BARU!) | Target harus sudah punya komponen AHSP sebelum bisa dijadikan bundle |
+| No Circular | A→B→A not allowed | "Circular dependency detected: ..." | Prevent infinite loop (A reference B, B reference A) |
+| Max Depth | depth <= 3 | "Maksimum kedalaman bundle terlampaui" | Maksimum nesting: A→B→C (3 levels) |
+| Only for LAIN | kategori == 'LAIN' | "Hanya boleh pada kategori 'Lain-lain'" | Bundle reference hanya di kategori LAIN |
+| **Only for CUSTOM** | source_type == 'CUSTOM' | "Hanya boleh untuk pekerjaan custom" | **Context:** Pekerjaan REF adalah read-only di page ini. REF_MOD diedit di page lain. Hanya CUSTOM pekerjaan yang fully editable di Template AHSP. **Reason:** Konsistensi dengan read-only policy untuk non-CUSTOM pekerjaan. |
+
+**Catatan untuk "Only for CUSTOM" Rule:**
+- Ini BUKAN batasan arbitrary
+- Ini konsekuensi dari: Pekerjaan REF = read-only → tidak bisa edit apapun (termasuk bundle)
+- Untuk detail source_type, lihat section [PENTING: Jenis Pekerjaan (source_type)](#penting-jenis-pekerjaan-source_type) di atas
 
 ---
 
