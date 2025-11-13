@@ -29,6 +29,7 @@ from .services import (
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
     expand_bundle_to_components,  # NEW: Dual storage expansion (Pekerjaan)
     expand_ahsp_bundle_to_components,  # NEW: Dual storage expansion (AHSP)
+    cascade_bundle_re_expansion,  # CRITICAL: Re-expand pekerjaan that reference modified one
 )
 
 from .export_config import (
@@ -1347,6 +1348,23 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             elif ref_kind == 'job':
                 try:
                     ref_pekerjaan_obj = Pekerjaan.objects.get(id=ref_id, project=project)
+
+                    # VALIDATION: Bundle target must not be empty
+                    target_component_count = DetailAHSPProject.objects.filter(
+                        project=project,
+                        pekerjaan=ref_pekerjaan_obj
+                    ).count()
+
+                    if target_component_count == 0:
+                        ref_kode = ref_pekerjaan_obj.snapshot_kode or f"PKJ#{ref_pekerjaan_obj.id}"
+                        errors.append(_err(
+                            f"rows[{i}].ref_id",
+                            f"❌ Pekerjaan '{ref_kode}' tidak memiliki komponen AHSP. "
+                            f"Bundle harus mereferensi pekerjaan yang sudah memiliki komponen. "
+                            f"Silakan isi komponen pekerjaan tersebut terlebih dahulu atau pilih pekerjaan lain."
+                        ))
+                        continue
+
                 except Pekerjaan.DoesNotExist:
                     errors.append(_err(f"rows[{i}].ref_id", f"Pekerjaan #{ref_id} tidak ditemukan")); continue
             else:
@@ -1651,9 +1669,30 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         project.save(update_fields=['updated_at'])
         logger.info(f"[PROJECT_TIMESTAMP] Updated project {project.id} timestamp after saving {len(saved_raw_details)} detail AHSP changes")
 
-    # CRITICAL FIX: Invalidate cache AFTER transaction commits to avoid race condition
-    # This ensures cache is invalidated only when data is actually committed to DB
-    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+    # CRITICAL FIX: Cascade re-expansion for bundle references
+    # When this pekerjaan is modified and is referenced by other pekerjaan as bundle,
+    # we must re-expand those referencing pekerjaan to prevent stale data
+    def cascade_operations():
+        """Execute cascade operations after transaction commits"""
+        # 1. Re-expand all pekerjaan that reference this modified pekerjaan
+        try:
+            re_expanded_count = cascade_bundle_re_expansion(project, pkj.id)
+            if re_expanded_count > 0:
+                logger.info(
+                    f"[SAVE_DETAIL_AHSP] CASCADE: Re-expanded {re_expanded_count} pekerjaan "
+                    f"that reference pekerjaan {pkj.id}"
+                )
+        except Exception as e:
+            logger.error(
+                f"[SAVE_DETAIL_AHSP] CASCADE FAILED: Error re-expanding referencing pekerjaan: {str(e)}",
+                exc_info=True
+            )
+            # Don't raise - cascade failure shouldn't fail the save operation
+
+        # 2. Invalidate cache (always needed)
+        invalidate_rekap_cache(project)
+
+    transaction.on_commit(cascade_operations)
 
     status_code = 207 if errors else 200
     logger.info(f"[SAVE_DETAIL_AHSP] SUCCESS - Status: {status_code}, Raw: {len(saved_raw_details)}, Expanded: {len(expanded_to_create)}, Errors: {len(errors)}")

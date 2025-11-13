@@ -673,6 +673,133 @@ def _populate_expanded_from_raw(project, pekerjaan):
 
 
 @transaction.atomic
+def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Optional[Set[int]] = None) -> int:
+    """
+    CASCADE RE-EXPANSION: When a pekerjaan is modified, re-expand all pekerjaan that reference it.
+
+    CRITICAL FIX for stale data bug:
+    - When user edits Pekerjaan B that is referenced by Pekerjaan A as a bundle
+    - Pekerjaan A's DetailAHSPExpanded becomes stale (contains old values)
+    - This function finds all referencing pekerjaan and re-expands them
+    - Supports recursive re-expansion (A → B → C chain)
+
+    Args:
+        project: Project instance
+        modified_pekerjaan_id: ID of pekerjaan that was just modified
+        visited: Set of pekerjaan IDs already processed (prevent infinite loop)
+
+    Returns:
+        int: Total number of pekerjaan re-expanded (including recursive)
+
+    Example:
+        Pekerjaan A: LAIN Bundle_B (ref_pekerjaan=B)
+        Pekerjaan B: TK L.01 (koef=5.0)
+
+        User edits Pekerjaan B: L.01 koef 5.0 → 8.0
+
+        Without cascade:
+            Pekerjaan A still shows L.01 with koef=15.0 (STALE!)
+
+        With cascade:
+            1. Detect Pekerjaan A references B
+            2. Re-expand Pekerjaan A → L.01 now shows koef=24.0 (CORRECT!)
+    """
+    if visited is None:
+        visited = set()
+
+    # Prevent infinite loop
+    if modified_pekerjaan_id in visited:
+        logger.warning(
+            f"[CASCADE_RE_EXPANSION] Already visited pekerjaan {modified_pekerjaan_id}, skipping to prevent loop"
+        )
+        return 0
+
+    visited.add(modified_pekerjaan_id)
+
+    logger.info(
+        f"[CASCADE_RE_EXPANSION] START - Modified pekerjaan: {modified_pekerjaan_id}, "
+        f"Visited: {len(visited)}"
+    )
+
+    # Find all pekerjaan that reference this modified pekerjaan as a bundle
+    referencing_details = DetailAHSPProject.objects.filter(
+        project=project,
+        kategori='LAIN',
+        ref_pekerjaan_id=modified_pekerjaan_id
+    ).select_related('pekerjaan').distinct()
+
+    referencing_pekerjaan_ids = list(
+        referencing_details.values_list('pekerjaan_id', flat=True).distinct()
+    )
+
+    if not referencing_pekerjaan_ids:
+        logger.info(
+            f"[CASCADE_RE_EXPANSION] No pekerjaan references #{modified_pekerjaan_id}, done"
+        )
+        return 0
+
+    logger.info(
+        f"[CASCADE_RE_EXPANSION] Found {len(referencing_pekerjaan_ids)} pekerjaan referencing "
+        f"#{modified_pekerjaan_id}: {referencing_pekerjaan_ids}"
+    )
+
+    re_expanded_count = 0
+
+    # Re-expand each referencing pekerjaan
+    for pkj_id in referencing_pekerjaan_ids:
+        try:
+            pkj = Pekerjaan.objects.get(id=pkj_id, project=project)
+            pkj_kode = pkj.snapshot_kode or f"PKJ#{pkj.id}"
+
+            logger.info(
+                f"[CASCADE_RE_EXPANSION] Re-expanding pekerjaan {pkj_kode} (ID: {pkj.id}) "
+                f"which references #{modified_pekerjaan_id}"
+            )
+
+            # Re-populate expanded data
+            populate_expanded_from_project(project, pkj)
+            re_expanded_count += 1
+
+            logger.info(f"[CASCADE_RE_EXPANSION] Successfully re-expanded {pkj_kode}")
+
+            # RECURSIVE: This pekerjaan might also be referenced by others!
+            # Example: A → B → C, if C modified, must re-expand B then A
+            recursive_count = cascade_bundle_re_expansion(
+                project=project,
+                modified_pekerjaan_id=pkj.id,
+                visited=visited.copy()  # Pass copy to avoid mutation in sibling branches
+            )
+
+            re_expanded_count += recursive_count
+
+            if recursive_count > 0:
+                logger.info(
+                    f"[CASCADE_RE_EXPANSION] Recursive re-expansion from {pkj_kode}: "
+                    f"{recursive_count} pekerjaan"
+                )
+
+        except Pekerjaan.DoesNotExist:
+            logger.error(
+                f"[CASCADE_RE_EXPANSION] Pekerjaan {pkj_id} not found, skipping"
+            )
+            continue
+        except Exception as e:
+            logger.error(
+                f"[CASCADE_RE_EXPANSION] Failed to re-expand pekerjaan {pkj_id}: {str(e)}",
+                exc_info=True
+            )
+            # Continue with other pekerjaan, don't fail entire cascade
+            continue
+
+    logger.info(
+        f"[CASCADE_RE_EXPANSION] COMPLETE - Re-expanded {re_expanded_count} pekerjaan total "
+        f"(direct + recursive)"
+    )
+
+    return re_expanded_count
+
+
+@transaction.atomic
 def clone_ref_pekerjaan(
     project,
     sub: SubKlasifikasi,
