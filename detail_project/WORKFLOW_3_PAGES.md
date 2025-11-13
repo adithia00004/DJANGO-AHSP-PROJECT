@@ -318,11 +318,11 @@ Join:  DetailAHSPExpanded + HargaItemProject ON kode
 
 Sebelum menggunakan bundle, pahami dulu 3 jenis pekerjaan dalam sistem:
 
-| source_type | Nama | Asal | Editable di Template AHSP? | Bisa Pakai Bundle? |
-|-------------|------|------|----------------------------|-------------------|
-| **REF** | Referensi | Import dari AHSP Referensi | ❌ READ-ONLY | ❌ Tidak bisa |
-| **CUSTOM** | Custom | Dibuat user dari nol | ✓ Full edit | ✓ Bisa |
-| **REF_MODIFIED** | Ref Modified | Clone dari REF + modifikasi | ⚠️ Edit di page lain | ❌ Di page ini tidak |
+| source_type | Nama | Asal | Editable di Template AHSP? | Segment yang Diizinkan | Bundle/Segment D? |
+|-------------|------|------|----------------------------|----------------------|--------------------|
+| **REF** | Referensi | Import dari AHSP Referensi | ❌ READ-ONLY | Tidak ada (view only) | ❌ Tidak bisa |
+| **REF_MODIFIED** | Ref Modified | Clone dari REF + modifikasi | ⚠️ Bisa edit terbatas | Segment A–C (TK/BHN/ALT) | ❌ Segment D terkunci |
+| **CUSTOM** | Custom | Dibuat user dari nol | ✓ Full edit | Segment A–D | ✓ Bisa (dengan limit loop) |
 
 **Penjelasan Detail:**
 
@@ -340,15 +340,16 @@ Sebelum menggunakan bundle, pahami dulu 3 jenis pekerjaan dalam sistem:
 
 3. **SOURCE_REF_MOD (Ref Modified)**
    - Clone dari pekerjaan REF yang sudah dimodifikasi
-   - Status: Editable di halaman "Rincian AHSP Gabungan", TIDAK di Template AHSP
-   - Workflow berbeda (tidak dibahas di dokumen ini)
+   - Status: Editable langsung di Template AHSP **untuk tiga segment dasar (TK/BHN/ALT)**
+   - Segment D (LAIN/bundle) tetap dikunci supaya perubahan mengikuti batasan referensi
+   - Workflow ini berbagi data dengan Rincian AHSP Gabungan; tombol **Reset to Ref** tetap tersedia untuk kembali ke baseline referensi
 
 **Mengapa Bundle Hanya untuk CUSTOM?**
 
-Rule "Only for CUSTOM" bukan arbitrary restriction, tapi konsistensi dengan read-only policy:
+Rule "Only for CUSTOM" mengikuti batasan akses segment:
 - Pekerjaan REF = read-only di page ini → tidak bisa edit apapun (termasuk tambah bundle)
-- Pekerjaan REF_MODIFIED = edit di workflow lain → tidak ditampilkan untuk edit di page ini
-- Pekerjaan CUSTOM = fully editable → bisa tambah bundle
+- Pekerjaan REF_MODIFIED = hanya boleh mengubah segment A–C → Segment D/LAIN otomatis dinonaktifkan
+- Pekerjaan CUSTOM = fully editable (Segment A–D) → boleh tambah bundle selama mematuhi batas loop dan guard circular
 
 **Contoh Workflow yang Benar:**
 ```
@@ -740,7 +741,7 @@ A: "Pekerjaan berulang" yang dimaksud adalah **CUSTOM pekerjaan yang user buat u
 | No Circular | A→B→A not allowed | "Circular dependency detected: ..." | Prevent infinite loop (A reference B, B reference A) |
 | Max Depth | depth <= 3 | "Maksimum kedalaman bundle terlampaui" | Maksimum nesting: A→B→C (3 levels) |
 | Only for LAIN | kategori == 'LAIN' | "Hanya boleh pada kategori 'Lain-lain'" | Bundle reference hanya di kategori LAIN |
-| **Only for CUSTOM** | source_type == 'CUSTOM' | "Hanya boleh untuk pekerjaan custom" | **Context:** Pekerjaan REF adalah read-only di page ini. REF_MOD diedit di page lain. Hanya CUSTOM pekerjaan yang fully editable di Template AHSP. **Reason:** Konsistensi dengan read-only policy untuk non-CUSTOM pekerjaan. |
+| **Only for CUSTOM** | source_type == 'CUSTOM' | "Hanya boleh untuk pekerjaan custom" | **Context:** Pekerjaan REF adalah read-only. REF_MODIFIED hanya mengaktifkan segment A–C dan tidak boleh membuka Segment D/LAIN. Hanya CUSTOM yang memiliki akses penuh sehingga kontrol bundle aman. **Reason:** Menjaga referensi agar tidak bercampur dengan bundle baru dan memastikan limit loop hanya berlaku di pekerjaan yang user buat sendiri. |
 
 **Catatan untuk "Only for CUSTOM" Rule:**
 - Ini BUKAN batasan arbitrary

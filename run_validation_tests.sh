@@ -58,6 +58,11 @@ case "$1" in
             -k "test_valid_progress_100_percent or test_invalid_progress_over_100_percent or test_weekly_input_mode_switch_lossless" \
             -v
         ;;
+    "workflow3")
+        echo -e "${YELLOW}Running Workflow 3 Pages Integration Suite...${NC}"
+        PYTEST_ADDOPTS="--no-cov" pytest detail_project/tests/test_template_ahsp_bundle.py -v && \
+        PYTEST_ADDOPTS="--no-cov" pytest detail_project/tests/test_page_interactions_comprehensive.py -v
+        ;;
     *)
         echo -e "${YELLOW}Running All Validation Tests...${NC}"
         pytest detail_project/tests/test_weekly_canonical_validation.py -v
