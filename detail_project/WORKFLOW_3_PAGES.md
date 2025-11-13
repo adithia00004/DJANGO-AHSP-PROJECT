@@ -91,13 +91,18 @@ Write: DetailAHSPProject (raw), DetailAHSPExpanded (computed), HargaItemProject 
 **Tujuan:** Definisikan komponen AHSP untuk setiap pekerjaan
 
 **Langkah:**
-1. **Pilih Pekerjaan** dari sidebar (hanya SOURCE_CUSTOM dapat diedit di page ini)
+1. **Pilih Pekerjaan** dari sidebar
+   - **REF (Referensi)**: BLOCKED - form read-only, tidak bisa edit
+   - **REF_MODIFIED**: BOLEH edit - segment A/B/C (TK/BHN/ALT) only
+   - **CUSTOM**: BOLEH edit - semua segment A/B/C/D (termasuk bundle)
 
-2. **Input Komponen Direct** (TK/BHN/ALT):
+2. **Input Komponen Direct** (TK/BHN/ALT) - Segment A/B/C:
    - Masukkan kode, uraian, satuan, koefisien
    - Kode harus unique per pekerjaan
+   - **Tersedia untuk:** REF_MODIFIED dan CUSTOM
 
-3. **Input Bundle** (LAIN - optional):
+3. **Input Bundle** (LAIN) - Segment D (optional):
+   - **HANYA untuk pekerjaan CUSTOM** (REF_MODIFIED tidak bisa)
    - **Pilih dari 2 sumber:**
      - **Pekerjaan Proyek** (ref_kind='job'): Bundle dari pekerjaan lain di project ini
      - **Master AHSP** (ref_kind='ahsp'): Bundle dari AHSP Referensi standard
@@ -320,9 +325,9 @@ Sebelum menggunakan bundle, pahami dulu 3 jenis pekerjaan dalam sistem:
 
 | source_type | Nama | Asal | Editable di Template AHSP? | Bisa Pakai Bundle? |
 |-------------|------|------|----------------------------|-------------------|
-| **REF** | Referensi | Import dari AHSP Referensi | ❌ READ-ONLY | ❌ Tidak bisa |
-| **CUSTOM** | Custom | Dibuat user dari nol | ✓ Full edit | ✓ Bisa |
-| **REF_MODIFIED** | Ref Modified | Clone dari REF + modifikasi | ⚠️ Edit di page lain | ❌ Di page ini tidak |
+| **REF** | Referensi | Import dari AHSP Referensi | ❌ READ-ONLY (blocked) | ❌ Tidak bisa |
+| **CUSTOM** | Custom | Dibuat user dari nol | ✓ Full edit (A/B/C/D) | ✓ Bisa |
+| **REF_MODIFIED** | Ref Modified | Clone dari REF + modifikasi | ✓ Edit segment A/B/C | ❌ TIDAK bisa (hanya CUSTOM) |
 
 **Penjelasan Detail:**
 
@@ -340,20 +345,28 @@ Sebelum menggunakan bundle, pahami dulu 3 jenis pekerjaan dalam sistem:
 
 3. **SOURCE_REF_MOD (Ref Modified)**
    - Clone dari pekerjaan REF yang sudah dimodifikasi
-   - Status: Editable di halaman "Rincian AHSP Gabungan", TIDAK di Template AHSP
-   - Workflow berbeda (tidak dibahas di dokumen ini)
+   - Status: **BISA edit di Template AHSP** untuk segment A/B/C (TK/BHN/ALT)
+   - **TIDAK BISA** tambah bundle (segment D/LAIN) - hanya CUSTOM yang bisa
+   - Workflow: Edit komponen normal (add/edit/delete TK/BHN/ALT), tapi tidak bisa LAIN
+   - Use case: Modifikasi pekerjaan standard dari referensi untuk kebutuhan project spesifik
 
 **Mengapa Bundle Hanya untuk CUSTOM?**
 
-Rule "Only for CUSTOM" bukan arbitrary restriction, tapi konsistensi dengan read-only policy:
-- Pekerjaan REF = read-only di page ini → tidak bisa edit apapun (termasuk tambah bundle)
-- Pekerjaan REF_MODIFIED = edit di workflow lain → tidak ditampilkan untuk edit di page ini
-- Pekerjaan CUSTOM = fully editable → bisa tambah bundle
+Rule "Only for CUSTOM" bukan arbitrary restriction, tapi design decision untuk kompleksitas bundle:
+- **Pekerjaan REF** = read-only di page ini → tidak bisa edit apapun (termasuk tambah bundle)
+- **Pekerjaan REF_MODIFIED** = bisa edit segment A/B/C → TIDAK bisa bundle (segment D) karena:
+  - Bundle adalah fitur advanced yang memerlukan full control
+  - REF_MODIFIED fokus pada modifikasi komponen standard, bukan composite workflow
+  - Cascade re-expansion kompleks, perlu ownership penuh
+- **Pekerjaan CUSTOM** = fully editable + full ownership → bisa tambah bundle
+  - User created dari nol, punya full control
+  - Bisa handle cascade updates dan nested bundle
+  - Sesuai untuk composite/reusable work packages
 
 **Contoh Workflow yang Benar:**
-```
-Scenario: User ingin pakai bundle untuk "Kolom Standard" yang dipakai 10x
 
+**Scenario 1: Bundle untuk Pekerjaan Berulang (CUSTOM)**
+```
 ✓ BENAR:
 1. User buat Pekerjaan CUSTOM baru: "Kolom Standard A"
    → source_type = 'custom'
@@ -361,18 +374,40 @@ Scenario: User ingin pakai bundle untuk "Kolom Standard" yang dipakai 10x
 3. Di 10 pekerjaan lain (yang juga CUSTOM), tambahkan bundle:
    → LAIN, Bundle_Kolom_A, ref_pekerjaan = "Kolom Standard A"
 4. System auto-expand ke 10 pekerjaan tersebut
+```
 
+**Scenario 2: Modifikasi Pekerjaan Standard (REF_MODIFIED)**
+```
+✓ BENAR (untuk segment A/B/C):
+1. User import pekerjaan dari AHSP Referensi
+   → source_type = 'ref' → user clone → source_type = 'ref_modified'
+2. User edit komponen TK/BHN/ALT (add/edit/delete)
+   → BOLEH: "Tambah TK L.99 dengan koef 2.0"
+3. Save berhasil
+
+✗ SALAH (untuk segment D):
+1. User punya pekerjaan REF_MODIFIED
+2. User coba tambah bundle (LAIN)
+   → ERROR: "Hanya boleh untuk pekerjaan custom"
+   → Reason: Bundle hanya untuk CUSTOM, bukan REF_MODIFIED
+```
+
+**Scenario 3: Pekerjaan REF (Read-Only)**
+```
 ✗ SALAH:
 1. User import pekerjaan dari AHSP Referensi
    → source_type = 'ref' (READ-ONLY)
-2. User coba tambah bundle
-   → ERROR: "Hanya boleh untuk pekerjaan custom"
+2. User coba edit komponen ATAU tambah bundle
+   → BLOCKED: Entire form read-only
+   → Message: "Pekerjaan ini bersumber dari referensi dan tidak dapat diubah..."
 ```
 
 **Summary:**
-- "Pekerjaan berulang" dalam dokumentasi = **CUSTOM pekerjaan yang user CREATE untuk reuse**
-- BUKAN pekerjaan dari AHSP Referensi standard
-- Bundle adalah fitur untuk pekerjaan yang **user kontrol penuh (CUSTOM)**
+- **REF**: Read-only, tidak bisa edit sama sekali di Template AHSP
+- **REF_MODIFIED**: Bisa edit segment A/B/C (TK/BHN/ALT), TIDAK bisa segment D (bundle)
+- **CUSTOM**: Full control - bisa edit semua segment A/B/C/D (termasuk bundle)
+- "Pekerjaan berulang" untuk bundle = **CUSTOM pekerjaan yang user CREATE untuk reuse**
+- Bundle adalah fitur advanced yang memerlukan **full ownership (CUSTOM only)**
 
 ---
 
@@ -724,7 +759,14 @@ A: Ya, bisa sampai max 3 levels (A→B→C). Lebih dari itu akan di-reject.
 A: System akan block deletion jika pekerjaan masih di-reference. User harus hapus bundle reference dulu sebelum menghapus pekerjaan target.
 
 **Q: Kenapa error "Hanya boleh untuk pekerjaan custom" saat saya coba tambah bundle?**
-A: Bundle hanya bisa ditambahkan ke pekerjaan dengan source_type='CUSTOM' (pekerjaan yang dibuat user dari nol). Pekerjaan dari AHSP Referensi (source_type='REF') adalah read-only di page ini dan tidak bisa ditambahkan bundle. Jika Anda ingin pakai bundle, buat pekerjaan CUSTOM baru dulu, lalu tambahkan bundle di situ.
+A: Bundle hanya bisa ditambahkan ke pekerjaan dengan source_type='CUSTOM' (pekerjaan yang dibuat user dari nol).
+- **Pekerjaan REF** (dari AHSP Referensi): read-only, tidak bisa edit sama sekali
+- **Pekerjaan REF_MODIFIED** (clone dari REF): bisa edit segment A/B/C (TK/BHN/ALT), TIDAK bisa segment D (bundle)
+- **Pekerjaan CUSTOM**: full control, bisa edit semua segment termasuk bundle
+Jika Anda ingin pakai bundle, buat pekerjaan CUSTOM baru dulu, lalu tambahkan bundle di situ.
+
+**Q: Saya punya pekerjaan REF_MODIFIED, kenapa tidak bisa tambah bundle tapi bisa edit TK/BHN/ALT?**
+A: Ini by design. REF_MODIFIED fokus pada modifikasi komponen standard (segment A/B/C), bukan composite workflow. Bundle adalah fitur advanced yang memerlukan full ownership dan control (hanya CUSTOM). Jika Anda perlu bundle functionality, ubah pekerjaan menjadi CUSTOM atau buat pekerjaan CUSTOM baru.
 
 **Q: Dokumentasi bilang "pekerjaan berulang" bisa pakai bundle, tapi pekerjaan saya dari referensi ditolak?**
 A: "Pekerjaan berulang" yang dimaksud adalah **CUSTOM pekerjaan yang user buat untuk dipakai berulang kali**, BUKAN pekerjaan dari AHSP Referensi standard. Workflow yang benar: Buat pekerjaan CUSTOM → isi komponen → pakai sebagai bundle di pekerjaan lain.
