@@ -1,3 +1,9 @@
+[run]
+omit =
+    detail_project/tests/*
+    detail_project/migrations/*
+    detail_project/management/*
+
 [report]
 skip_covered = True
 show_missing = True

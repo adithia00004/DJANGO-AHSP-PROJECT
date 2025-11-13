@@ -25,9 +25,9 @@ class DisableMigrations(dict):
 
 MIGRATION_MODULES = DisableMigrations()
 
-# Faster password hashing for tests
+# Use production-grade password hashing even in tests (security suite depends on this)
 PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
 ]
 
 # Disable debug mode
@@ -39,6 +39,12 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
+
+# Cookie/session security flags (security tests expect production-like defaults)
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 86400 * 5  # 5 days
+CSRF_COOKIE_SECURE = True
 
 # Use console email backend for tests
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

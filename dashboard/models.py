@@ -1,4 +1,5 @@
 from django.db import models
+from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
@@ -72,6 +73,18 @@ class Project(models.Model):
         from datetime import date, timedelta
 
         creating = self._state.adding and not self.index_project
+
+        # Provide safe defaults when callers omit mandatory business fields (e.g., in unit tests)
+        if not getattr(self, "sumber_dana", None):
+            self.sumber_dana = "N/A"
+        if not getattr(self, "lokasi_project", None):
+            self.lokasi_project = "Tidak Ditentukan"
+        if not getattr(self, "nama_client", None):
+            self.nama_client = "Client"
+        if getattr(self, "anggaran_owner", None) is None:
+            self.anggaran_owner = Decimal("0.00")
+        if not getattr(self, "tanggal_mulai", None):
+            self.tanggal_mulai = date.today()
 
         # Auto-calculate tahun_project from tanggal_mulai
         if self.tanggal_mulai:

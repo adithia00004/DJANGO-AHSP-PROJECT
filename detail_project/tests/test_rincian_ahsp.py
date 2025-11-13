@@ -15,6 +15,7 @@ Coverage:
 
 import pytest
 from decimal import Decimal
+from datetime import date
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from dashboard.models import Project
@@ -55,11 +56,13 @@ def other_user():
 @pytest.fixture
 def project(user):
     """Create test project with pricing"""
-    from datetime import date
     proj = Project.objects.create(
         nama='Test Project Rincian AHSP',
         owner=user,
         lokasi_project='Test Location',  # Correct field name
+        sumber_dana='APBD',
+        nama_client='Dinas PU',
+        anggaran_owner=Decimal('100000000.00'),
         tanggal_mulai=date(2025, 1, 1)  # Required field
     )
     # Create default pricing
@@ -74,11 +77,13 @@ def project(user):
 @pytest.fixture
 def other_project(other_user):
     """Create project owned by other user"""
-    from datetime import date
     return Project.objects.create(
         nama='Other Project',
         owner=other_user,
         lokasi_project='Other Location',  # Correct field name
+        sumber_dana='APBN',
+        nama_client='Owner Lain',
+        anggaran_owner=Decimal('50000000.00'),
         tanggal_mulai=date(2025, 1, 1)  # Required field
     )
 
@@ -141,7 +146,7 @@ def harga_items(project):
     items.append(HargaItemProject.objects.create(
         project=project,
         kategori='TK',
-        kode='TK.001',
+        kode_item='TK.001',
         uraian='Pekerja',
         satuan='OH',
         harga_satuan=Decimal('150000.00')
@@ -149,7 +154,7 @@ def harga_items(project):
     items.append(HargaItemProject.objects.create(
         project=project,
         kategori='BHN',
-        kode='BHN.001',
+        kode_item='BHN.001',
         uraian='Semen',
         satuan='kg',
         harga_satuan=Decimal('2000.00')
@@ -157,7 +162,7 @@ def harga_items(project):
     items.append(HargaItemProject.objects.create(
         project=project,
         kategori='ALT',
-        kode='ALT.001',
+        kode_item='ALT.001',
         uraian='Excavator',
         satuan='jam',
         harga_satuan=Decimal('500000.00')
@@ -174,6 +179,9 @@ def detail_ahsp(project, pekerjaan_custom, harga_items):
         pekerjaan=pekerjaan_custom,
         harga_item=harga_items[0],  # TK
         kategori='TK',
+        kode=harga_items[0].kode_item,
+        uraian=harga_items[0].uraian,
+        satuan=harga_items[0].satuan,
         koefisien=Decimal('0.500000')
     ))
     details.append(DetailAHSPProject.objects.create(
@@ -181,6 +189,9 @@ def detail_ahsp(project, pekerjaan_custom, harga_items):
         pekerjaan=pekerjaan_custom,
         harga_item=harga_items[1],  # BHN
         kategori='BHN',
+        kode=harga_items[1].kode_item,
+        uraian=harga_items[1].uraian,
+        satuan=harga_items[1].satuan,
         koefisien=Decimal('10.000000')
     ))
     return details
@@ -238,8 +249,8 @@ class TestAPIGetDetailAHSP:
         assert data['ok'] is True
         assert 'items' in data
         assert len(data['items']) == 2
-        assert data['items'][0]['kategori'] == 'TK'
-        assert data['items'][1]['kategori'] == 'BHN'
+        categories = sorted(item['kategori'] for item in data['items'])
+        assert categories == ['BHN', 'TK']
 
     def test_get_detail_ahsp_includes_harga_satuan(self, client, user, project, pekerjaan_custom, detail_ahsp):
         """Detail includes harga_satuan from HargaItemProject"""
@@ -248,8 +259,9 @@ class TestAPIGetDetailAHSP:
         response = client.get(url)
 
         data = response.json()
-        assert 'harga_satuan' in data['items'][0]
-        assert Decimal(data['items'][0]['harga_satuan'].replace(',', '.')) == Decimal('150000.00')
+        tk_item = next(item for item in data['items'] if item['kategori'] == 'TK')
+        assert 'harga_satuan' in tk_item
+        assert Decimal(tk_item['harga_satuan'].replace(',', '.')) == Decimal('150000.00')
 
     def test_get_detail_ahsp_not_found(self, client, user, project):
         """GET detail for non-existent pekerjaan returns 404"""
@@ -434,7 +446,11 @@ class TestRincianAHSPEdgeCases:
         new_project = Project.objects.create(
             nama='No Pricing Project',
             owner=user,
-            lokasi='Test'
+            lokasi_project='Lokasi Baru',
+            sumber_dana='APBD',
+            nama_client='Pemda Kota',
+            anggaran_owner=Decimal('75000000.00'),
+            tanggal_mulai=date(2025, 2, 1)
         )
         new_klas = Klasifikasi.objects.create(
             project=new_project,

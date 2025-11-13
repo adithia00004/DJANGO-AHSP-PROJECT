@@ -26,10 +26,39 @@ class TimeStampedModel(models.Model):
         abstract = True
 
 
+class NameAliasManager(models.Manager):
+    """Allow legacy 'nama' keyword arguments for models that now use 'name'."""
+
+    @staticmethod
+    def _normalize(kwargs):
+        if kwargs is None:
+            return None
+        normalized = dict(kwargs)
+        if "name" not in normalized and normalized.get("nama"):
+            normalized["name"] = normalized.pop("nama")
+        return normalized
+
+    def create(self, **kwargs):
+        return super().create(**self._normalize(kwargs))
+
+    def get_or_create(self, defaults=None, **kwargs):
+        return super().get_or_create(
+            defaults=self._normalize(defaults),
+            **self._normalize(kwargs)
+        )
+
+    def update_or_create(self, defaults=None, **kwargs):
+        return super().update_or_create(
+            defaults=self._normalize(defaults),
+            **self._normalize(kwargs)
+        )
+
+
 class Klasifikasi(TimeStampedModel):
     project = models.ForeignKey('dashboard.Project', on_delete=models.CASCADE, related_name='klasifikasi_list')
     name = models.CharField(max_length=255)
     ordering_index = models.PositiveIntegerField(default=0, db_index=True)
+    objects = NameAliasManager()
 
     class Meta:
         ordering = ["ordering_index", "id"]
@@ -44,6 +73,7 @@ class SubKlasifikasi(TimeStampedModel):
     klasifikasi = models.ForeignKey(Klasifikasi, on_delete=models.CASCADE, related_name='sub_list')
     name = models.CharField(max_length=255)
     ordering_index = models.PositiveIntegerField(default=0, db_index=True)
+    objects = NameAliasManager()
 
     class Meta:
         ordering = ["ordering_index", "id"]

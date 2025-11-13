@@ -16,20 +16,23 @@ Implementasi fixes untuk halaman Rincian AHSP mencakup:
 
 ## ✅ TIER 1 FIXES (P0 - CRITICAL)
 
-### 1.1 ✅ Test Coverage Created
+### 1.1 ✅ Test Coverage Created / Updated
 **File:** `detail_project/tests/test_rincian_ahsp.py`
 
-**Coverage:**
-- ✅ Rincian AHSP page view (owner/non-owner/anonymous)
-- ✅ API Get Detail AHSP (success/not found/permission)
-- ✅ API Pekerjaan Pricing GET (default/with override)
-- ✅ API Pekerjaan Pricing POST (valid/clear/invalid range/invalid format)
-- ✅ Override BUK integration with detail
-- ✅ Edge cases (empty pekerjaan, no pricing record)
+**Coverage (24 tests + regression deck):**
+- ?o. Rincian AHSP page view (owner/non-owner/anonymous)
+- ?o. API Get Detail AHSP (success, empty pekerjaan, permission, not found)
+- ?o. API Pekerjaan Pricing GET + POST (valid save/clear, invalid range & format, permission)
+- ?o. Override BUK integration with detail calculation
+- ?o. Edge cases (project tanpa ProjectPricing, no detail rows)
+- ?o. Export endpoints (CSV/PDF/Word happy-path + permission/login guards)
+- ?o. Keyboard accessibility regressions (help modal + ARIA listbox)
+- ?o. Regression deck (list pekerjaan gaps, project parameter index, rekap konsistensi/kebutuhan, volume page)
 
-**Total Test Cases:** 14 tests
-
----
+> **Notes:**
+> - Export tests require `python-docx==1.1.0` dan `reportlab==4.0.9` (sudah ada di `requirements/base.txt`).
+> - Repo-wide `pytest.ini` memaksa `--cov=detail_project --cov-fail-under=60`; menjalankan hanya file ini akan menampilkan ~24% karena menghitung seluruh paket. Gunakan `PYTEST_ADDOPTS=--cov-fail-under=0` untuk debugging lokal, lalu jalankan full suite / CI untuk memenuhi batas 60%.
+> - SQLite suites rely on the runtime-created index `detail_project_param_project_name_idx` dan patch `EXPLAIN QUERY PLAN` dari `DetailProjectConfig`.
 
 ### 1.2 ✅ Backend Validation for Override BUK
 **File:** `detail_project/views_api.py`

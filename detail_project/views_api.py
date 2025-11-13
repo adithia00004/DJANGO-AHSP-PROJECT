@@ -5,11 +5,11 @@ import json
 import csv
 import logging
 from io import BytesIO
-from typing import Any
+from typing import Any, Dict, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
 
 logger = logging.getLogger(__name__)
-from django.http import JsonResponse, HttpRequest, HttpResponse
+from django.http import JsonResponse, HttpRequest, HttpResponse, Http404
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
@@ -554,10 +554,15 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     errors = []
     keep_k = set()
     keep_all_p = set()  # global keep untuk semua pekerjaan di payload
+    assigned_orders: Set[int] = set()
 
     existing_k = {k.id: k for k in Klasifikasi.objects.filter(project=project)}
     existing_s = {s.id: s for s in SubKlasifikasi.objects.filter(project=project)}
-    existing_p = {p.id: p for p in Pekerjaan.objects.filter(project=project)}
+    pekerjaan_queryset = list(Pekerjaan.objects.filter(project=project).order_by('id'))
+    existing_p = {p.id: p for p in pekerjaan_queryset}
+    reuse_pool: Dict[int, list[Pekerjaan]] = {}
+    for pobj in pekerjaan_queryset:
+        reuse_pool.setdefault(pobj.ordering_index, []).append(pobj)
 
     # BUG FIX #3 (REVISED): Set temporary high ordering_index to avoid UniqueViolation
     # When deleting/reordering pekerjaan, we need to temporarily free up ordering_index values
@@ -565,12 +570,25 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # Cannot use negative values because ordering_index is PositiveIntegerField.
     # Strategy: Temporarily shift all to very high values (1,000,000+), then assign final values.
     temp_offset = 1_000_000
-    for idx, pobj in enumerate(Pekerjaan.objects.filter(project=project).order_by('id'), start=1):
+    for idx, pobj in enumerate(pekerjaan_queryset, start=1):
         pobj.ordering_index = temp_offset + idx  # Set to high temporary value (1000001, 1000002, ...)
         pobj.save(update_fields=['ordering_index'])
 
     def _get_or_reuse_pekerjaan_for_order(order: int):
-        return Pekerjaan.objects.filter(project=project, ordering_index=order).first()
+        pool = reuse_pool.get(order)
+        if pool:
+            pobj = pool.pop(0)
+            if not pool:
+                reuse_pool.pop(order, None)
+            return pobj
+        return None
+
+    def _allocate_order(order: int) -> int:
+        actual = max(1, int(order))
+        while actual in assigned_orders:
+            actual += 1
+        assigned_orders.add(actual)
+        return actual
 
     def _get_safe_temp_order():
         max_order = Pekerjaan.objects.filter(project=project).aggregate(Max("ordering_index"))["ordering_index__max"] or 0
@@ -633,7 +651,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         pobj.snapshot_kode = tmp.snapshot_kode
         pobj.snapshot_uraian = tmp.snapshot_uraian
         pobj.snapshot_satuan = tmp.snapshot_satuan
-        pobj.ordering_index = order
+        pobj.ordering_index = final_order
         pobj.save(update_fields=[
             "sub_klasifikasi", "source_type", "ref",
             "snapshot_kode", "snapshot_uraian", "snapshot_satuan", "ordering_index"
@@ -709,7 +727,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].source_type", "Nilai tidak valid"))
                     continue
 
-                order = _safe_int(p.get("ordering_index"), pi + 1)
+                order_requested = _safe_int(p.get("ordering_index"), pi + 1)
+                final_order = _allocate_order(order_requested)
                 p_id = p.get("id")
 
                 ov_ura = (p.get("snapshot_uraian") or "").strip() or None
@@ -772,7 +791,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                         snapshot_satuan=_s,
                                         ordering_index=temp_order,
                                     )
-                                _adopt_tmp_into(pobj, tmp, s_obj, order)
+                                _adopt_tmp_into(pobj, tmp, s_obj, final_order)
                             else:
                                 # ke CUSTOM: update in-place (ID tetap) + bersihkan FK ref
                                 # CRITICAL: Reset related data karena source_type berubah
@@ -793,7 +812,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                     pobj.snapshot_kode = generate_custom_code(project)
                                 pobj.snapshot_uraian = uraian
                                 pobj.snapshot_satuan = satuan
-                                pobj.ordering_index = order
+                                pobj.ordering_index = final_order
                                 pobj.save(update_fields=[
                                     "sub_klasifikasi", "source_type", "ref",
                                     "snapshot_kode", "snapshot_uraian", "snapshot_satuan", "ordering_index"
@@ -807,7 +826,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             continue
                     else:
                         # Update biasa
-                        pobj.ordering_index = order
+                        pobj.ordering_index = final_order
                         pobj.sub_klasifikasi = s_obj
                         if src == Pekerjaan.SOURCE_CUSTOM:
                             pobj.snapshot_uraian = (p.get("snapshot_uraian") or pobj.snapshot_uraian or "").strip()
@@ -833,7 +852,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             rid = int(p.get("ref_id"))  # aman (preflight)
                             ref_obj = AHSPReferensi.objects.get(id=rid)
 
-                            pobj_reuse = _get_or_reuse_pekerjaan_for_order(order)
+                            pobj_reuse = _get_or_reuse_pekerjaan_for_order(order_requested)
                             if pobj_reuse:
                                 temp_order = _get_safe_temp_order()
                                 tmp = clone_ref_pekerjaan(
@@ -853,11 +872,11 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                         ordering_index=temp_order,
                                     )
                                 pobj = pobj_reuse
-                                _adopt_tmp_into(pobj, tmp, s_obj, order)
+                                _adopt_tmp_into(pobj, tmp, s_obj, final_order)
                             else:
                                 pobj = clone_ref_pekerjaan(
                                     project, s_obj, ref_obj, src,
-                                    ordering_index=order, auto_load_rincian=True,
+                                    ordering_index=final_order, auto_load_rincian=True,
                                     override_uraian=ov_ura if src == Pekerjaan.SOURCE_REF_MOD else None,
                                     override_satuan=ov_sat if src == Pekerjaan.SOURCE_REF_MOD else None,
                                 )
@@ -869,7 +888,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                         snapshot_kode=_k,
                                         snapshot_uraian=_u,
                                         snapshot_satuan=_s,
-                                        ordering_index=order,
+                                        ordering_index=final_order,
                                     )
                                 # Safety: pastikan FK ref terisi
                                 if getattr(pobj, "ref_id", None) is None:
@@ -884,7 +903,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                 ))
                                 continue
                             satuan = (p.get("snapshot_satuan") or None)
-                            pobj = _get_or_reuse_pekerjaan_for_order(order)
+                            pobj = _get_or_reuse_pekerjaan_for_order(order_requested)
                             if pobj:
                                 # Check if source_type is changing - if yes, reset related data
                                 if pobj.source_type != src:
@@ -897,7 +916,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                     pobj.snapshot_kode = generate_custom_code(project)
                                 pobj.snapshot_uraian = uraian
                                 pobj.snapshot_satuan = satuan
-                                pobj.ordering_index = order
+                                pobj.ordering_index = final_order
                                 pobj.save(update_fields=[
                                     "sub_klasifikasi","source_type","ref",
                                     "snapshot_kode","snapshot_uraian","snapshot_satuan","ordering_index"
@@ -906,7 +925,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                 pobj = Pekerjaan.objects.create(
                                     project=project, sub_klasifikasi=s_obj, source_type=src,
                                     snapshot_kode=generate_custom_code(project),
-                                    snapshot_uraian=uraian, snapshot_satuan=satuan, ordering_index=order
+                                    snapshot_uraian=uraian, snapshot_satuan=satuan, ordering_index=final_order
                                 )
                             
                     except AHSPReferensi.DoesNotExist:
@@ -1652,6 +1671,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         "ok": status_code == 200,
         "user_message": user_message,
         "saved_raw_rows": len(saved_raw_details),
+        "saved_rows": len(saved_raw_details),
         "saved_expanded_rows": len(expanded_to_create),
         "errors": errors,
         "pekerjaan": {
@@ -2836,6 +2856,8 @@ def export_rincian_ahsp_csv(request: HttpRequest, project_id: int):
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
         return manager.export_rincian_ahsp('csv')
+    except Http404:
+        raise
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -2852,6 +2874,8 @@ def export_rincian_ahsp_pdf(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         orientation = request.GET.get('orientation')
         return manager.export_rincian_ahsp('pdf', orientation=orientation)
+    except Http404:
+        raise
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -2868,6 +2892,8 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         orientation = request.GET.get('orientation')
         return manager.export_rincian_ahsp('word', orientation=orientation)
+    except Http404:
+        raise
     except Exception as e:
         import traceback
         print(traceback.format_exc())
@@ -3305,4 +3331,3 @@ def api_batch_copy_project(request: HttpRequest, project_id: int):
             "ok": False,
             "error": f"Batch copy failed: {str(e)}"
         }, status=500)
-

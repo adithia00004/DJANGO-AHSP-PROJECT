@@ -36,7 +36,7 @@
 ### Key Metrics
 
 - **Total Lines of Code:** ~1,200 (JS) + ~600 (CSS) + ~350 (HTML) + ~200 (Python tests)
-- **Test Coverage:** 22 test cases (100% critical paths)
+- **Test Coverage:** 24 test cases (100% critical paths)
 - **Performance:** < 100ms untuk load rekap, < 50ms untuk detail cache hit
 - **Accessibility:** WCAG 2.1 Level AA compliant
 
@@ -600,35 +600,42 @@ let ctrlPricing = null;         // AbortController for pricing
 
 ### Test Coverage
 
-**Total:** 22 test cases across 4 test classes
+**Total:** 24 automated test cases across 6 classes (latest run: 2025-11-13).
 
-#### 1. `TestRincianAHSPView` (4 tests)
-- Page renders for owner
+#### 1. `TestRincianAHSPView` (3 tests)
+- Owner render success (verifies template + SPA init)
+- Non-owner receives 404
+- Anonymous user redirected to `/login/`
+
+#### 2. `TestAPIGetDetailAHSP` (4 tests)
+- Happy path returns TK/BHN items with `harga_satuan`
+- Non-existent pekerjaan returns 404
+- Non-owner blocked
+- Empty pekerjaan handled (`items == []`)
+
+#### 3. `TestAPIPekerjaanPricing` (7 tests)
+- GET returns default/effective markup
+- POST saves override (locale-aware decimals)
+- POST clears override when payload `null`
+- Rejects negative, >100%, and invalid formats
 - Non-owner gets 404
+
+#### 4. `TestOverrideBUKIntegration` & `TestRincianAHSPEdgeCases` (4 tests)
+- Override value used in detail calculations
+- Pricing fallback when project has no pricing record
+- Empty pekerjaan path stays stable
+
+#### 5. `TestRincianAHSPExport` (6 tests)
+- CSV/PDF/Word endpoints return 200/302 for owner
+- Non-owner correctly receives 404 (propagated `Http404`)
+- CSV includes data rows + filename hint
 - Anonymous user redirected to login
-- Page includes JavaScript app initialization
 
-#### 2. `TestAPIPekerjaanPricing` (10 tests)
-- GET returns pricing data
-- POST saves override BUK
-- POST validates range (0-100%)
-- POST rejects negative values (TIER 1)
-- POST rejects >100% values (TIER 1)
-- POST clears override with null
-- Non-owner gets 404
-- Anonymous user gets redirect
+#### 6. `TestRincianAHSPKeyboardNavigation` (2 tests)
+- Help modal / keyboard hint rendered
+- Job list exposes `role="listbox"` & focusable items
 
-#### 3. `TestRincianAHSPExport` (6 tests)
-- CSV export endpoint exists
-- PDF export endpoint exists
-- Word export endpoint exists
-- Export permission denied for non-owner
-- CSV export includes correct data
-- Export requires login
-
-#### 4. `TestRincianAHSPKeyboardNavigation` (2 tests)
-- Page has keyboard shortcuts hint
-- Job items are focusable with ARIA attributes
+> **Dependencies:** export tests rely on `python-docx==1.1.0` and `reportlab==4.0.9` (already in `requirements/base.txt`). Install them locally before running the suite. ⚠️ SQLite-based suites also expect the runtime to create an index on `(project_id, name)` for `ProjectParameter`.
 
 ### Running Tests
 
@@ -642,10 +649,21 @@ pytest detail_project/tests/test_rincian_ahsp.py::TestAPIPekerjaanPricing -v
 # Run with coverage
 pytest detail_project/tests/test_rincian_ahsp.py --cov=detail_project --cov-report=html
 
-# Run in parallel (faster)
-pytest detail_project/tests/test_rincian_ahsp.py -n auto
+# Focused regression suite for recent fixes
+pytest detail_project/tests/test_api_numeric_endpoints.py::APINumericEndpointsTests::test_detail_ahsp_save_duplicate_kode_results_207_with_one_saved \
+       detail_project/tests/test_list_pekerjaan_api_advanced.py::test_reuse_by_order_adopt_tmp_preserves_id \
+       detail_project/tests/test_projectparameter.py::TestProjectParameterQueryPerformance::test_index_on_project_and_name \
+       detail_project/tests/test_rekap_consistency.py::test_rekap_matches_detail_no_override \
+       detail_project/tests/test_rekap_consistency.py::test_rekap_matches_detail_with_override \
+       detail_project/tests/test_rekap_rab_with_buk_and_lain.py::test_rekap_includes_lain_and_buk \
+       detail_project/tests/test_volume_page.py::VolumePekerjaanPageTests::test_api_get_rekap_reflects_volume_and_hsp \
+       detail_project/tests/test_list_pekerjaan_api_gaps.py::test_delete_whole_sub \
+       detail_project/tests/test_list_pekerjaan_api_gaps.py::test_delete_whole_klas \
+       detail_project/tests/test_list_pekerjaan_api_gaps.py::test_tree_ordering_sorted \
+       detail_project/tests/test_rekap_kebutuhan.py::test_rekap_kebutuhan_totals --cov-fail-under=0
 ```
 
+> **Coverage tip:** `pytest.ini` enforces `--cov=detail_project --cov-fail-under=60`. Running only this module measures the entire package (~6k statements) and usually reports ~24%. For local spot checks you can temporarily set `PYTEST_ADDOPTS=--cov-fail-under=0`, then run the full suite (or CI) to satisfy the 60% gate before merging. Remember to re-run the full `pytest detail_project/tests --cov=detail_project` before pushing/merging.
 ### Manual Testing Checklist
 
 - [ ] Load page → Rekap list loads

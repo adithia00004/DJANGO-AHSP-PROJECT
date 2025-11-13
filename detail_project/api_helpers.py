@@ -109,11 +109,15 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
         def wrapped_view(request, *args, **kwargs):
             # Generate cache key based on user and endpoint
             user_id = getattr(request.user, 'id', 'anonymous')
-            endpoint = key_prefix or view_func.__name__
+            view_name = view_func.__name__
+            endpoint = key_prefix or view_name
 
             # Include category in cache key to separate limits
             cache_suffix = f":{category}" if category else ""
             cache_key = f"rate_limit:{user_id}:{endpoint}{cache_suffix}"
+            alias_key = None
+            if key_prefix and key_prefix != view_name:
+                alias_key = f"rate_limit:{user_id}:{view_name}{cache_suffix}"
 
             # Get current request count
             current_count = cache.get(cache_key, 0)
@@ -151,7 +155,10 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
                 )
 
             # Increment counter
-            cache.set(cache_key, current_count + 1, window)
+            new_count = current_count + 1
+            cache.set(cache_key, new_count, window)
+            if alias_key:
+                cache.set(alias_key, new_count, window)
 
             # Call the actual view
             return view_func(request, *args, **kwargs)
