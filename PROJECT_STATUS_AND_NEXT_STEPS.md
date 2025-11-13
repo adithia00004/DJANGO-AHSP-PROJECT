@@ -158,6 +158,25 @@ Project Django AHSP sudah **production-ready** dengan sebagian besar fitur core 
 
 ---
 
+### 🔄 Workflow 3 Pages Lifecycle Implementation Agenda
+**Status:** 🟡 In Progress (Tracking started 2025-11-07)
+
+- **Scope:** Implementasi Template AHSP → Harga Items → Rincian AHSP sesuai dokumen `detail_project/WORKFLOW_3_PAGES.md`.
+- **Reference Plan:** Lihat `docs/WORKFLOW_3_PAGES_IMPLEMENTATION_AGENDA.md` untuk breakdown langkah, status per halaman, dan tracker progres.
+- **User-side Summary:** `docs/WORKFLOW_3_PAGES_USER_FLOW_SUMMARY.md` menjelaskan alur kerja pengguna, opsi, prasyarat, dan mekanisme error handling yang diwajibkan sistem.
+- **Source Type Behavior:** Dokumen summary kini memuat matrix REFERENSI/REFERENSI_MODIFIED/CUSTOM sehingga batas akses Segment A–D dan limit loop Segment D terdokumentasi jelas.
+- **Testing Gate:** Wajib menjalankan `bash run_validation_tests.sh workflow3` sebelum penggabungan perubahan yang menyentuh ketiga halaman tersebut.
+- **Sync Status:** Agenda teknis, roadmap, dan runbook telah dicek silang (lihat §6 pada agenda) sehingga guard rails source type, checklist per halaman, dan skrip testing berbicara hal yang sama.
+
+**Next Actions:**
+1. Finalisasi checklist Template AHSP (validasi kode unik, UX bundling, telemetry ekspansi).
+2. Hardening Harga Items (validasi angka, BUK global, cache invalidation tests).
+3. Review mekanisme override BUK & export pada Rincian AHSP.
+
+**Latest Tests:** `bash run_validation_tests.sh workflow3` → gagal di `test_empty_bundle_shows_error` (Template AHSP save empty bundle masih 400). Masuk daftar isu prioritas bundle API.
+
+---
+
 ### Task 2: Integration Testing (Medium Priority)
 **Estimated Time:** 8-12 hours
 **Files:** Multiple test files
