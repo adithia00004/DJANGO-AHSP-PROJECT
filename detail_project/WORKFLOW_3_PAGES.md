@@ -153,6 +153,12 @@ Write: HargaItemProject.harga_satuan, ProjectPricing.markup_percent (global BUK)
 Note:  Fase ini HANYA memuat komponen dari DetailAHSPExpanded, sehingga bundle LAIN tidak muncul
 ```
 
+**Source Type Coverage:**
+Fase ini berlaku untuk SEMUA jenis pekerjaan (REF, REF_MODIFIED, CUSTOM). Harga items berasal dari DetailAHSPExpanded yang sudah di-populate dari Fase 1, terlepas dari source_type pekerjaan asalnya. Artinya:
+- Items dari pekerjaan **REF** (read-only di Template) → tetap muncul di Harga Items untuk pricing
+- Items dari pekerjaan **REF_MODIFIED** (editable A/B/C) → tetap muncul untuk pricing
+- Items dari pekerjaan **CUSTOM** (full edit) → tetap muncul untuk pricing
+
 **Tujuan:** Set harga satuan untuk setiap item yang digunakan
 
 **Langkah:**
@@ -218,6 +224,15 @@ Read:  DetailAHSPExpanded (komponen), HargaItemProject (harga),
 Write: Pekerjaan.markup_override_percent (per-pekerjaan override)
 Join:  DetailAHSPExpanded + HargaItemProject ON kode
 ```
+
+**Source Type Coverage:**
+Fase ini berlaku untuk SEMUA jenis pekerjaan (REF, REF_MODIFIED, CUSTOM). Rincian AHSP menampilkan hasil join DetailAHSPExpanded + HargaItemProject + markup calculation, terlepas dari source_type pekerjaan. Artinya:
+- Pekerjaan **REF** (read-only di Template) → tetap ditampilkan dengan kalkulasi total lengkap
+- Pekerjaan **REF_MODIFIED** (editable A/B/C) → tetap ditampilkan dengan kalkulasi total lengkap
+- Pekerjaan **CUSTOM** (full edit + bundle) → tetap ditampilkan dengan kalkulasi total lengkap
+- **Override BUK** dapat dilakukan untuk SEMUA source_type (REF, REF_MODIFIED, CUSTOM)
+
+Dengan demikian, alur 3 halaman (Template AHSP → Harga Items → Rincian AHSP) sudah tertutup rapat dari input hingga rekap untuk semua jenis pekerjaan.
 
 **Tujuan:** Review komponen dengan harga dan total per pekerjaan
 
@@ -782,12 +797,14 @@ A: "Pekerjaan berulang" yang dimaksud adalah **CUSTOM pekerjaan yang user buat u
 | No Circular | A→B→A not allowed | "Circular dependency detected: ..." | Prevent infinite loop (A reference B, B reference A) |
 | Max Depth | depth <= 3 | "Maksimum kedalaman bundle terlampaui" | Maksimum nesting: A→B→C (3 levels) |
 | Only for LAIN | kategori == 'LAIN' | "Hanya boleh pada kategori 'Lain-lain'" | Bundle reference hanya di kategori LAIN |
-| **Only for CUSTOM** | source_type == 'CUSTOM' | "Hanya boleh untuk pekerjaan custom" | **Context:** Pekerjaan REF adalah read-only di page ini. REF_MOD diedit di page lain. Hanya CUSTOM pekerjaan yang fully editable di Template AHSP. **Reason:** Konsistensi dengan read-only policy untuk non-CUSTOM pekerjaan. |
+| **Only for CUSTOM** | source_type == 'CUSTOM' | "Hanya boleh untuk pekerjaan custom" | **Context:** Pekerjaan REF adalah read-only (blocked). REF_MODIFIED bisa edit segment A/B/C, tapi TIDAK bisa bundle. Hanya CUSTOM yang fully editable termasuk bundle (segment D). **Reason:** Bundle adalah fitur advanced yang memerlukan full ownership. REF_MODIFIED fokus pada modifikasi standard (A/B/C), bukan composite workflow. |
 
 **Catatan untuk "Only for CUSTOM" Rule:**
-- Ini BUKAN batasan arbitrary
-- Ini konsekuensi dari: Pekerjaan REF = read-only → tidak bisa edit apapun (termasuk bundle)
-- Untuk detail source_type, lihat section [PENTING: Jenis Pekerjaan (source_type)](#penting-jenis-pekerjaan-source_type) di atas
+- Ini BUKAN batasan arbitrary, tapi design decision
+- **REF**: Read-only total → tidak bisa edit apapun (blocked di Template AHSP)
+- **REF_MODIFIED**: Edit segment A/B/C → TIDAK bisa bundle (fokus modifikasi standard)
+- **CUSTOM**: Full control → BISA bundle (ownership penuh, handle cascade)
+- Untuk detail lengkap, lihat section [PENTING: Jenis Pekerjaan (source_type)](#penting-jenis-pekerjaan-source_type) di atas
 
 ---
 
