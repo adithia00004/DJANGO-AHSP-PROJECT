@@ -19,25 +19,30 @@
 
 **TEMPLATE AHSP (INPUT)**
 - Input komponen AHSP per pekerjaan (TK/BHN/ALT/LAIN)
-- Support bundle reference (LAIN segment)
+- Support bundle reference: dari Pekerjaan lain (ref_kind='job') ATAU AHSP Master (ref_kind='ahsp')
 - TANPA kolom harga (fokus pada komponen & koefisien)
-- Auto Save & Expand
+- **Manual Save** dengan tombol "Simpan"
+- **Optimistic Locking**: Deteksi konflik jika pengguna lain edit bersamaan
+- Auto-expand bundle setelah save berhasil
 
 ↓
 
 **HARGA ITEMS (PRICING)**
 - Set harga satuan untuk setiap item
-- Hanya tampilkan items yang digunakan (expanded)
-- Filter: TK/BHN/ALT (bundle LAIN tidak ditampilkan)
-- Join Harga
+- Hanya tampilkan items yang digunakan (dari DetailAHSPExpanded)
+- Filter: TK/BHN/ALT (bundle LAIN tidak ditampilkan karena sudah di-expand)
+- **Manual Save** dengan tombol "Simpan"
+- **Optimistic Locking**: Deteksi konflik
+- **Harga Default**: NULL (ditampilkan sebagai 0.00 di UI)
 
 ↓
 
 **RINCIAN AHSP (REVIEW & RECAP)**
-- Tampilkan komponen DENGAN harga
-- Kalkulasi total per pekerjaan
-- Support markup/profit override
+- Tampilkan komponen DENGAN harga (join DetailAHSPExpanded + HargaItemProject)
+- Kalkulasi total per pekerjaan dengan formula: Subtotal + BUK + PPN
+- **Override Markup/BUK**: Per-pekerjaan override untuk profit/margin
 - Visual distinction untuk bundle-expanded items
+- Export RAB
 
 ### Dual Storage Architecture
 
@@ -65,9 +70,11 @@ EXPANDED (DetailAHSPExpanded):
 PRICING (HargaItemProject):
   - L.01, harga_satuan=150000
   - B.02, harga_satuan=50000
-  - L.99, harga_satuan=0  ← Auto-created, belum diisi
-  - A.01, harga_satuan=0  ← Auto-created, belum diisi
+  - L.99, harga_satuan=NULL  ← Auto-created, belum diisi (UI menampilkan "0.00")
+  - A.01, harga_satuan=NULL  ← Auto-created, belum diisi (UI menampilkan "0.00")
 ```
+
+**PENTING:** Harga baru disimpan sebagai NULL di database, bukan 0. UI hanya menampilkan "0.00" sebagai placeholder visual. Ini penting untuk audit data (NULL = belum diisi, 0 = sengaja diisi nol).
 
 ---
 
@@ -75,27 +82,58 @@ PRICING (HargaItemProject):
 
 ### FASE 1: INPUT KOMPONEN (Template AHSP)
 
+**Data Dependency:**
+```
+Read:  Pekerjaan list, existing DetailAHSPProject
+Write: DetailAHSPProject (raw), DetailAHSPExpanded (computed), HargaItemProject (NULL harga)
+```
+
 **Tujuan:** Definisikan komponen AHSP untuk setiap pekerjaan
 
 **Langkah:**
-1. **Pilih Pekerjaan** dari sidebar
+1. **Pilih Pekerjaan** dari sidebar (hanya SOURCE_CUSTOM dapat diedit di page ini)
+
 2. **Input Komponen Direct** (TK/BHN/ALT):
    - Masukkan kode, uraian, satuan, koefisien
    - Kode harus unique per pekerjaan
+
 3. **Input Bundle** (LAIN - optional):
-   - Pilih ref_pekerjaan yang sudah ada komponennya
-   - System akan auto-expand bundle
-4. **Save**
-   - System validate input
-   - Create/update HargaItemProject (harga=0 untuk item baru)
+   - **Pilih dari 2 sumber:**
+     - **Pekerjaan Proyek** (ref_kind='job'): Bundle dari pekerjaan lain di project ini
+     - **Master AHSP** (ref_kind='ahsp'): Bundle dari AHSP Referensi standard
+   - Gunakan Select2 autocomplete: ketik untuk search
+   - System validasi: target harus memiliki komponen (tidak boleh empty)
+
+4. **Klik Tombol "Simpan"** (Manual Save - BUKAN auto-save!)
+   - System validate input (client-side + server-side)
+   - **Optimistic Locking**: System cek apakah ada user lain yang edit bersamaan
+
+   **Jika ADA KONFLIK (data diubah user lain):**
+   ```
+   Dialog muncul dengan 2 pilihan:
+
+   [OK] = Muat Ulang
+        → Refresh page, lihat perubahan terbaru
+        → Data yang Anda ketik AKAN HILANG
+
+   [Cancel] = Timpa
+        → Simpan data Anda, perubahan user lain AKAN HILANG
+        → Gunakan hanya jika yakin perubahan Anda lebih penting
+   ```
+
+   **Jika TIDAK ADA KONFLIK:**
+   - Create/update HargaItemProject (harga_satuan=NULL untuk item baru)
    - Expand bundle ke DetailAHSPExpanded
    - **CASCADE RE-EXPANSION**: Re-expand pekerjaan lain yang reference pekerjaan ini
+   - Toast sukses: "✅ Data berhasil disimpan!"
+   - Jika ada bundle: "📦 N bundle di-expand menjadi M komponen tambahan"
 
 **Hasil:**
 ```
 ✓ DetailAHSPProject: Raw input tersimpan
 ✓ DetailAHSPExpanded: Komponen expanded ready untuk pricing
-✓ HargaItemProject: Auto-created untuk items baru (harga=0)
+✓ HargaItemProject: Auto-created untuk items baru (harga_satuan=NULL, UI: "0.00")
+✓ Cascade: Pekerjaan referencing ini auto-updated
 → Lanjut ke Harga Items untuk set harga!
 ```
 
@@ -103,29 +141,64 @@ PRICING (HargaItemProject):
 
 ### FASE 2: SET HARGA (Harga Items)
 
+**Data Dependency:**
+```
+Read:  DetailAHSPExpanded (untuk list items yang digunakan), HargaItemProject (existing harga)
+Write: HargaItemProject.harga_satuan, ProjectPricing.markup_percent (global BUK)
+Note:  Fase ini HANYA memuat komponen dari DetailAHSPExpanded, sehingga bundle LAIN tidak muncul
+```
+
 **Tujuan:** Set harga satuan untuk setiap item yang digunakan
 
 **Langkah:**
 1. **Filter Items** (optional):
    - Filter by kategori (TK/BHN/ALT)
    - Filter by search (kode/uraian)
+
 2. **Review Items**:
-   - Items ditampilkan: yang ada di DetailAHSPExpanded
-   - Items TIDAK ditampilkan: bundle LAIN (sudah di-expand)
+   - Items ditampilkan: yang ada di DetailAHSPExpanded (TK/BHN/ALT only)
+   - Items TIDAK ditampilkan: bundle LAIN (sudah di-expand ke komponennya)
+   - **Harga NULL ditampilkan sebagai "0.00"** dengan visual indicator (border merah/class 'vp-empty')
+
 3. **Set Harga Satuan**:
-   - Input harga per item
-   - Validation: non-negative, max 2 decimal places
+   - Input harga per item (format: ribuan dengan titik atau koma)
+   - Validation: non-negative, max 2 decimal places, max value ~999 triliun
+   - Empty input akan diisi otomatis dengan 0
+   - Tombol "Konversi" untuk bantu hitung konversi satuan (optional)
+
 4. **Set Project Profit/Margin** (optional):
-   - Global profit % untuk seluruh project
-5. **Save**
-   - System validate harga format
-   - Update HargaItemProject
+   - Global BUK % untuk seluruh project (default 10%)
+   - Input di bagian atas form
+
+5. **Klik Tombol "Simpan"** (Manual Save - BUKAN auto-save!)
+   - System validate semua input
+   - **Optimistic Locking**: System cek apakah ada user lain yang edit bersamaan
+
+   **Jika ADA KONFLIK (data diubah user lain):**
+   ```
+   Dialog muncul dengan 2 pilihan:
+
+   [OK] = Muat Ulang
+        → Refresh page, lihat harga terbaru
+        → Perubahan harga Anda AKAN HILANG
+
+   [Cancel] = Timpa
+        → Simpan harga Anda, perubahan user lain AKAN HILANG
+        → Gunakan hanya jika yakin data Anda lebih akurat
+   ```
+
+   **Jika TIDAK ADA KONFLIK:**
+   - Update HargaItemProject.harga_satuan (NULL → nilai yang diinput)
+   - Save konversi satuan (jika ada yang di-flag "ingat ke server")
+   - Update ProjectPricing.markup_percent (jika diubah)
    - Invalidate rekap cache
+   - Toast sukses: "✅ Data harga berhasil disimpan!"
 
 **Hasil:**
 ```
-✓ HargaItemProject: Harga satuan updated
-✓ Cache invalidated: Rincian AHSP will show updated prices
+✓ HargaItemProject: Harga satuan updated (NULL → nilai input)
+✓ Cache invalidated: Rincian AHSP akan show updated prices
+✓ Rekap akan recalculate dengan harga baru
 → Lanjut ke Rincian AHSP untuk review total!
 ```
 
@@ -133,25 +206,90 @@ PRICING (HargaItemProject):
 
 ### FASE 3: REVIEW & RECAP (Rincian AHSP)
 
+**Data Dependency:**
+```
+Read:  DetailAHSPExpanded (komponen), HargaItemProject (harga),
+       ProjectPricing (global BUK/PPN), Pekerjaan.markup_override_percent
+Write: Pekerjaan.markup_override_percent (per-pekerjaan override)
+Join:  DetailAHSPExpanded + HargaItemProject ON kode
+```
+
 **Tujuan:** Review komponen dengan harga dan total per pekerjaan
 
 **Langkah:**
-1. **Pilih Pekerjaan** dari sidebar
-2. **Review Komponen**:
+1. **Pilih Pekerjaan** dari sidebar kiri
+   - Pekerjaan dengan override BUK ditandai dengan chip warning (warna berbeda)
+   - HSP (Harga Satuan Pekerjaan) ditampilkan di sebelah kode
+
+2. **Review Komponen** (panel kanan):
    - Lihat kode, uraian, koefisien, harga satuan
-   - Items dari bundle ditandai dengan icon/badge
+   - Items dari bundle ditandai dengan badge `[Bundle_X]`
    - Jumlah harga = koefisien × harga satuan
-3. **Check Total**:
-   - Subtotal = SUM(jumlah harga)
-   - BUK (Profit/Margin) = Subtotal × markup%
-   - Grand Total = Subtotal + BUK
-4. **Override Markup** (optional):
-   - Override profit% khusus untuk pekerjaan ini
-5. **Export RAB** (optional)
+
+3. **Check Total** (panel kanan bawah):
+   ```
+   Formula Kalkulasi:
+   ─────────────────────────────────────────────────
+   A. TK (Tenaga Kerja)    = Σ(koef × harga)  [TK items]
+   B. BHN (Bahan)          = Σ(koef × harga)  [BHN items]
+   C. ALT (Alat)           = Σ(koef × harga)  [ALT items]
+   L. LAIN                 = 0 (bundle tidak counted, sudah expanded)
+
+   E. Subtotal             = A + B + C + L
+   F. BUK (Profit/Margin)  = E × (BUK% / 100)
+   G. HSP per Satuan       = E + F
+
+   (Di level project):
+   D. Total Pekerjaan      = G × Volume
+   PPN                     = D × (PPN% / 100)
+   Grand Total             = D + PPN
+   ```
+
+4. **Override Markup/BUK** (OPTIONAL - Fitur Khusus):
+
+   **Kapan Menggunakan Override:**
+   - Pekerjaan tertentu memerlukan profit margin berbeda dari project default
+   - Contoh: pekerjaan high-risk perlu BUK lebih tinggi, pekerjaan simple perlu BUK lebih rendah
+   - **Effective BUK** yang dipakai sistem: override (jika ada) ATAU project default
+
+   **Cara Menggunakan:**
+   ```
+   a. Klik tombol "⚙️ Override BUK" (di panel detail pekerjaan)
+
+   b. Dialog muncul:
+      - Project Default BUK: 10.00% (read-only)
+      - Override BUK: [input field]
+      - Validation: 0-100%, max 2 decimal
+
+   c. Input nilai override (misal: 15.5%)
+
+   d. Klik "Simpan"
+      - System validate (0-100%)
+      - POST ke /api/projects/{id}/pekerjaan/{id}/pricing/
+      - Update Pekerjaan.markup_override_percent
+      - Invalidate rekap cache
+      - Sidebar auto-refresh: chip warning muncul
+      - Total pekerjaan auto-recalculate
+
+   e. Untuk CLEAR override (kembali ke project default):
+      - Kosongkan input field ATAU
+      - Klik "Reset ke Default"
+      - System save NULL ke markup_override_percent
+   ```
+
+   **Visual Indicators:**
+   - Pekerjaan dengan override: chip warning di sidebar (misal: "15.50%")
+   - Pekerjaan normal: tidak ada chip (menggunakan default)
+   - Tooltip hover: "Override BUK: 15.50% (default: 10.00%)"
+
+5. **Export RAB** (optional):
+   - Tombol export untuk generate RAB dengan semua kalkulasi
 
 **Hasil:**
 ```
-✓ Total pekerjaan calculated dengan benar
+✓ Total pekerjaan calculated dengan benar (respecting override BUK)
+✓ Grand total project updated dengan effective BUK per-pekerjaan
+✓ Override tersimpan dan persistent
 ✓ Ready untuk export RAB
 ```
 
@@ -261,21 +399,60 @@ Save → Pekerjaan B sekarang memiliki 2 komponen
 
 **Di Template AHSP:**
 ```
-Pilih: Pekerjaan A (Sumber)
+Pilih: Pekerjaan A (Sumber) - harus SOURCE_CUSTOM
 
 Tab LAIN (Bundle):
-  - Kode: Bundle_B
-  - Uraian: "Pekerjaan Gabungan B"
-  - Ref Pekerjaan: [Dropdown] Pilih "Pekerjaan B"
-  - Koefisien: 3.0
+  - Kode: [Autocomplete dengan Select2]
+    - Ketik untuk search (min. 1 karakter)
+    - Hasil ditampilkan dalam 2 grup:
+      ┌─────────────────────────────────────────┐
+      │ 📋 Pekerjaan Proyek                     │
+      │   [CUSTOM] PKJ.001 — Kolom Standard A   │
+      │   [CUSTOM] PKJ.005 — Balok Standard B   │
+      ├─────────────────────────────────────────┤
+      │ 📚 Master AHSP                          │
+      │   A.1.1.1 — Galian Tanah Biasa         │
+      │   A.1.2.3 — Timbunan Tanah Kembali     │
+      └─────────────────────────────────────────┘
 
-Preview Expansion (optional):
-  Sistem akan menampilkan:
-  - L.01: 5.0 × 3.0 = 15.0
-  - B.02: 10.0 × 3.0 = 30.0
+    - Pilih salah satu (job atau ahsp)
 
-Save
+  - System Auto-fill:
+    - Uraian: otomatis dari pilihan
+    - Satuan: otomatis dari pilihan
+    - ref_kind: 'job' atau 'ahsp' (hidden field)
+    - ref_id: ID dari pilihan (hidden field)
+
+  - Koefisien: Input manual (misal: 3.0)
+    - Default: 1.0 jika kosong
+
+**Client-Side Validation (Immediate):**
+- Jika pilih Pekerjaan Proyek (ref_kind='job'):
+  - System fetch detail pekerjaan via API
+  - Jika EMPTY (0 komponen): Toast warning
+    ⚠️ "Bundle Kosong: [nama] belum memiliki komponen AHSP.
+        Silakan isi detail AHSP terlebih dahulu..."
+  - Selection dibatalkan otomatis
+  - User harus pilih pekerjaan lain atau isi target dulu
+
+- Jika pilih Master AHSP (ref_kind='ahsp'):
+  - No client validation (AHSP master selalu valid)
+
+**Klik "Simpan":**
+- Server-side validation (double-check)
+- Bundle expansion (lihat STEP 3)
 ```
+
+**PERBEDAAN Bundle dari Pekerjaan vs AHSP Master:**
+
+| Aspek | Bundle dari Pekerjaan (job) | Bundle dari AHSP Master (ahsp) |
+|-------|----------------------------|--------------------------------|
+| **ref_kind** | 'job' | 'ahsp' |
+| **Source** | Pekerjaan lain di project ini | AHSP Referensi standard |
+| **Dynamic** | ✓ Bisa berubah jika target diubah | ✗ Static dari master |
+| **Cascade** | ✓ Cascade re-expansion jika target diubah | ✗ Tidak ada cascade |
+| **Validation** | Harus punya komponen (empty check) | Selalu valid (dari master) |
+| **Use Case** | Pekerjaan berulang dalam project | Template standard nasional |
 
 ---
 
@@ -503,7 +680,7 @@ Rincian AHSP (Pekerjaan A):
    - System fetches target components
    - Multiplies koefisien hierarchically
    - Creates DetailAHSPExpanded entries
-   - Auto-creates HargaItemProject (harga=0)
+   - Auto-creates HargaItemProject (harga_satuan=NULL, UI: "0.00")
 
 3. **PRICING**
    - User sets harga_satuan in Harga Items
@@ -604,7 +781,7 @@ USER ACTION: Create Bundle
 [6] AUTO-CREATE HARGA
   HargaItemProject.get_or_create(
     kode=comp.kode,
-    harga_satuan=0
+    harga_satuan=NULL  # Belum diisi, UI: "0.00"
   )
   ↓
 [7] INVALIDATE CACHE
@@ -666,7 +843,7 @@ RESULT:
   Save → DetailAHSPProject (raw input with bundle refs)
        → expand_bundle_to_components()
        → DetailAHSPExpanded (computed components)
-       → HargaItemProject.get_or_create() (harga=0 for new)
+       → HargaItemProject.get_or_create() (harga_satuan=NULL for new)
        → cascade_bundle_re_expansion() (update referencing)
        → invalidate_rekap_cache()
 
@@ -714,12 +891,12 @@ Cascade re-expansion automatically re-expands all referencing pekerjaans.
 ```
 1. Validate: ✓ kategori valid, kode unique, koef >= 0
 2. Save to DetailAHSPProject
-3. Upsert HargaItemProject(kode=L.99, harga_satuan=0)
+3. Upsert HargaItemProject(kode=L.99, harga_satuan=NULL)
 4. Pass-through to DetailAHSPExpanded (no expansion needed)
 5. Invalidate cache
 
 Impact:
-  → Harga Items: L.99 muncul dengan harga=0
+  → Harga Items: L.99 muncul dengan harga "0.00" (NULL di DB, placeholder di UI)
   → Rincian AHSP: L.99 muncul dengan jumlah_harga=0
   ! User harus set harga di Harga Items
 ```
@@ -779,7 +956,7 @@ Pekerjaan B: TK L.01 (koef=5.0), BHN B.02 (koef=10.0)
    - L.01: 5.0 × 3.0 = 15.0
    - B.02: 10.0 × 3.0 = 30.0
 4. Save to DetailAHSPExpanded (2 rows)
-5. Auto-create HargaItemProject for L.01, B.02 (harga=0)
+5. Auto-create HargaItemProject for L.01, B.02 (harga_satuan=NULL, UI: "0.00")
 6. Invalidate cache
 
 Impact:
@@ -947,7 +1124,7 @@ grep "CASCADE_RE_EXPANSION" /var/log/django.log
 
 | User Action | Template AHSP | Harga Items | Rincian AHSP | Architecture Status |
 |-------------|---------------|-------------|--------------|---------------------|
-| Add direct item | ✓ Saved | ✓ Created (harga=0) | ✓ Shown | ✓ Ready |
+| Add direct item | ✓ Saved | ✓ Created (NULL → "0.00" UI) | ✓ Shown | ✓ Ready |
 | Edit koefisien | ✓ Updated | - No change | ✓ Recalculated | ✓ Ready |
 | Add bundle | ✓ Saved | ✓ Components shown | ✓ Expanded shown | ✓ Ready |
 | Edit bundle target | ✓ Modified | - No change | ✓ CASCADE UPDATED | ✓ FIXED |
