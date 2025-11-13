@@ -8,8 +8,18 @@ from django.db.models import Q
 from .numeric import to_dp_str, DECIMAL_SPEC
 from django.core.cache import cache
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+# FASE 0.3: Monitoring Setup
+from .monitoring_helpers import (
+    log_operation,
+    log_bundle_expansion,
+    log_cascade_operation,
+    log_circular_dependency_check,
+    collect_metric,
+)
 
 from .models import (
     Klasifikasi,
@@ -117,6 +127,13 @@ def check_circular_dependency_pekerjaan(pekerjaan_id: int, ref_pekerjaan_id: int
     """
     # Self-reference adalah circular paling simple
     if pekerjaan_id == ref_pekerjaan_id:
+        # FASE 0.3: Log circular dependency detection
+        log_circular_dependency_check(
+            project_id=project.id,
+            source_pekerjaan_id=pekerjaan_id,
+            target_pekerjaan_id=ref_pekerjaan_id,
+            is_circular=True
+        )
         return (True, [pekerjaan_id, ref_pekerjaan_id])
 
     # BFS untuk detect cycle
@@ -142,10 +159,25 @@ def check_circular_dependency_pekerjaan(pekerjaan_id: int, ref_pekerjaan_id: int
         for next_id in refs:
             if next_id == pekerjaan_id:
                 # Found cycle!
+                # FASE 0.3: Log circular dependency detection
+                log_circular_dependency_check(
+                    project_id=project.id,
+                    source_pekerjaan_id=pekerjaan_id,
+                    target_pekerjaan_id=ref_pekerjaan_id,
+                    is_circular=True
+                )
                 return (True, current_path + [pekerjaan_id])
 
             if next_id not in visited:
                 queue.append((next_id, current_path + [next_id]))
+
+    # FASE 0.3: Log successful check (no circular dependency)
+    log_circular_dependency_check(
+        project_id=project.id,
+        source_pekerjaan_id=pekerjaan_id,
+        target_pekerjaan_id=ref_pekerjaan_id,
+        is_circular=False
+    )
 
     return (False, [])
 
@@ -704,8 +736,13 @@ def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Op
             1. Detect Pekerjaan A references B
             2. Re-expand Pekerjaan A → L.01 now shows koef=24.0 (CORRECT!)
     """
+    # FASE 0.3: Start timing for performance monitoring
+    start_time = time.time()
+
     if visited is None:
         visited = set()
+
+    cascade_depth = len(visited)
 
     # Prevent infinite loop
     if modified_pekerjaan_id in visited:
@@ -718,7 +755,7 @@ def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Op
 
     logger.info(
         f"[CASCADE_RE_EXPANSION] START - Modified pekerjaan: {modified_pekerjaan_id}, "
-        f"Visited: {len(visited)}"
+        f"Visited: {len(visited)}, Depth: {cascade_depth}"
     )
 
     # Find all pekerjaan that reference this modified pekerjaan as a bundle
@@ -791,9 +828,22 @@ def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Op
             # Continue with other pekerjaan, don't fail entire cascade
             continue
 
+    # FASE 0.3: Calculate duration and log structured metrics
+    duration_ms = (time.time() - start_time) * 1000
+
     logger.info(
         f"[CASCADE_RE_EXPANSION] COMPLETE - Re-expanded {re_expanded_count} pekerjaan total "
-        f"(direct + recursive)"
+        f"(direct + recursive), Duration: {duration_ms:.2f}ms"
+    )
+
+    # Log structured metrics
+    log_cascade_operation(
+        project_id=project.id,
+        modified_pekerjaan_id=modified_pekerjaan_id,
+        referencing_pekerjaan_ids=referencing_pekerjaan_ids,
+        cascade_depth=cascade_depth,
+        re_expanded_count=re_expanded_count,
+        duration_ms=round(duration_ms, 2)
     )
 
     return re_expanded_count

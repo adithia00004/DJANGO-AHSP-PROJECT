@@ -9,6 +9,10 @@ from typing import Any, Dict, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
 
 logger = logging.getLogger(__name__)
+
+# FASE 0.3: Monitoring Setup
+from .monitoring_helpers import log_optimistic_lock_conflict, collect_metric
+
 from django.http import JsonResponse, HttpRequest, HttpResponse, Http404
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.contrib.auth.decorators import login_required
@@ -1259,6 +1263,15 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                     f"[SAVE_DETAIL_AHSP] CONFLICT - Pekerjaan {pkj.id} modified by another user. "
                     f"Client: {client_dt.isoformat()}, Server: {server_dt.isoformat()}"
                 )
+
+                # FASE 0.3: Log optimistic lock conflict
+                log_optimistic_lock_conflict(
+                    project_id=project.id,
+                    pekerjaan_id=pkj.id,
+                    client_timestamp=client_updated_at,
+                    server_timestamp=server_dt.isoformat()
+                )
+
                 return JsonResponse({
                     "ok": False,
                     "conflict": True,  # Special flag for conflict
