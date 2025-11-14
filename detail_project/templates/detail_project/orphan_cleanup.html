@@ -1,0 +1,91 @@
+{% extends "detail_project/base_detail.html" %}
+{% load static %}
+
+{% block title %}Orphan Cleanup · {{ project.nama }}{% endblock %}
+{% block body_attrs %}data-page="orphan_cleanup"{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{% static 'detail_project/css/orphan_cleanup.css' %}">
+{% endblock %}
+
+{% block dp_content %}
+<div id="oc-app"
+     class="dp-card dp-border dp-surface p-3"
+     data-project-id="{{ project.id }}"
+     data-endpoint-list="{% url 'detail_project:api_list_orphaned_items' project.id %}"
+     data-endpoint-cleanup="{% url 'detail_project:api_cleanup_orphaned_items' project.id %}">
+
+  <div class="d-flex flex-column flex-md-row align-items-md-center gap-3 mb-3">
+    <div>
+      <h1 class="h5 mb-1">Orphan Cleanup</h1>
+      <p class="text-muted mb-0">Hapus Harga Item yang tidak lagi digunakan pada Detail AHSP.</p>
+    </div>
+    <div class="ms-md-auto d-flex gap-2">
+      <button id="oc-refresh" class="btn btn-outline-secondary btn-sm" type="button">
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        <span class="ms-1">Refresh</span>
+      </button>
+      <button id="oc-delete" class="btn btn-danger btn-sm" type="button" disabled>
+        <span class="spinner-border spinner-border-sm me-1" id="oc-delete-spin" role="status" hidden></span>
+        <i class="bi bi-trash" aria-hidden="true"></i>
+        <span class="ms-1">Hapus Terpilih</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="oc-summary row g-2 mb-3">
+    <div class="col-sm-6 col-lg-3">
+      <div class="oc-summary__item">
+        <div class="label">Jumlah Orphan</div>
+        <div id="oc-count" class="value">-</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="oc-summary__item">
+        <div class="label">Total Nilai</div>
+        <div id="oc-total-value" class="value">Rp 0</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="oc-summary__item">
+        <div class="label">Dipilih</div>
+        <div id="oc-selected-count" class="value">0</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="oc-summary__item">
+        <div class="label">Nilai Terpilih</div>
+        <div id="oc-selected-value" class="value">Rp 0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle" aria-label="Orphaned harga items">
+      <thead class="table-light">
+        <tr>
+          <th scope="col">
+            <input type="checkbox" id="oc-select-all" class="form-check-input" aria-label="Pilih semua">
+          </th>
+          <th scope="col">Kode</th>
+          <th scope="col">Uraian</th>
+          <th scope="col">Kategori</th>
+          <th scope="col">Harga Satuan</th>
+          <th scope="col">Terakhir Dipakai</th>
+        </tr>
+      </thead>
+      <tbody id="oc-table-body">
+        <tr class="oc-empty">
+          <td colspan="6" class="text-center text-muted py-4">Memuat data...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="oc-alert" class="alert alert-info mt-3 d-none" role="status"></div>
+</div>
+{% endblock %}
+
+{% block page_js %}
+  <script src="{% static 'detail_project/js/orphan_cleanup.js' %}" defer></script>
+{% endblock %}

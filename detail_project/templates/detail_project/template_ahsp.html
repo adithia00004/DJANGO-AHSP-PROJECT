@@ -1,6 +1,9 @@
 ﻿{% extends "detail_project/base_detail.html" %}
 {% load static i18n %}
-{% block title %}Template AHSP — {{ project.nama }}{% endblock %}
+{% block dp_topbar_extra %}
+  {% include "detail_project/_sync_indicator.html" with scope="template" watch="harga" change_status=change_status %}
+{% endblock %}
+{% block title %}Template AHSP - {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="template_ahsp"{% endblock %}
 
 {% block detail_css %}
@@ -385,6 +388,5 @@
   {{ block.super }}
   <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}
-
 
 

@@ -1,0 +1,29 @@
+{% load static %}
+{% with initial_ahsp=change_status.last_ahsp_change|date:"c" initial_harga=change_status.last_harga_change|date:"c" %}
+<div class="dp-sync-indicator"
+     data-endpoint="{% url 'detail_project:api_get_change_status' project.id %}"
+     data-scope="{{ scope }}"
+     data-watch="{{ watch }}"
+     data-project-id="{{ project.id }}"
+     data-initial-ahsp="{{ initial_ahsp }}"
+     data-initial-harga="{{ initial_harga }}"
+     data-page-loaded="{% now 'c' %}"
+     data-auto-option="{% if auto_option %}true{% else %}false{% endif %}"
+     data-auto-enabled="false">
+  <span class="badge text-bg-secondary dp-sync-indicator__badge">Memantau…</span>
+  <small class="dp-sync-indicator__message text-muted">Tidak ada perubahan terdeteksi.</small>
+  <div class="d-flex align-items-center gap-2 dp-sync-indicator__controls">
+    <button type="button" class="btn btn-link btn-sm dp-sync-indicator__ack">Tandai sinkron</button>
+    {% if auto_option %}
+      <div class="form-check form-switch dp-sync-indicator__auto-container">
+        <input class="form-check-input dp-sync-indicator__auto"
+               type="checkbox"
+               id="auto-refresh-{{ scope|default:'global' }}">
+        <label class="form-check-label small" for="auto-refresh-{{ scope|default:'global' }}">
+          Auto refresh
+        </label>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endwith %}

@@ -21,6 +21,7 @@ from django.utils import timezone
 from detail_project.models import (
     Pekerjaan, DetailAHSPProject, DetailAHSPExpanded, HargaItemProject
 )
+from detail_project.monitoring_helpers import log_orphan_detection
 from dashboard.models import Project
 from collections import defaultdict
 from decimal import Decimal
@@ -150,6 +151,13 @@ class Command(BaseCommand):
         self.print_line(f"  Total HargaItemProject: {total_items}")
         self.print_line(f"  Referenced in expanded: {len(referenced_kode)}")
         self.print_line(f"  Orphaned items: {orphan_count} ({orphan_percent:.1f}%)")
+
+        # Monitoring hook: record orphan detection metrics for observability
+        log_orphan_detection(
+            project_id=project.id,
+            orphan_count=orphan_count,
+            total_items=total_items
+        )
 
         if orphan_count > 0:
             self.warnings_found.append({
@@ -444,9 +452,9 @@ class Command(BaseCommand):
     def print_header(self, text):
         """Print header with styling"""
         line = "=" * 80
-        self.print_line(line)
-        self.print_line(text)
-        self.print_line(line)
+        self.print_line(line, emit=False)
+        self.print_line(text, emit=False)
+        self.print_line(line, emit=False)
         self.stdout.write(self.style.HTTP_INFO(line))
         self.stdout.write(self.style.HTTP_INFO(text))
         self.stdout.write(self.style.HTTP_INFO(line))
@@ -454,32 +462,33 @@ class Command(BaseCommand):
     def print_subheader(self, text):
         """Print subheader with styling"""
         line = "-" * 80
-        self.print_line(line)
-        self.print_line(text)
-        self.print_line(line)
+        self.print_line(line, emit=False)
+        self.print_line(text, emit=False)
+        self.print_line(line, emit=False)
         self.stdout.write(self.style.HTTP_INFO(line))
         self.stdout.write(self.style.HTTP_INFO(text))
         self.stdout.write(self.style.HTTP_INFO(line))
 
     def print_success(self, text):
         """Print success message"""
-        self.print_line(text)
+        self.print_line(text, emit=False)
         self.stdout.write(self.style.SUCCESS(text))
 
     def print_warning(self, text):
         """Print warning message"""
-        self.print_line(text)
+        self.print_line(text, emit=False)
         self.stdout.write(self.style.WARNING(text))
 
     def print_error(self, text):
         """Print error message"""
-        self.print_line(text)
+        self.print_line(text, emit=False)
         self.stdout.write(self.style.ERROR(text))
 
-    def print_line(self, text=""):
+    def print_line(self, text="", *, emit=True):
         """Print regular line and store for report"""
         self.output_lines.append(text)
-        # Don't print to stdout if it's styled output (will be printed separately)
+        if emit:
+            self.stdout.write(text)
 
     def write_report(self, filepath):
         """Write audit report to markdown file"""

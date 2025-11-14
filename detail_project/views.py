@@ -6,7 +6,11 @@ from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404
 
-from .models import Pekerjaan
+from .models import Pekerjaan, ProjectChangeStatus
+
+def _ensure_change_status(project):
+    change_status, _ = ProjectChangeStatus.objects.get_or_create(project=project)
+    return change_status
 
 
 # --- Transisi aman: terima pid ATAU project_id ---
@@ -80,6 +84,7 @@ def template_ahsp_view(request, project_id: int):
         "count_mod": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_REF_MOD),
         "count_custom": sum(1 for p in pekerjaan if p.source_type == Pekerjaan.SOURCE_CUSTOM),
         "side_active": "template_ahsp",
+        "change_status": _ensure_change_status(project),
     }
     return render(request, "detail_project/template_ahsp.html", ctx)
 
@@ -91,8 +96,38 @@ def harga_items_view(request, project_id: int):
     context = {
         "project": project,
         "side_active": "harga_items",
+        "change_status": _ensure_change_status(project),
     }
     return render(request, "detail_project/harga_items.html", context)
+
+
+@login_required
+@coerce_project_id
+def orphan_cleanup_view(request, project_id: int):
+    project = _project_or_404(project_id, request.user)
+    context = {
+        "project": project,
+        "side_active": "orphan_cleanup",
+    }
+    return render(request, "detail_project/orphan_cleanup.html", context)
+
+
+@login_required
+@coerce_project_id
+def audit_trail_view(request, project_id: int):
+    project = _project_or_404(project_id, request.user)
+    pekerjaan_options = (
+        Pekerjaan.objects
+        .filter(project=project)
+        .order_by("ordering_index", "id")
+        .values("id", "snapshot_kode", "snapshot_uraian")
+    )
+    context = {
+        "project": project,
+        "pekerjaan_options": pekerjaan_options,
+        "side_active": "audit_trail",
+    }
+    return render(request, "detail_project/audit_trail.html", context)
 
 
 @login_required
@@ -109,6 +144,7 @@ def rincian_ahsp_view(request, project_id: int):
         "project": project,
         "pekerjaan": pekerjaan,
         "side_active": "rincian_ahsp",
+        "change_status": _ensure_change_status(project),
     }
     return render(request, "detail_project/rincian_ahsp.html", context)
 

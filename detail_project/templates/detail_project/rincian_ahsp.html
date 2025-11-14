@@ -1,7 +1,9 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
-
-{% block title %}Rincian AHSP — {{ project.nama }}{% endblock %}
+{% block dp_topbar_extra %}
+  {% include "detail_project/_sync_indicator.html" with scope="rincian" watch="both" change_status=change_status auto_option=True %}
+{% endblock %}
+{% block title %}Rincian AHSP – {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="rincian_ahsp"{% endblock %}
 
 {% block detail_css %}{% endblock %}
@@ -351,5 +353,3 @@
 
   <script src="{% static 'detail_project/js/rincian_ahsp.js' %}"></script>
 {% endblock %}
-
-

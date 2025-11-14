@@ -4,14 +4,16 @@
 import json
 import csv
 import logging
+import math
 from io import BytesIO
 from typing import Any, Dict, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 # FASE 0.3: Monitoring Setup
-from .monitoring_helpers import log_optimistic_lock_conflict, collect_metric
+from .monitoring_helpers import log_optimistic_lock_conflict
 
 from django.http import JsonResponse, HttpRequest, HttpResponse, Http404
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
@@ -22,11 +24,13 @@ from django.db.models import Max, F, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.timezone import now
+from django.utils.dateparse import parse_datetime
 from .numeric import parse_any, to_dp_str, quantize_half_up, DECIMAL_SPEC
 from referensi.models import AHSPReferensi
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
-    DetailAHSPProject, DetailAHSPExpanded, HargaItemProject,VolumeFormulaState, ProjectPricing, # NEW
+    DetailAHSPProject, DetailAHSPExpanded, DetailAHSPAudit,
+    HargaItemProject, VolumeFormulaState, ProjectPricing,  # NEW
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
@@ -34,6 +38,12 @@ from .services import (
     expand_bundle_to_components,  # NEW: Dual storage expansion (Pekerjaan)
     expand_ahsp_bundle_to_components,  # NEW: Dual storage expansion (AHSP)
     cascade_bundle_re_expansion,  # CRITICAL: Re-expand pekerjaan that reference modified one
+    detect_orphaned_items,
+    delete_orphaned_items,
+    snapshot_pekerjaan_details,
+    log_audit,
+    touch_project_change,
+    get_change_tracker,
 )
 
 from .export_config import (
@@ -1233,6 +1243,8 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             "errors": [_err("source_type", "Pekerjaan referensi tidak bisa diubah di tahap ini (gunakan tahap Gabungan).")]
         }, status=400)
 
+    old_snapshot = snapshot_pekerjaan_details(pkj)
+
     # Parse payload
     try:
         payload = json.loads(request.body.decode('utf-8'))
@@ -1520,7 +1532,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                     detail_data=detail_dict,
                     project=project,
                     base_koef=Decimal('1.0'),
-                    depth=0,
+                    depth=1,
                     visited=None
                 )
                 logger.info(f"[SAVE_DETAIL_AHSP] Expansion result: {len(expanded_components)} components")
@@ -1586,7 +1598,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                     ref_ahsp_id=detail_obj.ref_ahsp_id,
                     project=project,
                     base_koef=Decimal('1.0'),
-                    depth=0,
+                    depth=1,
                     visited=None
                 )
                 logger.info(f"[SAVE_DETAIL_AHSP] AHSP expansion result: {len(expanded_components)} components")
@@ -1671,9 +1683,14 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     else:
         logger.warning(f"[SAVE_DETAIL_AHSP] No expanded components to create")
 
-    # Update pekerjaan.detail_ready (based on expanded components count)
+    # Update pekerjaan.detail_ready dan timestamp detail
     detail_ready = len(expanded_to_create) > 0
-    Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=detail_ready)
+    detail_change_ts = timezone.now()
+    Pekerjaan.objects.filter(pk=pkj.pk).update(
+        detail_ready=detail_ready,
+        detail_last_modified=detail_change_ts,
+    )
+    touch_project_change(project, ahsp=True)
     logger.info(f"[SAVE_DETAIL_AHSP] Updated pekerjaan.detail_ready = {detail_ready}")
 
     # OPSI A: Update project timestamp for optimistic locking
@@ -1715,6 +1732,23 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         user_message = f"✅ Data berhasil disimpan! {len(saved_raw_details)} baris komponen tersimpan."
     else:
         user_message = f"⚠️ Data tersimpan sebagian. {len(saved_raw_details)} baris berhasil, {len(errors)} kesalahan ditemukan."
+
+    new_snapshot = snapshot_pekerjaan_details(pkj)
+    action = DetailAHSPAudit.ACTION_UPDATE
+    if not old_snapshot and new_snapshot:
+        action = DetailAHSPAudit.ACTION_CREATE
+    elif old_snapshot and not new_snapshot:
+        action = DetailAHSPAudit.ACTION_DELETE
+    if old_snapshot != new_snapshot:
+        log_audit(
+            project,
+            pkj,
+            action,
+            old_data=old_snapshot,
+            new_data=new_snapshot,
+            triggered_by="user",
+            user=request.user,
+        )
 
     # Refresh pekerjaan to get updated timestamp
     pkj.refresh_from_db()
@@ -1792,7 +1826,14 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
         temp.delete()
 
     # Tandai ready bila ada baris
-    Pekerjaan.objects.filter(pk=pkj.pk).update(detail_ready=(moved > 0))
+    detail_ready = moved > 0
+    detail_change_ts = timezone.now()
+    Pekerjaan.objects.filter(pk=pkj.pk).update(
+        detail_ready=detail_ready,
+        detail_last_modified=detail_change_ts if detail_ready else pkj.detail_last_modified,
+    )
+    if detail_ready:
+        touch_project_change(project, ahsp=True)
 
     # CACHE FIX: Invalidate cache AFTER transaction commits
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
@@ -1952,6 +1993,9 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
             user_message = "✅ Tidak ada perubahan untuk disimpan."
     else:
         user_message = f"⚠️ Data tersimpan sebagian. {len(errors)} kesalahan ditemukan."
+
+    if status_code == 200 and (updated > 0 or pricing_saved):
+        touch_project_change(project, harga=True)
 
     # Refresh project to get updated timestamp
     project.refresh_from_db()
@@ -2315,6 +2359,301 @@ def api_list_harga_items(request: HttpRequest, project_id: int):
     }
 
     return JsonResponse({"ok": True, "items": items, "meta": meta})
+
+
+@login_required
+@require_GET
+def api_list_orphaned_harga_items(request: HttpRequest, project_id: int):
+    """
+    Kembalikan daftar HargaItemProject yang tidak digunakan di DetailAHSP manapun.
+    """
+    project = _owner_or_404(project_id, request.user)
+    items, total_value = detect_orphaned_items(project)
+    dp = getattr(
+        HargaItemProject._meta.get_field("harga_satuan"),
+        "decimal_places",
+        DECIMAL_SPEC["HARGA"].dp,
+    )
+
+    def _serialize(item):
+        last_used = item.get("last_used")
+        return {
+            "id": item["id"],
+            "kode": item["kode"],
+            "uraian": item["uraian"],
+            "kategori": item["kategori"],
+            "satuan": item["satuan"],
+            "harga_satuan": to_dp_str(item["harga_satuan"], dp),
+            "last_used": last_used.isoformat() if last_used else None,
+            "can_delete": item["can_delete"],
+            "safety_note": item["safety_note"],
+        }
+
+    response_items = [_serialize(item) for item in items]
+    meta = {
+        "project_updated_at": project.updated_at.isoformat()
+        if hasattr(project, "updated_at") and project.updated_at
+        else None
+    }
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "orphaned_count": len(response_items),
+            "total_value": to_dp_str(total_value, 2),
+            "orphaned_items": response_items,
+            "meta": meta,
+        }
+    )
+
+
+@login_required
+@require_POST
+def api_cleanup_orphaned_harga_items(request: HttpRequest, project_id: int):
+    """
+    Delete orphaned HargaItemProject berdasarkan daftar item_ids.
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {
+                "ok": False,
+                "user_message": "Payload tidak valid. Harap kirim JSON yang benar.",
+                "errors": [_err("$", "JSON payload tidak bisa diparsing")],
+            },
+            status=400,
+        )
+
+    item_ids = payload.get("item_ids")
+    confirm = payload.get("confirm")
+
+    if not isinstance(item_ids, list) or not item_ids:
+        return JsonResponse(
+            {
+                "ok": False,
+                "user_message": "Pilih minimal satu item untuk dihapus.",
+                "errors": [_err("item_ids", "Harus berupa list id item")],
+            },
+            status=400,
+        )
+
+    try:
+        normalized_ids = [int(item_id) for item_id in item_ids]
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {
+                "ok": False,
+                "user_message": "Daftar item tidak valid.",
+                "errors": [_err("item_ids", "Semua item id harus berupa angka")],
+            },
+            status=400,
+        )
+
+    if not confirm:
+        return JsonResponse(
+            {
+                "ok": False,
+                "user_message": "Konfirmasi penghapusan diperlukan.",
+                "errors": [_err("confirm", "Set confirm=true untuk melanjutkan")],
+            },
+            status=400,
+        )
+
+    deleted_count, total_value, skipped_ids = delete_orphaned_items(
+        project, normalized_ids
+    )
+
+    if deleted_count == 0 and not skipped_ids:
+        user_message = "Tidak ada orphaned item yang dihapus."
+    elif deleted_count == 0 and skipped_ids:
+        user_message = (
+            "Tidak ada orphaned item yang cocok dengan pilihan Anda. "
+            "Kemungkinan sudah dipakai ulang."
+        )
+    else:
+        user_message = f"{deleted_count} orphaned item berhasil dihapus."
+        touch_project_change(project, harga=True)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "deleted_count": deleted_count,
+            "total_value_deleted": to_dp_str(total_value, 2),
+            "skipped_ids": skipped_ids,
+            "message": user_message,
+        }
+    )
+
+
+@login_required
+@require_GET
+def api_get_change_status(request: HttpRequest, project_id: int):
+    project = _owner_or_404(project_id, request.user)
+
+    def _parse_dt(name):
+        value = request.GET.get(name)
+        if not value:
+            return None
+        dt = parse_datetime(value)
+        if dt is None:
+            raise ValueError(name)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt)
+        return dt
+
+    try:
+        since_ahsp = _parse_dt("since_ahsp")
+        since_harga = _parse_dt("since_harga")
+        pekerjaan_since = _parse_dt("pekerjaan_since")
+    except ValueError as exc:
+        return JsonResponse(
+            {
+                "ok": False,
+                "errors": [_err(exc.args[0], "Format tanggal tidak valid (ISO8601).")],
+            },
+            status=400,
+        )
+
+    tracker = get_change_tracker(project)
+    ahsp_changed_at = (
+        tracker.last_ahsp_change.isoformat() if tracker and tracker.last_ahsp_change else None
+    )
+    harga_changed_at = (
+        tracker.last_harga_change.isoformat() if tracker and tracker.last_harga_change else None
+    )
+
+    pekerjaan_qs = Pekerjaan.objects.filter(
+        project=project,
+        detail_last_modified__isnull=False,
+    )
+    if pekerjaan_since:
+        pekerjaan_qs = pekerjaan_qs.filter(detail_last_modified__gt=pekerjaan_since)
+
+    affected_count = pekerjaan_qs.count()
+    recent = [
+        {
+            "id": pkj.id,
+            "kode": pkj.snapshot_kode,
+            "uraian": pkj.snapshot_uraian,
+            "last_modified": pkj.detail_last_modified.isoformat() if pkj.detail_last_modified else None,
+        }
+        for pkj in pekerjaan_qs.order_by("-detail_last_modified")[:10]
+    ]
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "ahsp_changed_at": ahsp_changed_at,
+            "harga_changed_at": harga_changed_at,
+            "affected_pekerjaan_count": affected_count,
+            "recent_pekerjaan": recent,
+        }
+    )
+
+
+@login_required
+@require_GET
+def api_get_audit_trail(request: HttpRequest, project_id: int):
+    """
+    Return audit trail entries with filters + pagination.
+    """
+    project = _owner_or_404(project_id, request.user)
+    qs = (
+        DetailAHSPAudit.objects.filter(project=project)
+        .select_related("pekerjaan", "user")
+    )
+
+    action = request.GET.get("action")
+    if action:
+        qs = qs.filter(action=action.upper())
+
+    triggered_by = request.GET.get("triggered_by")
+    if triggered_by:
+        qs = qs.filter(triggered_by=triggered_by)
+
+    pekerjaan_id = request.GET.get("pekerjaan_id")
+    if pekerjaan_id:
+        try:
+            qs = qs.filter(pekerjaan_id=int(pekerjaan_id))
+        except ValueError:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "errors": [_err("pekerjaan_id", "Harus angka")],
+                },
+                status=400,
+            )
+
+    date_from = request.GET.get("date_from")
+    if date_from:
+        try:
+            qs = qs.filter(created_at__gte=datetime.fromisoformat(date_from))
+        except ValueError:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "errors": [_err("date_from", "Format tanggal tidak valid (YYYY-MM-DD)")],
+                },
+                status=400,
+            )
+
+    date_to = request.GET.get("date_to")
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to)
+            qs = qs.filter(created_at__lte=dt_to.replace(hour=23, minute=59, second=59))
+        except ValueError:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "errors": [_err("date_to", "Format tanggal tidak valid (YYYY-MM-DD)")],
+                },
+                status=400,
+            )
+
+    page = max(1, int(request.GET.get("page", 1)))
+    page_size = max(1, min(100, int(request.GET.get("page_size", 20))))
+    total = qs.count()
+    start = (page - 1) * page_size
+    entries = list(qs[start:start + page_size])
+
+    results = []
+    for entry in entries:
+        pekerjaan_data = {
+            "id": entry.pekerjaan_id,
+            "kode": entry.pekerjaan.snapshot_kode if entry.pekerjaan else None,
+            "uraian": entry.pekerjaan.snapshot_uraian if entry.pekerjaan else None,
+        }
+        user_data = None
+        if entry.user:
+            user_data = {"id": entry.user_id, "username": entry.user.get_username()}
+
+        results.append(
+            {
+                "id": entry.id,
+                "action": entry.action,
+                "triggered_by": entry.triggered_by,
+                "change_summary": entry.change_summary,
+                "created_at": entry.created_at.isoformat(),
+                "pekerjaan": pekerjaan_data,
+                "user": user_data,
+                "old_data": entry.old_data,
+                "new_data": entry.new_data,
+            }
+        )
+
+    pagination = {
+        "page": page,
+        "page_size": page_size,
+        "total_count": total,
+        "total_pages": math.ceil(total / page_size) if page_size else 1,
+        "has_next": start + page_size < total,
+    }
+
+    return JsonResponse({"ok": True, "results": results, "pagination": pagination})
 
 @login_required
 def api_get_rekap_rab(request: HttpRequest, project_id: int):

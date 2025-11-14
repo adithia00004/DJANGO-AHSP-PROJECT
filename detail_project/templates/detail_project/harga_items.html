@@ -1,7 +1,9 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
-
-{% block title %}Harga Items — {{ project.nama }}{% endblock %}
+{% block dp_topbar_extra %}
+  {% include "detail_project/_sync_indicator.html" with scope="harga" watch="ahsp" change_status=change_status %}
+{% endblock %}
+{% block title %}Harga Items – {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="harga_items"{% endblock %}
 
 {# Matikan CSS Detail AHSP di halaman ini (ikuti pola lama) #}

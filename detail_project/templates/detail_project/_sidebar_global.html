@@ -8,6 +8,8 @@
   {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
   {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
   {% url 'detail_project:harga_items' project.id as url_harga_items %}
+  {% url 'detail_project:orphan_cleanup' project.id as url_orphan_cleanup %}
+  {% url 'detail_project:audit_trail' project.id as url_audit_trail %}
   {% url 'detail_project:template_ahsp' project.id as url_template_ahsp %}
   {% url 'detail_project:rincian_ahsp' project.id as url_rincian_ahsp %}
   {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
@@ -22,6 +24,8 @@
 {% trans "List Pekerjaan" as t_list_pekerjaan %}
 {% trans "Volume Pekerjaan" as t_volume_pekerjaan %}
 {% trans "Harga Items" as t_harga_items %}
+{% trans "Audit Trail" as t_audit_trail %}
+{% trans "Orphan Cleanup" as t_orphan_cleanup %}
 {% trans "Template AHSP" as t_template_ahsp %}
 {% trans "Rincian AHSP" as t_rincian_ahsp %}
 {% trans "Rekap RAB" as t_rekap_rab %}
@@ -110,6 +114,14 @@
               <span>{{ t_harga_items }}</span>
             </a>
           </li>
+          <li>
+            <a class="dp-link {% if side_active == 'orphan_cleanup' %}is-active{% endif %}"
+               {% if side_active == 'orphan_cleanup' %}aria-current="page"{% endif %}
+               href="{{ url_orphan_cleanup|default:'#' }}">
+              <i class="bi bi-eraser" aria-hidden="true"></i>
+              <span>{{ t_orphan_cleanup }}</span>
+            </a>
+          </li>
 
           <!-- Analysis Section -->
           <li class="dp-nav-section">Analisis & Laporan</li>
@@ -119,6 +131,14 @@
                href="{{ url_rincian_ahsp|default:'#' }}">
               <i class="bi bi-collection" aria-hidden="true"></i>
               <span>{{ t_rincian_ahsp }}</span>
+            </a>
+          </li>
+          <li>
+            <a class="dp-link {% if side_active == 'audit_trail' %}is-active{% endif %}"
+               {% if side_active == 'audit_trail' %}aria-current="page"{% endif %}
+               href="{{ url_audit_trail|default:'#' }}">
+              <i class="bi bi-clock-history" aria-hidden="true"></i>
+              <span>{{ t_audit_trail }}</span>
             </a>
           </li>
           <li>

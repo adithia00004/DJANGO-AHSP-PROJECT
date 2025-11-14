@@ -14,6 +14,7 @@
   {% block detail_css %}
     <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
   {% endblock %}
+  <link rel="stylesheet" href="{% static 'detail_project/css/sync_indicator.css' %}">
 
   {# Slot CSS tambahan dari child page (Select2, list_pekerjaan.css, dll.) #}
   {% block extra_css %}{% endblock %}
@@ -83,6 +84,7 @@
 {% block extra_js %}
   {# hanya JS umum yang benar-benar dipakai semua halaman detail_project #}
   <script src="{% static 'detail_project/js/numeric.umd.js' %}" defer></script>
+  <script src="{% static 'detail_project/js/sync_indicator.js' %}" defer></script>
   {# sediakan hook kosong untuk child #}
   {% block page_js %}{% endblock %}
 {% endblock %}

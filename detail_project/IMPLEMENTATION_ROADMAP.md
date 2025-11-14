@@ -3,7 +3,7 @@
 
 **Document Version:** 1.1
 **Last Updated:** 2025-11-13
-**Status:** In Progress - FASE 0
+**Status:** In Progress - FASE 3
 
 ---
 
@@ -12,12 +12,12 @@
 | Phase | Status | Start Date | End Date | Progress |
 |-------|--------|------------|----------|----------|
 | **FASE 0: Preparation** | ✅ Completed | 2025-11-13 | 2025-11-13 | 100% (3/3) |
-| FASE 1: Orphan Cleanup | ⚪ Not Started | - | - | 0% |
-| FASE 2: Audit Trail | ⚪ Not Started | - | - | 0% |
-| FASE 3: Sync Indicators | ⚪ Not Started | - | - | 0% |
-| FASE 4: Migration Tools | ⚪ Not Started | - | - | 0% |
+| FASE 1: Orphan Cleanup | ✅ Completed | 2025-11-14 | 2025-11-14 | 100% (3/3) |
+| FASE 2: Audit Trail | ✅ Completed | 2025-11-14 | 2025-11-14 | 100% (3/3) |
+| FASE 3: Sync Indicators | ✅ Completed | 2025-11-14 | 2025-11-14 | 100% (3/3) |
+| FASE 4: Migration Tools | ✅ Completed | 2025-11-14 | 2025-11-14 | 100% (3/3) |
 
-**Overall Progress:** 20% (3 of 15 tasks completed)
+**Overall Progress:** 100% (15 of 15 tasks completed)
 
 **Legend:**
 - ✅ Completed
@@ -115,6 +115,10 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✅ Know if cascade re-expansion working correctly (timestamp validation)
 - ✅ Comprehensive documentation for operators
 
+**Implementation Notes (2025-11-14):**
+- CLI output now mirrors documentation via `print_line(..., emit=True)` while still capturing markdown logs (`management/commands/audit_current_data.py#L479`).
+- Orphan detection metrics automatically recorded through `log_orphan_detection()` for every project audited (`management/commands/audit_current_data.py#L148`).
+
 ---
 
 #### 0.2 Test Coverage Baseline ✅
@@ -153,6 +157,12 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✅ Baseline established for regression testing
 - ⚠️ Coverage measurement pending (requires pytest-cov in production)
 - ✅ **KEY ACHIEVEMENT:** cascade_bundle_re_expansion() now has comprehensive tests!
+
+**Implementation Notes (2025-11-14):**
+- Test suite now respects new service signatures via helper `populate_expanded_for()` so dual-storage helpers remain DRY (`tests/test_workflow_baseline.py#L46`).
+- Added dedicated HargaItemProject kategori LAIN placeholder to unblock bundle creation in tests (`tests/test_workflow_baseline.py#L88`).
+- Updated cascade/circular/max-depth scenarios to align with monitoring hooks and depth guard behaviour introduced in services (`tests/test_workflow_baseline.py#L302-L412`).
+- Running `pytest detail_project/tests/test_workflow_baseline.py` exercises the suite successfully, but repository-wide `--cov=detail_project --cov-fail-under=60` still requires broader coverage (current run: 21.29%); see `pytest.ini` for addopts.
 
 ---
 
@@ -205,6 +215,10 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✅ Metrics collection available for aggregation
 - ✅ Performance metrics tracked (duration_ms for operations)
 - ✅ Production-ready with external monitoring integration examples
+
+**Implementation Notes (2025-11-14):**
+- `log_bundle_expansion()` invoked for both AHSP and pekerjaan bundles inside `_populate_expanded_from_raw()` with duration + component counts (`services.py:582` & `services.py:615`).
+- `log_orphan_detection()` now feeds monitoring dashboards straight from `audit_current_data` (ties into FASE 1 readiness).
 
 ---
 
@@ -286,6 +300,12 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✓ User dapat melihat dan delete orphaned items via UI
 - ✓ Confirmation dialog prevents accidental deletion
 
+**Implementation Notes (2025-11-14):**
+- Orphan list endpoint (`GET /api/project/<id>/orphaned-items/`) menampilkan metadata lengkap + nilai total.
+- Cleanup endpoint (`POST /api/project/<id>/orphaned-items/cleanup/`) mewajibkan confirm flag, mengabaikan item yang mendadak terpakai kembali, dan memberi total nilai terhapus.
+- Halaman `orphan-cleanup.html` (menu Sidebar > Input Data) memuat tabel, select-all, preview nilai, serta dialog browser sebelum hapus.
+- Opsional 1.3 (command `cleanup_orphans`) dijadwalkan ulang; akan diimplementasi saat jadwal cron disetujui.
+
 ---
 
 #### 1.3 Automated Cleanup (Optional)
@@ -305,6 +325,11 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 **Success Criteria:**
 - ✓ Can run automated cleanup via cron
 - ✓ Dry-run works correctly (no deletion, only report)
+
+**Implementation Notes (2025-11-14):**
+- Command `cleanup_orphans` tersedia dengan opsi `--project-id`, `--all-projects`, `--older-than-days`, `--limit`, dan `--dry-run`; siap dijadwalkan via cron/CI.
+- Helper `cleanup_orphaned_items()` di services menjadi fondasi bersama, sehingga trigger otomatis (mis. setelah save atau scheduler berbeda) cukup memanggil fungsi tersebut tanpa duplikasi logika.
+- Jadwal produksi direkomendasikan di `CRON_JOBS.md` (setiap Sabtu 23:59) sehingga pembersihan rutin tercatat dan dapat diaudit.
 
 ---
 
@@ -354,6 +379,10 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✓ Model dapat store audit data
 - ✓ Indexes untuk fast query
 
+**Implementation Notes (2025-11-14):**
+- Model `DetailAHSPAudit` + migrasi `0019_detailahsptaudit.py` menyediakan storage audit lengkap dengan indeks `(project, created_at)` dan `(pekerjaan, created_at)` untuk query cepat.
+- Helper `snapshot_pekerjaan_details()` memastikan snapshot JSON konsisten di semua trigger audit.
+
 ---
 
 #### 2.2 Audit Logging Integration
@@ -382,6 +411,11 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✓ All CRUD operations logged
 - ✓ Cascade operations logged with triggered_by='cascade'
 
+**Implementation Notes (2025-11-14):**
+- `log_audit()` di `services.py` otomatis membuat ringkasan diff (added/removed/updated) serta menyimpan snapshot lama/baru.
+- `api_save_detail_ahsp_for_pekerjaan()` sekarang log CREATE/UPDATE/DELETE berbasis snapshot sebelum/sesudah; `cascade_bundle_re_expansion()` mencatat CASCADE dengan triggered_by='cascade'.
+- Semua logging dibungkus try/except sehingga error audit tidak pernah menggagalkan request utama.
+
 ---
 
 #### 2.3 Audit Trail UI
@@ -402,6 +436,11 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 **Success Criteria:**
 - ✓ User dapat melihat history lengkap
 - ✓ Easy to debug "kenapa total berubah?"
+
+**Implementation Notes (2025-11-14):**
+- Halaman baru `detail_project/audit_trail.html` menampilkan tabel dengan filter (action, triggered, pekerjaan, rentang tanggal) dan tombol detail untuk melihat diff JSON lama vs baru.
+- Endpoint `GET /api/project/<id>/audit-trail/` mendukung pagination, filter, serta metadata user/pekerjaan sehingga UI cukup memanggil satu sumber data.
+- Sidebar global menambahkan menu "Audit Trail" agar operator dapat mengakses riwayat perubahan langsung dari proyek yang aktif.
 
 ---
 
@@ -435,6 +474,11 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 **Success Criteria:**
 - ✓ Can detect if data changed since page load
 
+**Implementation Notes (2025-11-14):**
+- Model `ProjectChangeStatus` (OneToOne ke Project) menyimpan `last_ahsp_change` dan `last_harga_change`, sedangkan `Pekerjaan.detail_last_modified` mencatat perubahan per pekerjaan.
+- Helper `touch_project_change()` satu pintu dipakai oleh API/command sehingga kapan pun Template/Harga berubah, timestamp otomatis ter-update.
+- Endpoint baru `GET /api/project/<id>/change-status/` mengembalikan timestamp & daftar pekerjaan yang berubah (dengan filter `since_*`).
+
 ---
 
 #### 3.2 UI Indicators
@@ -457,6 +501,12 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 **Success Criteria:**
 - ✓ User aware of changes in other pages
 - ✓ No automatic refresh (user control)
+
+**Implementation Notes (2025-11-14):**
+- Komponen bersama `_sync_indicator.html` + CSS/JS memunculkan badge sinkronisasi di Template AHSP, Harga Items, dan Rincian AHSP; polling 30 detik sekali dan menampilkan tombol “Tandai sinkron”.
+- Pesan berbeda per halaman: Template diberi tahu jika Harga Items berubah, Harga Items mendapat peringatan jika Template AHSP/pekerjaan berubah, dan Rincian AHSP memantau keduanya.
+- Halaman Rincian AHSP memiliki toggle “Auto refresh” (default off) yang memicu reload otomatis saat badge mendeteksi perubahan, sesuai permintaan roadmap.
+- Secara default tidak ada auto-refresh; user tetap punya kontrol penuh (kecuali mengaktifkan toggle tersebut).
 
 ---
 
@@ -482,6 +532,11 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 - ✓ Can validate data integrity
 - ✓ Report actionable issues
 
+**Implementation Notes (2025-11-14):**
+- Command `validate_ahsp_data` menjalankan helper `validate_project_data()` untuk seluruh proyek atau per ID, memeriksa bundle invalid, circular, mismatch expanded, dan orphans; hasil bisa diekspor ke JSON.
+- Threshold orphan configurable (`--orphan-threshold`) sehingga report menandai proyek yang melampaui batas.
+- Checks reuse existing logic (detect_orphaned_items, circular detection) jadi konsisten dengan runtime behavior.
+
 ---
 
 #### 4.2 Migration/Fix Tools
@@ -498,6 +553,11 @@ Implementasi dibagi menjadi **4 fase utama**, setiap fase memiliki deliverable y
 **Success Criteria:**
 - ✓ Can fix common data issues
 - ✓ Dry-run safe
+
+**Implementation Notes (2025-11-14):**
+- Command `fix_ahsp_data` menyediakan `--dry-run`, `--no-reexpand`, `--no-cleanup`, dan parameter umur/limit orphan; non dry-run akan re-expand seluruh DetailAHSPExpanded dan menjalankan cleanup orphans dengan helper `fix_project_data()`.
+- Re-expand update `detail_last_modified` dan menandai ProjectChangeStatus sehingga indikator sinkron otomatis aware setelah fix.
+- Cleanup memanfaatkan helper `cleanup_orphaned_items()` jadi perilakunya sama dengan API/UI sebelumnya.
 
 ---
 

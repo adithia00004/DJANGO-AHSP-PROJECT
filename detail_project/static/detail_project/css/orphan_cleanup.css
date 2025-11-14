@@ -1,0 +1,36 @@
+.oc-summary__item {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--bs-body-bg, #fff);
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.oc-summary__item .label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.oc-summary__item .value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--bs-body-color, #212529);
+}
+
+#oc-app table td,
+#oc-app table th {
+  vertical-align: middle;
+}
+
+#oc-app tbody tr.oc-empty td {
+  font-style: italic;
+}
+
+#oc-alert.d-none {
+  display: none !important;
+}

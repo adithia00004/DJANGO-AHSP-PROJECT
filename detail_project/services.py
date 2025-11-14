@@ -1,10 +1,20 @@
 # detail_project/services.py
 from typing import Dict, List, Optional, Set, Tuple
 from django.db import transaction
-from django.db.models import Sum, F as DJF, DecimalField, ExpressionWrapper, Max
+from django.db.models import (
+    Sum,
+    F as DJF,
+    DecimalField,
+    ExpressionWrapper,
+    Max,
+    Q,
+    Exists,
+    OuterRef,
+)
+from django.utils import timezone
 from decimal import Decimal
+from datetime import timedelta
 from collections import defaultdict
-from django.db.models import Q
 from .numeric import to_dp_str, DECIMAL_SPEC
 from django.core.cache import cache
 import logging
@@ -18,7 +28,6 @@ from .monitoring_helpers import (
     log_bundle_expansion,
     log_cascade_operation,
     log_circular_dependency_check,
-    collect_metric,
 )
 
 from .models import (
@@ -28,6 +37,8 @@ from .models import (
     VolumePekerjaan,
     DetailAHSPProject,
     DetailAHSPExpanded,
+    DetailAHSPAudit,
+    ProjectChangeStatus,
     HargaItemProject,
     ProjectPricing,
     ProjectParameter,
@@ -54,6 +65,447 @@ try:
 except Exception:
     AHSPReferensi = None  # type: ignore
     RincianReferensi = None  # type: ignore
+
+
+def _orphaned_items_queryset(project):
+    """
+    Base queryset untuk HargaItemProject yang tidak direferensikan oleh
+    DetailAHSPProject maupun DetailAHSPExpanded.
+    """
+    raw_exists = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+    expanded_exists = DetailAHSPExpanded.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+
+    return (
+        HargaItemProject.objects.filter(project=project)
+        .annotate(
+            used_in_raw=Exists(raw_exists),
+            used_in_expanded=Exists(expanded_exists),
+            last_used_raw=Max("detail_refs__updated_at"),
+            last_used_expanded=Max("expanded_refs__updated_at"),
+        )
+        .filter(used_in_raw=False, used_in_expanded=False)
+        .order_by("kode_item")
+    )
+
+
+def detect_orphaned_items(project):
+    """
+    Return list orphaned HargaItemProject beserta total nilainya.
+    """
+    queryset = _orphaned_items_queryset(project)
+    items = []
+    total_value = Decimal("0")
+
+    for item in queryset:
+        harga = item.harga_satuan or Decimal("0")
+        total_value += harga
+        last_used = (
+            item.last_used_expanded
+            or item.last_used_raw
+            or item.updated_at
+            or item.created_at
+        )
+        items.append(
+            {
+                "id": item.id,
+                "kode": item.kode_item,
+                "kode_item": item.kode_item,
+                "uraian": item.uraian,
+                "kategori": item.kategori,
+                "satuan": item.satuan,
+                "harga_satuan": harga,
+                "last_used": last_used,
+                "can_delete": True,
+                "safety_note": "Item ini tidak digunakan di DetailAHSP manapun",
+            }
+        )
+
+    return items, total_value
+
+
+def delete_orphaned_items(project, item_ids: List[int]):
+    """
+    Delete orphaned HargaItemProject yang id-nya termasuk item_ids.
+    Returns (deleted_count, total_value_deleted, skipped_ids).
+    """
+    if not item_ids:
+        return 0, Decimal("0"), item_ids
+
+    queryset = _orphaned_items_queryset(project).filter(id__in=item_ids)
+    to_delete = list(
+        queryset.values("id", "harga_satuan")
+    )  # evaluate before deletion
+
+    if not to_delete:
+        return 0, Decimal("0"), item_ids
+
+    orphan_ids = [row["id"] for row in to_delete]
+    total_value = sum((row["harga_satuan"] or Decimal("0")) for row in to_delete)
+
+    with transaction.atomic():
+        queryset.delete()
+
+    skipped = [pk for pk in item_ids if pk not in orphan_ids]
+    return len(orphan_ids), total_value, skipped
+
+
+def cleanup_orphaned_items(
+    project,
+    *,
+    older_than_days: Optional[int] = None,
+    dry_run: bool = False,
+    limit: Optional[int] = None,
+):
+    """
+    High-level helper untuk membersihkan HargaItemProject orphaned.
+
+    Returns dict dengan ringkasan operasi sehingga dapat dipakai cron/command.
+    """
+    items, _ = detect_orphaned_items(project)
+    cutoff = None
+    if older_than_days and older_than_days > 0:
+        cutoff = timezone.now() - timedelta(days=older_than_days)
+
+    def _passes_cutoff(item):
+        if not cutoff:
+            return True
+        last_used = item.get("last_used")
+        if last_used is None:
+            return True
+        return last_used < cutoff
+
+    filtered = [item for item in items if _passes_cutoff(item)]
+
+    if limit and limit > 0:
+        filtered = filtered[:limit]
+
+    candidate_ids = [item["id"] for item in filtered]
+    candidate_value = sum(
+        (item["harga_satuan"] or Decimal("0")) for item in filtered
+    )
+
+    result = {
+        "candidate_count": len(filtered),
+        "candidate_value": candidate_value,
+        "target_ids": candidate_ids,
+        "dry_run": dry_run,
+    }
+
+    if dry_run or not candidate_ids:
+        result.update(
+            {
+                "deleted_count": 0,
+                "deleted_value": Decimal("0"),
+                "skipped_ids": [],
+            }
+        )
+        return result
+
+    deleted_count, deleted_value, skipped_ids = delete_orphaned_items(
+        project, candidate_ids
+    )
+    if deleted_count > 0:
+        touch_project_change(project, harga=True)
+    result.update(
+        {
+            "deleted_count": deleted_count,
+            "deleted_value": deleted_value,
+            "skipped_ids": skipped_ids,
+        }
+    )
+    return result
+
+
+def snapshot_pekerjaan_details(pekerjaan) -> List[dict]:
+    """
+    Serialize DetailAHSPProject rows for auditing diff.
+    """
+    if pekerjaan is None:
+        return []
+
+    rows = (
+        DetailAHSPProject.objects.filter(
+            project=pekerjaan.project,
+            pekerjaan=pekerjaan,
+        )
+        .order_by("id")
+        .values(
+            "id",
+            "kategori",
+            "kode",
+            "uraian",
+            "satuan",
+            "koefisien",
+            "ref_ahsp_id",
+            "ref_pekerjaan_id",
+        )
+    )
+
+    snapshot = []
+    for row in rows:
+        snapshot.append(
+            {
+                "id": row["id"],
+                "kategori": row["kategori"],
+                "kode": row["kode"],
+                "uraian": row["uraian"],
+                "satuan": row["satuan"],
+                "koefisien": str(row["koefisien"]),
+                "ref_kind": (
+                    "ahsp"
+                    if row["ref_ahsp_id"]
+                    else ("job" if row["ref_pekerjaan_id"] else None)
+                ),
+                "ref_id": row["ref_ahsp_id"] or row["ref_pekerjaan_id"],
+            }
+        )
+    return snapshot
+
+
+def _build_change_summary(old_data, new_data, action) -> str:
+    old_map = {item["kode"]: item for item in (old_data or [])}
+    new_map = {item["kode"]: item for item in (new_data or [])}
+    old_codes = set(old_map.keys())
+    new_codes = set(new_map.keys())
+
+    added = sorted(new_codes - old_codes)
+    removed = sorted(old_codes - new_codes)
+    changed = []
+    for kode in sorted(old_codes & new_codes):
+        if old_map[kode].get("koefisien") != new_map[kode].get("koefisien") or (
+            old_map[kode].get("kategori") != new_map[kode].get("kategori")
+        ):
+            changed.append(kode)
+
+    parts = []
+    if added:
+        parts.append(
+            f"added {len(added)} ({', '.join(added[:3])}"
+            f"{'…' if len(added) > 3 else ''})"
+        )
+    if removed:
+        parts.append(
+            f"removed {len(removed)} ({', '.join(removed[:3])}"
+            f"{'…' if len(removed) > 3 else ''})"
+        )
+    if changed:
+        parts.append(
+            f"updated {len(changed)} ({', '.join(changed[:3])}"
+            f"{'…' if len(changed) > 3 else ''})"
+        )
+
+    if not parts:
+        return f"{action.title()} - no material changes"
+    return "; ".join(parts)
+
+
+def log_audit(
+    project,
+    pekerjaan,
+    action=DetailAHSPAudit.ACTION_UPDATE,
+    *,
+    old_data=None,
+    new_data=None,
+    triggered_by="user",
+    user=None,
+    change_summary: Optional[str] = None,
+):
+    """
+    Create audit log entry; fail-safe (never raises).
+    """
+    if project is None or pekerjaan is None:
+        return
+
+    summary = change_summary or _build_change_summary(old_data, new_data, action)
+
+    try:
+        DetailAHSPAudit.objects.create(
+            project=project,
+            pekerjaan=pekerjaan,
+            action=action,
+            old_data=old_data,
+            new_data=new_data,
+            triggered_by=triggered_by,
+            user=user if getattr(user, "id", None) else None,
+            change_summary=summary,
+        )
+    except Exception:
+        logger.exception(
+            "[AUDIT] Failed to log audit entry for project=%s pekerjaan=%s",
+            getattr(project, "id", None),
+            getattr(pekerjaan, "id", None),
+        )
+
+
+def get_change_tracker(project, *, create=False) -> Optional[ProjectChangeStatus]:
+    try:
+        return project.change_status
+    except ProjectChangeStatus.DoesNotExist:
+        if create:
+            return ProjectChangeStatus.objects.create(project=project)
+        return None
+
+
+def touch_project_change(project, *, ahsp=False, harga=False):
+    if not (ahsp or harga):
+        return None
+    tracker = get_change_tracker(project, create=True)
+    now_ts = timezone.now()
+    update_fields = []
+    if ahsp:
+        tracker.last_ahsp_change = now_ts
+        update_fields.append("last_ahsp_change")
+    if harga:
+        tracker.last_harga_change = now_ts
+        update_fields.append("last_harga_change")
+    if update_fields:
+        update_fields.append("updated_at")
+        tracker.save(update_fields=update_fields)
+    return now_ts
+
+
+def validate_project_data(project, *, orphan_threshold: int = 0) -> Dict[str, object]:
+    """
+    Run validation checks for legacy data. Returns issue summary.
+    """
+    report: Dict[str, object] = {
+        "project_id": project.id,
+        "project_name": getattr(project, "nama", ""),
+        "invalid_bundles": [],
+        "circular_dependencies": [],
+        "expansion_issues": [],
+        "orphan_items": [],
+        "orphan_count": 0,
+        "orphan_threshold": orphan_threshold,
+    }
+
+    bundles = (
+        DetailAHSPProject.objects.filter(project=project, kategori=HargaItemProject.KATEGORI_LAIN)
+        .select_related("ref_pekerjaan")
+        .order_by("pekerjaan_id", "id")
+    )
+    for bundle in bundles:
+        issue = None
+        if bundle.ref_pekerjaan_id:
+            if not bundle.ref_pekerjaan:
+                issue = "Referensi pekerjaan hilang"
+            elif bundle.ref_pekerjaan.project_id != project.id:
+                issue = "Referensi pekerjaan beda project"
+        elif bundle.ref_ahsp_id:
+            # diasumsikan referensi AHSP tetap valid
+            pass
+        else:
+            issue = "LAIN item tanpa referensi"
+
+        if issue:
+            report["invalid_bundles"].append(
+                {
+                    "pekerjaan_id": bundle.pekerjaan_id,
+                    "bundle_id": bundle.id,
+                    "kode": bundle.kode,
+                    "issue": issue,
+                }
+            )
+
+        if bundle.ref_pekerjaan_id:
+            is_circular, path = check_circular_dependency_pekerjaan(
+                bundle.pekerjaan_id,
+                bundle.ref_pekerjaan_id,
+                project,
+            )
+            if is_circular:
+                report["circular_dependencies"].append(
+                    {
+                        "bundle_id": bundle.id,
+                        "path": path,
+                    }
+                )
+
+    for pkj in Pekerjaan.objects.filter(project=project).order_by("id"):
+        raw_count = DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).count()
+        expanded_count = DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pkj).count()
+        if raw_count > 0 and expanded_count == 0:
+            report["expansion_issues"].append(
+                {
+                    "pekerjaan_id": pkj.id,
+                    "snapshot_kode": pkj.snapshot_kode,
+                    "raw_count": raw_count,
+                    "expanded_count": expanded_count,
+                }
+            )
+
+    orphan_items, _ = detect_orphaned_items(project)
+    report["orphan_items"] = [
+        {"id": item["id"], "kode": item["kode"], "uraian": item["uraian"]} for item in orphan_items
+    ]
+    report["orphan_count"] = len(orphan_items)
+    report["orphan_threshold_exceeded"] = (
+        orphan_threshold > 0 and len(orphan_items) > orphan_threshold
+    )
+    report["passed"] = (
+        not report["invalid_bundles"]
+        and not report["circular_dependencies"]
+        and not report["expansion_issues"]
+        and not report["orphan_threshold_exceeded"]
+    )
+    return report
+
+
+def reexpand_project_data(project) -> int:
+    """
+    Re-create DetailAHSPExpanded for seluruh pekerjaan di project.
+    """
+    count = 0
+    now_ts = timezone.now()
+    for pkj in Pekerjaan.objects.filter(project=project).order_by("id"):
+        _populate_expanded_from_raw(project, pkj)
+        Pekerjaan.objects.filter(pk=pkj.pk).update(detail_last_modified=now_ts)
+        count += 1
+    touch_project_change(project, ahsp=True)
+    return count
+
+
+def fix_project_data(
+    project,
+    *,
+    reexpand: bool = True,
+    cleanup_orphans: bool = True,
+    older_than_days: Optional[int] = None,
+    dry_run: bool = True,
+    orphan_limit: Optional[int] = None,
+) -> Dict[str, object]:
+    """
+    Perform fix routines (re-expand & orphan cleanup). Respects dry_run flag.
+    """
+    summary = {
+        "project_id": project.id,
+        "reexpanded": 0,
+        "cleanup": None,
+        "dry_run": dry_run,
+    }
+
+    if reexpand:
+        if dry_run:
+            summary["reexpanded"] = Pekerjaan.objects.filter(project=project).count()
+        else:
+            summary["reexpanded"] = reexpand_project_data(project)
+
+    if cleanup_orphans:
+        cleanup_result = cleanup_orphaned_items(
+            project,
+            older_than_days=older_than_days,
+            dry_run=dry_run,
+            limit=orphan_limit,
+        )
+        summary["cleanup"] = cleanup_result
+
+    return summary
 
 
 def _upsert_harga_item(project, kategori: str, kode_item: str, uraian: str, satuan: str | None):
@@ -289,7 +741,7 @@ def expand_bundle_to_components(
     Raises:
         ValueError: Jika max depth exceeded atau circular dependency detected
     """
-    MAX_DEPTH = 3  # Limit to 3 levels (sufficient for real-world use cases)
+    MAX_DEPTH = 2  # Depth starts at 1, so 2 === 3 actual bundle levels
 
     # Check max depth
     if depth > MAX_DEPTH:
@@ -383,7 +835,7 @@ def expand_bundle_to_components(
                 'satuan': comp.satuan,
                 'koefisien': final_koef,
                 'harga_item': comp.harga_item,
-                'depth': depth + 1
+                'depth': depth
             })
 
     # Remove from visited after processing (for backtracking)
@@ -432,7 +884,7 @@ def expand_ahsp_bundle_to_components(
     Raises:
         ValueError: Jika max depth exceeded atau circular dependency detected
     """
-    MAX_DEPTH = 3  # Same limit as Pekerjaan bundle expansion
+    MAX_DEPTH = 2  # Depth starts at 1, so 2 === 3 actual bundle levels
 
     # Check max depth
     if depth > MAX_DEPTH:
@@ -514,7 +966,7 @@ def expand_ahsp_bundle_to_components(
                     'satuan': comp.satuan_item,
                     'koefisien': final_koef,
                     'harga_item': None,  # Will be created by caller
-                    'depth': depth + 1
+                    'depth': depth
                 })
 
         else:
@@ -528,7 +980,7 @@ def expand_ahsp_bundle_to_components(
                 'satuan': comp.satuan_item,
                 'koefisien': final_koef,
                 'harga_item': None,  # Will be created by caller
-                'depth': depth + 1
+                'depth': depth
             })
 
     # Remove from visited after processing (backtracking)
@@ -592,14 +1044,27 @@ def _populate_expanded_from_raw(project, pekerjaan):
             logger.info(f"[POPULATE_EXPANDED] AHSP bundle detected: '{detail_obj.kode}' → ref_ahsp_id={detail_obj.ref_ahsp_id}")
 
             try:
+                expansion_start = time.time()
                 expanded_components = expand_ahsp_bundle_to_components(
                     ref_ahsp_id=detail_obj.ref_ahsp_id,
                     project=project,
                     base_koef=Decimal('1.0'),
-                    depth=0,
+                    depth=1,
                     visited=None
                 )
+                duration_ms = (time.time() - expansion_start) * 1000
+                component_count = len(expanded_components)
                 logger.info(f"[POPULATE_EXPANDED] AHSP expansion: {len(expanded_components)} components")
+
+                log_bundle_expansion(
+                    project_id=project.id,
+                    pekerjaan_id=pekerjaan.id,
+                    bundle_kode=detail_obj.kode,
+                    ref_kind='ahsp',
+                    ref_id=detail_obj.ref_ahsp_id,
+                    component_count=component_count,
+                    duration_ms=round(duration_ms, 2)
+                )
 
                 # Add expanded components
                 for comp in expanded_components:
@@ -643,14 +1108,27 @@ def _populate_expanded_from_raw(project, pekerjaan):
             }
 
             try:
+                expansion_start = time.time()
                 expanded_components = expand_bundle_to_components(
                     detail_data=detail_dict,
                     project=project,
                     base_koef=Decimal('1.0'),
-                    depth=0,
+                    depth=1,
                     visited=None
                 )
+                duration_ms = (time.time() - expansion_start) * 1000
+                component_count = len(expanded_components)
                 logger.info(f"[POPULATE_EXPANDED] Pekerjaan expansion: {len(expanded_components)} components")
+
+                log_bundle_expansion(
+                    project_id=project.id,
+                    pekerjaan_id=pekerjaan.id,
+                    bundle_kode=detail_obj.kode,
+                    ref_kind='job',
+                    ref_id=detail_obj.ref_pekerjaan_id,
+                    component_count=component_count,
+                    duration_ms=round(duration_ms, 2)
+                )
 
                 # Add expanded components
                 for comp in expanded_components:
@@ -794,7 +1272,7 @@ def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Op
             )
 
             # Re-populate expanded data
-            populate_expanded_from_project(project, pkj)
+            _populate_expanded_from_raw(project, pkj)
             re_expanded_count += 1
 
             logger.info(f"[CASCADE_RE_EXPANSION] Successfully re-expanded {pkj_kode}")
@@ -831,6 +1309,13 @@ def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Op
     # FASE 0.3: Calculate duration and log structured metrics
     duration_ms = (time.time() - start_time) * 1000
 
+    change_ts = timezone.now()
+
+    if referencing_pekerjaan_ids:
+        Pekerjaan.objects.filter(
+            id__in=referencing_pekerjaan_ids
+        ).update(detail_last_modified=change_ts)
+
     logger.info(
         f"[CASCADE_RE_EXPANSION] COMPLETE - Re-expanded {re_expanded_count} pekerjaan total "
         f"(direct + recursive), Duration: {duration_ms:.2f}ms"
@@ -845,6 +1330,26 @@ def cascade_bundle_re_expansion(project, modified_pekerjaan_id: int, visited: Op
         re_expanded_count=re_expanded_count,
         duration_ms=round(duration_ms, 2)
     )
+
+    if referencing_pekerjaan_ids:
+        touch_project_change(project, ahsp=True)
+        summary = (
+            f"Cascade re-expansion from pekerjaan {modified_pekerjaan_id} "
+            f"(depth={cascade_depth}) affecting {len(referencing_pekerjaan_ids)} pekerjaan."
+        )
+        for target_id in referencing_pekerjaan_ids:
+            try:
+                target = Pekerjaan.objects.get(id=target_id, project=project)
+            except Pekerjaan.DoesNotExist:
+                continue
+            log_audit(
+                project,
+                target,
+                DetailAHSPAudit.ACTION_CASCADE,
+                triggered_by="cascade",
+                user=None,
+                change_summary=summary,
+            )
 
     return re_expanded_count
 

@@ -114,6 +114,7 @@ class Pekerjaan(TimeStampedModel):
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Override % Profit/Margin khusus pekerjaan ini; null=pakai default project"
     )
+    detail_last_modified = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["ordering_index", "id"]
@@ -435,6 +436,59 @@ class DetailAHSPExpanded(TimeStampedModel):
     def __str__(self):
         bundle_info = f" [from {self.source_bundle_kode}]" if self.source_bundle_kode else ""
         return f"{self.pekerjaan_id} / {self.kode} — {self.uraian}{bundle_info}"
+
+
+class DetailAHSPAudit(TimeStampedModel):
+    ACTION_CREATE = "CREATE"
+    ACTION_UPDATE = "UPDATE"
+    ACTION_DELETE = "DELETE"
+    ACTION_CASCADE = "CASCADE"
+
+    ACTION_CHOICES = [
+        (ACTION_CREATE, "Create"),
+        (ACTION_UPDATE, "Update"),
+        (ACTION_DELETE, "Delete"),
+        (ACTION_CASCADE, "Cascade Re-expansion"),
+    ]
+
+    TRIGGER_CHOICES = [
+        ("user", "User"),
+        ("cascade", "Cascade"),
+        ("system", "System"),
+    ]
+
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='detail_audit_entries'
+    )
+    pekerjaan = models.ForeignKey(
+        Pekerjaan,
+        on_delete=models.CASCADE,
+        related_name='audit_entries'
+    )
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    old_data = models.JSONField(null=True, blank=True)
+    new_data = models.JSONField(null=True, blank=True)
+    triggered_by = models.CharField(max_length=20, choices=TRIGGER_CHOICES, default="user")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    change_summary = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["project", "-created_at"]),
+            models.Index(fields=["pekerjaan", "-created_at"]),
+            models.Index(fields=["action"]),
+        ]
+
+    def __str__(self):
+        return f"{self.project_id}/{self.pekerjaan_id} {self.action} @ {self.created_at:%Y-%m-%d %H:%M}"
 
 
 # === NEW: Volume Formula State (ringan; satu per project+pekerjaan) ===
@@ -845,3 +899,16 @@ class ProjectParameter(TimeStampedModel):
         """Override save for validation"""
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+class ProjectChangeStatus(TimeStampedModel):
+    project = models.OneToOneField(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='change_status'
+    )
+    last_ahsp_change = models.DateTimeField(null=True, blank=True)
+    last_harga_change = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"ChangeStatus[{self.project_id}]"
