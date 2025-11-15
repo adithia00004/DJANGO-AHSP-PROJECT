@@ -151,6 +151,9 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
                         'window_seconds': window,
                         'current_count': current_count,
                         'category': category or 'default'
+                    },
+                    extra={
+                        'retry_after': window
                     }
                 )
 
@@ -252,7 +255,8 @@ class APIResponse:
         message: str,
         code: str = None,
         details: Dict = None,
-        status: int = 400
+        status: int = 400,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> JsonResponse:
         """
         Create an error API response.
@@ -262,6 +266,7 @@ class APIResponse:
             code: Error code for programmatic handling
             details: Additional error details (optional)
             status: HTTP status code (default: 400)
+            extra: Optional additional payload fields (e.g., retry_after)
 
         Returns:
             JsonResponse with standardized error format
@@ -282,6 +287,9 @@ class APIResponse:
 
         if details:
             payload['details'] = details
+
+        if extra:
+            payload.update(extra)
 
         return JsonResponse(payload, status=status)
 

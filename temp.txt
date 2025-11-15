@@ -23,7 +23,6 @@ from django.db import transaction, IntegrityError
 from django.db.models import Max, F, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from django.utils.html import escape
 from django.utils.timezone import now
 from django.utils.dateparse import parse_datetime
 from .numeric import parse_any, to_dp_str, quantize_half_up, DECIMAL_SPEC
@@ -57,7 +56,6 @@ from .export_config import (
     format_volume,
 )
 from .exports import RekapRABExporter, RekapKebutuhanExporter
-from .api_helpers import rate_limit
 
 try:
     from referensi.models import RincianReferensi  # type: ignore
@@ -91,16 +89,6 @@ def _src_to_str(val):
 
 def _err(path: str, message: str):
     return {"path": path, "message": message}
-
-def _warn(path: str, message: str):
-    err = _err(path, message)
-    err["severity"] = "warning"
-    return err
-
-def _sanitize_text(val: Optional[str]) -> Optional[str]:
-    if val is None:
-        return None
-    return escape(str(val))
 
 def _owner_or_404(project_id, user):
     from dashboard.models import Project
@@ -195,7 +183,6 @@ def api_search_ahsp(request: HttpRequest, project_id: int):
 # ---------- View 1: SAVE (full-create) ----------
 @login_required
 @require_POST
-@rate_limit(category='write')
 @transaction.atomic
 def api_save_list_pekerjaan(request: HttpRequest, project_id: int):
     """
@@ -409,8 +396,8 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
             filtered_klas_ids = set(s_qs.values_list('klasifikasi_id', flat=True))
             k_qs = k_qs.filter(id__in=filtered_klas_ids)
         else:
-            # No matching pekerjaan found - return empty structure without echoing query
-            return JsonResponse({"ok": True, "klasifikasi": [], "match_count": 0, "search_active": True})
+            # No matching pekerjaan found - return empty structure
+            return JsonResponse({"ok": True, "klasifikasi": [], "search_query": search_query, "match_count": 0})
 
     subs_by_klas = {}
     for s in s_qs:
@@ -425,14 +412,14 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
     for k in k_qs:
         k_obj = {
             "id": k.id,
-            "name": _sanitize_text(k.name),
+            "name": k.name,
             "ordering_index": k.ordering_index,
             "sub": []
         }
         for s in subs_by_klas.get(k.id, []):
             s_obj = {
                 "id": s.id,
-                "name": _sanitize_text(s.name),
+                "name": s.name,
                 "ordering_index": s.ordering_index,
                 "pekerjaan": []
             }
@@ -441,9 +428,9 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
                     "id": p.id,
                     "source_type": _src_to_str(p.source_type),
                     "ordering_index": p.ordering_index,
-                    "snapshot_kode": _sanitize_text(getattr(p, "snapshot_kode", None)),
-                    "snapshot_uraian": _sanitize_text(p.snapshot_uraian),
-                    "snapshot_satuan": _sanitize_text(p.snapshot_satuan),
+                    "snapshot_kode": getattr(p, "snapshot_kode", None),
+                    "snapshot_uraian": p.snapshot_uraian,
+                    "snapshot_satuan": p.snapshot_satuan,
                     "ref_id": getattr(p, "ref_id", None),
                 })
                 total_pekerjaan_count += 1
@@ -455,9 +442,9 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
         "klasifikasi": data
     }
 
-    # Add search metadata if search was performed (without echoing raw query)
+    # Add search metadata if search was performed
     if search_query:
-        response_data["search_active"] = True
+        response_data["search_query"] = search_query
         response_data["match_count"] = total_pekerjaan_count
 
     return JsonResponse(response_data)
@@ -496,28 +483,11 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except Exception:
-        return JsonResponse({
-            "ok": False,
-            "success": False,
-            "message": "Payload JSON tidak valid",
-            "errors": [_err("$", "Payload JSON tidak valid")]
-        }, status=400)
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
 
-    if "klasifikasi" not in payload:
-        return JsonResponse({
-            "ok": False,
-            "success": False,
-            "message": "Field 'klasifikasi' wajib disertakan sebagai list",
-            "errors": [_err("klasifikasi", "Wajib disertakan dan berupa list")]
-        }, status=400)
-    klas_list = payload.get("klasifikasi")
+    klas_list = payload.get("klasifikasi") or []
     if not isinstance(klas_list, list):
-        return JsonResponse({
-            "ok": False,
-            "success": False,
-            "message": "Field 'klasifikasi' harus berupa list",
-            "errors": [_err("klasifikasi", "Harus list")]
-        }, status=400)
+        return JsonResponse({"ok": False, "errors": [_err("klasifikasi", "Harus list")]}, status=400)
 
     # ============================
     # PRE-FLIGHT VALIDATION
@@ -577,7 +547,6 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].snapshot_uraian",
                             "Wajib untuk custom"
                         ))
-
                 else:
                     pre_errors.append(_err(
                         f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].source_type",
@@ -592,18 +561,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             if rid in missing:
                 pre_errors.append(_err(path, f"Referensi #{rid} tidak ditemukan"))
 
-    source_change_state = {
-        "reload_jobs": set(),
-        "volume_reset_jobs": set(),
-    }
-
     if pre_errors:
-        return JsonResponse({
-            "ok": False,
-            "success": False,
-            "message": f"{len(pre_errors)} kesalahan validasi ditemukan.",
-            "errors": pre_errors
-        }, status=400)
+        return JsonResponse({"ok": False, "errors": pre_errors}, status=400)
 
     # ============================
     # PROSES UPSERT
@@ -612,6 +571,10 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     keep_k = set()
     keep_all_p = set()  # global keep untuk semua pekerjaan di payload
     assigned_orders: Set[int] = set()
+    source_change_state = {
+        "reload_jobs": set(),
+        "volume_reset_jobs": set(),
+    }
 
     existing_k = {k.id: k for k in Klasifikasi.objects.filter(project=project)}
     existing_s = {s.id: s for s in SubKlasifikasi.objects.filter(project=project)}
@@ -942,26 +905,27 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             if not pobj.snapshot_kode:
                                 pobj.snapshot_kode = generate_custom_code(project)
                         elif src == Pekerjaan.SOURCE_REF_MOD:
-                            if ov_ura:
-                                pobj.snapshot_uraian = ov_ura
-                            if ov_sat:
-                                pobj.snapshot_satuan = ov_sat
+                            if ov_ura: pobj.snapshot_uraian = ov_ura
+                            if ov_sat: pobj.snapshot_satuan = ov_sat
                         pobj.save(update_fields=[
                             "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
                         ])
 
-                    source_change_state["reload_jobs"].add(pobj.id)
-                    if change_was_applied:
-                        _log_source_change_audit(
-                            pobj,
-                            old_source=old_source_type,
-                            new_source=pobj.source_type,
-                            old_ref_id=old_ref_id,
-                            new_ref_id=getattr(pobj, "ref_id", None),
-                        )
+                source_change_state["reload_jobs"].add(pobj.id)
+                if change_was_applied:
+                    _log_source_change_audit(
+                        pobj,
+                        old_source=old_source_type,
+                        new_source=pobj.source_type,
+                        old_ref_id=old_ref_id,
+                        new_ref_id=getattr(pobj, "ref_id", None),
+                    )
 
                 else:
-                    pobj = None
+                    # NOTE: pobj.id already ada di keep_all_p sejak awal blok update,
+                    # sehingga aman melanjutkan proses create/reuse.
+                    # ============ CREATE / REUSE ============
+
                     try:
                         if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
                             rid = int(p.get("ref_id"))  # aman (preflight)
@@ -1050,12 +1014,9 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             f"Referensi #{p.get('ref_id')} tidak ditemukan"
                         ))
                         continue
-
-                    if pobj is None:
-                        continue
-
-                    source_change_state["reload_jobs"].add(pobj.id)
-                    keep_all_p.add(pobj.id)
+                    else:
+                        source_change_state["reload_jobs"].add(pobj.id)
+                keep_all_p.add(pobj.id)
 
         # Hapus sub yang tidak ada lagi di Klas ini
         SubKlasifikasi.objects.filter(project=project, klasifikasi=k_obj).exclude(id__in=keep_s).delete()
@@ -1109,9 +1070,6 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
     elif isinstance(payload, dict):
         rows = payload.get("items")
         path_prefix = "items"            # error path: "items[0].quantity"
-        if rows is None:
-            rows = payload.get("volumes")
-            path_prefix = "volumes"
     if not isinstance(rows, list):
         return JsonResponse({"ok": False, "errors": [_err("$", "Harus array of objek atau {items:[...]}")]}, status=400)
  
@@ -1497,7 +1455,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
                     if target_component_count == 0:
                         ref_kode = ref_pekerjaan_obj.snapshot_kode or f"PKJ#{ref_pekerjaan_obj.id}"
-                        errors.append(_warn(
+                        errors.append(_err(
                             f"rows[{i}].ref_id",
                             f"❌ Pekerjaan '{ref_kode}' tidak memiliki komponen AHSP. "
                             f"Bundle harus mereferensi pekerjaan yang sudah memiliki komponen. "
@@ -1540,39 +1498,17 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         # --- Kumpulkan baris tervalidasi ---
         normalized.append((kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj))
 
-    # Bila semua baris error → fatal (400) kecuali jika seluruh error bertipe warning
+    # Bila semua baris error → 400
     if errors and not normalized:
-        all_warnings = all(err.get("severity") == "warning" for err in errors)
-        allow_soft = getattr(project, "allow_bundle_soft_errors", False)
-        status = 207 if (all_warnings and allow_soft) else 400
-        logger.debug(
-            "SAVE_DETAIL_AHSP soft_errors=%s all_warnings=%s status=%s project_id=%s",
-            allow_soft, all_warnings, status, project.id
-        )
-        log_fn = logger.warning if status == 207 else logger.error
-        log_fn(f"[SAVE_DETAIL_AHSP] No valid rows ({len(errors)} errors) – status={status}")
+        logger.error(f"[SAVE_DETAIL_AHSP] All rows invalid: {len(errors)} errors")
+        # Create user-friendly message
         error_count = len(errors)
-        if all_warnings:
-            user_message = (
-                f"[WARN] Tidak ada baris yang disimpan. {error_count} peringatan ditemukan pada data yang dikirim."
-            )
-        else:
-            user_message = (
-                f"[ERROR] Gagal menyimpan data. {error_count} kesalahan ditemukan pada data yang dikirim."
-            )
+        error_summary = f"Ditemukan {error_count} kesalahan pada data yang Anda masukkan. Mohon perbaiki dan coba lagi."
         return JsonResponse({
             "ok": False,
-            "success": False,
-            "user_message": user_message,
-            "saved_raw_rows": 0,
-            "saved_rows": 0,
-            "saved_expanded_rows": 0,
-            "errors": errors,
-            "pekerjaan": {
-                "id": pkj.id,
-                "updated_at": pkj.updated_at.isoformat() if getattr(pkj, "updated_at", None) else None,
-            }
-        }, status=status)
+            "user_message": error_summary,
+            "errors": errors
+        }, status=400)
 
     logger.info(f"[SAVE_DETAIL_AHSP] Validation passed: {len(normalized)} rows valid, {len(errors)} errors")
 
@@ -1897,7 +1833,6 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
     return JsonResponse({
         "ok": status_code == 200,
-        "success": status_code == 200,
         "user_message": user_message,
         "saved_raw_rows": len(saved_raw_details),
         "saved_rows": len(saved_raw_details),

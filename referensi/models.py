@@ -5,6 +5,20 @@ from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
 
+class AHSPReferensiManager(models.Manager):
+    def create(self, **kwargs):
+        obj = super().create(**kwargs)
+        from referensi.search_cache import invalidate_search_cache
+        invalidate_search_cache()
+        return obj
+
+    def bulk_create(self, objs, **kwargs):
+        result = super().bulk_create(objs, **kwargs)
+        from referensi.search_cache import rebuild_search_cache
+        rebuild_search_cache()
+        return result
+
+
 class AHSPReferensi(models.Model):
     # Unik & terindeks agar cepat saat lookup dari List Pekerjaan
     kode_ahsp = models.CharField(max_length=50, db_index=True)
@@ -26,6 +40,7 @@ class AHSPReferensi(models.Model):
     # Do not set this field manually - it's computed from kode_ahsp, nama_ahsp, klasifikasi, sub_klasifikasi
 
     history = HistoricalRecords()
+    objects = AHSPReferensiManager()
 
     class Meta:
         verbose_name = "AHSP Referensi"

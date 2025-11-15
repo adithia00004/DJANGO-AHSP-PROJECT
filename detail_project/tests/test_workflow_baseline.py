@@ -68,6 +68,9 @@ def baseline_setup(db, user, project, sub_klas):
     - HargaItemProject items
     - DetailAHSPProject components
     """
+    if hasattr(project, "allow_bundle_soft_errors"):
+        project.allow_bundle_soft_errors = False
+        project.save(update_fields=["allow_bundle_soft_errors"])
     # Create HargaItemProject
     harga_tk = HargaItemProject.objects.create(
         project=project,

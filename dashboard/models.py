@@ -35,11 +35,17 @@ class Project(models.Model):
     # === Kolom tambahan dari sistem lama ===
     deskripsi = models.TextField(blank=True, null=True)
     kategori = models.CharField(max_length=100, blank=True, null=True)
+    allow_bundle_soft_errors = models.BooleanField(
+        default=False,
+        help_text="Izinkan endpoint detail AHSP mengembalikan status 207 (peringatan) untuk bundle kosong."
+    )
 
     # === Timeline Pelaksanaan Project ===
     tanggal_mulai = models.DateField(
         'Tanggal Mulai Pelaksanaan',
-        help_text='Tanggal mulai pelaksanaan project (wajib, tahun akan diambil dari field ini)'
+        help_text='Tanggal mulai pelaksanaan project (wajib, tahun akan diambil dari field ini)',
+        null=True,
+        blank=True,
     )
     tanggal_selesai = models.DateField(
         'Tanggal Target Selesai',

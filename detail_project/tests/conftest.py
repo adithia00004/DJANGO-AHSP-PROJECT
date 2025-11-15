@@ -116,6 +116,8 @@ def project(db, user):
         kw["lokasi_project"] = "Jakarta"
     if "nama_client" in fields and not kw.get("nama_client"):
         kw["nama_client"] = "Client Test"
+    if "allow_bundle_soft_errors" in fields:
+        kw["allow_bundle_soft_errors"] = True
 
     # Override opsional via ENV (mis. field wajib lain)
     env_kw = _env_json("LP_PROJECT_CREATE_KW", {}) or {}

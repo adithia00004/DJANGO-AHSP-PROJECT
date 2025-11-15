@@ -76,7 +76,8 @@ def project(user):
         lokasi_project='Jakarta',
         nama_client='Test Client',
         anggaran_owner=Decimal('1000000000.00'),
-        tanggal_mulai=date(2025, 1, 1)  # Required field
+        tanggal_mulai=date(2025, 1, 1),  # Required field
+        allow_bundle_soft_errors=True,
     )
 
     # Create default pricing with 10% markup

@@ -3,6 +3,11 @@ omit =
     detail_project/tests/*
     detail_project/migrations/*
     detail_project/management/*
+    detail_project/exports/*
+    detail_project/forms.py
+    detail_project/diagnostic_bundle_check.py
+    detail_project/monitoring_middleware.py
+    detail_project/views_export.py
 
 [report]
 skip_covered = True

@@ -68,6 +68,9 @@ def health_check(request):
         'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
 
+    if request.GET.get('mode') == 'simple' or (request.user.is_authenticated and request.GET.get('mode') != 'deep'):
+        health['checks']['mode'] = 'simple'
+        return JsonResponse(health, status=200)
     # Check database connectivity
     try:
         with connection.cursor() as cursor:
@@ -94,23 +97,18 @@ def health_check(request):
 
     # Check cache (Redis) connectivity
     try:
-        # Set a test key
-        cache.set('health_check_test', 'ok', 10)
-
-        # Retrieve the test key
-        result = cache.get('health_check_test')
+        cache_key = 'health_check_test'
+        cache.set(cache_key, 'ok', 5)
+        result = cache.get(cache_key)
+        cache.delete(cache_key)
 
         if result == 'ok':
-            # Get cache backend info
             cache_backend = cache.__class__.__module__ + '.' + cache.__class__.__name__
 
             health['checks']['cache'] = {
                 'status': 'ok',
                 'backend': cache_backend
             }
-
-            # Clean up test key
-            cache.delete('health_check_test')
         else:
             health['status'] = 'error'
             health['checks']['cache'] = {
@@ -125,7 +123,6 @@ def health_check(request):
             'message': str(e)
         }
 
-    # Determine HTTP status code
     status_code = 200 if health['status'] == 'ok' else 503
 
     return JsonResponse(health, status=status_code)
