@@ -12,9 +12,20 @@
 
   function formatMessage(hasChanges, targetLabel) {
     if (hasChanges) {
-      return `⚠️ ${targetLabel} berubah. Silakan refresh.`;
+      return `[!] ${targetLabel} berubah. Silakan refresh.`;
     }
-    return `✅ ${targetLabel} tersinkron.`;
+    return `[OK] ${targetLabel} tersinkron.`;
+  }
+
+  function emitStatusEvent(indicator, detail = {}) {
+    const payload = {
+      projectId: Number(indicator.dataset.projectId) || null,
+      scope: indicator.dataset.scope || 'global',
+      watch: indicator.dataset.watch || 'both',
+      endpoint: indicator.dataset.endpoint || '',
+      ...detail,
+    };
+    window.dispatchEvent(new CustomEvent('dp:change-status', { detail: payload }));
   }
 
   function acknowledge(indicator, payload) {
@@ -26,6 +37,7 @@
     }
     indicator.dataset.lastSeenPekerjaan = new Date().toISOString();
     updateIndicator(indicator, payload);
+    emitStatusEvent(indicator, { type: 'ack', payload });
   }
 
   function updateIndicator(indicator, payload) {
@@ -39,6 +51,7 @@
     const lastSeenAhsp = parseTs(indicator.dataset.lastSeenAhsp || indicator.dataset.initialAhsp);
     const hargaChanged = parseTs(payload?.harga_changed_at) > lastSeenHarga;
     const ahspChanged = parseTs(payload?.ahsp_changed_at) > lastSeenAhsp;
+    const previousState = indicator.dataset.hasChanges === "true";
 
     let hasChanges = false;
     let targetLabel = "";
@@ -58,6 +71,9 @@
     badge.classList.toggle("text-bg-success", !hasChanges);
     message.textContent = formatMessage(hasChanges, targetLabel);
     indicator.dataset.hasChanges = hasChanges ? "true" : "false";
+    if (previousState !== (hasChanges ? "true" : "false")) {
+      emitStatusEvent(indicator, { type: "update", hasChanges, payload });
+    }
 
     if (
       hasChanges &&

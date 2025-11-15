@@ -122,6 +122,16 @@
   </div>
 </div>
 
+<div id="vp-sync-banner" class="alert alert-warning d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
+  <div>
+    <div class="fw-semibold">Perlu update volume/tahapan</div>
+    <div id="vp-sync-text" class="small text-muted">Beberapa pekerjaan wajib diperiksa ulang sebelum ekspor.</div>
+  </div>
+  <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="vp-sync-focus">
+    <i class="bi bi-arrow-down-circle me-1"></i>Lompat ke pekerjaan
+  </button>
+</div>
+
 <div id="vol-app"
      class="dp-container ux-scrollbar ux-scroll-smooth"
      data-project-id="{% firstof project.id project_id %}"

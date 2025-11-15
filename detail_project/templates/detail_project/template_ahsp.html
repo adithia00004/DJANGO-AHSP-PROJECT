@@ -23,8 +23,6 @@
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.full.min.js"></script>
 {% endblock %}
 
-{% block dp_topbar_extra %}{% endblock %}
-
 {% block dp_content %}
 <div id="ta-app"
      class="ta-app"
@@ -108,6 +106,19 @@
     </button>
   </div>
 
+  <div id="ta-sync-banner" class="ta-sync-banner alert alert-warning d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
+    <div class="ta-sync-banner__icon"><i class="bi bi-arrow-repeat"></i></div>
+    <div class="ta-sync-banner__content">
+      <div class="fw-semibold">Menunggu sinkronisasi Template AHSP</div>
+      <div id="ta-sync-banner-text" class="small text-muted">Beberapa pekerjaan wajib dimuat ulang sebelum dapat diedit.</div>
+    </div>
+    <div class="ms-auto">
+      <button type="button" class="btn btn-sm btn-primary" id="ta-banner-reload">
+        <i class="bi bi-arrow-clockwise me-1"></i>Muat ulang sekarang
+      </button>
+    </div>
+  </div>
+
   <div class="ta-body">
     <!-- Sidebar pekerjaan -->
     <aside class="ta-sidebar" aria-label="Daftar pekerjaan">
@@ -144,11 +155,20 @@
 
     <!-- Panel editor -->
     <main class="ta-editor" aria-label="Editor Template AHSP">
+      <div id="ta-editor-blocker" class="ta-editor-blocker d-none" role="alert" aria-live="assertive">
+        <div class="ta-editor-blocker__card">
+          <h3>Data perlu dimuat ulang</h3>
+          <p class="small text-muted mb-3">Sumber pekerjaan ini baru saja berubah. Muat ulang untuk mengambil data terbaru sebelum melanjutkan pengeditan.</p>
+          <button type="button" class="btn btn-primary btn-sm" id="ta-editor-reload">
+            <i class="bi bi-arrow-clockwise me-1"></i>Muat ulang data
+          </button>
+        </div>
+      </div>
       <section class="ta-job-header">
         <div class="row">
           <div class="cell">
             <div class="label">Kode</div>
-            <div id="ta-active-kode" class="value mono">—</div>
+            <div id="ta-active-kode" class="value mono">-</div>
           </div>
           <div class="cell wide">
             <div class="label">Uraian</div>
@@ -359,6 +379,29 @@
       </td>
     </tr>
   </template>
+<!-- Modal: Konflik penyimpanan -->
+<div class="modal fade" id="taConflictModal" tabindex="-1" aria-labelledby="taConflictLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="taConflictLabel">Data template berubah</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Pekerjaan ini telah diperbarui oleh pengguna lain sejak Anda membukanya.</p>
+        <ul class="mb-0">
+          <li><strong>Muat ulang data terbaru</strong> untuk melihat perubahan terakhir (perubahan Anda akan dibuang).</li>
+          <li><strong>Timpa perubahan terbaru</strong> jika Anda ingin mempertahankan versi yang sedang diedit.</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-choice="reload">Muat ulang data terbaru</button>
+        <button type="button" class="btn btn-danger" data-choice="overwrite">Timpa dengan versiku</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Bantuan Template AHSP -->
 <div class="modal fade" id="taHelpModal" tabindex="-1" aria-labelledby="taHelpLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable modal-md">
@@ -388,5 +431,3 @@
   {{ block.super }}
   <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}
-
-

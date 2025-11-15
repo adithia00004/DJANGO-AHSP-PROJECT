@@ -11,6 +11,7 @@
     primary: 'kelolaTahapan',
     legacy: 'jadwal',
   };
+  const sourceChange = window.DP?.sourceChange || null;
 
   function emitPageEvent(eventKey, payload) {
     if (!appContext || typeof appContext.emit !== 'function') {
@@ -74,6 +75,7 @@
     if (!(target.expandedNodes instanceof Set)) target.expandedNodes = new Set();
     if (!(target.modifiedCells instanceof Map)) target.modifiedCells = new Map();
     if (!(target.tahapanProgressMap instanceof Map)) target.tahapanProgressMap = new Map();
+    if (!(target.volumeResetJobs instanceof Set)) target.volumeResetJobs = new Set();
 
     if (typeof target.weekStartDay !== 'number') target.weekStartDay = 0;
     if (typeof target.weekEndDay !== 'number') target.weekEndDay = 6;
@@ -166,6 +168,13 @@
     appContext.state = state;
   }
 
+  if (sourceChange && projectId) {
+    const pendingVolume = sourceChange.listVolumeJobs(projectId) || [];
+    state.volumeResetJobs = new Set(
+      pendingVolume.map((val) => Number(val)).filter((id) => Number.isFinite(id)),
+    );
+  }
+
   // Expose state to window for debugging and backwards compatibility
   window.kelolaTahapanPageState = state;
   window.jadwalPekerjaanState = state;
@@ -201,6 +210,19 @@
     statusMessage: $statusMessage,
     loadingOverlay: $loadingOverlay,
   };
+
+  if (projectId && sourceChange) {
+    window.addEventListener('dp:source-change', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== projectId) return;
+      if (detail.state && detail.state.volume) {
+        state.volumeResetJobs = new Set(
+          Object.keys(detail.state.volume).map((key) => Number(key)).filter((id) => Number.isFinite(id)),
+        );
+        renderGrid();
+      }
+    });
+  }
 
   state.domRefs = Object.assign({}, state.domRefs, domRefs);
   if (appContext) {
@@ -1186,6 +1208,10 @@
       }
     });
 
+    if (result?.pekerjaanIds?.length) {
+      markVolumeResetResolved(result.pekerjaanIds);
+    }
+
     refreshGanttView({ reason: 'save-all', rebuildTasks: true });
     refreshKurvaS({ reason: 'save-all', rebuild: true });
     return result;
@@ -1241,10 +1267,12 @@
     // - Convert assignments to weekly canonical format
     // - Call API endpoint with proper payload
     // - Handle errors gracefully
-    return await saveHandler.savePekerjaanAssignments(pekerjaanId, assignments, {
+    const result = await saveHandler.savePekerjaanAssignments(pekerjaanId, assignments, {
       state,
       helpers: {}  // This function doesn't need UI helpers (called internally)
     });
+    markVolumeResetResolved([pekerjaanId]);
+    return result;
   }
 
   // =========================================================================
@@ -1670,3 +1698,21 @@
 
   loadAllData();
 })();
+  function markVolumeResetResolved(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    let changed = false;
+    ids.forEach((id) => {
+      const num = Number(id);
+      if (state.volumeResetJobs.delete(num)) {
+        changed = true;
+      }
+    });
+    try {
+      sourceChange?.markVolumeResolved(projectId, ids);
+    } catch (err) {
+      logger.warn('Kelola Tahapan Page: failed to update volume reset flags', err);
+    }
+    if (changed) {
+      renderGrid();
+    }
+  }

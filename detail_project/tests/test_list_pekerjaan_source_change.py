@@ -18,9 +18,10 @@ from django.contrib.auth import get_user_model
 from dashboard.models import Project
 from detail_project.models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan,
-    DetailAHSPProject, HargaItemProject, VolumePekerjaan,
+    DetailAHSPProject, DetailAHSPExpanded, HargaItemProject, VolumePekerjaan,
     PekerjaanTahapan, VolumeFormulaState, TahapPelaksanaan
 )
+from detail_project.services import clone_ref_pekerjaan
 
 User = get_user_model()
 
@@ -365,6 +366,93 @@ class TestSourceChangeCUSTOMtoREF:
         # Verify cascade reset still occurred
         assert not VolumePekerjaan.objects.filter(project=project, pekerjaan=pekerjaan_custom).exists()  # Deleted
         assert PekerjaanTahapan.objects.filter(pekerjaan=pekerjaan_custom).count() == 0  # Reset
+
+
+# ============================================================================
+# TESTS: Source Change from REF to REF_MODIFIED
+# ============================================================================
+
+@pytest.mark.django_db
+class TestSourceChangeREFtoREFMOD:
+    """Ensure REF → REF_MOD keeps expanded data available for Harga Items."""
+
+    def test_change_ref_to_ref_modified_keeps_harga_items(self, client_logged, project, sub_klas):
+        from referensi.models import AHSPReferensi, RincianReferensi
+
+        ahsp_ref = AHSPReferensi.objects.create(
+            kode_ahsp="REF.900",
+            nama_ahsp="Ref Beton Mutu Rendah",
+            satuan="m3",
+        )
+        RincianReferensi.objects.create(
+            ahsp=ahsp_ref,
+            kategori="TK",
+            kode_item="TK.REF900",
+            uraian_item="Tenaga Kerja Beton",
+            satuan_item="OH",
+            koefisien=Decimal("1.000000"),
+        )
+        RincianReferensi.objects.create(
+            ahsp=ahsp_ref,
+            kategori="BHN",
+            kode_item="BHN.REF900",
+            uraian_item="Material Beton",
+            satuan_item="m3",
+            koefisien=Decimal("1.000000"),
+        )
+
+        pekerjaan_ref = clone_ref_pekerjaan(
+            project,
+            sub_klas,
+            ahsp_ref,
+            Pekerjaan.SOURCE_REF,
+            ordering_index=1,
+            auto_load_rincian=True,
+        )
+
+        harga_url = reverse("detail_project:api_list_harga_items", kwargs={"project_id": project.id})
+        resp = client_logged.get(harga_url)
+        data_awal = resp.json()
+        baseline_codes = sorted(item["kode_item"] for item in data_awal["items"])
+        assert baseline_codes, "Harga Items harus muncul untuk pekerjaan REF"
+
+        payload = {
+            "klasifikasi": [
+                {
+                    "name": pekerjaan_ref.sub_klasifikasi.klasifikasi.name,
+                    "ordering_index": pekerjaan_ref.sub_klasifikasi.klasifikasi.ordering_index or 1,
+                    "subs": [
+                        {
+                            "name": pekerjaan_ref.sub_klasifikasi.name,
+                            "ordering_index": pekerjaan_ref.sub_klasifikasi.ordering_index or 1,
+                            "jobs": [
+                                {
+                                    "id": pekerjaan_ref.id,
+                                    "source_type": "ref_modified",
+                                    "ref_id": ahsp_ref.id,
+                                    "ordering_index": pekerjaan_ref.ordering_index,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        upsert_url = reverse("detail_project:api_upsert_list_pekerjaan", kwargs={"project_id": project.id})
+        resp = client_logged.post(upsert_url, data=json.dumps(payload), content_type="application/json")
+
+        assert resp.status_code == 200
+        pekerjaan_ref.refresh_from_db()
+        assert pekerjaan_ref.source_type == Pekerjaan.SOURCE_REF_MOD
+
+        # Dual storage harus dibangun ulang sehingga harga_items tetap punya referensi expanded.
+        assert DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pekerjaan_ref).exists()
+
+        resp = client_logged.get(harga_url)
+        data_akhir = resp.json()
+        after_codes = sorted(item["kode_item"] for item in data_akhir["items"])
+        assert after_codes == baseline_codes
 
 
 # ============================================================================

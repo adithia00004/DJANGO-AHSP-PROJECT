@@ -84,6 +84,7 @@
 {% block extra_js %}
   {# hanya JS umum yang benar-benar dipakai semua halaman detail_project #}
   <script src="{% static 'detail_project/js/numeric.umd.js' %}" defer></script>
+  <script src="{% static 'detail_project/js/source_change_state.js' %}" defer></script>
   <script src="{% static 'detail_project/js/sync_indicator.js' %}" defer></script>
   {# sediakan hook kosong untuk child #}
   {% block page_js %}{% endblock %}

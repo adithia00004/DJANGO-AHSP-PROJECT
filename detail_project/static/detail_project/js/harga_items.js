@@ -28,6 +28,14 @@
   const btnExportWord = document.getElementById('btn-export-word');
   const $stats = document.getElementById('hi-stats');
   const $bukInput = document.getElementById('hi-buk-input');
+  const syncBannerEl = document.getElementById('hi-sync-banner');
+  const syncTextEl = document.getElementById('hi-sync-text');
+  const syncButtonEl = document.getElementById('hi-sync-open-template');
+  const lockOverlayEl = document.getElementById('hi-lock-overlay');
+  const lockButtonEl = document.getElementById('hi-lock-open-template');
+  const templateUrl = ROOT.dataset.templateUrl || '';
+  const sourceChange = window.DP?.sourceChange || null;
+  const projectId = Number(ROOT.dataset.projectId || '0');
 
   // Sinkron tinggi toolbar (var halaman, bukan global)
   const rootEl = document.querySelector(':root[data-page="harga_items"]') || document.documentElement;
@@ -39,6 +47,15 @@
   }
   window.addEventListener('resize', debounce(syncToolbarH, 120));
   syncToolbarH();
+
+  syncButtonEl?.addEventListener('click', (event) => {
+    event.preventDefault();
+    openTemplatePage();
+  });
+  lockButtonEl?.addEventListener('click', (event) => {
+    event.preventDefault();
+    openTemplatePage();
+  });
 
   // P0 FIX: Toast notification system (import from core)
   const toast = window.DP && window.DP.core && window.DP.core.toast
@@ -55,6 +72,11 @@
   // P0 FIX: Dirty state tracking & optimistic locking
   let dirty = false;
   let projectUpdatedAt = null;  // Timestamp for optimistic locking
+  let formLocked = false;
+  let pendingTemplateReloadJobs = new Set(
+    sourceChange && projectId ? sourceChange.listReloadJobs(projectId) : [],
+  );
+  let changeStatusPending = false;
 
   function setDirty(val) {
     dirty = !!val;
@@ -66,8 +88,76 @@
         $btnSave.classList.remove('btn-warning');
         $btnSave.classList.add('btn-success');
       }
+      $btnSave.disabled = formLocked || !dirty;
     }
   }
+
+  function openTemplatePage() {
+    if (templateUrl) {
+      window.open(templateUrl, '_blank', 'noopener');
+    } else if (TOAST) {
+      TOAST.warn('Halaman Template AHSP tidak tersedia.');
+    } else {
+      alert('Halaman Template AHSP tidak tersedia.');
+    }
+  }
+
+  function applyLockState(locked, reasonText) {
+    formLocked = !!locked;
+    if (syncBannerEl) syncBannerEl.classList.toggle('d-none', !formLocked);
+    if (lockOverlayEl) lockOverlayEl.classList.toggle('d-none', !formLocked);
+    if (syncTextEl && reasonText) {
+      syncTextEl.textContent = reasonText;
+    }
+    if ($btnSave) {
+      $btnSave.disabled = formLocked || !dirty;
+    }
+    const inputs = $tbody ? Array.from($tbody.querySelectorAll('.hi-input-price')) : [];
+    inputs.forEach((input) => {
+      input.disabled = formLocked;
+    });
+    if ($bukInput) {
+      $bukInput.disabled = formLocked;
+    }
+  }
+
+  function updateSyncLockState() {
+    const templatePending = pendingTemplateReloadJobs.size;
+    const locked = templatePending > 0 || changeStatusPending;
+    let reason = '';
+    if (templatePending > 0) {
+      reason = `${templatePending} pekerjaan Template belum dimuat ulang setelah perubahan sumber.`;
+    } else if (changeStatusPending) {
+      reason = 'Template AHSP sedang disinkronkan. Tunggu hingga selesai sebelum mengubah harga.';
+    }
+    applyLockState(locked, reason);
+  }
+
+  updateSyncLockState();
+
+  if (projectId && sourceChange) {
+    window.addEventListener('dp:source-change', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== projectId) return;
+      if (detail.state && detail.state.reload) {
+        pendingTemplateReloadJobs = new Set(
+          Object.keys(detail.state.reload)
+            .map((key) => Number(key))
+            .filter((id) => Number.isFinite(id)),
+        );
+        updateSyncLockState();
+      }
+    });
+  }
+
+  window.addEventListener('dp:change-status', (event) => {
+    const detail = event.detail || {};
+    if (Number(detail.projectId) !== projectId) return;
+    if (detail.scope && detail.scope !== 'harga') return;
+    if (typeof detail.hasChanges === 'undefined') return;
+    changeStatusPending = !!detail.hasChanges;
+    updateSyncLockState();
+  });
 
   // ===== Helpers: numeric & format
   const toUI = (s)=> N ? N.formatForUI(N.enforceDp(s||'', DP)) : (s||'');
@@ -541,7 +631,6 @@
   }
 
   (function initUnifiedExport(){
-    const projectId = ROOT?.dataset?.projectId;
     if (!projectId){
       // bind CSV local only
       btnExportCSV?.addEventListener('click', exportCSVLocal);

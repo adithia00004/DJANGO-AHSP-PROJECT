@@ -879,3 +879,20 @@
   }
 }
 
+.row-pekerjaan.volume-warning{
+  background: color-mix(in srgb, var(--dp-c-warning) 12%, transparent);
+}
+.row-pekerjaan.volume-warning .tree-node{
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.kt-volume-pill{
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: .1rem .5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dp-c-warning) 18%, transparent);
+  color: color-mix(in srgb, var(--dp-c-warning) 65%, var(--dp-c-text));
+}

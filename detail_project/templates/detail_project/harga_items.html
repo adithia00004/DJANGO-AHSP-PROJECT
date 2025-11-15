@@ -54,13 +54,34 @@
   </div>
 </div>
 
+<div id="hi-sync-banner" class="alert alert-warning d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
+  <div>
+    <div class="fw-semibold">Menunggu Template sinkron</div>
+    <div id="hi-sync-text" class="small text-muted">Selesaikan sinkronisasi Template AHSP sebelum mengubah harga.</div>
+  </div>
+  <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="hi-sync-open-template">
+    <i class="bi bi-layout-text-window me-1"></i>Buka Template
+  </button>
+</div>
+
 <!-- ===== App Container ===== -->
 <div id="hi-app"
      class="dp-container"
      data-project-id="{{ project.id }}"
      data-endpoint-list="{% url 'detail_project:api_list_harga_items' project.id %}"
      data-endpoint-save="{% url 'detail_project:api_save_harga_items' project.id %}"
+     data-template-url="{% url 'detail_project:template_ahsp' project.id %}"
      data-locale="id-ID">
+
+  <div id="hi-lock-overlay" class="hi-lock-overlay d-none" role="alert" aria-live="assertive">
+    <div class="hi-lock-card">
+      <h3>Harga Items terkunci</h3>
+      <p class="small text-muted mb-3">Template AHSP sedang disinkronkan. Selesaikan proses tersebut sebelum mengubah harga.</p>
+      <button type="button" class="btn btn-primary btn-sm" id="hi-lock-open-template">
+        <i class="bi bi-layout-text-window me-1"></i>Buka Template AHSP
+      </button>
+    </div>
+  </div>
 
   <!-- ===== Panel BUK ===== -->
   <div class="dp-card dp-border dp-surface mt-3 p-3" role="region" aria-label="Biaya Umum & Keuntungan">

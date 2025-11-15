@@ -493,10 +493,13 @@
       showToast(`✓ ${successCount} pekerjaan berhasil disimpan`, 'success');
       updateStatusBar();
 
+      const savedPekerjaanIds = Array.from(changesByPekerjaan.keys()).map((pid) => Number(pid));
+
       return {
         success: true,
         savedCount: successCount,
         totalPekerjaan,
+        pekerjaanIds: savedPekerjaanIds,
       };
 
     } catch (error) {

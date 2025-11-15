@@ -300,6 +300,26 @@
   margin-top: 4px;
 }
 
+.ra-app .rk-item.rk-item-volume {
+  border-left: 4px solid color-mix(in srgb, var(--dp-c-warning) 60%, transparent);
+  background: color-mix(in srgb, var(--dp-c-warning) 12%, transparent);
+}
+
+.rk-volume-pill {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  background: color-mix(in srgb, var(--dp-c-warning) 18%, transparent);
+  color: color-mix(in srgb, var(--dp-c-warning) 65%, var(--dp-c-text));
+}
+
+.rk-volume-alert {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
 .ra-app .ra-job-item .meta .satuan,
 .ra-app .rk-item .meta .satuan,
 .ra-app .rk-item-satuan {

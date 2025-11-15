@@ -6,7 +6,7 @@ import csv
 import logging
 import math
 from io import BytesIO
-from typing import Any, Dict, Set
+from typing import Any, Dict, Optional, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
 from datetime import datetime
 
@@ -44,6 +44,7 @@ from .services import (
     log_audit,
     touch_project_change,
     get_change_tracker,
+    _populate_expanded_from_raw,
 )
 
 from .export_config import (
@@ -570,6 +571,10 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     keep_k = set()
     keep_all_p = set()  # global keep untuk semua pekerjaan di payload
     assigned_orders: Set[int] = set()
+    source_change_state = {
+        "reload_jobs": set(),
+        "volume_reset_jobs": set(),
+    }
 
     existing_k = {k.id: k for k in Klasifikasi.objects.filter(project=project)}
     existing_s = {s.id: s for s in SubKlasifikasi.objects.filter(project=project)}
@@ -642,6 +647,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             f"Reset all related data for pekerjaan {pobj.id} (kode: {pobj.snapshot_kode})",
             extra={'project_id': project.id, 'pekerjaan_id': pobj.id}
         )
+        source_change_state["volume_reset_jobs"].add(pobj.id)
 
     def _adopt_tmp_into(pobj, tmp, s_obj, order: int):
         """
@@ -676,7 +682,52 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         # (No dedup needed since we already deleted all old details)
         DetailAHSPProject.objects.filter(project=project, pekerjaan=tmp).update(pekerjaan=pobj)
 
+        # Dual storage: rebuild expanded komponen supaya Harga/Rincian tetap sinkron
+        _populate_expanded_from_raw(project, pobj)
+
+        source_change_state["reload_jobs"].add(pobj.id)
+
         tmp.delete()
+
+    def _format_source_label(src: str, ref_id: Optional[int]) -> str:
+        label_map = {
+            Pekerjaan.SOURCE_REF: "REF",
+            Pekerjaan.SOURCE_REF_MOD: "REF_MOD",
+            Pekerjaan.SOURCE_CUSTOM: "CUSTOM",
+        }
+        base = label_map.get(src, src or "UNKNOWN")
+        if src in (Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD) and ref_id:
+            return f"{base}#{ref_id}"
+        return base
+
+    def _log_source_change_audit(
+        pobj: Pekerjaan,
+        *,
+        old_source: str,
+        new_source: str,
+        old_ref_id: Optional[int],
+        new_ref_id: Optional[int],
+    ):
+        if old_source == new_source and (old_ref_id or None) == (new_ref_id or None):
+            return
+        summary = (
+            f"Source change: "
+            f"{_format_source_label(old_source, old_ref_id)} → {_format_source_label(new_source, new_ref_id)}"
+        )
+        try:
+            log_audit(
+                project,
+                pobj,
+                DetailAHSPAudit.ACTION_UPDATE,
+                triggered_by="user",
+                user=request.user,
+                change_summary=summary,
+            )
+        except Exception:
+            logger.exception(
+                "[AUDIT] Failed to log source change for pekerjaan %s",
+                getattr(pobj, "id", None),
+            )
 
     # === Loop utama ===
     for ki, k in enumerate(klas_list):
@@ -759,6 +810,9 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
                     replace = False
                     new_ref_id = p.get("ref_id")
+                    old_source_type = pobj.source_type
+                    old_ref_id = getattr(pobj, "ref_id", None)
+                    change_was_applied = False
 
                     # Ganti tipe sumber → pasti replace
                     if pobj.source_type != src:
@@ -807,6 +861,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                         ordering_index=temp_order,
                                     )
                                 _adopt_tmp_into(pobj, tmp, s_obj, final_order)
+                                change_was_applied = True
                             else:
                                 # ke CUSTOM: update in-place (ID tetap) + bersihkan FK ref
                                 # CRITICAL: Reset related data karena source_type berubah
@@ -856,10 +911,9 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             "ordering_index", "sub_klasifikasi", "snapshot_kode", "snapshot_uraian", "snapshot_satuan"
                         ])
 
-                    # NOTE: pobj.id already added to keep_all_p at line 709
-                    # (moved there to prevent deletion even if validation fails)
-
                 else:
+                    # NOTE: pobj.id already ada di keep_all_p sejak awal blok update,
+                    # sehingga aman melanjutkan proses create/reuse.
                     # ============ CREATE / REUSE ============
 
                     try:
@@ -936,19 +990,30 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                     "sub_klasifikasi","source_type","ref",
                                     "snapshot_kode","snapshot_uraian","snapshot_satuan","ordering_index"
                                 ])
+                                change_was_applied = True
                             else:
                                 pobj = Pekerjaan.objects.create(
                                     project=project, sub_klasifikasi=s_obj, source_type=src,
                                     snapshot_kode=generate_custom_code(project),
                                     snapshot_uraian=uraian, snapshot_satuan=satuan, ordering_index=final_order
                                 )
-                            
+
                     except AHSPReferensi.DoesNotExist:
                         errors.append(_err(
                             f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
                             f"Referensi #{p.get('ref_id')} tidak ditemukan"
                         ))
                         continue
+                    else:
+                        source_change_state["reload_jobs"].add(pobj.id)
+                        if change_was_applied:
+                            _log_source_change_audit(
+                                pobj,
+                                old_source=old_source_type,
+                                new_source=pobj.source_type,
+                                old_ref_id=old_ref_id,
+                                new_ref_id=getattr(pobj, "ref_id", None),
+                            )
 
                 keep_all_p.add(pobj.id)
 
@@ -971,7 +1036,14 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # CACHE FIX: Invalidate cache AFTER transaction commits
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
-    return JsonResponse({"ok": status == 200, "errors": errors, "summary": summary}, status=status)
+    response_payload = {"ok": status == 200, "errors": errors, "summary": summary}
+    if source_change_state["reload_jobs"] or source_change_state["volume_reset_jobs"]:
+        response_payload["change_flags"] = {
+            "reload_job_ids": sorted(source_change_state["reload_jobs"]),
+            "volume_reset_job_ids": sorted(source_change_state["volume_reset_jobs"]),
+        }
+
+    return JsonResponse(response_payload, status=status)
 
 
 

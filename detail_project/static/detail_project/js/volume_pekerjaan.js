@@ -189,6 +189,91 @@
     };
   })();
 
+  const sourceChange = window.DP?.sourceChange || null;
+  const bannerEl = document.getElementById('vp-sync-banner');
+  const bannerTextEl = document.getElementById('vp-sync-text');
+  const bannerFocusBtn = document.getElementById('vp-sync-focus');
+  let pendingVolumeJobs = new Set(
+    sourceChange && projectId ? sourceChange.listVolumeJobs(projectId) : [],
+  );
+
+  function updateVolumeWarnings() {
+    rows.forEach((tr) => {
+      const id = Number(tr.dataset.pekerjaanId);
+      const needsWarning = pendingVolumeJobs.has(id);
+      tr.classList.toggle('vp-row-needs-volume', needsWarning);
+      const cell = tr.querySelector('.text-wrap');
+      if (!cell) return;
+      let pill = cell.querySelector('.vp-row-pill');
+      if (needsWarning) {
+        if (!pill) {
+          pill = document.createElement('span');
+          pill.className = 'vp-row-pill';
+          pill.textContent = 'Perlu cek';
+          cell.appendChild(pill);
+        }
+      } else if (pill) {
+        pill.remove();
+      }
+    });
+  }
+
+  function updateVolumeBanner() {
+    if (!bannerEl) return;
+    const count = pendingVolumeJobs.size;
+    const shouldShow = count > 0;
+    bannerEl.classList.toggle('d-none', !shouldShow);
+    if (!shouldShow) return;
+    if (bannerTextEl) {
+      bannerTextEl.textContent = `${count} pekerjaan perlu diperbarui setelah perubahan sumber.`;
+    }
+  }
+
+  function resolveVolumeJobs(jobIds) {
+    if (!jobIds || !jobIds.length) return;
+    const resolved = jobIds.map((id) => Number(id)).filter((id) => pendingVolumeJobs.delete(id));
+    if (!resolved.length) return;
+    try {
+      sourceChange?.markVolumeResolved(projectId, resolved);
+    } catch (err) {
+      console.warn('[Volume] Failed to update volume reset flags', err);
+    }
+    updateVolumeWarnings();
+    updateVolumeBanner();
+  }
+
+  function jumpToFirstWarning() {
+    const target = rows.find((tr) => tr.classList.contains('vp-row-needs-volume'));
+    if (!target) {
+      TOAST.warn('Tidak ada pekerjaan yang perlu diperbarui.');
+      return;
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('vp-row-highlight');
+    setTimeout(() => target.classList.remove('vp-row-highlight'), 1500);
+  }
+
+  updateVolumeWarnings();
+  updateVolumeBanner();
+  bannerFocusBtn?.addEventListener('click', (event) => {
+    event.preventDefault();
+    jumpToFirstWarning();
+  });
+
+  if (projectId && sourceChange) {
+    window.addEventListener('dp:source-change', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== Number(projectId)) return;
+      if (detail.state && detail.state.volume) {
+        pendingVolumeJobs = new Set(
+          Object.keys(detail.state.volume).map((key) => Number(key)).filter((id) => Number.isFinite(id))
+        );
+        updateVolumeWarnings();
+        updateVolumeBanner();
+      }
+    });
+  }
+
   // ---- Utils
   function getCsrf() {
     const m = document.cookie.match(/csrftoken=([^;]+)/);
@@ -1748,6 +1833,7 @@
         setRowDirtyVisual(id, false);
       });
       setBtnSaveEnabled();
+      resolveVolumeJobs(postingIds);
 
       const realChanges = changes.filter(c => roundHalfUp(c.before, STORE_PLACES) !== roundHalfUp(c.after, STORE_PLACES));
       setSaveStatus(`Tersimpan ${realChanges.length} item.`, 'success');

@@ -508,3 +508,41 @@
     transition-duration: 0.01ms !important;
   }
 }
+#hi-app{
+  position: relative;
+}
+
+#hi-sync-banner{
+  border: 1px solid var(--dp-c-warning);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  margin: 1rem 0;
+}
+
+.hi-lock-overlay{
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--dp-c-bg) 85%, rgba(0,0,0,0.05));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: var(--dp-z-modal);
+  backdrop-filter: blur(1px);
+}
+.hi-lock-overlay.d-none{
+  display: none;
+}
+.hi-lock-card{
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-lg);
+  padding: 1.5rem;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: var(--dp-shadow-md);
+}
+.hi-lock-card h3{
+  font-size: 1.1rem;
+  margin-bottom: .5rem;
+}

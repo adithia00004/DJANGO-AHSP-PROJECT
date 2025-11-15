@@ -38,6 +38,7 @@
 (function(){
   const ROOT = document.getElementById('rekap-app');
   if (!ROOT) return;
+  const projectId = Number(ROOT.dataset.projectId || '0');
 
   // ====== TIER 4: Constants (extracted magic numbers) ======
   const CONSTANTS = {
@@ -139,6 +140,8 @@
   const $leftPane = ROOT.querySelector('.rk-left');
   // Toast
   const $toast    = ROOT.querySelector('#rk-toast');
+  const volumeAlertEl = document.getElementById('rk-volume-alert');
+  const sourceChange = window.DP?.sourceChange || null;
 
 
   // ====== state ======
@@ -150,6 +153,9 @@
   let projectPPN = 0.00;
   const cacheDetail = new Map();
   let selectToken = 0;
+  let pendingVolumeJobs = new Set(
+    sourceChange && projectId ? sourceChange.listVolumeJobs(projectId) : [],
+  );
 
   // ====== utils ======
   /**
@@ -572,7 +578,8 @@
       // BUG FIX #1: Display G (HSP per satuan) instead of total (G × volume)
 
       const li = document.createElement('li');
-      li.className = 'rk-item';
+      const needsVolumeUpdate = pendingVolumeJobs.has(Number(r.pekerjaan_id));
+      li.className = 'rk-item' + (needsVolumeUpdate ? ' rk-item-volume' : '');
       li.dataset.id = r.pekerjaan_id;
       li.innerHTML = `
         <div class="rk-item-title">${esc(r.uraian || '')}</div>
@@ -581,6 +588,7 @@
           ${Math.abs(bukEff - projectBUK) > 1e-6 ? `<span class="rk-chip rk-chip-warn mono">${bukEff.toFixed(2)}%</span>` : ''}
           <span class="rk-chip mono">${esc(r.satuan || '')}</span>
           <span class="row-note">HSP:</span><span class="mono">${fmt(G)}</span>
+          ${needsVolumeUpdate ? '<span class="rk-volume-pill">Perlu update volume</span>' : ''}
         </div>
       `;
       li.addEventListener('click', () => selectItem(r.pekerjaan_id));
@@ -593,6 +601,7 @@
     }
 
     highlightActive();
+    updateVolumeAlertForSelection(selectedId);
   }
 
   /**
@@ -626,6 +635,22 @@
     }
   }
 
+  if (projectId && sourceChange) {
+    window.addEventListener('dp:source-change', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== projectId) return;
+      if (detail.state && detail.state.volume) {
+        pendingVolumeJobs = new Set(
+          Object.keys(detail.state.volume).map((key) => Number(key)).filter((id) => Number.isFinite(id)),
+        );
+        renderList();
+        if (selectedId) {
+          updateVolumeAlertForSelection(selectedId);
+        }
+      }
+    });
+  }
+
   // ====== kanan: detail satu pekerjaan ======
   /**
    * Select a pekerjaan and load its detail in right panel
@@ -642,6 +667,7 @@
     selectedId = id;
     localStorage.setItem('rk-last-pkj-id', String(id));
     highlightActive();
+    updateVolumeAlertForSelection(id);
     const myToken = ++selectToken;
 
     setLoading(true, 'detail'); // TIER 3: Granular loading for detail panel only
@@ -1214,6 +1240,8 @@
   }
 
 })();
-
-
-
+  function updateVolumeAlertForSelection(id) {
+    if (!volumeAlertEl) return;
+    const needsWarning = pendingVolumeJobs.has(Number(id));
+    volumeAlertEl.classList.toggle('d-none', !needsWarning);
+  }

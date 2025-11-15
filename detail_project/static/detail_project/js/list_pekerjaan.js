@@ -1382,6 +1382,14 @@
         body: JSON.stringify(payload)
       });
 
+      if (response?.change_flags && window.DP?.sourceChange) {
+        try {
+          window.DP.sourceChange.pushFlags(projectId, response.change_flags);
+        } catch (err) {
+          console.warn('[LP] Failed to push source change flags', err);
+        }
+      }
+
       // BUGFIX: Check for validation errors in response
       // Backend returns status 207 with errors array when validation fails
       if (response && response.errors && response.errors.length > 0) {

@@ -25,6 +25,26 @@
   let dirty = false;
   let kategoriMeta = [];       // [{code,label}]
   const rowsByJob = {};        // { jobId: [{kategori,kode,uraian,satuan,koefisien}] }
+  const projectId = Number(app.dataset.projectId);
+  const sourceChange = window.DP?.sourceChange || null;
+  const bannerEl = $('#ta-sync-banner');
+  const bannerTextEl = $('#ta-sync-banner-text');
+  const bannerReloadBtn = $('#ta-banner-reload');
+  const editorBlocker = $('#ta-editor-blocker');
+  const editorReloadBtn = $('#ta-editor-reload');
+  const conflictModalEl = $('#taConflictModal');
+  const conflictModal = (conflictModalEl && window.bootstrap && window.bootstrap.Modal)
+    ? new bootstrap.Modal(conflictModalEl, { backdrop: 'static', keyboard: false })
+    : null;
+  const CONFLICT_MESSAGE = [
+    'KONFLIK DATA TERDETEKSI!',
+    'Data pekerjaan ini telah diubah oleh pengguna lain sejak Anda membukanya.',
+    'Pilih tindakan: Muat ulang data terbaru atau timpa perubahan terbaru mereka.'
+  ].join('\n\n');
+  let pendingReloadJobs = new Set(
+    sourceChange && projectId ? sourceChange.listReloadJobs(projectId) : [],
+  );
+  let changeStatusPending = false;
 
   // === Koefisien numeric helpers (dp=6)
   const __NUM = window.Numeric || null;
@@ -381,6 +401,7 @@
   function selectJob(li) {
     const id = +li.dataset.pekerjaanId;
     if (!id || id === activeJobId) return;
+    const requiresReload = jobNeedsReload(id);
 
     // CRITICAL SAFETY: Warn if current job has unsaved changes
     if (dirty && activeJobId) {
@@ -410,7 +431,7 @@
     }
 
     // No unsaved changes, proceed directly
-    selectJobInternal(li, id);
+    selectJobInternal(li, id, requiresReload);
   }
 
   // Internal function to actually perform job selection (without checks)
@@ -424,9 +445,11 @@
     $('#ta-active-satuan').textContent = $('.satuan', li)?.textContent?.trim() || '—';
     $('#ta-active-source').innerHTML = `<span class="badge">${activeSource}</span>`;
     setDirty(false);
+    const requiresReload = forceRefresh || jobNeedsReload(id);
+    toggleEditorBlocker(requiresReload);
 
     // CACHE FIX: Check cache only if not forcing refresh
-    if (!forceRefresh && rowsByJob[id]) {
+    if (!requiresReload && rowsByJob[id]) {
       paint(rowsByJob[id].items);
       kategoriMeta = rowsByJob[id].kategoriMeta || kategoriMeta;
       readOnly = rowsByJob[id].readOnly || false;
@@ -448,8 +471,14 @@
       rowsByJob[id] = {items, kategoriMeta, readOnly, updatedAt};
       paint(items);
       setEditorModeBySource();
+      if (requiresReload) {
+        resolveReloadJob(id);
+      } else {
+        toggleEditorBlocker(false);
+      }
     }).catch(() => {
       toast('Gagal memuat detail', 'error');
+      toggleEditorBlocker(false);
     });
   }
 
@@ -463,16 +492,174 @@
     updateStats();
   }
 
+  function jobNeedsReload(id) {
+    return pendingReloadJobs.has(Number(id));
+  }
+
+  function syncPendingState(state) {
+    if (!state || !state.reload) {
+      pendingReloadJobs = new Set();
+      return;
+    }
+    pendingReloadJobs = new Set(
+      Object.keys(state.reload).map((key) => Number(key)).filter((id) => Number.isFinite(id)),
+    );
+  }
+
+  function updateJobBadges() {
+    const items = $$('#ta-job-list .ta-job-item');
+    items.forEach((li) => {
+      const id = Number(li.dataset.pekerjaanId);
+      const needsReload = jobNeedsReload(id);
+      li.classList.toggle('ta-job-item--stale', needsReload);
+      const meta = li.querySelector('.meta');
+      if (!meta) return;
+      let pill = meta.querySelector('.ta-job-pill');
+      if (needsReload) {
+        if (!pill) {
+          pill = document.createElement('span');
+          pill.className = 'ta-job-pill';
+          pill.textContent = 'Perlu reload';
+          meta.appendChild(pill);
+        }
+      } else if (pill) {
+        pill.remove();
+      }
+    });
+  }
+
+  function updateBanner() {
+    if (!bannerEl) return;
+    const pendingCount = pendingReloadJobs.size;
+    const shouldShow = pendingCount > 0 || changeStatusPending;
+    bannerEl.classList.toggle('d-none', !shouldShow);
+    if (!shouldShow) return;
+
+    const messages = [];
+    if (pendingCount > 0) {
+      messages.push(`${pendingCount} pekerjaan wajib dimuat ulang (sumber berubah).`);
+    }
+    if (changeStatusPending) {
+      messages.push('Ada perubahan terbaru pada Template AHSP.');
+    }
+    if (bannerTextEl) {
+      bannerTextEl.textContent = messages.join(' ');
+    }
+  }
+
+  function toggleEditorBlocker(show) {
+    if (!editorBlocker) return;
+    editorBlocker.classList.toggle('d-none', !show);
+  }
+
+  function resolveReloadJob(jobId) {
+    if (!jobNeedsReload(jobId)) return;
+    pendingReloadJobs.delete(Number(jobId));
+    try {
+      sourceChange?.markReloaded(projectId, [jobId]);
+    } catch (err) {
+      console.warn('[TA] Failed to mark reload job resolved', err);
+    }
+    updateJobBadges();
+    updateBanner();
+    if (Number(jobId) === Number(activeJobId)) {
+      toggleEditorBlocker(false);
+    }
+  }
+
+  function forceReloadActiveJob() {
+    if (!activeJobId) {
+      toast('Pilih pekerjaan yang ingin dimuat ulang.', 'warning');
+      return;
+    }
+    const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
+    if (!currentJobEl) {
+      toast('Pekerjaan tidak ditemukan.', 'error');
+      return;
+    }
+    delete rowsByJob[activeJobId];
+    selectJobInternal(currentJobEl, activeJobId, true);
+  }
+
+  function promptConflictResolution() {
+    if (!conflictModal) {
+      const fallback = window.confirm(CONFLICT_MESSAGE);
+      return Promise.resolve(fallback ? 'reload' : 'overwrite');
+    }
+    return new Promise((resolve) => {
+      let resolved = false;
+      const handleClick = (event) => {
+        const btn = event.target.closest('[data-choice]');
+        if (!btn) return;
+        event.preventDefault();
+        resolved = true;
+        const choice = btn.getAttribute('data-choice') === 'overwrite' ? 'overwrite' : 'reload';
+        conflictModalEl.removeEventListener('click', handleClick);
+        conflictModalEl.removeEventListener('hidden.bs.modal', handleHidden);
+        conflictModal.hide();
+        resolve(choice);
+      };
+      const handleHidden = () => {
+        conflictModalEl.removeEventListener('click', handleClick);
+        conflictModalEl.removeEventListener('hidden.bs.modal', handleHidden);
+        if (!resolved) {
+          resolve('reload');
+        }
+      };
+      conflictModalEl.addEventListener('click', handleClick);
+      conflictModalEl.addEventListener('hidden.bs.modal', handleHidden);
+      conflictModal.show();
+    });
+  }
+
   function updateStats() {
     const n = $$('.ta-row').length;
     $('#ta-row-stats').textContent = `${n} baris`;
   }
+
+  updateJobBadges();
+  updateBanner();
 
   // ---------- EVENTS ----------
   // pilih pekerjaan
   $$('#ta-job-list .ta-job-item').forEach(li => {
     li.addEventListener('click', () => selectJob(li));
     li.addEventListener('keydown', (e) => { if (e.key==='Enter' || e.key===' ') { e.preventDefault(); selectJob(li);} });
+  });
+
+  if (projectId && sourceChange) {
+    window.addEventListener('dp:source-change', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== projectId) return;
+      if (detail.state) {
+        syncPendingState(detail.state);
+        updateJobBadges();
+        updateBanner();
+        if (activeJobId) {
+          toggleEditorBlocker(jobNeedsReload(activeJobId));
+        }
+      }
+    });
+  }
+
+  if (projectId) {
+    window.addEventListener('dp:change-status', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== projectId) return;
+      if (detail.scope && detail.scope !== 'template') return;
+      if (typeof detail.hasChanges === 'undefined') return;
+      changeStatusPending = !!detail.hasChanges;
+      updateBanner();
+    });
+  }
+
+  bannerReloadBtn?.addEventListener('click', (event) => {
+    event.preventDefault();
+    forceReloadActiveJob();
+  });
+  editorReloadBtn?.addEventListener('click', (event) => {
+    event.preventDefault();
+    forceReloadActiveJob();
   });
 
   // filter
@@ -573,60 +760,40 @@
       // OPTIMISTIC LOCKING: Handle conflict (409 status)
       if (!js.ok && js.conflict) {
         console.warn('[SAVE] Conflict detected - data modified by another user');
-
-        // Show conflict dialog with options
-        const confirmMsg = (
-          "⚠️ KONFLIK DATA TERDETEKSI!\n\n" +
-          "Data pekerjaan ini telah diubah oleh pengguna lain sejak Anda membukanya.\n\n" +
-          "Pilihan:\n" +
-          "• OK = Muat Ulang (lihat perubahan terbaru, data Anda akan hilang)\n" +
-          "• Cancel = Timpa (simpan data Anda, perubahan pengguna lain akan hilang)\n\n" +
-          "⚠️ Timpa hanya jika Anda yakin perubahan Anda lebih penting!"
-        );
-
-        if (confirm(confirmMsg)) {
-          // User chose to reload - refresh page to get latest data
-          console.log('[SAVE] User chose to reload page');
-          toast('🔄 Memuat ulang data terbaru...', 'info');
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
-        } else {
-          // User chose to force overwrite - retry save without timestamp
-          console.log('[SAVE] User chose to force overwrite - retrying without timestamp check');
-          toast('⚠️ Menyimpan dengan mode timpa...', 'warning');
-
-          // Retry save without client_updated_at (bypass optimistic locking)
-          setTimeout(() => {
+        return promptConflictResolution().then((choice) => {
+          if (choice === 'overwrite') {
+            console.log('[SAVE] Force overwrite selected');
+            toast('Menimpa perubahan terbaru...', 'warning');
             const retryPayload = { rows: rowsCanon };
-            fetch(url, {
+            return fetch(url, {
               method: 'POST',
               credentials: 'same-origin',
               headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-              body: JSON.stringify(retryPayload)
-            }).then(r => r.json()).then(retryJs => {
+              body: JSON.stringify(retryPayload),
+            }).then((retryRes) => retryRes.json()).then((retryJs) => {
               if (retryJs.ok) {
-                toast('✅ Data berhasil disimpan (mode timpa)', 'success');
+                toast('Data berhasil disimpan (mode timpa)', 'success');
                 setDirty(false);
-                // Update cached data with new timestamp
                 if (retryJs.pekerjaan?.updated_at) {
+                  rowsByJob[activeJobId] = rowsByJob[activeJobId] || {};
                   rowsByJob[activeJobId].updatedAt = retryJs.pekerjaan.updated_at;
                 }
               } else {
                 const errMsg = retryJs.user_message || 'Gagal menyimpan data. Silakan coba lagi.';
                 toast(errMsg, 'error');
               }
-            }).catch(err => {
+            }).catch((err) => {
               console.error('[SAVE] Retry failed:', err);
-              toast('❌ Gagal menyimpan. Periksa koneksi internet Anda dan coba lagi.', 'error');
-            }).finally(() => {
-              if (spin) spin.hidden = true;
-              if (btnSave) btnSave.disabled = false;
+              toast('Gagal menyimpan. Periksa koneksi internet Anda.', 'error');
             });
-          }, 500);
-        }
-        return; // Exit early - don't process as regular error
+          }
+          console.log('[SAVE] Reload selected to resolve conflict');
+          toast('Memuat ulang data terbaru...', 'info');
+          setTimeout(() => window.location.reload(), 1000);
+          return null;
+        });
       }
+
 
       // IMPROVED: Use user_message from server for better UX
       if (!js.ok) {

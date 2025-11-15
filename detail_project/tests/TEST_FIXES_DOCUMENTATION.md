@@ -590,3 +590,29 @@ Output terakhir (13 Nov 2025): `.... [100%]`.
 **🎉 Semua test di `test_page_interactions_comprehensive.py` berhasil! Ready for production deployment!**
 
 **📊 Full Test Suite Status:** 340/391 passing (87%) - Pre-existing issues documented above.
+## Batch 4 - Source Workflow Sync Lock
+
+**Tanggal:** 16 November 2025  
+**File:** `views_api.py`, `static/detail_project/js/source_change_state.js`, `templates/detail_project/template_ahsp.html`, `static/detail_project/js/template_ahsp.js`, `static/detail_project/js/harga_items.js`, `templates/detail_project/harga_items.html`, `static/detail_project/js/volume_pekerjaan.js`, `templates/detail_project/volume_pekerjaan.html`, `static/detail_project/js/kelola_tahapan_grid.js`, `static/detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_module.js`, `static/detail_project/js/rincian_ahsp.js`, dokumentasi roadmap (`CELAH_PERUBAHAN_SOURCE_ROADMAP.md`, `REF_SOURCE_REFACTOR_GUIDE.md`)
+
+**Masalah:**
+- Tidak ada sumber kebenaran lintas halaman untuk mengetahui pekerjaan mana yang harus dimuat ulang setelah `source_type` berubah.
+- Template AHSP masih memperbolehkan edit walau payload lama/stale, serta konflik optimistic locking masih memakai dialog `confirm` standar yang membingungkan.
+- Harga Items bisa langsung diedit meskipun Template belum menutup reload, mengakibatkan data harga terlanjur bertentangan dengan komponen baru.
+- Volume/Tahapan, serta panel Rincian, tidak memberi sinyal ketika metadata volume/tahapan harus diperbarui akibat source change.
+
+**Solusi Teknis:**
+1. Backend `api_upsert_list_pekerjaan()` kini merekam perubahan source per pekerjaan, menuliskan `change_flags` pada response, serta mencatat audit summary "Source change: OLD -> NEW".
+2. Ditambahkan modul bersama `source_change_state.js` + event `dp:source-change`/`dp:change-status` yang menyimpan daftar pekerjaan yang butuh reload atau reset volume.
+3. Template AHSP menampilkan banner sinkron, overlay blocker, dan modal konflik baru; job yang masuk `reload_job_ids` otomatis memaksa re-fetch sebelum form bisa dipakai.
+4. Harga Items membaca event tersebut untuk mengunci tombol/kolom harga sampai Template selesai (tersedia tombol pintas ke halaman Template).
+5. Volume Pekerjaan + Kelola Tahapan + Rincian AHSP menyorot pekerjaan yang butuh update volume/tahapan, serta menghapus flag ketika user menyimpan ulang.
+6. Dokumentasi roadmap dan refactor guide diperbarui agar tracking per fase tetap sinkron dengan implementasi.
+
+**Verifikasi:**
+1. Ubah `source_type` salah satu pekerjaan REF?CUSTOM atau sebaliknya melalui List Pekerjaan. Pastikan response `change_flags` terisi.
+2. Di Template AHSP, pekerjaan tersebut tampil dengan badge "Perlu reload" dan tombol simpan terkunci sampai reload manual dijalankan.
+3. Buka Harga Items sebelum reload Template: form harus terkunci dan banner mengarahkan ke halaman Template.
+4. Setelah menyimpan ulang Template, buka Volume dan Kelola Tahapan � baris terkait seharusnya memiliki badge peringatan sampai user menyimpan volume/jadwal baru.
+5. Di Rincian AHSP, pekerjaan pending volume menampilkan indikator dan alert di panel kanan. Setelah volume disimpan ulang, indikator hilang otomatis.
+6. Review dokumentasi `CELAH_PERUBAHAN_SOURCE_ROADMAP.md` dan `REF_SOURCE_REFACTOR_GUIDE.md` untuk memastikan log pembaruan tercatat.

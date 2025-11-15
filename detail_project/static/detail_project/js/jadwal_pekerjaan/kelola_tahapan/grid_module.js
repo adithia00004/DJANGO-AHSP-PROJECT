@@ -115,7 +115,15 @@
     const { state, utils, leftRows } = ctx;
     const isExpanded = nodeIsExpanded(state, node.id);
     const isVisible = parentVisible;
-    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`.trim();
+    const needsVolumeReset = (
+      node.type === 'pekerjaan' &&
+      state.volumeResetJobs instanceof Set &&
+      state.volumeResetJobs.has(node.id)
+    );
+    const rowClasses = [`row-${node.type}`];
+    if (!isVisible) rowClasses.push('row-hidden');
+    if (needsVolumeReset) rowClasses.push('volume-warning');
+    const rowClass = rowClasses.join(' ').trim();
     const levelClass = `level-${node.level}`;
 
     let toggleIcon = '';
@@ -141,6 +149,7 @@
         <td class="col-uraian ${levelClass}">
           <div class="tree-node">
             ${utils.escapeHtml(node.nama)}
+            ${needsVolumeReset ? '<span class="kt-volume-pill">Perlu update volume</span>' : ''}
           </div>
         </td>
         <td class="col-volume text-right">${volume}</td>
@@ -159,7 +168,12 @@
     const { state, rightRows } = ctx;
     const isExpanded = nodeIsExpanded(state, node.id);
     const isVisible = parentVisible;
-    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}`.trim();
+    const needsVolumeReset = (
+      node.type === 'pekerjaan' &&
+      state.volumeResetJobs instanceof Set &&
+      state.volumeResetJobs.has(node.id)
+    );
+    const rowClass = `row-${node.type} ${isVisible ? '' : 'row-hidden'}${needsVolumeReset ? ' volume-warning' : ''}`.trim();
 
     const timeCells = state.timeColumns
       .map((col) => renderTimeCell(node, col, ctx))

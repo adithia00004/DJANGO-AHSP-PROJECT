@@ -724,3 +724,37 @@ td.text-wrap.text-start {
    MAINTENANCE: Easier - design changes update via component library
    CONSISTENCY: 100% - otomatis match dengan list_pekerjaan & rekap_rab
    =========================================================== */
+#vp-sync-banner{
+  border: 1px solid var(--dp-c-warning);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  margin: 1rem 0;
+}
+
+.vp-row-needs-volume{
+  background: color-mix(in srgb, var(--dp-c-warning) 12%, transparent);
+  border-left: 4px solid color-mix(in srgb, var(--dp-c-warning) 60%, transparent);
+}
+
+.vp-row-pill{
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .1rem .45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dp-c-warning) 18%, transparent);
+  color: color-mix(in srgb, var(--dp-c-warning) 65%, var(--dp-c-text));
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-left: .5rem;
+}
+
+.vp-row-highlight{
+  animation: vpRowPulse 1s ease;
+}
+
+@keyframes vpRowPulse{
+  0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5); }
+  100% { box-shadow: 0 0 0 12px transparent; }
+}
