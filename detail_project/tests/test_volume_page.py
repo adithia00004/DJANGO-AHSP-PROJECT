@@ -167,6 +167,9 @@ class VolumePekerjaanPageTests(TestCase):
         # Fallback: gunakan path yang dipakai FE
         return f"/detail_project/api/project/{pid}/rekap/"
 
+    def _url_list(self):
+        return reverse("detail_project:api_list_volume_pekerjaan", kwargs={"project_id": self.project.id})
+
     # ---------- Permission / auth ----------
     def test_requires_login_redirect(self):
         r = self.c.get(self._url_page())
@@ -317,6 +320,46 @@ class VolumePekerjaanPageTests(TestCase):
         self.assertTrue(len(data.get("errors", [])) >= 1)
         vp = VolumePekerjaan.objects.get(project=self.project, pekerjaan=self.pkj1)
         self.assertEqual(vp.quantity, Decimal("3.000"))
+
+    # ---------- API: list volume ----------
+    def test_api_list_volume_requires_login(self):
+        r = self.c.get(self._url_list())
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("login", r["Location"])
+
+    def test_api_list_volume_defaults_to_zero(self):
+        self.c.login(username="owner", password="pass")
+        response = self.c.get(self._url_list())
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        items = payload.get("items", [])
+        self.assertGreaterEqual(len(items), 2)
+        qmap = {row["pekerjaan_id"]: row["quantity"] for row in items}
+        self.assertEqual(qmap[self.pkj1.id], "0.000")
+        self.assertEqual(qmap[self.pkj2.id], "0.000")
+        dp = payload.get("decimal_places")
+        expected_dp = VolumePekerjaan._meta.get_field("quantity").decimal_places
+        self.assertEqual(dp, expected_dp)
+
+    def test_api_list_volume_reflects_saved_entries(self):
+        VolumePekerjaan.objects.update_or_create(
+            project=self.project,
+            pekerjaan=self.pkj1,
+            defaults={"quantity": Decimal("12.345")},
+        )
+        VolumePekerjaan.objects.update_or_create(
+            project=self.project,
+            pekerjaan=self.pkj2,
+            defaults={"quantity": Decimal("0.100")},
+        )
+        self.c.login(username="owner", password="pass")
+        response = self.c.get(self._url_list())
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        qmap = {row["pekerjaan_id"]: row["quantity"] for row in data.get("items", [])}
+        self.assertEqual(qmap[self.pkj1.id], "12.345")
+        self.assertEqual(qmap[self.pkj2.id], "0.100")
 
     # ---------- API: rekap ----------
     def test_api_get_rekap_reflects_volume_and_hsp(self):

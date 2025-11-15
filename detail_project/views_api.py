@@ -5,6 +5,7 @@ import json
 import csv
 import logging
 import math
+import re
 from io import BytesIO
 from typing import Any, Dict, Optional, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
@@ -32,6 +33,7 @@ from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     DetailAHSPProject, DetailAHSPExpanded, DetailAHSPAudit,
     HargaItemProject, VolumeFormulaState, ProjectPricing,  # NEW
+    ProjectChangeStatus,
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
@@ -75,11 +77,83 @@ _KAT_CODE_BY_LABEL = {
     "Lain-lain": "LAIN", "Lainnya": "LAIN", "LAIN": "LAIN",
 }
 
+
 def _normalize_kategori(val):
     if val is None:
         return None
     v = str(val).strip()
     return _KAT_CODE_BY_LABEL.get(v, None)
+
+
+_UNIT_AUTO_KATEGORI = {
+    HargaItemProject.KATEGORI_TK,
+    HargaItemProject.KATEGORI_BAHAN,
+    HargaItemProject.KATEGORI_ALAT,
+}
+_UNIT_CODE_PREFIX = "Unit-"
+_UNIT_CODE_PATTERN = re.compile(rf"^{_UNIT_CODE_PREFIX}(\d{{4}})$")
+
+
+def _lock_or_create_change_status(project):
+    tracker = (
+        ProjectChangeStatus.objects.select_for_update()
+        .filter(project=project)
+        .first()
+    )
+    if tracker:
+        return tracker
+    try:
+        return ProjectChangeStatus.objects.create(project=project)
+    except IntegrityError:
+        return (
+            ProjectChangeStatus.objects.select_for_update()
+            .get(project=project)
+        )
+
+
+def _scan_unit_code_seed(project):
+    max_idx = 0
+    codes = (
+        HargaItemProject.objects.filter(
+            project=project, kode_item__startswith=_UNIT_CODE_PREFIX
+        ).values_list("kode_item", flat=True)
+    )
+    for kode in codes:
+        if not kode:
+            continue
+        match = _UNIT_CODE_PATTERN.match(kode)
+        if match:
+            idx = int(match.group(1))
+            if idx > max_idx:
+                max_idx = idx
+    return max_idx
+
+
+def _auto_unit_code(project, state, taken_codes: Set[str]) -> str:
+    tracker = state.get("tracker")
+    if tracker is None:
+        tracker = _lock_or_create_change_status(project)
+        state["tracker"] = tracker
+        state["seed_synced"] = False
+    if not state.get("seed_synced"):
+        seed_value = _scan_unit_code_seed(project)
+        if seed_value > tracker.unit_code_sequence:
+            tracker.unit_code_sequence = seed_value
+        state["seed_synced"] = True
+    next_value = tracker.unit_code_sequence + 1
+    candidate = f"{_UNIT_CODE_PREFIX}{next_value:04d}"
+    while candidate in taken_codes:
+        next_value += 1
+        candidate = f"{_UNIT_CODE_PREFIX}{next_value:04d}"
+    tracker.unit_code_sequence = next_value
+    state["dirty"] = True
+    return candidate
+
+
+def _commit_unit_code_state(state, *, should_persist: bool):
+    tracker = state.get("tracker")
+    if tracker and state.get("dirty") and should_persist:
+        tracker.save(update_fields=["unit_code_sequence", "updated_at"])
 
 
 def _src_to_str(val):
@@ -1426,8 +1500,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
     # Normalisasi & validasi
     errors = []
-    normalized = []  # tuple: (kat, kode, uraian, satuan, koef, ref_ahsp_obj)
-    seen_kode = set()
+    normalized = []  # tuple: (kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj)
+    seen_kode: Set[str] = set()
+    unit_code_state: Dict[str, object] = {}
     valid_kats = set(dict(HargaItemProject.KATEGORI_CHOICES).keys())
 
     for i, r in enumerate(rows):
@@ -1436,6 +1511,8 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             errors.append(_err(f"rows[{i}].kategori", "Kategori tidak valid")); continue
 
         kode = (r.get('kode') or '').strip()
+        if not kode and kat in _UNIT_AUTO_KATEGORI:
+            kode = _auto_unit_code(project, unit_code_state, seen_kode)
         uraian = (r.get('uraian') or '').strip()
         satuan = (r.get('satuan') or '').strip() or None
         koef = parse_any(r.get('koefisien'))  # parser robust (koma/titik, ribuan)
@@ -1828,6 +1905,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         detail_last_modified=detail_change_ts,
     )
     touch_project_change(project, ahsp=True)
+    _commit_unit_code_state(unit_code_state, should_persist=len(saved_raw_details) > 0)
     logger.info(f"[SAVE_DETAIL_AHSP] Updated pekerjaan.detail_ready = {detail_ready}")
 
     # OPSI A: Update project timestamp for optimistic locking

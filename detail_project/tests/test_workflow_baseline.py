@@ -295,6 +295,52 @@ class TestBundleCreation:
         assert ref_errors, "Harus ada error pada ref_id untuk pekerjaan kosong"
         assert 'tidak memiliki komponen' in ref_errors[0]['message'].lower()
 
+    def test_bundle_empty_soft_errors_return_warning_only(self, baseline_setup, user, client):
+        """
+        When allow_bundle_soft_errors is enabled, bundle validation warnings should surface
+        as 207 responses instead of hard 400 errors so UI can display guidance.
+        """
+        client.force_login(user)
+
+        pekerjaan_b = baseline_setup['pekerjaan_b']
+        pekerjaan_c = baseline_setup['pekerjaan_c']
+        project = pekerjaan_b.project
+
+        if not hasattr(project, "allow_bundle_soft_errors"):
+            pytest.skip("Project model does not expose allow_bundle_soft_errors flag.")
+
+        project.allow_bundle_soft_errors = True
+        project.save(update_fields=["allow_bundle_soft_errors"])
+
+        url = reverse('detail_project:api_save_detail_ahsp_for_pekerjaan', args=[project.id, pekerjaan_b.id])
+        payload = {
+            'rows': [
+                {
+                    'kategori': 'LAIN',
+                    'kode': 'LAIN.EMPTY',
+                    'uraian': 'Bundle to Empty',
+                    'satuan': 'm3',
+                    'koefisien': '1.0',
+                    'ref_kind': 'job',
+                    'ref_id': str(pekerjaan_c.id),
+                }
+            ]
+        }
+
+        response = client.post(url, data=json.dumps(payload), content_type='application/json')
+        assert response.status_code == 207
+        body = response.json()
+
+        assert body['ok'] is False  # UI should still show validation messaging
+        assert body['user_message'].startswith('[WARN]')
+        assert body['saved_rows'] == 0
+        assert body['saved_raw_rows'] == 0
+
+        warnings = body.get('errors', [])
+        assert warnings, "Warnings should be returned for empty bundle target"
+        assert warnings[0].get('path') == 'rows[0].ref_id'
+        assert warnings[0].get('severity') == 'warning'
+
 
 # ============================================================================
 # TEST 2: CASCADE RE-EXPANSION

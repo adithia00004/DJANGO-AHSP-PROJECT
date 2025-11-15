@@ -55,7 +55,7 @@ def to_dp_str(x, dp_or_spec):
 
 
 def parse_any(val) -> Decimal | None:
-    """
+    r"""
     Parser robust berbagai format:
       "2,7275"      -> 2.7275
       "1.234,555"   -> 1.234555  (KHUSUS: treat '.' as decimal, ',' as grouping)

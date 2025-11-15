@@ -909,6 +909,10 @@ class ProjectChangeStatus(TimeStampedModel):
     )
     last_ahsp_change = models.DateTimeField(null=True, blank=True)
     last_harga_change = models.DateTimeField(null=True, blank=True)
+    unit_code_sequence = models.PositiveIntegerField(
+        default=0,
+        help_text="Pencacah kode otomatis 'Unit-XXXX' terakhir per proyek."
+    )
 
     def __str__(self):
         return f"ChangeStatus[{self.project_id}]"
