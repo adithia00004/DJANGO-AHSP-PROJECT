@@ -11,12 +11,13 @@ Used by monitoring systems (Prometheus, Datadog, etc.) to verify application hea
 """
 
 import os
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.db import connection
 from django.core.cache import cache
 from django.views.decorators.http import require_GET
 from django.views.decorators.csrf import csrf_exempt
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,6 @@ def health_check(request):
         "timestamp": "2025-11-07T12:00:00Z"
     }
     """
-    from datetime import datetime, timezone
-
     health = {
         'status': 'ok',
         'checks': {},
@@ -68,9 +67,17 @@ def health_check(request):
         'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
 
-    if request.GET.get('mode') == 'simple' or (request.user.is_authenticated and request.GET.get('mode') != 'deep'):
-        health['checks']['mode'] = 'simple'
-        return JsonResponse(health, status=200)
+    mode = request.GET.get('mode')
+    if mode == 'simple' or (request.user.is_authenticated and mode != 'deep'):
+        return JsonResponse(
+            {
+                'status': 'ok',
+                'checks': {'mode': 'simple'},
+                'version': health['version'],
+                'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+            },
+            status=200,
+        )
     # Check database connectivity
     try:
         with connection.cursor() as cursor:

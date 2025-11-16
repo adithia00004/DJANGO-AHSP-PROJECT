@@ -65,3 +65,17 @@ def test_rekap_includes_lain_and_buk(client, django_user_model):
     assert round(G,2) == 451000.00
 
     assert round(row["total"],2) == 451000.00  # volume = 1.0
+
+    # Export endpoints should return attachments
+    export_targets = [
+        ("detail_project:export_rekap_rab_csv", ".csv"),
+        ("detail_project:export_rekap_rab_pdf", ".pdf"),
+        ("detail_project:export_rekap_rab_word", ".docx"),
+    ]
+    for view_name, ext in export_targets:
+        export_url = reverse(view_name, args=[p.id])
+        resp_export = client.get(export_url)
+        assert resp_export.status_code == 200
+        disposition = resp_export.get("Content-Disposition", "").lower()
+        assert "attachment" in disposition
+        assert ext in disposition

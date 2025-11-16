@@ -45,6 +45,8 @@
     sourceChange && projectId ? sourceChange.listReloadJobs(projectId) : [],
   );
   let changeStatusPending = false;
+  let reloadInFlight = false;
+  let reloadQueue = Promise.resolve();
 
   // === Koefisien numeric helpers (dp=6)
   const __NUM = window.Numeric || null;
@@ -445,21 +447,32 @@
     $('#ta-active-satuan').textContent = $('.satuan', li)?.textContent?.trim() || '—';
     $('#ta-active-source').innerHTML = `<span class="badge">${activeSource}</span>`;
     setDirty(false);
-    const requiresReload = forceRefresh || jobNeedsReload(id);
-    toggleEditorBlocker(requiresReload);
+    const flaggedBefore = jobNeedsReload(id);
+    const requiresReload = forceRefresh || flaggedBefore;
+    const hasCache = !!rowsByJob[id];
+    const needsFetch = requiresReload || !hasCache;
 
-    // CACHE FIX: Check cache only if not forcing refresh
-    if (!requiresReload && rowsByJob[id]) {
+    // CACHE FIX: Use cache only when no reload requested
+    if (!needsFetch && hasCache) {
       paint(rowsByJob[id].items);
       kategoriMeta = rowsByJob[id].kategoriMeta || kategoriMeta;
       readOnly = rowsByJob[id].readOnly || false;
       setEditorModeBySource();
-      return;
+      toggleEditorBlocker(false);
+      return Promise.resolve();
+    }
+
+    if (!hasCache && !requiresReload) {
+      showLoadingPlaceholder();
+    }
+
+    if (requiresReload) {
+      toggleEditorBlocker(true);
     }
 
     // fetch
     const url = urlFor(endpoints.get, id);
-    fetch(url, {credentials:'same-origin'}).then(r => r.json()).then(js => {
+    return fetch(url, {credentials:'same-origin'}).then(r => r.json()).then(js => {
       if (!js.ok) throw new Error('Gagal memuat');
       const items = js.items || [];
       kategoriMeta = js.meta?.kategori_opts || kategoriMeta;
@@ -471,14 +484,16 @@
       rowsByJob[id] = {items, kategoriMeta, readOnly, updatedAt};
       paint(items);
       setEditorModeBySource();
-      if (requiresReload) {
+      if (flaggedBefore) {
         resolveReloadJob(id);
-      } else {
+      }
+    }).catch((err) => {
+      toast('Gagal memuat detail', 'error');
+      throw err;
+    }).finally(() => {
+      if (requiresReload) {
         toggleEditorBlocker(false);
       }
-    }).catch(() => {
-      toast('Gagal memuat detail', 'error');
-      toggleEditorBlocker(false);
     });
   }
 
@@ -490,6 +505,14 @@
     });
     ['TK','BHN','ALT','LAIN'].forEach(seg => renderRows(seg, by[seg]));
     updateStats();
+  }
+
+  function showLoadingPlaceholder() {
+    ['TK','BHN','ALT','LAIN'].forEach((seg) => {
+      const body = $(`#seg-${seg}-body`);
+      if (!body) return;
+      body.innerHTML = `<tr class="ta-empty"><td colspan="5">Memuat data...</td></tr>`;
+    });
   }
 
   function jobNeedsReload(id) {
@@ -552,6 +575,18 @@
     editorBlocker.classList.toggle('d-none', !show);
   }
 
+  function setReloadButtonsState(isLoading) {
+    [bannerReloadBtn, editorReloadBtn].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.toggle('is-loading', !!isLoading);
+      if (isLoading) {
+        btn.setAttribute('disabled', 'disabled');
+      } else {
+        btn.removeAttribute('disabled');
+      }
+    });
+  }
+
   function resolveReloadJob(jobId) {
     if (!jobNeedsReload(jobId)) return;
     pendingReloadJobs.delete(Number(jobId));
@@ -567,18 +602,99 @@
     }
   }
 
+  async function reloadJobs(jobIds, options = {}) {
+    const rawIds = Array.isArray(jobIds) ? jobIds : [];
+    const uniqueIds = Array.from(new Set(rawIds.map((id) => Number(id)))).filter((id) => Number.isFinite(id));
+    const isSilent = !!options.silent;
+    const queueMode = !!options.queue || isSilent;
+    if (!uniqueIds.length) {
+      if (!isSilent) {
+        toast('Tidak ada pekerjaan yang dipilih untuk dimuat ulang.', 'info');
+      }
+      return Promise.resolve();
+    }
+    if (reloadInFlight && !queueMode) {
+      if (!isSilent) {
+        toast('Proses muat ulang masih berjalan. Tunggu sebentar.', 'info');
+      }
+      return Promise.resolve();
+    }
+
+    const run = async () => {
+      reloadInFlight = true;
+      const manageButtons = !isSilent;
+      if (manageButtons) {
+        setReloadButtonsState(true);
+      }
+      const preserveSelection = options?.preserveSelection !== false;
+      const originalJobId = preserveSelection ? activeJobId : null;
+      const originalJobEl = originalJobId ? $(`.ta-job-item[data-pekerjaan-id="${originalJobId}"]`) : null;
+      let successCount = 0;
+      let failure = null;
+      try {
+        for (const id of uniqueIds) {
+          const li = $(`.ta-job-item[data-pekerjaan-id="${id}"]`);
+          if (!li) {
+            console.warn('[TA] Tidak menemukan elemen pekerjaan untuk reload massal', id);
+            continue;
+          }
+          try {
+            await selectJobInternal(li, id, true);
+            successCount += 1;
+          } catch (err) {
+            failure = err;
+            break;
+          }
+        }
+      } finally {
+        reloadInFlight = false;
+        if (manageButtons) {
+          setReloadButtonsState(false);
+        }
+      }
+
+      if (preserveSelection && originalJobEl && activeJobId !== originalJobId) {
+        await selectJobInternal(originalJobEl, originalJobId, jobNeedsReload(originalJobId));
+      }
+
+      if (failure) {
+        console.error('[TA] Reload jobs halted', failure);
+        toast('Sebagian pekerjaan gagal dimuat ulang. Coba lagi.', 'error');
+        throw failure;
+      }
+      if (!successCount) {
+        if (!isSilent) {
+          toast('Tidak ada pekerjaan yang perlu dimuat ulang.', 'info');
+        }
+        return;
+      }
+      if (!isSilent) {
+        const msg = successCount === 1
+          ? 'Pekerjaan berhasil dimuat ulang.'
+          : `${successCount} pekerjaan berhasil dimuat ulang.`;
+        toast(msg, 'success');
+      }
+    };
+
+    if (queueMode) {
+      const nextTask = reloadQueue.catch(() => {}).then(() => run());
+      reloadQueue = nextTask.catch(() => {});
+      return nextTask;
+    }
+    return run();
+  }
+
   function forceReloadActiveJob() {
     if (!activeJobId) {
       toast('Pilih pekerjaan yang ingin dimuat ulang.', 'warning');
-      return;
+      return Promise.resolve();
     }
     const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
     if (!currentJobEl) {
       toast('Pekerjaan tidak ditemukan.', 'error');
-      return;
+      return Promise.resolve();
     }
-    delete rowsByJob[activeJobId];
-    selectJobInternal(currentJobEl, activeJobId, true);
+    return reloadJobs([activeJobId], { preserveSelection: true });
   }
 
   function promptConflictResolution() {
@@ -635,9 +751,6 @@
         syncPendingState(detail.state);
         updateJobBadges();
         updateBanner();
-        if (activeJobId) {
-          toggleEditorBlocker(jobNeedsReload(activeJobId));
-        }
       }
     });
   }
@@ -655,11 +768,15 @@
 
   bannerReloadBtn?.addEventListener('click', (event) => {
     event.preventDefault();
-    forceReloadActiveJob();
+    if (!pendingReloadJobs.size) {
+      toast('Semua pekerjaan sudah terbaru.', 'info');
+      return;
+    }
+    reloadJobs(Array.from(pendingReloadJobs), { preserveSelection: !!activeJobId }).catch(() => {});
   });
   editorReloadBtn?.addEventListener('click', (event) => {
     event.preventDefault();
-    forceReloadActiveJob();
+    forceReloadActiveJob().catch(() => {});
   });
 
   // filter
@@ -850,10 +967,9 @@
       console.log('[SAVE] Cache cleared for pekerjaan:', activeJobId);
 
       // Re-fetch fresh data from server immediately after save
-      const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
-      if (currentJobEl) {
+      if (activeJobId) {
         console.log('[SAVE] Re-fetching fresh data...');
-        selectJobInternal(currentJobEl, activeJobId, true); // forceRefresh = true
+        reloadJobs([activeJobId], { preserveSelection: true, silent: true, queue: true }).catch(() => {});
       }
     }).catch((err) => {
       // Network error or unexpected error

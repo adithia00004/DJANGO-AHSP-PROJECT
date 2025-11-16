@@ -559,9 +559,9 @@ class TestSourceChangeREFtoCUSTOM:
         assert pekerjaan_ref.ref_id is None  # ref cleared
         assert pekerjaan_ref.snapshot_uraian == "My Custom Pekerjaan"
         assert pekerjaan_ref.snapshot_satuan == "piece"
-        # snapshot_kode is preserved from REF (TEST.001), not regenerated
-        # Logic at views_api.py:765-766 only generates new code if snapshot_kode is empty
-        assert pekerjaan_ref.snapshot_kode == "TEST.001"  # Preserved from REF
+        # snapshot_kode should be regenerated to CUST-XXXX when switching to custom
+        assert pekerjaan_ref.snapshot_kode.startswith("CUST-")
+        assert pekerjaan_ref.snapshot_kode != "TEST.001"
 
         # Verify cascade reset occurred
         assert DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan_ref).count() == 0  # All deleted

@@ -989,7 +989,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                 pobj.sub_klasifikasi = s_obj
                                 pobj.source_type = src
                                 pobj.ref = None
-                                if not pobj.snapshot_kode:
+                                if old_source_type != Pekerjaan.SOURCE_CUSTOM or not pobj.snapshot_kode:
                                     pobj.snapshot_kode = generate_custom_code(project)
                                 pobj.snapshot_uraian = uraian
                                 pobj.snapshot_satuan = satuan

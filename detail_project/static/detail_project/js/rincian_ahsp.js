@@ -1232,6 +1232,12 @@
     }
   }
 
+  function updateVolumeAlertForSelection(id) {
+    if (!volumeAlertEl) return;
+    const needsWarning = pendingVolumeJobs.has(Number(id));
+    volumeAlertEl.classList.toggle('d-none', !needsWarning);
+  }
+
   // Run export initialization after DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initExportButtons);
@@ -1240,8 +1246,3 @@
   }
 
 })();
-  function updateVolumeAlertForSelection(id) {
-    if (!volumeAlertEl) return;
-    const needsWarning = pendingVolumeJobs.has(Number(id));
-    volumeAlertEl.classList.toggle('d-none', !needsWarning);
-  }

@@ -21,7 +21,8 @@ from django.contrib.auth import get_user_model
 from dashboard.models import Project
 from detail_project.models import (
     Pekerjaan, Klasifikasi, SubKlasifikasi,
-    HargaItemProject, DetailAHSPProject, ProjectPricing
+    HargaItemProject, DetailAHSPProject, ProjectPricing,
+    ProjectChangeStatus,
 )
 
 User = get_user_model()
@@ -229,6 +230,31 @@ class TestRincianAHSPView:
 
         assert response.status_code == 302
         assert '/login/' in response.url
+
+    def test_page_context_includes_pekerjaan_and_change_status(
+        self, client, user, project, pekerjaan_custom
+    ):
+        """Context should expose pekerjaan queryset and change tracker."""
+        ProjectChangeStatus.objects.filter(project=project).delete()
+        client.force_login(user)
+        url = reverse('detail_project:rincian_ahsp', args=[project.id])
+        response = client.get(url)
+
+        assert response.status_code == 200
+        ctx = response.context
+        assert pekerjaan_custom in ctx["pekerjaan"]
+        change_status = ctx.get("change_status")
+        assert isinstance(change_status, ProjectChangeStatus)
+        assert change_status.project == project
+
+    def test_page_creates_change_status_if_missing(self, client, user, project):
+        """_ensure_change_status should create tracker when absent."""
+        ProjectChangeStatus.objects.filter(project=project).delete()
+        client.force_login(user)
+        url = reverse('detail_project:rincian_ahsp', args=[project.id])
+        client.get(url)
+
+        assert ProjectChangeStatus.objects.filter(project=project).exists()
 
 
 # ============================================================================
