@@ -969,3 +969,66 @@ body.lp-overlay-open{ overflow:hidden; }
   outline: 2px solid var(--dp-c-focus);
   outline-offset: -2px;
 }
+
+/* ============== DRAG & DROP STATES ============== */
+
+/* Row being dragged */
+#klas-list table.list-pekerjaan tbody tr.lp-row-dragging {
+  opacity: 0.5;
+  background-color: var(--bs-light, #f8f9fa);
+  cursor: move;
+  cursor: grab;
+  cursor: grabbing;
+}
+
+/* Valid drop zone (tbody) */
+#klas-list table.list-pekerjaan tbody.lp-drop-target {
+  background-color: rgba(13, 110, 253, 0.05); /* Bootstrap primary with alpha */
+  outline: 2px dashed var(--bs-primary, #0d6efd);
+  outline-offset: -2px;
+}
+
+/* Drop zone being hovered over */
+#klas-list table.list-pekerjaan tbody.lp-drag-over {
+  background-color: rgba(13, 110, 253, 0.1);
+  outline: 2px solid var(--bs-primary, #0d6efd);
+  outline-offset: -2px;
+}
+
+/* Drag handle visual cue - add to first column */
+#klas-list table.list-pekerjaan tbody tr[draggable="true"] td.col-num {
+  cursor: move;
+  cursor: grab;
+  position: relative;
+}
+
+#klas-list table.list-pekerjaan tbody tr[draggable="true"] td.col-num::before {
+  content: '⋮⋮';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--bs-secondary, #6c757d);
+  opacity: 0.3;
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: -2px;
+  pointer-events: none;
+}
+
+#klas-list table.list-pekerjaan tbody tr[draggable="true"]:hover td.col-num::before {
+  opacity: 0.6;
+}
+
+#klas-list table.list-pekerjaan tbody tr[draggable="true"]:active td.col-num {
+  cursor: grabbing;
+}
+
+/* Smooth transitions for drag feedback */
+#klas-list table.list-pekerjaan tbody tr[draggable="true"] {
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+#klas-list table.list-pekerjaan tbody {
+  transition: background-color 0.2s ease, outline 0.2s ease;
+}

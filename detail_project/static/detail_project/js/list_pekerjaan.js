@@ -144,6 +144,320 @@
   }
   const say = (t) => { live.textContent = t; };
 
+  // ========= [DIRTY TRACKING] Prevent Data Loss ==============================
+  let isDirty = false;
+
+  function setDirty(dirty) {
+    isDirty = !!dirty;
+    log('[DIRTY]', isDirty ? 'Set to dirty' : 'Cleared');
+
+    // Update save button state
+    btnSaveAll.forEach(btn => {
+      if (isDirty) {
+        btn.classList.add('btn-neon'); // Add pulsing effect
+        btn.removeAttribute('disabled');
+      } else {
+        btn.classList.remove('btn-neon');
+      }
+    });
+
+    // Update FAB save button
+    const fabBtn = document.getElementById('btn-save-fab');
+    if (fabBtn) {
+      fabBtn.classList.toggle('d-none', !isDirty);
+    }
+  }
+
+  // Prevent accidental data loss on page close/refresh
+  window.addEventListener('beforeunload', (e) => {
+    if (isDirty) {
+      const msg = 'Anda memiliki perubahan yang belum disimpan. Yakin ingin keluar?';
+      e.preventDefault();
+      e.returnValue = msg; // Chrome requires returnValue
+      return msg;
+    }
+  });
+
+  // ========= [CROSS-TAB SYNC] BroadcastChannel API ===========================
+  let bc = null;
+
+  // Initialize BroadcastChannel if supported
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      bc = new BroadcastChannel('list_pekerjaan_sync');
+
+      // Listen for changes from other tabs
+      bc.onmessage = (event) => {
+        if (!event.data || !event.data.type) return;
+
+        if (event.data.type === 'ordering_changed') {
+          const { projectId: changedProjectId } = event.data;
+
+          // Only show notification if same project
+          if (changedProjectId && String(changedProjectId) === String(projectId)) {
+            log('[BROADCAST] Received ordering_changed from other tab');
+
+            // Show warning toast
+            tShow('⚠️ Urutan pekerjaan diubah di tab lain. Refresh halaman untuk melihat perubahan terbaru.', 'warning', 8000);
+
+            // Optionally: Add refresh button to banner
+            const banner = document.createElement('div');
+            banner.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+            banner.style.cssText = 'top: 80px; right: 20px; z-index: 9999; max-width: 400px;';
+            banner.innerHTML = `
+              <strong>Perubahan dari tab lain</strong><br>
+              <small>Urutan pekerjaan telah diubah di tab lain.</small>
+              <div class="mt-2">
+                <button class="btn btn-sm btn-warning" onclick="location.reload()">
+                  <i class="bi bi-arrow-clockwise"></i> Refresh Sekarang
+                </button>
+              </div>
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(banner);
+
+            // Auto-remove after 30 seconds
+            setTimeout(() => banner.remove(), 30000);
+          }
+        }
+      };
+
+      log('[BROADCAST] BroadcastChannel initialized');
+    } catch (err) {
+      warn('[BROADCAST] Failed to initialize BroadcastChannel:', err);
+      bc = null;
+    }
+  } else {
+    warn('[BROADCAST] BroadcastChannel not supported in this browser');
+  }
+
+  // Broadcast ordering change to other tabs
+  function broadcastOrderingChange() {
+    if (bc) {
+      try {
+        bc.postMessage({
+          type: 'ordering_changed',
+          projectId,
+          timestamp: Date.now()
+        });
+        log('[BROADCAST] Sent ordering_changed notification');
+      } catch (err) {
+        warn('[BROADCAST] Failed to send message:', err);
+      }
+    }
+  }
+
+  // ========= [DRAG & DROP] Infrastructure ====================================
+  let dragState = {
+    draggingRow: null,      // TR element being dragged
+    sourceKlasId: null,     // Klas ID where drag started
+    sourceSubId: null,      // Sub ID where drag started
+    pekerjaanId: null,      // Pekerjaan ID (from dataset.id or row.id)
+    sourceTbody: null,      // Original tbody
+    dragOverTarget: null    // Current drop target (tbody or row)
+  };
+
+  function resetDragState() {
+    // Remove visual feedback
+    document.querySelectorAll('.lp-row-dragging').forEach(el => el.classList.remove('lp-row-dragging'));
+    document.querySelectorAll('.lp-drop-target').forEach(el => el.classList.remove('lp-drop-target'));
+    document.querySelectorAll('.lp-drag-over').forEach(el => el.classList.remove('lp-drag-over'));
+
+    dragState = {
+      draggingRow: null,
+      sourceKlasId: null,
+      sourceSubId: null,
+      pekerjaanId: null,
+      sourceTbody: null,
+      dragOverTarget: null
+    };
+  }
+
+  function handleDragStart(e) {
+    const row = e.currentTarget;
+    if (!row || row.tagName !== 'TR') return;
+
+    // Find parent tbody and its klas/sub
+    const tbody = row.closest('tbody');
+    if (!tbody) return;
+
+    const subCard = tbody.closest('.lp-sub-card');
+    const klasCard = tbody.closest('.lp-klas-card');
+
+    dragState.draggingRow = row;
+    dragState.sourceTbody = tbody;
+    dragState.sourceSubId = subCard?.dataset.subId || null;
+    dragState.sourceKlasId = klasCard?.dataset.klasId || null;
+    dragState.pekerjaanId = row.dataset.id || row.id;
+
+    row.classList.add('lp-row-dragging');
+
+    // Set drag data
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragState.pekerjaanId);
+
+    // Set drag image (optional - browser default is fine)
+    if (e.dataTransfer.setDragImage) {
+      e.dataTransfer.setDragImage(row, 10, 10);
+    }
+
+    log('[DRAG] Start:', {
+      pekerjaanId: dragState.pekerjaanId,
+      klasId: dragState.sourceKlasId,
+      subId: dragState.sourceSubId
+    });
+  }
+
+  function handleDragEnd(e) {
+    log('[DRAG] End');
+    resetDragState();
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault(); // Required to allow drop
+    e.dataTransfer.dropEffect = 'move';
+
+    const tbody = e.currentTarget;
+    if (!tbody || tbody.tagName !== 'TBODY') return;
+
+    // Highlight valid drop zone
+    if (dragState.dragOverTarget !== tbody) {
+      // Remove previous highlight
+      document.querySelectorAll('.lp-drag-over').forEach(el => el.classList.remove('lp-drag-over'));
+
+      // Add current highlight
+      tbody.classList.add('lp-drag-over');
+      dragState.dragOverTarget = tbody;
+    }
+  }
+
+  function handleDragLeave(e) {
+    const tbody = e.currentTarget;
+    if (!tbody || tbody.tagName !== 'TBODY') return;
+
+    // Only remove highlight if actually leaving (not just moving to child)
+    const rect = tbody.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+      tbody.classList.remove('lp-drag-over');
+      if (dragState.dragOverTarget === tbody) {
+        dragState.dragOverTarget = null;
+      }
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const targetTbody = e.currentTarget;
+    if (!targetTbody || targetTbody.tagName !== 'TBODY') {
+      resetDragState();
+      return;
+    }
+
+    const { draggingRow, sourceTbody } = dragState;
+    if (!draggingRow) {
+      resetDragState();
+      return;
+    }
+
+    // Find target klas/sub
+    const targetSubCard = targetTbody.closest('.lp-sub-card');
+    const targetKlasCard = targetTbody.closest('.lp-klas-card');
+    const targetSubId = targetSubCard?.dataset.subId || null;
+    const targetKlasId = targetKlasCard?.dataset.klasId || null;
+
+    log('[DROP] Target:', {
+      targetKlasId,
+      targetSubId,
+      sourceKlasId: dragState.sourceKlasId,
+      sourceSubId: dragState.sourceSubId
+    });
+
+    // Determine insert position
+    let insertBeforeRow = null;
+    const dropY = e.clientY;
+    const rows = Array.from(targetTbody.querySelectorAll('tr'));
+
+    for (const row of rows) {
+      if (row === draggingRow) continue; // Skip the dragging row itself
+      const rect = row.getBoundingClientRect();
+      const rowMiddle = rect.top + rect.height / 2;
+
+      if (dropY < rowMiddle) {
+        insertBeforeRow = row;
+        break;
+      }
+    }
+
+    // Perform the move
+    if (insertBeforeRow) {
+      targetTbody.insertBefore(draggingRow, insertBeforeRow);
+    } else {
+      targetTbody.appendChild(draggingRow);
+    }
+
+    // Renumber both source and target tbody
+    renum(sourceTbody);
+    if (targetTbody !== sourceTbody) {
+      renum(targetTbody);
+    }
+
+    // Update ordering indices
+    updateOrderingIndices(targetTbody);
+    if (targetTbody !== sourceTbody) {
+      updateOrderingIndices(sourceTbody);
+    }
+
+    // Mark as dirty (assuming setDirty exists)
+    if (typeof setDirty === 'function') {
+      setDirty(true);
+    }
+
+    // Rebuild sidebar to reflect changes
+    scheduleSidebarRebuild();
+
+    // Show feedback
+    const movedWithinSameSub = (targetSubId === dragState.sourceSubId);
+    const msg = movedWithinSameSub
+      ? 'Urutan pekerjaan diubah'
+      : 'Pekerjaan dipindahkan ke sub/klasifikasi lain';
+
+    tShow(msg, 'success');
+    say(msg);
+
+    log('[DROP] Complete - moved pekerjaan');
+    resetDragState();
+  }
+
+  function updateOrderingIndices(tbody) {
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.forEach((row, index) => {
+      row.dataset.orderingIndex = String(index + 1);
+    });
+  }
+
+  function attachDragHandlers(row) {
+    if (!row || row.tagName !== 'TR') return;
+
+    row.setAttribute('draggable', 'true');
+    row.addEventListener('dragstart', handleDragStart);
+    row.addEventListener('dragend', handleDragEnd);
+  }
+
+  function attachDropZone(tbody) {
+    if (!tbody || tbody.tagName !== 'TBODY') return;
+
+    tbody.addEventListener('dragover', handleDragOver);
+    tbody.addEventListener('dragleave', handleDragLeave);
+    tbody.addEventListener('drop', handleDrop);
+  }
+
   // ========= [DIAGNOSTICS] Cek Anchor Wajib ==================================
   const REQUIRED = [
     ['#lp-app', !!root],
@@ -466,7 +780,7 @@
       if (!pv) { pv = document.createElement('div'); pv.className = 'lp-urai-preview'; td.prepend(pv); }
       syncPreview(td); autoResize(ta); applyUraianGate(td);
       pv.onclick = ()=> enterEdit(td);
-      ta.addEventListener('input', ()=>{ autoResize(ta); syncPreview(td); });
+      ta.addEventListener('input', ()=>{ autoResize(ta); syncPreview(td); setDirty(true); });
       ta.addEventListener('focus', ()=> td.classList.add('is-editing'));
       ta.addEventListener('blur',  ()=> { td.classList.remove('is-editing'); syncPreview(td); });
     });
@@ -500,8 +814,8 @@
     div.dataset.tempId = `k${kCounter}_${Date.now()}`;
     const subWrap = div.querySelector('.sub-wrap');
     div.querySelector('.btn-add-sub').onclick = () => { addSub(subWrap); scheduleSidebarRebuild(); };
-    div.querySelector('.btn-del').onclick     = () => { div.remove(); scheduleSidebarRebuild(); };
-    div.querySelector('.klas-name').addEventListener('input', scheduleSidebarRebuild);
+    div.querySelector('.btn-del').onclick     = () => { div.remove(); scheduleSidebarRebuild(); setDirty(true); };
+    div.querySelector('.klas-name').addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
 
     klasWrap.appendChild(div);
     requestAnimationFrame(()=>{
@@ -556,9 +870,13 @@
 
     block.dataset.tempId = `s${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const tbody = block.querySelector('tbody');
+
+    // Attach drop zone handlers to tbody for drag-and-drop
+    attachDropZone(tbody);
+
     block.querySelector('.btn-add-pekerjaan').onclick = () => { addPekerjaan(tbody); scheduleSidebarRebuild(); };
-    block.querySelector('.btn-del').onclick           = () => { block.remove(); scheduleSidebarRebuild(); };
-    block.querySelector('.sub-name').addEventListener('input', scheduleSidebarRebuild);
+    block.querySelector('.btn-del').onclick           = () => { block.remove(); scheduleSidebarRebuild(); setDirty(true); };
+    block.querySelector('.sub-name').addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
 
     container.appendChild(block);
     requestAnimationFrame(()=>{
@@ -652,7 +970,7 @@
     renum(tbody);
 
     row.querySelector('.btn-del')?.addEventListener('click', () => {
-      row.remove(); renum(tbody); scheduleSidebarRebuild();
+      row.remove(); renum(tbody); scheduleSidebarRebuild(); setDirty(true);
     });
 
     const srcSel = row.querySelector('.src');
@@ -763,6 +1081,7 @@
       // kosongkan dataset.refId saat clear
       $sel.on('change', function () {
         if (!$sel.val()) { delete row.dataset.refId; }
+        setDirty(true);
       });
 
     } else {
@@ -868,6 +1187,7 @@
 
     if (HAS_S2 && $sel && $sel.length) {
       $sel.on('select2:select', function () {
+        setDirty(true);
         if (srcSel?.value === 'ref_modified' && uraianInput && !uraianInput.value) {
           const item = $sel.select2('data')[0];
           const text = item?.text ? String(item.text) : '';
@@ -880,13 +1200,17 @@
       });
     }
 
-    srcSel?.addEventListener('change', syncFields);
+    srcSel?.addEventListener('change', () => { syncFields(); setDirty(true); });
     syncFields();
 
-    uraianInput?.addEventListener('input', scheduleSidebarRebuild);
-    satuanInput?.addEventListener('input', scheduleSidebarRebuild);
+    uraianInput?.addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
+    satuanInput?.addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
 
     scheduleSidebarRebuild();
+
+    // Attach drag-and-drop handlers to make row draggable
+    attachDragHandlers(row);
+
     return row;
   }
 
@@ -1422,6 +1746,13 @@
 
       tShow('Perubahan tersimpan.', 'success');
       tbAnnounce && (tbAnnounce.textContent = 'Perubahan tersimpan');
+
+      // Clear dirty state after successful save
+      setDirty(false);
+
+      // Broadcast to other tabs
+      broadcastOrderingChange();
+
       await reloadAfterSave();
     } catch (e) {
       const raw = (e && e.body && typeof e.body === 'string') ? e.body : (e?.message || '');
@@ -1615,6 +1946,23 @@
 
     await loadTree();
     setupRightHoverEdge();
+  })();
+
+  // ========= [P2] Bootstrap Tooltips Initialization =========================
+  (function initTooltips() {
+    // Initialize Bootstrap 5 tooltips
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+        try {
+          new bootstrap.Tooltip(el);
+        } catch (err) {
+          warn('[TOOLTIP] Failed to initialize:', err);
+        }
+      });
+      log('[TOOLTIP] Bootstrap tooltips initialized');
+    } else {
+      warn('[TOOLTIP] Bootstrap not available - tooltips disabled');
+    }
   })();
 
   // ========= [DEBUG] =========================================================

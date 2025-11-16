@@ -58,6 +58,32 @@
           </button>
         </div>
         <span id="lp-toolbar-announce" class="dp-visually-hidden" aria-live="polite"></span>
+
+        {# P2: Info tooltip about drag-and-drop impact #}
+        <button type="button" class="btn btn-outline-info btn-sm lp-btn"
+                data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-html="true"
+                title="<strong>💡 Drag & Drop</strong><br>
+                       <small>Perubahan urutan pekerjaan akan mempengaruhi:<br>
+                       • Volume Pekerjaan<br>
+                       • Rekap RAB<br>
+                       • Rincian AHSP<br>
+                       • Jadwal/Gantt Chart<br>
+                       • Export PDF/Word/CSV</small>">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
+    </div>
+
+    {# P2: Banner notification about cross-page impact #}
+    <div class="alert alert-info alert-dismissible fade show mx-3 mb-3" role="alert">
+      <div class="d-flex align-items-start gap-2">
+        <i class="bi bi-lightbulb flex-shrink-0" style="font-size: 1.25rem;"></i>
+        <div class="flex-grow-1 small">
+          <strong>Fitur Drag & Drop Aktif</strong><br>
+          Anda dapat mengubah urutan pekerjaan dengan drag & drop pada kolom nomor <span class="badge bg-secondary">⋮⋮</span>.
+          Perubahan urutan akan otomatis tersinkronisasi ke semua halaman terkait setelah disimpan.
+        </div>
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>
     </div>
 

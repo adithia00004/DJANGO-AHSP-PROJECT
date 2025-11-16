@@ -19,6 +19,9 @@
   };
   const locale = app.dataset.locale || 'id-ID';
 
+  // P1 FIX: Cache TTL to prevent stale data
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes - balance between performance and freshness
+
   let activeJobId = null;
   let activeSource = null;     // 'ref' | 'ref_modified' | 'custom'
   let readOnly = false;
@@ -60,14 +63,31 @@
     if (!__NUM) return canon ?? '';
     return __NUM.formatForUI(__NUM.enforceDp(canon ?? '', __KOEF_DP));
   }
-  // Auto-format input koef saat blur
+  // P2.1 FIX: Auto-format + constraint validation on blur
   document.addEventListener('blur', (e)=>{
     const el = e.target;
     if (!(el instanceof HTMLInputElement)) return;
     if (!el.classList.contains('num')) return;
     if (el.dataset.field !== 'koefisien') return;
+
     const canon = __koefToCanon(el.value);
-    el.value = __koefToUI(canon);
+    const num = parseFloat(canon);
+
+    // Constraint validation (matches P1.1 validation)
+    const MIN_KOEF = 0.000001;
+    const MAX_KOEF = 999999.999999;
+
+    if (isNaN(num) || num < MIN_KOEF) {
+      toast(`⚠️ Koefisien harus ≥ ${MIN_KOEF} (positif)`, 'warning');
+      el.value = __koefToUI('1.000000'); // Reset to default
+      setDirty(true);
+    } else if (num > MAX_KOEF) {
+      toast(`⚠️ Koefisien maksimal ${MAX_KOEF}`, 'warning');
+      el.value = __koefToUI(String(MAX_KOEF)); // Cap to max
+      setDirty(true);
+    } else {
+      el.value = __koefToUI(canon); // Format normally
+    }
   }, true);
 
   // --- CSRF helper ---
@@ -191,21 +211,68 @@
     return out;
   }
 
+  // P1.1 FIX: Strengthened client validation
   function validateClient(rows) {
     const errors = [];
     const seen = new Set();
+    const MAX_URAIAN_LEN = 500;
+    const MAX_KODE_LEN = 100;
+    const MAX_SATUAN_LEN = 50;
+    const MIN_KOEF = 0.000001;  // Based on user: positive only
+    const MAX_KOEF = 999999.999999;
+
     rows.forEach((r, i) => {
-      if (!r.uraian) errors.push({path:`rows[${i}].uraian`, message:'Wajib'});
-      if (!r.kode) errors.push({path:`rows[${i}].kode`, message:'Wajib'});
-      const key = r.kode;
-      if (key) {
-        if (seen.has(key)) errors.push({path:`rows[${i}].kode`, message:'Kode duplikat'});
+      // Uraian validation
+      if (!r.uraian || !r.uraian.trim()) {
+        errors.push({path:`rows[${i}].uraian`, message:'Uraian wajib diisi'});
+      } else if (r.uraian.length > MAX_URAIAN_LEN) {
+        errors.push({path:`rows[${i}].uraian`, message:`Maksimal ${MAX_URAIAN_LEN} karakter`});
+      }
+
+      // Kode validation
+      if (!r.kode || !r.kode.trim()) {
+        errors.push({path:`rows[${i}].kode`, message:'Kode wajib diisi'});
+      } else {
+        if (r.kode.length > MAX_KODE_LEN) {
+          errors.push({path:`rows[${i}].kode`, message:`Maksimal ${MAX_KODE_LEN} karakter`});
+        }
+        // Check duplicate
+        const key = r.kode.trim();
+        if (seen.has(key)) {
+          errors.push({path:`rows[${i}].kode`, message:'Kode duplikat'});
+        }
         seen.add(key);
       }
+
+      // Satuan validation
+      if (!r.satuan || !r.satuan.trim()) {
+        errors.push({path:`rows[${i}].satuan`, message:'Satuan wajib diisi'});
+      } else if (r.satuan.length > MAX_SATUAN_LEN) {
+        errors.push({path:`rows[${i}].satuan`, message:`Maksimal ${MAX_SATUAN_LEN} karakter`});
+      }
+
+      // Koefisien validation - enhanced numeric check
       if (r.koefisien === '' || r.koefisien == null) {
-        errors.push({path:`rows[${i}].koefisien`, message:'Wajib'});
+        errors.push({path:`rows[${i}].koefisien`, message:'Koefisien wajib diisi'});
+      } else {
+        const koefStr = String(r.koefisien).trim();
+        const koefNum = parseFloat(__koefToCanon(koefStr));
+
+        if (isNaN(koefNum)) {
+          errors.push({path:`rows[${i}].koefisien`, message:'Koefisien harus berupa angka'});
+        } else if (koefNum < MIN_KOEF) {
+          errors.push({path:`rows[${i}].koefisien`, message:`Koefisien minimal ${MIN_KOEF} (harus positif)`});
+        } else if (koefNum > MAX_KOEF) {
+          errors.push({path:`rows[${i}].koefisien`, message:`Koefisien maksimal ${MAX_KOEF}`});
+        }
+      }
+
+      // Kategori validation
+      if (!r.kategori || !['TK', 'BHN', 'ALT', 'LAIN'].includes(r.kategori)) {
+        errors.push({path:`rows[${i}].kategori`, message:'Kategori tidak valid'});
       }
     });
+
     return errors;
   }
 
@@ -341,17 +408,29 @@
           nama = d.nama_ahsp || '';
         }
 
-        // CRITICAL VALIDATION: Check if job bundle has components
+        // P1.2 FIX: Add loading state during bundle validation
         if (kind === 'job' && refId) {
+          // Show loading toast
+          const loadingMsg = `🔍 Memeriksa bundle "${kode}"...`;
+          toast(loadingMsg, 'info', 0); // No auto-dismiss during loading
+
           try {
-            // Fetch job details to validate it has components
+            // Fetch job details to validate it has components with timeout
             const validateUrl = urlFor(endpoints.get, parseInt(refId));
-            const resp = await fetch(validateUrl, {credentials:'same-origin'});
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 sec timeout
+
+            const resp = await fetch(validateUrl, {
+              credentials:'same-origin',
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
             const data = await resp.json();
 
             if (data.ok && (!data.items || data.items.length === 0)) {
               // Bundle is empty - show warning and prevent selection
-              toast(`⚠️ Bundle Kosong: "${nama}" belum memiliki komponen AHSP.\n\nSilakan isi detail AHSP untuk pekerjaan tersebut terlebih dahulu sebelum menggunakan sebagai bundle.`, 'warning');
+              toast(`⚠️ Bundle Kosong: "${nama}" belum memiliki komponen AHSP.\n\nSilakan isi detail AHSP untuk pekerjaan tersebut terlebih dahulu sebelum menggunakan sebagai bundle.`, 'warning', 5000);
               console.warn('[BUNDLE_VALIDATION] Empty bundle detected:', kode, nama);
 
               // Clear the selection
@@ -360,8 +439,16 @@
             }
 
             console.log('[BUNDLE_VALIDATION] Bundle valid:', kode, 'has', data.items?.length || 0, 'components');
+            toast(`✅ Bundle "${kode}" valid (${data.items?.length || 0} komponen)`, 'success', 2000);
+
           } catch (err) {
-            console.error('[BUNDLE_VALIDATION] Error validating bundle:', err);
+            if (err.name === 'AbortError') {
+              console.error('[BUNDLE_VALIDATION] Timeout validating bundle:', kode);
+              toast('⏱️ Timeout saat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);
+            } else {
+              console.error('[BUNDLE_VALIDATION] Error validating bundle:', err);
+              toast('⚠️ Tidak dapat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);
+            }
             // Don't block - let backend handle validation
           }
         }
@@ -403,9 +490,8 @@
   function selectJob(li) {
     const id = +li.dataset.pekerjaanId;
     if (!id || id === activeJobId) return;
-    const requiresReload = jobNeedsReload(id);
 
-    // CRITICAL SAFETY: Warn if current job has unsaved changes
+    // P0.1 FIX: Promise-based auto-save - no more race condition!
     if (dirty && activeJobId) {
       const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
       const currentKode = currentJobEl?.querySelector('.kode')?.textContent?.trim() || 'pekerjaan ini';
@@ -418,21 +504,32 @@
         return; // Stay on current job
       }
 
-      // User chose to save first - trigger save then switch
+      // User chose to save first - use Promise to wait for completion
       console.log('[SELECT_JOB] Auto-saving before job switch...');
-      const btnSave = $('#ta-btn-save');
-      if (btnSave && !btnSave.disabled) {
-        btnSave.click(); // Trigger save
-        // Wait for save to complete, then switch
-        setTimeout(() => {
-          console.log('[SELECT_JOB] Save completed, switching job...');
-          selectJobInternal(li, id);
-        }, 1000); // Give save time to complete
-        return;
-      }
+      toast('💾 Menyimpan perubahan...', 'info', 2000);
+
+      doSave(activeJobId).then(() => {
+        console.log('[SELECT_JOB] Save completed successfully, switching job...');
+        toast('✅ Tersimpan! Beralih ke pekerjaan lain...', 'success', 1500);
+        // Wait a bit for user to see success message
+        setTimeout(() => selectJobInternal(li, id), 500);
+      }).catch((err) => {
+        console.error('[SELECT_JOB] Save failed:', err);
+        toast('❌ Gagal menyimpan. Tetap di pekerjaan ini.', 'error');
+        // Stay on current job if save fails
+      });
+      return;
     }
 
-    // No unsaved changes, proceed directly
+    // P2 FIX: Auto-reload stale jobs silently in background
+    // No more invasive blocker - just seamless refresh
+    const requiresReload = jobNeedsReload(id);
+    if (requiresReload) {
+      console.log('[SELECT_JOB] Job requires reload - auto-reloading silently');
+      toast('🔄 Memuat data terbaru...', 'info', 2000);
+    }
+
+    // Proceed with job selection - forceRefresh will be handled by selectJobInternal
     selectJobInternal(li, id, requiresReload);
   }
 
@@ -450,10 +547,22 @@
     const flaggedBefore = jobNeedsReload(id);
     const requiresReload = forceRefresh || flaggedBefore;
     const hasCache = !!rowsByJob[id];
-    const needsFetch = requiresReload || !hasCache;
 
-    // CACHE FIX: Use cache only when no reload requested
+    // P1 FIX: Check cache expiry - prevent stale data
+    const cache = rowsByJob[id];
+    const cacheExpired = cache && cache.cachedAt
+      ? (Date.now() - cache.cachedAt > CACHE_TTL_MS)
+      : false;
+
+    if (cacheExpired) {
+      console.log('[CACHE] Cache expired for job', id, '- age:', Math.round((Date.now() - cache.cachedAt) / 1000), 'seconds');
+    }
+
+    const needsFetch = requiresReload || !hasCache || cacheExpired;
+
+    // Use cache only when fresh and no reload requested
     if (!needsFetch && hasCache) {
+      console.log('[CACHE] Using fresh cache for job', id, '- age:', Math.round((Date.now() - cache.cachedAt) / 1000), 'seconds');
       paint(rowsByJob[id].items);
       kategoriMeta = rowsByJob[id].kategoriMeta || kategoriMeta;
       readOnly = rowsByJob[id].readOnly || false;
@@ -462,12 +571,9 @@
       return Promise.resolve();
     }
 
-    if (!hasCache && !requiresReload) {
+    // P2 FIX: Show loading placeholder, but NO invasive blocker
+    if (!hasCache || requiresReload) {
       showLoadingPlaceholder();
-    }
-
-    if (requiresReload) {
-      toggleEditorBlocker(true);
     }
 
     // fetch
@@ -481,19 +587,29 @@
       // OPTIMISTIC LOCKING: Store timestamp when data is loaded
       const updatedAt = js.pekerjaan?.updated_at || null;
 
-      rowsByJob[id] = {items, kategoriMeta, readOnly, updatedAt};
+      // P1 FIX: Store cache timestamp for TTL check
+      rowsByJob[id] = {
+        items,
+        kategoriMeta,
+        readOnly,
+        updatedAt,
+        cachedAt: Date.now() // Track when cache was created
+      };
       paint(items);
       setEditorModeBySource();
       if (flaggedBefore) {
         resolveReloadJob(id);
       }
     }).catch((err) => {
-      toast('Gagal memuat detail', 'error');
-      throw err;
-    }).finally(() => {
-      if (requiresReload) {
-        toggleEditorBlocker(false);
+      // P2.2 FIX: Offer retry on network error
+      console.error('[LOAD] Fetch failed:', err);
+      const retry = confirm('❌ Gagal memuat data pekerjaan.\n\nCoba lagi?');
+      if (retry) {
+        console.log('[LOAD] User requested retry');
+        return selectJobInternal(li, id, true); // Force refresh retry
       }
+      toast('Gagal memuat detail. Silakan coba lagi.', 'error');
+      throw err;
     });
   }
 
@@ -558,9 +674,10 @@
     bannerEl.classList.toggle('d-none', !shouldShow);
     if (!shouldShow) return;
 
+    // P2 FIX: Friendlier banner messages - emphasize auto-reload
     const messages = [];
     if (pendingCount > 0) {
-      messages.push(`${pendingCount} pekerjaan wajib dimuat ulang (sumber berubah).`);
+      messages.push(`${pendingCount} pekerjaan memiliki pembaruan. Data akan dimuat otomatis saat dibuka.`);
     }
     if (changeStatusPending) {
       messages.push('Ada perubahan terbaru pada Template AHSP.');
@@ -571,8 +688,12 @@
   }
 
   function toggleEditorBlocker(show) {
+    // P2 FIX: Blocker disabled - auto-reload is seamless now
+    // Keep function for backward compatibility but don't actually block
     if (!editorBlocker) return;
-    editorBlocker.classList.toggle('d-none', !show);
+    // Always keep it hidden
+    editorBlocker.classList.add('d-none');
+    console.log('[BLOCKER] Blocker toggle disabled - seamless reload enabled');
   }
 
   function setReloadButtonsState(isLoading) {
@@ -597,9 +718,7 @@
     }
     updateJobBadges();
     updateBanner();
-    if (Number(jobId) === Number(activeJobId)) {
-      toggleEditorBlocker(false);
-    }
+    // P2 FIX: No more blocker toggle - auto-reload is seamless
   }
 
   async function reloadJobs(jobIds, options = {}) {
@@ -829,25 +948,58 @@
     }
   });
 
-  // SAVE (replace-all) — spinner ala VP
-  $('#ta-btn-save').addEventListener('click', () => {
-    if (!activeJobId) return;
+  // P0.1: Refactor save logic into reusable function
+  async function doSave(jobId) {
+    if (!jobId) return Promise.reject(new Error('No job selected'));
+
     const rows = gatherRows();
     const errs = validateClient(rows);
     if (errs.length) {
-      // FIX: Show more detailed error message
       const firstErr = errs[0];
       const errMsg = `Periksa isian: ${firstErr.path} - ${firstErr.message}`;
       toast(errMsg, 'warn');
       console.warn('Validation errors:', errs);
-      return;
+      return Promise.reject(new Error('Validation failed'));
     }
 
     const rowsCanon = rows.map(r => ({ ...r, koefisien: __koefToCanon(r.koefisien) }));
-    const url = urlFor(endpoints.save, activeJobId);
+    const url = urlFor(endpoints.save, jobId);
+
+    // P0.2 FIX: Freshness check before save to prevent stale cache conflict
+    const currentCache = rowsByJob[jobId];
+    if (currentCache && currentCache.updatedAt) {
+      console.log('[SAVE] Checking cache freshness before save...');
+      try {
+        const freshCheckUrl = urlFor(endpoints.get, jobId);
+        const freshResp = await fetch(freshCheckUrl, {credentials:'same-origin', timeout: 5000});
+        const freshData = await freshResp.json();
+
+        if (freshData.ok && freshData.pekerjaan?.updated_at) {
+          if (freshData.pekerjaan.updated_at !== currentCache.updatedAt) {
+            console.warn('[SAVE] Data changed since cache loaded!', {
+              cached: currentCache.updatedAt,
+              fresh: freshData.pekerjaan.updated_at
+            });
+            toast('⚠️ Data telah diubah sejak terakhir dimuat. Muat ulang dulu!', 'warning', 5000);
+
+            // Offer to reload
+            const reload = confirm('Data pekerjaan ini telah diubah oleh user lain.\n\nMuat ulang data terbaru? (perubahan Anda akan hilang)');
+            if (reload) {
+              const jobEl = $(`.ta-job-item[data-pekerjaan-id="${jobId}"]`);
+              if (jobEl) selectJobInternal(jobEl, jobId, true); // Force refresh
+            }
+            return Promise.reject(new Error('Stale cache - data changed'));
+          }
+          console.log('[SAVE] Cache is fresh - proceeding with save');
+        }
+      } catch (err) {
+        console.warn('[SAVE] Freshness check failed - proceeding anyway:', err);
+        // Don't block save if check fails (network issue etc)
+      }
+    }
 
     // OPTIMISTIC LOCKING: Include timestamp from when data was loaded
-    const clientUpdatedAt = rowsByJob[activeJobId]?.updatedAt || null;
+    const clientUpdatedAt = currentCache?.updatedAt || null;
     const payload = {
       rows: rowsCanon,
       client_updated_at: clientUpdatedAt
@@ -858,7 +1010,7 @@
     if (spin) spin.hidden = false;
     if (btnSave) btnSave.disabled = true;
 
-    fetch(url, {
+    return fetch(url, {
       method:'POST',
       credentials:'same-origin',
       headers:{ 'Content-Type':'application/json', 'X-CSRFToken': CSRF },
@@ -961,15 +1113,42 @@
       // Update state
       setDirty(false);
 
-      // CACHE FIX: Clear cache for this job to force fresh data fetch on next selection
-      // This ensures data is always fresh and synchronized with server
-      delete rowsByJob[activeJobId];
-      console.log('[SAVE] Cache cleared for pekerjaan:', activeJobId);
+      // P0 FIX: Use response data directly instead of double fetch
+      // Server already sends fresh data in save response - no need to fetch again!
+      const hasExpansion = (js.saved_expanded_rows || 0) > (js.saved_raw_rows || 0);
 
-      // Re-fetch fresh data from server immediately after save
-      if (activeJobId) {
-        console.log('[SAVE] Re-fetching fresh data...');
+      if (hasExpansion) {
+        // Bundle expansion occurred - reload to get expanded components
+        console.log('[SAVE] Bundle expansion detected - reloading to fetch expanded components');
+        delete rowsByJob[activeJobId];
         reloadJobs([activeJobId], { preserveSelection: true, silent: true, queue: true }).catch(() => {});
+      } else {
+        // Simple save without expansion - update cache directly from response
+        console.log('[SAVE] Updating cache directly from response (no expansion)');
+
+        if (js.items && Array.isArray(js.items)) {
+          // Server returned updated items - use them
+          rowsByJob[activeJobId] = {
+            items: js.items,
+            kategoriMeta: rowsByJob[activeJobId]?.kategoriMeta || kategoriMeta,
+            readOnly: rowsByJob[activeJobId]?.readOnly || readOnly,
+            updatedAt: js.pekerjaan?.updated_at || null,
+            cachedAt: Date.now()
+          };
+          paint(js.items);
+          console.log('[SAVE] Cache updated with', js.items.length, 'items from response');
+        } else {
+          // Fallback: Server didn't return items - use what we sent
+          rowsByJob[activeJobId] = {
+            items: rowsCanon,
+            kategoriMeta: rowsByJob[activeJobId]?.kategoriMeta || kategoriMeta,
+            readOnly: rowsByJob[activeJobId]?.readOnly || readOnly,
+            updatedAt: js.pekerjaan?.updated_at || null,
+            cachedAt: Date.now()
+          };
+          paint(rowsCanon);
+          console.log('[SAVE] Cache updated with sent data (server response had no items)');
+        }
       }
     }).catch((err) => {
       // Network error or unexpected error
@@ -979,6 +1158,14 @@
     }).finally(() => {
       if (spin) spin.hidden = true;
       if (btnSave) btnSave.disabled = false;
+    });
+  }
+
+  // SAVE button handler - use refactored doSave function
+  $('#ta-btn-save').addEventListener('click', () => {
+    if (!activeJobId) return;
+    doSave(activeJobId).catch(() => {
+      // Error already handled in doSave
     });
   });
 
@@ -1085,10 +1272,13 @@
         const getResponse = await fetch(urlFor(endpoints.get, activeJobId), {credentials:'same-origin'});
         const getData = await getResponse.json();
 
+        // P1 FIX: Add cache timestamp
         rowsByJob[activeJobId] = {
           items: getData.items || [],
           kategoriMeta: getData.meta?.kategori_opts || [],
-          readOnly: !!getData.meta?.read_only
+          readOnly: !!getData.meta?.read_only,
+          updatedAt: getData.pekerjaan?.updated_at || null,
+          cachedAt: Date.now()
         };
 
         paint(rowsByJob[activeJobId].items);
@@ -1161,25 +1351,48 @@
     });
   }
 
+  // P3.1 FIX: Proper CSV export with escaping
+  function escapeCSV(value) {
+    const str = String(value || '');
+    // If contains delimiter, quote, or newline, wrap in quotes and escape quotes
+    if (str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }
+
   // EXPORT CSV (koefisien format kanonik titik)
   $('#ta-btn-export').addEventListener('click', () => {
     if (!activeJobId) return;
     const rows = gatherRows();
-    const csv = ['kategori;kode;uraian;satuan;koefisien']
-      .concat(rows.map(r => {
-        const safeUraian = String(r.uraian || '').replace(/\r?\n/g,' ');
-        const koefCanon = __koefToCanon(r.koefisien || '');
-        return [r.kategori, r.kode, safeUraian, r.satuan, koefCanon]
-          .map(v => String(v||'').replace(/;/g, ','))
-          .join(';');
-      }))
-      .join('\n');
+
+    // UTF-8 BOM for Excel compatibility
+    const BOM = '\uFEFF';
+    const header = 'kategori;kode;uraian;satuan;koefisien';
+
+    const csvRows = rows.map(r => {
+      const koefCanon = __koefToCanon(r.koefisien || '');
+      return [
+        escapeCSV(r.kategori),
+        escapeCSV(r.kode),
+        escapeCSV(r.uraian),
+        escapeCSV(r.satuan),
+        escapeCSV(koefCanon)
+      ].join(';');
+    });
+
+    const csv = BOM + [header, ...csvRows].join('\n');
     const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `template_ahsp_${activeJobId}.csv`;
+
+    // Better filename with timestamp
+    const timestamp = new Date().toISOString().slice(0,19).replace(/[: ]/g, '-');
+    const jobKode = $('#ta-active-kode').textContent.trim() || activeJobId;
+    a.download = `template_ahsp_${jobKode}_${timestamp}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
+    toast('✅ CSV berhasil di-export', 'success');
   });
 
   // toast notification - use global DP.core.toast if available
@@ -1199,7 +1412,7 @@
     }
 
     // Fallback to inline implementation
-    // Create toast container if not exists
+    // P3.2 FIX: Toast stacking with max limit
     let container = document.getElementById('ta-toast-container');
     if (!container) {
       container = document.createElement('div');
@@ -1215,6 +1428,12 @@
         max-width: 400px;
       `;
       document.body.appendChild(container);
+    }
+
+    // Remove oldest toasts if more than 5
+    const existingToasts = container.querySelectorAll('.ta-toast');
+    if (existingToasts.length >= 5) {
+      existingToasts[0].remove(); // Remove oldest (first)
     }
 
     // Icon and color mapping

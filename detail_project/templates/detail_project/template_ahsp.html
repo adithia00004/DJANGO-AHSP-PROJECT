@@ -68,18 +68,11 @@
 
     {# Hint keyboard dihapus sesuai permintaan #}
 
-    <!-- Export (dropdown, konsisten dengan Rekap) -->
-    <div class="btn-group dp-btn-group ux-dropdown">
-      <button type="button" class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export options">
-        <i class="bi bi-download" aria-hidden="true"></i>
-        <span class="d-none d-sm-inline">Export</span>
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="ta-btn-export"><i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Export CSV</button></li>
-        <li><button class="dropdown-item" type="button" id="ta-btn-export-pdf"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Export PDF</button></li>
-        <li><button class="dropdown-item" type="button" id="ta-btn-export-word"><i class="bi bi-file-earmark-word text-primary me-2"></i>Export Word</button></li>
-      </ul>
-    </div>
+    <!-- Export CSV only (PDF/Word handled in Volume page) -->
+    <button type="button" class="btn btn-outline-primary dp-btn dp-btn-sm" id="ta-btn-export" aria-label="Export CSV">
+      <i class="bi bi-download" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline">Export CSV</span>
+    </button>
 
     <!-- Dirty indicator -->
     <div class="ta-dirty-indicator d-inline-flex align-items-center small text-muted" aria-live="polite">
@@ -106,15 +99,16 @@
     </button>
   </div>
 
-  <div id="ta-sync-banner" class="ta-sync-banner alert alert-warning d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
-    <div class="ta-sync-banner__icon"><i class="bi bi-arrow-repeat"></i></div>
+  <!-- P2 FIX: Passive warning banner - no invasive blocker -->
+  <div id="ta-sync-banner" class="ta-sync-banner alert alert-info d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
+    <div class="ta-sync-banner__icon"><i class="bi bi-info-circle"></i></div>
     <div class="ta-sync-banner__content">
-      <div class="fw-semibold">Menunggu sinkronisasi Template AHSP</div>
-      <div id="ta-sync-banner-text" class="small text-muted">Beberapa pekerjaan wajib dimuat ulang sebelum dapat diedit.</div>
+      <div class="fw-semibold">Ada pembaruan terbaru</div>
+      <div id="ta-sync-banner-text" class="small text-muted">Beberapa pekerjaan memiliki data terbaru. Data akan dimuat otomatis saat Anda membukanya.</div>
     </div>
     <div class="ms-auto">
       <button type="button" class="btn btn-sm btn-primary" id="ta-banner-reload">
-        <i class="bi bi-arrow-clockwise me-1"></i>Muat ulang sekarang
+        <i class="bi bi-arrow-clockwise me-1"></i>Muat semua sekarang
       </button>
     </div>
   </div>
@@ -155,7 +149,8 @@
 
     <!-- Panel editor -->
     <main class="ta-editor" aria-label="Editor Template AHSP">
-      <div id="ta-editor-blocker" class="ta-editor-blocker d-none" role="alert" aria-live="assertive">
+      <!-- P2 FIX: Blocker hidden by default - auto-reload handles stale data seamlessly -->
+      <div id="ta-editor-blocker" class="ta-editor-blocker d-none" role="alert" aria-live="assertive" style="display: none !important;">
         <div class="ta-editor-blocker__card">
           <h3>Data perlu dimuat ulang</h3>
           <p class="small text-muted mb-3">Sumber pekerjaan ini baru saja berubah. Muat ulang untuk mengambil data terbaru sebelum melanjutkan pengeditan.</p>
