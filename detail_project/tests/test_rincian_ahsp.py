@@ -21,9 +21,10 @@ from django.contrib.auth import get_user_model
 from dashboard.models import Project
 from detail_project.models import (
     Pekerjaan, Klasifikasi, SubKlasifikasi,
-    HargaItemProject, DetailAHSPProject, ProjectPricing,
-    ProjectChangeStatus,
+    HargaItemProject, DetailAHSPProject, DetailAHSPExpanded,
+    ProjectPricing, ProjectChangeStatus,
 )
+from referensi.models import AHSPReferensi
 
 User = get_user_model()
 
@@ -198,6 +199,134 @@ def detail_ahsp(project, pekerjaan_custom, harga_items):
     return details
 
 
+@pytest.fixture
+def ahsp_reference():
+    """Create AHSP referensi source for bundle test"""
+    return AHSPReferensi.objects.create(
+        kode_ahsp='2.2.1.3.3',
+        nama_ahsp='Pemasangan 1 m2 Bekisting (Sloof 3x pakai)',
+        sumber='AHSP SNI 2025',
+    )
+
+
+@pytest.fixture
+def pekerjaan_ref(project, sub_klasifikasi, ahsp_reference):
+    """Create pekerjaan reference dari AHSP dasar"""
+    return Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klasifikasi,
+        source_type=Pekerjaan.SOURCE_REF,
+        ref=ahsp_reference,
+        snapshot_kode='2.2.1.3.3',
+        snapshot_uraian='Pemasangan 1 m2 Bekisting',
+        snapshot_satuan='m2',
+        ordering_index=3,
+        detail_ready=True
+    )
+
+
+@pytest.fixture
+def detail_ref_job(project, pekerjaan_ref, harga_items):
+    """Detail AHSP untuk pekerjaan referensi (TK saja)"""
+    return DetailAHSPProject.objects.create(
+        project=project,
+        pekerjaan=pekerjaan_ref,
+        harga_item=harga_items[0],
+        kategori='TK',
+        kode=harga_items[0].kode_item,
+        uraian=harga_items[0].uraian,
+        satuan=harga_items[0].satuan,
+        koefisien=Decimal('1.000000')
+    )
+
+
+@pytest.fixture
+def bundle_ref_pekerjaan_setup(project, sub_klasifikasi, pekerjaan_custom, harga_items):
+    """Bundle job yang merujuk pekerjaan lain dalam project (ref_pekerjaan)."""
+    bundle_job = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klasifikasi,
+        source_type=Pekerjaan.SOURCE_CUSTOM,
+        snapshot_kode='D.3.1',
+        snapshot_uraian='Bundle Pekerjaan Internal',
+        snapshot_satuan='set',
+        ordering_index=5,
+        detail_ready=True
+    )
+    placeholder = HargaItemProject.objects.create(
+        project=project,
+        kategori='LAIN',
+        kode_item='LAIN.BND.PE',
+        uraian='Bundle Internal',
+        satuan='set',
+        harga_satuan=Decimal('0')
+    )
+    detail = DetailAHSPProject.objects.create(
+        project=project,
+        pekerjaan=bundle_job,
+        harga_item=placeholder,
+        kategori='LAIN',
+        kode='BND.PE',
+        uraian='Bundle Internal',
+        satuan='set',
+        koefisien=Decimal('1.000000'),
+        ref_pekerjaan=pekerjaan_custom
+    )
+    expansion = DetailAHSPExpanded.objects.create(
+        project=project,
+        pekerjaan=bundle_job,
+        source_detail=detail,
+        harga_item=harga_items[0],
+        kategori=harga_items[0].kategori,
+        kode=harga_items[0].kode_item,
+        uraian=harga_items[0].uraian,
+        satuan=harga_items[0].satuan,
+        koefisien=Decimal('1.000000'),
+        source_bundle_kode=detail.kode,
+        expansion_depth=1
+    )
+    return {
+        "bundle_job": bundle_job,
+        "detail": detail,
+        "expanded": expansion,
+    }
+
+
+@pytest.fixture
+def bundle_ref_pekerjaan_no_expanded(project, sub_klasifikasi, pekerjaan_custom):
+    """Bundle job tanpa expanded data (edge case)."""
+    bundle_job = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klasifikasi,
+        source_type=Pekerjaan.SOURCE_CUSTOM,
+        snapshot_kode='D.3.2',
+        snapshot_uraian='Bundle Tanpa Expanded',
+        snapshot_satuan='set',
+        ordering_index=6,
+        detail_ready=True
+    )
+    placeholder = HargaItemProject.objects.create(
+        project=project,
+        kategori='LAIN',
+        kode_item='LAIN.BND.NODE',
+        uraian='Bundle Tanpa Expanded',
+        satuan='set',
+        harga_satuan=Decimal('0')
+    )
+    DetailAHSPProject.objects.create(
+        project=project,
+        pekerjaan=bundle_job,
+        harga_item=placeholder,
+        kategori='LAIN',
+        kode='BND.NODE',
+        uraian='Bundle Tanpa Expanded',
+        satuan='set',
+        koefisien=Decimal('1.000000'),
+        ref_pekerjaan=pekerjaan_custom
+    )
+    return bundle_job
+
+
 # ============================================================================
 # TEST: Rincian AHSP Page View
 # ============================================================================
@@ -288,6 +417,164 @@ class TestAPIGetDetailAHSP:
         tk_item = next(item for item in data['items'] if item['kategori'] == 'TK')
         assert 'harga_satuan' in tk_item
         assert Decimal(tk_item['harga_satuan'].replace(',', '.')) == Decimal('150000.00')
+
+    def test_get_detail_ahsp_bundle_includes_expanded_price(
+        self, client, user, project, sub_klasifikasi, pekerjaan_custom, harga_items
+    ):
+        """Bundle (LAIN) rows should surface harga_satuan derived from expanded components"""
+        bundle_job = Pekerjaan.objects.create(
+            project=project,
+            sub_klasifikasi=sub_klasifikasi,
+            source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode='D.1.1',
+            snapshot_uraian='Bundle Galian',
+            snapshot_satuan='set',
+            ordering_index=2,
+            detail_ready=True
+        )
+
+        bundle_placeholder = HargaItemProject.objects.create(
+            project=project,
+            kategori='LAIN',
+            kode_item='LAIN.BUNDLE',
+            uraian='Bundle Galian',
+            satuan='set',
+            harga_satuan=Decimal('0')
+        )
+
+        bundle_detail = DetailAHSPProject.objects.create(
+            project=project,
+            pekerjaan=bundle_job,
+            harga_item=bundle_placeholder,
+            kategori='LAIN',
+            kode='BND.001',
+            uraian='Bundle Galian',
+            satuan='set',
+            koefisien=Decimal('5.000000'),
+            ref_pekerjaan=pekerjaan_custom
+        )
+
+        DetailAHSPExpanded.objects.create(
+            project=project,
+            pekerjaan=bundle_job,
+            source_detail=bundle_detail,
+            harga_item=harga_items[0],
+            kategori=harga_items[0].kategori,
+            kode=harga_items[0].kode_item,
+            uraian=harga_items[0].uraian,
+            satuan=harga_items[0].satuan,
+            koefisien=Decimal('5.000000'),
+            source_bundle_kode=bundle_detail.kode,
+            expansion_depth=1
+        )
+
+        client.force_login(user)
+        url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
+        response = client.get(url)
+
+        assert response.status_code == 200
+        data = response.json()
+        lain_item = next(item for item in data['items'] if item['kategori'] == 'LAIN')
+        assert Decimal(lain_item['harga_satuan'].replace(',', '.')) == Decimal('150000.00')
+
+    def test_bundle_ref_ahsp_price_matches_reference(
+        self, client, user, project, sub_klasifikasi,
+        pekerjaan_ref, ahsp_reference, detail_ref_job, harga_items
+    ):
+        """Bundle yang merujuk AHSP referensi harus mewarisi harga yang sama."""
+        bundle_job = Pekerjaan.objects.create(
+            project=project,
+            sub_klasifikasi=sub_klasifikasi,
+            source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode='D.2.2',
+            snapshot_uraian='Bundle Pemasangan Bekisting',
+            snapshot_satuan='set',
+            ordering_index=4,
+            detail_ready=True
+        )
+
+        bundle_placeholder = HargaItemProject.objects.create(
+            project=project,
+            kategori='LAIN',
+            kode_item='LAIN.BND.REF',
+            uraian='Bundle Bekisting AHSP',
+            satuan='set',
+            harga_satuan=Decimal('0')
+        )
+
+        bundle_detail = DetailAHSPProject.objects.create(
+            project=project,
+            pekerjaan=bundle_job,
+            harga_item=bundle_placeholder,
+            kategori='LAIN',
+            kode='BND.REF',
+            uraian='Bundle Bekisting Referensi',
+            satuan='set',
+            koefisien=Decimal('1.000000'),
+            ref_ahsp=ahsp_reference
+        )
+
+        DetailAHSPExpanded.objects.create(
+            project=project,
+            pekerjaan=bundle_job,
+            source_detail=bundle_detail,
+            harga_item=harga_items[0],
+            kategori=harga_items[0].kategori,
+            kode=harga_items[0].kode_item,
+            uraian=harga_items[0].uraian,
+            satuan=harga_items[0].satuan,
+            koefisien=Decimal('1.000000'),
+            source_bundle_kode=bundle_detail.kode,
+            expansion_depth=1
+        )
+
+        client.force_login(user)
+        ref_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, pekerjaan_ref.id])
+        ref_response = client.get(ref_url)
+        assert ref_response.status_code == 200
+        ref_items = ref_response.json()['items']
+        tk_ref = next(item for item in ref_items if item['kategori'] == 'TK')
+        ref_price = Decimal(tk_ref['harga_satuan'].replace(',', '.'))
+
+        bundle_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
+        bundle_response = client.get(bundle_url)
+        assert bundle_response.status_code == 200
+        bundle_item = next(item for item in bundle_response.json()['items'] if item['kategori'] == 'LAIN')
+        bundle_price = Decimal(bundle_item['harga_satuan'].replace(',', '.'))
+
+        assert bundle_price == ref_price
+
+    def test_bundle_ref_pekerjaan_price_matches_target(
+        self, client, user, project, pekerjaan_custom,
+        harga_items, bundle_ref_pekerjaan_setup, detail_ahsp
+    ):
+        """Bundle yang mereferensi pekerjaan internal mendapatkan harga yang sama."""
+        setup = bundle_ref_pekerjaan_setup
+        bundle_job = setup["bundle_job"]
+
+        client.force_login(user)
+        tar_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, pekerjaan_custom.id])
+        tar_response = client.get(tar_url)
+        assert tar_response.status_code == 200
+        target_item = next(item for item in tar_response.json()['items'] if item['kategori'] == 'TK')
+        target_price = Decimal(target_item['harga_satuan'].replace(',', '.'))
+
+        bundle_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
+        bundle_response = client.get(bundle_url)
+        bundle_price = Decimal(
+            next(item for item in bundle_response.json()['items'] if item['kategori'] == 'LAIN')['harga_satuan'].replace(',', '.')
+        )
+        assert bundle_price == target_price
+
+    def test_bundle_ref_pekerjaan_without_expanded_returns_zero(
+        self, client, user, project, bundle_ref_pekerjaan_no_expanded
+    ):
+        """Jika DetailAHSPExpanded kosong, harga bundle tetap 0 (fallback)."""
+        client.force_login(user)
+        url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_ref_pekerjaan_no_expanded.id])
+        response = client.get(url)
+        bundle_item = next(item for item in response.json()['items'] if item['kategori'] == 'LAIN')
+        assert Decimal(bundle_item['harga_satuan'].replace(',', '.')) == Decimal('0')
 
     def test_get_detail_ahsp_not_found(self, client, user, project):
         """GET detail for non-existent pekerjaan returns 404"""

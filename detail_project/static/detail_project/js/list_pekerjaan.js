@@ -146,8 +146,12 @@
 
   // ========= [DIRTY TRACKING] Prevent Data Loss ==============================
   let isDirty = false;
+  let dirtySuppressCount = 0;
 
   function setDirty(dirty) {
+    if (dirty && dirtySuppressCount > 0) {
+      return;
+    }
     isDirty = !!dirty;
     log('[DIRTY]', isDirty ? 'Set to dirty' : 'Cleared');
 
@@ -165,6 +169,15 @@
     const fabBtn = document.getElementById('btn-save-fab');
     if (fabBtn) {
       fabBtn.classList.toggle('d-none', !isDirty);
+    }
+  }
+
+  function withDirtySuppressed(fn) {
+    dirtySuppressCount += 1;
+    try {
+      return fn();
+    } finally {
+      dirtySuppressCount -= 1;
     }
   }
 
@@ -892,8 +905,10 @@
   function preselectSelect2($sel, id, labelText) {
     if (!id) return;
     const text = labelText || String(id);
-    const opt = new Option(text, String(id), true, true);
-    $sel.empty().append(opt).trigger('change');
+    withDirtySuppressed(() => {
+      const opt = new Option(text, String(id), true, true);
+      $sel.empty().append(opt).trigger('change');
+    });
   }
 
   function addPekerjaan(tbody, preset = {}, opts = {}) {

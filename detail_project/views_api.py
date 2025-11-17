@@ -1320,20 +1320,48 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
     # dp harga: fallback aman ke 2 desimal
     dp_harga = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
 
-    items = [
-        {
+    raw_details = list(qs)
+    detail_ids = [row["id"] for row in raw_details if row.get("id") is not None]
+
+    expanded_totals: dict[int, Decimal] = {}
+    if detail_ids:
+        expanded_qs = (DetailAHSPExpanded.objects
+                       .filter(project=project, pekerjaan=pkj, source_detail_id__in=detail_ids)
+                       .select_related('harga_item'))
+        for exp in expanded_qs:
+            sd_id = exp.source_detail_id
+            if not sd_id:
+                continue
+            price = exp.harga_item.harga_satuan or Decimal("0")
+            koef = exp.koefisien or Decimal("0")
+            subtotal = price * koef
+            expanded_totals[sd_id] = expanded_totals.get(sd_id, Decimal("0")) + subtotal
+
+    items = []
+    for it in raw_details:
+        koef_decimal = it.get("koefisien") or Decimal("0")
+        harga_item = it.get("harga_item__harga_satuan")
+        bundle_total = expanded_totals.get(it.get("id"), Decimal("0"))
+        effective_price = harga_item
+        if (
+            it.get("kategori") == HargaItemProject.KATEGORI_LAIN
+            and bundle_total > Decimal("0")
+            and koef_decimal > Decimal("0")
+        ):
+            # Harga per unit mengambil total bundle dibagi koefisien agar jumlah harga tetap sesuai
+            effective_price = bundle_total / koef_decimal
+
+        items.append({
             "id": it["id"],
             "kategori": it["kategori"],
             "kode": it["kode"] or "",
             "uraian": it["uraian"] or "",
             "satuan": (it.get("satuan") or None),
-            "koefisien": to_dp_str(it.get("koefisien"), dp_koef),
+            "koefisien": to_dp_str(koef_decimal, dp_koef),
             "ref_ahsp_id": it.get("ref_ahsp_id"),
             "ref_pekerjaan_id": it.get("ref_pekerjaan_id"),  # NEW: bundle support
-            "harga_satuan": to_dp_str(it.get("harga_item__harga_satuan"), dp_harga),
-        }
-        for it in qs
-    ]
+            "harga_satuan": to_dp_str(effective_price, dp_harga),
+        })
 
     # 2) Fallback (read-only) dari referensi bila pekerjaan REF & belum ada detail proyek
     if read_only and not items:
