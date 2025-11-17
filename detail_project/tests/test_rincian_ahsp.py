@@ -463,7 +463,7 @@ class TestAPIGetDetailAHSP:
             kode=harga_items[0].kode_item,
             uraian=harga_items[0].uraian,
             satuan=harga_items[0].satuan,
-            koefisien=Decimal('5.000000'),
+            koefisien=Decimal('1.000000'),
             source_bundle_kode=bundle_detail.kode,
             expansion_depth=1
         )
@@ -564,6 +564,33 @@ class TestAPIGetDetailAHSP:
         bundle_price = Decimal(
             next(item for item in bundle_response.json()['items'] if item['kategori'] == 'LAIN')['harga_satuan'].replace(',', '.')
         )
+        assert bundle_price == target_price
+
+    def test_bundle_price_remains_constant_when_koef_changes(
+        self, client, user, project, pekerjaan_custom,
+        harga_items, bundle_ref_pekerjaan_setup, detail_ahsp
+    ):
+        """Harga satuan bundle tetap sama meski koefisien bundle berubah."""
+        setup = bundle_ref_pekerjaan_setup
+        bundle_job = setup["bundle_job"]
+        detail = setup["detail"]
+
+        # Naikkan koefisien bundle untuk mensimulasikan kasus user
+        detail.koefisien = Decimal('10.000000')
+        detail.save(update_fields=['koefisien'])
+
+        client.force_login(user)
+        tar_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, pekerjaan_custom.id])
+        target_price = Decimal(
+            next(item for item in client.get(tar_url).json()['items'] if item['kategori'] == 'TK')['harga_satuan'].replace(',', '.')
+        )
+
+        bundle_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
+        bundle_response = client.get(bundle_url)
+        assert bundle_response.status_code == 200
+        bundle_item = next(item for item in bundle_response.json()['items'] if item['kategori'] == 'LAIN')
+        bundle_price = Decimal(bundle_item['harga_satuan'].replace(',', '.'))
+
         assert bundle_price == target_price
 
     def test_bundle_ref_pekerjaan_without_expanded_returns_zero(

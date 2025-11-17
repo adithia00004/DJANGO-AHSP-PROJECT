@@ -122,7 +122,7 @@
 .ra-app .ra-body{
   display: grid;
   grid-template-columns:
-    minmax(280px, var(--ta-left-w, 25%))
+    minmax(280px, var(--ra-left-w, 25%))
     6px
     minmax(var(--ta-editor-min, 600px), 1fr);
   gap: 12px;
@@ -797,6 +797,7 @@
 /* Sticky thead for rincian table with proper z-index under toolbar */
 .ra-thead-sticky {
   position: sticky;
+  top: calc(var(--dp-topbar-h) + var(--ra-toolbar-h));
   z-index: var(--dp-z-thead);
   background: var(--dp-c-surface-2);
 }

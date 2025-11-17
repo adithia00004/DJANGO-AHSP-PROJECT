@@ -17,6 +17,12 @@ except Exception:  # fallback bila belum tersedia saat makemigrations
     AHSPReferensi = None
     RincianReferensi = None
 
+# Compat: beberapa skrip legacy mengimport Project dari detail_project.models
+try:
+    from dashboard.models import Project  # type: ignore
+except Exception:
+    Project = None  # type: ignore
+
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(default=timezone.now, editable=False)

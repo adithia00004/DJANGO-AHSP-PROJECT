@@ -1346,10 +1346,8 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
         if (
             it.get("kategori") == HargaItemProject.KATEGORI_LAIN
             and bundle_total > Decimal("0")
-            and koef_decimal > Decimal("0")
         ):
-            # Harga per unit mengambil total bundle dibagi koefisien agar jumlah harga tetap sesuai
-            effective_price = bundle_total / koef_decimal
+            effective_price = bundle_total
 
         items.append({
             "id": it["id"],
@@ -2932,7 +2930,7 @@ def api_get_rekap_rab(request: HttpRequest, project_id: int):
             .values_list("id", "markup_override_percent")
         )
 
-    # Suntik markup_eff bila kosong/0; set HSP = D; isi F/G/total hanya jika belum ada
+    # Suntik markup_eff bila kosong/0; lengkapi F/G/total hanya jika belum ada
     for r in data:
         curr = r.get("markup_eff")
         if curr in (None, "", 0, 0.0):
@@ -2941,12 +2939,19 @@ def api_get_rekap_rab(request: HttpRequest, project_id: int):
             eff = ov if ov is not None else proj_mp
             r["markup_eff"] = float(eff)
 
-        # Harga Satuan untuk UI = biaya langsung (A+B+C), yaitu D
+        # FIXED: JANGAN overwrite HSP! HSP sudah diset oleh services = E_base (A+B+C+LAIN tanpa markup)
+        # Untuk backward compatibility, tambahkan field terpisah untuk biaya langsung
         try:
             d_direct = float(r.get("D") or 0.0)
         except Exception:
             d_direct = 0.0
-        r["HSP"] = d_direct
+        r["biaya_langsung"] = d_direct  # Biaya langsung (A+B+C saja, tanpa LAIN)
+
+        # HSP tetap dipertahankan dari services (E_base = A+B+C+LAIN tanpa markup)
+        # Jika HSP belum ada (data lama), gunakan E_base
+        if "HSP" not in r or r["HSP"] is None:
+            lain = float(r.get("LAIN") or 0.0)
+            r["HSP"] = d_direct + lain  # E_base = A+B+C+LAIN
 
         # Lengkapi F/G/total hanya kalau belum disediakan oleh services
         lain = float(r.get("LAIN") or 0.0)

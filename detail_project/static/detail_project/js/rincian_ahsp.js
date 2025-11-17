@@ -719,8 +719,16 @@
 
   /**
    * Render detail AHSP table with items grouped by category (TK, BHN, ALT, LAIN)
-   * Calculates subtotals per category and totals E, F, G with effective BUK
-   * Formula: E = A+B+C+D, F = E × (effPct/100), G = E + F
+   * Calculates subtotals per category and totals E_base, F, G with effective BUK
+   * Formula: E_base = A+B+C+LAIN, F = E_base × (effPct/100), G = E_base + F
+   * Note: Variable naming aligned with backend services.py:
+   *   - A = Tenaga Kerja (TK)
+   *   - B = Bahan (BHN)
+   *   - C = Peralatan (ALT)
+   *   - LAIN = Lainnya (bundle items, biasanya kosong untuk data baru karena sudah di-expand)
+   *   - E_base = A+B+C+LAIN (biaya komponen sebelum markup)
+   *   - F = Profit/Margin (E_base × markup%)
+   *   - G = Harga Satuan dengan Markup (E_base + F)
    * @param {Array<Object>} items - Detail AHSP items with kategori, uraian, koefisien, harga_satuan
    * @param {number} effPct - Effective BUK percentage to apply (may be project or override)
    * @performance Uses DocumentFragment for efficient DOM updates
@@ -769,24 +777,28 @@
     }
 
     $tbody.innerHTML = '';
-    const sA = addSec('A — Tenaga Kerja', group.TK);
-    const sB = addSec('B — Bahan',        group.BHN);
-    const sC = addSec('C — Peralatan',    group.ALT);
-    const sD = addSec('D — Lainnya',      group.LAIN);
+    // FIXED: Variable naming aligned with backend (services.py)
+    const A = addSec('A — Tenaga Kerja', group.TK);
+    const B = addSec('B — Bahan',        group.BHN);
+    const C = addSec('C — Peralatan',    group.ALT);
+    const LAIN = addSec('LAIN — Lainnya', group.LAIN);
 
-    const E = sA+sB+sC+sD;
-    const F = E * (num(effPct)/100);
-    const G = E + F;
+    // FIXED: Rename E → E_base untuk konsistensi dengan backend
+    // E_base = biaya komponen sebelum markup (A+B+C+LAIN)
+    const E_base = A + B + C + LAIN;
+    const F = E_base * (num(effPct)/100);
+    const G = E_base + F;
 
     const tre = document.createElement('tr');
     tre.className='tot-row';
-    tre.innerHTML = `<td colspan="6">E — Jumlah (A+B+C+D)</td><td class="mono">${fmt(E)}</td>`;
+    tre.innerHTML = `<td colspan="6">E — Jumlah (A+B+C+LAIN)</td><td class="mono">${fmt(E_base)}</td>`;
     const trf = document.createElement('tr');
     trf.className='tot-row';
-    trf.innerHTML = `<td colspan="6">F — Profit/Margin × E</td><td class="mono">${fmt(F)}</td>`;
+    trf.innerHTML = `<td colspan="6">F — Profit/Margin (${num(effPct).toFixed(2)}% × E)</td><td class="mono">${fmt(F)}</td>`;
     const trg = document.createElement('tr');
     trg.className='tot-row';
-    trg.innerHTML = `<td colspan="6">G — HSP = E + F</td><td class="mono">${fmt(G)}</td>`;
+    // FIXED: Label lebih jelas - G adalah harga satuan DENGAN markup, bukan HSP
+    trg.innerHTML = `<td colspan="6">G — Harga Satuan (E + F)</td><td class="mono">${fmt(G)}</td>`;
 
     fr.appendChild(tre); fr.appendChild(trf); fr.appendChild(trg);
     $tbody.appendChild(fr);
@@ -814,7 +826,8 @@
   // Modal Apply handler - TIER 1 & 2 FIX
   if ($modalApply) {
     $modalApply.addEventListener('click', async () => {
-      if (selectedId == null) {
+      const targetId = selectedId;
+      if (targetId == null) {
         showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning');
         return;
       }
@@ -841,22 +854,24 @@
 
       try {
         // Save override
-        const saveResp = await saveOverride(selectedId, v);
+        await saveOverride(targetId, v);
 
         // TIER 1 FIX: Clear cache to force reload
-        cacheDetail.delete(selectedId);
+        cacheDetail.delete(targetId);
 
         // Get updated pricing
-        const pp = await getPricingItem(selectedId);
+        const pp = await getPricingItem(targetId);
         const effMarkup = Number(pp.effective_markup);
 
         // Update UI indicators
-        if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
-        if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
+        if (selectedId === targetId) {
+          if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
+          if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
+        }
         if ($modalInput) $modalInput.value = pp.override_markup || '';
 
         // Update rows data with new effective markup
-        const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
+        const idx = rows.findIndex(r => r.pekerjaan_id === targetId);
         if (idx >= 0) rows[idx].markup_eff = effMarkup;
 
         // Re-render list to show updated override chip
@@ -870,8 +885,10 @@
         }
 
         // Re-fetch and render detail with new markup
-        const detail = await fetchDetail(selectedId);
-        renderDetailTable(detail?.items || [], effMarkup);
+        const detail = await fetchDetail(targetId);
+        if (selectedId === targetId) {
+          renderDetailTable(detail?.items || [], effMarkup);
+        }
 
         // Close modal
         if (window.bootstrap) {
@@ -881,7 +898,7 @@
 
         // Success notification
         showToast(`✅ Override Profit/Margin (BUK) berhasil diterapkan: ${pp.effective_markup}%`, 'success');
-        console.log('[OVERRIDE] Applied successfully:', { pekerjaanId: selectedId, override: v, effective: effMarkup });
+        console.log('[OVERRIDE] Applied successfully:', { pekerjaanId: targetId, override: v, effective: effMarkup });
 
       } catch (e) {
         console.error('[OVERRIDE] Apply failed:', e);
@@ -906,7 +923,8 @@
   // Modal Clear handler - TIER 1 & 2 FIX
   if ($modalClear) {
     $modalClear.addEventListener('click', async () => {
-      if (selectedId == null) {
+      const targetId = selectedId;
+      if (targetId == null) {
         showToast('⚠️ Pilih pekerjaan terlebih dahulu', 'warning');
         return;
       }
@@ -921,22 +939,24 @@
 
       try {
         // Clear override
-        await saveOverride(selectedId, null);
+        await saveOverride(targetId, null);
 
         // TIER 1 FIX: Clear cache to force reload
-        cacheDetail.delete(selectedId);
+        cacheDetail.delete(targetId);
 
         // Get updated pricing (should return to default)
-        const pp = await getPricingItem(selectedId);
+        const pp = await getPricingItem(targetId);
         const effMarkup = Number(pp.effective_markup);
 
         // Update UI indicators
         if ($modalInput) $modalInput.value = '';
-        if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
-        if ($ovrChip) $ovrChip.hidden = true;
+        if (selectedId === targetId) {
+          if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
+          if ($ovrChip) $ovrChip.hidden = true;
+        }
 
         // Update rows data with default markup
-        const idx = rows.findIndex(r => r.pekerjaan_id === selectedId);
+        const idx = rows.findIndex(r => r.pekerjaan_id === targetId);
         if (idx >= 0) rows[idx].markup_eff = effMarkup;
 
         // Re-render list
@@ -950,8 +970,10 @@
         }
 
         // Re-fetch and render detail with default markup
-        const detail = await fetchDetail(selectedId);
-        renderDetailTable(detail?.items || [], effMarkup);
+        const detail = await fetchDetail(targetId);
+        if (selectedId === targetId) {
+          renderDetailTable(detail?.items || [], effMarkup);
+        }
 
         // Close modal
         if (window.bootstrap) {
@@ -961,7 +983,7 @@
 
         // Success notification
         showToast(`✅ Override dihapus. Kembali ke default: ${pp.effective_markup}%`, 'info');
-        console.log('[OVERRIDE] Cleared successfully:', { pekerjaanId: selectedId, effectiveMarkup: effMarkup });
+        console.log('[OVERRIDE] Cleared successfully:', { pekerjaanId: targetId, effectiveMarkup: effMarkup });
 
       } catch (e) {
         console.error('[OVERRIDE] Clear failed:', e);
@@ -1109,9 +1131,9 @@
   (function initResizer(){
     if (!$resizer || !$leftPane || !$grid) return;
 
-    const setLeftW = (px) => { ROOT.style.setProperty('--rk-left-w', `${px}px`); };
+    const setLeftW = (px) => { ROOT.style.setProperty('--ra-left-w', `${px}px`); };
     const getLeftW = () => {
-      const v = getComputedStyle(ROOT).getPropertyValue('--rk-left-w').trim();
+      const v = getComputedStyle(ROOT).getPropertyValue('--ra-left-w').trim();
       const n = parseInt(v, 10);
       return Number.isFinite(n) ? n : CONSTANTS.RESIZER_DEFAULT_WIDTH_PX;
     };

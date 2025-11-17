@@ -17,6 +17,10 @@
 7. [Tips & Trik](#tips--trik)
 8. [Troubleshooting](#troubleshooting)
 9. [FAQ](#faq)
+10. [API Endpoints](#api-endpoints)
+11. [Sync & Integrasi](#sync--integrasi)
+12. [Checklist Pengujian](#checklist-pengujian)
+13. [Toast Coverage](#toast-coverage)
 
 ---
 
@@ -439,6 +443,10 @@ Steps:
 Alternative: Export ke Excel, buka 2 sheets side-by-side
 ```
 
+### Catatan Bundle
+- Harga satuan item **Bundle (LAIN)** selalu menampilkan HSP per unit dari pekerjaan referensi. Ubah koefisien untuk mengalikan total (harga satuan × koefisien), bukan untuk mengubah harga satuan.
+- Jika harga satuan bundle tampak berubah tidak wajar, pastikan Template AHSP & Harga Items sudah sinkron (cek banner “Perlu update volume/Template”).
+
 ### Productive Shortcuts:
 
 | **Task** | **Mouse Way** | **Keyboard Way** | **Time Saved** |
@@ -629,6 +637,110 @@ A: Depend on size. Typical 100 pekerjaan: CSV ~1 detik, PDF ~5 detik, Word ~3 de
 
 **Q: Network timeout berapa lama?**
 A: Default 2 menit. Jika melebihi, akan error dan suggest retry.
+
+---
+
+## API Endpoints
+
+### Rekap Pekerjaan (List Panel)
+- **Endpoint**: `GET /api/detail_project/api_get_rekap_rab/<project_id>/`
+- **Response**:
+  ```json
+  {
+    "ok": true,
+    "rows": [
+      {
+        "pekerjaan_id": 101,
+        "kode": "1.1.01",
+        "uraian": "Galian Tanah",
+        "satuan": "m3",
+        "markup_eff": 15.0,
+        "total": 12500000.0
+      }
+    ],
+    "meta": {
+      "ppn_percent": 11.0
+    }
+  }
+  ```
+
+### Project Pricing (Global BUK & PPN)
+- **Endpoint**: `GET /api/detail_project/api_project_pricing/<project_id>/`
+- **Response**: `{ "ok": true, "markup_percent": 15.0, "ppn_percent": 11.0 }`
+
+### Detail AHSP per Pekerjaan
+- **Endpoint**: `GET /api/detail_project/api_get_detail_ahsp/<project_id>/<pekerjaan_id>/`
+- **Response**:
+  ```json
+  {
+    "ok": true,
+    "pekerjaan": { "id": 101, "kode": "1.1.01", "uraian": "Galian Tanah", "satuan": "m3" },
+    "detail": [
+      {
+        "kategori": "TK",
+        "uraian": "Mandor",
+        "kode": "L.01",
+        "satuan": "OH",
+        "koefisien": "0.150000",
+        "harga_satuan": "150000.00",
+        "jumlah": "22500.00",
+        "ref_kind": "ahsp",
+        "ref_id": 2001
+      }
+    ]
+  }
+  ```
+
+### Pricing / Override per Pekerjaan
+- **Endpoint**: `GET /api/detail_project/api_pekerjaan_pricing/<project_id>/<pekerjaan_id>/`
+- **Override Payload**: `POST` body `{ "override_markup": "20,5" }` atau `null` untuk reset (wajib CSRF token).
+- **Response**: `{ "ok": true, "project_markup": 15.0, "override_markup": 20.5, "effective_markup": 20.5 }`
+
+### Reset ke Referensi
+- **Endpoint**: `POST /api/detail_project/api_reset_detail_ahsp_to_ref/<project_id>/<pekerjaan_id>/`
+- **Response**: `{ "ok": true, "message": "Reset berhasil" }`
+
+---
+
+## Sync & Integrasi
+
+- **Sync Indicator**: `_sync_indicator.html` dikonfigurasi `scope="rincian"` dan `watch="both"`, artinya perubahan dari Template AHSP maupun Harga Items otomatis memicu indikator di topbar.
+- **Volume Alert & Pill**: Event `dp:source-change` membawa `state.volume`. Jika sebuah pekerjaan perlu update volume, sidebar menampilkan pill “Perlu update volume” dan panel kanan menyalakan peringatan `#rk-volume-alert`.
+- **Lock Overlay**: Ketika Template/Volume belum disinkronkan, override input, tombol Save, dan resizer akan dikunci sampai pengguna membuka Template AHSP dari banner (tombol “Buka Template”).
+- **Change Status Events**: `dp:change-status` memantau scope lain (misal Harga Items). Jika project sedang dirty di halaman lain, dirty indicator dan banner di Rincian otomatis menyesuaikan.
+- **Workflow**: Alur terbaik → Template AHSP (ubah komponen) → Harga Items (update harga) → Rincian AHSP (review detail). Banner/overlay membantu user mengetahui kapan langkah sebelumnya belum selesai.
+
+---
+
+## Checklist Pengujian
+
+1. **Navigasi Job & Resizer**
+   - Cari pekerjaan via search, pilih dengan mouse & keyboard; pastikan resizer menyimpan lebar setelah refresh.
+2. **Override BUK**
+   - Shift+O untuk membuka modal, simpan nilai valid → chip “Override Aktif” muncul, Grand Total berubah. Reset override untuk kembali ke default.
+3. **Sync Banner & Lock Overlay**
+   - Lakukan perubahan di Template AHSP (tab lain) hingga muncul banner “Perlu update Template”. Klik tombol “Buka Template” dan reload, pastikan overlay hilang setelah sinkron.
+4. **Volume Warning**
+   - Trigger perubahan volume (Volume Pekerjaan) → pastikan pill “Perlu update volume” tampil pada pekerjaan terkait dan banner `#rk-volume-alert` menyala di panel kanan.
+5. **Export**
+   - Export CSV/PDF/Word untuk pekerjaan aktif. Buka file, validasi HSP, koefisien, dan override BUK tercermin.
+6. **Error Handling**
+   - Putus koneksi jaringan lalu tekan Save/Override → muncul toast error dan tombol kembali ke state semula.
+7. **Keyboard Shortcuts**
+   - Ctrl+K (focus search), Shift+O (override modal), Tab → resizer, Escape menutup modal, Arrow Up/Down untuk berpindah pekerjaan.
+
+---
+
+## Toast Coverage
+
+| Scenario | Pesan |
+|----------|-------|
+| Override berhasil | `✅ Override Profit/Margin (BUK) berhasil diterapkan: X%` |
+| Reset override | `✅ Override dihapus. Kembali ke default: X%` |
+| Tidak pilih pekerjaan | `⚠️ Pilih pekerjaan terlebih dahulu` |
+| Input override invalid | `⚠️ Masukkan nilai Profit/Margin...`, `❌ Format angka tidak valid`, atau `❌ Profit/Margin harus antara 0-100%` |
+| Server/Network error | `❌ Gagal menerapkan override` / `❌ Gagal menghapus override` |
+| Volume/Template pending | Banner `Perlu update volume` + toast/info dari sync indicator jika DP core aktif |
 
 ---
 

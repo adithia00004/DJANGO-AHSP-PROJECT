@@ -5,7 +5,10 @@ from django.db import transaction
 from .models import DetailAHSPProject, HargaItemProject, VolumePekerjaan, Pekerjaan, ProjectPricing
 
 def _clear_rekap_cache(project_id):
-    transaction.on_commit(lambda: cache.delete(f"rekap:{project_id}:v1"))
+    def _clear():
+        cache.delete(f"rekap:{project_id}:v1")
+        cache.delete(f"rekap:{project_id}:v2")
+    transaction.on_commit(_clear)
 
 @receiver([post_save, post_delete], sender=DetailAHSPProject)
 def _i1(sender, instance, **kw): _clear_rekap_cache(instance.project_id)

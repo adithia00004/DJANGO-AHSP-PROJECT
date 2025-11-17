@@ -56,7 +56,7 @@ def invalidate_rekap_cache(project_or_id) -> None:
     except Exception:
         return
     cache.delete(f"rekap:{pid}:v1")
-    cache.delete(f"rekap:{pid}:v2")  # tambahkan ini
+    cache.delete(f"rekap:{pid}:v2")
 
 
 # Import model referensi untuk cloning (aman bila app referensi belum siap saat makemigrations)
@@ -1611,10 +1611,17 @@ def compute_rekap_for_project(project):
     def _ts(val):
         return val.isoformat() if val else "0"
 
-    key = f"rekap:{project.id}:v2:{_ts(raw_ts)}:{_ts(expanded_ts)}:{_ts(volume_ts)}:{_ts(pekerjaan_ts)}:{_ts(pricing_ts)}"
-    data = cache.get(key)
-    if data is not None:
-        return data
+    cache_key = f"rekap:{project.id}:v2"
+    signature = (
+        _ts(raw_ts),
+        _ts(expanded_ts),
+        _ts(volume_ts),
+        _ts(pekerjaan_ts),
+        _ts(pricing_ts),
+    )
+    cached = cache.get(cache_key)
+    if cached and cached.get("sig") == signature:
+        return cached.get("data", [])
     """
     Hitung komponen biaya per pekerjaan (pakai override Profit/Margin per-pekerjaan jika ada):
       A = Σ(TK), B = Σ(BHN), C = Σ(ALT), LAIN = Σ(LAIN)
@@ -1716,7 +1723,7 @@ def compute_rekap_for_project(project):
             volume=volume,
             total=total,      # = G * volume
         ))
-    cache.set(key, result, 300)  # 5 menit (atau sesuai kebutuhan)
+    cache.set(cache_key, {"sig": signature, "data": result}, 300)  # 5 menit (atau sesuai kebutuhan)
     return result
 
 

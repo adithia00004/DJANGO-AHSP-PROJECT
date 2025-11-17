@@ -1368,6 +1368,7 @@ body[data-page="rincian_ahsp"]{
 /* THEAD sticky khusus Rincian AHSP */
 body[data-page="rincian_ahsp"] .ra-thead-sticky{
   position: sticky;
+  top: calc(var(--dp-topbar-h) + var(--ra-toolbar-h));
   z-index: var(--dp-z-thead);
   background: var(--dp-c-surface);
 
