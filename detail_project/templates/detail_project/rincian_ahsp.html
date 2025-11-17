@@ -55,7 +55,7 @@
                 class="btn btn-primary dp-btn dp-btn-sm btn-neon ms-1"
                 type="button"
                 title="Cari">
-          <i class="bi bi-search"></i> Cari
+          <i class="bi bi-search" aria-hidden="true"></i> Cari
         </button>
       </div>
     </div>
@@ -70,9 +70,9 @@
         <span class="d-none d-sm-inline">Export</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="ra-btn-export"><i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Export CSV</button></li>
-        <li><button class="dropdown-item" type="button" id="ra-btn-export-pdf"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Export PDF</button></li>
-        <li><button class="dropdown-item" type="button" id="ra-btn-export-word"><i class="bi bi-file-earmark-word text-primary me-2"></i>Export Word</button></li>
+        <li><button class="dropdown-item" type="button" id="ra-btn-export"><i class="bi bi-file-earmark-spreadsheet text-success me-2" aria-hidden="true"></i>Export CSV</button></li>
+        <li><button class="dropdown-item" type="button" id="ra-btn-export-pdf"><i class="bi bi-file-earmark-pdf text-danger me-2" aria-hidden="true"></i>Export PDF</button></li>
+        <li><button class="dropdown-item" type="button" id="ra-btn-export-word"><i class="bi bi-file-earmark-word text-primary me-2" aria-hidden="true"></i>Export Word</button></li>
       </ul>
     </div>
 
@@ -88,7 +88,7 @@
     </div>
 
     <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm" data-bs-toggle="modal" data-bs-target="#raHelpModal" aria-label="Buka bantuan">
-      <i class="bi bi-question-circle"></i>
+      <i class="bi bi-question-circle" aria-hidden="true"></i>
       <span class="d-none d-sm-inline">Bantuan</span>
     </button>
 
@@ -132,21 +132,21 @@
         <div class="rk-right-actions d-flex align-items-center gap-2">
           <!-- BUK Efektif Display -->
           <span id="rk-eff" class="rk-chip ra-chip ux-mono mono" title="Profit/Margin (BUK) untuk pekerjaan ini">
-            <i class="bi bi-lightning-charge"></i>&nbsp;Profit: —%
+            <i class="bi bi-lightning-charge" aria-hidden="true"></i>&nbsp;Profit: -%
           </span>
 
           <!-- Override Status Indicator -->
           <span id="rk-pkj-ovr-chip" class="rk-chip ra-chip-warn ux-mono mono" hidden title="Pekerjaan ini memiliki override aktif">
-            <i class="bi bi-sliders"></i>&nbsp;Override Aktif
+            <i class="bi bi-sliders" aria-hidden="true"></i>&nbsp;Override Aktif
           </span>
 
           <!-- Action Buttons -->
           <div class="btn-group btn-group-sm">
             <button id="rk-btn-override" class="btn btn-outline-primary d-inline-flex align-items-center gap-1" type="button" data-bs-toggle="modal" data-bs-target="#raOverrideModal" title="Atur override untuk pekerjaan ini">
-              <i class="bi bi-sliders"></i><span>Override</span>
+              <i class="bi bi-sliders" aria-hidden="true"></i><span>Override</span>
             </button>
             <button id="rk-btn-reset" class="btn btn-outline-warning d-inline-flex align-items-center gap-1" type="button" title="Reset semua override ke default" disabled>
-              <i class="bi bi-arrow-counterclockwise"></i><span>Reset</span>
+              <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span>Reset</span>
             </button>
           </div>
         </div>
@@ -190,14 +190,14 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="raOverrideLabel">
-            <i class="bi bi-sliders me-2"></i>Override Settings
+            <i class="bi bi-sliders me-2" aria-hidden="true"></i>Override Settings
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
           <!-- Pekerjaan Info -->
           <div class="alert alert-info d-flex align-items-start gap-2 mb-3">
-            <i class="bi bi-info-circle flex-shrink-0 mt-1"></i>
+            <i class="bi bi-info-circle flex-shrink-0 mt-1" aria-hidden="true"></i>
             <div class="flex-grow-1">
               <div class="fw-bold mb-1">Pekerjaan Terpilih:</div>
               <div class="small">
@@ -211,7 +211,7 @@
           <div class="mb-3">
             <label for="ovr-buk-custom" class="form-label fw-bold">Override Profit/Margin (BUK) (%)</label>
             <div class="input-group">
-              <span class="input-group-text"><i class="bi bi-percent"></i></span>
+              <span class="input-group-text"><i class="bi bi-percent" aria-hidden="true"></i></span>
               <input type="text" class="form-control" id="ovr-buk-custom" inputmode="decimal" placeholder="Kosongkan untuk menggunakan default" aria-label="Custom Profit/Margin (BUK)">
               <span class="input-group-text">%</span>
             </div>
@@ -220,13 +220,13 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            <i class="bi bi-x-lg me-1"></i>Batal
+            <i class="bi bi-x-lg me-1" aria-hidden="true"></i>Batal
           </button>
           <button type="button" class="btn btn-outline-danger" id="ovr-clear-btn">
-            <i class="bi bi-trash me-1"></i>Hapus Override
+            <i class="bi bi-trash me-1" aria-hidden="true"></i>Hapus Override
           </button>
           <button type="button" class="btn btn-primary" id="ovr-apply-btn">
-            <i class="bi bi-check2-circle me-1"></i>Terapkan Override
+            <i class="bi bi-check2-circle me-1" aria-hidden="true"></i>Terapkan Override
           </button>
         </div>
       </div>
@@ -239,7 +239,7 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="raHelpLabel">
-            <i class="bi bi-question-circle-fill me-2"></i>Bantuan Rincian AHSP
+            <i class="bi bi-question-circle-fill me-2" aria-hidden="true"></i>Bantuan Rincian AHSP
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
@@ -292,7 +292,7 @@
             </table>
           </div>
           <p class="small text-muted mb-3">
-            <i class="bi bi-info-circle me-1"></i>
+            <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
             <em>Keyboard shortcuts bekerja bahkan saat tidak fokus di input field.</em>
           </p>
 
@@ -339,7 +339,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            <i class="bi bi-x-lg me-1"></i>Tutup
+            <i class="bi bi-x-lg me-1" aria-hidden="true"></i>Tutup
           </button>
         </div>
       </div>

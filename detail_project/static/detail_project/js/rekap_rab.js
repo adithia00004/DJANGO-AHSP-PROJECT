@@ -85,6 +85,13 @@
     return text.replace(regex, '<span class="rab-hit">$1</span>');
   }
 
+  const escAttr = (s = '') => String(s ?? '').replace(/"/g, '&quot;');
+  const levelLabel = (level) => {
+    if (level === 1) return 'Klasifikasi';
+    if (level === 2) return 'Sub-klasifikasi';
+    return 'Pekerjaan';
+  };
+
   // ========= STATE =========
   let tree = [];
   let rekapRows = [];
@@ -225,6 +232,15 @@
     tr.dataset.nodeId = node.id;
     if (parentId) tr.dataset.parentId = parentId;
     tr.dataset.level = String(level);
+    tr.setAttribute('role', 'row');
+    tr.setAttribute('aria-level', String(level));
+
+    const labelType = levelLabel(level);
+    const plainLabel = level === 3
+      ? (node.label || node.name || '')
+      : (node.name || node.label || '');
+    const ariaLabel = `${labelType} ${plainLabel}`.trim();
+    if (ariaLabel) tr.setAttribute('aria-label', ariaLabel);
 
     const tdU  = document.createElement('td');
     const tdK  = document.createElement('td'); tdK.className = 'd-none d-md-table-cell';
@@ -236,13 +252,15 @@
     if (level === 1 || level === 2) {
       const isExpanded = expanded.get(node.id);
       const icon = isExpanded ? 'bi-caret-down-fill' : 'bi-caret-right-fill';
+      tr.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
       
       // ENHANCEMENT #1: Apply highlight pada nama K/S
       const displayName = currentFilter 
         ? highlightMatch(node.name, currentFilter)
         : node.name;
+      const toggleLabel = (plainLabel ? `${labelType} ${plainLabel}` : labelType).trim();
       
-      tdU.innerHTML = `<span class="toggle" role="button" tabindex="0" aria-expanded="${isExpanded}" aria-label="Toggle"><i class="bi ${icon} me-1"></i></span>${displayName}`;
+      tdU.innerHTML = `<span class="toggle" role="button" tabindex="0" aria-expanded="${isExpanded}" aria-label="Toggle ${escAttr(toggleLabel)}"><i class="bi ${icon} me-1"></i></span>${displayName}`;
       
       if (level === 1) tr.classList.add('table-primary');
       if (level === 2) tr.classList.add('table-light');
@@ -262,6 +280,7 @@
       tdV.textContent = fmt(node.volume ?? '', 3);
       tdH.textContent = fmt(node.harga ?? '', 2);
       tdT.textContent = fmt(node.total ?? '', 2);
+      tr.removeAttribute('aria-expanded');
     }
 
     tr.append(tdU, tdK, tdS, tdV, tdH, tdT);
@@ -280,6 +299,9 @@
       t.setAttribute('aria-expanded', isEx ? 'true' : 'false');
       t.setAttribute('role', 'button');
       t.setAttribute('tabindex', '0');
+      if (tr && (tr.dataset.level === '1' || tr.dataset.level === '2')) {
+        tr.setAttribute('aria-expanded', isEx ? 'true' : 'false');
+      }
     });
   }
 

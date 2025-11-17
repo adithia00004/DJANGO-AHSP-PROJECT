@@ -581,6 +581,9 @@
       const needsVolumeUpdate = pendingVolumeJobs.has(Number(r.pekerjaan_id));
       li.className = 'rk-item' + (needsVolumeUpdate ? ' rk-item-volume' : '');
       li.dataset.id = r.pekerjaan_id;
+      li.setAttribute('role', 'option');
+      li.setAttribute('tabindex', '0');
+      li.setAttribute('aria-selected', String(r.pekerjaan_id) === String(selectedId) ? 'true' : 'false');
       li.innerHTML = `
         <div class="rk-item-title">${esc(r.uraian || '')}</div>
         <div class="rk-item-meta">
@@ -611,7 +614,11 @@
   function highlightActive(){
     if (!$list) return;
     const items = $list.querySelectorAll('.rk-item');
-    items.forEach(el => el.classList.toggle('active', String(el.dataset.id) === String(selectedId)));
+    items.forEach(el => {
+      const isActive = String(el.dataset.id) === String(selectedId);
+      el.classList.toggle('active', isActive);
+      el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
   }
 
 
@@ -1103,6 +1110,9 @@
       if (!item.hasAttribute('tabindex')) {
         item.setAttribute('tabindex', '0');
         item.setAttribute('role', 'option');
+      }
+      if (!item.hasAttribute('aria-selected')) {
+        item.setAttribute('aria-selected', 'false');
       }
     });
   }

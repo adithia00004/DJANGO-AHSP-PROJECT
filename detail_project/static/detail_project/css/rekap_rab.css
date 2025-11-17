@@ -326,6 +326,13 @@
   border-color: var(--dp-c-primary);
 }
 
+#rekap-table .toggle:focus-visible {
+  outline: 2px solid var(--dp-c-focus);
+  outline-offset: 1px;
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dp-c-primary) 20%, transparent);
+}
+
 #rekap-table .toggle i {
   font-size: .7rem;
   color: var(--dp-c-muted);
