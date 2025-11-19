@@ -1343,10 +1343,18 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
         harga_item = it.get("harga_item__harga_satuan")
         bundle_total = expanded_totals.get(it.get("id"), Decimal("0"))
         effective_price = harga_item
-        if (
+        is_bundle = (
             it.get("kategori") == HargaItemProject.KATEGORI_LAIN
-            and bundle_total > Decimal("0")
-        ):
+            and (it.get("ref_pekerjaan_id") or it.get("ref_ahsp_id"))
+        )
+
+        # BUNDLE LOGIC (QUANTITY SEMANTIC - 2025-11-18):
+        # 1. services.py menyimpan koef komponen TANPA dikali koef bundle (per 1 unit bundle)
+        # 2. bundle_total = Σ(original_koef × harga komponen) → harga satuan bundle per unit
+        # 3. Frontend kembali menggunakan formula umum (jumlah = koef × harga)
+        # 4. Harga satuan yang dikirim API harus langsung bundle_total
+        # 5. Jumlah baris dihitung di layer presentasi (tidak perlu pembagian/multiplikasi tambahan di sini).
+        if is_bundle and bundle_total > Decimal("0"):
             effective_price = bundle_total
 
         items.append({
@@ -3976,3 +3984,84 @@ def api_batch_copy_project(request: HttpRequest, project_id: int):
             "ok": False,
             "error": f"Batch copy failed: {str(e)}"
         }, status=500)
+
+
+# ===== CRITICAL FIX: Bundle Expansion Detail Visibility =====
+@login_required
+@require_GET
+def api_get_bundle_expansion(request: HttpRequest, project_id: int, pekerjaan_id: int, bundle_id: int):
+    """
+    Get expanded components for a bundle (LAIN item with ref_pekerjaan or ref_ahsp).
+
+    Returns DetailAHSPExpanded records for the specified bundle,
+    showing all base components (TK/BHN/ALT) with final koefisien (already multiplied).
+
+    Used by Rincian AHSP page to show bundle breakdown on click.
+
+    CRITICAL FIX for: "No Expansion Detail Visibility" issue
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    # Validate pekerjaan belongs to project
+    pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
+
+    # Validate bundle (DetailAHSPProject) belongs to pekerjaan
+    bundle = get_object_or_404(
+        DetailAHSPProject,
+        id=bundle_id,
+        project=project,
+        pekerjaan=pkj,
+        kategori=HargaItemProject.KATEGORI_LAIN
+    )
+
+    # Fetch expanded components from DetailAHSPExpanded
+    expanded_qs = (
+        DetailAHSPExpanded.objects
+        .filter(project=project, pekerjaan=pkj, source_detail=bundle)
+        .select_related('harga_item')
+        .order_by('kategori', 'kode')
+    )
+
+    dp_koef = DECIMAL_SPEC["KOEF"].dp
+    dp_harga = getattr(
+        HargaItemProject._meta.get_field('harga_satuan'),
+        'decimal_places',
+        DECIMAL_SPEC["HARGA"].dp
+    )
+
+    components = []
+    for exp in expanded_qs:
+        components.append({
+            "kategori": exp.kategori,
+            "kode": exp.kode,
+            "uraian": exp.uraian,
+            "satuan": exp.satuan or "",
+            "koefisien": to_dp_str(exp.koefisien or Decimal("0"), dp_koef),
+            "harga_satuan": to_dp_str(
+                exp.harga_item.harga_satuan or Decimal("0"),
+                dp_harga
+            ),
+            "source_bundle_kode": exp.source_bundle_kode,
+            "expansion_depth": exp.expansion_depth,
+        })
+
+    # Calculate total for verification
+    total = sum(
+        (exp.koefisien or Decimal("0")) * (exp.harga_item.harga_satuan or Decimal("0"))
+        for exp in expanded_qs
+    )
+
+    return JsonResponse({
+        "ok": True,
+        "bundle": {
+            "id": bundle.id,
+            "kode": bundle.kode,
+            "uraian": bundle.uraian,
+            "koefisien": to_dp_str(bundle.koefisien or Decimal("0"), dp_koef),
+            "ref_pekerjaan_id": bundle.ref_pekerjaan_id,
+            "ref_ahsp_id": bundle.ref_ahsp_id,
+        },
+        "components": components,
+        "total": to_dp_str(total, dp_harga),
+        "component_count": len(components),
+    })

@@ -1,0 +1,200 @@
+# Rencana Implementasi Final - Jadwal Kegiatan
+## Dengan Stack 100% FREE & Open Source
+
+---
+
+## 📋 Daftar Isi
+- [Technology Stack](#technology-stack)
+- [Environment Setup](#environment-setup)
+- [Migration Roadmap](#migration-roadmap)
+- [Phase 1: Critical Fixes](#phase-1-critical-fixes-week-1-2)
+- [Phase 2: Grid Migration](#phase-2-grid-migration-week-3-4)
+- [Phase 3: Build Optimization](#phase-3-build-optimization-week-5)
+- [Phase 4: Export Features](#phase-4-export-features-week-6)
+- [Testing Strategy](#testing-strategy)
+- [Deployment Guide](#deployment-guide)
+
+---
+
+## Technology Stack
+
+### ✅ APPROVED STACK (All FREE & Open Source)
+
+```
+┌─────────────────────────────────────────────────────┐
+│ FRONTEND LIBRARIES                                  │
+├─────────────────────────────────────────────────────┤
+│ Grid View       │ AG Grid Community Edition (MIT)   │
+│ Gantt Chart     │ Frappe Gantt (MIT) - Keep         │
+│ S-Curve         │ ECharts (Apache 2.0) - Keep       │
+│ UI Framework    │ Bootstrap 5 (MIT) - Keep          │
+├─────────────────────────────────────────────────────┤
+│ BUILD & TOOLING                                     │
+├─────────────────────────────────────────────────────┤
+│ Build Tool      │ Vite 5.x (MIT)                    │
+│ Package Manager │ npm / yarn                        │
+├─────────────────────────────────────────────────────┤
+│ EXPORT UTILITIES                                    │
+├─────────────────────────────────────────────────────┤
+│ Excel Export    │ SheetJS (xlsx) - Apache 2.0       │
+│ PDF Export      │ jsPDF (MIT)                       │
+│ Screenshot      │ html2canvas (MIT)                 │
+├─────────────────────────────────────────────────────┤
+│ BACKEND (Existing)                                  │
+├─────────────────────────────────────────────────────┤
+│ Framework       │ Django 4.x/5.x                    │
+│ Database        │ PostgreSQL / SQLite               │
+│ API             │ Django REST (if applicable)       │
+└─────────────────────────────────────────────────────┘
+
+TOTAL COST: $0.00 ✅
+ALL LICENSES: MIT / Apache 2.0 (Commercial-friendly)
+```
+
+---
+
+## Environment Setup
+
+### Prerequisites
+
+```bash
+# System requirements
+- Python 3.8+
+- Node.js 18+ (LTS)
+- npm 9+ or yarn 1.22+
+- Git
+
+# Verify installations
+python --version
+node --version
+npm --version
+```
+
+### Project Structure (Updated)
+
+```
+DJANGO AHSP PROJECT/
+├── detail_project/
+│   ├── static/detail_project/
+│   │   ├── css/
+│   │   │   ├── kelola_tahapan_grid.css (updated)
+│   │   │   └── components-library.css
+│   │   ├── js/
+│   │   │   ├── src/                    # ← NEW: Vite source folder
+│   │   │   │   ├── main.js
+│   │   │   │   ├── modules/
+│   │   │   │   │   ├── grid/
+│   │   │   │   │   │   ├── ag-grid-setup.js
+│   │   │   │   │   │   ├── column-definitions.js
+│   │   │   │   │   │   ├── cell-renderers.js
+│   │   │   │   │   │   └── event-handlers.js
+│   │   │   │   │   ├── gantt/
+│   │   │   │   │   │   ├── frappe-gantt-setup.js
+│   │   │   │   │   │   └── export-helpers.js
+│   │   │   │   │   ├── kurva-s/
+│   │   │   │   │   │   ├── echarts-setup.js
+│   │   │   │   │   │   └── curve-calculations.js
+│   │   │   │   │   ├── shared/
+│   │   │   │   │   │   ├── state-manager.js
+│   │   │   │   │   │   ├── api-client.js
+│   │   │   │   │   │   ├── utils.js
+│   │   │   │   │   │   └── validators.js
+│   │   │   │   │   └── export/
+│   │   │   │   │       ├── excel-exporter.js
+│   │   │   │   │       ├── pdf-exporter.js
+│   │   │   │   │       └── csv-exporter.js
+│   │   │   │   └── legacy/           # ← OLD: Current implementation
+│   │   │   │       ├── kelola_tahapan_grid.js
+│   │   │   │       └── jadwal_pekerjaan/
+│   │   │   └── dist/                  # ← NEW: Vite build output
+│   │   │       └── js/
+│   │   │           └── jadwal-kegiatan.js
+│   │   └── img/
+│   ├── templates/detail_project/
+│   │   ├── kelola_tahapan_grid.html (updated)
+│   │   └── kelola_tahapan/
+│   │       ├── _grid_tab.html (updated for AG Grid)
+│   │       ├── _gantt_tab.html
+│   │       └── _kurva_s_tab.html
+│   ├── docs/                          # ← Documentation
+│   │   ├── JADWAL_KEGIATAN_DOCUMENTATION.md
+│   │   ├── JADWAL_KEGIATAN_IMPROVEMENT_PRIORITIES.md
+│   │   ├── TECHNOLOGY_ALTERNATIVES_ANALYSIS.md
+│   │   ├── FREE_OPENSOURCE_RECOMMENDATIONS.md
+│   │   └── FINAL_IMPLEMENTATION_PLAN.md (this file)
+│   ├── package.json                   # ← NEW: npm dependencies
+│   ├── vite.config.js                 # ← NEW: Vite configuration
+│   └── ... (existing Django files)
+└── manage.py
+```
+
+### Initial Setup
+
+```bash
+# Navigate to detail_project directory
+cd "D:\PORTOFOLIO ADIT\DJANGO AHSP PROJECT\detail_project"
+
+# Initialize npm project
+npm init -y
+
+# Install dependencies
+npm install --save-dev vite
+
+# Install production dependencies
+npm install ag-grid-community xlsx jspdf html2canvas
+
+# Existing libraries (via CDN, no install needed)
+# - Frappe Gantt (CDN)
+# - ECharts (CDN)
+# - Bootstrap 5 (existing)
+```
+
+### package.json Configuration
+
+```json
+{
+  "name": "detail-project-frontend",
+  "version": "1.0.0",
+  "description": "Frontend assets for Detail Project - Jadwal Kegiatan",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:watch": "vite build --watch"
+  },
+  "dependencies": {
+    "ag-grid-community": "^31.0.0",
+    "xlsx": "^0.18.5",
+    "jspdf": "^2.5.1",
+    "html2canvas": "^1.4.1"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  },
+  "license": "MIT"
+}
+```
+
+### vite.config.js
+
+```javascript
+import { defineConfig } from 'vite';
+import path from 'path';
+
+export default defineConfig({
+  // Base public path
+  base: '/static/detail_project/dist/',
+
+  // Build configuration
+  build: {
+    outDir: './static/detail_project/dist',
+    emptyOutDir: true,
+
+    // Generate manifest for Django integration
+    manifest: true,
+
+    rollupOptions: {
+      input: {
+        'jadwal-kegiatan': path.resolve(__dirname, 'static/detail_project/js/src/main.js')
+      },

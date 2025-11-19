@@ -4,6 +4,7 @@
 from functools import wraps
 
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.shortcuts import render, get_object_or_404
 
 from .models import Pekerjaan, ProjectChangeStatus
@@ -198,6 +199,9 @@ def jadwal_pekerjaan_view(request, project_id: int):
     context = {
         "project": project,
         "side_active": "jadwal_pekerjaan",  # untuk sidebar highlighting
+        "DEBUG": getattr(settings, "DEBUG", False),
+        "enable_ag_grid": getattr(settings, "ENABLE_AG_GRID", False),
+        "use_vite_dev_server": getattr(settings, "USE_VITE_DEV_SERVER", False),
     }
 
-    return render(request, "detail_project/kelola_tahapan_grid.html", context)
+    return render(request, "detail_project/kelola_tahapan_grid_vite.html", context)

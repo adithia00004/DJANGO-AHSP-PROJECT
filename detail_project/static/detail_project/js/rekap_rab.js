@@ -28,14 +28,15 @@
   const selBase = document.getElementById('round-base');
 
   // Toolbar refs
-  const inpSearch   = document.getElementById('rab-search');
-  const btnRefresh  = document.getElementById('btn-refresh');
-  const btnExport   = document.getElementById('btn-export');
-  const btnExpand   = document.getElementById('btn-expand');
-  const btnCollapse = document.getElementById('btn-collapse');
-  const btnPrint    = document.getElementById('btn-print');
-  const btnSubtotal = document.getElementById('btn-subtotal');
-  const btnDensity  = document.getElementById('btn-density');
+  const inpSearch     = document.getElementById('rab-search');
+  const btnRefresh    = document.getElementById('btn-refresh');
+  const btnExpand     = document.getElementById('btn-expand');
+  const btnCollapse   = document.getElementById('btn-collapse');
+  const btnPrint      = document.getElementById('btn-print');
+  const btnSubtotal   = document.getElementById('btn-subtotal');
+  const btnDensity    = document.getElementById('btn-density');
+  const btnExportExcel = document.getElementById('btn-export-excel');
+  const sortHeaders    = Array.from(document.querySelectorAll('#rekap-table thead .th-sortable'));
 
   // ENHANCEMENT #2: Live region for accessibility
   const liveRegion = document.getElementById('rab-announce');
@@ -98,6 +99,7 @@
   let fullModel = null;
   let subtotalOnly = false;
   let dense = false;
+  let sortState = { key: null, direction: 'asc' };
 
   // Expanded state per node (persist in localStorage)
   const exKey = (k)=>`rekap_rab:${projectId}:expanded:${k}`;
@@ -123,6 +125,12 @@
 
   // Local prefs
   const prefKey = (k)=>`rekap_rab:${projectId}:${k}`;
+  const validSortKeys = ['volume', 'harga', 'total'];
+  const sortLabels = {
+    volume: 'volume',
+    harga: 'harga satuan',
+    total: 'total harga'
+  };
   
   const getBoolPref = (k, def=false) => {
     try { 
@@ -152,6 +160,44 @@
     } catch(_) {}
   }
 
+  function updateSortIndicators() {
+    sortHeaders.forEach(th => {
+      const key = th.dataset.sortKey;
+      if (!key || !validSortKeys.includes(key)) {
+        th.removeAttribute('aria-sort');
+        th.classList.remove('is-sorted');
+        return;
+      }
+      if (sortState.key === key) {
+        th.setAttribute('aria-sort', sortState.direction === 'asc' ? 'ascending' : 'descending');
+        th.classList.add('is-sorted');
+      } else {
+        th.setAttribute('aria-sort', 'none');
+        th.classList.remove('is-sorted');
+      }
+    });
+  }
+
+  function handleSortRequest(key) {
+    if (!key || !validSortKeys.includes(key)) return;
+    if (sortState.key !== key) {
+      sortState = { key, direction: 'asc' };
+    } else if (sortState.direction === 'asc') {
+      sortState.direction = 'desc';
+    } else {
+      sortState = { key: null, direction: 'asc' };
+    }
+    updateSortIndicators();
+    render(inpSearch?.value || '');
+    if (sortState.key) {
+      const dirLabel = sortState.direction === 'asc' ? 'menaik' : 'menurun';
+      const prettyKey = sortLabels[key] || key;
+      announce(`Tabel diurutkan berdasarkan ${prettyKey} (${dirLabel})`);
+    } else {
+      announce('Urutan tabel kembali ke default');
+    }
+  }
+
   // ========= Normalization =========
   function normalize(tree, rekap) {
     const byPekerjaan = new Map();
@@ -171,12 +217,12 @@
           if (!r && P.snapshot_kode) r = byKode.get(String(P.snapshot_kode));
 
           const volume = (r && r.volume != null) ? Number(r.volume) : 0;
-    // Harga Satuan pada Rekap RAB harus mengikuti G (HSP = E + F) dari Rincian AHSP
-    // Fallback ke field lain bila G belum tersedia untuk kompatibilitas mundur
-    const harga  = (r && (r.G != null || r.harga_satuan != null || r.HSP != null || r.unit_price != null))
-      ? Number(r.G ?? r.harga_satuan ?? r.HSP ?? r.unit_price)
-      : 0;
-    const total  = Number((volume || 0) * (harga || 0));
+          // Harga Satuan pada Rekap RAB harus mengikuti G (HSP = E + F) dari Rincian AHSP
+          // Fallback ke field lain bila G belum tersedia untuk kompatibilitas mundur
+          const harga = (r && (r.G != null || r.harga_satuan != null || r.HSP != null || r.unit_price != null))
+            ? Number(r.G ?? r.harga_satuan ?? r.HSP ?? r.unit_price)
+            : 0;
+          const total = Number((volume || 0) * (harga || 0));
 
           Snode.children.push({
             type:'job',
@@ -185,7 +231,9 @@
             label:(r && r.uraian) ? r.uraian : (P.snapshot_uraian || 'Pekerjaan'),
             kode:(r && r.kode) ? r.kode : (P.snapshot_kode || ''),
             satuan:(r && r.satuan) ? r.satuan : (P.snapshot_satuan || ''),
-            volume, harga, total
+            volume,
+            harga,
+            total
           });
         }
         Knode.children.push(Snode);
@@ -193,6 +241,22 @@
       Klist.push(Knode);
     }
     return Klist;
+  }
+
+  function sortJobsIfNeeded(jobs) {
+    if (!Array.isArray(jobs)) return;
+    const key = sortState.key;
+    if (!key || subtotalOnly) return;
+    const dir = sortState.direction === 'asc' ? 1 : -1;
+    jobs.sort((a, b) => {
+      const av = Number(a?.[key] ?? 0);
+      const bv = Number(b?.[key] ?? 0);
+      if (Number.isNaN(av) && Number.isNaN(bv)) return 0;
+      if (Number.isNaN(av)) return -dir;
+      if (Number.isNaN(bv)) return dir;
+      if (av === bv) return 0;
+      return av > bv ? dir : -dir;
+    });
   }
 
   function computeTotalsFiltered(model, predicate) {
@@ -212,6 +276,7 @@
           sumS += Number(J.total || 0);
         }
         if (jobs.length > 0) {
+          sortJobsIfNeeded(jobs);
           rows.push({ level:2, node:S, total:sumS });
           if (!subtotalOnly) {
             for (const J of jobs) rows.push({ level:3, node:J, total:J.total || 0 });
@@ -419,6 +484,7 @@
       }
     }
     
+    updateSortIndicators();
     recalcFooter(totalD);
     recalcTableHeight();
     updateToolbarState();
@@ -726,8 +792,27 @@
     render(inpSearch?.value || '');
   });
 
+  btnExportExcel?.addEventListener('click', (e) => {
+    e.preventDefault();
+    exportCSV();
+  });
+
+  sortHeaders.forEach(th => {
+    th.addEventListener('click', (e) => {
+      e.preventDefault();
+      handleSortRequest(th.dataset.sortKey);
+    });
+    th.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleSortRequest(th.dataset.sortKey);
+      }
+    });
+  });
+
   // ========= Init =========
   restorePrefs();
+  updateSortIndicators();
   subtotalOnly = getBoolPref('subtotal_only', false);
   btnSubtotal?.classList.toggle('active', subtotalOnly);
   dense = getBoolPref('dense', false);

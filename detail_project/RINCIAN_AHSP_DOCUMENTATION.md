@@ -1,6 +1,6 @@
 # Rincian AHSP – Technical Documentation
 
-**Last updated:** 2025-11-17  
+**Last updated:** 2025-11-19  
 **Scope:** `detail_project` application – page *Rincian AHSP* (`/project/<id>/rincian-ahsp/`)
 
 ---
@@ -51,6 +51,7 @@ Supporting models live in `detail_project/models.py` (`Pekerjaan`, `DetailAHSPPr
 - **State:** `rows` (rekap data), `filtered`, `selectedId`, `cacheDetail` (Map<pekerjaan_id, detail payload>), `projectBUK`, `projectPPN`, `pendingVolumeJobs`.
 - **Initial load:** `loadProjectBUK()` → `loadRekap()`. Restores last selected pekerjaan from `localStorage`.
 - **Selection flow:** `selectItem(id)` fetches pricing + detail (with `AbortController`) and renders right panel. Detail responses are cached to avoid redundant API calls.
+- **Bundle inspection:** .bundle-row clicks hit /api/project/<pid>/pekerjaan/<id>/bundle/<detail_id>/expansion/ to display DetailAHSPExpanded components inline.
 - **Override Modal:** Applies robust validation; uses `SaveOverride` POST to `api_pekerjaan_pricing`. After success, re-runs `loadRekap()` and refetches detail to keep list + table + grand total in sync.
 - **Granular loading:** `setLoading(scope)` toggles opacity on list/detail independently.
 - **Keyboard support:** `Ctrl+K` (focus search), `Shift+O` (toggle override modal), arrows (navigate list), `Enter`, `Esc`.
@@ -71,12 +72,15 @@ Supporting models live in `detail_project/models.py` (`Pekerjaan`, `DetailAHSPPr
 | `api_pekerjaan_pricing(project_id, pekerjaan_id)` | GET/POST override BUK. | Persists `markup_override_percent` on `Pekerjaan`; invalidates rekap cache on commit. |
 | `api_project_pricing(project_id)` | GET/POST project-wide markup/PPN/rounding. | Used for toolbar badge + dirty indicator. |
 | `api_reset_detail_ahsp_to_ref` | Resets pekerjaan detail back to referensi (if allowed). | Inaccessible from UI at the moment but endpoint is exposed for parity. |
+| `api_get_bundle_expansion` | Returns expanded TK/BHN/ALT rows for a bundle item. | Triggered when users click bundle rows so the page can render the `DetailAHSPExpanded` breakdown inline. |
+| pi_get_bundle_expansion | Returns expanded TK/BHN/ALT rows for a bundle item. | Triggered when users click bundle rows so the page can render the DetailAHSPExpanded breakdown inline. |
 
 ### 4.2 Services (`detail_project/services.py`)
 
-- `compute_rekap_for_project(project)` – central aggregator for sidebar. Memoized in cache key `rekap:{project.id}:v2` with signature tuple to ensure invalidation. Returns `A, B, C, LAIN, D, E_base, F, G, HSP, total`.
-- `_populate_expanded_from_raw(project, pekerjaan)` – expands bundles into `DetailAHSPExpanded`, both for AHSP referensi bundles and pekerjaan bundles. Ensures bundle koefisien is applied before persisting.
-- `invalidate_rekap_cache(project)` + signals: `detail_project/signals.py` clears both `rekap:{pid}:v1` and `rekap:{pid}:v2` on any mutation to detail, harga item, volume, pekerjaan, or pricing.
+- `_populate_expanded_from_raw(project, pekerjaan)` – dual-storage writer. Mulai Phase 1, komponen bundle disimpan **per unit bundle** (tidak lagi dikali koef bundle). Nilai koef bundle dipertahankan di `DetailAHSPProject` sehingga layer agregasi bisa menerapkannya.
+- `compute_rekap_for_project(project)` – agregator sidebar. Sejak Phase 3, fungsi ini membaca `DetailAHSPExpanded` lalu mengalikan kembali koef komponen dengan `source_detail.koefisien` apabila baris berasal dari bundle (`kategori='LAIN'` dengan referensi). Hasil `A/B/C/LAIN` kembali identik dengan harapan user, sementara `total = G × volume` tetap benar.
+- `compute_kebutuhan_items(project, ...)` – rekap kebutuhan global. Logika baru mendeteksi setiap komponen bundle dan mengalikan koef per unit dengan kuantitas bundle * volume pekerjaan (dan proporsi tahapan bila ada). Output row memiliki `quantity_decimal` yang sudah siap dipakai ekspor.
+- `invalidate_rekap_cache(project)` + sinyal di `detail_project/signals.py` masih menjadi pintu untuk menghapus cache `rekap:{pid}:v2` saat detail, volume, pekerjaan, atau pricing berubah.
 
 ---
 
@@ -101,6 +105,7 @@ Supporting models live in `detail_project/models.py` (`Pekerjaan`, `DetailAHSPPr
 5. **Bundle Handling**
    - When raw detail has `kategori=LAIN` and `ref_pekerjaan`/`ref_ahsp`, `_populate_expanded_from_raw` writes computed lines to `DetailAHSPExpanded`.
    - `api_get_detail_ahsp` uses expanded subtotals to derive `harga_satuan` and `jumlah` per bundle.
+   - `api_get_bundle_expansion` surfaces the stored `DetailAHSPExpanded` rows so the UI can show bundle breakdowns on demand.
 
 ---
 
@@ -149,7 +154,8 @@ Manual checks:
 
 1. `pytest detail_project/tests/test_rincian_ahsp.py`
 2. `pytest detail_project/tests/test_workflow_baseline.py -k bundle`
-3. Run page locally, verify keyboard shortcuts and export buttons.
+3. Full regression: `pytest detail_project/tests/ -v` (lihat `logs/phase5_test_run_20251119_full.md` untuk coverage 71.91%).
+4. Run page locally, verify keyboard shortcuts and export buttons.
 
 ---
 
@@ -172,8 +178,9 @@ Manual checks:
 3. **Sticky Table:** `top` offset defined explicitly to keep header visible under toolbar.
 4. **Resizer Sync:** CSS, JS, and default tokens now consistently use `--ra-left-w`.
 5. **Override Race Condition:** Modal apply/clear capture `targetId` to avoid cross-updating when user switches selection mid-request.
-6. **Bundle Pricing:** `api_get_detail_ahsp` no longer divides bundle totals by koef; the table shows actual subtotal while summary rows still compute `E/F/G`.
+6. **Bundle Pricing:** `api_get_detail_ahsp` membaca `DetailAHSPExpanded` per-unit (tidak lagi membagi/mengalikan ulang). Frontend tetap memakai formula generik `jumlah = koef × harga`, sementara layer agregasi menambahkan `source_detail.koefisien` saat menghitung A/B/C/LAIN.
 7. **HSP Smoke Test:** `_ensure_sample_project()` helper seeds dummy data so `test_hsp_fix.py` can run even on empty DBs.
+8. **Export Alignment (2025-11-19):** `exports/rincian_ahsp_adapter.py` kini menggunakan `bundle_total` per unit tanpa pembagian ulang, sehingga pekerjaan custom/bundle pada berkas ekspor identik dengan UI Rincian AHSP.
 
 Keep this document updated whenever UI/API contracts change or new shortcuts/features are added.
 

@@ -1,0 +1,17 @@
+﻿Command: python manage.py test detail_project
+Timestamp: 2025-11-18 11:21 WIB
+
+Creating test database for alias 'default'...
+.2025-11-18 11:21:46,392 WARNING django.request Bad Request: /detail_project/api/project/3/volume/formula/
+.....2025-11-18 11:21:50,348 WARNING django.request Bad Request: /detail_project/api/project/13/volume-pekerjaan/save/
+.[SAVE_DETAIL_AHSP] REJECTED - Pekerjaan 22 is REF (read-only)
+2025-11-18 11:21:50,868 WARNING django.request Bad Request: /detail_project/api/project/15/detail-ahsp/22/save/
+..................2025-11-18 11:21:55,653 WARNING django.request Bad Request: /detail_project/api/project/22/volume-pekerjaan/save/
+.......2025-11-18 11:21:59,863 WARNING django.request Bad Request: /detail_project/api/project/25/volume-pekerjaan/save/
+........2025-11-18 11:22:02,975 WARNING django.request Not Found: /detail_project/25/volume-pekerjaan/
+..........
+----------------------------------------------------------------------
+Ran 50 tests in 18.699s
+
+OK
+Destroying test database for alias 'default'...

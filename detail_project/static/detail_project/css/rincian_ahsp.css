@@ -866,6 +866,42 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
   }
 }
 
+/* ===== BUNDLE EXPANSION (CRITICAL FIX) ===== */
+.ra-app .bundle-row {
+  position: relative;
+  transition: background-color var(--ux-duration-200) var(--ux-ease);
+}
+
+.ra-app .bundle-row.clickable:hover {
+  background: color-mix(in srgb, var(--dp-c-info) 8%, transparent) !important;
+}
+
+.ra-app .bundle-row.expanded {
+  background: color-mix(in srgb, var(--dp-c-info) 5%, transparent) !important;
+  border-left: 3px solid var(--dp-c-info);
+}
+
+.ra-app .bundle-row.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.ra-app .bundle-expansion {
+  background: #f8f9fa !important;
+}
+
+.ra-app .bundle-expansion td {
+  padding: 0 !important;
+}
+
+.ra-app .bundle-expansion table {
+  margin: 0;
+}
+
+.ra-app .bundle-expansion table tbody tr:hover td {
+  background: color-mix(in srgb, var(--dp-c-info) 6%, transparent);
+}
+
 /* ===== DARK MODE (IDENTIK) ===== */
 [data-bs-theme="dark"] .ra-app .btn-primary {
   box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
@@ -873,6 +909,10 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
 
 [data-bs-theme="dark"] .ra-app .btn-primary:hover {
   box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+}
+
+[data-bs-theme="dark"] .ra-app .bundle-expansion {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 50%, transparent) !important;
 }
 
 /* ===== ACCESSIBILITY (IDENTIK) ===== */

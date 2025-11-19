@@ -943,21 +943,21 @@ class TestTemplateAHSPHargaItemsInteraction:
             pekerjaan=pekerjaan_custom
         )
 
-        # Should have 2 expanded components (TK + BHN) with multiplied koef
+        # Should have 2 expanded components (TK + BHN) dengan koef per-unit
         assert expanded_details.count() == 2
 
-        # Check TK component (koef = 1.0 × 2.0 = 2.0)
+        # Check TK component (koef per-unit tetap 1.0)
         tk_expanded = expanded_details.filter(kategori='TK').first()
         assert tk_expanded is not None
         assert tk_expanded.kode == 'L.02'
-        assert tk_expanded.koefisien == Decimal('2.0')  # 1.0 × 2.0
+        assert tk_expanded.koefisien == Decimal('1.000000')
         assert tk_expanded.source_bundle_kode == 'BUNDLE-TARGET'
 
-        # Check BHN component (koef = 2.0 × 2.0 = 4.0)
+        # Check BHN component (koef per-unit tetap 2.0)
         bhn_expanded = expanded_details.filter(kategori='BHN').first()
         assert bhn_expanded is not None
         assert bhn_expanded.kode == 'B.02'
-        assert bhn_expanded.koefisien == Decimal('4.0')  # 2.0 × 2.0
+        assert bhn_expanded.koefisien == Decimal('2.000000')
 
         # CRITICAL CHECK: Verify ALL expanded components appear in Harga Items
         url_harga = reverse('detail_project:api_list_harga_items',

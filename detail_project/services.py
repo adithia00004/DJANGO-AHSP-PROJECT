@@ -10,6 +10,9 @@ from django.db.models import (
     Q,
     Exists,
     OuterRef,
+    Case,
+    When,
+    Value,
 )
 from django.utils import timezone
 from decimal import Decimal
@@ -777,8 +780,12 @@ def expand_bundle_to_components(
     # Add to visited
     visited.add(ref_pekerjaan_id)
 
-    # Get bundle koefisien
-    bundle_koef = Decimal(str(detail_data.get('koefisien', '1.0')))
+    # Get bundle koefisien (treated as quantity, not multiplier)
+    detail_koef = detail_data.get('koefisien')
+    if isinstance(detail_koef, Decimal):
+        bundle_koef = detail_koef
+    else:
+        bundle_koef = Decimal(str(detail_koef or '1.0'))
 
     # Fetch components dari ref_pekerjaan
     try:
@@ -814,10 +821,12 @@ def expand_bundle_to_components(
                 'ref_pekerjaan_id': comp.ref_pekerjaan_id,
             }
 
+            # Multiply base_koef ONLY with nested bundle koef (per-unit composition)
+            nested_multiplier = Decimal(str(comp.koefisien or '1.0'))
             nested_components = expand_bundle_to_components(
                 detail_data=nested_data,
                 project=project,
-                base_koef=base_koef * bundle_koef,
+                base_koef=base_koef * nested_multiplier,
                 depth=depth + 1,
                 visited=visited.copy()  # Copy to avoid mutation in sibling branches
             )
@@ -825,8 +834,8 @@ def expand_bundle_to_components(
             result.extend(nested_components)
 
         else:
-            # Base component (TK/BHN/ALT) - add with multiplied koefisien
-            final_koef = comp.koefisien * bundle_koef * base_koef
+            # Base component (TK/BHN/ALT) - store ORIGINAL koefisien (per 1 unit bundle)
+            final_koef = comp.koefisien * base_koef
 
             result.append({
                 'kategori': comp.kategori,
@@ -834,6 +843,7 @@ def expand_bundle_to_components(
                 'uraian': comp.uraian,
                 'satuan': comp.satuan,
                 'koefisien': final_koef,
+                'bundle_multiplier': bundle_koef,
                 'harga_item': comp.harga_item,
                 'depth': depth
             })
@@ -1653,12 +1663,35 @@ def compute_rekap_for_project(project):
 
     kategori_keys = ['TK', 'BHN', 'ALT', 'LAIN']
 
-    def _aggregate_components(model):
+    def _aggregate_components(model, apply_bundle_multiplier=False):
         data: Dict[int, Dict[str, float]] = {}
-        qs = (model.objects
-              .filter(project=project)
-              .values('pekerjaan_id', 'kategori')
-              .annotate(jumlah=Sum(nilai_expr)))
+        qs = model.objects.filter(project=project)
+
+        effective_coef = DJF('koefisien')
+        if apply_bundle_multiplier:
+            # DetailAHSPExpanded menyimpan koef komponen per 1 unit bundle.
+            # Kalikan kembali dengan DetailAHSPProject.koefisien (source_detail)
+            # agar agregasi TK/BHN/ALT mencerminkan jumlah bundle aktual.
+            bundle_multiplier = Case(
+                When(
+                    Q(source_detail__kategori='LAIN')
+                    & (Q(source_detail__ref_pekerjaan__isnull=False) | Q(source_detail__ref_ahsp__isnull=False)),
+                    then=DJF('source_detail__koefisien'),
+                ),
+                default=Value(Decimal('1.0')),
+                output_field=DecimalField(max_digits=18, decimal_places=6),
+            )
+            effective_coef = ExpressionWrapper(
+                effective_coef * bundle_multiplier,
+                output_field=DecimalField(max_digits=24, decimal_places=6),
+            )
+
+        value_expr = ExpressionWrapper(
+            effective_coef * price,
+            output_field=DecimalField(max_digits=24, decimal_places=2),
+        )
+
+        qs = qs.values('pekerjaan_id', 'kategori').annotate(jumlah=Sum(value_expr))
         for row in qs:
             pkj_id = row['pekerjaan_id']
             kat = row['kategori']
@@ -1668,7 +1701,7 @@ def compute_rekap_for_project(project):
             data[pkj_id][kat] = float(row['jumlah'] or 0.0)
         return data
 
-    agg = _aggregate_components(DetailAHSPExpanded)
+    agg = _aggregate_components(DetailAHSPExpanded, apply_bundle_multiplier=True)
     if not agg:
         agg = _aggregate_components(DetailAHSPProject)
 
@@ -1851,6 +1884,10 @@ def compute_kebutuhan_items(
             'uraian',
             'satuan',
             'koefisien',
+            'source_detail__kategori',
+            'source_detail__ref_pekerjaan_id',
+            'source_detail__ref_ahsp_id',
+            'source_detail__koefisien',
         )
     )
 
@@ -1859,14 +1896,14 @@ def compute_kebutuhan_items(
             DetailAHSPProject.objects.filter(
                 project=project,
                 pekerjaan_id__in=pekerjaan_ids
-            ).values(
-                'pekerjaan_id',
-                'kategori',
-                'kode',
-                'uraian',
-                'satuan',
-                'koefisien',
-            )
+        ).values(
+            'pekerjaan_id',
+            'kategori',
+            'kode',
+            'uraian',
+            'satuan',
+            'koefisien',
+        )
         )
 
     # Process each detail item
@@ -1884,7 +1921,18 @@ def compute_kebutuhan_items(
             continue
 
         kategori = detail['kategori']
-        koefisien = Decimal(str(detail['koefisien'] or 0))  # Already expanded koef!
+        koefisien = Decimal(str(detail['koefisien'] or 0))
+
+        is_bundle_detail = (
+            detail.get('source_detail__kategori') == 'LAIN'
+            and (
+                detail.get('source_detail__ref_pekerjaan_id')
+                or detail.get('source_detail__ref_ahsp_id')
+            )
+        )
+        if is_bundle_detail:
+            multiplier = Decimal(str(detail.get('source_detail__koefisien') or 0))
+            koefisien *= multiplier
 
         # No expansion needed - DetailAHSPExpanded already has expanded components!
         # Just aggregate directly

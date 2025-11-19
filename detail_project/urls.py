@@ -45,6 +45,9 @@ urlpatterns = [
     path('api/project/<int:project_id>/detail-ahsp/<int:pekerjaan_id>/reset-to-ref/', views_api.api_reset_detail_ahsp_to_ref, name='api_reset_detail_ahsp_to_ref'),
     path('api/project/<int:project_id>/detail-ahsp/save/',                     views_api.api_save_detail_ahsp_gabungan,    name='api_save_detail_ahsp_gabungan'),
 
+    # Bundle expansion endpoint (NEW - for rincian AHSP bundle detail visibility)
+    path('api/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/bundle/<int:bundle_id>/expansion/', views_api.api_get_bundle_expansion, name='api_get_bundle_expansion'),
+
     # ===== API: Harga Items =====
     path('api/project/<int:project_id>/harga-items/save/', views_api.api_save_harga_items, name='api_save_harga_items'),
     path('api/project/<int:project_id>/harga-items/list/', views_api.api_list_harga_items, name='api_list_harga_items'),

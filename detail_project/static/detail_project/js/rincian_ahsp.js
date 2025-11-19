@@ -642,17 +642,61 @@
     }
   }
 
+  // CRITICAL FIX #4: Connect Volume Alert to Bundle Changes
   if (projectId && sourceChange) {
     window.addEventListener('dp:source-change', (event) => {
       const detail = event.detail || {};
       if (Number(detail.projectId) !== projectId) return;
+
+      let needsRefresh = false;
+
+      // Handle volume changes (existing logic)
       if (detail.state && detail.state.volume) {
-        pendingVolumeJobs = new Set(
-          Object.keys(detail.state.volume).map((key) => Number(key)).filter((id) => Number.isFinite(id)),
-        );
+        const volumeJobs = Object.keys(detail.state.volume)
+          .map((key) => Number(key))
+          .filter((id) => Number.isFinite(id));
+
+        volumeJobs.forEach(id => pendingVolumeJobs.add(id));
+        needsRefresh = true;
+      }
+
+      // CRITICAL FIX: Handle AHSP/bundle changes (NEW!)
+      if (detail.state && detail.state.ahsp) {
+        const ahspJobs = Object.keys(detail.state.ahsp)
+          .map((key) => Number(key))
+          .filter((id) => Number.isFinite(id));
+
+        // Clear cache for affected pekerjaan (force re-fetch)
+        ahspJobs.forEach(id => {
+          cacheDetail.delete(id);
+          pendingVolumeJobs.add(id); // Re-use existing alert system
+        });
+
+        needsRefresh = true;
+
+        // Show toast notification for AHSP changes
+        const affectedCount = ahspJobs.length;
+        if (affectedCount > 0) {
+          showToast(
+            `⚠️ ${affectedCount} pekerjaan terpengaruh perubahan AHSP. Data otomatis di-refresh.`,
+            'warning',
+            3000
+          );
+        }
+      }
+
+      // Refresh UI jika ada perubahan
+      if (needsRefresh) {
         renderList();
-        if (selectedId) {
+
+        // Re-fetch current selection jika affected
+        if (selectedId && pendingVolumeJobs.has(selectedId)) {
           updateVolumeAlertForSelection(selectedId);
+
+          // Force refresh detail to show new bundle data
+          selectItem(selectedId).catch(err => {
+            console.error('[SOURCE-CHANGE] Failed to refresh detail:', err);
+          });
         }
       }
     });
@@ -751,7 +795,7 @@
     const fr = document.createDocumentFragment();
     let no = 1;
 
-    function addSec(title, arr){
+    function addSec(title, arr, sectionKategori){
       const trh = document.createElement('tr');
       trh.className='sec-head';
       trh.innerHTML = `<td colspan="7">${esc(title)}</td>`;
@@ -761,17 +805,43 @@
       arr.forEach((it) => {
         const kf = num(it.koefisien);
         const hr = num(it.harga_satuan);
+
+        // Bundle items memakai formula umum: jumlah = koef × harga (harga = per unit bundle).
+        const isBundle = sectionKategori === 'LAIN' && (it.ref_pekerjaan_id || it.ref_ahsp_id);
         const jm = kf * hr;
+
         subtotal += jm;
         const tr = document.createElement('tr');
+
+        // Add bundle indicator icon
+        const bundleIcon = isBundle
+          ? '<i class="bi bi-box-seam text-info me-1" title="Bundle - Klik untuk lihat komponen"></i>'
+          : '';
+
+        // Add expandable row data attribute for bundle
+        if (isBundle) {
+          tr.dataset.bundleId = it.id;
+          tr.dataset.refPekerjaanId = it.ref_pekerjaan_id || '';
+          tr.dataset.refAhspId = it.ref_ahsp_id || '';
+          tr.classList.add('bundle-row', 'clickable');
+          tr.style.cursor = 'pointer';
+          tr.title = 'Klik untuk melihat detail komponen bundle';
+        }
+
+        const koefTitle = isBundle ? 'Koefisien bundle dipakai untuk ekspansi komponen' : '';
+        const hargaCell = isBundle
+          ? `<span class="text-info" title="Harga satuan per 1 unit bundle (total komponen)">${fmt(hr)}</span>`
+          : fmt(hr);
+        const jumlahTitle = 'Koefisien × Harga Satuan';
+
         tr.innerHTML = `
           <td class="mono">${no++}</td>
-          <td>${esc(it.uraian || '')}</td>
+          <td>${bundleIcon}${esc(it.uraian || '')}</td>
           <td class="mono">${esc(it.kode || '')}</td>
           <td class="mono">${esc(it.satuan || '')}</td>
-          <td class="mono">${kf.toLocaleString(locale,{minimumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES, maximumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES})}</td>
-          <td class="mono">${fmt(hr)}</td>
-          <td class="mono">${fmt(jm)}</td>
+          <td class="mono" title="${koefTitle}">${kf.toLocaleString(locale,{minimumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES, maximumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES})}</td>
+          <td class="mono">${hargaCell}</td>
+          <td class="mono" title="${jumlahTitle}">${fmt(jm)}</td>
         `;
         fr.appendChild(tr);
       });
@@ -785,10 +855,11 @@
 
     $tbody.innerHTML = '';
     // FIXED: Variable naming aligned with backend (services.py)
-    const A = addSec('A — Tenaga Kerja', group.TK);
-    const B = addSec('B — Bahan',        group.BHN);
-    const C = addSec('C — Peralatan',    group.ALT);
-    const LAIN = addSec('LAIN — Lainnya', group.LAIN);
+    // Pass sectionKategori untuk bundle detection
+    const A = addSec('A — Tenaga Kerja', group.TK, 'TK');
+    const B = addSec('B — Bahan',        group.BHN, 'BHN');
+    const C = addSec('C — Peralatan',    group.ALT, 'ALT');
+    const LAIN = addSec('LAIN — Lainnya', group.LAIN, 'LAIN');
 
     // FIXED: Rename E → E_base untuk konsistensi dengan backend
     // E_base = biaya komponen sebelum markup (A+B+C+LAIN)
@@ -809,6 +880,118 @@
 
     fr.appendChild(tre); fr.appendChild(trf); fr.appendChild(trg);
     $tbody.appendChild(fr);
+
+    // Setup bundle row click handlers for expansion
+    setupBundleExpansion();
+  }
+
+  /**
+   * Setup click handlers for bundle rows to show expansion details
+   * @tier3 FIX: Expansion Detail Visibility
+   */
+  function setupBundleExpansion() {
+    const bundleRows = $tbody?.querySelectorAll('.bundle-row');
+    if (!bundleRows) return;
+
+    bundleRows.forEach(row => {
+      row.addEventListener('click', async function() {
+        const bundleId = this.dataset.bundleId;
+
+        // Toggle expansion
+        const existingExpansion = this.nextElementSibling?.classList.contains('bundle-expansion');
+        if (existingExpansion) {
+          this.nextElementSibling.remove();
+          this.classList.remove('expanded');
+          return;
+        }
+
+        // Show loading
+        this.classList.add('loading');
+        const originalCursor = this.style.cursor;
+        this.style.cursor = 'wait';
+
+        try {
+          // Fetch expanded components
+          const components = await fetchBundleExpansion(selectedId, bundleId);
+
+          // Create expansion row
+          const expansionRow = document.createElement('tr');
+          expansionRow.className = 'bundle-expansion';
+          expansionRow.innerHTML = `
+            <td colspan="7" style="padding: 0; background: #f8f9fa;">
+              <div style="padding: 12px 20px; border-left: 3px solid #0dcaf0;">
+                <div class="d-flex align-items-center mb-2">
+                  <i class="bi bi-box-seam text-info me-2"></i>
+                  <strong>Komponen Bundle (${components.length} item)</strong>
+                  <button class="btn btn-sm btn-link ms-auto" onclick="this.closest('.bundle-expansion').remove(); this.closest('.bundle-expansion').previousElementSibling.classList.remove('expanded');">
+                    <i class="bi bi-x-lg"></i> Tutup
+                  </button>
+                </div>
+                <table class="table table-sm table-bordered mb-0" style="font-size: 0.85em;">
+                  <thead style="background: #e9ecef;">
+                    <tr>
+                      <th style="width: 40px;">No</th>
+                      <th>Kategori</th>
+                      <th>Uraian</th>
+                      <th>Kode</th>
+                      <th class="text-center">Satuan</th>
+                      <th class="text-end">Koefisien</th>
+                      <th class="text-end">Harga Satuan</th>
+                      <th class="text-end">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${components.map((c, idx) => `
+                      <tr>
+                        <td class="mono text-center">${idx + 1}</td>
+                        <td><span class="badge bg-secondary">${esc(c.kategori)}</span></td>
+                        <td>${esc(c.uraian)}</td>
+                        <td class="mono">${esc(c.kode)}</td>
+                        <td class="mono text-center">${esc(c.satuan || '-')}</td>
+                        <td class="mono text-end">${num(c.koefisien).toLocaleString(locale, {minimumFractionDigits: 6, maximumFractionDigits: 6})}</td>
+                        <td class="mono text-end">${fmt(c.harga_satuan)}</td>
+                        <td class="mono text-end">${fmt(num(c.koefisien) * num(c.harga_satuan))}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                  <tfoot style="background: #e9ecef; font-weight: bold;">
+                    <tr>
+                      <td colspan="7" class="text-end">Total Bundle:</td>
+                      <td class="mono text-end">${fmt(components.reduce((sum, c) => sum + (num(c.koefisien) * num(c.harga_satuan)), 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </td>
+          `;
+
+          // Insert after current row
+          this.parentNode.insertBefore(expansionRow, this.nextSibling);
+          this.classList.add('expanded');
+
+        } catch (err) {
+          console.error('[BUNDLE] Failed to load expansion:', err);
+          showToast('Gagal memuat detail bundle: ' + err.message, 'error');
+        } finally {
+          this.classList.remove('loading');
+          this.style.cursor = originalCursor;
+        }
+      });
+    });
+  }
+
+  /**
+   * Fetch bundle expansion components from backend
+   * @param {number} pekerjaanId - Current pekerjaan ID
+   * @param {number} bundleId - Bundle detail ID
+   * @returns {Promise<Array>} Array of expanded components
+   */
+  async function fetchBundleExpansion(pekerjaanId, bundleId) {
+    const url = `/api/project/${projectId}/pekerjaan/${pekerjaanId}/bundle/${bundleId}/expansion/`;
+    const r = await fetch(url, { credentials: 'same-origin' });
+    const j = await safeJson(r);
+    if (!r.ok || !j.ok) throw new Error(j.error || 'Failed to fetch bundle expansion');
+    return j.components || [];
   }
 
   // ====== events ======

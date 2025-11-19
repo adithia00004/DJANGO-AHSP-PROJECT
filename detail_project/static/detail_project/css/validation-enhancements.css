@@ -1,0 +1,376 @@
+/**
+ * Validation Enhancements CSS
+ * Additional styles for real-time validation feedback
+ * License: MIT
+ */
+
+/* ===== Cell Validation States ===== */
+
+/* Validation Error State */
+.time-cell.validation-error {
+  background-color: #fee;
+  border: 2px solid #dc3545 !important;
+  animation: shake 0.3s ease-in-out;
+}
+
+[data-bs-theme="dark"] .time-cell.validation-error {
+  background-color: #3d1517;
+  border: 2px solid #ff4444 !important;
+}
+
+/* Validation Warning State */
+.time-cell.validation-warning {
+  background-color: #fff8e1;
+  border: 2px solid #ffc107 !important;
+  position: relative;
+}
+
+[data-bs-theme="dark"] .time-cell.validation-warning {
+  background-color: #3d3520;
+  border: 2px solid #ffbb33 !important;
+}
+
+/* Validation Success State */
+.time-cell.validation-success {
+  background-color: #d1f2eb;
+  border: 1px solid #28a745;
+  transition: background-color 0.3s ease;
+}
+
+[data-bs-theme="dark"] .time-cell.validation-success {
+  background-color: #1a3329;
+  border: 1px solid #00c851;
+}
+
+/* Remove success state after 1 second */
+.time-cell.validation-success {
+  animation: successFade 2s ease-in-out forwards;
+}
+
+/* ===== Validation Tooltips ===== */
+
+.validation-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  animation: tooltipFadeIn 0.2s ease-out;
+}
+
+/* Tooltip arrow */
+.validation-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: inherit;
+}
+
+/* Error tooltip */
+.validation-tooltip-error {
+  background-color: #dc3545;
+  color: white;
+}
+
+.validation-tooltip-error::before {
+  border-bottom-color: #dc3545;
+}
+
+/* Warning tooltip */
+.validation-tooltip-warning {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.validation-tooltip-warning::before {
+  border-bottom-color: #ffc107;
+}
+
+/* ===== Progress Indicators ===== */
+
+.progress-indicator {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.progress-indicator.progress-error {
+  background-color: #dc3545;
+  color: white;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.progress-indicator.progress-warning {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.progress-indicator.progress-success {
+  background-color: #28a745;
+  color: white;
+}
+
+[data-bs-theme="dark"] .progress-indicator.progress-error {
+  background-color: #ff4444;
+}
+
+[data-bs-theme="dark"] .progress-indicator.progress-warning {
+  background-color: #ffbb33;
+}
+
+[data-bs-theme="dark"] .progress-indicator.progress-success {
+  background-color: #00c851;
+}
+
+/* ===== Cell Input Styling ===== */
+
+.time-cell.editing {
+  padding: 0 !important;
+  background-color: white;
+  border: 2px solid #0d6efd !important;
+  box-shadow: 0 0 0 3px rgba(13, 110, 252, 0.25);
+}
+
+[data-bs-theme="dark"] .time-cell.editing {
+  background-color: #2d2d2d;
+}
+
+.cell-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  padding: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  text-align: center;
+  background: transparent;
+  color: inherit;
+}
+
+.cell-input::-webkit-inner-spin-button,
+.cell-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.cell-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ===== Row States ===== */
+
+.row-selected {
+  background-color: rgba(13, 110, 252, 0.1) !important;
+}
+
+[data-bs-theme="dark"] .row-selected {
+  background-color: rgba(13, 110, 252, 0.2) !important;
+}
+
+/* ===== Animations ===== */
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes successFade {
+  0% {
+    background-color: #d1f2eb;
+  }
+  70% {
+    background-color: #d1f2eb;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+[data-bs-theme="dark"] @keyframes successFade {
+  0% {
+    background-color: #1a3329;
+  }
+  70% {
+    background-color: #1a3329;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* ===== Dirty State Indicator ===== */
+
+.has-unsaved-changes::after {
+  content: '●';
+  color: #ffc107;
+  margin-left: 4px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ===== Loading States ===== */
+
+.cell-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.cell-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid #0d6efd;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===== Toast Notifications (Fallback) ===== */
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s ease;
+  max-width: 400px;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-success {
+  background-color: #28a745;
+  color: white;
+}
+
+.toast-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.toast-warning {
+  background-color: #ffc107;
+  color: #212529;
+}
+
+.toast-info {
+  background-color: #17a2b8;
+  color: white;
+}
+
+/* ===== Accessibility Improvements ===== */
+
+/* Focus visible for keyboard navigation */
+.time-cell:focus-visible {
+  outline: 2px solid #0d6efd;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .time-cell.validation-error {
+    border-width: 3px;
+  }
+
+  .time-cell.validation-warning {
+    border-width: 3px;
+  }
+
+  .progress-indicator {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .time-cell.validation-error,
+  .time-cell.validation-success,
+  .validation-tooltip,
+  .progress-indicator,
+  .toast {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ===== Print Styles ===== */
+
+@media print {
+  .validation-tooltip,
+  .toast {
+    display: none !important;
+  }
+
+  .time-cell.validation-error,
+  .time-cell.validation-warning {
+    border: 2px solid black !important;
+    background-color: white !important;
+  }
+
+  .progress-indicator {
+    background-color: white !important;
+    color: black !important;
+    border: 1px solid black !important;
+  }
+}
