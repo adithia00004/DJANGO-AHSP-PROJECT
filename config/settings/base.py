@@ -381,8 +381,8 @@ LOGGING = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Front-end feature toggles
-USE_VITE_DEV_SERVER = os.getenv("USE_VITE_DEV_SERVER", "False").lower() == "true"
-ENABLE_AG_GRID = os.getenv("ENABLE_AG_GRID", "True").lower() == "true"
+USE_VITE_DEV_SERVER = os.getenv("USE_VITE_DEV_SERVER", "True").lower() == "true"  # ✅ Enable Vite for dev
+ENABLE_AG_GRID = os.getenv("ENABLE_AG_GRID", "True").lower() == "true"  # ✅ Enable modern modules
 
 # Increase field limit for formsets with 200 rows
 # Each row has ~20 fields → 200 rows × 20 = 4000 fields

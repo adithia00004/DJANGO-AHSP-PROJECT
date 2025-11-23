@@ -141,6 +141,10 @@
       : '';
     const satuan = node.type === 'pekerjaan' ? utils.escapeHtml(node.satuan) : '';
 
+    const progressChip = node.type === 'pekerjaan'
+      ? renderProgressChip(node.id, state)
+      : '';
+
     leftRows.push(`
       <tr class="${rowClass}" data-node-id="${node.id}" data-row-index="${leftRows.length}">
         <td class="col-tree">
@@ -150,6 +154,7 @@
           <div class="tree-node">
             ${utils.escapeHtml(node.nama)}
             ${needsVolumeReset ? '<span class="kt-volume-pill">Perlu update volume</span>' : ''}
+            ${progressChip}
           </div>
         </td>
         <td class="col-volume text-right">${volume}</td>
@@ -206,6 +211,71 @@
     return 0;
   }
 
+  function getEffectiveCellValue(state, nodeId, columnId, fallbackSaved = 0) {
+    const cellKey = `${nodeId}-${columnId}`;
+    const savedNumeric = typeof fallbackSaved === 'number'
+      ? fallbackSaved
+      : parseFloat(fallbackSaved) || 0;
+
+    let modifiedValue;
+    if (state.modifiedCells instanceof Map && state.modifiedCells.has(cellKey)) {
+      const candidate = parseFloat(state.modifiedCells.get(cellKey));
+      if (Number.isFinite(candidate)) {
+        modifiedValue = candidate;
+      }
+    } else if (state.modifiedCells && typeof state.modifiedCells.get === 'function') {
+      const candidate = parseFloat(state.modifiedCells.get(cellKey));
+      if (Number.isFinite(candidate)) {
+        modifiedValue = candidate;
+      }
+    }
+
+    const value = modifiedValue !== undefined ? modifiedValue : savedNumeric;
+    return { value, modifiedValue };
+  }
+
+  function calculateRowProgress(nodeId, state) {
+    if (!state || !Array.isArray(state.timeColumns) || state.timeColumns.length === 0) {
+      return null;
+    }
+
+    let total = 0;
+    state.timeColumns.forEach((column) => {
+      const { value } = getEffectiveCellValue(state, nodeId, column.id);
+      const numeric = Number.isFinite(value) ? value : parseFloat(value) || 0;
+      total += numeric;
+    });
+
+    if (!Number.isFinite(total)) {
+      return null;
+    }
+    return parseFloat(total.toFixed(1));
+  }
+
+  function renderProgressChip(nodeId, state) {
+    const total = calculateRowProgress(nodeId, state);
+    if (total === null) {
+      return '';
+    }
+
+    const tolerance = 0.5;
+    let badgeClass = 'progress-chip--ok';
+    let label = 'On Track';
+    if (total > 100 + tolerance) {
+      badgeClass = 'progress-chip--over';
+      label = 'Over 100%';
+    } else if (total < 100 - tolerance) {
+      badgeClass = 'progress-chip--under';
+      label = 'Under 100%';
+    }
+
+    return `
+      <span class="progress-chip ${badgeClass}" title="${label}">
+        ${total.toFixed(1)}%
+      </span>
+    `;
+  }
+
   function renderTimeCell(node, column, ctx) {
     const { state, utils } = ctx;
     if (node.type !== 'pekerjaan') {
@@ -214,11 +284,7 @@
 
     const cellKey = `${node.id}-${column.id}`;
     const savedValue = getAssignmentValue(state, cellKey);
-    let modifiedValue;
-    if (state.modifiedCells && typeof state.modifiedCells.has === 'function') {
-      modifiedValue = state.modifiedCells.has(cellKey) ? state.modifiedCells.get(cellKey) : undefined;
-    }
-    const currentValue = modifiedValue !== undefined ? modifiedValue : savedValue;
+    const { value: currentValue, modifiedValue } = getEffectiveCellValue(state, node.id, column.id, savedValue);
 
     let cellClasses = 'time-cell editable';
 
@@ -724,11 +790,11 @@
         }
       }
 
+      const headerParts = [`<span class="time-header__label">${safeLine1}</span>`];
       if (line2 && !isMonthly) {
-        th.innerHTML = `${safeLine1}<br>${safeLine2}`;
-      } else {
-        th.textContent = safeLine1;
+        headerParts.push(`<span class="time-header__range">${safeLine2}</span>`);
       }
+      th.innerHTML = `<div class="time-header">${headerParts.join('')}</div>`;
 
       th.title = col.tooltip || (line2 ? `${line1} ${line2}`.trim() : line1);
       fragment.appendChild(th);

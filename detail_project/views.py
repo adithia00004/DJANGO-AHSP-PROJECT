@@ -204,4 +204,6 @@ def jadwal_pekerjaan_view(request, project_id: int):
         "use_vite_dev_server": getattr(settings, "USE_VITE_DEV_SERVER", False),
     }
 
-    return render(request, "detail_project/kelola_tahapan_grid_vite.html", context)
+    # MODERN TEMPLATE (2025-11-19): Clean, no conditional legacy code
+    # Rollback: change to kelola_tahapan_grid_LEGACY.html if needed
+    return render(request, "detail_project/kelola_tahapan_grid_modern.html", context)

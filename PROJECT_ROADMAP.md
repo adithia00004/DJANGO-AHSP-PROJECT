@@ -125,6 +125,26 @@ Status ringkas:
 - [ ] Create column definitions
 - [ ] Implement cell renderers
 - [ ] Integrate with existing validation system
+- [ ] Refresh UI/UX elemen interaktif (khususnya sistem input di sidebar kanan) supaya konsisten dengan AG Grid & mudah dipakai
+
+### Phase 2.A: UI/UX Improvement Plan (Jadwal Pekerjaan)
+
+| Fungsi Pengguna | Tujuan UX | Rencana UI/UX |
+| --- | --- | --- |
+| Monitoring progres mingguan | Hasil cepat dibaca & highlight anomali | - Tambahkan badge status di kanan (On Track / Over / Empty).<br>- Warna sel dan tooltip konsisten dengan validation-utils.<br>- Sidebar kanan menampilkan ringkasan angka + indikator warna. |
+| Input proporsi mingguan | Field mudah diketik, validasi langsung | - Redesign panel input kanan agar menunjukkan pekerjaan terpilih + daftar minggu vertikal.<br>- Tambah preset (25/50/100%) dan tombol “Terapkan ke minggu dipilih”.<br>- Pertegas batas error langsung di tiap field. |
+| Navigasi antar tampilan | Perpindahan grid/gantt tanpa kehilangan konteks | - Tab diberi label deskriptif + badge jumlah tahapan aktif.<br>- Simpan preferensi user (grid/gantt) di localStorage. |
+| Bulk action & konfirmasi | Aksi besar jelas risikonya | - Susun ulang tombol toolbar sesuai frekuensi/pentingnya.<br>- Disable tombol ketika tidak ada perubahan.<br>- Copywriting modal confirm diperbarui dengan ringkasan dampak. |
+| Panduan kontekstual | User tahu langkah berikutnya | - Empty state card untuk proyek baru.<br>- Link singkat ke dokumentasi/tour di panel kanan.<br>- Tooltip “?” pada kolom baru. |
+
+**Deliverables UI/UX**
+1. Wireframe panel kanan baru (desktop-first; responsive minimal 1280px) termasuk varian AG Grid & legacy.
+2. Design token status badge (Success/Warning/Danger) & spacing guidelines untuk toolbar dan panel kanan.
+3. User flow sederhana untuk tiga skenario utama: (a) edit satu pekerjaan, (b) bulk edit mingguan, (c) review sebelum simpan.
+4. Acceptance checklist:
+   - Panel kanan operable via keyboard (tab order & focus ring).
+   - Validasi muncul dekat field + toast global opsional.
+   - Komponen UI dibagikan (shared widget) sehingga tampilan konsisten di AG Grid dan legacy.
 
 ### Tasks Breakdown
 
@@ -647,6 +667,7 @@ DEBUG=False python manage.py runserver
 ##  Next Actions
 
 ### Immediate (This Week)
+- [ ] Audit dan redesign UI/UX panel input sisi kanan (kontrol angka/horizontal form) agar sesuai pedoman baru dan siap saat AG Grid aktif penuh.
 - [ ] Aktifkan `ENABLE_AG_GRID` di environment dev/staging dan benahi tampilan ketika legacy grid dimatikan.
 - [ ] Tambahkan cakupan test untuk kedua mode (legacy vs AG Grid) agar regresi flag terdeteksi otomatis.
 - [ ] Lakukan smoke-test penyimpanan canonical (legacy & AG Grid) untuk memastikan payload `assignments` tersimpan rapi.

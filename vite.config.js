@@ -6,7 +6,11 @@ const dropConsoleLogs = process.env.DROP_JADWAL_CONSOLE_LOGS === 'true';
 
 export default defineConfig({
   // Base public path
-  base: '/static/detail_project/dist/',
+  // Dev server uses root '/', production uses '/static/detail_project/dist/'
+  base: process.env.NODE_ENV === 'production' ? '/static/detail_project/dist/' : '/',
+
+  // Root directory for serving files in dev mode
+  root: './detail_project/static/detail_project',
 
   // Build configuration
   build: {
@@ -39,6 +43,20 @@ export default defineConfig({
           'vendor-export': ['xlsx', 'jspdf', 'html2canvas'],
 
           // App-specific chunks
+          'core-modules': [
+            path.resolve(
+              __dirname,
+              'detail_project/static/detail_project/js/src/modules/core/data-loader.js'
+            ),
+            path.resolve(
+              __dirname,
+              'detail_project/static/detail_project/js/src/modules/core/time-column-generator.js'
+            ),
+            path.resolve(
+              __dirname,
+              'detail_project/static/detail_project/js/src/modules/core/save-handler.js'
+            ),
+          ],
           'grid-modules': [
             path.resolve(
               __dirname,
@@ -52,8 +70,16 @@ export default defineConfig({
               __dirname,
               'detail_project/static/detail_project/js/src/modules/grid/grid-event-handlers.js'
             ),
+            path.resolve(
+              __dirname,
+              'detail_project/static/detail_project/js/src/modules/grid/grid-renderer.js'
+            ),
           ],
           'chart-modules': [
+            path.resolve(
+              __dirname,
+              'detail_project/static/detail_project/js/src/modules/shared/chart-utils.js'
+            ),
             path.resolve(
               __dirname,
               'detail_project/static/detail_project/js/src/modules/gantt/frappe-gantt-setup.js'

@@ -141,32 +141,40 @@
         The JavaScript modules will populate this dynamically
       {% endcomment %}
     <div class="grid-container legacy-grid-wrapper {% if enable_ag_grid %}d-none{% endif %}">
-      <div class="left-panel-scroll">
-        <table class="grid-table">
-          <thead id="left-thead">
+      <div class="split-panel-wrapper">
+        <div class="left-panel-wrapper">
+          <div class="left-panel-scroll">
+            <table class="grid-table">
+            <thead id="left-thead">
               <tr>
-                <th class="frozen-column">Pekerjaan</th>
+                <th class="col-uraian">Klasifikasi / Sub-Klasifikasi / Pekerjaan</th>
+                <th class="col-volume text-center">Volume</th>
+                <th class="col-satuan text-center">Satuan</th>
               </tr>
             </thead>
-            <tbody id="left-tbody">
-              <!-- Left panel rows will be rendered by JavaScript -->
-            </tbody>
-          </table>
+              <tbody id="left-tbody">
+                <!-- Left panel rows will be rendered by JavaScript -->
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div class="right-panel-scroll">
-          <table class="grid-table">
-            <thead id="right-thead">
-              <tr id="time-header-row">
-                <!-- Time column headers will be rendered by JavaScript -->
-              </tr>
-            </thead>
-            <tbody id="right-tbody">
-              <!-- Right panel rows will be rendered by JavaScript -->
-            </tbody>
-          </table>
+        <div class="right-panel-wrapper">
+          <div class="right-panel-scroll">
+            <table class="grid-table">
+              <thead id="right-thead">
+                <tr id="time-header-row">
+                  <!-- Time column headers will be rendered by JavaScript -->
+                </tr>
+              </thead>
+              <tbody id="right-tbody">
+                <!-- Right panel rows will be rendered by JavaScript -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+    </div>
 
       <div id="ag-grid-container"
            class="ag-theme-alpine ag-grid-wrapper {% if not enable_ag_grid %}d-none{% endif %}"

@@ -6,7 +6,7 @@ Dokumen ini menjelaskan arsitektur client-side halaman **Jadwal Kegiatan** yang 
 
 ## 1. Ruang Lingkup & Status Implementasi
 
-- **Template aktif:** `kelola_tahapan_grid_vite.html`; AG Grid masih di balik flag `ENABLE_AG_GRID` dan legacy grid tetap ditampilkan ketika flag `False`.
+- **Template aktif:** `kelola_tahapan_grid_vite.html`. AG Grid tetap berada di balik flag `ENABLE_AG_GRID` (default `False`), jadi tampilan legacy segera tampil; set ke `True` hanya bila ingin mencoba AG Grid.
 - **Bundler:** Vite 5.x dengan entry `static/detail_project/js/src/jadwal_kegiatan_app.js`. Build output berada di `static/detail_project/dist/`.
 - **Dev server toggle:** gunakan setting `USE_VITE_DEV_SERVER=True` bila ingin memuat script dari `http://localhost:5173`. Default `False` memakai bundel `dist/`.
 - **Endpoint data:** entry point membaca dataset `data-api-*` (tahapan, list-pekerjaan, save) dan kini mengirim payload `assignments` ke `/detail_project/api/v2/project/<id>/assign-weekly/`.
@@ -85,8 +85,8 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 - `AGGridManager` membungkus inisialisasi AG Grid Community (`new Grid(container, gridOptions)`).
 - Kolom dinamis dibangun via `modules/grid/column-definitions.js`, menambahkan kolom `Pekerjaan`, `Kode`, dan setiap tahapan (`fieldId = col_<id>`).
 - `updateData()` menerima `tree` dan `timeColumns` dari state lalu menyusun row tree-data (auto expand, `getDataPath` berbasis array path).
-- Kontainer `#ag-grid-container` akan muncul jika `data-enable-ag-grid="true"`; legacy table dapat disembunyikan dengan kelas `legacy-grid-wrapper`.
-- Grid baru sudah mendukung editing (`cellEditor` numeric + `onCellValueChanged` → `_handleAgGridCellChange`), namun jalur ini belum dijadikan default sebelum flag `ENABLE_AG_GRID` diaktifkan penuh. Validasi & penyimpanan tetap melalui mekanisme existing sampai payload assignments siap.
+- Kontainer `#ag-grid-container` akan muncul jika `data-enable-ag-grid="true"`; legacy table otomatis diberi `d-none` supaya tidak menggandakan tampilan.
+- Grid baru sudah mendukung editing (`cellEditor` numeric + `onCellValueChanged` → `_handleAgGridCellChange`) namun belum dijadikan default. Aktifkan dengan `ENABLE_AG_GRID=True` untuk QA; set kembali ke `False` bila ingin langsung kembali ke renderer legacy tanpa ubah kode.
 
 ---
 
@@ -170,6 +170,7 @@ Sesuai `FINAL_IMPLEMENTATION_PLAN.md`:
 
 | Gejala | Penyebab Umum | Langkah Perbaikan |
 | --- | --- | --- |
+| Grid kosong / hanya latar putih | `ENABLE_AG_GRID` hidup tetapi AG Grid gagal mounting | Sementara set `ENABLE_AG_GRID=False` lalu reload; renderer legacy akan aktif kembali sambil Anda debug bundel baru. |
 | Listener ganda / memory leak | Event legacy masih aktif bersamaan dengan Vite | Pastikan hanya satu controller yang diinisialisasi; gunakan `window.JadwalKegiatanApp` untuk cek status. |
 | Fetch error `/api/jadwal-kegiatan/*` | Endpoint placeholder belum diganti | Manfaatkan `data-api-base` dari atribut HTML lalu panggil endpoint Django resmi. |
 | Validasi tidak muncul | CSS `validation-enhancements.css` tidak dimuat atau modul `validation-utils.js` tidak dipanggil | Pastikan template menyertakan CSS baru dan `attachGridEvents` menggunakan helper `updateProgressIndicator`. |

@@ -7,6 +7,12 @@
 import { attachGridEvents } from '@modules/grid/grid-event-handlers.js';
 import { AGGridManager } from '@modules/grid/ag-grid-setup.js';
 import { updateProgressIndicator } from '@modules/shared/validation-utils.js';
+import { DataLoader } from '@modules/core/data-loader.js';
+import { TimeColumnGenerator } from '@modules/core/time-column-generator.js';
+import { GridRenderer } from '@modules/grid/grid-renderer.js';
+import { SaveHandler } from '@modules/core/save-handler.js';
+import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
+import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js';
 
 /**
  * Initialize Jadwal Kegiatan Grid Application
@@ -17,6 +23,16 @@ class JadwalKegiatanApp {
     this.eventManager = null;
     this.initialized = false;
     this.agGridManager = null;
+
+    // Modern modules
+    this.dataLoader = null;
+    this.timeColumnGenerator = null;
+    this.gridRenderer = null;
+    this.saveHandler = null;
+
+    // Chart modules
+    this.kurvaSChart = null;
+    this.ganttChart = null;
   }
 
   /**
@@ -114,6 +130,8 @@ class JadwalKegiatanApp {
         saveButton: document.getElementById('save-button') || document.getElementById('btn-save-all'),
         refreshButton: document.getElementById('refresh-button'),
         agGridContainer: document.getElementById('ag-grid-container'),
+        scurveChart: document.getElementById('scurve-chart'),
+        ganttChart: document.getElementById('gantt-chart'),
       },
       config.domRefs || {}
     );
@@ -245,157 +263,227 @@ class JadwalKegiatanApp {
   async _loadInitialData() {
     // Check if data is already loaded (from Django template)
     if (this.state.pekerjaanTree?.length > 0) {
-      const hasConsoleGroup = typeof console.groupCollapsed === 'function';
-      if (hasConsoleGroup) {
-        console.groupCollapsed('[JadwalKegiatanApp] Using template dataset');
-      }
+      console.log('[JadwalKegiatanApp] Using template dataset');
       console.log('Preloaded pekerjaanTree items:', this.state.pekerjaanTree.length);
       console.log('Preloaded tahapanList items:', this.state.tahapanList?.length || 0);
       console.log('Preloaded timeColumns items:', this.state.timeColumns?.length || 0);
-      if (hasConsoleGroup) {
-        console.groupEnd();
-      }
       this._syncGridViews();
       return;
     }
 
-    // Otherwise, fetch from API
-    const { apiEndpoints, projectId } = this.state;
-    if (!apiEndpoints?.tahapan || !apiEndpoints?.listPekerjaan) {
-      console.warn('[JadwalKegiatanApp] API endpoints belum dikonfigurasi.');
-      return;
-    }
+    // Initialize modern modules
+    this.state.apiBase = this.state.apiEndpoints?.tahapan || `/detail_project/api/project/${this.state.projectId}/tahapan/`;
+    this.dataLoader = new DataLoader(this.state);
+    this.timeColumnGenerator = new TimeColumnGenerator(this.state);
+    this.gridRenderer = new GridRenderer(this.state);
+    this.saveHandler = new SaveHandler(this.state, {
+      apiUrl: this.state.apiEndpoints?.save || `/detail_project/api/project/${this.state.projectId}/pekerjaan/assign_weekly/`,
+      onSuccess: (result) => this._onSaveSuccess(result),
+      onError: (error) => this._onSaveError(error),
+      showToast: (msg, type) => this.showToast(msg, type)
+    });
 
-    const logLabel = `[JadwalKegiatanApp] API Load (project ${projectId || 'unknown'})`;
-    const canGroup = typeof console.groupCollapsed === 'function';
-    if (canGroup) {
-      console.groupCollapsed(logLabel);
-    } else {
-      console.log(logLabel);
-    }
-    console.log('GET tahapan URL:', apiEndpoints.tahapan);
-    console.log('GET list-pekerjaan URL:', apiEndpoints.listPekerjaan);
-
-    console.log('Loading data from API...');
     this.state.isLoading = true;
 
     try {
-      const [tahapanData, pekerjaanData] = await Promise.all([
-        this._fetchJson(apiEndpoints.tahapan),
-        this._fetchJson(apiEndpoints.listPekerjaan),
-      ]);
+      console.log('[JadwalKegiatanApp] Loading data using modern DataLoader...');
 
-      const tahapanList = Array.isArray(tahapanData)
-        ? tahapanData
-        : tahapanData.tahapan ||
-          tahapanData.results ||
-          tahapanData.data ||
-          tahapanData.items ||
-          [];
+      // Step 1: Load all base data (tahapan, pekerjaan, volumes)
+      await this.dataLoader.loadAllData({ skipIfLoaded: false });
 
-      const pekerjaanTree = Array.isArray(pekerjaanData)
-        ? pekerjaanData
-        : pekerjaanData.tree ||
-          pekerjaanData.klasifikasi ||
-          pekerjaanData.data ||
-          pekerjaanData.results ||
-          [];
+      // Step 2: Generate time columns from loaded tahapan
+      this.timeColumnGenerator.generate();
 
-      if (tahapanData && typeof tahapanData === 'object') {
-        console.log('Tahapan payload keys:', Object.keys(tahapanData));
-      } else {
-        console.log('Tahapan payload type:', typeof tahapanData);
-      }
-      console.log('Resolved tahapanList length:', tahapanList.length);
-      if (tahapanList.length) {
-        console.log('Sample tahapan item:', tahapanList[0]);
-      }
+      // Step 3: Load assignments (depends on time columns)
+      await this.dataLoader.loadAssignments();
 
-      if (pekerjaanData && typeof pekerjaanData === 'object') {
-        console.log('Pekerjaan payload keys:', Object.keys(pekerjaanData));
-      } else {
-        console.log('Pekerjaan payload type:', typeof pekerjaanData);
-      }
-      console.log('Resolved pekerjaanTree length:', pekerjaanTree.length);
-      if (pekerjaanTree.length) {
-        console.log('Sample pekerjaan branch:', pekerjaanTree[0]);
-      }
-
-      this.state.tahapanList = tahapanList;
-      this.state.pekerjaanTree = pekerjaanTree;
-      this.state.timeColumns = this._buildTimeColumns(tahapanList);
+      // Build time column index for quick lookup
       this.state.timeColumnIndex = this._createTimeColumnIndex(this.state.timeColumns);
 
       console.log(
-        `[JadwalKegiatanApp] Loaded ${pekerjaanTree.length} pekerjaan, ${tahapanList.length} tahapan for project ${projectId}`
+        `[JadwalKegiatanApp] ✅ Data loaded successfully:`,
+        `${this.state.flatPekerjaan?.length || 0} pekerjaan,`,
+        `${this.state.tahapanList?.length || 0} tahapan,`,
+        `${this.state.timeColumns?.length || 0} columns`
       );
+
+      // Step 4: Render grid
+      this._renderGrid();
+
+      // Step 5: Initialize and update charts
+      this._initializeCharts();
+      this._updateCharts();
+
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('[JadwalKegiatanApp] ❌ Failed to load data:', error);
       this.state.error = error;
-      this.showToast('Gagal memuat data', 'danger');
-      console.log('Generated timeColumns:', this.state.timeColumns.length);
+      this.showToast('Gagal memuat data: ' + error.message, 'danger');
     } finally {
-      if (canGroup) {
-        console.groupEnd();
-      }
       this.state.isLoading = false;
       this._syncGridViews();
     }
   }
 
   /**
-   * Save changes to server
+   * Render grid using GridRenderer
+   * @private
+   */
+  _renderGrid() {
+    if (!this.gridRenderer) {
+      console.warn('[JadwalKegiatanApp] GridRenderer not initialized');
+      return;
+    }
+
+    console.log('[JadwalKegiatanApp] Rendering grid...');
+
+    // Render tables
+    const rendered = this.gridRenderer.renderTables();
+    if (!rendered) {
+      console.warn('[JadwalKegiatanApp] Grid rendering returned null');
+      return;
+    }
+
+    const { leftHTML, rightHTML } = rendered;
+
+    // Update DOM
+    const leftTbody = this.state.domRefs?.leftTbody || document.getElementById('left-tbody');
+    const rightTbody = this.state.domRefs?.rightTbody || document.getElementById('right-tbody');
+
+    if (leftTbody) {
+      leftTbody.innerHTML = leftHTML;
+    }
+
+    if (rightTbody) {
+      rightTbody.innerHTML = rightHTML;
+    }
+
+    // Render time headers
+    const timeHeaderRow = this.state.domRefs?.timeHeaderRow || document.getElementById('time-header-row');
+    if (timeHeaderRow) {
+      this.gridRenderer.renderTimeHeader(timeHeaderRow);
+    }
+
+    // Sync row heights
+    this.gridRenderer.syncRowHeights(this.state.domRefs || {});
+
+    console.log('[JadwalKegiatanApp] ✅ Grid rendered');
+  }
+
+  /**
+   * Initialize chart modules
+   * @private
+   */
+  _initializeCharts() {
+    console.log('[JadwalKegiatanApp] Initializing charts...');
+
+    // Initialize Kurva-S Chart
+    if (this.state.domRefs?.scurveChart) {
+      try {
+        this.kurvaSChart = new KurvaSChart(this.state, {
+          useIdealCurve: true,
+          steepnessFactor: 0.8,
+          smoothCurves: true,
+          showArea: true,
+        });
+        const success = this.kurvaSChart.initialize(this.state.domRefs.scurveChart);
+        if (success) {
+          console.log('[JadwalKegiatanApp] ✅ Kurva-S chart initialized');
+        }
+      } catch (error) {
+        console.warn('[JadwalKegiatanApp] Failed to initialize Kurva-S chart:', error);
+      }
+    }
+
+    // Initialize Gantt Chart
+    if (this.state.domRefs?.ganttChart) {
+      try {
+        this.ganttChart = new GanttChart(this.state, {
+          viewMode: 'Week',
+          enableThemeObserver: true,
+        });
+        const success = this.ganttChart.initialize(this.state.domRefs.ganttChart);
+        if (success) {
+          console.log('[JadwalKegiatanApp] ✅ Gantt chart initialized');
+        }
+      } catch (error) {
+        console.warn('[JadwalKegiatanApp] Failed to initialize Gantt chart:', error);
+      }
+    }
+  }
+
+  /**
+   * Update charts with current data
+   * @private
+   */
+  _updateCharts() {
+    console.log('[JadwalKegiatanApp] Updating charts...');
+
+    // Update Kurva-S Chart
+    if (this.kurvaSChart) {
+      try {
+        this.kurvaSChart.update();
+        console.log('[JadwalKegiatanApp] ✅ Kurva-S chart updated');
+      } catch (error) {
+        console.warn('[JadwalKegiatanApp] Failed to update Kurva-S chart:', error);
+      }
+    }
+
+    // Update Gantt Chart
+    if (this.ganttChart) {
+      try {
+        this.ganttChart.update();
+        console.log('[JadwalKegiatanApp] ✅ Gantt chart updated');
+      } catch (error) {
+        console.warn('[JadwalKegiatanApp] Failed to update Gantt chart:', error);
+      }
+    }
+  }
+
+  /**
+   * Save changes to server (using modern SaveHandler)
    */
   async saveChanges() {
-    if (!this.state.modifiedCells || this.state.modifiedCells.size === 0) {
-      this.showToast('Tidak ada perubahan untuk disimpan', 'info');
+    if (!this.saveHandler) {
+      console.error('[JadwalKegiatanApp] SaveHandler not initialized');
       return;
     }
 
-    const assignments = this._buildAssignmentsPayload();
-    if (assignments.length === 0) {
-      this.showToast('Tidak ada assignments valid untuk disimpan', 'warning');
-      return;
+    // Delegate to SaveHandler
+    const result = await this.saveHandler.save();
+
+    // Re-render grid after save
+    if (result.success) {
+      this._renderGrid();
     }
+  }
 
-    console.log(
-      `[JadwalKegiatanApp] Saving ${assignments.length} assignments (${this.state.modifiedCells.size} cells)`
-    );
+  /**
+   * Handle successful save
+   * @param {Object} result - Save result
+   * @private
+   */
+  _onSaveSuccess(result) {
+    console.log('[JadwalKegiatanApp] Save completed successfully');
+    this.state.isDirty = false;
 
-    try {
-      const saveUrl = this.state.apiEndpoints?.save || this._getDefaultSaveEndpoint();
-      const payload = {
-        assignments,
-        mode: this._getSaveMode(),
-        week_end_day: this._getWeekEndDay(),
-      };
+    // Update status bar if exists
+    this._updateStatusBar();
 
-      const response = await fetch(saveUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': this._getCsrfToken(),
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify(payload),
-      });
+    // Re-render grid to update UI
+    this._renderGrid();
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+    // Update charts with new data
+    this._updateCharts();
+  }
 
-      const result = await response.json();
-
-      // Clear modified cells
-      this.state.modifiedCells.clear();
-      this.state.isDirty = false;
-
-      this.showToast('Perubahan berhasil disimpan', 'success');
-      console.log('[JadwalKegiatanApp] Save successful:', result);
-    } catch (error) {
-      console.error('Save failed:', error);
-      this.showToast('Gagal menyimpan: ' + error.message, 'danger');
-    }
+  /**
+   * Handle save error
+   * @param {Error} error - Error object
+   * @private
+   */
+  _onSaveError(error) {
+    console.error('[JadwalKegiatanApp] Save failed:', error);
+    // Error toast already shown by SaveHandler
   }
 
   /**

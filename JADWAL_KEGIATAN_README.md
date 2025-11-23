@@ -11,7 +11,7 @@
 ## Quick Status
 
 - Phase 1 (Critical Fixes) selesai 100%.
-- Phase 2 (AG Grid Migration) masih berjalan: template Vite + modul AG Grid tersedia, flag `ENABLE_AG_GRID` masih `False` secara default, namun `saveChanges()` sudah mengirim payload `assignments` ke `/detail_project/api/v2/project/<id>/assign-weekly/`.
+- Phase 2 (AG Grid Migration) masih berjalan: template Vite + modul AG Grid tersedia, tetapi flag `ENABLE_AG_GRID` tetap `False` secara default sehingga legacy grid langsung tampil; set ke `True` hanya saat ingin meninjau AG Grid.
 - Phase 3-4 (Build optimization & Export) belum dimulai dan menunggu AG Grid menjadi tampilan utama tanpa legacy grid.
 - Skrip npm yang tersedia: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, `benchmark` (skrip test menjalankan pytest jadwal).
 
@@ -171,9 +171,9 @@ python generate_progress_report.py
 ##  Next Steps
 
 ### Immediate
-- [ ] Aktifkan AG Grid secara default (`ENABLE_AG_GRID=True`) dan pastikan legacy grid bisa dimatikan tanpa merusak toolbar/tab lain.
-- [ ] Tambahkan cakupan pytest/UI untuk mode AG Grid agar perbedaan flag terdeteksi otomatis.
-- [ ] Jalankan smoke test penyimpanan canonical (legacy & AG Grid) untuk memastikan payload `assignments` tersimpan.
+- [ ] QA regression untuk mode AG Grid (flag `True`) dan fallback legacy (flag `False`) guna memastikan toggle aman di kedua arah.
+- [ ] Tambahkan cakupan pytest/UI yang memeriksa keberadaan `data-enable-ag-grid` & script legacy agar regressi toggle terdeteksi lebih awal.
+- [ ] Jalankan smoke test penyimpanan canonical untuk memastikan payload `assignments` tersimpan dari kedua mode grid.
 
 ### Phase 2 (Week 3-4)
 - [ ] Lengkapi AG Grid Migration (virtual scrolling 10.000 baris + tree data).
