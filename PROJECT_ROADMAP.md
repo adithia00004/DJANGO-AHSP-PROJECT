@@ -10,14 +10,14 @@
 
 ---
 
-- **Phase saat ini:** Phase 2 - AG Grid Migration (legacy grid masih default)
+- **Phase saat ini:** Phase 2 - AG Grid Migration (template modern aktif, AG Grid flag default `True`)
 - **Progress keseluruhan:** 40% (Phase 1 selesai, Phase 2 ~50%)
 - **Last updated:** 2025-11-19
 - **Next milestone:** Phase 2 - AG Grid default (Week 3-4)
 
 Status ringkas:
 - Phase 1 selesai dan seluruh dokumentasi awal tersedia.
-- Phase 2 masih berlangsung: template Vite aktif dan `saveChanges()` kini mengirim payload `assignments` ke `/api/v2/project/<id>/assign-weekly/`, tetapi `ENABLE_AG_GRID` belum diaktifkan secara default.
+- Phase 2 masih berlangsung: template Vite (`kelola_tahapan_grid_modern.html`) sudah aktif, flag `ENABLE_AG_GRID=True`, dan kontainer AG Grid tampil ketika flag menyala; legacy grid otomatis disembunyikan sebagai fallback.
 - Fokus langsung: menyalakan AG Grid (virtual scroll + tree data), melakukan smoke-test canonical save di kedua mode, lalu baru masuk ke optimasi build Phase 3.
 
 ---
@@ -115,7 +115,7 @@ Status ringkas:
 
 **Duration:** Week 3-4
 **Effort:** 24-32 hours
-**Status:**  **IN PROGRESS** (Vite template + modul AG Grid siap, tetapi flag `ENABLE_AG_GRID` belum diaktifkan default dan penyimpanan masih memakai payload `changes`)
+**Status:**  **IN PROGRESS** (Template modern + AG Grid flag sudah aktif; kontainer AG Grid kini tampil saat flag `True`, dan fokus tersisa adalah migrasi DataLoader ke API v2 serta QA lengkap)
 **Dependencies:** Phase 1 
 
 ### Objectives
@@ -666,10 +666,10 @@ DEBUG=False python manage.py runserver
 
 ##  Next Actions
 
-### Immediate (This Week)
 - [ ] Audit dan redesign UI/UX panel input sisi kanan (kontrol angka/horizontal form) agar sesuai pedoman baru dan siap saat AG Grid aktif penuh.
-- [ ] Aktifkan `ENABLE_AG_GRID` di environment dev/staging dan benahi tampilan ketika legacy grid dimatikan.
+- [ ] Migrasikan `DataLoader` ke API v2 (`api_v2_assign_weekly` / `api_get_pekerjaan_assignments_v2`) sehingga loading jadwal tidak lagi menembak endpoint per-pekerjaan.
 - [ ] Tambahkan cakupan test untuk kedua mode (legacy vs AG Grid) agar regresi flag terdeteksi otomatis.
+- [ ] Implementasikan pembacaan `manifest.json` Vite agar template otomatis menemukan file fingerprint (`jadwal-kegiatan-*.js`) saat `USE_VITE_DEV_SERVER=False`.
 - [ ] Lakukan smoke-test penyimpanan canonical (legacy & AG Grid) untuk memastikan payload `assignments` tersimpan rapi.
 
 ### Short-term (Next 2 Weeks)
@@ -701,7 +701,7 @@ DEBUG=False python manage.py runserver
 -  Phase 3: Build Optimization
 -  Phase 4: Export Features
 
-**Blockers:** Legacy grid masih default sehingga AG Grid belum teruji penuh pada semua skenario.
+**Blockers:** Kontainer AG Grid masih tersembunyi walau flag menyala, DataLoader belum ke API v2 sehingga load lambat untuk ribuan baris.
 
 **Risks:** Timeline Phase 3 tertunda jika AG Grid belum stabil.
 

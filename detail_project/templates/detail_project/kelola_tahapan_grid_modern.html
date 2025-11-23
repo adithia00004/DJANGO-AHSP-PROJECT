@@ -83,7 +83,7 @@
      data-api-volume="{% url 'detail_project:api_list_volume_pekerjaan' project.id %}"
      data-api-assignments-base="/detail_project/api/project/{{ project.id }}/pekerjaan/"
      data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}"
-     data-enable-ag-grid="{{ enable_ag_grid|default:'false'|yesno:'true,false' }}"
+     data-enable-ag-grid="{% if enable_ag_grid %}true{% else %}false{% endif %}"
      data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
      data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}">
@@ -111,8 +111,8 @@
   <div class="tab-content" id="viewTabsContent">
     <!-- Grid View Tab -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel" aria-labelledby="grid-tab">
-      <!-- Custom Grid (default, will be hidden jika AG Grid aktif) -->
-      <div class="grid-container legacy-grid-wrapper">
+      <!-- Custom Grid (legacy fallback) -->
+      <div class="grid-container legacy-grid-wrapper {% if enable_ag_grid %}d-none{% endif %}">
         <div class="split-panel-wrapper">
           <div class="left-panel-wrapper">
             <div class="left-panel-scroll">
@@ -148,8 +148,10 @@
         </div>
       </div>
 
-      <!-- AG Grid Container (hidden by default, shown via JS if enabled) -->
-      <div id="ag-grid-container" class="ag-theme-alpine ag-grid-wrapper d-none" style="width: 100%; min-height: 600px;">
+      <!-- AG Grid Container -->
+      <div id="ag-grid-container"
+           class="ag-theme-alpine ag-grid-wrapper {% if not enable_ag_grid %}d-none{% endif %}"
+           style="width: 100%; min-height: 600px;">
         <!-- AG Grid will mount here -->
       </div>
 

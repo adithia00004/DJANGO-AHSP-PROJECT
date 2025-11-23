@@ -22,11 +22,11 @@ Roadmap ini menggabungkan 3 inisiatif terpisah yang sebelumnya overlap:
 | --- | --- | --- | --- |
 | **FASE 0: Fondasi Modern (Phase 1)** | ✅ **SELESAI** | 100% | Vite setup, event delegation, validation utils complete |
 | **FASE 1: Wire & Activate** | ✅ **SELESAI** | 100% | Modern template active, settings updated, Vite running |
-| **FASE 2A: Core Module Migration** | ✅ **SELESAI** | 100% | DataLoader + TimeColumnGenerator migrated (2/12 modules) |
-| **FASE 2B: Grid Module Migration** | ☐ **PENDING** | 0% | GridRenderer + SaveHandler next (4/12 modules) |
+| **FASE 2A: Core Module Migration** | DONE | 100% | DataLoader + TimeColumnGenerator migrated (API v2 adoption outstanding) |
+| **FASE 2B: Grid Module Migration** | IN PROGRESS | 75% | GridRenderer, SaveHandler, AG Grid setup sudah aktif; kontainer AG Grid sudah tampil saat flag `True`, tree data & virtual scroll masih dikerjakan |
 | **FASE 2C: Chart Module Migration** | ☐ **PENDING** | 0% | Gantt + Kurva S adapters (6/12 modules) |
 | **FASE 3: CSS & Layout Cleanup** | ☐ **PENDING** | 15% | Sebagian CSS vars sudah ada, inline style masih banyak |
-| **FASE 4: AG Grid Integration** | ☐ **PENDING** | 0% | Dependencies ready, implementation belum |
+| **FASE 4: AG Grid Integration** | PENDING | 20% | Flag default True, perlu buka kontainer, virtual scroll, QA |
 | **FASE 5: Advanced Features** | ☐ **PENDING** | 0% | Virtual scroll, EVM, export |
 | **FASE 6: Testing & Documentation** | 🔶 **IN PROGRESS** | 45% | Phase 2A docs complete, end-to-end tests pending |
 
@@ -76,29 +76,29 @@ detail_project/
 - ✅ **Template REFACTORED** (clean modern template, no conditionals)
 - ✅ **View UPDATED** (uses modern template)
 - ✅ **Settings UPDATED** (modern stack by default)
-- ✅ **2 Modules MIGRATED** (DataLoader, TimeColumnGenerator)
+- �o. **4 Modules MIGRATED** (DataLoader, TimeColumnGenerator, GridRenderer, SaveHandler)
 - ✅ **Vite Dev Server RUNNING** (localhost:5173)
 
 ### 🔶 Yang Masih Dalam Proses
 
 **Current Status: PHASE 2A COMPLETE, PHASE 2B NEXT**
 
-**Modules Migrated (2 of 12):**
+**Modules Migrated (4 of 12):**
 - ✅ DataLoader (legacy → ES6)
 - ✅ TimeColumnGenerator (legacy → ES6)
 
-**Modules Remaining (10 of 12):**
-- ☐ GridRenderer (grid_module.js → grid-renderer.js)
-- ☐ SaveHandler (save_handler_module.js → save-handler.js)
-- ☐ GanttAdapter (gantt_module.js → gantt-adapter.js)
-- ☐ KurvaSAdapter (kurva_s_module.js → kurva-s-adapter.js)
-- ☐ 6 more legacy modules
+**Modules Remaining (8 of 12):**
+- �o. GridRenderer (legacy grid_module -> grid-renderer.js)
+- �o. SaveHandler (save_handler_module -> save-handler.js)
+- �~? GanttAdapter (gantt_module.js -> gantt adapter)
+- �~? KurvaSAdapter (kurva_s_module.js -> kurva-s adapter)
+- �~? Mode switching helpers, export adapters, sidebar widgets, dsb.
 
 **Next Tasks:**
-1. **Manual Testing** - Verify modern stack loads correctly
-2. **Phase 2B** - Migrate GridRenderer + SaveHandler
-3. **Phase 2C** - Migrate chart adapters (Gantt, Kurva S)
-4. **Phase 2D** - Clean up legacy files
+1. **Manual Testing** - Verify modern stack loads correctly & regresi ketika AG Grid menjadi tampilan utama (legacy hanya fallback manual).
+2. **DataLoader v2** - Ganti konsumsi endpoint assignments ke API v2 agar siap menangani 10.000+ baris.
+3. **Phase 2C** - Migrate chart adapters (Gantt, Kurva S) + sinkronisasi assignment map.
+4. **Phase 2D** - Implement manifest loader + bersihkan sisa modul legacy/export helpers.
 
 ---
 
@@ -397,8 +397,8 @@ import { TimeColumnGenerator } from '@modules/core/time-column-generator.js';
 import { GridRenderer } from '@modules/grid/grid-renderer.js';
 import { GridEventManager } from '@modules/grid/grid-event-handlers.js';
 import { SaveHandler } from '@modules/core/save-handler.js';
-import { GanttAdapter } from '@modules/gantt/gantt-adapter.js';
-import { KurvaSAdapter } from '@modules/kurva-s/kurva-s-adapter.js';
+- �~? GanttAdapter (gantt_module.js -> gantt adapter)
+- �~? KurvaSAdapter (kurva_s_module.js -> kurva-s adapter)
 
 export class JadwalKegiatanApp {
   constructor() {
@@ -424,8 +424,8 @@ export class JadwalKegiatanApp {
     this.modules.eventManager.attachEvents();
 
     // 5. Initialize charts
-    this.modules.gantt = new GanttAdapter(this.state);
-    this.modules.kurvaS = new KurvaSAdapter(this.state);
+- �~? GanttAdapter (gantt_module.js -> gantt adapter)
+- �~? KurvaSAdapter (kurva_s_module.js -> kurva-s adapter)
 
     // 6. Setup save handler
     this.modules.saveHandler = new SaveHandler(this.state);
@@ -705,7 +705,7 @@ static/detail_project/css/
 
 ---
 
-### **FASE 4: AG Grid Integration (Optional Performance Boost)**
+| **FASE 4: AG Grid Integration** | PENDING | 20% | Flag default True, perlu buka kontainer, virtual scroll, QA |
 
 **Tujuan**: Ganti custom table rendering dengan AG Grid untuk virtual scrolling
 

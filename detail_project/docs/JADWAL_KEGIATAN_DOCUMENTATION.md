@@ -28,20 +28,21 @@ Halaman **Jadwal Kegiatan** (Kelola Tahapan) adalah modul manajemen proyek untuk
 ### Technologies Stack
 | Komponen | Technology |
 |----------|------------|
-| Frontend Framework | Vanilla JavaScript (Modular) |
-| Grid Rendering | Custom HTML Table |
+| Frontend Framework | Vanilla JavaScript (Modular) + Vite |
+| Grid Rendering | AG Grid (flag default `True`, kontainer masih tersembunyi) + Legacy HTML fallback |
 | Gantt Chart | Frappe Gantt v0.6.1 |
 | S-Curve Chart | ECharts v5.4.3 |
 | Styling | Bootstrap 5 + Custom CSS |
 | State Management | Global State Object |
 
 ### Status Implementasi (November 2025)
-- **Template aktif**: `kelola_tahapan_grid_vite.html` (digunakan oleh `jadwal_pekerjaan_view`). Template legacy masih tersedia sebagai fallback namun tidak lagi dirender.
-- **Controller JavaScript**: entry Vite `static/detail_project/js/src/jadwal_kegiatan_app.js` terhubung ke endpoint Django melalui atribut `data-api-*`. Kode legacy `static/detail_project/js/kelola_tahapan_grid.js` masih ada untuk referensi sampai AG Grid menggantikan grid HTML sepenuhnya.
-- **AG Grid**: dependensi berada di `package.json`, tetapi modul `modules/grid/ag-grid-setup.js` masih **TODO** (Phase 2). Saat ini grid HTML dua panel masih aktif.
-- **Penyimpanan progress**: perubahan dari AG Grid dikirim ke endpoint canonical `/detail_project/api/v2/project/<project_id>/assign-weekly/` dengan payload weekly assignments (pekerjaan, week_number, proportion). Pipeline API `api_assign_pekerjaan_weekly` menjadi jalur utama save.
-- **Skrip npm**: baru tersedia `dev`, `build`, `preview`, dan `watch`. Skrip `npm test`, `npm run test:integration`, dan `npm run benchmark` masih direncanakan.
-- **Testing**: gunakan `pytest detail_project -n auto` untuk regresi backend. Uji manual UI diperlukan sampai harness frontend siap.
+- **Template aktif**: `kelola_tahapan_grid_modern.html` (Vite) dirender oleh `jadwal_pekerjaan_view` dengan flag `ENABLE_AG_GRID=True`. Legacy template (`kelola_tahapan_grid.html`/`_LEGACY`) tetap tersedia untuk rollback manual.
+- **Controller JavaScript**: entry `static/detail_project/js/src/jadwal_kegiatan_app.js` membaca atribut `data-api-*`, menginisialisasi AG Grid Manager ketika `data-enable-ag-grid="true"`, dan melepas event manager legacy.
+- **AG Grid**: modul `modules/grid/ag-grid-setup.js`, `column-definitions.js`, `grid-renderer.js`, serta `save-handler.js` sudah tersedia. Kontainer `#ag-grid-container` masih `d-none` sampai QA selesai, sehingga UI default masih menampilkan grid HTML.
+- **Penyimpanan progress**: penyimpanan memakai endpoint canonical `/detail_project/api/v2/project/<project_id>/assign-weekly/`. Loading assignments masih bergantung pada endpoint v1 per pekerjaan dan perlu dimigrasi agar mendukung 10.000+ baris.
+- **Build assets**: mode produksi masih mengimpor `detail_project/dist/assets/js/jadwal-kegiatan.js` secara hardcoded. Diperlukan pembacaan `manifest.json` supaya nama fingerprint (`jadwal-kegiatan-<hash>.js`) terdeteksi otomatis.
+- **Skrip npm**: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, `benchmark`.
+- **Testing**: `pytest detail_project -n auto` untuk backend dan smoke test UI memastikan AG Grid & legacy grid tidak aktif bersamaan.
 
 ---
 
@@ -51,8 +52,9 @@ Halaman **Jadwal Kegiatan** (Kelola Tahapan) adalah modul manajemen proyek untuk
 ```
 detail_project/
   templates/detail_project/
-     kelola_tahapan_grid.html          # Template yang masih dipakai di production
-     kelola_tahapan_grid_vite.html     # Template baru (belum di-wire ke view)
+     kelola_tahapan_grid_modern.html   # Template aktif (Vite + AG Grid flag)
+     kelola_tahapan_grid.html          # Legacy fallback (still available)
+     kelola_tahapan_grid_LEGACY.html   # Snapshot legacy penuh
      kelola_tahapan/
          _grid_tab.html                # Grid view tab content
          _gantt_tab.html               # Gantt chart tab content
@@ -65,28 +67,25 @@ detail_project/
 
      js/
         kelola_tahapan_grid.js         # Legacy orchestrator (1700+ lines)
-        jadwal_pekerjaan/
+        jadwal_pekerjaan/ (legacy modules)
             kelola_tahapan_page_bootstrap.js
-            kelola_tahapan/            # Legacy module folder
+            kelola_tahapan/
                 module_manifest.js
-                data_loader_module.js
-                time_column_generator_module.js
-                validation_module.js
-                save_handler_module.js
-                grid_module.js
-                gantt_module.js
-                kurva_s_module.js
-                grid_tab.js
-                gantt_tab.js
-                kurva_s_tab.js
+                ...
 
-        # Struktur baru berbasis Vite (Phase 1)
+        # Struktur baru berbasis Vite (aktif di production)
         js/src/
-            main.js
+            jadwal_kegiatan_app.js
             modules/
+                core/
+                    data-loader.js
+                    save-handler.js
+                    time-column-generator.js
                 grid/
                     grid-event-handlers.js
-                    # ag-grid-setup.js -- TODO Phase 2
+                    ag-grid-setup.js
+                    column-definitions.js
+                    grid-renderer.js
                 shared/
                     event-delegation.js
                     performance-utils.js

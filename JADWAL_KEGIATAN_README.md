@@ -11,8 +11,8 @@
 ## Quick Status
 
 - Phase 1 (Critical Fixes) selesai 100%.
-- Phase 2 (AG Grid Migration) masih berjalan: template Vite + modul AG Grid tersedia, tetapi flag `ENABLE_AG_GRID` tetap `False` secara default sehingga legacy grid langsung tampil; set ke `True` hanya saat ingin meninjau AG Grid.
-- Phase 3-4 (Build optimization & Export) belum dimulai dan menunggu AG Grid menjadi tampilan utama tanpa legacy grid.
+- Phase 2 (AG Grid Migration) sedang berjalan: view merender `kelola_tahapan_grid_modern.html`, flag `ENABLE_AG_GRID=True`, dan kontainer AG Grid kini aktif sehingga legacy grid otomatis disembunyikan saat flag menyala.
+- Phase 3-4 (Build optimization & Export) belum dimulai dan menunggu AG Grid tampil penuh serta jalur loading/manifest stabil.
 - Skrip npm yang tersedia: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, `benchmark` (skrip test menjalankan pytest jadwal).
 
 **Current Milestone:** Phase 2 - AG Grid Migration (feature flag rollout pending).
@@ -170,9 +170,10 @@ python generate_progress_report.py
 
 ##  Next Steps
 
-### Immediate
 - [ ] QA regression untuk mode AG Grid (flag `True`) dan fallback legacy (flag `False`) guna memastikan toggle aman di kedua arah.
 - [ ] Tambahkan cakupan pytest/UI yang memeriksa keberadaan `data-enable-ag-grid` & script legacy agar regressi toggle terdeteksi lebih awal.
+- [ ] Migrasikan `DataLoader` ke API v2 (`api_v2_assign_weekly`/`api_get_pekerjaan_assignments_v2`) agar loading tidak lagi melakukan puluhan request per pekerjaan dan siap menangani 10.000 baris.
+- [ ] Implementasikan manifest loader Vite sehingga path fingerprint (`jadwal-kegiatan-*.js`) otomatis terbaca ketika `USE_VITE_DEV_SERVER=False`.
 - [ ] Jalankan smoke test penyimpanan canonical untuk memastikan payload `assignments` tersimpan dari kedua mode grid.
 
 ### Phase 2 (Week 3-4)

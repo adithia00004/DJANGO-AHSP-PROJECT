@@ -45,10 +45,10 @@
 > **Biaya lisensi**: $0.00 -- seluruh komponen berlisensi MIT atau Apache 2.0.
 
 ### Status Implementasi (November 2025)
-- View `jadwal_pekerjaan_view` merender `kelola_tahapan_grid_vite.html`; AG Grid dikendalikan via flag `ENABLE_AG_GRID` (default `False`) sehingga legacy grid masih muncul sampai rollout selesai.
-- Entry point Vite `static/detail_project/js/src/jadwal_kegiatan_app.js` membaca dataset HTML, mengikat AG Grid manager, dan `saveChanges()` kini mengirim payload `assignments` (mode weekly) ke `/detail_project/api/v2/project/<id>/assign-weekly/`.
-- Mode pemuatan JS dikontrol lewat setting `USE_VITE_DEV_SERVER`. Jika `True`, template memuat modul dari `http://localhost:5173/...`; jika `False` (default), template memakai bundel `static/detail_project/dist/...` sehingga halaman tetap berfungsi meski Vite dev server tidak dijalankan.
-- Modul AG Grid (`static/detail_project/js/src/modules/grid/ag-grid-setup.js`) sudah siap (editable + `onCellValueChanged`), namun hanya di-mount ketika atribut `data-enable-ag-grid="true"` karena QA masih berlangsung pada Phase 2.
+- View `jadwal_pekerjaan_view` kini merender `kelola_tahapan_grid_modern.html`; flag `ENABLE_AG_GRID=True` secara default dan kontainer AG Grid tampil saat flag aktif, sementara legacy grid otomatis disembunyikan sebagai fallback.
+- Entry point Vite `static/detail_project/js/src/jadwal_kegiatan_app.js` membaca dataset HTML, mengikat AG Grid manager, dan `saveChanges()` mengirim payload `assignments` (mode weekly) ke `/detail_project/api/v2/project/<id>/assign-weekly/`. Loading assignments masih memakai endpoint v1 per pekerjaan dan perlu migrasi.
+- Mode pemuatan JS dikontrol lewat setting `USE_VITE_DEV_SERVER`. Jika `True`, template memuat modul dari `http://localhost:5173/...`; jika `False`, template mencoba memuat `detail_project/dist/assets/js/jadwal-kegiatan.js` sehingga perlu manifest loader agar nama fingerprint otomatis.
+- Modul AG Grid (`static/detail_project/js/src/modules/grid/ag-grid-setup.js`, `grid-renderer.js`, `column-definitions.js`) sudah siap (editable + `onCellValueChanged`); focus Phase 2 saat ini adalah melepas `d-none`, mengaktifkan tree data/virtual scroll, dan QA.
 - Skrip npm yang tersedia: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, dan `benchmark` (skrip test menjalankan pytest jadwal sampai harness front-end siap).
 
 ## Environment Setup

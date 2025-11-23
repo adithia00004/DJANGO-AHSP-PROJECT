@@ -6,11 +6,11 @@ Dokumen ini menjelaskan arsitektur client-side halaman **Jadwal Kegiatan** yang 
 
 ## 1. Ruang Lingkup & Status Implementasi
 
-- **Template aktif:** `kelola_tahapan_grid_vite.html`. AG Grid tetap berada di balik flag `ENABLE_AG_GRID` (default `False`), jadi tampilan legacy segera tampil; set ke `True` hanya bila ingin mencoba AG Grid.
+- **Template aktif:** `kelola_tahapan_grid_modern.html` (Vite). Flag `ENABLE_AG_GRID=True` secara default, dan kontainer `#ag-grid-container` kini tampil ketika flag aktif sehingga legacy grid otomatis disembunyikan.
 - **Bundler:** Vite 5.x dengan entry `static/detail_project/js/src/jadwal_kegiatan_app.js`. Build output berada di `static/detail_project/dist/`.
-- **Dev server toggle:** gunakan setting `USE_VITE_DEV_SERVER=True` bila ingin memuat script dari `http://localhost:5173`. Default `False` memakai bundel `dist/`.
+- **Dev server toggle:** gunakan setting `USE_VITE_DEV_SERVER=True` bila ingin memuat script dari `http://localhost:5173`. Default `False` memakai bundel `dist/`; manifest loader sedang dijadwalkan agar file fingerprint otomatis terdeteksi.
 - **Endpoint data:** entry point membaca dataset `data-api-*` (tahapan, list-pekerjaan, save) dan kini mengirim payload `assignments` ke `/detail_project/api/v2/project/<id>/assign-weekly/`.
-- **AG Grid:** modul `modules/grid/ag-grid-setup.js` tersedia dan di-mount hanya ketika `data-enable-ag-grid="true"`; default deployment masih menjalankan grid HTML hingga AG Grid lulus QA penuh.
+- **AG Grid:** modul `modules/grid/ag-grid-setup.js`, `column-definitions.js`, dan `grid-renderer.js` sudah tersedia. Event legacy dilepas ketika atribut `data-enable-ag-grid="true"`, jadi pastikan kontainer tidak disembunyikan sebelum QA regression selesai.
 
 ---
 
@@ -131,21 +131,20 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 
 ## 8. Rencana Client-Side Phase 2
 
-Sesuai `FINAL_IMPLEMENTATION_PLAN.md`:
+Sesuai FINAL_IMPLEMENTATION_PLAN.md + tindak lanjut terkini:
 
-1. **Buat `ag-grid-setup.js`** yang:
-   - Menginisialisasi `AGGridManager` dengan `GridOptions` custom (tree data, pinned column “Pekerjaan”, virtual scroll).
-   - Menggunakan `buildColumnDefs()` dan cell renderer khusus (progress input, status indicator).
-   - Memetakan data `pekerjaanTree` + `assignments` ke format row AG Grid.
-2. **Integrasi event & validasi**:
-   - Listener editing AG Grid harus memanggil `validation-utils.js` agar UI tetap konsisten.
-   - Emit event ke modul lain (Gantt, Kurva S) saat data berubah.
-3. **Endpoint API**:
-   - Ganti placeholder fetch dengan `data-api-base` dari atribut `data-api-base` (misal `/detail_project/api/project/<project_id>/tahapan/`). Pastikan respons menyediakan field yang dibutuhkan grid & Gantt.
-4. **Template Switch**:
-   - Update `jadwal_pekerjaan_view` agar memakai `kelola_tahapan_grid_vite.html`. Pastikan manifest Vite terbaca di mode produksi.
-5. **Testing**:
-   - Tambahkan skrip npm `test`, `test:integration`, dan `benchmark` untuk memvalidasi bundler + smoke test. Sementara gunakan `pytest detail_project -n auto` untuk backend.
+1. **Stabilisasi AG Grid default**
+   - Tentukan kapan kontainer #ag-grid-container dilepas dari d-none dan legacy grid dimatikan permanen.
+   - Lengkapi konfigurasi tree data, virtual scroll, dan status bar di g-grid-setup.js.
+2. **Migrasi DataLoader ke API v2**
+   - Ganti pemanggilan /detail_project/api/project/<project_id>/pekerjaan/<pekerjaan_id>/assignments/ dengan endpoint v2 (weekly canonical) agar loading tidak melakukan ratusan request.
+   - Validasi bahwa ssignmentMap tetap sinkron dengan SaveHandler.
+3. **Manifest & build pipeline**
+   - Implementasikan pembacaan manifest.json sehingga template produksi otomatis memuat jadwal-kegiatan-<hash>.js saat USE_VITE_DEV_SERVER=False.
+   - Tambahkan fallback log agar error mudah dilacak jika manifest hilang.
+4. **Testing & automation**
+   - Tambahkan skrip npm 	est, 	est:integration, enchmark serta pytest UI untuk memverifikasi atribut data-enable-ag-grid.
+   - Dokumentasikan prosedur QA di kedua mode sebelum flag dimatikan permanen.
 
 ### 8.5 Canonical Save API
 
