@@ -680,8 +680,8 @@ class PekerjaanProgressWeekly(models.Model):
     proportion = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        validators=[MinValueValidator(0.01), MaxValueValidator(100.00)],
-        help_text="Proportion of work (%) completed in this week. Range: 0.01 - 100.00"
+        validators=[MinValueValidator(0), MaxValueValidator(100.00)],
+        help_text="Proportion of work (%) completed in this week. Range: 0 - 100.00"
     )
 
     # Metadata
@@ -708,9 +708,9 @@ class PekerjaanProgressWeekly(models.Model):
 
     def clean(self):
         """Validation"""
-        if self.proportion < 0.01 or self.proportion > 100:
+        if self.proportion < 0 or self.proportion > 100:
             raise ValidationError({
-                'proportion': 'Proportion must be between 0.01% - 100%'
+                'proportion': 'Proportion must be between 0% - 100%'
             })
 
         # Validate week dates

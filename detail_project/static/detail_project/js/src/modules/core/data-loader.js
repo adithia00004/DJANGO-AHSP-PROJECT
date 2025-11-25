@@ -387,7 +387,7 @@ export class DataLoader {
   async loadAssignments() {
     try {
       this.state.assignmentMap.clear();
-      console.log('[DataLoader] Loading assignments for pekerjaan...');
+      console.log('[DataLoader] Loading assignments (attempting API v2)...');
 
       const pekerjaanNodes = this.state.flatPekerjaan.filter(node => node.type === 'pekerjaan');
       const totalNodes = pekerjaanNodes.length;
@@ -397,63 +397,7 @@ export class DataLoader {
         return this.state.assignmentMap;
       }
 
-      // Load assignments with concurrency control
-      const maxConcurrency = Math.min(
-        Math.max(Number(this.options.assignmentConcurrency) || 6, 1),
-        10
-      );
-
-      let completed = 0;
-      let cursor = 0;
-
-      const worker = async () => {
-        while (true) {
-          const index = cursor;
-          if (index >= totalNodes) {
-            return;
-          }
-          cursor += 1;
-
-          const node = pekerjaanNodes[index];
-          try {
-            const url = `/detail_project/api/project/${this.projectId}/pekerjaan/${node.id}/assignments/`;
-            const data = await apiCall(url);
-
-            if (data.assignments && Array.isArray(data.assignments)) {
-              data.assignments.forEach(a => {
-                const tahapanId = a.tahapan_id;
-                const proporsi = parseFloat(a.proporsi) || 0;
-
-                // Map to time columns
-                if (this.state.timeColumns) {
-                  this.state.timeColumns.forEach(col => {
-                    if (col.tahapanId === tahapanId) {
-                      const cellKey = `${node.id}-${col.id}`;
-                      this.state.assignmentMap.set(cellKey, proporsi);
-                    }
-                  });
-                }
-              });
-            }
-          } catch (error) {
-            console.warn(`[DataLoader] Failed to load assignments for pekerjaan ${node.id}:`, error);
-          } finally {
-            completed += 1;
-
-            // Log progress every 10%
-            if (completed % Math.max(1, Math.floor(totalNodes / 10)) === 0 || completed === totalNodes) {
-              console.log(`[DataLoader] Progress: ${completed} / ${totalNodes} pekerjaan`);
-            }
-          }
-        }
-      };
-
-      // Run workers in parallel
-      const workerCount = Math.min(maxConcurrency, totalNodes) || 1;
-      const workers = Array.from({ length: workerCount }, () => worker());
-      await Promise.all(workers);
-
-      console.log(`[DataLoader] ✅ Total assignments loaded: ${this.state.assignmentMap.size}`);
+      await this._loadAssignmentsViaV2();
       return this.state.assignmentMap;
     } catch (error) {
       console.error('[DataLoader] ❌ Failed to load assignments:', error);
@@ -481,6 +425,63 @@ export class DataLoader {
 
     console.log(`[DataLoader] Reloading ${type}...`);
     return loader();
+  }
+
+  _buildWeekColumnIndex() {
+    const weekColumnIndex = {};
+    if (Array.isArray(this.state.timeColumns)) {
+      this.state.timeColumns.forEach((col) => {
+        const weekNumber = Number(col.weekNumber || col.week_number || col.urutan);
+        if (Number.isFinite(weekNumber) && weekNumber >= 1 && col.id) {
+          weekColumnIndex[weekNumber] = col;
+        }
+      });
+    }
+    return weekColumnIndex;
+  }
+
+  async _loadAssignmentsViaV2() {
+    const url = `/detail_project/api/v2/project/${this.projectId}/assignments/`;
+    const data = await apiCall(url);
+
+    if (!data || !Array.isArray(data.assignments)) {
+      console.info('[DataLoader] API v2 returned no assignments array (treating as empty dataset)');
+      return;
+    }
+
+    if (data.assignments.length === 0) {
+      console.info('[DataLoader] API v2 assignments empty (no progress recorded yet)');
+      return;
+    }
+
+    const weekColumnIndex = this._buildWeekColumnIndex();
+    let mapped = 0;
+
+    data.assignments.forEach((item) => {
+      const pekerjaanId = Number(item.pekerjaan_id || item.pekerjaanId || item.id);
+      const weekNumber = Number(item.week_number || item.weekNumber);
+      const proportion = parseFloat(item.proportion);
+
+      if (!pekerjaanId || !weekNumber || Number.isNaN(proportion)) {
+        return;
+      }
+
+      const column = weekColumnIndex[weekNumber];
+      if (!column) {
+        return;
+      }
+
+      const columnKey = column.fieldId || column.id;
+      if (!columnKey) {
+        return;
+      }
+
+      const cellKey = `${pekerjaanId}-${columnKey}`;
+      this.state.assignmentMap.set(cellKey, proportion);
+      mapped += 1;
+    });
+
+    console.log(`[DataLoader] ✅ Loaded ${mapped} assignments via API v2`);
   }
 }
 

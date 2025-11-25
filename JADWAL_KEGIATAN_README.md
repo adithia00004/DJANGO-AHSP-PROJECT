@@ -1,4 +1,4 @@
-# Django AHSP Project - Jadwal Kegiatan Enhancement
+﻿# Django AHSP Project - Jadwal Kegiatan Enhancement
 
 **Project Status:** Phase 1 complete; Phase 2 in progress (~40% overall)
 **Budget:** $0.00 (100% FREE Open Source)
@@ -11,14 +11,13 @@
 ## Quick Status
 
 - Phase 1 (Critical Fixes) selesai 100%.
-- Phase 2 (AG Grid Migration) sedang berjalan: view merender `kelola_tahapan_grid_modern.html`, flag `ENABLE_AG_GRID=True`, dan kontainer AG Grid kini aktif sehingga legacy grid otomatis disembunyikan saat flag menyala.
-- Phase 3-4 (Build optimization & Export) belum dimulai dan menunggu AG Grid tampil penuh serta jalur loading/manifest stabil.
-- Skrip npm yang tersedia: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, `benchmark` (skrip test menjalankan pytest jadwal).
-
-**Current Milestone:** Phase 2 - AG Grid Migration (feature flag rollout pending).
-
-**Next Milestone:** Build Optimization (Phase 3, Week 5).
-
+- Phase 2 (AG Grid Migration) memasuki tahap stabilisasi: view default kelola_tahapan_grid_modern.html, kolom Pekerjaan/Volume/Satuan terpin, horizontal scroll tersedia di atas & bawah, status bar aktif, dan legacy grid hanya fallback.
+- Mode terang/gelap mengikuti data-bs-theme otomatis (switch ag-theme-alpine + ag-theme-alpine-dark), jadi tampilan AG Grid konsisten dengan seluruh dashboard.
+- Jalur assignments 100% memakai API v2. TimeColumnGenerator + SaveHandler menyimpan week_number yang akurat (termasuk minggu > 1), menerima nilai 0-100%, mengonversi volume↔persentase otomatis, serta menjaga progressTotals + volumeTotals; penyimpanan otomatis diblokir bila total >100% atau volume melebihi kapasitas (toast + highlight).
+- Toolbar modern kini punya selector **Week Start/Week End**. Pilihan user kini tersimpan per proyek (API week-boundary) dan dipakai seragam oleh grid, Gantt, serta Kurva S pada saat reload.
+- Regression suite: pytest detail_project/tests/test_jadwal_pekerjaan_page_ui.py --no-cov dan pytest detail_project/tests/test_weekly_canonical_validation.py --no-cov (round-trip + zero progress) keduanya hijau.
+- Phase 3-4 (Build optimization & Export) belum dimulai; menunggu penyempurnaan mode volume + monthly switch.
+- Skrip npm yang tersedia: dev, build, preview, watch, test, test:integration, benchmark.
 ---
 
 ##  Project Overview
@@ -170,20 +169,23 @@ python generate_progress_report.py
 
 ##  Next Steps
 
-- [ ] QA regression untuk mode AG Grid (flag `True`) dan fallback legacy (flag `False`) guna memastikan toggle aman di kedua arah.
-- [ ] Tambahkan cakupan pytest/UI yang memeriksa keberadaan `data-enable-ag-grid` & script legacy agar regressi toggle terdeteksi lebih awal.
-- [ ] Migrasikan `DataLoader` ke API v2 (`api_v2_assign_weekly`/`api_get_pekerjaan_assignments_v2`) agar loading tidak lagi melakukan puluhan request per pekerjaan dan siap menangani 10.000 baris.
-- [ ] Implementasikan manifest loader Vite sehingga path fingerprint (`jadwal-kegiatan-*.js`) otomatis terbaca ketika `USE_VITE_DEV_SERVER=False`.
-- [ ] Jalankan smoke test penyimpanan canonical untuk memastikan payload `assignments` tersimpan dari kedua mode grid.
-
+- [ ] QA regression untuk mode AG Grid vs legacy fallback (flag ENABLE_AG_GRID) guna memastikan toggle aman.
+- [x] Jalur assignments sudah 100% memakai API v2 (save + reload) + round-trip test ditambahkan.
+- [x] Mode persentase/volume: konversi volume?persentase + validasi dasar (0?volume) selesai; lanjutkan penguatan UX.
+- [x] Validasi total per pekerjaan: auto warning + blokir saat akumulasi >100% pada mode persentase.
+- [x] Validasi total per pekerjaan: guard volumeTotals vs master volume (toast + highlight) untuk mode volume.
+- [x] Week Start/Week End selector tersedia di toolbar; TimeColumnGenerator + SaveHandler sinkron dengan pilihan pengguna.
+- [x] Persist dan kirim konfigurasi Week Start/End ke endpoint `week-boundary` + jadikan default saat regenerate/grafik.
+- [ ] Selesaikan alur switch time scale (weekly ? monthly) dengan memanggil regenerate API + reload grid.
+- [ ] Manifest loader Vite untuk memetakan bundle fingerprint saat USE_VITE_DEV_SERVER=False.
 ### Phase 2 (Week 3-4)
-- [ ] Lengkapi AG Grid Migration (virtual scrolling 10.000 baris + tree data).
-- [ ] Jalankan load test (1.000 & 10.000 rows) dan logging FPS.
-- [ ] Integration testing termasuk sinkronisasi assignment untuk tab Gantt/Kurva S.
+- [ ] Lengkapi AG Grid Migration (virtual scroll 10k rows + tree data).
+- [ ] Load test (1k & 10k rows) + logging FPS.
+- [ ] Integration testing tab Gantt + Kurva-S pasca penyimpanan canonical.
 
 ### Phase 3-4 (Week 5-6)
-- [ ] Build optimization
-- [ ] Export features (Excel, PDF, PNG)
+- [ ] Build optimization (code splitting, manifest loader).
+- [ ] Export features (Excel, PDF, PNG) setelah input workflow stabil.
 
 ---
 
@@ -192,3 +194,5 @@ python generate_progress_report.py
 **Phase:** 2 of 4 (40% Complete, in progress)
 
 **Ready for Phase 2! **
+
+

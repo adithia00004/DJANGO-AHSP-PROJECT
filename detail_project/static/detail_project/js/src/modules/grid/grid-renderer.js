@@ -624,11 +624,14 @@ export class GridRenderer {
    * @param {HTMLElement} domRefs.rightTbody - Right table body
    */
   syncRowHeights(domRefs) {
+    if (this.state?.useAgGrid) {
+      return;
+    }
+
     const leftTbody = domRefs.leftTbody || document.getElementById('left-tbody');
     const rightTbody = domRefs.rightTbody || document.getElementById('right-tbody');
 
     if (!leftTbody || !rightTbody) {
-      console.warn('[GridRenderer] Cannot sync row heights: missing tbody elements');
       return;
     }
 

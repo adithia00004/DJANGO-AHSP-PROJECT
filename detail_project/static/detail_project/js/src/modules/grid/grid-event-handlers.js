@@ -48,6 +48,12 @@ export class GridEventManager {
       this._setupScrollSync(leftScroll, rightScroll);
     }
 
+    const topHorizontalScroll =
+      this.state.domRefs?.horizontalScrollTop || document.getElementById('right-panel-scroll-top');
+    if (topHorizontalScroll && rightScroll) {
+      this._setupHorizontalScrollSync(topHorizontalScroll, rightScroll);
+    }
+
     return true;
   }
 
@@ -124,6 +130,22 @@ export class GridEventManager {
     // Store handlers for cleanup
     this.scrollHandlers.set('left', { element: leftScroll, handler: syncLeftToRight });
     this.scrollHandlers.set('right', { element: rightScroll, handler: syncRightToLeft });
+  }
+
+  _setupHorizontalScrollSync(topScroll, bottomScroll) {
+    const syncTopToBottom = rafThrottle(() => {
+      bottomScroll.scrollLeft = topScroll.scrollLeft;
+    });
+
+    const syncBottomToTop = rafThrottle(() => {
+      topScroll.scrollLeft = bottomScroll.scrollLeft;
+    });
+
+    topScroll.addEventListener('scroll', syncTopToBottom, { passive: true });
+    bottomScroll.addEventListener('scroll', syncBottomToTop, { passive: true });
+
+    this.scrollHandlers.set('horizontal-top', { element: topScroll, handler: syncTopToBottom });
+    this.scrollHandlers.set('horizontal-bottom', { element: bottomScroll, handler: syncBottomToTop });
   }
 
   /**

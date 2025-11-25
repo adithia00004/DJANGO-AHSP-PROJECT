@@ -99,7 +99,8 @@ export class SaveHandler {
 
       // Build payload
       const payload = this._buildPayload();
-      console.log(`[SaveHandler] Built payload with ${payload.items.length} items`);
+      const payloadCount = payload.assignments?.length ?? payload.items?.length ?? 0;
+      console.log(`[SaveHandler] Built payload with ${payloadCount} items`);
 
       // Send to server
       const result = await this._sendToServer(payload);
@@ -129,7 +130,7 @@ export class SaveHandler {
    * @private
    */
   _buildPayload() {
-    const items = [];
+    const assignments = [];
 
     // Convert modifiedCells Map to array of assignments
     this.state.modifiedCells.forEach((value, cellKey) => {
@@ -142,44 +143,82 @@ export class SaveHandler {
       }
 
       // Get numeric value
-      const percentage = parseFloat(value);
-      if (!Number.isFinite(percentage)) {
+      const proportion = parseFloat(value);
+      if (!Number.isFinite(proportion)) {
         console.warn(`[SaveHandler] Invalid value for ${cellKey}: ${value}`);
         return;
       }
 
       // Get column info for additional metadata
-      const column = this.state.timeColumns?.find(col => col.id === tahapanId);
+      const column = this.state.timeColumns?.find((col) => {
+        const key = col.fieldId || col.id;
+        return key?.toString() === tahapanId.toString();
+      });
 
       // Build item
       const item = {
         pekerjaan_id: parseInt(pekerjaanId, 10),
-        tahapan_id: parseInt(tahapanId, 10),
-        percentage: percentage,
+        proportion: Number(proportion.toFixed(2)),
       };
 
-      // Add column metadata if available
       if (column) {
+        const tahapanPrimaryId =
+          column.tahapanId ??
+          column.tahapan_id ??
+          (Number.isFinite(Number(column.id)) ? Number(column.id) : null);
+        if (tahapanPrimaryId) {
+          item.tahapan_id = tahapanPrimaryId;
+        }
+
         if (column.startDate) {
           item.week_start = this._formatDate(column.startDate);
         }
         if (column.endDate) {
           item.week_end = this._formatDate(column.endDate);
         }
-        if (column.weekNumber) {
+        if (Number.isFinite(column.weekNumber)) {
           item.week_number = column.weekNumber;
+        }
+
+        if (!item.week_number) {
+          const normalizedOrder = Number.isFinite(column.index)
+            ? Number(column.index)
+            : Number.isFinite(column.order)
+              ? Number(column.order)
+              : Number.isFinite(column.urutan)
+                ? Number(column.urutan)
+                : null;
+          if (normalizedOrder !== null) {
+            item.week_number = normalizedOrder + 1;
+          }
+        }
+      } else {
+        const numericTahapan = parseInt(tahapanId, 10);
+        if (Number.isFinite(numericTahapan)) {
+          item.tahapan_id = numericTahapan;
         }
       }
 
-      items.push(item);
+      if (!item.week_number) {
+        const fallbackWeek = parseInt(item.tahapan_id ?? tahapanId, 10);
+        if (Number.isFinite(fallbackWeek)) {
+          item.week_number = fallbackWeek;
+        } else {
+          // Default to 1 as last resort to satisfy backend validation
+          item.week_number = 1;
+        }
+      }
+
+      assignments.push(item);
     });
 
-    console.log(`[SaveHandler] Built ${items.length} assignment items`);
+    console.log(`[SaveHandler] Built ${assignments.length} assignment items`);
 
     return {
-      items,
+      assignments,
       mode: this.state.timeScale || 'weekly',
-      project_id: this.state.projectId
+      project_id: this.state.projectId,
+      week_end_day: this.state.weekEndDay ?? 6,
     };
   }
 
@@ -226,9 +265,28 @@ export class SaveHandler {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      let errorData = {};
+      let parsedBody = null;
+      try {
+        parsedBody = await response.json();
+        errorData = parsedBody || {};
+      } catch (jsonError) {
+        const fallbackText = await response.text().catch(() => '');
+        errorData = { message: fallbackText };
+      }
+
       const errorMsg = errorData.error || errorData.message || `HTTP ${response.status}`;
-      throw new Error(errorMsg);
+      const error = new Error(errorMsg);
+      if (errorData.errors) {
+        error.details = errorData.errors;
+      }
+      if (errorData.validation_errors) {
+        error.validationErrors = errorData.validation_errors;
+      }
+      if (typeof errorData === 'object') {
+        error.payload = errorData;
+      }
+      throw error;
     }
 
     const result = await response.json();
@@ -282,9 +340,34 @@ export class SaveHandler {
   _handleSaveError(error) {
     console.error('[SaveHandler] ❌ Save failed:', error);
 
-    // Show error message
-    const message = `Gagal menyimpan: ${error.message}`;
-    this.showToast(message, 'danger');
+    const detailMessages = [];
+    if (Array.isArray(error.validationErrors) && error.validationErrors.length > 0) {
+      error.validationErrors.slice(0, 3).forEach((item) => {
+        if (item?.error) {
+          detailMessages.push(`• ${item.error}`);
+        }
+      });
+      if (error.validationErrors.length > 3) {
+        detailMessages.push(`(+${error.validationErrors.length - 3} lagi)`);
+      }
+    }
+
+    if (Array.isArray(error.details) && error.details.length > 0) {
+      error.details.slice(0, 3).forEach((item) => {
+        if (item?.error) {
+          detailMessages.push(`• ${item.error}`);
+        }
+      });
+      if (error.details.length > 3) {
+        detailMessages.push(`(+${error.details.length - 3} lagi)`);
+      }
+    }
+
+    let message = `Gagal menyimpan: ${error.message}`;
+    if (detailMessages.length > 0) {
+      message += `\n${detailMessages.join('\n')}`;
+    }
+    this.showToast(message, 'danger', 5000);
 
     // Call error callback
     if (typeof this.onError === 'function') {
@@ -341,28 +424,35 @@ export class SaveHandler {
     const errors = [];
     const warnings = [];
 
-    if (!payload || !Array.isArray(payload.items)) {
+    const assignments = Array.isArray(payload?.assignments)
+      ? payload.assignments
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : null;
+
+    if (!assignments) {
       errors.push('Invalid payload structure');
       return { isValid: false, errors, warnings };
     }
 
-    if (payload.items.length === 0) {
+    if (assignments.length === 0) {
       warnings.push('No items to save');
     }
 
     // Validate each item
-    payload.items.forEach((item, index) => {
+    assignments.forEach((item, index) => {
       if (!item.pekerjaan_id) {
         errors.push(`Item ${index}: Missing pekerjaan_id`);
       }
-      if (!item.tahapan_id) {
-        errors.push(`Item ${index}: Missing tahapan_id`);
+      if (!item.week_number) {
+        warnings.push(`Item ${index}: Missing week_number (akan memakai default)`);
       }
-      if (!Number.isFinite(item.percentage)) {
-        errors.push(`Item ${index}: Invalid percentage value`);
-      }
-      if (item.percentage < 0 || item.percentage > 100) {
-        warnings.push(`Item ${index}: Percentage out of range (${item.percentage}%)`);
+      if (typeof item.proportion === 'undefined') {
+        errors.push(`Item ${index}: Missing proportion value`);
+      } else if (!Number.isFinite(item.proportion)) {
+        errors.push(`Item ${index}: Invalid proportion value`);
+      } else if (item.proportion < 0 || item.proportion > 100) {
+        warnings.push(`Item ${index}: Proportion out of range (${item.proportion}%)`);
       }
     });
 

@@ -1,4 +1,4 @@
-# Project Roadmap: Jadwal Kegiatan Enhancement
+﻿# Project Roadmap: Jadwal Kegiatan Enhancement
 ## 6-Week Implementation Plan with Progress Tracking
 
 **Project:** Django AHSP - Jadwal Kegiatan Performance & Feature Enhancement
@@ -11,15 +11,14 @@
 ---
 
 - **Phase saat ini:** Phase 2 - AG Grid Migration (template modern aktif, AG Grid flag default `True`)
-- **Progress keseluruhan:** 40% (Phase 1 selesai, Phase 2 ~50%)
-- **Last updated:** 2025-11-19
-- **Next milestone:** Phase 2 - AG Grid default (Week 3-4)
+- **Progress keseluruhan:** 55% (Phase 1 selesai, Phase 2 ~80%)
+- **Last updated:** 2025-11-24
+- **Next milestone:** Phase 2 - Volume mode & monthly switch (Week 4)
 
 Status ringkas:
 - Phase 1 selesai dan seluruh dokumentasi awal tersedia.
-- Phase 2 masih berlangsung: template Vite (`kelola_tahapan_grid_modern.html`) sudah aktif, flag `ENABLE_AG_GRID=True`, dan kontainer AG Grid tampil ketika flag menyala; legacy grid otomatis disembunyikan sebagai fallback.
-- Fokus langsung: menyalakan AG Grid (virtual scroll + tree data), melakukan smoke-test canonical save di kedua mode, lalu baru masuk ke optimasi build Phase 3.
-
+- Phase 2 menjaga AG Grid default: canonical save/load (API v2), progressTotals + volumeTotals dievaluasi sebelum Save, preferensi Week Start/End tersimpan per proyek (API week-boundary), status bar + horizontal scroll aktif, dan legacy grid tetap fallback.
+- Fokus langsung: hubungkan boundary ke regenerate tahapan & monthly switch serta QA virtual scroll 10k row sebelum masuk ke optimasi build Phase 3.
 ---
 
 ##  Project Objectives
@@ -47,7 +46,7 @@ Status ringkas:
 | Phase | Weeks | Hours | Status | Completion |
 |-------|-------|-------|--------|------------|
 | **Phase 1: Critical Fixes** | Week 1-2 | 16-24h | COMPLETE | 100% |
-| **Phase 2: AG Grid Migration** | Week 3-4 | 24-32h | IN PROGRESS | 40% |
+| **Phase 2: AG Grid Migration** | Week 3-4 | 24-32h | IN PROGRESS | 80% |
 | **Phase 3: Build Optimization** | Week 5 | 16-20h | NOT STARTED | 0% |
 | **Phase 4: Export Features** | Week 6 | 16-20h | NOT STARTED | 0% |
 | **Testing & Documentation** | Ongoing | 8-12h | IN PROGRESS | 50% |
@@ -115,7 +114,7 @@ Status ringkas:
 
 **Duration:** Week 3-4
 **Effort:** 24-32 hours
-**Status:**  **IN PROGRESS** (Template modern + AG Grid flag sudah aktif; kontainer AG Grid kini tampil saat flag `True`, dan fokus tersisa adalah migrasi DataLoader ke API v2 serta QA lengkap)
+**Status:**  **IN PROGRESS** (Template modern + AG Grid flag sudah aktif; Phase 2 migrasi assignments v2 kini membaca API v2 tanpa fallback, fokus lanjut ke virtual scroll, manifest loader, dan QA)
 **Dependencies:** Phase 1 
 
 ### Objectives
@@ -132,10 +131,10 @@ Status ringkas:
 | Fungsi Pengguna | Tujuan UX | Rencana UI/UX |
 | --- | --- | --- |
 | Monitoring progres mingguan | Hasil cepat dibaca & highlight anomali | - Tambahkan badge status di kanan (On Track / Over / Empty).<br>- Warna sel dan tooltip konsisten dengan validation-utils.<br>- Sidebar kanan menampilkan ringkasan angka + indikator warna. |
-| Input proporsi mingguan | Field mudah diketik, validasi langsung | - Redesign panel input kanan agar menunjukkan pekerjaan terpilih + daftar minggu vertikal.<br>- Tambah preset (25/50/100%) dan tombol “Terapkan ke minggu dipilih”.<br>- Pertegas batas error langsung di tiap field. |
+| Input proporsi mingguan | Field mudah diketik, validasi langsung | - Redesign panel input kanan agar menunjukkan pekerjaan terpilih + daftar minggu vertikal.<br>- Tambah preset (25/50/100%) dan tombol â€œTerapkan ke minggu dipilihâ€.<br>- Pertegas batas error langsung di tiap field. |
 | Navigasi antar tampilan | Perpindahan grid/gantt tanpa kehilangan konteks | - Tab diberi label deskriptif + badge jumlah tahapan aktif.<br>- Simpan preferensi user (grid/gantt) di localStorage. |
 | Bulk action & konfirmasi | Aksi besar jelas risikonya | - Susun ulang tombol toolbar sesuai frekuensi/pentingnya.<br>- Disable tombol ketika tidak ada perubahan.<br>- Copywriting modal confirm diperbarui dengan ringkasan dampak. |
-| Panduan kontekstual | User tahu langkah berikutnya | - Empty state card untuk proyek baru.<br>- Link singkat ke dokumentasi/tour di panel kanan.<br>- Tooltip “?” pada kolom baru. |
+| Panduan kontekstual | User tahu langkah berikutnya | - Empty state card untuk proyek baru.<br>- Link singkat ke dokumentasi/tour di panel kanan.<br>- Tooltip â€œ?â€ pada kolom baru. |
 
 **Deliverables UI/UX**
 1. Wireframe panel kanan baru (desktop-first; responsive minimal 1280px) termasuk varian AG Grid & legacy.
@@ -667,11 +666,16 @@ DEBUG=False python manage.py runserver
 ##  Next Actions
 
 - [ ] Audit dan redesign UI/UX panel input sisi kanan (kontrol angka/horizontal form) agar sesuai pedoman baru dan siap saat AG Grid aktif penuh.
-- [ ] Migrasikan `DataLoader` ke API v2 (`api_v2_assign_weekly` / `api_get_pekerjaan_assignments_v2`) sehingga loading jadwal tidak lagi menembak endpoint per-pekerjaan.
+- [x] **Phase 1**: Aktifkan loader API v2 (/api/v2/project/<id>/assignments/) dengan fallback otomatis ke endpoint legacy per-pekerjaan.
+- [x] **Phase 2**: Matangkan DataLoader v2 (hilangkan fallback, tambahkan logging) sehingga load jadwal selalu membaca canonical weekly data.
 - [ ] Tambahkan cakupan test untuk kedua mode (legacy vs AG Grid) agar regresi flag terdeteksi otomatis.
-- [ ] Implementasikan pembacaan `manifest.json` Vite agar template otomatis menemukan file fingerprint (`jadwal-kegiatan-*.js`) saat `USE_VITE_DEV_SERVER=False`.
-- [ ] Lakukan smoke-test penyimpanan canonical (legacy & AG Grid) untuk memastikan payload `assignments` tersimpan rapi.
-
+- [ ] Implementasikan pembacaan manifest.json Vite agar template otomatis menemukan file fingerprint (jadwal-kegiatan-*.js) saat USE_VITE_DEV_SERVER=False.
+- [ ] Lakukan smoke-test penyimpanan canonical (legacy & AG Grid) untuk memastikan payload ssignments tersimpan rapi.
+- [x] Mode persentase/volume: aktifkan toggle berikut validasi + konversi otomatis sebelum user menginput data riil.
+- [x] Batasi editing hanya pada baris pekerjaan; tampilkan alert + blokir jika total per pekerjaan melebihi 100%/volume (progressTotals + volumeTotals).
+- [x] Implementasikan Week Start/End selector dan sinkronkan TimeColumnGenerator + SaveHandler dengan konfigurasi pengguna.
+- [x] Persist Week Start/End ke backend (API week-boundary) dan pakai ulang di seluruh tampilan sebelum monthly switch digelar.
+- [ ] Implementasikan switch time scale (weekly ? monthly) yang memanggil regenerate API dan reload grid.
 ### Short-term (Next 2 Weeks)
 - [ ] Jalankan profiling AG Grid untuk 1.000-10.000 baris dan catat FPS.
 - [ ] Sinkronkan assignment map AG Grid dengan modul Gantt & Kurva S.
@@ -701,7 +705,7 @@ DEBUG=False python manage.py runserver
 -  Phase 3: Build Optimization
 -  Phase 4: Export Features
 
-**Blockers:** Kontainer AG Grid masih tersembunyi walau flag menyala, DataLoader belum ke API v2 sehingga load lambat untuk ribuan baris.
+**Blockers:** Loader assignments v2 masih mode fallback sehingga belum ada jaminan performa 10k baris; manifest loader Vite belum tersedia untuk mode produksi.
 
 **Risks:** Timeline Phase 3 tertunda jika AG Grid belum stabil.
 
@@ -739,3 +743,5 @@ Use this template when updating progress:
 ---
 
 **End of Roadmap**
+
+

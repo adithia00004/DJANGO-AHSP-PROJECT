@@ -23,7 +23,7 @@ Roadmap ini menggabungkan 3 inisiatif terpisah yang sebelumnya overlap:
 | **FASE 0: Fondasi Modern (Phase 1)** | ✅ **SELESAI** | 100% | Vite setup, event delegation, validation utils complete |
 | **FASE 1: Wire & Activate** | ✅ **SELESAI** | 100% | Modern template active, settings updated, Vite running |
 | **FASE 2A: Core Module Migration** | DONE | 100% | DataLoader + TimeColumnGenerator migrated (API v2 adoption outstanding) |
-| **FASE 2B: Grid Module Migration** | IN PROGRESS | 75% | GridRenderer, SaveHandler, AG Grid setup sudah aktif; kontainer AG Grid sudah tampil saat flag `True`, tree data & virtual scroll masih dikerjakan |
+| **FASE 2B: Grid Module Migration** | IN PROGRESS | 75% | GridRenderer, SaveHandler, AG Grid setup aktif; kolom kode/pekerjaan/volume/satuan sudah dipinned + theme alpine ↔ alpine-dark otomatis, tree data & virtual scroll masih dikerjakan |
 | **FASE 2C: Chart Module Migration** | ☐ **PENDING** | 0% | Gantt + Kurva S adapters (6/12 modules) |
 | **FASE 3: CSS & Layout Cleanup** | ☐ **PENDING** | 15% | Sebagian CSS vars sudah ada, inline style masih banyak |
 | **FASE 4: AG Grid Integration** | PENDING | 20% | Flag default True, perlu buka kontainer, virtual scroll, QA |
@@ -96,9 +96,10 @@ detail_project/
 
 **Next Tasks:**
 1. **Manual Testing** - Verify modern stack loads correctly & regresi ketika AG Grid menjadi tampilan utama (legacy hanya fallback manual).
-2. **DataLoader v2** - Ganti konsumsi endpoint assignments ke API v2 agar siap menangani 10.000+ baris.
-3. **Phase 2C** - Migrate chart adapters (Gantt, Kurva S) + sinkronisasi assignment map.
-4. **Phase 2D** - Implement manifest loader + bersihkan sisa modul legacy/export helpers.
+2. **DataLoader v2** - Phase 2 aktif (read `/api/v2/project/<id>/assignments/` tanpa fallback); lanjutkan sinkronisasi logging/QA agar semua halaman menggunakan jalur canonical yang sama.
+3. **Mode persentase/volume** - Aktifkan toggle, batas edit per baris, dan alert jika total >100% atau volume sebelum user memakai data riil.
+4. **Phase 2C** - Migrate chart adapters (Gantt, Kurva S) + sinkronisasi assignment map.
+5. **Phase 2D** - Implement manifest loader + bersihkan sisa modul legacy/export helpers.
 
 ---
 

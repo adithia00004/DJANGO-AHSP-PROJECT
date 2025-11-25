@@ -126,9 +126,9 @@ def api_assign_pekerjaan_weekly(request, project_id):
 
             try:
                 proportion_decimal = Decimal(str(proportion))
-                if proportion_decimal < Decimal('0.01') or proportion_decimal > Decimal('100'):
+                if proportion_decimal < Decimal('0') or proportion_decimal > Decimal('100'):
                     errors.append({
-                        'error': f'Proportion must be 0.01-100, got {proportion}',
+                        'error': f'Proportion must be 0-100, got {proportion}',
                         'pekerjaan_id': pekerjaan_id
                     })
                     continue
@@ -283,6 +283,50 @@ def api_assign_pekerjaan_weekly(request, project_id):
         import traceback
         traceback.print_exc()
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def api_update_week_boundaries(request, project_id):
+    """
+    Persist user preference for week start/end day per project.
+    Accepts Python weekday numbers (0=Monday .. 6=Sunday). Week end day will be
+    normalized untuk memastikan selisih 6 hari dari week start.
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    def _normalize(value, fallback):
+        try:
+            return int(value) % 7
+        except (TypeError, ValueError):
+            return fallback % 7
+
+    current_start = project.week_start_day if project.week_start_day is not None else 0
+    week_start_day = _normalize(data.get('week_start_day', current_start), current_start)
+
+    provided_end = data.get('week_end_day')
+    if provided_end is None:
+        week_end_day = (week_start_day + 6) % 7
+    else:
+        normalized_end = _normalize(provided_end, (week_start_day + 6) % 7)
+        if (normalized_end - week_start_day) % 7 != 6:
+            normalized_end = (week_start_day + 6) % 7
+        week_end_day = normalized_end
+
+    project.week_start_day = week_start_day
+    project.week_end_day = week_end_day
+    project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
+
+    return JsonResponse({
+        'ok': True,
+        'week_start_day': week_start_day,
+        'week_end_day': week_end_day,
+    })
 
 
 @login_required
@@ -445,6 +489,57 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
         'mode': mode,
         'assignments': assignments,
         'total_proporsi': float(total_proporsi)
+    })
+
+
+@login_required
+@require_GET
+def api_get_project_assignments_v2(request, project_id):
+    """
+    Get weekly canonical assignments for all pekerjaan in a single payload.
+
+    Returns:
+        {
+            "ok": true,
+            "count": 120,
+            "assignments": [
+                {
+                    "pekerjaan_id": 1101,
+                    "week_number": 1,
+                    "proportion": 25.5,
+                    "week_start_date": "2026-01-01",
+                    "week_end_date": "2026-01-07",
+                    "updated_at": "2026-01-08T12:00:00Z",
+                    "notes": ""
+                },
+                ...
+            ]
+        }
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    weekly_qs = (
+        PekerjaanProgressWeekly.objects
+        .filter(project=project)
+        .order_by('pekerjaan_id', 'week_number')
+    )
+
+    assignments = []
+    for wp in weekly_qs:
+        assignments.append({
+            'pekerjaan_id': wp.pekerjaan_id,
+            'week_number': wp.week_number,
+            'proportion': float(wp.proportion),
+            'week_start_date': wp.week_start_date.isoformat() if wp.week_start_date else None,
+            'week_end_date': wp.week_end_date.isoformat() if wp.week_end_date else None,
+            'updated_at': wp.updated_at.isoformat() if wp.updated_at else None,
+            'notes': wp.notes,
+        })
+
+    return JsonResponse({
+        'ok': True,
+        'count': len(assignments),
+        'assignments': assignments,
     })
 
 

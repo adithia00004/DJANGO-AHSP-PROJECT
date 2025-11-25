@@ -9,6 +9,7 @@ Tests cover:
 5. Visual feedback scenarios
 """
 
+import json
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -631,5 +632,84 @@ class TestIntegrationE2E:
         assert data['ok'] is False
         assert 'validation_errors' in data
 
+    def test_zero_progress_allowed(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
+        """Nilai 0% diperbolehkan untuk minggu tertentu selama total <= 100%."""
+        client.force_login(project_sunday_start.owner)
+
+        url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 1, 'proportion': 0},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 75},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 3, 'proportion': 25},
+            ]
+        }
+
+        response = client.post(url, payload, content_type='application/json')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['ok'] is True
+        assert data['created_count'] == 3
+
+        weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan)
+        assert weekly_progress.count() == 3
+        totals = {wp.week_number: float(wp.proportion) for wp in weekly_progress}
+        assert totals[1] == 0.0
+        assert totals[2] == 75.0
+        assert totals[3] == 25.0
+
+    def test_assignments_endpoint_returns_saved_progress(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
+        """
+        Round-trip guard: setelah menyimpan progress via API v2,
+        endpoint GET assignments harus mengembalikan nilai yang sama
+        agar frontend bisa memuat ulang progress.
+        """
+        client.force_login(project_sunday_start.owner)
+
+        save_url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 1, 'proportion': 20.0},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 30.0},
+            ]
+        }
+
+        save_response = client.post(save_url, payload, content_type='application/json')
+        assert save_response.status_code == 200
+        save_data = save_response.json()
+        assert save_data['ok'] is True
+        assert save_data['created_count'] == 2
+
+        list_url = reverse('detail_project:api_v2_get_project_assignments', kwargs={'project_id': project_sunday_start.id})
+        list_response = client.get(list_url)
+        assert list_response.status_code == 200
+
+        list_data = list_response.json()
+        assert list_data['ok'] is True
+        assert list_data['count'] == 2
+        assert len(list_data['assignments']) == 2
+
+        weeks = {(item['pekerjaan_id'], item['week_number']): item['proportion'] for item in list_data['assignments']}
+        assert weeks[(test_pekerjaan.id, 1)] == 20.0
+        assert weeks[(test_pekerjaan.id, 2)] == 30.0
+
         # Clean up if implementation inserted rows before returning 400
         PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).delete()
+
+    def test_update_week_boundary_endpoint(self, client, project_sunday_start):
+        """Persist week start/end day per project dan normalisasi agar selalu 7 hari."""
+        client.force_login(project_sunday_start.owner)
+
+        url = reverse('detail_project:api_update_week_boundaries', kwargs={'project_id': project_sunday_start.id})
+        payload = {'week_start_day': 5, 'week_end_day': 3}  # sengaja tidak selisih 6 hari
+        response = client.post(url, data=json.dumps(payload), content_type='application/json')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['ok'] is True
+        assert data['week_start_day'] == 5
+        assert data['week_end_day'] == (5 + 6) % 7
+
+        project_sunday_start.refresh_from_db()
+        assert project_sunday_start.week_start_day == 5
+        assert project_sunday_start.week_end_day == (5 + 6) % 7

@@ -1,4 +1,4 @@
-# Panduan Client-Side Halaman Jadwal Kegiatan
+﻿# Panduan Client-Side Halaman Jadwal Kegiatan
 
 Dokumen ini menjelaskan arsitektur client-side halaman **Jadwal Kegiatan** yang saat ini menjalani transisi dari kode legacy ke bundler Vite. Gunakan panduan ini untuk memahami entry point, modul-modul utama, serta alur data di sisi browser.
 
@@ -6,11 +6,15 @@ Dokumen ini menjelaskan arsitektur client-side halaman **Jadwal Kegiatan** yang 
 
 ## 1. Ruang Lingkup & Status Implementasi
 
-- **Template aktif:** `kelola_tahapan_grid_modern.html` (Vite). Flag `ENABLE_AG_GRID=True` secara default, dan kontainer `#ag-grid-container` kini tampil ketika flag aktif sehingga legacy grid otomatis disembunyikan.
+- **Template aktif:** `kelola_tahapan_grid_modern.html` (Vite). Flag `ENABLE_AG_GRID=True` secara default, dan kontainer `#ag-grid-container` kini tampil ketika flag aktif sehingga legacy grid otomatis disembunyikan. Panel kiri terpin, status bar aktif, dan horizontal scrollbar tersedia di atas maupun bawah.
 - **Bundler:** Vite 5.x dengan entry `static/detail_project/js/src/jadwal_kegiatan_app.js`. Build output berada di `static/detail_project/dist/`.
 - **Dev server toggle:** gunakan setting `USE_VITE_DEV_SERVER=True` bila ingin memuat script dari `http://localhost:5173`. Default `False` memakai bundel `dist/`; manifest loader sedang dijadwalkan agar file fingerprint otomatis terdeteksi.
-- **Endpoint data:** entry point membaca dataset `data-api-*` (tahapan, list-pekerjaan, save) dan kini mengirim payload `assignments` ke `/detail_project/api/v2/project/<id>/assign-weekly/`.
+- **Endpoint data:** entry point membaca dataset `data-api-*` (tahapan, list-pekerjaan, save) dan kini mengirim payload `assignments` ke `/detail_project/api/v2/project/<id>/assign-weekly/`. Payload mendukung proporsi 0â€“100% per minggu, dan detail error dari API diteruskan ke UI (toast + row highlight).
+- **Mode input:** toggle Persentase/Volume di toolbar default pada Persentase; saat pengguna beralih ke Volume, grid mengonversi nilai ke unit volume dan kembali ke persentase sebelum simpan (plus validasi otomatis 0â€“volume dan warning total >100%).
 - **AG Grid:** modul `modules/grid/ag-grid-setup.js`, `column-definitions.js`, dan `grid-renderer.js` sudah tersedia. Event legacy dilepas ketika atribut `data-enable-ag-grid="true"`, jadi pastikan kontainer tidak disembunyikan sebelum QA regression selesai.
+- **Theme sinkron:** kelas `ag-theme-alpine` â†” `ag-theme-alpine-dark` dipilih otomatis mengikuti `data-bs-theme`, sehingga mode terang/gelap konsisten dengan tampilan dashboard lain.
+- **Phase 2 Assignments v2:** DataLoader kini membaca endpoint `/api/v2/project/<id>/assignments/` sebagai satu-satunya sumber data weekly (tidak ada fallback), sehingga grid, Rekap, dan modul lain selalu sinkron pada weekly canonical storage. WeekNumber kolom sudah konsisten, jadi penyimpanan minggu > 1 muncul kembali saat reload.
+- **Week boundary preference:** Dropdown Week Start/End menyimpan nilai via API week-boundary dan mengisi ulang atribut data-week-start-day / data-week-end-day, sehingga grid, Gantt, dan Kurva S selalu memakai batas minggu yang sama.
 
 ---
 
@@ -27,6 +31,7 @@ Elemen penting pada template (legacy maupun Vite) yang menjadi anchor bagi JavaS
 | `#gantt-container`, `#scurve-container` | Target rendering Frappe Gantt & ECharts. |
 | `#ag-grid-container` | Kontainer AG Grid (class `ag-theme-alpine`). Aktif bila `data-enable-ag-grid="true"`. |
 | `data-api-save` (atribut root) | Endpoint canonical untuk menyimpan progress (`/detail_project/api/v2/project/<project_id>/assign-weekly/`). |
+| data-api-week-boundary | Endpoint untuk menyimpan preferensi Week Start/End per proyek. UI memanggilnya saat dropdown berubah. |
 | Tombol `#btn-save-all`, `#refresh-button`, dsb. | Aksi toolbar (save, refresh, reset). |
 
 ---
@@ -58,7 +63,7 @@ Semua berada di `static/detail_project/js/src/modules/shared/`:
 | --- | --- |
 | `event-delegation.js` | `EventDelegationManager` dan utilitas pembersihan listener untuk mencegah memory leak. |
 | `performance-utils.js` | `debounce`, `throttle`, `rafThrottle`, `batchDOMOperations`, monitor kinerja. |
-| `validation-utils.js` | Validasi nilai cell (0–100%), progress total, feedback visual, dan summary toast. |
+| `validation-utils.js` | Validasi nilai cell (0â€“100%), progress total, feedback visual, dan summary toast. |
 
 Modul-modul ini menggantikan logika inline pada `grid_module.js` lama.
 
@@ -86,7 +91,12 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 - Kolom dinamis dibangun via `modules/grid/column-definitions.js`, menambahkan kolom `Pekerjaan`, `Kode`, dan setiap tahapan (`fieldId = col_<id>`).
 - `updateData()` menerima `tree` dan `timeColumns` dari state lalu menyusun row tree-data (auto expand, `getDataPath` berbasis array path).
 - Kontainer `#ag-grid-container` akan muncul jika `data-enable-ag-grid="true"`; legacy table otomatis diberi `d-none` supaya tidak menggandakan tampilan.
-- Grid baru sudah mendukung editing (`cellEditor` numeric + `onCellValueChanged` → `_handleAgGridCellChange`) namun belum dijadikan default. Aktifkan dengan `ENABLE_AG_GRID=True` untuk QA; set kembali ke `False` bila ingin langsung kembali ke renderer legacy tanpa ubah kode.
+- Grid baru sudah mendukung editing (`cellEditor` numeric + `onCellValueChanged` â†’ `_handleAgGridCellChange`) namun belum dijadikan default. Aktifkan dengan `ENABLE_AG_GRID=True` untuk QA; set kembali ke `False` bila ingin langsung kembali ke renderer legacy tanpa ubah kode.
+
+### 5.2 Kolom Pinned & Mode Tampilan
+
+- Panel kiri AG Grid kini terdiri dari kolom `Pekerjaan`, `Volume`, dan `Satuan` (kolom Kode disembunyikan). Kolom tersebut dipinned (`pinned: 'left'`) dan bersifat read-only. Data volume diambil dari `state.volumeMap`, sehingga angka yang tampil sama dengan modul Volume Pekerjaan. Label pekerjaan otomatis di-wrap maksimal 2 baris untuk menjaga tinggi baris tetap rapi.
+- Theme AG Grid mengikuti atribut `data-bs-theme` secara otomatis: saat mode gelap aktif, kelas diganti ke `ag-theme-alpine-dark`; sebaliknya menggunakan `ag-theme-alpine`. Hal ini memastikan warna header/cell sinkron dengan dashboard.
 
 ---
 
@@ -112,7 +122,7 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 ### Alur Data
 1. **Initial Rendering:** Template menampilkan struktur kosong + toolbar. JS mendeteksi state preloaded (jika template menyuntikkan data).
 2. **Load Data:** Jika belum ada data, `_loadInitialData()` melakukan fetch ke API (placeholder). Data yang diharapkan: `pekerjaanTree`, `timeColumns`, `assignments` per cell.
-3. **User Interaction:** Pengguna mengedit cell → `eventManager` menandai cell sebagai modified (Map `modifiedCells`), menjalankan validasi, dan update indicator total per pekerjaan.
+3. **User Interaction:** Pengguna mengedit cell â†’ `eventManager` menandai cell sebagai modified (Map `modifiedCells`), menjalankan validasi, dan update indicator total per pekerjaan.
 4. **Save:** `saveChanges()` konversi Map ke objek, kirim POST ke `/api/jadwal-kegiatan/save/` (perlu diganti ke endpoint actual). Sukses => bersihkan `modifiedCells` dan set `isDirty` ke false.
 5. **Refresh/Reset:** Tombol toolbar memanggil `refresh()` atau `reset`. Saat ini stub (perlu implementasi lanjutan). 
 
@@ -131,20 +141,25 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 
 ## 8. Rencana Client-Side Phase 2
 
-Sesuai FINAL_IMPLEMENTATION_PLAN.md + tindak lanjut terkini:
+1. **Mode Persentase vs Volume**
+   - Toggle sudah menyimpan preferensi pengguna; berikutnya konversi nilai volumeâ†”persentase sebelum payload dikirim.
+   - Tambah validasi berbasis volume (misal: total volume minggu > volume pekerjaan).
 
-1. **Stabilisasi AG Grid default**
-   - Tentukan kapan kontainer #ag-grid-container dilepas dari d-none dan legacy grid dimatikan permanen.
-   - Lengkapi konfigurasi tree data, virtual scroll, dan status bar di g-grid-setup.js.
-2. **Migrasi DataLoader ke API v2**
-   - Ganti pemanggilan /detail_project/api/project/<project_id>/pekerjaan/<pekerjaan_id>/assignments/ dengan endpoint v2 (weekly canonical) agar loading tidak melakukan ratusan request.
-   - Validasi bahwa ssignmentMap tetap sinkron dengan SaveHandler.
-3. **Manifest & build pipeline**
-   - Implementasikan pembacaan manifest.json sehingga template produksi otomatis memuat jadwal-kegiatan-<hash>.js saat USE_VITE_DEV_SERVER=False.
-   - Tambahkan fallback log agar error mudah dilacak jika manifest hilang.
-4. **Testing & automation**
-   - Tambahkan skrip npm 	est, 	est:integration, enchmark serta pytest UI untuk memverifikasi atribut data-enable-ag-grid.
-   - Dokumentasikan prosedur QA di kedua mode sebelum flag dimatikan permanen.
+2. **Validasi total & UX**
+   - Terapkan agregasi per-pekerjaan di client: beri peringatan otomatis saat total > 100%.
+   - Lanjutkan polishing keyboard navigation + dirty indicator lintas tab.
+
+3. **Time Scale Switch (Weekly â†” Monthly)**
+   - Aktifkan tombol switch untuk memanggil API regenerate dan reload DataLoader.
+   - Pastikan assignments monthly masih membaca weekly canonical sebelum di-expand.
+
+4. **Build & Manifest**
+   - Implementasi pembacaan manifest.json sehingga bundel fingerprint otomatis dimuat di mode produksi (USE_VITE_DEV_SERVER=False).
+
+5. **Testing & Automation**
+   - Pertahankan pytest UI + canonical tests (round-trip/zero progress).
+   - Tambahkan scenario volume mode + monthly switch sebelum flag production dinaikkan.
+
 
 ### 8.5 Canonical Save API
 
@@ -179,9 +194,11 @@ Sesuai FINAL_IMPLEMENTATION_PLAN.md + tindak lanjut terkini:
 
 ## 10. Referensi Terkait
 
-- `DOCUMENTATION_OVERVIEW.md` – indeks seluruh dokumentasi.
-- `FINAL_IMPLEMENTATION_PLAN.md` – detail per fase dan checklist AG Grid.
-- `JADWAL_KEGIATAN_DOCUMENTATION.md` – dokumentasi global halaman (backend + front-end).
-- `PROJECT_ROADMAP.md` – timeline resmi & status fase.
+- `DOCUMENTATION_OVERVIEW.md` â€“ indeks seluruh dokumentasi.
+- `FINAL_IMPLEMENTATION_PLAN.md` â€“ detail per fase dan checklist AG Grid.
+- `JADWAL_KEGIATAN_DOCUMENTATION.md` â€“ dokumentasi global halaman (backend + front-end).
+- `PROJECT_ROADMAP.md` â€“ timeline resmi & status fase.
 
 Keep this document updated setiap kali modul client-side berubah (misal: saat AG Grid dirilis atau endpoint API diganti).
+
+

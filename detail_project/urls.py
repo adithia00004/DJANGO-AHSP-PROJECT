@@ -205,6 +205,11 @@ urlpatterns = [
          views_api_tahapan_v2.api_assign_pekerjaan_weekly,
          name='api_v2_assign_weekly'),
 
+    # Get all weekly assignments
+    path('api/v2/project/<int:project_id>/assignments/',
+         views_api_tahapan_v2.api_get_project_assignments_v2,
+         name='api_v2_get_project_assignments'),
+
     # Get weekly progress (canonical storage)
     path('api/v2/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/weekly-progress/',
          views_api_tahapan_v2.api_get_pekerjaan_weekly_progress,
@@ -219,6 +224,11 @@ urlpatterns = [
     path('api/v2/project/<int:project_id>/regenerate-tahapan/',
          views_api_tahapan_v2.api_regenerate_tahapan_v2,
          name='api_v2_regenerate_tahapan'),
+
+    # Update stored week boundary preference
+    path('api/v2/project/<int:project_id>/week-boundary/',
+         views_api_tahapan_v2.api_update_week_boundaries,
+         name='api_update_week_boundaries'),
 
     # Reset all progress
     path('api/v2/project/<int:project_id>/reset-progress/',

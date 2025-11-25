@@ -1,5 +1,5 @@
 {% extends "detail_project/base_detail.html" %}
-{% load static %}
+{% load static vite %}
 
 {% block body_attrs %}data-page="jadwal_pekerjaan"{% endblock %}
 
@@ -16,6 +16,7 @@
 <!-- AG Grid CSS (always load, minimal overhead) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-grid.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine-dark.css">
 
 <!-- Chart Libraries CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
@@ -58,6 +59,36 @@
       </label>
     </div>
 
+    {% with start_day=project.week_start_day|default:0 end_day=project.week_end_day|default:6 %}
+    <!-- Week Boundary Controls -->
+    <div class="d-flex align-items-end ms-3 gap-2 week-boundary-controls">
+      <div>
+        <label for="week-start-day-select" class="form-label text-muted mb-1 small">Week Start</label>
+        <select class="form-select form-select-sm" id="week-start-day-select">
+          <option value="0" {% if start_day == 0 %}selected{% endif %}>Senin</option>
+          <option value="1" {% if start_day == 1 %}selected{% endif %}>Selasa</option>
+          <option value="2" {% if start_day == 2 %}selected{% endif %}>Rabu</option>
+          <option value="3" {% if start_day == 3 %}selected{% endif %}>Kamis</option>
+          <option value="4" {% if start_day == 4 %}selected{% endif %}>Jumat</option>
+          <option value="5" {% if start_day == 5 %}selected{% endif %}>Sabtu</option>
+          <option value="6" {% if start_day == 6 %}selected{% endif %}>Minggu</option>
+        </select>
+      </div>
+      <div>
+        <label for="week-end-day-select" class="form-label text-muted mb-1 small">Week End</label>
+        <select class="form-select form-select-sm" id="week-end-day-select">
+          <option value="0" {% if end_day == 0 %}selected{% endif %}>Senin</option>
+          <option value="1" {% if end_day == 1 %}selected{% endif %}>Selasa</option>
+          <option value="2" {% if end_day == 2 %}selected{% endif %}>Rabu</option>
+          <option value="3" {% if end_day == 3 %}selected{% endif %}>Kamis</option>
+          <option value="4" {% if end_day == 4 %}selected{% endif %}>Jumat</option>
+          <option value="5" {% if end_day == 5 %}selected{% endif %}>Sabtu</option>
+          <option value="6" {% if end_day == 6 %}selected{% endif %}>Minggu</option>
+        </select>
+      </div>
+    </div>
+    {% endwith %}
+
     <!-- Action Buttons -->
     <button type="button" class="btn btn-danger btn-sm ms-2" id="btn-reset-progress" title="Reset all progress to 0">
       <i class="bi bi-arrow-counterclockwise"></i>
@@ -86,7 +117,12 @@
      data-enable-ag-grid="{% if enable_ag_grid %}true{% else %}false{% endif %}"
      data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
-     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}">
+     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}"
+     data-default-time-scale="weekly"
+     data-default-input-mode="percentage"
+     data-week-start-day="{{ project.week_start_day|default:0 }}"
+     data-week-end-day="{{ project.week_end_day|default:6 }}"
+     data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}">
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
@@ -111,49 +147,55 @@
   <div class="tab-content" id="viewTabsContent">
     <!-- Grid View Tab -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel" aria-labelledby="grid-tab">
-      <!-- Custom Grid (legacy fallback) -->
-      <div class="grid-container legacy-grid-wrapper {% if enable_ag_grid %}d-none{% endif %}">
-        <div class="split-panel-wrapper">
-          <div class="left-panel-wrapper">
-            <div class="left-panel-scroll">
-              <table class="grid-table">
-            <thead id="left-thead">
-              <tr>
-                <th class="col-uraian">Klasifikasi / Sub-Klasifikasi / Pekerjaan</th>
-                <th class="col-volume text-center">Volume</th>
-                <th class="col-satuan text-center">Satuan</th>
-              </tr>
-            </thead>
-                <tbody id="left-tbody">
-                  <!-- Render oleh JavaScript -->
-                </tbody>
-              </table>
-            </div>
+      {% if enable_ag_grid %}
+        <div class="ag-grid-section">
+          <div class="horizontal-scroll-wrapper" id="ag-grid-scroll-top">
+            <div class="horizontal-scroll-inner" id="ag-grid-scroll-inner"></div>
           </div>
-
-          <div class="right-panel-wrapper">
-            <div class="right-panel-scroll">
-              <table class="grid-table">
-                <thead id="right-thead">
-                  <tr id="time-header-row">
+          <div id="ag-grid-container"
+               class="ag-theme-alpine ag-grid-wrapper"
+               style="width: 100%; min-height: 600px;">
+            <!-- AG Grid mounts here -->
+          </div>
+        </div>
+      {% else %}
+        <!-- Legacy Grid Fallback -->
+        <div class="grid-container legacy-grid-wrapper">
+          <div class="split-panel-wrapper">
+            <div class="left-panel-wrapper">
+              <div class="left-panel-scroll">
+                <table class="grid-table">
+                  <thead id="left-thead">
+                    <tr>
+                      <th class="col-uraian">Klasifikasi / Sub-Klasifikasi / Pekerjaan</th>
+                      <th class="col-volume text-center">Volume</th>
+                      <th class="col-satuan text-center">Satuan</th>
+                    </tr>
+                  </thead>
+                  <tbody id="left-tbody">
                     <!-- Render oleh JavaScript -->
-                  </tr>
-                </thead>
-                <tbody id="right-tbody">
-                  <!-- Render oleh JavaScript -->
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="right-panel-wrapper">
+              <div class="right-panel-scroll">
+                <table class="grid-table">
+                  <thead id="right-thead">
+                    <tr id="time-header-row">
+                      <!-- Render oleh JavaScript -->
+                    </tr>
+                  </thead>
+                  <tbody id="right-tbody">
+                    <!-- Render oleh JavaScript -->
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- AG Grid Container -->
-      <div id="ag-grid-container"
-           class="ag-theme-alpine ag-grid-wrapper {% if not enable_ag_grid %}d-none{% endif %}"
-           style="width: 100%; min-height: 600px;">
-        <!-- AG Grid will mount here -->
-      </div>
+      {% endif %}
 
       <!-- Status Bar -->
       <div class="status-bar">
@@ -253,21 +295,17 @@
   <script type="module" src="http://localhost:5175/@vite/client"></script>
   <script type="module" src="http://localhost:5175/js/src/jadwal_kegiatan_app.js"></script>
   <script>
-    console.log('%c🚀 VITE DEV MODE', 'background: #646cff; color: white; padding: 4px 8px; border-radius: 3px;');
+    console.log('%cdYs? VITE DEV MODE', 'background: #646cff; color: white; padding: 4px 8px; border-radius: 3px;');
     console.log('Hot Module Replacement (HMR) enabled');
     console.log('Dev server: http://localhost:5175');
   </script>
 {% else %}
-  {# Production mode: Load built assets from static files #}
-  {% comment %}
-  TODO: Implement manifest.json reading for production
-  For now, build assets with: npm run build
-  Then uncomment below and adjust path
-  {% endcomment %}
-  <script type="module" src="{% static 'detail_project/dist/assets/js/jadwal-kegiatan.js' %}"></script>
+  {# Production mode: Load built assets via manifest #}
+  {% vite_asset 'assets/js/jadwal-kegiatan.js' as jadwal_asset %}
+  <script type="module" src="{% static jadwal_asset %}"></script>
   <script>
-    console.log('%c📦 PRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
-    console.log('Using built assets from static/dist/');
+    console.log('%cdY"? PRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
+    console.log('Using built assets from static/dist/ (manifest resolved)');
   </script>
 {% endif %}
 

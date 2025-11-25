@@ -60,6 +60,15 @@ class Project(models.Model):
         help_text='Durasi pelaksanaan dalam hari kalender'
     )
 
+    week_start_day = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='Angka hari awal minggu (0=Senin ... 6=Minggu) untuk siklus progress mingguan'
+    )
+    week_end_day = models.PositiveSmallIntegerField(
+        default=6,
+        help_text='Angka hari akhir minggu (0=Senin ... 6=Minggu) untuk siklus progress mingguan'
+    )
+
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True, db_index=True)
@@ -91,6 +100,20 @@ class Project(models.Model):
             self.anggaran_owner = Decimal("0.00")
         if not getattr(self, "tanggal_mulai", None):
             self.tanggal_mulai = date.today()
+
+        try:
+            self.week_start_day = int(self.week_start_day) % 7
+        except (TypeError, ValueError):
+            self.week_start_day = 0
+
+        try:
+            normalized_end = int(self.week_end_day) % 7
+        except (TypeError, ValueError):
+            normalized_end = None
+
+        if normalized_end is None or (normalized_end - self.week_start_day) % 7 != 6:
+            normalized_end = (self.week_start_day + 6) % 7
+        self.week_end_day = normalized_end
 
         # Auto-calculate tahun_project from tanggal_mulai
         if self.tanggal_mulai:
