@@ -477,9 +477,15 @@ class TestAPIV2Endpoints:
         assert response.status_code == 200
         data = response.json()
         assert data['ok'] is True
-        assert data['deleted_count'] == 2
+        assert data.get('mode') == 'planned'
+        assert data.get('updated_count') == 2
 
-        assert PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).count() == 0
+        weekly_after = list(
+            PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).order_by('week_number')
+        )
+        assert len(weekly_after) == 2
+        assert all(wp.proportion == Decimal('0.00') for wp in weekly_after)
+        assert all(wp.planned_proportion == Decimal('0.00') for wp in weekly_after)
 
     def test_assign_weekly_persists_distinct_weeks(self, client, project_sunday_start, test_pekerjaan):
         """

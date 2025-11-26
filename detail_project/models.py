@@ -725,25 +725,57 @@ class PekerjaanProgressWeekly(models.Model):
     def __str__(self):
         return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} (Planned: {self.planned_proportion}%, Actual: {self.actual_proportion}%)"
 
+    def _normalize_proportion_fields(self):
+        """
+        Keep planned/actual/proportion fields in sync for backward compatibility.
+
+        Older code paths still write only to `proportion` - in that case we need
+        to mirror the value to `planned_proportion` so validation passes and data
+        stays consistent. Likewise ensure actual_proportion always has a numeric
+        value to avoid None comparisons during validation.
+        """
+        zero = Decimal('0.00')
+
+        if self.planned_proportion is None:
+            if self.proportion is not None:
+                self.planned_proportion = self.proportion
+            else:
+                self.planned_proportion = zero
+
+        if self.proportion is None:
+            self.proportion = self.planned_proportion
+
+        if self.actual_proportion is None:
+            self.actual_proportion = zero
+
     def clean(self):
         """Validation for planned and actual proportions"""
+        self._normalize_proportion_fields()
         errors = {}
 
+        planned = self.planned_proportion
+        actual = self.actual_proportion
+        legacy = self.proportion
+
         # Validate planned_proportion
-        if self.planned_proportion < 0 or self.planned_proportion > 100:
+        if planned is not None and (planned < 0 or planned > 100):
             errors['planned_proportion'] = 'Planned proportion must be between 0% - 100%'
 
         # Validate actual_proportion
-        if self.actual_proportion < 0 or self.actual_proportion > 100:
+        if actual is not None and (actual < 0 or actual > 100):
             errors['actual_proportion'] = 'Actual proportion must be between 0% - 100%'
 
         # Validate legacy proportion field (for backward compatibility)
-        if self.proportion is not None:
-            if self.proportion < 0 or self.proportion > 100:
+        if legacy is not None:
+            if legacy < 0 or legacy > 100:
                 errors['proportion'] = 'Proportion must be between 0% - 100%'
 
         # Validate week dates
-        if self.week_end_date < self.week_start_date:
+        if (
+            self.week_end_date
+            and self.week_start_date
+            and self.week_end_date < self.week_start_date
+        ):
             errors['week_end_date'] = 'Week end date must be >= start date'
 
         if errors:
@@ -751,6 +783,8 @@ class PekerjaanProgressWeekly(models.Model):
 
     def save(self, *args, **kwargs):
         """Auto-populate project field from pekerjaan"""
+        self._normalize_proportion_fields()
+
         if not self.project_id:
             # Get project from pekerjaan's volume_pekerjaan
             try:

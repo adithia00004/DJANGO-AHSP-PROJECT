@@ -280,10 +280,14 @@ class TestResetProgress:
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
-        assert data.get("deleted_count", 0) == 4
+        assert data.get("mode") == "planned"
+        assert data.get("updated_count", 0) == 4
 
-        # Verify all deleted
-        assert PekerjaanProgressWeekly.objects.filter(project=project).count() == 0
+        # Verify planned progress reset to zero but records remain
+        progress_after = PekerjaanProgressWeekly.objects.filter(project=project).order_by("week_number")
+        assert progress_after.count() == 4
+        assert all(p.proportion == Decimal("0.00") for p in progress_after)
+        assert all(p.planned_proportion == Decimal("0.00") for p in progress_after)
 
     def test_reset_progress_empty_project(self, client_logged, project_with_dates):
         """Test resetting progress when no data exists."""
@@ -295,7 +299,7 @@ class TestResetProgress:
         assert response.status_code == 200
         data = response.json()
         assert data["ok"] is True
-        assert data.get("deleted_count", 0) == 0
+        assert data.get("updated_count", 0) == 0
 
 
 @pytest.mark.api
@@ -346,5 +350,7 @@ class TestWeeklyAssignmentFlow:
         # Step 5: Verify empty
         response = client_logged.get(get_url)
         data = response.json()
-        # Phase 2E.1: Response key changed from "data" to "assignments"
-        assert data["assignments"] == []
+        # Phase 2E.1: Reset keeps canonical rows but zeros planned progress
+        assert len(data["assignments"]) == 1
+        assert data["assignments"][0]["planned_proportion"] == 0.0
+        assert data["assignments"][0]["proportion"] == 0.0
