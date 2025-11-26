@@ -1,8 +1,10 @@
 # Phase 2E Roadmap (REVISED): Complete Grid Implementation
 
-**Date**: 2025-11-23
-**Status**: 📋 **PLANNING COMPLETE**
+**Date**: 2025-11-25 (Updated after Deep Dive Audit)
+**Status**: ❌ **NOT STARTED** - Critical blockers identified
 **Goal**: Production-ready grid with proper UI/UX, validation, mode switching, and performance
+
+> **⚠️ AUDIT UPDATE**: Phase 2E belum dimulai. Production blockers ditemukan (manifest loader, AG Grid default flag). See [CRITICAL_GAPS.md](CRITICAL_GAPS.md) for immediate actions needed.
 
 ---
 
@@ -340,7 +342,10 @@
 
 | Phase | Tasks | Priority | Duration | Dependencies | Complete |
 |-------|-------|----------|----------|--------------|----------|
-| **2E.0: UI/UX** | **12 tasks** | **P0** | **4-6h** | None | **0%** |
+| **BLOCKERS (NEW)** | **2 tasks** | **🔴 P0** | **2-3h** | None | **0%** |
+| Manifest Loader | 1 task | 🔴 P0 | 2-3h | None | ❌ 0% |
+| AG Grid Default Flag | 1 task | 🔴 P0 | 5min | None | ❌ 0% |
+| **2E.0: UI/UX** | **12 tasks** | **P0** | **4-6h** | Blockers fixed | **0%** |
 | 2E.0.1: Scroll Sync | 4 tasks | P0 | 2-3h | None | 0% |
 | 2E.0.2: Input Validation | 4 tasks | P0 | 2-3h | None | 0% |
 | 2E.0.3: Column Widths | 3 tasks | P0 | 1h | None | 0% |
@@ -517,7 +522,10 @@
 
 ---
 
-**Last Updated**: 2025-11-23
-**Status**: Revised Roadmap Complete - Ready for Implementation
-**Estimated Total Time**: 28-45 hours (4-6 days full-time)
-**Next**: Start Phase 2E.0.1 (Scroll Synchronization)
+**Last Updated**: 2025-11-25 (Post Deep Dive Audit)
+**Status**: ❌ Blocked - Fix production blockers first (manifest loader + AG Grid flag)
+**Estimated Total Time**: 30-48 hours (5-7 days full-time, including blocker fixes)
+**Next**:
+1. 🔴 **IMMEDIATE**: Fix manifest loader (2-3h) - See [CRITICAL_GAPS.md](CRITICAL_GAPS.md#1-vite-manifest-loader---missing-)
+2. 🔴 **IMMEDIATE**: Enable AG Grid default flag (5min) - See [CRITICAL_GAPS.md](CRITICAL_GAPS.md#2-ag-grid-default-flag---disabled-)
+3. 🟡 **THEN**: Start Phase 2E.0.1 (Scroll Synchronization)

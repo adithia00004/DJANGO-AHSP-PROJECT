@@ -45,13 +45,17 @@ export class AGGridManager {
     this._updateTopScrollWidth();
   }
 
-  updateData({ tree = [], timeColumns = [], inputMode } = {}) {
+  updateData({ tree = [], timeColumns = [], inputMode, timeScale } = {}) {
     if (!this.gridApi) {
       return;
     }
 
     if (typeof inputMode === 'string') {
       this.inputMode = inputMode.toLowerCase();
+    }
+
+    if (typeof timeScale === 'string') {
+      this.state.timeScale = timeScale.toLowerCase();
     }
 
     const columnDefs = buildColumnDefs(timeColumns, this._getColumnOptions());
@@ -89,6 +93,11 @@ export class AGGridManager {
         sortable: false,
         flex: 1,
         minWidth: 120,
+      },
+      rowClassRules: {
+        'row-has-error': (params) => this._isFailedRow(params?.data),
+        'row-has-warning': (params) => this._isWarningRow(params?.data),
+        'row-save-error': (params) => this._hasSaveError(params?.data),
       },
       onCellValueChanged: (event) => this._handleCellValueChanged(event),
     };
@@ -146,15 +155,10 @@ export class AGGridManager {
           (node.children && node.children.length > 0 ? 'klasifikasi' : 'pekerjaan');
 
         const rowId = node.id || node.pekerjaan_id || `node-${rowPath.join('-')}`;
-        const failedRows = this.state?.failedRows;
-        const isFailed = failedRows instanceof Set && failedRows.has(rowId);
 
         const rowClasses = [];
         if (rowType) {
           rowClasses.push(`row-${rowType}`);
-        }
-        if (isFailed) {
-          rowClasses.push('row-has-error');
         }
 
         const row = {
@@ -183,29 +187,37 @@ export class AGGridManager {
               return;
             }
 
-            const assignmentMap =
-              node.assignments ||
-              node.assignment_map ||
-              node.assignmentMap ||
-              node[columnField];
-
             let value = null;
-            if (assignmentMap && typeof assignmentMap === 'object') {
-              const directValue =
-                assignmentMap[col.id] ??
-                assignmentMap[col.fieldId] ??
-                assignmentMap[col.label];
-              value = this._normalizeCellValue(directValue);
-            } else if (typeof node[columnField] !== 'undefined') {
-              value = this._normalizeCellValue(node[columnField]);
-            }
+            if (Array.isArray(col.childColumns) && col.childColumns.length > 0) {
+              value = col.childColumns.reduce((sum, child) => {
+                const childField = child.fieldId || child.id;
+                const childValue = this._fetchAssignmentValue(rowId, childField);
+                return sum + (Number(childValue) || 0);
+              }, 0);
+            } else {
+              const assignmentMap =
+                node.assignments ||
+                node.assignment_map ||
+                node.assignmentMap ||
+                node[columnField];
 
-            if ((value === null || typeof value === 'undefined') && this.state?.assignmentMap) {
-              value = this._fetchAssignmentValue(rowId, columnField);
+              if (assignmentMap && typeof assignmentMap === 'object') {
+                const directValue =
+                  assignmentMap[col.id] ??
+                  assignmentMap[col.fieldId] ??
+                  assignmentMap[col.label];
+                value = this._normalizeCellValue(directValue);
+              } else if (typeof node[columnField] !== 'undefined') {
+                value = this._normalizeCellValue(node[columnField]);
+              }
+
+              if ((value === null || typeof value === 'undefined') && this.state?.assignmentMap) {
+                value = this._fetchAssignmentValue(rowId, columnField);
+              }
             }
 
             let displayValue = value;
-            if (this.inputMode === 'volume') {
+            if (this.inputMode === 'volume' && value !== null && value !== undefined) {
               displayValue = this._percentToVolume(displayValue, row.volume);
             }
 
@@ -245,6 +257,16 @@ export class AGGridManager {
     const rowData = event?.data;
     const pekerjaanId = rowData?.raw?.id || rowData?.id;
     if (!pekerjaanId) {
+      return;
+    }
+
+    if (this.state?.displayScale && this.state.displayScale !== 'weekly') {
+      if (typeof this.helpers.showToast === 'function') {
+        this.helpers.showToast('Pengeditan hanya tersedia pada mode weekly', 'warning');
+      }
+      if (event.node) {
+        event.node.setDataValue(field, event.oldValue);
+      }
       return;
     }
 
@@ -294,6 +316,10 @@ export class AGGridManager {
         pekerjaanId,
         columnId: field,
         columnMeta,
+        displayValue,
+        rowVolume,
+        isVolumeMode,
+        validation,
       });
     }
   }
@@ -397,11 +423,18 @@ export class AGGridManager {
     return {
       inputMode: this.inputMode || 'percentage',
       isEditableFn: (params) => this._isCellEditable(params?.data || params),
+      getCellValidationState: (cellKey) =>
+        typeof this.helpers?.getCellValidationState === 'function'
+          ? this.helpers.getCellValidationState(cellKey)
+          : null,
     };
   }
 
   _isCellEditable(target) {
     if (!target) {
+      return false;
+    }
+    if (this.state?.displayScale && this.state.displayScale !== 'weekly') {
       return false;
     }
     const rowData = target.data || target;
@@ -496,6 +529,12 @@ export class AGGridManager {
     }
   }
 
+  refreshCells(options = {}) {
+    if (this.gridApi) {
+      this.gridApi.refreshCells({ force: true, ...options });
+    }
+  }
+
   _setupThemeWatcher() {
     if (this.themeObserver || typeof MutationObserver === 'undefined') {
       return;
@@ -514,5 +553,47 @@ export class AGGridManager {
       attributes: true,
       attributeFilter: ['data-bs-theme'],
     });
+  }
+
+  _resolveRowId(rowData) {
+    if (!rowData) {
+      return null;
+    }
+    const raw = rowData.raw || rowData;
+    const candidate =
+      raw?.id ??
+      raw?.pekerjaan_id ??
+      rowData.id ??
+      rowData.pekerjaan_id ??
+      null;
+    if (candidate === null || typeof candidate === 'undefined') {
+      return null;
+    }
+    const numeric = Number(candidate);
+    return Number.isFinite(numeric) ? numeric : candidate;
+  }
+
+  _setHasFlag(setRef, rowId) {
+    if (rowId === null || typeof rowId === 'undefined' || !(setRef instanceof Set)) {
+      return false;
+    }
+    const numeric = Number(rowId);
+    const normalized = Number.isFinite(numeric) ? numeric : rowId;
+    return setRef.has(normalized);
+  }
+
+  _isFailedRow(rowData) {
+    const rowId = this._resolveRowId(rowData);
+    return this._setHasFlag(this.state?.failedRows, rowId);
+  }
+
+  _isWarningRow(rowData) {
+    const rowId = this._resolveRowId(rowData);
+    return this._setHasFlag(this.state?.validationWarningRows, rowId);
+  }
+
+  _hasSaveError(rowData) {
+    const rowId = this._resolveRowId(rowData);
+    return this._setHasFlag(this.state?.saveErrorRows, rowId);
   }
 }

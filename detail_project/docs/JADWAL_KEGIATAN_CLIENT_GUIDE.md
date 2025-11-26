@@ -14,7 +14,9 @@ Dokumen ini menjelaskan arsitektur client-side halaman **Jadwal Kegiatan** yang 
 - **AG Grid:** modul `modules/grid/ag-grid-setup.js`, `column-definitions.js`, dan `grid-renderer.js` sudah tersedia. Event legacy dilepas ketika atribut `data-enable-ag-grid="true"`, jadi pastikan kontainer tidak disembunyikan sebelum QA regression selesai.
 - **Theme sinkron:** kelas `ag-theme-alpine` â†” `ag-theme-alpine-dark` dipilih otomatis mengikuti `data-bs-theme`, sehingga mode terang/gelap konsisten dengan tampilan dashboard lain.
 - **Phase 2 Assignments v2:** DataLoader kini membaca endpoint `/api/v2/project/<id>/assignments/` sebagai satu-satunya sumber data weekly (tidak ada fallback), sehingga grid, Rekap, dan modul lain selalu sinkron pada weekly canonical storage. WeekNumber kolom sudah konsisten, jadi penyimpanan minggu > 1 muncul kembali saat reload.
-- **Week boundary preference:** Dropdown Week Start/End menyimpan nilai via API week-boundary dan mengisi ulang atribut data-week-start-day / data-week-end-day, sehingga grid, Gantt, dan Kurva S selalu memakai batas minggu yang sama.
+- **Week boundary preference:** Dropdown Week Start/End menyimpan nilai via API `week-boundary` dan mengisi ulang atribut `data-week-start-day` / `data-week-end-day`, sehingga grid, Gantt, dan Kurva S selalu memakai batas minggu yang sama.
+- **Time scale switch:** Toggle Weekly/Monthly menampilkan agregasi 4 minggu (Monthly read-only, input tetap dilakukan pada mode weekly). Bila tahapan weekly hilang/kurang, frontend otomatis memanggil regenerate weekly berdasarkan tanggal mulai/akhir proyek (akhir default 31/12 YYYY bila kosong).
+- **Auto reset saat timeline berubah:** Jika `tanggal_mulai` proyek diubah dari dashboard, backend otomatis menghapus PekerjaanProgressWeekly + assignments lalu menghitung ulang tahapan weekly sebelum halaman grid dibuka, sehingga user memulai dari nol pada timeline baru. Tombol toolbar “Reset Progress” memanggil endpoint yang sama bila dibutuhkan manual.
 
 ---
 
@@ -31,7 +33,8 @@ Elemen penting pada template (legacy maupun Vite) yang menjadi anchor bagi JavaS
 | `#gantt-container`, `#scurve-container` | Target rendering Frappe Gantt & ECharts. |
 | `#ag-grid-container` | Kontainer AG Grid (class `ag-theme-alpine`). Aktif bila `data-enable-ag-grid="true"`. |
 | `data-api-save` (atribut root) | Endpoint canonical untuk menyimpan progress (`/detail_project/api/v2/project/<project_id>/assign-weekly/`). |
-| data-api-week-boundary | Endpoint untuk menyimpan preferensi Week Start/End per proyek. UI memanggilnya saat dropdown berubah. |
+| `data-api-week-boundary` | Endpoint untuk menyimpan preferensi Week Start/End per proyek. UI memanggilnya saat dropdown berubah. |
+| `data-api-regenerate-tahapan` | Endpoint regenerate tahapan v2 (dipakai saat Week Start/End disimpan). |
 | Tombol `#btn-save-all`, `#refresh-button`, dsb. | Aksi toolbar (save, refresh, reset). |
 
 ---
@@ -200,5 +203,9 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 - `PROJECT_ROADMAP.md` â€“ timeline resmi & status fase.
 
 Keep this document updated setiap kali modul client-side berubah (misal: saat AG Grid dirilis atau endpoint API diganti).
+
+
+
+
 
 

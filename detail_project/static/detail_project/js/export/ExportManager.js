@@ -26,7 +26,7 @@ class ExportManager {
   
   /**
    * Export data in specified format
-   * @param {string} format - 'csv', 'pdf', or 'word'
+   * @param {string} format - 'csv', 'pdf', 'word', or 'xlsx'
    * @param {object} options - Optional export options (e.g., { parameters: {...} })
    * @returns {Promise<void>}
    */
@@ -138,7 +138,7 @@ class ExportManager {
    */
   _getFilename(format) {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const extensions = { csv: 'csv', pdf: 'pdf', word: 'docx' };
+    const extensions = { csv: 'csv', pdf: 'pdf', word: 'docx', xlsx: 'xlsx' };
     const pageTitle = this.pageType.replace(/-/g, '_').toUpperCase();
     return `${pageTitle}_${this.projectId}_${date}.${extensions[format]}`;
   }
@@ -239,7 +239,14 @@ class ExportManager {
    * @private
    */
   _getButton(format) {
-    return document.getElementById(`btn-export-${format}`);
+    const map = {
+      csv: 'btn-export-csv',
+      pdf: 'btn-export-pdf',
+      word: 'btn-export-word',
+      xlsx: 'btn-export-xlsx',
+    };
+    const id = map[format] || `btn-export-${format}`;
+    return document.getElementById(id);
   }
 }
 

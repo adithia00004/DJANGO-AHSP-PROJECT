@@ -25,7 +25,7 @@ from django.db import models as djm, IntegrityError
 # Temporarily ignore UI tests (need browser/selenium)
 collect_ignore = [
     "test_list_pekerjaan_page_ui.py",  # UI test - needs browser
-    "test_jadwal_pekerjaan_page_ui.py",  # UI test - needs browser
+    # test_jadwal_pekerjaan_page_ui.py is now a smoke test (no browser needed)
 ]
 
 
@@ -398,3 +398,90 @@ def ahsp_ref(db):
         nama_ahsp="Referensi A",
         satuan="OH",
     )
+
+
+# ================= Jadwal Pekerjaan (Weekly Canonical Storage) =================
+@pytest.fixture
+def project_with_dates(db, user):
+    """Project dengan tanggal mulai dan selesai untuk testing jadwal pekerjaan."""
+    Project = _import_project_model()
+    fields = {f.name for f in Project._meta.fields}
+
+    kw = {
+        "nama": "Project Jadwal QA",
+        "tanggal_mulai": date(2025, 1, 1),
+        "tanggal_selesai": date(2025, 12, 31),
+    }
+
+    if "owner" in fields:
+        kw["owner"] = user
+    if "is_active" in fields:
+        kw["is_active"] = True
+    if "sumber_dana" in fields:
+        kw["sumber_dana"] = "APBD"
+    if "lokasi_project" in fields:
+        kw["lokasi_project"] = "Jakarta"
+    if "nama_client" in fields:
+        kw["nama_client"] = "Client Test"
+    if "week_start_day" in fields:
+        kw["week_start_day"] = 0  # Monday
+    if "week_end_day" in fields:
+        kw["week_end_day"] = 6  # Sunday
+    if "tahun_project" in fields:
+        kw["tahun_project"] = 2025
+    if "anggaran_owner" in fields:
+        kw["anggaran_owner"] = Decimal("1000000000.00")
+
+    return Project.objects.create(**kw)
+
+
+@pytest.fixture
+def pekerjaan_with_volume(db, project_with_dates, sub_klas):
+    """Pekerjaan dengan volume untuk testing progress."""
+    from detail_project.models import Pekerjaan, VolumePekerjaan
+
+    pekerjaan = Pekerjaan.objects.create(
+        project=project_with_dates,
+        sub_klasifikasi=sub_klas,
+        source_type="custom",
+        snapshot_kode="PEK-001",
+        snapshot_uraian="Pekerjaan Test",
+        snapshot_satuan="m3",
+        ordering_index=1,
+    )
+
+    # Create volume record
+    VolumePekerjaan.objects.create(
+        project=project_with_dates,
+        pekerjaan=pekerjaan,
+        quantity=Decimal("100.00"),
+    )
+
+    return pekerjaan
+
+
+@pytest.fixture
+def weekly_progress(db, pekerjaan_with_volume):
+    """Sample weekly progress data."""
+    from detail_project.models import PekerjaanProgressWeekly
+
+    # Create 4 weeks of progress
+    progress_records = []
+    for week_num in range(1, 5):
+        start_date = date(2025, 1, 1 + (week_num - 1) * 7)
+        end_date = date(2025, 1, 7 + (week_num - 1) * 7)
+
+        record = PekerjaanProgressWeekly.objects.create(
+            pekerjaan=pekerjaan_with_volume,
+            project=pekerjaan_with_volume.project,
+            week_number=week_num,
+            week_start_date=start_date,
+            week_end_date=end_date,
+            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),  # Phase 2E.1: Add planned field
+            actual_proportion=Decimal("20.00"),   # Phase 2E.1: Add actual field
+            notes=f"Week {week_num} progress",
+        )
+        progress_records.append(record)
+
+    return progress_records

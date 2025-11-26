@@ -3392,6 +3392,26 @@ def export_rekap_rab_word(request: HttpRequest, project_id: int):
         }, status=500)
 
 
+@login_required
+@require_GET
+def export_rekap_rab_xlsx(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format XLSX (Excel).
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('xlsx')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export XLSX gagal: {str(e)}'
+        }, status=500)
+
+
 # ============================================================================
 # EXPORT: VOLUME PEKERJAAN (CSV / PDF / WORD)
 # ============================================================================
@@ -3551,6 +3571,79 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+# ============================================================================
+# EXPORT: JADWAL PEKERJAAN (CSV / PDF / WORD / XLSX)
+# ============================================================================
+
+
+@login_required
+@require_GET
+def export_jadwal_pekerjaan_csv(request: HttpRequest, project_id: int):
+    """Export Jadwal Pekerjaan to CSV"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_jadwal_pekerjaan('csv')
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_jadwal_pekerjaan_pdf(request: HttpRequest, project_id: int):
+    """Export Jadwal Pekerjaan to PDF"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_jadwal_pekerjaan('pdf')
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_jadwal_pekerjaan_word(request: HttpRequest, project_id: int):
+    """Export Jadwal Pekerjaan to Word"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_jadwal_pekerjaan('word')
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_jadwal_pekerjaan_xlsx(request: HttpRequest, project_id: int):
+    """Export Jadwal Pekerjaan to XLSX"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_jadwal_pekerjaan('xlsx')
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
 
 
 # ============================================================================
@@ -4065,3 +4158,130 @@ def api_get_bundle_expansion(request: HttpRequest, project_id: int, pekerjaan_id
         "total": to_dp_str(total, dp_harga),
         "component_count": len(components),
     })
+
+
+# ============================================================================
+# API: KURVA S DATA (Phase 2F.0)
+# ============================================================================
+
+@login_required
+@require_GET
+def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    API untuk data Kurva S - mengirim harga map dan total biaya project.
+
+    Phase 2F.0: Fix Kurva S calculation to use HARGA (cost) instead of VOLUME.
+
+    Response format:
+    {
+        "hargaMap": {
+            "123": 38500000.00,  // pekerjaan_id → total harga (G × volume)
+            "456": 120000000.00,
+            ...
+        },
+        "totalBiayaProject": 250000000.00,  // Sum of all totals (sebelum pajak)
+        "volumeMap": {  // Keep for backward compatibility
+            "123": 100.0,
+            "456": 200.0,
+            ...
+        },
+        "pekerjaanMeta": {  // Additional metadata for debugging/tooltips
+            "123": {
+                "kode": "A.1.1",
+                "uraian": "Pekerjaan Galian",
+                "satuan": "m³",
+                "harga_satuan": 385000.00,  // G (with markup)
+                "volume": 100.0,
+                "total": 38500000.00,
+                "komponen": {
+                    "TK": 100000.00,
+                    "BHN": 200000.00,
+                    "ALT": 50000.00,
+                    "LAIN": 0.00
+                }
+            },
+            ...
+        },
+        "cached": false
+    }
+
+    URL: /detail-project/api/v2/project/<project_id>/kurva-s-data/
+    Method: GET
+    Auth: login_required
+    """
+    try:
+        from dashboard.models import Project
+        project = get_object_or_404(Project, id=project_id)
+    except Exception as e:
+        logger.error(f"[Kurva S API] Project not found: {project_id}", exc_info=True)
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    # Check permission (reuse existing pattern from other APIs)
+    # TODO: Add proper permission check if needed
+    # For now, login_required is sufficient
+
+    # Get rekap data (uses existing compute_rekap_for_project)
+    # This already has caching built-in (5 minutes)
+    try:
+        rekap_rows = compute_rekap_for_project(project)
+    except Exception as e:
+        logger.error(
+            f"[Kurva S API] Failed to compute rekap for project {project_id}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to compute rekap data',
+            'detail': str(e)
+        }, status=500)
+
+    # Build response data
+    harga_map = {}
+    volume_map = {}
+    pekerjaan_meta = {}
+    total_biaya = Decimal('0.00')
+
+    for row in rekap_rows:
+        pkj_id = str(row['pekerjaan_id'])
+
+        # Total harga = G × volume (already calculated in compute_rekap_for_project)
+        total_harga = Decimal(str(row.get('total', 0)))
+
+        # Store in maps
+        harga_map[pkj_id] = float(total_harga)
+        volume_map[pkj_id] = float(row.get('volume', 0))
+        total_biaya += total_harga
+
+        # Metadata for tooltips/debugging
+        pekerjaan_meta[pkj_id] = {
+            'kode': row.get('kode', ''),
+            'uraian': row.get('uraian', ''),
+            'satuan': row.get('satuan', ''),
+            'harga_satuan': float(row.get('G', 0)),  # Unit price with markup
+            'harga_satuan_base': float(row.get('E_base', 0)),  # Unit price before markup
+            'volume': float(row.get('volume', 0)),
+            'total': float(total_harga),
+            'markup_percent': float(row.get('markup_eff', 0)),
+            'komponen': {
+                'TK': float(row.get('A', 0)),
+                'BHN': float(row.get('B', 0)),
+                'ALT': float(row.get('C', 0)),
+                'LAIN': float(row.get('LAIN', 0)),
+            }
+        }
+
+    response_data = {
+        'hargaMap': harga_map,
+        'totalBiayaProject': float(total_biaya),
+        'volumeMap': volume_map,  # Backward compatibility
+        'pekerjaanMeta': pekerjaan_meta,
+        'cached': False,  # compute_rekap_for_project handles caching internally
+        'timestamp': datetime.now().isoformat(),
+        'count': len(rekap_rows),
+    }
+
+    logger.info(
+        f"[Kurva S API] Served data for project {project_id}: "
+        f"{len(harga_map)} pekerjaan, total biaya Rp {total_biaya:,.2f}"
+    )
+
+    return JsonResponse(response_data)

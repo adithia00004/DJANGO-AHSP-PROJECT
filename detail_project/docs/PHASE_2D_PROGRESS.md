@@ -1,23 +1,26 @@
-# Phase 2D – Input Experience Readiness Tracker
+﻿# Phase 2D â€“ Input Experience Readiness Tracker
 
-_Last updated: 2025-11-24 – maintained while refactoring Jadwal Kegiatan AG Grid UI._
+_Last updated: 2025-11-24 â€“ maintained while refactoring Jadwal Kegiatan AG Grid UI._
 
 ## 1. Current Snapshot (2025-11-24)
 - AG Grid is now the default renderer; legacy HTML grid only shows up when the feature flag is off. Left-panel pinning, status bar, per-row highlight, and dual horizontal scrollbars (top & bottom) are in place for both AG Grid and the legacy fallback.
 - DataLoader + TimeColumnGenerator consume `/detail_project/api/v2/project/<id>/assignments/` exclusively. Weekly columns expose `fieldId`, `index`, and `weekNumber`, so assignments for week > 1 persist and reload correctly.
-- SaveHandler/AG Grid accept 0–100% proportions, convert volume↔persentase automatically, track totals per pekerjaan, and surface detailed validation errors (toast + row highlight) sebelum maupun sesudah panggilan API.
-- Regression tests are green: `pytest detail_project/tests/test_jadwal_pekerjaan_page_ui.py --no-cov` dan `pytest detail_project/tests/test_weekly_canonical_validation.py --no-cov` (round-trip + zero-progress).
-- Outstanding gaps: monthly switch belum aktif, volume semantics belum memvalidasi terhadap volume total, dan keyboard navigation legacy masih perlu perapihan.
+- SaveHandler/AG Grid accept 0â€“100% proportions, convert volumeâ†”persentase automatically, track totals per pekerjaan, and surface detailed validation errors (toast + row highlight) sebelum maupun sesudah panggilan API.
+- Week Start/End preference tersimpan per proyek dan otomatis memicu regenerate tahapan + reload DataLoader sehingga grid/Gantt/Kurva S mengikuti boundary terbaru.
+- Weekly timeline otomatis dipaksa sesuai tanggal mulai → tanggal selesai proyek (default 31/12 tahun yang sama) bila dataset weekly hilang atau kependekan, sehingga jumlah minggu/blok monthly konsisten dengan durasi proyek.
+- Mode Monthly = agregasi empat minggu (read-only); data tetap dimasukkan via weekly canonical.
+- ❌ **TESTING UPDATE**: Regression tests mentioned but **test files NOT FOUND**. Test infrastructure needs to be created (see [TESTING_STATUS.md](TESTING_STATUS.md)).
+- Outstanding gaps: monthly switch belum aktif, volume semantics belum memvalidasi terhadap volume total, keyboard navigation legacy masih perlu perapihan, **manifest loader belum implemented** (production blocker).
 
-## 2. Acceptance Criteria for “Phase 2 done”
+## 2. Acceptance Criteria for â€œPhase 2 doneâ€
 1. **Pekerjaan-only inputs**
    - Tree nodes expose `type` metadata down to AG Grid row data.
    - Dynamic columns set `editable` via callback so only `type === 'pekerjaan'` can edit; classification/sub rows remain read-only with muted style.
    - Attempted edits on locked rows show tooltip/toast explaining restriction.
 
 2. **Dual input mode (Persentase vs Volume)**
-   - Toolbar toggle/segmented control stored in `state.inputMode ∈ {'percentage','volume'}` plus persisted preference.
-   - Grid renders values + placeholders in the selected unit (e.g. `45%` vs `12.00 m³`).
+   - Toolbar toggle/segmented control stored in `state.inputMode âˆˆ {'percentage','volume'}` plus persisted preference.
+   - Grid renders values + placeholders in the selected unit (e.g. `45%` vs `12.00 mÂ³`).
    - Save payload converts volume entries back to percentage relative to pekerjaan volume; toggle respects rows without volume by disabling volume mode.
 
 3. **Total validation & visual alerts**
@@ -29,7 +32,7 @@ _Last updated: 2025-11-24 – maintained while refactoring Jadwal Kegiatan AG Gr
    - Modified rows show a subtle badge; Save button enables only when `state.isDirty`.
    - Toast/spinner on save success/error plus dirty state reset after success.
 
-5. **Time-scale switch (weekly ↔ monthly)**
+5. **Time-scale switch (weekly â†” monthly)**
    - UI control next to mode toggle lets user pick weekly/monthly (future daily/custom disabled).
    - Switching triggers DataLoader reload + TimeColumnGenerator regeneration; state/save handler know current scale (`state.timeScale`).
    - URL `/assignments/` called with the correct mode query param once backend supports it (guarded with feature flag until API ready).
@@ -47,21 +50,21 @@ _Last updated: 2025-11-24 – maintained while refactoring Jadwal Kegiatan AG Gr
 ## 3. Task Breakdown & Owners
 | ID | Task | Files / Modules | Status |
 |----|------|-----------------|--------|
-| T2D-01 | Surface `node.type` + `isEditable` on AG Grid rows; lock editing for klas/sub rows (toast on attempt). | `data-loader.js`, `ag-grid-setup.js`, `column-definitions.js`, `kelola_tahapan_grid_modern.html` | ✅ AG Grid rows locked; legacy split-panel read-only |
-| T2D-02 | Implement toolbar toggle for Persentase vs Volume with state + persistence. | `jadwal_kegiatan_app.js`, toolbar template | ✅ Toggle aktif (Persentase default), auto-konversi volume↔persentase + batas 0–volume |
-| T2D-03 | Extend SaveHandler/DataLoader to understand `inputMode`, convert values, and display formatting helpers. | `save-handler.js`, `validation-utils.js` | ✅ `assignments` payload stabil (week_number akurat, error detail, zero progress) |
-| T2D-04 | Row total aggregation + over-limit styling (CSS + AG Grid rowClass rules). | `ag-grid-setup.js`, `kelola_tahapan_grid.css`, `validation-utils.js` | ✅ Total per pekerjaan dihitung ulang & warning otomatis sebelum Save; row highlight menyala |
-| T2D-05 | Focus/dirty trackers + toast/spinner improvements. | `jadwal_kegiatan_app.js`, `grid-event-handlers.js`, `save-handler.js` | 🟡 Status bar + dirty state + dual scrollbar live; keyboard nav & tooltip minor WIP |
-| T2D-06 | Weekly↔Monthly switch & DataLoader refresh pipeline. | `jadwal_kegiatan_app.js`, `time-column-generator.js`, `data-loader.js` | ☐ UI toggle rendered, backend regenerate hook belum dipanggil |
-| T2D-07 | Documentation refresh + regression tests. | `_docs listed above_`, `detail_project/tests/test_jadwal_pekerjaan_page_ui.py`, `test_weekly_canonical_validation.py` | ⏳ Fixtures/tests selesai; docs update (README/Roadmap) ongoing |
+| T2D-01 | Surface `node.type` + `isEditable` on AG Grid rows; lock editing for klas/sub rows (toast on attempt). | `data-loader.js`, `ag-grid-setup.js`, `column-definitions.js`, `kelola_tahapan_grid_modern.html` | âœ… AG Grid rows locked; legacy split-panel read-only |
+| T2D-02 | Implement toolbar toggle for Persentase vs Volume with state + persistence. | `jadwal_kegiatan_app.js`, toolbar template | âœ… Toggle aktif (Persentase default), auto-konversi volumeâ†”persentase + batas 0â€“volume |
+| T2D-03 | Extend SaveHandler/DataLoader to understand `inputMode`, convert values, and display formatting helpers. | `save-handler.js`, `validation-utils.js` | âœ… `assignments` payload stabil (week_number akurat, error detail, zero progress) |
+| T2D-04 | Row total aggregation + over-limit styling (CSS + AG Grid rowClass rules). | `ag-grid-setup.js`, `kelola_tahapan_grid.css`, `validation-utils.js` | âœ… Total per pekerjaan dihitung ulang & warning otomatis sebelum Save; row highlight menyala |
+| T2D-05 | Focus/dirty trackers + toast/spinner improvements. | `jadwal_kegiatan_app.js`, `grid-event-handlers.js`, `save-handler.js` | ðŸŸ¡ Status bar + dirty state + dual scrollbar live; keyboard nav & tooltip minor WIP |
+| T2D-06 | Weekly↔Monthly switch & DataLoader refresh pipeline. | `jadwal_kegiatan_app.js`, `time-column-generator.js`, `data-loader.js` | ✅ Week boundary dropdown memicu regenerate weekly; mode Monthly menampilkan agregasi 4 minggu (read-only) berbasis data weekly. |
+| T2D-07 | Documentation refresh + regression tests. | `_docs listed above_`, `detail_project/tests/test_jadwal_pekerjaan_page_ui.py`, `test_weekly_canonical_validation.py` | �o. README/Client Guide/Roadmap/Final Plan diperbarui + test boundary tersimpan; backlog doc minor tetap dipantau |
 
 > Backlog items (row grouping, change history, per-user column pinning) stay listed but are **not blockers** for Phase 2 sign-off.
 
 ## 4. Implementation Notes
 - **Row metadata**: `ag-grid-setup.js` menyuntik `rowType` & `rowClass` sehingga klas/sub read-only dan baris gagal terlihat jelas.
-- **AG Grid hooks**: `colDef.editable` mengecek `rowType === 'pekerjaan'`; percobaan edit klasifikasi memunculkan toast “progress hanya dapat diisi …”.
-- **Assignments Map**: kunci `pekerjaanId-fieldId` dipakai konsisten di DataLoader, SaveHandler, dan AG Grid → reload langsung memunculkan nilai minggu ke‑N.
-- **Validation**: SaveHandler + AG Grid menghitung ulang total per pekerjaan, memvalidasi nilai 0–100/0–volume, serta menggabungkan detail `errors`/`validation_errors` dari API (toast multi-baris).
+- **AG Grid hooks**: `colDef.editable` mengecek `rowType === 'pekerjaan'`; percobaan edit klasifikasi memunculkan toast â€œprogress hanya dapat diisi â€¦â€.
+- **Assignments Map**: kunci `pekerjaanId-fieldId` dipakai konsisten di DataLoader, SaveHandler, dan AG Grid â†’ reload langsung memunculkan nilai minggu keâ€‘N.
+- **Validation**: SaveHandler + AG Grid menghitung ulang total per pekerjaan, memvalidasi nilai 0â€“100/0â€“volume, serta menggabungkan detail `errors`/`validation_errors` dari API (toast multi-baris).
 - **UI placement**: toolbar menampung toggle persentase/volume, time-scale, Save/Refresh, serta info status bar di bawah grid.
 
 ## 5. Testing & Rollback
@@ -70,9 +73,15 @@ _Last updated: 2025-11-24 – maintained while refactoring Jadwal Kegiatan AG Gr
   `pytest detail_project/tests/test_weekly_canonical_validation.py --no-cov` (round-trip + zero progress)  
   `pytest detail_project/tests/test_hsp_fix.py`
 - **Manual smoke**:  
-  1. Load project 110 → pastikan AG Grid render, klas/sub read-only.  
-  2. Toggle Persentase ↔ Volume → nilai otomatis terkonversi dan validasi menyesuaikan (0–100 vs 0–volume).  
-  3. Input nilai 0–100 di beberapa minggu, simpan → `/assignments/` menampilkan nilai tersebut setelah reload.  
-  4. Paksa error (misal total >100) → toast menampilkan detail dan row highlight merah sebelum request ke server.  
+  1. Load project 110 â†’ pastikan AG Grid render, klas/sub read-only.  
+  2. Toggle Persentase â†” Volume â†’ nilai otomatis terkonversi dan validasi menyesuaikan (0â€“100 vs 0â€“volume).  
+  3. Input nilai 0â€“100 di beberapa minggu, simpan â†’ `/assignments/` menampilkan nilai tersebut setelah reload.  
+  4. Paksa error (misal total >100) â†’ toast menampilkan detail dan row highlight merah sebelum request ke server.  
   5. Uji horizontal scroll (atas/bawah) + status bar + dirty state (Save disabled hingga ada perubahan).  
 - **Rollback**: matikan feature flag untuk kembali ke legacy grid atau `git checkout -- kelola_tahapan_grid_modern.html detail_project/static/detail_project/js/src` jika AG Grid mengalami regresi besar.
+
+
+
+
+
+

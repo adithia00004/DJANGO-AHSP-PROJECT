@@ -125,6 +125,62 @@
     return fallback;
   }
 
+  /**
+   * Build harga (cost) lookup map from state
+   * Phase 2F.0: Kurva S should use HARGA (Rupiah) instead of volume
+   *
+   * @param {Object} state - Application state
+   * @returns {Map<string, number>} Map of pekerjaanId → total harga (Rp)
+   */
+  function buildHargaLookup(state) {
+    const lookup = new Map();
+    const setHarga = (key, value) => {
+      const numericKey = Number(key);
+      const harga = Number.isFinite(value) && value >= 0 ? value : null;
+      if (harga === null) return;
+      lookup.set(String(key), harga);
+      if (!Number.isNaN(numericKey)) {
+        lookup.set(String(numericKey), harga);
+      }
+    };
+
+    if (state.hargaMap instanceof Map) {
+      state.hargaMap.forEach((value, key) => {
+        const harga = parseFloat(value);
+        setHarga(key, harga);
+      });
+    } else if (state.hargaMap && typeof state.hargaMap === 'object') {
+      Object.entries(state.hargaMap).forEach(([key, value]) => {
+        const harga = parseFloat(value);
+        setHarga(key, harga);
+      });
+    }
+
+    return lookup;
+  }
+
+  /**
+   * Get harga for a specific pekerjaan
+   * Phase 2F.0: Used for harga-weighted Kurva S calculation
+   *
+   * @param {Map} hargaLookup - Lookup map from buildHargaLookup()
+   * @param {string|number} pekerjaanId - Pekerjaan ID
+   * @param {number} fallback - Fallback value if not found (default: 0)
+   * @returns {number} Total harga (Rp) for the pekerjaan
+   */
+  function getHargaForPekerjaan(hargaLookup, pekerjaanId, fallback = 0) {
+    const idVariants = [
+      String(pekerjaanId),
+      String(Number(pekerjaanId)),
+    ];
+    for (const variant of idVariants) {
+      if (hargaLookup.has(variant)) {
+        return hargaLookup.get(variant);
+      }
+    }
+    return fallback;
+  }
+
   function buildCellValueMap(state) {
     const map = new Map();
 
@@ -419,16 +475,34 @@
       return null;
     }
 
-    const volumeLookup = buildVolumeLookup(state);
+    // Phase 2F.0: Use HARGA (cost) instead of volume
+    const hargaLookup = buildHargaLookup(state);
+    const volumeLookup = buildVolumeLookup(state); // Keep for planned curve (backward compatibility)
     const cellValues = buildCellValueMap(state);
     const pekerjaanIds = collectPekerjaanIds(state, cellValues);
 
+    // Calculate total biaya from state (provided by API)
+    let totalBiaya = parseFloat(state.totalBiayaProject || 0);
+
+    // Fallback: calculate from hargaLookup if not provided
+    if (!totalBiaya || totalBiaya <= 0) {
+      pekerjaanIds.forEach((id) => {
+        totalBiaya += getHargaForPekerjaan(hargaLookup, id, 0);
+      });
+    }
+
+    // Legacy fallback: use volume if harga data not available
     let totalVolume = 0;
-    pekerjaanIds.forEach((id) => {
-      totalVolume += getVolumeForPekerjaan(volumeLookup, id, 1);
-    });
-    if (!Number.isFinite(totalVolume) || totalVolume <= 0) {
-      totalVolume = pekerjaanIds.size || 1;
+    const useHargaCalculation = totalBiaya > 0 && hargaLookup.size > 0;
+
+    if (!useHargaCalculation) {
+      // Fallback to volume-based calculation (legacy mode)
+      pekerjaanIds.forEach((id) => {
+        totalVolume += getVolumeForPekerjaan(volumeLookup, id, 1);
+      });
+      if (!Number.isFinite(totalVolume) || totalVolume <= 0) {
+        totalVolume = pekerjaanIds.size || 1;
+      }
     }
 
     const columnIndexById = new Map();
@@ -436,6 +510,7 @@
       columnIndexById.set(String(col.id), index);
     });
 
+    // Phase 2F.0: Calculate column totals using HARGA
     const columnTotals = new Array(columns.length).fill(0);
     cellValues.forEach((value, key) => {
       const [pekerjaanId, columnId] = String(key).split('-');
@@ -447,8 +522,17 @@
       if (!Number.isFinite(percent) || percent <= 0) {
         return;
       }
-      const pekerjaanVolume = getVolumeForPekerjaan(volumeLookup, pekerjaanId, 1);
-      columnTotals[columnIndex] += pekerjaanVolume * (percent / 100);
+
+      if (useHargaCalculation) {
+        // NEW: Harga-weighted calculation (Phase 2F.0)
+        // Formula: (Total Harga Pekerjaan × Input Progress%) / Total Biaya × 100%
+        const pekerjaanHarga = getHargaForPekerjaan(hargaLookup, pekerjaanId, 0);
+        columnTotals[columnIndex] += pekerjaanHarga * (percent / 100);
+      } else {
+        // LEGACY: Volume-weighted calculation (fallback)
+        const pekerjaanVolume = getVolumeForPekerjaan(volumeLookup, pekerjaanId, 1);
+        columnTotals[columnIndex] += pekerjaanVolume * (percent / 100);
+      }
     });
 
     const labels = columns.map((col, index) => {
@@ -468,15 +552,23 @@
       context.scurveOptions || {}
     );
 
-    // Calculate ACTUAL curve (volume-weighted from assignments)
+    // Calculate ACTUAL curve
+    // Phase 2F.0: Use HARGA (cost) instead of volume
     const actualSeries = [];
-    let cumulativeActualVolume = 0;
+    let cumulativeActual = 0;
 
     columns.forEach((col, index) => {
-      cumulativeActualVolume += columnTotals[index] || 0;
-      const actualPercent = totalVolume > 0
-        ? Math.min(100, Math.max(0, (cumulativeActualVolume / totalVolume) * 100))
-        : 0;
+      cumulativeActual += columnTotals[index] || 0;
+
+      let actualPercent = 0;
+      if (useHargaCalculation && totalBiaya > 0) {
+        // NEW: Harga-weighted percentage (Phase 2F.0)
+        actualPercent = Math.min(100, Math.max(0, (cumulativeActual / totalBiaya) * 100));
+      } else if (totalVolume > 0) {
+        // LEGACY: Volume-weighted percentage (fallback)
+        actualPercent = Math.min(100, Math.max(0, (cumulativeActual / totalVolume) * 100));
+      }
+
       actualSeries.push(Number(actualPercent.toFixed(2)));
     });
 
@@ -499,8 +591,10 @@
       planned: plannedSeries,
       actual: actualSeries,
       details,
-      totalVolume,
+      totalVolume, // Legacy (for backward compatibility)
+      totalBiaya, // Phase 2F.0: Total project cost
       columnTotals,
+      useHargaCalculation, // Phase 2F.0: Flag indicating which calculation method used
     };
   }
 
@@ -526,6 +620,21 @@
     });
   }
 
+  /**
+   * Format number as Indonesian Rupiah
+   * Phase 2F.0: Display currency in Kurva S tooltips
+   *
+   * @param {number} amount - Amount in Rupiah
+   * @returns {string} Formatted currency string (e.g., "Rp 1.234.567")
+   */
+  function formatRupiah(amount) {
+    if (!Number.isFinite(amount)) return 'Rp 0';
+
+    // Format with thousand separators (Indonesian style)
+    const formatted = Math.round(amount).toLocaleString('id-ID');
+    return `Rp ${formatted}`;
+  }
+
   function createChartOption(dataset) {
     const colors = getThemeColors();
     const data = dataset || buildFallbackDataset();
@@ -546,6 +655,18 @@
           const start = formatDateLabel(detail.start);
           const end = formatDateLabel(detail.end);
 
+          // Phase 2F.0: Calculate currency amounts if using harga calculation
+          const useHarga = data.useHargaCalculation && data.totalBiaya > 0;
+          let plannedAmount = '';
+          let actualAmount = '';
+
+          if (useHarga) {
+            const plannedRp = (data.totalBiaya * planned) / 100;
+            const actualRp = (data.totalBiaya * actual) / 100;
+            plannedAmount = formatRupiah(plannedRp);
+            actualAmount = formatRupiah(actualRp);
+          }
+
           // Determine variance status and color
           let varianceText = '';
           let varianceColor = '';
@@ -564,8 +685,12 @@
             `<strong>${label}</strong>`,
             start && end ? `<div style="font-size:0.85em;color:#6b7280;margin:4px 0;">Periode: ${start} - ${end}</div>` : '',
             '<div style="margin-top:8px;">',
-            `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong></div>`,
-            `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong></div>`,
+            useHarga
+              ? `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${plannedAmount})</span></div>`
+              : `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong></div>`,
+            useHarga
+              ? `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${actualAmount})</span></div>`
+              : `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong></div>`,
             `<div style="margin:4px 0;color:${varianceColor};">Variance: <strong>${varianceText}</strong></div>`,
             '</div>',
           ].filter(Boolean).join('');

@@ -215,7 +215,13 @@
   testButtonExists('btn-reset-progress', 'Reset Progress');
   testButtonExists('btn-collapse-all', 'Collapse All');
   testButtonExists('btn-expand-all', 'Expand All');
-  testButtonExists('btn-export-excel', 'Export Excel');
+  const exportButtons = [
+    ['btn-export-csv', 'Export CSV'],
+    ['btn-export-pdf', 'Export PDF'],
+    ['btn-export-word', 'Export Word'],
+    ['btn-export-xlsx', 'Export XLSX'],
+  ];
+  exportButtons.forEach(([id, label]) => testButtonExists(id, label));
   console.log('');
 
   // Test 3: Check button listeners (only works in Chrome DevTools)
@@ -237,7 +243,7 @@
   simulateButtonClick('btn-reset-progress', 'Reset Progress');
   simulateButtonClick('btn-collapse-all', 'Collapse All');
   simulateButtonClick('btn-expand-all', 'Expand All');
-  simulateButtonClick('btn-export-excel', 'Export Excel');
+  exportButtons.forEach(([id, label]) => simulateButtonClick(id, label));
   console.log('');
 
   // Print summary

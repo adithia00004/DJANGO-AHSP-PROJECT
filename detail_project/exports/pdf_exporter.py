@@ -5,7 +5,7 @@
 # =====================================================================
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4, A3, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -16,7 +16,13 @@ from reportlab.platypus import (
 from io import BytesIO
 from typing import Dict, Any, List
 from .base import ConfigExporterBase
+from ..export_config import get_page_size_mm
 from django.http import HttpResponse
+
+PAGE_SIZE_MAP = {
+    'A4': A4,
+    'A3': A3,
+}
 
 
 class PDFExporter(ConfigExporterBase):
@@ -67,10 +73,12 @@ class PDFExporter(ConfigExporterBase):
 
         # Determine page size based on orientation
         orientation = getattr(self.config, 'page_orientation', 'landscape')
+        size_name = getattr(self.config, 'page_size', 'A4') or 'A4'
+        base_size = PAGE_SIZE_MAP.get(size_name.upper(), A4)
         if orientation == 'portrait':
-            pagesize = A4
+            pagesize = base_size
         else:
-            pagesize = landscape(A4)
+            pagesize = landscape(base_size)
 
         # Create document
         doc = SimpleDocTemplate(
@@ -192,7 +200,7 @@ class PDFExporter(ConfigExporterBase):
             story.append(Spacer(1, 3*mm))
 
             # Determine sensible column widths based on orientation
-            page_w_mm = 210 if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else 297
+            page_w_mm = self._get_page_width_mm()
             usable_w = page_w_mm - (self.config.margin_left + self.config.margin_right)
             # Allocate widths: Kode (20%), Uraian (60%), Total (20%)
             col_widths = [0.20*usable_w, 0.60*usable_w, 0.20*usable_w]
@@ -346,6 +354,10 @@ class PDFExporter(ConfigExporterBase):
 
         return table
 
+    def _get_page_width_mm(self) -> float:
+        width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
+        return width_mm if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else height_mm
+
     def _build_pekerjaan_section(self, section: Dict[str, Any], story: List) -> None:
         """
         Build a pekerjaan section for Rincian AHSP export.
@@ -411,7 +423,7 @@ class PDFExporter(ConfigExporterBase):
             widths_mm = list(detail_table.get('col_widths', []) or [])
             # Scale column widths to fit page orientation/margins
             try:
-                page_w_mm = 210 if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else 297
+                page_w_mm = self._get_page_width_mm()
                 usable_w = page_w_mm - (self.config.margin_left + self.config.margin_right)
                 current = sum(widths_mm) if widths_mm else 0
                 if current and abs(current - usable_w) > 0.5:

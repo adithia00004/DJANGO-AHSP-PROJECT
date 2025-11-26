@@ -248,6 +248,71 @@ export function getVolumeForPekerjaan(volumeLookup, pekerjaanId, fallback = 1) {
   return fallback;
 }
 
+/**
+ * Build harga (cost) lookup map from state
+ * Phase 2F.0: Kurva S should use HARGA (Rupiah) instead of volume
+ *
+ * @param {Object} state - Application state
+ * @returns {Map} Harga lookup map (pekerjaanId → total harga in Rp)
+ */
+export function buildHargaLookup(state) {
+  const lookup = new Map();
+
+  const setHarga = (key, value) => {
+    const numericKey = Number(key);
+    const harga = Number.isFinite(value) && value >= 0 ? value : null;
+
+    if (harga === null) return;
+
+    // Store both string and numeric keys for flexible lookup
+    lookup.set(String(key), harga);
+    if (!Number.isNaN(numericKey)) {
+      lookup.set(String(numericKey), harga);
+    }
+  };
+
+  // Handle Map format
+  if (state.hargaMap instanceof Map) {
+    state.hargaMap.forEach((value, key) => {
+      const harga = parseFloat(value);
+      setHarga(key, harga);
+    });
+  }
+  // Handle Object format
+  else if (state.hargaMap && typeof state.hargaMap === 'object') {
+    Object.entries(state.hargaMap).forEach(([key, value]) => {
+      const harga = parseFloat(value);
+      setHarga(key, harga);
+    });
+  }
+
+  return lookup;
+}
+
+/**
+ * Get harga for a specific pekerjaan
+ * Phase 2F.0: Used for harga-weighted Kurva S calculation
+ *
+ * @param {Map} hargaLookup - Harga lookup map
+ * @param {string|number} pekerjaanId - Pekerjaan ID
+ * @param {number} fallback - Fallback value if not found (default: 0)
+ * @returns {number} Total harga (Rp) for the pekerjaan
+ */
+export function getHargaForPekerjaan(hargaLookup, pekerjaanId, fallback = 0) {
+  const idVariants = [
+    String(pekerjaanId),
+    String(Number(pekerjaanId)),
+  ];
+
+  for (const variant of idVariants) {
+    if (hargaLookup.has(variant)) {
+      return hargaLookup.get(variant);
+    }
+  }
+
+  return fallback;
+}
+
 // =========================================================================
 // DATA UTILITIES
 // =========================================================================
@@ -333,6 +398,21 @@ export function formatPercentage(value, decimals = 1) {
     : parseFloat(value.toFixed(decimals));
 
   return `${rounded}%`;
+}
+
+/**
+ * Format number as Indonesian Rupiah
+ * Phase 2F.0: Display currency in Kurva S tooltips
+ *
+ * @param {number} amount - Amount in Rupiah
+ * @returns {string} Formatted currency string (e.g., "Rp 1.234.567")
+ */
+export function formatRupiah(amount) {
+  if (!Number.isFinite(amount)) return 'Rp 0';
+
+  // Format with thousand separators (Indonesian style)
+  const formatted = Math.round(amount).toLocaleString('id-ID');
+  return `Rp ${formatted}`;
 }
 
 /**
@@ -462,12 +542,17 @@ export default {
   buildVolumeLookup,
   getVolumeForPekerjaan,
 
+  // Harga (Phase 2F.0)
+  buildHargaLookup,
+  getHargaForPekerjaan,
+
   // Data
   buildCellValueMap,
   collectPekerjaanIds,
 
   // Number
   formatPercentage,
+  formatRupiah,
   clamp,
 
   // Resize

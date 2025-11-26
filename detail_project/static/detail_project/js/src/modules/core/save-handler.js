@@ -132,7 +132,12 @@ export class SaveHandler {
   _buildPayload() {
     const assignments = [];
 
+    // Phase 2E.1: Log which mode's modifiedCells we're reading from
+    const progressMode = this.state?.progressMode || 'planned';
+    console.log(`[SaveHandler] Building payload from ${progressMode.toUpperCase()} modifiedCells (size: ${this.state.modifiedCells.size})`);
+
     // Convert modifiedCells Map to array of assignments
+    // Phase 2E.1: Property delegation ensures this reads from current mode's modifiedCells
     this.state.modifiedCells.forEach((value, cellKey) => {
       // Parse cellKey (format: "nodeId-columnId")
       const [pekerjaanId, tahapanId] = cellKey.split('-');
@@ -214,12 +219,19 @@ export class SaveHandler {
 
     console.log(`[SaveHandler] Built ${assignments.length} assignment items`);
 
-    return {
+    // Phase 2E.1: progressMode already declared at top of function
+    console.log(`[SaveHandler] Progress Mode: ${progressMode.toUpperCase()} - Will save to ${progressMode === 'actual' ? 'actual_proportion' : 'planned_proportion'} field`);
+
+    const payload = {
       assignments,
-      mode: this.state.timeScale || 'weekly',
+      mode: progressMode,  // Phase 2E.1: 'planned' or 'actual' (determines field to update)
       project_id: this.state.projectId,
       week_end_day: this.state.weekEndDay ?? 6,
     };
+
+    console.log(`[SaveHandler] Payload:`, JSON.stringify(payload, null, 2));
+
+    return payload;
   }
 
   /**
@@ -313,6 +325,9 @@ export class SaveHandler {
     // Clear modified cells
     const modifiedCount = this.state.modifiedCells.size;
     this.state.modifiedCells.clear();
+    if (this.state.cellVolumeOverrides instanceof Map) {
+      this.state.cellVolumeOverrides.clear();
+    }
 
     // Update UI status
     if (this.state.cache) {

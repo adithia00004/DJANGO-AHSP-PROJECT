@@ -13,10 +13,15 @@
 - Phase 1 (Critical Fixes) selesai 100%.
 - Phase 2 (AG Grid Migration) memasuki tahap stabilisasi: view default kelola_tahapan_grid_modern.html, kolom Pekerjaan/Volume/Satuan terpin, horizontal scroll tersedia di atas & bawah, status bar aktif, dan legacy grid hanya fallback.
 - Mode terang/gelap mengikuti data-bs-theme otomatis (switch ag-theme-alpine + ag-theme-alpine-dark), jadi tampilan AG Grid konsisten dengan seluruh dashboard.
-- Jalur assignments 100% memakai API v2. TimeColumnGenerator + SaveHandler menyimpan week_number yang akurat (termasuk minggu > 1), menerima nilai 0-100%, mengonversi volume↔persentase otomatis, serta menjaga progressTotals + volumeTotals; penyimpanan otomatis diblokir bila total >100% atau volume melebihi kapasitas (toast + highlight).
+- Jalur assignments 100% memakai API v2. TimeColumnGenerator + SaveHandler menyimpan week_number yang akurat (termasuk minggu > 1), menerima nilai 0-100%, mengonversi volume↔persentase otomatis, serta menjaga progressTotals + volumeTotals; guard baru menghitung ulang volume mingguan per pekerjaan, men-disable tombol Save, dan backend `api_v2_assign_weekly` ikut menolak total (existing + payload) yang melebihi kapasitas/master volume.
 - Toolbar modern kini punya selector **Week Start/Week End**. Pilihan user kini tersimpan per proyek (API week-boundary) dan dipakai seragam oleh grid, Gantt, serta Kurva S pada saat reload.
+- Toggle Weekly/Monthly menampilkan agregasi 4 minggu (Monthly read-only, data tetap weekly canonical).
+- Weekly generator otomatis memanjang dari tanggal mulai proyek sampai tanggal selesai (default 31/12/YYYY jika kosong), jadi jumlah minggu & blok monthly selalu mengikuti timeline proyek.
+- Mengubah tanggal mulai proyek kini otomatis mereset PekerjaanProgressWeekly + assignments dan menghitung ulang tahapan weekly, jadi data lama tidak pernah "menumpang" di timeline baru. Tombol **Reset Progress** juga sudah terhubung ke endpoint `api/v2/project/<id>/reset-progress/`.
+- Toolbar export modern menghadirkan dropdown CSV/PDF/Word/XLSX yang memanggil ExportManager; backend mengambil canonical weekly progress dan langsung menyelipkan agregasi monthly (4 minggu/blok) dalam satu klik.
+- File export Jadwal kini menggunakan kertas A3 landscape dan otomatis memecah kolom weekly menjadi beberapa halaman (maks ~10 kolom per lembar, monthly dikap setiap ±6 kolom) sehingga timeline panjang tetap mudah dibaca tanpa mengecilkan font.
 - Regression suite: pytest detail_project/tests/test_jadwal_pekerjaan_page_ui.py --no-cov dan pytest detail_project/tests/test_weekly_canonical_validation.py --no-cov (round-trip + zero progress) keduanya hijau.
-- Phase 3-4 (Build optimization & Export) belum dimulai; menunggu penyempurnaan mode volume + monthly switch.
+- Phase 3 (Build optimization) masih pending; deliverable export Jadwal sudah aktif dan siap digabung setelah mode volume + monthly switch dinyatakan stabil.
 - Skrip npm yang tersedia: dev, build, preview, watch, test, test:integration, benchmark.
 ---
 
@@ -171,12 +176,12 @@ python generate_progress_report.py
 
 - [ ] QA regression untuk mode AG Grid vs legacy fallback (flag ENABLE_AG_GRID) guna memastikan toggle aman.
 - [x] Jalur assignments sudah 100% memakai API v2 (save + reload) + round-trip test ditambahkan.
-- [x] Mode persentase/volume: konversi volume?persentase + validasi dasar (0?volume) selesai; lanjutkan penguatan UX.
+- [x] Mode persentase/volume: konversi volume↔persentase + guard kumulatif mingguan (blokir total >100%/kapasitas, disable tombol Save, backend re-check).
 - [x] Validasi total per pekerjaan: auto warning + blokir saat akumulasi >100% pada mode persentase.
 - [x] Validasi total per pekerjaan: guard volumeTotals vs master volume (toast + highlight) untuk mode volume.
 - [x] Week Start/Week End selector tersedia di toolbar; TimeColumnGenerator + SaveHandler sinkron dengan pilihan pengguna.
 - [x] Persist dan kirim konfigurasi Week Start/End ke endpoint `week-boundary` + jadikan default saat regenerate/grafik.
-- [ ] Selesaikan alur switch time scale (weekly ? monthly) dengan memanggil regenerate API + reload grid.
+- [x] Selesaikan alur switch time scale (weekly ↔ monthly) dengan tampilan agregasi 4 minggu (monthly = read-only).
 - [ ] Manifest loader Vite untuk memetakan bundle fingerprint saat USE_VITE_DEV_SERVER=False.
 ### Phase 2 (Week 3-4)
 - [ ] Lengkapi AG Grid Migration (virtual scroll 10k rows + tree data).
@@ -184,8 +189,9 @@ python generate_progress_report.py
 - [ ] Integration testing tab Gantt + Kurva-S pasca penyimpanan canonical.
 
 ### Phase 3-4 (Week 5-6)
+- [x] Jadwal grid: Export CSV/PDF/Word/XLSX (weekly canonical + monthly agregasi).
 - [ ] Build optimization (code splitting, manifest loader).
-- [ ] Export features (Excel, PDF, PNG) setelah input workflow stabil.
+- [ ] Export features (Excel, PDF, PNG) untuk halaman selain Jadwal setelah workflow input final.
 
 ---
 
@@ -194,5 +200,7 @@ python generate_progress_report.py
 **Phase:** 2 of 4 (40% Complete, in progress)
 
 **Ready for Phase 2! **
+
+
 
 

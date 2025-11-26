@@ -35,7 +35,7 @@
   const btnPrint      = document.getElementById('btn-print');
   const btnSubtotal   = document.getElementById('btn-subtotal');
   const btnDensity    = document.getElementById('btn-density');
-  const btnExportExcel = document.getElementById('btn-export-excel');
+  const btnExportXlsx = document.getElementById('btn-export-xlsx');
   const sortHeaders    = Array.from(document.querySelectorAll('#rekap-table thead .th-sortable'));
 
   // ENHANCEMENT #2: Live region for accessibility
@@ -792,9 +792,13 @@
     render(inpSearch?.value || '');
   });
 
-  btnExportExcel?.addEventListener('click', (e) => {
+  btnExportXlsx?.addEventListener('click', async (e) => {
     e.preventDefault();
-    exportCSV();
+    if (unifiedExporter) {
+      await unifiedExporter.exportAs('xlsx');
+    } else {
+      exportCSV();
+    }
   });
 
   sortHeaders.forEach(th => {

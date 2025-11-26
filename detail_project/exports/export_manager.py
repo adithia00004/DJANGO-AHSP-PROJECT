@@ -9,11 +9,13 @@ from ..export_config import ExportConfig, SignatureConfig, format_currency
 from .csv_exporter import CSVExporter
 from .pdf_exporter import PDFExporter
 from .word_exporter import WordExporter
+from .excel_exporter import ExcelExporter
 from .rekap_rab_adapter import RekapRABAdapter
 from .rekap_kebutuhan_adapter import RekapKebutuhanAdapter
 from .volume_pekerjaan_adapter import VolumePekerjaanAdapter
 from .harga_items_adapter import HargaItemsAdapter
 from .rincian_ahsp_adapter import RincianAHSPAdapter
+from .jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
 
 
 class ExportManager:
@@ -23,6 +25,7 @@ class ExportManager:
         'csv': CSVExporter,
         'pdf': PDFExporter,
         'word': WordExporter,
+        'xlsx': ExcelExporter,
     }
     
     def __init__(self, project, user=None):
@@ -259,7 +262,36 @@ class ExportManager:
         # Export!
         return exporter.export(data)
 
-    def _create_config_simple(self, title: str, page_orientation: str = 'portrait') -> ExportConfig:
+    def export_jadwal_pekerjaan(self, format_type: str) -> HttpResponse:
+        """
+        Export Jadwal Pekerjaan (weekly + monthly)
+
+        Args:
+            format_type: 'csv', 'pdf', 'word', or 'xlsx'
+        """
+        config = self._create_config_simple(
+            'JADWAL PELAKSANAAN PEKERJAAN',
+            page_orientation='landscape',
+            page_size='A3'
+        )
+
+        adapter = JadwalPekerjaanExportAdapter(
+            self.project,
+            page_size=config.page_size,
+            page_orientation=config.page_orientation,
+            margin_left=config.margin_left,
+            margin_right=config.margin_right,
+        )
+        data = adapter.get_export_data()
+
+        exporter_class = self.EXPORTER_MAP.get(format_type)
+        if not exporter_class:
+            raise ValueError(f"Unsupported format: {format_type}")
+
+        exporter = exporter_class(config)
+        return exporter.export(data)
+
+    def _create_config_simple(self, title: str, page_orientation: str = 'portrait', page_size: str = 'A4') -> ExportConfig:
         """
         Create export configuration with signature section
         For Volume Pekerjaan, Harga Items, and Rincian AHSP pages
@@ -334,6 +366,7 @@ class ExportManager:
             export_by=self.user.get_full_name() if self.user else '',
             extra_identity=extra_identity,
             page_orientation=page_orientation,
+            page_size=page_size,
             # Consistent margins (same as Rekap RAB)
             margin_top=10,
             margin_bottom=10,

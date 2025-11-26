@@ -1,4 +1,4 @@
-# Rencana Implementasi Final - Jadwal Kegiatan
+﻿# Rencana Implementasi Final - Jadwal Kegiatan
 ## Dengan Stack 100% FREE & Open Source
 
 ---
@@ -51,7 +51,9 @@
 - Entry point Vite `static/detail_project/js/src/jadwal_kegiatan_app.js` membaca dataset HTML, mengikat AG Grid manager, dan `saveChanges()` mengirim payload `assignments` (mode weekly) ke `/detail_project/api/v2/project/<id>/assign-weekly/`. Loading assignments sekarang memakai endpoint v2 per proyek, tidak lagi menembak endpoint v1 per pekerjaan.
 - SaveHandler + JadwalKegiatanApp melacak `progressTotals` sekaligus `volumeTotals`, sehingga penyimpanan langsung diblokir apabila total >100% atau volume melebihi kapasitas. Row mendapatkan highlight merah + toast agar QA cepat menemukan baris bermasalah.
 - Toolbar modern menambahkan selector **Week Start/Week End**. Nilai terpilih disimpan pada kolom `Project.week_start_day/week_end_day` via API `week-boundary` sehingga grid, Gantt, dan Kurva S selalu memakai boundary yang sama saat reload/regenerasi kolom.
+- Toggle Weekly/Monthly menampilkan agregasi 4 minggu (Monthly read-only; AG Grid mengunci sel saat `timeScale !== "weekly"`), dan frontend otomatis regen weekly jika dataset tidak sesuai timeline proyek (end default 31/12 tahun mulai).
 - Mode pemuatan JS dikontrol lewat setting `USE_VITE_DEV_SERVER`. Jika `True`, template memuat modul dari `http://localhost:5173/...`; jika `False`, template mencoba memuat `detail_project/dist/assets/js/jadwal-kegiatan.js` sehingga perlu manifest loader agar nama fingerprint otomatis.
+- Export Jadwal Pekerjaan sudah jalan penuh memakai ExportManager (CSV/PDF/Word/XLSX). Backend menarik data canonical weekly lalu menyisipkan agregasi monthly dan merender di kertas A3 landscape, otomatis memecah kolom weekly >10 kolom per halaman agar tetap mudah dibaca.
 - Modul AG Grid (`static/detail_project/js/src/modules/grid/ag-grid-setup.js`, `grid-renderer.js`, `column-definitions.js`) sudah siap (editable + `onCellValueChanged`); focus Phase 2 saat ini adalah melepas `d-none`, mengaktifkan tree data/virtual scroll, dan QA.
 - Skrip npm yang tersedia: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, dan `benchmark` (skrip test menjalankan pytest jadwal sampai harness front-end siap).
 
@@ -2504,6 +2506,7 @@ After optimization:
 ## Phase 4: Export Features (Week 6)
 
 **Goal**: Add FREE export capabilities
+**Status (Nov 2025)**: Jadwal Pekerjaan page sudah memiliki export CSV/PDF/Word/XLSX via backend `ExportManager` dengan layout A3 landscape + pagination kolom weekly/monthly. Tahap berikutnya tinggal meratakan pola yang sama ke halaman Volume/Harga/rekap lain ketika Phase 4 resmi dimulai.
 **Effort**: 16-20 hours
 **Libraries**: SheetJS, jsPDF, html2canvas
 
@@ -3057,6 +3060,7 @@ document.getElementById('btn-print-gantt').addEventListener('click', () => {
 -  PDF export (screenshot format)
 -  Gantt PNG export
 -  Print functionality
+-  Status saat ini: Jadwal grid sudah memiliki export CSV/PDF/Word/XLSX server-side (A3 landscape, multi-page); deliverables di atas tinggal diaplikasikan ke halaman Volume/Harga/Rekap sesuai roadmap.
 
 **All FREE** - No Enterprise licenses needed! 
 
@@ -3407,3 +3411,4 @@ This implementation plan provides:
 **Last Updated**: 2025-01-19
 **Approved Stack**: 100% FREE & Open Source
 **Ready to Implement**: YES 
+

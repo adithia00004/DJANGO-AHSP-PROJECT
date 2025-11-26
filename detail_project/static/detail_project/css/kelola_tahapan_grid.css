@@ -378,6 +378,20 @@
   background: var(--grid-header-bg);
 }
 
+/* Weekly headers: 110px */
+.right-table th.weekly {
+  width: 110px;
+  min-width: 110px;
+  max-width: 110px;
+}
+
+/* Monthly headers: 135px */
+.right-table th.monthly {
+  width: 135px;
+  min-width: 135px;
+  max-width: 135px;
+}
+
 /* ===== Table Body ===== */
 .grid-table tbody tr {
   transition: background-color 0.15s ease;
@@ -624,6 +638,21 @@
   font-size: 0.9rem;
   width: 80px;
   min-width: 80px;
+}
+
+/* ===== Column Width Standardization (Phase 2E.0) ===== */
+/* Weekly columns: 110px */
+.time-cell.weekly {
+  width: 110px;
+  min-width: 110px;
+  max-width: 110px;
+}
+
+/* Monthly columns: 135px */
+.time-cell.monthly {
+  width: 135px;
+  min-width: 135px;
+  max-width: 135px;
 }
 
 .time-cell.editable:hover {
@@ -1126,11 +1155,100 @@
 }
 
 .ag-row.row-has-error .ag-cell {
-  border-left: 3px solid #dc3545;
+  box-shadow: inset 0 0 0 2px #dc3545;
   background-color: rgba(220, 53, 69, 0.08);
 }
 
 [data-bs-theme="dark"] .ag-row.row-has-error .ag-cell {
-  border-left-color: #ff6b6b;
+  box-shadow: inset 0 0 0 2px #ff6b6b;
   background-color: rgba(255, 107, 107, 0.12);
+}
+
+.ag-row.row-has-warning .ag-cell {
+  border-left: 3px solid #ffc107;
+  background-color: rgba(255, 193, 7, 0.08);
+}
+
+[data-bs-theme="dark"] .ag-row.row-has-warning .ag-cell {
+  border-left-color: #ffe066;
+  background-color: rgba(255, 224, 102, 0.12);
+}
+
+.ag-row.row-save-error .ag-cell {
+  box-shadow: inset 0 0 0 2px #dc3545;
+}
+
+[data-bs-theme="dark"] .ag-row.row-save-error .ag-cell {
+  box-shadow: inset 0 0 0 2px #ff6b6b;
+}
+
+.ag-cell.ag-cell-invalid {
+  border: 2px solid #dc3545 !important;
+  background-color: rgba(220, 53, 69, 0.12) !important;
+}
+
+[data-bs-theme="dark"] .ag-cell.ag-cell-invalid {
+  border-color: #ff6b6b !important;
+  background-color: rgba(255, 107, 107, 0.18) !important;
+}
+
+.ag-cell.ag-cell-warning {
+  border: 2px solid #ffc107 !important;
+  background-color: rgba(255, 193, 7, 0.12) !important;
+}
+
+[data-bs-theme="dark"] .ag-cell.ag-cell-warning {
+  border-color: #ffe066 !important;
+  background-color: rgba(255, 224, 102, 0.18) !important;
+}
+
+/* ===== Progress Mode Tabs (Phase 2E.1: Planned vs Actual) ===== */
+
+.progress-mode-toggle {
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+}
+
+.progress-mode-toggle .btn {
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.progress-mode-toggle .btn-check:checked + .btn-outline-info {
+  background-color: #0dcaf0;
+  border-color: #0dcaf0;
+  color: #000;
+  font-weight: 600;
+}
+
+.progress-mode-toggle .btn-check:checked + .btn-outline-warning {
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+  font-weight: 600;
+}
+
+.progress-mode-toggle .btn-outline-info:hover {
+  background-color: rgba(13, 202, 240, 0.1);
+}
+
+.progress-mode-toggle .btn-outline-warning:hover {
+  background-color: rgba(255, 193, 7, 0.1);
+}
+
+/* Dark mode adjustments */
+[data-bs-theme="dark"] .progress-mode-toggle {
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .progress-mode-toggle .btn-check:checked + .btn-outline-info {
+  background-color: #0dcaf0;
+  border-color: #0dcaf0;
+  color: #000;
+}
+
+[data-bs-theme="dark"] .progress-mode-toggle .btn-check:checked + .btn-outline-warning {
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #000;
 }

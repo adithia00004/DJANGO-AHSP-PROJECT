@@ -96,6 +96,10 @@ urlpatterns = [
          views_api.export_rekap_rab_word, 
          name='export_rekap_rab_word'),
 
+    path('api/project/<int:project_id>/export/rekap-rab/xlsx/',
+         views_api.export_rekap_rab_xlsx,
+         name='export_rekap_rab_xlsx'),
+
      # Export Rekap Kebutuhan
      path('api/project/<int:project_id>/export/rekap-kebutuhan/csv/',
           views_api.api_export_rekap_kebutuhan_csv,
@@ -147,6 +151,23 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/rincian-ahsp/word/',
           views_api.export_rincian_ahsp_word,
           name='export_rincian_ahsp_word'),
+
+     # Export Jadwal Pekerjaan
+     path('api/project/<int:project_id>/export/jadwal-pekerjaan/csv/',
+          views_api.export_jadwal_pekerjaan_csv,
+          name='export_jadwal_pekerjaan_csv'),
+
+     path('api/project/<int:project_id>/export/jadwal-pekerjaan/pdf/',
+          views_api.export_jadwal_pekerjaan_pdf,
+          name='export_jadwal_pekerjaan_pdf'),
+
+     path('api/project/<int:project_id>/export/jadwal-pekerjaan/word/',
+          views_api.export_jadwal_pekerjaan_word,
+          name='export_jadwal_pekerjaan_word'),
+
+     path('api/project/<int:project_id>/export/jadwal-pekerjaan/xlsx/',
+          views_api.export_jadwal_pekerjaan_xlsx,
+          name='export_jadwal_pekerjaan_xlsx'),
 
 
     
@@ -234,5 +255,11 @@ urlpatterns = [
     path('api/v2/project/<int:project_id>/reset-progress/',
          views_api_tahapan_v2.api_reset_progress,
          name='api_v2_reset_progress'),
+
+    # ===== API: KURVA S DATA (Phase 2F.0) =====
+    # Provides harga-based data for Kurva S chart (not volume-based)
+    path('api/v2/project/<int:project_id>/kurva-s-data/',
+         views_api.api_kurva_s_data,
+         name='api_kurva_s_data'),
 
 ]

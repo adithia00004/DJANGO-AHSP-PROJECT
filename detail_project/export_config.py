@@ -396,11 +396,26 @@ class ExportConfig:
 
     # Page orientation
     page_orientation: str = 'landscape'  # 'portrait' or 'landscape'
+    page_size: str = ExportLayout.PAGE_SIZE  # 'A4', 'A3', etc.
 
 
 # ============================================================================
 # IDENTITY RENDER HELPERS (single source of truth)
 # ============================================================================
+
+PAGE_DIMENSIONS_MM = {
+    'A4': (210.0, 297.0),
+    'A3': (297.0, 420.0),
+}
+
+
+def get_page_size_mm(page_size: str) -> tuple[float, float]:
+    """
+    Resolve page width/height in millimeters for the requested paper size (portrait orientation).
+    """
+    if not page_size:
+        return PAGE_DIMENSIONS_MM['A4']
+    return PAGE_DIMENSIONS_MM.get(page_size.upper(), PAGE_DIMENSIONS_MM['A4'])
 
 def build_identity_rows(config: ExportConfig) -> list:
     """

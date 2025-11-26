@@ -11,6 +11,7 @@ from docx.oxml import OxmlElement
 from io import BytesIO
 from typing import Dict, Any, List
 from .base import ConfigExporterBase
+from ..export_config import get_page_size_mm
 from django.http import HttpResponse
 
 
@@ -25,14 +26,13 @@ class WordExporter(ConfigExporterBase):
         orientation = getattr(self.config, 'page_orientation', 'landscape')
         section = doc.sections[0]
 
+        width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
         if orientation == 'portrait':
-            # Portrait: A4 (21cm x 29.7cm)
-            section.page_width = Cm(21.0)
-            section.page_height = Cm(29.7)
+            section.page_width = Cm(width_mm / 10)
+            section.page_height = Cm(height_mm / 10)
         else:
-            # Landscape: A4 (29.7cm x 21cm)
-            section.page_width = Cm(29.7)
-            section.page_height = Cm(21.0)
+            section.page_width = Cm(height_mm / 10)
+            section.page_height = Cm(width_mm / 10)
 
         section.top_margin = Cm(self.config.margin_top / 10)
         section.bottom_margin = Cm(self.config.margin_bottom / 10)
@@ -143,6 +143,10 @@ class WordExporter(ConfigExporterBase):
             filename, 
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
+
+    def _get_page_width_mm(self) -> float:
+        width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
+        return width_mm if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else height_mm
     
     def _add_header(self, doc: Document):
         """Add document header (legacy)"""
@@ -317,7 +321,7 @@ class WordExporter(ConfigExporterBase):
             if col_widths:
                 # Scale to fit page orientation/margins
                 try:
-                    page_w_mm = 210 if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else 297
+                    page_w_mm = self._get_page_width_mm()
                     usable_w = page_w_mm - (self.config.margin_left + self.config.margin_right)
                     current = sum(col_widths)
                     if current and abs(current - usable_w) > 0.5:
@@ -426,7 +430,7 @@ class WordExporter(ConfigExporterBase):
 
                 if col_widths:
                     try:
-                        page_w_mm = 210 if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else 297
+                        page_w_mm = self._get_page_width_mm()
                         usable_w = page_w_mm - (self.config.margin_left + self.config.margin_right)
                         current = sum(col_widths)
                         if current:

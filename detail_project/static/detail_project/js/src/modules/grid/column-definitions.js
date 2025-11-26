@@ -11,6 +11,8 @@ export function buildColumnDefs(timeColumns = [], options = {}) {
   const editableChecker =
     typeof options.isEditableFn === 'function' ? options.isEditableFn : defaultEditableChecker;
   const inputMode = (options.inputMode || 'percentage').toLowerCase();
+  const validationStateGetter =
+    typeof options.getCellValidationState === 'function' ? options.getCellValidationState : null;
 
   const baseColumns = [
     {
@@ -54,6 +56,33 @@ export function buildColumnDefs(timeColumns = [], options = {}) {
       column.rangeText ||
       (column.rangeLabel ? column.rangeLabel.replace(/[()]/g, '').trim() : '');
     const headerName = rangeText ? `${headerTitle}\n${rangeText}` : headerTitle;
+    const getCellKey = (params) => {
+      const rowId =
+        params?.data?.raw?.id ||
+        params?.data?.id ||
+        params?.node?.data?.raw?.id ||
+        params?.node?.data?.id;
+      if (!rowId) {
+        return null;
+      }
+      return `${rowId}-${field}`;
+    };
+
+    const cellClassRules = {
+      'ag-cell-readonly': (params) => !editableChecker(params),
+    };
+
+    if (validationStateGetter) {
+      cellClassRules['ag-cell-invalid'] = (params) => {
+        const cellKey = getCellKey(params);
+        return cellKey ? validationStateGetter(cellKey) === 'error' : false;
+      };
+      cellClassRules['ag-cell-warning'] = (params) => {
+        const cellKey = getCellKey(params);
+        return cellKey ? validationStateGetter(cellKey) === 'warning' : false;
+      };
+    }
+
     return {
       headerName,
       field,
@@ -65,9 +94,7 @@ export function buildColumnDefs(timeColumns = [], options = {}) {
       cellEditor: 'agNumberCellEditor',
       valueParser: (params) => parseNumericValue(params.newValue),
       cellClass: 'ag-time-col',
-      cellClassRules: {
-        'ag-cell-readonly': (params) => !editableChecker(params),
-      },
+      cellClassRules,
       headerClass: 'ag-time-header',
       valueFormatter: (params) => formatTimeCellValue(params.value, inputMode),
     };

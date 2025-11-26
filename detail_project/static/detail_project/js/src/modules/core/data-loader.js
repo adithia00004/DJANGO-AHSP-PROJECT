@@ -460,7 +460,20 @@ export class DataLoader {
     data.assignments.forEach((item) => {
       const pekerjaanId = Number(item.pekerjaan_id || item.pekerjaanId || item.id);
       const weekNumber = Number(item.week_number || item.weekNumber);
-      const proportion = parseFloat(item.proportion);
+
+      // Phase 2E.1: Determine which field to read based on progressMode
+      const progressMode = this.state?.progressMode || 'planned';
+      let proportion;
+
+      if (progressMode === 'actual') {
+        // Read actual_proportion field
+        proportion = parseFloat(item.actual_proportion ?? item.proportion);
+        console.log(`[DataLoader] Mode ACTUAL: Reading actual_proportion=${item.actual_proportion} for pekerjaan=${pekerjaanId}, week=${weekNumber}`);
+      } else {
+        // Read planned_proportion field (default)
+        proportion = parseFloat(item.planned_proportion ?? item.proportion);
+        console.log(`[DataLoader] Mode PLANNED: Reading planned_proportion=${item.planned_proportion} for pekerjaan=${pekerjaanId}, week=${weekNumber}`);
+      }
 
       if (!pekerjaanId || !weekNumber || Number.isNaN(proportion)) {
         return;
@@ -477,11 +490,14 @@ export class DataLoader {
       }
 
       const cellKey = `${pekerjaanId}-${columnKey}`;
+      // Phase 2E.1: Property delegation ensures this writes to current mode's assignmentMap
       this.state.assignmentMap.set(cellKey, proportion);
       mapped += 1;
     });
 
-    console.log(`[DataLoader] ✅ Loaded ${mapped} assignments via API v2`);
+    // Phase 2E.1: Log which mode's state received the data
+    const progressMode = this.state?.progressMode || 'planned';
+    console.log(`[DataLoader] ✅ Loaded ${mapped} assignments into ${progressMode.toUpperCase()} state via API v2`);
   }
 }
 

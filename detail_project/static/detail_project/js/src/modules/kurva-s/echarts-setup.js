@@ -20,9 +20,12 @@ import {
   getSortedColumns,
   buildVolumeLookup,
   getVolumeForPekerjaan,
+  buildHargaLookup,
+  getHargaForPekerjaan,
   buildCellValueMap,
   collectPekerjaanIds,
   formatPercentage,
+  formatRupiah,
   createResizeHandler,
   setupResizeObserver,
 } from '../shared/chart-utils.js';
@@ -281,18 +284,40 @@ export class KurvaSChart {
       return null;
     }
 
+    // Phase 2F.0: Build both volume and harga lookups
     const volumeLookup = buildVolumeLookup(this.state);
+    const hargaLookup = buildHargaLookup(this.state);
     const cellValues = buildCellValueMap(this.state);
     const pekerjaanIds = collectPekerjaanIds(this.state, cellValues);
 
-    // Calculate total volume
-    let totalVolume = 0;
-    pekerjaanIds.forEach((id) => {
-      totalVolume += getVolumeForPekerjaan(volumeLookup, id, 1);
-    });
+    // Phase 2F.0: Calculate total biaya from state (provided by API)
+    let totalBiaya = parseFloat(this.state.totalBiayaProject || 0);
 
-    if (!Number.isFinite(totalVolume) || totalVolume <= 0) {
-      totalVolume = pekerjaanIds.size || 1;
+    // Fallback: calculate from hargaLookup if not provided
+    if (!totalBiaya || totalBiaya <= 0) {
+      pekerjaanIds.forEach((id) => {
+        totalBiaya += getHargaForPekerjaan(hargaLookup, id, 0);
+      });
+    }
+
+    // Determine if we should use harga calculation
+    const useHargaCalculation = totalBiaya > 0 && hargaLookup.size > 0;
+
+    // Legacy fallback: calculate total volume
+    let totalVolume = 0;
+    if (!useHargaCalculation) {
+      pekerjaanIds.forEach((id) => {
+        totalVolume += getVolumeForPekerjaan(volumeLookup, id, 1);
+      });
+
+      if (!Number.isFinite(totalVolume) || totalVolume <= 0) {
+        totalVolume = pekerjaanIds.size || 1;
+      }
+    }
+
+    console.log(LOG_PREFIX, 'Calculation mode:', useHargaCalculation ? 'HARGA-BASED' : 'VOLUME-BASED (fallback)');
+    if (useHargaCalculation) {
+      console.log(LOG_PREFIX, `Total biaya: Rp ${totalBiaya.toLocaleString('id-ID')}`);
     }
 
     // Build column index mapping
@@ -302,11 +327,14 @@ export class KurvaSChart {
     });
 
     // Calculate column totals (weighted actual progress)
+    // Phase 2F.0: Pass harga lookup and calculation mode
     const columnTotals = this._calculateColumnTotals(
       columns,
       cellValues,
       volumeLookup,
-      columnIndexById
+      hargaLookup,
+      columnIndexById,
+      useHargaCalculation
     );
 
     // Generate labels
@@ -317,14 +345,16 @@ export class KurvaSChart {
       columns,
       volumeLookup,
       cellValues,
-      totalVolume
+      totalVolume || totalBiaya  // Use biaya for weighting if harga mode
     );
 
     // Calculate actual curve
+    // Phase 2F.0: Pass totalBiaya and calculation mode
     const actualSeries = this._calculateActualCurve(
       columns,
       columnTotals,
-      totalVolume
+      useHargaCalculation ? totalBiaya : totalVolume,
+      useHargaCalculation
     );
 
     // Build detail data for tooltips
@@ -340,16 +370,19 @@ export class KurvaSChart {
       planned: plannedSeries,
       actual: actualSeries,
       details,
-      totalVolume,
+      totalVolume,           // Legacy (for backward compatibility)
+      totalBiaya,            // Phase 2F.0: Total project cost
       columnTotals,
+      useHargaCalculation,   // Phase 2F.0: Flag indicating calculation method
     };
   }
 
   /**
    * Calculate column totals (weighted actual progress)
+   * Phase 2F.0: Support both volume and harga-based calculation
    * @private
    */
-  _calculateColumnTotals(columns, cellValues, volumeLookup, columnIndexById) {
+  _calculateColumnTotals(columns, cellValues, volumeLookup, hargaLookup, columnIndexById, useHargaCalculation) {
     const columnTotals = new Array(columns.length).fill(0);
 
     cellValues.forEach((value, key) => {
@@ -365,8 +398,15 @@ export class KurvaSChart {
         return;
       }
 
-      const pekerjaanVolume = getVolumeForPekerjaan(volumeLookup, pekerjaanId, 1);
-      columnTotals[columnIndex] += pekerjaanVolume * (percent / 100);
+      if (useHargaCalculation) {
+        // Phase 2F.0: Harga-weighted calculation
+        const pekerjaanHarga = getHargaForPekerjaan(hargaLookup, pekerjaanId, 0);
+        columnTotals[columnIndex] += pekerjaanHarga * (percent / 100);
+      } else {
+        // Legacy: Volume-weighted calculation
+        const pekerjaanVolume = getVolumeForPekerjaan(volumeLookup, pekerjaanId, 1);
+        columnTotals[columnIndex] += pekerjaanVolume * (percent / 100);
+      }
     });
 
     return columnTotals;
@@ -617,29 +657,31 @@ export class KurvaSChart {
   }
 
   /**
-   * Calculate actual curve (volume-weighted from assignments)
+   * Calculate actual curve (weighted from assignments)
+   * Phase 2F.0: Support both volume and harga-weighted calculation
    *
    * ALGORITHM:
    * For each column, calculate weighted actual progress:
-   * 1. Weight each pekerjaan's progress by its volume
-   * 2. Sum to get total actual volume for this period
+   * 1. Weight each pekerjaan's progress by its volume OR harga
+   * 2. Sum to get total actual volume/harga for this period
    * 3. Accumulate across periods for cumulative curve
-   * 4. Convert to percentage of total project volume
+   * 4. Convert to percentage of total project volume/harga
    *
    * @private
    * @param {Array} columns - Time columns
    * @param {Array<number>} columnTotals - Weighted progress per column
-   * @param {number} totalVolume - Total project volume
+   * @param {number} total - Total project volume or harga
+   * @param {boolean} useHargaCalculation - Whether using harga mode
    * @returns {Array<number>} Actual percentages
    */
-  _calculateActualCurve(columns, columnTotals, totalVolume) {
+  _calculateActualCurve(columns, columnTotals, total, useHargaCalculation = false) {
     const actualSeries = [];
-    let cumulativeActualVolume = 0;
+    let cumulativeActual = 0;
 
     columns.forEach((col, index) => {
-      cumulativeActualVolume += columnTotals[index] || 0;
-      const actualPercent = totalVolume > 0
-        ? Math.min(100, Math.max(0, (cumulativeActualVolume / totalVolume) * 100))
+      cumulativeActual += columnTotals[index] || 0;
+      const actualPercent = total > 0
+        ? Math.min(100, Math.max(0, (cumulativeActual / total) * 100))
         : 0;
       actualSeries.push(Number(actualPercent.toFixed(2)));
     });
@@ -764,6 +806,7 @@ export class KurvaSChart {
 
   /**
    * Format tooltip content
+   * Phase 2F.0: Show currency amounts if using harga calculation
    * @private
    */
   _formatTooltip(params, data, colors) {
@@ -779,6 +822,18 @@ export class KurvaSChart {
     // Format dates
     const start = this._formatDateLabel(detail.start);
     const end = this._formatDateLabel(detail.end);
+
+    // Phase 2F.0: Calculate currency amounts if using harga calculation
+    const useHarga = data.useHargaCalculation && data.totalBiaya > 0;
+    let plannedAmount = '';
+    let actualAmount = '';
+
+    if (useHarga) {
+      const plannedRp = (data.totalBiaya * planned) / 100;
+      const actualRp = (data.totalBiaya * actual) / 100;
+      plannedAmount = formatRupiah(plannedRp);
+      actualAmount = formatRupiah(actualRp);
+    }
 
     // Determine variance status and color
     let varianceText = '';
@@ -800,8 +855,12 @@ export class KurvaSChart {
       `<strong>${label}</strong>`,
       start && end ? `<div style="font-size:0.85em;color:#6b7280;margin:4px 0;">Periode: ${start} - ${end}</div>` : '',
       '<div style="margin-top:8px;">',
-      `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong></div>`,
-      `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong></div>`,
+      useHarga
+        ? `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${plannedAmount})</span></div>`
+        : `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong></div>`,
+      useHarga
+        ? `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${actualAmount})</span></div>`
+        : `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong></div>`,
       `<div style="margin:4px 0;color:${varianceColor};">Variance: <strong>${varianceText}</strong></div>`,
       '</div>',
     ].filter(Boolean).join('');

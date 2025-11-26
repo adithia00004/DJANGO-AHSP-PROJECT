@@ -14,6 +14,7 @@ import decimal
 
 from .forms import ProjectForm, ProjectFilterForm, UploadProjectForm
 from .models import Project
+from detail_project.progress_utils import reset_project_progress
 
 import openpyxl
 
@@ -262,10 +263,22 @@ def project_detail(request, pk):
 @login_required
 def project_edit(request, pk):
     project = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
+    original_start = project.tanggal_mulai
     if request.method == 'POST':
         form = ProjectForm(request.POST, instance=project)
         if form.is_valid():
-            form.save()
+            new_start = form.cleaned_data.get('tanggal_mulai')
+            start_changed = (original_start or None) != (new_start or None)
+
+            with transaction.atomic():
+                updated_project = form.save()
+                if start_changed:
+                    reset_project_progress(updated_project, regenerate_weekly=True)
+                    messages.warning(
+                        request,
+                        'Tanggal mulai berubah. Semua progress direset dan periode weekly dihitung ulang.'
+                    )
+
             messages.success(request, 'Project berhasil diperbarui.')
             return redirect(_get_safe_next(request))
     else:

@@ -632,6 +632,43 @@ class TestIntegrationE2E:
         assert data['ok'] is False
         assert 'validation_errors' in data
 
+    def test_validation_includes_existing_progress(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
+        """
+        Existing weekly progress + new payload > 100% must be rejected even if payload total <= 100%.
+        Ensures backend re-checks canonical totals instead of hanya melihat delta baru.
+        """
+        client.force_login(project_sunday_start.owner)
+
+        # Seed existing week with 70%
+        week_start = project_sunday_start.tanggal_mulai
+        week_end = week_start + timedelta(days=6)
+        PekerjaanProgressWeekly.objects.create(
+            pekerjaan=test_pekerjaan,
+            project=project_sunday_start,
+            week_number=1,
+            week_start_date=week_start,
+            week_end_date=week_end,
+            proportion=Decimal('70.00')
+        )
+
+        url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 40.0},
+            ]
+        }
+        response = client.post(url, payload, content_type='application/json')
+        assert response.status_code == 400
+        data = response.json()
+        assert data['ok'] is False
+        assert 'validation_errors' in data
+        assert any(err.get('pekerjaan_id') == test_pekerjaan.id for err in data['validation_errors'])
+
+        # Ensure DB rolled back (only original row exists)
+        remaining = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
+        assert remaining.count() == 1
+        assert float(remaining[0].proportion) == 70.0
+
     def test_zero_progress_allowed(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
         """Nilai 0% diperbolehkan untuk minggu tertentu selama total <= 100%."""
         client.force_login(project_sunday_start.owner)

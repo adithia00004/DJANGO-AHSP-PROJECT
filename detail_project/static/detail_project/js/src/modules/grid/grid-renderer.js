@@ -105,6 +105,46 @@ export class GridRenderer {
     console.log('[GridRenderer] Initialized');
   }
 
+  _getDisplayColumns() {
+    if (Array.isArray(this.state?.activeTimeColumns) && this.state.activeTimeColumns.length > 0) {
+      return this.state.activeTimeColumns;
+    }
+
+    if (Array.isArray(this.state?.timeColumns)) {
+      return this.state.timeColumns;
+    }
+
+    return [];
+  }
+
+  _formatDisplayValue(nodeId, percentValue, referenceValue = percentValue) {
+    const numericValue = Number(percentValue);
+    const numericReference = Number(referenceValue);
+    const shouldDisplay = (numericValue > 0 && Number.isFinite(numericValue)) ||
+      (numericValue === 0 && Number.isFinite(numericReference) && numericReference > 0);
+    if (!shouldDisplay) {
+      return '';
+    }
+
+    const displayMode = (this.state?.displayMode || 'percentage').toLowerCase();
+    if (displayMode === 'volume') {
+      const volumeMap = this.state?.volumeMap;
+      let totalVolume = 0;
+      if (volumeMap instanceof Map && volumeMap.has(nodeId)) {
+        totalVolume = Number(volumeMap.get(nodeId)) || 0;
+      } else if (volumeMap && typeof volumeMap === 'object' && volumeMap[nodeId]) {
+        totalVolume = Number(volumeMap[nodeId]) || 0;
+      }
+      if (!Number.isFinite(totalVolume) || totalVolume <= 0) {
+        return `<span class="cell-value percentage">${numericValue.toFixed(1)}</span>`;
+      }
+      const volValue = ((numericValue / 100) * totalVolume).toFixed(2);
+      return `<span class="cell-value volume">${volValue}</span>`;
+    }
+
+    return `<span class="cell-value percentage">${numericValue.toFixed(1)}</span>`;
+  }
+
   // =======================================================================
   // MAIN RENDERING
   // =======================================================================
@@ -254,7 +294,8 @@ export class GridRenderer {
     const rowClass = rowClasses.join(' ').trim();
 
     // Render time cells for each column
-    const timeCells = (this.state.timeColumns || [])
+    const timeColumns = this._getDisplayColumns();
+    const timeCells = timeColumns
       .map((col) => this._renderTimeCell(node, col))
       .join('');
 
@@ -289,12 +330,35 @@ export class GridRenderer {
       return `<td class="time-cell readonly" data-node-id="${node.id}" data-col-id="${column.id}"></td>`;
     }
 
+    if (Array.isArray(column.childColumns) && column.childColumns.length > 0) {
+      const aggregatedValue = column.childColumns.reduce((sum, childColumn) => {
+        const childId = childColumn.fieldId || childColumn.id;
+        const saved = this._getAssignmentValue(`${node.id}-${childId}`);
+        const { value } = this.getEffectiveCellValue(node.id, childId, saved);
+        return sum + (Number(value) || 0);
+      }, 0);
+
+      const displayValue = this._formatDisplayValue(node.id, aggregatedValue, aggregatedValue);
+      const dataValue = Number.isFinite(aggregatedValue) ? aggregatedValue.toFixed(2) : '';
+      return `<td class="time-cell readonly monthly"
+                data-node-id="${node.id}"
+                data-col-id="${column.id}"
+                data-value="${dataValue}"
+                tabindex="-1">
+                ${displayValue}
+              </td>`;
+    }
+
     const cellKey = `${node.id}-${column.id}`;
     const savedValue = this._getAssignmentValue(cellKey);
-    const { value: currentValue, modifiedValue } = this.getEffectiveCellValue(node.id, column.id, savedValue);
+    const { value: currentValue, modifiedValue} = this.getEffectiveCellValue(node.id, column.id, savedValue);
+
+    // Determine column type (weekly or monthly)
+    const columnMode = (column.generationMode || column.type || '').toLowerCase();
+    const columnTypeClass = (columnMode === 'monthly') ? 'monthly' : 'weekly';
 
     // Build cell classes
-    let cellClasses = 'time-cell editable';
+    let cellClasses = `time-cell editable ${columnTypeClass}`;
     if (savedValue > 0) {
       cellClasses += ' saved';
     }
@@ -302,21 +366,7 @@ export class GridRenderer {
       cellClasses += ' modified';
     }
 
-    // Build display value
-    let displayValue = '';
-    if (currentValue > 0 || (currentValue === 0 && savedValue > 0)) {
-      if (this.state.displayMode === 'volume') {
-        // Volume mode: show calculated volume
-        const volume = this.state.volumeMap && this.state.volumeMap.has(node.id)
-          ? this.state.volumeMap.get(node.id)
-          : 0;
-        const volValue = (volume * currentValue / 100).toFixed(2);
-        displayValue = `<span class="cell-value volume">${volValue}</span>`;
-      } else {
-        // Percentage mode: show percentage
-        displayValue = `<span class="cell-value percentage">${Number(currentValue).toFixed(1)}</span>`;
-      }
-    }
+    const displayValue = this._formatDisplayValue(node.id, currentValue, savedValue);
 
     return `<td class="${cellClasses}"
                 data-node-id="${node.id}"
@@ -343,17 +393,18 @@ export class GridRenderer {
    * @returns {HTMLElement|string} Populated header row or 'legacy' if invalid
    */
   renderTimeHeader(headerRow) {
-    if (!headerRow || !Array.isArray(this.state.timeColumns)) {
+    const timeColumns = this._getDisplayColumns();
+    if (!headerRow || timeColumns.length === 0) {
       console.warn('[GridRenderer] Invalid header row or time columns');
       return 'legacy';
     }
 
-    console.log(`[GridRenderer] Rendering ${this.state.timeColumns.length} time headers`);
+    console.log(`[GridRenderer] Rendering ${timeColumns.length} time headers`);
 
     headerRow.innerHTML = '';
     const fragment = document.createDocumentFragment();
 
-    this.state.timeColumns.forEach((col) => {
+    timeColumns.forEach((col) => {
       const th = document.createElement('th');
       th.dataset.colId = col.id;
 
@@ -362,21 +413,15 @@ export class GridRenderer {
       const columnMode = (col.generationMode || col.type || '').toLowerCase();
       const isMonthly = columnMode === 'monthly';
 
-      // Escape and format labels
-      let safeLine1 = this.escapeHtml(line1);
-      const safeLine2 = this.escapeHtml(line2);
+      // Add weekly/monthly class for column width standardization
+      th.className = isMonthly ? 'monthly' : 'weekly';
 
-      // Monthly mode: remove colon suffix
-      if (isMonthly && typeof safeLine1 === 'string') {
-        const colonIndex = safeLine1.indexOf(':');
-        if (colonIndex !== -1) {
-          safeLine1 = safeLine1.slice(0, colonIndex).trim();
-        }
-      }
+      const safeLine1 = this.escapeHtml(line1);
+      const safeLine2 = this.escapeHtml(line2);
 
       // Build header content
       const headerParts = [`<span class="time-header__label">${safeLine1}</span>`];
-      if (line2 && !isMonthly) {
+      if (line2) {
         headerParts.push(`<span class="time-header__range">${safeLine2}</span>`);
       }
       th.innerHTML = `<div class="time-header">${headerParts.join('')}</div>`;

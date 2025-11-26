@@ -76,7 +76,8 @@
      data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/"
      data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
-     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}">
+     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
+     data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">

@@ -676,18 +676,37 @@ class PekerjaanProgressWeekly(models.Model):
         help_text="End date of this week"
     )
 
-    # Progress data
+    # Progress data - Dual fields for Planned vs Actual (Phase 2E.1)
+    planned_proportion = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(0), MaxValueValidator(100.00)],
+        help_text="Planned proportion of work (%) for this week. Range: 0 - 100.00"
+    )
+    actual_proportion = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100.00)],
+        help_text="Actual proportion of work (%) completed in this week. Range: 0 - 100.00"
+    )
+
+    # Legacy field - kept for backward compatibility during migration
     proportion = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         validators=[MinValueValidator(0), MaxValueValidator(100.00)],
-        help_text="Proportion of work (%) completed in this week. Range: 0 - 100.00"
+        help_text="[DEPRECATED] Use planned_proportion instead. Range: 0 - 100.00"
     )
 
     # Metadata
     notes = models.TextField(
         blank=True,
         help_text="Optional notes for this week's progress"
+    )
+    actual_updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp when actual_proportion was last updated"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -704,20 +723,31 @@ class PekerjaanProgressWeekly(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} ({self.proportion}%)"
+        return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} (Planned: {self.planned_proportion}%, Actual: {self.actual_proportion}%)"
 
     def clean(self):
-        """Validation"""
-        if self.proportion < 0 or self.proportion > 100:
-            raise ValidationError({
-                'proportion': 'Proportion must be between 0% - 100%'
-            })
+        """Validation for planned and actual proportions"""
+        errors = {}
+
+        # Validate planned_proportion
+        if self.planned_proportion < 0 or self.planned_proportion > 100:
+            errors['planned_proportion'] = 'Planned proportion must be between 0% - 100%'
+
+        # Validate actual_proportion
+        if self.actual_proportion < 0 or self.actual_proportion > 100:
+            errors['actual_proportion'] = 'Actual proportion must be between 0% - 100%'
+
+        # Validate legacy proportion field (for backward compatibility)
+        if self.proportion is not None:
+            if self.proportion < 0 or self.proportion > 100:
+                errors['proportion'] = 'Proportion must be between 0% - 100%'
 
         # Validate week dates
         if self.week_end_date < self.week_start_date:
-            raise ValidationError({
-                'week_end_date': 'Week end date must be >= start date'
-            })
+            errors['week_end_date'] = 'Week end date must be >= start date'
+
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         """Auto-populate project field from pekerjaan"""

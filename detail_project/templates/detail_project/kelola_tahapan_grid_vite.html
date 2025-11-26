@@ -64,6 +64,19 @@
       <label class="btn btn-outline-primary" for="scale-custom">Custom</label>
     </div>
 
+    <!-- Progress Mode Tabs (Phase 2E.1: Planned vs Actual) -->
+    <div class="btn-group btn-group-sm progress-mode-toggle ms-2" role="group">
+      <input type="radio" class="btn-check" name="progressMode" id="mode-planned" value="planned" checked>
+      <label class="btn btn-outline-info" for="mode-planned">
+        <i class="bi bi-calendar-check"></i> Perencanaan
+      </label>
+
+      <input type="radio" class="btn-check" name="progressMode" id="mode-actual" value="actual">
+      <label class="btn btn-outline-warning" for="mode-actual">
+        <i class="bi bi-clipboard-data"></i> Realisasi
+      </label>
+    </div>
+
     <!-- Display Mode Toggle -->
     <div class="btn-group btn-group-sm display-mode-toggle ms-2" role="group">
       <input type="radio" class="btn-check" name="displayMode" id="mode-percentage" value="percentage" checked>
@@ -111,7 +124,12 @@
      data-enable-ag-grid="{{ enable_ag_grid|yesno:'true,false' }}"
      data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
-     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}">
+     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
+     data-week-start-day="{{ project.week_start_day|default:0 }}"
+     data-week-end-day="{{ project.week_end_day|default:6 }}"
+     data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}"
+     data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
+     data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">

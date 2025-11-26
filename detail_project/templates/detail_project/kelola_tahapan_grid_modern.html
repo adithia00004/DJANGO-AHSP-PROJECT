@@ -11,6 +11,7 @@
 <!-- Core Styles -->
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/kelola_tahapan_grid.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/toolbar-responsive.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/validation-enhancements.css' %}">
 
 <!-- AG Grid CSS (always load, minimal overhead) -->
@@ -23,86 +24,205 @@
 {% endblock %}
 
 {% block dp_content %}
-<!-- Toolbar -->
-<div id="kt-toolbar" class="grid-toolbar dp-sticky-topbar dp-layer-toolbar bg-body border-bottom">
-  <div class="toolbar-left">
-    <h1 class="toolbar-title">Jadwal Pekerjaan (Modern)</h1>
-    <span class="toolbar-subtitle">{{ project.nama }}</span>
-  </div>
-
-  <div class="toolbar-right">
-    <!-- Time Scale Selector -->
-    <div class="btn-group btn-group-sm time-scale-selector" role="group">
-      <input type="radio" class="btn-check" name="timeScale" id="scale-daily" value="daily">
-      <label class="btn btn-outline-primary" for="scale-daily">Daily</label>
-
-      <input type="radio" class="btn-check" name="timeScale" id="scale-weekly" value="weekly" checked>
-      <label class="btn btn-outline-primary" for="scale-weekly">Weekly</label>
-
-      <input type="radio" class="btn-check" name="timeScale" id="scale-monthly" value="monthly">
-      <label class="btn btn-outline-primary" for="scale-monthly">Monthly</label>
-
-      <input type="radio" class="btn-check" name="timeScale" id="scale-custom" value="custom">
-      <label class="btn btn-outline-primary" for="scale-custom">Custom</label>
-    </div>
-
-    <!-- Display Mode Toggle -->
-    <div class="btn-group btn-group-sm display-mode-toggle ms-2" role="group">
-      <input type="radio" class="btn-check" name="displayMode" id="mode-percentage" value="percentage" checked>
-      <label class="btn btn-outline-success" for="mode-percentage">
-        <i class="bi bi-percent"></i> %
-      </label>
-
-      <input type="radio" class="btn-check" name="displayMode" id="mode-volume" value="volume">
-      <label class="btn btn-outline-success" for="mode-volume">
-        <i class="bi bi-123"></i> Vol
-      </label>
-    </div>
-
-    {% with start_day=project.week_start_day|default:0 end_day=project.week_end_day|default:6 %}
-    <!-- Week Boundary Controls -->
-    <div class="d-flex align-items-end ms-3 gap-2 week-boundary-controls">
-      <div>
-        <label for="week-start-day-select" class="form-label text-muted mb-1 small">Week Start</label>
-        <select class="form-select form-select-sm" id="week-start-day-select">
-          <option value="0" {% if start_day == 0 %}selected{% endif %}>Senin</option>
-          <option value="1" {% if start_day == 1 %}selected{% endif %}>Selasa</option>
-          <option value="2" {% if start_day == 2 %}selected{% endif %}>Rabu</option>
-          <option value="3" {% if start_day == 3 %}selected{% endif %}>Kamis</option>
-          <option value="4" {% if start_day == 4 %}selected{% endif %}>Jumat</option>
-          <option value="5" {% if start_day == 5 %}selected{% endif %}>Sabtu</option>
-          <option value="6" {% if start_day == 6 %}selected{% endif %}>Minggu</option>
-        </select>
-      </div>
-      <div>
-        <label for="week-end-day-select" class="form-label text-muted mb-1 small">Week End</label>
-        <select class="form-select form-select-sm" id="week-end-day-select">
-          <option value="0" {% if end_day == 0 %}selected{% endif %}>Senin</option>
-          <option value="1" {% if end_day == 1 %}selected{% endif %}>Selasa</option>
-          <option value="2" {% if end_day == 2 %}selected{% endif %}>Rabu</option>
-          <option value="3" {% if end_day == 3 %}selected{% endif %}>Kamis</option>
-          <option value="4" {% if end_day == 4 %}selected{% endif %}>Jumat</option>
-          <option value="5" {% if end_day == 5 %}selected{% endif %}>Sabtu</option>
-          <option value="6" {% if end_day == 6 %}selected{% endif %}>Minggu</option>
-        </select>
+<!-- Toolbar - Responsive Redesign (Phase 2E.1+) -->
+<div id="kt-toolbar" class="toolbar-container dp-sticky-topbar dp-layer-toolbar">
+  <!-- Primary Row (Always Visible) -->
+  <div class="toolbar-primary">
+    <div class="toolbar-left">
+      <h1 class="toolbar-title">Jadwal Pekerjaan</h1>
+      <div class="toolbar-subtitle-row">
+        <span class="toolbar-subtitle">{{ project.nama }}</span>
+        <span id="progress-mode-indicator" class="badge bg-info">
+          Mode: Perencanaan
+        </span>
       </div>
     </div>
-    {% endwith %}
 
-    <!-- Action Buttons -->
-    <button type="button" class="btn btn-danger btn-sm ms-2" id="btn-reset-progress" title="Reset all progress to 0">
-      <i class="bi bi-arrow-counterclockwise"></i>
-    </button>
-    <button type="button" class="btn btn-primary btn-sm" id="btn-export-excel" title="Export to Excel">
-      <i class="bi bi-file-earmark-excel"></i>
-    </button>
-    <button type="button" class="btn btn-success btn-sm" id="save-button" title="Save all changes">
-      <i class="bi bi-save"></i> Save
-    </button>
-    <button type="button" class="btn btn-outline-secondary btn-sm" id="refresh-button" title="Refresh data from server">
-      <i class="bi bi-arrow-clockwise"></i>
-    </button>
+      <!-- Progress Mode Tabs (Phase 2E.1 - Always Visible) -->
+      <div class="btn-group btn-group-sm progress-mode-tabs" role="tablist" aria-label="Progress Mode Selection">
+        <input type="radio" class="btn-check" name="progressMode" id="mode-planned" value="planned" checked>
+        <label class="btn btn-outline-info" for="mode-planned"
+               role="tab" aria-selected="true" aria-controls="grid-content"
+               title="Mode Perencanaan: Input progress yang direncanakan">
+          <i class="bi bi-calendar-check" aria-hidden="true"></i>
+          <span class="btn-text">Perencanaan</span>
+        </label>
+
+        <input type="radio" class="btn-check" name="progressMode" id="mode-actual" value="actual">
+        <label class="btn btn-outline-warning" for="mode-actual"
+               role="tab" aria-selected="false" aria-controls="grid-content"
+               title="Mode Realisasi: Input progress yang sudah terealisasi">
+          <i class="bi bi-clipboard-data" aria-hidden="true"></i>
+          <span class="btn-text">Realisasi</span>
+        </label>
+      </div>
+
+      <!-- Display Mode Toggle -->
+      <div class="btn-group btn-group-sm display-mode-toggle" role="group">
+        <input type="radio" class="btn-check" name="displayMode" id="mode-percentage" value="percentage" checked>
+        <label class="btn btn-outline-success" for="mode-percentage" title="Show as percentage">
+          <i class="bi bi-percent" aria-hidden="true"></i>
+          <span class="btn-text d-none d-md-inline">%</span>
+        </label>
+
+        <input type="radio" class="btn-check" name="displayMode" id="mode-volume" value="volume">
+        <label class="btn btn-outline-success" for="mode-volume" title="Show as volume">
+          <i class="bi bi-123" aria-hidden="true"></i>
+          <span class="btn-text d-none d-md-inline">Vol</span>
+        </label>
+      </div>
+
+      <!-- Primary Action Buttons -->
+      <button type="button" class="btn btn-primary btn-sm btn-save" id="save-button"
+              aria-label="Save all changes" title="Save all changes">
+        <i class="bi bi-save" aria-hidden="true"></i>
+        <span class="btn-text">Save</span>
+      </button>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="refresh-button"
+              aria-label="Refresh data from server" title="Refresh data">
+        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+      </button>
+
+      <!-- More Menu (Mobile/Tablet) -->
+      <div class="dropdown toolbar-more">
+        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                data-bs-toggle="dropdown" aria-expanded="false" aria-label="More options">
+          <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+          <li class="dropdown-header">Actions</li>
+          <li>
+            <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-reset-progress-mobile">
+              <i class="bi bi-arrow-counterclockwise text-danger"></i> Reset Progress
+            </button>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          <li class="dropdown-header">Export</li>
+          <li>
+            <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-csv">
+              <i class="bi bi-file-earmark-spreadsheet text-success"></i> Export CSV
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-xlsx">
+              <i class="bi bi-file-earmark-excel text-success"></i> Export XLSX
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-pdf">
+              <i class="bi bi-file-earmark-pdf text-danger"></i> Export PDF
+            </button>
+          </li>
+          <li>
+            <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-word">
+              <i class="bi bi-file-earmark-word text-primary"></i> Export Word
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
+
+  <!-- Secondary Row (Collapsible - Desktop Only) -->
+  <div class="toolbar-secondary collapse show" id="toolbarSecondary">
+    <div class="toolbar-controls-group">
+      <!-- Time Scale Selector -->
+      <div class="control-group">
+        <label class="control-label">Time Scale</label>
+        <div class="btn-group btn-group-sm time-scale-selector" role="group">
+          <input type="radio" class="btn-check" name="timeScale" id="scale-daily" value="daily">
+          <label class="btn btn-outline-primary" for="scale-daily">Daily</label>
+
+          <input type="radio" class="btn-check" name="timeScale" id="scale-weekly" value="weekly" checked>
+          <label class="btn btn-outline-primary" for="scale-weekly">Weekly</label>
+
+          <input type="radio" class="btn-check" name="timeScale" id="scale-monthly" value="monthly">
+          <label class="btn btn-outline-primary" for="scale-monthly">Monthly</label>
+
+          <input type="radio" class="btn-check" name="timeScale" id="scale-custom" value="custom">
+          <label class="btn btn-outline-primary" for="scale-custom">Custom</label>
+        </div>
+      </div>
+
+      {% with start_day=project.week_start_day|default:0 end_day=project.week_end_day|default:6 %}
+      <!-- Week Boundary Controls -->
+      <div class="control-group week-boundary-controls">
+        <label class="control-label">Week Boundaries</label>
+        <div class="d-flex gap-2">
+          <select class="form-select form-select-sm" id="week-start-day-select" aria-label="Week start day">
+            <option value="0" {% if start_day == 0 %}selected{% endif %}>Sen</option>
+            <option value="1" {% if start_day == 1 %}selected{% endif %}>Sel</option>
+            <option value="2" {% if start_day == 2 %}selected{% endif %}>Rab</option>
+            <option value="3" {% if start_day == 3 %}selected{% endif %}>Kam</option>
+            <option value="4" {% if start_day == 4 %}selected{% endif %}>Jum</option>
+            <option value="5" {% if start_day == 5 %}selected{% endif %}>Sab</option>
+            <option value="6" {% if start_day == 6 %}selected{% endif %}>Min</option>
+          </select>
+          <span class="align-self-center text-muted">–</span>
+          <select class="form-select form-select-sm" id="week-end-day-select" aria-label="Week end day">
+            <option value="0" {% if end_day == 0 %}selected{% endif %}>Sen</option>
+            <option value="1" {% if end_day == 1 %}selected{% endif %}>Sel</option>
+            <option value="2" {% if end_day == 2 %}selected{% endif %}>Rab</option>
+            <option value="3" {% if end_day == 3 %}selected{% endif %}>Kam</option>
+            <option value="4" {% if end_day == 4 %}selected{% endif %}>Jum</option>
+            <option value="5" {% if end_day == 5 %}selected{% endif %}>Sab</option>
+            <option value="6" {% if end_day == 6 %}selected{% endif %}>Min</option>
+          </select>
+        </div>
+      </div>
+      {% endwith %}
+
+      <!-- Secondary Actions -->
+      <div class="control-group ms-auto">
+        <button type="button" class="btn btn-danger btn-sm" id="btn-reset-progress"
+                title="Reset progress (mode aktif) ke 0% - data mode lain tetap aman">
+          <i class="bi bi-arrow-counterclockwise"></i>
+          <span class="btn-text">Reset</span>
+        </button>
+
+        <div class="btn-group">
+          <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle"
+                  data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-download"></i>
+            <span class="btn-text">Export</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-csv-alt">
+                <i class="bi bi-file-earmark-spreadsheet text-success"></i> Export CSV
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-xlsx-alt">
+                <i class="bi bi-file-earmark-excel text-success"></i> Export XLSX
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-pdf-alt">
+                <i class="bi bi-file-earmark-pdf text-danger"></i> Export PDF
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-export-word-alt">
+                <i class="bi bi-file-earmark-word text-primary"></i> Export Word
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toggle Button for Secondary Row -->
+  <button class="btn btn-link btn-sm toolbar-toggle d-none d-lg-block"
+          data-bs-toggle="collapse"
+          data-bs-target="#toolbarSecondary"
+          aria-expanded="true"
+          aria-controls="toolbarSecondary">
+    <i class="bi bi-chevron-up"></i>
+    <span class="toggle-text">Hide Advanced Options</span>
+  </button>
 </div>
 
 <!-- Main App Container -->
@@ -122,7 +242,9 @@
      data-default-input-mode="percentage"
      data-week-start-day="{{ project.week_start_day|default:0 }}"
      data-week-end-day="{{ project.week_end_day|default:6 }}"
-     data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}">
+     data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}"
+     data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
+     data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
@@ -212,14 +334,14 @@
     <!-- Gantt View Tab -->
     <div class="tab-pane fade" id="gantt-view" role="tabpanel" aria-labelledby="gantt-tab">
       <div id="gantt-container" style="overflow: auto; padding: 20px; min-height: 600px;">
-        <!-- Gantt chart rendered by JavaScript -->
+        <div id="gantt-chart" style="min-height: 520px;"></div>
       </div>
     </div>
 
     <!-- S-Curve View Tab -->
     <div class="tab-pane fade" id="scurve-view" role="tabpanel" aria-labelledby="scurve-tab">
       <div id="scurve-container" style="height: 600px; padding: 20px;">
-        <!-- S-Curve chart rendered by JavaScript -->
+        <div id="scurve-chart" style="width: 100%; height: 560px;"></div>
       </div>
     </div>
   </div>
@@ -288,6 +410,9 @@
     window.__loadLocalEcharts();
   }
 </script>
+
+<!-- Unified Export Manager -->
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
 
 <!-- MODERN VITE MODULE LOADING -->
 {% if DEBUG and use_vite_dev_server %}
