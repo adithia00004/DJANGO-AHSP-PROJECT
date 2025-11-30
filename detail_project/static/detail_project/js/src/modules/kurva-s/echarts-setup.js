@@ -29,6 +29,7 @@ import {
   createResizeHandler,
   setupResizeObserver,
 } from '../shared/chart-utils.js';
+import { ensureWeekZeroDataset } from './week-zero-helpers.js';
 
 // =========================================================================
 // CONSTANTS
@@ -42,6 +43,7 @@ const DEFAULT_OPTIONS = {
   smoothCurves: true,
   showArea: true,
   responsive: true,
+  enableCostView: true,  // Phase 1: Enable cost-based view toggle
 };
 
 // =========================================================================
@@ -80,6 +82,11 @@ export class KurvaSChart {
     // Data cache
     this.currentDataset = null;
     this.currentOption = null;
+
+    // Phase 1: Cost view support
+    this.viewMode = 'progress';  // 'progress' or 'cost'
+    this.costData = null;        // Cost data from API
+    this.isLoadingCostData = false;
 
     console.log(LOG_PREFIX, 'Chart instance created with options:', this.options);
   }
@@ -159,6 +166,189 @@ export class KurvaSChart {
       console.error(LOG_PREFIX, 'Update failed:', error);
       return false;
     }
+  }
+
+  /**
+   * Phase 1: Fetch cost data from API
+   * @returns {Promise<Object|null>} Cost data or null if failed
+   */
+  async fetchCostData() {
+    if (!this.options.enableCostView) {
+      console.log(LOG_PREFIX, 'Cost view disabled');
+      return null;
+    }
+
+    const projectId = this.state.projectId;
+    if (!projectId) {
+      console.warn(LOG_PREFIX, 'No project ID available');
+      return null;
+    }
+
+    if (this.isLoadingCostData) {
+      console.log(LOG_PREFIX, 'Cost data already loading...');
+      return null;
+    }
+
+    try {
+      this.isLoadingCostData = true;
+      console.log(LOG_PREFIX, `Fetching cost data for project ${projectId}...`);
+
+      const url = `/detail_project/api/v2/project/${projectId}/kurva-s-harga/`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Cache cost data
+      this.costData = data;
+
+      console.log(LOG_PREFIX, 'Cost data loaded:', {
+        totalCost: formatRupiah(data.summary?.total_project_cost || 0),
+        weeks: data.summary?.total_weeks || 0,
+        plannedWeeks: data.weeklyData?.planned?.length || 0,
+        actualWeeks: data.weeklyData?.actual?.length || 0,
+      });
+
+      return data;
+    } catch (error) {
+      console.error(LOG_PREFIX, 'Failed to fetch cost data:', error);
+      return null;
+    } finally {
+      this.isLoadingCostData = false;
+    }
+  }
+
+  /**
+   * Phase 1: Toggle between progress and cost view
+   * @param {string} mode - 'progress' or 'cost'
+   * @returns {boolean} Success status
+   */
+  async toggleView(mode = null) {
+    if (!this.options.enableCostView) {
+      console.warn(LOG_PREFIX, 'Cost view not enabled');
+      return false;
+    }
+
+    // Auto-toggle if no mode specified
+    const newMode = mode || (this.viewMode === 'progress' ? 'cost' : 'progress');
+
+    if (newMode !== 'progress' && newMode !== 'cost') {
+      console.error(LOG_PREFIX, 'Invalid view mode:', newMode);
+      return false;
+    }
+
+    console.log(LOG_PREFIX, `Switching view: ${this.viewMode} → ${newMode}`);
+
+    // If switching to cost view, fetch cost data first
+    if (newMode === 'cost' && !this.costData) {
+      const costData = await this.fetchCostData();
+      if (!costData) {
+        console.error(LOG_PREFIX, 'Failed to load cost data, staying in progress view');
+        return false;
+      }
+    }
+
+    // Update view mode
+    this.viewMode = newMode;
+
+    // Re-render chart
+    if (newMode === 'progress') {
+      // Use existing progress dataset
+      this.update();
+    } else {
+      // Use cost dataset
+      this.update(this._buildCostDataset());
+    }
+
+    console.log(LOG_PREFIX, `View switched to: ${newMode}`);
+    return true;
+  }
+
+  /**
+   * Phase 1: Build dataset for cost view
+   * @returns {Object} Cost dataset for chart
+   * @private
+   */
+  _buildCostDataset() {
+    if (!this.costData) {
+      console.error(LOG_PREFIX, 'No cost data available');
+      return null;
+    }
+
+    const weeklyData = this.costData.weeklyData;
+    const summary = this.costData.summary;
+    const evm = this.costData.evm;
+
+    if (evm && Array.isArray(evm.labels) && evm.labels.length > 0) {
+      const totalCost = evm.summary?.bac || summary?.total_project_cost || 0;
+      return ensureWeekZeroDataset({
+        labels: evm.labels,
+        planned: evm.pv_percent || [],
+        actual: evm.ev_percent || [],
+        acSeries: evm.ac_percent || evm.ev_percent || [],
+        details: {
+          totalCost,
+          weeks: weeklyData?.planned || [],
+          actualWeeks: weeklyData?.actual || [],
+          evmSummary: evm.summary,
+          evm,
+        },
+        evm,
+        totalBiaya: totalCost,
+        useHargaCalculation: true,
+        viewMode: 'cost',
+      });
+    }
+
+    // Extract labels (week identifiers)
+    const labels = (weeklyData.planned || []).map((w) => `W${w.week_number}`);
+
+    // Extract planned cumulative cost percentages
+    const plannedSeries = (weeklyData.planned || []).map((w) => w.cumulative_percent);
+
+    // Extract actual cumulative cost percentages
+    const actualSeries = (weeklyData.actual || []).map((w) => w.cumulative_percent);
+    const acSeries = actualSeries.length ? actualSeries : (weeklyData.earned || []).map((w) => w.cumulative_percent);
+
+    // Build details for tooltips
+    const details = {
+      totalCost: summary?.total_project_cost || 0,
+      plannedCost: summary?.planned_cost || 0,
+      actualCost: summary?.actual_cost || 0,
+      weeks: weeklyData.planned || [],
+      actualWeeks: weeklyData.actual || [],
+      viewMode: 'cost',
+    };
+
+    console.log(LOG_PREFIX, 'Cost dataset built:', {
+      labels: labels.length,
+      plannedPoints: plannedSeries.length,
+      actualPoints: actualSeries.length,
+      totalCost: formatRupiah(details.totalCost),
+    });
+
+    return ensureWeekZeroDataset({
+      labels,
+      planned: plannedSeries,
+      actual: actualSeries,
+      acSeries,
+      details,
+      totalBiaya: details.totalCost,
+      useHargaCalculation: true,
+      viewMode: 'cost',
+    });
   }
 
   /**
@@ -287,8 +477,52 @@ export class KurvaSChart {
     // Phase 2F.0: Build both volume and harga lookups
     const volumeLookup = buildVolumeLookup(this.state);
     const hargaLookup = buildHargaLookup(this.state);
-    const cellValues = buildCellValueMap(this.state);
-    const pekerjaanIds = collectPekerjaanIds(this.state, cellValues);
+
+    // Phase 0.5: Use StateManager.getAllCellsForMode() instead of buildCellValueMap()
+    // StateManager handles merging assignmentMap + modifiedCells with smart caching
+    // Planned curve = data from 'planned' mode
+    // Actual curve = data from 'actual' mode
+    const stateManager = this.state.stateManager;
+
+    if (!stateManager) {
+      console.error(LOG_PREFIX, 'StateManager not available, falling back to direct state access');
+      // Fallback for backward compatibility (should not happen after Phase 0.3)
+      const plannedState = this.state.plannedState || this.state;
+      const actualState = this.state.actualState || this.state;
+      var plannedCellValues = buildCellValueMap(plannedState);
+      var actualCellValues = buildCellValueMap(actualState);
+    } else {
+      // Phase 0.5: Use StateManager's optimized merge
+      var plannedCellValues = stateManager.getAllCellsForMode('planned');
+      var actualCellValues = stateManager.getAllCellsForMode('actual');
+    }
+
+    // Debug logging
+    console.log(LOG_PREFIX, 'Planned cell values:', plannedCellValues.size, 'cells');
+    console.log(LOG_PREFIX, 'Actual cell values:', actualCellValues.size, 'cells');
+
+    if (stateManager) {
+      // Phase 0.5: Log StateManager stats
+      const stats = stateManager.getStats();
+      console.log(LOG_PREFIX, 'StateManager stats:', {
+        currentMode: stats.currentMode,
+        planned: `${stats.planned.assignmentCount} assignments, ${stats.planned.modifiedCount} modified`,
+        actual: `${stats.actual.assignmentCount} assignments, ${stats.actual.modifiedCount} modified`
+      });
+    }
+
+    if (plannedCellValues.size > 0) {
+      console.log(LOG_PREFIX, 'Sample planned values:', Array.from(plannedCellValues.entries()).slice(0, 3));
+    }
+    if (actualCellValues.size > 0) {
+      console.log(LOG_PREFIX, 'Sample actual values:', Array.from(actualCellValues.entries()).slice(0, 3));
+    }
+
+    // Collect all pekerjaan IDs from both modes
+    const pekerjaanIds = new Set([
+      ...collectPekerjaanIds(this.state, plannedCellValues),
+      ...collectPekerjaanIds(this.state, actualCellValues)
+    ]);
 
     // Phase 2F.0: Calculate total biaya from state (provided by API)
     let totalBiaya = parseFloat(this.state.totalBiayaProject || 0);
@@ -326,33 +560,35 @@ export class KurvaSChart {
       columnIndexById.set(String(col.id), index);
     });
 
-    // Calculate column totals (weighted actual progress)
-    // Phase 2F.0: Pass harga lookup and calculation mode
-    const columnTotals = this._calculateColumnTotals(
+    // Generate labels
+    const labels = this._generateLabels(columns);
+
+    // Calculate planned curve using Perencanaan mode data
+    // Phase 2F.0: Pass harga lookup and calculation mode for planned curve
+    const plannedSeries = this._calculatePlannedCurve(
       columns,
-      cellValues,
+      volumeLookup,
+      hargaLookup,
+      plannedCellValues,  // Data from Perencanaan mode
+      useHargaCalculation ? totalBiaya : totalVolume,
+      columnIndexById,
+      useHargaCalculation
+    );
+
+    // Calculate actual curve using Realisasi mode data
+    // Phase 2F.0: Calculate column totals from actual cell values
+    const actualColumnTotals = this._calculateColumnTotals(
+      columns,
+      actualCellValues,  // Data from Realisasi mode
       volumeLookup,
       hargaLookup,
       columnIndexById,
       useHargaCalculation
     );
 
-    // Generate labels
-    const labels = this._generateLabels(columns);
-
-    // Calculate planned curve using best strategy
-    const plannedSeries = this._calculatePlannedCurve(
-      columns,
-      volumeLookup,
-      cellValues,
-      totalVolume || totalBiaya  // Use biaya for weighting if harga mode
-    );
-
-    // Calculate actual curve
-    // Phase 2F.0: Pass totalBiaya and calculation mode
     const actualSeries = this._calculateActualCurve(
       columns,
-      columnTotals,
+      actualColumnTotals,
       useHargaCalculation ? totalBiaya : totalVolume,
       useHargaCalculation
     );
@@ -365,16 +601,16 @@ export class KurvaSChart {
       actualSeries
     );
 
-    return {
+    return ensureWeekZeroDataset({
       labels,
       planned: plannedSeries,
       actual: actualSeries,
       details,
       totalVolume,           // Legacy (for backward compatibility)
       totalBiaya,            // Phase 2F.0: Total project cost
-      columnTotals,
+      columnTotals: actualColumnTotals,  // Use actual column totals for display
       useHargaCalculation,   // Phase 2F.0: Flag indicating calculation method
-    };
+    });
   }
 
   /**
@@ -451,15 +687,16 @@ export class KurvaSChart {
    * @private
    */
   _buildFallbackDataset() {
-    return {
+    return ensureWeekZeroDataset({
       labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
       planned: [0, 33, 66, 100],
       actual: [0, 20, 45, 70],
       details: [],
       totalVolume: 1,
       columnTotals: [],
-    };
+    });
   }
+
 
   // =========================================================================
   // PRIVATE METHODS - S-CURVE CALCULATIONS
@@ -467,35 +704,42 @@ export class KurvaSChart {
 
   /**
    * Calculate planned curve using best available strategy
+   * Phase 2F.0: Updated to support harga-based calculation
+   *
    * @private
    * @param {Array} columns - Time columns
    * @param {Map} volumeLookup - Volume lookup map
-   * @param {Map} cellValues - Cell values map
-   * @param {number} totalVolume - Total project volume
+   * @param {Map} hargaLookup - Harga lookup map (Phase 2F.0)
+   * @param {Map} cellValues - Cell values map (from grid input)
+   * @param {number} total - Total project volume or harga
+   * @param {Map} columnIndexById - Column ID to index mapping
+   * @param {boolean} useHargaCalculation - Whether to use harga-weighted calculation
    * @returns {Array<number>} Planned percentages
    */
-  _calculatePlannedCurve(columns, volumeLookup, cellValues, totalVolume) {
-    // Strategy 1: Volume-based (if assignments exist)
-    const hasAssignments = cellValues && cellValues.size > 0;
+  _calculatePlannedCurve(columns, volumeLookup, hargaLookup, cellValues, total, columnIndexById, useHargaCalculation) {
+    // Phase 2F.0: Check if we have planned data from grid
+    // Planned data should come from state.plannedState (Perencanaan mode)
+    const hasPlannedData = cellValues && cellValues.size > 0;
 
-    if (hasAssignments) {
-      const volumeBased = this._calculateVolumeBasedPlannedCurve(
+    if (hasPlannedData) {
+      // Strategy 1: Calculate from grid input (Perencanaan mode data)
+      // Use same harga-weighted calculation as actual curve
+      console.log(LOG_PREFIX, 'Calculating planned curve from grid input (Perencanaan mode)');
+
+      return this._calculateGridBasedPlannedCurve(
         columns,
-        volumeLookup,
         cellValues,
-        totalVolume
+        volumeLookup,
+        hargaLookup,
+        columnIndexById,
+        total,
+        useHargaCalculation
       );
-
-      // Validate result
-      if (volumeBased.length > 0 && volumeBased[volumeBased.length - 1] > 0) {
-        console.log(LOG_PREFIX, 'Using volume-based planned curve');
-        return volumeBased;
-      }
     }
 
-    // Strategy 2: Ideal S-curve (for new projects)
+    // Strategy 2: Ideal S-curve (for new projects without data)
     if (this.options.useIdealCurve) {
-      console.log(LOG_PREFIX, 'Using ideal sigmoid S-curve');
+      console.log(LOG_PREFIX, 'Using ideal sigmoid S-curve (no planned data yet)');
       return this._calculateIdealSCurve(columns, this.options.steepnessFactor);
     }
 
@@ -505,25 +749,64 @@ export class KurvaSChart {
       return this._calculateLinearPlannedCurve(columns);
     }
 
-    // Ultimate fallback
-    console.warn(LOG_PREFIX, 'No calculation strategy available');
-    return [];
+    // Ultimate fallback: empty curve
+    console.warn(LOG_PREFIX, 'No calculation strategy available, returning empty curve');
+    return new Array(columns.length).fill(0);
+  }
+
+  /**
+   * Calculate planned curve from grid input data (Perencanaan mode)
+   * Phase 2F.0: Uses same harga-weighted logic as actual curve
+   *
+   * ALGORITHM:
+   * For each time period (column):
+   *   1. Get all cell assignments for this period from grid
+   *   2. Calculate weighted progress using harga or volume
+   *   3. Accumulate to get cumulative planned progress
+   *   4. Convert to percentage of total project cost/volume
+   *
+   * This ensures planned and actual curves use consistent calculation method.
+   *
+   * @private
+   * @param {Array} columns - Time columns
+   * @param {Map} cellValues - Cell values map (from Perencanaan mode)
+   * @param {Map} volumeLookup - Volume lookup map
+   * @param {Map} hargaLookup - Harga lookup map
+   * @param {Map} columnIndexById - Column ID to index mapping
+   * @param {number} total - Total project volume or harga
+   * @param {boolean} useHargaCalculation - Whether to use harga-weighted calculation
+   * @returns {Array<number>} Planned percentages
+   */
+  _calculateGridBasedPlannedCurve(columns, cellValues, volumeLookup, hargaLookup, columnIndexById, total, useHargaCalculation) {
+    // Calculate column totals (same logic as actual curve)
+    const columnTotals = this._calculateColumnTotals(
+      columns,
+      cellValues,
+      volumeLookup,
+      hargaLookup,
+      columnIndexById,
+      useHargaCalculation
+    );
+
+    // Calculate cumulative planned curve
+    const plannedSeries = [];
+    let cumulativePlanned = 0;
+
+    columns.forEach((col, index) => {
+      cumulativePlanned += columnTotals[index] || 0;
+      const plannedPercent = total > 0
+        ? Math.min(100, Math.max(0, (cumulativePlanned / total) * 100))
+        : 0;
+      plannedSeries.push(Number(plannedPercent.toFixed(2)));
+    });
+
+    return plannedSeries;
   }
 
   /**
    * Calculate volume-based planned curve from pekerjaan assignments
-   *
-   * ALGORITHM:
-   * For each time period (column):
-   *   1. Identify pekerjaan that have assignments in this period
-   *   2. Sum their TOTAL volumes (not progress, full volume)
-   *   3. Accumulate to get cumulative planned volume
-   *   4. Convert to percentage of total project volume
-   *
-   * ASSUMPTION:
-   * If a pekerjaan is assigned to a period (even with partial progress),
-   * we assume the FULL volume of that pekerjaan should be completed
-   * by the end of that period according to the plan.
+   * DEPRECATED: Kept for backward compatibility, but not recommended.
+   * Use _calculateGridBasedPlannedCurve() instead.
    *
    * @private
    * @param {Array} columns - Time columns
@@ -714,9 +997,85 @@ export class KurvaSChart {
     const colors = getThemeColors();
     const data = dataset || this._buildFallbackDataset();
 
+    const isCostView = data.viewMode === 'cost';
+    const legendPrefix = isCostView ? 'Cost ' : '';
+    const yAxisLabel = isCostView ? '% of Total Cost' : 'Progress %';
+
+    const palette = [colors.plannedLine, colors.actualLine];
+    const legendEntries = [];
+    const seriesEntries = [];
+
+    if (isCostView && Array.isArray(data.acSeries)) {
+      const plannedName = 'Rencana (PV)';
+      const actualName = 'Realisasi (AC)';
+
+      legendEntries.push(plannedName);
+      legendEntries.push(actualName);
+
+      seriesEntries.push({
+        name: plannedName,
+        type: 'line',
+        smooth: this.options.smoothCurves,
+        data: data.planned,
+        lineStyle: {
+          color: colors.plannedLine,
+          width: 2,
+          type: 'dashed',
+        },
+        areaStyle: this.options.showArea ? { color: colors.plannedArea } : undefined,
+        symbolSize: 6,
+      });
+
+      const costColor = colors.costActualLine || colors.actualLine;
+      palette.push(costColor);
+      seriesEntries.push({
+        name: actualName,
+        type: 'line',
+        smooth: this.options.smoothCurves,
+        data: data.acSeries,
+        lineStyle: {
+          color: costColor,
+          width: 3,
+        },
+        areaStyle: this.options.showArea ? { color: colors.costActualArea || colors.actualArea } : undefined,
+        symbolSize: 7,
+      });
+    } else {
+      const plannedName = `${legendPrefix}Planned`;
+      const actualName = `${legendPrefix}Actual`;
+      legendEntries.push(plannedName, actualName);
+
+      seriesEntries.push({
+        name: plannedName,
+        type: 'line',
+        smooth: this.options.smoothCurves,
+        data: data.planned,
+        lineStyle: {
+          color: colors.plannedLine,
+          width: 2,
+          type: 'dashed',
+        },
+        areaStyle: this.options.showArea ? { color: colors.plannedArea } : undefined,
+        symbolSize: 6,
+      });
+
+      seriesEntries.push({
+        name: actualName,
+        type: 'line',
+        smooth: this.options.smoothCurves,
+        data: data.actual,
+        lineStyle: {
+          color: colors.actualLine,
+          width: 3,
+        },
+        areaStyle: this.options.showArea ? { color: colors.actualArea } : undefined,
+        symbolSize: 7,
+      });
+    }
+
     return {
       backgroundColor: 'transparent',
-      color: [colors.plannedLine, colors.actualLine],
+      color: palette,
 
       tooltip: {
         trigger: 'axis',
@@ -724,7 +1083,7 @@ export class KurvaSChart {
       },
 
       legend: {
-        data: ['Planned', 'Actual'],
+        data: legendEntries,
         textStyle: {
           color: colors.text,
         },
@@ -768,39 +1127,16 @@ export class KurvaSChart {
             type: 'dashed',
           },
         },
+        name: yAxisLabel,  // Phase 1: Dynamic Y-axis label
+        nameLocation: 'middle',
+        nameGap: 50,
+        nameTextStyle: {
+          color: colors.axis,
+          fontSize: 12,
+        },
       },
 
-      series: [
-        {
-          name: 'Planned',
-          type: 'line',
-          smooth: this.options.smoothCurves,
-          data: data.planned,
-          lineStyle: {
-            color: colors.plannedLine,
-            width: 2,
-            type: 'dashed',
-          },
-          areaStyle: this.options.showArea ? {
-            color: colors.plannedArea,
-          } : undefined,
-          symbolSize: 6,
-        },
-        {
-          name: 'Actual',
-          type: 'line',
-          smooth: this.options.smoothCurves,
-          data: data.actual,
-          lineStyle: {
-            color: colors.actualLine,
-            width: 3,
-          },
-          areaStyle: this.options.showArea ? {
-            color: colors.actualArea,
-          } : undefined,
-          symbolSize: 7,
-        },
-      ],
+      series: seriesEntries,
     };
   }
 
@@ -813,18 +1149,36 @@ export class KurvaSChart {
     if (!params || !params.length) return '';
 
     const index = params[0].dataIndex;
-    const detail = data.details[index] || {};
-    const label = detail.label || data.labels[index];
-    const planned = data.planned[index] ?? 0;
-    const actual = data.actual[index] ?? 0;
-    const variance = detail.variance ?? (actual - planned);
+    const isCostView = data.viewMode === 'cost';
 
-    // Format dates
-    const start = this._formatDateLabel(detail.start);
-    const end = this._formatDateLabel(detail.end);
+    // Phase 1: Cost view uses different detail structure
+    let detail, label, planned, actual, start, end;
+    const actualLabel = isCostView ? 'Realisasi' : 'Aktual';
+
+    if (isCostView) {
+      // Cost view: details from API response
+      const plannedWeek = data.details.weeks?.[index] || {};
+
+      label = data.labels[index];
+      planned = data.planned[index] ?? 0;
+      const acValue = Array.isArray(data.acSeries) ? data.acSeries[index] : null;
+      actual = acValue ?? data.actual?.[index] ?? 0;
+      start = plannedWeek.week_start;
+      end = plannedWeek.week_end;
+    } else {
+      // Progress view: existing detail structure
+      detail = data.details[index] || {};
+      label = detail.label || data.labels[index];
+      planned = data.planned[index] ?? 0;
+      actual = data.actual[index] ?? 0;
+      start = this._formatDateLabel(detail.start);
+      end = this._formatDateLabel(detail.end);
+    }
+
+    const variance = (actual - planned);
 
     // Phase 2F.0: Calculate currency amounts if using harga calculation
-    const useHarga = data.useHargaCalculation && data.totalBiaya > 0;
+    const useHarga = (data.useHargaCalculation && data.totalBiaya > 0) || isCostView;
     let plannedAmount = '';
     let actualAmount = '';
 
@@ -859,8 +1213,8 @@ export class KurvaSChart {
         ? `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${plannedAmount})</span></div>`
         : `<div style="margin:4px 0;">Rencana: <strong>${planned.toFixed(1)}%</strong></div>`,
       useHarga
-        ? `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${actualAmount})</span></div>`
-        : `<div style="margin:4px 0;">Aktual: <strong>${actual.toFixed(1)}%</strong></div>`,
+        ? `<div style="margin:4px 0;">${actualLabel}: <strong>${actual.toFixed(1)}%</strong> <span style="font-size:0.9em;color:#6b7280;">(${actualAmount})</span></div>`
+        : `<div style="margin:4px 0;">${actualLabel}: <strong>${actual.toFixed(1)}%</strong></div>`,
       `<div style="margin:4px 0;color:${varianceColor};">Variance: <strong>${varianceText}</strong></div>`,
       '</div>',
     ].filter(Boolean).join('');

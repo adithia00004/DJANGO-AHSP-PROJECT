@@ -519,6 +519,7 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
                     "snapshot_uraian": _sanitize_text(p.snapshot_uraian),
                     "snapshot_satuan": _sanitize_text(p.snapshot_satuan),
                     "ref_id": getattr(p, "ref_id", None),
+                    "budgeted_cost": float(p.budgeted_cost or 0),
                 })
                 total_pekerjaan_count += 1
             k_obj["sub"].append(s_obj)
@@ -1418,6 +1419,7 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
             "satuan": pkj.snapshot_satuan,
             "source_type": source_str,
             "detail_ready": pkj.detail_ready,
+            "budgeted_cost": float(pkj.budgeted_cost or 0),
             "updated_at": pkj.updated_at.isoformat() if hasattr(pkj, 'updated_at') and pkj.updated_at else None,  # For optimistic locking
         },
         "items": items,
@@ -4282,6 +4284,586 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
     logger.info(
         f"[Kurva S API] Served data for project {project_id}: "
         f"{len(harga_map)} pekerjaan, total biaya Rp {total_biaya:,.2f}"
+    )
+
+    return JsonResponse(response_data)
+
+
+@require_GET
+@login_required
+def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    API untuk data Kurva S Harga - cost-based S-curve dengan breakdown per minggu.
+
+    Phase 1: Kurva S Harga - Calculate weekly cost progression.
+
+    Formula:
+        Weekly Cost = (Total Harga Pekerjaan × Proportion %) / 100
+        Where Total Harga = Volume × G (unit price with markup)
+
+    Response format:
+    {
+        "weeklyData": {
+            "planned": [
+                {
+                    "week_number": 1,
+                    "week_start": "2024-01-01",
+                    "week_end": "2024-01-07",
+                    "cost": 15000000.00,
+                    "cumulative_cost": 15000000.00,
+                    "cumulative_percent": 6.0,
+                    "pekerjaan_breakdown": {
+                        "123": 10000000.00,
+                        "456": 5000000.00
+                    }
+                },
+                ...
+            ],
+            "actual": [
+                // Same structure as planned
+            ]
+        },
+        "summary": {
+            "total_project_cost": 250000000.00,
+            "total_weeks": 20,
+            "planned_cost": 250000000.00,
+            "actual_cost": 180000000.00,
+            "actual_vs_planned_percent": 72.0
+        },
+        "pekerjaanMeta": {
+            "123": {
+                "kode": "A.1.1",
+                "uraian": "Pekerjaan Galian",
+                "total_cost": 38500000.00,
+                "volume": 100.0,
+                "unit_price": 385000.00
+            }
+        }
+    }
+
+    URL: /detail-project/api/v2/project/<project_id>/kurva-s-harga/
+    Method: GET
+    Auth: login_required
+    """
+    try:
+        from dashboard.models import Project
+        project = get_object_or_404(Project, id=project_id)
+    except Exception as e:
+        logger.error(f"[Kurva S Harga API] Project not found: {project_id}", exc_info=True)
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    # Step 1: Get rekap data (total cost per pekerjaan) and existing pekerjaan list
+    try:
+        rekap_rows = compute_rekap_for_project(project)
+    except Exception as e:
+        logger.error(
+            f"[Kurva S Harga API] Failed to compute rekap for project {project_id}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to compute rekap data',
+            'detail': str(e)
+        }, status=500)
+
+    rekap_lookup = {row['pekerjaan_id']: row for row in rekap_rows}
+
+    pekerjaan_qs = (
+        Pekerjaan.objects
+        .filter(project=project)
+        .select_related('sub_klasifikasi')
+        .order_by('ordering_index')
+    )
+
+    # Build pekerjaan cost map: pekerjaan_id → budgeted_cost (fallback ke rekap)
+    pekerjaan_costs = {}
+    pekerjaan_meta = {}
+    total_project_cost = Decimal('0.00')
+
+    for pkj in pekerjaan_qs:
+        fallback_row = rekap_lookup.get(pkj.id)
+        fallback_data = fallback_row or {}
+        fallback_total = Decimal(str(fallback_data.get('total', 0)))
+        cost_value = pkj.budgeted_cost if pkj.budgeted_cost and pkj.budgeted_cost > 0 else fallback_total
+
+        pekerjaan_costs[pkj.id] = cost_value
+        total_project_cost += cost_value
+
+        pekerjaan_meta[str(pkj.id)] = {
+            'kode': fallback_data.get('kode', pkj.snapshot_kode or ''),
+            'uraian': fallback_data.get('uraian', pkj.snapshot_uraian or ''),
+            'total_cost': float(cost_value),
+            'budgeted_cost': float(cost_value),
+            'volume': float(fallback_data.get('volume', 0)) if fallback_row else None,
+            'unit_price': float(fallback_data.get('G', 0)) if fallback_row else None,
+            'satuan': fallback_data.get('satuan', pkj.snapshot_satuan or ''),
+        }
+
+    # Fallback: jika total proyek = 0 (belum ada data rekap/harga), gunakan biaya normalisasi
+    if total_project_cost <= Decimal('0.00') and pekerjaan_costs:
+        logger.warning(
+            "[Kurva S Harga API] total_project_cost=0 untuk project %s; "
+            "menggunakan biaya normalisasi agar kurva tidak kosong.",
+            project_id
+        )
+        normalized_value = Decimal('1.00')
+        total_project_cost = normalized_value * Decimal(len(pekerjaan_costs))
+        for pkj in pekerjaan_qs:
+            pekerjaan_costs[pkj.id] = normalized_value
+            meta = pekerjaan_meta.get(str(pkj.id))
+            if meta:
+                meta['total_cost'] = float(normalized_value)
+                meta['budgeted_cost'] = float(normalized_value)
+
+    # Step 2: Get weekly progress data
+    from .models import PekerjaanProgressWeekly
+
+    weekly_progress = PekerjaanProgressWeekly.objects.filter(
+        project=project
+    ).select_related('pekerjaan').order_by('week_number')
+
+    # Step 3: Aggregate cost per week
+    planned_weeks = {}
+    actual_weeks = {}
+    earned_weeks = {}
+
+    for progress in weekly_progress:
+        pkj_id = progress.pekerjaan_id
+        week_num = progress.week_number
+
+        if pkj_id not in pekerjaan_costs:
+            continue
+
+        total_cost = pekerjaan_costs[pkj_id] or Decimal('0.00')
+
+        planned_cost = total_cost * Decimal(str(progress.planned_proportion)) / Decimal('100')
+        earned_cost = total_cost * Decimal(str(progress.actual_proportion)) / Decimal('100')
+
+        if progress.actual_cost is not None:
+            actual_cost_value = Decimal(str(progress.actual_cost))
+        else:
+            actual_cost_value = earned_cost
+
+        if actual_cost_value < Decimal('0.00'):
+            actual_cost_value = Decimal('0.00')
+
+        for bucket in (planned_weeks, actual_weeks, earned_weeks):
+            if week_num not in bucket:
+                bucket[week_num] = {
+                    'week_number': week_num,
+                    'week_start': progress.week_start_date.isoformat() if progress.week_start_date else None,
+                    'week_end': progress.week_end_date.isoformat() if progress.week_end_date else None,
+                    'cost': Decimal('0.00'),
+                    'pekerjaan_breakdown': {}
+                }
+
+        planned_weeks[week_num]['cost'] += planned_cost
+        planned_weeks[week_num]['pekerjaan_breakdown'][str(pkj_id)] = float(planned_cost)
+
+        earned_weeks[week_num]['cost'] += earned_cost
+        earned_weeks[week_num]['pekerjaan_breakdown'][str(pkj_id)] = float(earned_cost)
+
+        actual_weeks[week_num]['cost'] += actual_cost_value
+        actual_weeks[week_num]['pekerjaan_breakdown'][str(pkj_id)] = float(actual_cost_value)
+
+    # Step 4: Calculate cumulative cost
+    # Step 4: Calculate cumulative cost
+    def calculate_cumulative(weeks_dict):
+        weeks_list = sorted(weeks_dict.values(), key=lambda x: x['week_number'])
+        cumulative_cost = Decimal('0.00')
+
+        for week in weeks_list:
+            cumulative_cost += week['cost']
+            week['cumulative_cost'] = float(cumulative_cost)
+            week['cumulative_percent'] = float(
+                (cumulative_cost / total_project_cost * Decimal('100'))
+                if total_project_cost > 0 else Decimal('0')
+            )
+            # Convert weekly cost to float
+            week['cost'] = float(week['cost'])
+
+        return weeks_list
+
+    def _build_evm_dataset(planned_weeks_list, earned_weeks_list, actual_weeks_list, bac_value):
+        week_numbers = sorted({
+            *(week['week_number'] for week in planned_weeks_list),
+            *(week['week_number'] for week in earned_weeks_list),
+            *(week['week_number'] for week in actual_weeks_list),
+        })
+
+        bac_decimal = bac_value or Decimal('0.00')
+        if not week_numbers:
+            return {
+                'labels': [],
+                'pv': [],
+                'ev': [],
+                'ac': [],
+                'pv_percent': [],
+                'ev_percent': [],
+                'ac_percent': [],
+                'spi': [],
+                'cpi': [],
+                'summary': {
+                    'bac': 0.0,
+                    'planned_cost': 0.0,
+                    'earned_value': 0.0,
+                    'actual_cost': 0.0,
+                    'eac': 0.0,
+                    'etc': 0.0,
+                    'vac': 0.0,
+                },
+            }
+
+        def build_map(weeks_list, key):
+            mapping = {}
+            last = Decimal('0.00')
+            for week in weeks_list:
+                value = Decimal(str(week.get(key, 0)))
+                last = value
+                mapping[week['week_number']] = value
+            return mapping, last
+
+        pv_map, _ = build_map(planned_weeks_list, 'cumulative_cost')
+        pv_percent_map, _ = build_map(planned_weeks_list, 'cumulative_percent')
+        ev_map, _ = build_map(earned_weeks_list, 'cumulative_cost')
+        ev_percent_map, _ = build_map(earned_weeks_list, 'cumulative_percent')
+        ac_map, _ = build_map(actual_weeks_list, 'cumulative_cost')
+        ac_percent_map, _ = build_map(actual_weeks_list, 'cumulative_percent')
+
+        labels = []
+        pv_series = []
+        ev_series = []
+        ac_series = []
+        pv_percent_series = []
+        ev_percent_series = []
+        ac_percent_series = []
+        spi_series = []
+        cpi_series = []
+
+        last_pv = Decimal('0.00')
+        last_ev = Decimal('0.00')
+        last_ac = Decimal('0.00')
+        last_pv_percent = Decimal('0.00')
+        last_ev_percent = Decimal('0.00')
+        last_ac_percent = Decimal('0.00')
+
+        for week in week_numbers:
+            labels.append(f"W{week}")
+
+            last_pv = pv_map.get(week, last_pv)
+            last_ev = ev_map.get(week, last_ev)
+            last_ac = ac_map.get(week, last_ac)
+            last_pv_percent = pv_percent_map.get(week, last_pv_percent)
+            last_ev_percent = ev_percent_map.get(week, last_ev_percent)
+            last_ac_percent = ac_percent_map.get(week, last_ac_percent)
+
+            pv_series.append(float(last_pv))
+            ev_series.append(float(last_ev))
+            ac_series.append(float(last_ac))
+            pv_percent_series.append(float(last_pv_percent))
+            ev_percent_series.append(float(last_ev_percent))
+            ac_percent_series.append(float(last_ac_percent))
+
+            spi = float(last_ev / last_pv) if last_pv > 0 else 0.0
+            cpi = float(last_ev / last_ac) if last_ac > 0 else 0.0
+
+            spi_series.append(spi)
+            cpi_series.append(cpi)
+
+        actual_total = ac_series[-1] if ac_series else 0.0
+        planned_total = pv_series[-1] if pv_series else 0.0
+        earned_total = ev_series[-1] if ev_series else 0.0
+
+        current_cpi = cpi_series[-1] if cpi_series else 0.0
+        if current_cpi > 0:
+            eac_decimal = bac_decimal / Decimal(str(current_cpi))
+        else:
+            eac_decimal = bac_decimal
+
+        actual_total_decimal = Decimal(str(actual_total))
+        etc_decimal = max(Decimal('0.00'), eac_decimal - actual_total_decimal)
+        vac_decimal = bac_decimal - eac_decimal
+
+        return {
+            'labels': labels,
+            'pv': pv_series,
+            'ev': ev_series,
+            'ac': ac_series,
+            'pv_percent': pv_percent_series,
+            'ev_percent': ev_percent_series,
+            'ac_percent': ac_percent_series,
+            'spi': spi_series,
+            'cpi': cpi_series,
+            'summary': {
+                'bac': float(bac_decimal),
+                'planned_cost': float(planned_total),
+                'earned_value': float(earned_total),
+                'actual_cost': float(actual_total),
+                'eac': float(eac_decimal),
+                'etc': float(etc_decimal),
+                'vac': float(vac_decimal),
+            }
+        }
+
+    planned_list = calculate_cumulative(planned_weeks)
+    actual_list = calculate_cumulative(actual_weeks)
+    earned_list = calculate_cumulative(earned_weeks)
+
+    # Step 5: Calculate summary
+    total_planned_cost = sum(w['cost'] for w in planned_list)
+    total_actual_cost = sum(w['cost'] for w in actual_list)
+
+    evm_data = _build_evm_dataset(planned_list, earned_list, actual_list, total_project_cost)
+
+    response_data = {
+        'weeklyData': {
+            'planned': planned_list,
+            'actual': actual_list,
+            'earned': earned_list,
+        },
+        'summary': {
+            'total_project_cost': float(total_project_cost),
+            'total_weeks': len(planned_weeks),
+            'planned_cost': total_planned_cost,
+            'actual_cost': total_actual_cost,
+            'actual_vs_planned_percent': (
+                (total_actual_cost / total_planned_cost * 100.0)
+                if total_planned_cost > 0 else 0.0
+            )
+        },
+        'pekerjaanMeta': pekerjaan_meta,
+        'timestamp': datetime.now().isoformat(),
+        'evm': evm_data,
+    }
+
+    logger.info(
+        f"[Kurva S Harga API] Served cost data for project {project_id}: "
+        f"{len(pekerjaan_costs)} pekerjaan, {len(planned_weeks)} weeks, "
+        f"total cost Rp {total_project_cost:,.2f}"
+    )
+
+    return JsonResponse(response_data)
+
+
+@require_GET
+@login_required
+def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    API untuk Rekap Kebutuhan per minggu - resource requirements breakdown by period.
+
+    Phase 1: Rekap Kebutuhan - Calculate weekly resource requirements for procurement planning.
+
+    Formula:
+        Weekly Requirement = Item Quantity × (Weekly Proportion / 100)
+
+    Response format:
+    {
+        "weeklyData": [
+            {
+                "week_number": 1,
+                "week_start": "2024-01-01",
+                "week_end": "2024-01-07",
+                "items": {
+                    "TK": [
+                        {
+                            "kode": "TK.001",
+                            "uraian": "Mandor",
+                            "satuan": "OH",
+                            "quantity": 5.0,
+                            "pekerjaan_breakdown": {"123": 3.0, "456": 2.0}
+                        }
+                    ],
+                    "BHN": [...],
+                    "ALT": [...],
+                    "LAIN": [...]
+                },
+                "summary": {
+                    "TK": 10,
+                    "BHN": 50,
+                    "ALT": 5,
+                    "LAIN": 2
+                }
+            }
+        ],
+        "summary": {
+            "total_weeks": 20,
+            "total_items": {"TK": 150, "BHN": 1200, "ALT": 80, "LAIN": 30},
+            "total_quantity_by_kategori": {
+                "TK": 250.5,
+                "BHN": 15000.0,
+                "ALT": 100.0,
+                "LAIN": 50.0
+            }
+        },
+        "metadata": {
+            "project_name": "Proyek ABC",
+            "generated_at": "2025-11-27T12:00:00"
+        }
+    }
+
+    URL: /detail-project/api/v2/project/<project_id>/rekap-kebutuhan-weekly/
+    Method: GET
+    Auth: login_required
+    """
+    try:
+        from dashboard.models import Project
+        project = get_object_or_404(Project, id=project_id)
+    except Exception as e:
+        logger.error(f"[Rekap Kebutuhan API] Project not found: {project_id}", exc_info=True)
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    # Step 1: Get all kebutuhan items (material/tenaga requirements)
+    try:
+        from .services import compute_kebutuhan_items
+        kebutuhan_items = compute_kebutuhan_items(project)
+    except Exception as e:
+        logger.error(
+            f"[Rekap Kebutuhan API] Failed to compute kebutuhan for project {project_id}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to compute resource requirements',
+            'detail': str(e)
+        }, status=500)
+
+    # Build item index: (kategori, kode) → item data
+    item_index = {}
+    for item in kebutuhan_items:
+        key = (item['kategori'], item['kode'])
+        item_index[key] = {
+            'uraian': item['uraian'],
+            'satuan': item['satuan'],
+            'total_quantity': Decimal(str(item.get('quantity', 0)))
+        }
+
+    # Step 2: Get weekly progress data
+    from .models import PekerjaanProgressWeekly, DetailPekerjaanComponent
+
+    weekly_progress = PekerjaanProgressWeekly.objects.filter(
+        project=project
+    ).select_related('pekerjaan').order_by('week_number')
+
+    # Step 3: Build week-by-week requirements
+    weekly_data = {}
+
+    for progress in weekly_progress:
+        week_num = progress.week_number
+        pkj_id = progress.pekerjaan_id
+        proportion = progress.planned_proportion  # Use planned proportion
+
+        # Initialize week data if not exists
+        if week_num not in weekly_data:
+            weekly_data[week_num] = {
+                'week_number': week_num,
+                'week_start': progress.week_start_date.isoformat(),
+                'week_end': progress.week_end_date.isoformat(),
+                'items_by_kategori': {
+                    'TK': {},
+                    'BHN': {},
+                    'ALT': {},
+                    'LAIN': {}
+                }
+            }
+
+        # Get components for this pekerjaan
+        components = DetailPekerjaanComponent.objects.filter(
+            pekerjaan_id=pkj_id
+        ).select_related('harga_item')
+
+        for comp in components:
+            harga_item = comp.harga_item
+            kategori = harga_item.kategori
+            kode = harga_item.kode_item or harga_item.nama_item
+            koefisien = Decimal(str(comp.koefisien))
+
+            # Get volume for this pekerjaan
+            from .models import VolumePekerjaan
+            try:
+                vol_pek = VolumePekerjaan.objects.get(pekerjaan_id=pkj_id)
+                volume = Decimal(str(vol_pek.quantity))
+            except VolumePekerjaan.DoesNotExist:
+                volume = Decimal('1.0')
+
+            # Calculate weekly requirement: volume × koefisien × proportion / 100
+            weekly_qty = volume * koefisien * Decimal(str(proportion)) / Decimal('100')
+
+            # Aggregate by item
+            items_dict = weekly_data[week_num]['items_by_kategori'][kategori]
+            key = kode
+
+            if key not in items_dict:
+                items_dict[key] = {
+                    'kode': kode,
+                    'uraian': harga_item.nama_item,
+                    'satuan': harga_item.satuan,
+                    'quantity': Decimal('0'),
+                    'pekerjaan_breakdown': {}
+                }
+
+            items_dict[key]['quantity'] += weekly_qty
+            items_dict[key]['pekerjaan_breakdown'][str(pkj_id)] = float(weekly_qty)
+
+    # Step 4: Convert to list format and calculate summaries
+    weekly_list = []
+    total_items_count = {'TK': 0, 'BHN': 0, 'ALT': 0, 'LAIN': 0}
+    total_quantity = {'TK': Decimal('0'), 'BHN': Decimal('0'), 'ALT': Decimal('0'), 'LAIN': Decimal('0')}
+
+    for week_num in sorted(weekly_data.keys()):
+        week = weekly_data[week_num]
+
+        # Convert items dict to list
+        items_by_kategori = {}
+        week_summary = {'TK': 0, 'BHN': 0, 'ALT': 0, 'LAIN': 0}
+
+        for kategori in ['TK', 'BHN', 'ALT', 'LAIN']:
+            items_list = []
+            for item_data in week['items_by_kategori'][kategori].values():
+                items_list.append({
+                    'kode': item_data['kode'],
+                    'uraian': item_data['uraian'],
+                    'satuan': item_data['satuan'],
+                    'quantity': float(item_data['quantity']),
+                    'pekerjaan_breakdown': item_data['pekerjaan_breakdown']
+                })
+
+                # Update totals
+                total_quantity[kategori] += item_data['quantity']
+
+            items_by_kategori[kategori] = sorted(items_list, key=lambda x: x['kode'])
+            week_summary[kategori] = len(items_list)
+            total_items_count[kategori] += len(items_list)
+
+        weekly_list.append({
+            'week_number': week['week_number'],
+            'week_start': week['week_start'],
+            'week_end': week['week_end'],
+            'items': items_by_kategori,
+            'summary': week_summary
+        })
+
+    # Step 5: Build response
+    response_data = {
+        'weeklyData': weekly_list,
+        'summary': {
+            'total_weeks': len(weekly_list),
+            'total_items': total_items_count,
+            'total_quantity_by_kategori': {
+                'TK': float(total_quantity['TK']),
+                'BHN': float(total_quantity['BHN']),
+                'ALT': float(total_quantity['ALT']),
+                'LAIN': float(total_quantity['LAIN'])
+            }
+        },
+        'metadata': {
+            'project_name': project.nama,
+            'generated_at': datetime.now().isoformat()
+        }
+    }
+
+    logger.info(
+        f"[Rekap Kebutuhan API] Served data for project {project_id}: "
+        f"{len(weekly_list)} weeks, "
+        f"TK: {total_items_count['TK']}, BHN: {total_items_count['BHN']}, "
+        f"ALT: {total_items_count['ALT']}, LAIN: {total_items_count['LAIN']}"
     )
 
     return JsonResponse(response_data)

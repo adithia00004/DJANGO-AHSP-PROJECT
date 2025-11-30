@@ -14,6 +14,7 @@ import { GridRenderer } from '@modules/grid/grid-renderer.js';
 import { SaveHandler } from '@modules/core/save-handler.js';
 import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
 import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js';
+import { StateManager } from '@modules/core/state-manager.js'; // Phase 0.3: StateManager integration
 
 /**
  * Initialize Jadwal Kegiatan Grid Application
@@ -24,6 +25,9 @@ class JadwalKegiatanApp {
     this.eventManager = null;
     this.initialized = false;
     this.agGridManager = null;
+
+    // Phase 0.3: StateManager for clean state management
+    this.stateManager = StateManager.getInstance();
 
     // Modern modules
     this.dataLoader = null;
@@ -42,6 +46,12 @@ class JadwalKegiatanApp {
     this._isEnforcingWeekly = false;
     this._exportManagerInstance = null;
     this._exportBindingsAttached = false;
+    this._costToggleBtn = null;
+    this._costToggleBtnText = null;
+    this._costToggleSpinner = null;
+    this._costToggleBtnIcon = null;
+    this._costViewAutoActivated = false;
+
   }
 
   _getProjectDateRange() {
@@ -161,10 +171,14 @@ class JadwalKegiatanApp {
         progressMode: 'planned',  // Phase 2E.1: Current active mode
         displayMode: 'percentage', // Phase 2E.1: 'percentage' or 'volume'
 
-        // Phase 2E.1: Dual state structure - separate state per progress mode
+        // Phase 0.3: StateManager reference
+        stateManager: this.stateManager,
+
+        // Phase 0.3: Cell values now managed by StateManager
+        // Keeping other mode-specific state here temporarily for non-cell data
         plannedState: {
-          modifiedCells: new Map(),
-          assignmentMap: new Map(),
+          // modifiedCells: managed by StateManager
+          // assignmentMap: managed by StateManager
           progressTotals: new Map(),
           volumeTotals: new Map(),
           cellVolumeOverrides: new Map(),
@@ -179,8 +193,8 @@ class JadwalKegiatanApp {
           isDirty: false,
         },
         actualState: {
-          modifiedCells: new Map(),
-          assignmentMap: new Map(),
+          // modifiedCells: managed by StateManager
+          // assignmentMap: managed by StateManager
           progressTotals: new Map(),
           volumeTotals: new Map(),
           cellVolumeOverrides: new Map(),
@@ -195,9 +209,8 @@ class JadwalKegiatanApp {
           isDirty: false,
         },
 
-        // Backward compatibility: Legacy properties point to current mode
-        // These will be dynamically updated via getters
-        modifiedCells: null,  // Will be replaced by getter
+        // Phase 0.3: Backward compatibility maintained via StateManager
+        // Legacy properties for non-cell data still delegate to current mode
         progressTotals: null,
         volumeTotals: null,
         cellVolumeOverrides: null,
@@ -230,7 +243,8 @@ class JadwalKegiatanApp {
 
   /**
    * Setup property delegation for backward compatibility.
-   * Maps legacy state properties to current mode's state.
+   * Phase 0.3: Cell data (modifiedCells, assignmentMap) now managed by StateManager
+   * Other mode-specific properties still delegate to current mode state
    */
   _setupStateDelegation() {
     const getCurrentState = () => {
@@ -239,18 +253,44 @@ class JadwalKegiatanApp {
         : this.state.plannedState;
     };
 
-    // Define getters/setters for backward compatibility
-    // These delegate to the current mode's state
+    // Phase 0.3: modifiedCells and assignmentMap are now managed by StateManager
+    // Add backward compatibility getters that delegate to StateManager
     Object.defineProperty(this.state, 'modifiedCells', {
-      get: () => getCurrentState().modifiedCells,
+      get: () => {
+        // Return a Map-like object for backward compatibility
+        // This is used by legacy code that expects Map operations
+        const mode = this.state.progressMode;
+        return this.stateManager.states[mode].modifiedCells;
+      },
       configurable: true
     });
 
     Object.defineProperty(this.state, 'assignmentMap', {
-      get: () => getCurrentState().assignmentMap,
+      get: () => {
+        // Return a Map-like object for backward compatibility
+        const mode = this.state.progressMode;
+        return this.stateManager.states[mode].assignmentMap;
+      },
       configurable: true
     });
 
+    Object.defineProperty(this.state, 'costAssignmentMap', {
+      get: () => {
+        const mode = this.state.progressMode;
+        return this.stateManager.states[mode].costAssignmentMap;
+      },
+      configurable: true
+    });
+
+    Object.defineProperty(this.state, 'costModifiedCells', {
+      get: () => {
+        const mode = this.state.progressMode;
+        return this.stateManager.states[mode].costModifiedCells;
+      },
+      configurable: true
+    });
+
+    // Other properties still delegate to current mode state (not managed by StateManager yet)
     Object.defineProperty(this.state, 'progressTotals', {
       get: () => getCurrentState().progressTotals,
       configurable: true
@@ -272,22 +312,22 @@ class JadwalKegiatanApp {
     });
 
     Object.defineProperty(this.state, 'isDirty', {
-      get: () => getCurrentState().isDirty,
+      get: () => getCurrentState().isDirty || this.stateManager.hasUnsavedChanges(),
       set: (value) => { getCurrentState().isDirty = value; },
       configurable: true
     });
 
-    console.log('[JadwalKegiatanApp] State delegation setup complete');
+    console.log('[JadwalKegiatanApp] Phase 0.3: State delegation setup with StateManager integration');
   }
 
   /**
    * Get the current mode's state object.
+   * Phase 0.3: Delegated to StateManager
    * @returns {Object} Current mode state (plannedState or actualState)
    */
   _getCurrentModeState() {
-    return this.state.progressMode === 'actual'
-      ? this.state.actualState
-      : this.state.plannedState;
+    const mode = this.state.progressMode === 'actual' ? 'actual' : 'planned';
+    return this.stateManager.states[mode];
   }
 
   _updateSaveButtonState() {
@@ -437,7 +477,7 @@ class JadwalKegiatanApp {
       (dataset.defaultInputMode || dataset.inputMode || dataset.displayMode || this.state.inputMode || 'percentage')
         .toString()
         .toLowerCase();
-    const allowedInputModes = new Set(['percentage', 'volume']);
+    const allowedInputModes = new Set(['percentage', 'volume', 'cost']);
     this.state.inputMode = allowedInputModes.has(datasetInputMode) ? datasetInputMode : 'percentage';
 
     const parsedWeekEndDay = Number.parseInt(
@@ -532,6 +572,7 @@ class JadwalKegiatanApp {
     this._attachRadioGroupHandler('timeScale', (value) => this._handleTimeScaleChange(value));
     this._setupWeekBoundaryControls();
     this._setupExportButtons();
+    this._setupCostViewToggle();  // Phase 1: Cost view toggle button
   }
 
   _setupExportButtons() {
@@ -563,6 +604,100 @@ class JadwalKegiatanApp {
       console.error('[JadwalKegiatanApp] Failed to initialize export buttons', error);
     }
   }
+
+  /**
+   * Phase 1: Setup Cost View Toggle Button
+   * @private
+   */
+  _setupCostViewToggle() {
+    const toggleBtn = document.getElementById('toggleCostViewBtn');
+    const toggleBtnText = document.getElementById('toggleCostViewBtnText');
+    const toggleBtnSpinner = document.getElementById('toggleCostViewBtnSpinner');
+    const toggleBtnIcon = toggleBtn?.querySelector('i');
+
+    if (!toggleBtn) {
+      console.log('[JadwalKegiatanApp] Cost view toggle button not found (chart tab may not be active)');
+      return;
+    }
+
+    if (!this.kurvaSChart) {
+      console.warn('[JadwalKegiatanApp] Kurva S chart not initialized, cannot setup toggle');
+      return;
+    }
+
+    this._costToggleBtn = toggleBtn;
+    this._costToggleBtnText = toggleBtnText;
+    this._costToggleSpinner = toggleBtnSpinner;
+    this._costToggleBtnIcon = toggleBtnIcon;
+
+    toggleBtn.addEventListener('click', async () => {
+      toggleBtn.disabled = true;
+      toggleBtnSpinner?.classList.remove('d-none');
+
+      try {
+        const success = await this.kurvaSChart.toggleView();
+        if (success) {
+          this._setCostToggleButtonState();
+          console.log('[JadwalKegiatanApp] Switched Kurva-S view:', this.kurvaSChart.viewMode);
+        } else {
+          console.error('[JadwalKegiatanApp] Failed to toggle view');
+        }
+      } catch (error) {
+        console.error('[JadwalKegiatanApp] Error toggling cost view:', error);
+      } finally {
+        toggleBtn.disabled = false;
+        toggleBtnSpinner?.classList.add('d-none');
+      }
+    });
+
+    this._setCostToggleButtonState();
+    console.log('[JadwalKegiatanApp] Cost view toggle button setup complete');
+  }
+
+  _setCostToggleButtonState() {
+    if (!this._costToggleBtn || !this.kurvaSChart) {
+      return;
+    }
+
+    const isCostMode = this.kurvaSChart.viewMode === 'cost';
+    const label = isCostMode ? 'Show Progress View' : 'Show Cost View';
+    const iconClass = isCostMode ? 'fas fa-chart-line' : 'fas fa-money-bill-wave';
+
+    if (this._costToggleBtnText) {
+      this._costToggleBtnText.textContent = label;
+    }
+    if (this._costToggleBtnIcon) {
+      this._costToggleBtnIcon.className = iconClass;
+    }
+  }
+  async _activateDefaultCostView() {
+    if (this._costViewAutoActivated) {
+      this._setCostToggleButtonState();
+      return;
+    }
+
+  if (!this.kurvaSChart) {
+    return;
+  }
+
+  const chartOptions = this.kurvaSChart.options || {};
+  if (!chartOptions.enableCostView) {
+    return;
+  }
+
+  try {
+    const success = await this.kurvaSChart.toggleView('cost');
+    if (success) {
+      this._costViewAutoActivated = true;
+      this._setCostToggleButtonState();
+      console.log('[JadwalKegiatanApp] Defaulted Kurva-S to cost view');
+    }
+  } catch (error) {
+    console.warn('[JadwalKegiatanApp] Failed to enable cost view automatically:', error);
+  }
+}
+
+
 
   _attachRadioGroupHandler(groupName, handler) {
     const radios = document.querySelectorAll(`input[name="${groupName}"]`);
@@ -901,12 +1036,20 @@ class JadwalKegiatanApp {
     document.querySelectorAll('input[name="timeScale"]').forEach((radio) => {
       radio.checked = radio.value === timeScale;
     });
+
+    this._updateCostToggleAvailability();
   }
 
   _handleDisplayModeChange(mode) {
     const normalized = (mode || '').toLowerCase();
-    const allowed = new Set(['percentage', 'volume']);
+    const allowed = new Set(['percentage', 'volume', 'cost']);
     if (!allowed.has(normalized) || this.state.inputMode === normalized) {
+      return;
+    }
+
+    if (normalized === 'cost' && (this.state.progressMode || 'planned') !== 'actual') {
+      this.showToast('Mode biaya hanya tersedia saat melihat Realisasi', 'warning', 2600);
+      this._syncToolbarRadios();
       return;
     }
 
@@ -919,12 +1062,18 @@ class JadwalKegiatanApp {
 
     this._syncGridViews();
 
-    const label = normalized === 'percentage' ? 'Persentase' : 'Volume';
+    let label = 'Persentase';
+    if (normalized === 'volume') {
+      label = 'Volume';
+    } else if (normalized === 'cost') {
+      label = 'Biaya';
+    }
     this.showToast(`Mode input diubah ke ${label}`, 'info', 2200);
   }
 
   /**
    * Handle progress mode change (Phase 2E.1: Planned vs Actual)
+   * Phase 0.3: Delegates to StateManager for mode switching
    * @param {string} mode - 'planned' or 'actual'
    */
   _handleProgressModeChange(mode) {
@@ -938,19 +1087,25 @@ class JadwalKegiatanApp {
     const oldMode = this.state.progressMode;
     console.log(`[ModeChange] Switching progress mode from ${oldMode} to ${normalized}`);
 
-    // Phase 2E.1: Save state sizes before switch for debugging
-    const oldState = this._getCurrentModeState();
-    const oldModifiedSize = oldState.modifiedCells.size;
-    const oldAssignmentSize = oldState.assignmentMap.size;
+    // Phase 0.3: Get state sizes from StateManager
+    const oldStats = this.stateManager.states[oldMode].getStats();
 
-    // Switch mode - property delegation will now point to new mode's state
+    // Phase 0.3: Switch mode in StateManager
+    this.stateManager.switchMode(normalized);
+
+    // Switch mode in local state (for other non-cell properties)
     this.state.progressMode = normalized;
+    if (normalized !== 'actual' && this.state.inputMode === 'cost') {
+      this.state.inputMode = 'percentage';
+      this.state.displayMode = 'percentage';
+      this._syncToolbarRadios();
+    }
 
     // Log new state after switch
-    const newState = this._getCurrentModeState();
+    const newStats = this.stateManager.states[normalized].getStats();
     console.log(`[ModeChange] State switch complete:`);
-    console.log(`  - Old ${oldMode.toUpperCase()}: ${oldModifiedSize} modified, ${oldAssignmentSize} assignments`);
-    console.log(`  - New ${normalized.toUpperCase()}: ${newState.modifiedCells.size} modified, ${newState.assignmentMap.size} assignments`);
+    console.log(`  - Old ${oldMode.toUpperCase()}: ${oldStats.modifiedCount} modified, ${oldStats.assignmentCount} assignments`);
+    console.log(`  - New ${normalized.toUpperCase()}: ${newStats.modifiedCount} modified, ${newStats.assignmentCount} assignments`);
 
     // Update mode indicator badge
     const indicator = document.getElementById('progress-mode-indicator');
@@ -967,6 +1122,21 @@ class JadwalKegiatanApp {
 
     const label = normalized === 'planned' ? 'Perencanaan' : 'Realisasi';
     this.showToast(`Mode progress diubah ke ${label}`, 'info', 2200);
+  }
+
+  _updateCostToggleAvailability() {
+    const costRadio = document.getElementById('mode-cost');
+    if (!costRadio) {
+      return;
+    }
+    const isActual = (this.state.progressMode || 'planned') === 'actual';
+    costRadio.disabled = !isActual;
+    if (!isActual && costRadio.checked) {
+      const percentageRadio = document.getElementById('mode-percentage');
+      if (percentageRadio) {
+        percentageRadio.checked = true;
+      }
+    }
   }
 
   _handleTimeScaleChange(nextScale) {
@@ -1247,7 +1417,13 @@ class JadwalKegiatanApp {
         });
         const success = this.kurvaSChart.initialize(this.state.domRefs.scurveChart);
         if (success) {
-          console.log('[JadwalKegiatanApp] ✅ Kurva-S chart initialized');
+          console.log('[JadwalKegiatanApp] Kurva-S chart initialized');
+          const activatePromise = this._activateDefaultCostView();
+          if (activatePromise && typeof activatePromise.catch === 'function') {
+            activatePromise.catch((error) => {
+              console.warn('[JadwalKegiatanApp] Failed to auto-enable cost view:', error);
+            });
+          }
         }
       } catch (error) {
         console.warn('[JadwalKegiatanApp] Failed to initialize Kurva-S chart:', error);
@@ -1333,7 +1509,11 @@ class JadwalKegiatanApp {
     this._clearSaveErrorRows();
 
     // Update status bar if exists
-    this._updateStatusBar('Perubahan tersimpan');
+    const progressMode = (this.state.progressMode || 'planned').toLowerCase();
+    const statusLabel = progressMode === 'actual'
+      ? 'Perubahan realisasi tersimpan'
+      : 'Perubahan perencanaan tersimpan';
+    this._updateStatusBar(statusLabel);
     this._clearApiFailedRows();
 
     // Re-render grid to update UI
@@ -2324,6 +2504,7 @@ class JadwalKegiatanApp {
     validation,
     pekerjaanId,
     columnId,
+    valueType = 'percentage',
   }) {
     if (!cellKey) {
       return;
@@ -2344,12 +2525,23 @@ class JadwalKegiatanApp {
     // Phase 2E.1: Get current mode's state for isolated data tracking
     const modeState = this._getCurrentModeState();
     const progressMode = this.state.progressMode || 'planned';
+    const normalizedValueType = (valueType || (isVolumeMode ? 'volume' : 'percentage')).toLowerCase();
+    const isCostMode = normalizedValueType === 'cost';
 
     console.log(`[CellChange] Mode: ${progressMode.toUpperCase()}, Cell: ${cellKey}, Value: ${normalizedValue}`);
 
-    // Write to mode-specific state (isolated from other mode)
-    modeState.modifiedCells.set(cellKey, normalizedValue);
-    modeState.isDirty = true;
+    if (isCostMode) {
+      if (progressMode !== 'actual') {
+        this.showToast('Biaya aktual hanya bisa diedit pada mode Realisasi', 'warning', 2600);
+        return;
+      }
+      modeState.costModifiedCells.set(cellKey, normalizedValue);
+      modeState.isDirty = true;
+    } else {
+      // Write to mode-specific state (isolated from other mode)
+      modeState.modifiedCells.set(cellKey, normalizedValue);
+      modeState.isDirty = true;
+    }
 
     if (columnMeta?.fieldId && this.state.timeColumnIndex) {
       this.state.timeColumnIndex[columnMeta.fieldId] =
@@ -2370,7 +2562,15 @@ class JadwalKegiatanApp {
       this._updateVolumeTotals(Number(resolvedPekerjaanId), percentTotal);
     }
 
-    console.log(`[CellChange] ${progressMode.toUpperCase()} modifiedCells size: ${modeState.modifiedCells.size}`);
+    if (!isCostMode) {
+      console.log(`[CellChange] ${progressMode.toUpperCase()} modifiedCells size: ${modeState.modifiedCells.size}`);
+      // Phase 2F.0: Real-time Kurva S update on cell change (before save)
+      // This allows users to see chart changes immediately as they type
+      this._updateCharts();
+      console.log(`[CellChange] Real-time Kurva-S chart updated`);
+    } else {
+      console.log(`[CellChange] Cost map size: ${modeState.costModifiedCells.size}`);
+    }
   }
 
   /**

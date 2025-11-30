@@ -180,6 +180,7 @@ export class AGGridManager {
           volume: this._resolveVolumeValue(node),
         };
 
+        const isCostMode = this.inputMode === 'cost';
         if (safeColumns.length > 0) {
           safeColumns.forEach((col) => {
             const columnField = col.fieldId || col.id;
@@ -191,7 +192,9 @@ export class AGGridManager {
             if (Array.isArray(col.childColumns) && col.childColumns.length > 0) {
               value = col.childColumns.reduce((sum, child) => {
                 const childField = child.fieldId || child.id;
-                const childValue = this._fetchAssignmentValue(rowId, childField);
+                const childValue = isCostMode
+                  ? this._fetchCostValue(rowId, childField)
+                  : this._fetchAssignmentValue(rowId, childField);
                 return sum + (Number(childValue) || 0);
               }, 0);
             } else {
@@ -211,13 +214,17 @@ export class AGGridManager {
                 value = this._normalizeCellValue(node[columnField]);
               }
 
-              if ((value === null || typeof value === 'undefined') && this.state?.assignmentMap) {
-                value = this._fetchAssignmentValue(rowId, columnField);
+              if ((value === null || typeof value === 'undefined')) {
+                value = isCostMode
+                  ? this._fetchCostValue(rowId, columnField)
+                  : this._fetchAssignmentValue(rowId, columnField);
               }
             }
 
             let displayValue = value;
-            if (this.inputMode === 'volume' && value !== null && value !== undefined) {
+            if (isCostMode) {
+              displayValue = Number.isFinite(Number(value)) ? Number(value) : null;
+            } else if (this.inputMode === 'volume' && value !== null && value !== undefined) {
               displayValue = this._percentToVolume(displayValue, row.volume);
             }
 
@@ -280,16 +287,27 @@ export class AGGridManager {
       return;
     }
 
-    const isVolumeMode = this.inputMode === 'volume';
+    const inputMode = this.inputMode || 'percentage';
+    const isVolumeMode = inputMode === 'volume';
+    const isCostMode = inputMode === 'cost';
     const rowVolume = Number(rowData?.volume) || 0;
-    const validation = validateCellValue(event.newValue, {
-      min: 0,
-      max: isVolumeMode ? (rowVolume || 0) : 100,
-      precision: isVolumeMode ? 3 : 1,
-    });
-    if (!validation.isValid && validation.message && typeof this.helpers.showToast === 'function') {
-      const toastType = validation.level === 'error' ? 'danger' : 'warning';
-      this.helpers.showToast(validation.message, toastType);
+    let validation;
+
+    if (isCostMode) {
+      validation = this._validateCostValue(event.newValue);
+      if (!validation.isValid && validation.message && typeof this.helpers.showToast === 'function') {
+        this.helpers.showToast(validation.message, 'danger');
+      }
+    } else {
+      validation = validateCellValue(event.newValue, {
+        min: 0,
+        max: isVolumeMode ? (rowVolume || 0) : 100,
+        precision: isVolumeMode ? 3 : 1,
+      });
+      if (!validation.isValid && validation.message && typeof this.helpers.showToast === 'function') {
+        const toastType = validation.level === 'error' ? 'danger' : 'warning';
+        this.helpers.showToast(validation.message, toastType);
+      }
     }
 
     let displayValue = validation.value ?? 0;
@@ -297,6 +315,8 @@ export class AGGridManager {
 
     if (isVolumeMode) {
       canonicalValue = this._volumeToPercent(displayValue, rowVolume);
+    } else if (isCostMode) {
+      canonicalValue = Number.isFinite(displayValue) ? Number(displayValue) : 0;
     }
 
     canonicalValue = Number.isFinite(canonicalValue) ? Number(canonicalValue.toFixed(2)) : 0;
@@ -319,6 +339,7 @@ export class AGGridManager {
         displayValue,
         rowVolume,
         isVolumeMode,
+        valueType: isCostMode ? 'cost' : (isVolumeMode ? 'volume' : 'percentage'),
         validation,
       });
     }
@@ -371,6 +392,30 @@ export class AGGridManager {
     return null;
   }
 
+  _fetchCostValue(pekerjaanId, columnField) {
+    if (!pekerjaanId || !columnField) {
+      return null;
+    }
+
+    const cellKey = `${pekerjaanId}-${columnField}`;
+    const modifiedCosts = this.state?.costModifiedCells;
+    if (modifiedCosts instanceof Map && modifiedCosts.has(cellKey)) {
+      return this._normalizeCellValue(modifiedCosts.get(cellKey));
+    }
+
+    const costMap = this.state?.costAssignmentMap;
+    if (costMap instanceof Map) {
+      if (costMap.has(cellKey)) {
+        return this._normalizeCellValue(costMap.get(cellKey));
+      }
+    } else if (costMap && typeof costMap === 'object') {
+      if (Object.prototype.hasOwnProperty.call(costMap, cellKey)) {
+        return this._normalizeCellValue(costMap[cellKey]);
+      }
+    }
+    return null;
+  }
+
   _percentToVolume(percent, totalVolume) {
     const numericPercent = Number(percent);
     const numericVolume = Number(totalVolume);
@@ -391,6 +436,39 @@ export class AGGridManager {
     }
     const percent = (numericVolume / numericTotal) * 100;
     return Math.min(100, Math.max(0, percent));
+  }
+
+  _validateCostValue(rawValue) {
+    if (rawValue === null || typeof rawValue === 'undefined' || rawValue === '') {
+      return {
+        isValid: true,
+        message: '',
+        value: 0,
+      };
+    }
+
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) {
+      return {
+        isValid: false,
+        message: 'Biaya aktual harus berupa angka',
+        value: 0,
+      };
+    }
+
+    if (numeric < 0) {
+      return {
+        isValid: false,
+        message: 'Biaya aktual minimal 0',
+        value: 0,
+      };
+    }
+
+    return {
+      isValid: true,
+      message: '',
+      value: Number(numeric.toFixed(2)),
+    };
   }
 
   _applyThemeClass() {

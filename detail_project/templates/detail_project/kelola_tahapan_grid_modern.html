@@ -70,6 +70,12 @@
           <i class="bi bi-123" aria-hidden="true"></i>
           <span class="btn-text d-none d-md-inline">Vol</span>
         </label>
+
+        <input type="radio" class="btn-check" name="displayMode" id="mode-cost" value="cost" disabled>
+        <label class="btn btn-outline-success" for="mode-cost" title="Aktifkan Realisasi untuk input biaya">
+          <i class="bi bi-cash-coin" aria-hidden="true"></i>
+          <span class="btn-text d-none d-md-inline">Cost</span>
+        </label>
       </div>
 
       <!-- Primary Action Buttons -->
@@ -417,12 +423,12 @@
 <!-- MODERN VITE MODULE LOADING -->
 {% if DEBUG and use_vite_dev_server %}
   {# Development mode: Load from Vite dev server with HMR #}
-  <script type="module" src="http://localhost:5175/@vite/client"></script>
-  <script type="module" src="http://localhost:5175/js/src/jadwal_kegiatan_app.js"></script>
+  <script type="module" src="http://localhost:5173/@vite/client"></script>
+  <script type="module" src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"></script>
   <script>
     console.log('%cdYs? VITE DEV MODE', 'background: #646cff; color: white; padding: 4px 8px; border-radius: 3px;');
     console.log('Hot Module Replacement (HMR) enabled');
-    console.log('Dev server: http://localhost:5175');
+    console.log('Dev server: http://localhost:5173');
   </script>
 {% else %}
   {# Production mode: Load built assets via manifest #}

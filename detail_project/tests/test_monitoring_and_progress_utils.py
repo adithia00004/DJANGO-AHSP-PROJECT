@@ -149,7 +149,8 @@ def test_get_weekly_progress_for_daily_view(project, sub_klas):
         week_number=1,
         week_start_date=date(2025, 1, 1),
         week_end_date=date(2025, 1, 5),
-        proportion=Decimal("10.00"),
+        planned_proportion=Decimal("10.00"),
+        actual_proportion=Decimal("0.00"),
     )
 
     result = pu.get_weekly_progress_for_daily_view(
@@ -180,7 +181,8 @@ def test_get_weekly_progress_for_monthly_view(project, sub_klas):
         week_number=1,
         week_start_date=date(2025, 1, 1),
         week_end_date=date(2025, 1, 5),
-        proportion=Decimal("5.00"),
+        planned_proportion=Decimal("5.00"),
+        actual_proportion=Decimal("0.00"),
     )
     PekerjaanProgressWeekly.objects.create(
         pekerjaan=pekerjaan,
@@ -188,7 +190,8 @@ def test_get_weekly_progress_for_monthly_view(project, sub_klas):
         week_number=2,
         week_start_date=date(2025, 1, 6),
         week_end_date=date(2025, 1, 12),
-        proportion=Decimal("7.00"),
+        planned_proportion=Decimal("7.00"),
+        actual_proportion=Decimal("0.00"),
     )
 
     total = pu.get_weekly_progress_for_monthly_view(

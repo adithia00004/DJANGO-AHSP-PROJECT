@@ -4,7 +4,10 @@
  *
  * Migrated from: jadwal_pekerjaan/kelola_tahapan/save_handler_module.js
  * Date: 2025-11-19
+ * Phase 0.3: Integrated with StateManager
  */
+
+import { StateManager } from './state-manager.js';
 
 // =========================================================================
 // UTILITY FUNCTIONS
@@ -55,6 +58,9 @@ export class SaveHandler {
     this.state = state;
     this.options = options;
 
+    // Phase 0.3: Initialize StateManager
+    this.stateManager = StateManager.getInstance();
+
     // API configuration
     this.apiUrl = options.apiUrl || `/detail_project/api/project/${state.projectId}/pekerjaan/assign_weekly/`;
 
@@ -66,7 +72,8 @@ export class SaveHandler {
     // Save state
     this.isSaving = false;
 
-    console.log('[SaveHandler] Initialized with API:', this.apiUrl);
+    console.log('[SaveHandler] Phase 0.3: Initialized with StateManager');
+    console.log('[SaveHandler] API:', this.apiUrl);
   }
 
   // =======================================================================
@@ -90,7 +97,8 @@ export class SaveHandler {
 
     try {
       // Check if there are any changes
-      if (!this.state.modifiedCells || this.state.modifiedCells.size === 0) {
+      const hasCostChanges = this._hasCostChanges();
+      if ((!this.state.modifiedCells || this.state.modifiedCells.size === 0) && !hasCostChanges) {
         console.warn('[SaveHandler] No modified cells to save');
         this.showToast('Tidak ada perubahan untuk disimpan', 'info');
         this.isSaving = false;
@@ -134,11 +142,25 @@ export class SaveHandler {
 
     // Phase 2E.1: Log which mode's modifiedCells we're reading from
     const progressMode = this.state?.progressMode || 'planned';
-    console.log(`[SaveHandler] Building payload from ${progressMode.toUpperCase()} modifiedCells (size: ${this.state.modifiedCells.size})`);
+    const modeState = this.stateManager.states[progressMode];
+    const modifiedCells = modeState?.modifiedCells || this.state.modifiedCells || new Map();
+    const costModifiedCells = progressMode === 'actual' ? (modeState?.costModifiedCells || new Map()) : new Map();
+    const cellsToSave = new Set();
+
+    modifiedCells.forEach((_, cellKey) => cellsToSave.add(cellKey));
+    if (progressMode === 'actual' && costModifiedCells instanceof Map) {
+      costModifiedCells.forEach((_, cellKey) => cellsToSave.add(cellKey));
+    }
+
+    console.log(
+      `[SaveHandler] Building payload from ${progressMode.toUpperCase()} modifiedCells` +
+      ` (cells: ${modifiedCells.size}, cost: ${costModifiedCells.size})`
+    );
 
     // Convert modifiedCells Map to array of assignments
     // Phase 2E.1: Property delegation ensures this reads from current mode's modifiedCells
-    this.state.modifiedCells.forEach((value, cellKey) => {
+    cellsToSave.forEach((cellKey) => {
+      const value = modifiedCells.has(cellKey) ? modifiedCells.get(cellKey) : undefined;
       // Parse cellKey (format: "nodeId-columnId")
       const [pekerjaanId, tahapanId] = cellKey.split('-');
 
@@ -148,10 +170,9 @@ export class SaveHandler {
       }
 
       // Get numeric value
-      const proportion = parseFloat(value);
+      let proportion = typeof value === 'undefined' ? this._getSavedValue(cellKey) : parseFloat(value);
       if (!Number.isFinite(proportion)) {
-        console.warn(`[SaveHandler] Invalid value for ${cellKey}: ${value}`);
-        return;
+        proportion = 0;
       }
 
       // Get column info for additional metadata
@@ -161,10 +182,14 @@ export class SaveHandler {
       });
 
       // Build item
+      // Backend expects generic 'proportion' field - it will convert to planned/actual based on mode
       const item = {
         pekerjaan_id: parseInt(pekerjaanId, 10),
         proportion: Number(proportion.toFixed(2)),
       };
+
+      const targetField = progressMode === 'actual' ? 'actual_proportion' : 'planned_proportion';
+      item[targetField] = item.proportion;
 
       if (column) {
         const tahapanPrimaryId =
@@ -211,6 +236,13 @@ export class SaveHandler {
         } else {
           // Default to 1 as last resort to satisfy backend validation
           item.week_number = 1;
+        }
+      }
+
+      if (progressMode === 'actual' && costModifiedCells instanceof Map && costModifiedCells.has(cellKey)) {
+        const costValue = Number(costModifiedCells.get(cellKey));
+        if (Number.isFinite(costValue) && costValue >= 0) {
+          item.actual_cost = Number(costValue.toFixed(2));
         }
       }
 
@@ -319,11 +351,14 @@ export class SaveHandler {
   _handleSaveSuccess(result) {
     console.log('[SaveHandler] ✅ Save successful');
 
+    const progressMode = (this.state?.progressMode || 'planned').toLowerCase();
+    const modeState = this.stateManager?.states?.[progressMode];
+    const pendingModifiedCount = modeState?.modifiedCells?.size ?? this.state.modifiedCells.size;
+
     // Update assignmentMap with saved values
     this._updateAssignmentMap();
 
     // Clear modified cells
-    const modifiedCount = this.state.modifiedCells.size;
     this.state.modifiedCells.clear();
     if (this.state.cellVolumeOverrides instanceof Map) {
       this.state.cellVolumeOverrides.clear();
@@ -335,8 +370,12 @@ export class SaveHandler {
     }
 
     // Show success message
-    const savedCount = result.saved_count || result.count || modifiedCount;
-    const message = `Berhasil menyimpan ${savedCount} perubahan`;
+    const apiSavedTotal = (Number(result.created_count) || 0) + (Number(result.updated_count) || 0);
+    const fallbackSaved = Number(result.saved_count) || Number(result.count) || pendingModifiedCount;
+    const savedCount = apiSavedTotal > 0 ? apiSavedTotal : fallbackSaved;
+    const modeLabel = progressMode === 'actual' ? 'Realisasi' : 'Perencanaan';
+    const message = `Berhasil menyimpan ${savedCount} perubahan (${modeLabel})`;
+    this.showToast(message, 'success');
     this.showToast(message, 'success');
 
     // Call success callback
@@ -391,23 +430,54 @@ export class SaveHandler {
   }
 
   /**
+   * Get the current mode's state object
+   * @returns {Object} Current mode state (plannedState or actualState)
+   * @private
+   */
+  _getCurrentModeState() {
+    // Phase 2E.1: Support dual state architecture
+    const progressMode = this.state.progressMode || 'planned';
+    return progressMode === 'actual'
+      ? this.state.actualState
+      : this.state.plannedState;
+  }
+
+  /**
    * Update assignmentMap with modified values
-   * Moves modified values from modifiedCells to assignmentMap
+   * Phase 0.3: Delegate to StateManager.commitChanges()
    * @private
    */
   _updateAssignmentMap() {
-    if (!this.state.assignmentMap) {
-      this.state.assignmentMap = new Map();
+    // Phase 0.3: StateManager handles moving modifiedCells → assignmentMap
+    this.stateManager.commitChanges();
+
+    const progressMode = this.state.progressMode || 'planned';
+    const stats = this.stateManager.states[progressMode].getStats();
+    console.log(`[SaveHandler] Phase 0.3: StateManager committed changes for ${progressMode.toUpperCase()}`);
+    console.log(`[SaveHandler] New state: ${stats.assignmentCount} assignments, ${stats.modifiedCount} modified`);
+  }
+
+  _hasCostChanges() {
+    const progressMode = this.state?.progressMode || 'planned';
+    if (progressMode !== 'actual') {
+      return false;
     }
+    const costMap = this.state.costModifiedCells;
+    return costMap instanceof Map ? costMap.size > 0 : false;
+  }
 
-    this.state.modifiedCells.forEach((value, cellKey) => {
-      const numericValue = parseFloat(value);
-      if (Number.isFinite(numericValue)) {
-        this.state.assignmentMap.set(cellKey, numericValue);
-      }
-    });
-
-    console.log('[SaveHandler] Updated assignmentMap with modified values');
+  _getSavedValue(cellKey) {
+    const assignmentMap = this.state.assignmentMap;
+    if (!assignmentMap) {
+      return 0;
+    }
+    if (assignmentMap instanceof Map) {
+      return Number(assignmentMap.get(cellKey)) || 0;
+    }
+    if (typeof assignmentMap === 'object' && assignmentMap !== null) {
+      return Number(assignmentMap[cellKey]) || 0;
+    }
+    return 0;
   }
 
   // =======================================================================
@@ -416,18 +486,21 @@ export class SaveHandler {
 
   /**
    * Check if there are unsaved changes
+   * Phase 0.3: Delegate to StateManager
    * @returns {boolean} True if has unsaved changes
    */
   hasUnsavedChanges() {
-    return this.state.modifiedCells && this.state.modifiedCells.size > 0;
+    return this.stateManager.hasUnsavedChanges();
   }
 
   /**
    * Get count of modified cells
+   * Phase 0.3: Delegate to StateManager
    * @returns {number} Number of modified cells
    */
   getModifiedCount() {
-    return this.state.modifiedCells ? this.state.modifiedCells.size : 0;
+    const mode = this.state.progressMode || 'planned';
+    return this.stateManager.states[mode].modifiedCells.size;
   }
 
   /**

@@ -270,13 +270,17 @@ class JadwalPekerjaanExportAdapter:
         latest_end: date | None = None
 
         weekly_qs = PekerjaanProgressWeekly.objects.filter(project=self.project).only(
-            "pekerjaan_id", "week_number", "proportion", "week_start_date", "week_end_date"
+            "pekerjaan_id",
+            "week_number",
+            "planned_proportion",
+            "week_start_date",
+            "week_end_date",
         )
 
         for record in weekly_qs:
             key = (record.pekerjaan_id, record.week_number)
             try:
-                progress_map[key] = Decimal(record.proportion or 0)
+                progress_map[key] = Decimal(record.planned_proportion or 0)
             except InvalidOperation:
                 progress_map[key] = Decimal("0")
 

@@ -262,4 +262,16 @@ urlpatterns = [
          views_api.api_kurva_s_data,
          name='api_kurva_s_data'),
 
+    # ===== API: KURVA S HARGA DATA (Phase 1) =====
+    # Provides weekly cost progression data for cost-based S-curve
+    path('api/v2/project/<int:project_id>/kurva-s-harga/',
+         views_api.api_kurva_s_harga_data,
+         name='api_kurva_s_harga_data'),
+
+    # ===== API: REKAP KEBUTUHAN WEEKLY (Phase 1) =====
+    # Provides weekly resource requirements breakdown for procurement planning
+    path('api/v2/project/<int:project_id>/rekap-kebutuhan-weekly/',
+         views_api.api_rekap_kebutuhan_weekly,
+         name='api_rekap_kebutuhan_weekly'),
+
 ]

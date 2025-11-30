@@ -59,8 +59,8 @@ class TestAssignWeeklyProgress:
         ).order_by("week_number")
 
         assert progress.count() == 2
-        assert progress[0].proportion == Decimal("25.50")
-        assert progress[1].proportion == Decimal("30.00")
+        assert progress[0].planned_proportion == Decimal("25.50")
+        assert progress[1].planned_proportion == Decimal("30.00")
 
     def test_assign_weekly_progress_update_existing(self, client_logged, project_with_dates, pekerjaan_with_volume):
         """Test updating existing weekly progress."""
@@ -73,7 +73,8 @@ class TestAssignWeeklyProgress:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("10.00"),
+            planned_proportion=Decimal("10.00"),
+            actual_proportion=Decimal("0.00"),
         )
 
         url = reverse('detail_project:api_v2_assign_weekly', args=[project_with_dates.id])
@@ -103,7 +104,39 @@ class TestAssignWeeklyProgress:
             pekerjaan=pekerjaan_with_volume,
             week_number=1
         )
-        assert progress.proportion == Decimal("25.00")
+        assert progress.planned_proportion == Decimal("25.00")
+
+    def test_assign_weekly_progress_with_actual_cost(self, client_logged, project_with_dates, pekerjaan_with_volume):
+        """Actual cost payload should persist to canonical storage."""
+        from detail_project.models import PekerjaanProgressWeekly
+
+        url = reverse('detail_project:api_v2_assign_weekly', args=[project_with_dates.id])
+        payload = {
+            "mode": "actual",
+            "assignments": [
+                {
+                    "pekerjaan_id": pekerjaan_with_volume.id,
+                    "week_number": 1,
+                    "proportion": 40.00,
+                    "actual_cost": 1250000.0,
+                    "week_start_date": "2025-01-01",
+                    "week_end_date": "2025-01-07",
+                }
+            ]
+        }
+
+        response = client_logged.post(url, data=payload, content_type="application/json")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assignment = data["saved_assignments"][0]
+        assert assignment["actual_cost"] == 1250000.0
+
+        progress = PekerjaanProgressWeekly.objects.get(
+            pekerjaan=pekerjaan_with_volume,
+            week_number=1
+        )
+        assert progress.actual_cost == Decimal("1250000.0")
 
     def test_assign_weekly_progress_invalid_proportion(self, client_logged, project_with_dates, pekerjaan_with_volume):
         """Test validation: proportion must be 0-100."""
@@ -193,6 +226,8 @@ class TestGetWeeklyAssignments:
         assert "actual_proportion" in first_assignment  # Phase 2E.1
         assert "week_start_date" in first_assignment
         assert "week_end_date" in first_assignment
+        assert "actual_cost" in first_assignment
+        assert "budgeted_cost" in first_assignment
 
     def test_get_assignments_empty(self, client_logged, project_with_dates):
         """Test retrieving assignments when none exist."""
@@ -286,7 +321,6 @@ class TestResetProgress:
         # Verify planned progress reset to zero but records remain
         progress_after = PekerjaanProgressWeekly.objects.filter(project=project).order_by("week_number")
         assert progress_after.count() == 4
-        assert all(p.proportion == Decimal("0.00") for p in progress_after)
         assert all(p.planned_proportion == Decimal("0.00") for p in progress_after)
 
     def test_reset_progress_empty_project(self, client_logged, project_with_dates):
@@ -334,6 +368,7 @@ class TestWeeklyAssignmentFlow:
         # Phase 2E.1: Response key changed from "data" to "assignments"
         assert len(data["assignments"]) == 1
         assert float(data["assignments"][0]["proportion"]) == 25.00
+        assert "actual_cost" in data["assignments"][0]
 
         # Step 3: Update week boundaries
         boundary_url = reverse('detail_project:api_update_week_boundaries', args=[project_with_dates.id])
@@ -354,3 +389,4 @@ class TestWeeklyAssignmentFlow:
         assert len(data["assignments"]) == 1
         assert data["assignments"][0]["planned_proportion"] == 0.0
         assert data["assignments"][0]["proportion"] == 0.0
+        assert data["assignments"][0]["actual_cost"] == 0.0

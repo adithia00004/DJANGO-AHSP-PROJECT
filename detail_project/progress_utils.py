@@ -121,7 +121,8 @@ def get_weekly_progress_for_daily_view(
         week_start, week_end = weekly_progress.week_start_date, weekly_progress.week_end_date
         days_in_week = (week_end - week_start).days + 1
 
-        daily_proportion = weekly_progress.proportion / Decimal(days_in_week)
+        weekly_value = weekly_progress.planned_proportion
+        daily_proportion = weekly_value / Decimal(days_in_week)
 
         return daily_proportion.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
@@ -168,7 +169,8 @@ def get_weekly_progress_for_monthly_view(
 
         # Calculate proportion for this week within the month
         week_days = (weekly.week_end_date - weekly.week_start_date).days + 1
-        proportion_in_month = (weekly.proportion * Decimal(overlap_days)) / Decimal(week_days)
+        weekly_value = weekly.planned_proportion
+        proportion_in_month = (weekly_value * Decimal(overlap_days)) / Decimal(week_days)
 
         total_proportion += proportion_in_month
 
@@ -250,7 +252,7 @@ def sync_weekly_to_tahapan(
                 week_num = urutan_index + 1
                 try:
                     weekly_rec = next(w for w in weekly_records if w.week_number == week_num)
-                    proportion = weekly_rec.proportion
+                    proportion = weekly_rec.planned_proportion
                 except StopIteration:
                     proportion = Decimal('0.00')
             elif mode == 'monthly':

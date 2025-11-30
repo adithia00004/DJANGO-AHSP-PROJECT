@@ -26,7 +26,7 @@ class TestDualFieldIndependence:
             "assignments": [{
                 "pekerjaan_id": pekerjaan_with_volume.id,
                 "week_number": 1,
-                "proportion": 20.00,
+                "actual_proportion": 20.00,
                 "week_start_date": "2025-01-01",
                 "week_end_date": "2025-01-07",
             }]
@@ -43,7 +43,7 @@ class TestDualFieldIndependence:
             "assignments": [{
                 "pekerjaan_id": pekerjaan_with_volume.id,
                 "week_number": 1,
-                "proportion": 30.00,
+                "planned_proportion": 30.00,
                 "week_start_date": "2025-01-01",
                 "week_end_date": "2025-01-07",
             }]
@@ -66,8 +66,6 @@ class TestDualFieldIndependence:
             f"Actual proportion should be 20.00, got {wp.actual_proportion}"
         assert wp.planned_proportion == Decimal("30.00"), \
             f"Planned proportion should be 30.00, got {wp.planned_proportion}"
-        assert wp.proportion == Decimal("30.00"), \
-            f"Legacy proportion should sync with planned (30.00), got {wp.proportion}"
 
     def test_save_actual_does_not_affect_planned(self, client_logged, project_with_dates, pekerjaan_with_volume):
         """Test that saving actual progress doesn't overwrite planned progress."""
@@ -79,7 +77,7 @@ class TestDualFieldIndependence:
             "assignments": [{
                 "pekerjaan_id": pekerjaan_with_volume.id,
                 "week_number": 2,
-                "proportion": 50.00,
+                "planned_proportion": 50.00,
                 "week_start_date": "2025-01-08",
                 "week_end_date": "2025-01-14",
             }]
@@ -93,7 +91,7 @@ class TestDualFieldIndependence:
             "assignments": [{
                 "pekerjaan_id": pekerjaan_with_volume.id,
                 "week_number": 2,
-                "proportion": 35.00,
+                "actual_proportion": 35.00,
                 "week_start_date": "2025-01-08",
                 "week_end_date": "2025-01-14",
             }]
@@ -123,7 +121,7 @@ class TestDualFieldIndependence:
             "assignments": [{
                 "pekerjaan_id": pekerjaan_with_volume.id,
                 "week_number": 3,
-                "proportion": 40.00,
+                "planned_proportion": 40.00,
                 "week_start_date": "2025-01-15",
                 "week_end_date": "2025-01-21",
             }]
@@ -131,17 +129,17 @@ class TestDualFieldIndependence:
         client_logged.post(url, data=payload, content_type="application/json")
 
         payload["mode"] = "actual"
-        payload["assignments"][0]["proportion"] = 25.00
+        payload["assignments"][0]["actual_proportion"] = 25.00
         client_logged.post(url, data=payload, content_type="application/json")
 
         # Update planned again
         payload["mode"] = "planned"
-        payload["assignments"][0]["proportion"] = 45.00
+        payload["assignments"][0]["planned_proportion"] = 45.00
         client_logged.post(url, data=payload, content_type="application/json")
 
         # Update actual again
         payload["mode"] = "actual"
-        payload["assignments"][0]["proportion"] = 30.00
+        payload["assignments"][0]["actual_proportion"] = 30.00
         client_logged.post(url, data=payload, content_type="application/json")
 
         # Verify final values
@@ -168,7 +166,6 @@ class TestDualFieldIndependence:
             week_end_date=date(2025, 1, 28),
             planned_proportion=Decimal("60.00"),
             actual_proportion=Decimal("40.00"),
-            proportion=Decimal("60.00")
         )
 
         # Get via API
@@ -189,4 +186,3 @@ class TestDualFieldIndependence:
         # Verify both fields are returned
         assert float(assignment["planned_proportion"]) == 60.00
         assert float(assignment["actual_proportion"]) == 40.00
-        assert float(assignment["proportion"]) == 60.00  # Legacy field

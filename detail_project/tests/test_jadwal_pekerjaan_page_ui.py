@@ -97,7 +97,7 @@ def test_vite_dev_server_mode_loads_correct_path(client_logged, project):
     html = response.content.decode("utf-8")
 
     # Should use SHORT path relative to Vite root
-    assert 'src="http://localhost:5175/js/src/jadwal_kegiatan_app.js"' in html
+    assert 'src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"' in html
 
     # Should NOT use full path (this was the bug)
     assert 'detail_project/static/detail_project/js/src/jadwal_kegiatan_app.js' not in html

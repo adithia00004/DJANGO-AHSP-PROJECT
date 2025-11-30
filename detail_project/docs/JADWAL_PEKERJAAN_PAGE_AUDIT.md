@@ -733,6 +733,24 @@ document.querySelector('#scurve-tab').addEventListener('click', async () => {
 
 ---
 
+## Data Model Alignment (Roadmap)
+
+### Current coverage
+- Toolbar dataset masih mengarah ke `api_v2_assign_weekly`, dan sekarang pipeline save modern mengirim field `planned_proportion`/`actual_proportion` sehingga kontrak Option C sudah konsisten end-to-end (`detail_project/templates/detail_project/kelola_tahapan_grid_modern.html:236`, `detail_project/static/detail_project/js/src/modules/core/save-handler.js:108`).
+- API v2 menerima field baru tersebut sekaligus mempertahankan fallback `proportion`, sementara helper backend (`progress_utils.py`, `exports/jadwal_pekerjaan_adapter.py`) tidak lagi menyentuh kolom yang sudah dihapus (`detail_project/views_api_tahapan_v2.py:123-289`, `detail_project/progress_utils.py:97-281`, `detail_project/exports/jadwal_pekerjaan_adapter.py:266-294`).
+- Time columns tetap dibangun dari `TahapPelaksanaan` sehingga arsitektur tiga lapis (canonical weekly → tahapan view → grid) milik roadmap Option C sudah selaras.
+- Tahap 5.3 aktif: `budgeted_cost` (BAC) tersimpan di `Pekerjaan`, `actual_cost` mingguan tersedia di `PekerjaanProgressWeekly`, endpoint `kurva-s-harga` mengeluarkan dataset PV/EV/AC + SPI/CPI/EAC, dan Kurva S modern memakai data baru ini saat cost view aktif.
+
+### Gap wrt Tahap 5.3 (EVM)
+- Roadmap stage 5.3 mensyaratkan input cost mingguan dan perhitungan SPI/CPI/EAC. Sekarang grid AG sudah menyediakan toggle **Cost** (hanya aktif pada mode Realisasi) yang menulis `actual_cost` per minggu di payload `assign_weekly`, dan response API ikut mengembalikan `saved_assignments` + nilai cost terbaru. Dengan demikian kebutuhan cost storage/UX terpenuhi; tindak lanjut selanjutnya tinggal QA + polishing form entry (placeholder/tooltip rupiah) serta regresi tes kurva S.
+- Input biaya mingguan masih dilakukan via API/operasional (belum ada UI khusus), sehingga kualitas CPI/EAC bergantung pada data import eksternal.
+
+### Recommended next steps
+1. Tambahkan metadata biaya (per pekerjaan dan per minggu) dan teruskan melalui API v2 + StateManager agar kurva S/EVM bisa memakai BAC/AC/EV sesuai roadmap.
+2. Perbarui dokumentasi roadmap/audit begitu data biaya tersedia supaya reviewer berikutnya langsung melihat cakupan Tahap 5.3 tanpa audit ulang.
+
+---
+
 ## 📊 ROI Analysis
 
 | Improvement | Effort | Impact | ROI |

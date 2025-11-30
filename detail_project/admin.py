@@ -27,7 +27,7 @@ class PekerjaanAdmin(admin.ModelAdmin):
     list_display = (
         "id", "project", "sub_klasifikasi", "source_type",
         "snapshot_kode", "snapshot_uraian", "snapshot_satuan",
-        "auto_load_rincian", "detail_ready", "ordering_index",
+        "budgeted_cost", "auto_load_rincian", "detail_ready", "ordering_index",
     )
     list_filter = ("project", "source_type", "auto_load_rincian", "detail_ready")
     search_fields = ("snapshot_kode", "snapshot_uraian", "ref__kode_ahsp", "ref__nama_ahsp")
@@ -96,7 +96,7 @@ class PekerjaanTahapanAdmin(admin.ModelAdmin):
 @admin.register(PekerjaanProgressWeekly)
 class PekerjaanProgressWeeklyAdmin(admin.ModelAdmin):
     list_display = ("id", "pekerjaan", "project", "week_number", "week_start_date",
-                    "week_end_date", "planned_proportion", "actual_proportion", "created_at", "updated_at")
+                    "week_end_date", "planned_proportion", "actual_proportion", "actual_cost", "created_at", "updated_at")
     list_filter = ("project", "week_number")
     search_fields = ("pekerjaan__snapshot_kode", "pekerjaan__snapshot_uraian",
                      "project__nama", "notes")
@@ -113,8 +113,8 @@ class PekerjaanProgressWeeklyAdmin(admin.ModelAdmin):
             "fields": ("week_number", "week_start_date", "week_end_date")
         }),
         ("Progress Data (Phase 2E.1)", {
-            "fields": ("planned_proportion", "actual_proportion", "proportion", "notes"),
-            "description": "Dual fields: planned_proportion (plan) and actual_proportion (realisasi). Legacy 'proportion' field kept for compatibility."
+            "fields": ("planned_proportion", "actual_proportion", "actual_cost", "notes"),
+            "description": "Dual fields: planned_proportion (plan) dan actual_proportion (realisasi)."
         }),
         ("Metadata", {
             "fields": ("created_at", "updated_at", "actual_updated_at"),

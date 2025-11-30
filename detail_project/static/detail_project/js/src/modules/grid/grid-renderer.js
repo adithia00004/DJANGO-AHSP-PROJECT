@@ -117,16 +117,22 @@ export class GridRenderer {
     return [];
   }
 
+  _isCostMode() {
+    return (this.state?.displayMode || '').toLowerCase() === 'cost';
+  }
+
   _formatDisplayValue(nodeId, percentValue, referenceValue = percentValue) {
+    const displayMode = (this.state?.displayMode || 'percentage').toLowerCase();
     const numericValue = Number(percentValue);
     const numericReference = Number(referenceValue);
-    const shouldDisplay = (numericValue > 0 && Number.isFinite(numericValue)) ||
-      (numericValue === 0 && Number.isFinite(numericReference) && numericReference > 0);
+    const shouldDisplay = displayMode === 'cost'
+      ? Number.isFinite(numericValue) || Number.isFinite(numericReference)
+      : ( (numericValue > 0 && Number.isFinite(numericValue)) ||
+        (numericValue === 0 && Number.isFinite(numericReference) && numericReference > 0));
     if (!shouldDisplay) {
       return '';
     }
 
-    const displayMode = (this.state?.displayMode || 'percentage').toLowerCase();
     if (displayMode === 'volume') {
       const volumeMap = this.state?.volumeMap;
       let totalVolume = 0;
@@ -140,6 +146,18 @@ export class GridRenderer {
       }
       const volValue = ((numericValue / 100) * totalVolume).toFixed(2);
       return `<span class="cell-value volume">${volValue}</span>`;
+    }
+
+    if (displayMode === 'cost') {
+      const formatted = Number.isFinite(numericValue)
+        ? Number(numericValue).toLocaleString('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          })
+        : '-';
+      return `<span class="cell-value cost">${formatted}</span>`;
     }
 
     return `<span class="cell-value percentage">${numericValue.toFixed(1)}</span>`;
@@ -281,6 +299,7 @@ export class GridRenderer {
   _renderRightRow(node, rightRows, parentVisible = true, parentId = null) {
     const isExpanded = this._isNodeExpanded(node.id);
     const isVisible = parentVisible;
+    const isCostMode = this._isCostMode();
     const needsVolumeReset = (
       node.type === 'pekerjaan' &&
       this.state.volumeResetJobs instanceof Set &&
@@ -294,8 +313,8 @@ export class GridRenderer {
     const rowClass = rowClasses.join(' ').trim();
 
     // Render time cells for each column
-    const timeColumns = this._getDisplayColumns();
-    const timeCells = timeColumns
+      const timeColumns = this._getDisplayColumns();
+      const timeCells = timeColumns
       .map((col) => this._renderTimeCell(node, col))
       .join('');
 
@@ -325,6 +344,7 @@ export class GridRenderer {
    * @private
    */
   _renderTimeCell(node, column) {
+    const isCostMode = this._isCostMode();
     // Non-pekerjaan nodes get readonly cells
     if (node.type !== 'pekerjaan') {
       return `<td class="time-cell readonly" data-node-id="${node.id}" data-col-id="${column.id}"></td>`;
@@ -333,7 +353,9 @@ export class GridRenderer {
     if (Array.isArray(column.childColumns) && column.childColumns.length > 0) {
       const aggregatedValue = column.childColumns.reduce((sum, childColumn) => {
         const childId = childColumn.fieldId || childColumn.id;
-        const saved = this._getAssignmentValue(`${node.id}-${childId}`);
+        const saved = isCostMode
+          ? this._getCostAssignmentValue(`${node.id}-${childId}`)
+          : this._getAssignmentValue(`${node.id}-${childId}`);
         const { value } = this.getEffectiveCellValue(node.id, childId, saved);
         return sum + (Number(value) || 0);
       }, 0);
@@ -350,7 +372,9 @@ export class GridRenderer {
     }
 
     const cellKey = `${node.id}-${column.id}`;
-    const savedValue = this._getAssignmentValue(cellKey);
+    const savedValue = isCostMode
+      ? this._getCostAssignmentValue(cellKey)
+      : this._getAssignmentValue(cellKey);
     const { value: currentValue, modifiedValue} = this.getEffectiveCellValue(node.id, column.id, savedValue);
 
     // Determine column type (weekly or monthly)
@@ -516,13 +540,15 @@ export class GridRenderer {
    */
   getEffectiveCellValue(nodeId, columnId, fallbackSaved = 0) {
     const cellKey = `${nodeId}-${columnId}`;
+    const useCost = this._isCostMode();
     const savedNumeric = typeof fallbackSaved === 'number'
       ? fallbackSaved
       : parseFloat(fallbackSaved) || 0;
 
     let modifiedValue;
-    if (this.state.modifiedCells instanceof Map && this.state.modifiedCells.has(cellKey)) {
-      const candidate = parseFloat(this.state.modifiedCells.get(cellKey));
+    const modifiedSource = useCost ? this.state?.costModifiedCells : this.state?.modifiedCells;
+    if (modifiedSource instanceof Map && modifiedSource.has(cellKey)) {
+      const candidate = parseFloat(modifiedSource.get(cellKey));
       if (Number.isFinite(candidate)) {
         modifiedValue = candidate;
       }
@@ -553,6 +579,24 @@ export class GridRenderer {
       return this.state.assignmentMap[cellKey];
     }
 
+    return 0;
+  }
+
+  _getCostAssignmentValue(cellKey) {
+    if (!this.state || !this.state.costAssignmentMap) {
+      return 0;
+    }
+
+    const map = this.state.costAssignmentMap;
+    if (map instanceof Map) {
+      return Number(map.get(cellKey)) || 0;
+    }
+    if (typeof map.get === 'function') {
+      return Number(map.get(cellKey)) || 0;
+    }
+    if (Object.prototype.hasOwnProperty.call(map, cellKey)) {
+      return Number(map[cellKey]) || 0;
+    }
     return 0;
   }
 

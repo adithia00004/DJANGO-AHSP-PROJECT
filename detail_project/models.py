@@ -121,6 +121,13 @@ class Pekerjaan(TimeStampedModel):
         help_text="Override % Profit/Margin khusus pekerjaan ini; null=pakai default project"
     )
     detail_last_modified = models.DateTimeField(null=True, blank=True)
+    budgeted_cost = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+        help_text="Budgeted cost (BAC) untuk pekerjaan ini"
+    )
 
     class Meta:
         ordering = ["ordering_index", "id"]
@@ -677,6 +684,7 @@ class PekerjaanProgressWeekly(models.Model):
     )
 
     # Progress data - Dual fields for Planned vs Actual (Phase 2E.1)
+    # Phase 0: Legacy 'proportion' field removed (migration 0025)
     planned_proportion = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -691,14 +699,6 @@ class PekerjaanProgressWeekly(models.Model):
         help_text="Actual proportion of work (%) completed in this week. Range: 0 - 100.00"
     )
 
-    # Legacy field - kept for backward compatibility during migration
-    proportion = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        validators=[MinValueValidator(0), MaxValueValidator(100.00)],
-        help_text="[DEPRECATED] Use planned_proportion instead. Range: 0 - 100.00"
-    )
-
     # Metadata
     notes = models.TextField(
         blank=True,
@@ -707,6 +707,14 @@ class PekerjaanProgressWeekly(models.Model):
     actual_updated_at = models.DateTimeField(
         auto_now=True,
         help_text="Timestamp when actual_proportion was last updated"
+    )
+    actual_cost = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Actual cost incurred for this pekerjaan during this week"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -725,37 +733,13 @@ class PekerjaanProgressWeekly(models.Model):
     def __str__(self):
         return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} (Planned: {self.planned_proportion}%, Actual: {self.actual_proportion}%)"
 
-    def _normalize_proportion_fields(self):
-        """
-        Keep planned/actual/proportion fields in sync for backward compatibility.
-
-        Older code paths still write only to `proportion` - in that case we need
-        to mirror the value to `planned_proportion` so validation passes and data
-        stays consistent. Likewise ensure actual_proportion always has a numeric
-        value to avoid None comparisons during validation.
-        """
-        zero = Decimal('0.00')
-
-        if self.planned_proportion is None:
-            if self.proportion is not None:
-                self.planned_proportion = self.proportion
-            else:
-                self.planned_proportion = zero
-
-        if self.proportion is None:
-            self.proportion = self.planned_proportion
-
-        if self.actual_proportion is None:
-            self.actual_proportion = zero
-
     def clean(self):
         """Validation for planned and actual proportions"""
-        self._normalize_proportion_fields()
+        # Phase 0: Removed _normalize_proportion_fields() - no longer needed
         errors = {}
 
         planned = self.planned_proportion
         actual = self.actual_proportion
-        legacy = self.proportion
 
         # Validate planned_proportion
         if planned is not None and (planned < 0 or planned > 100):
@@ -765,11 +749,6 @@ class PekerjaanProgressWeekly(models.Model):
         if actual is not None and (actual < 0 or actual > 100):
             errors['actual_proportion'] = 'Actual proportion must be between 0% - 100%'
 
-        # Validate legacy proportion field (for backward compatibility)
-        if legacy is not None:
-            if legacy < 0 or legacy > 100:
-                errors['proportion'] = 'Proportion must be between 0% - 100%'
-
         # Validate week dates
         if (
             self.week_end_date
@@ -778,12 +757,15 @@ class PekerjaanProgressWeekly(models.Model):
         ):
             errors['week_end_date'] = 'Week end date must be >= start date'
 
+        if self.actual_cost is not None and self.actual_cost < 0:
+            errors['actual_cost'] = 'Actual cost must be >= 0'
+
         if errors:
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         """Auto-populate project field from pekerjaan"""
-        self._normalize_proportion_fields()
+        # Phase 0: Removed _normalize_proportion_fields() - no longer needed
 
         if not self.project_id:
             # Get project from pekerjaan's volume_pekerjaan

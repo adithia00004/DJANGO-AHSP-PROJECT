@@ -349,6 +349,207 @@ tooltip: {
 
 ---
 
+## 🔄 Data Flow Verification
+
+### How Kurva S Reads Grid Input Progress
+
+Kurva S chart correctly reads from grid view input progress through the following data flow:
+
+#### 1. Grid Input → State Storage
+
+When user enters progress in grid:
+```javascript
+// User inputs progress in grid cell
+// → triggers grid event handler
+// → saves to state.modifiedCells (unsaved) or state.assignmentMap (saved)
+```
+
+**Phase 2E.1 Dual State Architecture**:
+- **Perencanaan Mode**: Data stored in `state.plannedState.modifiedCells` and `state.plannedState.assignmentMap`
+- **Realisasi Mode**: Data stored in `state.actualState.modifiedCells` and `state.actualState.assignmentMap`
+
+#### 2. State Delegation Pattern
+
+The application uses **property delegation** for backward compatibility:
+
+```javascript
+// From jadwal_kegiatan_app.js lines 235-252
+_setupStateDelegation() {
+  const getCurrentState = () => {
+    return this.state.progressMode === 'actual'
+      ? this.state.actualState
+      : this.state.plannedState;
+  };
+
+  // Legacy properties automatically delegate to current mode
+  Object.defineProperty(this.state, 'modifiedCells', {
+    get: () => getCurrentState().modifiedCells,
+    configurable: true
+  });
+
+  Object.defineProperty(this.state, 'assignmentMap', {
+    get: () => getCurrentState().assignmentMap,
+    configurable: true
+  });
+}
+```
+
+**Effect**: When Kurva S reads `state.modifiedCells`, it automatically gets data from the correct mode (planned or actual).
+
+#### 3. Kurva S Initialization
+
+```javascript
+// From jadwal_kegiatan_app.js lines 1242-1248
+_initializeCharts() {
+  // Pass entire state object (includes delegation getters)
+  this.kurvaSChart = new KurvaSChart(this.state, {
+    useIdealCurve: true,
+    steepnessFactor: 0.8,
+    smoothCurves: true,
+    showArea: true,
+  });
+  this.kurvaSChart.initialize(this.state.domRefs.scurveChart);
+}
+```
+
+#### 4. Data Extraction in Kurva S Module
+
+```javascript
+// From echarts-setup.js lines 287-288
+_buildDataset() {
+  // Uses chart-utils.js buildCellValueMap() function
+  const cellValues = buildCellValueMap(this.state);
+  // ...
+}
+```
+
+#### 5. buildCellValueMap() Function
+
+```javascript
+// From chart-utils.js lines 326-350
+export function buildCellValueMap(state) {
+  const map = new Map();
+
+  // Step 1: Load saved assignment values (from database)
+  if (state.assignmentMap instanceof Map) {
+    state.assignmentMap.forEach((value, key) => assignValue(key, value));
+  }
+
+  // Step 2: Override with modified cells (unsaved grid changes)
+  if (state.modifiedCells instanceof Map) {
+    state.modifiedCells.forEach((value, key) => assignValue(key, value));
+  }
+
+  return map;
+}
+```
+
+**Key Points**:
+- ✅ Reads from `state.assignmentMap` (saved data from database)
+- ✅ Overrides with `state.modifiedCells` (unsaved changes from grid)
+- ✅ Thanks to delegation pattern, automatically reads from correct mode
+- ✅ Cell key format: `"pekerjaanId-tahapanId"` (e.g., `"123-456"`)
+- ✅ Cell value: Progress percentage (0-100)
+
+#### 6. Harga-Weighted Calculation
+
+```javascript
+// From echarts-setup.js lines 382-410
+_calculateColumnTotals(columns, cellValues, volumeLookup, hargaLookup, columnIndexById, useHargaCalculation) {
+  const columnTotals = new Array(columns.length).fill(0);
+
+  // Iterate through all cell values from grid
+  cellValues.forEach((value, key) => {
+    const [pekerjaanId, columnId] = String(key).split('-');
+    const percent = parseFloat(value);  // Grid input progress %
+
+    if (useHargaCalculation) {
+      // Phase 2F.0: Harga-weighted calculation
+      // Formula: (Total Harga Pekerjaan × Input Progress%) / Total Biaya × 100%
+      const pekerjaanHarga = getHargaForPekerjaan(hargaLookup, pekerjaanId, 0);
+      columnTotals[columnIndex] += pekerjaanHarga * (percent / 100);
+    } else {
+      // Legacy: Volume-weighted (fallback)
+      const pekerjaanVolume = getVolumeForPekerjaan(volumeLookup, pekerjaanId, 1);
+      columnTotals[columnIndex] += pekerjaanVolume * (percent / 100);
+    }
+  });
+
+  return columnTotals;
+}
+```
+
+### Complete Data Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. USER INPUT IN GRID                                           │
+│    User enters: 50% progress for Pekerjaan A, Week 1            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. STATE STORAGE (Phase 2E.1 Dual State)                        │
+│                                                                  │
+│  IF progressMode === 'planned':                                 │
+│    → state.plannedState.modifiedCells.set("123-456", 50)       │
+│                                                                  │
+│  IF progressMode === 'actual':                                  │
+│    → state.actualState.modifiedCells.set("123-456", 50)        │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. STATE DELEGATION (Backward Compatibility)                    │
+│                                                                  │
+│  state.modifiedCells (getter)                                   │
+│    → returns state.plannedState.modifiedCells (if planned mode) │
+│    → returns state.actualState.modifiedCells (if actual mode)   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. KURVA S READS STATE                                          │
+│                                                                  │
+│  KurvaSChart._buildDataset()                                    │
+│    → cellValues = buildCellValueMap(this.state)                 │
+│    → reads state.modifiedCells (via delegation getter)          │
+│    → gets correct mode data automatically                       │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 5. HARGA-WEIGHTED CALCULATION (Phase 2F.0)                      │
+│                                                                  │
+│  For each cell (pekerjaanId-tahapanId → progress%):            │
+│    1. Get pekerjaanHarga from hargaLookup                       │
+│    2. Calculate: pekerjaanHarga × (progress% / 100)             │
+│    3. Accumulate across all pekerjaan for each time column      │
+│    4. Convert to percentage: (cumulative / totalBiaya) × 100%   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 6. CHART DISPLAY                                                 │
+│                                                                  │
+│  ECharts renders:                                                │
+│    - X-axis: Timeline (awal project - akhir project)           │
+│    - Y-axis: Cost-weighted percentage (0-100%)                  │
+│    - Tooltip: Shows Rp amounts + percentages                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Verification Checklist
+
+✅ **Grid Input Reading**: Kurva S reads from `buildCellValueMap()` which reads both `assignmentMap` and `modifiedCells`
+✅ **Dual State Integration**: State delegation pattern ensures correct mode data is read
+✅ **Harga Calculation**: Uses `getHargaForPekerjaan()` to weight each pekerjaan by cost
+✅ **Total Biaya**: Uses `totalBiayaProject` from API (sum of all pekerjaan totals)
+✅ **Backward Compatibility**: Falls back to volume-based if harga data unavailable
+✅ **Real-time Updates**: Chart updates when grid data changes via `_updateCharts()`
+
+---
+
 ## 🔄 Backward Compatibility
 
 The implementation maintains **full backward compatibility**:

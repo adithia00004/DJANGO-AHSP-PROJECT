@@ -31,14 +31,14 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("25.50"),
+            planned_proportion=Decimal("25.50"),
             notes="Week 1 progress",
         )
 
         assert progress.id is not None
         assert progress.pekerjaan == pekerjaan_with_volume
         assert progress.week_number == 1
-        assert progress.proportion == Decimal("25.50")
+        assert progress.planned_proportion == Decimal("25.50")
         assert progress.notes == "Week 1 progress"
 
     def test_unique_constraint_pekerjaan_week(self, pekerjaan_with_volume):
@@ -53,7 +53,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),
         )
 
         # Try to create duplicate - model raises ValidationError (not IntegrityError)
@@ -64,7 +64,7 @@ class TestPekerjaanProgressWeeklyModel:
                 week_number=1,  # Same week number
                 week_start_date=date(2025, 1, 1),
                 week_end_date=date(2025, 1, 7),
-                proportion=Decimal("30.00"),
+                planned_proportion=Decimal("30.00"),
             )
             record.full_clean()  # Triggers validation
 
@@ -81,7 +81,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("-10.00"),  # Negative
+            planned_proportion=Decimal("-10.00"),  # Negative
         )
 
         with pytest.raises(ValidationError):
@@ -97,7 +97,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("150.00"),  # Exceeds 100
+            planned_proportion=Decimal("150.00"),  # Exceeds 100
         )
 
         with pytest.raises(ValidationError):
@@ -113,11 +113,11 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("99.99"),
+            planned_proportion=Decimal("99.99"),
         )
 
         progress.refresh_from_db()
-        assert progress.proportion == Decimal("99.99")
+        assert progress.planned_proportion == Decimal("99.99")
 
     def test_auto_populate_project_field(self, pekerjaan_with_volume):
         """Test that project field is auto-populated from pekerjaan if not provided."""
@@ -132,7 +132,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),
         )
 
         assert progress.project == pekerjaan_with_volume.project
@@ -150,7 +150,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=start,
             week_end_date=end,
-            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),
         )
 
         assert progress.week_start_date == start
@@ -167,7 +167,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),
             # notes omitted
         )
 
@@ -183,7 +183,7 @@ class TestPekerjaanProgressWeeklyModel:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),
         )
 
         assert progress.created_at is not None
@@ -224,7 +224,7 @@ class TestPekerjaanProgressWeeklyQueries:
         )
 
         assert progress.week_number == 1
-        assert progress.proportion == Decimal("25.00")
+        assert progress.planned_proportion == Decimal("25.00")
 
     def test_related_name_from_pekerjaan(self, weekly_progress):
         """Test accessing progress via pekerjaan.weekly_progress related name."""
@@ -266,7 +266,7 @@ class TestPekerjaanProgressWeeklyQueries:
         pekerjaan = weekly_progress[0].pekerjaan
         total = PekerjaanProgressWeekly.objects.filter(
             pekerjaan=pekerjaan
-        ).aggregate(total=Sum('proportion'))['total']
+        ).aggregate(total=Sum('planned_proportion'))['total']
 
         # Fixture creates 4 weeks × 25% each = 100%
         assert total == Decimal("100.00")
@@ -340,7 +340,7 @@ class TestPekerjaanProgressWeeklyIntegration:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("25.00"),
+            planned_proportion=Decimal("25.00"),
         )
 
         PekerjaanProgressWeekly.objects.create(
@@ -349,7 +349,7 @@ class TestPekerjaanProgressWeeklyIntegration:
             week_number=1,
             week_start_date=date(2025, 1, 1),
             week_end_date=date(2025, 1, 7),
-            proportion=Decimal("30.00"),
+            planned_proportion=Decimal("30.00"),
         )
 
         # Verify separate progress

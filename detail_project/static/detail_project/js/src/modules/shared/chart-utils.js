@@ -33,6 +33,8 @@ export function getThemeColors() {
       plannedArea: 'rgba(96, 165, 250, 0.15)',
       actualLine: '#34d399',
       actualArea: 'rgba(52, 211, 153, 0.18)',
+      costActualLine: '#f87171',
+      costActualArea: 'rgba(248, 113, 113, 0.18)',
       gridLine: '#334155',
       background: '#1e293b',
     };
@@ -45,6 +47,8 @@ export function getThemeColors() {
     plannedArea: 'rgba(13, 110, 253, 0.12)',
     actualLine: '#198754',
     actualArea: 'rgba(25, 135, 84, 0.12)',
+    costActualLine: '#dc3545',
+    costActualArea: 'rgba(220, 53, 69, 0.12)',
     gridLine: '#e5e7eb',
     background: '#ffffff',
   };
@@ -321,10 +325,19 @@ export function getHargaForPekerjaan(hargaLookup, pekerjaanId, fallback = 0) {
  * Build cell value map from assignmentMap and modifiedCells
  * Modified cells override assignment values
  *
+ * @deprecated Phase 0.5: Use StateManager.getAllCellsForMode() instead
+ * This function is redundant with StateManager's built-in merge logic.
+ *
+ * Migration guide:
+ * BEFORE: const cellValues = buildCellValueMap(state);
+ * AFTER:  const cellValues = stateManager.getAllCellsForMode('planned');
+ *
  * @param {Object} state - Application state
  * @returns {Map} Cell value map (cellKey → percentage)
  */
 export function buildCellValueMap(state) {
+  console.warn('[chart-utils] buildCellValueMap() is deprecated. Use StateManager.getAllCellsForMode() instead.');
+
   const map = new Map();
 
   const assignValue = (key, value) => {

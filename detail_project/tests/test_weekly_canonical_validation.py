@@ -194,7 +194,7 @@ class TestProgressValidation:
         # Verify saved to canonical storage
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert weekly_progress.count() == 2
-        total = sum(float(wp.proportion) for wp in weekly_progress)
+        total = sum(float(wp.planned_proportion) for wp in weekly_progress)
         assert total == 100.0
 
     def test_invalid_progress_over_100_percent(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
@@ -245,7 +245,7 @@ class TestProgressValidation:
         # Verify saved to canonical storage
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan)
         assert weekly_progress.count() == 2
-        total = sum(float(wp.proportion) for wp in weekly_progress)
+        total = sum(float(wp.planned_proportion) for wp in weekly_progress)
         assert total == 70.0
 
 
@@ -458,7 +458,7 @@ class TestAPIV2Endpoints:
             week_number=1,
             week_start_date=date(2025, 10, 26),
             week_end_date=date(2025, 10, 26),
-            proportion=Decimal('50.00')
+            planned_proportion=Decimal('50.00')
         )
         PekerjaanProgressWeekly.objects.create(
             pekerjaan=test_pekerjaan,
@@ -466,7 +466,7 @@ class TestAPIV2Endpoints:
             week_number=2,
             week_start_date=date(2025, 10, 27),
             week_end_date=date(2025, 11, 2),
-            proportion=Decimal('50.00')
+            planned_proportion=Decimal('50.00')
         )
 
         assert PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).count() == 2
@@ -484,7 +484,7 @@ class TestAPIV2Endpoints:
             PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).order_by('week_number')
         )
         assert len(weekly_after) == 2
-        assert all(wp.proportion == Decimal('0.00') for wp in weekly_after)
+        assert all(wp.planned_proportion == Decimal('0.00') for wp in weekly_after)
         assert all(wp.planned_proportion == Decimal('0.00') for wp in weekly_after)
 
     def test_assign_weekly_persists_distinct_weeks(self, client, project_sunday_start, test_pekerjaan):
@@ -526,7 +526,7 @@ class TestAPIV2Endpoints:
             ).order_by('week_number')
         )
         assert len(weekly) == 2
-        assert [float(w.proportion) for w in weekly] == [20.0, 35.0]
+        assert [float(w.planned_proportion) for w in weekly] == [20.0, 35.0]
 
         # Legacy view layer must mirror the same separation
         tahapan_weekly = list(
@@ -591,8 +591,8 @@ class TestIntegrationE2E:
         # Verify canonical storage
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert weekly_progress.count() == 2
-        assert float(weekly_progress[0].proportion) == 25.0
-        assert float(weekly_progress[1].proportion) == 75.0
+        assert float(weekly_progress[0].planned_proportion) == 25.0
+        assert float(weekly_progress[1].planned_proportion) == 75.0
 
         # Step 3: Switch to daily mode
         response = client.post(
@@ -613,10 +613,10 @@ class TestIntegrationE2E:
         # Step 5: Verify data preserved (lossless)
         weekly_progress_after = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert weekly_progress_after.count() == 2
-        assert float(weekly_progress_after[0].proportion) == 25.0
-        assert float(weekly_progress_after[1].proportion) == 75.0
+        assert float(weekly_progress_after[0].planned_proportion) == 25.0
+        assert float(weekly_progress_after[1].planned_proportion) == 75.0
 
-        total = sum(float(wp.proportion) for wp in weekly_progress_after)
+        total = sum(float(wp.planned_proportion) for wp in weekly_progress_after)
         assert total == 100.0
 
     def test_validation_error_does_not_save(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
@@ -654,7 +654,7 @@ class TestIntegrationE2E:
             week_number=1,
             week_start_date=week_start,
             week_end_date=week_end,
-            proportion=Decimal('70.00')
+            planned_proportion=Decimal('70.00')
         )
 
         url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
@@ -673,7 +673,7 @@ class TestIntegrationE2E:
         # Ensure DB rolled back (only original row exists)
         remaining = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert remaining.count() == 1
-        assert float(remaining[0].proportion) == 70.0
+        assert float(remaining[0].planned_proportion) == 70.0
 
     def test_zero_progress_allowed(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
         """Nilai 0% diperbolehkan untuk minggu tertentu selama total <= 100%."""
@@ -697,7 +697,7 @@ class TestIntegrationE2E:
 
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan)
         assert weekly_progress.count() == 3
-        totals = {wp.week_number: float(wp.proportion) for wp in weekly_progress}
+        totals = {wp.week_number: float(wp.planned_proportion) for wp in weekly_progress}
         assert totals[1] == 0.0
         assert totals[2] == 75.0
         assert totals[3] == 25.0

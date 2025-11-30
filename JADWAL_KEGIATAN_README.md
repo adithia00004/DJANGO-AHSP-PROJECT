@@ -21,6 +21,7 @@
 - Toolbar export modern menghadirkan dropdown CSV/PDF/Word/XLSX yang memanggil ExportManager; backend mengambil canonical weekly progress dan langsung menyelipkan agregasi monthly (4 minggu/blok) dalam satu klik.
 - File export Jadwal kini menggunakan kertas A3 landscape dan otomatis memecah kolom weekly menjadi beberapa halaman (maks ~10 kolom per lembar, monthly dikap setiap ±6 kolom) sehingga timeline panjang tetap mudah dibaca tanpa mengecilkan font.
 - Regression suite: pytest detail_project/tests/test_jadwal_pekerjaan_page_ui.py --no-cov dan pytest detail_project/tests/test_weekly_canonical_validation.py --no-cov (round-trip + zero progress) keduanya hijau.
+- Kurva S Phase 5.3 tersinkron penuh: halaman Jadwal otomatis memuat data biaya dari `/detail_project/api/v2/project/<id>/kurva-s-harga/`, legend dan tooltip memakai istilah **Rencana (PV)** dan **Realisasi (AC)**, serta Week 0 ditambahkan agar grafik selalu berangkat dari 0%. Toast simpan menampilkan jumlah perubahan riil (created + updated) sehingga pesan “0 perubahan” hanya muncul bila memang tidak ada baris yang tersimpan.
 - Phase 3 (Build optimization) masih pending; deliverable export Jadwal sudah aktif dan siap digabung setelah mode volume + monthly switch dinyatakan stabil.
 - Skrip npm yang tersedia: dev, build, preview, watch, test, test:integration, benchmark.
 ---

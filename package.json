@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "watch": "vite build --watch",
     "test": "pytest detail_project/tests/test_jadwal_pekerjaan_page_ui.py --no-cov",
+    "test:frontend": "node --test detail_project/static/detail_project/js/src/modules/kurva-s/week-zero-helpers.test.js",
     "test:integration": "pytest detail_project/tests --maxfail=1 --disable-warnings -k jadwal",
     "benchmark": "vite build --mode production && echo \"Bundle stats available at detail_project/static/detail_project/dist/stats.html\""
   },

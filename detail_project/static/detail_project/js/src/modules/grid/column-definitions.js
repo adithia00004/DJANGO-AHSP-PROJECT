@@ -148,6 +148,19 @@ function formatTimeCellValue(value, mode = 'percentage') {
     });
   }
 
+  if (mode === 'cost') {
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) {
+      return value;
+    }
+    return numericValue.toLocaleString('id-ID', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      style: 'currency',
+      currency: 'IDR',
+    });
+  }
+
   return `${value}`;
 }
 

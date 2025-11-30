@@ -4,7 +4,10 @@
  *
  * Migrated from: jadwal_pekerjaan/kelola_tahapan/data_loader_module.js
  * Date: 2025-11-19
+ * Phase 0.3: Integrated with StateManager
  */
+
+import { StateManager } from './state-manager.js';
 
 // =========================================================================
 // UTILITY FUNCTIONS
@@ -180,7 +183,8 @@ function buildPekerjaanTree(response) {
               nama: pkj.snapshot_uraian || pkj.uraian || '',
               volume: pkj.volume || 0,
               satuan: pkj.snapshot_satuan || pkj.satuan || '-',
-              level: 2
+              level: 2,
+              budgeted_cost: Number.parseFloat(pkj.budgeted_cost ?? pkj.total_cost ?? 0) || 0
             };
             subNode.children.push(pkjNode);
           });
@@ -229,16 +233,20 @@ export class DataLoader {
     this.options = options;
     this.projectId = state.projectId;
 
+    // Phase 0.3: Initialize StateManager
+    this.stateManager = StateManager.getInstance();
+
     // Initialize state maps if not exist
     if (!this.state.volumeMap) {
       this.state.volumeMap = new Map();
     }
-    if (!this.state.assignmentMap) {
-      this.state.assignmentMap = new Map();
-    }
+    // Phase 0.3: assignmentMap now managed by StateManager
+    // Legacy code may still access via this.state.assignmentMap (delegation getter)
     if (!this.state.cache) {
       this.state.cache = {};
     }
+
+    console.log('[DataLoader] Phase 0.3: Initialized with StateManager');
   }
 
   /**
@@ -386,8 +394,10 @@ export class DataLoader {
    */
   async loadAssignments() {
     try {
-      this.state.assignmentMap.clear();
-      console.log('[DataLoader] Loading assignments (attempting API v2)...');
+      // Phase 0.3: Clear StateManager data (both modes)
+      this.stateManager.states.planned.assignmentMap.clear();
+      this.stateManager.states.actual.assignmentMap.clear();
+      console.log('[DataLoader] Phase 0.3: Loading assignments (attempting API v2)...');
 
       const pekerjaanNodes = this.state.flatPekerjaan.filter(node => node.type === 'pekerjaan');
       const totalNodes = pekerjaanNodes.length;
@@ -461,21 +471,15 @@ export class DataLoader {
       const pekerjaanId = Number(item.pekerjaan_id || item.pekerjaanId || item.id);
       const weekNumber = Number(item.week_number || item.weekNumber);
 
-      // Phase 2E.1: Determine which field to read based on progressMode
-      const progressMode = this.state?.progressMode || 'planned';
-      let proportion;
+      // Phase 0.3: Read both planned and actual proportions
+      const plannedProportion = parseFloat(item.planned_proportion) || 0;
+      const actualProportion = parseFloat(item.actual_proportion) || 0;
+      const rawCost = item.actual_cost ?? item.actualCost ?? null;
+      const actualCost = rawCost === null || typeof rawCost === 'undefined'
+        ? null
+        : Number.parseFloat(rawCost);
 
-      if (progressMode === 'actual') {
-        // Read actual_proportion field
-        proportion = parseFloat(item.actual_proportion ?? item.proportion);
-        console.log(`[DataLoader] Mode ACTUAL: Reading actual_proportion=${item.actual_proportion} for pekerjaan=${pekerjaanId}, week=${weekNumber}`);
-      } else {
-        // Read planned_proportion field (default)
-        proportion = parseFloat(item.planned_proportion ?? item.proportion);
-        console.log(`[DataLoader] Mode PLANNED: Reading planned_proportion=${item.planned_proportion} for pekerjaan=${pekerjaanId}, week=${weekNumber}`);
-      }
-
-      if (!pekerjaanId || !weekNumber || Number.isNaN(proportion)) {
+      if (!pekerjaanId || !weekNumber) {
         return;
       }
 
@@ -489,15 +493,27 @@ export class DataLoader {
         return;
       }
 
-      const cellKey = `${pekerjaanId}-${columnKey}`;
-      // Phase 2E.1: Property delegation ensures this writes to current mode's assignmentMap
-      this.state.assignmentMap.set(cellKey, proportion);
+      // Phase 0.3: Use StateManager.setInitialValue to set both planned and actual
+      const options = {};
+      if (actualCost !== null && !Number.isNaN(actualCost) && Number.isFinite(actualCost)) {
+        options.actualCost = actualCost;
+      }
+
+      this.stateManager.setInitialValue(
+        pekerjaanId,
+        columnKey,
+        plannedProportion,
+        actualProportion,
+        options
+      );
       mapped += 1;
     });
 
-    // Phase 2E.1: Log which mode's state received the data
-    const progressMode = this.state?.progressMode || 'planned';
-    console.log(`[DataLoader] ✅ Loaded ${mapped} assignments into ${progressMode.toUpperCase()} state via API v2`);
+    // Phase 0.3: Log loaded data statistics
+    const stats = this.stateManager.getStats();
+    console.log(`[DataLoader] Phase 0.3: Loaded ${mapped} assignments via API v2`);
+    console.log(`[DataLoader] Planned: ${stats.planned.assignmentCount} assignments`);
+    console.log(`[DataLoader] Actual: ${stats.actual.assignmentCount} assignments`);
   }
 }
 

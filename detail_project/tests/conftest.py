@@ -477,9 +477,8 @@ def weekly_progress(db, pekerjaan_with_volume):
             week_number=week_num,
             week_start_date=start_date,
             week_end_date=end_date,
-            proportion=Decimal("25.00"),
-            planned_proportion=Decimal("25.00"),  # Phase 2E.1: Add planned field
-            actual_proportion=Decimal("20.00"),   # Phase 2E.1: Add actual field
+            planned_proportion=Decimal("25.00"),
+            actual_proportion=Decimal("20.00"),
             notes=f"Week {week_num} progress",
         )
         progress_records.append(record)

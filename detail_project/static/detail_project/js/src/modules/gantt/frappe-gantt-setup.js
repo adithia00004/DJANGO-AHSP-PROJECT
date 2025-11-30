@@ -14,7 +14,7 @@ import {
   getSortedColumns,
   buildVolumeLookup,
   getVolumeForPekerjaan,
-  buildCellValueMap,
+  // buildCellValueMap, // Phase 0.5: Removed (unused, deprecated)
   setupThemeObserver,
   ONE_DAY_MS,
 } from '../shared/chart-utils.js';
@@ -200,6 +200,7 @@ export class GanttChart {
       viewMode: DEFAULT_VIEW_MODE,
       enableThemeObserver: true,
       enableResizeHandler: true,
+      language: 'id-ID',
       ...options,
     };
 
@@ -595,11 +596,9 @@ export class GanttChart {
     // Clear container
     this.container.innerHTML = '';
 
-    // Create Gantt options
-    const options = {
+    const baseOptions = {
       view_mode: this.options.viewMode,
       date_format: 'YYYY-MM-DD',
-      language: 'id', // Indonesian language
       custom_popup_html: (task) => this._buildPopupHtml(task),
       on_click: (task) => this._handleTaskClick(task),
       on_date_change: (task, start, end) => this._handleDateChange(task, start, end),
@@ -607,11 +606,31 @@ export class GanttChart {
       on_view_change: (mode) => this._handleViewChange(mode),
     };
 
-    try {
-      this.ganttInstance = new window.Gantt(this.container, this.tasks, options);
-      console.log(`${LOG_PREFIX} Gantt instance created`);
-    } catch (error) {
-      console.error(`${LOG_PREFIX} Failed to create Gantt instance:`, error);
+    const languagesToTry = Array.from(new Set([
+      this.options.language || 'id-ID',
+      'en',
+    ]));
+
+    let created = false;
+    let lastError = null;
+
+    for (const lang of languagesToTry) {
+      try {
+        const options = { ...baseOptions, language: lang };
+        this.ganttInstance = new window.Gantt(this.container, this.tasks, options);
+        this.options.language = lang;
+        console.log(`${LOG_PREFIX} Gantt instance created (language=${lang})`);
+        created = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        console.error(`${LOG_PREFIX} Failed to create Gantt instance (language=${lang}):`, error);
+      }
+    }
+
+    if (!created && lastError) {
+      console.error(`${LOG_PREFIX} Unable to create Gantt after trying fallback languages`, lastError);
+      this.container.innerHTML = '<div class="text-center text-danger p-4">Gagal memuat Gantt chart</div>';
     }
   }
 
