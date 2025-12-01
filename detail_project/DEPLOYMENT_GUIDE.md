@@ -108,6 +108,7 @@ CACHES = {
 - [ ] Environment variables configured (.env file)
 - [ ] Database migrations applied
 - [ ] Static files collected (`python manage.py collectstatic`)
+- [ ] Frontend assets built (`npm install && npm run build` untuk menghasilkan bundel Vite + manifest)
 
 ### Security
 - [ ] SECRET_KEY in environment variable (not in code)
@@ -283,10 +284,14 @@ python manage.py createsuperuser
 python manage.py check
 ```
 
-### Step 4: Static Files
+### Step 4: Frontend Build & Static Files
 
 ```bash
-# Collect static files
+# Build Vite assets (generates detail_project/static/detail_project/dist + manifest)
+npm install
+npm run build
+
+# Collect static files (serves both Django assets & Vite bundle)
 python manage.py collectstatic --no-input
 
 # Verify static files

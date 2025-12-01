@@ -30,3 +30,8 @@ def test_rekap_kebutuhan_totals(client_logged, project, pekerjaan_custom, detail
 
     # TK.SMOKE = 0.125 * 5.000 = 0.625000
     assert q("TK.SMOKE") == Decimal("0.625000")
+
+    row = next((r for r in rows if r["kode"] == "TK.SMOKE"), None)
+    assert row is not None
+    assert row.get("harga_satuan") == "1"
+    assert row.get("harga_total") == "0.625"

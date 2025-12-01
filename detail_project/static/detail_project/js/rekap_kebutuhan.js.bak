@@ -1,0 +1,1274 @@
+// static/detail_project/js/rekap_kebutuhan.js
+
+// Enhanced Rekap Kebutuhan dengan support Tahapan Filter
+
+
+
+(function () {
+
+  'use strict';
+
+
+
+  // =========================================================================
+
+  // DOM UTILITIES
+
+  // =========================================================================
+
+  
+
+  const $ = (s, c = document) => c.querySelector(s);
+
+  const $$ = (s, c = document) => Array.from(c.querySelectorAll(s));
+
+  
+
+  const app = $('#rk-app');
+
+  if (!app) return;
+
+
+
+  // =========================================================================
+
+  // CONFIGURATION & STATE
+
+  // =========================================================================
+
+  
+
+  const projectId = app.getAttribute('data-project-id');
+
+  const endpoint = app.dataset.endpoint;
+
+  const filtersEndpoint = app.dataset.filterEndpoint;
+
+  const exportTargets = {
+
+    csv: app.dataset.exportCsv,
+
+    pdf: app.dataset.exportPdf,
+
+    word: app.dataset.exportWord,
+
+  };
+
+  
+
+  if (!endpoint) {
+
+    console.error('[rk] data-endpoint kosong pada #rk-app');
+
+    return;
+
+  }
+
+
+
+  // State management
+
+  let tahapanList = [];
+
+  let filterOptions = { klasifikasi: [] };
+
+  let currentFilter = {
+
+    mode: 'all',
+
+    tahapan_id: null,
+
+    kategori: ['TK', 'BHN', 'ALT', 'LAIN'],
+
+    klasifikasi_ids: [],
+
+    sub_klasifikasi_ids: [],
+
+    search: '',
+
+  };
+
+
+
+  // =========================================================================
+
+  // DOM ELEMENTS
+
+  // =========================================================================
+
+  
+
+  const tbody = $('#rk-tbody') || $('#rk-table tbody');
+
+  const emptyEl = $('#rk-empty');
+
+  const loadingEl = $('#rk-loading');
+
+  
+
+  const countTK = $('#rk-count-TK');
+
+  const countBHN = $('#rk-count-BHN');
+
+  const countALT = $('#rk-count-ALT');
+
+  const countLAIN = $('#rk-count-LAIN');
+
+  const qtyTK = $('#rk-qty-TK');
+
+  const qtyBHN = $('#rk-qty-BHN');
+
+  const qtyALT = $('#rk-qty-ALT');
+
+  const qtyLAIN = $('#rk-qty-LAIN');
+
+  const nrowsEl = $('#rk-nrows');
+
+  const genEl = $('#rk-generated');
+
+  const totalCostEl = $('#rk-total-cost');
+
+  const searchInput = $('#rk-search');
+
+  const selectKlasifikasi = $('#rk-klasifikasi');
+
+  const selectSub = $('#rk-subklasifikasi');
+
+  
+
+  const btnCsv = $('#btn-export-csv');
+
+  const btnPdf = $('#btn-export-pdf');
+
+  const btnWord = $('#btn-export-word');
+
+  
+
+  const scopeIndicator = $('#rk-scope-indicator');
+
+  const filterIndicator = $('#rk-filter-indicator');
+
+  const tahapanButtonsContainer = $('#rk-tahapan-buttons');
+
+
+
+  // =========================================================================
+
+  // UTILITY FUNCTIONS
+
+  // =========================================================================
+
+  
+
+  function setLoading(v) {
+
+    if (loadingEl) loadingEl.classList.toggle('d-none', !v);
+
+  }
+
+
+
+  function setEmpty(v) {
+
+    if (emptyEl) emptyEl.classList.toggle('d-none', !v);
+
+  }
+
+
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({
+
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+
+  }[c]));
+
+
+
+  const getSelectedValues = (selectEl) => {
+
+    if (!selectEl) return [];
+
+    return Array.from(selectEl.selectedOptions || []).map(opt => opt.value).filter(Boolean);
+
+  };
+
+
+
+  const debounce = (fn, delay = 250) => {
+
+    let timer;
+
+    return function debounced(...args) {
+
+      clearTimeout(timer);
+
+      timer = setTimeout(() => fn.apply(this, args), delay);
+
+    };
+
+  };
+
+  const qtyFormatter = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 6 });
+  const currencyFormatter = new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 2,
+  });
+
+  const formatQtyValue = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const num = Number(value);
+    return Number.isFinite(num) ? qtyFormatter.format(num) : String(value);
+  };
+
+  const formatCurrencyValue = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return String(value);
+    return currencyFormatter.format(num).replace(/ /g, ' ');
+  };
+
+
+
+  function showToast(message, type = 'info') {
+
+    if (window.DP && window.DP.core && window.DP.core.toast) {
+
+      window.DP.core.toast.show(message, type);
+
+    } else {
+
+      console.log(`[${type}] ${message}`);
+
+    }
+
+  }
+
+
+
+  async function apiCall(url, options = {}) {
+
+    const response = await fetch(url, {
+
+      credentials: 'same-origin',
+
+      ...options
+
+    });
+
+
+
+    if (!response.ok) {
+
+      throw new Error(`HTTP ${response.status}`);
+
+    }
+
+
+
+    return response.json();
+
+  }
+
+
+
+  function buildQueryParams() {
+
+    const params = { mode: currentFilter.mode };
+
+    if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
+
+      params.tahapan_id = String(currentFilter.tahapan_id);
+
+    }
+
+    if (currentFilter.klasifikasi_ids.length) {
+
+      params.klasifikasi = currentFilter.klasifikasi_ids.join(',');
+
+    }
+
+    if (currentFilter.sub_klasifikasi_ids.length) {
+
+      params.sub_klasifikasi = currentFilter.sub_klasifikasi_ids.join(',');
+
+    }
+
+    if (currentFilter.kategori.length < 4) {
+
+      params.kategori = currentFilter.kategori.join(',');
+
+    }
+
+    if (currentFilter.search) {
+
+      params.search = currentFilter.search;
+
+    }
+
+    return params;
+
+  }
+
+
+
+  function renderKlasifikasiOptions() {
+
+    if (!selectKlasifikasi) return;
+
+    const options = filterOptions.klasifikasi || [];
+
+    if (!options.length) {
+
+      selectKlasifikasi.innerHTML = '<option value="">Belum ada klasifikasi</option>';
+
+      return;
+
+    }
+
+    selectKlasifikasi.innerHTML = options.map((item) => (
+
+      `<option value="${item.id}">${esc(item.name)} (${item.pekerjaan_count || 0})</option>`
+
+    )).join('');
+
+  }
+
+
+
+  function renderSubOptions(preserveSelection = false) {
+
+    if (!selectSub) return;
+
+    const allowedKlas = currentFilter.klasifikasi_ids.length
+
+      ? new Set(currentFilter.klasifikasi_ids.map(String))
+
+      : null;
+
+    const subs = [];
+
+    (filterOptions.klasifikasi || []).forEach((klas) => {
+
+      if (allowedKlas && !allowedKlas.has(String(klas.id))) return;
+
+      (klas.sub || []).forEach((sub) => subs.push(sub));
+
+    });
+
+    const validSet = new Set(subs.map((sub) => String(sub.id)));
+
+    currentFilter.sub_klasifikasi_ids = currentFilter.sub_klasifikasi_ids.filter((id) =>
+
+      validSet.has(String(id))
+
+    );
+
+    if (!subs.length) {
+
+      selectSub.innerHTML = '<option value="">Belum ada sub-klasifikasi</option>';
+
+      return;
+
+    }
+
+    const previous = preserveSelection ? new Set(currentFilter.sub_klasifikasi_ids.map(String)) : new Set();
+
+    selectSub.innerHTML = subs.map((sub) => (
+
+      `<option value="${sub.id}">${esc(sub.name)} (${sub.pekerjaan_count || 0})</option>`
+
+    )).join('');
+
+    if (preserveSelection && previous.size) {
+
+      Array.from(selectSub.options).forEach((opt) => {
+
+        opt.selected = previous.has(opt.value);
+
+      });
+
+    }
+
+  }
+
+
+
+  function syncFilterControls() {
+
+    if (selectKlasifikasi) {
+
+      const selected = new Set(currentFilter.klasifikasi_ids.map(String));
+
+      Array.from(selectKlasifikasi.options).forEach((opt) => {
+
+        opt.selected = selected.has(opt.value);
+
+      });
+
+    }
+
+    renderSubOptions(true);
+
+    if (selectSub) {
+
+      const selectedSubs = new Set(currentFilter.sub_klasifikasi_ids.map(String));
+
+      Array.from(selectSub.options).forEach((opt) => {
+
+        opt.selected = selectedSubs.has(opt.value);
+
+      });
+
+    }
+
+    if (searchInput) {
+
+      searchInput.value = currentFilter.search || '';
+
+    }
+
+    $$('.kategori-check').forEach((cb) => {
+
+      cb.checked = currentFilter.kategori.includes(cb.value);
+
+    });
+
+  }
+
+
+
+  async function loadFilterOptions() {
+
+    if (!filtersEndpoint) return;
+
+    try {
+
+      const data = await apiCall(filtersEndpoint);
+
+      filterOptions.klasifikasi = data.klasifikasi || [];
+
+      renderKlasifikasiOptions();
+
+      renderSubOptions();
+
+      syncFilterControls();
+
+    } catch (error) {
+
+      console.warn('[rk] gagal memuat filter klasifikasi:', error);
+
+    }
+
+  }
+
+
+
+  // =========================================================================
+
+  // TAHAPAN LOADING
+
+  // =========================================================================
+
+  
+
+  async function loadTahapan() {
+
+    try {
+
+      const data = await apiCall(`/detail_project/api/project/${projectId}/tahapan/`);
+
+      tahapanList = data.tahapan || [];
+
+      renderTahapanButtons();
+
+    } catch (error) {
+
+      console.error('[rk] Failed to load tahapan:', error);
+
+      // Silently fail - filter will still work without tahapan
+
+    }
+
+  }
+
+
+
+  function renderTahapanButtons() {
+
+    if (!tahapanButtonsContainer) return;
+
+    
+
+    if (tahapanList.length === 0) {
+
+      tahapanButtonsContainer.innerHTML = `
+
+        <span class="text-muted small">
+
+          <i class="bi bi-info-circle"></i>
+
+          Belum ada tahapan.
+
+          <a href="/detail_project/${projectId}/jadwal-pekerjaan/">Buat tahapan</a>
+
+        </span>
+
+      `;
+
+      return;
+
+    }
+
+
+
+    const html = tahapanList.map(tahap => `
+
+      <button type="button" 
+
+              class="rk-tahapan-btn" 
+
+              data-scope="tahapan" 
+
+              data-tahapan-id="${tahap.tahapan_id}">
+
+        <i class="bi bi-bookmark"></i>
+
+        ${esc(tahap.nama)}
+
+        <small class="opacity-75">(${tahap.jumlah_pekerjaan})</small>
+
+      </button>
+
+    `).join('');
+
+
+
+    tahapanButtonsContainer.innerHTML = html;
+
+    attachTahapanButtonListeners();
+
+  }
+
+
+
+  function attachTahapanButtonListeners() {
+
+    $$('.rk-tahapan-btn').forEach(btn => {
+
+      btn.addEventListener('click', (e) => {
+
+        // Remove active from all
+
+        $$('.rk-tahapan-btn').forEach(b => b.classList.remove('active'));
+
+        
+
+        // Add active to clicked
+
+        e.currentTarget.classList.add('active');
+
+        
+
+        // Update filter state
+
+        const scope = e.currentTarget.dataset.scope;
+
+        const tahapanId = e.currentTarget.dataset.tahapanId;
+
+
+
+        if (scope === 'all') {
+
+          currentFilter.mode = 'all';
+
+          currentFilter.tahapan_id = null;
+
+        } else {
+
+          currentFilter.mode = 'tahapan';
+
+          currentFilter.tahapan_id = parseInt(tahapanId);
+
+        }
+
+        
+
+        // Don't auto-apply, let user click "Terapkan Filter"
+
+        // But you can uncomment below for auto-apply:
+
+        // loadRekapKebutuhan();
+
+      });
+
+    });
+
+  }
+
+
+
+  // =========================================================================
+
+  // DATA LOADING
+
+  // =========================================================================
+
+  
+
+  async function loadRekapKebutuhan() {
+
+    setLoading(true);
+
+    
+
+    try {
+
+      const paramsObj = buildQueryParams();
+
+      const params = new URLSearchParams(paramsObj);
+
+      const queryString = params.toString();
+
+      const url = queryString ? `${endpoint}?${queryString}` : endpoint;
+
+      const data = await apiCall(url);
+
+      
+
+      const rows = data.rows || [];
+
+      
+
+      if (rows.length === 0) {
+
+        tbody.innerHTML = '';
+
+        setEmpty(true);
+
+      } else {
+
+        setEmpty(false);
+
+        renderRows(rows);
+
+      }
+
+      
+
+      renderMeta(data.meta, rows);
+
+      updateScopeIndicator();
+
+      updateFilterIndicator();
+
+      
+
+    } catch (error) {
+
+      console.error('[rk] gagal ambil data:', error);
+
+      showToast('Gagal memuat data: ' + error.message, 'error');
+
+      if (tbody) {
+
+        tbody.innerHTML = `
+
+          <tr>
+
+            <td colspan="5" class="text-danger text-center">
+
+              Gagal memuat data. Silakan refresh halaman.
+
+            </td>
+
+          </tr>
+
+        `;
+
+      }
+
+      setEmpty(false);
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  }
+
+
+
+  // =========================================================================
+
+  // RENDERING FUNCTIONS
+
+  // =========================================================================
+
+  
+
+  function renderRows(rows) {
+
+    if (!tbody) return;
+
+    
+
+    // Sort by kategori, then kode
+
+    rows.sort((a, b) =>
+
+      (a.kategori || '').localeCompare(b.kategori || '') ||
+
+      (a.kode || '').localeCompare(b.kode || '')
+
+    );
+
+
+
+    const frag = document.createDocumentFragment();
+
+    
+
+    rows.forEach(r => {
+
+      const tr = document.createElement('tr');
+      const qtyDisplay = formatQtyValue(r.quantity_decimal ?? r.quantity);
+      const hargaSatuanDisplay = formatCurrencyValue(r.harga_satuan_decimal ?? r.harga_satuan);
+      const hargaTotalDisplay = formatCurrencyValue(r.harga_total_decimal ?? r.harga_total);
+      tr.innerHTML = `
+        <td class="text-nowrap">${esc(r.kategori)}</td>
+        <td class="text-nowrap mono">${esc(r.kode)}</td>
+        <td>${esc((r.uraian || '').replace(/
+?
+/g, ' '))}</td>
+        <td class="text-nowrap">${esc(r.satuan)}</td>
+        <td class="text-end mono">${esc(qtyDisplay)}</td>
+        <td class="text-end mono">${esc(hargaSatuanDisplay)}</td>
+        <td class="text-end mono">${esc(hargaTotalDisplay)}</td>
+      `;
+
+      frag.appendChild(tr);
+
+    });
+
+    
+
+    tbody.innerHTML = '';
+
+    tbody.appendChild(frag);
+
+  }
+
+
+
+
+  function renderMeta(meta, rows) {
+    const counts = { TK: 0, BHN: 0, ALT: 0, LAIN: 0 };
+    let nrows = 0;
+    let generated = '';
+
+    if (meta && meta.counts_per_kategori) {
+      const m = meta.counts_per_kategori;
+      counts.TK = m.TK || 0;
+      counts.BHN = m.BHN || 0;
+      counts.ALT = m.ALT || 0;
+      counts.LAIN = m.LAIN || 0;
+      nrows = meta.n_rows ?? (rows ? rows.length : 0);
+      generated = meta.generated_at || '';
+    } else if (Array.isArray(rows)) {
+      rows.forEach(r => {
+        if (r.kategori && Object.prototype.hasOwnProperty.call(counts, r.kategori)) {
+          counts[r.kategori]++;
+        }
+      });
+      nrows = rows.length;
+    }
+
+    const totals = meta && meta.quantity_totals ? meta.quantity_totals : {};
+
+    if (countTK) countTK.textContent = counts.TK;
+    if (countBHN) countBHN.textContent = counts.BHN;
+    if (countALT) countALT.textContent = counts.ALT;
+    if (countLAIN) countLAIN.textContent = counts.LAIN;
+    if (qtyTK) qtyTK.textContent = totals.TK ?? '0';
+    if (qtyBHN) qtyBHN.textContent = totals.BHN ?? '0';
+    if (qtyALT) qtyALT.textContent = totals.ALT ?? '0';
+    if (qtyLAIN) qtyLAIN.textContent = totals.LAIN ?? '0';
+    if (nrowsEl) nrowsEl.textContent = nrows;
+    if (genEl) genEl.textContent = generated ? `(${generated})` : '';
+    if (totalCostEl) totalCostEl.textContent = formatCurrencyValue(meta && meta.grand_total_cost ? meta.grand_total_cost : 0) || 'Rp 0';
+  }
+
+
+  function updateScopeIndicator() {
+
+    if (!scopeIndicator) return;
+
+
+
+    if (currentFilter.mode === 'all') {
+
+      scopeIndicator.innerHTML = `
+
+        <span class="badge bg-primary">
+
+          <i class="bi bi-globe"></i> Keseluruhan Project
+
+        </span>
+
+      `;
+
+    } else if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
+
+      const tahap = tahapanList.find(t => t.tahapan_id === currentFilter.tahapan_id);
+
+      if (tahap) {
+
+        scopeIndicator.innerHTML = `
+
+          <span class="badge bg-info">
+
+            <i class="bi bi-bookmark-fill"></i> ${esc(tahap.nama)}
+
+          </span>
+
+        `;
+
+      }
+
+    }
+
+  }
+
+
+
+
+  function updateFilterIndicator() {
+    if (!filterIndicator) return;
+
+    const filters = [];
+
+    if (currentFilter.kategori.length < 4) {
+      filters.push(`Kategori: ${currentFilter.kategori.join(', ')}`);
+    }
+
+    if (currentFilter.klasifikasi_ids.length) {
+      filters.push(`Klasifikasi: ${currentFilter.klasifikasi_ids.length} dipilih`);
+    }
+
+    if (currentFilter.sub_klasifikasi_ids.length) {
+      filters.push(`Sub: ${currentFilter.sub_klasifikasi_ids.length} dipilih`);
+    }
+
+    if (currentFilter.search) {
+      filters.push(`Cari: "${esc(currentFilter.search)}"`);
+    }
+
+    if (filters.length > 0) {
+      filterIndicator.innerHTML = `
+        <span class="rk-filter-active-indicator">
+          <i class="bi bi-funnel-fill"></i>
+          ${filters.join(' Â· ')}
+        </span>
+      `;
+    } else {
+      filterIndicator.innerHTML = '';
+    }
+  }
+
+
+  function applyFilter() {
+
+    // Get selected kategori
+
+    const selectedKategori = [];
+
+    $$('.kategori-check:checked').forEach(cb => {
+
+      selectedKategori.push(cb.value);
+
+    });
+
+
+
+    currentFilter.kategori = selectedKategori;
+
+    currentFilter.klasifikasi_ids = getSelectedValues(selectKlasifikasi)
+
+      .map(v => parseInt(v, 10))
+
+      .filter(Number.isFinite);
+
+    currentFilter.sub_klasifikasi_ids = getSelectedValues(selectSub)
+
+      .map(v => parseInt(v, 10))
+
+      .filter(Number.isFinite);
+
+
+
+    // Reload data
+
+    updateFilterIndicator();
+
+    loadRekapKebutuhan();
+
+  }
+
+
+
+  function resetFilter() {
+
+    // Reset to all
+
+    currentFilter = {
+
+      mode: 'all',
+
+      tahapan_id: null,
+
+      kategori: ['TK', 'BHN', 'ALT', 'LAIN'],
+
+      klasifikasi_ids: [],
+
+      sub_klasifikasi_ids: [],
+
+      search: ''
+
+    };
+
+
+
+    // Reset UI - tahapan buttons
+
+    $$('.rk-tahapan-btn').forEach(btn => {
+
+      btn.classList.toggle('active', btn.dataset.scope === 'all');
+
+    });
+
+
+
+    // Reset UI - kategori checkboxes
+
+    $$('.kategori-check').forEach(cb => {
+
+      cb.checked = true;
+
+    });
+
+    syncFilterControls();
+
+    updateFilterIndicator();
+
+    updateScopeIndicator();
+
+
+
+    // Reload
+
+    loadRekapKebutuhan();
+
+  }
+
+
+
+  // =========================================================================
+
+  // EXPORT FUNCTIONS
+
+  // =========================================================================
+
+  
+
+  function setupExport() {
+
+    const supportsManager = typeof window.ExportManager !== 'undefined' && projectId;
+
+    const exporter = supportsManager ? new window.ExportManager(projectId, 'rekap-kebutuhan') : null;
+
+
+
+    const openFallback = (format, queryObj) => {
+      const target = exportTargets[format];
+      if (!target) {
+        console.warn(`[rk] Export URL untuk ${format} tidak tersedia`);
+        return;
+      }
+      const query = new URLSearchParams(queryObj || {}).toString();
+      const url = query 
+        ? `${target}?${query}`
+        : target;
+      window.open(url, '_blank');
+    };
+
+    const triggerExport = (format) => {
+      const query = buildQueryParams();
+      if (exporter) {
+        exporter.exportAs(format, { query });
+      } else {
+        openFallback(format, query);
+      }
+    };
+
+
+
+    if (btnCsv) {
+
+      btnCsv.addEventListener('click', (e) => {
+
+        e.preventDefault();
+
+        triggerExport('csv');
+
+      });
+
+    }
+
+
+
+    if (btnPdf) {
+
+      btnPdf.addEventListener('click', (e) => {
+
+        e.preventDefault();
+
+        triggerExport('pdf');
+
+      });
+
+    }
+
+
+
+    if (btnWord) {
+
+      btnWord.addEventListener('click', (e) => {
+
+        e.preventDefault();
+
+        triggerExport('word');
+
+      });
+
+    }
+
+  }
+
+
+
+  // =========================================================================
+
+  // URL PARAMS HANDLING (for deep linking)
+
+  // =========================================================================
+
+  
+
+  function parseUrlParams() {
+
+    const urlParams = new URLSearchParams(window.location.search);
+
+
+
+    const modeParam = (urlParams.get('mode') || '').toLowerCase();
+
+    if (modeParam === 'tahapan') {
+
+      currentFilter.mode = 'tahapan';
+
+    }
+
+
+
+    const tahapanParam = urlParams.get('tahapan') || urlParams.get('tahapan_id');
+
+    if (tahapanParam) {
+
+      currentFilter.mode = 'tahapan';
+
+      currentFilter.tahapan_id = parseInt(tahapanParam, 10);
+
+      setTimeout(() => {
+
+        const btn = $(`.rk-tahapan-btn[data-tahapan-id="${tahapanParam}"]`);
+
+        if (btn) {
+
+          $$('.rk-tahapan-btn').forEach(b => b.classList.remove('active'));
+
+          btn.classList.add('active');
+
+        }
+
+      }, 500);
+
+    }
+
+
+
+    const klasParam = urlParams.get('klasifikasi');
+
+    if (klasParam) {
+
+      currentFilter.klasifikasi_ids = klasParam
+
+        .split(',')
+
+        .map(v => parseInt(v.trim(), 10))
+
+        .filter(Number.isFinite);
+
+    }
+
+
+
+    const subParam = urlParams.get('sub_klasifikasi');
+
+    if (subParam) {
+
+      currentFilter.sub_klasifikasi_ids = subParam
+
+        .split(',')
+
+        .map(v => parseInt(v.trim(), 10))
+
+        .filter(Number.isFinite);
+
+    }
+
+
+
+    const kategoriParam = urlParams.get('kategori');
+
+    if (kategoriParam) {
+
+      const selected = kategoriParam.split(',').map(k => k.trim().toUpperCase()).filter(Boolean);
+
+      if (selected.length) {
+
+        currentFilter.kategori = selected;
+
+      }
+
+    }
+
+
+
+    const searchParam = urlParams.get('search');
+
+    if (searchParam) {
+
+      currentFilter.search = searchParam.trim();
+
+    }
+
+  }
+
+
+
+  // =========================================================================
+
+  // EVENT LISTENERS
+
+  // =========================================================================
+
+  // EVENT LISTENERS
+
+  // =========================================================================
+
+  
+
+  const btnApplyFilter = $('#rk-btn-apply-filter');
+
+  const btnResetFilter = $('#rk-btn-reset-filter');
+
+
+
+  if (btnApplyFilter) {
+
+    btnApplyFilter.addEventListener('click', applyFilter);
+
+  }
+
+
+
+  if (btnResetFilter) {
+
+    btnResetFilter.addEventListener('click', resetFilter);
+
+  }
+
+
+
+  if (searchInput) {
+
+    const handleSearch = debounce((event) => {
+
+      currentFilter.search = (event.target.value || '').trim();
+
+      updateFilterIndicator();
+
+      loadRekapKebutuhan();
+
+    }, 300);
+
+    searchInput.addEventListener('input', handleSearch);
+
+  }
+
+
+
+  // Optional: Auto-apply on kategori checkbox change
+
+  // Uncomment if you want instant filtering:
+
+  /*
+
+  $$('.kategori-check').forEach(cb => {
+
+    cb.addEventListener('change', applyFilter);
+
+  });
+
+  */
+
+
+
+  // =========================================================================
+
+  // INITIALIZATION
+
+  // =========================================================================
+
+  
+
+  async function init() {
+
+    parseUrlParams();
+
+    syncFilterControls();
+
+    updateFilterIndicator();
+
+    await loadFilterOptions();
+
+    await loadTahapan();
+
+    await loadRekapKebutuhan();
+
+    setupExport();
+
+  }
+
+
+
+  // Start the app
+
+  init();
+
+
+
+})();
+

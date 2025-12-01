@@ -20,15 +20,25 @@ Roadmap ini menggabungkan 3 inisiatif terpisah yang sebelumnya overlap:
 
 | Target | Status | Progress | Catatan |
 | --- | --- | --- | --- |
-| **FASE 0: Fondasi Modern (Phase 1)** | ✅ **SELESAI** | 100% | Vite setup, event delegation, validation utils complete |
-| **FASE 1: Wire & Activate** | ✅ **SELESAI** | 100% | Modern template active, settings updated, Vite running |
-| **FASE 2A: Core Module Migration** | DONE | 100% | DataLoader + TimeColumnGenerator migrated (API v2 adoption outstanding) |
-| **FASE 2B: Grid Module Migration** | IN PROGRESS | 75% | GridRenderer, SaveHandler, AG Grid setup aktif; kolom kode/pekerjaan/volume/satuan sudah dipinned + theme alpine ↔ alpine-dark otomatis, tree data & virtual scroll masih dikerjakan |
-| **FASE 2C: Chart Module Migration** | ☐ **PENDING** | 0% | Gantt + Kurva S adapters (6/12 modules) |
-| **FASE 3: CSS & Layout Cleanup** | ☐ **PENDING** | 15% | Sebagian CSS vars sudah ada, inline style masih banyak |
-| **FASE 4: AG Grid Integration** | PENDING | 20% | Flag default True, perlu buka kontainer, virtual scroll, QA |
-| **FASE 5: Advanced Features** | ☐ **PENDING** | 0% | Virtual scroll, EVM, export |
-| **FASE 6: Testing & Documentation** | 🔶 **IN PROGRESS** | 45% | Phase 2A docs complete, end-to-end tests pending |
+| **FASE 0: Fondasi Modern (Phase 1)** | ? **SELESAI** | 100% | Vite setup, event delegation, validation utils complete |
+| **FASE 1: Wire & Activate** | ? **SELESAI** | 100% | Modern template aktif, settings updated, Vite running |
+| **FASE 2A: Core Module Migration** | ? **SELESAI** | 100% | DataLoader + TimeColumnGenerator migrated (API v2 adoption outstanding) |
+| **FASE 2B: Grid Module Migration** | ? **SELESAI** | 100% | GridRenderer + SaveHandler modern aktif; StateManager mengelola assignment dua mode dan AG Grid sekarang default (legacy grid dilepas). |
+| **FASE 2C: Chart Module Migration** | ?? **IN PROGRESS** | 60% | Kurva S cost view tuntas; fokus berikutnya memperbaiki Frappe Gantt (warna, label, summary). |
+| **FASE 3: CSS & Layout Cleanup** | ?? **IN PROGRESS** | 70% | Variabel CSS + manifest loader Vite aktif; tersisa audit stylesheet dan screenshot baru. |
+| **FASE 4: AG Grid Integration** | ? **SELESAI** | 100% | AG Grid aktif penuh dan scroll proxy sinkron; sisa QA untuk load-test 10k rows. |
+| **FASE 5: Advanced Features** | ? **PENDING** | 0% | Virtual scroll lanjutan, EVM enterprise, export halaman lain. |
+| **FASE 6: Testing & Documentation** | ?? **IN PROGRESS** | 80% | Vitest (`npm run test:frontend`) & benchmark (`npm run bench:grid`) aktif; dokumentasi akhir/screenshot sedang dilengkapi. |
+
+> **Catatan terbaru**: pekerjaan duplicator/deep copy sengaja ditunda sampai polishing Gantt (warna, label, ringkasan) selesai supaya struktur data terbaru bisa diuji bersamaan.
+
+### Fokus Sprint Gantt (Phase 2C Scope Update)
+- **Dual bar planned vs actual**: Gantt akan menampilkan dua batang sejajar per pekerjaan tanpa switch mode. Memerlukan task sintetis dan legenda baru.
+- **Panel klasifikasi kiri**: sisi kiri menampilkan klasifikasi/subklasifikasi/pekerjaan (read-only, freeze) yang tetap sejajar dengan timeline kanan.
+- **Timeline marker + komentar**: pengguna bisa menambahkan marker, menyimpan komentar persisten (model/API baru), dan membukanya dalam pop-up gaya chat.
+- **Prioritas implementasi**: 1) dual bar + legend, 2) panel kiri beku, 3) marker/komentar beserta dokumentasi/screenshot.
+
+
 
 ---
 

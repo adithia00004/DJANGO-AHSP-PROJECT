@@ -28,6 +28,7 @@ from django.utils.html import escape
 from django.utils.timezone import now
 from django.utils.dateparse import parse_datetime
 from .numeric import parse_any, to_dp_str, quantize_half_up, DECIMAL_SPEC
+from .api_helpers import parse_kebutuhan_query_params
 from referensi.models import AHSPReferensi
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
@@ -37,6 +38,7 @@ from .models import (
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
+    compute_kebutuhan_items, summarize_kebutuhan_rows,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
     expand_bundle_to_components,  # NEW: Dual storage expansion (Pekerjaan)
     expand_ahsp_bundle_to_components,  # NEW: Dual storage expansion (AHSP)
@@ -2998,24 +3000,47 @@ def api_get_rekap_kebutuhan(request: HttpRequest, project_id: int):
     Plus meta: counts_per_kategori, n_rows, generated_at.
     """
     project = _owner_or_404(project_id, request.user)
-    from .services import compute_kebutuhan_items
+    params = parse_kebutuhan_query_params(request.GET)
+    mode = params['mode']
+    tahapan_id = params['tahapan_id']
+    filters = params['filters']
+    search = params['search']
+    time_scope = params.get('time_scope')
 
-    rows = compute_kebutuhan_items(project)  # list of dicts: {kategori,kode,uraian,satuan,quantity}
+    try:
+        raw_rows = compute_kebutuhan_items(
+            project,
+            mode=mode,
+            tahapan_id=tahapan_id,
+            filters=filters,
+            time_scope=time_scope,
+        )
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
-    # --- meta (mundur-kompatibel) ---
-    counts = {"TK": 0, "BHN": 0, "ALT": 0, "LAIN": 0}
-    for r in rows:
-        k = r.get("kategori")
-        if k in counts:
-            counts[k] += 1
+    rows, summary = summarize_kebutuhan_rows(raw_rows, search=search)
+    scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
+    filters_applied = bool(
+        search
+        or filters['klasifikasi_ids']
+        or filters['sub_klasifikasi_ids']
+        or filters['kategori_items']
+        or filters['pekerjaan_ids']
+        or scope_active
+        or (mode == 'tahapan' and tahapan_id)
+    )
 
-    meta = {
-        "counts_per_kategori": counts,
-        "n_rows": len(rows),
-        "generated_at": now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
+    summary.update({
+        "mode": mode,
+        "tahapan_id": tahapan_id,
+        "filters": filters,
+        "filters_applied": filters_applied,
+        "search": search,
+        "time_scope": time_scope,
+        "time_scope_active": scope_active,
+    })
 
-    return JsonResponse({"ok": True, "rows": rows, "meta": meta})
+    return JsonResponse({"ok": True, "rows": rows, "meta": summary})
 
 # ============== FUNCTION 1: CSV EXPORT (REFACTORED) ==============
 @login_required
@@ -3030,17 +3055,21 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
     """
     try:
         project = _owner_or_404(project_id, request.user)
-        from .services import compute_kebutuhan_items
+        params = parse_kebutuhan_query_params(request.GET)
+        raw_rows = compute_kebutuhan_items(
+            project,
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            time_scope=params.get('time_scope'),
+        )
+        rows, _summary = summarize_kebutuhan_rows(raw_rows, search=params['search'])
 
-        rows = compute_kebutuhan_items(project)
-
-        # Build CSV minimal (semicolon-delimited)
-        import csv
         from io import StringIO
 
         buf = StringIO()
         writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
-        writer.writerow(["kategori", "kode", "uraian", "satuan", "quantity"])
+        writer.writerow(["kategori", "kode", "uraian", "satuan", "quantity", "harga_satuan", "total_harga"])
 
         for r in rows:
             writer.writerow([
@@ -3049,6 +3078,8 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
                 r.get("uraian", "") or "",
                 r.get("satuan", "") or "",
                 str(r.get("quantity", "")) or "",
+                str(r.get("harga_satuan", "")) or "",
+                str(r.get("harga_total", "")) or "",
             ])
 
         content = buf.getvalue().encode('utf-8')
@@ -3057,8 +3088,7 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
         return resp
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
+        logger.exception("[Rekap Kebutuhan] CSV export failed for project %s", project_id)
         return JsonResponse({
             'status': 'error',
             'message': f'Export CSV gagal: {str(e)}'
@@ -3081,7 +3111,15 @@ def export_rekap_kebutuhan_pdf(request: HttpRequest, project_id: int):
         
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_rekap_kebutuhan('pdf')
+        params = parse_kebutuhan_query_params(request.GET)
+        return manager.export_rekap_kebutuhan(
+            'pdf',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+        )
         
     except Exception as e:
         import traceback
@@ -3109,7 +3147,15 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_rekap_kebutuhan('word')
+        params = parse_kebutuhan_query_params(request.GET)
+        return manager.export_rekap_kebutuhan(
+            'word',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+        )
         
     except Exception as e:
         import traceback

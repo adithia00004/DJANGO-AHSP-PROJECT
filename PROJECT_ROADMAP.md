@@ -10,28 +10,21 @@
 
 ---
 
-- **Phase saat ini:** Phase 2C - Chart Modules Migration (Phase 2E.0 COMPLETE!)
-- **Progress keseluruhan:** 72% (Phase 1: 100%, Phase 2: 92%, Sprint 0: 100%, Sprint 1: 100%, Phase 2E.0: 100%)
-- **Last updated:** 2025-11-25 (Phase 2E.0 Complete - 1 hour, 87.5% under budget!)
-- **Next milestone:** Phase 2C - Chart Modules Migration (Gantt + Kurva S)
+- **Phase saat ini:** Phase 2C - Chart Modules Migration (Gantt polish sprint)
+- **Progress keseluruhan:** 76% (Phase 1: 100%, Phase 2: 94%, Sprint 0: 100%, Sprint 1: 100%, Phase 2E.0: 100%)
+- **Last updated:** 2025-12-01 (Gantt visual refresh + doc/testing updates)
+- **Next milestone:** Phase 2C - Chart Modules Migration (Frappe Gantt colors + labels)
 
-Status ringkas (Updated 2025-11-25 Phase 2E.0 Complete):
+Status ringkas (Updated 2025-12-01 - Gantt polish sprint):
 - ✅ Phase 1 selesai 100% - Memory leak fix, validation, Vite setup berhasil.
-- ✅ Phase 2A/2B selesai 92% - DataLoader v2, TimeColumnGenerator, GridRenderer, SaveHandler migrated.
-- ✅ **Sprint 0 COMPLETE** - All production blockers FIXED (2.5 hours).
-- ✅ **Sprint 1 COMPLETE** - Testing infrastructure created (3 hours, 89.7% pass rate).
-- ✅ **Phase 2E.0 COMPLETE** - UI/UX improvements verified (1 hour, 87.5% under budget!).
-- ✅ **Scroll sync working** - RAF throttling 60fps, already implemented in Phase 1.
-- ✅ **Input validation working** - Type, range, cumulative totals, already implemented in Phase 1.
-- ✅ **Column widths standardized** - Weekly: 110px, Monthly: 135px, newly implemented.
-- ✅ **Manifest loader implemented** - Vite production builds working (vite.py template tag).
-- ✅ **AG Grid enabled by default** - ENABLE_AG_GRID = True in settings.
-- ✅ **Database migrations verified** - PekerjaanProgressWeekly + Project fields ready.
-- ✅ **Test suite created** - 518 tests total, 99.2% pass rate (514/518 passing).
-- ✅ API v2 canonical storage ready - Weekly storage sebagai single source of truth.
-- ✅ Export Jadwal Pekerjaan complete - CSV/PDF/Word/XLSX dengan A3 landscape layout.
-- 🔜 Phase 2C (Chart Modules) - Next priority (12-16 hours).
-- 🎯 Fokus immediate: Phase 2C (Gantt adapter migration, Kurva S adapter migration).
+- ✅ Phase 2A/2B selesai 100% - DataLoader, TimeColumnGenerator, GridRenderer, SaveHandler, dan AG Grid kini aktif permanen (legacy grid dilepas).
+- ✅ **Sprint 0 & Sprint 1 COMPLETE** - Production blockers + QA infrastructure solid (Vitest + pytest runners siap).
+- ✅ **Phase 2E.0 COMPLETE** - Template kini memakai `{% vite_entry %}` dan UI/UX utama diverifikasi.
+- ✅ Dokumentasi (README, client guide, technical & deployment) sudah memuat `npm run test:frontend`, `npm run bench:grid`, serta panduan manifest loader.
+- 🟡 Phase 2C (Chart Modules) - 60%: Kurva S cost view selesai, Frappe Gantt fallback bahasa stabil; sprint berikutnya fokus ke Gantt dua-lajur (planned vs actual) + panel klasifikasi kiri.
+- 🟡 Phase 3 (Build Optimization / CSS cleanup) - 70%: token warna Gantt + container baru aktif, audit stylesheet & screenshot tersisa.
+- 🟡 Phase 6 (Testing & Documentation) - 80%: Vitest hijau, pytest UI smoke lewat; perlu coverage penuh + bukti visual terbaru.
+- 🎯 Fokus immediate: sempurnakan Gantt (double bar + freeze kiri + timeline marker/comment) lalu kembali ke backlog deep-copy sync setelah visual final.
 ---
 
 ##  Project Objectives
@@ -60,19 +53,32 @@ Status ringkas (Updated 2025-11-25 Phase 2E.0 Complete):
 |-------|-------|-------|--------|------------|
 | **Phase 1: Critical Fixes** | Week 1-2 | 16-24h | ✅ COMPLETE | 100% |
 | **Phase 2A: Core Modules** | Week 3 | 8-12h | ✅ COMPLETE | 100% |
-| **Phase 2B: Grid Module** | Week 3-4 | 16-20h | 🟡 IN PROGRESS | 85% |
-| **Phase 2C: Chart Modules** | Week 4 | 12-16h | ⏳ PENDING | 0% |
+| **Phase 2B: Grid Module** | Week 3-4 | 16-20h | ✅ COMPLETE | 100% |
+| **Phase 2C: Chart Modules** | Week 4 | 12-16h | 🟡 IN PROGRESS | 60% |
 | **Phase 2D: Input Experience** | Week 4 | 8-12h | 🟡 TRACKED SEPARATELY | 75% |
 | **Sprint 0: Production Blockers** | Week 4 | 2.5-3.5h | ✅ COMPLETE | 100% |
 | **Sprint 1: Quality Assurance** | Week 4-5 | 12-18h | ✅ COMPLETE | 100% |
-| **Phase 2E: UI/UX Critical** | Week 4-5 | 8-12h | ⏳ PENDING | 0% |
-| **Phase 3: Build Optimization** | Week 5 | 16-20h | ⏳ PENDING | 0% |
+| **Phase 2E: UI/UX Critical** | Week 4-5 | 8-12h | 🟡 IN PROGRESS | 40% |
+| **Phase 3: Build Optimization** | Week 5 | 16-20h | 🟡 IN PROGRESS | 70% |
 | **Phase 4: Export Features** | Week 6 | 16-20h | 🟡 PARTIAL (Jadwal only) | 25% |
-| **Testing & Documentation** | Ongoing | 8-12h | ✅ COMPLETE | 90% |
+| **Testing & Documentation** | Ongoing | 8-12h | 🟡 IN PROGRESS | 80% |
 
 **Total Estimated:** 80-100 hours over 6 weeks
 **Sprint 0 Actual:** 2.5 hours (under budget!)
 **Sprint 1 Actual:** 3 hours (under budget! - 89.7% test pass rate)
+
+### Phase 2C Scope Update (Gantt Dual-Lane + Timeline Notes)
+- **Dual bar planned/actual**: setiap pekerjaan akan dirender sebagai dua batang (perencanaan dan realisasi) dengan warna/popup terpisah, tanpa toggle mode. Implementasi melalui task sintetis `*-planned` & `*-actual` di `frappe-gantt-setup`.
+- **Panel kiri beku**: klasifikasi, sub-klasifikasi, dan pekerjaan ditampilkan di sisi kiri (read-only) dan disinkronkan dengan scroll timeline, sehingga UX setara dengan grid view.
+- **Timeline marker & komentar**: user dapat menandai periode penting, memberi komentar gaya chat, dan catatan disimpan di server (model `project_timeline_notes` + API CRUD). Marker tampil sebagai milestone khusus dan dapat dibuka kembali oleh user lain.
+- **Legend & dokumentasi**: summary table + dokumentasi klien akan diperbarui untuk menjelaskan kode warna, cara menambah marker, serta best practice review lintas tim.
+
+- **Dependencies**: perlu endpoint baru untuk catatan dan update DataLoader agar memuat marker. Tidak ada perubahan besar pada modul grid/bundle.
+
+- **Acceptance gates**:
+  1. Dual bar tetap terbaca di mode terang/gelap dan pada zoom mingguan/bulanan.
+  2. Panel kiri tidak drift saat timeline diskrol atau saat window resize.
+  3. Marker + komentar tetap muncul setelah reload dan dihormati oleh role-based access.
 
 ---
 

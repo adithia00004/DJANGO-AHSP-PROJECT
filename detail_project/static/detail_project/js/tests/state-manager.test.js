@@ -10,8 +10,14 @@
  * npx jest detail_project/static/detail_project/js/tests/state-manager.test.js
  */
 
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager } from '../src/modules/core/state-manager.js';
 import { ModeState } from '../src/modules/core/mode-state.js';
+
+const jest = {
+  fn: vi.fn,
+  spyOn: vi.spyOn,
+};
 
 describe('StateManager', () => {
   let stateManager;

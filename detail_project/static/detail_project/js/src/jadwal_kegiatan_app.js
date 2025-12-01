@@ -51,6 +51,7 @@ class JadwalKegiatanApp {
     this._costToggleSpinner = null;
     this._costToggleBtnIcon = null;
     this._costViewAutoActivated = false;
+    this._ganttScrollSyncHandlers = null;
 
   }
 
@@ -409,6 +410,12 @@ class JadwalKegiatanApp {
         agGridTopScrollInner: document.getElementById('ag-grid-scroll-inner'),
         scurveChart: document.getElementById('scurve-chart'),
         ganttChart: document.getElementById('gantt-chart'),
+        ganttChartWrapper: document.getElementById('gantt-chart-wrapper'),
+        ganttTreeBody: document.getElementById('gantt-tree-body'),
+        ganttTreeScroll: document.getElementById('gantt-tree-scroll'),
+        ganttSummaryTable: document.getElementById('gantt-summary-table'),
+        ganttSummaryBody: document.getElementById('gantt-summary-body'),
+        ganttSummaryTotal: document.getElementById('gantt-summary-total'),
         statusBar: document.querySelector('.status-bar'),
         statusMessageEl: document.getElementById('status-message'),
         itemCountEl: document.getElementById('item-count'),
@@ -1436,10 +1443,15 @@ class JadwalKegiatanApp {
         this.ganttChart = new GanttChart(this.state, {
           viewMode: 'Week',
           enableThemeObserver: true,
+          enableResizeHandler: true,
+          barHeight: 34,
+          barPadding: 20,
         });
         const success = this.ganttChart.initialize(this.state.domRefs.ganttChart);
         if (success) {
           console.log('[JadwalKegiatanApp] ✅ Gantt chart initialized');
+          this._renderGanttSummary();
+          this._renderGanttTree();
         }
       } catch (error) {
         console.warn('[JadwalKegiatanApp] Failed to initialize Gantt chart:', error);
@@ -1469,10 +1481,214 @@ class JadwalKegiatanApp {
       try {
         this.ganttChart.update();
         console.log('[JadwalKegiatanApp] ✅ Gantt chart updated');
+        this._renderGanttSummary();
+        this._renderGanttTree();
       } catch (error) {
         console.warn('[JadwalKegiatanApp] Failed to update Gantt chart:', error);
       }
+    } else {
+      this._renderGanttSummary();
+      this._renderGanttTree();
     }
+  }
+
+  /**
+   * Render Gantt summary table under the chart
+   * @private
+   */
+  _renderGanttSummary() {
+    const bodyEl = this.state.domRefs?.ganttSummaryBody;
+    const totalEl = this.state.domRefs?.ganttSummaryTotal;
+
+    if (!bodyEl) {
+      return;
+    }
+
+    const setEmptyState = (message) => {
+      bodyEl.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-muted text-center py-3">${message}</td>
+        </tr>
+      `;
+      if (totalEl) {
+        totalEl.textContent = '';
+      }
+    };
+
+    if (!this.ganttChart) {
+      setEmptyState('Gantt chart belum siap ditampilkan.');
+      return;
+    }
+
+    const rows = this.ganttChart.getSummaryRows();
+    const stats = typeof this.ganttChart.getSummaryStats === 'function'
+      ? this.ganttChart.getSummaryStats()
+      : { total: rows.length, complete: 0, inProgress: 0, notStarted: 0 };
+
+    if (!rows.length) {
+      setEmptyState('Tidak ada pekerjaan yang memiliki jadwal.');
+      return;
+    }
+
+    const summaryHtml = rows.map((row) => {
+      const safeName = this._escapeHtml(row.shortLabel || row.label || '-');
+      const safePath = this._escapeHtml(row.pathLabel || '');
+      const plannedBlock = row.planned?.hasData
+        ? `
+          <div class="gantt-summary-chip planned">
+            <span class="chip-label">Rencana</span>
+            <span>${this._escapeHtml(row.planned.progressLabel || '0%')}</span>
+          </div>
+          <div class="gantt-summary-range">${this._escapeHtml(row.planned.startLabel || '-')} s/d ${this._escapeHtml(row.planned.endLabel || '-')}</div>
+        `
+        : '<span class="text-muted small">Belum ada data</span>';
+
+      const actualBlock = row.actual?.hasData
+        ? `
+          <div class="gantt-summary-chip actual">
+            <span class="chip-label">Realisasi</span>
+            <span>${this._escapeHtml(row.actual.progressLabel || '0%')}</span>
+          </div>
+          <div class="gantt-summary-range">${this._escapeHtml(row.actual.startLabel || '-')} s/d ${this._escapeHtml(row.actual.endLabel || '-')}</div>
+        `
+        : '<span class="text-muted small">Belum ada data</span>';
+
+      let deltaClass = 'text-muted';
+      if (row.delta > 0) {
+        deltaClass = 'text-danger';
+      } else if (row.delta < 0) {
+        deltaClass = 'text-success';
+      }
+
+      const deltaLabel = this._escapeHtml(row.deltaLabel || '0%');
+
+      return `
+        <tr>
+          <td class="text-muted">${row.index}</td>
+          <td>
+            <div class="gantt-summary-name">${safeName}</div>
+            <div class="gantt-summary-path">${safePath}</div>
+          </td>
+          <td class="gantt-summary-dual">${plannedBlock}</td>
+          <td class="gantt-summary-dual">${actualBlock}</td>
+          <td>
+            <div class="${deltaClass} fw-semibold">${deltaLabel}</div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    bodyEl.innerHTML = summaryHtml;
+
+    if (totalEl) {
+      totalEl.textContent = `${stats.total} pekerjaan • ${stats.complete} selesai • ${stats.inProgress} berjalan`;
+    }
+  }
+
+  /**
+   * Render klasifikasi tree untuk Gantt
+   * @private
+   */
+  _renderGanttTree() {
+    const bodyEl = this.state.domRefs?.ganttTreeBody;
+    if (!bodyEl) {
+      return;
+    }
+
+    if (!this.ganttChart) {
+      bodyEl.innerHTML = '<div class="text-muted text-center py-3">Gantt chart belum siap ditampilkan.</div>';
+      return;
+    }
+
+    const rows = this.ganttChart.getHierarchy();
+    if (!rows.length) {
+      bodyEl.innerHTML = '<div class="text-muted text-center py-3">Tidak ada pekerjaan untuk ditampilkan.</div>';
+      return;
+    }
+
+    const rowHeight = Math.max(32, Math.round(this.ganttChart.getRowHeight()));
+    bodyEl.style.setProperty('--gantt-tree-row-height', `${rowHeight}px`);
+
+    const treeHtml = rows.map((row, index) => {
+      const indentLevel = Math.max(0, (row.level || 0) - 1);
+      const subtitleParts = Array.isArray(row.pathParts) ? row.pathParts.slice(0, -1) : [];
+      const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' / ') : '';
+      const prefixDot = row.level > 0 ? '•'.repeat(Math.min(row.level, 3)) : '';
+
+      return `
+        <div class="gantt-tree-row" data-row-index="${index}">
+          <span class="tree-prefix">${prefixDot}</span>
+          <div class="tree-label" data-level="${row.level || 0}">
+            <span style="--tree-indent:${indentLevel}">${this._escapeHtml(row.label || row.kode || 'Pekerjaan')}</span>
+            ${subtitle ? `<small class="d-block text-muted">${this._escapeHtml(subtitle)}</small>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    bodyEl.innerHTML = treeHtml;
+    this._attachGanttScrollSync();
+  }
+
+  /**
+   * Sinkronisasi scroll antara panel tree dan chart
+   * @private
+   */
+  _attachGanttScrollSync() {
+    const treeScroll = this.state.domRefs?.ganttTreeScroll;
+    const wrapper = this.state.domRefs?.ganttChartWrapper;
+    if (!treeScroll || !wrapper) {
+      return;
+    }
+
+    const chartScroll = wrapper.querySelector('.gantt-container');
+    if (!chartScroll) {
+      return;
+    }
+
+    if (this._ganttScrollSyncHandlers?.scrollEl && this._ganttScrollSyncHandlers.scrollEl !== chartScroll) {
+      this._ganttScrollSyncHandlers.scrollEl.removeEventListener('scroll', this._ganttScrollSyncHandlers.scrollHandler);
+      treeScroll.removeEventListener('wheel', this._ganttScrollSyncHandlers.wheelHandler);
+      this._ganttScrollSyncHandlers = null;
+    }
+
+    if (this._ganttScrollSyncHandlers) {
+      treeScroll.scrollTop = chartScroll.scrollTop;
+      return;
+    }
+
+    const scrollHandler = () => {
+      treeScroll.scrollTop = chartScroll.scrollTop;
+    };
+    const wheelHandler = (event) => {
+      if (event.deltaY !== 0) {
+        chartScroll.scrollTop += event.deltaY;
+      }
+    };
+
+    chartScroll.addEventListener('scroll', scrollHandler);
+    treeScroll.addEventListener('wheel', wheelHandler, { passive: true });
+    this._ganttScrollSyncHandlers = {
+      scrollEl: chartScroll,
+      scrollHandler,
+      wheelHandler,
+    };
+  }
+
+  _escapeHtml(value) {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).replace(/[&<>"']/g, (char) => {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      };
+      return map[char] || char;
+    });
   }
 
   /**

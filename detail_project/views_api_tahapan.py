@@ -2,6 +2,7 @@
 # NEW FILE: API endpoints untuk Tahapan Pelaksanaan
 
 import json
+from datetime import date, timedelta
 from django.db import models  # ADD THIS if not present
 from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse
@@ -10,19 +11,25 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from django.db.models import Sum, Max
+from django.db.models import Sum, Max, Count
 
 
 from .models import (
     Pekerjaan,
     TahapPelaksanaan, 
-    PekerjaanTahapan
+    PekerjaanTahapan,
+    Klasifikasi,
+    SubKlasifikasi,
 )
 from .services import (
     compute_kebutuhan_items,
+    compute_kebutuhan_timeline,
+    summarize_kebutuhan_rows,
     get_tahapan_summary,
-    get_unassigned_pekerjaan
+    get_unassigned_pekerjaan,
+    get_project_period_options,
 )
+from .api_helpers import parse_kebutuhan_query_params
 
 # Helper untuk validasi ownership
 def _owner_or_404(project_id, user):
@@ -538,6 +545,117 @@ def api_get_unassigned_pekerjaan(request, project_id):
 
 @login_required
 @require_GET
+def api_get_rekap_kebutuhan_filters(request, project_id):
+    """Return klasifikasi & sub-klasifikasi metadata for filter panel."""
+    project = _owner_or_404(project_id, request.user)
+
+    klas_qs = list(
+        Klasifikasi.objects
+        .filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values('id', 'name')
+    )
+    sub_qs = list(
+        SubKlasifikasi.objects
+        .filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values('id', 'name', 'klasifikasi_id')
+    )
+
+    sub_counts = {
+        row['sub_klasifikasi_id']: row['total']
+        for row in (
+            Pekerjaan.objects
+            .filter(project=project)
+            .values('sub_klasifikasi_id')
+            .annotate(total=Count('id'))
+        )
+    }
+    klas_counts = {
+        row['sub_klasifikasi__klasifikasi_id']: row['total']
+        for row in (
+            Pekerjaan.objects
+            .filter(project=project)
+            .values('sub_klasifikasi__klasifikasi_id')
+            .annotate(total=Count('id'))
+        )
+    }
+
+    subs_by_klas = {}
+    for sub in sub_qs:
+        subs_by_klas.setdefault(sub['klasifikasi_id'], []).append({
+            'id': sub['id'],
+            'name': sub['name'],
+            'pekerjaan_count': sub_counts.get(sub['id'], 0),
+        })
+
+    data = []
+    for klas in klas_qs:
+        subs = subs_by_klas.get(klas['id'], [])
+        data.append({
+            'id': klas['id'],
+            'name': klas['name'],
+            'pekerjaan_count': klas_counts.get(klas['id'], 0),
+            'sub': subs,
+        })
+
+    stats = {
+        'total_klasifikasi': len(klas_qs),
+        'total_sub_klasifikasi': len(sub_qs),
+        'total_pekerjaan': sum(klas_counts.values()) if klas_counts else 0,
+    }
+
+    pekerjaan_qs = list(
+        Pekerjaan.objects
+        .filter(project=project)
+        .annotate(tahapan_assigned=Count('tahapan_assignments', distinct=True))
+        .order_by('ordering_index', 'id')
+        .values(
+            'id',
+            'snapshot_kode',
+            'snapshot_uraian',
+            'sub_klasifikasi_id',
+            'sub_klasifikasi__klasifikasi_id',
+            'tahapan_assigned',
+        )
+    )
+    pekerjaan_data = [
+        {
+            'id': row['id'],
+            'kode': row['snapshot_kode'] or '',
+            'nama': row['snapshot_uraian'] or '',
+            'sub_klasifikasi_id': row['sub_klasifikasi_id'],
+            'klasifikasi_id': row['sub_klasifikasi__klasifikasi_id'],
+            'tahapan_count': row['tahapan_assigned'],
+        }
+        for row in pekerjaan_qs
+    ]
+
+    def ensure_date(val):
+        if val is None:
+            return None
+        if isinstance(val, date):
+            return val
+        if hasattr(val, "date"):
+            try:
+                return val.date()
+            except Exception:
+                return None
+        return None
+
+    period_payload = get_project_period_options(project)
+
+    return JsonResponse({
+        'ok': True,
+        'klasifikasi': data,
+        'stats': stats,
+        'pekerjaan': pekerjaan_data,
+        'periods': period_payload,
+    })
+
+
+@login_required
+@require_GET
 def api_get_rekap_kebutuhan_enhanced(request, project_id):
     """
     Enhanced rekap kebutuhan dengan support filtering.
@@ -554,85 +672,87 @@ def api_get_rekap_kebutuhan_enhanced(request, project_id):
         /api/project/1/rekap-kebutuhan/?mode=all&klasifikasi=1,2&kategori=TK,BHN
     """
     project = _owner_or_404(project_id, request.user)
-    
-    # Parse query params
-    mode = request.GET.get('mode', 'all')
-    tahapan_id = request.GET.get('tahapan_id')
-    
-    # Build filters dict
-    filters = {}
-    
-    # Klasifikasi filter
-    if request.GET.get('klasifikasi'):
-        try:
-            klas_ids = [int(x.strip()) for x in request.GET.get('klasifikasi').split(',') if x.strip()]
-            if klas_ids:
-                filters['klasifikasi_ids'] = klas_ids
-        except ValueError:
-            pass
-    
-    # Sub-klasifikasi filter
-    if request.GET.get('sub_klasifikasi'):
-        try:
-            sub_klas_ids = [int(x.strip()) for x in request.GET.get('sub_klasifikasi').split(',') if x.strip()]
-            if sub_klas_ids:
-                filters['sub_klasifikasi_ids'] = sub_klas_ids
-        except ValueError:
-            pass
-    
-    # Kategori item filter
-    if request.GET.get('kategori'):
-        kategori_list = [x.strip().upper() for x in request.GET.get('kategori').split(',') if x.strip()]
-        valid_kat = [k for k in kategori_list if k in ('TK', 'BHN', 'ALT', 'LAIN')]
-        if valid_kat:
-            filters['kategori_items'] = valid_kat
-    
-    # Compute kebutuhan
+    params = parse_kebutuhan_query_params(request.GET)
+    mode = params['mode']
+    tahapan_id = params['tahapan_id']
+    filters = params['filters']
+    search = params['search']
+    time_scope = params.get('time_scope')
+
     try:
-        rows = compute_kebutuhan_items(
+        raw_rows = compute_kebutuhan_items(
             project,
             mode=mode,
-            tahapan_id=int(tahapan_id) if tahapan_id else None,
-            filters=filters if filters else None
+            tahapan_id=tahapan_id,
+            filters=filters,
+            time_scope=time_scope,
         )
     except Exception as e:
-        return JsonResponse({
-            'ok': False,
-            'error': str(e)
-        }, status=500)
-    
-    # Count per kategori
-    counts = {"TK": 0, "BHN": 0, "ALT": 0, "LAIN": 0}
-    for r in rows:
-        k = r.get("kategori")
-        if k in counts:
-            counts[k] += 1
-    
-    # Meta info
-    meta = {
-        "counts_per_kategori": counts,
-        "n_rows": len(rows),
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+    rows, summary = summarize_kebutuhan_rows(raw_rows, search=search)
+
+    scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
+    filters_applied = bool(
+        search
+        or filters['klasifikasi_ids']
+        or filters['sub_klasifikasi_ids']
+        or filters['kategori_items']
+        or filters['pekerjaan_ids']
+        or scope_active
+        or (mode == 'tahapan' and tahapan_id)
+    )
+
+    summary.update({
         "mode": mode,
-        "filters_applied": bool(filters),
-        "generated_at": __import__('django.utils.timezone', fromlist=['now']).now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    
+        "tahapan_id": tahapan_id,
+        "filters_applied": filters_applied,
+        "filters": filters,
+        "search": search,
+        "time_scope": time_scope,
+        "time_scope_active": scope_active,
+    })
+
     if mode == 'tahapan' and tahapan_id:
         try:
             tahap = TahapPelaksanaan.objects.get(id=tahapan_id, project=project)
-            meta['tahapan'] = {
+            summary['tahapan'] = {
                 'tahapan_id': tahap.id,
                 'nama': tahap.nama,
                 'jumlah_pekerjaan': tahap.get_total_pekerjaan()
             }
         except TahapPelaksanaan.DoesNotExist:
             pass
-    
+
     return JsonResponse({
         "ok": True,
         "rows": rows,
-        "meta": meta
+        "meta": summary
     })
+
+
+@login_required
+@require_GET
+def api_get_rekap_kebutuhan_timeline(request, project_id):
+    project = _owner_or_404(project_id, request.user)
+    params = parse_kebutuhan_query_params(request.GET)
+    try:
+        data = compute_kebutuhan_timeline(
+            project,
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            time_scope=params.get('time_scope'),
+        )
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+
+    response = {
+        "ok": True,
+        "periods": data.get('periods', []),
+        "meta": data.get('meta', {}),
+    }
+    return JsonResponse(response)
 
 
 # ============================================================================

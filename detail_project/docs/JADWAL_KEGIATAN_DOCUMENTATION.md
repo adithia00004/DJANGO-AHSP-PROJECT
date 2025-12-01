@@ -34,15 +34,17 @@ Halaman **Jadwal Kegiatan** (Kelola Tahapan) adalah modul manajemen proyek untuk
 | S-Curve Chart | ECharts v5.4.3 |
 | Styling | Bootstrap 5 + Custom CSS |
 | State Management | Global State Object |
+| Testing | Vitest + happy-dom (frontend), Pytest (backend) |
 
 ### Status Implementasi (November 2025)
 - **Template aktif**: `kelola_tahapan_grid_modern.html` (Vite) dirender oleh `jadwal_pekerjaan_view` dengan flag `ENABLE_AG_GRID=True`. Legacy template (`kelola_tahapan_grid.html`/`_LEGACY`) tetap tersedia untuk rollback manual.
 - **Controller JavaScript**: entry `static/detail_project/js/src/jadwal_kegiatan_app.js` membaca atribut `data-api-*`, menginisialisasi AG Grid Manager ketika `data-enable-ag-grid="true"`, dan melepas event manager legacy.
 - **AG Grid**: modul `modules/grid/ag-grid-setup.js`, `column-definitions.js`, `grid-renderer.js`, serta `save-handler.js` sudah tersedia. Kontainer `#ag-grid-container` masih `d-none` sampai QA selesai, sehingga UI default masih menampilkan grid HTML.
 - **Penyimpanan progress**: penyimpanan memakai endpoint canonical `/detail_project/api/v2/project/<project_id>/assign-weekly/`. Loading assignments masih bergantung pada endpoint v1 per pekerjaan dan perlu dimigrasi agar mendukung 10.000+ baris.
+- **Kurva S cost view**: modul baru `modules/kurva-s/echarts-setup.js` otomatis memuat `/detail_project/api/v2/project/<id>/kurva-s-harga/`, menambahkan Week 0, dan hanya menampilkan legend **Rencana (PV)** serta **Realisasi (AC)**. Mode cost aktif default ketika pengguna membuka tab Realisasi.
 - **Build assets**: mode produksi masih mengimpor `detail_project/dist/assets/js/jadwal-kegiatan.js` secara hardcoded. Diperlukan pembacaan `manifest.json` supaya nama fingerprint (`jadwal-kegiatan-<hash>.js`) terdeteksi otomatis.
-- **Skrip npm**: `dev`, `build`, `preview`, `watch`, `test`, `test:integration`, `benchmark`.
-- **Testing**: `pytest detail_project -n auto` untuk backend dan smoke test UI memastikan AG Grid & legacy grid tidak aktif bersamaan.
+- **Skrip npm**: `dev`, `build`, `preview`, `watch`, `test`, `test:frontend`, `test:integration`, `bench:grid`, `benchmark`.
+- **Testing**: `pytest detail_project -n auto` untuk backend; `npm run test:frontend` menjalankan Vitest (53 tes). Benchmark performa tersedia lewat `npm run bench:grid` (GridRenderer: ±12 ms untuk 100×52, ±63 ms untuk 500×52).
 
 ---
 
@@ -1412,6 +1414,14 @@ Feb: Week 5-8  Sum percentages
 - Switch modes without data loss
 - Single source of truth in database
 - Backwards compatible
+
+---
+
+## Testing & Benchmark (Phase 6)
+
+- `npm run test:frontend` — menjalankan Vitest (happy-dom) untuk helper Kurva S, validation-utils, StateManager, dsb. Harus hijau sebelum merge JS.
+- `npm run bench:grid` — mengukur performa `GridRenderer.renderTables()`; baseline dev: 12 ms (100×52) dan 63 ms (500×52). Gunakan sebagai acuan ketika menambah virtual scroll.
+- `pytest detail_project/tests -v` — regresi backend untuk memastikan endpoint assign weekly & Kurva S cost view tetap sinkron.
 
 ---
 

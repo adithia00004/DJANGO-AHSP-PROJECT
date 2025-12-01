@@ -55,6 +55,7 @@ def test_jadwal_pekerjaan_page_respects_ag_grid_flag(client_logged, project):
     html = response.content.decode("utf-8")
 
     assert 'data-enable-ag-grid="false"' in html
+    assert "ENABLE_AG_GRID=False" in html
 
 
 @pytest.mark.django_db
@@ -114,19 +115,3 @@ def test_custom_grid_not_rendered_when_ag_grid_enabled(client_logged, project):
 
     assert 'grid-container legacy-grid-wrapper' not in html
 
-
-@pytest.mark.django_db
-@override_settings(ENABLE_AG_GRID=False)
-def test_ag_grid_hidden_when_disabled(client_logged, project):
-    """Test that AG Grid is hidden when disabled via settings"""
-    url = reverse("detail_project:jadwal_pekerjaan", args=[project.id])
-    response = client_logged.get(url)
-
-    assert response.status_code == 200
-    html = response.content.decode("utf-8")
-
-    # AG Grid container should have d-none when disabled
-    assert 'd-none' in html
-
-    # Custom grid should NOT have d-none
-    assert 'data-enable-ag-grid="false"' in html

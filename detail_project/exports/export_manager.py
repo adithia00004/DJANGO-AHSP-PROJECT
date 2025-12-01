@@ -6,6 +6,7 @@
 from typing import Dict, Any
 from django.http import HttpResponse
 from ..export_config import ExportConfig, SignatureConfig, format_currency
+from ..services import compute_kebutuhan_items, summarize_kebutuhan_rows
 from .csv_exporter import CSVExporter
 from .pdf_exporter import PDFExporter
 from .word_exporter import WordExporter
@@ -165,12 +166,52 @@ class ExportManager:
             font_size_normal=8,
         )
 
-    def export_rekap_kebutuhan(self, format_type: str) -> HttpResponse:
+    def export_rekap_kebutuhan(
+        self,
+        format_type: str,
+        *,
+        mode: str = 'all',
+        tahapan_id: int | None = None,
+        filters: dict | None = None,
+        search: str | None = None,
+        time_scope: dict | None = None,
+    ) -> HttpResponse:
         """Export Rekap Kebutuhan (flat table)"""
         config = self._create_config()
 
-        adapter = RekapKebutuhanAdapter(self.project)
+        rows_raw = compute_kebutuhan_items(
+            self.project,
+            mode=mode,
+            tahapan_id=tahapan_id,
+            filters=filters,
+            time_scope=time_scope,
+        )
+        rows, summary = summarize_kebutuhan_rows(rows_raw, search=search or '')
+        filters = filters or {}
+        scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
+        filters_applied = bool(
+            (filters.get('klasifikasi_ids'))
+            or (filters.get('sub_klasifikasi_ids'))
+            or (filters.get('kategori_items'))
+            or (filters.get('pekerjaan_ids'))
+            or (search and search.strip())
+            or (mode == 'tahapan' and tahapan_id)
+            or scope_active
+        )
+        summary.update({
+            'mode': mode,
+            'tahapan_id': tahapan_id,
+            'filters': filters,
+            'search': search or '',
+            'time_scope': time_scope,
+            'time_scope_active': scope_active,
+            'filters_applied': filters_applied,
+        })
+
+        adapter = RekapKebutuhanAdapter(self.project, rows=rows, summary=summary)
         data = adapter.get_export_data()
+        if summary:
+            data.setdefault('meta', summary)
 
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:

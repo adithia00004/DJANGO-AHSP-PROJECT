@@ -275,7 +275,6 @@
   <div class="tab-content" id="viewTabsContent">
     <!-- Grid View Tab -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel" aria-labelledby="grid-tab">
-      {% if enable_ag_grid %}
         <div class="ag-grid-section">
           <div class="horizontal-scroll-wrapper" id="ag-grid-scroll-top">
             <div class="horizontal-scroll-inner" id="ag-grid-scroll-inner"></div>
@@ -285,45 +284,14 @@
                style="width: 100%; min-height: 600px;">
             <!-- AG Grid mounts here -->
           </div>
-        </div>
-      {% else %}
-        <!-- Legacy Grid Fallback -->
-        <div class="grid-container legacy-grid-wrapper">
-          <div class="split-panel-wrapper">
-            <div class="left-panel-wrapper">
-              <div class="left-panel-scroll">
-                <table class="grid-table">
-                  <thead id="left-thead">
-                    <tr>
-                      <th class="col-uraian">Klasifikasi / Sub-Klasifikasi / Pekerjaan</th>
-                      <th class="col-volume text-center">Volume</th>
-                      <th class="col-satuan text-center">Satuan</th>
-                    </tr>
-                  </thead>
-                  <tbody id="left-tbody">
-                    <!-- Render oleh JavaScript -->
-                  </tbody>
-                </table>
-              </div>
+          {% if not enable_ag_grid %}
+            <div class="alert alert-warning mt-3">
+              AG Grid dinonaktifkan melalui <code>ENABLE_AG_GRID=False</code>.
+              Legacy grid telah dipensiunkan di Phase 4 sehingga kontainer di atas
+              tidak akan terinisialisasi sampai Anda mengaktifkannya kembali.
             </div>
-
-            <div class="right-panel-wrapper">
-              <div class="right-panel-scroll">
-                <table class="grid-table">
-                  <thead id="right-thead">
-                    <tr id="time-header-row">
-                      <!-- Render oleh JavaScript -->
-                    </tr>
-                  </thead>
-                  <tbody id="right-tbody">
-                    <!-- Render oleh JavaScript -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          {% endif %}
         </div>
-      {% endif %}
 
       <!-- Status Bar -->
       <div class="status-bar">
@@ -339,8 +307,61 @@
 
     <!-- Gantt View Tab -->
     <div class="tab-pane fade" id="gantt-view" role="tabpanel" aria-labelledby="gantt-tab">
-      <div id="gantt-container" style="overflow: auto; padding: 20px; min-height: 600px;">
-        <div id="gantt-chart" style="min-height: 520px;"></div>
+      <div id="gantt-container" class="gantt-container">
+        <div class="gantt-chart-panel">
+          <div class="gantt-toolbar">
+            <div class="gantt-toolbar-left">
+              <h6 class="gantt-title mb-0">Gantt Chart (Perencanaan &amp; Realisasi)</h6>
+            </div>
+            <div class="gantt-legend" id="gantt-legend">
+              <span class="gantt-legend-item">
+                <span class="legend-dot legend-dot-planned"></span> Rencana
+              </span>
+              <span class="gantt-legend-item">
+                <span class="legend-dot legend-dot-actual"></span> Realisasi
+              </span>
+            </div>
+          </div>
+          <div class="gantt-layout">
+            <div class="gantt-tree-panel" id="gantt-tree-panel">
+              <div class="gantt-tree-header">
+                <span>Klasifikasi &amp; Pekerjaan</span>
+              </div>
+              <div class="gantt-tree-scroll" id="gantt-tree-scroll">
+                <div class="gantt-tree-body" id="gantt-tree-body">
+                  <div class="text-muted text-center py-3">Menyiapkan data...</div>
+                </div>
+              </div>
+            </div>
+            <div class="gantt-chart-wrapper" id="gantt-chart-wrapper">
+              <div id="gantt-chart" style="min-height: 520px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="gantt-summary mt-4">
+          <div class="gantt-summary-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Ringkasan Pekerjaan</h6>
+            <span class="text-muted" id="gantt-summary-total"></span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped gantt-summary-table" id="gantt-summary-table">
+              <thead>
+                <tr>
+                  <th style="width: 60px;">#</th>
+                  <th>Pekerjaan</th>
+                  <th style="width: 220px;">Rencana</th>
+                  <th style="width: 220px;">Realisasi</th>
+                  <th style="width: 120px;">Deviasi</th>
+                </tr>
+              </thead>
+              <tbody id="gantt-summary-body">
+                <tr>
+                  <td colspan="5" class="text-muted text-center">Menunggu data Gantt...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -431,9 +452,12 @@
     console.log('Dev server: http://localhost:5173');
   </script>
 {% else %}
-  {# Production mode: Load built assets via manifest #}
-  {% vite_asset 'assets/js/jadwal-kegiatan.js' as jadwal_asset %}
-  <script type="module" src="{% static jadwal_asset %}"></script>
+  {# Production mode: Load built assets via manifest (JS + CSS) #}
+  {% vite_entry 'assets/js/jadwal-kegiatan.js' as jadwal_entry %}
+  {% for css_asset in jadwal_entry.css %}
+    <link rel="stylesheet" href="{% static css_asset %}">
+  {% endfor %}
+  <script type="module" src="{% static jadwal_entry.file %}"></script>
   <script>
     console.log('%cdY"? PRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
     console.log('Using built assets from static/dist/ (manifest resolved)');

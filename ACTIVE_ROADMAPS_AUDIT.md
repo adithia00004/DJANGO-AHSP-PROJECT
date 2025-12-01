@@ -38,7 +38,7 @@
 
 **Scope:**
 - Foundation cleanup (database + state management)
-- Core features (Kurva S Harga + Rekap Kebutuhan)
+- Core features (Kurva S Harga + Rekap Kebutuhan) — refer to `detail_project/docs/REKAP_KEBUTUHAN_LIVING_ROADMAP.md` for live status + documentation.
 - Optimization (API bundling + build)
 - Deployment (staging + production)
 

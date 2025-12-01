@@ -1,6 +1,6 @@
 ﻿# Django AHSP Project - Jadwal Kegiatan Enhancement
 
-**Project Status:** Phase 1 complete; Phase 2 in progress (~40% overall)
+**Project Status:** Phase 6 (Testing & Documentation) in progress (~80% overall)
 **Budget:** $0.00 (100% FREE Open Source)
 **Last Updated:** 2025-11-19
 
@@ -22,8 +22,9 @@
 - File export Jadwal kini menggunakan kertas A3 landscape dan otomatis memecah kolom weekly menjadi beberapa halaman (maks ~10 kolom per lembar, monthly dikap setiap ±6 kolom) sehingga timeline panjang tetap mudah dibaca tanpa mengecilkan font.
 - Regression suite: pytest detail_project/tests/test_jadwal_pekerjaan_page_ui.py --no-cov dan pytest detail_project/tests/test_weekly_canonical_validation.py --no-cov (round-trip + zero progress) keduanya hijau.
 - Kurva S Phase 5.3 tersinkron penuh: halaman Jadwal otomatis memuat data biaya dari `/detail_project/api/v2/project/<id>/kurva-s-harga/`, legend dan tooltip memakai istilah **Rencana (PV)** dan **Realisasi (AC)**, serta Week 0 ditambahkan agar grafik selalu berangkat dari 0%. Toast simpan menampilkan jumlah perubahan riil (created + updated) sehingga pesan “0 perubahan” hanya muncul bila memang tidak ada baris yang tersimpan.
+- Tahap 6 automation siap pakai: `npm run test:frontend` (Vitest + happy-dom) menjalankan 50+ unit test dan `npm run bench:grid` mengukur render `GridRenderer` (~12 ms per 100×52 weeks, ~63 ms per 500×52 weeks) sebelum rilis.
 - Phase 3 (Build optimization) masih pending; deliverable export Jadwal sudah aktif dan siap digabung setelah mode volume + monthly switch dinyatakan stabil.
-- Skrip npm yang tersedia: dev, build, preview, watch, test, test:integration, benchmark.
+- Skrip npm yang tersedia: dev, build, preview, watch, test, test:frontend, test:integration, bench:grid, benchmark.
 ---
 
 ##  Project Overview
@@ -73,7 +74,9 @@ http://localhost:8000/project/1/jadwal/
 ### Testing Saat Ini
 - Regresi backend: `pytest detail_project -n auto`
 - Frontend smoke: `npm test`
+- Frontend unit: `npm run test:frontend` (Vitest + happy-dom untuk modules ES6)
 - Testing integrasi ringan: `npm run test:integration`
+- Grid renderer benchmark: `npm run bench:grid` (≈12ms untuk 100 baris × 52 minggu; ≈63ms untuk 500 baris × 52 minggu di mesin dev)
 - Benchmark bundle: `npm run benchmark` (hasil `stats.html` pada `detail_project/static/detail_project/dist/`)
 - UI manual: jalankan skenario pada [JADWAL_KEGIATAN_DOCUMENTATION.md](detail_project/docs/JADWAL_KEGIATAN_DOCUMENTATION.md#testing--fixtures) ketika memverifikasi perilaku kompleks.
 

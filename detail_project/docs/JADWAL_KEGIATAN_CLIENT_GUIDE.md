@@ -134,12 +134,11 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 
 ## 7. Integrasi Gantt & Kurva S
 
-(Masih menggunakan kode legacy)
+- **Frappe Gantt**: masih memakai modul legacy, namun Jadwal Kegiatan App kini memanggil adapter di `modules/gantt/frappe-gantt-setup.js`. Adapter ini otomatis mencoba locale `id-ID` lalu fallback ke `en` jika library gagal mem-format bulan, sehingga user tidak melihat blank chart walau ada pesan console. Styling mengikuti tema bootstrap (alpine/alpine-dark); jika bar terlihat hitam semuanya berarti CSS kustom perlu diperbarui sesuai tema.
+- **Kurva S modern**: modul `modules/kurva-s/echarts-setup.js` terintegrasi penuh dengan state manager. Pada mode **Realisasi**, Jadwal Kegiatan App selalu mengaktifkan tampilan **Cost** dan mem-fetch `/detail_project/api/v2/project/<id>/kurva-s-harga/`. Data PV/AC dinormalisasi (Week 0 = 0%) dan legend memakai label **Rencana (PV)** vs **Realisasi (AC)** sehingga kurva langsung mencerminkan input planned/actual. Mode progres (volume/persentase) tetap tersedia ketika user berpindah tab.
+- **Fallback CDN**: template Vite masih memuat `echarts.min.js` dan `frappe-gantt.js` dari `static/vendor` sebagai cadangan apabila bundel modern gagal.
 
-- **Frappe Gantt** (`static/detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_module.js`) di-render ke `#gantt-container`. JS baru belum menulis ulang modul ini; existing code tetap dipakai.
-- **ECharts Kurva S** (`static/detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js`). Sama seperti Gantt, masih modul lama dengan fallback CDN. Template Vite memuat ECharts CDN + fallback lokal (`static/detail_project/js/vendor/echarts.min.js`).
-
-> Setelah AG Grid siap, modul Gantt/Kurva S akan direstruktur agar membaca sumber data yang sama dengan grid baru.
+> Begitu AG Grid sepenuhnya aktif, kedua modul ini akan membaca data langsung dari state canonical sehingga tidak perlu lagi memanggil kode legacy apa pun.
 
 ---
 
@@ -184,7 +183,15 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 
 ---
 
-## 9. Troubleshooting Singkat
+## 9. Testing & Benchmark (Phase 6)
+
+- **Unit test front-end** – `npm run test:frontend` menjalankan Vitest + happy-dom untuk helper Kurva S, validation utils, StateManager, dan modul modern lainnya. Jalankan per commit yang menyentuh JS.
+- **Benchmark renderer** – `npm run bench:grid` menggunakan Vitest benchmark untuk mengukur `GridRenderer.renderTables()` (baseline: ~12 ms untuk 100×52 weeks, ~63 ms untuk 500×52 weeks di mesin dev). Gunakan hasil ini ketika mengevaluasi optimasi virtual scroll.
+- **Regresi backend** – `pytest detail_project/tests -v` memastikan API cost view, assign weekly, dan endpoint lainnya tetap sinkron setelah perubahan front-end.
+
+---
+
+## 10. Troubleshooting Singkat
 
 | Gejala | Penyebab Umum | Langkah Perbaikan |
 | --- | --- | --- |
@@ -196,7 +203,7 @@ File: `static/detail_project/js/src/modules/grid/ag-grid-setup.js`
 
 ---
 
-## 10. Referensi Terkait
+## 11. Referensi Terkait
 
 - `DOCUMENTATION_OVERVIEW.md` â€“ indeks seluruh dokumentasi.
 - `FINAL_IMPLEMENTATION_PLAN.md` â€“ detail per fase dan checklist AG Grid.

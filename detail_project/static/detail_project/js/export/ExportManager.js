@@ -54,6 +54,25 @@ class ExportManager {
       // ignore orientation errors
     }
 
+    if (options.query && typeof options.query === 'object') {
+      const query = new URLSearchParams();
+      Object.entries(options.query).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        if (Array.isArray(value)) {
+          if (value.length) {
+            query.append(key, value.join(','));
+          }
+        } else {
+          query.append(key, value);
+        }
+      });
+      const qs = query.toString();
+      if (qs) {
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}${qs}`;
+      }
+    }
+
     console.log(`[ExportManager] Starting ${format.toUpperCase()} export...`);
 
     try {

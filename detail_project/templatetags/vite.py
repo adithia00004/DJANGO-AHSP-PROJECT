@@ -67,7 +67,23 @@ def _entry_name_variants(entry: str) -> set[str]:
     return {variant for variant in variants if variant}
 
 
-def _resolve_entry(entry):
+def _build_static_path(relative: str) -> str:
+    if not relative:
+        return ""
+    return f"detail_project/dist/{relative}"
+
+def _fallback_entry(entry: str, fallback: str | None = None) -> dict:
+    clean_entry = entry.replace("assets/", "").lstrip("./")
+    default_path = fallback or f"detail_project/dist/assets/{clean_entry}"
+    return {
+        "file": default_path,
+        "css": [],
+        "imports": [],
+        "dynamic_imports": [],
+    }
+
+
+def _resolve_entry_info(entry):
     manifest = _load_manifest()
     if not manifest:
         return None
@@ -87,14 +103,14 @@ def _resolve_entry(entry):
 
     for candidate in dict.fromkeys(filter(None, candidate_chain)):
         if candidate in manifest:
-            return manifest[candidate].get("file")
+            return manifest[candidate]
 
     entry_names = _entry_name_variants(entry)
     if entry_names:
         for data in manifest.values():
             manifest_name = data.get("name")
             if manifest_name and manifest_name in entry_names:
-                return data.get("file")
+                return data
 
             src_name = data.get("src")
             src_variants = _entry_name_variants(src_name) if src_name else set()
@@ -106,8 +122,15 @@ def _resolve_entry(entry):
                     for entry_name in entry_names
                 )
             ):
-                return data.get("file")
+                return data
 
+    return None
+
+
+def _resolve_entry(entry):
+    info = _resolve_entry_info(entry)
+    if info:
+        return info.get("file")
     return None
 
 
@@ -120,13 +143,36 @@ def vite_asset(entry, fallback=None):
         {% vite_asset 'assets/js/jadwal-kegiatan.js' as bundle_path %}
         <script src="{% static bundle_path %}"></script>
     """
-    resolved = _resolve_entry(entry)
-    if resolved:
-        return f"detail_project/dist/{resolved}"
+    info = _resolve_entry_info(entry)
+    if info and info.get("file"):
+        return _build_static_path(info.get("file"))
 
     if fallback:
         return fallback
 
-    # Default fallback assumes unhashed filename
     clean_entry = entry.replace("assets/", "")
     return f"detail_project/dist/assets/{clean_entry}"
+
+
+@register.simple_tag
+def vite_entry(entry, fallback=None):
+    """
+    Returns a dictionary with paths for the Vite entry (JS + CSS).
+    Usage:
+        {% vite_entry 'assets/js/jadwal-kegiatan.js' as bundle %}
+        {% for css_path in bundle.css %}
+          <link rel="stylesheet" href="{% static css_path %}">
+        {% endfor %}
+        <script src="{% static bundle.file %}"></script>
+    """
+    info = _resolve_entry_info(entry)
+    if info and info.get("file"):
+        css_assets = info.get("css", [])
+        return {
+            "file": _build_static_path(info.get("file")),
+            "css": [_build_static_path(path) for path in css_assets],
+            "imports": info.get("imports", []),
+            "dynamic_imports": info.get("dynamicImports", []),
+        }
+
+    return _fallback_entry(entry, fallback=fallback)
