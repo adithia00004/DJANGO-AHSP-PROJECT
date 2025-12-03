@@ -285,20 +285,240 @@
   color: #ffc107;
 }
 
-/* ===== Toolbar (existing, enhanced) ===== */
-#rk-toolbar {
+/* ===== Toolbar V2 (Phase 4 Redesign) ===== */
+
+/* Main Toolbar Container */
+.rk-toolbar-v2 {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem;
+  background: var(--dp-c-surface);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md, 0.5rem);
   box-shadow: var(--dp-shadow-sm);
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+/* Toolbar Sections */
+.rk-toolbar-section {
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
 }
 
-.rk-toolbar-search {
-  min-width: 220px;
+/* Section 1: Actions Group */
+.rk-toolbar-actions {
+  flex-shrink: 0;
 }
 
-.rk-toolbar-search .form-control {
-  min-width: 0;
+.rk-toolbar-actions .btn-group {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
+#rk-btn-refresh {
+  transition: transform 0.3s ease;
+}
+
+#rk-btn-refresh:hover {
+  transform: scale(1.05);
+}
+
+#rk-btn-refresh:active {
+  transform: scale(0.95);
+}
+
+#rk-btn-refresh.spinning .bi-arrow-clockwise {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Section 2: Search & View Group */
+.rk-toolbar-search-view {
+  flex: 1 1 auto;
+  min-width: 280px;
+  justify-content: flex-start;
+}
+
+.rk-search-wrapper {
+  flex: 1 1 auto;
+  max-width: 400px;
+  min-width: 200px;
+}
+
+.rk-search-wrapper .input-group {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border-radius: var(--dp-radius-md, 0.375rem);
+  overflow: hidden;
+}
+
+#rk-search-clear {
+  border-left: 1px solid var(--dp-c-border);
+}
+
+#rk-search-clear:hover {
+  background: color-mix(in srgb, var(--dp-c-border) 20%, var(--dp-c-bg));
+}
+
+.rk-view-toggle {
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Section 3: Stats Display */
+.rk-toolbar-stats {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.rk-stats-toggle {
+  align-self: flex-end;
+}
+
+.rk-stats-cards {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Stat Card Component */
+.rk-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--dp-c-bg);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md, 0.5rem);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  min-width: 90px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rk-stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Stat Card Icons */
+.rk-stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.rk-stat-card--tk .rk-stat-icon {
+  background: color-mix(in srgb, #0d6efd 15%, transparent);
+  color: #0d6efd;
+}
+
+.rk-stat-card--bhn .rk-stat-icon {
+  background: color-mix(in srgb, #198754 15%, transparent);
+  color: #198754;
+}
+
+.rk-stat-card--alt .rk-stat-icon {
+  background: color-mix(in srgb, #ffc107 15%, transparent);
+  color: #856404;
+}
+
+.rk-stat-card--lain .rk-stat-icon {
+  background: color-mix(in srgb, #0dcaf0 15%, transparent);
+  color: #055160;
+}
+
+.rk-stat-card--total .rk-stat-icon {
+  background: color-mix(in srgb, #6f42c1 15%, transparent);
+  color: #6f42c1;
+}
+
+/* Stat Card Content */
+.rk-stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  flex: 1;
+}
+
+.rk-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--dp-c-text-muted);
+  letter-spacing: 0.025em;
+}
+
+.rk-stat-values {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rk-stat-count {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dp-c-text);
+}
+
+.rk-stat-qty {
+  font-size: 0.75rem;
+  color: var(--dp-c-text-muted);
+  font-weight: 500;
+}
+
+.rk-stat-total {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #6f42c1;
+}
+
+/* Highlight variant for Total card */
+.rk-stat-card--highlight {
+  border-color: #6f42c1;
+  background: color-mix(in srgb, #6f42c1 5%, var(--dp-c-bg));
+}
+
+/* Pulse animation for updates */
+.rk-stat-card--pulse {
+  animation: statPulse 0.6s ease;
+}
+
+@keyframes statPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); box-shadow: 0 0 12px rgba(111, 66, 193, 0.3); }
+}
+
+/* Toolbar Meta (rows + timestamp) */
+.rk-toolbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.rk-toolbar-meta > span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Dropdown menu styling */
 #rk-toolbar .dropdown-menu {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
@@ -315,12 +535,9 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.rk-stats { 
-  white-space: nowrap; 
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+/* Legacy stats (for backward compatibility - hidden by default) */
+.rk-stats {
+  display: none;
 }
 
 /* ===== Table (existing) ===== */
@@ -400,13 +617,33 @@
 }
 
 /* ===== Responsive ===== */
+
+/* Large screens (Desktop) - Default layout above */
+
+/* Medium screens (Tablet landscape: 992px - 1199px) */
 @media (max-width: 1199.98px) {
-  .rk-table thead th,
-  .rk-table tbody td { 
-    padding: .45rem .65rem; 
-    font-size: .74rem; 
+  .rk-toolbar-v2 {
+    gap: 1rem;
+    padding: 0.875rem;
   }
-  
+
+  .rk-stat-card {
+    min-width: 85px;
+    padding: 0.4rem 0.65rem;
+  }
+
+  .rk-stat-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.9rem;
+  }
+
+  .rk-table thead th,
+  .rk-table tbody td {
+    padding: .45rem .65rem;
+    font-size: .74rem;
+  }
+
   .rk-tahapan-btn,
   .rk-kategori-checkbox {
     font-size: 0.8125rem;
@@ -414,54 +651,194 @@
   }
 }
 
+/* Tablet portrait (768px - 991px) */
 @media (max-width: 991.98px) {
-  #rk-toolbar { 
-    gap: .375rem; 
+  .rk-toolbar-v2 {
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  /* Stack toolbar sections */
+  .rk-toolbar-section {
+    width: 100%;
+  }
+
+  .rk-toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .rk-toolbar-search-view {
+    width: 100%;
     flex-wrap: wrap;
   }
-  
-  .rk-table thead th,
-  .rk-table tbody td { 
-    padding: .4rem .6rem; 
-    font-size: .72rem; 
+
+  .rk-search-wrapper {
+    flex: 1 1 100%;
+    max-width: 100%;
+    margin-bottom: 0.5rem;
   }
-  
+
+  .rk-view-toggle {
+    width: 100%;
+  }
+
+  .rk-view-toggle .btn {
+    flex: 1;
+  }
+
+  /* Stats section - show collapse toggle */
+  .rk-toolbar-stats {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .rk-stats-cards {
+    justify-content: flex-start;
+  }
+
+  /* Collapsed by default on tablet */
+  .rk-stats-cards:not(.show) {
+    display: none;
+  }
+
+  .rk-stat-card {
+    min-width: calc(50% - 0.25rem);
+    flex: 1 1 calc(50% - 0.25rem);
+  }
+
+  .rk-toolbar-meta {
+    justify-content: center;
+    font-size: 0.8rem;
+  }
+
+  .rk-table thead th,
+  .rk-table tbody td {
+    padding: .4rem .6rem;
+    font-size: .72rem;
+  }
+
   .rk-tahapan-selector {
     gap: 0.375rem;
   }
-  
+
   .rk-kategori-filter {
     gap: 0.75rem;
   }
 }
 
+/* Mobile (< 768px) */
 @media (max-width: 767.98px) {
-  #rk-toolbar { 
-    flex-direction: column; 
-    align-items: stretch; 
+  .rk-toolbar-v2 {
+    gap: 0.5rem;
+    padding: 0.625rem;
   }
-  
-  #rk-toolbar > .ms-auto { 
-    margin-left: 0 !important; 
-    width: 100%; 
-    flex-wrap: wrap; 
+
+  /* Compact actions group */
+  .rk-toolbar-actions {
+    gap: 0.5rem;
   }
-  
+
+  .rk-toolbar-actions .btn {
+    padding: 0.375rem 0.5rem;
+  }
+
+  .rk-toolbar-actions .btn span {
+    display: none !important; /* Hide text, keep icons only */
+  }
+
+  #rk-btn-refresh .bi-arrow-clockwise {
+    font-size: 1rem;
+  }
+
+  /* Search wrapper full width */
+  .rk-search-wrapper {
+    min-width: 100%;
+  }
+
+  /* View toggle compact */
+  .rk-view-toggle .btn {
+    flex: 1;
+    padding: 0.375rem 0.5rem;
+  }
+
+  /* Stats cards - 2 columns on mobile */
+  .rk-stats-cards {
+    gap: 0.375rem;
+  }
+
+  .rk-stat-card {
+    min-width: calc(50% - 0.2rem);
+    flex: 1 1 calc(50% - 0.2rem);
+    padding: 0.4rem 0.5rem;
+  }
+
+  .rk-stat-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    font-size: 0.8rem;
+  }
+
+  .rk-stat-label {
+    font-size: 0.7rem;
+  }
+
+  .rk-stat-count {
+    font-size: 0.9rem;
+  }
+
+  .rk-stat-qty {
+    font-size: 0.7rem;
+  }
+
+  .rk-stat-total {
+    font-size: 0.85rem;
+  }
+
+  /* Total card full width on mobile */
+  .rk-stat-card--total {
+    flex: 1 1 100%;
+  }
+
+  .rk-toolbar-meta {
+    font-size: 0.75rem;
+    justify-content: center;
+    text-align: center;
+  }
+
   .rk-table thead th,
-  .rk-table tbody td { 
-    padding: .35rem .5rem; 
-    font-size: .7rem; 
+  .rk-table tbody td {
+    padding: .35rem .5rem;
+    font-size: .7rem;
   }
-  
+
   .rk-tahapan-btn,
   .rk-kategori-checkbox {
     font-size: 0.75rem;
     padding: 0.375rem 0.75rem;
   }
-  
-  .rk-stats {
-    font-size: 0.75rem;
-    justify-content: center;
+}
+
+/* Extra small screens (< 576px) */
+@media (max-width: 575.98px) {
+  .rk-toolbar-v2 {
+    padding: 0.5rem;
+  }
+
+  /* Single column stats */
+  .rk-stat-card {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  /* Smaller buttons */
+  .rk-toolbar-actions .btn-group .btn,
+  #rk-btn-refresh {
+    min-width: 44px; /* Touch target minimum */
+    height: 44px;
+  }
+
+  .rk-view-toggle .btn {
+    min-height: 44px;
   }
 }
 

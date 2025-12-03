@@ -2147,6 +2147,12 @@ def compute_kebutuhan_items(
         filters: dict filter klasifikasi/sub/kategori/pekerjaan
         time_scope: dict rentang waktu {'mode','start','end'} untuk scope mingguan/bulanan
     """
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+    start_time = time.perf_counter()
+
     mode_flag = 'tahapan' if (mode == 'tahapan' and tahapan_id) else 'all'
     normalized_filters = _normalize_kebutuhan_filters(filters)
     normalized_time_scope = _normalize_time_scope(time_scope)
@@ -2163,6 +2169,8 @@ def compute_kebutuhan_items(
     if bucket:
         cached_entry = bucket.get(entry_key)
         if cached_entry and cached_entry.get('sig') == signature:
+            elapsed = (time.perf_counter() - start_time) * 1000
+            logger.info(f"Rekap Kebutuhan CACHE HIT - project={project.id}, elapsed={elapsed:.2f}ms, rows={len(cached_entry.get('data', []))}")
             return cached_entry.get('data', [])
 
     # ========================================================================
@@ -2244,24 +2252,54 @@ def compute_kebutuhan_items(
     cost_map = defaultdict(Decimal)
     price_seed = {}
 
-    details = list(
-        DetailAHSPExpanded.objects.filter(
-            project=project,
-            pekerjaan_id__in=pekerjaan_ids
-        ).values(
-            'pekerjaan_id',
-            'kategori',
-            'kode',
-            'uraian',
-            'satuan',
-            'koefisien',
-            'source_detail__kategori',
-            'source_detail__ref_pekerjaan_id',
-            'source_detail__ref_ahsp_id',
-            'source_detail__koefisien',
-            'harga_item__harga_satuan',
+    # Batch processing untuk large pekerjaan lists (optimization)
+    BATCH_SIZE = 500
+    all_details = []
+
+    if len(pekerjaan_ids) > BATCH_SIZE:
+        # Process in batches to prevent query timeout
+        for i in range(0, len(pekerjaan_ids), BATCH_SIZE):
+            batch = pekerjaan_ids[i:i+BATCH_SIZE]
+            batch_details = list(
+                DetailAHSPExpanded.objects.filter(
+                    project=project,
+                    pekerjaan_id__in=batch
+                ).select_related('harga_item', 'source_detail').values(
+                    'pekerjaan_id',
+                    'kategori',
+                    'kode',
+                    'uraian',
+                    'satuan',
+                    'koefisien',
+                    'source_detail__kategori',
+                    'source_detail__ref_pekerjaan_id',
+                    'source_detail__ref_ahsp_id',
+                    'source_detail__koefisien',
+                    'harga_item__harga_satuan',
+                )
+            )
+            all_details.extend(batch_details)
+        details = all_details
+    else:
+        # Standard query with select_related optimization
+        details = list(
+            DetailAHSPExpanded.objects.filter(
+                project=project,
+                pekerjaan_id__in=pekerjaan_ids
+            ).select_related('harga_item', 'source_detail').values(
+                'pekerjaan_id',
+                'kategori',
+                'kode',
+                'uraian',
+                'satuan',
+                'koefisien',
+                'source_detail__kategori',
+                'source_detail__ref_pekerjaan_id',
+                'source_detail__ref_ahsp_id',
+                'source_detail__koefisien',
+                'harga_item__harga_satuan',
+            )
         )
-    )
 
     if not details:
         details = list(
@@ -2367,6 +2405,15 @@ def compute_kebutuhan_items(
     new_bucket = bucket or {}
     new_bucket[entry_key] = {"sig": signature, "data": rows}
     cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+
+    # Performance logging
+    elapsed = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        f"Rekap Kebutuhan COMPUTED - project={project.id}, "
+        f"elapsed={elapsed:.2f}ms, rows={len(rows)}, "
+        f"pekerjaan={len(pekerjaan_ids)}, details={len(details)}"
+    )
+
     return rows
 
 

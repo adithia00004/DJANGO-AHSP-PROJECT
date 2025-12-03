@@ -150,6 +150,54 @@
     console.log(`[${type}] ${message}`);
   };
 
+  /**
+   * Add ripple effect to buttons
+   */
+  const addRippleEffect = (button) => {
+    if (!button) return;
+    button.classList.add('btn-ripple');
+  };
+
+  /**
+   * Initialize UX enhancements
+   */
+  const initializeUXEnhancements = () => {
+    // Add ripple effects to all buttons
+    $$('.btn').forEach(btn => addRippleEffect(btn));
+
+    // Add tooltips to elements with title
+    $$('[title]').forEach(el => {
+      if (!el.hasAttribute('data-bs-toggle')) {
+        el.setAttribute('data-bs-toggle', 'tooltip');
+      }
+    });
+
+    // Initialize Bootstrap tooltips
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+      $$('[data-bs-toggle="tooltip"]').forEach(el => {
+        new bootstrap.Tooltip(el);
+      });
+    }
+
+    // Animate elements on scroll
+    const observeElements = () => {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('animate-fade-in');
+          }
+        });
+      }, { threshold: 0.1 });
+
+      $$('.rk-chart-card, .rk-stat-badge').forEach(el => {
+        observer.observe(el);
+      });
+    };
+
+    observeElements();
+    console.log('🎨 UX enhancements initialized');
+  };
+
   const apiCall = async (url, options = {}) => {
     const response = await fetch(url, {
       credentials: 'same-origin',
@@ -349,15 +397,11 @@
 
   const updateStats = (meta = {}) => {
     const counts = meta.counts_per_kategori || {};
-    const qtyTotals = meta.quantity_totals || {};
+    // Update item counts only (qty removed as not relevant for users)
     if (refs.countTK) refs.countTK.textContent = counts.TK || 0;
     if (refs.countBHN) refs.countBHN.textContent = counts.BHN || 0;
     if (refs.countALT) refs.countALT.textContent = counts.ALT || 0;
     if (refs.countLAIN) refs.countLAIN.textContent = counts.LAIN || 0;
-    if (refs.qtyTK) refs.qtyTK.textContent = qtyTotals.TK || '0';
-    if (refs.qtyBHN) refs.qtyBHN.textContent = qtyTotals.BHN || '0';
-    if (refs.qtyALT) refs.qtyALT.textContent = qtyTotals.ALT || '0';
-    if (refs.qtyLAIN) refs.qtyLAIN.textContent = qtyTotals.LAIN || '0';
     if (refs.nrows) refs.nrows.textContent = meta.n_rows || 0;
     if (refs.totalCost) refs.totalCost.textContent = meta.grand_total_cost || 'Rp 0';
     if (refs.generatedAt) refs.generatedAt.textContent = meta.generated_at || '';
@@ -438,7 +482,11 @@
         type: 'pie',
         radius: ['45%', '70%'],
         data,
-        label: { formatter: '{b}\n{d}%' },
+        label: {
+          formatter: '{b}\n{d}%',
+          textBorderWidth: 0,  // Remove text outline/border
+          textShadowBlur: 0,   // Remove text shadow
+        },
       }],
     });
   };
@@ -527,8 +575,8 @@
     renderCostChart(costSeries);
 
     renderSummaryList(refs.chartMixSummary, mixSeries, (item) => {
-      const qtyText = item.qty ? `<small>${formatQtyValue(item.qty)}</small>` : '';
-      return `<li><span class="rk-chart-label">${esc(item.name)}</span><span class="rk-chart-value">${formatCurrencyValue(item.cost)}${qtyText ? `<span>${qtyText}</span>` : ''}</span></li>`;
+      // Qty removed as not relevant for users - only show cost
+      return `<li><span class="rk-chart-label">${esc(item.name)}</span><span class="rk-chart-value">${formatCurrencyValue(item.cost)}</span></li>`;
     });
 
     renderSummaryList(refs.chartCostSummary, costSeries, (item) => (
@@ -558,28 +606,110 @@
     }
     setTimelineEmpty(false);
     const limit = costChartMode === 'compact' ? 5 : null;
-    const html = periods.map((period) => {
+    const html = periods.map((period, idx) => {
       const source = period.items || [];
       const items = limit ? source.slice(0, limit) : source;
-      const itemList = items.map((item) => (
-        `<li><span class="rk-chart-label">${esc(item.kode || '-')} - ${esc(item.uraian || '-')}</span>` +
-        `<span class="rk-chart-value">${formatCurrencyValue(item.harga_total_decimal || item.harga_total)}</span></li>`
-      )).join('');
+
+      // Determine period type (week or month)
+      const periodLabel = period.label || period.value || '-';
+      const isWeek = periodLabel.toLowerCase().includes('minggu') || periodLabel.toLowerCase().includes('week');
+      const badgeClass = isWeek ? 'rk-period-badge--week' : 'rk-period-badge--month';
+      const badgeIcon = isWeek ? 'bi-calendar-week' : 'bi-calendar-month';
+
+      // Calculate stats
+      const itemCount = source.length;
+      const totalCost = period.total_cost_decimal || period.total_cost || 0;
+
+      // Determine period status based on dates (simplified - can be enhanced with actual date comparison)
+      const periodClass = 'rk-timeline-period';
+
+      // Build item table
+      const itemTable = items.length ? `
+        <table class="rk-timeline-period__table table table-sm">
+          <thead>
+            <tr>
+              <th>Kode</th>
+              <th>Uraian</th>
+              <th class="text-end">Biaya</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((item) => `
+              <tr data-bs-toggle="tooltip"
+                  data-bs-placement="top"
+                  data-bs-html="true"
+                  title="<div class='rk-tooltip-content'>
+                    <strong>${esc(item.uraian || '-')}</strong>
+                    <small>Kode: ${esc(item.kode || '-')}</small>
+                    <small>Satuan: ${esc(item.satuan || '-')}</small>
+                    <small>Qty: ${formatQtyValue(item.quantity_decimal || item.quantity)}</small>
+                  </div>">
+                <td><code>${esc(item.kode || '-')}</code></td>
+                <td>${esc(item.uraian || '-')}</td>
+                <td class="text-end fw-bold">${formatCurrencyValue(item.harga_total_decimal || item.harga_total)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : '<p class="text-muted text-center py-3">Tidak ada item</p>';
+
       return `
-        <div class="rk-timeline-period">
+        <div class="${periodClass}" data-period="${esc(period.value || idx)}">
           <div class="rk-timeline-period__header">
-            <div>
-              <div class="rk-timeline-period__title">${esc(period.label || period.value || '-')}</div>
-              <div class="rk-timeline-period__dates text-muted">${esc(period.start_date || '')} - ${esc(period.end_date || '')}</div>
+            <div class="rk-timeline-period__badge"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 title="Periode: ${esc(period.start_date || '')} s/d ${esc(period.end_date || '')}">
+              <i class="bi ${badgeIcon}"></i>
+              <span>${esc(periodLabel)}</span>
             </div>
-            <div class="rk-timeline-period__total">${formatCurrencyValue(period.total_cost_decimal || period.total_cost)}</div>
+            <div class="rk-timeline-period__dates">
+              <small>${esc(period.start_date || '')} - ${esc(period.end_date || '')}</small>
+            </div>
+            <div class="rk-timeline-period__stats">
+              <span class="badge bg-info"
+                    data-bs-toggle="tooltip"
+                    data-bs-placement="top"
+                    title="Total ${itemCount} item dalam periode ini">
+                <i class="bi bi-list-ul"></i> ${itemCount} items
+              </span>
+              <span class="badge bg-success"
+                    data-bs-toggle="tooltip"
+                    data-bs-placement="top"
+                    title="Total biaya untuk periode ini">
+                <i class="bi bi-currency-dollar"></i> ${formatCurrencyValue(totalCost)}
+              </span>
+            </div>
           </div>
-          <ul class="rk-chart-summary">
-            ${itemList || '<li class="text-muted">Tidak ada item</li>'}
-          </ul>
+          <div class="rk-timeline-period__content">
+            ${itemTable}
+          </div>
         </div>`;
     }).join('');
     refs.timelineContent.innerHTML = html;
+
+    // Initialize tooltips after rendering
+    initTimelineTooltips();
+  };
+
+  const initTimelineTooltips = () => {
+    // Initialize Bootstrap tooltips for timeline elements
+    const tooltipTriggerList = $$('[data-bs-toggle="tooltip"]', refs.timelineContent || document);
+    tooltipTriggerList.forEach((el) => {
+      // Dispose existing tooltip if any
+      const existingTooltip = window.bootstrap?.Tooltip?.getInstance(el);
+      if (existingTooltip) {
+        existingTooltip.dispose();
+      }
+      // Initialize new tooltip
+      if (window.bootstrap && window.bootstrap.Tooltip) {
+        new window.bootstrap.Tooltip(el, {
+          html: true,
+          delay: { show: 300, hide: 100 },
+          trigger: 'hover focus',
+        });
+      }
+    });
   };
 
   const refreshAnalyticsCostMode = () => {
@@ -817,7 +947,45 @@
     refs.viewToggleButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === mode);
     });
-    refreshActiveView();
+
+    // Smooth transition between views
+    if (mode === 'timeline') {
+      // Fade out snapshot view
+      if (refs.tableWrap) {
+        refs.tableWrap.style.opacity = '0';
+        refs.tableWrap.style.transform = 'translateY(10px)';
+      }
+
+      setTimeout(() => {
+        if (refs.tableWrap) refs.tableWrap.classList.add('d-none');
+        if (refs.timelineWrap) {
+          refs.timelineWrap.classList.remove('d-none');
+          // Trigger reflow to ensure animation
+          void refs.timelineWrap.offsetWidth;
+          refs.timelineWrap.style.opacity = '1';
+          refs.timelineWrap.style.transform = 'translateY(0)';
+        }
+        loadTimelineData();
+      }, 300);
+    } else {
+      // Fade out timeline view
+      if (refs.timelineWrap) {
+        refs.timelineWrap.style.opacity = '0';
+        refs.timelineWrap.style.transform = 'translateY(10px)';
+      }
+
+      setTimeout(() => {
+        if (refs.timelineWrap) refs.timelineWrap.classList.add('d-none');
+        if (refs.tableWrap) {
+          refs.tableWrap.classList.remove('d-none');
+          // Trigger reflow to ensure animation
+          void refs.tableWrap.offsetWidth;
+          refs.tableWrap.style.opacity = '1';
+          refs.tableWrap.style.transform = 'translateY(0)';
+        }
+        loadRekapKebutuhan();
+      }, 300);
+    }
   };
 
   const initExportButtons = () => {
@@ -978,6 +1146,8 @@
   };
 
   const init = async () => {
+    console.log('🚀 Initializing Rekap Kebutuhan...');
+
     parseInitialParams();
     await loadFilterOptions();
     await loadTahapan();
@@ -985,7 +1155,10 @@
     updateScopeIndicator();
     attachEventListeners();
     initExportButtons();
+    initializeUXEnhancements(); // UX Enhancement: Ripple effects & animations
     refreshActiveView();
+
+    console.log('✅ Rekap Kebutuhan initialized');
   };
 
   init();

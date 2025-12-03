@@ -14,6 +14,8 @@
 
   <link rel="stylesheet" href="{% static 'detail_project/css/rekap_kebutuhan.css' %}">
 
+  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_kebutuhan_enhancements.css' %}">
+
 {% endblock %}
 
 {% block title %}Rekap Kebutuhan â€” {{ project.nama }}{% endblock %}
@@ -390,124 +392,231 @@
 
 
 
-  <!-- Toolbar (EXISTING - Enhanced) -->
+  <!-- Toolbar (REDESIGNED - Phase 4) -->
 
-  <div id="rk-toolbar" class="dp-toolbar flex-wrap" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
+  <div id="rk-toolbar" class="rk-toolbar-v2" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
 
-    <!-- Unified Export Dropdown (CSV/PDF/Word) -->
+    <!-- Section 1: Actions Group -->
+    <div class="rk-toolbar-section rk-toolbar-actions" role="group" aria-label="Actions">
 
-    <div class="btn-group" role="group">
+      <div class="btn-group" role="group">
+
+        <button type="button"
+
+                class="btn btn-outline-primary btn-sm dropdown-toggle"
+
+                data-bs-toggle="dropdown"
+
+                aria-expanded="false"
+
+                aria-label="Export options"
+
+                title="Export data">
+
+          <i class="bi bi-download" aria-hidden="true"></i>
+
+          <span class="d-none d-md-inline ms-1">Export</span>
+
+        </button>
+
+        <ul class="dropdown-menu">
+
+          <li>
+
+            <button class="dropdown-item" type="button" id="btn-export-csv">
+
+              <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
+
+              Export CSV
+
+            </button>
+
+          </li>
+
+          <li>
+
+            <button class="dropdown-item" type="button" id="btn-export-pdf">
+
+              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+
+              Export PDF
+
+            </button>
+
+          </li>
+
+          <li>
+
+            <button class="dropdown-item" type="button" id="btn-export-word">
+
+              <i class="bi bi-file-earmark-word text-primary me-2"></i>
+
+              Export Word
+
+            </button>
+
+          </li>
+
+        </ul>
+
+      </div>
 
       <button type="button"
-
-              class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle"
-
-              data-bs-toggle="dropdown"
-
-              aria-expanded="false"
-
-              aria-label="Export options">
-
-        <i class="bi bi-download" aria-hidden="true"></i>
-
-        <span class="d-none d-md-inline">Export</span>
-
+              class="btn btn-outline-secondary btn-sm"
+              id="rk-btn-refresh"
+              aria-label="Refresh data"
+              title="Refresh data (Ctrl+R)">
+        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+        <span class="d-none d-lg-inline ms-1">Refresh</span>
       </button>
-
-      <ul class="dropdown-menu">
-
-        <li>
-
-          <button class="dropdown-item" type="button" id="btn-export-csv">
-
-            <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
-
-            Export CSV
-
-          </button>
-
-        </li>
-
-        <li>
-
-          <button class="dropdown-item" type="button" id="btn-export-pdf">
-
-            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-
-            Export PDF
-
-          </button>
-
-        </li>
-
-        <li>
-
-          <button class="dropdown-item" type="button" id="btn-export-word">
-
-            <i class="bi bi-file-earmark-word text-primary me-2"></i>
-
-            Export Word
-
-          </button>
-
-        </li>
-
-      </ul>
 
     </div>
 
+    <!-- Section 2: Search & View Group -->
+    <div class="rk-toolbar-section rk-toolbar-search-view" role="group" aria-label="Search and view">
 
+      <div class="rk-search-wrapper">
+        <div class="input-group input-group-sm">
 
-    <div class="rk-toolbar-search input-group input-group-sm ms-2">
+          <span class="input-group-text">
 
-      <span class="input-group-text">
+            <i class="bi bi-search"></i>
 
-        <i class="bi bi-search"></i>
+          </span>
 
-      </span>
+          <input type="search"
 
-      <input type="search"
+                 id="rk-search"
 
-             id="rk-search"
+                 class="form-control"
 
-             class="form-control"
+                 placeholder="Cari kode atau uraian"
 
-             placeholder="Cari kode atau uraian"
+                 autocomplete="off"
 
-             autocomplete="off"
+                 aria-label="Cari item kebutuhan">
 
-             aria-label="Cari item kebutuhan">
+          <button class="btn btn-outline-secondary d-none"
+                  type="button"
+                  id="rk-search-clear"
+                  aria-label="Clear search"
+                  title="Clear search">
+            <i class="bi bi-x-lg"></i>
+          </button>
+
+        </div>
+      </div>
+
+      <div class="btn-group btn-group-sm rk-view-toggle" id="rk-view-toggle" role="group" aria-label="Mode tampilan">
+        <button type="button"
+                class="btn btn-outline-secondary active"
+                data-view="snapshot"
+                aria-pressed="true"
+                title="Snapshot view">
+          <i class="bi bi-table"></i>
+          <span class="d-none d-lg-inline ms-1">Snapshot</span>
+        </button>
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-view="timeline"
+                aria-pressed="false"
+                title="Timeline view">
+          <i class="bi bi-calendar3"></i>
+          <span class="d-none d-lg-inline ms-1">Timeline</span>
+        </button>
+      </div>
 
     </div>
 
-    <div class="btn-group btn-group-sm ms-2" id="rk-view-toggle" role="group" aria-label="Mode tampilan">
-      <button type="button" class="btn btn-outline-secondary active" data-view="snapshot">
-        <i class="bi bi-table"></i> Snapshot
+    <!-- Section 3: Stats Display (Cards) -->
+    <div class="rk-toolbar-section rk-toolbar-stats" role="group" aria-label="Statistics">
+
+      <!-- Stats Toggle (Mobile/Tablet) -->
+      <button class="btn btn-sm btn-outline-secondary d-lg-none rk-stats-toggle"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#rk-stats-collapse"
+              aria-expanded="true"
+              aria-controls="rk-stats-collapse"
+              title="Toggle statistics">
+        <i class="bi bi-graph-up"></i>
+        <span class="badge bg-primary rounded-pill ms-1" id="rk-stats-summary">0</span>
       </button>
-      <button type="button" class="btn btn-outline-secondary" data-view="timeline">
-        <i class="bi bi-calendar3"></i> Timeline
-      </button>
-    </div>
 
-    
+      <!-- Stats Cards Container -->
+      <div class="rk-stats-cards collapse show" id="rk-stats-collapse">
 
-    <div class="ms-auto small text-muted rk-stats">
+        <div class="rk-stat-card rk-stat-card--tk" data-kategori="TK">
+          <div class="rk-stat-icon">
+            <i class="bi bi-people-fill"></i>
+          </div>
+          <div class="rk-stat-content">
+            <div class="rk-stat-label">Tenaga   </div>
+            <div class="rk-stat-values">
+              <span class="rk-stat-count" id="rk-count-TK">0</span> item
+            </div>
+          </div>
+        </div>
 
-      TK: <span id="rk-count-TK">0</span> (<span id="rk-qty-TK">0</span>) &middot;
+        <div class="rk-stat-card rk-stat-card--bhn" data-kategori="BHN">
+          <div class="rk-stat-icon">
+            <i class="bi bi-box-seam-fill"></i>
+          </div>
+          <div class="rk-stat-content">
+            <div class="rk-stat-label">Bahan  </div>
+            <div class="rk-stat-values">
+              <span class="rk-stat-count" id="rk-count-BHN">0</span> item
+            </div>
+          </div>
+        </div>
 
-      BHN: <span id="rk-count-BHN">0</span> (<span id="rk-qty-BHN">0</span>) &middot;
+        <div class="rk-stat-card rk-stat-card--alt" data-kategori="ALT">
+          <div class="rk-stat-icon">
+            <i class="bi bi-tools"></i>
+          </div>
+          <div class="rk-stat-content">
+            <div class="rk-stat-label">Alat    </div>
+            <div class="rk-stat-values">
+              <span class="rk-stat-count" id="rk-count-ALT">0</span> item
+            </div>
+          </div>
+        </div>
 
-      ALT: <span id="rk-count-ALT">0</span> (<span id="rk-qty-ALT">0</span>) &middot;
+        <div class="rk-stat-card rk-stat-card--lain" data-kategori="LAIN">
+          <div class="rk-stat-icon">
+            <i class="bi bi-three-dots"></i>
+          </div>
+          <div class="rk-stat-content">
+            <div class="rk-stat-label">Lainnya  </div>
+            <div class="rk-stat-values">
+              <span class="rk-stat-count" id="rk-count-LAIN">0</span> item
+            </div>
+          </div>
+        </div>
 
-      LAIN: <span id="rk-count-LAIN">0</span> (<span id="rk-qty-LAIN">0</span>)
+        <div class="rk-stat-card rk-stat-card--total rk-stat-card--highlight">
+          <div class="rk-stat-icon">
+            <i class="bi bi-cash-coin"></i>
+          </div>
+          <div class="rk-stat-content">
+            <div class="rk-stat-label">Total</div>
+            <div class="rk-stat-values">
+              <span class="rk-stat-total" id="rk-total-cost">Rp 0</span>
+            </div>
+          </div>
+        </div>
 
-      <span class="ms-2">(<span id="rk-nrows">0</span> baris)</span>
-      <span class="mx-2 text-muted">&middot;</span>
-      <span class="ms-2">Total: <span id="rk-total-cost">Rp 0</span></span>
-      <span class="mx-2 text-muted">&middot;</span>
-      <span class="ms-2" id="rk-generated" title="Waktu pembuatan"></span>
+      </div>
 
-      <span id="rk-filter-indicator" class="ms-2"></span>
+      <!-- Additional Info (Rows + Timestamp) -->
+      <div class="rk-toolbar-meta small text-muted">
+        <span id="rk-nrows-display">
+          <i class="bi bi-list-ul"></i>
+          <span id="rk-nrows">0</span> baris
+        </span>
+        <span id="rk-generated" class="d-none d-md-inline" title="Waktu pembuatan"></span>
+        <span id="rk-filter-indicator"></span>
+      </div>
 
     </div>
 
@@ -631,6 +740,9 @@
   <script src="{% static 'detail_project/js/vendor/echarts.min.js' %}"></script>
 
   <script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}" defer></script>
+
+  <!-- Toolbar V2 Enhancements (Phase 4) -->
+  <script src="{% static 'detail_project/js/rekap_kebutuhan_toolbar.js' %}" defer></script>
 
 {% endblock %}
 

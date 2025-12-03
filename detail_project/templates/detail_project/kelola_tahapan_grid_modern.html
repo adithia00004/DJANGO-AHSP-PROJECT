@@ -21,6 +21,8 @@
 
 <!-- Chart Libraries CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+<!-- NEW: Redesigned Gantt CSS -->
+<link rel="stylesheet" href="{% static 'detail_project/css/gantt-chart-redesign.css' %}">
 {% endblock %}
 
 {% block dp_content %}
@@ -305,61 +307,75 @@
       </div>
     </div>
 
-    <!-- Gantt View Tab -->
+    <!-- Gantt View Tab - REDESIGNED -->
     <div class="tab-pane fade" id="gantt-view" role="tabpanel" aria-labelledby="gantt-tab">
-      <div id="gantt-container" class="gantt-container">
-        <div class="gantt-chart-panel">
-          <div class="gantt-toolbar">
-            <div class="gantt-toolbar-left">
-              <h6 class="gantt-title mb-0">Gantt Chart (Perencanaan &amp; Realisasi)</h6>
-            </div>
-            <div class="gantt-legend" id="gantt-legend">
-              <span class="gantt-legend-item">
-                <span class="legend-dot legend-dot-planned"></span> Rencana
-              </span>
-              <span class="gantt-legend-item">
-                <span class="legend-dot legend-dot-actual"></span> Realisasi
-              </span>
-            </div>
+      {# NEW Gantt Chart Redesign - Modern split-view layout #}
+      <div id="gantt-redesign-container" class="gantt-redesign-wrapper">
+        {# Initial loading state #}
+        <div class="gantt-initial-loader">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading Gantt Chart...</span>
           </div>
-          <div class="gantt-layout">
-            <div class="gantt-tree-panel" id="gantt-tree-panel">
-              <div class="gantt-tree-header">
-                <span>Klasifikasi &amp; Pekerjaan</span>
+          <p class="mt-3 text-muted">Initializing Gantt Chart...</p>
+        </div>
+      </div>
+
+      {# OLD Gantt Chart - COMPLETELY HIDDEN (fallback only) #}
+      <div style="display: none !important; visibility: hidden !important;">
+        <div id="gantt-container" class="gantt-container">
+          <div class="gantt-chart-panel">
+            <div class="gantt-toolbar">
+              <div class="gantt-toolbar-left">
+                <h6 class="gantt-title mb-0">Gantt Chart (Perencanaan &amp; Realisasi)</h6>
               </div>
-              <div class="gantt-tree-scroll" id="gantt-tree-scroll">
-                <div class="gantt-tree-body" id="gantt-tree-body">
-                  <div class="text-muted text-center py-3">Menyiapkan data...</div>
+              <div class="gantt-legend" id="gantt-legend">
+                <span class="gantt-legend-item">
+                  <span class="legend-dot legend-dot-planned"></span> Rencana
+                </span>
+                <span class="gantt-legend-item">
+                  <span class="legend-dot legend-dot-actual"></span> Realisasi
+                </span>
+              </div>
+            </div>
+            <div class="gantt-layout">
+              <div class="gantt-tree-panel" id="gantt-tree-panel">
+                <div class="gantt-tree-header">
+                  <span>Klasifikasi &amp; Pekerjaan</span>
+                </div>
+                <div class="gantt-tree-scroll" id="gantt-tree-scroll">
+                  <div class="gantt-tree-body" id="gantt-tree-body">
+                    <div class="text-muted text-center py-3">Menyiapkan data...</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="gantt-chart-wrapper" id="gantt-chart-wrapper">
-              <div id="gantt-chart" style="min-height: 520px;"></div>
+              <div class="gantt-chart-wrapper" id="gantt-chart-wrapper">
+                <div id="gantt-chart" style="min-height: 520px;"></div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="gantt-summary mt-4">
-          <div class="gantt-summary-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0">Ringkasan Pekerjaan</h6>
-            <span class="text-muted" id="gantt-summary-total"></span>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm table-striped gantt-summary-table" id="gantt-summary-table">
-              <thead>
-                <tr>
-                  <th style="width: 60px;">#</th>
-                  <th>Pekerjaan</th>
-                  <th style="width: 220px;">Rencana</th>
-                  <th style="width: 220px;">Realisasi</th>
-                  <th style="width: 120px;">Deviasi</th>
-                </tr>
-              </thead>
-              <tbody id="gantt-summary-body">
-                <tr>
-                  <td colspan="5" class="text-muted text-center">Menunggu data Gantt...</td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="gantt-summary mt-4">
+            <div class="gantt-summary-header d-flex justify-content-between align-items-center">
+              <h6 class="mb-0">Ringkasan Pekerjaan</h6>
+              <span class="text-muted" id="gantt-summary-total"></span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-striped gantt-summary-table" id="gantt-summary-table">
+                <thead>
+                  <tr>
+                    <th style="width: 60px;">#</th>
+                    <th>Pekerjaan</th>
+                    <th style="width: 220px;">Rencana</th>
+                    <th style="width: 220px;">Realisasi</th>
+                    <th style="width: 120px;">Deviasi</th>
+                  </tr>
+                </thead>
+                <tbody id="gantt-summary-body">
+                  <tr>
+                    <td colspan="5" class="text-muted text-center">Menunggu data Gantt...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

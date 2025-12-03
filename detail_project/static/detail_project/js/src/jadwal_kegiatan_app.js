@@ -12,9 +12,17 @@ import { DataLoader } from '@modules/core/data-loader.js';
 import { TimeColumnGenerator } from '@modules/core/time-column-generator.js';
 import { GridRenderer } from '@modules/grid/grid-renderer.js';
 import { SaveHandler } from '@modules/core/save-handler.js';
-import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
-import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js';
+// Chart modules now lazy loaded for better initial performance
+// import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
+// import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js'; // OLD - Frappe Gantt
+import { GanttChartRedesign } from '@modules/gantt/gantt-chart-redesign.js'; // NEW - Redesigned Gantt
 import { StateManager } from '@modules/core/state-manager.js'; // Phase 0.3: StateManager integration
+import {
+  KeyboardShortcuts,
+  ButtonStateManager,
+  Toast,
+  initializeUXEnhancements
+} from '@modules/shared/ux-enhancements.js'; // UX Enhancements
 
 /**
  * Initialize Jadwal Kegiatan Grid Application
@@ -35,9 +43,15 @@ class JadwalKegiatanApp {
     this.gridRenderer = null;
     this.saveHandler = null;
 
-    // Chart modules
+    // Chart modules (lazy loaded)
     this.kurvaSChart = null;
-    this.ganttChart = null;
+    this.ganttChart = null; // OLD Frappe Gantt (deprecated)
+    this.ganttChartRedesign = null; // NEW Redesigned Gantt
+    this._chartModulesLoaded = false;
+    this._chartModulesLoading = false;
+
+    // UX Enhancements
+    this.keyboardShortcuts = null;
 
     this._weekBoundarySaveTimer = null;
     this._pendingWeekBoundary = null;
@@ -162,7 +176,7 @@ class JadwalKegiatanApp {
         projectName: '',
         projectStart: null,
         projectEnd: null,
-        useAgGrid: false,
+        useAgGrid: true, // Performance: AG Grid default enabled for large datasets
         timeScale: 'weekly',
         inputMode: 'percentage',
         saveMode: 'weekly',
@@ -580,6 +594,192 @@ class JadwalKegiatanApp {
     this._setupWeekBoundaryControls();
     this._setupExportButtons();
     this._setupCostViewToggle();  // Phase 1: Cost view toggle button
+    this._setupKeyboardShortcuts();  // UX Enhancement: Keyboard shortcuts
+    this._setupUXEnhancements();  // UX Enhancement: Ripple effects, tooltips
+  }
+
+  /**
+   * Setup keyboard shortcuts for power users
+   */
+  _setupKeyboardShortcuts() {
+    // Initialize keyboard shortcuts manager
+    this.keyboardShortcuts = new KeyboardShortcuts();
+
+    // Ctrl+S: Save
+    this.keyboardShortcuts.register('ctrl+s', () => {
+      this.saveChanges();
+      Toast.info('Saving changes... (Ctrl+S)');
+    }, {
+      description: 'Save all changes'
+    });
+
+    // Ctrl+R: Refresh (override browser default)
+    this.keyboardShortcuts.register('ctrl+r', () => {
+      this.refresh();
+      Toast.info('Refreshing data... (Ctrl+R)');
+    }, {
+      description: 'Refresh data from server'
+    });
+
+    // Ctrl+Alt+P: Switch to Planned mode
+    this.keyboardShortcuts.register('ctrl+alt+p', () => {
+      const plannedRadio = document.getElementById('mode-planned');
+      if (plannedRadio) {
+        plannedRadio.checked = true;
+        plannedRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        Toast.info('Switched to Perencanaan mode (Ctrl+Alt+P)');
+      }
+    }, {
+      description: 'Switch to Perencanaan mode'
+    });
+
+    // Ctrl+Alt+A: Switch to Actual mode
+    this.keyboardShortcuts.register('ctrl+alt+a', () => {
+      const actualRadio = document.getElementById('mode-actual');
+      if (actualRadio) {
+        actualRadio.checked = true;
+        actualRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        Toast.info('Switched to Realisasi mode (Ctrl+Alt+A)');
+      }
+    }, {
+      description: 'Switch to Realisasi mode'
+    });
+
+    // Ctrl+Alt+1: Switch to Percentage display
+    this.keyboardShortcuts.register('ctrl+alt+1', () => {
+      const percentageRadio = document.getElementById('mode-percentage');
+      if (percentageRadio && !percentageRadio.disabled) {
+        percentageRadio.checked = true;
+        percentageRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        Toast.info('Display: Percentage (Ctrl+Alt+1)');
+      }
+    }, {
+      description: 'Switch to Percentage display'
+    });
+
+    // Ctrl+Alt+2: Switch to Volume display
+    this.keyboardShortcuts.register('ctrl+alt+2', () => {
+      const volumeRadio = document.getElementById('mode-volume');
+      if (volumeRadio && !volumeRadio.disabled) {
+        volumeRadio.checked = true;
+        volumeRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        Toast.info('Display: Volume (Ctrl+Alt+2)');
+      }
+    }, {
+      description: 'Switch to Volume display'
+    });
+
+    // Ctrl+Alt+3: Switch to Cost display (if enabled)
+    this.keyboardShortcuts.register('ctrl+alt+3', () => {
+      const costRadio = document.getElementById('mode-cost');
+      if (costRadio && !costRadio.disabled) {
+        costRadio.checked = true;
+        costRadio.dispatchEvent(new Event('change', { bubbles: true }));
+        Toast.info('Display: Cost (Ctrl+Alt+3)');
+      } else {
+        Toast.warning('Cost view only available in Realisasi mode');
+      }
+    }, {
+      description: 'Switch to Cost display'
+    });
+
+    // Escape: Close modals/dropdowns
+    this.keyboardShortcuts.register('escape', () => {
+      // Close any open Bootstrap dropdowns
+      const openDropdowns = document.querySelectorAll('.dropdown-menu.show');
+      openDropdowns.forEach(dropdown => {
+        const toggle = dropdown.previousElementSibling;
+        if (toggle) {
+          const bsDropdown = bootstrap.Dropdown.getInstance(toggle);
+          if (bsDropdown) bsDropdown.hide();
+        }
+      });
+    }, {
+      description: 'Close open menus',
+      preventDefault: false // Allow default Escape behavior
+    });
+
+    // Ctrl+?: Show keyboard shortcuts help
+    this.keyboardShortcuts.register('ctrl+shift+/', () => {
+      this._showKeyboardShortcutsHelp();
+    }, {
+      description: 'Show keyboard shortcuts help'
+    });
+
+    console.log('⌨️ Keyboard shortcuts registered:', this.keyboardShortcuts.getShortcuts());
+  }
+
+  /**
+   * Setup UX enhancements (ripple effects, tooltips, etc.)
+   */
+  _setupUXEnhancements() {
+    // Initialize general UX enhancements
+    initializeUXEnhancements();
+
+    // Add keyboard hint to Save button
+    const saveButton = this.state.domRefs.saveButton;
+    if (saveButton) {
+      saveButton.setAttribute('data-keyboard-hint', 'Ctrl+S');
+    }
+
+    console.log('🎨 UX enhancements applied');
+  }
+
+  /**
+   * Show keyboard shortcuts help modal
+   */
+  _showKeyboardShortcutsHelp() {
+    const shortcuts = this.keyboardShortcuts.getShortcuts();
+    const shortcutList = shortcuts.map(s => `
+      <tr>
+        <td><kbd>${s.key.replace(/\+/g, '</kbd> + <kbd>')}</kbd></td>
+        <td>${s.description}</td>
+      </tr>
+    `).join('');
+
+    const modalHtml = `
+      <div class="modal fade" id="keyboardShortcutsModal" tabindex="-1">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">
+                <i class="bi bi-keyboard"></i> Keyboard Shortcuts
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table table-sm">
+                <thead>
+                  <tr>
+                    <th style="width: 40%">Shortcut</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${shortcutList}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Remove existing modal if any
+    const existingModal = document.getElementById('keyboardShortcutsModal');
+    if (existingModal) existingModal.remove();
+
+    // Add modal to DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('keyboardShortcutsModal'));
+    modal.show();
+
+    // Cleanup on hide
+    document.getElementById('keyboardShortcutsModal').addEventListener('hidden.bs.modal', function() {
+      this.remove();
+    });
   }
 
   _setupExportButtons() {
@@ -1407,16 +1607,52 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Initialize chart modules
+   * Lazy load chart modules for better initial performance
    * @private
    */
-  _initializeCharts() {
-    console.log('[JadwalKegiatanApp] Initializing charts...');
+  async _loadChartModules() {
+    if (this._chartModulesLoaded || this._chartModulesLoading) {
+      return;
+    }
+
+    this._chartModulesLoading = true;
+    console.log('📊 Loading chart modules (lazy)...');
+
+    try {
+      const [kurvaSModule, ganttModule] = await Promise.all([
+        import('@modules/kurva-s/echarts-setup.js'),
+        import('@modules/gantt/frappe-gantt-setup.js')
+      ]);
+
+      // Store module classes
+      this.KurvaSChartClass = kurvaSModule.KurvaSChart;
+      this.GanttChartClass = ganttModule.GanttChart;
+
+      this._chartModulesLoaded = true;
+      this._chartModulesLoading = false;
+
+      console.log('✅ Chart modules loaded');
+
+      // Initialize charts after loading
+      this._initializeChartsAfterLoad();
+    } catch (error) {
+      console.error('❌ Failed to load chart modules:', error);
+      this._chartModulesLoading = false;
+      Toast.error('Failed to load chart modules');
+    }
+  }
+
+  /**
+   * Initialize chart modules after lazy load
+   * @private
+   */
+  _initializeChartsAfterLoad() {
+    console.log('[JadwalKegiatanApp] Initializing charts after load...');
 
     // Initialize Kurva-S Chart
-    if (this.state.domRefs?.scurveChart) {
+    if (this.state.domRefs?.scurveChart && this.KurvaSChartClass) {
       try {
-        this.kurvaSChart = new KurvaSChart(this.state, {
+        this.kurvaSChart = new this.KurvaSChartClass(this.state, {
           useIdealCurve: true,
           steepnessFactor: 0.8,
           smoothCurves: true,
@@ -1437,26 +1673,272 @@ class JadwalKegiatanApp {
       }
     }
 
-    // Initialize Gantt Chart
-    if (this.state.domRefs?.ganttChart) {
-      try {
-        this.ganttChart = new GanttChart(this.state, {
-          viewMode: 'Week',
-          enableThemeObserver: true,
-          enableResizeHandler: true,
-          barHeight: 34,
-          barPadding: 20,
-        });
-        const success = this.ganttChart.initialize(this.state.domRefs.ganttChart);
-        if (success) {
-          console.log('[JadwalKegiatanApp] ✅ Gantt chart initialized');
-          this._renderGanttSummary();
-          this._renderGanttTree();
-        }
-      } catch (error) {
-        console.warn('[JadwalKegiatanApp] Failed to initialize Gantt chart:', error);
-      }
+    // ========================================
+    // OLD Gantt Chart (Frappe Gantt) - DISABLED
+    // ========================================
+    // The old Gantt Chart has been completely replaced with a new redesigned version.
+    // All initialization code for the old Gantt has been removed to prevent conflicts.
+    // See _initializeRedesignedGantt() method for the new implementation.
+
+    console.log('[JadwalKegiatanApp] ⚠️ OLD Gantt Chart initialization SKIPPED (replaced by new design)');
+
+    // NOTE: NEW Redesigned Gantt Chart will be initialized lazily when tab is clicked
+    // See _setupLazyChartLoading() method
+  }
+
+  /**
+   * Initialize Redesigned Gantt Chart with retry logic
+   * Called ONLY when Gantt tab is clicked for the first time
+   * @private
+   */
+  async _initializeRedesignedGantt(retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 200; // ms
+
+    // Check if already initialized
+    if (this.ganttChartRedesign) {
+      console.log('[JadwalKegiatanApp] Redesigned Gantt already initialized, skipping');
+      return;
     }
+
+    // Wait a bit for DOM to be ready (Bootstrap tab transition)
+    if (retryCount === 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    const ganttContainer = document.getElementById('gantt-redesign-container');
+
+    if (!ganttContainer) {
+      console.warn(`[JadwalKegiatanApp] ⏳ Gantt container not found (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+
+      // Retry if not max retries
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[JadwalKegiatanApp] Retrying in ${RETRY_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return this._initializeRedesignedGantt(retryCount + 1);
+      }
+
+      console.error('[JadwalKegiatanApp] ❌ Gantt redesign container not found after retries');
+      console.error('[JadwalKegiatanApp] DOM state:', {
+        ganttView: document.getElementById('gantt-view'),
+        ganttTab: document.getElementById('gantt-tab')
+      });
+      Toast.error('Failed to find Gantt container');
+      return;
+    }
+
+    try {
+      console.log('🚀 Initializing COMPLETELY NEW Redesigned Gantt Chart...');
+      console.log('[JadwalKegiatanApp] ✅ Container found:', ganttContainer);
+
+      // Create Gantt instance
+      this.ganttChartRedesign = new GanttChartRedesign(ganttContainer, {
+        mode: this.state.currentMode || 'planned',
+        rowHeight: 40,
+        enableMilestones: true,
+        enableSync: true,
+        onNodeSelect: (node) => {
+          console.log('📌 Node selected in Gantt:', node);
+          // Future: Sync with grid selection
+        },
+        onDataChange: () => {
+          console.log('🔄 Gantt data changed');
+          // Future: Sync back to grid
+        },
+        onMilestoneChange: (action, milestone) => {
+          console.log(`🎯 Milestone ${action}:`, milestone);
+          // Future: Save milestone changes to backend
+        }
+      });
+
+      // Prepare data for Gantt
+      const ganttData = this._prepareGanttData();
+      console.log('[JadwalKegiatanApp] Prepared Gantt data:', {
+        dataCount: ganttData.data.length,
+        project: ganttData.project,
+        milestonesCount: ganttData.milestones.length
+      });
+
+      // Initialize with data
+      await this.ganttChartRedesign.initialize(ganttData);
+
+      console.log('[JadwalKegiatanApp] ✅ NEW Redesigned Gantt Chart initialized successfully!');
+      Toast.success('✨ New Gantt Chart loaded!', 2000);
+
+    } catch (error) {
+      console.error('[JadwalKegiatanApp] ❌ Failed to initialize Redesigned Gantt:', error);
+      console.error('[JadwalKegiatanApp] Error stack:', error.stack);
+      Toast.error('Failed to load new Gantt Chart');
+      throw error;
+    }
+  }
+
+  /**
+   * Prepare data for redesigned Gantt Chart
+   * @private
+   * @returns {Object} Gantt data structure
+   */
+  _prepareGanttData() {
+    const data = [];
+
+    // Transform hierarchical data from state (Phase 0.3: use flatPekerjaan from DataLoader)
+    if (this.state?.flatPekerjaan && Array.isArray(this.state.flatPekerjaan)) {
+      console.log(`[JadwalKegiatanApp] Transforming ${this.state.flatPekerjaan.length} nodes for Gantt`);
+
+      this.state.flatPekerjaan.forEach(node => {
+        // Extract parent hierarchy info
+        const klasifikasiId = node.type === 'klasifikasi' ? node.id :
+                             (node.type === 'subKlasifikasi' ? node.parent_id :
+                             (node.type === 'pekerjaan' ? node.klasifikasi_id : null));
+
+        const subKlasifikasiId = node.type === 'subKlasifikasi' ? node.id :
+                                (node.type === 'pekerjaan' ? node.sub_klasifikasi_id : null);
+
+        const pekerjaanId = node.type === 'pekerjaan' ? node.id : null;
+
+        // Get progress from StateManager for pekerjaan nodes
+        let progressRencana = 0;
+        let progressRealisasi = 0;
+
+        if (node.type === 'pekerjaan' && this.stateManager) {
+          // Calculate average progress across all tahapan for this pekerjaan
+          const tahapanList = this.state.tahapanList || [];
+          const tahapanCount = tahapanList.length;
+
+          if (tahapanCount > 0) {
+            let plannedSum = 0;
+            let actualSum = 0;
+
+            tahapanList.forEach(tahapan => {
+              const plannedVal = this.stateManager.getCellValue(node.id, tahapan.column_id, 'planned');
+              const actualVal = this.stateManager.getCellValue(node.id, tahapan.column_id, 'actual');
+              plannedSum += plannedVal || 0;
+              actualSum += actualVal || 0;
+            });
+
+            progressRencana = Math.round(plannedSum / tahapanCount);
+            progressRealisasi = Math.round(actualSum / tahapanCount);
+          }
+        }
+
+        data.push({
+          // Hierarchy IDs
+          klasifikasi_id: klasifikasiId,
+          klasifikasi_name: node.type === 'klasifikasi' ? node.name :
+                           (node.klasifikasi_name || ''),
+          klasifikasi_kode: node.type === 'klasifikasi' ? node.kode :
+                           (node.klasifikasi_kode || ''),
+
+          sub_klasifikasi_id: subKlasifikasiId,
+          sub_klasifikasi_name: node.type === 'subKlasifikasi' ? node.name :
+                               (node.sub_klasifikasi_name || ''),
+          sub_klasifikasi_kode: node.type === 'subKlasifikasi' ? node.kode :
+                               (node.sub_klasifikasi_kode || ''),
+
+          pekerjaan_id: pekerjaanId,
+          pekerjaan_name: node.type === 'pekerjaan' ? node.name : '',
+          pekerjaan_kode: node.type === 'pekerjaan' ? node.kode : '',
+
+          // Dates (use project dates as fallback)
+          tgl_mulai_rencana: node.tgl_mulai_rencana || this.state.projectStart,
+          tgl_selesai_rencana: node.tgl_selesai_rencana || this.state.projectEnd,
+          tgl_mulai_realisasi: node.tgl_mulai_realisasi || this.state.projectStart,
+          tgl_selesai_realisasi: node.tgl_selesai_realisasi || this.state.projectEnd,
+
+          // Progress
+          progress_rencana: progressRencana,
+          progress_realisasi: progressRealisasi,
+
+          // Volume info
+          volume: node.volume || 0,
+          satuan: node.satuan || '',
+
+          // Node type
+          node_type: node.type
+        });
+      });
+    } else {
+      console.warn('[JadwalKegiatanApp] No flatPekerjaan data available for Gantt');
+    }
+
+    // Project metadata
+    const projectMeta = {
+      project_id: this.state.projectId,
+      project_name: this.state.projectName || 'Project',
+      start_date: this.state.projectStart,
+      end_date: this.state.projectEnd
+    };
+
+    console.log(`[JadwalKegiatanApp] Prepared ${data.length} nodes for Gantt Chart`);
+
+    return {
+      data,
+      project: projectMeta,
+      milestones: [] // Future: Load from backend
+    };
+  }
+
+  /**
+   * Initialize chart modules (now lazy loaded on demand)
+   * @private
+   */
+  _initializeCharts() {
+    // Setup lazy loading for chart tabs
+    this._setupLazyChartLoading();
+  }
+
+  /**
+   * Setup lazy loading for chart tabs
+   * @private
+   */
+  _setupLazyChartLoading() {
+    // Find chart tab buttons - match actual IDs from template
+    const scurveTab = document.querySelector('#scurve-tab') ||
+                     document.querySelector('[data-bs-target="#scurve-view"]');
+
+    const ganttTab = document.querySelector('#gantt-tab') ||
+                    document.querySelector('[data-bs-target="#gantt-view"]');
+
+    console.log('[LazyLoad] Found tabs:', { scurveTab, ganttTab });
+
+    if (scurveTab) {
+      scurveTab.addEventListener('shown.bs.tab', async () => {
+        console.log('[LazyLoad] Kurva S tab shown');
+        if (!this._chartModulesLoaded) {
+          await this._loadChartModules();
+        }
+      }, { once: true });
+
+      scurveTab.addEventListener('click', async () => {
+        console.log('[LazyLoad] Kurva S tab clicked');
+        if (!this._chartModulesLoaded && !this._chartModulesLoading) {
+          await this._loadChartModules();
+        }
+      }, { once: true });
+    }
+
+    if (ganttTab) {
+      // When Gantt tab is shown, initialize NEW Gantt Chart
+      ganttTab.addEventListener('shown.bs.tab', async () => {
+        console.log('[LazyLoad] 🎯 Gantt tab shown - initializing NEW Gantt Chart!');
+
+        if (!this._chartModulesLoaded) {
+          await this._loadChartModules();
+        }
+
+        // Initialize NEW Redesigned Gantt Chart
+        await this._initializeRedesignedGantt();
+      }, { once: true });
+
+      ganttTab.addEventListener('click', async () => {
+        console.log('[LazyLoad] 🎯 Gantt tab clicked');
+        if (!this._chartModulesLoaded && !this._chartModulesLoading) {
+          await this._loadChartModules();
+        }
+      }, { once: true });
+    }
+
+    console.log('📊 Chart lazy loading configured (with NEW Gantt initialization)');
   }
 
   /**
@@ -1476,27 +1958,32 @@ class JadwalKegiatanApp {
       }
     }
 
-    // Update Gantt Chart
-    if (this.ganttChart) {
+    // Update NEW Redesigned Gantt Chart
+    if (this.ganttChartRedesign) {
       try {
-        this.ganttChart.update();
-        console.log('[JadwalKegiatanApp] ✅ Gantt chart updated');
-        this._renderGanttSummary();
-        this._renderGanttTree();
+        const ganttData = this._prepareGanttData();
+        this.ganttChartRedesign.updateData(ganttData);
+        console.log('[JadwalKegiatanApp] ✅ NEW Gantt chart updated');
       } catch (error) {
-        console.warn('[JadwalKegiatanApp] Failed to update Gantt chart:', error);
+        console.warn('[JadwalKegiatanApp] Failed to update NEW Gantt chart:', error);
       }
-    } else {
-      this._renderGanttSummary();
-      this._renderGanttTree();
     }
+
+    // OLD Gantt Chart - DISABLED
+    console.log('[JadwalKegiatanApp] ⚠️ OLD Gantt Chart update SKIPPED (replaced by new design)');
   }
 
   /**
    * Render Gantt summary table under the chart
+   * OLD GANTT METHOD - DISABLED
    * @private
+   * @deprecated Use new Gantt Chart instead
    */
   _renderGanttSummary() {
+    console.log('[JadwalKegiatanApp] ⚠️ _renderGanttSummary() SKIPPED (old Gantt method)');
+    return; // Method disabled - old Gantt Chart no longer used
+
+    /* DISABLED CODE
     const bodyEl = this.state.domRefs?.ganttSummaryBody;
     const totalEl = this.state.domRefs?.ganttSummaryTotal;
 
@@ -1583,13 +2070,20 @@ class JadwalKegiatanApp {
     if (totalEl) {
       totalEl.textContent = `${stats.total} pekerjaan • ${stats.complete} selesai • ${stats.inProgress} berjalan`;
     }
+    */ // END DISABLED CODE
   }
 
   /**
    * Render klasifikasi tree untuk Gantt
+   * OLD GANTT METHOD - DISABLED
    * @private
+   * @deprecated Use new Gantt Chart instead
    */
   _renderGanttTree() {
+    console.log('[JadwalKegiatanApp] ⚠️ _renderGanttTree() SKIPPED (old Gantt method)');
+    return; // Method disabled - old Gantt Chart no longer used
+
+    /* DISABLED CODE
     const bodyEl = this.state.domRefs?.ganttTreeBody;
     if (!bodyEl) {
       return;
@@ -1628,6 +2122,7 @@ class JadwalKegiatanApp {
 
     bodyEl.innerHTML = treeHtml;
     this._attachGanttScrollSync();
+    */ // END DISABLED CODE
   }
 
   /**
@@ -1697,20 +2192,54 @@ class JadwalKegiatanApp {
   async saveChanges() {
     if (!this.saveHandler) {
       console.error('[JadwalKegiatanApp] SaveHandler not initialized');
+      Toast.error('Save handler not initialized');
       return;
     }
 
     if (!this._validateRowTotalsBeforeSave()) {
+      Toast.warning('Please fix validation errors before saving');
       return;
     }
 
-    // Delegate to SaveHandler
-    const result = await this.saveHandler.save();
+    const saveButton = this.state.domRefs.saveButton;
 
-    // Re-render grid after save
-    if (result.success) {
-      this._renderGrid();
-      this._recalculateAllProgressTotals();
+    // Set button to loading state
+    if (saveButton) {
+      ButtonStateManager.setLoading(saveButton, 'Saving...');
+    }
+
+    try {
+      // Delegate to SaveHandler
+      const result = await this.saveHandler.save();
+
+      // Re-render grid after save
+      if (result.success) {
+        this._renderGrid();
+        this._recalculateAllProgressTotals();
+
+        // Set button to success state
+        if (saveButton) {
+          ButtonStateManager.setSuccess(saveButton, 2000);
+        }
+
+        Toast.success('Changes saved successfully!');
+      } else {
+        // Set button to error state
+        if (saveButton) {
+          ButtonStateManager.setError(saveButton, 2000);
+        }
+
+        Toast.error(result.message || 'Failed to save changes');
+      }
+    } catch (error) {
+      console.error('[JadwalKegiatanApp] Save error:', error);
+
+      // Set button to error state
+      if (saveButton) {
+        ButtonStateManager.setError(saveButton, 2000);
+      }
+
+      Toast.error('An error occurred while saving');
     }
   }
 

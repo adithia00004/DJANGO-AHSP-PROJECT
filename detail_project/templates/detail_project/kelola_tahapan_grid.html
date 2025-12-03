@@ -10,8 +10,11 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/kelola_tahapan_grid.css' %}">
-<!-- Frappe Gantt CSS -->
+<link rel="stylesheet" href="{% static 'detail_project/css/toolbar-responsive.css' %}">
+<!-- Frappe Gantt CSS (OLD - deprecated) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
+<!-- NEW: Redesigned Gantt CSS -->
+<link rel="stylesheet" href="{% static 'detail_project/css/gantt-chart-redesign.css' %}">
 {% endblock %}
 
 {% block dp_content %}

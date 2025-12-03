@@ -499,6 +499,67 @@
   animation: slideIn 0.3s ease-out;
 }
 
+/* Pulse animation for Save button when changes detected */
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 2px 4px rgba(var(--bs-primary-rgb), 0.2);
+  }
+  50% {
+    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.4);
+  }
+}
+
+.btn-save.has-changes {
+  animation: pulse 2s ease-in-out infinite;
+  position: relative;
+}
+
+.btn-save.has-changes::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  background: #dc3545;
+  border-radius: 50%;
+  border: 2px solid var(--bs-body-bg);
+}
+
+/* Ripple effect on button clicks */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.btn-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+}
+
+.btn-ripple:active::after {
+  animation: ripple 0.6s ease-out;
+}
+
 /* ===== Utility Classes ===== */
 .toolbar-divider {
   width: 1px;
@@ -545,5 +606,126 @@
   }
   100% {
     transform: translateX(100%);
+  }
+}
+
+/* ===== Skeleton Loading States ===== */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bs-secondary-bg) 0%,
+    rgba(var(--bs-secondary-rgb), 0.3) 50%,
+    var(--bs-secondary-bg) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+  border-radius: 0.25rem;
+}
+
+.skeleton-text {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.skeleton-text:last-child {
+  width: 60%;
+}
+
+/* ===== Success/Error States ===== */
+@keyframes checkmark {
+  0% {
+    transform: scale(0) rotate(45deg);
+  }
+  50% {
+    transform: scale(1.2) rotate(45deg);
+  }
+  100% {
+    transform: scale(1) rotate(45deg);
+  }
+}
+
+.btn-save.success {
+  background-color: #198754 !important;
+  border-color: #198754 !important;
+  pointer-events: none;
+}
+
+.btn-save.success .btn-text::after {
+  content: ' ✓';
+  display: inline-block;
+  animation: checkmark 0.5s ease-out;
+}
+
+.btn-save.error {
+  background-color: #dc3545 !important;
+  border-color: #dc3545 !important;
+  animation: shake 0.5s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* ===== Tooltip Enhancements ===== */
+.toolbar-container [data-tooltip] {
+  position: relative;
+}
+
+.toolbar-container [data-tooltip]::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.375rem 0.5rem;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1050;
+}
+
+.toolbar-container [data-tooltip]::after {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1050;
+}
+
+.toolbar-container [data-tooltip]:hover::before,
+.toolbar-container [data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* ===== Grid Content Spacing ===== */
+#tahapan-grid-app {
+  margin-bottom: 80px; /* Space for fixed bottom toolbar on mobile */
+}
+
+@media (min-width: 768px) {
+  #tahapan-grid-app {
+    margin-bottom: 0; /* No space needed on desktop */
   }
 }
