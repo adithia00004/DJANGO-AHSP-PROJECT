@@ -96,32 +96,87 @@
 
         <div class="rk-filter-grid">
 
-      <!-- Tahapan Scope Selector -->
-      <div class="rk-filter-section">
+      <!-- PHASE 5 UI FIX 1.1 OPTION A: Grouped Scope & Period -->
+      <div class="rk-filter-section rk-filter-section-wide">
         <label class="rk-filter-label">
-          <i class="bi bi-bookmark"></i> Scope Tahapan:
+          <i class="bi bi-funnel-fill"></i> Scope & Periode Waktu
+          <small class="text-muted ms-2">
+            <i class="bi bi-info-circle"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="Pilih scope tahapan terlebih dahulu, lalu filter dengan periode waktu jika diperlukan"></i>
+          </small>
         </label>
-        <div class="rk-dropdown w-100">
-          <button class="btn btn-outline-secondary w-100 d-flex justify-content-between align-items-center"
-                  type="button"
-                  id="rk-tahapan-toggle"
-                  data-bs-toggle="dropdown"
-                  aria-expanded="false">
-            <span id="rk-tahapan-label">
-              <i class="bi bi-globe"></i> Keseluruhan Project
-            </span>
-            <i class="bi bi-chevron-down ms-2"></i>
-          </button>
-          <div class="dropdown-menu rk-dropdown-menu" aria-labelledby="rk-tahapan-toggle">
-            <div id="rk-tahapan-menu" class="rk-dropdown-options">
-              <button class="dropdown-item rk-tahapan-option active"
-                      type="button"
-                      data-scope="all"
-                      data-tahapan-id="">
-                <i class="bi bi-check2-circle me-2"></i> Keseluruhan Project
-              </button>
-              <div class="text-muted small px-2 mt-1">Memuat tahapan...</div>
+
+        <div class="row g-3">
+          <!-- Step 1: Scope Tahapan -->
+          <div class="col-md-6">
+            <div class="rk-filter-step" data-step="1">
+              <label class="form-label fw-semibold mb-2">
+                <span class="rk-step-badge">1</span>
+                <i class="bi bi-bookmark-fill text-primary me-1"></i>
+                Pilih Scope Tahapan
+              </label>
+              <div class="rk-dropdown w-100">
+                <button class="btn btn-outline-secondary w-100 d-flex justify-content-between align-items-center"
+                        type="button"
+                        id="rk-tahapan-toggle"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                  <span id="rk-tahapan-label">
+                    <i class="bi bi-globe"></i> Keseluruhan Project
+                  </span>
+                  <i class="bi bi-chevron-down ms-2"></i>
+                </button>
+                <div class="dropdown-menu rk-dropdown-menu" aria-labelledby="rk-tahapan-toggle">
+                  <div id="rk-tahapan-menu" class="rk-dropdown-options">
+                    <button class="dropdown-item rk-tahapan-option active"
+                            type="button"
+                            data-scope="all"
+                            data-tahapan-id="">
+                      <i class="bi bi-check2-circle me-2"></i> Keseluruhan Project
+                    </button>
+                    <div class="text-muted small px-2 mt-1">Memuat tahapan...</div>
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <!-- Step 2: Period Filter (Optional) -->
+          <div class="col-md-6">
+            <div class="rk-filter-step" data-step="2">
+              <label class="form-label fw-semibold mb-2">
+                <span class="rk-step-badge">2</span>
+                <i class="bi bi-calendar-range text-info me-1"></i>
+                Filter Periode <small class="text-muted fw-normal">(opsional)</small>
+              </label>
+              <div class="row g-2">
+                <div class="col-12">
+                  <select id="rk-period-mode"
+                          class="form-select form-select-sm"
+                          aria-label="Filter periode">
+                    <option value="all">Seluruh Waktu dalam Scope</option>
+                    <option value="week">Minggu tertentu</option>
+                    <option value="week_range">Rentang minggu</option>
+                    <option value="month">Bulan tertentu</option>
+                    <option value="month_range">Rentang bulan</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Period Details Row (Dynamic, shown when period mode != 'all') -->
+        <div class="row g-2 mt-2" id="rk-period-details" style="display: none;">
+          <div class="col-md-6">
+            <label for="rk-period-start" class="form-label small text-muted mb-1">Mulai</label>
+            <select id="rk-period-start" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-md-6" id="rk-period-end-wrapper">
+            <label for="rk-period-end" class="form-label small text-muted mb-1">Sampai</label>
+            <select id="rk-period-end" class="form-select form-select-sm"></select>
           </div>
         </div>
       </div>
@@ -212,89 +267,37 @@
         </div>
       </div>
 
-      <!-- Period Filter -->
-      <div class="rk-filter-section">
-        <label class="rk-filter-label">
-          <i class="bi bi-calendar-range"></i> Rentang Waktu:
-        </label>
-        <div class="row g-3 align-items-end rk-period-row">
-          <div class="col-lg-3 col-md-4">
-            <label for="rk-period-mode" class="form-label small fw-semibold text-muted mb-1">
-              Mode
-            </label>
-            <select id="rk-period-mode"
-                    class="form-select form-select-sm"
-                    aria-label="Filter periode">
-              <option value="all">Seluruh Waktu Proyek</option>
-              <option value="week">Minggu tertentu</option>
-              <option value="week_range">Rentang minggu</option>
-              <option value="month">Bulan tertentu</option>
-              <option value="month_range">Rentang bulan</option>
-            </select>
-          </div>
-          <div class="col-lg-4 col-md-4">
-            <label for="rk-period-start" class="form-label small fw-semibold text-muted mb-1">
-              Mulai
-            </label>
-            <select id="rk-period-start"
-                    class="form-select form-select-sm"
-                    aria-label="Periode mulai"
-                    disabled>
-              <option value="">Pilih mode terlebih dahulu</option>
-            </select>
-          </div>
-          <div class="col-lg-4 col-md-4">
-            <label for="rk-period-end" class="form-label small fw-semibold text-muted mb-1">
-              Selesai
-            </label>
-            <select id="rk-period-end"
-                    class="form-select form-select-sm"
-                    aria-label="Periode selesai"
-                    disabled>
-              <option value="">Pilih mode terlebih dahulu</option>
-            </select>
-          </div>
-        </div>
-        <div class="mt-2">
-          <small class="text-muted" id="rk-period-hint">
-            Mode minggu/bulan hanya menampilkan opsi yang memiliki jadwal. Kosongkan untuk kembali ke seluruh waktu proyek.
-          </small>
-        </div>
-      </div>
+      <!-- PHASE 5: Period Filter removed - now merged with Scope Tahapan above -->
 
-      <!-- Kategori Filter -->
+      <!-- Kategori Filter - CATATAN: Simplified as inline checkboxes per user request -->
       <div class="rk-filter-section">
-        <label class="rk-filter-label">
+        <label class="rk-filter-label mb-2">
           <i class="bi bi-tags"></i> Kategori Item:
         </label>
-        <div class="rk-dropdown w-100">
-          <button class="btn btn-outline-secondary w-100 d-flex justify-content-between align-items-center"
-                  type="button"
-                  id="rk-kategori-toggle"
-                  data-bs-toggle="dropdown"
-                  aria-expanded="false">
-            <span id="rk-kategori-label">Semua Kategori</span>
-            <i class="bi bi-chevron-down ms-2"></i>
-          </button>
-          <div class="dropdown-menu rk-dropdown-menu" aria-labelledby="rk-kategori-toggle">
-            <div id="rk-kategori-menu" class="rk-dropdown-options">
-              <label class="rk-dropdown-item">
-                <input type="checkbox" class="form-check-input kategori-check" value="TK" checked>
-                <span>Tenaga Kerja (TK)</span>
-              </label>
-              <label class="rk-dropdown-item">
-                <input type="checkbox" class="form-check-input kategori-check" value="BHN" checked>
-                <span>Bahan (BHN)</span>
-              </label>
-              <label class="rk-dropdown-item">
-                <input type="checkbox" class="form-check-input kategori-check" value="ALT" checked>
-                <span>Alat (ALT)</span>
-              </label>
-              <label class="rk-dropdown-item">
-                <input type="checkbox" class="form-check-input kategori-check" value="LAIN" checked>
-                <span>Lain-lain (LAIN)</span>
-              </label>
-            </div>
+        <div class="d-flex flex-wrap gap-3">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input kategori-check" id="kat-tk" value="TK" checked>
+            <label class="form-check-label" for="kat-tk">
+              <i class="bi bi-people-fill text-primary"></i> Tenaga Kerja
+            </label>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input kategori-check" id="kat-bhn" value="BHN" checked>
+            <label class="form-check-label" for="kat-bhn">
+              <i class="bi bi-box-seam-fill text-success"></i> Bahan
+            </label>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input kategori-check" id="kat-alt" value="ALT" checked>
+            <label class="form-check-label" for="kat-alt">
+              <i class="bi bi-tools text-warning"></i> Alat
+            </label>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input kategori-check" id="kat-lain" value="LAIN" checked>
+            <label class="form-check-label" for="kat-lain">
+              <i class="bi bi-grid-3x3-gap-fill text-secondary"></i> Lain-lain
+            </label>
           </div>
         </div>
       </div>
@@ -302,6 +305,14 @@
 
 
         </div> <!-- /.rk-filter-grid -->
+
+        <!-- PHASE 5 TRACK 3.2: Active Filter Chips -->
+        <div id="rk-active-filters" class="rk-active-filters mt-3" style="display: none;">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <small class="text-muted fw-semibold">Filter Aktif:</small>
+            <div id="rk-filter-chips" class="d-flex gap-2 flex-wrap"></div>
+          </div>
+        </div>
 
         <!-- Apply/Reset Buttons -->
 
@@ -457,6 +468,20 @@
 
           </li>
 
+          <li><hr class="dropdown-divider"></li>
+
+          <li>
+
+            <button class="dropdown-item" type="button" id="btn-export-charts">
+
+              <i class="bi bi-file-earmark-image text-info me-2"></i>
+
+              Export Chart (PNG)
+
+            </button>
+
+          </li>
+
         </ul>
 
       </div>
@@ -536,15 +561,15 @@
               type="button"
               data-bs-toggle="collapse"
               data-bs-target="#rk-stats-collapse"
-              aria-expanded="true"
+              aria-expanded="false"
               aria-controls="rk-stats-collapse"
               title="Toggle statistics">
         <i class="bi bi-graph-up"></i>
         <span class="badge bg-primary rounded-pill ms-1" id="rk-stats-summary">0</span>
       </button>
 
-      <!-- Stats Cards Container -->
-      <div class="rk-stats-cards collapse show" id="rk-stats-collapse">
+      <!-- Stats Cards Container - CATATAN: Hidden by default per user request -->
+      <div class="rk-stats-cards collapse" id="rk-stats-collapse">
 
         <div class="rk-stat-card rk-stat-card--tk" data-kategori="TK">
           <div class="rk-stat-icon">

@@ -2417,6 +2417,161 @@ def compute_kebutuhan_items(
     return rows
 
 
+# ============================================================================
+# PHASE 5 TRACK 2.1: DATA VALIDATION
+# ============================================================================
+
+def validate_kebutuhan_data(project, mode='all', tahapan_id=None, filters=None, time_scope=None):
+    """
+    Validate that snapshot and timeline data are consistent.
+
+    Returns dict with validation results comparing:
+    - Total costs between snapshot and timeline
+    - Item counts per kategori
+    - Potential data integrity issues
+
+    Args:
+        project: Project instance
+        mode: 'all', 'tahapan', etc.
+        tahapan_id: Optional tahapan filter
+        filters: Dict with kategori, klasifikasi, etc.
+        time_scope: Optional time scope filter
+
+    Returns:
+        {
+            'valid': bool,
+            'snapshot_total': Decimal,
+            'timeline_total': Decimal,
+            'difference': Decimal,
+            'tolerance': Decimal,
+            'snapshot_count': int,
+            'timeline_count': int,
+            'kategori_breakdown': dict,
+            'warnings': list,
+            'timestamp': str,
+        }
+    """
+    from decimal import Decimal
+    from datetime import datetime
+
+    warnings = []
+
+    # Get snapshot data
+    snapshot_data = compute_kebutuhan_items(
+        project,
+        mode=mode,
+        tahapan_id=tahapan_id,
+        filters=filters or {},
+        time_scope=time_scope,
+    )
+
+    # Get timeline data
+    timeline_data = compute_kebutuhan_timeline(
+        project,
+        mode=mode,
+        tahapan_id=tahapan_id,
+        filters=filters or {},
+        time_scope=time_scope,
+    )
+
+    # Calculate snapshot totals
+    snapshot_total = Decimal('0')
+    snapshot_count = len(snapshot_data)
+    snapshot_by_kategori = {}
+
+    for item in snapshot_data:
+        cost = Decimal(str(item.get('harga_total') or 0))
+        snapshot_total += cost
+
+        kategori = item.get('kategori', 'UNKNOWN')
+        if kategori not in snapshot_by_kategori:
+            snapshot_by_kategori[kategori] = {'count': 0, 'total': Decimal('0')}
+        snapshot_by_kategori[kategori]['count'] += 1
+        snapshot_by_kategori[kategori]['total'] += cost
+
+    # Calculate timeline totals
+    timeline_total = Decimal('0')
+    timeline_items_seen = set()
+    timeline_by_kategori = {}
+
+    for period in timeline_data.get('periods', []):
+        for item in period.get('items', []):
+            # Track unique items
+            item_key = f"{item.get('kategori')}_{item.get('kode')}"
+            timeline_items_seen.add(item_key)
+
+            cost = Decimal(str(item.get('harga_total') or 0))
+            timeline_total += cost
+
+            kategori = item.get('kategori', 'UNKNOWN')
+            if kategori not in timeline_by_kategori:
+                timeline_by_kategori[kategori] = {'count': 0, 'total': Decimal('0')}
+            # Don't double-count items across periods
+            if item_key not in [f"{k.get('kategori')}_{k.get('kode')}" for k in period.get('items', [])[:period.get('items', []).index(item)]]:
+                timeline_by_kategori[kategori]['count'] += 1
+            timeline_by_kategori[kategori]['total'] += cost
+
+    timeline_count = len(timeline_items_seen)
+
+    # Calculate difference
+    diff = abs(snapshot_total - timeline_total)
+    tolerance = Decimal('0.01')  # 1 cent tolerance for rounding
+
+    is_valid = diff <= tolerance
+
+    # Check for warnings
+    if snapshot_count != timeline_count:
+        warnings.append(
+            f"Item count mismatch: {snapshot_count} in snapshot vs {timeline_count} unique in timeline"
+        )
+
+    # Compare kategori breakdowns
+    kategori_breakdown = {}
+    all_kategori = set(snapshot_by_kategori.keys()) | set(timeline_by_kategori.keys())
+
+    for kategori in all_kategori:
+        snap = snapshot_by_kategori.get(kategori, {'count': 0, 'total': Decimal('0')})
+        time = timeline_by_kategori.get(kategori, {'count': 0, 'total': Decimal('0')})
+
+        kategori_diff = abs(snap['total'] - time['total'])
+        kategori_breakdown[kategori] = {
+            'snapshot': {
+                'count': snap['count'],
+                'total': float(snap['total']),
+            },
+            'timeline': {
+                'count': time['count'],
+                'total': float(time['total']),
+            },
+            'difference': float(kategori_diff),
+            'match': kategori_diff <= tolerance,
+        }
+
+        if kategori_diff > tolerance:
+            warnings.append(
+                f"{kategori}: Rp {kategori_diff:,.2f} difference between snapshot and timeline"
+            )
+
+    # If total doesn't match but no kategori warnings, it's likely timing/period issue
+    if not is_valid and not any('difference between' in w for w in warnings):
+        warnings.append(
+            "Total mismatch may be due to items not assigned to tahapan/jadwal"
+        )
+
+    return {
+        'valid': is_valid,
+        'snapshot_total': float(snapshot_total),
+        'timeline_total': float(timeline_total),
+        'difference': float(diff),
+        'tolerance': float(tolerance),
+        'snapshot_count': snapshot_count,
+        'timeline_count': timeline_count,
+        'kategori_breakdown': kategori_breakdown,
+        'warnings': warnings,
+        'timestamp': datetime.now().isoformat(),
+    }
+
+
 def _calculate_overlap_days(start_a, end_a, start_b, end_b):
     start = max(start_a, start_b)
     end = min(end_a, end_b)

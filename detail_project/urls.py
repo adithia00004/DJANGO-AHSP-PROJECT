@@ -65,7 +65,10 @@ urlpatterns = [
     # ===== API: Rekap =====
     path('api/project/<int:project_id>/rekap/', views_api.api_get_rekap_rab, name='api_get_rekap_rab'),
     path('api/project/<int:project_id>/rekap-kebutuhan/', views_api.api_get_rekap_kebutuhan, name='api_get_rekap_kebutuhan'),  # <-- Fase 5
-    
+
+    # PHASE 5: Data Validation
+    path('api/project/<int:project_id>/rekap-kebutuhan/validate/', views_api.api_validate_rekap_kebutuhan, name='api_validate_rekap_kebutuhan'),
+
     # --- NEW: Rincian RAB (API)
     path('api/project/<int:project_id>/rincian-rab/',          views_api.api_get_rincian_rab,         name='api_get_rincian_rab'),          # NEW (GET)
     path('api/project/<int:project_id>/rincian-rab/export.csv', views_api.api_export_rincian_rab_csv, name='api_export_rincian_rab_csv'),   # NEW (EXPORT)

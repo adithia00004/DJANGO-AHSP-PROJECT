@@ -14,8 +14,8 @@ import { GridRenderer } from '@modules/grid/grid-renderer.js';
 import { SaveHandler } from '@modules/core/save-handler.js';
 // Chart modules now lazy loaded for better initial performance
 // import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
-// import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js'; // OLD - Frappe Gantt
-import { GanttChartRedesign } from '@modules/gantt/gantt-chart-redesign.js'; // NEW - Redesigned Gantt
+// import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js'; // OLD - Frappe Gantt (deprecated)
+// Gantt V2 (Frozen Column) now loaded lazily via dynamic import() - see _initializeFrozenGantt()
 import { StateManager } from '@modules/core/state-manager.js'; // Phase 0.3: StateManager integration
 import {
   KeyboardShortcuts,
@@ -45,8 +45,8 @@ class JadwalKegiatanApp {
 
     // Chart modules (lazy loaded)
     this.kurvaSChart = null;
-    this.ganttChart = null; // OLD Frappe Gantt (deprecated)
-    this.ganttChartRedesign = null; // NEW Redesigned Gantt
+    this.ganttChart = null; // OLD Frappe Gantt (deprecated, not used)
+    this.ganttFrozenGrid = null; // Gantt V2: Frozen column architecture (default)
     this._chartModulesLoaded = false;
     this._chartModulesLoading = false;
 
@@ -1687,7 +1687,7 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Initialize Redesigned Gantt Chart with retry logic
+   * Initialize Gantt Chart V2 (Frozen Column Architecture)
    * Called ONLY when Gantt tab is clicked for the first time
    * @private
    */
@@ -1696,8 +1696,8 @@ class JadwalKegiatanApp {
     const RETRY_DELAY = 200; // ms
 
     // Check if already initialized
-    if (this.ganttChartRedesign) {
-      console.log('[JadwalKegiatanApp] Redesigned Gantt already initialized, skipping');
+    if (this.ganttFrozenGrid) {
+      console.log('[JadwalKegiatanApp] Gantt already initialized, skipping');
       return;
     }
 
@@ -1718,7 +1718,7 @@ class JadwalKegiatanApp {
         return this._initializeRedesignedGantt(retryCount + 1);
       }
 
-      console.error('[JadwalKegiatanApp] ❌ Gantt redesign container not found after retries');
+      console.error('[JadwalKegiatanApp] ❌ Gantt container not found after retries');
       console.error('[JadwalKegiatanApp] DOM state:', {
         ganttView: document.getElementById('gantt-view'),
         ganttTab: document.getElementById('gantt-tab')
@@ -1728,49 +1728,39 @@ class JadwalKegiatanApp {
     }
 
     try {
-      console.log('🚀 Initializing COMPLETELY NEW Redesigned Gantt Chart...');
-      console.log('[JadwalKegiatanApp] ✅ Container found:', ganttContainer);
-
-      // Create Gantt instance
-      this.ganttChartRedesign = new GanttChartRedesign(ganttContainer, {
-        mode: this.state.currentMode || 'planned',
-        rowHeight: 40,
-        enableMilestones: true,
-        enableSync: true,
-        onNodeSelect: (node) => {
-          console.log('📌 Node selected in Gantt:', node);
-          // Future: Sync with grid selection
-        },
-        onDataChange: () => {
-          console.log('🔄 Gantt data changed');
-          // Future: Sync back to grid
-        },
-        onMilestoneChange: (action, milestone) => {
-          console.log(`🎯 Milestone ${action}:`, milestone);
-          // Future: Save milestone changes to backend
-        }
-      });
-
-      // Prepare data for Gantt
-      const ganttData = this._prepareGanttData();
-      console.log('[JadwalKegiatanApp] Prepared Gantt data:', {
-        dataCount: ganttData.data.length,
-        project: ganttData.project,
-        milestonesCount: ganttData.milestones.length
-      });
-
-      // Initialize with data
-      await this.ganttChartRedesign.initialize(ganttData);
-
-      console.log('[JadwalKegiatanApp] ✅ NEW Redesigned Gantt Chart initialized successfully!');
-      Toast.success('✨ New Gantt Chart loaded!', 2000);
+      // Initialize V2: Frozen Column Architecture (now default)
+      console.log('🚀 Initializing Gantt V2 (Frozen Column)...');
+      await this._initializeFrozenGantt(ganttContainer);
 
     } catch (error) {
-      console.error('[JadwalKegiatanApp] ❌ Failed to initialize Redesigned Gantt:', error);
+      console.error('[JadwalKegiatanApp] ❌ Failed to initialize Gantt:', error);
       console.error('[JadwalKegiatanApp] Error stack:', error.stack);
-      Toast.error('Failed to load new Gantt Chart');
+      Toast.error('Failed to load Gantt Chart');
       throw error;
     }
+  }
+
+  /**
+   * Initialize V2: Frozen Column Gantt (Now Default)
+   * @private
+   */
+  async _initializeFrozenGantt(container) {
+    console.log('[JadwalKegiatanApp] ✅ Container found:', container);
+
+    // Lazy load V2 module
+    const { GanttFrozenGrid } = await import('@modules/gantt-v2/gantt-frozen-grid.js');
+
+    // Create Gantt instance
+    this.ganttFrozenGrid = new GanttFrozenGrid(container, {
+      rowHeight: 40,
+      timeScale: 'week'
+    });
+
+    // Initialize with app context (provides StateManager, tahapanList, etc.)
+    await this.ganttFrozenGrid.initialize(this);
+
+    console.log('[JadwalKegiatanApp] ✅ Gantt V2 (Frozen Column) initialized successfully!');
+    Toast.success('📊 Gantt Chart loaded', 2000);
   }
 
   /**
@@ -1783,24 +1773,23 @@ class JadwalKegiatanApp {
 
     // Transform hierarchical data from state (Phase 0.3: use flatPekerjaan from DataLoader)
     if (this.state?.flatPekerjaan && Array.isArray(this.state.flatPekerjaan)) {
-      console.log(`[JadwalKegiatanApp] Transforming ${this.state.flatPekerjaan.length} nodes for Gantt`);
+      // ✅ FILTER: Only send pekerjaan nodes (actual tasks) to Gantt Chart
+      // Pekerjaan nodes already have complete parent chain info (klasifikasi_name, sub_klasifikasi_name)
+      const pekerjaanNodes = this.state.flatPekerjaan.filter(n => n.type === 'pekerjaan');
 
-      this.state.flatPekerjaan.forEach(node => {
-        // Extract parent hierarchy info
-        const klasifikasiId = node.type === 'klasifikasi' ? node.id :
-                             (node.type === 'subKlasifikasi' ? node.parent_id :
-                             (node.type === 'pekerjaan' ? node.klasifikasi_id : null));
+      console.log(`[JadwalKegiatanApp] Transforming ${pekerjaanNodes.length} pekerjaan nodes for Gantt (filtered from ${this.state.flatPekerjaan.length} total nodes)`);
 
-        const subKlasifikasiId = node.type === 'subKlasifikasi' ? node.id :
-                                (node.type === 'pekerjaan' ? node.sub_klasifikasi_id : null);
+      // DEBUG: Log first node structure
+      if (pekerjaanNodes.length > 0) {
+        console.log('[JadwalKegiatanApp] Sample pekerjaan node:', pekerjaanNodes[0]);
+      }
 
-        const pekerjaanId = node.type === 'pekerjaan' ? node.id : null;
-
+      pekerjaanNodes.forEach(node => {
         // Get progress from StateManager for pekerjaan nodes
         let progressRencana = 0;
         let progressRealisasi = 0;
 
-        if (node.type === 'pekerjaan' && this.stateManager) {
+        if (this.stateManager) {
           // Calculate average progress across all tahapan for this pekerjaan
           const tahapanList = this.state.tahapanList || [];
           const tahapanCount = tahapanList.length;
@@ -1821,23 +1810,22 @@ class JadwalKegiatanApp {
           }
         }
 
+        // Pekerjaan nodes now have complete parent info from DataLoader (after fix)
         data.push({
-          // Hierarchy IDs
-          klasifikasi_id: klasifikasiId,
-          klasifikasi_name: node.type === 'klasifikasi' ? node.name :
-                           (node.klasifikasi_name || ''),
-          klasifikasi_kode: node.type === 'klasifikasi' ? node.kode :
-                           (node.klasifikasi_kode || ''),
+          // Klasifikasi (parent level 1)
+          klasifikasi_id: node.klasifikasi_id,
+          klasifikasi_name: node.klasifikasi_name || 'Unknown Klasifikasi',
+          klasifikasi_kode: node.klasifikasi_kode || '',
 
-          sub_klasifikasi_id: subKlasifikasiId,
-          sub_klasifikasi_name: node.type === 'subKlasifikasi' ? node.name :
-                               (node.sub_klasifikasi_name || ''),
-          sub_klasifikasi_kode: node.type === 'subKlasifikasi' ? node.kode :
-                               (node.sub_klasifikasi_kode || ''),
+          // Sub-Klasifikasi (parent level 2)
+          sub_klasifikasi_id: node.sub_klasifikasi_id,
+          sub_klasifikasi_name: node.sub_klasifikasi_name || 'Unknown Sub-Klasifikasi',
+          sub_klasifikasi_kode: node.sub_klasifikasi_kode || '',
 
-          pekerjaan_id: pekerjaanId,
-          pekerjaan_name: node.type === 'pekerjaan' ? node.name : '',
-          pekerjaan_kode: node.type === 'pekerjaan' ? node.kode : '',
+          // Pekerjaan (leaf node / actual task) - use 'nama' property from DataLoader
+          pekerjaan_id: node.id,
+          pekerjaan_name: node.nama || node.name || 'Unknown Pekerjaan',
+          pekerjaan_kode: node.kode || '',
 
           // Dates (use project dates as fallback)
           tgl_mulai_rencana: node.tgl_mulai_rencana || this.state.projectStart,
@@ -1851,10 +1839,7 @@ class JadwalKegiatanApp {
 
           // Volume info
           volume: node.volume || 0,
-          satuan: node.satuan || '',
-
-          // Node type
-          node_type: node.type
+          satuan: node.satuan || ''
         });
       });
     } else {
@@ -1958,19 +1943,11 @@ class JadwalKegiatanApp {
       }
     }
 
-    // Update NEW Redesigned Gantt Chart
-    if (this.ganttChartRedesign) {
-      try {
-        const ganttData = this._prepareGanttData();
-        this.ganttChartRedesign.updateData(ganttData);
-        console.log('[JadwalKegiatanApp] ✅ NEW Gantt chart updated');
-      } catch (error) {
-        console.warn('[JadwalKegiatanApp] Failed to update NEW Gantt chart:', error);
-      }
+    // Gantt V2 uses demo data (POC) - no update needed yet
+    // TODO Phase 2: Implement real-time data updates for Gantt V2
+    if (this.ganttFrozenGrid) {
+      console.log('[JadwalKegiatanApp] ℹ️ Gantt V2 update skipped (POC uses static demo data)');
     }
-
-    // OLD Gantt Chart - DISABLED
-    console.log('[JadwalKegiatanApp] ⚠️ OLD Gantt Chart update SKIPPED (replaced by new design)');
   }
 
   /**
@@ -3337,6 +3314,7 @@ class JadwalKegiatanApp {
 
     console.log('JadwalKegiatanApp destroyed');
   }
+
 }
 
 // Auto-initialize when DOM is ready

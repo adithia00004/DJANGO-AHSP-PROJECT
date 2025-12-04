@@ -163,6 +163,11 @@ function buildPekerjaanTree(response) {
       expanded: true
     };
 
+    // Store for enrichment
+    const klasifikasiId = klas.id;
+    const klasifikasiName = klas.name || klas.nama || 'Klasifikasi';
+    const klasifikasiKode = klas.kode || '';
+
     if (klas.sub && Array.isArray(klas.sub)) {
       klas.sub.forEach(sub => {
         const subNode = {
@@ -174,6 +179,11 @@ function buildPekerjaanTree(response) {
           expanded: true
         };
 
+        // Store for enrichment
+        const subKlasifikasiId = sub.id;
+        const subKlasifikasiName = sub.name || sub.nama || 'Sub-Klasifikasi';
+        const subKlasifikasiKode = sub.kode || '';
+
         if (sub.pekerjaan && Array.isArray(sub.pekerjaan)) {
           sub.pekerjaan.forEach(pkj => {
             const pkjNode = {
@@ -184,7 +194,15 @@ function buildPekerjaanTree(response) {
               volume: pkj.volume || 0,
               satuan: pkj.snapshot_satuan || pkj.satuan || '-',
               level: 2,
-              budgeted_cost: Number.parseFloat(pkj.budgeted_cost ?? pkj.total_cost ?? 0) || 0
+              budgeted_cost: Number.parseFloat(pkj.budgeted_cost ?? pkj.total_cost ?? 0) || 0,
+
+              // ✅ ADD: Parent information for Gantt Chart
+              klasifikasi_id: klasifikasiId,
+              klasifikasi_name: klasifikasiName,
+              klasifikasi_kode: klasifikasiKode,
+              sub_klasifikasi_id: subKlasifikasiId,
+              sub_klasifikasi_name: subKlasifikasiName,
+              sub_klasifikasi_kode: subKlasifikasiKode
             };
             subNode.children.push(pkjNode);
           });

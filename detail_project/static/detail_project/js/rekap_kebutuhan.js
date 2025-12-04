@@ -60,6 +60,24 @@
     return currencyFormatter.format(num);
   };
 
+  // PHASE 5 UI FIX 2.1: Smart number scaling for chart labels
+  const detectScale = (values) => {
+    const maxVal = Math.max(...values.map(v => Math.abs(Number(v) || 0)));
+    if (maxVal >= 1_000_000_000) return { scale: 1_000_000_000, label: 'Milyar', unit: 'M' };
+    if (maxVal >= 100_000_000) return { scale: 100_000_000, label: '100 Juta', unit: '100Jt' };
+    if (maxVal >= 10_000_000) return { scale: 10_000_000, label: '10 Juta', unit: '10Jt' };
+    if (maxVal >= 1_000_000) return { scale: 1_000_000, label: 'Juta', unit: 'Jt' };
+    return { scale: 1, label: '', unit: '' };
+  };
+
+  const formatScaledValue = (value, scaleInfo) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '0';
+    if (scaleInfo.scale === 1) return qtyFormatter.format(num);
+    const scaled = num / scaleInfo.scale;
+    return qtyFormatter.format(scaled);
+  };
+
   const CATEGORY_LABELS = {
     TK: 'Tenaga Kerja',
     BHN: 'Bahan',
@@ -91,6 +109,7 @@
 
   let tableRowsCache = [];
   let timelineCache = [];
+  let lastData = null; // PHASE 5 TRACK 3.1: Store last fetched data for autocomplete
 
   let chartMixInstance = null;
   let chartCostInstance = null;
@@ -469,7 +488,29 @@
       });
       return;
     }
+
+    // PHASE 5 UI FIX 2.1: Detect scale for smart formatting
+    const values = data.map(item => item.value);
+    const scaleInfo = detectScale(values);
+
+    const titleConfig = scaleInfo.scale > 1
+      ? {
+          text: `Komposisi Biaya`,
+          subtext: `dalam ${scaleInfo.label}`,
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 14, fontWeight: 'bold' },
+          subtextStyle: { fontSize: 11, color: '#6c757d' },
+        }
+      : {
+          text: 'Komposisi Biaya',
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 14, fontWeight: 'bold' },
+        };
+
     chartMixInstance.setOption({
+      title: titleConfig,
       tooltip: {
         trigger: 'item',
         formatter: (params) => `${params.name}: ${formatCurrencyValue(params.value)} (${params.percent}%)`,
@@ -481,11 +522,12 @@
       series: [{
         type: 'pie',
         radius: ['45%', '70%'],
+        top: scaleInfo.scale > 1 ? '15%' : '10%',
         data,
         label: {
           formatter: '{b}\n{d}%',
-          textBorderWidth: 0,  // Remove text outline/border
-          textShadowBlur: 0,   // Remove text shadow
+          textBorderWidth: 0,
+          textShadowBlur: 0,
         },
       }],
     });
@@ -502,8 +544,36 @@
       });
       return;
     }
+
+    // PHASE 5 UI FIX 2.1: Detect scale for smart formatting
+    const values = data.map(item => item.value);
+    const scaleInfo = detectScale(values);
+
+    const titleConfig = scaleInfo.scale > 1
+      ? {
+          text: `Top Biaya per Item`,
+          subtext: `dalam ${scaleInfo.label}`,
+          left: 'center',
+          top: 5,
+          textStyle: { fontSize: 14, fontWeight: 'bold' },
+          subtextStyle: { fontSize: 11, color: '#6c757d' },
+        }
+      : {
+          text: 'Top Biaya per Item',
+          left: 'center',
+          top: 5,
+          textStyle: { fontSize: 14, fontWeight: 'bold' },
+        };
+
     chartCostInstance.setOption({
-      grid: { left: '3%', right: '6%', bottom: '5%', containLabel: true },
+      title: titleConfig,
+      grid: {
+        left: '3%',
+        right: '6%',
+        bottom: '5%',
+        top: scaleInfo.scale > 1 ? '60px' : '40px',
+        containLabel: true
+      },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -515,7 +585,18 @@
       },
       xAxis: {
         type: 'value',
-        axisLabel: { formatter: (val) => formatCurrencyValue(val) },
+        name: scaleInfo.scale > 1 ? scaleInfo.unit : '',
+        nameLocation: 'end',
+        nameGap: 5,
+        nameTextStyle: { fontSize: 11, color: '#6c757d' },
+        axisLabel: {
+          formatter: (val) => {
+            if (scaleInfo.scale > 1) {
+              return formatScaledValue(val, scaleInfo);
+            }
+            return formatCurrencyValue(val);
+          }
+        },
       },
       yAxis: {
         type: 'category',
@@ -576,11 +657,13 @@
 
     renderSummaryList(refs.chartMixSummary, mixSeries, (item) => {
       // Qty removed as not relevant for users - only show cost
-      return `<li><span class="rk-chart-label">${esc(item.name)}</span><span class="rk-chart-value">${formatCurrencyValue(item.cost)}</span></li>`;
+      // Added title attribute for tooltip when text is truncated
+      return `<li><span class="rk-chart-label" title="${esc(item.name)}">${esc(item.name)}</span><span class="rk-chart-value">${formatCurrencyValue(item.cost)}</span></li>`;
     });
 
     renderSummaryList(refs.chartCostSummary, costSeries, (item) => (
-      `<li><span class="rk-chart-label">${esc(item.label)}</span><span class="rk-chart-value">${formatCurrencyValue(item.value)}</span></li>`
+      // Added title attribute for tooltip when text is truncated
+      `<li><span class="rk-chart-label" title="${esc(item.label)}">${esc(item.label)}</span><span class="rk-chart-value">${formatCurrencyValue(item.value)}</span></li>`
     ));
   };
 
@@ -605,7 +688,8 @@
       return;
     }
     setTimelineEmpty(false);
-    const limit = costChartMode === 'compact' ? 5 : null;
+    // CATATAN: User request - tampilkan SEMUA item per week, bukan hanya 5
+    const limit = null; // Always show all items in timeline
     const html = periods.map((period, idx) => {
       const source = period.items || [];
       const items = limit ? source.slice(0, limit) : source;
@@ -718,7 +802,8 @@
       : analyticsState.costSeriesFull;
     renderCostChart(costSeries);
     renderSummaryList(refs.chartCostSummary, costSeries, (item) => (
-      `<li><span class="rk-chart-label">${esc(item.label)}</span><span class="rk-chart-value">${formatCurrencyValue(item.value)}</span></li>`
+      // Added title attribute for tooltip when text is truncated
+      `<li><span class="rk-chart-label" title="${esc(item.label)}">${esc(item.label)}</span><span class="rk-chart-value">${formatCurrencyValue(item.value)}</span></li>`
     ));
     renderTimeline(timelineCache);
   };
@@ -778,8 +863,17 @@
 
   const getSubOptions = () => {
     const subs = [];
+
+    // PHASE 5 UI FIX 1.2: Only show subs for selected klasifikasi
+    const selectedKlasifikasi = currentFilter.klasifikasi_ids.length > 0
+      ? currentFilter.klasifikasi_ids
+      : null;
+
     filterMeta.klasifikasi.forEach((row) => {
-      (row.sub || []).forEach((sub) => subs.push({ ...sub, klasifikasi_id: row.id }));
+      // If klasifikasi filter is active, only include subs from selected klasifikasi
+      if (selectedKlasifikasi === null || selectedKlasifikasi.includes(row.id)) {
+        (row.sub || []).forEach((sub) => subs.push({ ...sub, klasifikasi_id: row.id }));
+      }
     });
     return subs;
   };
@@ -787,15 +881,25 @@
   const renderSubOptions = () => {
     if (!refs.subMenu) return;
     const subs = getSubOptions();
+
+    // PHASE 5 UI FIX 1.2: Show appropriate message when klasifikasi is selected
     if (!subs.length) {
-      refs.subMenu.innerHTML = '<div class="text-muted small px-2 py-1">Belum ada sub-klasifikasi</div>';
+      if (currentFilter.klasifikasi_ids.length > 0) {
+        refs.subMenu.innerHTML = '<div class="text-muted small px-2 py-1">Tidak ada sub-klasifikasi untuk klasifikasi yang dipilih</div>';
+      } else {
+        refs.subMenu.innerHTML = '<div class="text-muted small px-2 py-1">Belum ada sub-klasifikasi</div>';
+      }
       return;
     }
+
     const html = subs.map((sub) => {
       const checked = currentFilter.sub_klasifikasi_ids.includes(sub.id);
+      const klasifikasi = filterMeta.klasifikasi.find(k => k.id === sub.klasifikasi_id);
+      const klasifikasiName = klasifikasi ? klasifikasi.name : '';
+
       return `<label class="rk-dropdown-item">
-        <input type="checkbox" class="form-check-input sub-check" value="${sub.id}" ${checked ? 'checked' : ''}>
-        <span>${esc(sub.name)} <small class="text-muted">(${sub.pekerjaan_count || 0})</small></span>
+        <input type="checkbox" class="form-check-input sub-check" value="${sub.id}" data-klasifikasi-id="${sub.klasifikasi_id}" ${checked ? 'checked' : ''}>
+        <span>${esc(sub.name)} <small class="text-muted">(${klasifikasiName})</small></span>
       </label>`;
     }).join('');
     refs.subMenu.innerHTML = html;
@@ -828,20 +932,57 @@
     if (!refs.periodMode || !refs.periodStart || !refs.periodEnd) return;
     const mode = currentFilter.period_mode || 'all';
     refs.periodMode.value = mode;
-    const options = getPeriodOptionsForMode(mode);
-    const disableStart = mode === 'all';
-    refs.periodStart.disabled = disableStart;
-    refs.periodEnd.disabled = disableStart || !mode.endsWith('range');
-    if (disableStart) {
-      refs.periodStart.innerHTML = '<option value="">Pilih mode terlebih dahulu</option>';
-      refs.periodEnd.innerHTML = '<option value="">Pilih mode terlebih dahulu</option>';
-      return;
+
+    // PHASE 5 UI FIX 1.1: Show/hide period details based on mode
+    const periodDetails = $('#rk-period-details');
+    const periodEndWrapper = $('#rk-period-end-wrapper');
+
+    if (mode === 'all') {
+      // Hide period details when mode is 'all'
+      if (periodDetails) {
+        periodDetails.style.display = 'none';
+        periodDetails.classList.remove('show');
+      }
+    } else {
+      // Show period details
+      if (periodDetails) {
+        periodDetails.style.display = 'flex';
+        periodDetails.classList.add('show');
+      }
+
+      // Show/hide end date based on range mode
+      if (periodEndWrapper) {
+        periodEndWrapper.style.display = mode.endsWith('range') ? 'block' : 'none';
+      }
+
+      const options = getPeriodOptionsForMode(mode);
+      const optionHtml = options.map((item) => `<option value="${item.value}">${esc(item.label)}</option>`).join('');
+
+      refs.periodStart.innerHTML = `<option value="">Pilih salah satu</option>${optionHtml}`;
+      refs.periodStart.value = currentFilter.period_start || '';
+
+      if (mode.endsWith('range')) {
+        refs.periodEnd.innerHTML = `<option value="">Sama seperti mulai</option>${optionHtml}`;
+        refs.periodEnd.value = currentFilter.period_end || '';
+      }
     }
-    const optionHtml = options.map((item) => `<option value="${item.value}">${esc(item.label)}</option>`).join('');
-    refs.periodStart.innerHTML = `<option value="">Pilih salah satu</option>${optionHtml}`;
-    refs.periodStart.value = currentFilter.period_start || '';
-    refs.periodEnd.innerHTML = `<option value="">Sama seperti mulai</option>${optionHtml}`;
-    refs.periodEnd.value = currentFilter.period_end || '';
+
+    // Update visual active states
+    updateFilterActiveStates();
+  };
+
+  // PHASE 5 UI FIX 1.1: Update visual active states for filter steps
+  const updateFilterActiveStates = () => {
+    const tahapanStep = $('.rk-filter-step[data-step="1"]');
+    const periodStep = $('.rk-filter-step[data-step="2"]');
+
+    if (tahapanStep) {
+      tahapanStep.classList.toggle('filter-active', currentFilter.mode === 'tahapan' && currentFilter.tahapan_id);
+    }
+
+    if (periodStep) {
+      periodStep.classList.toggle('filter-active', currentFilter.period_mode !== 'all');
+    }
   };
 
   const syncFilterControls = () => {
@@ -872,6 +1013,7 @@
     updateDropdownLabels();
     updateFilterIndicator();
     updateScopeIndicator();
+    renderActiveFilterChips(); // PHASE 5: Update filter chips
     refreshActiveView();
   };
 
@@ -882,6 +1024,7 @@
     syncFilterControls();
     updateFilterIndicator();
     updateScopeIndicator();
+    renderActiveFilterChips(); // PHASE 5: Update filter chips
     refreshActiveView();
   };
 
@@ -896,6 +1039,7 @@
     try {
       const query = buildQueryString();
       const data = await apiCall(`${endpoint}${query}`);
+      lastData = data; // PHASE 5 TRACK 3.1: Store for autocomplete cache
       const rows = data.rows || [];
       renderRows(rows);
       updateStats(data.meta || {});
@@ -988,10 +1132,61 @@
     }
   };
 
+  // PHASE 5: Enhanced Export with State Fidelity & Progress Feedback
+  const generateExportFilename = (format) => {
+    const timestamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const parts = ['rekap-kebutuhan'];
+
+    // Add view mode
+    if (currentViewMode === 'timeline') {
+      parts.push('timeline');
+    }
+
+    // Add scope
+    if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
+      parts.push(`tahapan-${currentFilter.tahapan_id}`);
+    }
+
+    // Add kategori filter if not all
+    if (currentFilter.kategori.length && currentFilter.kategori.length < 4) {
+      parts.push(currentFilter.kategori.join('-'));
+    }
+
+    // Add period if specified
+    if (currentFilter.period_mode && currentFilter.period_mode !== 'all') {
+      parts.push(currentFilter.period_mode);
+      if (currentFilter.period_start) {
+        parts.push(currentFilter.period_start);
+      }
+    }
+
+    parts.push(timestamp);
+    return parts.join('_') + '.' + format;
+  };
+
+  const showExportProgress = () => {
+    showToast(
+      '<div class="d-flex align-items-center gap-2">' +
+      '<div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div>' +
+      '<span>Memproses export... Mohon tunggu.</span>' +
+      '</div>',
+      'info',
+      3000
+    );
+  };
+
   const initExportButtons = () => {
     const exporter = window.ExportManager ? new window.ExportManager(projectId, 'rekap-kebutuhan') : null;
     const triggerExport = async (format) => {
+      // Show progress feedback
+      showExportProgress();
+
       const query = buildQueryParams();
+
+      // PHASE 5: Add view mode and filename to query
+      query.view_mode = currentViewMode;
+      query.filename = generateExportFilename(format).replace('.' + format, ''); // Send without extension
+
       if (exporter) {
         try {
           await exporter.exportAs(format, { query });
@@ -1012,9 +1207,57 @@
     const btnCsv = $('#btn-export-csv');
     const btnPdf = $('#btn-export-pdf');
     const btnWord = $('#btn-export-word');
+    const btnCharts = $('#btn-export-charts');
     if (btnCsv) btnCsv.addEventListener('click', () => triggerExport('csv'));
     if (btnPdf) btnPdf.addEventListener('click', () => triggerExport('pdf'));
     if (btnWord) btnWord.addEventListener('click', () => triggerExport('word'));
+    if (btnCharts) btnCharts.addEventListener('click', exportChartsAsImages);
+  };
+
+  // PHASE 5 UI FIX 2: Export material mix diagram
+  const exportChartsAsImages = () => {
+    try {
+      showToast('Memproses export chart...', 'info', 2000);
+
+      // Export Mix Chart (Pie Chart)
+      if (chartMixInstance) {
+        const mixDataURL = chartMixInstance.getDataURL({
+          type: 'png',
+          pixelRatio: 2,
+          backgroundColor: '#fff'
+        });
+        downloadImage(mixDataURL, 'komposisi-biaya-material-mix.png');
+      }
+
+      // Export Cost Chart (Bar Chart)
+      if (chartCostInstance) {
+        const costDataURL = chartCostInstance.getDataURL({
+          type: 'png',
+          pixelRatio: 2,
+          backgroundColor: '#fff'
+        });
+        downloadImage(costDataURL, 'top-biaya-per-item.png');
+      }
+
+      if (!chartMixInstance && !chartCostInstance) {
+        showToast('Tidak ada chart untuk di-export', 'warning');
+        return;
+      }
+
+      showToast('Chart berhasil di-export!', 'success');
+    } catch (error) {
+      console.error('Chart export failed:', error);
+      showToast('Export chart gagal: ' + error.message, 'danger');
+    }
+  };
+
+  const downloadImage = (dataURL, filename) => {
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataURL;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const parseInitialParams = () => {
@@ -1057,6 +1300,399 @@
       timer = setTimeout(() => fn.apply(null, args), delay);
     };
   };
+  // ============================================================================
+  // PHASE 5 TRACK 3.1: SEARCH AUTOCOMPLETE
+  // ============================================================================
+
+  let autocompleteCache = new Set();
+  let autocompleteDropdown = null;
+
+  const initSearchAutocomplete = () => {
+    if (!refs.searchInput) return;
+
+    // Create autocomplete dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'rk-autocomplete-dropdown';
+    dropdown.style.cssText = `
+      position: absolute;
+      z-index: 1050;
+      background: white;
+      border: 1px solid var(--bs-border-color);
+      border-radius: 0.375rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      max-height: 300px;
+      overflow-y: auto;
+      display: none;
+      min-width: 250px;
+    `;
+
+    refs.searchInput.parentElement.style.position = 'relative';
+    refs.searchInput.parentElement.appendChild(dropdown);
+    autocompleteDropdown = dropdown;
+
+    // Build autocomplete cache from current data
+    const buildAutocompleteCache = () => {
+      autocompleteCache.clear();
+      if (!lastData || !lastData.rows) return;
+
+      lastData.rows.forEach(row => {
+        if (row.kode) autocompleteCache.add(row.kode.toLowerCase());
+        if (row.uraian) {
+          // Add full uraian
+          autocompleteCache.add(row.uraian.toLowerCase());
+          // Add words from uraian (for partial matching)
+          row.uraian.toLowerCase().split(/\s+/).forEach(word => {
+            if (word.length > 3) autocompleteCache.add(word);
+          });
+        }
+      });
+    };
+
+    const showAutocomplete = (suggestions) => {
+      if (!suggestions || suggestions.length === 0) {
+        autocompleteDropdown.style.display = 'none';
+        return;
+      }
+
+      // Position dropdown
+      const rect = refs.searchInput.getBoundingClientRect();
+      autocompleteDropdown.style.top = `${refs.searchInput.offsetHeight}px`;
+      autocompleteDropdown.style.left = '0';
+      autocompleteDropdown.style.width = `${rect.width}px`;
+
+      // Build dropdown HTML
+      const html = suggestions.map((suggestion, index) => {
+        const escaped = esc(suggestion);
+        return `
+          <div class="rk-autocomplete-item" data-index="${index}" data-value="${escaped}">
+            <i class="bi bi-search me-2"></i>
+            ${escaped}
+          </div>
+        `;
+      }).join('');
+
+      autocompleteDropdown.innerHTML = html;
+      autocompleteDropdown.style.display = 'block';
+
+      // Add hover and click handlers
+      autocompleteDropdown.querySelectorAll('.rk-autocomplete-item').forEach(item => {
+        item.style.cssText = `
+          padding: 0.75rem 1rem;
+          cursor: pointer;
+          transition: background 0.2s ease;
+          border-bottom: 1px solid var(--bs-border-color-translucent);
+        `;
+
+        item.addEventListener('mouseenter', () => {
+          item.style.background = 'rgba(13, 110, 252, 0.1)';
+        });
+
+        item.addEventListener('mouseleave', () => {
+          item.style.background = 'white';
+        });
+
+        item.addEventListener('click', () => {
+          refs.searchInput.value = item.dataset.value;
+          currentFilter.search = item.dataset.value;
+          autocompleteDropdown.style.display = 'none';
+          refreshActiveView();
+        });
+      });
+    };
+
+    const hideAutocomplete = () => {
+      if (autocompleteDropdown) {
+        autocompleteDropdown.style.display = 'none';
+      }
+    };
+
+    const getSuggestions = (query) => {
+      if (!query || query.length < 2) return [];
+
+      const lowerQuery = query.toLowerCase();
+      const matches = Array.from(autocompleteCache)
+        .filter(item => item.includes(lowerQuery))
+        .sort((a, b) => {
+          // Prioritize items that start with query
+          const aStarts = a.startsWith(lowerQuery);
+          const bStarts = b.startsWith(lowerQuery);
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          return a.length - b.length; // Shorter items first
+        })
+        .slice(0, 10); // Limit to 10 suggestions
+
+      return matches;
+    };
+
+    // Rebuild cache when data changes
+    const originalRefreshActiveView = refreshActiveView;
+    window.refreshActiveView = async function() {
+      await originalRefreshActiveView();
+      buildAutocompleteCache();
+    };
+
+    // Hide autocomplete when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!refs.searchInput.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
+        hideAutocomplete();
+      }
+    });
+
+    // Keyboard navigation
+    let selectedIndex = -1;
+    refs.searchInput.addEventListener('keydown', (e) => {
+      const items = autocompleteDropdown.querySelectorAll('.rk-autocomplete-item');
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+        updateSelection(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedIndex = Math.max(selectedIndex - 1, -1);
+        updateSelection(items);
+      } else if (e.key === 'Enter' && selectedIndex >= 0) {
+        e.preventDefault();
+        items[selectedIndex].click();
+      } else if (e.key === 'Escape') {
+        hideAutocomplete();
+        selectedIndex = -1;
+      }
+    });
+
+    const updateSelection = (items) => {
+      items.forEach((item, index) => {
+        if (index === selectedIndex) {
+          item.style.background = 'rgba(13, 110, 252, 0.2)';
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          item.style.background = 'white';
+        }
+      });
+    };
+
+    // Attach to search input
+    refs.searchInput.addEventListener('input', debounce((event) => {
+      const query = event.target.value || '';
+      selectedIndex = -1;
+
+      if (query.length >= 2) {
+        const suggestions = getSuggestions(query);
+        showAutocomplete(suggestions);
+      } else {
+        hideAutocomplete();
+      }
+
+      currentFilter.search = query.trim();
+      refreshActiveView();
+    }, 300));
+
+    // Focus handler
+    refs.searchInput.addEventListener('focus', () => {
+      const query = refs.searchInput.value || '';
+      if (query.length >= 2) {
+        const suggestions = getSuggestions(query);
+        showAutocomplete(suggestions);
+      }
+    });
+
+    // Build initial cache
+    buildAutocompleteCache();
+  };
+
+  // ============================================================================
+  // PHASE 5 TRACK 3.2: QUICK FILTER CHIPS
+  // ============================================================================
+
+  const renderActiveFilterChips = () => {
+    const chipsContainer = $('#rk-filter-chips');
+    const activeFiltersContainer = $('#rk-active-filters');
+
+    if (!chipsContainer || !activeFiltersContainer) return;
+
+    const chips = [];
+
+    // Kategori chips
+    if (currentFilter.kategori.length > 0 && currentFilter.kategori.length < 4) {
+      const kategoriMap = { TK: 'Tenaga Kerja', BHN: 'Bahan', ALT: 'Alat', LAIN: 'Lain-lain' };
+      currentFilter.kategori.forEach(kat => {
+        chips.push({
+          type: 'kategori',
+          value: kat,
+          label: kategoriMap[kat] || kat,
+          color: 'primary'
+        });
+      });
+    }
+
+    // Klasifikasi chips
+    if (currentFilter.klasifikasi_ids.length > 0) {
+      currentFilter.klasifikasi_ids.forEach(id => {
+        const option = filterOptions.klasifikasi.find(k => k.id === id);
+        if (option) {
+          chips.push({
+            type: 'klasifikasi',
+            value: id,
+            label: option.nama,
+            color: 'success'
+          });
+        }
+      });
+    }
+
+    // Sub-klasifikasi chips
+    if (currentFilter.sub_klasifikasi_ids.length > 0) {
+      currentFilter.sub_klasifikasi_ids.forEach(id => {
+        const option = filterOptions.sub_klasifikasi.find(s => s.id === id);
+        if (option) {
+          chips.push({
+            type: 'sub_klasifikasi',
+            value: id,
+            label: option.nama,
+            color: 'info'
+          });
+        }
+      });
+    }
+
+    // Pekerjaan chips
+    if (currentFilter.pekerjaan_ids.length > 0) {
+      currentFilter.pekerjaan_ids.forEach(id => {
+        const option = filterOptions.pekerjaan.find(p => p.id === id);
+        if (option) {
+          chips.push({
+            type: 'pekerjaan',
+            value: id,
+            label: option.nama,
+            color: 'warning'
+          });
+        }
+      });
+    }
+
+    // Period mode chip
+    if (currentFilter.period_mode && currentFilter.period_mode !== 'all') {
+      const periodLabels = {
+        'weekly': 'Mode Mingguan',
+        'monthly': 'Mode Bulanan',
+        'weekly_range': 'Range Mingguan',
+        'monthly_range': 'Range Bulanan'
+      };
+      chips.push({
+        type: 'period_mode',
+        value: currentFilter.period_mode,
+        label: periodLabels[currentFilter.period_mode] || currentFilter.period_mode,
+        color: 'secondary'
+      });
+    }
+
+    // Search chip
+    if (currentFilter.search && currentFilter.search.trim()) {
+      chips.push({
+        type: 'search',
+        value: currentFilter.search,
+        label: `Pencarian: "${currentFilter.search}"`,
+        color: 'dark'
+      });
+    }
+
+    // Render chips
+    if (chips.length === 0) {
+      activeFiltersContainer.style.display = 'none';
+      return;
+    }
+
+    activeFiltersContainer.style.display = 'block';
+
+    const html = chips.map(chip => `
+      <span class="badge bg-${chip.color} d-inline-flex align-items-center gap-1 py-2 px-3 rk-filter-chip"
+            data-type="${chip.type}"
+            data-value="${esc(String(chip.value))}"
+            style="cursor: pointer; transition: all 0.2s ease;">
+        <span>${esc(chip.label)}</span>
+        <i class="bi bi-x-circle" style="font-size: 0.875rem;"></i>
+      </span>
+    `).join('');
+
+    chipsContainer.innerHTML = html;
+
+    // Add click handlers to remove chips
+    chipsContainer.querySelectorAll('.rk-filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const type = chip.dataset.type;
+        const value = chip.dataset.value;
+
+        removeFilterByChip(type, value);
+      });
+
+      // Add hover effect
+      chip.addEventListener('mouseenter', () => {
+        chip.style.opacity = '0.8';
+        chip.style.transform = 'scale(0.95)';
+      });
+
+      chip.addEventListener('mouseleave', () => {
+        chip.style.opacity = '1';
+        chip.style.transform = 'scale(1)';
+      });
+    });
+  };
+
+  const removeFilterByChip = (type, value) => {
+    switch (type) {
+      case 'kategori':
+        currentFilter.kategori = currentFilter.kategori.filter(k => k !== value);
+        // Uncheck checkbox
+        const katCheckbox = document.querySelector(`.kategori-check[value="${value}"]`);
+        if (katCheckbox) katCheckbox.checked = false;
+        break;
+
+      case 'klasifikasi':
+        const klasId = parseInt(value, 10);
+        currentFilter.klasifikasi_ids = currentFilter.klasifikasi_ids.filter(id => id !== klasId);
+        // Uncheck checkbox
+        const klasCheckbox = document.querySelector(`.klasifikasi-check[value="${klasId}"]`);
+        if (klasCheckbox) klasCheckbox.checked = false;
+        break;
+
+      case 'sub_klasifikasi':
+        const subId = parseInt(value, 10);
+        currentFilter.sub_klasifikasi_ids = currentFilter.sub_klasifikasi_ids.filter(id => id !== subId);
+        // Uncheck checkbox
+        const subCheckbox = document.querySelector(`.sub-check[value="${subId}"]`);
+        if (subCheckbox) subCheckbox.checked = false;
+        break;
+
+      case 'pekerjaan':
+        const pekId = parseInt(value, 10);
+        currentFilter.pekerjaan_ids = currentFilter.pekerjaan_ids.filter(id => id !== pekId);
+        // Uncheck checkbox
+        const pekCheckbox = document.querySelector(`.pekerjaan-check[value="${pekId}"]`);
+        if (pekCheckbox) pekCheckbox.checked = false;
+        break;
+
+      case 'period_mode':
+        currentFilter.period_mode = 'all';
+        currentFilter.period_start = '';
+        currentFilter.period_end = '';
+        if (refs.periodMode) refs.periodMode.value = 'all';
+        renderPeriodControls();
+        break;
+
+      case 'search':
+        currentFilter.search = '';
+        if (refs.searchInput) refs.searchInput.value = '';
+        break;
+    }
+
+    // Update UI
+    updateDropdownLabels();
+    updateFilterIndicator();
+    renderActiveFilterChips();
+    refreshActiveView();
+  };
+
   const attachEventListeners = () => {
     if (refs.applyBtn) {
       refs.applyBtn.addEventListener('click', applyFilter);
@@ -1064,12 +1700,9 @@
     if (refs.resetBtn) {
       refs.resetBtn.addEventListener('click', resetFilter);
     }
-    if (refs.searchInput) {
-      refs.searchInput.addEventListener('input', debounce((event) => {
-        currentFilter.search = (event.target.value || '').trim();
-        refreshActiveView();
-      }, 400));
-    }
+
+    // Search autocomplete initialized separately
+    initSearchAutocomplete();
     if (refs.pekerjaanSearch) {
       refs.pekerjaanSearch.addEventListener('input', debounce((event) => {
         renderPekerjaanOptions(event.target.value || '');
@@ -1086,6 +1719,16 @@
       if (target.matches('.klasifikasi-check')) {
         const values = $$('.klasifikasi-check').filter((cb) => cb.checked).map((cb) => parseInt(cb.value, 10)).filter(Number.isFinite);
         currentFilter.klasifikasi_ids = values;
+
+        // PHASE 5 UI FIX 1.2: Auto-clear invalid sub-klasifikasi selections
+        if (values.length > 0) {
+          const validSubs = getSubOptions();
+          const validSubIds = validSubs.map(s => s.id);
+          currentFilter.sub_klasifikasi_ids = currentFilter.sub_klasifikasi_ids.filter(id => validSubIds.includes(id));
+        }
+
+        // Re-render sub-klasifikasi dropdown to show filtered options
+        renderSubOptions();
         updateDropdownLabels();
       }
       if (target.matches('.sub-check')) {
@@ -1145,6 +1788,160 @@
     }, 200));
   };
 
+  // ============================================================================
+  // PHASE 5 TRACK 2.1: DEBUG PANEL & VALIDATION
+  // ============================================================================
+
+  const showDebugPanel = async () => {
+    showToast('Memuat validasi data...', 'info', 2000);
+
+    try {
+      const query = buildQueryParams();
+      const response = await fetch(`/detail_project/api/project/${projectId}/rekap-kebutuhan/validate/?${query}`);
+      const data = await response.json();
+
+      if (data.status !== 'success') {
+        throw new Error(data.message || 'Validation failed');
+      }
+
+      const validation = data.validation;
+
+      // Build validation report
+      const isValid = validation.valid;
+      const statusIcon = isValid ? '✅' : '⚠️';
+      const statusText = isValid ? 'VALID' : 'MISMATCH DETECTED';
+      const statusClass = isValid ? 'text-success' : 'text-warning';
+
+      // Format currency
+      const fmt = (val) => new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(val);
+
+      // Build kategori breakdown table
+      let kategoriTable = '';
+      if (validation.kategori_breakdown) {
+        kategoriTable = '<table class="table table-sm mt-3"><thead><tr><th>Kategori</th><th>Snapshot</th><th>Timeline</th><th>Status</th></tr></thead><tbody>';
+
+        for (const [kategori, breakdown] of Object.entries(validation.kategori_breakdown)) {
+          const matchIcon = breakdown.match ? '✅' : '⚠️';
+          kategoriTable += `
+            <tr>
+              <td><strong>${kategori}</strong></td>
+              <td>${breakdown.snapshot.count} items<br><small>${fmt(breakdown.snapshot.total)}</small></td>
+              <td>${breakdown.timeline.count} items<br><small>${fmt(breakdown.timeline.total)}</small></td>
+              <td>${matchIcon} ${breakdown.match ? 'OK' : fmt(breakdown.difference)}</td>
+            </tr>
+          `;
+        }
+        kategoriTable += '</tbody></table>';
+      }
+
+      // Build warnings list
+      let warningsList = '';
+      if (validation.warnings && validation.warnings.length > 0) {
+        warningsList = '<div class="alert alert-warning mt-3"><strong>Warnings:</strong><ul class="mb-0">';
+        validation.warnings.forEach(warning => {
+          warningsList += `<li>${esc(warning)}</li>`;
+        });
+        warningsList += '</ul></div>';
+      }
+
+      // Show modal
+      const modalHtml = `
+        <div class="modal fade" id="debugModal" tabindex="-1">
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">🔍 Data Validation Report</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+              <div class="modal-body">
+                <div class="text-center mb-4">
+                  <h3 class="${statusClass}">${statusIcon} ${statusText}</h3>
+                  <small class="text-muted">Validated at ${new Date(validation.timestamp).toLocaleString('id-ID')}</small>
+                </div>
+
+                <div class="row mb-3">
+                  <div class="col-md-6">
+                    <div class="card">
+                      <div class="card-body text-center">
+                        <h6 class="text-muted">Snapshot Total</h6>
+                        <h4>${fmt(validation.snapshot_total)}</h4>
+                        <small>${validation.snapshot_count} items</small>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="card">
+                      <div class="card-body text-center">
+                        <h6 class="text-muted">Timeline Total</h6>
+                        <h4>${fmt(validation.timeline_total)}</h4>
+                        <small>${validation.timeline_count} unique items</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                ${!isValid ? `
+                  <div class="alert alert-info">
+                    <strong>Difference:</strong> ${fmt(validation.difference)}<br>
+                    <small>Tolerance: ${fmt(validation.tolerance)}</small>
+                  </div>
+                ` : ''}
+
+                ${kategoriTable}
+                ${warningsList}
+
+                <div class="mt-3">
+                  <h6>Current Filters:</h6>
+                  <code class="d-block p-2 bg-light">${JSON.stringify({
+                    mode: currentFilter.mode,
+                    kategori: currentFilter.kategori,
+                    period_mode: currentFilter.period_mode,
+                  }, null, 2)}</code>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Remove existing modal if any
+      const existingModal = document.getElementById('debugModal');
+      if (existingModal) {
+        existingModal.remove();
+      }
+
+      // Append and show modal
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      const modal = new bootstrap.Modal(document.getElementById('debugModal'));
+      modal.show();
+
+      // Cleanup on close
+      document.getElementById('debugModal').addEventListener('hidden.bs.modal', () => {
+        document.getElementById('debugModal').remove();
+      });
+
+    } catch (error) {
+      console.error('Debug panel error:', error);
+      showToast(`Validation error: ${error.message}`, 'danger', 5000);
+    }
+  };
+
+  // Register keyboard shortcut: Ctrl+Shift+D
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+      e.preventDefault();
+      showDebugPanel();
+    }
+  });
+
   const init = async () => {
     console.log('🚀 Initializing Rekap Kebutuhan...');
 
@@ -1159,6 +1956,7 @@
     refreshActiveView();
 
     console.log('✅ Rekap Kebutuhan initialized');
+    console.log('💡 Press Ctrl+Shift+D to open debug panel');
   };
 
   init();

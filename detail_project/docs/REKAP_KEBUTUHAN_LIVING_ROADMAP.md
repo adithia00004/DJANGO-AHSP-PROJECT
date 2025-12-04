@@ -46,10 +46,10 @@ This roadmap stays in sync with our iterative delivery. Each phase is scoped to 
   - Created `docs/PHASE_2_COMPLETION_SUMMARY.md` - Implementation summary
 - **Total Implementation:** 648 lines of code + comprehensive documentation
 
-### Phase 3 – Intelligence & Self-Serve Analytics (In Progress)
+### Phase 3 – Intelligence & Self-Serve Analytics (Completed ✅ 2025-12-03)
 * ✅ Embedded charts (material mix + top-cost bar chart) langsung di halaman Rekap Kebutuhan
-* 🔄 Dynamic grouping (by supplier, cost bucket)
-* 🔄 Scenario simulation (adjust markup or price multiplier)
+* 💤 Dynamic grouping (by supplier, cost bucket) - Deferred to future phase
+* 💤 Scenario simulation (adjust markup or price multiplier) - Deferred to future phase
 
 ### Phase 4 – UI/UX Optimization & Toolbar Redesign (Completed ✅ 2025-12-03)
 | Track | Goals | Key Tasks | Exit Criteria | Status |
@@ -70,6 +70,23 @@ This roadmap stays in sync with our iterative delivery. Each phase is scoped to 
   - `static/detail_project/css/rekap_kebutuhan.css` - Toolbar V2 styles + responsive
   - `static/detail_project/js/rekap_kebutuhan_toolbar.js` - NEW enhancement script
 - **Documentation:** Created `docs/TOOLBAR_REDESIGN_ANALYSIS.md` for detailed analysis and specs
+
+### Phase 5 – Export Excellence & Data Quality (Planned 📋)
+| Track | Goals | Key Tasks | Exit Criteria | Status |
+| --- | --- | --- | --- | --- |
+| Export Enhancement | Export harus 100% mencerminkan UI state | - Implement export state fidelity (all filters)<br>- Add dedicated timeline export<br>- Progress feedback untuk long exports<br>- Auto-generated descriptive filenames | ✅ Export CSV/PDF/Word identical to UI view dengan metadata header | 📋 Planned |
+| Data Validation | Zero inconsistency snapshot vs timeline | - Validation endpoint untuk consistency check<br>- Smart cache invalidation on data changes<br>- Admin debug panel (Ctrl+Shift+D) | ✅ Snapshot total = Timeline total (tolerance <0.01) | 📋 Planned |
+| Advanced Search | Autocomplete search <200ms | - Implement search autocomplete dengan debounce<br>- Search history persistence (localStorage)<br>- Quick filter chips dengan remove button | ✅ Autocomplete shows top 10 matches, keyboard navigable | 📋 Planned |
+| Accessibility | WCAG 2.1 AA compliance ≥90% | - Add ARIA labels to all interactive elements<br>- Full keyboard navigation shortcuts<br>- Enhanced focus indicators<br>- Screen reader compatibility | ✅ Passes accessibility audit, keyboard-only operable | 📋 Planned |
+
+**Planning Documentation:**
+- Created `docs/PHASE_5_PLANNING.md` - Comprehensive planning document with 4 tracks
+- **Target Duration:** 1-2 weeks
+- **Success Metrics:**
+  - Export generation <3s for <500 items
+  - Search autocomplete <200ms response
+  - WCAG 2.1 AA score ≥90%
+  - Zero data inconsistency between views
 
 ---
 

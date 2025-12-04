@@ -12,12 +12,12 @@ export class GanttTimelinePanel {
     this.container = container;
     this.dataModel = dataModel;
 
-    // Options
+    // Options - Phase 2.3: Default zoom changed to 'week'
     this.options = {
       rowHeight: options.rowHeight || 40,
       barHeight: options.barHeight || 24,
       barPadding: options.barPadding || 8,
-      zoom: options.zoom || 'month', // 'day', 'week', 'month', 'quarter'
+      zoom: options.zoom || 'week', // 'week' or 'month' only (removed 'day' and 'quarter')
       mode: options.mode || 'planned', // 'planned' or 'actual'
       showGrid: options.showGrid !== false,
       showToday: options.showToday !== false,
@@ -55,17 +55,17 @@ export class GanttTimelinePanel {
     this.onMilestoneClick = options.onMilestoneClick || (() => {});
     this.onScroll = options.onScroll || (() => {});
 
-    // Colors
+    // Colors - Phase 2.1: Improved bar visibility
     this.colors = {
       planned: {
-        fill: 'rgba(13, 110, 252, 0.2)',
-        stroke: '#0d6efd',
-        progress: 'rgba(13, 110, 252, 0.5)'
+        fill: 'rgba(13, 110, 252, 0.4)',      // Blue semi-transparent (increased from 0.2 to 0.4)
+        stroke: '#0d6efd',                     // Blue border
+        progress: 'rgba(8, 66, 152, 0.9)'     // Darker blue for progress fill
       },
       actual: {
-        fill: 'rgba(25, 135, 84, 0.8)',
-        stroke: '#198754',
-        progress: '#198754'
+        fill: 'rgba(253, 126, 20, 1.0)',      // Orange solid (changed from green, opacity 1.0)
+        stroke: '#dc6d08',                     // Darker orange border
+        progress: '#b34d00'                    // Even darker orange for progress
       },
       grid: '#e9ecef',
       today: '#dc3545',
@@ -107,10 +107,8 @@ export class GanttTimelinePanel {
       <div class="timeline-toolbar">
         <div class="timeline-toolbar-group">
           <span class="timeline-toolbar-label">Zoom:</span>
-          <button class="timeline-zoom-btn" data-zoom="day">Day</button>
-          <button class="timeline-zoom-btn" data-zoom="week">Week</button>
-          <button class="timeline-zoom-btn active" data-zoom="month">Month</button>
-          <button class="timeline-zoom-btn" data-zoom="quarter">Quarter</button>
+          <button class="timeline-zoom-btn active" data-zoom="week">Week</button>
+          <button class="timeline-zoom-btn" data-zoom="month">Month</button>
         </div>
         <div class="timeline-toolbar-group">
           <button class="btn btn-sm btn-outline-primary" id="timeline-fit-btn">
@@ -123,8 +121,10 @@ export class GanttTimelinePanel {
           </button>
         </div>
       </div>
-      <div class="timeline-scale">
-        <canvas class="timeline-scale-canvas"></canvas>
+      <div class="timeline-scale-wrapper" style="overflow: hidden; position: relative;">
+        <div class="timeline-scale" style="position: relative; will-change: transform;">
+          <canvas class="timeline-scale-canvas"></canvas>
+        </div>
       </div>
     `;
     this.container.appendChild(header);
@@ -139,10 +139,12 @@ export class GanttTimelinePanel {
     `;
     this.container.appendChild(content);
 
-    // Store references
+    // Store references - FIXED: Use transform for scale sync
     this.elements = {
       header,
       toolbar: header.querySelector('.timeline-toolbar'),
+      scaleWrapper: header.querySelector('.timeline-scale-wrapper'),
+      scale: header.querySelector('.timeline-scale'),
       scaleCanvas: header.querySelector('.timeline-scale-canvas'),
       content,
       timelineCanvas: content.querySelector('.timeline-canvas')
@@ -238,10 +240,21 @@ export class GanttTimelinePanel {
       this._handleCanvasClick(e);
     });
 
-    // Scroll sync
+    // Canvas double-click for milestone creation - Phase 3.4
+    this.canvas.timeline.addEventListener('dblclick', (e) => {
+      this._handleCanvasDoubleClick(e);
+    });
+
+    // Scroll sync - FIXED: Use CSS transform for scale header sync
     this.elements.content.addEventListener('scroll', () => {
       this.scrollState.x = this.elements.content.scrollLeft;
       this.scrollState.y = this.elements.content.scrollTop;
+
+      // Sync scale header using CSS transform (smoother than scrollLeft)
+      if (this.elements.scale) {
+        this.elements.scale.style.transform = `translateX(-${this.scrollState.x}px)`;
+      }
+
       this.onScroll(this.scrollState);
       this._scheduleRender();
     });
@@ -270,17 +283,15 @@ export class GanttTimelinePanel {
   }
 
   /**
-   * Calculate pixels per day based on zoom
+   * Calculate pixels per day based on zoom - Phase 2.3: Only Week and Month
    */
   _calculatePixelsPerDay() {
     const zoomSettings = {
-      day: 40,
-      week: 8,
-      month: 2,
-      quarter: 0.7
+      week: 8,   // 8 pixels per day for week view
+      month: 2   // 2 pixels per day for month view
     };
 
-    this.canvas.pixelsPerDay = zoomSettings[this.options.zoom] || 2;
+    this.canvas.pixelsPerDay = zoomSettings[this.options.zoom] || 8; // Default to week
     this.canvas.totalWidth = this.dateRange.totalDays * this.canvas.pixelsPerDay;
   }
 
@@ -301,14 +312,31 @@ export class GanttTimelinePanel {
   }
 
   /**
-   * Scroll to today's date
+   * Scroll to today's date - Phase 3.2: Added today marker visibility
    */
   _scrollToToday() {
     const today = new Date();
+
+    // Check if today is within project date range
+    if (today < this.dateRange.start || today > this.dateRange.end) {
+      console.warn('Today is outside project date range');
+      // Show toast notification if available
+      if (window.Toast) {
+        window.Toast.warning('Today is outside the project date range');
+      }
+      return;
+    }
+
     const daysFromStart = Math.floor((today - this.dateRange.start) / (1000 * 60 * 60 * 24));
     const scrollX = daysFromStart * this.canvas.pixelsPerDay - (this.elements.content.offsetWidth / 2);
 
     this.elements.content.scrollLeft = Math.max(0, scrollX);
+
+    // Ensure today marker is visible
+    this.options.showToday = true;
+    this._scheduleRender();
+
+    console.log(`Scrolled to today: ${today.toLocaleDateString()}`);
   }
 
   /**
@@ -332,6 +360,91 @@ export class GanttTimelinePanel {
       this.onBarClick(bar.node, bar.type, e);
       return;
     }
+  }
+
+  /**
+   * Handle canvas double-click for milestone creation - Phase 3.4
+   */
+  _handleCanvasDoubleClick(e) {
+    const rect = this.canvas.timeline.getBoundingClientRect();
+    const x = e.clientX - rect.left + this.scrollState.x;
+
+    // Convert X coordinate to date
+    const clickedDate = this._xToDate(x);
+
+    // Prompt user for milestone details
+    this._showMilestoneCreationDialog(clickedDate);
+  }
+
+  /**
+   * Convert X coordinate to date - Phase 3.4
+   */
+  _xToDate(x) {
+    const daysFromStart = x / this.canvas.pixelsPerDay;
+    const date = new Date(this.dateRange.start);
+    date.setDate(date.getDate() + Math.round(daysFromStart));
+    return date;
+  }
+
+  /**
+   * Show milestone creation dialog - Phase 3.4
+   */
+  _showMilestoneCreationDialog(date) {
+    // Format date for display
+    const dateStr = date.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Use Bootstrap modal if available, otherwise use prompt
+    if (window.bootstrap && window.bootstrap.Modal) {
+      this._showBootstrapMilestoneModal(date, dateStr);
+    } else {
+      this._showSimpleMilestonePrompt(date, dateStr);
+    }
+  }
+
+  /**
+   * Show simple prompt for milestone - Phase 3.4
+   */
+  _showSimpleMilestonePrompt(date, dateStr) {
+    const title = prompt(`Create Milestone on ${dateStr}\n\nEnter milestone title:`);
+
+    if (title && title.trim()) {
+      const description = prompt('Enter milestone description (optional):') || '';
+
+      // Create milestone
+      const milestone = this.dataModel.addMilestone({
+        date: date,
+        title: title.trim(),
+        description: description.trim(),
+        color: '#ff6b6b',
+        icon: '📍',
+        createdBy: 'User'
+      });
+
+      // Re-render to show new milestone
+      this._scheduleRender();
+
+      console.log('Milestone created:', milestone);
+
+      // Show success message
+      if (window.Toast) {
+        window.Toast.success('Milestone created successfully');
+      }
+    }
+  }
+
+  /**
+   * Show Bootstrap modal for milestone creation - Phase 3.4
+   * (Placeholder - implement if Bootstrap modal HTML is available)
+   */
+  _showBootstrapMilestoneModal(date, dateStr) {
+    // For now, fallback to simple prompt
+    // In future, create dynamic Bootstrap modal
+    this._showSimpleMilestonePrompt(date, dateStr);
   }
 
   /**
@@ -540,63 +653,83 @@ export class GanttTimelinePanel {
   }
 
   /**
-   * Render month scale
+   * Render month scale - Phase 2.2: Grid every 28 days (4 weeks)
    */
   _renderMonthScale(ctx) {
     const startDate = new Date(this.dateRange.start);
     const endDate = new Date(this.dateRange.end);
 
     ctx.font = '11px sans-serif';
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
 
     let currentDate = new Date(startDate);
-    currentDate.setDate(1); // Start of month
+    let monthCount = 0;
 
     while (currentDate <= endDate) {
       const x = this._dateToX(currentDate);
 
-      // Year separator
-      if (currentDate.getMonth() === 0) {
-        ctx.strokeStyle = '#dee2e6';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, 60);
-        ctx.stroke();
-
-        // Year label
-        ctx.fillStyle = '#212529';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(currentDate.getFullYear(), x + 30, 15);
-      }
-
-      // Month label
-      ctx.fillStyle = '#6c757d';
-      ctx.font = '11px sans-serif';
-      ctx.fillText(
-        currentDate.toLocaleDateString('en-US', { month: 'short' }),
-        x + 15,
-        45
-      );
-
-      // Grid line
-      ctx.strokeStyle = '#e9ecef';
+      // Grid line - every 28 days (4 weeks)
+      ctx.strokeStyle = '#dee2e6';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x, 30);
+      ctx.moveTo(x, 0);
       ctx.lineTo(x, 60);
       ctx.stroke();
 
-      currentDate.setMonth(currentDate.getMonth() + 1);
+      // Month label (show actual month name for better UX)
+      const monthLabel = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      ctx.fillStyle = '#6c757d';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(monthLabel, x + 5, 30);
+
+      // Move to next 4-week period (28 days)
+      currentDate.setDate(currentDate.getDate() + 28);
+      monthCount++;
     }
   }
 
   /**
-   * Render week scale (simplified)
+   * Render week scale - Phase 2.2: Grid every 7 days (1 week)
    */
   _renderWeekScale(ctx) {
-    this._renderMonthScale(ctx);
+    const startDate = new Date(this.dateRange.start);
+    const endDate = new Date(this.dateRange.end);
+
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+
+    let currentDate = new Date(startDate);
+    let weekNumber = 1;
+
+    while (currentDate <= endDate) {
+      const x = this._dateToX(currentDate);
+
+      // Grid line - every 7 days (1 week)
+      ctx.strokeStyle = '#dee2e6';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 60);
+      ctx.stroke();
+
+      // Week label
+      const weekLabel = `Week ${weekNumber}`;
+      const dateLabel = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      ctx.fillStyle = '#6c757d';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(weekLabel, x + 5, 20);
+
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = '#999';
+      ctx.fillText(dateLabel, x + 5, 40);
+
+      // Move to next week (7 days)
+      currentDate.setDate(currentDate.getDate() + 7);
+      weekNumber++;
+    }
   }
 
   /**
@@ -746,9 +879,9 @@ export class GanttTimelinePanel {
     ctx.fillStyle = colors.fill;
     ctx.fillRect(startX, y, width, barHeight);
 
-    // Bar border
+    // Bar border - Phase 2.1: Increased lineWidth for better visibility
     ctx.strokeStyle = colors.stroke;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 2;  // Increased from 1 to 2
     ctx.strokeRect(startX, y, width, barHeight);
 
     // Progress fill

@@ -4,8 +4,8 @@
     "name": "chart-modules",
     "isDynamicEntry": true
   },
-  "_core-modules-DWAA-Xbs.js": {
-    "file": "assets/js/core-modules-DWAA-Xbs.js",
+  "_core-modules-0szNTacm.js": {
+    "file": "assets/js/core-modules-0szNTacm.js",
     "name": "core-modules"
   },
   "_grid-modules-B7d76Eao.js": {
@@ -24,19 +24,33 @@
     "name": "vendor-export"
   },
   "js/src/jadwal_kegiatan_app.js": {
-    "file": "assets/js/jadwal-kegiatan-DxubOeCB.js",
+    "file": "assets/js/jadwal-kegiatan-BbGjCNf_.js",
     "name": "jadwal-kegiatan",
     "src": "js/src/jadwal_kegiatan_app.js",
     "isEntry": true,
     "imports": [
       "_vendor-export-CxtsESY6.js",
       "_grid-modules-B7d76Eao.js",
-      "_core-modules-DWAA-Xbs.js",
+      "_core-modules-0szNTacm.js",
       "_vendor-ag-grid-CNpf5Dvm.js"
     ],
     "dynamicImports": [
       "_chart-modules-DnPQdEVM.js",
-      "_chart-modules-DnPQdEVM.js"
+      "_chart-modules-DnPQdEVM.js",
+      "js/src/modules/gantt-v2/gantt-frozen-grid.js"
+    ]
+  },
+  "js/src/modules/gantt-v2/gantt-frozen-grid.js": {
+    "file": "assets/js/gantt-frozen-grid-Vg9AN1mF.js",
+    "name": "gantt-frozen-grid",
+    "src": "js/src/modules/gantt-v2/gantt-frozen-grid.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "js/src/jadwal_kegiatan_app.js",
+      "_vendor-export-CxtsESY6.js",
+      "_grid-modules-B7d76Eao.js",
+      "_vendor-ag-grid-CNpf5Dvm.js",
+      "_core-modules-0szNTacm.js"
     ]
   }
 }

@@ -1006,3 +1006,88 @@ input:focus-visible {
     border-left-color: #000 !important;
   }
 }
+
+/* =====================================================================
+   PHASE 5 UI FIX 1.1 OPTION A: GROUPED FILTER STEP STYLES
+   Visual hierarchy for grouped Scope & Period filters
+   ===================================================================== */
+
+.rk-filter-step {
+  position: relative;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  transition: all 0.3s ease;
+}
+
+.rk-filter-step:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-color: var(--bs-primary);
+}
+
+.rk-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark, #0a58ca) 100%);
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 0.875rem;
+  margin-right: 0.5rem;
+  box-shadow: 0 2px 4px rgba(13, 110, 252, 0.3);
+}
+
+.rk-filter-step[data-step="2"] .rk-step-badge {
+  background: linear-gradient(135deg, var(--bs-info) 0%, #0891b2 100%);
+  box-shadow: 0 2px 4px rgba(13, 202, 240, 0.3);
+}
+
+/* Active state when filter is applied */
+.rk-filter-step.filter-active {
+  border-left: 4px solid var(--bs-primary);
+  background: rgba(13, 110, 252, 0.05);
+}
+
+.rk-filter-step[data-step="2"].filter-active {
+  border-left-color: var(--bs-info);
+  background: rgba(13, 202, 240, 0.05);
+}
+
+/* Period details animation */
+#rk-period-details {
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+#rk-period-details.show {
+  display: flex !important;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+  .rk-filter-step {
+    padding: 0.75rem;
+  }
+
+  .rk-step-badge {
+    width: 20px;
+    height: 20px;
+    font-size: 0.75rem;
+  }
+}

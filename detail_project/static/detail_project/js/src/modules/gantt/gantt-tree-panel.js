@@ -62,32 +62,18 @@ export class GanttTreePanel {
     this.container.innerHTML = '';
     this.container.className = 'gantt-tree-panel';
 
-    // Header with search
-    if (this.options.showSearch) {
-      const header = document.createElement('div');
-      header.className = 'tree-panel-header';
-      header.innerHTML = `
-        <div class="tree-search-container">
-          <input
-            type="text"
-            class="tree-search-input"
-            placeholder="Search tasks..."
-            aria-label="Search tasks"
-          />
-          <i class="bi bi-search tree-search-icon"></i>
-        </div>
-      `;
-      this.container.appendChild(header);
-      this.elements.searchInput = header.querySelector('.tree-search-input');
-    }
-
-    // Stats bar
-    if (this.options.showStats) {
-      const statsBar = document.createElement('div');
-      statsBar.className = 'tree-stats-bar';
-      this.container.appendChild(statsBar);
-      this.elements.statsBar = statsBar;
-    }
+    // ALIGNMENT FIX: Add header spacer to match timeline header height
+    // Timeline has toolbar (~48px) + scale (60px) = ~108px total
+    const headerSpacer = document.createElement('div');
+    headerSpacer.className = 'tree-header-spacer';
+    headerSpacer.innerHTML = `
+      <div class="tree-toolbar-spacer" style="height: 48px; padding: 0.75rem 1rem; display: flex; align-items: center; border-bottom: 1px solid var(--bs-border-color); background: var(--bs-light);">
+        <input type="text" class="tree-search-input form-control form-control-sm" placeholder="Search tasks..." style="max-width: 200px;">
+      </div>
+      <div class="tree-scale-spacer" style="height: 60px; border-bottom: 1px solid var(--bs-border-color); background: var(--bs-light);"></div>
+    `;
+    this.container.appendChild(headerSpacer);
+    this.elements.searchInput = headerSpacer.querySelector('.tree-search-input');
 
     // Tree content (scrollable)
     const treeContent = document.createElement('div');
@@ -155,10 +141,15 @@ export class GanttTreePanel {
   _handleTreeClick(e) {
     const target = e.target;
 
-    // Expand/collapse button
-    if (target.classList.contains('tree-expand-btn')) {
-      const nodeId = target.closest('.tree-node-row').dataset.nodeId;
+    // Expand/collapse button (check both button and icon inside button)
+    const expandBtn = target.classList.contains('tree-expand-btn')
+      ? target
+      : target.closest('.tree-expand-btn');
+
+    if (expandBtn) {
+      const nodeId = expandBtn.closest('.tree-node-row').dataset.nodeId;
       this._toggleNode(nodeId);
+      e.stopPropagation(); // Prevent node selection
       return;
     }
 
@@ -299,18 +290,14 @@ export class GanttTreePanel {
   }
 
   /**
-   * Render tree nodes
+   * Render tree nodes - FIX 10: No elimination, only highlight
    */
   _renderTree() {
     const nodes = this.dataModel.getFlattenedTree();
-    const searchActive = this.state.searchText.length > 0;
 
-    // Filter by search
-    const filteredNodes = searchActive
-      ? this._filterNodesBySearch(nodes)
-      : nodes;
-
-    const html = filteredNodes.map(node => this._renderNode(node)).join('');
+    // Render ALL nodes (no filtering/elimination)
+    // Search text will be highlighted via _highlightSearch()
+    const html = nodes.map(node => this._renderNode(node)).join('');
 
     this.elements.treeContent.innerHTML = html;
 
@@ -353,17 +340,10 @@ export class GanttTreePanel {
         break;
     }
 
-    // Expand button for non-leaf nodes
-    if (!node.isLeaf()) {
-      const expandIcon = node.expanded ? 'chevron-down' : 'chevron-right';
-      expandBtn = `
-        <button class="tree-expand-btn" aria-label="${node.expanded ? 'Collapse' : 'Expand'}">
-          <i class="bi bi-${expandIcon}"></i>
-        </button>
-      `;
-    } else {
-      expandBtn = '<span class="tree-expand-spacer"></span>';
-    }
+    // Expand button - DISABLED for alignment priority
+    // Toggle expand/collapse removed to maintain perfect alignment
+    // All nodes shown flat
+    expandBtn = '<span class="tree-expand-spacer"></span>';
 
     // Progress badge for parent nodes
     if (node.type !== 'pekerjaan') {

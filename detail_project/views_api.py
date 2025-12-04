@@ -3048,6 +3048,8 @@ def api_get_rekap_kebutuhan(request: HttpRequest, project_id: int):
 def api_export_rekap_kebutuhan_csv(request, project_id: int):
     """Export Rekap Kebutuhan ke CSV (minimal header-first).
 
+    PHASE 5 Enhanced: Supports custom filename and view_mode metadata.
+
     Catatan: Test mengharapkan baris pertama adalah header kolom
     "kategori;kode;uraian;satuan;quantity" tanpa judul/identitas.
     Implementasi di sini sengaja menulis CSV minimal untuk kompatibilitas
@@ -3066,9 +3068,27 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
         rows, _summary = summarize_kebutuhan_rows(raw_rows, search=params['search'])
 
         from io import StringIO
+        from datetime import datetime
+
+        # PHASE 5: Extract custom filename and view_mode
+        custom_filename = request.GET.get('filename', 'rekap_kebutuhan')
+        view_mode = request.GET.get('view_mode', 'snapshot')
 
         buf = StringIO()
         writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+
+        # PHASE 5: Add metadata header rows (commented with #)
+        writer.writerow(['# Rekap Kebutuhan Export'])
+        writer.writerow([f'# Project: {project.nama}'])
+        writer.writerow([f'# Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")}'])
+        writer.writerow([f'# View Mode: {view_mode}'])
+        if params['mode'] == 'tahapan' and params['tahapan_id']:
+            writer.writerow([f'# Scope: Tahapan {params["tahapan_id"]}'])
+        if params['filters'].get('kategori'):
+            writer.writerow([f'# Kategori: {", ".join(params["filters"]["kategori"])}'])
+        writer.writerow([])  # Empty row separator
+
+        # Data header row
         writer.writerow(["kategori", "kode", "uraian", "satuan", "quantity", "harga_satuan", "total_harga"])
 
         for r in rows:
@@ -3084,7 +3104,8 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
 
         content = buf.getvalue().encode('utf-8')
         resp = HttpResponse(content, content_type='text/csv; charset=utf-8')
-        resp['Content-Disposition'] = 'attachment; filename="rekap_kebutuhan.csv"'
+        # PHASE 5: Use custom filename
+        resp['Content-Disposition'] = f'attachment; filename="{custom_filename}.csv"'
         return resp
 
     except Exception as e:
@@ -3093,6 +3114,70 @@ def api_export_rekap_kebutuhan_csv(request, project_id: int):
             'status': 'error',
             'message': f'Export CSV gagal: {str(e)}'
         }, status=500)
+
+
+# ============================================================================
+# PHASE 5 TRACK 2.1: DATA VALIDATION ENDPOINT
+# ============================================================================
+
+@login_required
+@require_GET
+def api_validate_rekap_kebutuhan(request, project_id: int):
+    """
+    Validate data consistency between snapshot and timeline views.
+
+    GET /api/project/<project_id>/rekap-kebutuhan/validate/
+
+    Query params:
+    - mode: 'all', 'tahapan', etc.
+    - tahapan_id: Optional tahapan filter
+    - kategori: Comma-separated list
+    - klasifikasi, sub_klasifikasi, pekerjaan_ids: Optional filters
+    - period_mode, period_start, period_end: Time scope filters
+
+    Returns JSON:
+    {
+        "status": "success",
+        "validation": {
+            "valid": bool,
+            "snapshot_total": float,
+            "timeline_total": float,
+            "difference": float,
+            "tolerance": float,
+            "snapshot_count": int,
+            "timeline_count": int,
+            "kategori_breakdown": {...},
+            "warnings": [...],
+            "timestamp": "2025-12-03T..."
+        }
+    }
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        params = parse_kebutuhan_query_params(request.GET)
+
+        from .services import validate_kebutuhan_data
+
+        validation_result = validate_kebutuhan_data(
+            project,
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            time_scope=params.get('time_scope'),
+        )
+
+        return JsonResponse({
+            'status': 'success',
+            'validation': validation_result,
+        })
+
+    except Exception as e:
+        logger.exception("[Rekap Kebutuhan] Validation failed for project %s", project_id)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Validation failed: {str(e)}'
+        }, status=500)
+
 
 # ============== FUNCTION 2: PDF EXPORT (NEW!) ==============
 # TAMBAHKAN function baru ini (setelah CSV function di atas):
