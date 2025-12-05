@@ -2,6 +2,16 @@
    GANTT CHART REDESIGN - Modern Hierarchical Visualization
    ===================================================================== */
 
+:root {
+  --gantt-grid-border-color: var(--ag-border-color, var(--bs-border-color));
+  --gantt-grid-divider-color: rgba(0, 0, 0, 0.05);
+}
+
+[data-bs-theme="dark"] {
+  --gantt-grid-border-color: var(--ag-border-color, var(--bs-border-color));
+  --gantt-grid-divider-color: rgba(255, 255, 255, 0.12);
+}
+
 /* ===== Wrapper & Initial Loader ===== */
 .gantt-redesign-wrapper {
   min-height: 600px;
@@ -35,6 +45,41 @@
   overflow: hidden;
   background: var(--bs-body-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ===== Frozen Grid Cells (AG Grid style borders) ===== */
+.gantt-grid {
+  border: 1px solid var(--gantt-grid-border-color);
+  border-radius: 8px;
+  background: var(--bs-body-bg);
+}
+
+.gantt-grid .gantt-cell {
+  border-bottom: 1px solid var(--gantt-grid-border-color);
+}
+
+.gantt-grid .gantt-cell.frozen:not(.frozen-last) {
+  border-right: 1px solid var(--gantt-grid-border-color);
+}
+
+.gantt-grid .gantt-cell.frozen.tree-column {
+  border-left: 1px solid var(--gantt-grid-border-color);
+}
+
+.gantt-grid .gantt-cell.timeline {
+  border-right: 1px solid var(--gantt-grid-divider-color);
+}
+
+.gantt-grid .gantt-cell.timeline-first {
+  border-left: 1px solid var(--gantt-grid-border-color);
+}
+
+[data-bs-theme="dark"] .gantt-grid .gantt-cell.timeline {
+  border-right: 1px solid var(--gantt-grid-divider-color);
+}
+
+[data-bs-theme="dark"] .gantt-grid .gantt-cell.timeline-first {
+  border-left: 1px solid var(--gantt-grid-border-color);
 }
 
 /* ===== Panel Containers (Wrappers) ===== */

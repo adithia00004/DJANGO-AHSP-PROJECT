@@ -383,7 +383,7 @@ export class SaveHandler {
       this.onSuccess(result);
     }
 
-    console.log(`[SaveHandler] Saved ${savedCount} assignments, cleared ${modifiedCount} modified cells`);
+    console.log(`[SaveHandler] Saved ${savedCount} assignments, cleared ${pendingModifiedCount} modified cells`);
   }
 
   /**

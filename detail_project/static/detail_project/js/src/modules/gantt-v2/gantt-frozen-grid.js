@@ -231,11 +231,14 @@ export class GanttFrozenGrid {
         background: ${headerBg};
         color: ${headerColor};
         font-weight: 600;
-        padding: 0.75rem 1rem;
+        padding: 0.5rem;
         border-bottom: 2px solid ${this.borderColor};
         border-right: ${i === 2 ? '2px' : '1px'} solid ${this.borderColor};
+        ${i === 0 ? `border-left: 1px solid ${this.borderColor};` : ''}
         display: flex;
         align-items: center;
+        height: ${this.options.rowHeight}px;
+        box-sizing: border-box;
       `;
       headerCell.textContent = header.label;
       this.elements.gridContainer.appendChild(headerCell);
@@ -252,13 +255,41 @@ export class GanttFrozenGrid {
         background: ${headerBg};
         color: ${headerColor};
         font-weight: 600;
-        padding: 0.75rem 0.5rem;
+        padding: 0.25rem;
         border-bottom: 2px solid ${this.borderColor};
         border-right: 1px solid ${this.isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'};
+        ${i === 0 ? `border-left: 1px solid ${this.borderColor};` : ''}
         text-align: center;
-        font-size: 0.875rem;
+        font-size: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 0.1rem;
+        line-height: 1.1;
+        height: ${this.options.rowHeight}px;
+        box-sizing: border-box;
       `;
-      headerCell.textContent = col.label || col.id;
+
+      // Main label (e.g., "Week 1" or "Jan 2025")
+      const labelSpan = document.createElement('div');
+      labelSpan.style.cssText = 'font-weight: 600; font-size: 0.7rem;';
+      labelSpan.textContent = col.label || col.id;
+      headerCell.appendChild(labelSpan);
+
+      // Date range (e.g., "01-07 Jan")
+      if (col.rangeLabel || col.subLabel) {
+        const rangeSpan = document.createElement('div');
+        rangeSpan.style.cssText = `
+          font-weight: 400;
+          font-size: 0.6rem;
+          color: ${this.isDarkMode ? '#9ca3af' : '#6c757d'};
+          opacity: 0.85;
+        `;
+        rangeSpan.textContent = col.rangeLabel || col.subLabel;
+        headerCell.appendChild(rangeSpan);
+      }
+
       this.elements.gridContainer.appendChild(headerCell);
     });
 
@@ -305,6 +336,12 @@ export class GanttFrozenGrid {
   _createFrozenCell(content, columnIndex, level = 0, align = 'left', node = null, hasChildren = false) {
     const cell = document.createElement('div');
     cell.className = 'gantt-cell frozen';
+    if (columnIndex === 0) {
+      cell.classList.add('tree-column');
+    }
+    if (columnIndex === 2) {
+      cell.classList.add('frozen-last');
+    }
 
     const stickyLeft = this._calculateStickyLeft(columnIndex);
     const paddingLeft = columnIndex === 0 ? `${0.5 + level * 1.5}rem` : '0.5rem'; // Indentation based on level
@@ -312,7 +349,12 @@ export class GanttFrozenGrid {
     const bgColor = this.isDarkMode ? '#1e1e1e' : 'white';
     const textColor = this.isDarkMode ? '#e0e0e0' : '#212529';
 
-    // CRITICAL: Use height, not min-height, to ensure consistent row heights
+    // Determine font weight based on hierarchy level
+    // Level 0 = Klasifikasi (bold 700), Level 1 = Sub-klasifikasi (semibold 600), Level 2+ = Pekerjaan (normal 400)
+    const fontWeight = level === 0 ? '700' : level === 1 ? '600' : '400';
+
+    // Fix #1: Add border-left to prevent gap on left side
+    // Fix #2: Use font-size 0.7rem and ensure text is vertically centered with align-items: center
     cell.style.cssText = `
       position: sticky;
       left: ${stickyLeft}px;
@@ -321,59 +363,32 @@ export class GanttFrozenGrid {
       color: ${textColor};
       padding: 0.5rem;
       padding-left: ${paddingLeft};
-      border-bottom: 1px solid ${this.borderColor};
-      border-right: ${columnIndex === 2 ? '2px' : '1px'} solid ${this.borderColor};
       display: flex;
       align-items: center;
       justify-content: ${align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start'};
-      font-size: 0.875rem;
+      font-size: ${columnIndex === 0 ? '0.7rem' : '0.875rem'};
+      font-weight: ${columnIndex === 0 ? fontWeight : '400'};
       height: ${this.options.rowHeight}px;
+      line-height: 1.2;
       box-sizing: border-box;
-      ${columnIndex === 0 ? `
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        line-height: 1.4;
-        max-height: calc(1.4em * 2);
-      ` : ''}
+      overflow: hidden;
     `;
 
-    // Phase 3.1: Add expand/collapse toggle for non-leaf nodes (first column only)
-    if (columnIndex === 0 && hasChildren && node) {
-      const isExpanded = this.state.expandedNodes.get(node.id) !== false; // Default: expanded
-
-      // Create toggle icon
-      const toggle = document.createElement('span');
-      toggle.className = 'gantt-toggle';
-      toggle.textContent = isExpanded ? '▼' : '▶';
-      toggle.style.cssText = `
-        margin-right: 0.5rem;
-        cursor: pointer;
-        user-select: none;
-        font-size: 0.75rem;
-        color: ${this.isDarkMode ? '#9ca3af' : '#6b7280'};
-        transition: transform 0.2s ease;
+    // Text content wrapper for first column (name)
+    if (columnIndex === 0) {
+      const textSpan = document.createElement('span');
+      textSpan.textContent = content;
+      textSpan.style.cssText = `
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
       `;
-
-      // Click handler for toggle
-      toggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._toggleNodeExpand(node.id);
-      });
-
-      cell.appendChild(toggle);
+      cell.appendChild(textSpan);
+    } else {
+      // For other columns (volume, satuan), just add text directly
+      cell.textContent = content;
     }
-
-    // Text content
-    const textSpan = document.createElement('span');
-    textSpan.textContent = content;
-    if (columnIndex === 0 && !hasChildren) {
-      // Add spacing for nodes without toggle to align with toggled nodes
-      textSpan.style.marginLeft = hasChildren ? '0' : '1.25rem';
-    }
-    cell.appendChild(textSpan);
 
     this.elements.gridContainer.appendChild(cell);
 
@@ -537,10 +552,10 @@ export class GanttFrozenGrid {
       top: ${type === 'planned' ? '25%' : '50%'};
       left: 0;
       width: 100%;
-      height: 20px;
+      height: 18px;
       transform: translateY(-50%);
       background: ${colors.bg};
-      border-top: 2px solid ${colors.border};
+      border-top: 1px solid ${colors.border};
       border-bottom: 2px solid ${colors.border};
       ${isFirst || isSingle ? `border-left: 2px solid ${colors.border}; border-top-left-radius: 4px; border-bottom-left-radius: 4px;` : ''}
       ${isLast || isSingle ? `border-right: 2px solid ${colors.border}; border-top-right-radius: 4px; border-bottom-right-radius: 4px;` : ''}
@@ -574,6 +589,9 @@ export class GanttFrozenGrid {
   _createTimelineCell(colIndex) {
     const cell = document.createElement('div');
     cell.className = 'gantt-cell timeline';
+    if (colIndex === 0) {
+      cell.classList.add('timeline-first');
+    }
     cell.dataset.colIndex = colIndex;
 
     const bgColor = this.isDarkMode ? '#1e1e1e' : 'white';
@@ -581,8 +599,6 @@ export class GanttFrozenGrid {
     // CRITICAL: Use height, not min-height, to match frozen cells
     cell.style.cssText = `
       position: relative;
-      border-bottom: 1px solid ${this.borderColor};
-      border-right: 1px solid ${this.isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'};
       background: ${bgColor};
       height: ${this.options.rowHeight}px;
       box-sizing: border-box;
@@ -716,6 +732,42 @@ export class GanttFrozenGrid {
     });
 
     console.log('[GanttV2] Theme observer setup complete');
+  }
+
+  /**
+   * Update Gantt chart with latest data
+   * Called after data changes (e.g., after save)
+   */
+  update() {
+    if (!this.state.initialized) {
+      console.warn('[GanttV2] Cannot update - not initialized');
+      return;
+    }
+
+    if (!this.app) {
+      console.warn('[GanttV2] Cannot update - no app reference');
+      return;
+    }
+
+    console.log('[GanttV2] Updating chart with latest data...');
+
+    // Get fresh data from app
+    const pekerjaan = this.app.state.flatPekerjaan || [];
+    const timeColumns = this.timeColumnGenerator?.state?.timeColumns || this.app.state?.timeColumns || [];
+
+    // Clear existing grid content (but keep container structure)
+    if (this.elements.gridContainer) {
+      this.elements.gridContainer.innerHTML = '';
+    }
+
+    // Re-render with updated data
+    this._renderRealData(pekerjaan, timeColumns);
+
+    // Store for expand/collapse
+    this.pekerjaan = pekerjaan;
+    this.timeColumns = timeColumns;
+
+    console.log('[GanttV2] ✅ Chart updated successfully');
   }
 
   /**

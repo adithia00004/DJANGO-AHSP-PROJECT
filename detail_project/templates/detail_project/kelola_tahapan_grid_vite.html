@@ -11,13 +11,6 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/kelola_tahapan_grid.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/validation-enhancements.css' %}">
-
-{% if enable_ag_grid %}
-  <!-- AG Grid Community CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-grid.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine.css">
-{% endif %}
-
 <!-- Frappe Gantt CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
 
@@ -27,16 +20,17 @@
   - In production: Load from static/dist/manifest.json
 {% endcomment %}
 
-{% if enable_ag_grid %}
-  {% if use_vite_dev_server %}
-    {# Development mode: Vite dev server #}
-    <script type="module" src="http://localhost:5173/@vite/client"></script>
-    <script type="module" src="http://localhost:5173/detail_project/static/detail_project/js/src/jadwal_kegiatan_app.js"></script>
-  {% else %}
-    {# Production mode: Built assets via manifest #}
-    {% vite_asset 'assets/js/jadwal-kegiatan.js' as jadwal_asset %}
-    <script type="module" src="{% static jadwal_asset %}"></script>
-  {% endif %}
+{% if DEBUG and use_vite_dev_server %}
+  {# Development mode: Vite dev server #}
+  <script type="module" src="http://localhost:5173/@vite/client"></script>
+  <script type="module" src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"></script>
+{% else %}
+  {# Production mode: Built assets via manifest #}
+  {% vite_entry 'assets/js/jadwal-kegiatan.js' as jadwal_entry %}
+  {% for css_asset in jadwal_entry.css %}
+    <link rel="stylesheet" href="{% static css_asset %}">
+  {% endfor %}
+  <script type="module" src="{% static jadwal_entry.file %}"></script>
 {% endif %}
 {% endblock %}
 
@@ -126,7 +120,6 @@
      data-api-volume="{% url 'detail_project:api_list_volume_pekerjaan' project.id %}"
      data-api-assignments-base="/detail_project/api/project/{{ project.id }}/pekerjaan/"
      data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}"
-     data-enable-ag-grid="{{ enable_ag_grid|yesno:'true,false' }}"
      data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
      data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
@@ -163,7 +156,7 @@
         Grid View container - Enhanced with event delegation and validation
         The JavaScript modules will populate this dynamically
       {% endcomment %}
-    <div class="grid-container legacy-grid-wrapper {% if enable_ag_grid %}d-none{% endif %}">
+    <div class="grid-container">
       <div class="split-panel-wrapper">
         <div class="left-panel-wrapper">
           <div class="left-panel-scroll">
@@ -198,12 +191,6 @@
         </div>
       </div>
     </div>
-
-      <div id="ag-grid-container"
-           class="ag-theme-alpine ag-grid-wrapper {% if not enable_ag_grid %}d-none{% endif %}"
-           style="width: 100%; min-height: 600px;">
-      </div>
-
       <!-- Status Bar -->
       <div class="status-bar">
         <div class="status-left">
@@ -301,31 +288,6 @@
 
 <!-- Frappe Gantt CDN -->
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-
-{% if not enable_ag_grid %}
-  <!-- Legacy Kelola Tahapan bootstrap + modules -->
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan_page_bootstrap.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/module_manifest.js' %}" defer></script>
-
-  <!-- Core modules -->
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/data_loader_module.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/time_column_generator_module.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/validation_module.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/save_handler_module.js' %}" defer></script>
-
-  <!-- View modules -->
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/shared_module.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_module.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_module.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js' %}" defer></script>
-
-  <!-- Legacy orchestrators -->
-  <script src="{% static 'detail_project/js/kelola_tahapan_grid.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_tab.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_tab.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_tab.js' %}" defer></script>
-{% endif %}
-
 {% comment %}
   Note: The main application JavaScript is loaded via Vite in the extra_css block
   This ensures proper module loading order

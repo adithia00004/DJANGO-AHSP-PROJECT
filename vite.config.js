@@ -36,9 +36,6 @@ export default defineConfig({
       output: {
         // Manual chunks for better caching
         manualChunks: {
-          // AG Grid vendor chunk
-          'vendor-ag-grid': ['ag-grid-community'],
-
           // Export libraries chunk
           'vendor-export': ['xlsx', 'jspdf', 'html2canvas'],
 
@@ -60,19 +57,7 @@ export default defineConfig({
           'grid-modules': [
             path.resolve(
               __dirname,
-              'detail_project/static/detail_project/js/src/modules/grid/ag-grid-setup.js'
-            ),
-            path.resolve(
-              __dirname,
-              'detail_project/static/detail_project/js/src/modules/grid/column-definitions.js'
-            ),
-            path.resolve(
-              __dirname,
-              'detail_project/static/detail_project/js/src/modules/grid/grid-event-handlers.js'
-            ),
-            path.resolve(
-              __dirname,
-              'detail_project/static/detail_project/js/src/modules/grid/grid-renderer.js'
+              'detail_project/static/detail_project/js/src/modules/grid/tanstack-grid-manager.js'
             ),
           ],
           'chart-modules': [
@@ -82,11 +67,15 @@ export default defineConfig({
             ),
             path.resolve(
               __dirname,
-              'detail_project/static/detail_project/js/src/modules/gantt/frappe-gantt-setup.js'
+              'detail_project/static/detail_project/js/src/modules/kurva-s/uplot-chart.js'
             ),
             path.resolve(
               __dirname,
-              'detail_project/static/detail_project/js/src/modules/kurva-s/echarts-setup.js'
+              'detail_project/static/detail_project/js/src/modules/kurva-s/dataset-builder.js'
+            ),
+            path.resolve(
+              __dirname,
+              'detail_project/static/detail_project/js/src/modules/gantt/gantt-chart-redesign.js'
             ),
           ],
         },
@@ -165,7 +154,7 @@ export default defineConfig({
 
   // Optimizations
   optimizeDeps: {
-    include: ['ag-grid-community', 'xlsx', 'jspdf', 'html2canvas'],
+    include: ['@tanstack/table-core', '@tanstack/virtual-core', 'xlsx', 'jspdf', 'html2canvas'],
   },
 
   // Define environment variables

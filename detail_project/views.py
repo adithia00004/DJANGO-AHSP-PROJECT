@@ -200,7 +200,6 @@ def jadwal_pekerjaan_view(request, project_id: int):
         "project": project,
         "side_active": "jadwal_pekerjaan",  # untuk sidebar highlighting
         "DEBUG": getattr(settings, "DEBUG", False),
-        "enable_ag_grid": getattr(settings, "ENABLE_AG_GRID", False),
         "use_vite_dev_server": getattr(settings, "USE_VITE_DEV_SERVER", False),
     }
 

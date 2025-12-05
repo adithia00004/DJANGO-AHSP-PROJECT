@@ -5,12 +5,9 @@
  */
 /* global ExportManager */
 
-import { attachGridEvents } from '@modules/grid/grid-event-handlers.js';
-import { AGGridManager } from '@modules/grid/ag-grid-setup.js';
-import { updateProgressIndicator } from '@modules/shared/validation-utils.js';
+import { TanStackGridManager } from '@modules/grid/tanstack-grid-manager.js';
 import { DataLoader } from '@modules/core/data-loader.js';
 import { TimeColumnGenerator } from '@modules/core/time-column-generator.js';
-import { GridRenderer } from '@modules/grid/grid-renderer.js';
 import { SaveHandler } from '@modules/core/save-handler.js';
 // Chart modules now lazy loaded for better initial performance
 // import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
@@ -30,9 +27,8 @@ import {
 class JadwalKegiatanApp {
   constructor() {
     this.state = null;
-    this.eventManager = null;
     this.initialized = false;
-    this.agGridManager = null;
+    this.gridManager = null;
 
     // Phase 0.3: StateManager for clean state management
     this.stateManager = StateManager.getInstance();
@@ -40,7 +36,6 @@ class JadwalKegiatanApp {
     // Modern modules
     this.dataLoader = null;
     this.timeColumnGenerator = null;
-    this.gridRenderer = null;
     this.saveHandler = null;
 
     // Chart modules (lazy loaded)
@@ -66,6 +61,9 @@ class JadwalKegiatanApp {
     this._costToggleBtnIcon = null;
     this._costViewAutoActivated = false;
     this._ganttScrollSyncHandlers = null;
+    this._stateManagerListener = null;
+    this._suppressStateManagerEvent = false;
+    this._currencyFormatter = null;
 
   }
 
@@ -176,7 +174,7 @@ class JadwalKegiatanApp {
         projectName: '',
         projectStart: null,
         projectEnd: null,
-        useAgGrid: true, // Performance: AG Grid default enabled for large datasets
+        useUPlotKurva: true, // uPlot Kurva-S aktif secara default
         timeScale: 'weekly',
         inputMode: 'percentage',
         saveMode: 'weekly',
@@ -254,6 +252,7 @@ class JadwalKegiatanApp {
 
     // Phase 2E.1: Setup property delegation for backward compatibility
     this._setupStateDelegation();
+    this._bindStateManagerEvents();
   }
 
   /**
@@ -335,6 +334,65 @@ class JadwalKegiatanApp {
     console.log('[JadwalKegiatanApp] Phase 0.3: State delegation setup with StateManager integration');
   }
 
+  _bindStateManagerEvents() {
+    if (!this.stateManager || this._stateManagerListener) {
+      return;
+    }
+    this._stateManagerListener = (event) => this._handleStateManagerEvent(event);
+    this.stateManager.addEventListener(this._stateManagerListener);
+    console.log('[JadwalKegiatanApp] StateManager listener attached');
+  }
+
+  _unbindStateManagerEvents() {
+    if (!this.stateManager || !this._stateManagerListener) {
+      return;
+    }
+    this.stateManager.removeEventListener(this._stateManagerListener);
+    this._stateManagerListener = null;
+    console.log('[JadwalKegiatanApp] StateManager listener removed');
+  }
+
+  _handleStateManagerEvent(event = {}) {
+    if (!event || typeof event !== 'object') {
+      return;
+    }
+    switch (event.type) {
+      case 'mode-switch':
+        if (this._suppressStateManagerEvent) {
+          return;
+        }
+        this._applyProgressModeSwitch(event.newMode, { showToast: false });
+        break;
+      case 'commit':
+        this._handleStateCommitEvent(event);
+        break;
+      case 'reset':
+        this._handleStateResetEvent();
+        break;
+      default:
+        break;
+    }
+  }
+
+  _handleStateCommitEvent(event = {}) {
+    if (this.gridManager && typeof this.gridManager.refreshCells === 'function') {
+      this.gridManager.refreshCells();
+    }
+    this._updateStatusBar();
+    this._updateCharts();
+    const modeLabel = (event.mode || this.state.progressMode || 'planned') === 'actual' ? 'Realisasi' : 'Perencanaan';
+    console.log(`[StateManager] Commit event processed for mode: ${modeLabel}`);
+  }
+
+  _handleStateResetEvent() {
+    console.log('[StateManager] Reset event received, syncing UI components');
+    this.state.progressMode = this.stateManager?.currentMode || 'planned';
+    this._syncToolbarRadios();
+    this._syncGridViews();
+    this._updateStatusBar('Ready');
+    this._updateCharts();
+  }
+
   /**
    * Get the current mode's state object.
    * Phase 0.3: Delegated to StateManager
@@ -404,24 +462,13 @@ class JadwalKegiatanApp {
     const domRefs = Object.assign(
       {
         root: document.getElementById('tahapan-grid-app'),
-        leftThead: document.getElementById('left-thead'),
-        rightThead: document.getElementById('right-thead'),
-        leftTbody: document.getElementById('left-tbody'),
-        rightTbody: document.getElementById('right-tbody'),
-        leftPanelScroll: document.querySelector('.left-panel-scroll'),
-        rightPanelScroll:
-          document.getElementById('right-panel-scroll-bottom') ||
-          document.querySelector('.right-panel-scroll'),
-        rightTable: document.getElementById('right-table'),
-        horizontalScrollTop: document.getElementById('right-panel-scroll-top'),
-        horizontalScrollInner: document.getElementById('right-panel-scroll-inner'),
-        timeHeaderRow: document.getElementById('time-header-row'),
         saveButton: document.getElementById('save-button') || document.getElementById('btn-save-all'),
         refreshButton: document.getElementById('refresh-button'),
         resetButton: document.getElementById('btn-reset-progress'),
-        agGridContainer: document.getElementById('ag-grid-container'),
-        agGridTopScroll: document.getElementById('ag-grid-scroll-top'),
-        agGridTopScrollInner: document.getElementById('ag-grid-scroll-inner'),
+        tanstackGridContainer: document.getElementById('tanstack-grid-container'),
+        tanstackGridBody: document.getElementById('tanstack-grid-body'),
+        tanstackGridTopScroll: document.getElementById('tanstack-grid-scroll-top'),
+        tanstackGridTopScrollInner: document.getElementById('tanstack-grid-scroll-inner'),
         scurveChart: document.getElementById('scurve-chart'),
         ganttChart: document.getElementById('gantt-chart'),
         ganttChartWrapper: document.getElementById('gantt-chart-wrapper'),
@@ -450,14 +497,8 @@ class JadwalKegiatanApp {
 
     this._applyDataset(domRefs.root);
 
-    if (this.state.useAgGrid) {
-      if (!domRefs.agGridContainer) {
-        throw new Error('AG Grid container #ag-grid-container tidak ditemukan');
-      }
-    } else {
-      if (!domRefs.leftTbody || !domRefs.rightTbody) {
-        throw new Error('Critical DOM elements not found (leftTbody, rightTbody)');
-      }
+    if (!domRefs.tanstackGridContainer) {
+      throw new Error('TanStack grid container #tanstack-grid-container tidak ditemukan');
     }
   }
 
@@ -539,32 +580,19 @@ class JadwalKegiatanApp {
     );
 
     this.state.apiEndpoints = endpoints;
-    this.state.useAgGrid = dataset.enableAgGrid === 'true' || this.state.useAgGrid;
+    if (typeof dataset.enableUplotKurva !== 'undefined') {
+      this.state.useUPlotKurva = dataset.enableUplotKurva !== 'false';
+    }
   }
 
   /**
    * Attach event handlers using modern delegation pattern
    */
   _attachEvents() {
-    const helpers = {
-      updateProgressIndicator: (pekerjaanId, total) => {
-        updateProgressIndicator(pekerjaanId, total, this.state);
-      },
-      showToast: this.showToast.bind(this),
-    };
-
-    if (!this.state.useAgGrid) {
-      this.eventManager = attachGridEvents(this.state, helpers);
-    } else if (this.eventManager) {
-      this.eventManager.cleanup();
-      this.eventManager = null;
-    }
-
     // Attach toolbar events
     this._attachToolbarEvents();
 
-    // Initialize AG Grid when enabled
-    this._initAgGridIfNeeded();
+    this._initTanStackGridIfNeeded();
   }
 
   /**
@@ -829,6 +857,11 @@ class JadwalKegiatanApp {
 
     if (!this.kurvaSChart) {
       console.warn('[JadwalKegiatanApp] Kurva S chart not initialized, cannot setup toggle');
+      return;
+    }
+
+    if (this.kurvaSChart?.options?.enableCostView === false) {
+      toggleBtn.classList.add('d-none');
       return;
     }
 
@@ -1239,6 +1272,18 @@ class JadwalKegiatanApp {
       radio.checked = radio.value === displayMode;
     });
 
+    const progressMode = this.state.progressMode || 'planned';
+    document.querySelectorAll('input[name="progressMode"]').forEach((radio) => {
+      const isChecked = radio.value === progressMode;
+      if (radio.checked !== isChecked) {
+        radio.checked = isChecked;
+      }
+      const label = radio.nextElementSibling;
+      if (label && label.matches('.btn')) {
+        label.setAttribute('aria-selected', String(isChecked));
+      }
+    });
+
     const timeScale = this.state.displayScale || this.state.timeScale || 'weekly';
     document.querySelectorAll('input[name="timeScale"]').forEach((radio) => {
       radio.checked = radio.value === timeScale;
@@ -1263,8 +1308,8 @@ class JadwalKegiatanApp {
     this.state.inputMode = normalized;
     this.state.displayMode = normalized;  // Phase 2E.1: Keep displayMode in sync
 
-    if (this.agGridManager) {
-      this.agGridManager.setInputMode(normalized);
+    if (this.gridManager) {
+      this.gridManager.setInputMode(normalized);
     }
 
     this._syncGridViews();
@@ -1298,15 +1343,9 @@ class JadwalKegiatanApp {
     const oldStats = this.stateManager.states[oldMode].getStats();
 
     // Phase 0.3: Switch mode in StateManager
+    this._suppressStateManagerEvent = true;
     this.stateManager.switchMode(normalized);
-
-    // Switch mode in local state (for other non-cell properties)
-    this.state.progressMode = normalized;
-    if (normalized !== 'actual' && this.state.inputMode === 'cost') {
-      this.state.inputMode = 'percentage';
-      this.state.displayMode = 'percentage';
-      this._syncToolbarRadios();
-    }
+    this._suppressStateManagerEvent = false;
 
     // Log new state after switch
     const newStats = this.stateManager.states[normalized].getStats();
@@ -1314,21 +1353,49 @@ class JadwalKegiatanApp {
     console.log(`  - Old ${oldMode.toUpperCase()}: ${oldStats.modifiedCount} modified, ${oldStats.assignmentCount} assignments`);
     console.log(`  - New ${normalized.toUpperCase()}: ${newStats.modifiedCount} modified, ${newStats.assignmentCount} assignments`);
 
-    // Update mode indicator badge
-    const indicator = document.getElementById('progress-mode-indicator');
-    if (indicator) {
-      const label = normalized === 'planned' ? 'Perencanaan' : 'Realisasi';
-      const bgClass = normalized === 'planned' ? 'bg-info' : 'bg-warning';
-      indicator.textContent = `Mode: ${label}`;
-      indicator.className = `badge ${bgClass} ms-2`;
-      indicator.style.cssText = 'font-size: 0.75rem; vertical-align: middle;';
+    this._applyProgressModeSwitch(normalized, { showToast: true });
+  }
+
+  _applyProgressModeSwitch(nextMode, options = {}) {
+    const normalized = nextMode === 'actual' ? 'actual' : 'planned';
+    const previousInputMode = this.state.inputMode || 'percentage';
+    this.state.progressMode = normalized;
+
+    if (normalized !== 'actual' && this.state.inputMode === 'cost') {
+      this.state.inputMode = 'percentage';
+      this.state.displayMode = 'percentage';
     }
 
-    // Reload data with the new progress mode (will load from new mode's state)
-    this._syncGridViews();
+    if (this.gridManager && typeof this.gridManager.setInputMode === 'function') {
+      const currentMode = this.state.inputMode || 'percentage';
+      if (currentMode !== previousInputMode) {
+        this.gridManager.setInputMode(currentMode);
+      }
+    }
 
+    this._syncToolbarRadios();
+    this._updateCostToggleAvailability();
+    this._updateProgressModeIndicator(normalized);
+    this._syncGridViews();
+    this._updateCharts();
+
+    if (options.showToast) {
+      const label = normalized === 'planned' ? 'Perencanaan' : 'Realisasi';
+      this.showToast(`Mode progress diubah ke ${label}`, 'info', 2200);
+    }
+  }
+
+  _updateProgressModeIndicator(mode) {
+    const indicator = document.getElementById('progress-mode-indicator');
+    if (!indicator) {
+      return;
+    }
+    const normalized = mode === 'actual' ? 'actual' : 'planned';
     const label = normalized === 'planned' ? 'Perencanaan' : 'Realisasi';
-    this.showToast(`Mode progress diubah ke ${label}`, 'info', 2200);
+    const bgClass = normalized === 'planned' ? 'bg-info' : 'bg-warning';
+    indicator.textContent = `Mode: ${label}`;
+    indicator.className = `badge ${bgClass} ms-2`;
+    indicator.style.cssText = 'font-size: 0.75rem; vertical-align: middle;';
   }
 
   _updateCostToggleAvailability() {
@@ -1374,26 +1441,28 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Initialize AG Grid when enabled
+   * Initialize TanStack Table grid when enabled
    */
-  _initAgGridIfNeeded() {
-    if (!this.state.useAgGrid) {
-      return;
-    }
-
-    const container = this.state.domRefs.agGridContainer;
+  _initTanStackGridIfNeeded() {
+    const container = this.state.domRefs.tanstackGridContainer;
     if (!container) {
-      console.warn('[JadwalKegiatanApp] AG Grid container not available');
+      console.warn('[JadwalKegiatanApp] TanStack grid container not available');
       return;
     }
 
-    if (!this.agGridManager) {
-      this.agGridManager = new AGGridManager(this.state, {
+    container.classList.remove('d-none');
+
+    if (!this.gridManager) {
+      this.gridManager = new TanStackGridManager(this.state, {
         showToast: this.showToast.bind(this),
-        onCellChange: (payload) => this._handleAgGridCellChange(payload),
+        onCellChange: (payload) => this._handleGridCellChange(payload),
         getCellValidationState: (cellKey) => this._getCellValidationState(cellKey),
       });
-      this.agGridManager.mount(container);
+      this.gridManager.mount(container, {
+        topScroll: this.state.domRefs.tanstackGridTopScroll,
+        topScrollInner: this.state.domRefs.tanstackGridTopScrollInner,
+        body: this.state.domRefs.tanstackGridBody,
+      });
     }
   }
 
@@ -1417,7 +1486,6 @@ class JadwalKegiatanApp {
     this.state.apiBase = this.state.apiEndpoints?.tahapan || `/detail_project/api/project/${this.state.projectId}/tahapan/`;
     this.dataLoader = new DataLoader(this.state);
     this.timeColumnGenerator = new TimeColumnGenerator(this.state);
-    this.gridRenderer = new GridRenderer(this.state);
     this.saveHandler = new SaveHandler(this.state, {
       apiUrl: this.state.apiEndpoints?.save || `/detail_project/api/project/${this.state.projectId}/pekerjaan/assign_weekly/`,
       onSuccess: (result) => this._onSaveSuccess(result),
@@ -1477,10 +1545,7 @@ class JadwalKegiatanApp {
         `${this.state.timeColumns?.length || 0} columns`
       );
 
-      // Step 4: Render grid
-      this._renderGrid();
-
-      // Step 5: Initialize and update charts
+      // Step 4: Initialize and update charts
       this._initializeCharts();
       this._updateCharts();
 
@@ -1557,56 +1622,6 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Render grid using GridRenderer
-   * @private
-   */
-  _renderGrid() {
-    if (!this.gridRenderer) {
-      console.warn('[JadwalKegiatanApp] GridRenderer not initialized');
-      return;
-    }
-
-    this.state.activeTimeColumns = this._getDisplayTimeColumns();
-
-    console.log('[JadwalKegiatanApp] Rendering grid...');
-
-    // Render tables
-    const rendered = this.gridRenderer.renderTables();
-    if (!rendered) {
-      console.warn('[JadwalKegiatanApp] Grid rendering returned null');
-      return;
-    }
-
-    const { leftHTML, rightHTML } = rendered;
-
-    // Update DOM
-    const leftTbody = this.state.domRefs?.leftTbody || document.getElementById('left-tbody');
-    const rightTbody = this.state.domRefs?.rightTbody || document.getElementById('right-tbody');
-
-    if (leftTbody) {
-      leftTbody.innerHTML = leftHTML;
-    }
-
-    if (rightTbody) {
-      rightTbody.innerHTML = rightHTML;
-    }
-
-    // Render time headers
-    const timeHeaderRow = this.state.domRefs?.timeHeaderRow || document.getElementById('time-header-row');
-    if (timeHeaderRow) {
-      this.gridRenderer.renderTimeHeader(timeHeaderRow);
-    }
-
-    // Sync row heights
-    this.gridRenderer.syncRowHeights(this.state.domRefs || {});
-    this._updateLegacyHorizontalScroll();
-
-    console.log('[JadwalKegiatanApp] ✅ Grid rendered');
-
-    this._updateStatusBar();
-  }
-
-  /**
    * Lazy load chart modules for better initial performance
    * @private
    */
@@ -1615,18 +1630,19 @@ class JadwalKegiatanApp {
       return;
     }
 
+    if (!this.state.useUPlotKurva) {
+      console.warn('[JadwalKegiatanApp] uPlot dimatikan, melewati inisialisasi chart');
+      return;
+    }
+
     this._chartModulesLoading = true;
     console.log('📊 Loading chart modules (lazy)...');
 
     try {
-      const [kurvaSModule, ganttModule] = await Promise.all([
-        import('@modules/kurva-s/echarts-setup.js'),
-        import('@modules/gantt/frappe-gantt-setup.js')
-      ]);
+      const kurvaSModule = await import('@modules/kurva-s/uplot-chart.js');
 
       // Store module classes
-      this.KurvaSChartClass = kurvaSModule.KurvaSChart;
-      this.GanttChartClass = ganttModule.GanttChart;
+      this.KurvaSChartClass = kurvaSModule.KurvaSUPlotChart || kurvaSModule.default;
 
       this._chartModulesLoaded = true;
       this._chartModulesLoading = false;
@@ -1657,6 +1673,7 @@ class JadwalKegiatanApp {
           steepnessFactor: 0.8,
           smoothCurves: true,
           showArea: true,
+          enableCostView: true,
         });
         const success = this.kurvaSChart.initialize(this.state.domRefs.scurveChart);
         if (success) {
@@ -1943,10 +1960,14 @@ class JadwalKegiatanApp {
       }
     }
 
-    // Gantt V2 uses demo data (POC) - no update needed yet
-    // TODO Phase 2: Implement real-time data updates for Gantt V2
-    if (this.ganttFrozenGrid) {
-      console.log('[JadwalKegiatanApp] ℹ️ Gantt V2 update skipped (POC uses static demo data)');
+    // Update Gantt V2 with latest data
+    if (this.ganttFrozenGrid && typeof this.ganttFrozenGrid.update === 'function') {
+      try {
+        this.ganttFrozenGrid.update();
+        console.log('[JadwalKegiatanApp] ✅ Gantt V2 chart updated');
+      } catch (error) {
+        console.warn('[JadwalKegiatanApp] Failed to update Gantt V2 chart:', error);
+      }
     }
   }
 
@@ -2384,31 +2405,28 @@ class JadwalKegiatanApp {
     const displayColumns = this._getDisplayTimeColumns();
     this.state.activeTimeColumns = displayColumns;
 
-    if (this.agGridManager) {
-      this.agGridManager.updateData({
+    if (this.gridManager) {
+      this.gridManager.updateData({
         tree: this.state.pekerjaanTree || [],
         timeColumns: displayColumns,
         inputMode: this.state.inputMode || 'percentage',
         timeScale: this.state.displayScale || this.state.timeScale || 'weekly',
       });
-      if (typeof this.agGridManager.updateTopScrollMetrics === 'function') {
-        this.agGridManager.updateTopScrollMetrics();
+      if (typeof this.gridManager.updateTopScrollMetrics === 'function') {
+        this.gridManager.updateTopScrollMetrics();
       }
     }
-    this._updateLegacyHorizontalScroll();
+    this._updateStatusBar();
   }
 
-  _updateLegacyHorizontalScroll() {
-    const domRefs = this.state?.domRefs || {};
-    const scrollTop = domRefs.horizontalScrollTop;
-    const scrollInner = domRefs.horizontalScrollInner;
-    const rightTable = domRefs.rightTable;
-    if (!scrollTop || !scrollInner || !rightTable) {
+  _renderGrid() {
+    if (this.gridManager) {
+      this._syncGridViews();
       return;
     }
-    window.requestAnimationFrame(() => {
-      scrollInner.style.width = `${rightTable.scrollWidth}px`;
-    });
+    if (typeof this._renderLegacyGrid === 'function') {
+      this._renderLegacyGrid();
+    }
   }
 
   _clearApiFailedRows() {
@@ -2433,16 +2451,16 @@ class JadwalKegiatanApp {
     }
     const normalized = idSet instanceof Set ? Array.from(idSet) : [];
     this.state.saveErrorRows = new Set(normalized.map((id) => Number(id)));
-    if (this.agGridManager && typeof this.agGridManager.refreshRowStyles === 'function') {
-      this.agGridManager.refreshRowStyles();
+    if (this.gridManager && typeof this.gridManager.refreshRowStyles === 'function') {
+      this.gridManager.refreshRowStyles();
     }
   }
 
   _clearSaveErrorRows() {
     if (this.state.saveErrorRows instanceof Set && this.state.saveErrorRows.size > 0) {
       this.state.saveErrorRows.clear();
-      if (this.agGridManager && typeof this.agGridManager.refreshRowStyles === 'function') {
-        this.agGridManager.refreshRowStyles();
+      if (this.gridManager && typeof this.gridManager.refreshRowStyles === 'function') {
+        this.gridManager.refreshRowStyles();
       }
     }
   }
@@ -2456,8 +2474,8 @@ class JadwalKegiatanApp {
       return;
     }
     const removed = this.state.saveErrorRows.delete(Number(pekerjaanId));
-    if (removed && this.agGridManager && typeof this.agGridManager.refreshRowStyles === 'function') {
-      this.agGridManager.refreshRowStyles();
+    if (removed && this.gridManager && typeof this.gridManager.refreshRowStyles === 'function') {
+      this.gridManager.refreshRowStyles();
     }
   }
 
@@ -2632,8 +2650,8 @@ class JadwalKegiatanApp {
       this.state.cellValidationMap.delete(cellKey);
       changed = true;
     }
-    if (changed && this.agGridManager && typeof this.agGridManager.refreshCells === 'function') {
-      this.agGridManager.refreshCells();
+    if (changed && this.gridManager && typeof this.gridManager.refreshCells === 'function') {
+      this.gridManager.refreshCells();
     }
   }
 
@@ -2722,8 +2740,8 @@ class JadwalKegiatanApp {
     });
 
     this._refreshFailedRowsUnion();
-    if (this.state.showCompletionWarnings && this.agGridManager) {
-      this.agGridManager.refreshRowStyles();
+    if (this.state.showCompletionWarnings && this.gridManager) {
+      this.gridManager.refreshRowStyles();
     }
     this._updateStatusBar();
   }
@@ -2744,8 +2762,8 @@ class JadwalKegiatanApp {
     }
     this.state.failedRows = union;
     this._updateSaveButtonState();
-    if (this.agGridManager && typeof this.agGridManager.refreshRowStyles === 'function') {
-      this.agGridManager.refreshRowStyles();
+    if (this.gridManager && typeof this.gridManager.refreshRowStyles === 'function') {
+      this.gridManager.refreshRowStyles();
     }
   }
 
@@ -2799,8 +2817,8 @@ class JadwalKegiatanApp {
       changed = true;
     }
 
-    if (changed && !options.deferRefresh && this.agGridManager) {
-      this.agGridManager.refreshRowStyles();
+    if (changed && !options.deferRefresh && this.gridManager) {
+      this.gridManager.refreshRowStyles();
     }
   }
 
@@ -2811,16 +2829,16 @@ class JadwalKegiatanApp {
       this.state.validationWarningRows.clear();
     }
     if (!(this.state.progressTotals instanceof Map)) {
-      if (this.agGridManager) {
-        this.agGridManager.refreshRowStyles();
+      if (this.gridManager) {
+        this.gridManager.refreshRowStyles();
       }
       return;
     }
     this.state.progressTotals.forEach((total, pekerjaanId) => {
       this._updateCompletionWarningRows(Number(pekerjaanId), total, { deferRefresh: true });
     });
-    if (this.agGridManager) {
-      this.agGridManager.refreshRowStyles();
+    if (this.gridManager) {
+      this.gridManager.refreshRowStyles();
     }
   }
 
@@ -2901,6 +2919,94 @@ class JadwalKegiatanApp {
     return 0;
   }
 
+  _getRowCostCapacity(pekerjaanId) {
+    const hargaMap = this.state?.hargaMap;
+    const numericId = Number(pekerjaanId);
+    if (hargaMap instanceof Map && hargaMap.has(numericId)) {
+      return Number(hargaMap.get(numericId)) || 0;
+    }
+    if (hargaMap && typeof hargaMap === 'object') {
+      const key = String(numericId);
+      if (Object.prototype.hasOwnProperty.call(hargaMap, key)) {
+        return Number(hargaMap[key]) || 0;
+      }
+    }
+    const fallbackNode =
+      Array.isArray(this.state.flatPekerjaan) &&
+      this.state.flatPekerjaan.find((node) => Number(node.id) === numericId);
+    if (fallbackNode) {
+      const costFields = [
+        'budgeted_cost',
+        'total_biaya',
+        'totalBiaya',
+        'total_cost',
+        'biaya',
+      ];
+      for (const field of costFields) {
+        if (typeof fallbackNode[field] !== 'undefined') {
+          const numeric = Number(fallbackNode[field]);
+          if (Number.isFinite(numeric)) {
+            return numeric;
+          }
+        }
+      }
+    }
+    return 0;
+  }
+
+  _getMergedCostCells(modeState) {
+    const merged = new Map();
+    if (modeState?.costAssignmentMap instanceof Map) {
+      modeState.costAssignmentMap.forEach((value, key) => {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) {
+          merged.set(key, numeric);
+        }
+      });
+    }
+    if (modeState?.costModifiedCells instanceof Map) {
+      modeState.costModifiedCells.forEach((value, key) => {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) {
+          merged.set(key, numeric);
+        }
+      });
+    }
+    return merged;
+  }
+
+  _calculateAllCostTotals() {
+    const totals = new Map();
+    const modeState = this._getCurrentModeState();
+    if (!modeState) {
+      return totals;
+    }
+    const merged = this._getMergedCostCells(modeState);
+    merged.forEach((value, cellKey) => {
+      const pekerjaanId = parseInt((cellKey || '').split('-')[0], 10);
+      if (!Number.isFinite(pekerjaanId)) {
+        return;
+      }
+      totals.set(pekerjaanId, (totals.get(pekerjaanId) || 0) + Number(value));
+    });
+    return totals;
+  }
+
+  _formatCurrency(value) {
+    const numeric = Number(value) || 0;
+    if (!this._currencyFormatter && typeof Intl !== 'undefined') {
+      this._currencyFormatter = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        maximumFractionDigits: 0,
+      });
+    }
+    if (this._currencyFormatter) {
+      return this._currencyFormatter.format(numeric);
+    }
+    return `Rp ${numeric.toLocaleString('id-ID')}`;
+  }
+
   _validateRowTotalsBeforeSave() {
     if (!(this.state.progressTotals instanceof Map)) {
       return true;
@@ -2963,14 +3069,45 @@ class JadwalKegiatanApp {
       });
     }
 
-    if (percentViolations.length === 0 && volumeViolations.length === 0) {
+    const costViolations = [];
+    const normalizedMode = (this.state.progressMode || 'planned').toLowerCase();
+    if (normalizedMode === 'actual') {
+      const costTotals = this._calculateAllCostTotals();
+      costTotals.forEach((totalCost, pekerjaanId) => {
+        if (!Number.isFinite(totalCost)) {
+          return;
+        }
+        const capacity = this._getRowCostCapacity(pekerjaanId);
+        const tolerance = Number.isFinite(capacity) && capacity > 0 ? Math.max(capacity * 0.001, 1) : 1;
+        if (Number.isFinite(capacity) && capacity > 0) {
+          if (totalCost > capacity + tolerance) {
+            costViolations.push({
+              type: 'cost',
+              pekerjaan_id: pekerjaanId,
+              total: totalCost,
+              capacity,
+            });
+          }
+        } else if (totalCost > tolerance) {
+          costViolations.push({
+            type: 'cost',
+            pekerjaan_id: pekerjaanId,
+            total: totalCost,
+            capacity: 0,
+            missingCapacity: true,
+          });
+        }
+      });
+    }
+
+    if (percentViolations.length === 0 && volumeViolations.length === 0 && costViolations.length === 0) {
       this._clearFailedRows();
       this._clearSaveErrorRows();
       return true;
     }
 
     const ids = new Set();
-    const combined = percentViolations.concat(volumeViolations);
+    const combined = percentViolations.concat(volumeViolations, costViolations);
     const messages = combined.slice(0, 3).map((item) => {
       ids.add(Number(item.pekerjaan_id));
       if (item.type === 'volume') {
@@ -2978,6 +3115,12 @@ class JadwalKegiatanApp {
           return `- Pekerjaan ${item.pekerjaan_id}: volume tidak dapat disimpan karena master volume 0`;
         }
         return `- Pekerjaan ${item.pekerjaan_id}: total volume ${item.total.toFixed(3)} > kapasitas ${item.capacity.toFixed(3)}`;
+      }
+      if (item.type === 'cost') {
+        if (item.missingCapacity) {
+          return `- Pekerjaan ${item.pekerjaan_id}: biaya aktual tidak dapat disimpan karena master biaya 0`;
+        }
+        return `- Pekerjaan ${item.pekerjaan_id}: total biaya ${this._formatCurrency(item.total)} > batas ${this._formatCurrency(item.capacity)}`;
       }
       return `- Pekerjaan ${item.pekerjaan_id}: total ${item.total.toFixed(2)}% > 100%`;
     });
@@ -3146,7 +3289,10 @@ class JadwalKegiatanApp {
 
     const weeklyColumns = baseColumns.filter((col) => isWeeklyColumn(col));
     const sourceColumns = weeklyColumns.length > 0 ? weeklyColumns : baseColumns;
+    return this._buildMonthlyColumns(sourceColumns);
+  }
 
+  _buildMonthlyColumns(sourceColumns) {
     const blockSize = 4;
     const aggregated = [];
     for (let i = 0; i < sourceColumns.length; i += blockSize) {
@@ -3161,21 +3307,56 @@ class JadwalKegiatanApp {
       const endLabel = blockColumns[blockColumns.length - 1]?.rangeLabel || blockColumns[blockColumns.length - 1]?.label || '';
       const label = `Month ${blockIndex + 1}`;
       const rangeLabel = `Week ${startWeek}-${endWeek}`;
+      const startDate = this._coerceDate(blockColumns[0]?.startDate || blockColumns[0]?.start_date);
+      const endDate = this._coerceDate(blockColumns[blockColumns.length - 1]?.endDate || blockColumns[blockColumns.length - 1]?.end_date);
+      const rangeText = this._formatShortRange(startDate, endDate);
 
       aggregated.push({
         id: `month-${blockIndex + 1}`,
         fieldId: `month_${blockIndex + 1}`,
         label,
-        rangeLabel,
-        tooltip: startLabel && endLabel ? `${startLabel} → ${endLabel}` : `${label}: Week ${startWeek}-${endWeek}`,
+        rangeLabel: rangeText || rangeLabel,
+        rangeText,
+        startDate,
+        endDate,
+        tooltip: startLabel && endLabel ? `${startLabel} \u2014 ${endLabel}` : `${label}: Week ${startWeek}-${endWeek}`,
         generationMode: 'monthly',
         type: 'monthly',
         index: blockIndex,
         childColumns: blockColumns,
+        readOnly: true,
       });
     }
 
     return aggregated;
+  }
+
+  _coerceDate(value) {
+    if (!value) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  _formatShortRange(startDate, endDate) {
+    const format = (date) => {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return '';
+      }
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      return `${day}/${month}`;
+    };
+    const start = format(startDate);
+    const end = format(endDate);
+    if (start && end) {
+      return `${start} - ${end}`;
+    }
+    return start || end || '';
   }
 
   _parseCellKey(cellKey) {
@@ -3217,7 +3398,7 @@ class JadwalKegiatanApp {
   /**
    * Handle AG Grid cell change
    */
-  _handleAgGridCellChange({
+  _handleGridCellChange({
     cellKey,
     value,
     columnMeta,
@@ -3299,14 +3480,11 @@ class JadwalKegiatanApp {
    * Cleanup and destroy the application
    */
   destroy() {
-    if (this.eventManager) {
-      this.eventManager.cleanup();
-      this.eventManager = null;
-    }
+    this._unbindStateManagerEvents();
 
-    if (this.agGridManager) {
-      this.agGridManager.destroy();
-      this.agGridManager = null;
+    if (this.gridManager) {
+      this.gridManager.destroy();
+      this.gridManager = null;
     }
 
     this.state = null;

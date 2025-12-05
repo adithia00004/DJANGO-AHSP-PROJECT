@@ -14,11 +14,6 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/toolbar-responsive.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/validation-enhancements.css' %}">
 
-<!-- AG Grid CSS (always load, minimal overhead) -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-grid.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31/styles/ag-theme-alpine-dark.css">
-
 <!-- Chart Libraries CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
 <!-- NEW: Redesigned Gantt CSS -->
@@ -242,7 +237,7 @@
      data-api-volume="{% url 'detail_project:api_list_volume_pekerjaan' project.id %}"
      data-api-assignments-base="/detail_project/api/project/{{ project.id }}/pekerjaan/"
      data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}"
-     data-enable-ag-grid="{% if enable_ag_grid %}true{% else %}false{% endif %}"
+     data-enable-uplot-kurva="true"
      data-project-name="{{ project.nama|escape }}"
      data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
      data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}"
@@ -277,22 +272,14 @@
   <div class="tab-content" id="viewTabsContent">
     <!-- Grid View Tab -->
     <div class="tab-pane fade show active" id="grid-view" role="tabpanel" aria-labelledby="grid-tab">
-        <div class="ag-grid-section">
-          <div class="horizontal-scroll-wrapper" id="ag-grid-scroll-top">
-            <div class="horizontal-scroll-inner" id="ag-grid-scroll-inner"></div>
+        <div class="tanstack-grid-section" id="tanstack-grid-section">
+          <div class="horizontal-scroll-wrapper" id="tanstack-grid-scroll-top">
+            <div class="horizontal-scroll-inner" id="tanstack-grid-scroll-inner"></div>
           </div>
-          <div id="ag-grid-container"
-               class="ag-theme-alpine ag-grid-wrapper"
-               style="width: 100%; min-height: 600px;">
-            <!-- AG Grid mounts here -->
+          <div id="tanstack-grid-container"
+               class="tanstack-grid-container">
+            <div class="tanstack-grid-body" id="tanstack-grid-body"></div>
           </div>
-          {% if not enable_ag_grid %}
-            <div class="alert alert-warning mt-3">
-              AG Grid dinonaktifkan melalui <code>ENABLE_AG_GRID=False</code>.
-              Legacy grid telah dipensiunkan di Phase 4 sehingga kontainer di atas
-              tidak akan terinisialisasi sampai Anda mengaktifkannya kembali.
-            </div>
-          {% endif %}
         </div>
 
       <!-- Status Bar -->
@@ -320,65 +307,6 @@
         </div>
       </div>
 
-      {# OLD Gantt Chart - COMPLETELY HIDDEN (fallback only) #}
-      <div style="display: none !important; visibility: hidden !important;">
-        <div id="gantt-container" class="gantt-container">
-          <div class="gantt-chart-panel">
-            <div class="gantt-toolbar">
-              <div class="gantt-toolbar-left">
-                <h6 class="gantt-title mb-0">Gantt Chart (Perencanaan &amp; Realisasi)</h6>
-              </div>
-              <div class="gantt-legend" id="gantt-legend">
-                <span class="gantt-legend-item">
-                  <span class="legend-dot legend-dot-planned"></span> Rencana
-                </span>
-                <span class="gantt-legend-item">
-                  <span class="legend-dot legend-dot-actual"></span> Realisasi
-                </span>
-              </div>
-            </div>
-            <div class="gantt-layout">
-              <div class="gantt-tree-panel" id="gantt-tree-panel">
-                <div class="gantt-tree-header">
-                  <span>Klasifikasi &amp; Pekerjaan</span>
-                </div>
-                <div class="gantt-tree-scroll" id="gantt-tree-scroll">
-                  <div class="gantt-tree-body" id="gantt-tree-body">
-                    <div class="text-muted text-center py-3">Menyiapkan data...</div>
-                  </div>
-                </div>
-              </div>
-              <div class="gantt-chart-wrapper" id="gantt-chart-wrapper">
-                <div id="gantt-chart" style="min-height: 520px;"></div>
-              </div>
-            </div>
-          </div>
-          <div class="gantt-summary mt-4">
-            <div class="gantt-summary-header d-flex justify-content-between align-items-center">
-              <h6 class="mb-0">Ringkasan Pekerjaan</h6>
-              <span class="text-muted" id="gantt-summary-total"></span>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-sm table-striped gantt-summary-table" id="gantt-summary-table">
-                <thead>
-                  <tr>
-                    <th style="width: 60px;">#</th>
-                    <th>Pekerjaan</th>
-                    <th style="width: 220px;">Rencana</th>
-                    <th style="width: 220px;">Realisasi</th>
-                    <th style="width: 120px;">Deviasi</th>
-                  </tr>
-                </thead>
-                <tbody id="gantt-summary-body">
-                  <tr>
-                    <td colspan="5" class="text-muted text-center">Menunggu data Gantt...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- S-Curve View Tab -->
@@ -431,28 +359,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Chart Libraries (CDN with fallback) -->
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"
-        onerror="window.__loadLocalEcharts && window.__loadLocalEcharts();"></script>
+<!-- Chart Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-
-<script>
-  // ECharts fallback loader
-  window.__loadLocalEcharts = function() {
-    if (window.__echartsFallbackLoaded) return;
-    window.__echartsFallbackLoaded = true;
-
-    const script = document.createElement('script');
-    script.src = "{% static 'detail_project/js/vendor/echarts.min.js' %}";
-    script.onload = () => console.info('[Jadwal] ECharts loaded from fallback');
-    script.onerror = () => console.error('[Jadwal] ECharts fallback failed');
-    document.head.appendChild(script);
-  };
-
-  if (typeof window.echarts === 'undefined') {
-    window.__loadLocalEcharts();
-  }
-</script>
 
 <!-- Unified Export Manager -->
 <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
@@ -487,9 +395,9 @@ MIGRATION NOTE (2025-11-19):
 This template ONLY loads modern Vite-based modules.
 Legacy scripts (kelola_tahapan_page_bootstrap.js, etc.) are NOT loaded.
 
-If you need to rollback to legacy:
-1. Change view to use: kelola_tahapan_grid_LEGACY.html
-2. Or set: ENABLE_AG_GRID = False and USE_VITE_DEV_SERVER = False
+If you need to rollback ke stack lama:
+1. Ubah view untuk merender `kelola_tahapan_grid_LEGACY.html`.
+2. Nonaktifkan Vite dev server dan gunakan bundel statis lama (build manual diperlukan).
 
 Modern stack provides:
 - ✅ ES6 modules with tree-shaking
