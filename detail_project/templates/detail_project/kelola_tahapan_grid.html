@@ -11,8 +11,6 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/kelola_tahapan_grid.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/toolbar-responsive.css' %}">
-<!-- Frappe Gantt CSS (OLD - deprecated) -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
 <!-- NEW: Redesigned Gantt CSS -->
 <link rel="stylesheet" href="{% static 'detail_project/css/gantt-chart-redesign.css' %}">
 {% endblock %}
@@ -202,34 +200,6 @@
 
 {% block extra_js %}
 {{ block.super }}
-<!-- Frappe Gantt JS -->
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-
-<!-- ECharts for Kurva S -->
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"
-        onerror="window.__loadLocalEcharts && window.__loadLocalEcharts();"></script>
-
-<script>
-  window.__loadLocalEcharts = function loadLocalEchartsFallback() {
-    if (window.__echartsFallbackLoaded) {
-      return;
-    }
-    window.__echartsFallbackLoaded = true;
-    const fallbackSrc = "{% static 'detail_project/js/vendor/echarts.min.js' %}";
-    const script = document.createElement('script');
-    script.src = fallbackSrc;
-    script.onload = function onEchartsFallbackLoaded() {
-      console.info('[KelolaTahapan] ECharts loaded from local fallback.');
-    };
-    script.onerror = function onEchartsFallbackError() {
-      console.error('[KelolaTahapan] Failed to load ECharts from CDN and local fallback.');
-    };
-    document.head.appendChild(script);
-  };
-  if (typeof window.echarts === 'undefined') {
-    window.__loadLocalEcharts();
-  }
-</script>
 
 <!-- Kelola Tahapan Page App bootstrap -->
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan_page_bootstrap.js' %}" defer></script>

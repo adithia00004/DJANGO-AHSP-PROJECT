@@ -11,8 +11,6 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/kelola_tahapan_grid.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/validation-enhancements.css' %}">
-<!-- Frappe Gantt CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.css">
 
 {% comment %}
   Vite Integration:
@@ -260,37 +258,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- ECharts with CDN fallback -->
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"
-        onerror="window.__loadLocalEcharts && window.__loadLocalEcharts();"></script>
-
-<script>
-  window.__loadLocalEcharts = function loadLocalEchartsFallback() {
-    if (window.__echartsFallbackLoaded) {
-      return;
-    }
-    window.__echartsFallbackLoaded = true;
-    const fallbackSrc = "{% static 'detail_project/js/vendor/echarts.min.js' %}";
-    const script = document.createElement('script');
-    script.src = fallbackSrc;
-    script.onload = function onEchartsFallbackLoaded() {
-      console.info('[KelolaTahapan] ECharts loaded from local fallback.');
-    };
-    script.onerror = function onEchartsFallbackError() {
-      console.error('[KelolaTahapan] Failed to load ECharts from CDN and local fallback.');
-    };
-    document.head.appendChild(script);
-  };
-  if (typeof window.echarts === 'undefined') {
-    window.__loadLocalEcharts();
-  }
-</script>
-
-<!-- Frappe Gantt CDN -->
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 {% comment %}
-  Note: The main application JavaScript is loaded via Vite in the extra_css block
-  This ensures proper module loading order
+  Note: The main application JavaScript is loaded via Vite in the extra_css block.
+  Additional chart libraries are bundled in the Vite build; no external CDN scripts are required here.
 {% endcomment %}
 
 {% endblock %}

@@ -15,8 +15,8 @@
     "file": "assets/js/core-modules-t2ZCVRBW.js",
     "name": "core-modules"
   },
-  "_grid-modules-DVYQaMGO.js": {
-    "file": "assets/js/grid-modules-DVYQaMGO.js",
+  "_grid-modules-BPv6zKef.js": {
+    "file": "assets/js/grid-modules-BPv6zKef.js",
     "name": "grid-modules",
     "imports": [
       "_core-modules-t2ZCVRBW.js"
@@ -27,13 +27,13 @@
     "name": "vendor-export"
   },
   "js/src/jadwal_kegiatan_app.js": {
-    "file": "assets/js/jadwal-kegiatan-Bcfu9WNy.js",
+    "file": "assets/js/jadwal-kegiatan-BEma-Slv.js",
     "name": "jadwal-kegiatan",
     "src": "js/src/jadwal_kegiatan_app.js",
     "isEntry": true,
     "imports": [
       "_vendor-export-CxtsESY6.js",
-      "_grid-modules-DVYQaMGO.js",
+      "_grid-modules-BPv6zKef.js",
       "_core-modules-t2ZCVRBW.js",
       "_chart-modules-7de66ekb.js"
     ],

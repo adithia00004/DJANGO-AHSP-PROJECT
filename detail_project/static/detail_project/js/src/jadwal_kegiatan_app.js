@@ -6,6 +6,7 @@
 /* global ExportManager */
 
 import { TanStackGridManager } from '@modules/grid/tanstack-grid-manager.js';
+import { UnifiedTableManager } from '@modules/unified/UnifiedTableManager.js';
 import { DataLoader } from '@modules/core/data-loader.js';
 import { TimeColumnGenerator } from '@modules/core/time-column-generator.js';
 import { SaveHandler } from '@modules/core/save-handler.js';
@@ -37,6 +38,9 @@ class JadwalKegiatanApp {
     this.dataLoader = null;
     this.timeColumnGenerator = null;
     this.saveHandler = null;
+    this.unifiedManager = null;
+    this._gridContainerParent = null;
+    this._gridContainerNextSibling = null;
 
     // Chart modules (lazy loaded)
     this.kurvaSChart = null;
@@ -183,6 +187,11 @@ class JadwalKegiatanApp {
         displayScale: null,
         progressMode: 'planned',  // Phase 2E.1: Current active mode
         displayMode: 'percentage', // Phase 2E.1: 'percentage' or 'volume'
+        useUnifiedTable: config.disableUnifiedTable ? false : true,
+        // Default: legacy Gantt V2 tetap aktif; bisa dimatikan dengan config.disableLegacyGantt
+        keepLegacyGantt: config.enableLegacyGantt ? true : false,
+        dependencies: [],
+        debugUnifiedTable: Boolean(config.debugUnifiedTable || window.DEBUG_UNIFIED_TABLE),
 
         // Phase 0.3: StateManager reference
         stateManager: this.stateManager,
@@ -1450,19 +1459,40 @@ class JadwalKegiatanApp {
       return;
     }
 
+    if (!this._gridContainerParent) {
+      this._gridContainerParent = container.parentNode || null;
+      this._gridContainerNextSibling = container.nextSibling || null;
+    }
+
     container.classList.remove('d-none');
 
-    if (!this.gridManager) {
-      this.gridManager = new TanStackGridManager(this.state, {
-        showToast: this.showToast.bind(this),
-        onCellChange: (payload) => this._handleGridCellChange(payload),
-        getCellValidationState: (cellKey) => this._getCellValidationState(cellKey),
-      });
-      this.gridManager.mount(container, {
-        topScroll: this.state.domRefs.tanstackGridTopScroll,
-        topScrollInner: this.state.domRefs.tanstackGridTopScrollInner,
-        body: this.state.domRefs.tanstackGridBody,
-      });
+    if (this.state.useUnifiedTable) {
+      if (!this.unifiedManager) {
+        this.unifiedManager = new UnifiedTableManager(this.state, {
+          showToast: this.showToast.bind(this),
+          onCellChange: (payload) => this._handleGridCellChange(payload),
+          getCellValidationState: (cellKey) => this._getCellValidationState(cellKey),
+          debugUnifiedTable: this.state.debugUnifiedTable,
+        });
+        this.unifiedManager.mount(container, {
+          topScroll: this.state.domRefs.tanstackGridTopScroll,
+          topScrollInner: this.state.domRefs.tanstackGridTopScrollInner,
+          body: this.state.domRefs.tanstackGridBody,
+        });
+      }
+    } else {
+      if (!this.gridManager) {
+        this.gridManager = new TanStackGridManager(this.state, {
+          showToast: this.showToast.bind(this),
+          onCellChange: (payload) => this._handleGridCellChange(payload),
+          getCellValidationState: (cellKey) => this._getCellValidationState(cellKey),
+        });
+        this.gridManager.mount(container, {
+          topScroll: this.state.domRefs.tanstackGridTopScroll,
+          topScrollInner: this.state.domRefs.tanstackGridTopScrollInner,
+          body: this.state.domRefs.tanstackGridBody,
+        });
+      }
     }
   }
 
@@ -1534,6 +1564,9 @@ class JadwalKegiatanApp {
 
       // Step 3.5: Load Kurva S harga data (Phase 2F.0)
       await this._loadKurvaSData();
+
+      // Step 3.6: Ensure dependencies array exists (for unified Gantt overlay)
+      this.state.dependencies = this.state.dependencies || [];
 
       // Build time column index for quick lookup
       this.state.timeColumnIndex = this._createTimeColumnIndex(this.state.timeColumns);
@@ -1712,6 +1745,17 @@ class JadwalKegiatanApp {
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 200; // ms
 
+    if (this.state.useUnifiedTable && this.state.keepLegacyGantt === false) {
+      console.log('[JadwalKegiatanApp] Unified mode active - rendering Gantt via unified table overlay');
+      const ganttContainer = document.getElementById('gantt-redesign-container');
+      if (!ganttContainer) {
+        console.warn('[JadwalKegiatanApp] Gantt container not found for unified overlay');
+        return;
+      }
+      await this._initializeUnifiedGanttOverlay(ganttContainer);
+      return;
+    }
+
     // Check if already initialized
     if (this.ganttFrozenGrid) {
       console.log('[JadwalKegiatanApp] Gantt already initialized, skipping');
@@ -1778,6 +1822,106 @@ class JadwalKegiatanApp {
 
     console.log('[JadwalKegiatanApp] ✅ Gantt V2 (Frozen Column) initialized successfully!');
     Toast.success('📊 Gantt Chart loaded', 2000);
+  }
+
+  async _initializeUnifiedGanttOverlay(ganttContainer) {
+    if (!this.unifiedManager) {
+      this._initTanStackGridIfNeeded();
+    }
+    if (!this.unifiedManager) {
+      console.warn('[JadwalKegiatanApp] Unified manager not available for Gantt overlay');
+      return;
+    }
+
+    const host = this._ensureGanttHost(ganttContainer);
+    if (!host) {
+      console.warn('[JadwalKegiatanApp] Unable to prepare Gantt host for unified overlay');
+      return;
+    }
+
+    const gridPayload = {
+      tree: this.state.pekerjaanTree || [],
+      timeColumns: this._getDisplayTimeColumns(),
+      inputMode: this.state.inputMode || 'percentage',
+      timeScale: this.state.displayScale || this.state.timeScale || 'weekly',
+      dependencies: this.state.dependencies || [],
+    };
+    if (this.state.debugUnifiedTable) {
+      console.log('[UnifiedGanttOverlay] Apply payload', {
+        rows: gridPayload.tree.length,
+        columns: gridPayload.timeColumns.length,
+        deps: gridPayload.dependencies.length,
+      });
+    }
+    this.unifiedManager.updateData(gridPayload);
+    this.unifiedManager.switchMode('gantt');
+    this._applyGanttOverlayStyles(host);
+  }
+
+  _applyGanttOverlayStyles(host) {
+    if (!host) return;
+    host.classList.add('gantt-overlay-mode');
+    const styleId = 'gantt-overlay-style';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        /* Biarkan header/frozen columns tetap tampil untuk konteks */
+        .gantt-overlay-mode .tanstack-grid-header { display: block !important; }
+        /* Sembunyikan konten text pada sel time-column saja, jangan menggangu pinned kolom */
+        .gantt-overlay-mode .tanstack-grid-cell.time-cell { color: transparent; }
+        .gantt-overlay-mode .tanstack-grid-cell.time-cell * { visibility: hidden; }
+        .gantt-overlay-mode .tanstack-grid-cell.time-cell { pointer-events: none; }
+        /* Izinkan scroll tetap berjalan */
+        .gantt-overlay-mode .tanstack-grid-body { overflow: auto; }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  _ensureGanttHost(ganttContainer) {
+    if (!ganttContainer) {
+      return null;
+    }
+    let host = ganttContainer.querySelector('.unified-gantt-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'unified-gantt-host';
+      host.style.position = 'relative';
+      host.style.minHeight = '420px';
+      host.style.width = '100%';
+      ganttContainer.innerHTML = '';
+      ganttContainer.appendChild(host);
+    } else {
+      host.innerHTML = '';
+    }
+
+    this._moveGridContainerTo(host);
+    return host;
+  }
+
+  _moveGridContainerTo(target) {
+    const container = this.state?.domRefs?.tanstackGridContainer;
+    if (!container || !target || container.parentNode === target) {
+      return;
+    }
+    target.appendChild(container);
+  }
+
+  _restoreGridContainerPosition() {
+    const container = this.state?.domRefs?.tanstackGridContainer;
+    const parent = this._gridContainerParent;
+    if (!container || !parent) {
+      return;
+    }
+    if (container.parentNode === parent) {
+      return;
+    }
+    if (this._gridContainerNextSibling && this._gridContainerNextSibling.parentNode === parent) {
+      parent.insertBefore(container, this._gridContainerNextSibling);
+    } else {
+      parent.appendChild(container);
+    }
   }
 
   /**
@@ -1887,6 +2031,7 @@ class JadwalKegiatanApp {
   _initializeCharts() {
     // Setup lazy loading for chart tabs
     this._setupLazyChartLoading();
+    this._bindUnifiedTabSync();
   }
 
   /**
@@ -1906,6 +2051,9 @@ class JadwalKegiatanApp {
     if (scurveTab) {
       scurveTab.addEventListener('shown.bs.tab', async () => {
         console.log('[LazyLoad] Kurva S tab shown');
+        if (this.state.useUnifiedTable && this.unifiedManager) {
+          this.unifiedManager.switchMode('kurva');
+        }
         if (!this._chartModulesLoaded) {
           await this._loadChartModules();
         }
@@ -1913,6 +2061,9 @@ class JadwalKegiatanApp {
 
       scurveTab.addEventListener('click', async () => {
         console.log('[LazyLoad] Kurva S tab clicked');
+        if (this.state.useUnifiedTable && this.unifiedManager) {
+          this.unifiedManager.switchMode('kurva');
+        }
         if (!this._chartModulesLoaded && !this._chartModulesLoading) {
           await this._loadChartModules();
         }
@@ -2404,14 +2555,29 @@ class JadwalKegiatanApp {
   _syncGridViews() {
     const displayColumns = this._getDisplayTimeColumns();
     this.state.activeTimeColumns = displayColumns;
+    this.state.dependencies = this.state.dependencies || [];
 
-    if (this.gridManager) {
-      this.gridManager.updateData({
-        tree: this.state.pekerjaanTree || [],
-        timeColumns: displayColumns,
-        inputMode: this.state.inputMode || 'percentage',
-        timeScale: this.state.displayScale || this.state.timeScale || 'weekly',
-      });
+    const gridPayload = {
+      tree: this.state.pekerjaanTree || [],
+      timeColumns: displayColumns,
+      inputMode: this.state.inputMode || 'percentage',
+      timeScale: this.state.displayScale || this.state.timeScale || 'weekly',
+      dependencies: this.state.dependencies || [],
+    };
+
+    if (this.state.useUnifiedTable && this.unifiedManager) {
+      if (this.state.debugUnifiedTable) {
+        console.log('[UnifiedTab] Sync grid payload', {
+          rows: gridPayload.tree.length,
+          columns: gridPayload.timeColumns.length,
+          deps: gridPayload.dependencies.length,
+          mode: this.state.progressMode,
+          displayScale: this.state.displayScale || this.state.timeScale,
+        });
+      }
+      this.unifiedManager.updateData(gridPayload);
+    } else if (this.gridManager) {
+      this.gridManager.updateData(gridPayload);
       if (typeof this.gridManager.updateTopScrollMetrics === 'function') {
         this.gridManager.updateTopScrollMetrics();
       }
@@ -2420,6 +2586,15 @@ class JadwalKegiatanApp {
   }
 
   _renderGrid() {
+    if (this.state.useUnifiedTable) {
+      if (!this.unifiedManager) {
+        this._initTanStackGridIfNeeded();
+      }
+      if (this.unifiedManager) {
+        this._syncGridViews();
+        return;
+      }
+    }
     if (this.gridManager) {
       this._syncGridViews();
       return;
@@ -3476,6 +3651,65 @@ class JadwalKegiatanApp {
     }
   }
 
+  _bindUnifiedTabSync() {
+    if (!this.state.useUnifiedTable) {
+      return;
+    }
+    const scurveTab =
+      document.querySelector('#scurve-tab') ||
+      document.querySelector('[data-bs-target="#scurve-view"]');
+    const ganttTab =
+      document.querySelector('#gantt-tab') ||
+      document.querySelector('[data-bs-target="#gantt-view"]');
+    const gridTab =
+      document.querySelector('#grid-tab') ||
+      document.querySelector('[data-bs-target="#grid-view"]');
+
+    if (scurveTab) {
+      const handler = () => {
+        this._restoreGridContainerPosition();
+        if (this.unifiedManager) {
+          this.unifiedManager.switchMode('kurva');
+          if (this.state.debugUnifiedTable) {
+            console.log('[UnifiedTab] Switch -> kurva');
+          }
+        }
+      };
+      scurveTab.addEventListener('shown.bs.tab', handler);
+      scurveTab.addEventListener('click', handler);
+    }
+
+    if (ganttTab) {
+      const handler = () => {
+        const ganttContainer = document.getElementById('gantt-redesign-container');
+        if (ganttContainer) {
+          this._initializeUnifiedGanttOverlay(ganttContainer);
+        } else if (this.unifiedManager) {
+          this.unifiedManager.switchMode('gantt');
+          if (this.state.debugUnifiedTable) {
+            console.log('[UnifiedTab] Switch -> gantt (no overlay host)');
+          }
+        }
+      };
+      ganttTab.addEventListener('shown.bs.tab', handler);
+      ganttTab.addEventListener('click', handler);
+    }
+
+    if (gridTab) {
+      const handler = () => {
+        this._restoreGridContainerPosition();
+        if (this.unifiedManager) {
+          this.unifiedManager.switchMode('grid');
+          if (this.state.debugUnifiedTable) {
+            console.log('[UnifiedTab] Switch -> grid');
+          }
+        }
+      };
+      gridTab.addEventListener('shown.bs.tab', handler);
+      gridTab.addEventListener('click', handler);
+    }
+  }
+
   /**
    * Cleanup and destroy the application
    */
@@ -3486,6 +3720,7 @@ class JadwalKegiatanApp {
       this.gridManager.destroy();
       this.gridManager = null;
     }
+    this.unifiedManager = null;
 
     this.state = null;
     this.initialized = false;
@@ -3509,3 +3744,4 @@ if (document.readyState === 'loading') {
 
 // Export for manual initialization
 export default JadwalKegiatanApp;
+

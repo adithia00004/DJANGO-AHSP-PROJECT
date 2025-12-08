@@ -12,6 +12,7 @@ import {
 } from '@tanstack/virtual-core';
 import { validateCellValue } from '@modules/shared/validation-utils.js';
 import { StateManager } from '@modules/core/state-manager.js';
+import { CellRendererFactory } from './renderers/CellRendererFactory.js';
 
 const DEFAULT_ROW_HEIGHT = 56;
 
@@ -48,6 +49,8 @@ export class TanStackGridManager {
     this._editorNavDirection = null;
     this.totalColumnWidth = 0;
     this._lastScrollLeft = 0;
+    this.rendererMode = 'input';
+    this.cellRenderer = CellRendererFactory.create(this.rendererMode);
     this.tableState = {
       expanded: true,
       columnPinning: { left: [], right: [] },
@@ -138,6 +141,12 @@ export class TanStackGridManager {
   }
 
   refreshCells() {
+    this._renderRowsOnly();
+  }
+
+  setCellRenderer(mode = 'input') {
+    this.rendererMode = (mode || 'input').toLowerCase();
+    this.cellRenderer = CellRendererFactory.create(this.rendererMode);
     this._renderRowsOnly();
   }
 
@@ -425,6 +434,31 @@ export class TanStackGridManager {
     });
   }
 
+  getCellBoundingRects() {
+    if (!this.bodyScroll || !this.bodyInner) {
+      return [];
+    }
+    const containerRect = this.bodyScroll.getBoundingClientRect();
+    const cells = this.bodyInner.querySelectorAll('.tanstack-grid-cell[data-column-id]');
+    const rects = [];
+
+    cells.forEach((cell) => {
+      const rect = cell.getBoundingClientRect();
+      rects.push({
+        pekerjaanId: String(cell.dataset.pekerjaanId || cell.dataset.rowId || ''),
+        columnId: String(cell.dataset.columnId || ''),
+        x: rect.x - containerRect.x + this.bodyScroll.scrollLeft,
+        y: rect.y - containerRect.y + this.bodyScroll.scrollTop,
+        width: rect.width,
+        height: rect.height,
+        scrollTop: this.bodyScroll.scrollTop,
+        scrollLeft: this.bodyScroll.scrollLeft,
+      });
+    });
+
+    return rects;
+  }
+
   _renderTreeCell(cellEl, row) {
     cellEl.classList.add('tree-cell');
     const level = row.original?.level || 0;
@@ -460,6 +494,21 @@ export class TanStackGridManager {
   }
 
   _renderTimeCell(cellEl, row, pekerjaanId, columnId, columnMeta, columnDef) {
+    if (this.cellRenderer && typeof this.cellRenderer.renderTimeCell === 'function') {
+      return this.cellRenderer.renderTimeCell({
+        manager: this,
+        cellEl,
+        row,
+        pekerjaanId,
+        columnId,
+        columnMeta,
+        columnDef,
+      });
+    }
+    return this._renderTimeCellLegacy(cellEl, row, pekerjaanId, columnId, columnMeta, columnDef);
+  }
+
+  _renderTimeCellLegacy(cellEl, row, pekerjaanId, columnId, columnMeta, columnDef) {
     cellEl.classList.add('time-cell');
     const rawValue = this._getRawCellValue(pekerjaanId, columnId, columnMeta);
     const displayValue = this._formatTimeCellDisplay(rawValue, row, columnMeta);
@@ -467,8 +516,8 @@ export class TanStackGridManager {
 
     cellEl.textContent = displayValue;
     cellEl.dataset.cellId = cellKey;
-    cellEl.dataset.pekerjaanId = pekerjaanId;
-    cellEl.dataset.columnId = columnId;
+    cellEl.dataset.pekerjaanId = String(pekerjaanId);
+    cellEl.dataset.columnId = String(columnId);
     const rowEditable = this._isRowEditable(row);
     const isEditable = rowEditable && this._isColumnEditable(columnDef);
     cellEl.tabIndex = isEditable ? 0 : -1;
@@ -580,6 +629,10 @@ export class TanStackGridManager {
 
   _getCellKey(pekerjaanId, columnId) {
     return `${pekerjaanId}-${columnId}`;
+  }
+
+  getTimeCellValue(pekerjaanId, columnId, columnMeta) {
+    return this._getRawCellValue(pekerjaanId, columnId, columnMeta);
   }
 
   _applyValidationClasses(cellEl, cellKey) {
