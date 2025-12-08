@@ -1389,7 +1389,7 @@ class JadwalKegiatanApp {
     this._updateCharts();
 
     if (options.showToast) {
-      const label = normalized === 'planned' ? 'Perencanaan' : 'Realisasi';
+      const label = normalized === 'planned' ? 'Rencana' : 'Realisasi';
       this.showToast(`Mode progress diubah ke ${label}`, 'info', 2200);
     }
   }
@@ -1400,7 +1400,7 @@ class JadwalKegiatanApp {
       return;
     }
     const normalized = mode === 'actual' ? 'actual' : 'planned';
-    const label = normalized === 'planned' ? 'Perencanaan' : 'Realisasi';
+    const label = normalized === 'planned' ? 'Rencana' : 'Realisasi';
     const bgClass = normalized === 'planned' ? 'bg-info' : 'bg-warning';
     indicator.textContent = `Mode: ${label}`;
     indicator.className = `badge ${bgClass} ms-2`;

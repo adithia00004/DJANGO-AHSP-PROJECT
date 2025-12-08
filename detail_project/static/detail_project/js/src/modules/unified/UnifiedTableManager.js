@@ -98,14 +98,30 @@ export class UnifiedTableManager {
     let columns = Array.isArray(payload.timeColumns) ? payload.timeColumns : [];
     const gridRows = this.tanstackGrid?.currentRows || [];
     const gridColumns = this.tanstackGrid?.currentColumns || [];
+    const flatRows = Array.isArray(this.state?.flatPekerjaan) ? this.state.flatPekerjaan : [];
 
     if ((!tree.length || tree.length <= 1) && gridRows.length > tree.length) {
       tree = gridRows;
+    }
+    if ((!tree.length || tree.length <= 1) && flatRows.length) {
+      tree = flatRows.map((row) => ({
+        pekerjaanId: row.id || row.pekerjaan_id,
+        name: row.nama || row.name,
+        raw: row,
+        subRows: [],
+      }));
     }
 
     const hasTimeMeta = columns.some((c) => c?.meta?.timeColumn);
     if ((!columns.length || !hasTimeMeta) && gridColumns.length) {
       columns = gridColumns;
+    }
+    if (!columns.length && Array.isArray(this.state?.timeColumns)) {
+      columns = this.state.timeColumns.map((col) => ({
+        id: col.id,
+        fieldId: col.fieldId,
+        meta: { timeColumn: true, columnMeta: col },
+      }));
     }
 
     const barData = [];
@@ -129,42 +145,56 @@ export class UnifiedTableManager {
     });
 
     const rowsForBars = this._flattenRows(tree);
-
+    const rowIndex = new Map();
     rowsForBars.forEach((row) => {
       const pekerjaanId = row.pekerjaanId || row.id || row.raw?.pekerjaan_id;
-      const label = row.name || row.raw?.nama || pekerjaanId;
-      if (!pekerjaanId) {
+      if (!pekerjaanId) return;
+      rowIndex.set(String(pekerjaanId), {
+        label: row.name || row.raw?.nama || pekerjaanId,
+      });
+    });
+
+    const columnIndex = new Map();
+    columns.forEach((col) => {
+      const meta = this._resolveColumnMeta(col);
+      if (!meta?.timeColumn) return;
+      const columnId = col.fieldId || col.id || meta.fieldId || meta.id || meta.columnId || meta.column_id;
+      if (!columnId) return;
+      columnIndex.set(String(columnId), meta);
+    });
+
+    const allKeys = new Set([
+      ...Array.from(mergedPlanned?.keys?.() || []),
+      ...Array.from(mergedActual?.keys?.() || []),
+    ]);
+
+    allKeys.forEach((cellKey) => {
+      const [pkjIdRaw, colIdRaw] = String(cellKey).split('-');
+      const pekerjaanId = String(pkjIdRaw || '').trim();
+      const columnId = String(colIdRaw || '').trim();
+      if (!pekerjaanId || !columnId) {
         return;
       }
-      columns.forEach((col) => {
-        const meta = this._resolveColumnMeta(col);
-        if (!meta?.timeColumn) {
-          return;
-        }
-        const columnId = col.fieldId || col.id || meta.fieldId || meta.id || meta.columnId || meta.column_id;
-        const cellKey = `${pekerjaanId}-${columnId}`;
-        const fallback = this.tanstackGrid?.getTimeCellValue?.(pekerjaanId, columnId, meta) || 0;
-        const plannedValue = this._resolveValue(mergedPlanned, cellKey, fallback);
-        const actualValue = this._resolveValue(mergedActual, cellKey, 0);
-
-        const hasPlanned = Number.isFinite(plannedValue) && plannedValue > 0;
-        const hasActual = Number.isFinite(actualValue) && actualValue > 0;
-        if (!hasPlanned && !hasActual) {
-          return;
-        }
-
-        const variance = (Number(actualValue) || 0) - (Number(plannedValue) || 0);
-        const displayedActual = activeMode === 'actual' ? actualValue : actualValue;
-        barData.push({
-          pekerjaanId: String(pekerjaanId),
-          columnId: String(columnId),
-          value: Number(displayedActual) || 0,
-          planned: Number(plannedValue) || 0,
-          actual: Number(actualValue) || 0,
-          variance,
-          label,
-          color: '#4dabf7',
-        });
+      const rowInfo = rowIndex.get(pekerjaanId);
+      const colMeta = columnIndex.get(columnId);
+      if (!rowInfo || !colMeta) {
+        return;
+      }
+      const plannedValue = this._resolveValue(mergedPlanned, cellKey, 0);
+      const actualValue = this._resolveValue(mergedActual, cellKey, plannedValue);
+      if (!Number.isFinite(plannedValue) && !Number.isFinite(actualValue)) {
+        return;
+      }
+      const variance = (Number(actualValue) || 0) - (Number(plannedValue) || 0);
+      barData.push({
+        pekerjaanId,
+        columnId,
+        value: Number(actualValue) || 0,
+        planned: Number(plannedValue) || 0,
+        actual: Number(actualValue) || 0,
+        variance,
+        label: rowInfo.label,
+        color: '#4dabf7',
       });
     });
 

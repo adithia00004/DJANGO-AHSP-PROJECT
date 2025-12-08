@@ -1,7 +1,11 @@
 export class GanttCanvasOverlay {
   constructor(tableManager) {
     this.tableManager = tableManager;
-    this.debug = Boolean(this.tableManager?.options?.debugUnifiedTable || this.tableManager?.state?.debugUnifiedTable);
+    this.debug = Boolean(
+      this.tableManager?.options?.debugUnifiedTable ||
+      this.tableManager?.state?.debugUnifiedTable ||
+      window.DEBUG_UNIFIED_TABLE
+    );
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'gantt-canvas-overlay';
     this.canvas.style.cssText = `
@@ -77,11 +81,13 @@ export class GanttCanvasOverlay {
       });
     }
 
-    // Skeleton visual aid: outline cells for alignment verification
-    this.ctx.strokeStyle = '#e2e8f0';
-    cellRects.forEach((rect) => {
-      this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-    });
+    // Outline cells only when debugging alignment
+    if (this.debug) {
+      this.ctx.strokeStyle = '#e2e8f0';
+      cellRects.forEach((rect) => {
+        this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      });
+    }
 
     this._drawBars(cellRects);
     this._drawDependencies(cellRects);
@@ -107,59 +113,78 @@ export class GanttCanvasOverlay {
     if (!Array.isArray(cellRects) || cellRects.length === 0 || this.barData.length === 0) {
       return;
     }
+    // Group cell rects by pekerjaan
+    const rectIndex = new Map();
+    cellRects.forEach((r) => {
+      const key = String(r.pekerjaanId);
+      if (!rectIndex.has(key)) rectIndex.set(key, []);
+      rectIndex.get(key).push(r);
+    });
+    rectIndex.forEach((list) => list.sort((a, b) => a.x - b.x));
+
+    const barsByRow = new Map();
+    this.barData.forEach((bar) => {
+      const key = String(bar.pekerjaanId);
+      if (!barsByRow.has(key)) barsByRow.set(key, []);
+      barsByRow.get(key).push(bar);
+    });
+
     let barsDrawn = 0;
     let barsSkipped = 0;
-    this.barData.forEach((bar) => {
-      const rect = cellRects.find(
-        (c) => String(c.pekerjaanId) === String(bar.pekerjaanId) && String(c.columnId) === String(bar.columnId),
-      );
-      if (!rect) {
-        barsSkipped += 1;
-        if (barsSkipped <= 3) {
-          console.warn('[GanttOverlay] Missing rect for bar', {
-            pekerjaanId: bar.pekerjaanId,
-            columnId: bar.columnId,
-          });
+
+    barsByRow.forEach((bars, pkjId) => {
+      const rects = rectIndex.get(pkjId) || [];
+      const rectMap = new Map(rects.map((r) => [String(r.columnId), r]));
+      // track heights for stacked view: planned bottom, actual top
+      bars.forEach((bar) => {
+        const rect = rectMap.get(String(bar.columnId));
+        if (!rect) {
+          barsSkipped += 1;
+          return;
         }
-        return;
-      }
+        const paddingX = 0; // no gap to keep continuity
+        const paddingY = 2;
+        const maxWidth = rect.width - paddingX * 2;
+        const baseX = rect.x + paddingX;
+        const baseY = rect.y + paddingY;
+        const fullHeight = Math.max(8, rect.height - paddingY * 2);
+        const trackHeight = fullHeight / 2; // split planned/actual vertically
 
-      const paddingX = 4;
-      const paddingY = 6;
-      const maxWidth = rect.width - paddingX * 2;
-      const x = rect.x + paddingX;
-      const y = rect.y + paddingY;
-      const height = Math.max(6, rect.height - paddingY * 2);
+        const plannedValue = Number.isFinite(bar.planned) ? Math.max(0, Math.min(100, bar.planned)) : 0;
+        const actualValue = Number.isFinite(bar.actual) ? Math.max(0, Math.min(100, bar.actual)) : Math.max(0, Math.min(100, bar.value || 0));
 
-      const plannedValue = Number.isFinite(bar.planned) ? Math.max(0, Math.min(100, bar.planned)) : null;
-      const actualValue = Number.isFinite(bar.actual) ? Math.max(0, Math.min(100, bar.actual)) : Math.max(0, Math.min(100, bar.value || 0));
+        // Planned track (bottom half): full width only if >0, otherwise gap
+        const plannedWidth = maxWidth > 0 && plannedValue > 0 ? maxWidth : 0;
+        this.ctx.fillStyle = this._getPlannedColor();
+        if (plannedWidth > 0) {
+          this.ctx.fillRect(baseX, baseY + trackHeight, plannedWidth, trackHeight - 1);
+        }
 
-      if (plannedValue !== null) {
-        const plannedWidth = (plannedValue / 100) * maxWidth;
-        this.ctx.fillStyle = '#e2e8f0';
-        this.ctx.fillRect(x, y, plannedWidth, height);
-      }
+        // Actual track (top half): full width only if >0, otherwise gap
+        const actualWidth = maxWidth > 0 && actualValue > 0 ? maxWidth : 0;
+        const barColor = bar.color || this._resolveActualColor(bar.variance);
+        this.ctx.fillStyle = barColor;
+        if (actualWidth > 0) {
+          this.ctx.fillRect(baseX, baseY, actualWidth, trackHeight - 1);
+        }
 
-      const actualWidth = (actualValue / 100) * maxWidth;
-      const barColor = bar.color || this._resolveVarianceColor(bar.variance);
-      this.ctx.fillStyle = barColor;
-      this.ctx.fillRect(x, y, actualWidth, height);
-
-      this.barRects.push({
-        x,
-        y,
-        width: actualWidth,
-        height,
-        pekerjaanId: bar.pekerjaanId,
-        columnId: bar.columnId,
-        value: actualValue,
-        planned: plannedValue,
-        variance: bar.variance,
-        label: bar.label,
-        color: barColor,
+        this.barRects.push({
+          x: baseX,
+          y: baseY,
+          width: Math.max(actualWidth, plannedWidth),
+          height: fullHeight,
+          pekerjaanId: bar.pekerjaanId,
+          columnId: bar.columnId,
+          value: actualValue,
+          planned: plannedValue,
+          variance: bar.variance,
+          label: bar.label,
+          color: barColor,
+        });
+        barsDrawn += 1;
       });
-      barsDrawn += 1;
     });
+
     this._log('bars:drawn', { drawn: barsDrawn, skipped: barsSkipped, total: this.barData.length });
   }
 
@@ -206,6 +231,50 @@ export class GanttCanvasOverlay {
     if (variance < -0.1) return '#ef4444';
     if (variance > 0.1) return '#22c55e';
     return '#3b82f6';
+  }
+
+  _resolveActualColor(variance) {
+    const cssVar =
+      this._getCssVar('--gantt-actual-fill') ||
+      this._getCssVar('--bs-warning') ||
+      this._getBtnColor('.progress-mode-tabs .btn-outline-warning') ||
+      this._getBtnColor('.progress-mode-tabs .btn-warning');
+    if (cssVar) return cssVar;
+    return this._resolveVarianceColor(variance);
+  }
+
+  _getPlannedColor() {
+    return (
+      this._getCssVar('--gantt-bar-fill') ||
+      this._getCssVar('--bs-info') ||
+      this._getBtnColor('.progress-mode-tabs .btn-outline-info') ||
+      this._getBtnColor('.progress-mode-tabs .btn-info') ||
+      '#e2e8f0'
+    );
+  }
+
+  _getCssVar(name) {
+    try {
+      const root = document.documentElement;
+      const value = getComputedStyle(root).getPropertyValue(name);
+      return value && value.trim().length ? value.trim() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _getBtnColor(selector) {
+    try {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const style = getComputedStyle(el);
+      return style.getPropertyValue('background-color')?.trim() ||
+        style.getPropertyValue('border-color')?.trim() ||
+        style.getPropertyValue('color')?.trim() ||
+        null;
+    } catch (e) {
+      return null;
+    }
   }
 
   _bindPointerEvents() {
