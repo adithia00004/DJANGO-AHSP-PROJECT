@@ -1,5 +1,7 @@
 import { TanStackGridManager } from '../grid/tanstack-grid-manager.js';
 import { GanttCanvasOverlay } from '../gantt/GanttCanvasOverlay.js';
+import { KurvaSCanvasOverlay } from '../kurva-s/KurvaSCanvasOverlay.js';
+import { buildProgressDataset } from '../kurva-s/dataset-builder.js';
 
 export class UnifiedTableManager {
   constructor(state, options = {}) {
@@ -30,6 +32,7 @@ export class UnifiedTableManager {
       });
       this.tanstackGrid.updateData(payload);
       this._refreshGanttOverlay(payload);
+      this._refreshKurvaSOverlay(payload);
     }
   }
 
@@ -72,10 +75,13 @@ export class UnifiedTableManager {
     }
 
     if (newMode === 'kurva') {
-      // Placeholder: kurva chart overlay can be initialized here later
-      if (this.overlays.kurva && typeof this.overlays.kurva.show === 'function') {
-        this.overlays.kurva.show();
+      if (!this.overlays.kurva) {
+        // PHASE 4 FIX: Pass projectId for cost mode support
+        const projectId = this.state?.projectId || this.options?.projectId || null;
+        this.overlays.kurva = new KurvaSCanvasOverlay(this.tanstackGrid, { projectId });
       }
+      this.overlays.kurva.show();
+      this._refreshKurvaSOverlay();
     }
   }
 
@@ -133,6 +139,19 @@ export class UnifiedTableManager {
       ? stateManager.getAllCellsForMode('actual')
       : this._mergeModeState(stateManager?.states?.actual);
     const activeMode = (this.state?.progressMode || stateManager?.currentMode || 'planned').toLowerCase();
+
+    console.log('[UnifiedTable] 🔍 BuildBarData DEBUG:', {
+      rows: tree.length,
+      cols: columns.length,
+      plannedSize: mergedPlanned?.size || 0,
+      actualSize: mergedActual?.size || 0,
+      activeMode,
+      samplePlannedKeys: mergedPlanned ? Array.from(mergedPlanned.keys()).slice(0, 5) : [],
+      sampleActualKeys: mergedActual ? Array.from(mergedActual.keys()).slice(0, 5) : [],
+      samplePlannedValues: mergedPlanned ? Array.from(mergedPlanned.entries()).slice(0, 3) : [],
+      sampleActualValues: mergedActual ? Array.from(mergedActual.entries()).slice(0, 3) : [],
+    });
+
     this._log('buildBarData:start', {
       rows: tree.length,
       cols: columns.length,
@@ -270,6 +289,129 @@ export class UnifiedTableManager {
       }
     }
     return fallback;
+  }
+
+  _refreshKurvaSOverlay(payload = {}) {
+    if (!this.overlays.kurva || !this.tanstackGrid) {
+      return;
+    }
+
+    const curveData = this._buildCurveData(payload);
+    this._log('refreshKurvaSOverlay', {
+      plannedPoints: curveData.planned.length,
+      actualPoints: curveData.actual.length,
+    });
+
+    this.overlays.kurva.renderCurve(curveData);
+  }
+
+  // Exposed for KurvaSCanvasOverlay progress refresh
+  updateCurvaS(payload = {}) {
+    this._refreshKurvaSOverlay(payload);
+  }
+
+  // PHASE 4 FIX: Set Kurva-S mode (progress or cost)
+  async setKurvaMode(mode) {
+    if (!this.overlays.kurva) {
+      console.warn('[UnifiedTable] Cannot set Kurva mode: overlay not initialized');
+      return;
+    }
+
+    this._log('setKurvaMode', { mode });
+    await this.overlays.kurva.setMode(mode);
+  }
+
+  // PHASE 3 FIX: Use dataset-builder.js with volume/harga weighting instead of simple average
+  _buildCurveData(payload = {}) {
+    // Get columns and state
+    let columns = Array.isArray(payload.timeColumns) ? payload.timeColumns : [];
+    const gridColumns = this.tanstackGrid?.currentColumns || [];
+
+    if (!columns.length && gridColumns.length) {
+      columns = gridColumns;
+    }
+    if (!columns.length && Array.isArray(this.state?.timeColumns)) {
+      columns = this.state.timeColumns;
+    }
+
+    // Filter to time columns only
+    const timeColumns = columns.filter((col) => {
+      const meta = this._resolveColumnMeta(col);
+      return meta?.timeColumn;
+    });
+
+    if (timeColumns.length === 0) {
+      this._log('buildCurveData:noTimeColumns', { columnsTotal: columns.length });
+      return { planned: [], actual: [] };
+    }
+
+    // Get state data
+    const stateManager = this.state?.stateManager || this.state?.stateManagerInstance || this.options?.stateManager;
+
+    // PHASE 3 FIX: Build state object for dataset-builder.js
+    const datasetState = {
+      timeColumns: timeColumns,
+      stateManager: stateManager,
+      tree: this.state?.tree || payload?.tree || [],
+      totalBiayaProject: this.state?.totalBiayaProject || payload?.totalBiayaProject || 0,
+    };
+
+    this._log('buildCurveData:state', {
+      timeColumns: timeColumns.length,
+      tree: datasetState.tree.length,
+      totalBiaya: datasetState.totalBiayaProject,
+    });
+
+    // PHASE 3 FIX: Use buildProgressDataset with weighted calculations
+    const dataset = buildProgressDataset(datasetState);
+
+    if (!dataset) {
+      this._log('buildCurveData:noDataset', { state: datasetState });
+      return { planned: [], actual: [] };
+    }
+
+    // Convert dataset format to curve points format
+    const plannedCurve = this._convertDatasetToCurvePoints(dataset, 'planned');
+    const actualCurve = this._convertDatasetToCurvePoints(dataset, 'actual');
+
+    this._log('buildCurveData:result', {
+      plannedPoints: plannedCurve.length,
+      actualPoints: actualCurve.length,
+      useHargaCalculation: dataset.useHargaCalculation,
+      totalBiaya: dataset.totalBiaya,
+      totalVolume: dataset.totalVolume,
+    });
+
+    return {
+      planned: plannedCurve,
+      actual: actualCurve,
+    };
+  }
+
+  // PHASE 3 FIX: Convert dataset-builder.js format to curve points format
+  _convertDatasetToCurvePoints(dataset, seriesKey) {
+    const series = dataset[seriesKey] || [];
+    const labels = dataset.labels || [];
+    const details = dataset.details || [];
+
+    return series.map((cumulativeProgress, index) => {
+      const detail = details[index] || {};
+      const label = labels[index] || `Week ${index + 1}`;
+
+      // Extract column ID from detail or label
+      const columnId = detail?.metadata?.id ||
+                      detail?.metadata?.fieldId ||
+                      detail?.metadata?.columnId ||
+                      `week_${index + 1}`;
+
+      return {
+        columnId: String(columnId),
+        weekNumber: index + 1,
+        weekProgress: seriesKey === 'planned' ? detail.planned : detail.actual,
+        cumulativeProgress: cumulativeProgress,
+        label: label,
+      };
+    });
   }
 
   _log(event, payload) {

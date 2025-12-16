@@ -1,0 +1,22 @@
+{
+  "bundle_size": {
+    "jadwal_kegiatan_bundle": 92.7607421875,
+    "grid_modules": 86.400390625,
+    "core_modules": 26.0,
+    "total_js": 282.23828125,
+    "total_css": 1.5888671875
+  },
+  "source_code": {
+    "gantt_lines": 704,
+    "gantt_size_kb": 18.927734375
+  },
+  "build_performance": {
+    "build_time_seconds": 8.320395231246948,
+    "build_success": true
+  },
+  "test_performance": {
+    "test_time_seconds": 6.181643009185791,
+    "tests_passed": false
+  },
+  "test_coverage": null
+}

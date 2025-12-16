@@ -7,19 +7,20 @@
 
 import { TanStackGridManager } from '@modules/grid/tanstack-grid-manager.js';
 import { UnifiedTableManager } from '@modules/unified/UnifiedTableManager.js';
-import { DataLoader } from '@modules/core/data-loader.js';
 import { TimeColumnGenerator } from '@modules/core/time-column-generator.js';
-import { SaveHandler } from '@modules/core/save-handler.js';
 // Chart modules now lazy loaded for better initial performance
 // import { KurvaSChart } from '@modules/kurva-s/echarts-setup.js';
 // import { GanttChart } from '@modules/gantt/frappe-gantt-setup.js'; // OLD - Frappe Gantt (deprecated)
 // Gantt V2 (Frozen Column) now loaded lazily via dynamic import() - see _initializeFrozenGantt()
 import { StateManager } from '@modules/core/state-manager.js'; // Phase 0.3: StateManager integration
+import { AppInitializer } from '@modules/app/AppInitializer.js';
+import { EventBinder } from '@modules/app/EventBinder.js';
+import { DataOrchestrator } from '@modules/app/DataOrchestrator.js';
+import { UXManager } from '@modules/app/UXManager.js';
+import { ChartCoordinator } from '@modules/app/ChartCoordinator.js';
 import {
-  KeyboardShortcuts,
   ButtonStateManager,
-  Toast,
-  initializeUXEnhancements
+  Toast
 } from '@modules/shared/ux-enhancements.js'; // UX Enhancements
 
 /**
@@ -48,9 +49,15 @@ class JadwalKegiatanApp {
     this.ganttFrozenGrid = null; // Gantt V2: Frozen column architecture (default)
     this._chartModulesLoaded = false;
     this._chartModulesLoading = false;
+    this._chartUpdatePending = false;
+    this._chartUpdateDelay = 200; // ms delay between chart refreshes
 
     // UX Enhancements
     this.keyboardShortcuts = null;
+    this.eventBinder = null;
+    this.dataOrchestrator = null;
+    this.uxManager = new UXManager(this);
+    this.chartCoordinator = new ChartCoordinator(this);
 
     this._weekBoundarySaveTimer = null;
     this._pendingWeekBoundary = null;
@@ -131,11 +138,36 @@ class JadwalKegiatanApp {
     console.log('🚀 Initializing Jadwal Kegiatan App (Vite Build)');
 
     try {
-      // Setup state
-      this._setupState(config);
+      // Setup state via AppInitializer
+      this.appInitializer = new AppInitializer(this.stateManager);
+      const existingState = window.kelolaTahapanPageState || window.JadwalPekerjaanApp?.state;
+      this.state = this.appInitializer.buildState(config, existingState, {
+        createTimeColumnIndex: this._createTimeColumnIndex.bind(this),
+      });
+      this._ensureStateCollections();
+      if (!this.state.displayScale) {
+        this.state.displayScale = this.state.timeScale || 'weekly';
+      }
+      this._setupStateDelegation();
+      this._bindStateManagerEvents();
 
       // Setup DOM references
-      this._setupDomRefs(config);
+      const domRefs = this.appInitializer.buildDomRefs(this.state, config);
+      this.state.domRefs = domRefs;
+      this._updateSaveButtonState();
+      if (!domRefs.root) {
+        throw new Error('Root container #tahapan-grid-app tidak ditemukan');
+      }
+      this._applyDataset(domRefs.root);
+      if (!domRefs.tanstackGridContainer) {
+        throw new Error('TanStack grid container #tanstack-grid-container tidak ditemukan');
+      }
+
+      // Bind events via dedicated binder
+      if (!this.dataOrchestrator) {
+        this.dataOrchestrator = new DataOrchestrator(this);
+      }
+      this.eventBinder = new EventBinder(this);
 
       // Attach event handlers
       this._attachEvents();
@@ -155,116 +187,6 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Setup application state
-   */
-  _setupState(config) {
-    // Check if there's existing global state (backwards compatibility)
-    const existingState = window.kelolaTahapanPageState || window.JadwalPekerjaanApp?.state;
-
-    this.state = Object.assign(
-      {
-        // Shared state (mode-independent)
-        pekerjaanTree: [],
-        timeColumns: [],
-        tahapanList: [],
-        timeColumnIndex: {},
-        expandedNodes: new Set(),
-        volumeMap: new Map(),
-        isLoading: false,
-        error: null,
-        domRefs: {},
-        apiEndpoints: {},
-        projectId: null,
-        projectName: '',
-        projectStart: null,
-        projectEnd: null,
-        useUPlotKurva: true, // uPlot Kurva-S aktif secara default
-        timeScale: 'weekly',
-        inputMode: 'percentage',
-        saveMode: 'weekly',
-        weekStartDay: 0,
-        weekEndDay: 6,
-        displayScale: null,
-        progressMode: 'planned',  // Phase 2E.1: Current active mode
-        displayMode: 'percentage', // Phase 2E.1: 'percentage' or 'volume'
-        useUnifiedTable: config.disableUnifiedTable ? false : true,
-        // Default: legacy Gantt V2 tetap aktif; bisa dimatikan dengan config.disableLegacyGantt
-        keepLegacyGantt: config.enableLegacyGantt ? true : false,
-        dependencies: [],
-        debugUnifiedTable: Boolean(config.debugUnifiedTable || window.DEBUG_UNIFIED_TABLE),
-
-        // Phase 0.3: StateManager reference
-        stateManager: this.stateManager,
-
-        // Phase 0.3: Cell values now managed by StateManager
-        // Keeping other mode-specific state here temporarily for non-cell data
-        plannedState: {
-          // modifiedCells: managed by StateManager
-          // assignmentMap: managed by StateManager
-          progressTotals: new Map(),
-          volumeTotals: new Map(),
-          cellVolumeOverrides: new Map(),
-          cellValidationMap: new Map(),
-          failedRows: new Set(),
-          autoWarningRows: new Set(),
-          volumeWarningRows: new Set(),
-          validationWarningRows: new Set(),
-          saveErrorRows: new Set(),
-          apiFailedRows: new Set(),
-          showCompletionWarnings: false,
-          isDirty: false,
-        },
-        actualState: {
-          // modifiedCells: managed by StateManager
-          // assignmentMap: managed by StateManager
-          progressTotals: new Map(),
-          volumeTotals: new Map(),
-          cellVolumeOverrides: new Map(),
-          cellValidationMap: new Map(),
-          failedRows: new Set(),
-          autoWarningRows: new Set(),
-          volumeWarningRows: new Set(),
-          validationWarningRows: new Set(),
-          saveErrorRows: new Set(),
-          apiFailedRows: new Set(),
-          showCompletionWarnings: false,
-          isDirty: false,
-        },
-
-        // Phase 0.3: Backward compatibility maintained via StateManager
-        // Legacy properties for non-cell data still delegate to current mode
-        progressTotals: null,
-        volumeTotals: null,
-        cellVolumeOverrides: null,
-        cellValidationMap: null,
-        failedRows: null,
-        autoWarningRows: null,
-        volumeWarningRows: null,
-        validationWarningRows: null,
-        saveErrorRows: null,
-        apiFailedRows: null,
-        showCompletionWarnings: false,
-        isDirty: false,
-      },
-      existingState || {},
-      config.initialState || {}
-    );
-
-    // Expose to window for backwards compatibility
-    window.kelolaTahapanPageState = this.state;
-
-    this.state.timeColumnIndex = this._createTimeColumnIndex(this.state.timeColumns);
-    this._ensureStateCollections();
-    if (!this.state.displayScale) {
-      this.state.displayScale = this.state.timeScale || 'weekly';
-    }
-
-    // Phase 2E.1: Setup property delegation for backward compatibility
-    this._setupStateDelegation();
-    this._bindStateManagerEvents();
-  }
-
-  /**
    * Setup property delegation for backward compatibility.
    * Phase 0.3: Cell data (modifiedCells, assignmentMap) now managed by StateManager
    * Other mode-specific properties still delegate to current mode state
@@ -280,19 +202,26 @@ class JadwalKegiatanApp {
     // Add backward compatibility getters that delegate to StateManager
     Object.defineProperty(this.state, 'modifiedCells', {
       get: () => {
-        // Return a Map-like object for backward compatibility
-        // This is used by legacy code that expects Map operations
         const mode = this.state.progressMode;
         return this.stateManager.states[mode].modifiedCells;
+      },
+      set: (value) => {
+        const mode = this.state.progressMode;
+        this.stateManager.states[mode].modifiedCells =
+          value instanceof Map ? value : new Map(Object.entries(value || {}));
       },
       configurable: true
     });
 
     Object.defineProperty(this.state, 'assignmentMap', {
       get: () => {
-        // Return a Map-like object for backward compatibility
         const mode = this.state.progressMode;
         return this.stateManager.states[mode].assignmentMap;
+      },
+      set: (value) => {
+        const mode = this.state.progressMode;
+        this.stateManager.states[mode].assignmentMap =
+          value instanceof Map ? value : new Map(Object.entries(value || {}));
       },
       configurable: true
     });
@@ -302,6 +231,11 @@ class JadwalKegiatanApp {
         const mode = this.state.progressMode;
         return this.stateManager.states[mode].costAssignmentMap;
       },
+      set: (value) => {
+        const mode = this.state.progressMode;
+        this.stateManager.states[mode].costAssignmentMap =
+          value instanceof Map ? value : new Map(Object.entries(value || {}));
+      },
       configurable: true
     });
 
@@ -309,6 +243,11 @@ class JadwalKegiatanApp {
       get: () => {
         const mode = this.state.progressMode;
         return this.stateManager.states[mode].costModifiedCells;
+      },
+      set: (value) => {
+        const mode = this.state.progressMode;
+        this.stateManager.states[mode].costModifiedCells =
+          value instanceof Map ? value : new Map(Object.entries(value || {}));
       },
       configurable: true
     });
@@ -359,6 +298,18 @@ class JadwalKegiatanApp {
     this.stateManager.removeEventListener(this._stateManagerListener);
     this._stateManagerListener = null;
     console.log('[JadwalKegiatanApp] StateManager listener removed');
+  }
+
+  _showSkeleton(type) {
+    if (this.uxManager) {
+      this.uxManager.showSkeleton(type);
+    }
+  }
+
+  _hideSkeleton(type) {
+    if (this.uxManager) {
+      this.uxManager.hideSkeleton(type);
+    }
   }
 
   _handleStateManagerEvent(event = {}) {
@@ -465,53 +416,6 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Setup DOM references
-   */
-  _setupDomRefs(config) {
-    const domRefs = Object.assign(
-      {
-        root: document.getElementById('tahapan-grid-app'),
-        saveButton: document.getElementById('save-button') || document.getElementById('btn-save-all'),
-        refreshButton: document.getElementById('refresh-button'),
-        resetButton: document.getElementById('btn-reset-progress'),
-        tanstackGridContainer: document.getElementById('tanstack-grid-container'),
-        tanstackGridBody: document.getElementById('tanstack-grid-body'),
-        tanstackGridTopScroll: document.getElementById('tanstack-grid-scroll-top'),
-        tanstackGridTopScrollInner: document.getElementById('tanstack-grid-scroll-inner'),
-        scurveChart: document.getElementById('scurve-chart'),
-        ganttChart: document.getElementById('gantt-chart'),
-        ganttChartWrapper: document.getElementById('gantt-chart-wrapper'),
-        ganttTreeBody: document.getElementById('gantt-tree-body'),
-        ganttTreeScroll: document.getElementById('gantt-tree-scroll'),
-        ganttSummaryTable: document.getElementById('gantt-summary-table'),
-        ganttSummaryBody: document.getElementById('gantt-summary-body'),
-        ganttSummaryTotal: document.getElementById('gantt-summary-total'),
-        statusBar: document.querySelector('.status-bar'),
-        statusMessageEl: document.getElementById('status-message'),
-        itemCountEl: document.getElementById('item-count'),
-        modifiedCountEl: document.getElementById('modified-count'),
-        totalProgressEl: document.getElementById('total-progress'),
-        weekStartSelect: document.getElementById('week-start-day-select'),
-        weekEndSelect: document.getElementById('week-end-day-select'),
-      },
-      config.domRefs || {}
-    );
-
-    this.state.domRefs = domRefs;
-    this._updateSaveButtonState();
-
-    if (!domRefs.root) {
-      throw new Error('Root container #tahapan-grid-app tidak ditemukan');
-    }
-
-    this._applyDataset(domRefs.root);
-
-    if (!domRefs.tanstackGridContainer) {
-      throw new Error('TanStack grid container #tanstack-grid-container tidak ditemukan');
-    }
-  }
-
-  /**
    * Apply dataset attributes from root container into state
    */
   _applyDataset(rootElement) {
@@ -598,233 +502,58 @@ class JadwalKegiatanApp {
    * Attach event handlers using modern delegation pattern
    */
   _attachEvents() {
-    // Attach toolbar events
-    this._attachToolbarEvents();
-
+    if (this.eventBinder) {
+      this.eventBinder.attachAll();
+      return;
+    }
     this._initTanStackGridIfNeeded();
   }
 
-  /**
-   * Attach toolbar button events
-   */
-  _attachToolbarEvents() {
-    const saveButton = this.state.domRefs.saveButton;
-    const refreshButton = this.state.domRefs.refreshButton;
-    const resetButton = this.state.domRefs.resetButton;
-
-    if (saveButton) {
-      saveButton.addEventListener('click', () => this.saveChanges());
+  _attachRadioGroupHandler(groupName, handler) {
+    if (this.uxManager?.attachRadioGroupHandler) {
+      this.uxManager.attachRadioGroupHandler(groupName, handler);
     }
-
-    if (refreshButton) {
-      refreshButton.addEventListener('click', () => this.refresh());
-    }
-
-    if (resetButton) {
-      resetButton.addEventListener('click', () => this._handleResetProgress());
-    }
-
-    this._syncToolbarRadios();
-    this._attachRadioGroupHandler('displayMode', (value) => this._handleDisplayModeChange(value));
-    this._attachRadioGroupHandler('progressMode', (value) => this._handleProgressModeChange(value));  // Phase 2E.1
-    this._attachRadioGroupHandler('timeScale', (value) => this._handleTimeScaleChange(value));
-    this._setupWeekBoundaryControls();
-    this._setupExportButtons();
-    this._setupCostViewToggle();  // Phase 1: Cost view toggle button
-    this._setupKeyboardShortcuts();  // UX Enhancement: Keyboard shortcuts
-    this._setupUXEnhancements();  // UX Enhancement: Ripple effects, tooltips
   }
 
-  /**
-   * Setup keyboard shortcuts for power users
-   */
-  _setupKeyboardShortcuts() {
-    // Initialize keyboard shortcuts manager
-    this.keyboardShortcuts = new KeyboardShortcuts();
-
-    // Ctrl+S: Save
-    this.keyboardShortcuts.register('ctrl+s', () => {
-      this.saveChanges();
-      Toast.info('Saving changes... (Ctrl+S)');
-    }, {
-      description: 'Save all changes'
-    });
-
-    // Ctrl+R: Refresh (override browser default)
-    this.keyboardShortcuts.register('ctrl+r', () => {
-      this.refresh();
-      Toast.info('Refreshing data... (Ctrl+R)');
-    }, {
-      description: 'Refresh data from server'
-    });
-
-    // Ctrl+Alt+P: Switch to Planned mode
-    this.keyboardShortcuts.register('ctrl+alt+p', () => {
-      const plannedRadio = document.getElementById('mode-planned');
-      if (plannedRadio) {
-        plannedRadio.checked = true;
-        plannedRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Switched to Perencanaan mode (Ctrl+Alt+P)');
-      }
-    }, {
-      description: 'Switch to Perencanaan mode'
-    });
-
-    // Ctrl+Alt+A: Switch to Actual mode
-    this.keyboardShortcuts.register('ctrl+alt+a', () => {
-      const actualRadio = document.getElementById('mode-actual');
-      if (actualRadio) {
-        actualRadio.checked = true;
-        actualRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Switched to Realisasi mode (Ctrl+Alt+A)');
-      }
-    }, {
-      description: 'Switch to Realisasi mode'
-    });
-
-    // Ctrl+Alt+1: Switch to Percentage display
-    this.keyboardShortcuts.register('ctrl+alt+1', () => {
-      const percentageRadio = document.getElementById('mode-percentage');
-      if (percentageRadio && !percentageRadio.disabled) {
-        percentageRadio.checked = true;
-        percentageRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Display: Percentage (Ctrl+Alt+1)');
-      }
-    }, {
-      description: 'Switch to Percentage display'
-    });
-
-    // Ctrl+Alt+2: Switch to Volume display
-    this.keyboardShortcuts.register('ctrl+alt+2', () => {
-      const volumeRadio = document.getElementById('mode-volume');
-      if (volumeRadio && !volumeRadio.disabled) {
-        volumeRadio.checked = true;
-        volumeRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Display: Volume (Ctrl+Alt+2)');
-      }
-    }, {
-      description: 'Switch to Volume display'
-    });
-
-    // Ctrl+Alt+3: Switch to Cost display (if enabled)
-    this.keyboardShortcuts.register('ctrl+alt+3', () => {
-      const costRadio = document.getElementById('mode-cost');
-      if (costRadio && !costRadio.disabled) {
-        costRadio.checked = true;
-        costRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Display: Cost (Ctrl+Alt+3)');
-      } else {
-        Toast.warning('Cost view only available in Realisasi mode');
-      }
-    }, {
-      description: 'Switch to Cost display'
-    });
-
-    // Escape: Close modals/dropdowns
-    this.keyboardShortcuts.register('escape', () => {
-      // Close any open Bootstrap dropdowns
-      const openDropdowns = document.querySelectorAll('.dropdown-menu.show');
-      openDropdowns.forEach(dropdown => {
-        const toggle = dropdown.previousElementSibling;
-        if (toggle) {
-          const bsDropdown = bootstrap.Dropdown.getInstance(toggle);
-          if (bsDropdown) bsDropdown.hide();
-        }
-      });
-    }, {
-      description: 'Close open menus',
-      preventDefault: false // Allow default Escape behavior
-    });
-
-    // Ctrl+?: Show keyboard shortcuts help
-    this.keyboardShortcuts.register('ctrl+shift+/', () => {
-      this._showKeyboardShortcutsHelp();
-    }, {
-      description: 'Show keyboard shortcuts help'
-    });
-
-    console.log('⌨️ Keyboard shortcuts registered:', this.keyboardShortcuts.getShortcuts());
-  }
-
-  /**
-   * Setup UX enhancements (ripple effects, tooltips, etc.)
-   */
-  _setupUXEnhancements() {
-    // Initialize general UX enhancements
-    initializeUXEnhancements();
-
-    // Add keyboard hint to Save button
-    const saveButton = this.state.domRefs.saveButton;
-    if (saveButton) {
-      saveButton.setAttribute('data-keyboard-hint', 'Ctrl+S');
+  _setupWeekBoundaryControls() {
+    if (this.uxManager?.setupWeekBoundaryControls) {
+      this.uxManager.setupWeekBoundaryControls();
     }
-
-    console.log('🎨 UX enhancements applied');
   }
 
-  /**
-   * Show keyboard shortcuts help modal
-   */
-  _showKeyboardShortcutsHelp() {
-    const shortcuts = this.keyboardShortcuts.getShortcuts();
-    const shortcutList = shortcuts.map(s => `
-      <tr>
-        <td><kbd>${s.key.replace(/\+/g, '</kbd> + <kbd>')}</kbd></td>
-        <td>${s.description}</td>
-      </tr>
-    `).join('');
-
-    const modalHtml = `
-      <div class="modal fade" id="keyboardShortcutsModal" tabindex="-1">
-        <div class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title">
-                <i class="bi bi-keyboard"></i> Keyboard Shortcuts
-              </h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-              <table class="table table-sm">
-                <thead>
-                  <tr>
-                    <th style="width: 40%">Shortcut</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${shortcutList}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Remove existing modal if any
-    const existingModal = document.getElementById('keyboardShortcutsModal');
-    if (existingModal) existingModal.remove();
-
-    // Add modal to DOM
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-    // Show modal
-    const modal = new bootstrap.Modal(document.getElementById('keyboardShortcutsModal'));
-    modal.show();
-
-    // Cleanup on hide
-    document.getElementById('keyboardShortcutsModal').addEventListener('hidden.bs.modal', function() {
-      this.remove();
-    });
+  _setupCostViewToggle() {
+    if (this.uxManager?.setupCostViewToggle) {
+      this.uxManager.setupCostViewToggle();
+    }
   }
 
-  _setupExportButtons() {
-    if (this._exportBindingsAttached) {
+  _setupWeekBoundaryControls() {
+    const { weekStartSelect, weekEndSelect } = this.state.domRefs || {};
+    if (!weekStartSelect || !weekEndSelect) {
       return;
     }
-    if (typeof ExportManager === 'undefined') {
-      console.warn('[JadwalKegiatanApp] ExportManager is not loaded; export buttons disabled');
+
+    this._syncWeekBoundaryControls();
+
+    weekStartSelect.addEventListener('change', (event) => {
+      const nextStart = this._normalizePythonWeekday(event.target.value, this._getWeekStartDay());
+      const derivedEnd = (nextStart + 6) % 7;
+      this._handleWeekBoundaryChange({ weekStartDay: nextStart, weekEndDay: derivedEnd, source: 'start' });
+    });
+
+    weekEndSelect.addEventListener('change', (event) => {
+      const nextEnd = this._normalizePythonWeekday(event.target.value, this._getWeekEndDay());
+      const derivedStart = (nextEnd + 1) % 7;
+      this._handleWeekBoundaryChange({ weekStartDay: derivedStart, weekEndDay: nextEnd, source: 'end' });
+    });
+  }
+
+  /**
+   * Setup export button handlers using new ExportCoordinator
+   * Binds to export modal and handles report type selection
+   */
+  _setupExportButtons() {
+    if (this._exportBindingsAttached) {
       return;
     }
     if (!this.state?.projectId) {
@@ -832,27 +561,269 @@ class JadwalKegiatanApp {
     }
 
     try {
-      this._exportManagerInstance = new ExportManager(this.state.projectId, 'jadwal-pekerjaan');
-      const formats = ['csv', 'pdf', 'word', 'xlsx'];
-      formats.forEach((format) => {
-        const button = document.getElementById(`btn-export-${format}`);
-        if (!button) {
-          return;
-        }
-        button.addEventListener('click', () => {
-          this._exportManagerInstance.exportAs(format);
-        });
-      });
+      // Initialize ExportCoordinator (lazy import handled internally)
+      this._initializeExportCoordinator();
+
+      // Bind export confirmation button in modal
+      const btnConfirmExport = document.getElementById('btnConfirmExport');
+      if (btnConfirmExport) {
+        btnConfirmExport.addEventListener('click', () => this.handleExport());
+      }
+
       this._exportBindingsAttached = true;
+      console.log('[JadwalKegiatanApp] Export handlers attached successfully');
     } catch (error) {
       console.error('[JadwalKegiatanApp] Failed to initialize export buttons', error);
     }
   }
 
   /**
-   * Phase 1: Setup Cost View Toggle Button
+   * Initialize ExportCoordinator (lazy import)
    * @private
    */
+  async _initializeExportCoordinator() {
+    if (this._exportCoordinator) {
+      return this._exportCoordinator;
+    }
+
+    try {
+      const { ExportCoordinator } = await import('@modules/shared/export-coordinator.js');
+      this._exportCoordinator = new ExportCoordinator(this);
+      console.log('[JadwalKegiatanApp] ExportCoordinator initialized');
+      return this._exportCoordinator;
+    } catch (error) {
+      console.error('[JadwalKegiatanApp] Failed to load ExportCoordinator', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle export button click
+   * Reads modal settings and triggers export
+   */
+  async handleExport() {
+    try {
+      // Get export options from modal
+      const exportModal = document.getElementById('exportModal');
+      if (!exportModal) {
+        throw new Error('Export modal not found');
+      }
+
+      const reportType = exportModal.querySelector('input[name="reportType"]:checked')?.value || 'full';
+      const format = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
+      const includeGantt = exportModal.querySelector('#includeGantt')?.checked ?? true;
+      const includeKurvaS = exportModal.querySelector('#includeKurvaS')?.checked ?? true;
+
+      console.log('[Export] Starting export:', { reportType, format, includeGantt, includeKurvaS });
+
+      // Show progress modal
+      this._showExportProgressModal('Mempersiapkan data export...', 'Harap tunggu...');
+
+      // Hide export modal
+      const modalInstance = bootstrap.Modal.getInstance(exportModal);
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+
+      // Ensure ExportCoordinator is loaded
+      const coordinator = await this._initializeExportCoordinator();
+
+      // Update progress
+      this._updateExportProgress('Menangkap chart...', 'Sedang mengambil gambar Gantt dan Kurva S');
+
+      // Execute export
+      const blob = await coordinator.export(reportType, format, {
+        includeGantt,
+        includeKurvaS
+      });
+
+      // Update progress
+      this._updateExportProgress('Memproses file...', 'Menyiapkan download...');
+
+      // Generate filename and download
+      const filename = coordinator.generateFilename(reportType, format);
+      coordinator.downloadBlob(blob, filename);
+
+      // Hide progress modal
+      this._hideExportProgressModal();
+
+      // Show success toast
+      Toast.success('Export berhasil!', {
+        duration: 3000,
+        position: 'top-right'
+      });
+
+      console.log('[Export] Export completed successfully:', filename);
+    } catch (error) {
+      console.error('[Export] Export failed:', error);
+
+      // Hide progress modal
+      this._hideExportProgressModal();
+
+      // Show error toast
+      Toast.error(`Export gagal: ${error.message}`, {
+        duration: 5000,
+        position: 'top-right'
+      });
+    }
+  }
+
+  /**
+   * Show export progress modal
+   * @private
+   * @param {string} status - Status text
+   * @param {string} detail - Detail text
+   */
+  _showExportProgressModal(status = 'Memproses...', detail = '') {
+    const modal = document.getElementById('exportProgressModal');
+    if (!modal) return;
+
+    const statusEl = modal.querySelector('#exportProgressStatus');
+    const detailEl = modal.querySelector('#exportProgressDetail');
+
+    if (statusEl) statusEl.textContent = status;
+    if (detailEl) detailEl.textContent = detail;
+
+    const modalInstance = new bootstrap.Modal(modal);
+    modalInstance.show();
+  }
+
+  /**
+   * Update export progress modal
+   * @private
+   * @param {string} status - Status text
+   * @param {string} detail - Detail text
+   */
+  _updateExportProgress(status, detail = '') {
+    const modal = document.getElementById('exportProgressModal');
+    if (!modal) return;
+
+    const statusEl = modal.querySelector('#exportProgressStatus');
+    const detailEl = modal.querySelector('#exportProgressDetail');
+
+    if (statusEl) statusEl.textContent = status;
+    if (detailEl) detailEl.textContent = detail;
+  }
+
+  /**
+   * Hide export progress modal
+   * @private
+   */
+  _hideExportProgressModal() {
+    const modal = document.getElementById('exportProgressModal');
+    if (!modal) return;
+
+    const modalInstance = bootstrap.Modal.getInstance(modal);
+    if (modalInstance) {
+      modalInstance.hide();
+    }
+  }
+
+  async _captureExportAttachments() {
+    const attachments = [];
+    const mgr = this.unifiedManager;
+    const prevMode = mgr?.currentMode || 'grid';
+    this._pendingAttachments = [];
+
+    try {
+      if (mgr) {
+        // Gantt overlay + table snapshot
+        mgr.switchMode('gantt');
+        mgr._refreshGanttOverlay?.();
+        await this._awaitFrame();
+        await this._captureGridSnapshot('#tanstack-grid-container', 'Gantt - Grid Overlay');
+        this._captureCanvasOnly('.gantt-canvas-overlay', 'Gantt Chart');
+
+        // Kurva S overlay + table snapshot
+        mgr.switchMode('kurva');
+        mgr._refreshKurvaSOverlay?.();
+        await this._awaitFrame();
+        await this._captureGridSnapshot('#tanstack-grid-container', 'Kurva S - Grid Overlay');
+        this._captureCanvasOnly('.kurva-s-canvas-overlay', 'Kurva S');
+
+        // Restore previous mode
+        if (prevMode && prevMode !== mgr.currentMode) {
+          mgr.switchMode(prevMode);
+        }
+      } else {
+        // Fallback: attempt capture if overlays already in DOM
+        await this._captureGridSnapshot('#tanstack-grid-container', 'Grid Snapshot');
+        this._captureCanvasOnly('.gantt-canvas-overlay', 'Gantt Chart');
+        this._captureCanvasOnly('.kurva-s-canvas-overlay', 'Kurva S');
+      }
+    } catch (err) {
+      console.warn('[JadwalKegiatanApp] Failed to capture attachments for export:', err);
+      try {
+        if (mgr && prevMode && prevMode !== mgr.currentMode) {
+          mgr.switchMode(prevMode);
+        }
+      } catch (restoreErr) {
+        console.warn('[JadwalKegiatanApp] Failed to restore mode after capture', restoreErr);
+      }
+    }
+
+    if (this._pendingAttachments && this._pendingAttachments.length) {
+      attachments.push(...this._pendingAttachments);
+      this._pendingAttachments = [];
+    }
+
+    return attachments;
+  }
+
+  _captureCanvasOnly(selector, title) {
+    const el = document.querySelector(selector);
+    if (el && typeof el.toDataURL === 'function') {
+      try {
+        this._pendingAttachments = this._pendingAttachments || [];
+        this._pendingAttachments.push({ title, data_url: el.toDataURL('image/png') });
+      } catch (e) {
+        console.warn(`[ExportCapture] Failed to capture ${title}:`, e);
+      }
+    }
+  }
+
+  async _captureGridSnapshot(selector, title) {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    await this._awaitFrame();
+    const h2c = await this._ensureHtml2Canvas();
+    if (!h2c) {
+      return;
+    }
+    try {
+      const canvas = await h2c(el, {
+        backgroundColor: '#ffffff',
+        scale: 1,
+        useCORS: true,
+        logging: false,
+      });
+      this._pendingAttachments = this._pendingAttachments || [];
+      this._pendingAttachments.push({ title, data_url: canvas.toDataURL('image/png') });
+    } catch (e) {
+      console.warn(`[ExportCapture] Failed to snapshot ${title}:`, e);
+    }
+  }
+
+  _awaitFrame() {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  async _ensureHtml2Canvas() {
+    if (typeof window.html2canvas === 'function') {
+      return window.html2canvas;
+    }
+    try {
+      const mod = await import(/* webpackChunkName: "html2canvas" */ 'html2canvas');
+      if (mod?.default) {
+        window.html2canvas = mod.default;
+        return mod.default;
+      }
+    } catch (err) {
+      console.warn('[ExportCapture] html2canvas not available:', err);
+    }
+    return null;
+  }
+
   _setupCostViewToggle() {
     const toggleBtn = document.getElementById('toggleCostViewBtn');
     const toggleBtnText = document.getElementById('toggleCostViewBtnText');
@@ -919,70 +890,32 @@ class JadwalKegiatanApp {
       this._costToggleBtnIcon.className = iconClass;
     }
   }
+
   async _activateDefaultCostView() {
     if (this._costViewAutoActivated) {
       this._setCostToggleButtonState();
       return;
     }
 
-  if (!this.kurvaSChart) {
-    return;
-  }
-
-  const chartOptions = this.kurvaSChart.options || {};
-  if (!chartOptions.enableCostView) {
-    return;
-  }
-
-  try {
-    const success = await this.kurvaSChart.toggleView('cost');
-    if (success) {
-      this._costViewAutoActivated = true;
-      this._setCostToggleButtonState();
-      console.log('[JadwalKegiatanApp] Defaulted Kurva-S to cost view');
-    }
-  } catch (error) {
-    console.warn('[JadwalKegiatanApp] Failed to enable cost view automatically:', error);
-  }
-}
-
-
-
-  _attachRadioGroupHandler(groupName, handler) {
-    const radios = document.querySelectorAll(`input[name="${groupName}"]`);
-    if (!radios || radios.length === 0) {
+    if (!this.kurvaSChart) {
       return;
     }
 
-    radios.forEach((radio) => {
-      radio.addEventListener('change', (event) => {
-        if (!event.target.checked) {
-          return;
-        }
-        handler(event.target.value);
-      });
-    });
-  }
-
-  _setupWeekBoundaryControls() {
-    const { weekStartSelect, weekEndSelect } = this.state.domRefs || {};
-    if (!weekStartSelect || !weekEndSelect) {
+    const chartOptions = this.kurvaSChart.options || {};
+    if (!chartOptions.enableCostView) {
       return;
     }
 
-    this._syncWeekBoundaryControls();
-
-    weekStartSelect.addEventListener('change', (event) => {
-      const nextStart = this._normalizePythonWeekday(event.target.value, this._getWeekStartDay());
-      const derivedEnd = (nextStart + 6) % 7;
-      this._handleWeekBoundaryChange({ weekStartDay: nextStart, weekEndDay: derivedEnd, source: 'start' });
-    });
-
-    weekEndSelect.addEventListener('change', (event) => {
-      const nextEnd = this._normalizePythonWeekday(event.target.value, this._getWeekEndDay());
-      const derivedStart = (nextEnd + 1) % 7;
-      this._handleWeekBoundaryChange({ weekStartDay: derivedStart, weekEndDay: nextEnd, source: 'end' });
-    });
+    try {
+      const success = await this.kurvaSChart.toggleView('cost');
+      if (success) {
+        this._costViewAutoActivated = true;
+        this._setCostToggleButtonState();
+        console.log('[JadwalKegiatanApp] Defaulted Kurva-S to cost view');
+      }
+    } catch (error) {
+      console.warn('[JadwalKegiatanApp] Failed to enable cost view automatically:', error);
+    }
   }
 
   async _handleResetProgress() {
@@ -1104,7 +1037,12 @@ class JadwalKegiatanApp {
     this.state.timeColumns = [];
     this.state.flatPekerjaan = [];
     this.state.timeColumnIndex = {};
-    this.state.assignmentMap = new Map();
+    if (this.stateManager?.states?.planned?.assignmentMap instanceof Map) {
+      this.stateManager.states.planned.assignmentMap.clear();
+    }
+    if (this.stateManager?.states?.actual?.assignmentMap instanceof Map) {
+      this.stateManager.states.actual.assignmentMap.clear();
+    }
     this._resetEditedCellsState();
   }
 
@@ -1192,6 +1130,9 @@ class JadwalKegiatanApp {
   }
 
   async _regenerateTimeline(options = {}) {
+    if (this.dataOrchestrator && typeof this.dataOrchestrator.regenerateTimeline === 'function') {
+      return this.dataOrchestrator.regenerateTimeline(options);
+    }
     const { mode = 'weekly', weekStartDay, weekEndDay } = options;
     const endpoint = this.state.apiEndpoints?.regenerateTahapan;
     if (!endpoint) {
@@ -1276,29 +1217,9 @@ class JadwalKegiatanApp {
   }
 
   _syncToolbarRadios() {
-    const displayMode = this.state.inputMode || 'percentage';
-    document.querySelectorAll('input[name="displayMode"]').forEach((radio) => {
-      radio.checked = radio.value === displayMode;
-    });
-
-    const progressMode = this.state.progressMode || 'planned';
-    document.querySelectorAll('input[name="progressMode"]').forEach((radio) => {
-      const isChecked = radio.value === progressMode;
-      if (radio.checked !== isChecked) {
-        radio.checked = isChecked;
-      }
-      const label = radio.nextElementSibling;
-      if (label && label.matches('.btn')) {
-        label.setAttribute('aria-selected', String(isChecked));
-      }
-    });
-
-    const timeScale = this.state.displayScale || this.state.timeScale || 'weekly';
-    document.querySelectorAll('input[name="timeScale"]').forEach((radio) => {
-      radio.checked = radio.value === timeScale;
-    });
-
-    this._updateCostToggleAvailability();
+    if (this.uxManager?.syncToolbarRadios) {
+      this.uxManager.syncToolbarRadios();
+    }
   }
 
   _handleDisplayModeChange(mode) {
@@ -1500,6 +1421,9 @@ class JadwalKegiatanApp {
    * Load initial data from server
    */
   async _loadInitialData(options = {}) {
+    if (this.dataOrchestrator && typeof this.dataOrchestrator.loadInitialData === 'function') {
+      return this.dataOrchestrator.loadInitialData(options);
+    }
     const { forceReload = false } = options;
     // Check if data is already loaded (from Django template)
     if (!forceReload && this.state.pekerjaanTree?.length > 0) {
@@ -1512,6 +1436,8 @@ class JadwalKegiatanApp {
       return;
     }
 
+    this._showSkeleton('grid');
+
     // Initialize modern modules
     this.state.apiBase = this.state.apiEndpoints?.tahapan || `/detail_project/api/project/${this.state.projectId}/tahapan/`;
     this.dataLoader = new DataLoader(this.state);
@@ -1520,7 +1446,8 @@ class JadwalKegiatanApp {
       apiUrl: this.state.apiEndpoints?.save || `/detail_project/api/project/${this.state.projectId}/pekerjaan/assign_weekly/`,
       onSuccess: (result) => this._onSaveSuccess(result),
       onError: (error) => this._onSaveError(error),
-      showToast: (msg, type) => this.showToast(msg, type)
+      showToast: (msg, type) => this.showToast(msg, type),
+      dataLoader: this.dataLoader
     });
 
     this.state.isLoading = true;
@@ -1529,7 +1456,7 @@ class JadwalKegiatanApp {
       console.log('[JadwalKegiatanApp] Loading data using modern DataLoader...');
 
       // Step 1: Load all base data (tahapan, pekerjaan, volumes)
-      await this.dataLoader.loadAllData({ skipIfLoaded: false });
+      await this.dataLoader.loadAllData({ skipIfLoaded: false, force: forceReload });
 
       // Step 2: Generate time columns from loaded tahapan
       this.timeColumnGenerator.generate();
@@ -1589,6 +1516,7 @@ class JadwalKegiatanApp {
     } finally {
       this.state.isLoading = false;
       this._syncGridViews();
+      this._hideSkeleton('grid');
     }
   }
 
@@ -1696,9 +1624,18 @@ class JadwalKegiatanApp {
    * @private
    */
   _initializeChartsAfterLoad() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator.initializeChartsAfterLoad();
+    }
     console.log('[JadwalKegiatanApp] Initializing charts after load...');
 
-    // Initialize Kurva-S Chart
+    // Skip legacy Kurva-S chart if using unified table overlay
+    if (this.state.useUnifiedTable) {
+      console.log('[JadwalKegiatanApp] Skipping legacy Kurva-S chart (using unified overlay)');
+      return;
+    }
+
+    // Initialize Kurva-S Chart (LEGACY - only when NOT using unified table)
     if (this.state.domRefs?.scurveChart && this.KurvaSChartClass) {
       try {
         this.kurvaSChart = new this.KurvaSChartClass(this.state, {
@@ -1711,6 +1648,7 @@ class JadwalKegiatanApp {
         const success = this.kurvaSChart.initialize(this.state.domRefs.scurveChart);
         if (success) {
           console.log('[JadwalKegiatanApp] Kurva-S chart initialized');
+          this._setupCostViewToggle();
           const activatePromise = this._activateDefaultCostView();
           if (activatePromise && typeof activatePromise.catch === 'function') {
             activatePromise.catch((error) => {
@@ -1738,29 +1676,17 @@ class JadwalKegiatanApp {
 
   /**
    * Initialize Gantt Chart V2 (Frozen Column Architecture)
-   * Called ONLY when Gantt tab is clicked for the first time
-   * @private
-   */
+  * Called ONLY when Gantt tab is clicked for the first time
+  * @private
+  */
   async _initializeRedesignedGantt(retryCount = 0) {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._initializeRedesignedGantt(retryCount);
+    }
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 200; // ms
 
-    if (this.state.useUnifiedTable && this.state.keepLegacyGantt === false) {
-      console.log('[JadwalKegiatanApp] Unified mode active - rendering Gantt via unified table overlay');
-      const ganttContainer = document.getElementById('gantt-redesign-container');
-      if (!ganttContainer) {
-        console.warn('[JadwalKegiatanApp] Gantt container not found for unified overlay');
-        return;
-      }
-      await this._initializeUnifiedGanttOverlay(ganttContainer);
-      return;
-    }
-
-    // Check if already initialized
-    if (this.ganttFrozenGrid) {
-      console.log('[JadwalKegiatanApp] Gantt already initialized, skipping');
-      return;
-    }
+    console.log('[JadwalKegiatanApp] Rendering Gantt via unified table overlay');
 
     // Wait a bit for DOM to be ready (Bootstrap tab transition)
     if (retryCount === 0) {
@@ -1789,10 +1715,7 @@ class JadwalKegiatanApp {
     }
 
     try {
-      // Initialize V2: Frozen Column Architecture (now default)
-      console.log('🚀 Initializing Gantt V2 (Frozen Column)...');
-      await this._initializeFrozenGantt(ganttContainer);
-
+      await this._initializeUnifiedGanttOverlay(ganttContainer);
     } catch (error) {
       console.error('[JadwalKegiatanApp] ❌ Failed to initialize Gantt:', error);
       console.error('[JadwalKegiatanApp] Error stack:', error.stack);
@@ -1801,30 +1724,10 @@ class JadwalKegiatanApp {
     }
   }
 
-  /**
-   * Initialize V2: Frozen Column Gantt (Now Default)
-   * @private
-   */
-  async _initializeFrozenGantt(container) {
-    console.log('[JadwalKegiatanApp] ✅ Container found:', container);
-
-    // Lazy load V2 module
-    const { GanttFrozenGrid } = await import('@modules/gantt-v2/gantt-frozen-grid.js');
-
-    // Create Gantt instance
-    this.ganttFrozenGrid = new GanttFrozenGrid(container, {
-      rowHeight: 40,
-      timeScale: 'week'
-    });
-
-    // Initialize with app context (provides StateManager, tahapanList, etc.)
-    await this.ganttFrozenGrid.initialize(this);
-
-    console.log('[JadwalKegiatanApp] ✅ Gantt V2 (Frozen Column) initialized successfully!');
-    Toast.success('📊 Gantt Chart loaded', 2000);
-  }
-
   async _initializeUnifiedGanttOverlay(ganttContainer) {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._initializeUnifiedGanttOverlay(ganttContainer);
+    }
     if (!this.unifiedManager) {
       this._initTanStackGridIfNeeded();
     }
@@ -1859,6 +1762,9 @@ class JadwalKegiatanApp {
   }
 
   _applyGanttOverlayStyles(host) {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._applyGanttOverlayStyles(host);
+    }
     if (!host) return;
     host.classList.add('gantt-overlay-mode');
     const styleId = 'gantt-overlay-style';
@@ -1880,6 +1786,9 @@ class JadwalKegiatanApp {
   }
 
   _ensureGanttHost(ganttContainer) {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._ensureGanttHost(ganttContainer);
+    }
     if (!ganttContainer) {
       return null;
     }
@@ -1901,6 +1810,9 @@ class JadwalKegiatanApp {
   }
 
   _moveGridContainerTo(target) {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._moveGridContainerTo(target);
+    }
     const container = this.state?.domRefs?.tanstackGridContainer;
     if (!container || !target || container.parentNode === target) {
       return;
@@ -1909,6 +1821,9 @@ class JadwalKegiatanApp {
   }
 
   _restoreGridContainerPosition() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._restoreGridContainerPosition();
+    }
     const container = this.state?.domRefs?.tanstackGridContainer;
     const parent = this._gridContainerParent;
     if (!container || !parent) {
@@ -1930,6 +1845,9 @@ class JadwalKegiatanApp {
    * @returns {Object} Gantt data structure
    */
   _prepareGanttData() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._prepareGanttData();
+    }
     const data = [];
 
     // Transform hierarchical data from state (Phase 0.3: use flatPekerjaan from DataLoader)
@@ -2029,6 +1947,9 @@ class JadwalKegiatanApp {
    * @private
    */
   _initializeCharts() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator.initializeCharts();
+    }
     // Setup lazy loading for chart tabs
     this._setupLazyChartLoading();
     this._bindUnifiedTabSync();
@@ -2039,6 +1960,10 @@ class JadwalKegiatanApp {
    * @private
    */
   _setupLazyChartLoading() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator._setupLazyChartLoading();
+    }
+    return;
     // Find chart tab buttons - match actual IDs from template
     const scurveTab = document.querySelector('#scurve-tab') ||
                      document.querySelector('[data-bs-target="#scurve-view"]');
@@ -2095,10 +2020,35 @@ class JadwalKegiatanApp {
   }
 
   /**
+   * Throttle chart updates to avoid spamming during rapid cell edits
+   * @private
+   */
+  _updateChartsThrottled() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator.updateChartsThrottled();
+    }
+    return;
+    if (this._chartUpdatePending) {
+      return;
+    }
+    this._chartUpdatePending = true;
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        this._updateCharts();
+        this._chartUpdatePending = false;
+      }, this._chartUpdateDelay);
+    });
+  }
+
+  /**
    * Update charts with current data
    * @private
    */
   _updateCharts() {
+    if (this.chartCoordinator) {
+      return this.chartCoordinator.updateCharts();
+    }
+    return;
     console.log('[JadwalKegiatanApp] Updating charts...');
 
     // Update Kurva-S Chart
@@ -3571,6 +3521,14 @@ class JadwalKegiatanApp {
   }
 
   /**
+   * Public getter for CSRF token (for ExportCoordinator)
+   * @returns {string|null} CSRF token
+   */
+  getCsrfToken() {
+    return this._getCsrfToken();
+  }
+
+  /**
    * Handle AG Grid cell change
    */
   _handleGridCellChange({
@@ -3644,7 +3602,7 @@ class JadwalKegiatanApp {
       console.log(`[CellChange] ${progressMode.toUpperCase()} modifiedCells size: ${modeState.modifiedCells.size}`);
       // Phase 2F.0: Real-time Kurva S update on cell change (before save)
       // This allows users to see chart changes immediately as they type
-      this._updateCharts();
+      this._updateChartsThrottled();
       console.log(`[CellChange] Real-time Kurva-S chart updated`);
     } else {
       console.log(`[CellChange] Cost map size: ${modeState.costModifiedCells.size}`);
@@ -3667,7 +3625,17 @@ class JadwalKegiatanApp {
 
     if (scurveTab) {
       const handler = () => {
-        this._restoreGridContainerPosition();
+        // Move grid container to Kurva-S view for overlay rendering
+        const kurvaSContainer = document.getElementById('scurve-chart') ||
+                               document.querySelector('#scurve-view .chart-container');
+        if (kurvaSContainer && this.state?.domRefs?.tanstackGridContainer) {
+          // Clear old content and move grid to Kurva-S container
+          kurvaSContainer.innerHTML = '';
+          kurvaSContainer.appendChild(this.state.domRefs.tanstackGridContainer);
+          kurvaSContainer.style.position = 'relative';
+          kurvaSContainer.style.minHeight = '420px';
+        }
+
         if (this.unifiedManager) {
           this.unifiedManager.switchMode('kurva');
           if (this.state.debugUnifiedTable) {
@@ -3744,4 +3712,3 @@ if (document.readyState === 'loading') {
 
 // Export for manual initialization
 export default JadwalKegiatanApp;
-

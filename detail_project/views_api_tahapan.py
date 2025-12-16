@@ -30,6 +30,7 @@ from .services import (
     get_project_period_options,
 )
 from .api_helpers import parse_kebutuhan_query_params
+from .decorators import api_deprecated
 
 # Helper untuk validasi ownership
 def _owner_or_404(project_id, user):
@@ -301,10 +302,18 @@ def api_reorder_tahapan(request, project_id):
 @login_required
 @require_POST
 @transaction.atomic
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_assign_weekly",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_assign_pekerjaan_to_tahapan(request, project_id, tahapan_id):
     """
     Assign pekerjaan ke tahapan dengan proporsi.
-    
+
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/assign-weekly/ instead.
+    Sunset date: 2025-02-14
+
     Body: {
         "assignments": [
             {
@@ -406,10 +415,18 @@ def api_assign_pekerjaan_to_tahapan(request, project_id, tahapan_id):
 
 @login_required
 @require_POST
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_assign_weekly",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_unassign_pekerjaan_from_tahapan(request, project_id, tahapan_id):
     """
     Unassign pekerjaan dari tahapan.
-    
+
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/assign-weekly/ instead.
+    Sunset date: 2025-02-14
+
     Body: {"pekerjaan_ids": [1, 2, 3]}
     """
     project = _owner_or_404(project_id, request.user)
@@ -445,8 +462,16 @@ def api_unassign_pekerjaan_from_tahapan(request, project_id, tahapan_id):
 
 @login_required
 @require_GET
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_get_assignments",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_get_pekerjaan_assignments(request, project_id, pekerjaan_id):
     """
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/pekerjaan/{pid}/assignments/ instead.
+    Sunset date: 2025-02-14
+
     Get all tahapan assignments untuk satu pekerjaan.
     
     Returns:
@@ -762,9 +787,17 @@ def api_get_rekap_kebutuhan_timeline(request, project_id):
 @login_required
 @require_POST
 @transaction.atomic
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_regenerate_tahapan",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_regenerate_tahapan(request, project_id):
     """
     Regenerate tahapan based on time scale mode.
+
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/regenerate-tahapan/ instead.
+    Sunset date: 2025-02-14
 
     POST Body:
         {

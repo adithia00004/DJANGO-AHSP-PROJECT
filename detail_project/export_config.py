@@ -166,6 +166,43 @@ class ExportLayout:
         }
 
 
+class JadwalExportLayout:
+    """
+    Layout defaults for Jadwal (Grid / Gantt / Kurva S) exports.
+    Tuned for A3 landscape with compact columns and predictable pagination.
+    """
+
+    PAGE_SIZE = 'A3'
+    ORIENTATION = 'landscape'
+
+    # Margins (mm) — slightly larger than default for header/footer room
+    MARGIN_TOP = 12
+    MARGIN_BOTTOM = 12
+    MARGIN_LEFT = 12
+    MARGIN_RIGHT = 12
+
+    # Static column widths (mm) for grid section
+    COL_KODE = 18
+    COL_URAIAN = 75
+    COL_VOLUME = 20
+    COL_SATUAN = 18
+
+    # Timeline columns (mm)
+    WEEKLY_MIN_COL = 12          # fits ~22 cols on A3 after static columns
+    WEEKLY_HARD_LIMIT = 26       # weekly view allowed up to 26 columns
+    AUTO_MONTHLY_THRESHOLD = 26  # switch to monthly when weeks exceed this
+    MONTHLY_MIN_COL = 22         # month labels are wider
+    MONTHLY_HARD_LIMIT = 12
+
+    # Row handling
+    ROWS_PER_PAGE = 55           # paginate tables with many rows (PDF/Excel)
+    WRAP_MAX_LINES = 3           # cap name/description wrapping
+
+    @classmethod
+    def static_widths_mm(cls) -> list:
+        return [cls.COL_KODE, cls.COL_URAIAN, cls.COL_VOLUME, cls.COL_SATUAN]
+
+
 # ============================================================================
 # CONTENT CONFIGURATION
 # ============================================================================

@@ -28,7 +28,7 @@ from detail_project.models import (
     VolumePekerjaan,
 )
 from detail_project.progress_utils import calculate_week_number, get_week_date_range
-from ..export_config import get_page_size_mm
+from ..export_config import get_page_size_mm, JadwalExportLayout
 
 
 class JadwalPekerjaanExportAdapter:
@@ -38,22 +38,34 @@ class JadwalPekerjaanExportAdapter:
         self,
         project,
         include_monthly: bool = True,
-        page_size: str = 'A4',
-        page_orientation: str = 'landscape',
-        margin_left: int = 10,
-        margin_right: int = 10,
+        page_size: str | None = None,
+        page_orientation: str | None = None,
+        margin_left: int | None = None,
+        margin_right: int | None = None,
+        layout_spec=JadwalExportLayout,
+        auto_compact_weeks: bool = False,
+        weekly_threshold: int | None = None,
+        max_rows_per_page: int | None = None,
     ):
         self.project = project
         self.include_monthly = include_monthly
+        self.layout_spec = layout_spec or JadwalExportLayout
+        self.auto_compact_weeks = auto_compact_weeks
+        self.weekly_threshold = (
+            weekly_threshold
+            if weekly_threshold is not None
+            else getattr(self.layout_spec, "AUTO_MONTHLY_THRESHOLD", JadwalExportLayout.WEEKLY_HARD_LIMIT)
+        )
+        self.max_rows_per_page = max_rows_per_page or getattr(self.layout_spec, "ROWS_PER_PAGE", 0)
         self.project_start: date | None = None
         self.project_end: date | None = None
-        self.page_size = (page_size or 'A4').upper()
-        orientation = (page_orientation or 'landscape').lower()
+        self.page_size = (page_size or getattr(self.layout_spec, "PAGE_SIZE", "A4") or 'A4').upper()
+        orientation = (page_orientation or getattr(self.layout_spec, "ORIENTATION", "landscape") or 'landscape').lower()
         if orientation not in ('portrait', 'landscape'):
             orientation = 'landscape'
         self.page_orientation = orientation
-        self.margin_left = margin_left
-        self.margin_right = margin_right
+        self.margin_left = margin_left if margin_left is not None else getattr(self.layout_spec, "MARGIN_LEFT", 10)
+        self.margin_right = margin_right if margin_right is not None else getattr(self.layout_spec, "MARGIN_RIGHT", 10)
 
         base_width_mm, base_height_mm = get_page_size_mm(self.page_size)
         if self.page_orientation == 'portrait':
@@ -64,21 +76,20 @@ class JadwalPekerjaanExportAdapter:
             self.page_height_mm = base_width_mm
 
         self.usable_width_mm = max(150.0, self.page_width_mm - (self.margin_left + self.margin_right))
-        self.scale_factor = max(self.usable_width_mm / 277.0, 0.5)
+        # Use absolute widths tuned for A3; scale lightly if page is narrower
+        base_total = self.page_width_mm if self.page_size == 'A3' else 277.0
+        self.scale_factor = max(self.usable_width_mm / base_total, 0.6)
         self.static_widths_mm = [
-            28 * self.scale_factor,  # Kode
-            95 * self.scale_factor,  # Uraian
-            25 * self.scale_factor,  # Volume
-            20 * self.scale_factor,  # Satuan
+            w * self.scale_factor for w in self.layout_spec.static_widths_mm()
         ]
         self.static_width_sum = sum(self.static_widths_mm)
-        self.min_weekly_col_width_mm = 28 * self.scale_factor
-        self.min_monthly_col_width_mm = 40 * self.scale_factor
+        self.min_weekly_col_width_mm = getattr(self.layout_spec, "WEEKLY_MIN_COL", 12) * self.scale_factor
+        self.min_monthly_col_width_mm = getattr(self.layout_spec, "MONTHLY_MIN_COL", 20) * self.scale_factor
         self.weekly_columns_per_page = self._compute_columns_per_page(
-            self.min_weekly_col_width_mm, hard_limit=12
+            self.min_weekly_col_width_mm, hard_limit=getattr(self.layout_spec, "WEEKLY_HARD_LIMIT", 12)
         )
         self.monthly_columns_per_page = self._compute_columns_per_page(
-            self.min_monthly_col_width_mm, hard_limit=8
+            self.min_monthly_col_width_mm, hard_limit=getattr(self.layout_spec, "MONTHLY_HARD_LIMIT", 8)
         )
 
     # ------------------------------------------------------------------
@@ -103,45 +114,83 @@ class JadwalPekerjaanExportAdapter:
         pages: List[Dict[str, Any]] = []
 
         weekly_chunks = self._chunk_columns(weekly_columns, self.weekly_columns_per_page)
-        for idx, chunk in enumerate(weekly_chunks, start=1):
-            rows = self._materialize_rows(base_rows, chunk, progress_map)
-            title = "JADWAL PEKERJAAN - WEEKLY"
-            if len(weekly_chunks) > 1:
-                title = f"{title} (Bagian {idx})"
+        row_chunks = self._chunk_rows(base_rows, hierarchy, self.max_rows_per_page)
+        page_seq = 1
 
-            pages.append(
-                {
-                    "title": title,
-                    "table_data": {
-                        "headers": self._build_headers(chunk),
-                        "rows": rows,
-                    },
-                    "col_widths": self._build_col_widths(len(chunk)),
-                    "hierarchy_levels": hierarchy,
-                }
-            )
+        if weekly_columns:
+            for col_idx, chunk in enumerate(weekly_chunks, start=1):
+                for row_idx, (row_slice, hierarchy_slice) in enumerate(row_chunks, start=1):
+                    rows = self._materialize_rows(row_slice, chunk, progress_map)
+                    title = "JADWAL PEKERJAAN - WEEKLY"
+                    suffixes = []
+                    if len(weekly_chunks) > 1:
+                        suffixes.append(f"Kolom {col_idx}")
+                    if len(row_chunks) > 1:
+                        suffixes.append(f"Baris {row_idx}")
+                    if suffixes:
+                        title = f"{title} ({' / '.join(suffixes)})"
+
+                    pages.append(
+                        {
+                            "title": title,
+                            "table_data": {
+                                "headers": self._build_headers(chunk),
+                                "rows": rows,
+                            },
+                            "col_widths": self._build_col_widths(len(chunk)),
+                            "hierarchy_levels": hierarchy_slice,
+                            "meta": {
+                                "mode": "weekly",
+                                "page_seq": page_seq,
+                                "column_chunk": col_idx,
+                                "row_chunk": row_idx,
+                            },
+                        }
+                    )
+                    page_seq += 1
 
         if self.include_monthly and monthly_columns:
             monthly_chunks = self._chunk_columns(monthly_columns, self.monthly_columns_per_page)
-            for idx, chunk in enumerate(monthly_chunks, start=1):
-                rows = self._materialize_rows(base_rows, chunk, progress_map)
-                title = "JADWAL PEKERJAAN - MONTHLY"
-                if len(monthly_chunks) > 1:
-                    title = f"{title} (Bagian {idx})"
+            for col_idx, chunk in enumerate(monthly_chunks, start=1):
+                for row_idx, (row_slice, hierarchy_slice) in enumerate(row_chunks, start=1):
+                    rows = self._materialize_rows(row_slice, chunk, progress_map)
+                    title = "JADWAL PEKERJAAN - MONTHLY"
+                    suffixes = []
+                    if len(monthly_chunks) > 1:
+                        suffixes.append(f"Kolom {col_idx}")
+                    if len(row_chunks) > 1:
+                        suffixes.append(f"Baris {row_idx}")
+                    if suffixes:
+                        title = f"{title} ({' / '.join(suffixes)})"
 
-                pages.append(
-                    {
-                        "title": title,
-                        "table_data": {
-                            "headers": self._build_headers(chunk),
-                            "rows": rows,
-                        },
-                        "col_widths": self._build_col_widths(len(chunk)),
-                        "hierarchy_levels": hierarchy,
-                    }
-                )
+                    pages.append(
+                        {
+                            "title": title,
+                            "table_data": {
+                                "headers": self._build_headers(chunk),
+                                "rows": rows,
+                            },
+                            "col_widths": self._build_col_widths(len(chunk)),
+                            "hierarchy_levels": hierarchy_slice,
+                            "meta": {
+                                "mode": "monthly",
+                                "page_seq": page_seq,
+                                "column_chunk": col_idx,
+                                "row_chunk": row_idx,
+                            },
+                        }
+                    )
+                    page_seq += 1
 
-        return {"pages": pages}
+        meta = {
+            "weekly_columns": len(weekly_columns),
+            "weekly_collapsed": False,
+            "monthly_columns": len(monthly_columns),
+            "rows": len(base_rows),
+            "rows_per_page": self.max_rows_per_page,
+        }
+
+        return {"pages": pages, "meta": meta}
 
     # ------------------------------------------------------------------
     # Weekly / Monthly column builders
@@ -475,6 +524,22 @@ class JadwalPekerjaanExportAdapter:
         if not columns:
             return [[]]
         return [list(columns[i : i + max_per_page]) for i in range(0, len(columns), max_per_page)]
+
+    def _chunk_rows(
+        self, rows: Sequence[Dict[str, Any]], hierarchy: Dict[int, int], max_per_page: int
+    ) -> List[Tuple[List[Dict[str, Any]], Dict[int, int]]]:
+        if not max_per_page or max_per_page <= 0:
+            return [(list(rows), dict(hierarchy))]
+        chunks: List[Tuple[List[Dict[str, Any]], Dict[int, int]]] = []
+        total = len(rows)
+        for start in range(0, total, max_per_page):
+            end = start + max_per_page
+            row_slice = list(rows[start:end])
+            hierarchy_slice = {
+                idx - start: level for idx, level in hierarchy.items() if start <= idx < end
+            }
+            chunks.append((row_slice, hierarchy_slice))
+        return chunks
 
     def _compute_columns_per_page(self, min_width_mm: float, hard_limit: int) -> int:
         remaining = max(20.0, self.usable_width_mm - self.static_width_sum)

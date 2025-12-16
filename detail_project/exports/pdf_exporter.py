@@ -11,7 +11,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph, 
-    Spacer, PageBreak, KeepTogether
+    Spacer, PageBreak, KeepTogether, Image
 )
 from io import BytesIO
 from typing import Dict, Any, List
@@ -213,6 +213,28 @@ class PDFExporter(ConfigExporterBase):
                 'col_widths': col_widths,
             }
             story.append(self._build_table(appendix_section))
+
+        # Attach image pages (e.g., Gantt / Kurva-S screenshots)
+        attachments = data.get('attachments') or []
+        for att in attachments:
+            img_bytes = att.get('bytes')
+            if not img_bytes:
+                continue
+            att_title = att.get('title') or 'Lampiran'
+            story.append(PageBreak())
+            story.append(Paragraph(f"<b>{att_title}</b>", self.styles['title']))
+            try:
+                img = Image(BytesIO(img_bytes))
+                max_w = doc.width
+                max_h = doc.height
+                iw, ih = img.wrap(0, 0)
+                scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
+                img.drawWidth = iw * scale
+                img.drawHeight = ih * scale
+                story.append(Spacer(1, 4*mm))
+                story.append(img)
+            except Exception:
+                continue
 
         # Build PDF
         doc.build(story)

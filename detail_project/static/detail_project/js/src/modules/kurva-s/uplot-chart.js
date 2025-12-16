@@ -132,6 +132,64 @@ export class KurvaSUPlotChart {
     return true;
   }
 
+  /**
+   * Render chart with monthly granularity
+   *
+   * Transforms weekly data to monthly for export purposes.
+   * Labels are displayed as M1, M2, M3... instead of W1, W2, W3...
+   *
+   * @param {Array} monthlyData - Monthly cumulative data
+   *   [{month: 1, label: 'M1', planned: 50, actual: 45}, ...]
+   * @returns {boolean} Success status
+   */
+  renderMonthlyMode(monthlyData) {
+    if (!Array.isArray(monthlyData) || monthlyData.length === 0) {
+      console.warn(LOG_PREFIX, 'Invalid monthly data');
+      return false;
+    }
+
+    console.log(LOG_PREFIX, `Rendering monthly mode with ${monthlyData.length} months`);
+
+    // Build dataset in uPlot format
+    const monthlyDataset = {
+      labels: monthlyData.map(m => m.label || `M${m.month}`),
+      planned: monthlyData.map(m => m.planned || 0),
+      actual: monthlyData.map(m => m.actual || 0),
+      viewMode: 'progress',
+      granularity: 'monthly'  // Mark as monthly for axis formatting
+    };
+
+    // Update chart with monthly data
+    return this.update(monthlyDataset);
+  }
+
+  /**
+   * Restore chart to weekly mode
+   *
+   * Re-renders chart with original weekly data.
+   *
+   * @param {Array} weeklyData - Weekly cumulative data (optional, uses state if not provided)
+   * @returns {boolean} Success status
+   */
+  renderWeeklyMode(weeklyData = null) {
+    console.log(LOG_PREFIX, 'Restoring weekly mode');
+
+    if (weeklyData) {
+      // Build dataset from provided weekly data
+      const weeklyDataset = {
+        labels: weeklyData.map((w, i) => `W${i + 1}`),
+        planned: weeklyData.map(w => w.planned || 0),
+        actual: weeklyData.map(w => w.actual || 0),
+        viewMode: 'progress',
+        granularity: 'weekly'
+      };
+      return this.update(weeklyDataset);
+    } else {
+      // Use original state data
+      return this.update();
+    }
+  }
+
   dispose() {
     this._detachInteractions();
     if (this.chartInstance) {

@@ -25,6 +25,10 @@
   --scrollbar-track: #f1f1f1;
   --scrollbar-thumb: #888;
   --scrollbar-thumb-hover: #555;
+
+  /* Ensure modals sit above topbar/toolbar */
+  --kt-export-modal-z: calc(var(--dp-z-modal, 13000) + 50);
+  --kt-export-backdrop-z: calc(var(--dp-z-backdrop, 12990) + 50);
 }
 
 [data-bs-theme="dark"] {
@@ -143,8 +147,9 @@
 .split-panel-wrapper {
   flex: 1;
   display: flex;
-  overflow: hidden;
+  overflow: hidden; /* Clip content at container boundaries */
   position: relative;
+  isolation: isolate; /* Create stacking context for proper z-index layering */
 }
 
 /* ===== Left Panel (Frozen) ===== */
@@ -153,7 +158,7 @@
   border-right: 2px solid var(--grid-frozen-border);
   background: var(--grid-frozen-bg);
   position: relative;
-  z-index: 10;
+  z-index: 20; /* Higher than canvas overlay (z-index: 10) to stay on top */
 }
 
 .left-panel-scroll {
@@ -170,13 +175,15 @@
 .right-panel-wrapper {
   flex: 1;
   position: relative;
-  overflow: hidden;
+  overflow: hidden; /* Clip all content including absolutely positioned children */
   min-width: 0;
+  z-index: 1; /* Lower than left panel to allow frozen column to stay on top */
 }
 
 .right-panel-scroll {
   overflow: auto;
   height: 100%;
+  position: relative; /* Establish containing block for absolute positioned canvas */
 }
 
 .horizontal-scroll-wrapper {
@@ -1546,12 +1553,16 @@
   background-color: var(--bs-tertiary-bg);
   box-shadow: 1px 0 0 var(--grid-frozen-border);
   color: var(--grid-text);
+  /* Keep frozen headers above the canvas overlay */
+  z-index: 5;
 }
 
 .tanstack-grid-cell.pinned {
   background-color: var(--bs-body-bg);
   box-shadow: 1px 0 0 var(--grid-frozen-border);
   color: var(--grid-text);
+  /* Keep frozen cells above the canvas overlay */
+  z-index: 4;
 }
 
 [data-bs-theme="dark"] .tanstack-grid-header-cell.pinned {
@@ -1586,4 +1597,20 @@
   width: 100%;
   height: 32px;
   padding: 0.25rem 0.35rem;
+}
+
+/* Modal layering overrides for export modal to stay above topbar/toolbar */
+#exportModal {
+  z-index: var(--kt-export-modal-z) !important;
+}
+#exportModal ~ .modal-backdrop {
+  z-index: var(--kt-export-backdrop-z) !important;
+}
+
+/* Ensure export progress modal sits above topbar/toolbar */
+#exportProgressModal {
+  z-index: var(--kt-export-modal-z) !important;
+}
+#exportProgressModal ~ .modal-backdrop {
+  z-index: var(--kt-export-backdrop-z) !important;
 }

@@ -1,12 +1,13 @@
 /**
  * Gantt Chart Redesign - Main Component
- * Orchestrates tree panel, timeline panel, and data synchronization
+ * Uses frozen column architecture with TanStackGridManager + GanttCanvasOverlay
  * @module gantt-chart-redesign
  */
 
 import { GanttDataModel } from './gantt-data-model.js';
-import { GanttTreePanel } from './gantt-tree-panel.js';
-import { GanttTimelinePanel } from './gantt-timeline-panel.js';
+import { GanttCanvasOverlay } from './GanttCanvasOverlay.js';
+import { TanStackGridManager } from '@modules/grid/tanstack-grid-manager.js';
+import { StateManager } from '@modules/core/state-manager.js';
 import { Toast } from '@modules/shared/ux-enhancements.js';
 
 /**
@@ -27,23 +28,24 @@ export class GanttChartRedesign {
       mode: options.mode || 'planned', // 'planned' or 'actual'
       rowHeight: options.rowHeight || 40,
       enableMilestones: options.enableMilestones !== false,
-      enableSync: options.enableSync !== false,
       ...options
     };
 
     // Data model
     this.dataModel = new GanttDataModel();
 
-    // Components
-    this.treePanel = null;
-    this.timelinePanel = null;
+    // Components (Frozen Column Architecture)
+    this.gridManager = null;      // TanStackGridManager for unified grid
+    this.canvasOverlay = null;    // GanttCanvasOverlay for bars
+    this.stateManager = null;     // StateManager for data sync
 
     // State
     this.state = {
       loading: false,
       initialized: false,
       selectedNodeId: null,
-      mode: this.options.mode
+      mode: this.options.mode,
+      tahapanList: [] // Timeline columns (populated from options)
     };
 
     // Event callbacks
@@ -53,39 +55,39 @@ export class GanttChartRedesign {
 
     // Milestone popup
     this.milestonePopup = null;
+
+    // Timeline configuration (from options or defaults)
+    this.state.tahapanList = options.tahapanList || [];
   }
 
   /**
    * Initialize Gantt Chart
    */
   async initialize(rawData) {
-    console.log('🚀 Initializing Gantt Chart Redesign...');
+    console.log('🚀 Initializing Gantt Chart (Frozen Column)...');
     this.state.loading = true;
 
     try {
-      // Build DOM structure (tree + timeline containers)
+      // Build DOM structure (single grid)
       this._buildDOM();
-
-      // Note: Loading spinner already shown in HTML template
-      // No need to call _showLoading() which would overwrite the DOM!
 
       // Initialize data model
       this.dataModel.initialize(rawData);
 
-      // Create components
+      // Create components (grid + overlay)
       await this._createComponents();
 
-      // Setup synchronization
-      this._setupSync();
+      // Setup StateManager event listeners
+      this._setupStateListeners();
 
       // Mark as initialized BEFORE rendering
       this.state.loading = false;
       this.state.initialized = true;
 
-      // Initial render (must be after state.initialized = true)
+      // Initial render
       this.render();
 
-      console.log('✅ Gantt Chart Redesign initialized successfully');
+      console.log('✅ Gantt Chart (Frozen Column) initialized successfully');
       Toast.success('Gantt Chart loaded successfully');
 
     } catch (error) {
@@ -97,55 +99,68 @@ export class GanttChartRedesign {
   }
 
   /**
-   * Build DOM structure
+   * Build DOM structure (Frozen Column Architecture)
+   * Creates single scrollable grid container
    */
   _buildDOM() {
     this.container.innerHTML = '';
     this.container.className = 'gantt-container';
 
-    // Create panels
-    const treeContainer = document.createElement('div');
-    treeContainer.className = 'gantt-tree-panel-container';
-    this.container.appendChild(treeContainer);
+    // Create grid wrapper (for TanStackGridManager + canvas overlay)
+    const gridWrapper = document.createElement('div');
+    gridWrapper.className = 'gantt-grid-wrapper';
+    gridWrapper.style.position = 'relative';
+    gridWrapper.style.width = '100%';
+    gridWrapper.style.height = '100%';
+    this.container.appendChild(gridWrapper);
 
-    const timelineContainer = document.createElement('div');
-    timelineContainer.className = 'gantt-timeline-panel-container';
-    this.container.appendChild(timelineContainer);
+    // Create table element for grid
+    const table = document.createElement('table');
+    table.className = 'gantt-grid';
+    gridWrapper.appendChild(table);
 
     // Store references
     this.elements = {
-      treeContainer,
-      timelineContainer
+      gridWrapper,
+      table
     };
   }
 
   /**
-   * Create components
+   * Create components (Frozen Column Architecture)
    */
   async _createComponents() {
-    // Create tree panel
-    this.treePanel = new GanttTreePanel(
-      this.elements.treeContainer,
-      this.dataModel,
-      {
-        mode: this.state.mode,
-        onNodeClick: (nodeId) => this._handleNodeClick(nodeId),
-        onNodeExpand: (nodeId, expanded) => this._handleNodeExpand(nodeId, expanded),
-        onSearchChange: (searchText) => this._handleSearchChange(searchText)
-      }
-    );
+    // Initialize StateManager (single source of truth for cell data)
+    const flatData = this.dataModel.getFlatData();
+    this.stateManager = new StateManager(flatData);
 
-    // Create timeline panel
-    this.timelinePanel = new GanttTimelinePanel(
-      this.elements.timelineContainer,
-      this.dataModel,
+    // Build column definitions for TanStackGridManager
+    const columns = this._buildGanttColumns();
+
+    // Create TanStackGridManager
+    this.gridManager = new TanStackGridManager({
+      container: this.elements.table,
+      columns: columns,
+      data: flatData,
+      options: {
+        enableVirtualization: true,
+        rowHeight: this.options.rowHeight,
+        enableHierarchy: true,
+        getRowId: (row) => String(row.id),
+        onCellClick: (row, column) => this._handleCellClick(row, column),
+      }
+    });
+
+    // Wait for grid to render
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Create GanttCanvasOverlay for bars
+    this.canvasOverlay = new GanttCanvasOverlay(
+      this.elements.gridWrapper,
+      this.gridManager,
       {
         mode: this.state.mode,
-        rowHeight: this.options.rowHeight,
-        showMilestones: this.options.enableMilestones,
-        onBarClick: (node, type, event) => this._handleBarClick(node, type, event),
-        onMilestoneClick: (milestone, event) => this._handleMilestoneClick(milestone, event),
-        onScroll: (scrollState) => this._handleTimelineScroll(scrollState)
+        onBarClick: (pekerjaanId, columnId) => this._handleBarClick(pekerjaanId, columnId)
       }
     );
 
@@ -154,36 +169,158 @@ export class GanttChartRedesign {
   }
 
   /**
-   * Setup synchronization between panels
+   * Build column definitions for Gantt grid
+   * Returns array of frozen columns (tree structure) + timeline columns
    */
-  _setupSync() {
-    if (!this.options.enableSync) return;
+  _buildGanttColumns() {
+    const columns = [];
 
-    // Sync scroll between tree and timeline
-    let treeScrolling = false;
-    let timelineScrolling = false;
+    // Frozen Column 1: Tree (Hierarchy + Name)
+    columns.push({
+      id: 'name',
+      header: 'Work Breakdown Structure',
+      accessorKey: 'name',
+      size: 300,
+      minSize: 200,
+      maxSize: 500,
+      meta: {
+        pinned: true, // Frozen column
+        columnIndex: 0
+      },
+      cell: (info) => {
+        const row = info.row.original;
+        const level = row.level || 0;
+        const indent = level * 20;
 
-    // Tree scroll -> Timeline scroll
-    this.treePanel.elements.treeContent.addEventListener('scroll', () => {
-      if (timelineScrolling) return;
-      treeScrolling = true;
+        // Render tree structure with expand/collapse
+        let html = `<div style="padding-left: ${indent}px; display: flex; align-items: center; gap: 0.5rem;">`;
 
-      const scrollTop = this.treePanel.getScrollTop();
-      this.timelinePanel.syncScrollY(scrollTop);
+        // Expand/collapse button
+        if (!row.isLeaf() || row.children?.length > 0) {
+          html += `
+            <button class="tree-expand-btn" data-row-id="${row.id}">
+              <i class="bi bi-chevron-${row.expanded ? 'down' : 'right'}"></i>
+            </button>
+          `;
+        } else {
+          html += `<span class="tree-expand-spacer"></span>`;
+        }
 
-      setTimeout(() => { treeScrolling = false; }, 50);
+        // Icon
+        const icon = row.type === 'klasifikasi' ? 'folder' :
+                     row.type === 'sub-klasifikasi' ? 'folder2' : 'file-earmark';
+        html += `<i class="bi bi-${icon} tree-node-icon"></i>`;
+
+        // Name + Code
+        html += `
+          <div class="tree-node-label">
+            ${row.kode ? `<span class="tree-node-kode">${row.kode}</span>` : ''}
+            <span class="tree-node-name">${row.name}</span>
+          </div>
+        `;
+
+        html += `</div>`;
+        return html;
+      }
     });
 
-    // Timeline scroll -> Tree scroll
-    this.timelinePanel.elements.content.addEventListener('scroll', () => {
-      if (treeScrolling) return;
-      timelineScrolling = true;
+    // Timeline columns (dynamic based on tahapanList)
+    if (this.state.tahapanList && this.state.tahapanList.length > 0) {
+      this.state.tahapanList.forEach((tahapan, index) => {
+        columns.push({
+          id: tahapan.column_id,
+          header: tahapan.nama_tahapan,
+          accessorKey: tahapan.column_id,
+          size: 80,
+          minSize: 60,
+          maxSize: 120,
+          meta: {
+            pinned: false,
+            columnIndex: index + 1,
+            tahapanId: tahapan.id
+          },
+          cell: (info) => {
+            // Timeline cells are empty - canvas overlay renders bars
+            return '';
+          }
+        });
+      });
+    } else {
+      // Fallback: If no tahapanList, create placeholder columns
+      console.warn('⚠️ No tahapanList provided, using placeholder columns');
+      for (let i = 0; i < 12; i++) {
+        const monthName = new Date(2024, i, 1).toLocaleDateString('en', { month: 'short' });
+        columns.push({
+          id: `month_${i}`,
+          header: monthName,
+          accessorKey: `month_${i}`,
+          size: 80,
+          minSize: 60,
+          maxSize: 120,
+          meta: {
+            pinned: false,
+            columnIndex: i + 1
+          },
+          cell: () => ''
+        });
+      }
+    }
 
-      const scrollTop = this.timelinePanel.elements.content.scrollTop;
-      this.treePanel.setScrollTop(scrollTop);
+    return columns;
+  }
 
-      setTimeout(() => { timelineScrolling = false; }, 50);
+  /**
+   * Setup StateManager event listeners
+   */
+  _setupStateListeners() {
+    if (!this.stateManager) return;
+
+    // Listen to individual cell updates
+    this.stateManager.on('cell:updated', (event) => {
+      const { pekerjaanId, columnId, field, value } = event;
+
+      // Only re-render if planned/actual changed
+      if (field === 'planned' || field === 'actual') {
+        console.log(`[Gantt] Cell updated: ${pekerjaanId}/${columnId}/${field} = ${value}`);
+        this._renderBars();
+      }
     });
+
+    // Listen to bulk updates (e.g., after data import)
+    this.stateManager.on('bulk:updated', () => {
+      console.log('[Gantt] Bulk update detected, re-rendering all bars');
+      this._renderBars();
+    });
+
+    // Listen to mode changes (planned vs actual)
+    this.stateManager.on('mode:changed', (mode) => {
+      console.log(`[Gantt] Mode changed to: ${mode}`);
+      this.state.mode = mode;
+      this._renderBars();
+    });
+  }
+
+  /**
+   * Render Gantt bars (called by StateManager events)
+   */
+  _renderBars() {
+    if (this.canvasOverlay && this.state.initialized) {
+      this.canvasOverlay.syncWithTable();
+    }
+  }
+
+  /**
+   * Handle cell click (from TanStackGridManager)
+   */
+  _handleCellClick(row, column) {
+    // Handle expand/collapse button click
+    if (event.target.closest('.tree-expand-btn')) {
+      this._handleNodeExpand(row.id, !row.expanded);
+      return;
+    }
+
+    // Handle node selection
+    this._handleNodeClick(row.id);
   }
 
   /**
@@ -197,8 +334,6 @@ export class GanttChartRedesign {
 
     // Notify external listeners
     this.onNodeSelect(node);
-
-    // Highlight in timeline (future enhancement)
   }
 
   /**
@@ -207,30 +342,34 @@ export class GanttChartRedesign {
   _handleNodeExpand(nodeId, expanded) {
     console.log(`${expanded ? '📂' : '📁'} Node ${expanded ? 'expanded' : 'collapsed'}:`, nodeId);
 
-    // Re-render both panels
+    // Toggle node in data model
+    const node = this.dataModel.getNodeById(nodeId);
+    if (node) {
+      node.expanded = expanded;
+    }
+
+    // Re-render grid
     this.render();
   }
 
   /**
-   * Handle search change
+   * Handle bar click (from GanttCanvasOverlay)
    */
-  _handleSearchChange(searchText) {
-    console.log('🔍 Search:', searchText);
+  _handleBarClick(pekerjaanId, columnId) {
+    const node = this.dataModel.getNodeById(pekerjaanId);
+    if (!node) return;
 
-    // Future: Highlight matching nodes in timeline
-  }
-
-  /**
-   * Handle bar click
-   */
-  _handleBarClick(node, type, event) {
-    console.log(`📊 Bar clicked: ${node.name} (${type})`);
+    console.log(`📊 Bar clicked: ${node.name} (${columnId})`);
 
     // Select the node
-    this._handleNodeClick(node.id);
+    this._handleNodeClick(pekerjaanId);
 
-    // Show bar details (future enhancement)
-    Toast.info(`${node.name}: ${type === 'planned' ? 'Planned' : 'Actual'} - ${type === 'planned' ? node.planned.progress : node.actual.progress}%`);
+    // Get progress value from StateManager
+    const field = this.state.mode === 'planned' ? 'planned' : 'actual';
+    const value = this.stateManager.getCellValue(pekerjaanId, columnId, field);
+
+    // Show bar details
+    Toast.info(`${node.name}: ${field} = ${value || 0}%`);
   }
 
   /**
@@ -241,13 +380,6 @@ export class GanttChartRedesign {
 
     // Show milestone popup
     this._showMilestonePopup(milestone, event);
-  }
-
-  /**
-   * Handle timeline scroll
-   */
-  _handleTimelineScroll(scrollState) {
-    // Future: Update visible date range indicator
   }
 
   /**
@@ -412,9 +544,14 @@ export class GanttChartRedesign {
       return;
     }
 
-    // Render both panels
-    this.treePanel.render();
-    this.timelinePanel.render();
+    // Render grid
+    if (this.gridManager) {
+      const flatData = this.dataModel.getFlatData();
+      this.gridManager.updateData(flatData);
+    }
+
+    // Render canvas overlay
+    this._renderBars();
   }
 
   /**
@@ -428,12 +565,14 @@ export class GanttChartRedesign {
 
     this.state.mode = mode;
 
-    if (this.treePanel) {
-      this.treePanel.setMode(mode);
+    // Update canvas overlay mode
+    if (this.canvasOverlay) {
+      this.canvasOverlay.setMode(mode);
     }
 
-    if (this.timelinePanel) {
-      this.timelinePanel.setMode(mode);
+    // Notify StateManager
+    if (this.stateManager) {
+      this.stateManager.emit('mode:changed', mode);
     }
 
     console.log(`🔄 Mode changed to: ${mode}`);
@@ -443,29 +582,34 @@ export class GanttChartRedesign {
    * Expand all nodes
    */
   expandAll() {
-    if (this.treePanel) {
-      this.treePanel.expandAll();
-      this.render();
-    }
+    const allNodes = this.dataModel.getFlatData();
+    allNodes.forEach(node => {
+      if (!node.isLeaf()) {
+        node.expanded = true;
+      }
+    });
+    this.render();
   }
 
   /**
    * Collapse all nodes
    */
   collapseAll() {
-    if (this.treePanel) {
-      this.treePanel.collapseAll();
-      this.render();
-    }
+    const allNodes = this.dataModel.getFlatData();
+    allNodes.forEach(node => {
+      if (!node.isLeaf()) {
+        node.expanded = false;
+      }
+    });
+    this.render();
   }
 
   /**
-   * Scroll to node
+   * Scroll to node (not implemented in frozen column yet)
    */
   scrollToNode(nodeId) {
-    if (this.treePanel) {
-      this.treePanel.scrollToNode(nodeId);
-    }
+    console.warn('scrollToNode not yet implemented in frozen column architecture');
+    // TODO: Implement grid row scrolling
   }
 
   /**
@@ -497,6 +641,12 @@ export class GanttChartRedesign {
 
     try {
       this.dataModel.initialize(rawData);
+
+      // Update StateManager
+      if (this.stateManager) {
+        this.stateManager.updateData(this.dataModel.getFlatData());
+      }
+
       this.render();
       Toast.success('Gantt Chart updated');
     } catch (error) {
@@ -532,12 +682,12 @@ export class GanttChartRedesign {
   destroy() {
     console.log('🗑️ Destroying Gantt Chart...');
 
-    if (this.treePanel) {
-      this.treePanel.destroy();
+    if (this.gridManager) {
+      this.gridManager.destroy();
     }
 
-    if (this.timelinePanel) {
-      this.timelinePanel.destroy();
+    if (this.canvasOverlay) {
+      this.canvasOverlay.destroy();
     }
 
     if (this.milestonePopup) {

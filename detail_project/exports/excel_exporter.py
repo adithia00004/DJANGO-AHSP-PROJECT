@@ -19,6 +19,7 @@ try:
     from openpyxl import Workbook
     from openpyxl.utils import get_column_letter
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.drawing.image import Image as XLImage
     OPENPYXL_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional dependency
     OPENPYXL_AVAILABLE = False
@@ -86,6 +87,19 @@ class ExcelExporter(ConfigExporterBase):
                 write_section_to_sheet(page, is_first=(idx == 0))
         else:
             write_section_to_sheet(data, is_first=True)
+
+        # Attach image sheets (e.g., Gantt / Kurva-S screenshots)
+        attachments = data.get('attachments') or []
+        for att in attachments:
+            img_bytes = att.get('bytes')
+            if not img_bytes:
+                continue
+            ws_img = self._create_sheet(wb, att.get('title') or 'Lampiran', is_first=False)
+            try:
+                xl_img = XLImage(BytesIO(img_bytes))
+                ws_img.add_image(xl_img, "A1")
+            except Exception:
+                ws_img.cell(row=1, column=1, value="Lampiran tidak dapat ditampilkan")
 
         output = BytesIO()
         wb.save(output)

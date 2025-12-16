@@ -6,6 +6,7 @@ import csv
 import logging
 import math
 import re
+import base64
 from io import BytesIO
 from typing import Any, Dict, Optional, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
@@ -167,6 +168,96 @@ def _src_to_str(val):
 
 def _err(path: str, message: str):
     return {"path": path, "message": message}
+
+
+def _parse_export_attachments(request: HttpRequest):
+    """
+    Parse optional base64 image attachments sent via POST for export endpoints.
+    Expected payload:
+    {
+        "attachments": [
+            {"title": "Gantt Chart", "data_url": "data:image/png;base64,..."},
+            {"title": "Kurva S", "dataUrl": "..."}
+        ]
+    }
+    """
+    if request.method != "POST":
+        return []
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return []
+
+    attachments = []
+    for att in payload.get("attachments", []):
+        data_url = att.get("data_url") or att.get("dataUrl")
+        title = att.get("title") or "Lampiran"
+        if not data_url or not isinstance(data_url, str):
+            continue
+        if "base64," not in data_url:
+            continue
+        try:
+            b64 = data_url.split("base64,", 1)[1]
+            blob = base64.b64decode(b64)
+            attachments.append({"title": title, "bytes": blob})
+        except Exception:
+            continue
+    return attachments
+
+
+def _parse_export_parameters(request: HttpRequest):
+    """
+    Parse export parameters from POST request.
+
+    Expected payload:
+    {
+        "report_type": "full" | "monthly" | "weekly",
+        "mode": "weekly" | "monthly",
+        "include_dates": true | false,
+        "weeks_per_month": 4,
+        "attachments": [...]
+    }
+
+    Returns:
+        dict: Parsed parameters with defaults
+    """
+    if request.method != "POST":
+        return {
+            'report_type': 'full',
+            'mode': 'weekly',
+            'include_dates': False,
+            'weeks_per_month': 4
+        }
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return {
+            'report_type': 'full',
+            'mode': 'weekly',
+            'include_dates': False,
+            'weeks_per_month': 4
+        }
+
+    # Parse with defaults
+    report_type = payload.get('report_type', 'full')
+    if report_type not in ['full', 'monthly', 'weekly']:
+        report_type = 'full'
+
+    mode = payload.get('mode', 'weekly')
+    if mode not in ['weekly', 'monthly']:
+        mode = 'weekly'
+
+    include_dates = payload.get('include_dates', False)
+    weeks_per_month = payload.get('weeks_per_month', 4)
+
+    return {
+        'report_type': report_type,
+        'mode': mode,
+        'include_dates': include_dates,
+        'weeks_per_month': weeks_per_month
+    }
+
 
 def _warn(path: str, message: str):
     err = _err(path, message)
@@ -3712,14 +3803,23 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
 
 
 @login_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def export_jadwal_pekerjaan_csv(request: HttpRequest, project_id: int):
-    """Export Jadwal Pekerjaan to CSV"""
+    """
+    Export Jadwal Pekerjaan to CSV.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (all weeks)
+    - monthly: Laporan Bulanan (monthly aggregation)
+    - weekly: Laporan Mingguan (weekly with date ranges)
+    """
     try:
         project = _owner_or_404(project_id, request.user)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_jadwal_pekerjaan('csv')
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('csv', attachments=attachments, parameters=parameters)
     except Http404:
         raise
     except Exception as e:
@@ -3729,14 +3829,23 @@ def export_jadwal_pekerjaan_csv(request: HttpRequest, project_id: int):
 
 
 @login_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def export_jadwal_pekerjaan_pdf(request: HttpRequest, project_id: int):
-    """Export Jadwal Pekerjaan to PDF"""
+    """
+    Export Jadwal Pekerjaan to PDF.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
+    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
+    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
+    """
     try:
         project = _owner_or_404(project_id, request.user)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_jadwal_pekerjaan('pdf')
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('pdf', attachments=attachments, parameters=parameters)
     except Http404:
         raise
     except Exception as e:
@@ -3746,14 +3855,23 @@ def export_jadwal_pekerjaan_pdf(request: HttpRequest, project_id: int):
 
 
 @login_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def export_jadwal_pekerjaan_word(request: HttpRequest, project_id: int):
-    """Export Jadwal Pekerjaan to Word"""
+    """
+    Export Jadwal Pekerjaan to Word.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
+    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
+    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
+    """
     try:
         project = _owner_or_404(project_id, request.user)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_jadwal_pekerjaan('word')
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('word', attachments=attachments, parameters=parameters)
     except Http404:
         raise
     except Exception as e:
@@ -3763,14 +3881,23 @@ def export_jadwal_pekerjaan_word(request: HttpRequest, project_id: int):
 
 
 @login_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def export_jadwal_pekerjaan_xlsx(request: HttpRequest, project_id: int):
-    """Export Jadwal Pekerjaan to XLSX"""
+    """
+    Export Jadwal Pekerjaan to XLSX.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
+    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
+    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
+    """
     try:
         project = _owner_or_404(project_id, request.user)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_jadwal_pekerjaan('xlsx')
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('xlsx', attachments=attachments, parameters=parameters)
     except Http404:
         raise
     except Exception as e:

@@ -36,15 +36,15 @@
 
 /* ===== Main Container ===== */
 .gantt-container {
-  display: flex;
-  flex-direction: row; /* Horizontal layout: tree | timeline */
+  position: relative;
   width: 100%;
   height: 600px;
   border: 1px solid var(--bs-border-color);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: auto; /* Enable scrolling for the unified grid */
   background: var(--bs-body-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  isolation: isolate; /* Create new stacking context for proper z-index layering */
 }
 
 /* ===== Frozen Grid Cells (AG Grid style borders) ===== */
@@ -52,12 +52,53 @@
   border: 1px solid var(--gantt-grid-border-color);
   border-radius: 8px;
   background: var(--bs-body-bg);
+  display: table; /* Use table layout for unified grid */
+  width: max-content; /* Allow horizontal scrolling */
+  min-width: 100%;
+}
+
+.gantt-grid .gantt-row {
+  display: table-row;
 }
 
 .gantt-grid .gantt-cell {
+  display: table-cell;
   border-bottom: 1px solid var(--gantt-grid-border-color);
+  padding: 0.625rem 0.75rem;
+  vertical-align: middle;
 }
 
+/* Frozen Column Sticky Positioning */
+.gantt-grid .gantt-cell.frozen {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: var(--bs-body-bg); /* Ensure frozen cells cover scrolling content */
+}
+
+/* Stacked frozen columns (multiple sticky columns) */
+.gantt-grid .gantt-cell.frozen[data-column-index="0"] {
+  left: 0;
+}
+
+.gantt-grid .gantt-cell.frozen[data-column-index="1"] {
+  left: var(--frozen-col-0-width, 0);
+}
+
+.gantt-grid .gantt-cell.frozen[data-column-index="2"] {
+  left: calc(var(--frozen-col-0-width, 0) + var(--frozen-col-1-width, 0));
+}
+
+/* Frozen edge shadow for depth */
+.gantt-grid .gantt-cell.frozen-last {
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.08);
+}
+
+[data-bs-theme="dark"] .gantt-grid .gantt-cell.frozen-last {
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Frozen column borders */
 .gantt-grid .gantt-cell.frozen:not(.frozen-last) {
   border-right: 1px solid var(--gantt-grid-border-color);
 }
@@ -66,8 +107,10 @@
   border-left: 1px solid var(--gantt-grid-border-color);
 }
 
+/* Timeline cells */
 .gantt-grid .gantt-cell.timeline {
   border-right: 1px solid var(--gantt-grid-divider-color);
+  position: relative; /* For canvas overlay positioning */
 }
 
 .gantt-grid .gantt-cell.timeline-first {
@@ -82,8 +125,39 @@
   border-left: 1px solid var(--gantt-grid-border-color);
 }
 
-/* ===== Panel Containers (Wrappers) ===== */
+/* ===== Canvas Overlay Positioning (Frozen Column Architecture) ===== */
+.gantt-canvas-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none; /* Allow clicks to pass through to grid cells */
+  z-index: 5; /* Above grid cells, below frozen columns */
+}
+
+.gantt-canvas-overlay canvas {
+  display: block;
+}
+
+/* Mask element to cover bars under frozen columns */
+.gantt-canvas-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--bs-body-bg);
+  pointer-events: none;
+  z-index: 8; /* Below frozen columns (z-index: 10), above canvas (z-index: 5) */
+}
+
+[data-bs-theme="dark"] .gantt-canvas-mask {
+  background: #1e1e1e;
+}
+
+/* ===== DEPRECATED: Panel Containers (Legacy Dual-Panel) ===== */
+/* These styles are deprecated and will be removed in Phase 4 cleanup */
+/* Frozen column architecture uses .gantt-grid with sticky positioning instead */
+
 .gantt-tree-panel-container {
+  /* DEPRECATED: Use .gantt-grid with frozen columns instead */
   width: 30%;
   min-width: 250px;
   max-width: 500px;
@@ -93,15 +167,20 @@
   background: var(--bs-body-bg);
   position: relative;
   overflow: hidden;
+  z-index: 20;
+  flex-shrink: 0;
 }
 
 .gantt-timeline-panel-container {
+  /* DEPRECATED: Use .gantt-grid with timeline columns instead */
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: white;
   position: relative;
+  z-index: 1;
+  clip-path: inset(0 0 0 0);
 }
 
 /* ===== Tree Panel (Inside Container) ===== */
@@ -804,10 +883,26 @@
 /* ===== Responsive ===== */
 @media (max-width: 767px) {
   .gantt-container {
-    flex-direction: column;
     height: auto;
+    min-height: 500px;
   }
 
+  /* Frozen columns remain sticky on mobile for better UX */
+  .gantt-grid .gantt-cell.frozen {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+  }
+
+  /* Reduce frozen column width on mobile */
+  .gantt-grid .gantt-cell.frozen {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* DEPRECATED: Legacy dual-panel mobile styles */
   .gantt-tree-panel-container {
     width: 100%;
     max-width: none;

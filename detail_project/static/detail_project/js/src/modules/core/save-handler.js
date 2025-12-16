@@ -68,6 +68,7 @@ export class SaveHandler {
     this.onSuccess = options.onSuccess || (() => {});
     this.onError = options.onError || ((err) => console.error(err));
     this.showToast = options.showToast || ((msg, type) => console.log(`[${type}] ${msg}`));
+    this.dataLoader = options.dataLoader || null;
 
     // Save state
     this.isSaving = false;
@@ -367,6 +368,11 @@ export class SaveHandler {
     // Update UI status
     if (this.state.cache) {
       this.state.cache.hasUnsavedChanges = false;
+    }
+
+    // Clear client-side caches so subsequent fetches get fresh data
+    if (this.dataLoader && typeof this.dataLoader.clearCache === 'function') {
+      this.dataLoader.clearCache();
     }
 
     // Show success message

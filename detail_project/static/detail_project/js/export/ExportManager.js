@@ -33,6 +33,8 @@ class ExportManager {
   async exportAs(format, options = {}) {
     let url = `${this.baseUrl}${format}/`;
 
+    const attachments = options.attachments || [];
+
     // Append parameters if provided (for volume_pekerjaan)
     if (options.parameters && Object.keys(options.parameters).length > 0) {
       const paramsJson = JSON.stringify(options.parameters);
@@ -78,13 +80,22 @@ class ExportManager {
     try {
       this._showLoading(format);
 
-      const response = await fetch(url, {
-        method: 'GET',
+      const isPost = attachments.length > 0;
+      const fetchOptions = {
+        method: isPost ? 'POST' : 'GET',
         headers: {
           'X-Requested-With': 'XMLHttpRequest'
         },
         credentials: 'same-origin'
-      });
+      };
+
+      if (isPost) {
+        fetchOptions.headers['Content-Type'] = 'application/json';
+        fetchOptions.headers['X-CSRFToken'] = this._getCsrfToken();
+        fetchOptions.body = JSON.stringify({ attachments });
+      }
+
+      const response = await fetch(url, fetchOptions);
       
       if (!response.ok) {
         let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
@@ -207,6 +218,11 @@ class ExportManager {
   _showError(format, message) {
     const msg = `Export ${format.toUpperCase()} gagal: ${message}`;
     this._toast(msg, 'danger');
+  }
+
+  _getCsrfToken() {
+    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    return match ? match[1] : '';
   }
   
   /**

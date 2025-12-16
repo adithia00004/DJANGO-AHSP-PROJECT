@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} - Django AHSP{% endblock %}
+
+{% block extra_css %}
+<style>
+  .metric-card {
+    border-left: 4px solid #dc3545;
+    transition: transform 0.2s;
+  }
+  .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  .count-badge {
+    font-size: 2rem;
+    font-weight: bold;
+  }
+  .sunset-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+    color: #000;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+  }
+  .refresh-btn {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1000;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h1><i class="bi bi-exclamation-triangle-fill text-warning"></i> {{ title }}</h1>
+      <p class="text-muted">Real-time monitoring of deprecated API v1 endpoints</p>
+    </div>
+  </div>
+
+  <!-- Sunset Warning -->
+  <div class="row">
+    <div class="col-12">
+      <div class="sunset-warning">
+        <h5><i class="bi bi-calendar-x"></i> Sunset Date: <strong>{{ sunset_date }}</strong></h5>
+        <p class="mb-0">All v1 endpoints will be removed on this date. Please migrate to v2 APIs.</p>
+        <a href="/static/API_MIGRATION_GUIDE.md" class="btn btn-dark btn-sm mt-2" target="_blank">
+          <i class="bi bi-book"></i> View Migration Guide
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Total Endpoints</h6>
+          <div class="count-badge text-primary" id="total-endpoints">-</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Total API Calls</h6>
+          <div class="count-badge text-danger" id="total-calls">-</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Most Used Endpoint</h6>
+          <div class="small text-truncate" id="most-used" title="">-</div>
+          <div class="count-badge text-warning" id="most-used-count">-</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card">
+        <div class="card-body text-center">
+          <h6 class="text-muted">Days Until Sunset</h6>
+          <div class="count-badge text-info" id="days-remaining">-</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Metrics Table -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-table"></i> Endpoint Usage Metrics</h5>
+        </div>
+        <div class="card-body">
+          <div id="metrics-container">
+            <div class="text-center py-5">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-3 text-muted">Loading metrics...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Refresh Button -->
+  <button class="btn btn-primary btn-lg refresh-btn" id="refresh-btn" title="Refresh Metrics">
+    <i class="bi bi-arrow-clockwise"></i>
+  </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Auto-refresh metrics every 30 seconds
+  let refreshInterval;
+
+  async function loadMetrics() {
+    try {
+      const response = await fetch('/api/monitoring/deprecation-metrics/');
+      const data = await response.json();
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Failed to load metrics');
+      }
+
+      // Update summary cards
+      document.getElementById('total-endpoints').textContent = data.summary.total_endpoints;
+      document.getElementById('total-calls').textContent = data.summary.total_calls.toLocaleString();
+      document.getElementById('most-used').textContent = data.summary.most_used || 'N/A';
+      document.getElementById('most-used').title = data.summary.most_used || '';
+      document.getElementById('most-used-count').textContent = data.summary.most_used_count?.toLocaleString() || '0';
+
+      // Calculate days remaining
+      const sunsetDate = new Date('{{ sunset_date }}');
+      const today = new Date();
+      const daysRemaining = Math.ceil((sunsetDate - today) / (1000 * 60 * 60 * 24));
+      document.getElementById('days-remaining').textContent = daysRemaining;
+
+      // Render metrics table
+      renderMetricsTable(data.metrics);
+
+    } catch (error) {
+      console.error('Failed to load metrics:', error);
+      document.getElementById('metrics-container').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi bi-exclamation-triangle"></i>
+          Failed to load metrics: ${error.message}
+        </div>
+      `;
+    }
+  }
+
+  function renderMetricsTable(metrics) {
+    const container = document.getElementById('metrics-container');
+
+    if (Object.keys(metrics).length === 0) {
+      container.innerHTML = `
+        <div class="alert alert-success">
+          <i class="bi bi-check-circle"></i>
+          No deprecated API calls detected yet. Great job! 🎉
+        </div>
+      `;
+      return;
+    }
+
+    // Sort by count (descending)
+    const sorted = Object.entries(metrics).sort((a, b) => b[1].count - a[1].count);
+
+    let tableHTML = `
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Endpoint</th>
+              <th>Total Calls</th>
+              <th>First Seen</th>
+              <th>Last Access</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    sorted.forEach(([endpoint, stats], index) => {
+      const firstSeen = new Date(stats.first_seen).toLocaleString();
+      const lastAccess = stats.last_access ? new Date(stats.last_access).toLocaleString() : 'N/A';
+
+      tableHTML += `
+        <tr>
+          <td>${index + 1}</td>
+          <td><code>${endpoint}</code></td>
+          <td><span class="badge bg-danger">${stats.count.toLocaleString()}</span></td>
+          <td class="text-muted small">${firstSeen}</td>
+          <td class="text-muted small">${lastAccess}</td>
+          <td>
+            <a href="/static/API_MIGRATION_GUIDE.md" class="btn btn-sm btn-outline-primary" target="_blank">
+              <i class="bi bi-book"></i> Migrate
+            </a>
+          </td>
+        </tr>
+      `;
+    });
+
+    tableHTML += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    container.innerHTML = tableHTML;
+  }
+
+  // Refresh button handler
+  document.getElementById('refresh-btn').addEventListener('click', () => {
+    const btn = document.getElementById('refresh-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    loadMetrics().then(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+    });
+  });
+
+  // Initial load
+  loadMetrics();
+
+  // Auto-refresh every 30 seconds
+  refreshInterval = setInterval(loadMetrics, 30000);
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    clearInterval(refreshInterval);
+  });
+</script>
+{% endblock %}

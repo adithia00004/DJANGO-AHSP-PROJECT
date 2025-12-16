@@ -5,7 +5,7 @@
 
 from typing import Dict, Any
 from django.http import HttpResponse
-from ..export_config import ExportConfig, SignatureConfig, format_currency
+from ..export_config import ExportConfig, SignatureConfig, format_currency, JadwalExportLayout
 from ..services import compute_kebutuhan_items, summarize_kebutuhan_rows
 from .csv_exporter import CSVExporter
 from .pdf_exporter import PDFExporter
@@ -303,18 +303,58 @@ class ExportManager:
         # Export!
         return exporter.export(data)
 
-    def export_jadwal_pekerjaan(self, format_type: str) -> HttpResponse:
+    def export_jadwal_pekerjaan(
+        self,
+        format_type: str,
+        attachments: list | None = None,
+        parameters: dict | None = None
+    ) -> HttpResponse:
         """
-        Export Jadwal Pekerjaan (weekly + monthly)
+        Export Jadwal Pekerjaan with support for 3 report types.
 
         Args:
             format_type: 'csv', 'pdf', 'word', or 'xlsx'
+            attachments: List of chart attachments [{"title": str, "bytes": bytes}]
+            parameters: Export parameters:
+                {
+                    'report_type': 'full' | 'monthly' | 'weekly',
+                    'mode': 'weekly' | 'monthly',
+                    'include_dates': bool,
+                    'weeks_per_month': int
+                }
+
+        Returns:
+            HttpResponse with exported file
         """
+        # Parse parameters with defaults
+        params = parameters or {}
+        report_type = params.get('report_type', 'full')
+        mode = params.get('mode', 'weekly')
+        include_dates = params.get('include_dates', False)
+        weeks_per_month = params.get('weeks_per_month', 4)
+
+        # Set title based on report type
+        title_map = {
+            'full': 'REKAP LAPORAN - JADWAL PELAKSANAAN PEKERJAAN',
+            'monthly': 'LAPORAN BULANAN - JADWAL PELAKSANAAN PEKERJAAN',
+            'weekly': 'LAPORAN MINGGUAN - JADWAL PELAKSANAAN PEKERJAAN'
+        }
+        title = title_map.get(report_type, 'JADWAL PELAKSANAAN PEKERJAAN')
+
         config = self._create_config_simple(
-            'JADWAL PELAKSANAAN PEKERJAAN',
+            title,
             page_orientation='landscape',
-            page_size='A3'
+            page_size=JadwalExportLayout.PAGE_SIZE
         )
+
+        # Apply layout defaults for Jadwal exports
+        config.margin_top = JadwalExportLayout.MARGIN_TOP
+        config.margin_bottom = JadwalExportLayout.MARGIN_BOTTOM
+        config.margin_left = JadwalExportLayout.MARGIN_LEFT
+        config.margin_right = JadwalExportLayout.MARGIN_RIGHT
+
+        # Determine if we should use monthly mode for adapter
+        use_monthly_mode = (mode == 'monthly')
 
         adapter = JadwalPekerjaanExportAdapter(
             self.project,
@@ -322,8 +362,23 @@ class ExportManager:
             page_orientation=config.page_orientation,
             margin_left=config.margin_left,
             margin_right=config.margin_right,
+            layout_spec=JadwalExportLayout,
+            auto_compact_weeks=use_monthly_mode,  # Enable monthly if mode='monthly'
+            weekly_threshold=weeks_per_month,     # Use weeks_per_month for aggregation
+            max_rows_per_page=JadwalExportLayout.ROWS_PER_PAGE,
         )
+
         data = adapter.get_export_data()
+
+        # Add metadata
+        data['report_type'] = report_type
+        data['mode'] = mode
+        data['include_dates'] = include_dates
+        data['weeks_per_month'] = weeks_per_month
+
+        if attachments:
+            # Attachments are list of {"title": str, "bytes": bytes}
+            data["attachments"] = attachments
 
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:

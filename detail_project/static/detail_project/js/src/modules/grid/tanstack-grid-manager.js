@@ -895,6 +895,18 @@ export class TanStackGridManager {
     return columns.reduce((total, col) => total + this._getColumnWidth(col), 0);
   }
 
+  getPinnedColumnsWidth() {
+    if (!Array.isArray(this.currentColumns)) {
+      return 0;
+    }
+    return this.currentColumns.reduce((acc, column) => {
+      if (column?.meta?.pinned) {
+        return acc + this._getColumnWidth(column);
+      }
+      return acc;
+    }, 0);
+  }
+
   _resolveColumnMetaId(columnMeta) {
     if (!columnMeta) {
       return null;
@@ -1017,7 +1029,9 @@ export class TanStackGridManager {
       const normalized = event.key === ',' ? '.' : event.key;
       input.value = normalized;
       const caret = normalized.length;
-      input.setSelectionRange(caret, caret);
+      if (typeof input.setSelectionRange === 'function' && input.type !== 'number') {
+        input.setSelectionRange(caret, caret);
+      }
     }
   }
 

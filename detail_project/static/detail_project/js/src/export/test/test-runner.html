@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Export System Test Runner</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .controls {
+      padding: 20px 30px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .summary {
+      padding: 20px 30px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .summary-card {
+      padding: 15px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .summary-card.total { background: #e3f2fd; color: #1976d2; }
+    .summary-card.passed { background: #e8f5e9; color: #388e3c; }
+    .summary-card.failed { background: #ffebee; color: #d32f2f; }
+    .summary-card.skipped { background: #fff3e0; color: #f57c00; }
+
+    .summary-card .value {
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .summary-card .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 600;
+      opacity: 0.8;
+    }
+
+    .progress-bar {
+      margin: 20px 30px;
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .test-list {
+      padding: 0 30px 30px;
+    }
+
+    .test-item {
+      padding: 15px;
+      border-left: 4px solid #e0e0e0;
+      margin-bottom: 10px;
+      background: #fafafa;
+      border-radius: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 15px;
+    }
+
+    .test-item.running {
+      border-left-color: #2196f3;
+      background: #e3f2fd;
+    }
+
+    .test-item.passed {
+      border-left-color: #4caf50;
+      background: #e8f5e9;
+    }
+
+    .test-item.failed {
+      border-left-color: #f44336;
+      background: #ffebee;
+    }
+
+    .test-item.skipped {
+      border-left-color: #ff9800;
+      background: #fff3e0;
+    }
+
+    .test-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .test-content {
+      flex: 1;
+    }
+
+    .test-name {
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .test-duration {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .test-error {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(0,0,0,0.05);
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #c62828;
+      white-space: pre-wrap;
+    }
+
+    .console-output {
+      margin: 20px 30px 30px;
+      padding: 20px;
+      background: #263238;
+      color: #aed581;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 400px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+
+    .console-output .log { color: #aed581; }
+    .console-output .warn { color: #ffb74d; }
+    .console-output .error { color: #ef5350; }
+    .console-output .info { color: #4fc3f7; }
+
+    .filter-options {
+      display: flex;
+      gap: 5px;
+    }
+
+    .filter-btn {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+
+    .test-section {
+      margin: 20px 30px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      border-left: 4px solid #667eea;
+    }
+
+    .test-section h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner {
+      display: inline-block;
+      animation: spin 1s linear infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🧪 Export System Test Runner</h1>
+      <p>Comprehensive test suite for Jadwal Pekerjaan export functionality</p>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-primary" id="runAllBtn">▶️ Run All Tests</button>
+      <button class="btn btn-secondary" id="runQuickBtn">⚡ Quick Tests</button>
+      <button class="btn btn-secondary" id="runUnitBtn">📦 Unit Tests</button>
+      <button class="btn btn-secondary" id="runIntegrationBtn">🔗 Integration Tests</button>
+      <button class="btn btn-secondary" id="clearBtn">🗑️ Clear Results</button>
+
+      <div style="margin-left: auto;" class="filter-options">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="passed">✅ Passed</button>
+        <button class="filter-btn" data-filter="failed">❌ Failed</button>
+        <button class="filter-btn" data-filter="skipped">⏭️ Skipped</button>
+      </div>
+    </div>
+
+    <div class="summary">
+      <div class="summary-card total">
+        <div class="value" id="totalCount">0</div>
+        <div class="label">Total Tests</div>
+      </div>
+      <div class="summary-card passed">
+        <div class="value" id="passedCount">0</div>
+        <div class="label">Passed</div>
+      </div>
+      <div class="summary-card failed">
+        <div class="value" id="failedCount">0</div>
+        <div class="label">Failed</div>
+      </div>
+      <div class="summary-card skipped">
+        <div class="value" id="skippedCount">0</div>
+        <div class="label">Skipped</div>
+      </div>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressBar"></div>
+    </div>
+
+    <div class="test-list" id="testList">
+      <p style="text-align: center; color: #999; padding: 40px;">
+        Click "Run All Tests" to start testing
+      </p>
+    </div>
+
+    <div class="console-output" id="consoleOutput" style="display: none;">
+      <div style="margin-bottom: 10px; color: #fff; font-weight: bold;">📋 Console Output:</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      completeState,
+      smallState,
+      largeState,
+      minimalState,
+      plannedOnlyState,
+      withGapsState,
+      deepHierarchyState,
+      paginationTestState
+    } from './fixtures/sample-state.js';
+
+    import {
+      exportReport,
+      estimateExportSize,
+      validateExportRequest,
+      EXPORT_CONFIG
+    } from '../export-coordinator.js';
+
+    import {
+      renderKurvaS,
+      renderKurvaSBatch
+    } from '../core/kurva-s-renderer.js';
+
+    import {
+      renderGanttPaged
+    } from '../core/gantt-renderer.js';
+
+    import {
+      splitRowsHierarchical,
+      validateRowsHierarchy,
+      calculateColsPerPage,
+      calculateRowsPerPage
+    } from '../core/pagination-utils.js';
+
+    import {
+      generateExcel
+    } from '../generators/excel-generator.js';
+
+    import {
+      generateCSV
+    } from '../generators/csv-generator.js';
+
+    // Test Results State
+    let testResults = {
+      tests: [],
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      currentFilter: 'all'
+    };
+
+    let isRunning = false;
+
+    // DOM Elements
+    const testListEl = document.getElementById('testList');
+    const totalCountEl = document.getElementById('totalCount');
+    const passedCountEl = document.getElementById('passedCount');
+    const failedCountEl = document.getElementById('failedCount');
+    const skippedCountEl = document.getElementById('skippedCount');
+    const progressBarEl = document.getElementById('progressBar');
+    const consoleOutputEl = document.getElementById('consoleOutput');
+
+    const runAllBtn = document.getElementById('runAllBtn');
+    const runQuickBtn = document.getElementById('runQuickBtn');
+    const runUnitBtn = document.getElementById('runUnitBtn');
+    const runIntegrationBtn = document.getElementById('runIntegrationBtn');
+    const clearBtn = document.getElementById('clearBtn');
+
+    // Console capture
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    function captureConsole() {
+      consoleOutputEl.style.display = 'block';
+
+      console.log = (...args) => {
+        originalLog(...args);
+        addConsoleMessage('log', args.join(' '));
+      };
+
+      console.warn = (...args) => {
+        originalWarn(...args);
+        addConsoleMessage('warn', args.join(' '));
+      };
+
+      console.error = (...args) => {
+        originalError(...args);
+        addConsoleMessage('error', args.join(' '));
+      };
+    }
+
+    function addConsoleMessage(type, message) {
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = message;
+      consoleOutputEl.appendChild(line);
+      consoleOutputEl.scrollTop = consoleOutputEl.scrollHeight;
+    }
+
+    // Test Runner
+    async function runTest(name, testFn, section = 'General') {
+      const testId = testResults.tests.length;
+      const testItem = {
+        id: testId,
+        name,
+        section,
+        status: 'running',
+        duration: 0,
+        error: null
+      };
+
+      testResults.tests.push(testItem);
+      renderTestItem(testItem);
+      updateSummary();
+
+      const start = Date.now();
+
+      try {
+        await testFn();
+        const duration = Date.now() - start;
+        testItem.status = 'passed';
+        testItem.duration = duration;
+        testResults.passed++;
+        console.log(`✅ PASS: ${name} (${duration}ms)`);
+      } catch (error) {
+        const duration = Date.now() - start;
+        testItem.status = 'failed';
+        testItem.duration = duration;
+        testItem.error = error.message;
+        testResults.failed++;
+        console.error(`❌ FAIL: ${name} (${duration}ms)`, error);
+      }
+
+      renderTestItem(testItem);
+      updateSummary();
+      updateProgress();
+    }
+
+    function renderTestItem(test) {
+      let el = document.getElementById(`test-${test.id}`);
+
+      if (!el) {
+        el = document.createElement('div');
+        el.id = `test-${test.id}`;
+        el.className = 'test-item';
+        el.dataset.status = test.status;
+        testListEl.appendChild(el);
+      }
+
+      el.className = `test-item ${test.status}`;
+      el.dataset.status = test.status;
+
+      const icon = {
+        running: '<span class="spinner">⏳</span>',
+        passed: '✅',
+        failed: '❌',
+        skipped: '⏭️'
+      }[test.status];
+
+      el.innerHTML = `
+        <div class="test-icon">${icon}</div>
+        <div class="test-content">
+          <div class="test-name">${test.name}</div>
+          <div class="test-duration">
+            ${test.duration > 0 ? `${test.duration}ms` : 'Running...'}
+            ${test.section ? `• ${test.section}` : ''}
+          </div>
+          ${test.error ? `<div class="test-error">${test.error}</div>` : ''}
+        </div>
+      `;
+
+      applyFilter();
+    }
+
+    function updateSummary() {
+      totalCountEl.textContent = testResults.tests.length;
+      passedCountEl.textContent = testResults.passed;
+      failedCountEl.textContent = testResults.failed;
+      skippedCountEl.textContent = testResults.skipped;
+    }
+
+    function updateProgress() {
+      const total = testResults.tests.length;
+      const completed = testResults.passed + testResults.failed + testResults.skipped;
+      const percent = total > 0 ? (completed / total) * 100 : 0;
+      progressBarEl.style.width = `${percent}%`;
+    }
+
+    function clearResults() {
+      testResults = { tests: [], passed: 0, failed: 0, skipped: 0, currentFilter: 'all' };
+      testListEl.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">Ready to run tests</p>';
+      consoleOutputEl.innerHTML = '<div style="margin-bottom: 10px; color: #fff; font-weight: bold;">📋 Console Output:</div>';
+      updateSummary();
+      updateProgress();
+    }
+
+    function applyFilter() {
+      const filter = testResults.currentFilter;
+      document.querySelectorAll('.test-item').forEach(el => {
+        if (filter === 'all' || el.dataset.status === filter) {
+          el.style.display = 'flex';
+        } else {
+          el.style.display = 'none';
+        }
+      });
+    }
+
+    // Test Suites
+    async function runUnitTests() {
+      console.log('\n📦 Running Unit Tests...\n');
+
+      // Kurva S Renderer
+      await runTest('Kurva S - Weekly Mode', async () => {
+        const dataURL = await renderKurvaS({
+          granularity: 'weekly',
+          data: smallState.kurvaSData,
+          width: 800,
+          height: 400,
+          dpi: 96
+        });
+        if (!dataURL || !dataURL.startsWith('data:image/png;base64,')) {
+          throw new Error('Invalid dataURL');
+        }
+      }, 'Kurva S Renderer');
+
+      await runTest('Kurva S - Monthly Mode', async () => {
+        const dataURL = await renderKurvaS({
+          granularity: 'monthly',
+          weeks_per_month: 4,
+          data: smallState.kurvaSData,
+          width: 800,
+          height: 400,
+          dpi: 96
+        });
+        if (!dataURL || !dataURL.startsWith('data:image/png;base64,')) {
+          throw new Error('Invalid dataURL');
+        }
+      }, 'Kurva S Renderer');
+
+      // Gantt Renderer
+      await runTest('Gantt - Single Page', async () => {
+        const pages = await renderGanttPaged({
+          rows: minimalState.hierarchyRows,
+          timeColumns: minimalState.weekColumns,
+          planned: minimalState.plannedProgress,
+          actual: null,
+          layout: { labelWidthPx: 400, timeColWidthPx: 70, rowHeightPx: 28, dpi: 96 }
+        });
+        if (!Array.isArray(pages) || pages.length === 0) {
+          throw new Error('No pages generated');
+        }
+      }, 'Gantt Renderer');
+
+      // Pagination Utils
+      await runTest('Pagination - Hierarchy Validation', async () => {
+        const errors = validateRowsHierarchy(completeState.hierarchyRows);
+        if (errors.length > 0) {
+          throw new Error(`Validation errors: ${errors.join(', ')}`);
+        }
+      }, 'Pagination Utils');
+
+      // Generators
+      await runTest('Excel Generator', async () => {
+        const blob = await generateExcel({
+          attachments: [],
+          headers: ['Task', 'W1'],
+          rows: [['A', 10]],
+          metadata: {}
+        });
+        if (!(blob instanceof Blob) || blob.size === 0) {
+          throw new Error('Invalid Excel blob');
+        }
+      }, 'Generators');
+
+      await runTest('CSV Generator', async () => {
+        const blob = generateCSV({
+          headers: ['Task', 'W1'],
+          rows: [['A', 10]],
+          delimiter: ';',
+          addBOM: true
+        });
+        if (!(blob instanceof Blob) || blob.size === 0) {
+          throw new Error('Invalid CSV blob');
+        }
+      }, 'Generators');
+    }
+
+    async function runIntegrationTests() {
+      console.log('\n🔗 Running Integration Tests...\n');
+
+      await runTest('Export Coordinator - Validation', async () => {
+        const validation = validateExportRequest({
+          reportType: 'rekap',
+          format: 'pdf',
+          state: completeState
+        });
+        if (!validation.valid) {
+          throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+        }
+      }, 'Export Coordinator');
+
+      await runTest('Export Report - Rekap CSV', async () => {
+        const result = await exportReport({
+          reportType: 'rekap',
+          format: 'csv',
+          state: smallState,
+          autoDownload: false
+        });
+        if (!result.blob || !(result.blob instanceof Blob)) {
+          throw new Error('Invalid result');
+        }
+      }, 'Export E2E');
+
+      await runTest('Export Report - Monthly CSV', async () => {
+        const result = await exportReport({
+          reportType: 'monthly',
+          format: 'csv',
+          state: smallState,
+          month: 2,
+          autoDownload: false
+        });
+        if (!result.blob) {
+          throw new Error('Invalid result');
+        }
+      }, 'Export E2E');
+
+      await runTest('Edge Case - Minimal State', async () => {
+        const result = await exportReport({
+          reportType: 'rekap',
+          format: 'csv',
+          state: minimalState,
+          autoDownload: false
+        });
+        if (!result.blob) {
+          throw new Error('Failed to handle minimal state');
+        }
+      }, 'Edge Cases');
+
+      await runTest('Edge Case - With Gaps', async () => {
+        const result = await exportReport({
+          reportType: 'rekap',
+          format: 'csv',
+          state: withGapsState,
+          autoDownload: false
+        });
+        if (!result.blob) {
+          throw new Error('Failed to handle gaps');
+        }
+      }, 'Edge Cases');
+    }
+
+    async function runAllTests() {
+      await runUnitTests();
+      await runIntegrationTests();
+    }
+
+    // Event Listeners
+    runAllBtn.addEventListener('click', async () => {
+      if (isRunning) return;
+      isRunning = true;
+      clearResults();
+      captureConsole();
+      setButtonsDisabled(true);
+      await runAllTests();
+      setButtonsDisabled(false);
+      isRunning = false;
+      console.log('\n✅ All tests completed!\n');
+    });
+
+    runQuickBtn.addEventListener('click', async () => {
+      if (isRunning) return;
+      isRunning = true;
+      clearResults();
+      captureConsole();
+      setButtonsDisabled(true);
+      await runUnitTests();
+      setButtonsDisabled(false);
+      isRunning = false;
+    });
+
+    runUnitBtn.addEventListener('click', async () => {
+      if (isRunning) return;
+      isRunning = true;
+      clearResults();
+      captureConsole();
+      setButtonsDisabled(true);
+      await runUnitTests();
+      setButtonsDisabled(false);
+      isRunning = false;
+    });
+
+    runIntegrationBtn.addEventListener('click', async () => {
+      if (isRunning) return;
+      isRunning = true;
+      clearResults();
+      captureConsole();
+      setButtonsDisabled(true);
+      await runIntegrationTests();
+      setButtonsDisabled(false);
+      isRunning = false;
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (!isRunning) clearResults();
+    });
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        testResults.currentFilter = btn.dataset.filter;
+        applyFilter();
+      });
+    });
+
+    function setButtonsDisabled(disabled) {
+      runAllBtn.disabled = disabled;
+      runQuickBtn.disabled = disabled;
+      runUnitBtn.disabled = disabled;
+      runIntegrationBtn.disabled = disabled;
+    }
+  </script>
+</body>
+</html>

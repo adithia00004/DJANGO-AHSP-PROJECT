@@ -1,0 +1,89 @@
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(240, 240, 240, 1) 0%,
+    rgba(224, 224, 224, 1) 50%,
+    rgba(240, 240, 240, 1) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+[data-bs-theme="dark"] .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(40, 40, 40, 1) 0%,
+    rgba(60, 60, 60, 1) 50%,
+    rgba(40, 40, 40, 1) 100%
+  );
+}
+
+.skeleton-text {
+  height: 16px;
+  margin-bottom: 8px;
+}
+
+.skeleton-row {
+  height: 42px;
+  margin-bottom: 4px;
+}
+
+.skeleton-cell {
+  display: inline-block;
+  width: 80px;
+  height: 28px;
+  margin: 0 8px;
+  vertical-align: middle;
+}
+
+.skeleton-header {
+  height: 32px;
+  margin-bottom: 12px;
+}
+
+.skeleton-grid-container {
+  padding: 16px;
+}
+
+.skeleton-grid-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.skeleton-grid-cell {
+  flex: 0 0 80px;
+  height: 42px;
+}
+
+.skeleton-grid-cell.wide {
+  flex: 0 0 200px;
+}
+
+.skeleton-container {
+  display: none;
+  transition: opacity 0.3s ease-out;
+}
+
+.skeleton-container.showing {
+  display: block;
+}
+
+.skeleton-container.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.content-hidden {
+  opacity: 0;
+}

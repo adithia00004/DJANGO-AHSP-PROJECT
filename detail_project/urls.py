@@ -5,6 +5,7 @@ from . import views_api
 from . import views_export  # ← Clean import at root level!
 from . import views_api_tahapan  # NEW IMPORT
 from . import views_api_tahapan_v2  # V2 API with weekly canonical storage
+from . import views_monitoring  # API deprecation monitoring
 
 app_name = "detail_project"
 
@@ -282,5 +283,61 @@ urlpatterns = [
     path('api/v2/project/<int:project_id>/rekap-kebutuhan-weekly/',
          views_api.api_rekap_kebutuhan_weekly,
          name='api_rekap_kebutuhan_weekly'),
+
+    # ===== MONITORING: API Deprecation Tracking (Sprint 4.1) =====
+    path('api/monitoring/deprecation-metrics/',
+         views_monitoring.api_deprecation_metrics,
+         name='api_deprecation_metrics'),
+
+    path('monitoring/deprecation-dashboard/',
+         views_monitoring.api_deprecation_dashboard,
+         name='deprecation_dashboard'),
+
+    path('api/monitoring/deprecation-metrics/reset/',
+         views_monitoring.api_reset_deprecation_metrics,
+         name='api_reset_deprecation_metrics'),
+
+    # ===== MONITORING: Performance Tracking (Sprint 4.3) =====
+    path('api/monitoring/performance-metrics/',
+         views_monitoring.api_performance_metrics,
+         name='api_performance_metrics'),
+
+    path('monitoring/performance-dashboard/',
+         views_monitoring.api_performance_dashboard,
+         name='performance_dashboard'),
+
+    path('api/monitoring/performance-metrics/reset/',
+         views_monitoring.api_reset_performance_metrics,
+         name='api_reset_performance_metrics'),
+
+    path('api/monitoring/report-client-metric/',
+         views_monitoring.api_report_client_metric,
+         name='api_report_client_metric'),
+
+    # ===== EXPORT SYSTEM: Batch Export API (Phase 3) =====
+    # Initialize export session
+    path('api/export/init',
+         views_export.export_init,
+         name='export_init'),
+
+    # Upload pages in batches
+    path('api/export/upload-pages',
+         views_export.export_upload_pages,
+         name='export_upload_pages'),
+
+    # Finalize and generate PDF/Word
+    path('api/export/finalize',
+         views_export.export_finalize,
+         name='export_finalize'),
+
+    # Check export status
+    path('api/export/status/<uuid:export_id>',
+         views_export.export_status,
+         name='export_status'),
+
+    # Download completed export
+    path('api/export/download/<uuid:export_id>',
+         views_export.export_download,
+         name='export_download'),
 
 ]

@@ -131,6 +131,28 @@ class WordExporter(ConfigExporterBase):
                 self._add_signatures(doc)
         else:
             build_page(data, add_signatures=True)
+
+        # Attach image pages (e.g., Gantt / Kurva-S screenshots)
+        attachments = data.get('attachments') or []
+        if attachments:
+            # Available width in inches
+            width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
+            if getattr(self.config, 'page_orientation', 'landscape') == 'landscape':
+                width_mm, height_mm = height_mm, width_mm
+            usable_w_in = max(1.0, (width_mm - (self.config.margin_left + self.config.margin_right)) / 25.4)
+            for att in attachments:
+                img_bytes = att.get('bytes')
+                if not img_bytes:
+                    continue
+                doc.add_page_break()
+                title = att.get('title') or 'Lampiran'
+                heading = doc.add_heading(title, level=2)
+                heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                try:
+                    pic = doc.add_picture(BytesIO(img_bytes))
+                    pic.width = Inches(usable_w_in)
+                except Exception:
+                    continue
         
         # Save to buffer
         buffer = BytesIO()
