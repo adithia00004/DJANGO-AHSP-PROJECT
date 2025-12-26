@@ -99,11 +99,11 @@ export class KurvaSCanvasOverlay {
     });
 
     this.visible = true;
-    this._log('show', { overlay: true, container: 'sibling-of-bodyScroll', zIndex: 1000 });
+    this._log('show', { overlay: true, container: 'sibling-of-bodyScroll', zIndex: 10 });
     this._showLegend();
 
-    // Force grid render and nudge scroll so TanStack virtualizer measures columns
-    this._forceGridRenderAndNudgeScroll(scrollArea);
+    // Wait for virtualizer cells, then render
+    this._waitForCellsAndRender();
   }
 
   hide() {
@@ -613,72 +613,29 @@ export class KurvaSCanvasOverlay {
     return y0 - (clampedProgress / 100) * (y0 - y100);
   }
 
-  _renderWithRetry(attempt = 1, maxAttempts = 10) {
+  /**
+   * Wait for virtualizer cells to be ready, then render
+   * Uses simple 2-RAF approach instead of complex retry mechanism
+   */
+  _waitForCellsAndRender() {
     if (!this.visible) return;
 
-    const cellRects = typeof this.tableManager?.getCellBoundingRects === 'function'
-      ? this.tableManager.getCellBoundingRects()
-      : [];
-
-    const hasSize = this.canvas.width > 0 && this.canvas.height > 0;
-    const hasCells = Array.isArray(cellRects) && cellRects.length > 0;
-
-    if (hasSize && hasCells) {
-      this.syncWithTable();
-      return;
-    }
-
-    // If cells are not ready yet, force the grid virtualizer to measure/render
-    // so bounding rects become available before we retry.
-    try {
-      if (typeof this.tableManager?._renderRowsOnly === 'function') {
-        this.tableManager._renderRowsOnly();
-      } else if (this.tableManager?.virtualizer?.measure) {
-        this.tableManager.virtualizer.measure();
-      }
-    } catch (e) {
-      this._log('warn-render-retry-measure', { error: e?.message });
-    }
-
-    if (attempt < maxAttempts) {
-      requestAnimationFrame(() => this._renderWithRetry(attempt + 1, maxAttempts));
-    } else {
-      this._log('render-retry-exhausted', { hasSize, hasCells })
-    }
-  }
-
-  /**
-   * Force grid to render rows and gently nudge horizontal scroll to trigger measurement.
-   * This ensures bounding rects are available immediately after mode switch.
-   */
-  _forceGridRenderAndNudgeScroll(scrollArea) {
-    // Render current virtual rows
-    try {
-      if (typeof this.tableManager?._renderRowsOnly === 'function') {
-        this.tableManager._renderRowsOnly();
-      } else if (this.tableManager?.virtualizer?.measure) {
-        this.tableManager.virtualizer.measure();
-      }
-    } catch (e) {
-      this._log('warn-force-render', { error: e?.message });
-    }
-
-    if (!scrollArea) {
-      this._renderWithRetry();
-      return;
-    }
-
-    const original = scrollArea.scrollLeft || 0;
-    const nudge = Math.min(original + 1, scrollArea.scrollWidth);
-
-    // Nudge scroll to trigger layout, then restore on next frame
-    scrollArea.scrollLeft = nudge;
-    scrollArea.dispatchEvent(new Event('scroll'));
-
+    // Frame 1: Force virtualizer to measure/render current rows
     requestAnimationFrame(() => {
-      scrollArea.scrollLeft = original;
-      scrollArea.dispatchEvent(new Event('scroll'));
-      this._renderWithRetry();
+      try {
+        if (typeof this.tableManager?._renderRowsOnly === 'function') {
+          this.tableManager._renderRowsOnly();
+        } else if (this.tableManager?.virtualizer?.measure) {
+          this.tableManager.virtualizer.measure();
+        }
+      } catch (e) {
+        this._log('warn-force-render', { error: e?.message });
+      }
+
+      // Frame 2: Cells should be ready now, render the curve
+      requestAnimationFrame(() => {
+        this.syncWithTable();
+      });
     });
   }
 
