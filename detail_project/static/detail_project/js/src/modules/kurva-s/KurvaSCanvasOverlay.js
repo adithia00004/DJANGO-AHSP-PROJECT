@@ -783,30 +783,6 @@ export class KurvaSCanvasOverlay {
     return '#ffc107';
   }
 
-  _getCssVar(name) {
-    try {
-      const root = document.documentElement;
-      const value = getComputedStyle(root).getPropertyValue(name);
-      return value && value.trim().length ? value.trim() : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  _getBtnColor(selector) {
-    try {
-      const el = document.querySelector(selector);
-      if (!el) return null;
-      const style = getComputedStyle(el);
-      return style.getPropertyValue('background-color')?.trim() ||
-        style.getPropertyValue('border-color')?.trim() ||
-        style.getPropertyValue('color')?.trim() ||
-        null;
-    } catch (e) {
-      return null;
-    }
-  }
-
   _bindPointerEvents() {
     // Add hover tooltip for curve points
     this.canvas.addEventListener('mousemove', (e) => {
