@@ -18,9 +18,9 @@ export class KurvaSCanvasOverlay {
     );
     this._missingColumnLog = new Set();
 
-    // PHASE 1 FIX: Track scroll position and pinned width for transform compensation
+    // Track scroll position and pinned width
     this.scrollLeft = 0;
-    this._syncScheduled = false;
+    this.scrollTop = 0;
     this.pinnedWidth = 0;
 
     // PHASE 4 FIX: Cost mode support
@@ -35,22 +35,22 @@ export class KurvaSCanvasOverlay {
       top: 0;
       left: 0;
       pointer-events: auto;
-      z-index: 10;
+      background: transparent;
     `;
     this.ctx = this.canvas.getContext('2d');
 
-    // Y-axis container (HTML ticks)
-    this.yAxisContainer = document.createElement('div');
-    this.yAxisContainer.className = 'kurva-s-yaxis-overlay';
-    this.yAxisContainer.style.cssText = `
+    // ClipViewport wrapper - FIXED overlay that clips canvas to visible area
+    // High z-index ensures it's above bodyScroll for mouse events
+    this.clipViewport = document.createElement('div');
+    this.clipViewport.className = 'kurva-s-clip-viewport';
+    this.clipViewport.style.cssText = `
       position: absolute;
-      top: 0;
-      right: 0;
-      width: 80px;
-      pointer-events: none;
-      z-index: 11;
-      display: none;
+      overflow: hidden;
+      pointer-events: auto;
+      z-index: 1000;
     `;
+    // Canvas goes inside clipViewport
+    this.clipViewport.appendChild(this.canvas);
 
     this.visible = false;
     this.curveData = { planned: [], actual: [] };
@@ -58,181 +58,220 @@ export class KurvaSCanvasOverlay {
     this.curvePoints = []; // For tooltip hit-testing
     this.tooltip = null;
 
-    // FIX 1: Scroll updates transform immediately and throttles resync
+    // Scroll handler: Update CSS transform to sync canvas with scroll (viewport concept)
+    // Only transform update needed - no re-render for performance
     const scrollTarget = this.tableManager?.bodyScroll;
     if (scrollTarget) {
       scrollTarget.addEventListener('scroll', () => {
         if (this.visible) {
           this._updateTransform();
-          if (!this._syncScheduled) {
-            this._syncScheduled = true;
-            requestAnimationFrame(() => {
-              this._syncScheduled = false;
-              if (this.visible) {
-                this.syncWithTable();
-              }
-            });
-          }
         }
       }, { passive: true });
     }
+
+    // Resize handler: RE-RENDERS canvas when size changes (e.g., fullscreen toggle)
+    // This is needed because canvas size changes, requiring new drawing
+    this._resizeTimeout = null;
+    window.addEventListener('resize', () => {
+      if (this.visible) {
+        // Debounce: wait for resize to settle, then re-render once
+        clearTimeout(this._resizeTimeout);
+        this._resizeTimeout = setTimeout(() => {
+          this.syncWithTable();
+        }, 150);
+      }
+    });
 
     this._bindPointerEvents();
   }
 
   show() {
+    console.log('[KurvaS] show() called', { alreadyVisible: this.visible });
     if (this.visible) return;
     const scrollArea = this.tableManager?.bodyScroll;
-    if (!scrollArea) return;
+    const container = scrollArea?.parentElement;
+    if (!scrollArea || !container) return;
 
-    scrollArea.style.position = scrollArea.style.position || 'relative';
+    // Ensure container has relative positioning for fixed overlay
+    container.style.position = 'relative';
 
-    // Ensure canvas is removed first to avoid duplication
-    if (this.canvas.parentNode) {
-      this.canvas.parentNode.removeChild(this.canvas);
+    // Add clipViewport to CONTAINER as SIBLING of bodyScroll (FIXED viewport overlay)
+    // With z-index 1000, clipViewport is above bodyScroll for mouse events
+    if (this.clipViewport.parentNode) {
+      this.clipViewport.parentNode.removeChild(this.clipViewport);
     }
-    scrollArea.appendChild(this.canvas);
-    this.canvas.style.display = 'block';  // Ensure visible
+    container.appendChild(this.clipViewport);
 
-    // Attach Y-axis container
-    if (this.yAxisContainer.parentNode) {
-      this.yAxisContainer.parentNode.removeChild(this.yAxisContainer);
-    }
-    scrollArea.appendChild(this.yAxisContainer);
-    this.yAxisContainer.style.display = 'block';
+    console.log('[KurvaS] clipViewport added to container (sibling)', {
+      clipViewportInDOM: !!this.clipViewport.parentNode,
+      canvasInClipViewport: !!this.canvas.parentNode,
+      zIndex: this.clipViewport.style.zIndex,
+      canvasPointerEvents: this.canvas.style.pointerEvents,
+      clipViewportPointerEvents: this.clipViewport.style.pointerEvents
+    });
 
     this.visible = true;
-    this._log('show', { overlay: true });
+    this._log('show', { overlay: true, container: 'sibling-of-bodyScroll', zIndex: 1000 });
     this._showLegend();
 
     // Force grid render and nudge scroll so TanStack virtualizer measures columns
-    // This avoids the "Kurva S muncul setelah scroll horizontal" issue.
     this._forceGridRenderAndNudgeScroll(scrollArea);
   }
 
   hide() {
     if (!this.visible) return;
 
-    if (this.canvas.parentNode) {
-      this.canvas.parentNode.removeChild(this.canvas);
-    }
-    if (this.yAxisContainer?.parentNode) {
-      this.yAxisContainer.parentNode.removeChild(this.yAxisContainer);
+    // Remove clipViewport (which contains canvas)
+    if (this.clipViewport.parentNode) {
+      this.clipViewport.parentNode.removeChild(this.clipViewport);
     }
 
     this.visible = false;
     this._log('hide');
     this._hideLegend();
+    this._hideTooltip();
   }
 
   syncWithTable() {
     const scrollArea = this.tableManager?.bodyScroll;
-    if (!scrollArea) {
+    const container = scrollArea?.parentElement;
+    if (!scrollArea || !container) {
       this._log('warn-no-scroll-area', { message: 'No scrollArea found' });
       return;
     }
 
-    // PHASE 1 FIX: Update pinned width and scroll position
-    this.pinnedWidth = this._getPinnedWidth(scrollArea);
-    this.scrollLeft = scrollArea.scrollLeft || 0;
-
-    // PHASE 1 FIX: Viewport-sized canvas (NOT full scrollWidth to avoid >32k px blank canvas)
-    const viewportWidth = scrollArea.clientWidth - this.pinnedWidth;
-    const MAX_CANVAS_WIDTH = 32000;  // Browser safety limit
-    const MAX_CANVAS_HEIGHT = 16000;
-
-    // DEBUG: Ensure we have valid dimensions
-    const canvasWidth = Math.max(100, Math.min(viewportWidth, MAX_CANVAS_WIDTH));
-    const canvasHeight = Math.max(100, Math.min(scrollArea.clientHeight, MAX_CANVAS_HEIGHT));
-
-    this.canvas.width = canvasWidth;
-    this.canvas.height = canvasHeight;
-
-    // Set CSS size explicitly
-    this.canvas.style.width = `${canvasWidth}px`;
-    this.canvas.style.height = `${canvasHeight}px`;
-
-    // Position Y-axis container (HTML ticks) at right of visible viewport
-    const axisWidth = 80;
-    const axisHeight = canvasHeight;
-    const axisLeft = this.scrollLeft + scrollArea.clientWidth - axisWidth;
-    const axisTop = scrollArea.scrollTop || 0;
-    if (this.yAxisContainer) {
-      this.yAxisContainer.style.width = `${axisWidth}px`;
-      this.yAxisContainer.style.height = `${axisHeight}px`;
-      this.yAxisContainer.style.left = `${axisLeft}px`;
-      this.yAxisContainer.style.top = `${axisTop}px`;
-      this.yAxisContainer.style.display = this.visible ? 'block' : 'none';
-    }
-
-    // PHASE 1 FIX: Transform compensation for scroll (keeps canvas fixed at frozen boundary)
-    this.canvas.style.position = 'absolute';
-    this.canvas.style.left = `${this.pinnedWidth}px`;  // Start AFTER frozen column
-    this.canvas.style.top = '0px';
-    this.canvas.style.transform = `translateX(${this.scrollLeft}px)`;  // Compensate scroll
-    this.canvas.style.pointerEvents = 'auto';
-    this.canvas.style.zIndex = '10';
-
-    // Position Y-axis container to the right of visible viewport
-    if (this.yAxisContainer) {
-      const axisWidth = 80;
-      const axisHeight = canvasHeight;
-      const axisLeft = this.scrollLeft + scrollArea.clientWidth - axisWidth;
-      const axisTop = scrollArea.scrollTop || 0;
-      this.yAxisContainer.style.width = `${axisWidth}px`;
-      this.yAxisContainer.style.height = `${axisHeight}px`;
-      this.yAxisContainer.style.left = `${axisLeft}px`;
-      this.yAxisContainer.style.top = `${axisTop}px`;
-      this.yAxisContainer.style.display = this.visible ? 'block' : 'none';
-    }
-
-    this._log('canvas-sizing', {
-      viewportWidth,
-      pinnedWidth: this.pinnedWidth,
-      canvasWidth,
-      canvasHeight,
-      scrollLeft: this.scrollLeft,
-      transform: this.canvas.style.transform,
-      left: this.canvas.style.left,
-    });
-
+    // Get cell rects FIRST to determine canvas bounds
     const cellRects = typeof this.tableManager.getCellBoundingRects === 'function'
       ? this.tableManager.getCellBoundingRects()
       : [];
-
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.curvePoints = []; // Reset curve points for hit-testing
-
-    this._log('sync-debug', {
-      canvasSize: { w: this.canvas.width, h: this.canvas.height },
-      scrollAreaSize: { w: scrollArea.scrollWidth, h: scrollArea.scrollHeight },
-      visibleSize: { w: scrollArea.clientWidth, h: scrollArea.clientHeight },
-      scroll: { left: scrollArea.scrollLeft, top: scrollArea.scrollTop },
-      cellRects: cellRects.length,
-      plannedPoints: this.curveData.planned.length,
-      actualPoints: this.curveData.actual.length,
-      canvasVisible: this.visible,
-      canvasParent: this.canvas.parentNode ? 'attached' : 'detached',
-    });
-
-    this._log('sync', {
-      cells: cellRects.length,
-      plannedPoints: this.curveData.planned.length,
-      actualPoints: this.curveData.actual.length,
-      size: { w: this.canvas.width, h: this.canvas.height },
-    });
 
     if (cellRects.length === 0) {
       this._log('warn-no-cell-rects', { message: 'No cell rects available for plotting' });
       return;
     }
 
+    // Update pinned width and scroll position
+    this.pinnedWidth = this._getPinnedWidth(scrollArea);
+    this.scrollLeft = scrollArea.scrollLeft || 0;
+    this.scrollTop = scrollArea.scrollTop || 0;
+
+    // Calculate actual grid bounds from cellRects
+    // X: from first week column to last week column
+    // Y: from first row to last row
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    cellRects.forEach(rect => {
+      // Only consider week columns (after pinned columns)
+      if (rect.x >= this.pinnedWidth) {
+        minX = Math.min(minX, rect.x);
+        maxX = Math.max(maxX, rect.x + rect.width);
+      }
+      minY = Math.min(minY, rect.y);
+      maxY = Math.max(maxY, rect.y + rect.height);
+    });
+
+    // Fallback if no valid cells found
+    if (minX === Infinity || maxX === -Infinity) {
+      minX = this.pinnedWidth;
+      maxX = scrollArea.scrollWidth;
+    }
+    if (minY === Infinity || maxY === -Infinity) {
+      minY = 0;
+      maxY = scrollArea.scrollHeight;
+    }
+
+    // Grid dimensions - INCLUDE Week 0 space at left edge
+    // gridLeft starts at pinnedWidth (left boundary of week columns area)
+    // This ensures Week 0 (at x=0 in canvas) is visible
+    const gridLeft = this.pinnedWidth;  // Start from frozen column boundary, not first cell
+    const gridWidth = maxX - gridLeft;  // Width from frozen boundary to last week
+    const gridHeight = maxY - minY;
+    const gridTop = minY;
+
+    // Get header height for clipViewport positioning
+    const header = container.querySelector('.tanstack-grid-header');
+    const headerHeight = header?.offsetHeight || 0;
+
+    const containerRect = container.getBoundingClientRect();
+    const scrollAreaRect = scrollArea.getBoundingClientRect();
+
+    // Viewport margins
+    const marginLeft = 5;
+    const marginRight = 20;
+    const marginBottom = 15;
+
+    // ClipViewport: FIXED overlay - shows only visible portion of canvas
+    // Positioned at frozen column boundary, below header
+    const viewportWidth = containerRect.width - this.pinnedWidth - marginLeft - marginRight;
+    const viewportHeight = scrollAreaRect.height - marginBottom;
+
+    this.clipViewport.style.left = `${this.pinnedWidth + marginLeft}px`;
+    this.clipViewport.style.top = `${headerHeight}px`;
+    this.clipViewport.style.width = `${viewportWidth}px`;
+    this.clipViewport.style.height = `${viewportHeight}px`;
+    this.clipViewport.style.overflow = 'hidden'; // CLIP canvas to visible area
+
+    // Canvas: FULL content size - moves via CSS transform
+    const MAX_CANVAS_WIDTH = 32000;
+    const MAX_CANVAS_HEIGHT = 16000;
+    const canvasWidth = Math.min(Math.max(100, gridWidth), MAX_CANVAS_WIDTH);
+    const canvasHeight = Math.min(Math.max(100, gridHeight), MAX_CANVAS_HEIGHT);
+
+    this.canvas.width = canvasWidth;
+    this.canvas.height = canvasHeight;
+    this.canvas.style.width = `${canvasWidth}px`;
+    this.canvas.style.height = `${canvasHeight}px`;
+    this.canvas.style.position = 'absolute';
+
+    // Canvas offset inside clipViewport
+    const canvasOffsetX = -marginLeft;
+    const canvasOffsetY = gridTop;
+    this.canvas.style.left = `${canvasOffsetX}px`;
+    this.canvas.style.top = `${canvasOffsetY}px`;
+
+    // CSS transform for scroll sync (viewport concept)
+    this.canvas.style.transform = `translate(${-this.scrollLeft}px, ${-this.scrollTop}px)`;
+    this.canvas.style.pointerEvents = 'auto';
+
+    // Store grid info for curve drawing
+    this.gridBounds = { minX, maxX, minY, maxY, gridLeft, gridTop, gridWidth, gridHeight };
+
+    this._log('canvas-sizing', {
+      gridBounds: { minX, maxX, minY, maxY },
+      gridSize: { width: gridWidth, height: gridHeight },
+      canvasSize: { width: canvasWidth, height: canvasHeight },
+      clipViewport: { left: this.pinnedWidth + marginLeft, top: headerHeight, width: viewportWidth, height: viewportHeight },
+      scroll: { left: this.scrollLeft, top: this.scrollTop },
+      cellRects: cellRects.length,
+    });
+
+    // Clear and draw
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.curvePoints = [];
+
+    // Draw 11 dashed guide lines (0%, 10%, 20%, ... 100%)
+    this._drawGuideLines();
+
     // Draw curves (canvas-relative coordinates)
     this._drawCurve(cellRects, this.curveData.planned, this._getPlannedColor(), 'Planned');
     this._drawCurve(cellRects, this.curveData.actual, this._getActualColor(), 'Actual');
 
-    // Draw Y-axis labels (HTML-based)
-    this._drawYAxisLabels(canvasHeight);
+    // DEBUG: Log canvas info for hover debugging
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const centerX = canvasRect.left + canvasRect.width / 2;
+    const centerY = canvasRect.top + canvasRect.height / 2;
+    const elementAtCenter = document.elementFromPoint(centerX, centerY);
+    console.log('[KurvaS] syncWithTable complete', {
+      canvasWidth: this.canvas.width,
+      canvasHeight: this.canvas.height,
+      canvasRect: { top: canvasRect.top, left: canvasRect.left, width: canvasRect.width, height: canvasRect.height },
+      canvasCenter: { x: centerX, y: centerY },
+      elementAtCenter: elementAtCenter?.className || elementAtCenter?.tagName || 'null',
+      isCanvasOnTop: elementAtCenter === this.canvas,
+      curvePointsCount: this.curvePoints?.length || 0,
+      curvePointsSample: this.curvePoints?.[0] || null
+    });
   }
 
   // PHASE 1 FIX: Get frozen column width from table manager
@@ -254,13 +293,17 @@ export class KurvaSCanvasOverlay {
     return total;
   }
 
-  // PHASE 1 FIX: Immediate transform update for smooth scrolling (GPU-accelerated <1ms)
+  // Immediate transform update for smooth scrolling (GPU-accelerated <1ms)
+  // Updates CSS transform to sync canvas with scroll position (viewport concept)
   _updateTransform() {
     const scrollArea = this.tableManager?.bodyScroll;
     if (!scrollArea) return;
 
     this.scrollLeft = scrollArea.scrollLeft || 0;
-    this.canvas.style.transform = `translateX(${this.scrollLeft}px)`;
+    this.scrollTop = scrollArea.scrollTop || 0;
+
+    // Canvas moves via NEGATIVE transform (clipViewport clips to visible area)
+    this.canvas.style.transform = `translate(${-this.scrollLeft}px, ${-this.scrollTop}px)`;
   }
 
   // PHASE 4 FIX: Set mode (progress or cost) and reload data
@@ -343,11 +386,11 @@ export class KurvaSCanvasOverlay {
 
       // Extract column ID from detail or label
       const columnId = detail?.metadata?.id ||
-                      detail?.metadata?.fieldId ||
-                      detail?.metadata?.columnId ||
-                      detail?.weekNumber ||
-                      label.match(/W(\d+)/)?.[1] ||
-                      `week_${index + 1}`;
+        detail?.metadata?.fieldId ||
+        detail?.metadata?.columnId ||
+        detail?.weekNumber ||
+        label.match(/W(\d+)/)?.[1] ||
+        `week_${index + 1}`;
 
       return {
         columnId: String(columnId),
@@ -377,6 +420,46 @@ export class KurvaSCanvasOverlay {
     if (this.visible) {
       this.syncWithTable();
     }
+  }
+
+  // Draw 11 horizontal dashed guide lines (0%, 10%, 20%, ... 100%)
+  _drawGuideLines() {
+    const gridBounds = this.gridBounds;
+    if (!gridBounds) return;
+
+    const ctx = this.ctx;
+    const canvasWidth = this.canvas.width;
+    const canvasHeight = gridBounds.gridHeight;
+
+    // Y-axis margins (same as _mapDataToCanvasPoints)
+    const marginY = 40;
+    const y0percent = canvasHeight - marginY;  // 0% at bottom
+    const y100percent = marginY;                // 100% at top
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(80, 80, 80, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);  // Dashed line pattern
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = 'rgba(80, 80, 80, 0.7)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    // Draw 11 lines: 0%, 10%, 20%, ..., 100%
+    for (let percent = 0; percent <= 100; percent += 10) {
+      const y = this._interpolateY(percent, y0percent, y100percent);
+
+      // Draw dashed line
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvasWidth, y);
+      ctx.stroke();
+
+      // Draw label on the right side
+      ctx.fillText(`${percent}%`, canvasWidth - 5, y);
+    }
+
+    ctx.restore();
   }
 
   _drawCurve(cellRects, dataPoints, color, label) {
@@ -436,45 +519,47 @@ export class KurvaSCanvasOverlay {
   _mapDataToCanvasPoints(cellRects, dataPoints) {
     const points = [];
 
-    // DEBUG FIX: Use viewport height for Y calculations, not full scrollHeight
-    // Y-axis should be relative to visible viewport, not entire table
-    const scrollArea = this.tableManager?.bodyScroll;
-    const viewportHeight = scrollArea ? scrollArea.clientHeight : this.canvas.height;
+    // Use gridBounds for coordinate calculations (set in syncWithTable)
+    const gridBounds = this.gridBounds || {
+      minX: this.pinnedWidth,
+      maxX: this.canvas.width + this.pinnedWidth,
+      minY: 0,
+      maxY: this.canvas.height,
+      gridLeft: this.pinnedWidth,
+      gridTop: 0,
+      gridWidth: this.canvas.width,
+      gridHeight: this.canvas.height,
+    };
 
-    const y0percent = viewportHeight - 40; // 0% at BOTTOM of viewport
-    const y100percent = 40;                 // 100% at TOP of viewport
+    // Y-axis: 0% at BOTTOM of grid, 100% at TOP of grid
+    const marginY = 40; // pixels margin at top and bottom
+    const y0percent = gridBounds.gridHeight - marginY;  // 0% at bottom
+    const y100percent = marginY;                         // 100% at top
 
     this._log('_mapDataToCanvasPoints', {
-      canvasHeight: this.canvas.height,
-      viewportHeight,
+      gridBounds,
       y0percent,
       y100percent,
       dataPoints: dataPoints.length,
       cellRects: cellRects.length,
     });
 
-    // PHASE 2 FIX: Group cell rects by column to find week grid lines (right edges)
+    // Group cell rects by column to find week grid lines (right edges)
     const columnGridLines = this._getWeekGridLines(cellRects);
 
-    // FIX 2: Add Week 0 node at 0% progress (grid kiri Week 1)
+    // Week 0 node at x=0 (left edge of grid), y=0% progress
     if (cellRects.length > 0 && dataPoints.length > 0) {
-      const firstWeekRect = cellRects.reduce((earliest, rect) => {
-        return (!earliest || rect.x < earliest.x) ? rect : earliest;
-      }, null);
+      const week0X = 0; // Left edge of canvas = left edge of grid
+      const week0Y = this._interpolateY(0, y0percent, y100percent); // 0% progress
 
-      if (firstWeekRect) {
-        const week0X = -this.scrollLeft;
-        const week0Y = this._interpolateY(0, y0percent, y100percent); // 0% progress
-
-        points.push({
-          x: week0X,
-          y: week0Y,
-          columnId: 'week_0',
-          progress: 0,
-          weekNumber: 0,
-          weekProgress: 0,
-        });
-      }
+      points.push({
+        x: week0X,
+        y: week0Y,
+        columnId: 'week_0',
+        progress: 0,
+        weekNumber: 0,
+        weekProgress: 0,
+      });
     }
 
     dataPoints.forEach((dataPoint) => {
@@ -492,10 +577,13 @@ export class KurvaSCanvasOverlay {
         return;
       }
 
+      // Convert columnGridLine to canvas-relative X coordinate
+      // columnGridLine is absolute X, canvas starts at gridLeft
+      const x = columnGridLine - gridBounds.gridLeft;
       const y = this._interpolateY(progress, y0percent, y100percent);
 
       points.push({
-        x: columnGridLine,
+        x,
         y,
         columnId,
         progress,
@@ -507,30 +595,26 @@ export class KurvaSCanvasOverlay {
     return points;
   }
 
-  // PHASE 2 FIX: Get grid lines (right edges) in canvas-relative coordinates
+  // Get grid lines (right edges) in ABSOLUTE coordinates
+  // Conversion to canvas-relative is done in _mapDataToCanvasPoints
   _getWeekGridLines(cellRects) {
     const columnGridLines = new Map();
 
     cellRects.forEach((rect) => {
       const columnId = String(rect.columnId);
       if (!columnGridLines.has(columnId)) {
-        // PHASE 2 FIX: Grid line = right edge of column (absolute coordinates)
+        // Grid line = right edge of column (absolute X coordinate)
         const absoluteGridLine = rect.x + rect.width;
-
-        // PHASE 2 FIX: Convert to canvas-relative coordinates
-        // Canvas starts at pinnedWidth, so X=0 on canvas = pinnedWidth in absolute
-        // Also compensate for scroll: canvasX = absoluteX - pinnedWidth - scrollLeft
-        const canvasRelativeX = absoluteGridLine - this.pinnedWidth - this.scrollLeft;
-
-        columnGridLines.set(columnId, canvasRelativeX);
+        columnGridLines.set(columnId, absoluteGridLine);
       }
     });
 
     this._log('grid-lines', {
       sample: Array.from(columnGridLines.entries()).slice(0, 3),
       pinnedWidth: this.pinnedWidth,
-      scrollLeft: this.scrollLeft
+      count: columnGridLines.size,
     });
+
     return columnGridLines;
   }
 
@@ -766,14 +850,33 @@ export class KurvaSCanvasOverlay {
   _bindPointerEvents() {
     // Add hover tooltip for curve points
     this.canvas.addEventListener('mousemove', (e) => {
-      if (!this.visible || !this.curvePoints || this.curvePoints.length === 0) return;
+      // DEBUG: Log to verify event is firing
+      console.log('[KurvaS Tooltip] mousemove', {
+        visible: this.visible,
+        curvePointsCount: this.curvePoints?.length || 0,
+      });
+
+      if (!this.visible || !this.curvePoints || this.curvePoints.length === 0) {
+        console.log('[KurvaS Tooltip] Early return - no points');
+        return;
+      }
 
       const rect = this.canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
 
-      // Hit test: find closest point within 10px radius
-      const hit = this._hitTestPoint(x, y, 10);
+      // Mouse position in canvas visual space
+      const visualX = e.clientX - rect.left;
+      const visualY = e.clientY - rect.top;
+
+      // Canvas uses CSS transform to move with scroll (viewport concept)
+      // So canvas coordinates = visual + scroll offset
+      const canvasX = visualX + this.scrollLeft;
+      const canvasY = visualY + this.scrollTop;
+
+      console.log('[KurvaS Tooltip] Mouse coords', { visualX, visualY, canvasX, canvasY, scrollLeft: this.scrollLeft, scrollTop: this.scrollTop });
+
+      // Hit test: find closest point within 15px radius
+      const hit = this._hitTestPoint(canvasX, canvasY, 15);
+      console.log('[KurvaS Tooltip] Hit test result', hit);
       if (hit) {
         this._showTooltip(e.clientX, e.clientY, hit);
         this.canvas.style.cursor = 'pointer';
@@ -787,6 +890,16 @@ export class KurvaSCanvasOverlay {
       this._hideTooltip();
       this.canvas.style.cursor = 'default';
     });
+
+    // Wheel passthrough: forward scroll events to bodyScroll
+    // ClipViewport is fixed overlay above bodyScroll with z-index 1000
+    this.canvas.addEventListener('wheel', (e) => {
+      const scrollArea = this.tableManager?.bodyScroll;
+      if (scrollArea) {
+        scrollArea.scrollLeft += e.deltaX;
+        scrollArea.scrollTop += e.deltaY;
+      }
+    }, { passive: true });
   }
 
   _hitTestPoint(x, y, radius) {

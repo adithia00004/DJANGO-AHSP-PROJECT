@@ -473,3 +473,128 @@ class ExportManager:
             font_size_header=8,
             font_size_normal=8,
         )
+
+    def export_jadwal_professional(
+        self,
+        format_type: str,
+        report_type: str = 'rekap',
+        period: int | None = None,
+        attachments: list | None = None,
+        gantt_data: dict | None = None,
+    ) -> HttpResponse:
+        """
+        Export Jadwal Pekerjaan with professional "Laporan Tertulis" format.
+        
+        This method generates reports with:
+        - Cover page
+        - Executive summary (for monthly/weekly)
+        - Comparison tables (for monthly/weekly)
+        - Separated Planned/Actual sections (for rekap)
+        - Kurva S and Gantt charts
+        - Signature section
+        
+        Args:
+            format_type: 'pdf' or 'word'
+            report_type: 'rekap', 'monthly', or 'weekly'
+            period: Month number (1-based) for monthly, Week number for weekly
+            attachments: Chart attachments [{"title": str, "bytes": bytes}]
+            
+        Returns:
+            HttpResponse with exported file
+        """
+        from reportlab.platypus import PageBreak, Spacer
+        from reportlab.lib.units import mm
+        
+        # Title mapping
+        title_map = {
+            'rekap': 'LAPORAN REKAPITULASI JADWAL PEKERJAAN',
+            'monthly': 'LAPORAN PROGRES BULANAN JADWAL PEKERJAAN',
+            'weekly': 'LAPORAN PROGRES MINGGUAN JADWAL PEKERJAAN',
+        }
+        title = title_map.get(report_type, 'LAPORAN JADWAL PEKERJAAN')
+        
+        config = self._create_config_simple(
+            title,
+            page_orientation='landscape',
+            page_size=JadwalExportLayout.PAGE_SIZE
+        )
+        config.margin_top = JadwalExportLayout.MARGIN_TOP
+        config.margin_bottom = JadwalExportLayout.MARGIN_BOTTOM
+        config.margin_left = JadwalExportLayout.MARGIN_LEFT
+        config.margin_right = JadwalExportLayout.MARGIN_RIGHT
+
+        adapter = JadwalPekerjaanExportAdapter(
+            self.project,
+            page_size=config.page_size,
+            page_orientation=config.page_orientation,
+            margin_left=config.margin_left,
+            margin_right=config.margin_right,
+            layout_spec=JadwalExportLayout,
+            max_rows_per_page=JadwalExportLayout.ROWS_PER_PAGE,
+        )
+
+        # Get data based on report type
+        if report_type == 'rekap':
+            report_data = adapter.get_rekap_report_data()
+        elif report_type == 'monthly':
+            month = period or 1
+            report_data = adapter.get_monthly_comparison_data(month)
+        elif report_type == 'weekly':
+            week = period or 1
+            report_data = adapter.get_weekly_comparison_data(week)
+        else:
+            report_data = adapter.get_export_data()
+
+        # Build professional export data
+        data = {
+            'report_type': report_type,
+            'professional': True,  # Flag for professional format
+            'project_info': report_data.get('project_info', {}),
+        }
+        
+        if report_type == 'rekap':
+            data['planned_pages'] = report_data.get('planned_pages', [])
+            data['actual_pages'] = report_data.get('actual_pages', [])
+            data['kurva_s_data'] = report_data.get('kurva_s_data', [])
+            data['summary'] = report_data.get('summary', {})
+            data['meta'] = report_data.get('meta', {})
+            data['weekly_columns'] = report_data.get('weekly_columns', [])  # For Gantt date headers
+            # Include cover page sections
+            data['sections'] = [
+                'Grid View - Rencana (Planned)',
+                'Grid View - Realisasi (Actual)',
+                'Kurva S Progress Kumulatif',
+                'Gantt Chart'
+            ]
+        elif report_type in ('monthly', 'weekly'):
+            data['period'] = report_data.get('period', {})
+            data['current_data'] = report_data.get('current_data', {})
+            data['previous_data'] = report_data.get('previous_data', {})
+            data['comparison'] = report_data.get('comparison', {})
+            data['executive_summary'] = report_data.get('executive_summary', {})
+            data['hierarchy_progress'] = report_data.get('hierarchy_progress', [])
+            data['detail_table'] = report_data.get('detail_table', {})
+            if report_type == 'monthly':
+                data['month'] = report_data.get('month', period)
+            else:
+                data['week'] = report_data.get('week', period)
+
+        if attachments:
+            data['attachments'] = attachments
+        
+        # Include structured Gantt data from frontend for backend rendering
+        if gantt_data:
+            data['gantt_data'] = gantt_data
+
+        exporter_class = self.EXPORTER_MAP.get(format_type)
+        if not exporter_class:
+            raise ValueError(f"Unsupported format: {format_type}")
+
+        exporter = exporter_class(config)
+        
+        # For PDF and Word, use special professional export method
+        if format_type in ('pdf', 'word') and hasattr(exporter, 'export_professional'):
+            return exporter.export_professional(data)
+        
+        return exporter.export(data)
+

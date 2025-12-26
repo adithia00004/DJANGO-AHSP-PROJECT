@@ -41,10 +41,12 @@
   height: 600px;
   border: 1px solid var(--bs-border-color);
   border-radius: 8px;
-  overflow: auto; /* Enable scrolling for the unified grid */
+  overflow: auto;
+  /* Enable scrolling for the unified grid */
   background: var(--bs-body-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  isolation: isolate; /* Create new stacking context for proper z-index layering */
+  isolation: isolate;
+  /* Create new stacking context for proper z-index layering */
 }
 
 /* ===== Frozen Grid Cells (AG Grid style borders) ===== */
@@ -52,8 +54,10 @@
   border: 1px solid var(--gantt-grid-border-color);
   border-radius: 8px;
   background: var(--bs-body-bg);
-  display: table; /* Use table layout for unified grid */
-  width: max-content; /* Allow horizontal scrolling */
+  display: table;
+  /* Use table layout for unified grid */
+  width: max-content;
+  /* Allow horizontal scrolling */
   min-width: 100%;
 }
 
@@ -73,7 +77,8 @@
   position: sticky;
   left: 0;
   z-index: 10;
-  background: var(--bs-body-bg); /* Ensure frozen cells cover scrolling content */
+  background: var(--bs-body-bg);
+  /* Ensure frozen cells cover scrolling content */
 }
 
 /* Stacked frozen columns (multiple sticky columns) */
@@ -110,7 +115,8 @@
 /* Timeline cells */
 .gantt-grid .gantt-cell.timeline {
   border-right: 1px solid var(--gantt-grid-divider-color);
-  position: relative; /* For canvas overlay positioning */
+  position: relative;
+  /* For canvas overlay positioning */
 }
 
 .gantt-grid .gantt-cell.timeline-first {
@@ -130,8 +136,10 @@
   position: absolute;
   top: 0;
   left: 0;
-  pointer-events: none; /* Allow clicks to pass through to grid cells */
-  z-index: 5; /* Above grid cells, below frozen columns */
+  pointer-events: none;
+  /* Allow clicks to pass through to grid cells */
+  z-index: 5;
+  /* Above grid cells, below frozen columns */
 }
 
 .gantt-canvas-overlay canvas {
@@ -145,7 +153,8 @@
   left: 0;
   background: var(--bs-body-bg);
   pointer-events: none;
-  z-index: 8; /* Below frozen columns (z-index: 10), above canvas (z-index: 5) */
+  z-index: 8;
+  /* Below frozen columns (z-index: 10), above canvas (z-index: 5) */
 }
 
 [data-bs-theme="dark"] .gantt-canvas-mask {
@@ -381,9 +390,12 @@
 
 .tree-node-name {
   flex: 1;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Max 3 lines of text with ellipsis */
 }
 
 .tree-node-name mark {
@@ -779,7 +791,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== Empty State ===== */
@@ -944,6 +958,7 @@
 
 /* Reduce motion */
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {

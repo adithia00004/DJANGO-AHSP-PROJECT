@@ -13,22 +13,22 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/validation-enhancements.css' %}">
 
 {% comment %}
-  Vite Integration:
-  - In development: Load from Vite dev server (http://localhost:5173)
-  - In production: Load from static/dist/manifest.json
+Vite Integration:
+- In development: Load from Vite dev server (http://localhost:5173)
+- In production: Load from static/dist/manifest.json
 {% endcomment %}
 
 {% if DEBUG and use_vite_dev_server %}
-  {# Development mode: Vite dev server #}
-  <script type="module" src="http://localhost:5173/@vite/client"></script>
-  <script type="module" src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"></script>
+{# Development mode: Vite dev server #}
+<script type="module" src="http://localhost:5173/@vite/client"></script>
+<script type="module" src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"></script>
 {% else %}
-  {# Production mode: Built assets via manifest #}
-  {% vite_entry 'assets/js/jadwal-kegiatan.js' as jadwal_entry %}
-  {% for css_asset in jadwal_entry.css %}
-    <link rel="stylesheet" href="{% static css_asset %}">
-  {% endfor %}
-  <script type="module" src="{% static jadwal_entry.file %}"></script>
+{# Production mode: Built assets via manifest #}
+{% vite_entry 'assets/js/jadwal-kegiatan.js' as jadwal_entry %}
+{% for css_asset in jadwal_entry.css %}
+<link rel="stylesheet" href="{% static css_asset %}">
+{% endfor %}
+<script type="module" src="{% static jadwal_entry.file %}"></script>
 {% endif %}
 {% endblock %}
 
@@ -82,7 +82,8 @@
       </label>
 
       <input type="radio" class="btn-check" name="displayMode" id="mode-cost" value="cost" disabled>
-      <label class="btn btn-outline-success" for="mode-cost" title="Aktifkan mode Realisasi untuk mengedit biaya aktual">
+      <label class="btn btn-outline-success" for="mode-cost"
+        title="Aktifkan mode Realisasi untuk mengedit biaya aktual">
         <i class="bi bi-cash-coin"></i> Cost
       </label>
     </div>
@@ -94,7 +95,8 @@
     <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-expand-all">
       <i class="bi bi-arrows-expand"></i> Expand
     </button>
-    <button type="button" class="btn btn-danger btn-sm ms-2" id="btn-reset-progress" title="Reset semua progress pekerjaan ke 0">
+    <button type="button" class="btn btn-danger btn-sm ms-2" id="btn-reset-progress"
+      title="Reset semua progress pekerjaan ke 0">
       <i class="bi bi-arrow-counterclockwise"></i> Reset Progress
     </button>
     <button type="button" class="btn btn-primary btn-sm" id="btn-export-excel">
@@ -110,108 +112,61 @@
 </div>
 
 <!-- Main App Container -->
-<div id="tahapan-grid-app"
-     data-project-id="{{ project.id }}"
-     data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/"
-     data-api-tahapan="{% url 'detail_project:api_list_create_tahapan' project.id %}"
-     data-api-list-pekerjaan="{% url 'detail_project:api_get_list_pekerjaan_tree' project.id %}"
-     data-api-volume="{% url 'detail_project:api_list_volume_pekerjaan' project.id %}"
-     data-api-assignments-base="/detail_project/api/project/{{ project.id }}/pekerjaan/"
-     data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}"
-     data-project-name="{{ project.nama|escape }}"
-     data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
-     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
-     data-week-start-day="{{ project.week_start_day|default:0 }}"
-     data-week-end-day="{{ project.week_end_day|default:6 }}"
-     data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}"
-     data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
-     data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
+<div id="tahapan-grid-app" data-project-id="{{ project.id }}"
+  data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/"
+  data-api-tahapan="{% url 'detail_project:api_list_create_tahapan' project.id %}"
+  data-api-list-pekerjaan="{% url 'detail_project:api_get_list_pekerjaan_tree' project.id %}"
+  data-api-volume="{% url 'detail_project:api_list_volume_pekerjaan' project.id %}"
+  data-api-assignments-base="/detail_project/api/project/{{ project.id }}/pekerjaan/"
+  data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}"
+  data-project-name="{{ project.nama|escape }}" data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
+  data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
+  data-week-start-day="{{ project.week_start_day|default:0 }}" data-week-end-day="{{ project.week_end_day|default:6 }}"
+  data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}"
+  data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
+  data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
-  <!-- Tab Navigation -->
+  <!-- Tab Navigation - unified container, mode switching via JS -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="grid-tab" data-bs-toggle="tab" data-bs-target="#grid-view" type="button" role="tab">
-        <i class="bi bi-grid-3x3-gap"></i> Grid View (Enhanced)
+      <button class="nav-link active" id="grid-tab" data-view-mode="grid" type="button" role="tab">
+        <i class="bi bi-grid-3x3-gap"></i> Grid View
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="gantt-tab" data-bs-toggle="tab" data-bs-target="#gantt-view" type="button" role="tab">
+      <button class="nav-link" id="gantt-tab" data-view-mode="gantt" type="button" role="tab">
         <i class="bi bi-calendar3"></i> Gantt Chart
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="scurve-tab" data-bs-toggle="tab" data-bs-target="#scurve-view" type="button" role="tab">
+      <button class="nav-link" id="scurve-tab" data-view-mode="kurva" type="button" role="tab">
         <i class="bi bi-graph-up"></i> Kurva S
       </button>
     </li>
   </ul>
 
-  <!-- Tab Content -->
+  <!-- Unified Tab Content - ONE container for all modes -->
   <div class="tab-content" id="viewTabsContent">
-    <!-- Grid View Tab -->
-    <div class="tab-pane fade show active" id="grid-view" role="tabpanel">
+    <div class="tab-pane fade show active" id="unified-view" role="tabpanel">
       {% comment %}
-        Grid View container - Enhanced with event delegation and validation
-        The JavaScript modules will populate this dynamically
+      Unified container for Grid/Gantt/Kurva S modes
+      UnifiedTableManager handles mode switching via overlays
       {% endcomment %}
-    <div class="grid-container">
-      <div class="split-panel-wrapper">
-        <div class="left-panel-wrapper">
-          <div class="left-panel-scroll">
-            <table class="grid-table">
-            <thead id="left-thead">
-              <tr>
-                <th class="col-uraian">Klasifikasi / Sub-Klasifikasi / Pekerjaan</th>
-                <th class="col-volume text-center">Volume</th>
-                <th class="col-satuan text-center">Satuan</th>
-              </tr>
-            </thead>
-              <tbody id="left-tbody">
-                <!-- Left panel rows will be rendered by JavaScript -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="right-panel-wrapper">
-          <div class="right-panel-scroll">
-            <table class="grid-table">
-              <thead id="right-thead">
-                <tr id="time-header-row">
-                  <!-- Time column headers will be rendered by JavaScript -->
-                </tr>
-              </thead>
-              <tbody id="right-tbody">
-                <!-- Right panel rows will be rendered by JavaScript -->
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <!-- TanStack Grid Container - shared by all modes -->
+      <div id="tanstack-grid-container" class="tanstack-grid-wrapper chart-view-container">
+        <div id="tanstack-grid-body" class="tanstack-grid-body"></div>
+        <!-- Gantt and Kurva S overlays are rendered dynamically by JS -->
       </div>
-    </div>
       <!-- Status Bar -->
       <div class="status-bar">
         <div class="status-left">
           <span id="status-info">Ready</span>
+          <span id="current-mode-label" class="badge bg-primary ms-2">Grid</span>
         </div>
         <div class="status-right">
           <span>Modified: <strong id="status-modified">0</strong></span>
           <span>Total Rows: <strong id="status-rows">0</strong></span>
         </div>
-      </div>
-    </div>
-
-    <!-- Gantt View Tab -->
-    <div class="tab-pane fade" id="gantt-view" role="tabpanel">
-      <div id="gantt-container" style="overflow: auto; padding: 20px;">
-        <!-- Gantt chart will be rendered here -->
-      </div>
-    </div>
-
-    <!-- S-Curve View Tab -->
-    <div class="tab-pane fade" id="scurve-view" role="tabpanel">
-      <div id="scurve-container" style="height: 600px; padding: 20px;">
-        <!-- S-Curve chart will be rendered here -->
       </div>
     </div>
   </div>
@@ -259,8 +214,8 @@
 
 {% block extra_js %}
 {% comment %}
-  Note: The main application JavaScript is loaded via Vite in the extra_css block.
-  Additional chart libraries are bundled in the Vite build; no external CDN scripts are required here.
+Note: The main application JavaScript is loaded via Vite in the extra_css block.
+Additional chart libraries are bundled in the Vite build; no external CDN scripts are required here.
 {% endcomment %}
 
 {% endblock %}

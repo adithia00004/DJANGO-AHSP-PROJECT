@@ -186,9 +186,7 @@ export class AppInitializer {
         resetButton: document.getElementById('btn-reset-progress'),
         tanstackGridContainer: document.getElementById('tanstack-grid-container'),
         tanstackGridBody: document.getElementById('tanstack-grid-body'),
-        tanstackGridTopScroll: document.getElementById('tanstack-grid-scroll-top'),
-        tanstackGridTopScrollInner: document.getElementById('tanstack-grid-scroll-inner'),
-        scurveChart: document.getElementById('scurve-chart'),
+        scurveChart: document.getElementById('scurve-container') || document.getElementById('tanstack-grid-container'),  // Unified container fallback
         ganttChart: document.getElementById('gantt-chart'),
         ganttChartWrapper: document.getElementById('gantt-chart-wrapper'),
         ganttTreeBody: document.getElementById('gantt-tree-body'),

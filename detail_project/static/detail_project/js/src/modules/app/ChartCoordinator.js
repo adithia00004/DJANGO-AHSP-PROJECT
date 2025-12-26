@@ -40,67 +40,18 @@ export class ChartCoordinator {
   /**
    * Setup lazy loading for chart modules (private)
    *
-   * Attaches event listeners to S-Curve and Gantt tabs to load chart
-   * modules only when needed. Uses { once: true } to prevent duplicate listeners.
+   * NOTE: As of unified container refactor, lazy loading is now handled
+   * directly in jadwal_kegiatan_app._bindUnifiedTabSync() to ensure
+   * single source of truth for tab interactions.
+   *
+   * This function is kept for backwards compatibility but does nothing.
    *
    * @private
    * @returns {void}
    */
   _setupLazyChartLoading() {
-    const app = this.app;
-    // Find chart tab buttons - match actual IDs from template
-    const scurveTab = document.querySelector('#scurve-tab') ||
-                     document.querySelector('[data-bs-target="#scurve-view"]');
-
-    const ganttTab = document.querySelector('#gantt-tab') ||
-                    document.querySelector('[data-bs-target="#gantt-view"]');
-
-    console.log('[LazyLoad] Found tabs:', { scurveTab, ganttTab });
-
-    if (scurveTab) {
-      scurveTab.addEventListener('shown.bs.tab', async () => {
-        console.log('[LazyLoad] Kurva S tab shown');
-        if (app.state.useUnifiedTable && app.unifiedManager) {
-          app.unifiedManager.switchMode('kurva');
-        }
-        if (!app._chartModulesLoaded) {
-          await app._loadChartModules();
-        }
-      }, { once: true });
-
-      scurveTab.addEventListener('click', async () => {
-        console.log('[LazyLoad] Kurva S tab clicked');
-        if (app.state.useUnifiedTable && app.unifiedManager) {
-          app.unifiedManager.switchMode('kurva');
-        }
-        if (!app._chartModulesLoaded && !app._chartModulesLoading) {
-          await app._loadChartModules();
-        }
-      }, { once: true });
-    }
-
-    if (ganttTab) {
-      // When Gantt tab is shown, initialize NEW Gantt Chart
-      ganttTab.addEventListener('shown.bs.tab', async () => {
-        console.log('[LazyLoad] dYZ_ Gantt tab shown - initializing NEW Gantt Chart!');
-
-        if (!app._chartModulesLoaded) {
-          await app._loadChartModules();
-        }
-
-        // Initialize NEW Redesigned Gantt Chart
-        await this._initializeRedesignedGantt();
-      }, { once: true });
-
-      ganttTab.addEventListener('click', async () => {
-        console.log('[LazyLoad] dYZ_ Gantt tab clicked');
-        if (!app._chartModulesLoaded && !app._chartModulesLoading) {
-          await app._loadChartModules();
-        }
-      }, { once: true });
-    }
-
-    console.log('dY\"S Chart lazy loading configured (with NEW Gantt initialization)');
+    // NOOP - Lazy loading is now handled by _bindUnifiedTabSync()
+    // See jadwal_kegiatan_app.js for the consolidated handler
   }
 
   /**
@@ -243,9 +194,9 @@ export class ChartCoordinator {
         return this._initializeRedesignedGantt(retryCount + 1);
       }
 
-      console.error('[JadwalKegiatanApp] Г?O Gantt container not found after retries');
+      console.error('[JadwalKegiatanApp] ❌ Gantt container not found after retries');
       console.error('[JadwalKegiatanApp] DOM state:', {
-        ganttView: document.getElementById('gantt-view'),
+        unifiedView: document.getElementById('unified-view'),
         ganttTab: document.getElementById('gantt-tab')
       });
       Toast.error('Failed to find Gantt container');
@@ -293,7 +244,7 @@ export class ChartCoordinator {
       });
     }
     app.unifiedManager.updateData(gridPayload);
-    app.unifiedManager.switchMode('gantt');
+    // NOTE: switchMode('gantt') removed - now handled centrally by _bindUnifiedTabSync
     this._applyGanttOverlayStyles(host);
   }
 

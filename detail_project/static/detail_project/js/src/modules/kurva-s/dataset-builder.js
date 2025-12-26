@@ -332,22 +332,36 @@ function buildDetailData(
 ) {
   return columns.map((column, index) => {
     const label = labels[index] || `Week ${index + 1}`;
-    const planned = plannedSeries[index] || 0;
-    const actual = actualSeries[index] || 0;
-    const variance = Number((actual - planned).toFixed(2));
+
+    // Cumulative values
+    const plannedCumulative = plannedSeries[index] || 0;
+    const actualCumulative = actualSeries[index] || 0;
+
+    // AUDIT FIX: Calculate WEEK progress (this week only, not cumulative)
+    // Week progress = cumulative[i] - cumulative[i-1]
+    const prevPlannedCumulative = index > 0 ? (plannedSeries[index - 1] || 0) : 0;
+    const prevActualCumulative = index > 0 ? (actualSeries[index - 1] || 0) : 0;
+    const plannedWeekProgress = Number((plannedCumulative - prevPlannedCumulative).toFixed(2));
+    const actualWeekProgress = Number((actualCumulative - prevActualCumulative).toFixed(2));
+
+    const variance = Number((actualCumulative - plannedCumulative).toFixed(2));
     let plannedCostValue = null;
     let actualCostValue = null;
     let varianceCostValue = null;
     if (useHargaCalculation) {
-      plannedCostValue = Number(((planned / 100) * (totalValue || 0)).toFixed(2));
-      actualCostValue = Number(((actual / 100) * (totalValue || 0)).toFixed(2));
+      plannedCostValue = Number(((plannedCumulative / 100) * (totalValue || 0)).toFixed(2));
+      actualCostValue = Number(((actualCumulative / 100) * (totalValue || 0)).toFixed(2));
       varianceCostValue = Number(((actualCostValue - plannedCostValue)).toFixed(2));
     }
 
     return {
       label,
-      planned,
-      actual,
+      // Cumulative progress (for chart Y position)
+      planned: plannedCumulative,
+      actual: actualCumulative,
+      // AUDIT FIX: Week-only progress (for tooltip display)
+      plannedWeekProgress,
+      actualWeekProgress,
       variance,
       start: normalizeDate(column?.startDate || column?.start_date || column?.start),
       end: normalizeDate(column?.endDate || column?.end_date || column?.end),
@@ -355,6 +369,8 @@ function buildDetailData(
       plannedCostValue,
       actualCostValue,
       varianceCostValue,
+      // AUDIT FIX: Include weekNumber for correct tooltip display
+      weekNumber: column?.weekNumber || column?.week_number || index + 1,
     };
   });
 }
@@ -372,17 +388,17 @@ function buildCostWeeklySummary(plannedWeeks = [], actualWeeks = [], totalCost =
       `W${plannedEntry.week_number || actualEntry.week_number || index + 1}`;
     const plannedPercent = Number(
       plannedEntry.cumulative_percent ??
-        plannedEntry.percent ??
-        plannedEntry.value ??
-        plannedEntry.cumulative ??
-        0
+      plannedEntry.percent ??
+      plannedEntry.value ??
+      plannedEntry.cumulative ??
+      0
     );
     const actualPercent = Number(
       actualEntry.cumulative_percent ??
-        actualEntry.percent ??
-        actualEntry.value ??
-        actualEntry.cumulative ??
-        0
+      actualEntry.percent ??
+      actualEntry.value ??
+      actualEntry.cumulative ??
+      0
     );
     const plannedCostValue = resolveCostValue(plannedEntry, plannedPercent, totalCost);
     const actualCostValue = resolveCostValue(actualEntry, actualPercent, totalCost);
@@ -401,9 +417,9 @@ function buildCostWeeklySummary(plannedWeeks = [], actualWeeks = [], totalCost =
       range: {
         start: normalizeDate(
           plannedEntry.week_start ||
-            plannedEntry.start_date ||
-            actualEntry.week_start ||
-            actualEntry.start_date
+          plannedEntry.start_date ||
+          actualEntry.week_start ||
+          actualEntry.start_date
         ),
         end: normalizeDate(
           plannedEntry.week_end || plannedEntry.end_date || actualEntry.week_end || actualEntry.end_date
@@ -417,16 +433,16 @@ function buildCostWeeklySummary(plannedWeeks = [], actualWeeks = [], totalCost =
 function resolveCostValue(weekEntry, percent, totalCost) {
   const numericPercent = Number(
     percent ??
-      weekEntry?.cumulative_percent ??
-      weekEntry?.percent ??
-      weekEntry?.value ??
-      0
+    weekEntry?.cumulative_percent ??
+    weekEntry?.percent ??
+    weekEntry?.value ??
+    0
   );
   const cumulative = toNumber(
     weekEntry?.cumulative_cost ??
-      weekEntry?.cumulative ??
-      weekEntry?.accumulated_cost ??
-      weekEntry?.acc_cost
+    weekEntry?.cumulative ??
+    weekEntry?.accumulated_cost ??
+    weekEntry?.acc_cost
   );
   if (Number.isFinite(cumulative) && cumulative > 0) {
     return cumulative;

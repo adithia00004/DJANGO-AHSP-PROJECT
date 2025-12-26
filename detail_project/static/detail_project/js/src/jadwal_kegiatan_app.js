@@ -3,7 +3,6 @@
  * Modern modular implementation with Vite bundling
  * License: MIT
  */
-/* global ExportManager */
 
 import { TanStackGridManager } from '@modules/grid/tanstack-grid-manager.js';
 import { UnifiedTableManager } from '@modules/unified/UnifiedTableManager.js';
@@ -22,6 +21,15 @@ import {
   ButtonStateManager,
   Toast
 } from '@modules/shared/ux-enhancements.js'; // UX Enhancements
+import {
+  FullscreenModeManager,
+  addFullscreenButton
+} from '@modules/shared/fullscreen-mode.js'; // Fullscreen Mode
+
+// Phase 4: New Export Offscreen Rendering System
+import { exportReport } from './export/export-coordinator.js';
+import { renderKurvaS } from './export/core/kurva-s-renderer.js';
+import { renderGanttPaged } from './export/core/gantt-renderer.js';
 
 /**
  * Initialize Jadwal Kegiatan Grid Application
@@ -75,6 +83,9 @@ class JadwalKegiatanApp {
     this._stateManagerListener = null;
     this._suppressStateManagerEvent = false;
     this._currencyFormatter = null;
+
+    // UI Enhancement: Fullscreen mode manager
+    this.fullscreenManager = null;
 
   }
 
@@ -578,28 +589,330 @@ class JadwalKegiatanApp {
   }
 
   /**
-   * Initialize ExportCoordinator (lazy import)
+   * Initialize ExportCoordinator (NEW: Phase 4 - Offscreen Rendering)
    * @private
    */
   async _initializeExportCoordinator() {
-    if (this._exportCoordinator) {
-      return this._exportCoordinator;
+    // Phase 4: Using new export system (already imported at top)
+    console.log('[JadwalKegiatanApp] Using NEW Export Offscreen Rendering System (Phase 4)');
+    return true; // No instance needed, using functional API
+  }
+
+  /**
+   * Transform application state to export system format
+   * Converts internal state structure to the format expected by export system
+   * @private
+   * @returns {Object} Transformed state for export
+   */
+  _transformStateForExport() {
+    console.log('[JadwalKegiatanApp] Transforming state for export...');
+
+    // Application state is in this.state, built by AppInitializer
+    const stateData = this.state || {};
+
+    console.log('[JadwalKegiatanApp] State keys:', Object.keys(stateData));
+    console.log('[JadwalKegiatanApp] Available data:', {
+      pekerjaanTree: stateData.pekerjaanTree?.length || 0,
+      flatPekerjaan: stateData.flatPekerjaan?.length || 0,
+      timeColumns: stateData.timeColumns?.length || 0,
+      hargaMap: stateData.hargaMap ? 'available' : 'missing'
+    });
+
+    // ============================================================================
+    // Build hierarchyRows from flatPekerjaan (preferred) or pekerjaanTree
+    // Field mapping: uraian → name, kode → code, etc.
+    // ============================================================================
+    const hierarchyRows = [];
+
+    // Helper function to flatten tree recursively
+    const flattenTree = (nodes, level = 0, parentId = null) => {
+      if (!nodes || !Array.isArray(nodes)) return;
+
+      nodes.forEach(node => {
+        // Determine name - try multiple field names
+        const nodeName = node.uraian || node.nama || node.name || node.snapshot_uraian ||
+          node.pekerjaan || node.nama_pekerjaan || 'Pekerjaan';
+        const nodeCode = node.kode || node.snapshot_kode || node.code || '';
+        const nodeId = node.pekerjaan_id || node.id || `node-${hierarchyRows.length}`;
+
+        // Add this node
+        hierarchyRows.push({
+          id: nodeId,
+          type: node.type || (node.children && node.children.length > 0 ? 'klasifikasi' : 'pekerjaan'),
+          level: level,
+          name: nodeName,
+          code: nodeCode,
+          parentId: parentId,
+          totalHarga: node.totalHarga || node.total_harga || node.harga || 0,
+          volume: node.volume || 0,
+          satuan: node.satuan || node.snapshot_satuan || '',
+          hargaSatuan: node.hargaSatuan || node.harga_satuan || 0
+        });
+
+        // Recursively add children
+        if (node.children && node.children.length > 0) {
+          flattenTree(node.children, level + 1, nodeId);
+        }
+      });
+    };
+
+    // Use flatPekerjaan first (already flattened), fallback to pekerjaanTree
+    if (stateData.flatPekerjaan && stateData.flatPekerjaan.length > 0) {
+      stateData.flatPekerjaan.forEach((node, idx) => {
+        const nodeName = node.uraian || node.nama || node.name || node.snapshot_uraian ||
+          node.pekerjaan || node.nama_pekerjaan || 'Pekerjaan';
+        const nodeCode = node.kode || node.snapshot_kode || node.code || '';
+        const nodeId = node.pekerjaan_id || node.id || `node-${idx}`;
+
+        hierarchyRows.push({
+          id: nodeId,
+          type: node.type || 'pekerjaan',
+          level: node.level || 0,
+          name: nodeName,
+          code: nodeCode,
+          parentId: node.parentId || node.parent_id || null,
+          totalHarga: node.totalHarga || node.total_harga || node.harga || 0,
+          volume: node.volume || 0,
+          satuan: node.satuan || node.snapshot_satuan || '',
+          hargaSatuan: node.hargaSatuan || node.harga_satuan || 0
+        });
+      });
+    } else if (stateData.pekerjaanTree && stateData.pekerjaanTree.length > 0) {
+      flattenTree(stateData.pekerjaanTree);
     }
 
-    try {
-      const { ExportCoordinator } = await import('@modules/shared/export-coordinator.js');
-      this._exportCoordinator = new ExportCoordinator(this);
-      console.log('[JadwalKegiatanApp] ExportCoordinator initialized');
-      return this._exportCoordinator;
-    } catch (error) {
-      console.error('[JadwalKegiatanApp] Failed to load ExportCoordinator', error);
-      throw error;
+    console.log('[JadwalKegiatanApp] hierarchyRows built:', hierarchyRows.length);
+    if (hierarchyRows.length > 0) {
+      console.log('[JadwalKegiatanApp] Sample row:', hierarchyRows[0]);
     }
+
+    // ============================================================================
+    // Build weekColumns from timeColumns
+    // Also create mapping: fieldId (col_xxx) → weekNumber for StateManager parsing
+    // ============================================================================
+    const weekColumns = [];
+    const fieldIdToWeek = {}; // Maps "col_123" → weekNumber
+    const sourceColumns = stateData.timeColumns || stateData.weekColumns || stateData.columns || [];
+
+    if (sourceColumns.length > 0) {
+      sourceColumns.forEach((col, idx) => {
+        const weekNum = col.weekNumber || col.week || idx + 1;
+        const fieldId = col.fieldId || `col_${col.tahapanId || col.id || idx}`;
+
+        // Store mapping for later use
+        fieldIdToWeek[fieldId] = weekNum;
+
+        weekColumns.push({
+          week: weekNum,
+          fieldId: fieldId,
+          tahapanId: col.tahapanId,
+          startDate: col.startDate || col.start_date || col.start || new Date().toISOString(),
+          endDate: col.endDate || col.end_date || col.end || new Date().toISOString(),
+          label: col.label || col.name || `W${weekNum}`
+        });
+      });
+    }
+
+    console.log('[JadwalKegiatanApp] fieldIdToWeek mapping:', Object.keys(fieldIdToWeek).slice(0, 5));
+
+    // ============================================================================
+    // Build plannedProgress and actualProgress from StateManager (plannedState/actualState)
+    // Key format: "${pekerjaanId}-${fieldId}" → e.g., "5-col_123"
+    // ============================================================================
+    const plannedProgress = {};
+    const actualProgress = {};
+
+    // Helper to extract progress from ModeState using getAllCellsForMode
+    const stateManager = stateData.stateManager;
+
+    if (stateManager && typeof stateManager.getAllCellsForMode === 'function') {
+      // Use StateManager API directly
+      const plannedMap = stateManager.getAllCellsForMode('planned');
+      const actualMap = stateManager.getAllCellsForMode('actual');
+
+      console.log('[JadwalKegiatanApp] StateManager plannedMap size:', plannedMap.size);
+      console.log('[JadwalKegiatanApp] StateManager actualMap size:', actualMap.size);
+
+      // Parse planned progress
+      plannedMap.forEach((value, key) => {
+        // Key format: "pekerjaanId-col_tahapanId" e.g., "5-col_123"
+        const dashIndex = key.indexOf('-');
+        if (dashIndex === -1) return;
+
+        const taskId = key.substring(0, dashIndex);
+        const fieldId = key.substring(dashIndex + 1);
+        const weekNum = fieldIdToWeek[fieldId];
+
+        if (!weekNum) {
+          // Fallback: try extracting number from fieldId
+          const match = fieldId.match(/\d+/);
+          if (!match) return;
+        }
+
+        const week = weekNum || parseInt(fieldId.match(/\d+/)?.[0]) || 1;
+
+        if (!plannedProgress[taskId]) {
+          plannedProgress[taskId] = {};
+        }
+        plannedProgress[taskId][week] = value || 0;
+      });
+
+      // Parse actual progress
+      actualMap.forEach((value, key) => {
+        const dashIndex = key.indexOf('-');
+        if (dashIndex === -1) return;
+
+        const taskId = key.substring(0, dashIndex);
+        const fieldId = key.substring(dashIndex + 1);
+        const weekNum = fieldIdToWeek[fieldId];
+        const week = weekNum || parseInt(fieldId.match(/\d+/)?.[0]) || 1;
+
+        if (!actualProgress[taskId]) {
+          actualProgress[taskId] = {};
+        }
+        actualProgress[taskId][week] = value || 0;
+      });
+
+      console.log('[JadwalKegiatanApp] Parsed plannedProgress:', Object.keys(plannedProgress).length, 'tasks');
+      console.log('[JadwalKegiatanApp] Parsed actualProgress:', Object.keys(actualProgress).length, 'tasks');
+
+    } else if (stateData.plannedState && stateData.plannedState instanceof Map) {
+      // Fallback: Direct Map parsing (old way but with correct delimiter)
+      stateData.plannedState.forEach((value, key) => {
+        const dashIndex = key.indexOf('-');
+        if (dashIndex === -1) return;
+
+        const taskId = key.substring(0, dashIndex);
+        const fieldId = key.substring(dashIndex + 1);
+        const weekNum = fieldIdToWeek[fieldId] || parseInt(fieldId.match(/\d+/)?.[0]) || 1;
+
+        if (!plannedProgress[taskId]) {
+          plannedProgress[taskId] = {};
+        }
+        plannedProgress[taskId][weekNum] = value || 0;
+      });
+      console.log('[JadwalKegiatanApp] Loaded plannedProgress from Map:', Object.keys(plannedProgress).length, 'tasks');
+    }
+
+    if (stateData.actualState && stateData.actualState instanceof Map && Object.keys(actualProgress).length === 0) {
+      stateData.actualState.forEach((value, key) => {
+        const dashIndex = key.indexOf('-');
+        if (dashIndex === -1) return;
+
+        const taskId = key.substring(0, dashIndex);
+        const fieldId = key.substring(dashIndex + 1);
+        const weekNum = fieldIdToWeek[fieldId] || parseInt(fieldId.match(/\d+/)?.[0]) || 1;
+
+        if (!actualProgress[taskId]) {
+          actualProgress[taskId] = {};
+        }
+        actualProgress[taskId][weekNum] = value || 0;
+      });
+      console.log('[JadwalKegiatanApp] Loaded actualProgress from Map:', Object.keys(actualProgress).length, 'tasks');
+    }
+
+    // Fallback to assignments object if nothing found
+    if (Object.keys(plannedProgress).length === 0 && stateData.assignments) {
+      Object.entries(stateData.assignments).forEach(([taskId, weekData]) => {
+        plannedProgress[taskId] = {};
+        actualProgress[taskId] = {};
+
+        Object.entries(weekData).forEach(([weekKey, assignment]) => {
+          const weekNum = parseInt(weekKey.replace(/\D/g, '')) || 1;
+
+          if (assignment?.planned !== undefined) {
+            plannedProgress[taskId][weekNum] = assignment.planned || 0;
+          }
+
+          if (assignment?.actual !== undefined) {
+            actualProgress[taskId][weekNum] = assignment.actual || 0;
+          }
+        });
+      });
+    }
+
+    // ============================================================================
+    // Build kurvaSData (cumulative progress by week)
+    // Calculate from hargaMap + progress data if available
+    // ============================================================================
+    const kurvaSData = [];
+    const hargaMap = stateData.hargaMap || {};
+    const totalBiaya = stateData.totalBiayaProject || 0;
+
+    // Calculate cumulative progress per week
+    weekColumns.forEach((col, idx) => {
+      const weekNum = col.week;
+      let weekPlannedCost = 0;
+      let weekActualCost = 0;
+
+      // Sum up progress for this week across all pekerjaan
+      hierarchyRows.forEach(row => {
+        if (row.type !== 'pekerjaan') return;
+
+        const rowId = String(row.id);
+        const taskHarga = hargaMap[rowId] || row.totalHarga || 0;
+
+        // Get progress for this task this week
+        const plannedPct = (plannedProgress[rowId] && plannedProgress[rowId][weekNum]) || 0;
+        const actualPct = (actualProgress[rowId] && actualProgress[rowId][weekNum]) || 0;
+
+        // Add to weekly cost (progress% * total harga)
+        weekPlannedCost += (plannedPct / 100) * taskHarga;
+        weekActualCost += (actualPct / 100) * taskHarga;
+      });
+
+      // Calculate cumulative (add previous weeks)
+      const prevCumPlanned = idx > 0 && kurvaSData[idx - 1] ? kurvaSData[idx - 1].planned : 0;
+      const prevCumActual = idx > 0 && kurvaSData[idx - 1] ? kurvaSData[idx - 1].actual : 0;
+
+      // Calculate as percentage of total project
+      const cumPlannedPct = totalBiaya > 0
+        ? prevCumPlanned + (weekPlannedCost / totalBiaya) * 100
+        : 0;
+      const cumActualPct = totalBiaya > 0
+        ? prevCumActual + (weekActualCost / totalBiaya) * 100
+        : 0;
+
+      kurvaSData.push({
+        week: weekNum,
+        planned: Math.round(cumPlannedPct * 100) / 100,
+        actual: Math.round(cumActualPct * 100) / 100
+      });
+    });
+
+    console.log('[JadwalKegiatanApp] kurvaSData sample:', kurvaSData.slice(0, 3));
+
+    // Project metadata
+    const exportState = {
+      hierarchyRows,
+      weekColumns,
+      plannedProgress,
+      actualProgress,
+      kurvaSData,
+      projectName: stateData.projectName || stateData.project?.name || 'Unnamed Project',
+      projectOwner: stateData.projectOwner || stateData.project?.owner || 'N/A',
+      projectLocation: stateData.projectLocation || stateData.project?.location || 'N/A',
+      projectBudget: stateData.projectBudget || stateData.project?.budget || 0,
+      projectStart: stateData.projectStart || null,
+      projectEnd: stateData.projectEnd || null
+    };
+
+    console.log('[JadwalKegiatanApp] Transformed state:', {
+      hierarchyRows: exportState.hierarchyRows.length,
+      weekColumns: exportState.weekColumns.length,
+      kurvaSData: exportState.kurvaSData.length,
+      plannedProgressTasks: Object.keys(exportState.plannedProgress).length,
+      actualProgressTasks: Object.keys(exportState.actualProgress).length,
+      projectName: exportState.projectName
+    });
+
+    return exportState;
   }
 
   /**
    * Handle export button click
-   * Reads modal settings and triggers export
+   * Phase 4: NEW Export Offscreen Rendering System
+   * Phase 5: Added Professional Report Support
    */
   async handleExport() {
     try {
@@ -609,15 +922,37 @@ class JadwalKegiatanApp {
         throw new Error('Export modal not found');
       }
 
-      const reportType = exportModal.querySelector('input[name="reportType"]:checked')?.value || 'full';
+      const reportTypeRaw = exportModal.querySelector('input[name="reportType"]:checked')?.value || 'full';
       const format = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
       const includeGantt = exportModal.querySelector('#includeGantt')?.checked ?? true;
       const includeKurvaS = exportModal.querySelector('#includeKurvaS')?.checked ?? true;
+      // Professional format is always enabled for PDF/Word (hidden input or default true)
+      const professionalInput = exportModal.querySelector('#useProfessionalFormat');
+      const useProfessional = professionalInput?.type === 'checkbox'
+        ? professionalInput.checked
+        : (professionalInput?.value === 'true' || (format === 'pdf' || format === 'word'));
+      const periodNumber = parseInt(exportModal.querySelector('#periodNumber')?.value || '1', 10);
 
-      console.log('[Export] Starting export:', { reportType, format, includeGantt, includeKurvaS });
+      // Map old report type values to new export system values
+      const reportTypeMapping = {
+        'full': 'rekap',      // Laporan Rekap (Full timeline)
+        'rekap': 'rekap',     // Already correct
+        'monthly': 'monthly', // Already correct
+        'weekly': 'weekly'    // Already correct
+      };
+      const reportType = reportTypeMapping[reportTypeRaw] || 'rekap';
+
+      console.log('[Export Phase 4/5] Starting export:', {
+        reportTypeRaw,
+        reportType,
+        format,
+        useProfessional,
+        periodNumber
+      });
 
       // Show progress modal
-      this._showExportProgressModal('Mempersiapkan data export...', 'Harap tunggu...');
+      this._showExportProgressModal('Mempersiapkan data export...',
+        useProfessional ? 'Membuat Laporan Tertulis Profesional...' : 'Menggunakan offscreen rendering...');
 
       // Hide export modal
       const modalInstance = bootstrap.Modal.getInstance(exportModal);
@@ -625,37 +960,235 @@ class JadwalKegiatanApp {
         modalInstance.hide();
       }
 
+      // ========================================================================
+      // Phase 5: Professional Export (Direct API Call)
+      // ========================================================================
+      if (useProfessional && (format === 'pdf' || format === 'word')) {
+        this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (300 DPI)...');
+
+        const projectId = this.state?.projectId;
+        if (!projectId) {
+          throw new Error('Project ID not found');
+        }
+
+        // Transform state for chart rendering
+        const exportState = this._transformStateForExport();
+
+        // Render chart attachments
+        const attachments = [];
+
+        try {
+          // 1. Render Kurva S
+          if (includeKurvaS && exportState.kurvaSData && exportState.kurvaSData.length > 0) {
+            this._updateExportProgress('Rendering Kurva S...', 'Membuat grafik progress kumulatif...');
+
+            const kurvaSDataURL = await renderKurvaS({
+              granularity: 'weekly',
+              data: exportState.kurvaSData,
+              width: 1200,
+              height: 600,
+              dpi: 300,
+              backgroundColor: '#ffffff',
+              timezone: 'Asia/Jakarta'
+            });
+
+            if (kurvaSDataURL && kurvaSDataURL.startsWith('data:image/png;base64,')) {
+              // Convert dataURL to base64 bytes
+              const base64Data = kurvaSDataURL.split(',')[1];
+              attachments.push({
+                title: 'Kurva S Progress Kumulatif',
+                data_url: kurvaSDataURL,
+                bytes: base64Data,
+                format: 'png'
+              });
+              console.log('[Export] Kurva S rendered successfully');
+            }
+          }
+
+          // 2. Render Gantt Chart (Planned)
+          if (includeGantt && exportState.hierarchyRows && exportState.hierarchyRows.length > 0) {
+            this._updateExportProgress('Rendering Gantt Planned...', 'Membuat chart jadwal rencana...');
+
+            const ganttPlannedPages = await renderGanttPaged({
+              rows: exportState.hierarchyRows,
+              timeColumns: exportState.weekColumns,
+              planned: exportState.plannedProgress,
+              actual: null,
+              layout: {
+                labelWidthPx: 600,
+                timeColWidthPx: 70,
+                rowHeightPx: 28,
+                headerHeightPx: 60,
+                dpi: 300,
+                fontSize: 11,
+                fontFamily: 'Arial',
+                backgroundColor: '#ffffff',
+                gridColor: '#e0e0e0',
+                textColor: '#333333',
+                plannedColor: '#00CED1',
+                actualColor: '#FFD700'
+              }
+            });
+
+            // Add each page as attachment
+            ganttPlannedPages.forEach((page, idx) => {
+              if (page.dataURL && page.dataURL.startsWith('data:image/png;base64,')) {
+                const base64Data = page.dataURL.split(',')[1];
+                attachments.push({
+                  title: `Gantt Chart Planned - ${page.pageInfo?.weekRange || `Page ${idx + 1}`}`,
+                  data_url: page.dataURL,
+                  bytes: base64Data,
+                  format: 'png'
+                });
+              }
+            });
+            console.log(`[Export] Gantt Planned rendered: ${ganttPlannedPages.length} pages`);
+
+            // 3. Render Gantt Chart (Actual)
+            this._updateExportProgress('Rendering Gantt Actual...', 'Membuat chart jadwal realisasi...');
+
+            const ganttActualPages = await renderGanttPaged({
+              rows: exportState.hierarchyRows,
+              timeColumns: exportState.weekColumns,
+              planned: null,
+              actual: exportState.actualProgress,
+              layout: {
+                labelWidthPx: 600,
+                timeColWidthPx: 70,
+                rowHeightPx: 28,
+                headerHeightPx: 60,
+                dpi: 300,
+                fontSize: 11,
+                fontFamily: 'Arial',
+                backgroundColor: '#ffffff',
+                gridColor: '#e0e0e0',
+                textColor: '#333333',
+                plannedColor: '#00CED1',
+                actualColor: '#FFD700'
+              }
+            });
+
+            ganttActualPages.forEach((page, idx) => {
+              if (page.dataURL && page.dataURL.startsWith('data:image/png;base64,')) {
+                const base64Data = page.dataURL.split(',')[1];
+                attachments.push({
+                  title: `Gantt Chart Actual - ${page.pageInfo?.weekRange || `Page ${idx + 1}`}`,
+                  data_url: page.dataURL,
+                  bytes: base64Data,
+                  format: 'png'
+                });
+              }
+            });
+            console.log(`[Export] Gantt Actual rendered: ${ganttActualPages.length} pages`);
+          }
+        } catch (chartError) {
+          console.warn('[Export] Chart rendering failed, continuing without charts:', chartError);
+        }
+
+        this._updateExportProgress('Generating professional report...', 'Cover page, grids, signatures...');
+
+        // Build professional export URL
+        const professionalUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+
+        // Build request body with attachments and structured data
+        const payload = {
+          report_type: reportType,
+          format: format,
+          period: (reportType === 'monthly' || reportType === 'weekly') ? periodNumber : null,
+          attachments: attachments.map(att => ({
+            title: att.title,
+            bytes: att.bytes,
+            format: att.format
+          })),
+          // Include structured Gantt data for backend rendering
+          gantt_data: {
+            rows: exportState.hierarchyRows || [],
+            time_columns: exportState.weekColumns || [],
+            planned: exportState.plannedProgress || {},
+            actual: exportState.actualProgress || {}
+          }
+        };
+
+        console.log('[Export] Sending payload with', attachments.length, 'attachments');
+
+        const response = await fetch(professionalUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': this.getCsrfToken?.() || this._getCsrfToken()
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Export gagal: ${response.status} - ${errorText}`);
+        }
+
+        // Download the file
+        const blob = await response.blob();
+        const filename = `Laporan_${reportType}_${new Date().toISOString().slice(0, 10)}.${format === 'pdf' ? 'pdf' : 'docx'}`;
+
+        // Trigger download
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        // Hide progress modal
+        this._hideExportProgressModal();
+
+        // Show success toast
+        Toast.success('Laporan Tertulis Profesional berhasil di-export!', {
+          duration: 3000,
+          position: 'top-right'
+        });
+
+        console.log('[Export Phase 5] Professional export completed:', { reportType, format, filename });
+        return;
+      }
+
+      // ========================================================================
+      // Phase 4: Standard Export (Offscreen Rendering)
+      // ========================================================================
+
       // Ensure ExportCoordinator is loaded
-      const coordinator = await this._initializeExportCoordinator();
+      await this._initializeExportCoordinator();
 
       // Update progress
-      this._updateExportProgress('Menangkap chart...', 'Sedang mengambil gambar Gantt dan Kurva S');
+      this._updateExportProgress('Rendering charts...', 'Menggunakan uPlot & Custom Canvas (offscreen)');
 
-      // Execute export
-      const blob = await coordinator.export(reportType, format, {
-        includeGantt,
-        includeKurvaS
+      // Transform application state to export system format
+      const exportState = this._transformStateForExport();
+
+      const result = await exportReport({
+        reportType,     // 'rekap' | 'monthly' | 'weekly'
+        format,         // 'pdf' | 'word' | 'xlsx' | 'csv'
+        state: exportState,  // ← Use transformed state
+        autoDownload: true, // Auto-download after generation
+        options: {
+          includeGantt,
+          includeKurvaS
+        }
       });
-
-      // Update progress
-      this._updateExportProgress('Memproses file...', 'Menyiapkan download...');
-
-      // Generate filename and download
-      const filename = coordinator.generateFilename(reportType, format);
-      coordinator.downloadBlob(blob, filename);
 
       // Hide progress modal
       this._hideExportProgressModal();
 
       // Show success toast
-      Toast.success('Export berhasil!', {
+      Toast.success('Export berhasil! File menggunakan offscreen rendering (300 DPI)', {
         duration: 3000,
         position: 'top-right'
       });
 
-      console.log('[Export] Export completed successfully:', filename);
+      console.log('[Export Phase 4] Export completed successfully:', result);
     } catch (error) {
-      console.error('[Export] Export failed:', error);
+      console.error('[Export Phase 4/5] Export failed:', error);
 
       // Hide progress modal
       this._hideExportProgressModal();
@@ -1177,11 +1710,11 @@ class JadwalKegiatanApp {
           mode,
           ...(mode === 'weekly'
             ? {
-                week_start_day:
-                  typeof weekStartDay === 'number' ? weekStartDay : this._getWeekStartDay(),
-                week_end_day:
-                  typeof weekEndDay === 'number' ? weekEndDay : this._getWeekEndDay(),
-              }
+              week_start_day:
+                typeof weekStartDay === 'number' ? weekStartDay : this._getWeekStartDay(),
+              week_end_day:
+                typeof weekEndDay === 'number' ? weekEndDay : this._getWeekEndDay(),
+            }
             : {}),
         }),
       });
@@ -1415,8 +1948,10 @@ class JadwalKegiatanApp {
         });
       }
     }
-  }
 
+    // Initialize fullscreen mode for the grid container
+    this._initFullscreenMode(container);
+  }
   /**
    * Load initial data from server
    */
@@ -1757,7 +2292,7 @@ class JadwalKegiatanApp {
       });
     }
     this.unifiedManager.updateData(gridPayload);
-    this.unifiedManager.switchMode('gantt');
+    // NOTE: switchMode('gantt') removed - handled centrally by _bindUnifiedTabSync
     this._applyGanttOverlayStyles(host);
   }
 
@@ -1966,10 +2501,10 @@ class JadwalKegiatanApp {
     return;
     // Find chart tab buttons - match actual IDs from template
     const scurveTab = document.querySelector('#scurve-tab') ||
-                     document.querySelector('[data-bs-target="#scurve-view"]');
+      document.querySelector('[data-bs-target="#scurve-view"]');
 
     const ganttTab = document.querySelector('#gantt-tab') ||
-                    document.querySelector('[data-bs-target="#gantt-view"]');
+      document.querySelector('[data-bs-target="#gantt-view"]');
 
     console.log('[LazyLoad] Found tabs:', { scurveTab, ganttTab });
 
@@ -2551,6 +3086,57 @@ class JadwalKegiatanApp {
     }
     if (typeof this._renderLegacyGrid === 'function') {
       this._renderLegacyGrid();
+    }
+  }
+
+  /**
+   * Initialize fullscreen mode for the grid container
+   * Adds a fullscreen toggle button to the container
+   * @param {HTMLElement} container - The grid container element
+   */
+  _initFullscreenMode(container) {
+    if (!container) return;
+    if (this.fullscreenManager) return;
+
+    // Create fullscreen manager with Kurva S re-render support
+    this.fullscreenManager = new FullscreenModeManager({
+      container,
+      onEnter: (el) => {
+        console.log('[JadwalKegiatanApp] Entered fullscreen mode');
+        this._renderGrid();
+        this._updateCharts();
+
+        // Re-render Kurva S if active (overlay needs refresh after layout change)
+        if (this.unifiedManager?.overlays?.kurva?.visible) {
+          setTimeout(() => this.unifiedManager._refreshKurvaSOverlay?.(), 150);
+        }
+      },
+      onExit: (el) => {
+        console.log('[JadwalKegiatanApp] Exited fullscreen mode');
+        this._renderGrid();
+        this._updateCharts();
+
+        // Re-render Kurva S if active
+        if (this.unifiedManager?.overlays?.kurva?.visible) {
+          setTimeout(() => this.unifiedManager._refreshKurvaSOverlay?.(), 150);
+        }
+      }
+    });
+
+    // Add fullscreen toggle button
+    const btn = addFullscreenButton(container, { title: 'Fullscreen Mode' });
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const displayMode = this.state.displayMode || 'grid';
+        const titles = {
+          grid: 'Grid View - Fullscreen',
+          gantt: 'Gantt Chart - Fullscreen',
+          scurve: 'Kurva S Chart - Fullscreen'
+        };
+        this.fullscreenManager.enter(container, {
+          title: titles[displayMode] || 'Fullscreen Mode'
+        });
+      });
     }
   }
 
@@ -3613,69 +4199,42 @@ class JadwalKegiatanApp {
     if (!this.state.useUnifiedTable) {
       return;
     }
-    const scurveTab =
-      document.querySelector('#scurve-tab') ||
-      document.querySelector('[data-bs-target="#scurve-view"]');
-    const ganttTab =
-      document.querySelector('#gantt-tab') ||
-      document.querySelector('[data-bs-target="#gantt-view"]');
-    const gridTab =
-      document.querySelector('#grid-tab') ||
-      document.querySelector('[data-bs-target="#grid-view"]');
 
-    if (scurveTab) {
-      const handler = () => {
-        // Move grid container to Kurva-S view for overlay rendering
-        const kurvaSContainer = document.getElementById('scurve-chart') ||
-                               document.querySelector('#scurve-view .chart-container');
-        if (kurvaSContainer && this.state?.domRefs?.tanstackGridContainer) {
-          // Clear old content and move grid to Kurva-S container
-          kurvaSContainer.innerHTML = '';
-          kurvaSContainer.appendChild(this.state.domRefs.tanstackGridContainer);
-          kurvaSContainer.style.position = 'relative';
-          kurvaSContainer.style.minHeight = '420px';
+    // Find all tab buttons with data-mode attribute
+    const tabButtons = document.querySelectorAll('[data-mode]');
+    const modeLabel = document.getElementById('current-mode-label');
+    const modeLabels = { grid: 'Grid', gantt: 'Gantt', kurva: 'Kurva S' };
+
+    if (tabButtons.length === 0) {
+      console.warn('[UnifiedTabSync] No tab buttons found with data-mode attribute');
+      return;
+    }
+
+    // Simple click handler - unified architecture (no container moving)
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const mode = btn.dataset.mode;
+
+        // 1. Update tab button active state
+        tabButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // 2. Update mode label in status bar
+        if (modeLabel) {
+          modeLabel.textContent = modeLabels[mode] || mode;
         }
 
+        // 3. Lazy load chart modules if needed
+        if (mode !== 'grid' && !this._chartModulesLoaded && !this._chartModulesLoading) {
+          await this._loadChartModules();
+        }
+
+        // 4. Switch mode via UnifiedTableManager (shows/hides overlays)
         if (this.unifiedManager) {
-          this.unifiedManager.switchMode('kurva');
-          if (this.state.debugUnifiedTable) {
-            console.log('[UnifiedTab] Switch -> kurva');
-          }
+          this.unifiedManager.switchMode(mode);
         }
-      };
-      scurveTab.addEventListener('shown.bs.tab', handler);
-      scurveTab.addEventListener('click', handler);
-    }
-
-    if (ganttTab) {
-      const handler = () => {
-        const ganttContainer = document.getElementById('gantt-redesign-container');
-        if (ganttContainer) {
-          this._initializeUnifiedGanttOverlay(ganttContainer);
-        } else if (this.unifiedManager) {
-          this.unifiedManager.switchMode('gantt');
-          if (this.state.debugUnifiedTable) {
-            console.log('[UnifiedTab] Switch -> gantt (no overlay host)');
-          }
-        }
-      };
-      ganttTab.addEventListener('shown.bs.tab', handler);
-      ganttTab.addEventListener('click', handler);
-    }
-
-    if (gridTab) {
-      const handler = () => {
-        this._restoreGridContainerPosition();
-        if (this.unifiedManager) {
-          this.unifiedManager.switchMode('grid');
-          if (this.state.debugUnifiedTable) {
-            console.log('[UnifiedTab] Switch -> grid');
-          }
-        }
-      };
-      gridTab.addEventListener('shown.bs.tab', handler);
-      gridTab.addEventListener('click', handler);
-    }
+      });
+    });
   }
 
   /**

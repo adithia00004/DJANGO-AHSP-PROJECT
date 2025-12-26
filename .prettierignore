@@ -1,0 +1,8 @@
+# Ignore Django templates (contains Django template syntax that breaks formatters)
+**/templates/**/*.html
+
+# Ignore generated/built files
+**/static/**/dist/**
+**/node_modules/**
+*.min.js
+*.min.css

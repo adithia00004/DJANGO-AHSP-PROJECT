@@ -38,6 +38,7 @@ export class UnifiedTableManager {
 
   switchMode(newMode) {
     if (!newMode || newMode === this.currentMode || !this.tanstackGrid) {
+      this._log('switchMode:skip', { newMode, currentMode: this.currentMode, hasGrid: !!this.tanstackGrid });
       return;
     }
     const oldMode = this.currentMode;
@@ -48,11 +49,11 @@ export class UnifiedTableManager {
     };
     const targetRenderer = rendererMap[newMode] || 'input';
 
-    // hide existing overlays
-    if (this.currentMode === 'gantt' && this.overlays.gantt) {
+    // ALWAYS hide ALL overlays first (regardless of current mode)
+    if (this.overlays.gantt) {
       this.overlays.gantt.hide();
     }
-    if (this.currentMode === 'kurva' && this.overlays.kurva) {
+    if (this.overlays.kurva) {
       this.overlays.kurva.hide?.();
     }
 
@@ -64,19 +65,24 @@ export class UnifiedTableManager {
       rows: this.tanstackGrid.currentRows?.length || 0,
       cols: this.tanstackGrid.currentColumns?.length || 0,
     });
+
+    // Set cell renderer for the new mode
     this.tanstackGrid.setCellRenderer(targetRenderer);
 
-    if (newMode === 'gantt') {
+    // Show only the relevant overlay for the new mode
+    if (newMode === 'grid') {
+      // Grid mode: ensure content is visible by triggering refresh
+      if (typeof this.tanstackGrid.refresh === 'function') {
+        this.tanstackGrid.refresh();
+      }
+    } else if (newMode === 'gantt') {
       if (!this.overlays.gantt) {
         this.overlays.gantt = new GanttCanvasOverlay(this.tanstackGrid);
       }
       this.overlays.gantt.show();
       this._refreshGanttOverlay();
-    }
-
-    if (newMode === 'kurva') {
+    } else if (newMode === 'kurva') {
       if (!this.overlays.kurva) {
-        // PHASE 4 FIX: Pass projectId for cost mode support
         const projectId = this.state?.projectId || this.options?.projectId || null;
         this.overlays.kurva = new KurvaSCanvasOverlay(this.tanstackGrid, { projectId });
       }
@@ -349,17 +355,27 @@ export class UnifiedTableManager {
     const stateManager = this.state?.stateManager || this.state?.stateManagerInstance || this.options?.stateManager;
 
     // PHASE 3 FIX: Build state object for dataset-builder.js
+    // PHASE 4 FIX: Include hargaMap and flatPekerjaan for weighted calculations
     const datasetState = {
       timeColumns: timeColumns,
       stateManager: stateManager,
       tree: this.state?.tree || payload?.tree || [],
       totalBiayaProject: this.state?.totalBiayaProject || payload?.totalBiayaProject || 0,
+      // AUDIT FIX: Pass hargaMap for BOBOT-WEIGHTED calculation consistency
+      hargaMap: this.state?.hargaMap || payload?.hargaMap || {},
+      flatPekerjaan: this.state?.flatPekerjaan || payload?.flatPekerjaan || [],
+      pekerjaanMeta: this.state?.pekerjaanMeta || payload?.pekerjaanMeta || {},
     };
 
     this._log('buildCurveData:state', {
       timeColumns: timeColumns.length,
       tree: datasetState.tree.length,
       totalBiaya: datasetState.totalBiayaProject,
+      // AUDIT FIX: Debug hargaMap availability
+      hargaMapType: typeof datasetState.hargaMap,
+      hargaMapSize: datasetState.hargaMap instanceof Map
+        ? datasetState.hargaMap.size
+        : Object.keys(datasetState.hargaMap || {}).length,
     });
 
     // PHASE 3 FIX: Use buildProgressDataset with weighted calculations
@@ -396,18 +412,25 @@ export class UnifiedTableManager {
 
     return series.map((cumulativeProgress, index) => {
       const detail = details[index] || {};
-      const label = labels[index] || `Week ${index + 1}`;
+      const label = labels[index] || `Week ${index}`;
+
+      // AUDIT FIX: Use weekNumber from detail (set by buildDetailData/prependZeroDetails)
+      // After ensureWeekZeroDataset, index 0 = Week 0, index 1 = Week 1, etc.
+      const weekNumber = detail?.weekNumber ?? index;
 
       // Extract column ID from detail or label
       const columnId = detail?.metadata?.id ||
-                      detail?.metadata?.fieldId ||
-                      detail?.metadata?.columnId ||
-                      `week_${index + 1}`;
+        detail?.metadata?.fieldId ||
+        detail?.metadata?.columnId ||
+        `week_${weekNumber}`;
 
       return {
         columnId: String(columnId),
-        weekNumber: index + 1,
-        weekProgress: seriesKey === 'planned' ? detail.planned : detail.actual,
+        weekNumber: weekNumber,
+        // AUDIT FIX: Use week-only progress (not cumulative) for tooltip
+        weekProgress: seriesKey === 'planned'
+          ? (detail.plannedWeekProgress ?? detail.planned ?? 0)
+          : (detail.actualWeekProgress ?? detail.actual ?? 0),
         cumulativeProgress: cumulativeProgress,
         label: label,
       };

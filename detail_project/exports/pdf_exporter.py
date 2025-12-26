@@ -10,19 +10,145 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, 
-    Spacer, PageBreak, KeepTogether, Image
+    SimpleDocTemplate, BaseDocTemplate, PageTemplate, Frame,
+    Table, TableStyle, Paragraph, 
+    Spacer, PageBreak, KeepTogether, Image, NextPageTemplate
 )
+from reportlab.graphics.shapes import Drawing, String, Line, Rect, Circle
+from reportlab.graphics.charts.lineplots import LinePlot
+from reportlab.graphics.charts.legends import Legend
+from reportlab.graphics.widgets.markers import makeMarker
 from io import BytesIO
 from typing import Dict, Any, List
 from .base import ConfigExporterBase
 from ..export_config import get_page_size_mm
+from .table_styles import (
+    UnifiedTableStyles as UTS,
+    TableLayoutCalculator as TLC,
+    WeekHeaderFormatter as WHF,
+    HierarchyStyler as HS,
+    DataRowParser as DRP,
+    SectionHeaderFormatter as SHF
+)
+from .pdf_table_builder import PDFTableBuilder, TableType
 from django.http import HttpResponse
+import logging
+
+# Module-level logger for PDF export operations
+logger = logging.getLogger(__name__)
 
 PAGE_SIZE_MAP = {
     'A4': A4,
     'A3': A3,
 }
+
+
+# =====================================================================
+# NUMBERED CANVAS - Running Page Header/Footer
+# =====================================================================
+
+from reportlab.pdfgen import canvas as pdf_canvas
+from datetime import datetime
+
+
+class NumberedCanvas(pdf_canvas.Canvas):
+    """
+    Custom canvas with running page headers and footers.
+    
+    Simplified implementation that draws header/footer on each page
+    and adds page numbers at the end.
+    
+    Features:
+    - Header: Project name (left) | Section title (right)
+    - Footer: Page X of Y (center) | Print date (right)
+    """
+    
+    def __init__(self, *args, project_name='', section_title='', **kwargs):
+        self._project_name = project_name
+        self._section_title = section_title
+        self._page_count = 0
+        super().__init__(*args, **kwargs)
+    
+    def showPage(self):
+        """Called when a page finishes - draw decorations first."""
+        self._page_count += 1
+        
+        # Draw header/footer on THIS page BEFORE finishing
+        self._draw_header_footer()
+        
+        # Standard behavior
+        super().showPage()
+    
+    def save(self):
+        """Save with page decorations already drawn."""
+        super().save()
+    
+    def _draw_header_footer(self):
+        """Draw header and footer on current page.
+        
+        Skip page 1 (cover page) - no header/footer on cover.
+        """
+        # SKIP COVER PAGE (page 1)
+        if self._page_count == 1:
+            return
+        
+        width, height = self._pagesize
+        margin = 12 * mm
+        
+        # Colors
+        header_color = colors.HexColor(UTS.TEXT_SECONDARY)
+        footer_color = colors.HexColor(UTS.TEXT_MUTED)
+        line_color = colors.HexColor(UTS.LIGHT_BORDER)
+        
+        # ===== HEADER =====
+        header_y = height - margin
+        
+        # Header line
+        self.setStrokeColor(line_color)
+        self.setLineWidth(0.5)
+        self.line(margin, header_y - 3*mm, width - margin, header_y - 3*mm)
+        
+        # Project name (left)
+        self.setFont('Helvetica', 8)
+        self.setFillColor(header_color)
+        project_name = (self._project_name or '')[:50]
+        self.drawString(margin, header_y, project_name)
+        
+        # Section title (right)
+        section_title = (self._section_title or '')[:30]
+        self.drawRightString(width - margin, header_y, section_title)
+        
+        # ===== FOOTER =====
+        footer_y = margin
+        
+        # Footer line
+        self.setStrokeColor(line_color)
+        self.line(margin, footer_y + 6*mm, width - margin, footer_y + 6*mm)
+        
+        # Page number (center) - adjust display to not count cover
+        self.setFont('Helvetica', 8)
+        self.setFillColor(footer_color)
+        display_page = self._page_count - 1  # Don't count cover as page 1
+        page_text = f'Halaman {display_page}'
+        self.drawCentredString(width / 2, footer_y, page_text)
+        
+        # Watermark (right)
+        self.drawRightString(width - margin, footer_y, 'Dashboard-RAB.com')
+
+
+
+# Helper function to create canvas maker
+def make_numbered_canvas(project_name='', section_title=''):
+    """
+    Create a canvas maker function for doc.build().
+    
+    Usage:
+        doc.build(story, canvasmaker=make_numbered_canvas('Project X', 'Laporan'))
+    """
+    def canvas_maker(*args, **kwargs):
+        return NumberedCanvas(*args, project_name=project_name, 
+                            section_title=section_title, **kwargs)
+    return canvas_maker
 
 
 class PDFExporter(ConfigExporterBase):
@@ -41,7 +167,7 @@ class PDFExporter(ConfigExporterBase):
                 'CustomTitle',
                 parent=styles['Heading1'],
                 fontSize=self.config.font_size_title,
-                textColor=colors.HexColor('#2c3e50'),
+                textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
                 spaceAfter=1*mm,
                 alignment=TA_LEFT,
                 fontName='Helvetica-Bold'
@@ -237,6 +363,8 @@ class PDFExporter(ConfigExporterBase):
                 continue
 
         # Build PDF
+        # Note: NumberedCanvas temporarily disabled due to ReportLab compatibility
+        # TODO: Re-enable with proper implementation
         doc.build(story)
         
         # Create response
@@ -245,6 +373,549 @@ class PDFExporter(ConfigExporterBase):
         
         filename = f"{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.pdf"
         return self._create_response(pdf_content, filename, 'application/pdf')
+
+    def export_professional(self, data: Dict[str, Any]) -> HttpResponse:
+        """
+        Export professional formatted PDF report (Laporan Tertulis).
+        
+        This method handles:
+        - Cover page
+        - Table of contents (for rekap)
+        - Executive summary (for monthly/weekly)
+        - Comparison tables (for monthly/weekly)
+        - Grid sections (separated Planned/Actual)
+        - Chart attachments
+        - Signature section
+        """
+        buffer = BytesIO()
+        
+        # Determine page sizes
+        size_name = getattr(self.config, 'page_size', 'A4') or 'A4'
+        base_size = PAGE_SIZE_MAP.get(size_name.upper(), A4)
+        orientation = getattr(self.config, 'page_orientation', 'landscape')
+        
+        report_type_check = data.get('report_type', 'rekap')
+        
+        # Margins
+        margin_top = self.config.margin_top * mm
+        margin_bottom = self.config.margin_bottom * mm
+        margin_left = self.config.margin_left * mm
+        margin_right = self.config.margin_right * mm
+        
+        if report_type_check == 'monthly':
+            # Monthly reports: Use BaseDocTemplate for mixed orientation
+            # Force A4 for monthly reports (A3 is for Jadwal Grid only)
+            portrait_size = A4  # A4 Portrait (210 x 297 mm)
+            landscape_size = landscape(A4)  # A4 Landscape (297 x 210 mm)
+            
+            # Calculate frame dimensions for Portrait
+            pw, ph = portrait_size
+            portrait_frame = Frame(
+                margin_left, margin_bottom,
+                pw - margin_left - margin_right,
+                ph - margin_top - margin_bottom,
+                id='portrait_frame',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            # Calculate frame dimensions for Landscape
+            lw, lh = landscape_size
+            landscape_frame = Frame(
+                margin_left, margin_bottom,
+                lw - margin_left - margin_right,
+                lh - margin_top - margin_bottom,
+                id='landscape_frame',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            # Create page templates
+            portrait_template = PageTemplate(
+                id='portrait',
+                frames=[portrait_frame],
+                pagesize=portrait_size
+            )
+            landscape_template = PageTemplate(
+                id='landscape',
+                frames=[landscape_frame],
+                pagesize=landscape_size
+            )
+            
+            doc = BaseDocTemplate(
+                buffer,
+                pageTemplates=[portrait_template, landscape_template],
+                title=self.config.title
+            )
+        else:
+            # Non-monthly: Use SimpleDocTemplate
+            if orientation == 'portrait':
+                pagesize = base_size
+            else:
+                pagesize = landscape(base_size)
+            
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=pagesize,
+                topMargin=margin_top,
+                bottomMargin=margin_bottom,
+                leftMargin=margin_left,
+                rightMargin=margin_right,
+                title=self.config.title
+            )
+        
+        story = []
+        report_type = data.get('report_type', 'rekap')
+        project_info = data.get('project_info', {})
+        
+        # 1. Cover Page
+        if report_type == 'rekap':
+            cover_elements = self._build_cover_page(report_type, project_info)
+        else:
+            period_info = data.get('period', {})
+            if report_type == 'monthly':
+                period_info['month'] = data.get('month', 1)
+            else:
+                period_info['week'] = data.get('week', 1)
+            cover_elements = self._build_cover_page(report_type, project_info, period_info)
+        
+        story.extend(cover_elements)
+        story.append(PageBreak())
+        
+        # 2. Table of Contents (for rekap only)
+        if report_type == 'rekap':
+            sections = data.get('sections', [])
+            if sections:
+                toc_elements = self._build_table_of_contents(sections)
+                story.extend(toc_elements)
+                story.append(PageBreak())
+        
+        # 3. Progress Pelaksanaan Page (for monthly/weekly)
+        # Combines: Identitas, Ringkasan Progress, Rincian Progress
+        if report_type in ('monthly', 'weekly'):
+            exec_summary = data.get('executive_summary', {})
+            hierarchy_data = data.get('hierarchy_progress', [])
+            month = data.get('month', 1)
+            
+            progress_elements = self._build_progress_pelaksanaan_page(
+                month=month,
+                project_info=project_info,
+                summary=exec_summary,
+                hierarchy_data=hierarchy_data,
+                period_info=data.get('period', {})
+            )
+            story.extend(progress_elements)
+            story.append(PageBreak())
+            
+            # 5. Kurva S Kumulatif (for monthly - uses attachment if available)
+            if report_type == 'monthly':
+                month = data.get('month', 1)
+                end_week = month * 4
+                
+                # Switch to LANDSCAPE for Kurva S page
+                story.append(NextPageTemplate('landscape'))
+                story.append(PageBreak())
+                
+                title_style = ParagraphStyle(
+                    'SectionTitle',
+                    fontSize=14,
+                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                    fontName='Helvetica-Bold',
+                    spaceAfter=3*mm,
+                )
+                story.append(Paragraph(
+                    f"<b>KURVA S KUMULATIF (Minggu 1 - Minggu {end_week})</b>", 
+                    title_style
+                ))
+                story.append(Spacer(1, 5*mm))
+                
+                # Add Kurva S chart if available in attachments
+                # Now in LANDSCAPE mode - full width available
+                kurva_s_image = data.get('kurva_s_image')
+                if kurva_s_image:
+                    try:
+                        from base64 import b64decode
+                        img_bytes = b64decode(kurva_s_image.split(',')[1] if ',' in kurva_s_image else kurva_s_image)
+                        img = Image(BytesIO(img_bytes))
+                        # Landscape A4: 297mm width, ~260mm usable
+                        max_w = 260 * mm
+                        max_h = 140 * mm
+                        iw, ih = img.wrap(0, 0)
+                        scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
+                        img.drawWidth = iw * scale
+                        img.drawHeight = ih * scale
+                        story.append(img)
+                    except Exception:
+                        pass
+                
+                # Switch back to PORTRAIT for next pages
+                story.append(NextPageTemplate('portrait'))
+                story.append(PageBreak())
+            
+            # 6. Tabel Progress Bulanan / Detail Progress Table
+            detail_table = data.get('detail_table', {})
+            if detail_table and detail_table.get('rows'):
+                title_style = ParagraphStyle(
+                    'SectionTitle',
+                    fontSize=14,
+                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                    fontName='Helvetica-Bold',
+                    spaceAfter=3*mm,
+                )
+                if report_type == 'monthly':
+                    story.append(Paragraph("<b>TABEL PROGRESS BULANAN</b>", title_style))
+                else:
+                    story.append(Paragraph("<b>DETAIL PROGRESS PER PEKERJAAN</b>", title_style))
+                story.append(Spacer(1, 5*mm))
+                
+                table = self._build_detail_progress_table(detail_table)
+                story.append(table)
+            
+            # 7. Lembar Pengesahan (for monthly)
+            if report_type == 'monthly':
+                story.append(PageBreak())
+                sig_elements = self._build_monthly_signature_page()
+                story.extend(sig_elements)
+            
+            story.append(PageBreak())
+        
+        # 6. Grid Pages (for rekap - Planned section - NO chart here, chart in RINGKASAN)
+        if report_type == 'rekap':
+            planned_pages = data.get('planned_pages', [])
+            
+            for idx, page in enumerate(planned_pages):
+                # Section header for first page
+                if idx == 0:
+                    section_title = ParagraphStyle(
+                        'SectionHeader',
+                        fontSize=16,
+                        textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                        fontName='Helvetica-Bold',
+                        spaceAfter=5*mm,
+                    )
+                    story.append(Paragraph("<b>BAGIAN 1: GRID VIEW - RENCANA (PLANNED)</b>", section_title))
+                    story.append(Spacer(1, 5*mm))
+                
+                # Page title (simple, no project identity - that's on cover page)
+                page_title_style = ParagraphStyle(
+                    'GridPageTitle',
+                    fontSize=SHF.FONT_SIZE,
+                    fontName=SHF.FONT_NAME,
+                    textColor=colors.HexColor(SHF.FONT_COLOR),
+                    spaceAfter=3*mm,
+                )
+                story.append(Paragraph(page.get('title', 'Input Progress Planned'), page_title_style))
+                story.append(Spacer(1, 3*mm))
+                
+                # Build table
+                table = self._build_table(page)
+                story.append(table)
+                story.append(PageBreak())
+            
+            # Actual section
+            actual_pages = data.get('actual_pages', [])
+            for idx, page in enumerate(actual_pages):
+                if idx == 0:
+                    section_title = ParagraphStyle(
+                        'SectionHeader',
+                        fontSize=16,
+                        textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                        fontName='Helvetica-Bold',
+                        spaceAfter=5*mm,
+                    )
+                    story.append(Paragraph("<b>BAGIAN 2: GRID VIEW - REALISASI (ACTUAL)</b>", section_title))
+                    story.append(Spacer(1, 5*mm))
+                
+                # Page title (simple, no project identity)
+                page_title_style = ParagraphStyle(
+                    'GridPageTitle',
+                    fontSize=SHF.FONT_SIZE,
+                    fontName=SHF.FONT_NAME,
+                    textColor=colors.HexColor(SHF.FONT_COLOR),
+                    spaceAfter=3*mm,
+                )
+                story.append(Paragraph(page.get('title', 'Input Progress Actual'), page_title_style))
+                story.append(Spacer(1, 3*mm))
+                
+                table = self._build_table(page)
+                story.append(table)
+                story.append(PageBreak())
+            
+            # RINGKASAN PROGRESS KURVA S - with paginated Kurva S overlay
+            kurva_s_data = data.get('kurva_s_data', [])
+            summary = data.get('summary', {})
+            planned_pages = data.get('planned_pages', [])
+            
+            if kurva_s_data:
+                section_title = ParagraphStyle(
+                    'SectionHeader',
+                    fontSize=14,
+                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                    fontName='Helvetica-Bold',
+                    spaceAfter=5*mm,
+                )
+                story.append(Paragraph("<b>RINGKASAN PROGRESS KURVA S</b>", section_title))
+                story.append(Spacer(1, 5*mm))
+                
+                # Extract pekerjaan rows from planned_pages and actual_pages data
+                # Row format from adapter: [kode, uraian, volume, satuan, week1_progress, week2_progress, ...]
+                pekerjaan_rows = []
+                hierarchy_levels = {}
+                
+                # Get rows from both planned and actual pages
+                planned_rows = []
+                actual_rows = []
+                
+                if planned_pages:
+                    first_page = planned_pages[0]
+                    table_data = first_page.get('table_data', {})
+                    planned_rows = table_data.get('rows', [])
+                    hierarchy_levels = first_page.get('hierarchy_levels', {})
+                
+                if actual_pages:
+                    first_actual = actual_pages[0]
+                    actual_table = first_actual.get('table_data', {})
+                    actual_rows = actual_table.get('rows', [])
+                
+                for idx, row in enumerate(planned_rows):
+                    # Extract data from correct column indices
+                    # UNIFIED STRUCTURE (no Kode):
+                    # Col 0 = Uraian Pekerjaan
+                    # Col 1 = Volume
+                    # Col 2 = Satuan
+                    # Col 3+ = Week progress values
+                    uraian = str(row[0]) if len(row) > 0 else ''
+                    volume = str(row[1]) if len(row) > 1 else ''
+                    satuan = str(row[2]) if len(row) > 2 else ''
+                    level = hierarchy_levels.get(idx, 2)
+                    
+                    # Extract week progress values (from col 3 onwards)
+                    week_planned = [str(row[i]) if i < len(row) else '' for i in range(3, len(row))]
+                    
+                    # Get actual values from actual_rows if available
+                    actual_row = actual_rows[idx] if idx < len(actual_rows) else []
+                    week_actual = [str(actual_row[i]) if i < len(actual_row) else '' for i in range(3, len(actual_row))]
+                    
+                    pekerjaan_rows.append({
+                        'name': uraian,
+                        'volume': volume,
+                        'satuan': satuan,
+                        'level': level if level > 0 else 2,
+                        'week_planned': week_planned,
+                        'week_actual': week_actual
+                    })
+                
+                # Use paginated Kurva S if we have data
+                if pekerjaan_rows:
+                    kurva_pages = self._build_kurva_s_paginated(
+                        pekerjaan_rows,
+                        kurva_s_data,
+                        total_weeks=len(kurva_s_data),
+                        max_rows_per_page=25
+                    )
+                    
+                    for idx, page_drawing in enumerate(kurva_pages):
+                        story.append(page_drawing)
+                        # Add page break after each table (1 table per page)
+                        if idx < len(kurva_pages) - 1:
+                            story.append(PageBreak())
+                        else:
+                            story.append(Spacer(1, 10*mm))
+                else:
+                    # Fallback to basic grid if no pekerjaan data
+                    integrated_overlay = self._build_integrated_kurva_s_grid(
+                        kurva_s_data, 
+                        width=doc.width, 
+                        max_weeks=20
+                    )
+                    if integrated_overlay:
+                        story.append(integrated_overlay)
+                        story.append(Spacer(1, 10*mm))
+                
+                # Summary stats table
+                if summary:
+                    summary_rows_data = [
+                        ['Keterangan', 'Nilai'],
+                        ['Total Progress Rencana', f"{summary.get('total_planned', 0):.2f}%"],
+                        ['Total Progress Realisasi', f"{summary.get('total_actual', 0):.2f}%"],
+                        ['Deviasi', f"{summary.get('deviation', 0):+.2f}%"],
+                    ]
+                    summary_table = Table(summary_rows_data, colWidths=[150, 100])
+                    summary_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.SECTION_HEADER_BG)),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 10),
+                        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ]))
+                    story.append(summary_table)
+                story.append(PageBreak())
+        
+        # 7. Gantt Chart (BAGIAN 3)
+        if report_type == 'rekap':
+            # Get data needed for Gantt
+            pekerjaan_rows = []
+            time_columns = []
+            planned_progress = {}
+            actual_progress = {}
+            
+            # Try to get structured data from payload
+            # This data should be sent from frontend via API
+            gantt_data = data.get('gantt_data', {})
+            if gantt_data:
+                pekerjaan_rows = gantt_data.get('rows', [])
+                time_columns = gantt_data.get('time_columns', [])
+                planned_progress = gantt_data.get('planned', {})
+                actual_progress = gantt_data.get('actual', {})
+            
+            # FALLBACK: If pekerjaan_rows is empty or lacks volume/unit data,
+            # extract from planned_pages which comes from adapter with proper data
+            if not pekerjaan_rows or (pekerjaan_rows and not pekerjaan_rows[0].get('volume_display')):
+                planned_pages = data.get('planned_pages', [])
+                if planned_pages:
+                    # Get unique rows from first planned page's table_data rows
+                    first_page = planned_pages[0]
+                    # Build pekerjaan_rows from base row info (before materialized)
+                    # Use hierarchy from page
+                    hierarchy = first_page.get('hierarchy_levels', {})
+                    
+                    # Try to get base_rows from data or build volume/satuan lookup
+                    volume_satuan_map = {}
+                    for page in planned_pages:
+                        table_rows = page.get('table_data', {}).get('rows', [])
+                        hier = page.get('hierarchy_levels', {})
+                        
+                        for idx, row in enumerate(table_rows):
+                            if isinstance(row, (list, tuple)) and len(row) >= 3:
+                                # Row format: [uraian, volume, satuan, week1, week2, ...]
+                                row_key = str(row[0])[:50]  # Use truncated uraian as key
+                                level = hier.get(idx, 3)
+                                volume_satuan_map[row_key] = {
+                                    'volume_display': row[1] if len(row) > 1 else '',
+                                    'unit': row[2] if len(row) > 2 else '',
+                                    'level': level,
+                                    'type': 'pekerjaan' if level >= 3 else ('klasifikasi' if level == 1 else 'sub_klasifikasi'),
+                                }
+                    
+                    # Merge volume/satuan into gantt_data rows if they exist
+                    if pekerjaan_rows and volume_satuan_map:
+                        for row in pekerjaan_rows:
+                            name = row.get('name', row.get('uraian', ''))[:50]
+                            if name in volume_satuan_map:
+                                row['volume_display'] = volume_satuan_map[name]['volume_display']
+                                row['unit'] = volume_satuan_map[name]['unit']
+            
+            # Ensure time_columns have proper keys for WHF.format_html
+            # time_columns from frontend may use different keys - normalize them
+            if time_columns:
+                for idx, tc in enumerate(time_columns):
+                    # Ensure week_number key exists (adapter uses 'week_number', frontend might use 'week')
+                    if 'week_number' not in tc and 'week' in tc:
+                        tc['week_number'] = tc['week']
+                    if 'week_number' not in tc:
+                        tc['week_number'] = idx + 1
+                    
+                    # Ensure we have a 'range' key for date display
+                    if 'range' not in tc and 'start_date' in tc and 'end_date' in tc:
+                        start = tc.get('start_date')
+                        end = tc.get('end_date')
+                        if start and end and hasattr(start, 'strftime'):
+                            tc['range'] = f"{start.strftime('%d/%m')}-{end.strftime('%d/%m')}"
+            
+            # FALLBACK: Use weekly_columns from adapter if time_columns lacks date info
+            weekly_columns_from_adapter = data.get('weekly_columns', [])
+            if weekly_columns_from_adapter and (not time_columns or not time_columns[0].get('range')):
+                # Use adapter's weekly_columns which have proper date info
+                time_columns = weekly_columns_from_adapter
+            
+            # If no time_columns at all, build basic ones from meta
+            if not time_columns:
+                meta = data.get('meta', {})
+                total_weeks = meta.get('total_weeks', 0)
+                if total_weeks > 0:
+                    time_columns = [{'week_number': i+1, 'week': i+1, 'label': f'W{i+1}', 'range': ''} for i in range(total_weeks)]
+            
+            # Build backend Gantt if we have data
+            if pekerjaan_rows and time_columns:
+                section_title = ParagraphStyle(
+                    'SectionHeader',
+                    fontSize=16,
+                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                    fontName='Helvetica-Bold',
+                    spaceAfter=5*mm,
+                )
+                story.append(Paragraph("<b>BAGIAN 4: GANTT CHART</b>", section_title))
+                story.append(Spacer(1, 5*mm))
+                
+                gantt_elements = self._build_gantt_chart(
+                    pekerjaan_rows, time_columns, 
+                    planned_progress, actual_progress,
+                    width=doc.width
+                )
+                story.extend(gantt_elements)
+                story.append(PageBreak())
+        
+        # 8. Fallback: Attachments (Frontend rendered images) - only if backend Gantt not available
+        attachments = data.get('attachments') or []
+        gantt_section_added = 'gantt_data' in data and data.get('gantt_data', {}).get('rows')
+        
+        for att in attachments:
+            img_bytes = att.get('bytes')
+            if not img_bytes:
+                continue
+            att_title = att.get('title') or 'Lampiran'
+            
+            # Skip Gantt attachments if we already added backend Gantt
+            if gantt_section_added and 'gantt' in att_title.lower():
+                continue
+            
+            # Skip Kurva S attachments since we use backend chart now
+            if 'kurva' in att_title.lower():
+                continue
+            
+            if report_type == 'rekap' and 'gantt' in att_title.lower() and not gantt_section_added:
+                section_title = ParagraphStyle(
+                    'SectionHeader',
+                    fontSize=16,
+                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                    fontName='Helvetica-Bold',
+                    spaceAfter=5*mm,
+                )
+                story.append(Paragraph("<b>BAGIAN 4: GANTT CHART</b>", section_title))
+                story.append(Spacer(1, 5*mm))
+                gantt_section_added = True
+            
+            story.append(Paragraph(f"<b>{att_title}</b>", self.styles['title']))
+            try:
+                img = Image(BytesIO(img_bytes))
+                max_w = doc.width
+                max_h = doc.height * 0.7
+                iw, ih = img.wrap(0, 0)
+                scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
+                img.drawWidth = iw * scale
+                img.drawHeight = ih * scale
+                story.append(Spacer(1, 4*mm))
+                story.append(img)
+            except Exception:
+                continue
+            story.append(PageBreak())
+        
+        # 8. Signature Section
+        if self.config.signature_config.enabled:
+            sig_elements = self._build_signatures()
+            story.extend(sig_elements)
+        
+        # Build PDF with NumberedCanvas for headers/footers
+        project_name = project_info.get('nama', self.config.project_name) or ''
+        section_title = 'Jadwal Pekerjaan'
+        doc.build(story, canvasmaker=make_numbered_canvas(project_name, section_title))
+        
+        pdf_content = buffer.getvalue()
+        buffer.close()
+        
+        filename = f"Laporan_{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.pdf"
+        return self._create_response(pdf_content, filename, 'application/pdf')
+    
     
     def _build_header(self, title_override: str = None) -> List:
         """Build document header"""
@@ -294,66 +965,181 @@ class PDFExporter(ConfigExporterBase):
                 st.fontName = 'Helvetica-Bold'
             return Paragraph(str(text or ''), st)
 
+        # Helper to check if value is effectively 0% (handles comma decimal)
+        def is_zero_percent(val):
+            if not val:
+                return False
+            val_str = str(val).strip()
+            if '%' not in val_str:
+                return False
+            val_clean = val_str.replace('%', '').replace(',', '.').strip()
+            try:
+                return float(val_clean) == 0
+            except:
+                return False
+
         wrapped_rows = []
         for r in rows:
             if not isinstance(r, (list, tuple)):
                 r = [r]
             wrapped = []
             for idx, cell in enumerate(r):
+                # Replace 0% with "-" for cleaner display
+                cell_value = str(cell) if cell else ''
+                if is_zero_percent(cell_value):
+                    cell_value = '-'
+                
                 if idx == 0:
-                    wrapped.append(P(cell, bold=False, align='LEFT'))
+                    wrapped.append(P(cell_value, bold=False, align='LEFT'))
                 else:
-                    wrapped.append(P(cell, bold=False, align='RIGHT' if idx >= len(r) - 3 else 'LEFT'))
+                    wrapped.append(P(cell_value, bold=False, align='RIGHT' if idx >= len(r) - 3 else 'LEFT'))
             wrapped_rows.append(wrapped)
-
-        header_cells = [P(h, bold=True, align='CENTER') for h in headers]
+        # Process headers - create 2-line format for week headers
+        import re
+        def create_header_cell(header_text, is_week=False):
+            """Create header cell, with 2-line format for week columns"""
+            styles = getSampleStyleSheet()
+            
+            if is_week:
+                # Parse week header like "Week 1 (01/01 - 07/01)" or "W1 (01/01-07/01)"
+                # Match both "Week X" and "WX" formats
+                match = re.match(r'(Week\s*\d+|W\d+)\s*\(?([^)]*)\)?', str(header_text), re.IGNORECASE)
+                if match:
+                    week_full = match.group(1)  # "Week 1" or "W1"
+                    date_range = match.group(2).strip() if match.group(2) else ''
+                    
+                    # Convert "Week 1" to "W1" for compact display
+                    week_num = re.search(r'\d+', week_full)
+                    week_label = f"W{week_num.group()}" if week_num else week_full
+                    
+                    # Create 2-line header: WX on top, date range below
+                    if date_range:
+                        # Use non-breaking space to prevent word wrap
+                        # Keep regular hyphen (&#8209; not supported by Helvetica)
+                        date_range_nowrap = date_range.replace(' ', '&nbsp;')
+                        header_text = f'{week_label}<br/><font size="4">{date_range_nowrap}</font>'
+                    else:
+                        header_text = week_label
+                
+                st = ParagraphStyle(
+                    'WeekHeader', parent=styles['Normal'],
+                    fontSize=5,
+                    fontName='Helvetica-Bold',
+                    alignment=1,  # CENTER
+                    textColor=colors.white,
+                    leading=7,  # Line spacing for 2-line
+                    wordWrap='CJK',  # Prevent word wrapping
+                    splitLongWords=0,  # Don't split words
+                )
+            else:
+                st = ParagraphStyle(
+                    'Header', parent=styles['Normal'],
+                    fontSize=7,
+                    fontName='Helvetica-Bold',
+                    alignment=1,  # CENTER
+                    textColor=colors.white,
+                )
+            return Paragraph(str(header_text or ''), st)
+        
+        # Identify which headers are week columns (start after static columns)
+        # UNIFIED: 3 static columns (Uraian, Volume, Satuan) - NO Kode
+        static_cols = 3  # Uraian, Volume, Satuan
+        header_cells = []
+        for idx, h in enumerate(headers):
+            is_week = idx >= static_cols
+            header_cells.append(create_header_cell(h, is_week))
+        
+        # =============================================
+        # FIXED TABLE WIDTH CALCULATION
+        # All column widths are FIXED pt values
+        # Table width = 100% of usable page width
+        # =============================================
+        
+        # Get page dimensions from config
+        # =============================================
+        # UNIFIED LAYOUT using TableLayoutCalculator
+        # =============================================
+        layout_calc = TLC(self.config)
+        actual_weeks = len(headers) - static_cols if len(headers) > static_cols else 0
+        layout = layout_calc.calculate(actual_weeks)
+        
+        # Extract layout values
+        TABLE_WIDTH_PT = layout['table_width']
+        fixed_col_widths = layout['column_widths']
+        weeks_to_render = layout['weeks_to_render']
+        blank_cols = layout['blank_cols']
+        MAX_WEEKS_PER_PAGE = layout['max_weeks_per_page']
+        
+        # ==================================================
+        # TRUNCATE DATA TO MATCH weeks_to_render
+        # ==================================================
+        total_cols_to_keep = static_cols + weeks_to_render
+        header_cells = header_cells[:total_cols_to_keep]
+        wrapped_rows = [row[:total_cols_to_keep] for row in wrapped_rows]
+        
+        # ==================================================
+        # ADD BLANK CELLS TO FILL TO MAX_WEEKS_PER_PAGE
+        # ==================================================
+        blank_cell_style = ParagraphStyle(
+            'BlankCell', parent=getSampleStyleSheet()['Normal'],
+            fontSize=5,
+            alignment=1,
+        )
+        for _ in range(blank_cols):
+            header_cells.append(Paragraph('', blank_cell_style))
+        for row in wrapped_rows:
+            for _ in range(blank_cols):
+                row.append(Paragraph('', blank_cell_style))
+        
+        # Rebuild full_data
         full_data = [header_cells] + wrapped_rows
         
-        # Create table
-        table = Table(full_data, colWidths=col_widths or None, repeatRows=1)
+        # Create table with FIXED column widths
+        table = Table(full_data, colWidths=fixed_col_widths, repeatRows=1)
+        
+        # Professional color palette (matching Kurva S)
+        header_bg = colors.HexColor('#1a365d')  # Deep professional blue
+        header_text = UTS.get_header_text_color()
+        klasifikasi_bg = UTS.get_klasifikasi_bg_color()
+        sub_klasifikasi_bg = UTS.get_sub_klasifikasi_bg_color()
+        border_color = UTS.get_inner_border_color()
+        outer_border = UTS.get_outer_border_color()
+        
+        # Font sizes from UTS
+        font_header = UTS.HEADER_FONT_SIZE
+        font_data = UTS.DATA_FONT_SIZE
+        
+        # Padding from UTS
+        pad_top, pad_bottom, pad_left, pad_right = UTS.get_padding_tuple_mm()
         
         # Build style commands
         style_commands = [
-            # Header row
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e8e8e8')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-            ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size_header),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            # Header row - professional deep blue
+            ('BACKGROUND', (0, 0), (-1, 0), header_bg),
+            ('TEXTCOLOR', (0, 0), (-1, 0), header_text),
+            ('FONTSIZE', (0, 0), (-1, 0), font_header),
+            ('FONTNAME', (0, 0), (-1, 0), UTS.HEADER_FONT_NAME),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             
             # Default data rows
-            ('FONTSIZE', (0, 1), (-1, -1), self.config.font_size_normal),
+            ('FONTSIZE', (0, 1), (-1, -1), font_data),
+            ('FONTNAME', (0, 1), (-1, -1), UTS.DATA_FONT_NAME),
             
-            # Borders
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
-            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            # Borders from UTS
+            ('GRID', (0, 0), (-1, -1), UTS.INNER_BORDER_WIDTH, border_color),
+            ('BOX', (0, 0), (-1, -1), UTS.OUTER_BORDER_WIDTH, outer_border),
             
-            # Padding
-            ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('LEFTPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 1.5*mm),
+            # Padding from UTS
+            ('TOPPADDING', (0, 0), (-1, -1), pad_top),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), pad_bottom),
+            ('LEFTPADDING', (0, 0), (-1, -1), pad_left),
+            ('RIGHTPADDING', (0, 0), (-1, -1), pad_right),
         ]
         
-        # Apply hierarchy styling (only when provided)
-        for idx, level in hierarchy.items():
-            row_num = idx + 1  # +1 because of header row
-            
-            if level == 1:  # Klasifikasi
-                style_commands.extend([
-                    ('BACKGROUND', (0, row_num), (-1, row_num), 
-                     colors.HexColor('#e8e8e8')),
-                    ('TEXTCOLOR', (0, row_num), (-1, row_num), colors.black),
-                    ('FONTNAME', (0, row_num), (-1, row_num), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, row_num), (-1, row_num), self.config.font_size_normal),
-                ])
-            elif level == 2:  # Sub-Klasifikasi
-                style_commands.extend([
-                    ('BACKGROUND', (0, row_num), (-1, row_num), 
-                     colors.HexColor('#f5f5f5')),
-                    ('FONTNAME', (0, row_num), (-1, row_num), 'Helvetica-Bold'),
-                ])
+        # Apply hierarchy styling using HierarchyStyler
+        hierarchy_commands = HS.get_style_commands(hierarchy, header_offset=1)
+        style_commands.extend(hierarchy_commands)
         
         table.setStyle(TableStyle(style_commands))
         
@@ -370,8 +1156,8 @@ class PDFExporter(ConfigExporterBase):
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('LINEABOVE', (0, 0), (-1, 0), 1, colors.HexColor('#2c3e50')),
-            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#2c3e50')),
+            ('LINEABOVE', (0, 0), (-1, 0), 1, colors.HexColor(UTS.PRIMARY_LIGHT)),
+            ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor(UTS.PRIMARY_LIGHT)),
         ]))
 
         return table
@@ -379,6 +1165,36 @@ class PDFExporter(ConfigExporterBase):
     def _get_page_width_mm(self) -> float:
         width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
         return width_mm if getattr(self.config, 'page_orientation', 'landscape') == 'portrait' else height_mm
+
+    def _build_truncation_notice(self, shown: int, total: int, unit: str = 'minggu') -> Paragraph:
+        """
+        Build a styled truncation notice when data exceeds display limit.
+        
+        Args:
+            shown: Number of items actually displayed
+            total: Total number of items available
+            unit: Unit name (e.g., 'minggu', 'kolom', 'baris')
+            
+        Returns:
+            Styled Paragraph with warning notice
+        """
+        if shown >= total:
+            return None
+            
+        notice_style = ParagraphStyle(
+            'TruncationNotice',
+            fontSize=8,
+            textColor=colors.HexColor(UTS.STATUS_BEHIND),
+            fontName='Helvetica-Oblique',
+            spaceAfter=3*mm,
+            spaceBefore=2*mm,
+        )
+        
+        hidden = total - shown
+        notice_text = f"⚠ Menampilkan {shown} dari {total} {unit}. {hidden} {unit} berikutnya ditampilkan di halaman lanjutan."
+        
+        logger.info(f"Truncation notice: displaying {shown}/{total} {unit}")
+        return Paragraph(notice_text, notice_style)
 
     def _build_pekerjaan_section(self, section: Dict[str, Any], story: List) -> None:
         """
@@ -434,7 +1250,7 @@ class PDFExporter(ConfigExporterBase):
         story.append(Spacer(1, 1*mm))
 
         # Total
-        total_text = f"<font color='#2c3e50'><b>Total: Rp {pekerjaan.get('total', '0')}</b></font>"
+        total_text = f"<font color='{UTS.PRIMARY_LIGHT}'><b>Total: Rp {pekerjaan.get('total', '0')}</b></font>"
         total_para = Paragraph(total_text, self.styles['normal'])
         story.append(total_para)
         story.append(Spacer(1, 3*mm))
@@ -475,10 +1291,10 @@ class PDFExporter(ConfigExporterBase):
             style_commands = [
                 # Header styling
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f5f5f5')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size_header),
-                ('LINEBELOW', (0, 0), (-1, 0), 1.2, colors.HexColor('#2c3e50')),
+                ('LINEBELOW', (0, 0), (-1, 0), 1.2, colors.HexColor(UTS.PRIMARY_LIGHT)),
 
                 # Body defaults
                 ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
@@ -504,8 +1320,8 @@ class PDFExporter(ConfigExporterBase):
                     ('SPAN', (0, current_row), (-1, current_row)),
                     ('BACKGROUND', (0, current_row), (-1, current_row), colors.HexColor('#f5f5f5')),
                     ('FONTNAME', (0, current_row), (-1, current_row), 'Helvetica-Bold'),
-                    ('LINEABOVE', (0, current_row), (-1, current_row), 0.8, colors.HexColor('#2c3e50')),
-                    ('LINEBELOW', (0, current_row), (-1, current_row), 0.8, colors.HexColor('#2c3e50')),
+                    ('LINEABOVE', (0, current_row), (-1, current_row), 0.8, colors.HexColor(UTS.PRIMARY_LIGHT)),
+                    ('LINEBELOW', (0, current_row), (-1, current_row), 0.8, colors.HexColor(UTS.PRIMARY_LIGHT)),
                 ])
                 current_row += 1
 
@@ -550,7 +1366,7 @@ class PDFExporter(ConfigExporterBase):
                     ])
                     # Add thicker line hierarchy: E/G thicker, F medium
                     thickness = 1.2 if idx in (0, 2) else 0.8
-                    style_commands.append(('LINEABOVE', (0, current_row), (-1, current_row), thickness, colors.HexColor('#2c3e50')))
+                    style_commands.append(('LINEABOVE', (0, current_row), (-1, current_row), thickness, colors.HexColor(UTS.PRIMARY_LIGHT)))
                     current_row += 1
 
             # Create table
@@ -603,3 +1419,2365 @@ class PDFExporter(ConfigExporterBase):
         elements.append(sig_table)
         
         return elements
+
+    def _build_monthly_signature_page(self) -> List:
+        """
+        Build Lembar Pengesahan for Laporan Bulanan.
+        
+        Three columns:
+        - Pelaksana
+        - Pengawas
+        - Pemilik Pekerjaan
+        """
+        elements = []
+        
+        # Title
+        title_style = ParagraphStyle(
+            'SigTitle',
+            fontSize=16,
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER,
+            spaceAfter=10*mm,
+        )
+        elements.append(Spacer(1, 20*mm))
+        elements.append(Paragraph("<b>LEMBAR PENGESAHAN</b>", title_style))
+        elements.append(Spacer(1, 15*mm))
+        
+        # Signature roles
+        roles = [
+            {'label': 'PELAKSANA', 'position': 'Pelaksana Pekerjaan'},
+            {'label': 'PENGAWAS', 'position': 'Pengawas Lapangan'},
+            {'label': 'PEMILIK PEKERJAAN', 'position': 'Pemilik/Owner'},
+        ]
+        
+        # Build signature table data
+        # Row 1: Labels
+        labels_row = [role['label'] for role in roles]
+        
+        # Row 2-4: Empty space for signature
+        empty_rows = [[''] * 3 for _ in range(3)]
+        
+        # Row 5: Signature line
+        line_row = ['_' * 25] * 3
+        
+        # Row 6: "Nama:" label
+        name_label_row = ['Nama:'] * 3
+        
+        # Row 7: Name placeholder
+        name_row = ['_' * 25] * 3
+        
+        # Row 8: "Tanggal:" label
+        date_label_row = ['Tanggal:'] * 3
+        
+        # Row 9: Date placeholder
+        date_row = ['_' * 15] * 3
+        
+        sig_data = [labels_row] + empty_rows + [line_row, name_label_row, name_row, date_label_row, date_row]
+        
+        col_width = 80 * mm
+        sig_table = Table(sig_data, colWidths=[col_width] * 3)
+        sig_table.setStyle(TableStyle([
+            # Header row styling
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
+            
+            # Other rows
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
+            
+            # Spacing for signature area
+            ('TOPPADDING', (0, 1), (-1, 3), 8*mm),
+            ('BOTTOMPADDING', (0, 3), (-1, 3), 5*mm),
+            
+            # Normal padding for other rows
+            ('TOPPADDING', (0, 4), (-1, -1), 2*mm),
+            ('BOTTOMPADDING', (0, 4), (-1, -1), 2*mm),
+            
+            # Vertical alignment
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            
+            # Border only for signature boxes
+            ('BOX', (0, 0), (0, 4), 0.5, colors.HexColor(UTS.INNER_BORDER)),
+            ('BOX', (1, 0), (1, 4), 0.5, colors.HexColor(UTS.INNER_BORDER)),
+            ('BOX', (2, 0), (2, 4), 0.5, colors.HexColor(UTS.INNER_BORDER)),
+        ]))
+        
+        elements.append(sig_table)
+        
+        return elements
+
+    # ------------------------------------------------------------------
+    # Professional Report Methods (Laporan Tertulis)
+    # ------------------------------------------------------------------
+
+    def _build_cover_page(self, report_type: str, project_info: Dict[str, Any], period_info: Dict[str, Any] = None) -> List:
+        """
+        Build professional cover page for report.
+        
+        Design principles:
+        - Border spans entire page margins (edge to edge)
+        - Title: "LAPORAN BULAN ke-X" (no JADWAL PEKERJAAN)
+        - Logo box with 40% opacity
+        - No header/footer on cover
+        
+        Args:
+            report_type: 'rekap', 'monthly', or 'weekly'
+            project_info: Project information dict
+            period_info: Period information for monthly/weekly reports
+        """
+        elements = []
+        
+        # Frame content (will be wrapped in border)
+        frame_content = []
+        
+        # ==============================================
+        # LOGO PLACEHOLDER (40% opacity / muted)
+        # Empty box - no text, just placeholder for logo image
+        # ==============================================
+        logo_border_color = colors.Color(0.3, 0.4, 0.6, alpha=0.4)  # 40% opacity
+        logo_bg_color = colors.Color(0.95, 0.96, 0.98, alpha=0.4)   # 40% opacity
+        
+        # Empty string instead of "LOGO" text
+        logo_table = Table([['']], colWidths=[40*mm], rowHeights=[25*mm])
+        logo_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, logo_border_color),
+            ('BACKGROUND', (0, 0), (-1, -1), logo_bg_color),
+        ]))
+        frame_content.append(Spacer(1, 25*mm))
+        frame_content.append(logo_table)
+        frame_content.append(Spacer(1, 25*mm))
+        
+        # ==============================================
+        # MAIN TITLE - Dynamic based on report type
+        # "LAPORAN BULAN ke-X" or "LAPORAN MINGGU ke-X" or "LAPORAN REKAPITULASI"
+        # ==============================================
+        title_text = "LAPORAN"
+        if report_type == 'monthly':
+            month_num = period_info.get('month', 1) if period_info else 1
+            title_text = f"LAPORAN BULAN ke-{month_num}"
+        elif report_type == 'weekly':
+            week_num = period_info.get('week', 1) if period_info else 1
+            title_text = f"LAPORAN MINGGU ke-{week_num}"
+        elif report_type == 'rekap':
+            title_text = "LAPORAN REKAPITULASI"
+        
+        title_style = ParagraphStyle(
+            'CoverTitle',
+            fontSize=22,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            alignment=TA_CENTER,
+            leading=28,
+        )
+        frame_content.append(Paragraph(f"<b>{title_text}</b>", title_style))
+        frame_content.append(Spacer(1, 10*mm))
+        
+        # ==============================================
+        # DECORATIVE LINE
+        # ==============================================
+        line_table = Table([['─' * 35]], colWidths=[100*mm])
+        line_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor(UTS.PRIMARY_LIGHT)),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ]))
+        frame_content.append(line_table)
+        frame_content.append(Spacer(1, 10*mm))
+        
+        # ==============================================
+        # PROJECT NAME
+        # ==============================================
+        project_name_style = ParagraphStyle(
+            'ProjectName',
+            fontSize=16,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#1a365d'),
+            alignment=TA_CENTER,
+            leading=20,
+        )
+        project_name = project_info.get('nama', 'Nama Proyek')
+        frame_content.append(Paragraph(f"<b>{project_name}</b>", project_name_style))
+        frame_content.append(Spacer(1, 12*mm))
+        
+        # ==============================================
+        # PERIOD INFO (for monthly/weekly) - dates only
+        # ==============================================
+        if period_info and (period_info.get('start_date') or period_info.get('end_date')):
+            period_style = ParagraphStyle(
+                'Period',
+                fontSize=12,
+                fontName='Helvetica',
+                textColor=colors.HexColor(UTS.TEXT_SECONDARY),
+                alignment=TA_CENTER,
+            )
+            start = period_info.get('start_date', '')
+            end = period_info.get('end_date', '')
+            if hasattr(start, 'strftime'):
+                start = start.strftime('%d/%m/%Y')  # DD/MM/YYYY format
+            if hasattr(end, 'strftime'):
+                end = end.strftime('%d/%m/%Y')  # DD/MM/YYYY format
+            
+            if start and end:
+                period_text = f"Periode: {start} - {end}"  # Use dash, not s.d.
+            elif start:
+                period_text = f"Mulai: {start}"
+            else:
+                period_text = ""
+            
+            if period_text:
+                frame_content.append(Paragraph(period_text, period_style))
+                frame_content.append(Spacer(1, 12*mm))
+        
+        # ==============================================
+        # PROJECT DETAILS TABLE
+        # ==============================================
+        details = []
+        
+        if project_info.get('lokasi'):
+            details.append(['Lokasi', ':', project_info.get('lokasi')])
+        if project_info.get('nama_client'):
+            details.append(['Pemilik', ':', project_info.get('nama_client')])
+        if project_info.get('sumber_dana'):
+            details.append(['Sumber Dana', ':', project_info.get('sumber_dana')])
+        
+        # Format anggaran with thousand separator
+        anggaran = project_info.get('anggaran', 0)
+        if anggaran:
+            try:
+                anggaran_num = float(str(anggaran).replace(',', '').replace('.', ''))
+                anggaran_fmt = f"Rp {anggaran_num:,.0f}".replace(',', '.')
+            except:
+                anggaran_fmt = f"Rp {anggaran}"
+            details.append(['Anggaran', ':', anggaran_fmt])
+        
+        if details:
+            details_table = Table(details, colWidths=[40*mm, 5*mm, 100*mm])
+            details_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
+                ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#2d3748')),
+                ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+                ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
+            ]))
+            frame_content.append(details_table)
+        
+        # ==============================================
+        # FULL-PAGE BORDER FRAME
+        # Border at page margin edges (top, bottom, left, right)
+        # 
+        # CALCULATION:
+        # A4 Portrait = 210mm × 297mm
+        # Margins: Left=15mm, Right=15mm, Top=20mm, Bottom=20mm
+        # Usable width  = 210 - 15 - 15 = 180mm
+        # Usable height = 297 - 20 - 20 = 257mm
+        # ==============================================
+        
+        # Inner table for content (with some padding from border)
+        inner_table = Table([[elem] for elem in frame_content], colWidths=[160*mm])
+        inner_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        
+        # Full-page border - fills entire usable area
+        frame_table = Table(
+            [[inner_table]], 
+            colWidths=[180*mm],    # 210 - 15 - 15 = 180mm
+            rowHeights=[257*mm]    # 297 - 20 - 20 = 257mm
+        )
+        frame_table.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 2, colors.HexColor(UTS.PRIMARY_LIGHT)),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10*mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10*mm),
+            ('TOPPADDING', (0, 0), (-1, -1), 5*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5*mm),
+        ]))
+        
+        elements.append(frame_table)
+        
+        # NO HEADER/FOOTER ON COVER - This is handled by NumberedCanvas
+        # which should skip page 1 for headers/footers
+        
+        return elements
+
+    def _build_progress_pelaksanaan_page(
+        self,
+        month: int,
+        project_info: Dict[str, Any],
+        summary: Dict[str, Any],
+        hierarchy_data: List[Dict[str, Any]],
+        period_info: Dict[str, Any] = None
+    ) -> List:
+        """
+        Build combined Progress Pelaksanaan Pekerjaan page.
+        
+        Combines:
+        1. Identitas Project Singkat
+        2. Ringkasan Progress
+        3. Tabel Rincian Progress
+        
+        Args:
+            month: Month number (1-based)
+            project_info: Project information dict
+            summary: Executive summary data
+            hierarchy_data: Hierarchical pekerjaan with harga and progress
+            period_info: Period date information
+        """
+        elements = []
+        
+        # ==============================================
+        # PAGE TITLE (with top margin to avoid header collision)
+        # ==============================================
+        elements.append(Spacer(1, 10*mm))  # Top clearance from header
+        title_style = ParagraphStyle(
+            'PageTitle',
+            fontSize=16,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            alignment=TA_CENTER,
+            spaceAfter=8*mm,
+        )
+        elements.append(Paragraph(
+            f"<b>PROGRESS PELAKSANAAN PEKERJAAN BULAN KE-{month}</b>",
+            title_style
+        ))
+        elements.append(Spacer(1, 5*mm))
+        
+        # ==============================================
+        # SEGMENTS 1 & 2: SIDE-BY-SIDE LAYOUT
+        # Left: IDENTITAS PROJECT | Right: RINGKASAN PROGRESS
+        # ==============================================
+        section_title_style = ParagraphStyle(
+            'SectionTitle',
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor(UTS.PRIMARY_DARK),
+            spaceAfter=2*mm,
+        )
+        
+        # --- LEFT COLUMN: IDENTITAS PROJECT ---
+        identity_header = Paragraph("IDENTITAS PROJECT", section_title_style)
+        identity_data = [
+            ['Nama Project', ':', project_info.get('nama', '-')],
+            ['Ket. Project 1', ':', project_info.get('keterangan_1', project_info.get('sumber_dana', '-'))],
+            ['Ket. Project 2', ':', project_info.get('keterangan_2', project_info.get('nama_client', '-'))],
+            ['Lokasi', ':', project_info.get('lokasi', '-')],
+        ]
+        identity_table = Table(identity_data, colWidths=[32*mm, 3*mm, 58*mm])
+        identity_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
+            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor(UTS.TEXT_PRIMARY)),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1*mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2*mm),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor(UTS.LIGHT_BORDER)),
+        ]))
+        left_content = [[identity_header], [identity_table]]
+        left_cell = Table(left_content, colWidths=[90*mm])
+        left_cell.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        
+        # --- RIGHT COLUMN: RINGKASAN PROGRESS ---
+        ringkasan_header = Paragraph("RINGKASAN PROGRESS", section_title_style)
+        
+        # Status color
+        deviation = summary.get('deviation_cumulative', 0)
+        if deviation >= 0:
+            status_text = "ON TRACK"
+            status_color = UTS.STATUS_ON_TRACK
+        elif deviation >= -5:
+            status_text = "SEDIKIT TERLAMBAT"
+            status_color = UTS.STATUS_BEHIND
+        else:
+            status_text = "TERLAMBAT"
+            status_color = UTS.STATUS_CRITICAL
+        
+        ringkasan_data = [
+            ['Rencana Bulan Ini', ':', f"{summary.get('target_period', 0):.2f}%"],
+            ['Actual Bulan Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
+            ['Akumulasi Rencana', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
+            ['Akumulasi Actual', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
+            ['Deviasi', ':', f"{deviation:+.2f}%"],
+        ]
+        
+        ringkasan_cells = []
+        for row in ringkasan_data:
+            ringkasan_cells.append(row)
+        # Add status row with color
+        status_para = Paragraph(
+            f'<font color="{status_color}"><b>{status_text}</b></font>',
+            ParagraphStyle('Status', fontSize=8, fontName='Helvetica')
+        )
+        ringkasan_cells.append(['Status', ':', status_para])
+        
+        ringkasan_table = Table(ringkasan_cells, colWidths=[40*mm, 3*mm, 47*mm])
+        ringkasan_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, -2), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_SECONDARY)),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 0.5*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5*mm),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor(UTS.LIGHT_BORDER)),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2*mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2*mm),
+        ]))
+        right_content = [[ringkasan_header], [ringkasan_table]]
+        right_cell = Table(right_content, colWidths=[90*mm])
+        right_cell.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        
+        # --- COMBINE INTO 2-COLUMN LAYOUT with center gap ---
+        # 90mm + 6mm gap + 90mm = 186mm
+        two_column = Table([[left_cell, Spacer(1, 1), right_cell]], colWidths=[90*mm, 6*mm, 90*mm])
+        two_column.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(two_column)
+        elements.append(Spacer(1, 6*mm))
+        
+        # ==============================================
+        # SEGMENT 3: TABEL RINCIAN PROGRESS
+        # ==============================================
+        elements.append(Paragraph("RINCIAN PROGRESS", section_title_style))
+        elements.append(Spacer(1, 2*mm))
+        
+        # Table headers - 7 columns now
+        # URAIAN | VOLUME | HARGA SATUAN | TOTAL HARGA | BOBOT | PROGRESS INI | PROGRESS LALU
+        headers = [
+            'URAIAN PEKERJAAN', 
+            'VOLUME', 
+            'HARGA\nSATUAN', 
+            'TOTAL\nHARGA', 
+            'BOBOT\n(%)', 
+            'PROGRESS\nBULAN INI', 
+            'PROGRESS\nBULAN LALU'
+        ]
+        
+        def P(text, bold=False, align='LEFT', size=7, color=None):
+            """Helper to create Paragraph with style."""
+            al = {'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
+            st = ParagraphStyle(
+                'Cell', 
+                fontSize=size, 
+                alignment=al,
+                fontName='Helvetica-Bold' if bold else 'Helvetica',
+                textColor=colors.HexColor(color) if color else colors.black,
+                leading=size + 2,
+            )
+            return Paragraph(str(text or ''), st)
+        
+        def PHeader(text):
+            """Header paragraph with white color."""
+            st = ParagraphStyle(
+                'Header', 
+                fontSize=7, 
+                alignment=TA_CENTER,
+                fontName='Helvetica-Bold',
+                textColor=colors.white,
+                leading=9,
+            )
+            return Paragraph(str(text or ''), st)
+        
+        # Build header row with white font
+        header_row = [PHeader(h) for h in headers]
+        
+        # Build data rows from hierarchy
+        data_rows = []
+        total_harga = 0
+        total_bobot = 0
+        total_progress_ini = 0
+        total_progress_lalu = 0
+        
+        for item in hierarchy_data:
+            level = item.get('level', 0)
+            item_type = item.get('type', 'pekerjaan')
+            name = item.get('name', item.get('uraian', ''))
+            volume = item.get('volume', 0) or 0
+            harga_satuan = item.get('harga_satuan', 0) or 0
+            harga = item.get('harga', 0) or 0
+            bobot = item.get('bobot', 0) or 0
+            progress_ini = item.get('progress_bulan_ini', 0) or 0
+            progress_lalu = item.get('progress_bulan_lalu', 0) or 0
+            
+            # Indentation for hierarchy
+            indent = "  " * level
+            display_name = f"{indent}{name}"
+            
+            # Determine styling based on type
+            is_klasifikasi = item_type == 'klasifikasi'
+            is_sub_klasifikasi = item_type == 'sub_klasifikasi'
+            is_parent = is_klasifikasi or is_sub_klasifikasi
+            
+            # Font size: Klasifikasi=8, Sub=7.5, Pekerjaan=7
+            if is_klasifikasi:
+                font_size = 8
+                row_bold = True
+            elif is_sub_klasifikasi:
+                font_size = 7.5
+                row_bold = True
+            else:
+                font_size = 7
+                row_bold = False
+            
+            # Format values - only show for pekerjaan
+            if is_parent:
+                # Parent rows: only show name, no values
+                volume_fmt = ""
+                harga_satuan_fmt = ""
+                harga_fmt = ""
+                bobot_fmt = ""
+                progress_ini_fmt = ""
+                progress_lalu_fmt = ""
+            else:
+                # Pekerjaan: show all values
+                volume_fmt = f"{volume:,.2f}".replace(',', '.') if volume > 0 else "-"
+                harga_satuan_fmt = f"Rp {harga_satuan:,.0f}".replace(',', '.') if harga_satuan > 0 else "-"
+                harga_fmt = f"Rp {harga:,.0f}".replace(',', '.') if harga > 0 else "-"
+                bobot_fmt = f"{bobot:.2f}%" if bobot > 0 else "-"
+                progress_ini_fmt = f"{progress_ini:.2f}%"
+                progress_lalu_fmt = f"{progress_lalu:.2f}%"
+            
+            row = [
+                P(display_name, bold=row_bold, align='LEFT', size=font_size),
+                P(volume_fmt, bold=row_bold, align='CENTER', size=font_size),
+                P(harga_satuan_fmt, bold=row_bold, align='RIGHT', size=font_size),
+                P(harga_fmt, bold=row_bold, align='RIGHT', size=font_size),
+                P(bobot_fmt, bold=row_bold, align='CENTER', size=font_size),
+                P(progress_ini_fmt, bold=row_bold, align='CENTER', size=font_size),
+                P(progress_lalu_fmt, bold=row_bold, align='CENTER', size=font_size),
+            ]
+            data_rows.append((row, item_type))
+            
+            # Accumulate totals (only pekerjaan level)
+            if item_type == 'pekerjaan':
+                total_harga += harga
+                total_bobot += bobot
+                total_progress_ini += progress_ini
+                total_progress_lalu += progress_lalu
+        
+        # Fix bobot rounding - if close to 100%, round to exactly 100%
+        if 99.9 <= total_bobot <= 100.1:
+            total_bobot = 100.0
+        
+        # Total row
+        total_row = [
+            P("TOTAL", bold=True, align='LEFT', size=7),
+            P("", bold=True, align='CENTER', size=7),
+            P("", bold=True, align='RIGHT', size=7),
+            P(f"Rp {total_harga:,.0f}".replace(',', '.'), bold=True, align='RIGHT', size=7),
+            P(f"{total_bobot:.2f}%", bold=True, align='CENTER', size=7),
+            P(f"{total_progress_ini:.2f}%", bold=True, align='CENTER', size=7),
+            P(f"{total_progress_lalu:.2f}%", bold=True, align='CENTER', size=7),
+        ]
+        
+        # Build full table data
+        table_data = [header_row]
+        for row, _ in data_rows:
+            table_data.append(row)
+        table_data.append(total_row)
+        
+        # Column widths - A4 Portrait usable ~180mm
+        # URAIAN(60) | VOLUME(14) | H.SATUAN(26) | TOTAL(26) | BOBOT(14) | PROG.INI(23) | PROG.LALU(23) = 186mm
+        col_widths = [60*mm, 14*mm, 26*mm, 26*mm, 14*mm, 23*mm, 23*mm]
+        
+        rincian_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        
+        # Table styling
+        style_commands = [
+            # Header - blue background, white text
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            # Grid
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(UTS.LIGHT_BORDER)),
+            ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 1*mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 1*mm),
+            # Total row (last row)
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8f4f8')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]
+        
+        # Row backgrounds based on type
+        for i, (row, item_type) in enumerate(data_rows):
+            row_idx = i + 1  # +1 for header
+            if item_type == 'klasifikasi':
+                style_commands.append(
+                    ('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#e2e8f0'))
+                )
+            elif item_type == 'sub_klasifikasi':
+                style_commands.append(
+                    ('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#f1f5f9'))
+                )
+        
+        rincian_table.setStyle(TableStyle(style_commands))
+        elements.append(rincian_table)
+        
+        # ==============================================
+        # SEGMENT 4: LEMBAR PENGESAHAN
+        # ==============================================
+        sig_section = self._build_progress_signature_section(project_info)
+        elements.extend(sig_section)
+        
+        return elements
+    
+    def _build_progress_signature_section(self, project_info: Dict[str, Any]) -> List:
+        """
+        Build reusable Lembar Pengesahan (signature section).
+        
+        Can be used in:
+        - Laporan Bulanan (monthly)
+        - Laporan Mingguan (weekly) 
+        - Rekap Laporan (rekap)
+        
+        Structure:
+        - Title: "LEMBAR PENGESAHAN" (10pt, centered)
+        - 3 columns: PELAKSANA | PENGAWAS | PEMILIK PEKERJAAN
+        - 2 empty rows for hand signature
+        - Names row with signature line (70mm underscores)
+        - Jabatan row: Direktur | Direktur | jabatan_client
+        - Instansi row: instansi_kontraktor | instansi_konsultan | instansi_client
+        
+        Args:
+            project_info: Dict containing:
+                - nama_kontraktor, nama_konsultan_pengawas, nama_client
+                - jabatan_client, instansi_client
+                - instansi_kontraktor, instansi_konsultan_pengawas
+        
+        Returns:
+            List of flowable elements for the signature section
+        """
+        sig_elements = []
+        sig_elements.append(Spacer(1, 10*mm))
+        
+        # Title style: 10pt bold, centered
+        sig_title_style = ParagraphStyle(
+            'SigTitle',
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            textColor=colors.HexColor(UTS.TEXT_SECONDARY),
+            alignment=TA_CENTER,
+            spaceAfter=5*mm,
+        )
+        sig_elements.append(Paragraph("LEMBAR PENGESAHAN", sig_title_style))
+        
+        # Label style: 8pt normal, centered (for column headers)
+        sig_label_style = ParagraphStyle(
+            'SigLabel',
+            fontSize=8,
+            fontName='Helvetica',
+            alignment=TA_CENTER,
+        )
+        
+        # Name style: 7pt normal, centered (for names, jabatan, instansi)
+        sig_name_style = ParagraphStyle(
+            'SigName',
+            fontSize=7,
+            fontName='Helvetica',
+            alignment=TA_CENTER,
+        )
+        
+        # Get project info values
+        instansi_kontraktor = project_info.get('instansi_kontraktor', '-')
+        instansi_konsultan = project_info.get('instansi_konsultan_pengawas', '-')
+        jabatan_client = project_info.get('jabatan_client', '-')
+        instansi_client = project_info.get('instansi_client', '-')
+        
+        # Build table data
+        sig_data = [
+            # Row 0: Headers (role titles)
+            [
+                Paragraph("PELAKSANA", sig_label_style),
+                Paragraph("PENGAWAS", sig_label_style), 
+                Paragraph("PEMILIK PEKERJAAN", sig_label_style)
+            ],
+            # Row 1-2: Space for hand signature
+            ['', '', ''],
+            ['', '', ''],
+            # Row 3: Signature names
+            [
+                Paragraph(project_info.get('nama_kontraktor', '-') or '-', sig_name_style),
+                Paragraph(project_info.get('nama_konsultan_pengawas', '-') or '-', sig_name_style),
+                Paragraph(project_info.get('nama_client', '-') or '-', sig_name_style)
+            ],
+            # Row 4: Signature line (70mm / 7cm centered)
+            [
+                Paragraph('_' * 35, sig_name_style),
+                Paragraph('_' * 35, sig_name_style),
+                Paragraph('_' * 35, sig_name_style)
+            ],
+            # Row 5: Jabatan
+            [
+                Paragraph("Direktur", sig_name_style),
+                Paragraph("Direktur", sig_name_style),
+                Paragraph(jabatan_client or "-", sig_name_style)
+            ],
+            # Row 6: Instansi
+            [
+                Paragraph(instansi_kontraktor or "-", sig_name_style),
+                Paragraph(instansi_konsultan or "-", sig_name_style),
+                Paragraph(instansi_client or "-", sig_name_style)
+            ],
+        ]
+        
+        # Table: 3 columns x 60mm each = 180mm total
+        sig_table = Table(sig_data, colWidths=[60*mm, 60*mm, 60*mm])
+        sig_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 1), (-1, 2), 6*mm),   # Space for hand signature
+            ('TOPPADDING', (0, 3), (-1, 4), 0),      # No space between name/line
+            ('BOTTOMPADDING', (0, 3), (-1, 4), 0),
+            ('TOPPADDING', (0, 5), (-1, -1), 0),     # Minimum spacing jabatan/instansi
+            ('BOTTOMPADDING', (0, 5), (-1, -1), 0),
+        ]))
+        sig_elements.append(sig_table)
+        
+        # Wrap in KeepTogether to stay with preceding content
+        return [KeepTogether(sig_elements)]
+
+    def _build_executive_summary_section(self, summary: Dict[str, Any], mode: str = 'monthly') -> List:
+        """
+        Build executive summary section for reports.
+        
+        Args:
+            summary: Executive summary data from adapter
+            mode: 'monthly' or 'weekly'
+        """
+        elements = []
+        
+        # Section title
+        title_style = ParagraphStyle(
+            'SectionTitle',
+            fontSize=14,
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            fontName='Helvetica-Bold',
+            spaceAfter=3*mm,
+        )
+        elements.append(Paragraph("<b>RINGKASAN EKSEKUTIF</b>", title_style))
+        elements.append(Spacer(1, 5*mm))
+        
+        # Status indicator color - using UTS constants
+        status = summary.get('status', 'On Track')
+        status_color = {
+            'On Track': UTS.STATUS_ON_TRACK,
+            'Ahead': UTS.STATUS_AHEAD,
+            'Behind': UTS.STATUS_BEHIND,
+            'Critical': UTS.STATUS_CRITICAL,
+        }.get(status, UTS.TEXT_MUTED)
+        
+        # Summary metrics
+        period_label = summary.get('period_label', 'Periode Ini')
+        metrics = [
+            [f'Target {period_label}', ':', f"{summary.get('target_period', 0):.2f}%"],
+            [f'Realisasi {period_label}', ':', f"{summary.get('actual_period', 0):.2f}%"],
+            ['Deviasi', ':', f"{summary.get('deviation', 0):+.2f}%"],
+            ['', '', ''],
+            ['Kumulatif Target', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
+            ['Kumulatif Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
+            ['Deviasi Kumulatif', ':', f"{summary.get('deviation_cumulative', 0):+.2f}%"],
+            ['', '', ''],
+            ['Status', ':', f'<font color="{status_color}"><b>{status}</b></font>'],
+        ]
+        
+        summary_table = Table(metrics, colWidths=[60*mm, 5*mm, 50*mm])
+        summary_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.TEXT_MUTED)),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
+        ]))
+        elements.append(summary_table)
+        
+        return elements
+
+    def _build_comparison_table(
+        self,
+        current_data: Dict[str, Any],
+        previous_data: Dict[str, Any],
+        comparison: Dict[str, Any],
+        mode: str = 'monthly'
+    ) -> List:
+        """
+        Build comparison table for this period vs previous period.
+        
+        Args:
+            current_data: Current period data
+            previous_data: Previous period data
+            comparison: Comparison/delta data
+            mode: 'monthly' or 'weekly'
+        """
+        elements = []
+        
+        # Section title
+        period_name = "Bulan" if mode == "monthly" else "Minggu"
+        title_style = ParagraphStyle(
+            'SectionTitle',
+            fontSize=14,
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            fontName='Helvetica-Bold',
+            spaceAfter=3*mm,
+        )
+        elements.append(Paragraph(
+            f"<b>PERBANDINGAN: {period_name.upper()} INI vs {period_name.upper()} SEBELUMNYA</b>",
+            title_style
+        ))
+        elements.append(Spacer(1, 5*mm))
+        
+        if not comparison.get('has_previous', False):
+            no_prev_style = ParagraphStyle(
+                'NoPrev',
+                fontSize=10,
+                textColor=colors.HexColor(UTS.TEXT_MUTED),
+                fontStyle='italic',
+            )
+            elements.append(Paragraph(
+                f"<i>Tidak ada data {period_name.lower()} sebelumnya untuk perbandingan.</i>",
+                no_prev_style
+            ))
+            elements.append(Spacer(1, 5*mm))
+            return elements
+        
+        # Format delta values
+        def format_delta(val):
+            if val >= 0:
+                return f'<font color="#27ae60">+{val:.2f}%</font>'
+            else:
+                return f'<font color="#e74c3c">{val:.2f}%</font>'
+        
+        # Headers
+        headers = ['Metrik', f'{period_name} Lalu', f'{period_name} Ini', 'Delta']
+        
+        # Data rows
+        data_rows = [
+            [
+                'Target',
+                f"{previous_data.get('target_period', 0):.2f}%",
+                f"{current_data.get('target_period', 0):.2f}%",
+                format_delta(comparison.get('delta_target', 0)),
+            ],
+            [
+                'Realisasi',
+                f"{previous_data.get('actual_period', 0):.2f}%",
+                f"{current_data.get('actual_period', 0):.2f}%",
+                format_delta(comparison.get('delta_actual', 0)),
+            ],
+            [
+                'Kumulatif',
+                f"{previous_data.get('cumulative_actual', 0):.2f}%",
+                f"{current_data.get('cumulative_actual', 0):.2f}%",
+                format_delta(comparison.get('delta_cumulative', 0)),
+            ],
+        ]
+        
+        # Create paragraphs for wrapping
+        def P(text, bold=False, align='LEFT'):
+            styles = getSampleStyleSheet()
+            st = ParagraphStyle(
+                'Cell', parent=styles['Normal'],
+                fontSize=10,
+                alignment={'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
+            )
+            if bold:
+                st.fontName = 'Helvetica-Bold'
+            return Paragraph(str(text or ''), st)
+        
+        header_cells = [P(h, bold=True, align='CENTER') for h in headers]
+        wrapped_rows = []
+        for row in data_rows:
+            wrapped_rows.append([
+                P(row[0], bold=True, align='LEFT'),
+                P(row[1], align='CENTER'),
+                P(row[2], align='CENTER'),
+                P(row[3], align='CENTER'),
+            ])
+        
+        full_data = [header_cells] + wrapped_rows
+        
+        table = Table(full_data, colWidths=[50*mm, 35*mm, 35*mm, 35*mm])
+        table.setStyle(TableStyle([
+            # Header
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.SECTION_HEADER_BG)),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            
+            # Body
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+            
+            # Borders
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor(UTS.PRIMARY_LIGHT)),
+            
+            # Padding
+            ('TOPPADDING', (0, 0), (-1, -1), 2*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2*mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2*mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2*mm),
+        ]))
+        
+        elements.append(table)
+        
+        return elements
+
+    def _build_table_of_contents(self, sections: List[str]) -> List:
+        """
+        Build enhanced table of contents for rekap report.
+        
+        Features:
+        - Decorative title
+        - Dotted leaders between entry and page number
+        - Section icons
+        - Professional layout
+        
+        Args:
+            sections: List of section titles
+        """
+        elements = []
+        
+        # Title with decorative line
+        title_style = ParagraphStyle(
+            'TOCTitle',
+            fontSize=18,
+            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+            fontName='Helvetica-Bold',
+            alignment=TA_CENTER,
+            spaceAfter=5*mm,
+        )
+        elements.append(Paragraph("<b>DAFTAR ISI</b>", title_style))
+        
+        # Decorative line under title
+        line_drawing = Drawing(200*mm, 4)
+        line_drawing.add(Line(0, 2, 200*mm, 2, strokeColor=colors.HexColor(UTS.PRIMARY_LIGHT), strokeWidth=1))
+        elements.append(line_drawing)
+        elements.append(Spacer(1, 10*mm))
+        
+        # Section icons
+        section_icons = {
+            'Grid View': '▣',
+            'Kurva S': '📈',
+            'Gantt Chart': '📊',
+            'Rencana': '📋',
+            'Realisasi': '✓',
+        }
+        
+        # TOC entries as table
+        toc_data = []
+        for idx, section in enumerate(sections, 1):
+            # Determine icon based on section name
+            icon = ''
+            for key, ico in section_icons.items():
+                if key.lower() in section.lower():
+                    icon = ico
+                    break
+            
+            # Create dotted leader
+            dots = '.' * 80  # Will be styled with color
+            
+            # Build row: [number, icon, section name, dots, page num]
+            toc_data.append([
+                f"{idx}.",
+                icon,
+                section,
+                dots,
+                f"..."  # Placeholder for page number
+            ])
+        
+        if toc_data:
+            toc_table = Table(toc_data, colWidths=[10*mm, 8*mm, 120*mm, 70*mm, 15*mm])
+            toc_table.setStyle(TableStyle([
+                # Font styling
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),  # Numbers bold
+                ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),  # Section names
+                ('FONTSIZE', (3, 0), (3, -1), 8),  # Dots smaller
+                
+                # Colors
+                ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor(UTS.PRIMARY_LIGHT)),
+                ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#2c3e50')),
+                ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor(UTS.LIGHT_BORDER)),
+                ('TEXTCOLOR', (4, 0), (4, -1), colors.HexColor(UTS.TEXT_MUTED)),
+                
+                # Alignment
+                ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('ALIGN', (4, 0), (4, -1), 'RIGHT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                
+                # Padding
+                ('TOPPADDING', (0, 0), (-1, -1), 3*mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3*mm),
+                
+                # Alternating row backgrounds
+                *[('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8f9fa')) 
+                  for i in range(0, len(toc_data), 2)],
+                
+                # Subtle bottom border for each row
+                ('LINEBELOW', (0, 0), (-1, -1), 0.3, colors.HexColor(UTS.LIGHT_BORDER)),
+            ]))
+            elements.append(toc_table)
+        
+        return elements
+
+    def _build_detail_progress_table(self, detail_table: Dict[str, Any]) -> Table:
+        """
+        Build detail progress table for monthly/weekly reports.
+        
+        Args:
+            detail_table: Detail table data from adapter
+        """
+        headers = detail_table.get('headers', [])
+        rows = detail_table.get('rows', [])
+        
+        # Create paragraphs
+        def P(text, bold=False, align='LEFT'):
+            styles = getSampleStyleSheet()
+            st = ParagraphStyle(
+                'Cell', parent=styles['Normal'],
+                fontSize=8,
+                alignment={'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
+            )
+            if bold:
+                st.fontName = 'Helvetica-Bold'
+            return Paragraph(str(text or ''), st)
+        
+        header_cells = [P(h, bold=True, align='CENTER') for h in headers]
+        
+        wrapped_rows = []
+        for row_data in rows:
+            row_type = row_data.get('type', 'pekerjaan')
+            level = row_data.get('level', 3)
+            values = row_data.get('values', [])
+            
+            wrapped = []
+            for idx, val in enumerate(values):
+                if idx == 0:  # No column
+                    wrapped.append(P(val, align='CENTER'))
+                elif idx == 1:  # Uraian
+                    # Indent based on level
+                    indent = '   ' * (level - 1)
+                    display_val = f"{indent}{val}"
+                    wrapped.append(P(display_val, bold=(row_type != 'pekerjaan'), align='LEFT'))
+                elif idx == 2:  # Total Harga
+                    wrapped.append(P(val, align='RIGHT'))
+                else:  # Bobot and progress columns
+                    wrapped.append(P(val, align='CENTER'))
+            
+            wrapped_rows.append(wrapped)
+        
+        full_data = [header_cells] + wrapped_rows
+        
+        # Column widths (adjust based on content)
+        col_widths = [10*mm, 60*mm, 30*mm, 18*mm, 18*mm, 18*mm, 22*mm, 22*mm]
+        
+        table = Table(full_data, colWidths=col_widths, repeatRows=1)
+        
+        # Build style
+        style_commands = [
+            # Header
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.SECTION_HEADER_BG)),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            
+            # Body
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            
+            # Borders
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#bdc3c7')),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor(UTS.PRIMARY_LIGHT)),
+            
+            # Padding
+            ('TOPPADDING', (0, 0), (-1, -1), 1*mm),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1*mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 1*mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 1*mm),
+        ]
+        
+        # Apply hierarchy styling
+        for idx, row_data in enumerate(rows):
+            row_num = idx + 1
+            row_type = row_data.get('type', 'pekerjaan')
+            
+            if row_type == 'klasifikasi':
+                style_commands.extend([
+                    ('BACKGROUND', (0, row_num), (-1, row_num), colors.HexColor(UTS.SECTION_HEADER_BG)),
+                    ('FONTNAME', (0, row_num), (-1, row_num), 'Helvetica-Bold'),
+                ])
+            elif row_type == 'sub_klasifikasi':
+                style_commands.extend([
+                    ('BACKGROUND', (0, row_num), (-1, row_num), colors.HexColor('#f5f5f5')),
+                    ('FONTNAME', (0, row_num), (-1, row_num), 'Helvetica-Bold'),
+                ])
+        
+        table.setStyle(TableStyle(style_commands))
+        
+        return table
+    
+    def _build_kurva_s_chart(self, kurva_s_data: List[Dict], width: float = 500, height: float = 300) -> Drawing:
+        """
+        Build Kurva S line chart using ReportLab graphics.
+        
+        Args:
+            kurva_s_data: List of dicts with 'week', 'planned', 'actual' keys
+            width: Chart width in points
+            height: Chart height in points
+            
+        Returns:
+            Drawing object containing the chart
+        """
+        if not kurva_s_data:
+            return None
+            
+        # Create Drawing
+        drawing = Drawing(width, height)
+        
+        # Add background
+        drawing.add(Rect(0, 0, width, height, fillColor=colors.white, strokeColor=colors.lightgrey))
+        
+        # Chart area margins
+        left_margin = 60
+        right_margin = 30
+        top_margin = 40
+        bottom_margin = 50
+        
+        chart_width = width - left_margin - right_margin
+        chart_height = height - top_margin - bottom_margin
+        
+        # Create LinePlot
+        lp = LinePlot()
+        lp.x = left_margin
+        lp.y = bottom_margin
+        lp.width = chart_width
+        lp.height = chart_height
+        
+        # Prepare data
+        # Format: [(x1, y1), (x2, y2), ...] for each series
+        planned_data = []
+        actual_data = []
+        
+        for i, item in enumerate(kurva_s_data):
+            week = item.get('week', i + 1)
+            planned = item.get('planned', 0) or 0
+            actual = item.get('actual', 0) or 0
+            planned_data.append((week, planned))
+            actual_data.append((week, actual))
+        
+        lp.data = [planned_data, actual_data]
+        
+        # Style the lines
+        # Planned: Cyan
+        lp.lines[0].strokeColor = colors.HexColor(UTS.PLANNED_COLOR)
+        lp.lines[0].strokeWidth = 2
+        lp.lines[0].symbol = makeMarker('Circle')
+        lp.lines[0].symbol.fillColor = colors.HexColor(UTS.PLANNED_COLOR)
+        lp.lines[0].symbol.strokeColor = colors.HexColor(UTS.PLANNED_COLOR)
+        lp.lines[0].symbol.size = 4
+        
+        # Actual: Yellow/Gold
+        lp.lines[1].strokeColor = colors.HexColor(UTS.ACTUAL_COLOR)
+        lp.lines[1].strokeWidth = 2
+        lp.lines[1].symbol = makeMarker('Circle')
+        lp.lines[1].symbol.fillColor = colors.HexColor(UTS.ACTUAL_COLOR)
+        lp.lines[1].symbol.strokeColor = colors.HexColor(UTS.ACTUAL_COLOR)
+        lp.lines[1].symbol.size = 4
+        
+        # X-axis configuration
+        lp.xValueAxis.valueMin = 1
+        lp.xValueAxis.valueMax = max(len(kurva_s_data), 1)
+        lp.xValueAxis.valueStep = max(1, len(kurva_s_data) // 10)  # Show ~10 labels
+        lp.xValueAxis.labels.fontName = 'Helvetica'
+        lp.xValueAxis.labels.fontSize = 8
+        lp.xValueAxis.labels.angle = 0
+        
+        # Y-axis configuration (percentage 0-100)
+        max_val = max(
+            max((d.get('planned', 0) or 0) for d in kurva_s_data),
+            max((d.get('actual', 0) or 0) for d in kurva_s_data),
+            10  # Minimum
+        )
+        lp.yValueAxis.valueMin = 0
+        lp.yValueAxis.valueMax = min(100, max_val * 1.1)  # Add 10% buffer, max 100
+        lp.yValueAxis.valueStep = 10
+        lp.yValueAxis.labels.fontName = 'Helvetica'
+        lp.yValueAxis.labels.fontSize = 8
+        lp.yValueAxis.labelTextFormat = '%d%%'
+        
+        drawing.add(lp)
+        
+        # Add title
+        title = String(width / 2, height - 15, 'Kurva S Progress Kumulatif',
+                       fontSize=12, fontName='Helvetica-Bold', textAnchor='middle')
+        drawing.add(title)
+        
+        # Add X-axis label
+        x_label = String(left_margin + chart_width / 2, 10, 'Minggu ke-',
+                         fontSize=9, fontName='Helvetica', textAnchor='middle')
+        drawing.add(x_label)
+        
+        # Add Y-axis label (horizontal, positioned at top left of Y-axis)
+        y_label = String(5, bottom_margin + chart_height + 5, '(%)',
+                         fontSize=9, fontName='Helvetica', textAnchor='start')
+        drawing.add(y_label)
+        
+        # Add legend
+        legend = Legend()
+        legend.x = left_margin + chart_width - 100
+        legend.y = height - 30
+        legend.columnMaximum = 1
+        legend.fontSize = 8
+        legend.fontName = 'Helvetica'
+        legend.alignment = 'right'
+        legend.colorNamePairs = [
+            (colors.HexColor(UTS.PLANNED_COLOR), 'Planned'),
+            (colors.HexColor(UTS.ACTUAL_COLOR), 'Actual'),
+        ]
+        drawing.add(legend)
+        
+        return drawing
+    
+    def _build_kurva_s_data_table(self, kurva_s_data: List[Dict], max_cols: int = 12) -> Table:
+        """
+        Build Kurva S data table showing weekly planned/actual values.
+        
+        Args:
+            kurva_s_data: List of dicts with 'week', 'planned', 'actual' keys
+            max_cols: Maximum columns to show (will sample if more weeks)
+            
+        Returns:
+            Table object with weekly data
+        """
+        if not kurva_s_data:
+            return None
+        
+        # Sample data if too many weeks (show first, last, and evenly distributed)
+        total_weeks = len(kurva_s_data)
+        if total_weeks > max_cols:
+            # Take samples: first, middle samples, last
+            step = total_weeks // (max_cols - 1)
+            indices = list(range(0, total_weeks, step))[:max_cols-1] + [total_weeks - 1]
+            sampled_data = [kurva_s_data[i] for i in indices]
+        else:
+            sampled_data = kurva_s_data
+        
+        # Build table data
+        header_row = [''] + [f"W{d.get('week', i+1)}" for i, d in enumerate(sampled_data)]
+        planned_row = ['Planned'] + [f"{d.get('planned', 0):.1f}%" for d in sampled_data]
+        actual_row = ['Actual'] + [f"{d.get('actual', 0):.1f}%" for d in sampled_data]
+        
+        table_data = [header_row, planned_row, actual_row]
+        
+        # Calculate column widths
+        col_width = 45  # Fixed width per week column
+        first_col_width = 60
+        col_widths = [first_col_width] + [col_width] * len(sampled_data)
+        
+        table = Table(table_data, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            # Planned row - cyan tint
+            ('BACKGROUND', (0, 1), (0, 1), colors.HexColor(UTS.PLANNED_COLOR)),
+            ('TEXTCOLOR', (0, 1), (0, 1), colors.white),
+            # Actual row - gold tint
+            ('BACKGROUND', (0, 2), (0, 2), colors.HexColor(UTS.ACTUAL_COLOR)),
+            ('TEXTCOLOR', (0, 2), (0, 2), colors.black),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        
+        return table
+    
+    def _build_gantt_chart(self, pekerjaan_rows: List[Dict], time_columns: List[Dict], 
+                           planned_progress: Dict, actual_progress: Dict,
+                           width: float = 700, row_height: float = 24) -> List:
+        """
+        Build Gantt chart with dual bars (planned/actual) per pekerjaan using ReportLab.
+        Uses FIXED column widths matching Grid View rules.
+        SUPPORTS PAGINATION: renders all weeks across multiple pages.
+        """
+        if not pekerjaan_rows or not time_columns:
+            return []
+        
+        all_elements = []
+        
+        # =============================================
+        # FIXED WIDTH RULES (Match Grid View)
+        # =============================================
+        # UNIFIED LAYOUT using TableLayoutCalculator
+        # =============================================
+        layout_calc = TLC(self.config)
+        total_weeks = len(time_columns)
+        
+        # Get layout for total weeks
+        TABLE_WIDTH_PT = layout_calc.table_width
+        MAX_WEEKS_PER_PAGE = layout_calc.max_weeks_per_page
+        WEEK_WIDTH_PT = UTS.WEEK_WIDTH
+        
+        # Calculate number of pages
+        num_pages = layout_calc.get_num_pages(total_weeks)
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[Gantt] TABLE_WIDTH={TABLE_WIDTH_PT:.0f}pt, MAX_WEEKS={MAX_WEEKS_PER_PAGE}, total_weeks={total_weeks}, pages={num_pages}")
+        
+        # =============================================
+        # PAGINATE: Loop through week chunks
+        # =============================================
+        for page_idx in range(num_pages):
+            start_week_idx = page_idx * MAX_WEEKS_PER_PAGE
+            end_week_idx = min(start_week_idx + MAX_WEEKS_PER_PAGE, total_weeks)
+            page_time_columns = time_columns[start_week_idx:end_week_idx]
+            
+            weeks_on_this_page = len(page_time_columns)
+            
+            # UNIFIED: Use TLC.calculate() for column widths
+            page_layout = layout_calc.calculate(weeks_on_this_page)
+            col_widths = page_layout['column_widths']
+            blank_cols = page_layout['blank_cols']
+            
+            # Add page indicator if multiple pages
+            if num_pages > 1:
+                header_text = SHF.gantt(page_idx + 1, num_pages, start_week_idx + 1, end_week_idx)
+                page_label = Paragraph(
+                    f"<b>{header_text}</b>",
+                    ParagraphStyle('PageLabel', fontSize=SHF.FONT_SIZE, fontName=SHF.FONT_NAME, spaceAfter=3*mm)
+                )
+                all_elements.append(page_label)
+            
+            # =============================================
+            # BUILD HEADER with WHF (WeekHeaderFormatter)
+            # 2-line format: Wx (line 1) + dd/mm-dd/mm (line 2)
+            # =============================================
+            def create_week_header(tc, idx):
+                """Create 2-line week header - ALWAYS 2 lines with <br/>"""
+                # Note: adapter uses 'week_number' key, not 'week'
+                week_num = tc.get('week_number', tc.get('week', idx + 1))
+                date_range = tc.get('range', '')
+                if not date_range:
+                    start = tc.get('start_date', '')
+                    end = tc.get('end_date', '')
+                    if start and end and hasattr(start, 'strftime'):
+                        date_range = f"{start.strftime('%d/%m')}-{end.strftime('%d/%m')}"
+                
+                # ALWAYS return 2-line format with <br/>
+                week_label = f'W{week_num}'
+                if date_range:
+                    return f'<b>{week_label}</b><br/><font size="4">{date_range}</font>'
+                else:
+                    # Use dash placeholder to maintain 2-line format
+                    return f'<b>{week_label}</b><br/><font size="4">-</font>'
+            
+            # Create header cells with proper leading for 2-line display
+            header_style = ParagraphStyle(
+                'GanttHeader', parent=getSampleStyleSheet()['Normal'],
+                fontSize=5,
+                fontName='Helvetica-Bold',
+                alignment=1,
+                textColor=colors.white,
+                leading=8,  # Increased for 2-line display
+            )
+            
+            # Static column header style (larger font)
+            static_header_style = ParagraphStyle(
+                'StaticHeader', parent=getSampleStyleSheet()['Normal'],
+                fontSize=7,
+                fontName='Helvetica-Bold',
+                alignment=1,
+                textColor=colors.white,
+            )
+            
+            # UNIFIED: 3 static headers (Uraian, Volume, Satuan)
+            uraian_header = Paragraph('Uraian Pekerjaan', static_header_style)
+            volume_header = Paragraph('Volume', static_header_style)
+            satuan_header = Paragraph('Satuan', static_header_style)
+            
+            header_cells = [uraian_header, volume_header, satuan_header]
+            for i, tc in enumerate(page_time_columns):
+                header_text = create_week_header(tc, start_week_idx + i)
+                header_cells.append(Paragraph(header_text, header_style))
+            
+            # Add blank header cells
+            for _ in range(blank_cols):
+                header_cells.append(Paragraph('', header_style))
+            
+            table_data = [header_cells]
+            
+            # =============================================
+            # BUILD DATA ROWS WITH BAR CHART DRAWINGS
+            # =============================================
+            
+            # Bar colors
+            planned_color = colors.HexColor('#0891b2')  # Teal (matching Kurva S)
+            actual_color = colors.HexColor('#f59e0b')   # Amber (matching Kurva S)
+            
+            ROW_HEIGHT = 24  # Height per pekerjaan row
+            BAR_HEIGHT = 8   # Height of each bar (planned/actual)
+            BAR_GAP = 2      # Gap between bars
+            
+            from reportlab.graphics.shapes import Drawing, Rect, String, Line
+            
+            def create_bar_cell(planned_weeks, actual_weeks, weeks_to_render, week_width, is_pekerjaan=True):
+                """Create a Drawing with dual horizontal bars and vertical grid lines"""
+                total_width = weeks_to_render * week_width
+                d = Drawing(total_width, ROW_HEIGHT)
+                
+                # Draw vertical grid lines for week boundaries
+                grid_color = colors.HexColor('#e2e8f0')
+                for i in range(1, weeks_to_render):
+                    x = i * week_width
+                    d.add(Line(x, 0, x, ROW_HEIGHT, strokeColor=grid_color, strokeWidth=0.5))
+                
+                # Only draw bars for pekerjaan rows
+                if is_pekerjaan:
+                    # Calculate bar positions
+                    bar_y_planned = ROW_HEIGHT - 4 - BAR_HEIGHT  # Top bar
+                    bar_y_actual = 4  # Bottom bar
+                    
+                    # Draw planned bar (teal) - spans from first to last week with progress
+                    if planned_weeks:
+                        start_week = min(planned_weeks)
+                        end_week = max(planned_weeks)
+                        bar_x = (start_week - 1) * week_width
+                        bar_width = (end_week - start_week + 1) * week_width
+                        d.add(Rect(bar_x, bar_y_planned, bar_width, BAR_HEIGHT, 
+                                  fillColor=planned_color, strokeColor=None))
+                    
+                    # Draw actual bar (amber) - spans from first to last week with progress
+                    if actual_weeks:
+                        start_week = min(actual_weeks)
+                        end_week = max(actual_weeks)
+                        bar_x = (start_week - 1) * week_width
+                        bar_width = (end_week - start_week + 1) * week_width
+                        d.add(Rect(bar_x, bar_y_actual, bar_width, BAR_HEIGHT,
+                                  fillColor=actual_color, strokeColor=None))
+                
+                return d
+            
+            # Include ALL rows with hierarchy (not just pekerjaan)
+            # Track row indices for hierarchy styling
+            hierarchy_row_styles = []  # List of (row_idx, row_type)
+            
+            for row in pekerjaan_rows:
+                # UNIFIED: Use DRP for consistent data parsing
+                parsed = DRP.from_dict(row)
+                row_type = parsed['type']
+                name = parsed['uraian']
+                level = parsed['level']
+                volume = parsed['volume']
+                satuan = parsed['satuan']
+                
+                row_id = str(row.get('id', ''))
+                
+                # Determine if this is a pekerjaan (has bars) or hierarchy header
+                is_pekerjaan = DRP.is_pekerjaan(row)
+                
+                # Indent based on level (no truncation - use text wrapping)
+                indent = '  ' * level
+                
+                # UNIFIED: Use HS for font styling
+                font_name, font_size = HS.get_row_font(row_type=row_type)
+                
+                # Find weeks with planned/actual progress (only for pekerjaan)
+                planned_weeks_list = []
+                actual_weeks_list = []
+                
+                if is_pekerjaan:
+                    row_progress = planned_progress.get(row_id, {})
+                    row_actual = actual_progress.get(row_id, {})
+                    
+                    # Debug: Log first row's progress data (only on first page)
+                    if len(hierarchy_row_styles) < 3 and page_idx == 0:
+                        logger.info(f"[Gantt] Row {row_id}: planned_keys={list(row_progress.keys())[:5]}, actual_keys={list(row_actual.keys())[:5]}")
+                    
+                    for i, tc in enumerate(page_time_columns):
+                        # Try multiple key formats
+                        week = tc.get('week', start_week_idx + i + 1)
+                        week_label = tc.get('label', f'W{week}')
+                        week_index = i + 1  # 1-indexed for bar position
+                        
+                        # Try week number, then index, then string formats
+                        planned_val = (
+                            row_progress.get(week, 0) or 
+                            row_progress.get(str(week), 0) or 
+                            row_progress.get(week_index, 0) or
+                            row_progress.get(week_label, 0)
+                        )
+                        actual_val = (
+                            row_actual.get(week, 0) or 
+                            row_actual.get(str(week), 0) or 
+                            row_actual.get(week_index, 0) or
+                            row_actual.get(week_label, 0)
+                        )
+                        
+                        if planned_val > 0:
+                            planned_weeks_list.append(week_index)
+                        if actual_val > 0:
+                            actual_weeks_list.append(week_index)
+                    
+                    # Debug: Log if bars found
+                    if planned_weeks_list or actual_weeks_list:
+                        logger.info(f"[Gantt] Row {row_id}: planned_weeks={planned_weeks_list}, actual_weeks={actual_weeks_list}")
+                
+                # Create name cell with hierarchy styling and TEXT WRAPPING
+                # Don't truncate name - let Paragraph handle wrapping
+                full_display_name = f"{indent}{name}"
+                
+                name_cell = Paragraph(full_display_name, ParagraphStyle(
+                    'NameCell', parent=getSampleStyleSheet()['Normal'],
+                    fontSize=font_size,
+                    fontName=font_name,
+                    alignment=0,
+                    wordWrap='CJK',  # Enable word wrap
+                    leading=font_size + 2,  # Line height
+                ))
+                
+                # UNIFIED: Create Volume and Satuan cells
+                data_cell_style = ParagraphStyle(
+                    'DataCell', parent=getSampleStyleSheet()['Normal'],
+                    fontSize=font_size,
+                    fontName=font_name,
+                    alignment=2,  # RIGHT align
+                )
+                volume_cell = Paragraph(str(volume) if volume else '', data_cell_style)
+                satuan_cell = Paragraph(str(satuan) if satuan else '', data_cell_style)
+                
+                # Create bar chart drawing for timeline area
+                bar_drawing = create_bar_cell(
+                    planned_weeks_list, 
+                    actual_weeks_list, 
+                    weeks_on_this_page + blank_cols,
+                    WEEK_WIDTH_PT,
+                    is_pekerjaan=is_pekerjaan
+                )
+                
+                # UNIFIED: Row contains 3 static cells + bar drawing merged cell
+                # [Uraian, Volume, Satuan, bar_drawing, '', '', ...]
+                row_cells = [name_cell, volume_cell, satuan_cell, bar_drawing]
+                
+                # Pad with empty cells for remaining week columns (bar merges these)
+                for _ in range(weeks_on_this_page + blank_cols - 1):
+                    row_cells.append('')
+                
+                table_data.append(row_cells)
+                hierarchy_row_styles.append((len(table_data) - 1, row_type))
+            
+            # =============================================
+            # CREATE TABLE WITH BAR CHART STYLING
+            # =============================================
+            
+            # Adjust column widths for merged bar area
+            # First column = Uraian, Rest = individual week columns for header
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
+            
+            # Styling from UTS
+            header_bg = UTS.get_header_bg_color()
+            border_color = UTS.get_inner_border_color()
+            outer_border = UTS.get_outer_border_color()
+            klasifikasi_bg = UTS.get_klasifikasi_bg_color()
+            sub_klasifikasi_bg = UTS.get_sub_klasifikasi_bg_color()
+            
+            # Padding from UTS
+            pad_top, pad_bottom, pad_left, pad_right = UTS.get_padding_tuple_mm()
+            
+            style_commands = [
+                # Header row styling from UTS
+                ('BACKGROUND', (0, 0), (-1, 0), header_bg),
+                ('TEXTCOLOR', (0, 0), (-1, 0), UTS.get_header_text_color()),
+                ('FONTNAME', (0, 0), (-1, 0), UTS.HEADER_FONT_NAME),
+                ('FONTSIZE', (0, 0), (-1, 0), UTS.HEADER_FONT_SIZE),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                
+                # Data rows - merge week columns for bar display
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                
+                # Borders from UTS - FULL GRID for visibility
+                ('INNERGRID', (0, 0), (2, -1), 0.5, border_color),  # Grid for static columns
+                ('LINEBELOW', (0, 0), (-1, 0), 1, outer_border),  # Header bottom
+                ('BOX', (0, 0), (-1, -1), UTS.OUTER_BORDER_WIDTH, outer_border),  # Outer border
+                # Horizontal lines for all rows (visible grid)
+                ('LINEBELOW', (0, 1), (-1, -2), 0.3, border_color),  # All data rows
+                
+                # Padding from UTS
+                ('TOPPADDING', (0, 0), (-1, -1), pad_top),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), pad_bottom),
+                ('LEFTPADDING', (0, 0), (-1, -1), pad_left),
+                ('RIGHTPADDING', (0, 0), (-1, -1), pad_right),
+                
+                # Row heights
+                ('ROWHEIGHT', (0, 1), (-1, -1), ROW_HEIGHT),
+            ]
+            
+            # Add hierarchy row background colors
+            for row_idx, row_type in hierarchy_row_styles:
+                if row_type == 'klasifikasi':
+                    style_commands.append(('BACKGROUND', (0, row_idx), (-1, row_idx), klasifikasi_bg))
+                elif row_type == 'sub_klasifikasi':
+                    style_commands.append(('BACKGROUND', (0, row_idx), (-1, row_idx), sub_klasifikasi_bg))
+            
+            # UNIFIED: Add line separators for static columns (after Uraian, Volume, Satuan)
+            style_commands.append(('LINEBEFORE', (1, 0), (1, -1), 0.5, border_color))  # After Uraian
+            style_commands.append(('LINEBEFORE', (2, 0), (2, -1), 0.5, border_color))  # After Volume
+            style_commands.append(('LINEBEFORE', (3, 0), (3, -1), 0.5, border_color))  # After Satuan
+            
+            # Merge week columns in data rows for bar display (col 3 to end)
+            # Column indices: 0=Uraian, 1=Volume, 2=Satuan, 3+=Weeks
+            for row_idx in range(1, len(table_data)):
+                if weeks_on_this_page + blank_cols > 1:
+                    style_commands.append(
+                        ('SPAN', (3, row_idx), (-1, row_idx))  # Merge all week columns (start from col 3)
+                    )
+            
+            table.setStyle(TableStyle(style_commands))
+            all_elements.append(table)
+            
+            # =============================================
+            # LEGEND (only on last page)
+            # =============================================
+            if page_idx == num_pages - 1:
+                legend_drawing = Drawing(360, 20)
+                legend_drawing.add(Rect(10, 8, 40, 8, fillColor=planned_color, strokeColor=None))
+                legend_drawing.add(String(55, 9, 'Planned (Rencana)', fontSize=8, fontName='Helvetica'))
+                legend_drawing.add(Rect(180, 8, 40, 8, fillColor=actual_color, strokeColor=None))
+                legend_drawing.add(String(225, 9, 'Actual (Realisasi)', fontSize=8, fontName='Helvetica'))
+                
+                all_elements.append(Spacer(1, 5*mm))
+                all_elements.append(legend_drawing)
+            
+            # Add page break between pages (not after last page)
+            if page_idx < num_pages - 1:
+                all_elements.append(PageBreak())
+        
+        # END OF PAGINATION LOOP - return is OUTSIDE the loop
+        return all_elements
+    
+    def _build_integrated_kurva_s_grid(
+        self, 
+        kurva_s_data: List[Dict], 
+        pekerjaan_rows: List[Dict] = None,
+        width: float = 700, 
+        row_height: float = 18,
+        max_weeks: int = 20
+    ) -> Drawing:
+        """
+        Build table with Kurva S line overlay INSIDE the grid.
+        
+        Layout:
+        - Y-axis: 0% at bottom row, 100% at top row (inverted)
+        - X-axis: Each week column aligned with table grid
+        - Kurva S line drawn OVER the table rows (true overlay)
+        """
+        if not kurva_s_data:
+            return None
+        
+        # Sample weeks if too many
+        total_weeks = len(kurva_s_data)
+        if total_weeks > max_weeks:
+            step = max(1, total_weeks // max_weeks)
+            sampled_data = [kurva_s_data[i] for i in range(0, total_weeks, step)][:max_weeks]
+        else:
+            sampled_data = kurva_s_data
+        
+        num_weeks = len(sampled_data)
+        
+        # Default pekerjaan rows if not provided (progress bands)
+        if not pekerjaan_rows:
+            pekerjaan_rows = [
+                {'name': '100%'}, {'name': '80%'}, {'name': '60%'},
+                {'name': '40%'}, {'name': '20%'}, {'name': '0%'},
+            ]
+        
+        num_rows = len(pekerjaan_rows)
+        
+        # Layout
+        label_width = 80
+        week_width = (width - label_width) / num_weeks
+        table_height = (num_rows + 1) * row_height
+        total_height = table_height + 40
+        
+        drawing = Drawing(width, total_height)
+        
+        # Table grid
+        table_top = total_height - 25
+        table_bottom = table_top - table_height
+        
+        # Header row
+        header_y = table_top - row_height
+        drawing.add(Rect(0, header_y, width, row_height,
+                        fillColor=colors.HexColor(UTS.PRIMARY_LIGHT), strokeColor=colors.grey, strokeWidth=0.5))
+        drawing.add(String(5, header_y + 5, 'Progress', fontSize=8, fontName='Helvetica-Bold', fillColor=colors.white))
+        
+        for i, data in enumerate(sampled_data):
+            week_num = data.get('week', i + 1)
+            x = label_width + i * week_width + week_width/2
+            drawing.add(String(x, header_y + 5, f'W{week_num}', fontSize=6, fontName='Helvetica-Bold', 
+                               fillColor=colors.white, textAnchor='middle'))
+        
+        # Data rows
+        for row_idx, row in enumerate(pekerjaan_rows):
+            row_y = header_y - (row_idx + 1) * row_height
+            bg_color = colors.HexColor('#f8f9fa') if row_idx % 2 == 0 else colors.white
+            drawing.add(Rect(0, row_y, label_width, row_height,
+                            fillColor=bg_color, strokeColor=colors.lightgrey, strokeWidth=0.5))
+            drawing.add(String(5, row_y + 5, row.get('name', ''), fontSize=7, fontName='Helvetica'))
+            
+            for i in range(num_weeks):
+                x_start = label_width + i * week_width
+                drawing.add(Rect(x_start, row_y, week_width, row_height,
+                                fillColor=colors.white, strokeColor=colors.HexColor('#e8e8e8'), strokeWidth=0.3))
+        
+        # Kurva S overlay
+        chart_top = header_y
+        chart_bottom = table_bottom
+        chart_height_calc = chart_top - chart_bottom
+        
+        def progress_to_y(progress):
+            return chart_bottom + (progress / 100.0) * chart_height_calc
+        
+        def week_to_x(week_index):
+            return label_width + week_index * week_width + week_width / 2
+        
+        # Planned curve
+        week0_x = label_width
+        week0_y = progress_to_y(0)
+        planned_points = [(week0_x, week0_y)]
+        for i, data in enumerate(sampled_data):
+            planned_points.append((week_to_x(i), progress_to_y(data.get('planned', 0) or 0)))
+        
+        for j in range(len(planned_points) - 1):
+            drawing.add(Line(planned_points[j][0], planned_points[j][1], 
+                            planned_points[j+1][0], planned_points[j+1][1],
+                            strokeColor=colors.HexColor(UTS.PLANNED_COLOR), strokeWidth=2.5))
+        
+        for x, y in planned_points:
+            drawing.add(Rect(x-4, y-4, 8, 8, fillColor=colors.HexColor(UTS.PLANNED_COLOR), strokeColor=colors.white, strokeWidth=1))
+        
+        # Actual curve
+        actual_points = [(week0_x, week0_y)]
+        for i, data in enumerate(sampled_data):
+            actual_points.append((week_to_x(i), progress_to_y(data.get('actual', 0) or 0)))
+        
+        for j in range(len(actual_points) - 1):
+            drawing.add(Line(actual_points[j][0], actual_points[j][1], 
+                            actual_points[j+1][0], actual_points[j+1][1],
+                            strokeColor=colors.HexColor(UTS.ACTUAL_COLOR), strokeWidth=2.5))
+        
+        for x, y in actual_points:
+            drawing.add(Rect(x-4, y-4, 8, 8, fillColor=colors.HexColor(UTS.ACTUAL_COLOR), strokeColor=colors.white, strokeWidth=1))
+        
+        # Title & Legend
+        drawing.add(String(width/2, total_height - 10, 'KURVA S - Tabel dengan Overlay',
+                          fontSize=10, fontName='Helvetica-Bold', textAnchor='middle'))
+        
+        legend_y = table_bottom - 20
+        drawing.add(Rect(width/2 - 100, legend_y, 10, 8, fillColor=colors.HexColor(UTS.PLANNED_COLOR)))
+        drawing.add(String(width/2 - 87, legend_y + 1, 'Planned', fontSize=7, fontName='Helvetica'))
+        drawing.add(Rect(width/2, legend_y, 10, 8, fillColor=colors.HexColor(UTS.ACTUAL_COLOR)))
+        drawing.add(String(width/2 + 13, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica'))
+        
+        return drawing
+    
+    def _build_pekerjaan_table_with_kurva_overlay(
+        self, 
+        page_data: Dict[str, Any],
+        kurva_s_data: List[Dict],
+        width: float = 700, 
+        row_height: float = 16,
+        max_weeks: int = 20
+    ) -> Drawing:
+        """
+        Build pekerjaan table (from planned_pages) with Kurva S line overlay.
+        
+        This replicates browser behavior: Kurva S line drawn OVER the actual
+        pekerjaan data table, not a separate visualization.
+        
+        Y-axis: 0% = bottom row, 100% = top row (inverted)
+        X-axis: Each week column center
+        """
+        if not page_data or not kurva_s_data:
+            return None
+        
+        table_data = page_data.get('table_data', {})
+        headers = table_data.get('headers', [])
+        rows = table_data.get('rows', [])
+        
+        if not headers or not rows:
+            return None
+        
+        # Parse headers: first column is Uraian, rest are weeks
+        uraian_header = headers[0] if headers else 'Uraian'
+        week_headers = headers[1:] if len(headers) > 1 else []
+        
+        # Limit weeks if too many
+        if len(week_headers) > max_weeks:
+            week_headers = week_headers[:max_weeks]
+        
+        num_weeks = len(week_headers)
+        num_rows = len(rows)
+        
+        if num_weeks == 0 or num_rows == 0:
+            return None
+        
+        # Layout calculations
+        label_width = 120
+        week_width = (width - label_width) / num_weeks
+        table_height = (num_rows + 1) * row_height  # +1 for header
+        total_height = table_height + 50  # margin for title and legend
+        
+        drawing = Drawing(width, total_height)
+        
+        # ============================================
+        # PART 1: Draw Table Grid with Pekerjaan Data
+        # ============================================
+        
+        table_top = total_height - 25
+        table_bottom = table_top - table_height
+        
+        # Header row
+        header_y = table_top - row_height
+        drawing.add(Rect(0, header_y, width, row_height,
+                        fillColor=colors.HexColor(UTS.PRIMARY_LIGHT), strokeColor=colors.grey, strokeWidth=0.5))
+        
+        # Header: Uraian column
+        drawing.add(String(5, header_y + 4, uraian_header[:15], fontSize=7, fontName='Helvetica-Bold', fillColor=colors.white))
+        
+        # Header: Week columns
+        for i, week_header in enumerate(week_headers):
+            x = label_width + i * week_width + week_width/2
+            # Truncate header if too long
+            header_text = str(week_header)[:4] if len(str(week_header)) > 4 else str(week_header)
+            drawing.add(String(x, header_y + 4, header_text, fontSize=5, fontName='Helvetica-Bold', 
+                               fillColor=colors.white, textAnchor='middle'))
+        
+        # Data rows (pekerjaan)
+        for row_idx, row in enumerate(rows):
+            row_y = header_y - (row_idx + 1) * row_height
+            
+            # Alternate row colors
+            bg_color = colors.HexColor('#f8f9fa') if row_idx % 2 == 0 else colors.white
+            
+            # Label cell (first column - pekerjaan name)
+            drawing.add(Rect(0, row_y, label_width, row_height,
+                            fillColor=bg_color, strokeColor=colors.lightgrey, strokeWidth=0.5))
+            label_text = str(row[0])[:20] if row else ''
+            drawing.add(String(3, row_y + 4, label_text, fontSize=5, fontName='Helvetica'))
+            
+            # Week cells (remaining columns - progress values)
+            for i in range(num_weeks):
+                x_start = label_width + i * week_width
+                drawing.add(Rect(x_start, row_y, week_width, row_height,
+                                fillColor=colors.white, strokeColor=colors.HexColor('#e8e8e8'), strokeWidth=0.3))
+                
+                # Cell value if available
+                if len(row) > i + 1:
+                    cell_val = str(row[i + 1])[:5] if row[i + 1] else ''
+                    drawing.add(String(x_start + week_width/2, row_y + 4, cell_val, 
+                                      fontSize=4, fontName='Helvetica', textAnchor='middle'))
+        
+        # ============================================
+        # PART 2: Draw Kurva S Lines (OVERLAY)
+        # ============================================
+        
+        # Y-coordinate mapping: 0% = bottom of last data row, 100% = top of first data row
+        chart_top = header_y  # Top of first data row (100%)
+        chart_bottom = table_bottom  # Bottom of last data row (0%)
+        chart_height_calc = chart_top - chart_bottom
+        
+        def progress_to_y(progress):
+            """Map progress % to Y coordinate (inverted: 0% at bottom)"""
+            return chart_bottom + (progress / 100.0) * chart_height_calc
+        
+        def week_to_x(week_index):
+            """Map week index to X coordinate (center of column)"""
+            return label_width + week_index * week_width + week_width / 2
+        
+        # Sample kurva_s_data if too many weeks
+        sampled_data = kurva_s_data[:num_weeks] if len(kurva_s_data) > num_weeks else kurva_s_data
+        
+        # Week 0 starting point (left edge, 0%)
+        week0_x = label_width
+        week0_y = progress_to_y(0)
+        
+        # Draw Planned curve
+        planned_points = [(week0_x, week0_y)]
+        for i, data in enumerate(sampled_data):
+            x = week_to_x(i)
+            y = progress_to_y(data.get('planned', 0) or 0)
+            planned_points.append((x, y))
+        
+        # Draw planned line segments
+        for j in range(len(planned_points) - 1):
+            drawing.add(Line(planned_points[j][0], planned_points[j][1], 
+                            planned_points[j+1][0], planned_points[j+1][1],
+                            strokeColor=colors.HexColor(UTS.PLANNED_COLOR), strokeWidth=2))
+        
+        # Draw planned markers
+        for x, y in planned_points:
+            drawing.add(Rect(x-3, y-3, 6, 6, fillColor=colors.HexColor(UTS.PLANNED_COLOR), 
+                            strokeColor=colors.white, strokeWidth=1))
+        
+        # Draw Actual curve
+        actual_points = [(week0_x, week0_y)]
+        for i, data in enumerate(sampled_data):
+            x = week_to_x(i)
+            y = progress_to_y(data.get('actual', 0) or 0)
+            actual_points.append((x, y))
+        
+        # Draw actual line segments
+        for j in range(len(actual_points) - 1):
+            drawing.add(Line(actual_points[j][0], actual_points[j][1], 
+                            actual_points[j+1][0], actual_points[j+1][1],
+                            strokeColor=colors.HexColor(UTS.ACTUAL_COLOR), strokeWidth=2))
+        
+        # Draw actual markers
+        for x, y in actual_points:
+            drawing.add(Rect(x-3, y-3, 6, 6, fillColor=colors.HexColor(UTS.ACTUAL_COLOR), 
+                            strokeColor=colors.white, strokeWidth=1))
+        
+        # ============================================
+        # PART 3: Title and Legend
+        # ============================================
+        
+        # Title
+        drawing.add(String(width/2, total_height - 10, 'KURVA S - Overlay pada Tabel Pekerjaan',
+                          fontSize=10, fontName='Helvetica-Bold', textAnchor='middle'))
+        
+        # Legend (at bottom)
+        legend_y = table_bottom - 18
+        drawing.add(Rect(width/2 - 100, legend_y, 10, 8, fillColor=colors.HexColor(UTS.PLANNED_COLOR)))
+        drawing.add(String(width/2 - 87, legend_y + 1, 'Planned', fontSize=7, fontName='Helvetica'))
+        drawing.add(Rect(width/2, legend_y, 10, 8, fillColor=colors.HexColor(UTS.ACTUAL_COLOR)))
+        drawing.add(String(width/2 + 13, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica'))
+        
+        return drawing
+    
+    def _build_kurva_s_paginated(
+        self,
+        pekerjaan_rows: List[Dict],
+        kurva_s_data: List[Dict],
+        total_weeks: int,
+        row_height: float = 14,
+        max_rows_per_page: int = 30
+    ) -> List[Drawing]:
+        """
+        Build paginated Kurva S visualization with freeze columns.
+        
+        Features:
+        - Freeze columns: Uraian (inc. hierarchy), Volume, Satuan
+        - Grid line positioning: W0 at freeze/week boundary
+        - Pagination: Splits weeks and rows across multiple pages
+        
+        Args:
+            pekerjaan_rows: List of dicts with 'name', 'volume', 'satuan', 'level'
+            kurva_s_data: List of dicts with 'week', 'planned', 'actual'
+            total_weeks: Total number of weeks
+            width: Page width in points
+            row_height: Height per row
+            max_weeks_per_page: Max week columns per page
+            max_rows_per_page: Max data rows per page
+            
+        Returns:
+            List of Drawing objects (one per page)
+        """
+        if not pekerjaan_rows or not kurva_s_data:
+            return []
+        
+        # =============================================
+        # UNIFIED LAYOUT using TableLayoutCalculator
+        # =============================================
+        layout_calc = TLC(self.config)
+        actual_total_weeks = min(total_weeks, len(kurva_s_data))
+        
+        # Get layout values
+        width = layout_calc.table_width
+        max_weeks_per_page = layout_calc.max_weeks_per_page
+        freeze_width = UTS.STATIC_TOTAL
+        uraian_width = UTS.URAIAN_WIDTH
+        volume_width = UTS.VOLUME_WIDTH
+        satuan_width = UTS.SATUAN_WIDTH
+        uraian_padding = 2
+        week_column_width = UTS.WEEK_WIDTH
+        
+        # Determine weeks on first page
+        weeks_on_page = min(actual_total_weeks, max_weeks_per_page)
+        
+        # =============================================
+        # STYLING from UnifiedTableStyles
+        # =============================================
+        
+        # Font sizes from UTS
+        font_size_header = UTS.HEADER_FONT_SIZE
+        font_size_data = UTS.DATA_FONT_SIZE
+        font_size_week = UTS.WEEK_HEADER_FONT_SIZE
+        
+        # Colors from UTS
+        header_bg_color = UTS.get_header_bg_color()
+        header_text_color = UTS.get_header_text_color()
+        row_even_color = UTS.get_sub_klasifikasi_bg_color()
+        row_odd_color = colors.white
+        klasifikasi_color = UTS.get_klasifikasi_bg_color()
+        border_color = UTS.get_inner_border_color()
+        outer_border_color = UTS.get_outer_border_color()
+        
+        # Border widths from UTS
+        outer_border_width = UTS.OUTER_BORDER_WIDTH
+        inner_border_width = UTS.INNER_BORDER_WIDTH
+        
+        # Kurva S line styling from UTS
+        planned_color = UTS.get_planned_color()
+        actual_color = UTS.get_actual_color()
+        line_width = 2.5
+        marker_radius = 4
+        
+        # Dynamic row height calculation for text wrapping
+        base_row_height = 16
+        line_height = 9  # Height per line of text
+        
+        # Max chars per line based on column width
+        max_chars_per_line = 45
+        
+        def calculate_row_height(text):
+            """Calculate row height based on text length for multi-line wrapping"""
+            if not text:
+                return base_row_height
+            # Calculate how many lines the text will need
+            lines = (len(text) // max_chars_per_line) + 1
+            return max(base_row_height, 8 + (lines * line_height))  # 8pt padding + lines
+        
+        # Pagination calculations
+        num_weeks = min(total_weeks, len(kurva_s_data))
+        num_rows = len(pekerjaan_rows)
+        
+        week_chunks = []
+        for start in range(0, num_weeks, max_weeks_per_page):
+            end = min(start + max_weeks_per_page, num_weeks)
+            week_chunks.append((start, end))
+        
+        row_chunks = []
+        for start in range(0, num_rows, max_rows_per_page):
+            end = min(start + max_rows_per_page, num_rows)
+            row_chunks.append((start, end))
+        
+        pages = []
+        total_pages = len(week_chunks) * len(row_chunks)
+        page_num = 0
+        
+        for week_start, week_end in week_chunks:
+            for row_start, row_end in row_chunks:
+                page_num += 1
+                
+                # Current page data
+                weeks_in_page = week_end - week_start
+                page_kurva_data = kurva_s_data[week_start:week_end]
+                page_rows = pekerjaan_rows[row_start:row_end]
+                
+                # Use fixed week width
+                week_width = week_column_width
+                
+                # =============================================
+                # UNIFIED: Add blank column padding (like Grid View/Gantt)
+                # =============================================
+                blank_cols = max_weeks_per_page - weeks_in_page
+                total_weeks_rendered = weeks_in_page + blank_cols  # Always = max_weeks_per_page
+                
+                # Calculate FIXED table width (same as Grid View and Gantt)
+                # total_table_width = freeze_width + (max_weeks_per_page * week_width)
+                total_table_width = freeze_width + (total_weeks_rendered * week_width)
+                
+                # Apply remainder handling (like Grid View and Gantt)
+                remainder = width - total_table_width
+                if abs(remainder) <= 10:
+                    total_table_width = width  # Expand to exact page width
+                
+                # Calculate dynamic table height based on text wrapping
+                row_heights = [calculate_row_height(row.get('name', '')) for row in page_rows]
+                header_row_height = 24  # Increased for 2-line week headers (WX + date range)
+                table_height = header_row_height + sum(row_heights)
+                total_height = table_height + 70  # Header + legend
+                
+                # Use FIXED table width (matches Grid View and Gantt)
+                drawing = Drawing(total_table_width, total_height)
+                
+                # ============================================
+                # PAGE HEADER (left-aligned like Input Progress and Gantt)
+                # ============================================
+                header_text = SHF.kurva_s(page_num, total_pages, week_start+1, week_end)
+                drawing.add(String(0, total_height - 12, header_text,
+                                  fontSize=SHF.FONT_SIZE, fontName=SHF.FONT_NAME, 
+                                  textAnchor='start', fillColor=colors.black))
+                
+                # ============================================
+                # DRAW TABLE WITH PROFESSIONAL STYLING
+                # ============================================
+                table_top = total_height - 30
+                table_bottom = table_top - table_height
+                
+                # Outer border (professional thick border)
+                drawing.add(Rect(0, table_bottom, total_table_width, table_height,
+                                fillColor=None, strokeColor=outer_border_color, strokeWidth=outer_border_width))
+                
+                # Header row with professional color
+                header_y = table_top - header_row_height
+                drawing.add(Rect(0, header_y, total_table_width, header_row_height,
+                                fillColor=header_bg_color, strokeColor=outer_border_color, strokeWidth=inner_border_width))
+                
+                # Freeze column headers with larger font
+                drawing.add(String(uraian_padding + 2, header_y + 5, 'Uraian Pekerjaan', fontSize=font_size_header, 
+                                  fontName='Helvetica-Bold', fillColor=header_text_color))
+                drawing.add(String(uraian_width + 3, header_y + 10, 'Volume', fontSize=font_size_header,
+                                  fontName='Helvetica-Bold', fillColor=header_text_color))
+                drawing.add(String(uraian_width + volume_width + 3, header_y + 10, 'Satuan', fontSize=font_size_header,
+                                  fontName='Helvetica-Bold', fillColor=header_text_color))
+                
+                # Week headers using WHF (WeekHeaderFormatter)
+                for i in range(weeks_in_page):
+                    week_num = week_start + i + 1
+                    x = freeze_width + i * week_width + week_width/2
+                    
+                    # Get date range from data
+                    week_data = page_kurva_data[i] if i < len(page_kurva_data) else {}
+                    date_range = week_data.get('range', '')
+                    
+                    # Use WHF for consistent week header drawing
+                    WHF.draw_on_canvas(drawing, x, header_y + 4, week_num, date_range, header_text_color)
+                
+                # Data rows with dynamic heights
+                current_y = header_y
+                row_y_positions = []  # Store Y positions for Kurva S overlay
+                
+                for row_idx, row in enumerate(page_rows):
+                    row_h = row_heights[row_idx]
+                    row_y = current_y - row_h
+                    row_y_positions.append((row_y, row_h))
+                    
+                    level = row.get('level', 2)
+                    
+                    # Determine row color based on level (hierarchy styling)
+                    if level == 1:  # Klasifikasi
+                        bg_color = klasifikasi_color
+                        font_style = 'Helvetica-Bold'
+                    elif level == 2:  # Sub-klasifikasi
+                        bg_color = row_even_color if row_idx % 2 == 0 else row_odd_color
+                        font_style = 'Helvetica-Oblique'
+                    else:  # Pekerjaan
+                        bg_color = row_even_color if row_idx % 2 == 0 else row_odd_color
+                        font_style = 'Helvetica'
+                    
+                    # Uraian column with indent and multi-line text wrap
+                    drawing.add(Rect(0, row_y, uraian_width, row_h,
+                                    fillColor=bg_color, strokeColor=border_color, strokeWidth=inner_border_width))
+                    indent = (level - 1) * 10
+                    name = str(row.get('name', ''))
+                    
+                    # Split text into multiple lines for wrapping
+                    # Use max_chars based on column width, reduced by indent
+                    text_max_chars = max_chars_per_line - (level * 3)  # Reduce chars based on indent
+                    lines = []
+                    temp_name = name
+                    while temp_name:
+                        if len(temp_name) <= text_max_chars:
+                            lines.append(temp_name)
+                            break
+                        # Find last space within limit
+                        split_idx = temp_name[:text_max_chars].rfind(' ')
+                        if split_idx == -1:
+                            split_idx = text_max_chars
+                        lines.append(temp_name[:split_idx])
+                        temp_name = temp_name[split_idx:].strip()
+                        if len(lines) >= 3:  # Max 3 lines
+                            if temp_name:
+                                lines[-1] = lines[-1][:text_max_chars-3] + '...'
+                            break
+                    
+                    # Draw each line with padding from border and proper font
+                    for line_idx, line_text in enumerate(lines):
+                        line_y = row_y + row_h - 7 - (line_idx * line_height)
+                        drawing.add(String(uraian_padding + indent, line_y, line_text, 
+                                          fontSize=font_size_data, fontName=font_style))
+                    
+                    # Volume column
+                    drawing.add(Rect(uraian_width, row_y, volume_width, row_h,
+                                    fillColor=bg_color, strokeColor=border_color, strokeWidth=inner_border_width))
+                    vol = str(row.get('volume', ''))[:10]
+                    drawing.add(String(uraian_width + 3, row_y + row_h/2 - 2, vol, 
+                                      fontSize=font_size_data, fontName='Helvetica'))
+                    
+                    # Satuan column
+                    drawing.add(Rect(uraian_width + volume_width, row_y, satuan_width, row_h,
+                                    fillColor=bg_color, strokeColor=border_color, strokeWidth=inner_border_width))
+                    sat = str(row.get('satuan', ''))[:8]
+                    drawing.add(String(uraian_width + volume_width + 3, row_y + row_h/2 - 2, sat, 
+                                      fontSize=font_size_data, fontName='Helvetica'))
+                    
+                    # Week columns with progress values (Planned & Actual)
+                    week_planned_list = row.get('week_planned', [])
+                    week_actual_list = row.get('week_actual', [])
+                    
+                    for i in range(weeks_in_page):
+                        x_start = freeze_width + i * week_width
+                        drawing.add(Rect(x_start, row_y, week_width, row_h,
+                                        fillColor=row_odd_color, strokeColor=border_color, strokeWidth=inner_border_width))
+                        
+                        # Get progress values for this week (offset by week_start for pagination)
+                        week_index = week_start + i
+                        planned_val = week_planned_list[week_index] if week_index < len(week_planned_list) else ''
+                        actual_val = week_actual_list[week_index] if week_index < len(week_actual_list) else ''
+                        
+                        # Only show for pekerjaan rows (level 3)
+                        if level == 3:
+                            x_center = x_start + week_width / 2
+                            
+                            # Helper to check if value is effectively 0%
+                            def is_zero_percent(val):
+                                if not val:
+                                    return True
+                                # Remove % and strip, also handle comma decimal (Indonesian locale)
+                                val_clean = val.replace('%', '').replace(',', '.').strip()
+                                try:
+                                    return float(val_clean) == 0
+                                except:
+                                    return False
+                            
+                            # Display planned (teal color) on top - show "-" for 0%
+                            if planned_val:
+                                display_planned = '-' if is_zero_percent(planned_val) else planned_val
+                                drawing.add(String(x_center, row_y + row_h - 6, display_planned, 
+                                                  fontSize=4, fontName='Helvetica-Bold', 
+                                                  fillColor=planned_color, textAnchor='middle'))
+                            
+                            # Display actual (amber color) on bottom - show "-" for 0%
+                            if actual_val:
+                                display_actual = '-' if is_zero_percent(actual_val) else actual_val
+                                drawing.add(String(x_center, row_y + 2, display_actual, 
+                                                  fontSize=4, fontName='Helvetica-Bold', 
+                                                  fillColor=actual_color, textAnchor='middle'))
+                    
+                    current_y = row_y
+                
+                
+                # ============================================
+                # KURVA S OVERLAY
+                # ============================================
+                
+                # Y-axis mapping: 0% at bottom, 100% at top
+                chart_top = header_y
+                chart_bottom = table_bottom
+                chart_height = chart_top - chart_bottom
+                
+                def progress_to_y(progress):
+                    return chart_bottom + (progress / 100.0) * chart_height
+                
+                # X-axis mapping: Week node on RIGHT edge of week column (grid line)
+                # W0 = left edge of week area (grid line between freeze and W1)
+                def week_to_x(week_idx):
+                    """Week index 0 = right edge of week 1 column, etc."""
+                    return freeze_width + (week_idx + 1) * week_width  # Right edge of column
+                
+                # Draw Planned curve (only weeks in this page)
+                planned_points = []
+                
+                # On page 1: Start from 0% at left edge
+                # On page 2+: Start from previous page's last value at left edge
+                if week_start == 0:
+                    # First page: start at 0%
+                    planned_points.append((freeze_width, progress_to_y(0)))
+                else:
+                    # Subsequent pages: start at the value from the week BEFORE this page's range
+                    # This is the last week of the previous page (week_start - 1)
+                    prev_week_idx = week_start - 1
+                    if prev_week_idx >= 0 and prev_week_idx < len(kurva_s_data):
+                        prev_planned = kurva_s_data[prev_week_idx].get('planned', 0) or 0
+                        planned_points.append((freeze_width, progress_to_y(prev_planned)))
+                
+                for i, data in enumerate(page_kurva_data):
+                    x = week_to_x(i)  # Position at right edge of each week column
+                    y = progress_to_y(data.get('planned', 0) or 0)
+                    planned_points.append((x, y))
+                
+                # Draw planned lines with professional styling
+                for j in range(len(planned_points) - 1):
+                    drawing.add(Line(planned_points[j][0], planned_points[j][1],
+                                    planned_points[j+1][0], planned_points[j+1][1],
+                                    strokeColor=planned_color, strokeWidth=line_width))
+                
+                # Draw planned markers (circles)
+                for x, y in planned_points:
+                    drawing.add(Circle(x, y, marker_radius, fillColor=planned_color,
+                                      strokeColor=colors.white, strokeWidth=1))
+                
+                # Draw Actual curve
+                actual_points = []
+                
+                # Same logic for actual curve
+                if week_start == 0:
+                    actual_points.append((freeze_width, progress_to_y(0)))
+                else:
+                    prev_week_idx = week_start - 1
+                    if prev_week_idx >= 0 and prev_week_idx < len(kurva_s_data):
+                        prev_actual = kurva_s_data[prev_week_idx].get('actual', 0) or 0
+                        actual_points.append((freeze_width, progress_to_y(prev_actual)))
+                
+                for i, data in enumerate(page_kurva_data):
+                    x = week_to_x(i)
+                    y = progress_to_y(data.get('actual', 0) or 0)
+                    actual_points.append((x, y))
+                
+                # Draw actual lines with professional styling
+                for j in range(len(actual_points) - 1):
+                    drawing.add(Line(actual_points[j][0], actual_points[j][1],
+                                    actual_points[j+1][0], actual_points[j+1][1],
+                                    strokeColor=actual_color, strokeWidth=line_width))
+                
+                # Draw actual markers (circles)
+                for x, y in actual_points:
+                    drawing.add(Circle(x, y, marker_radius, fillColor=actual_color,
+                                      strokeColor=colors.white, strokeWidth=1))
+                
+                # ============================================
+                # LEGEND (at bottom) with professional styling
+                # ============================================
+                legend_y = table_bottom - 18
+                # Planned legend
+                drawing.add(Circle(width/2 - 75, legend_y + 4, 4, fillColor=planned_color, strokeColor=colors.white, strokeWidth=0.5))
+                drawing.add(String(width/2 - 68, legend_y + 1, 'Planned', fontSize=7, fontName='Helvetica-Bold'))
+                # Actual legend
+                drawing.add(Circle(width/2 + 15, legend_y + 4, 4, fillColor=actual_color, strokeColor=colors.white, strokeWidth=0.5))
+                drawing.add(String(width/2 + 22, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica-Bold'))
+                
+                pages.append(drawing)
+        
+        return pages
+

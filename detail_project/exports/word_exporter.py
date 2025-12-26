@@ -627,3 +627,339 @@ class WordExporter(ConfigExporterBase):
                         run.font.size = Pt(10)
                         run.font.name = 'Arial'
         doc.add_paragraph()
+
+    def export_professional(self, data: Dict[str, Any]) -> HttpResponse:
+        """
+        Export professional formatted Word document (Laporan Tertulis).
+        
+        This method handles:
+        - Cover page (optional)
+        - Executive summary (for monthly/weekly)
+        - Comparison tables (for monthly/weekly)
+        - Grid sections (separated Planned/Actual for rekap)
+        - Chart attachments
+        - Signature section
+        """
+        doc = Document()
+        
+        # Set page orientation
+        orientation = getattr(self.config, 'page_orientation', 'landscape')
+        section = doc.sections[0]
+        
+        width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
+        if orientation == 'portrait':
+            section.page_width = Cm(width_mm / 10)
+            section.page_height = Cm(height_mm / 10)
+        else:
+            section.page_width = Cm(height_mm / 10)
+            section.page_height = Cm(width_mm / 10)
+        
+        section.top_margin = Cm(self.config.margin_top / 10)
+        section.bottom_margin = Cm(self.config.margin_bottom / 10)
+        section.left_margin = Cm(self.config.margin_left / 10)
+        section.right_margin = Cm(self.config.margin_right / 10)
+        
+        report_type = data.get('report_type', 'rekap')
+        project_info = data.get('project_info', {})
+        
+        # 1. Cover page content (simplified - inline)
+        self._add_professional_cover(doc, report_type, project_info, data)
+        doc.add_page_break()
+        
+        # 2. Executive Summary (for monthly/weekly)
+        if report_type in ('monthly', 'weekly'):
+            exec_summary = data.get('executive_summary', {})
+            if exec_summary:
+                self._add_executive_summary(doc, exec_summary, report_type)
+                doc.add_paragraph()
+            
+            # 3. Comparison Table
+            current_data = data.get('current_data', {})
+            previous_data = data.get('previous_data', {})
+            comparison = data.get('comparison', {})
+            
+            if current_data:
+                self._add_comparison_table(doc, current_data, previous_data, comparison, report_type)
+                doc.add_paragraph()
+            
+            # 4. Detail Progress Table
+            detail_table = data.get('detail_table', {})
+            if detail_table and detail_table.get('rows'):
+                heading = doc.add_heading('DETAIL PROGRESS PER PEKERJAAN', level=2)
+                heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                self._add_detail_progress_table(doc, detail_table)
+            
+            doc.add_page_break()
+        
+        # 5. Grid Pages (for rekap)
+        if report_type == 'rekap':
+            # Planned section
+            planned_pages = data.get('planned_pages', [])
+            for idx, page in enumerate(planned_pages):
+                if idx == 0:
+                    heading = doc.add_heading('BAGIAN 1: GRID VIEW - RENCANA (PLANNED)', level=1)
+                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    doc.add_paragraph()
+                
+                self._add_header_with_title(doc, page.get('title', 'JADWAL PEKERJAAN - PLANNED'))
+                self._add_table(doc, page)
+                doc.add_page_break()
+            
+            # Actual section
+            actual_pages = data.get('actual_pages', [])
+            for idx, page in enumerate(actual_pages):
+                if idx == 0:
+                    heading = doc.add_heading('BAGIAN 2: GRID VIEW - REALISASI (ACTUAL)', level=1)
+                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    doc.add_paragraph()
+                
+                self._add_header_with_title(doc, page.get('title', 'JADWAL PEKERJAAN - ACTUAL'))
+                self._add_table(doc, page)
+                doc.add_page_break()
+            
+            # Summary section
+            kurva_s_data = data.get('kurva_s_data', [])
+            summary = data.get('summary', {})
+            if kurva_s_data or summary:
+                heading = doc.add_heading('BAGIAN 3: KURVA S PROGRESS KUMULATIF', level=1)
+                heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                doc.add_paragraph()
+                
+                if summary:
+                    summary_para = doc.add_paragraph()
+                    summary_para.add_run(f"Total Progress Rencana: {summary.get('total_planned', 0):.2f}%\n")
+                    summary_para.add_run(f"Total Progress Realisasi: {summary.get('total_actual', 0):.2f}%\n")
+                    deviation = summary.get('deviation', 0)
+                    dev_text = f"Deviasi: {deviation:+.2f}%\n"
+                    summary_para.add_run(dev_text)
+                    summary_para.add_run(f"Total Minggu: {summary.get('total_weeks', 0)}\n")
+                    summary_para.add_run(f"Total Pekerjaan: {summary.get('total_pekerjaan', 0)}\n")
+                
+                doc.add_page_break()
+        
+        # 6. Chart Attachments
+        attachments = data.get('attachments') or []
+        if attachments:
+            width_mm, height_mm = get_page_size_mm(getattr(self.config, 'page_size', 'A4'))
+            if getattr(self.config, 'page_orientation', 'landscape') == 'landscape':
+                width_mm, height_mm = height_mm, width_mm
+            usable_w_in = max(1.0, (width_mm - (self.config.margin_left + self.config.margin_right)) / 25.4)
+            
+            gantt_count = 0
+            for att in attachments:
+                img_bytes = att.get('bytes')
+                if not img_bytes:
+                    continue
+                
+                att_title = att.get('title') or 'Lampiran'
+                
+                # Add section header for first Gantt chart
+                if report_type == 'rekap' and 'gantt' in att_title.lower() and gantt_count == 0:
+                    heading = doc.add_heading('BAGIAN 4: GANTT CHART', level=1)
+                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    gantt_count += 1
+                
+                heading = doc.add_heading(att_title, level=2)
+                heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                
+                try:
+                    pic = doc.add_picture(BytesIO(img_bytes))
+                    pic.width = Inches(usable_w_in)
+                except Exception:
+                    error_para = doc.add_paragraph('(Gambar tidak dapat ditampilkan)')
+                    error_para.runs[0].italic = True
+                
+                doc.add_page_break()
+        
+        # 7. Signature Section
+        if self.config.signature_config.enabled:
+            self._add_signatures(doc)
+        
+        # Save to buffer
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        
+        filename = f"Laporan_{report_type}_{self.config.export_date.strftime('%Y%m%d')}.docx"
+        return self._create_response(
+            buffer.getvalue(),
+            filename,
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+    def _add_professional_cover(self, doc: Document, report_type: str, project_info: Dict, data: Dict):
+        """Add professional cover page content"""
+        # Title based on report type
+        if report_type == 'rekap':
+            title_text = 'LAPORAN REKAPITULASI\nJADWAL PEKERJAAN'
+        elif report_type == 'monthly':
+            month = data.get('month', 1)
+            title_text = f'LAPORAN BULANAN\nJADWAL PEKERJAAN\nBulan ke-{month}'
+        else:
+            week = data.get('week', 1)
+            title_text = f'LAPORAN MINGGUAN\nJADWAL PEKERJAAN\nMinggu ke-{week}'
+        
+        # Spacer
+        for _ in range(3):
+            doc.add_paragraph()
+        
+        # Title
+        title = doc.add_heading(title_text, 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Spacer
+        for _ in range(2):
+            doc.add_paragraph()
+        
+        # Project info table
+        info_items = [
+            ('Nama Proyek', project_info.get('name', self.config.project_name)),
+            ('Lokasi', project_info.get('location', self.config.location)),
+            ('Pemilik', project_info.get('owner', '')),
+            ('Tahun Anggaran', project_info.get('year', self.config.year)),
+            ('Tanggal Cetak', self.config.export_date.strftime('%d-%m-%Y')),
+        ]
+        
+        table = doc.add_table(rows=len(info_items), cols=3)
+        for i, (label, value) in enumerate(info_items):
+            row = table.rows[i]
+            row.cells[0].text = label
+            row.cells[1].text = ':'
+            row.cells[2].text = str(value) if value else '-'
+            row.cells[0].width = Cm(5)
+            row.cells[1].width = Cm(0.5)
+            row.cells[2].width = Cm(10)
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    for run in para.runs:
+                        run.font.size = Pt(12)
+                        run.font.name = 'Arial'
+
+    def _add_executive_summary(self, doc: Document, summary: Dict, mode: str):
+        """Add executive summary section"""
+        heading = doc.add_heading('RINGKASAN EKSEKUTIF', level=1)
+        heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        period_label = 'Bulan' if mode == 'monthly' else 'Minggu'
+        
+        # Summary table
+        table = doc.add_table(rows=7, cols=3)
+        table.style = 'Light Grid'
+        
+        rows_data = [
+            (f'Target {period_label} Ini', str(summary.get('target_period', '0')) + '%', ''),
+            (f'Realisasi {period_label} Ini', str(summary.get('actual_period', '0')) + '%', ''),
+            ('Deviasi', str(summary.get('deviation_period', '0')) + '%', 
+             self._get_status_text(summary.get('deviation_period', 0))),
+            ('', '', ''),
+            ('Kumulatif Target', str(summary.get('cumulative_target', '0')) + '%', ''),
+            ('Kumulatif Realisasi', str(summary.get('cumulative_actual', '0')) + '%', ''),
+            ('Kumulatif Deviasi', str(summary.get('cumulative_deviation', '0')) + '%',
+             self._get_status_text(summary.get('cumulative_deviation', 0))),
+        ]
+        
+        for i, (label, value, status) in enumerate(rows_data):
+            row = table.rows[i]
+            row.cells[0].text = label
+            row.cells[1].text = value
+            row.cells[2].text = status
+            self._style_cell(row.cells[0], size=10)
+            self._style_cell(row.cells[1], size=10, align=WD_ALIGN_PARAGRAPH.RIGHT)
+            self._style_cell(row.cells[2], size=10, bold=bool(status))
+
+    def _add_comparison_table(self, doc: Document, current: Dict, previous: Dict, comparison: Dict, mode: str):
+        """Add period comparison table"""
+        period_label = 'Bulan' if mode == 'monthly' else 'Minggu'
+        current_label = f'{period_label} ke-{current.get("period", "N")}'
+        previous_label = f'{period_label} ke-{previous.get("period", "N-1")}'
+        
+        heading = doc.add_heading(f'PERBANDINGAN: {current_label.upper()} vs {previous_label.upper()}', level=2)
+        heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        table = doc.add_table(rows=4, cols=4)
+        table.style = 'Light Grid'
+        
+        # Header row
+        headers = ['Metrik', previous_label, current_label, 'Delta']
+        for i, h in enumerate(headers):
+            table.rows[0].cells[i].text = h
+            self._style_cell(table.rows[0].cells[i], bold=True, size=10, align=WD_ALIGN_PARAGRAPH.CENTER)
+        
+        # Data rows
+        rows_data = [
+            ('Target', previous.get('target', 0), current.get('target', 0)),
+            ('Realisasi', previous.get('actual', 0), current.get('actual', 0)),
+            ('Deviasi', previous.get('deviation', 0), current.get('deviation', 0)),
+        ]
+        
+        for i, (label, prev_val, curr_val) in enumerate(rows_data):
+            row = table.rows[i + 1]
+            delta = curr_val - prev_val if isinstance(curr_val, (int, float)) and isinstance(prev_val, (int, float)) else 0
+            delta_str = f'{delta:+.2f}%' if isinstance(delta, float) else f'{delta:+d}%'
+            
+            row.cells[0].text = label
+            row.cells[1].text = f'{prev_val:.2f}%' if isinstance(prev_val, float) else str(prev_val)
+            row.cells[2].text = f'{curr_val:.2f}%' if isinstance(curr_val, float) else str(curr_val)
+            row.cells[3].text = delta_str
+            
+            self._style_cell(row.cells[0], size=10)
+            self._style_cell(row.cells[1], size=10, align=WD_ALIGN_PARAGRAPH.RIGHT)
+            self._style_cell(row.cells[2], size=10, align=WD_ALIGN_PARAGRAPH.RIGHT)
+            self._style_cell(row.cells[3], size=10, align=WD_ALIGN_PARAGRAPH.RIGHT)
+
+    def _add_detail_progress_table(self, doc: Document, detail_data: Dict):
+        """Add detail progress per pekerjaan table"""
+        headers = detail_data.get('headers', ['No', 'Uraian', 'Bobot', 'Target', 'Aktual', 'Deviasi'])
+        rows = detail_data.get('rows', [])
+        hierarchy = detail_data.get('hierarchy_levels', {})
+        
+        table = doc.add_table(rows=1 + len(rows), cols=len(headers))
+        table.style = 'Light Grid Accent 1'
+        
+        # Header row
+        for i, h in enumerate(headers):
+            table.rows[0].cells[i].text = h
+            self._style_cell(table.rows[0].cells[i], bold=True, size=9, 
+                           align=WD_ALIGN_PARAGRAPH.CENTER,
+                           bg_color=(230, 230, 230))
+        
+        # Data rows
+        for idx, row_data in enumerate(rows):
+            row = table.rows[idx + 1]
+            level = hierarchy.get(idx, 3)
+            
+            for col_idx, cell_value in enumerate(row_data):
+                cell = row.cells[col_idx]
+                cell.text = str(cell_value)
+                
+                # Alignment
+                if col_idx >= 2:  # Numeric columns
+                    align = WD_ALIGN_PARAGRAPH.RIGHT
+                else:
+                    align = WD_ALIGN_PARAGRAPH.LEFT
+                
+                # Styling based on hierarchy
+                if level == 1:
+                    self._style_cell(cell, bold=True, size=9, align=align, bg_color=(220, 230, 240))
+                elif level == 2:
+                    self._style_cell(cell, bold=True, size=9, align=align, bg_color=(240, 240, 245))
+                else:
+                    self._style_cell(cell, size=9, align=align)
+
+    def _get_status_text(self, deviation: float) -> str:
+        """Get status text based on deviation"""
+        if deviation is None:
+            return ''
+        try:
+            dev = float(deviation)
+            if dev >= 0:
+                return '🔵 AHEAD' if dev > 2 else '🟢 ON TRACK'
+            elif dev > -2:
+                return '🟢 ON TRACK'
+            elif dev > -5:
+                return '🟡 SLIGHT DELAY'
+            else:
+                return '🔴 BEHIND'
+        except (ValueError, TypeError):
+            return ''

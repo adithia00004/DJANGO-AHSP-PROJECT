@@ -11,18 +11,160 @@ import { generateWord, downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
 import { generateMonthlyProgressCSV, downloadCSV } from '../generators/csv-generator.js';
 
+// ============================================================================
+// Helper Functions for Monthly Report Data Preparation
+// ============================================================================
+
+/**
+ * Format date to dd-mm-yyyy
+ * @param {Date|string} date - Date object or ISO string
+ * @returns {string} Formatted date
+ */
+function formatDate(date) {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+/**
+ * Prepare report title and identity section
+ * @param {Object} state - Application state
+ * @param {number} month - Month number (1-based)
+ * @returns {Object} Title and identity data
+ */
+function prepareReportHeader(state, month) {
+  const projectName = state.projectName || 'Project A';
+
+  // Calculate month period (4 weeks per month)
+  const startWeek = (month - 1) * 4 + 1;
+  const endWeek = month * 4;
+
+  // Get start and end dates from week columns
+  const startWeekData = state.weekColumns?.find(w => w.week === startWeek);
+  const endWeekData = state.weekColumns?.find(w => w.week === endWeek);
+
+  const startDate = startWeekData ? formatDate(startWeekData.startDate) : 'N/A';
+  const endDate = endWeekData ? formatDate(endWeekData.endDate) : 'N/A';
+
+  return {
+    title: `Laporan ${projectName} Bulan ke-${month}`,
+    period: `Bulan ke-${month} periode ${startDate} - ${endDate}`,
+    projectIdentity: {
+      name: projectName,
+      owner: state.projectOwner || 'N/A',
+      location: state.projectLocation || 'N/A',
+      budget: state.projectBudget || 0
+    }
+  };
+}
+
+/**
+ * Calculate task weight (Bobot Pekerjaan) as percentage of total budget
+ * @param {Array} hierarchyRows - All tasks
+ * @returns {Object} Map of task ID to weight percentage
+ */
+function calculateTaskWeights(hierarchyRows) {
+  const weights = {};
+
+  // Calculate total budget from all "pekerjaan" type tasks
+  let totalBudget = 0;
+  const tasks = hierarchyRows.filter(row => row.type === 'pekerjaan');
+
+  tasks.forEach(task => {
+    totalBudget += task.totalHarga || 0;
+  });
+
+  // Calculate weight percentage for each task
+  tasks.forEach(task => {
+    const weight = totalBudget > 0
+      ? ((task.totalHarga || 0) / totalBudget) * 100
+      : 0;
+    weights[task.id] = weight;
+  });
+
+  return weights;
+}
+
+/**
+ * Prepare main table data (Pekerjaan hierarchy with Total Harga and Bobot)
+ * @param {Object} state - Application state
+ * @returns {Array} Table rows
+ */
+function prepareMainTable(state) {
+  const taskWeights = calculateTaskWeights(state.hierarchyRows || []);
+
+  const tableRows = (state.hierarchyRows || []).map(row => {
+    return {
+      id: row.id,
+      type: row.type,
+      level: row.level,
+      name: row.name,
+      parentId: row.parentId,
+      totalHarga: row.totalHarga || 0,
+      bobot: taskWeights[row.id] || 0
+    };
+  });
+
+  return tableRows;
+}
+
+/**
+ * Calculate progress recapitulation metrics for a month
+ * @param {Object} state - Application state
+ * @param {number} month - Month number (1-based)
+ * @returns {Object} Progress metrics
+ */
+function calculateProgressRecap(state, month) {
+  const startWeek = (month - 1) * 4 + 1;
+  const endWeek = month * 4;
+
+  // Get cumulative progress at start and end of month
+  const kurvaSData = state.kurvaSData || [];
+
+  // Progress at start of month (end of previous month)
+  const prevMonthEndWeek = startWeek - 1;
+  const prevMonthData = kurvaSData.find(d => d.week === prevMonthEndWeek) || { planned: 0, actual: 0 };
+
+  // Progress at end of current month
+  const currentMonthData = kurvaSData.find(d => d.week === endWeek) || { planned: 0, actual: 0 };
+
+  return {
+    targetPlannedThisMonth: currentMonthData.planned - prevMonthData.planned,
+    actualThisMonth: currentMonthData.actual - prevMonthData.actual,
+    cumulativeTarget: currentMonthData.planned,
+    cumulativeActual: currentMonthData.actual
+  };
+}
+
+// ============================================================================
+// Main Report Generation Function
+// ============================================================================
+
 /**
  * Generate Laporan Bulanan (Monthly Report)
  *
- * Konten:
- * - ✅ Kurva S Monthly Progressive (M1=W1-W4, M2=W1-W8, dst)
- * - 🔜 Tabel Progress Bulanan (infrastructure ready, detail menyusul)
- * - 🔜 Summary Statistics (infrastructure ready, detail menyusul)
+ * Status: ✅ FULLY IMPLEMENTED (Phase 4)
+ *
+ * Components:
+ * - ✅ Report Title: "Laporan pekerjaan A Bulan ke-X"
+ * - ✅ Identity: Month X period (dd-mm-yyyy - dd-mm-yyyy)
+ * - ✅ Project Identity: Name, Owner, Location, Budget
+ * - ✅ Main Table: Pekerjaan + Total Harga + Bobot Pekerjaan
+ * - ✅ Kurva S Planned vs Actual (current month)
+ * - ✅ Progress Recapitulation: Target Planned, Actual this month, Cumulative Target, Cumulative Actual
  *
  * @param {Object} state - Application state
+ * @param {Array<Object>} state.hierarchyRows - Task hierarchy: [{ id, type, level, name, parentId, totalHarga }]
+ * @param {Array<Object>} state.weekColumns - Week columns: [{ week, startDate, endDate }]
  * @param {Array<Object>} state.kurvaSData - Kurva S data: [{ week, planned, actual }]
+ * @param {string} state.projectName - Project name
+ * @param {string} state.projectOwner - Project owner
+ * @param {string} state.projectLocation - Project location
+ * @param {number} state.projectBudget - Project budget
  * @param {string} format - Export format: 'pdf' | 'word' | 'xlsx' | 'csv'
- * @param {number} month - Target month number (untuk filtering data, if needed)
+ * @param {number} month - Target month number (1-based)
  * @param {Object} [options={}] - Additional options
  * @returns {Promise<{blob: Blob, metadata: Object}>} Export result
  */
@@ -44,7 +186,21 @@ export async function generateMonthlyReport(state, format, month, options = {}) 
   const attachments = [];
 
   try {
-    // 1. Kurva S Monthly Progressive (DEFINED)
+    // ========================================================================
+    // Phase 4: Complete Monthly Report Implementation
+    // ========================================================================
+
+    // 1. Prepare Report Header (Title, Period, Project Identity)
+    console.log('[MonthlyReport] Preparing report header...');
+    const header = prepareReportHeader(state, month);
+    console.log('[MonthlyReport] Header:', header.title);
+
+    // 2. Prepare Main Table (Pekerjaan + Total Harga + Bobot)
+    console.log('[MonthlyReport] Preparing main table...');
+    const mainTable = prepareMainTable(state);
+    console.log('[MonthlyReport] Main table prepared:', mainTable.length, 'rows');
+
+    // 3. Render Kurva S Monthly Progressive
     console.log('[MonthlyReport] Rendering Kurva S Monthly Progressive...');
     const kurvaSMonthlyURL = await renderKurvaS({
       granularity: 'monthly',
@@ -54,11 +210,12 @@ export async function generateMonthlyReport(state, format, month, options = {}) 
       height: 600,
       dpi,
       backgroundColor: '#ffffff',
-      timezone: options.timezone || 'Asia/Jakarta'
+      timezone: options.timezone || 'Asia/Jakarta',
+      title: header.title
     });
 
     attachments.push({
-      title: 'Kurva S Monthly Progressive',
+      title: 'Kurva S Planned vs Actual - ' + header.period,
       data_url: kurvaSMonthlyURL,
       format: 'png',
       section: 'kurva-s-monthly'
@@ -66,32 +223,41 @@ export async function generateMonthlyReport(state, format, month, options = {}) 
 
     console.log('[MonthlyReport] Kurva S Monthly rendered');
 
-    // 2. Tabel Progress Bulanan (TBD - infrastructure ready)
-    // TODO: Implement when details are provided
-    // Expected structure:
-    // {
-    //   headers: ['Pekerjaan', 'Progress Bulan Lalu (%)', 'Progress Bulan Ini (%)', 'Total Progress Project (%)'],
-    //   rows: [...]
-    // }
-    const monthlyProgressTable = null; // Placeholder
+    // 4. Calculate Progress Recapitulation
+    console.log('[MonthlyReport] Calculating progress recapitulation...');
+    const progressRecap = calculateProgressRecap(state, month);
+    console.log('[MonthlyReport] Progress recap:', progressRecap);
 
-    if (monthlyProgressTable) {
-      console.log('[MonthlyReport] Monthly Progress Table provided');
-    } else {
-      console.warn('[MonthlyReport] Monthly Progress Table not yet implemented (awaiting specification)');
-    }
+    // 5. Prepare Monthly Progress Table (for grid data)
+    // Structure compatible with existing infrastructure
+    const monthlyProgressTable = {
+      headers: [
+        'Pekerjaan',
+        'Total Harga',
+        'Bobot Pekerjaan (%)',
+        'Target Planned Bulan Ini (%)',
+        'Actual Bulan Ini (%)',
+        'Kumulatif Target (%)',
+        'Kumulatif Actual (%)'
+      ],
+      rows: mainTable.map(row => [
+        row.name,
+        row.totalHarga,
+        row.bobot.toFixed(2),
+        progressRecap.targetPlannedThisMonth.toFixed(2),
+        progressRecap.actualThisMonth.toFixed(2),
+        progressRecap.cumulativeTarget.toFixed(2),
+        progressRecap.cumulativeActual.toFixed(2)
+      ]),
+      metadata: {
+        reportHeader: header,
+        progressRecap
+      }
+    };
 
-    // 3. Summary Statistics (TBD - infrastructure ready)
-    // TODO: Implement when details are provided
-    const summaryStats = null; // Placeholder
+    console.log('[MonthlyReport] Monthly progress table prepared');
 
-    if (summaryStats) {
-      console.log('[MonthlyReport] Summary Statistics provided');
-    } else {
-      console.warn('[MonthlyReport] Summary Statistics not yet implemented (awaiting specification)');
-    }
-
-    // 4. Generate final output based on format
+    // 6. Generate final output based on format
     console.log(`[MonthlyReport] Generating final ${format} file...`);
 
     let result;

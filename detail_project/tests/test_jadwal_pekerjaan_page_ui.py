@@ -18,7 +18,6 @@ def test_jadwal_pekerjaan_page_renders_with_core_anchors(client_logged, project)
         'id="gantt-view"',
         'id="scurve-view"',
         'id="tanstack-grid-container"',
-        'id="tanstack-grid-scroll-top"',
         'id="gantt-redesign-container"',
         'id="save-button"',
         'id="btn-reset-progress"',

@@ -9,6 +9,7 @@
 import { generateRekapReport, exportRekapReport } from './reports/rekap-report.js';
 import { generateMonthlyReport, exportMonthlyReport } from './reports/monthly-report.js';
 import { generateWeeklyReport, exportWeeklyReport } from './reports/weekly-report.js';
+import { estimatePageCount, validateRowsHierarchy } from './core/pagination-utils.js';
 
 /**
  * Export Configuration
@@ -197,8 +198,6 @@ export async function exportReport(exportRequest) {
  * @returns {Object} { rowPages, timePages, totalPages }
  */
 export function estimateExportSize(state, reportType, options = {}) {
-  const { estimatePageCount } = require('./core/pagination-utils.js');
-
   const layout = {
     ...EXPORT_CONFIG.layout,
     ...(options.layout || {})
@@ -284,8 +283,6 @@ export function validateExportRequest(exportRequest) {
 
   // State validation
   if (exportRequest.state && EXPORT_CONFIG.features.validateData) {
-    const { validateRowsHierarchy } = require('./core/pagination-utils.js');
-
     if (exportRequest.state.hierarchyRows) {
       const rowErrors = validateRowsHierarchy(exportRequest.state.hierarchyRows);
       if (rowErrors.length > 0) {

@@ -188,6 +188,24 @@ def rincian_rab_view(request, project_id: int):
 
 @login_required
 @coerce_project_id
+def export_test_view(request, project_id: int):
+    """
+    Export System Test Page - Phase 4
+    Interactive test page for verifying export functionality
+    """
+    project = _project_or_404(project_id, request.user)
+
+    context = {
+        "project": project,
+        "side_active": "export_test",
+        "DEBUG": settings.DEBUG,
+    }
+
+    return render(request, "detail_project/export_test.html", context)
+
+
+@login_required
+@coerce_project_id
 def jadwal_pekerjaan_view(request, project_id: int):
     """
     Jadwal Pekerjaan - Excel-like Grid View untuk penjadwalan dengan Gantt & Kurva S.

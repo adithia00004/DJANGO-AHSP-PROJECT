@@ -6,6 +6,33 @@
  */
 
 /**
+ * Normalize attachments[] (snake_case/camelCase) to backend page schema
+ * Backend expects: { pageNumber, title, dataUrl, format }
+ *
+ * @param {Array<Object>} attachments
+ * @returns {Array<Object>} pages
+ */
+function normalizeAttachmentsToPages(attachments = []) {
+  const pages = [];
+
+  for (const attachment of attachments) {
+    if (!attachment) continue;
+
+    const dataUrl = attachment.dataUrl || attachment.data_url || attachment.dataURL;
+    if (!dataUrl) continue;
+
+    pages.push({
+      pageNumber: pages.length + 1,
+      title: attachment.title || `Page ${pages.length + 1}`,
+      dataUrl,
+      format: attachment.format || 'png'
+    });
+  }
+
+  return pages;
+}
+
+/**
  * Get CSRF token from cookie
  * @returns {string} CSRF token
  */
@@ -40,75 +67,25 @@ export async function generateWord(config) {
     options = {}
   } = config;
 
+  const pages = normalizeAttachmentsToPages(attachments);
+
   console.log('[WordGenerator] Requesting Word generation from backend:', {
     reportType,
-    attachmentsCount: attachments.length
+    attachmentsCount: attachments.length,
+    pagesCount: pages.length
   });
 
-  // Determine strategy: batch upload atau single upload
-  const useBatching = attachments.length > 50;
-
-  try {
-    if (useBatching) {
-      // Batch upload mode
-      return await generateWordBatched(config);
-    } else {
-      // Single upload mode
-      return await generateWordSingle(config);
-    }
-  } catch (error) {
-    console.error('[WordGenerator] Word generation failed:', error);
-    throw error;
-  }
-}
-
-/**
- * Generate Word dengan single upload (< 50 pages)
- */
-async function generateWordSingle(config) {
-  const { attachments, gridData, reportType, options } = config;
-
-  const response = await fetch('/api/export/generate', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': getCsrfToken()
-    },
-    body: JSON.stringify({
-      reportType,
-      format: 'word',
-      attachments,
-      gridData,
-      options
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Backend returned ${response.status}: ${response.statusText}`);
+  if (pages.length === 0) {
+    throw new Error('[WordGenerator] No valid attachments to generate Word document');
   }
 
-  const blob = await response.blob();
+  const { projectName = '' } = options || {};
 
-  return {
-    blob,
-    metadata: {
-      reportType,
-      format: 'word',
-      pageCount: attachments.length,
-      generatedAt: new Date().toISOString()
-    }
-  };
-}
-
-/**
- * Generate Word dengan batch upload (>= 50 pages)
- */
-async function generateWordBatched(config) {
-  const { attachments, gridData, reportType, options } = config;
+  // Always use session-based API (init/upload-pages/finalize) since backend does not expose /api/export/generate
   const BATCH_SIZE = 10;
 
   // Step 1: Initialize export session
-  const initRes = await fetch('/api/export/init', {
+  const initRes = await fetch('/detail_project/api/export/init', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -117,7 +94,12 @@ async function generateWordBatched(config) {
     body: JSON.stringify({
       reportType,
       format: 'word',
-      estimatedPages: attachments.length
+      estimatedPages: pages.length,
+      projectName,
+      metadata: {
+        options,
+        hasGridData: Boolean(gridData)
+      }
     })
   });
 
@@ -130,11 +112,11 @@ async function generateWordBatched(config) {
   console.log(`[WordGenerator] Export session initialized: ${exportId}`);
 
   // Step 2: Upload attachments dalam batch
-  for (let i = 0; i < attachments.length; i += BATCH_SIZE) {
-    const batch = attachments.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < pages.length; i += BATCH_SIZE) {
+    const batch = pages.slice(i, i + BATCH_SIZE);
     const batchIndex = Math.floor(i / BATCH_SIZE);
 
-    await fetch('/api/export/upload-pages', {
+    const uploadRes = await fetch('/detail_project/api/export/upload-pages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -147,11 +129,16 @@ async function generateWordBatched(config) {
       })
     });
 
-    console.log(`[WordGenerator] Uploaded batch ${batchIndex + 1}/${Math.ceil(attachments.length / BATCH_SIZE)}`);
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text().catch(() => '');
+      throw new Error(`Export upload-pages failed: ${uploadRes.status} ${uploadRes.statusText}\n${text}`);
+    }
+
+    console.log(`[WordGenerator] Uploaded batch ${batchIndex + 1}/${Math.ceil(pages.length / BATCH_SIZE)}`);
   }
 
   // Step 3: Finalize & get download URL
-  const finalRes = await fetch('/api/export/finalize', {
+  const finalRes = await fetch('/detail_project/api/export/finalize', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -164,10 +151,14 @@ async function generateWordBatched(config) {
     throw new Error(`Export finalize failed: ${finalRes.status}`);
   }
 
-  const { downloadUrl } = await finalRes.json();
+  await finalRes.json().catch(() => ({}));
 
-  // Download Word document
-  const wordRes = await fetch(downloadUrl);
+  // Always download via authenticated endpoint
+  const wordRes = await fetch(`/detail_project/api/export/download/${exportId}`);
+  if (!wordRes.ok) {
+    const text = await wordRes.text().catch(() => '');
+    throw new Error(`Export download failed: ${wordRes.status} ${wordRes.statusText}\n${text}`);
+  }
   const blob = await wordRes.blob();
 
   return {
@@ -175,7 +166,7 @@ async function generateWordBatched(config) {
     metadata: {
       reportType,
       format: 'word',
-      pageCount: attachments.length,
+      pageCount: pages.length,
       exportId,
       generatedAt: new Date().toISOString()
     }

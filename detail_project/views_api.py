@@ -173,13 +173,10 @@ def _err(path: str, message: str):
 def _parse_export_attachments(request: HttpRequest):
     """
     Parse optional base64 image attachments sent via POST for export endpoints.
-    Expected payload:
-    {
-        "attachments": [
-            {"title": "Gantt Chart", "data_url": "data:image/png;base64,..."},
-            {"title": "Kurva S", "dataUrl": "..."}
-        ]
-    }
+    
+    Supports two formats:
+    1. Old format (data_url): {"title": "Gantt Chart", "data_url": "data:image/png;base64,..."}
+    2. New format (bytes): {"title": "Kurva S", "bytes": "iVBORw0...", "format": "png"}
     """
     if request.method != "POST":
         return []
@@ -190,8 +187,20 @@ def _parse_export_attachments(request: HttpRequest):
 
     attachments = []
     for att in payload.get("attachments", []):
-        data_url = att.get("data_url") or att.get("dataUrl")
         title = att.get("title") or "Lampiran"
+        
+        # Try new format first (direct bytes)
+        raw_bytes = att.get("bytes")
+        if raw_bytes and isinstance(raw_bytes, str):
+            try:
+                blob = base64.b64decode(raw_bytes)
+                attachments.append({"title": title, "bytes": blob})
+                continue
+            except Exception:
+                pass
+        
+        # Fallback to old format (data_url)
+        data_url = att.get("data_url") or att.get("dataUrl")
         if not data_url or not isinstance(data_url, str):
             continue
         if "base64," not in data_url:
@@ -3904,6 +3913,105 @@ def export_jadwal_pekerjaan_xlsx(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+
+
+# ============================================================================
+# EXPORT: JADWAL PEKERJAAN PROFESSIONAL (Laporan Tertulis)
+# ============================================================================
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
+    """
+    Export Jadwal Pekerjaan sebagai Laporan Tertulis profesional.
+
+    Generates formal written reports with:
+    - Cover page
+    - Executive summary (for monthly/weekly)
+    - Comparison tables (this period vs previous)
+    - Separated Planned/Actual sections (for rekap)
+    - Kurva S and Gantt charts
+    - Signature section
+
+    Query/Body Parameters:
+    - report_type: 'rekap' | 'monthly' | 'weekly' (default: 'rekap')
+    - period: Month number (1-based) for monthly, Week number for weekly
+    - format: 'pdf' | 'word' (default: 'pdf')
+    - attachments: Chart attachments (POST only)
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+
+        # Parse parameters
+        if request.method == 'POST':
+            try:
+                payload = json.loads(request.body.decode('utf-8'))
+            except json.JSONDecodeError:
+                payload = {}
+        else:
+            payload = {}
+
+        # Get parameters from query or payload
+        report_type = request.GET.get('report_type') or payload.get('report_type', 'rekap')
+        period_str = request.GET.get('period') or payload.get('period')
+        format_type = request.GET.get('format') or payload.get('format', 'pdf')
+
+        # Validate report_type
+        if report_type not in ('rekap', 'monthly', 'weekly'):
+            return JsonResponse({
+                'status': 'error',
+                'message': f"Invalid report_type: {report_type}. Must be 'rekap', 'monthly', or 'weekly'."
+            }, status=400)
+
+        # Validate format
+        if format_type not in ('pdf', 'word'):
+            return JsonResponse({
+                'status': 'error',
+                'message': f"Invalid format: {format_type}. Must be 'pdf' or 'word'."
+            }, status=400)
+
+        # Parse period for monthly/weekly
+        period = None
+        if period_str:
+            try:
+                period = int(period_str)
+            except ValueError:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid period: {period_str}. Must be an integer."
+                }, status=400)
+
+        # Parse attachments (for POST)
+        attachments = _parse_export_attachments(request)
+        
+        # Parse gantt_data (structured data for backend Gantt rendering)
+        gantt_data = None
+        if request.method == 'POST' and request.body:
+            try:
+                # json module already imported at top of file
+                body = json.loads(request.body.decode('utf-8'))
+                gantt_data = body.get('gantt_data')
+            except (ValueError, KeyError, UnicodeDecodeError):
+                pass
+
+        return manager.export_jadwal_professional(
+            format_type=format_type,
+            report_type=report_type,
+            period=period,
+            attachments=attachments,
+            gantt_data=gantt_data
+        )
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export Professional gagal: {str(e)}'
+        }, status=500)
 
 
 # ============================================================================

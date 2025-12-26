@@ -182,15 +182,16 @@ class JadwalExportLayout:
     MARGIN_RIGHT = 12
 
     # Static column widths (mm) for grid section
-    COL_KODE = 18
+    # UNIFIED: 3 columns only (no Kode) - matches Grid View, Kurva S, Gantt
+    # COL_KODE = 18  # REMOVED - unified structure
     COL_URAIAN = 75
     COL_VOLUME = 20
     COL_SATUAN = 18
 
     # Timeline columns (mm)
     WEEKLY_MIN_COL = 12          # fits ~22 cols on A3 after static columns
-    WEEKLY_HARD_LIMIT = 26       # weekly view allowed up to 26 columns
-    AUTO_MONTHLY_THRESHOLD = 26  # switch to monthly when weeks exceed this
+    WEEKLY_HARD_LIMIT = 18       # FIXED: max 18 weeks per page (45pt width each)
+    AUTO_MONTHLY_THRESHOLD = 18  # switch to monthly when weeks exceed this
     MONTHLY_MIN_COL = 22         # month labels are wider
     MONTHLY_HARD_LIMIT = 12
 
@@ -200,7 +201,8 @@ class JadwalExportLayout:
 
     @classmethod
     def static_widths_mm(cls) -> list:
-        return [cls.COL_KODE, cls.COL_URAIAN, cls.COL_VOLUME, cls.COL_SATUAN]
+        # UNIFIED: 3 columns (Uraian, Volume, Satuan) - no Kode
+        return [cls.COL_URAIAN, cls.COL_VOLUME, cls.COL_SATUAN]
 
 
 # ============================================================================

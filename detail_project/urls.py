@@ -26,6 +26,10 @@ urlpatterns = [
     path('<int:project_id>/rekap-rab/',             views.rekap_rab_view,             name='rekap_rab'),
     path("<int:project_id>/rekap-kebutuhan/",       views.rekap_kebutuhan_view,       name="rekap_kebutuhan"),
     path('<int:project_id>/jadwal-pekerjaan/',      views.jadwal_pekerjaan_view,      name='jadwal_pekerjaan'),
+
+    # --- NEW: Export System Test Page (Phase 4)
+    path('<int:project_id>/export-test/',           views.export_test_view,           name='export_test'),
+
     # --- NEW: Rincian RAB (web)
     path('<int:project_id>/rincian-rab/',           views.rincian_rab_view,           name='rincian_rab'),  # NEW
 
@@ -172,6 +176,11 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/jadwal-pekerjaan/xlsx/',
           views_api.export_jadwal_pekerjaan_xlsx,
           name='export_jadwal_pekerjaan_xlsx'),
+
+     # Export Jadwal Pekerjaan Professional (Laporan Tertulis)
+     path('api/project/<int:project_id>/export/jadwal-pekerjaan/professional/',
+          views_api.export_jadwal_pekerjaan_professional,
+          name='export_jadwal_pekerjaan_professional'),
 
 
     

@@ -26,9 +26,22 @@ export {
 
 export {
   generateWeeklyReport,
-  exportWeeklyReport,
-  getWeeklyReportStatus
+  exportWeeklyReport
 } from './reports/weekly-report.js';
+
+// UI Integration
+export {
+  ExportManagerNew,
+  initializeExportButtons
+} from './ui-integration.js';
+
+// Test fixtures (for development/testing)
+export {
+  createTestState,
+  runExportTest,
+  quickTest,
+  setupTestEnvironment
+} from './test/export-test-fixture.js';
 
 // Core renderers (for advanced usage)
 export {
@@ -109,17 +122,24 @@ export async function quickExport(reportType, format, state, options = {}) {
  */
 export function getExportSystemInfo() {
   return {
-    version: '1.0.0',
+    version: '1.0.0-phase4',
+    phase: 'Phase 4 - Complete',
     status: {
       rekapReport: 'fully_implemented',
-      monthlyReport: 'partially_implemented',
-      weeklyReport: 'infrastructure_only'
+      monthlyReport: 'fully_implemented',  // ✅ Phase 4
+      weeklyReport: 'fully_implemented'     // ✅ Phase 4
     },
     supportedFormats: ['pdf', 'word', 'xlsx', 'csv'],
     supportedReportTypes: ['rekap', 'monthly', 'weekly'],
     dependencies: {
       uplot: '^1.6.24',
       exceljs: '^4.4.0'
+    },
+    features: {
+      offscreenRendering: true,
+      batchUpload: true,
+      backendIntegration: true,
+      adminInterface: true
     }
   };
 }

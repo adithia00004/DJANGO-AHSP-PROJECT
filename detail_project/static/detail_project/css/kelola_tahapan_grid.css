@@ -2,6 +2,44 @@
    JADWAL_PEKERJAAN.CSS - Excel-like Grid View for Project Scheduling
    ===================================================================== */
 
+/* ===== Container Height Hierarchy (Unified) ===== 
+   All containers use vh/vw units for viewport-relative sizing
+   Goal: Maximize visible rows
+*/
+#viewTabsContent {
+  height: calc(100vh - 18vh);
+  /* 100vh minus header + toolbar + tabs */
+  min-height: 70vh;
+  /* Ensure at least 70% viewport height */
+}
+
+#unified-view {
+  height: 100%;
+  max-height: 100%;
+  /* Prevent exceeding parent */
+  min-height: 0 !important;
+  /* Override any external min-height */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Prevent content overflow */
+}
+
+#tanstack-grid-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#tanstack-grid-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ===== CSS Variables for Theme Support ===== */
 :root {
   /* Light mode (default) */
@@ -29,6 +67,27 @@
   /* Ensure modals sit above topbar/toolbar */
   --kt-export-modal-z: calc(var(--dp-z-modal, 13000) + 50);
   --kt-export-backdrop-z: calc(var(--dp-z-backdrop, 12990) + 50);
+
+  /* ===== UNIFIED VIEWPORT SIZING (vh/vw units) ===== */
+  /* Row & cell dimensions */
+  --kt-row-height: 5vh;
+  /* ~44px at 900px viewport */
+  --kt-header-height: 5vh;
+  --kt-cell-padding-y: 0.5vh;
+  --kt-cell-padding-x: 0.5vw;
+  --kt-cell-font-size: 1.8vh;
+
+  /* Container dimensions */
+  --kt-container-padding-x: 0.5vw;
+  --kt-container-padding-y: 0.5vh;
+  --kt-toolbar-height: 6vh;
+  --kt-tabs-height: 5vh;
+  --kt-statusbar-height: 4vh;
+
+  /* Viewport calculation */
+  --kt-viewport-offset: calc(7vh + var(--kt-toolbar-height) + var(--kt-tabs-height));
+  --kt-container-height: calc(100vh - var(--kt-viewport-offset));
+  --kt-min-container-height: 70vh;
 }
 
 [data-bs-theme="dark"] {
@@ -64,7 +123,8 @@
 #tahapan-grid-app {
   background: var(--grid-bg);
   color: var(--grid-text);
-  min-height: 400px; /* Minimum height for usability */
+  min-height: 400px;
+  /* Minimum height for usability */
 }
 
 /* ===== Toolbar ===== */
@@ -147,9 +207,11 @@
 .split-panel-wrapper {
   flex: 1;
   display: flex;
-  overflow: hidden; /* Clip content at container boundaries */
+  overflow: hidden;
+  /* Clip content at container boundaries */
   position: relative;
-  isolation: isolate; /* Create stacking context for proper z-index layering */
+  isolation: isolate;
+  /* Create stacking context for proper z-index layering */
 }
 
 /* ===== Left Panel (Frozen) ===== */
@@ -158,7 +220,8 @@
   border-right: 2px solid var(--grid-frozen-border);
   background: var(--grid-frozen-bg);
   position: relative;
-  z-index: 20; /* Higher than canvas overlay (z-index: 10) to stay on top */
+  z-index: 20;
+  /* Higher than canvas overlay (z-index: 10) to stay on top */
 }
 
 .left-panel-scroll {
@@ -168,40 +231,26 @@
 }
 
 .left-panel-scroll::-webkit-scrollbar {
-  width: 0; /* Hide scrollbar but keep functionality */
+  width: 0;
+  /* Hide scrollbar but keep functionality */
 }
 
 /* ===== Right Panel (Scrollable) ===== */
 .right-panel-wrapper {
   flex: 1;
   position: relative;
-  overflow: hidden; /* Clip all content including absolutely positioned children */
+  overflow: hidden;
+  /* Clip all content including absolutely positioned children */
   min-width: 0;
-  z-index: 1; /* Lower than left panel to allow frozen column to stay on top */
+  z-index: 1;
+  /* Lower than left panel to allow frozen column to stay on top */
 }
 
 .right-panel-scroll {
   overflow: auto;
   height: 100%;
-  position: relative; /* Establish containing block for absolute positioned canvas */
-}
-
-.horizontal-scroll-wrapper {
-  width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  border: 1px solid var(--grid-border);
-  border-bottom: none;
-  background: var(--grid-header-bg);
-  height: 16px;
-}
-
-.horizontal-scroll-wrapper::-webkit-scrollbar {
-  height: 8px;
-}
-
-.horizontal-scroll-inner {
-  height: 1px;
+  position: relative;
+  /* Establish containing block for absolute positioned canvas */
 }
 
 /* Custom Scrollbar for Right Panel */
@@ -287,8 +336,10 @@
 #left-thead,
 #right-thead {
   position: sticky;
-  top: 0; /* Stick to top of scroll panel */
-  z-index: var(--dp-z-thead); /* 12030 - Proper layer for table headers */
+  top: 0;
+  /* Stick to top of scroll panel */
+  z-index: var(--dp-z-thead);
+  /* 12030 - Proper layer for table headers */
   background: var(--grid-header-bg);
 }
 
@@ -353,7 +404,8 @@
 /* ===== Table Body ===== */
 .grid-table tbody tr {
   transition: background-color 0.15s ease;
-  height: auto; /* Let content determine height */
+  height: auto;
+  /* Let content determine height */
 }
 
 .grid-table tbody tr:hover {
@@ -484,7 +536,7 @@
 }
 
 .row-pekerjaan .tree-node-label {
-  font-weight: 400;
+  font-weight: 300;
   font-size: 0.85rem;
   color: #212529;
 }
@@ -540,10 +592,21 @@
 }
 
 /* Indentation for hierarchy levels */
-.level-0 { padding-left: 0rem; }
-.level-1 { padding-left: 1.5rem; }
-.level-2 { padding-left: 3rem; }
-.level-3 { padding-left: 4.5rem; }
+.level-0 {
+  padding-left: 0rem;
+}
+
+.level-1 {
+  padding-left: 1.5rem;
+}
+
+.level-2 {
+  padding-left: 3rem;
+}
+
+.level-3 {
+  padding-left: 4.5rem;
+}
 
 /* Row types - Left Table */
 .left-table .row-klasifikasi td {
@@ -667,7 +730,8 @@
 
 /* State 2: MODIFIED (changed, not saved yet) */
 .time-cell.modified {
-  background-color: #fff3cd; /* Yellow warning background */
+  background-color: #fff3cd;
+  /* Yellow warning background */
   border-left: 3px solid #ffc107;
   color: #856404;
   font-weight: 500;
@@ -681,9 +745,11 @@
 
 /* State 3: SAVED (value > 0, saved in database) */
 .time-cell.saved {
-  background-color: #e7f3ff; /* Light blue subtle background */
+  background-color: #e7f3ff;
+  /* Light blue subtle background */
   color: #004085;
-  font-weight: 600; /* Bold untuk kontras */
+  font-weight: 600;
+  /* Bold untuk kontras */
 }
 
 [data-bs-theme="dark"] .time-cell.saved {
@@ -697,7 +763,8 @@
   background-color: #fff3cd;
   border-left: 3px solid #ffc107;
   color: #856404;
-  font-weight: 600; /* Keep bold untuk indicate ada saved value */
+  font-weight: 600;
+  /* Keep bold untuk indicate ada saved value */
 }
 
 [data-bs-theme="dark"] .time-cell.saved.modified {
@@ -1153,7 +1220,9 @@
   font-size: 0.75rem;
 }
 
-/* ===== Kurva S Container ===== */
+/* NOTE: .chart-view-container styles moved to end of file for unified viewport sizing */
+
+/* Legacy .scurve-container for backwards compatibility */
 .scurve-container {
   padding: 2rem;
   background: #fff;
@@ -1262,17 +1331,20 @@
 
 /* Progress validation: Border colors for row visual feedback */
 .progress-over-100 {
-  border-left: 4px solid #dc3545 !important; /* Red for >100% */
+  border-left: 4px solid #dc3545 !important;
+  /* Red for >100% */
   background-color: rgba(220, 53, 69, 0.05) !important;
 }
 
 .progress-under-100 {
-  border-left: 4px solid #ffc107 !important; /* Yellow for <100% */
+  border-left: 4px solid #ffc107 !important;
+  /* Yellow for <100% */
   background-color: rgba(255, 193, 7, 0.03) !important;
 }
 
 .progress-complete-100 {
-  border-left: 4px solid #28a745 !important; /* Green for =100% */
+  border-left: 4px solid #28a745 !important;
+  /* Green for =100% */
   background-color: rgba(40, 167, 69, 0.03) !important;
 }
 
@@ -1303,7 +1375,7 @@
   align-items: center;
   gap: 8px;
   font-size: 0.875rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .canonical-storage-banner i {
@@ -1325,15 +1397,17 @@
   }
 }
 
-.row-pekerjaan.volume-warning{
+.row-pekerjaan.volume-warning {
   background: color-mix(in srgb, var(--dp-c-warning) 12%, transparent);
 }
-.row-pekerjaan.volume-warning .tree-node{
+
+.row-pekerjaan.volume-warning .tree-node {
   display: flex;
   align-items: center;
   gap: .4rem;
 }
-.kt-volume-pill{
+
+.kt-volume-pill {
   font-size: .65rem;
   text-transform: uppercase;
   letter-spacing: .04em;
@@ -1355,14 +1429,14 @@
   transition: all 0.2s ease;
 }
 
-.progress-mode-toggle .btn-check:checked + .btn-outline-info {
+.progress-mode-toggle .btn-check:checked+.btn-outline-info {
   background-color: #0dcaf0;
   border-color: #0dcaf0;
   color: #000;
   font-weight: 600;
 }
 
-.progress-mode-toggle .btn-check:checked + .btn-outline-warning {
+.progress-mode-toggle .btn-check:checked+.btn-outline-warning {
   background-color: #ffc107;
   border-color: #ffc107;
   color: #000;
@@ -1382,13 +1456,13 @@
   border-color: #404040;
 }
 
-[data-bs-theme="dark"] .progress-mode-toggle .btn-check:checked + .btn-outline-info {
+[data-bs-theme="dark"] .progress-mode-toggle .btn-check:checked+.btn-outline-info {
   background-color: #0dcaf0;
   border-color: #0dcaf0;
   color: #000;
 }
 
-[data-bs-theme="dark"] .progress-mode-toggle .btn-check:checked + .btn-outline-warning {
+[data-bs-theme="dark"] .progress-mode-toggle .btn-check:checked+.btn-outline-warning {
   background-color: #ffc107;
   border-color: #ffc107;
   color: #000;
@@ -1426,6 +1500,8 @@
   position: relative;
   overflow: auto;
   max-height: min(70vh, 760px);
+  /* Padding to ensure last row is visible above horizontal scrollbar */
+  padding-bottom: 40px;
 }
 
 .tanstack-grid-header-row,
@@ -1435,12 +1511,13 @@
 
 .tanstack-grid-header-cell,
 .tanstack-grid-cell {
-  padding: 0.65rem;
+  /* Using CSS variables for unified sizing */
+  padding: var(--kt-cell-padding-y) var(--kt-cell-padding-x);
   border-bottom: 1px solid var(--bs-border-color-translucent);
   border-right: 1px solid var(--bs-border-color-translucent);
   background-color: var(--bs-body-bg);
-  font-size: 0.85rem;
-  min-height: 48px;
+  font-size: var(--kt-cell-font-size);
+  min-height: var(--kt-row-height);
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -1456,7 +1533,9 @@
   top: 0;
   z-index: 2;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 0.1rem;
   white-space: normal;
 }
@@ -1469,9 +1548,14 @@
 }
 
 .tanstack-grid-cell.tree-cell .tree-label-text {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
   overflow-wrap: anywhere;
   word-break: break-word;
+  /* Max 3 lines of text with ellipsis */
 }
 
 .tanstack-grid-virtual-container {
@@ -1603,7 +1687,8 @@
 #exportModal {
   z-index: var(--kt-export-modal-z) !important;
 }
-#exportModal ~ .modal-backdrop {
+
+#exportModal~.modal-backdrop {
   z-index: var(--kt-export-backdrop-z) !important;
 }
 
@@ -1611,6 +1696,169 @@
 #exportProgressModal {
   z-index: var(--kt-export-modal-z) !important;
 }
-#exportProgressModal ~ .modal-backdrop {
+
+#exportProgressModal~.modal-backdrop {
   z-index: var(--kt-export-backdrop-z) !important;
 }
+
+/* ===== UNIFIED VIEW CONTAINER (Grid, Gantt, Kurva S) ===== */
+/* All three modes use identical container dimensions for consistency */
+/* Uses CSS variables from :root for single source of truth */
+
+/* Tab content container - visible to allow scrollbar */
+#viewTabsContent {
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  /* Changed from hidden to visible for scrollbar visibility */
+}
+
+/* All tab panes - visible for scrollbar */
+#viewTabsContent>.tab-pane {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  overflow: visible;
+  /* Changed from hidden to visible for scrollbar visibility */
+}
+
+/* Active tab pane - fixed height for 1440px main-content */
+#viewTabsContent>.tab-pane.active,
+#viewTabsContent>.tab-pane.show {
+  display: block;
+  height: 1300px;
+  min-height: 1300px;
+  overflow: visible;
+  /* Fixed height: 1440px main - 52px toolbar - 44px tabs - 44px margin */
+}
+
+/* Base chart-view-container - outer container, NO SCROLL */
+.chart-view-container {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  padding: var(--kt-container-padding-y, 0.5rem) var(--kt-container-padding-x, 0.5rem);
+  height: var(--kt-container-height, calc(100vh - 200px));
+  min-height: var(--kt-min-container-height, 400px);
+  overflow: hidden;
+  /* NO SCROLL - inner elements handle scrolling */
+  background: var(--grid-bg, #ffffff);
+  border-radius: 0.375rem;
+}
+
+/* ===== GRID VIEW ===== */
+#tanstack-grid-section {
+  position: relative;
+  width: 100%;
+  height: var(--kt-container-height, calc(100vh - 200px));
+  min-height: var(--kt-min-container-height, 400px);
+  overflow: visible;
+  /* Use CSS variable for dynamic height */
+}
+
+#tanstack-grid-section #tanstack-grid-container,
+#tanstack-grid-container.chart-view-container,
+#tanstack-grid-container.tanstack-grid-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Container wrapper doesn't scroll */
+}
+
+/* ONLY the grid body scrolls */
+.chart-view-container .tanstack-grid-body,
+#tanstack-grid-section .tanstack-grid-body {
+  height: calc(100% - var(--kt-header-height, 42px));
+  overflow: auto;
+  /* ONLY THIS SCROLLS */
+}
+
+/* ===== GANTT VIEW ===== */
+#gantt-redesign-container.chart-view-container,
+#gantt-container.chart-view-container,
+#gantt-redesign-container,
+#gantt-container {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: var(--kt-container-height, calc(100vh - 200px));
+  min-height: var(--kt-min-container-height, 400px);
+  overflow: hidden;
+  /* Outer container doesn't scroll */
+}
+
+/* Gantt inner scroll container - the unified-gantt-host or inner body */
+#gantt-redesign-container .tanstack-grid-body,
+#gantt-container .tanstack-grid-body,
+#gantt-redesign-container .unified-gantt-host,
+.gantt-redesign-wrapper .tanstack-grid-body {
+  flex: 1;
+  overflow: auto;
+  /* ONLY inner content scrolls */
+}
+
+/* ===== KURVA S VIEW ===== */
+#scurve-container,
+#scurve-container.chart-view-container {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  height: var(--kt-container-height, calc(100vh - 200px));
+  min-height: var(--kt-min-container-height, 400px);
+  overflow: hidden;
+  /* Outer container doesn't scroll */
+}
+
+/* Kurva S inner scroll - only the grid body scrolls */
+#scurve-container .tanstack-grid-body {
+  flex: 1;
+  overflow: auto;
+  /* ONLY inner content scrolls */
+}
+
+/* ===== SCROLLBAR CLEANUP - Eliminate Nested Scrollbars ===== */
+/* Override gantt-chart-redesign.css conflicting styles */
+/* RULE: Only ONE scrollbar per view - at the innermost content level */
+
+/* Reset inner containers to overflow:hidden, but NOT view containers */
+/* NOTE: #gantt-view and #scurve-view removed to allow scrollbar visibility */
+#gantt-redesign-container,
+#scurve-container,
+.gantt-redesign-wrapper,
+.unified-gantt-host {
+  overflow: hidden !important;
+}
+
+/* Gantt specific: override .gantt-container from gantt-chart-redesign.css */
+.gantt-container,
+#gantt-redesign-container .gantt-container {
+  overflow: hidden !important;
+  height: 100% !important;
+}
+
+/* Gantt grid wrapper - no scroll */
+.gantt-grid {
+  overflow: hidden !important;
+}
+
+/* Gantt timeline panel - no scroll at panel level */
+.gantt-timeline-panel {
+  overflow: hidden !important;
+}
+
+/* SINGLE SCROLL POINT: Only .timeline-content scrolls in Gantt */
+.gantt-container .timeline-content,
+#gantt-redesign-container .timeline-content,
+.gantt-timeline-panel .timeline-content {
+  flex: 1;
+  overflow: auto !important;
+}
+
+/* SINGLE SCROLL POINT: Only .tanstack-grid-body scrolls in Grid/Kurva S */
+.tanstack-grid-body {
+  overflow: auto !important;
+}
+
+/* NOTE: Removed overflow:hidden overrides on viewTabsContent and tab-pane
+   to allow horizontal scrollbar to be visible. The scrollbar was being 
+   clipped by these rules. */

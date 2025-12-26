@@ -36,6 +36,8 @@ export function prependZeroDetails(details, zeroLabel, isCostView) {
         start: null,
         end: null,
         tooltip: zeroLabel,
+        // AUDIT FIX: Include weekNumber for correct tooltip display
+        weekNumber: 0,
       },
       ...details,
     ];

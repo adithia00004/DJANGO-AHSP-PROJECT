@@ -6,6 +6,33 @@
  */
 
 /**
+ * Normalize attachments[] (snake_case/camelCase) to backend page schema
+ * Backend expects: { pageNumber, title, dataUrl, format }
+ *
+ * @param {Array<Object>} attachments
+ * @returns {Array<Object>} pages
+ */
+function normalizeAttachmentsToPages(attachments = []) {
+  const pages = [];
+
+  for (const attachment of attachments) {
+    if (!attachment) continue;
+
+    const dataUrl = attachment.dataUrl || attachment.data_url || attachment.dataURL;
+    if (!dataUrl) continue;
+
+    pages.push({
+      pageNumber: pages.length + 1,
+      title: attachment.title || `Page ${pages.length + 1}`,
+      dataUrl,
+      format: attachment.format || 'png'
+    });
+  }
+
+  return pages;
+}
+
+/**
  * Get CSRF token from cookie
  * @returns {string} CSRF token
  */
@@ -40,75 +67,25 @@ export async function generatePDF(config) {
     options = {}
   } = config;
 
+  const pages = normalizeAttachmentsToPages(attachments);
+
   console.log('[PDFGenerator] Requesting PDF generation from backend:', {
     reportType,
-    attachmentsCount: attachments.length
+    attachmentsCount: attachments.length,
+    pagesCount: pages.length
   });
 
-  // Determine strategy: batch upload atau single upload
-  const useBatching = attachments.length > 50;
-
-  try {
-    if (useBatching) {
-      // Batch upload mode
-      return await generatePDFBatched(config);
-    } else {
-      // Single upload mode
-      return await generatePDFSingle(config);
-    }
-  } catch (error) {
-    console.error('[PDFGenerator] PDF generation failed:', error);
-    throw error;
-  }
-}
-
-/**
- * Generate PDF dengan single upload (< 50 pages)
- */
-async function generatePDFSingle(config) {
-  const { attachments, gridData, reportType, options } = config;
-
-  const response = await fetch('/api/export/generate', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': getCsrfToken()
-    },
-    body: JSON.stringify({
-      reportType,
-      format: 'pdf',
-      attachments,
-      gridData,
-      options
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Backend returned ${response.status}: ${response.statusText}`);
+  if (pages.length === 0) {
+    throw new Error('[PDFGenerator] No valid attachments to generate PDF');
   }
 
-  const blob = await response.blob();
+  const { projectName = '' } = options || {};
 
-  return {
-    blob,
-    metadata: {
-      reportType,
-      format: 'pdf',
-      pageCount: attachments.length,
-      generatedAt: new Date().toISOString()
-    }
-  };
-}
-
-/**
- * Generate PDF dengan batch upload (>= 50 pages)
- */
-async function generatePDFBatched(config) {
-  const { attachments, gridData, reportType, options } = config;
+  // Always use session-based API (init/upload-pages/finalize) since backend does not expose /api/export/generate
   const BATCH_SIZE = 10;
 
   // Step 1: Initialize export session
-  const initRes = await fetch('/api/export/init', {
+  const initRes = await fetch('/detail_project/api/export/init', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -117,7 +94,12 @@ async function generatePDFBatched(config) {
     body: JSON.stringify({
       reportType,
       format: 'pdf',
-      estimatedPages: attachments.length
+      estimatedPages: pages.length,
+      projectName,
+      metadata: {
+        options,
+        hasGridData: Boolean(gridData)
+      }
     })
   });
 
@@ -130,11 +112,11 @@ async function generatePDFBatched(config) {
   console.log(`[PDFGenerator] Export session initialized: ${exportId}`);
 
   // Step 2: Upload attachments dalam batch
-  for (let i = 0; i < attachments.length; i += BATCH_SIZE) {
-    const batch = attachments.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < pages.length; i += BATCH_SIZE) {
+    const batch = pages.slice(i, i + BATCH_SIZE);
     const batchIndex = Math.floor(i / BATCH_SIZE);
 
-    await fetch('/api/export/upload-pages', {
+    const uploadRes = await fetch('/detail_project/api/export/upload-pages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -147,11 +129,16 @@ async function generatePDFBatched(config) {
       })
     });
 
-    console.log(`[PDFGenerator] Uploaded batch ${batchIndex + 1}/${Math.ceil(attachments.length / BATCH_SIZE)}`);
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text().catch(() => '');
+      throw new Error(`Export upload-pages failed: ${uploadRes.status} ${uploadRes.statusText}\n${text}`);
+    }
+
+    console.log(`[PDFGenerator] Uploaded batch ${batchIndex + 1}/${Math.ceil(pages.length / BATCH_SIZE)}`);
   }
 
   // Step 3: Finalize & get download URL
-  const finalRes = await fetch('/api/export/finalize', {
+  const finalRes = await fetch('/detail_project/api/export/finalize', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -164,10 +151,14 @@ async function generatePDFBatched(config) {
     throw new Error(`Export finalize failed: ${finalRes.status}`);
   }
 
-  const { downloadUrl } = await finalRes.json();
+  await finalRes.json().catch(() => ({}));
 
-  // Download PDF
-  const pdfRes = await fetch(downloadUrl);
+  // Always download via authenticated endpoint
+  const pdfRes = await fetch(`/detail_project/api/export/download/${exportId}`);
+  if (!pdfRes.ok) {
+    const text = await pdfRes.text().catch(() => '');
+    throw new Error(`Export download failed: ${pdfRes.status} ${pdfRes.statusText}\n${text}`);
+  }
   const blob = await pdfRes.blob();
 
   return {
@@ -175,7 +166,7 @@ async function generatePDFBatched(config) {
     metadata: {
       reportType,
       format: 'pdf',
-      pageCount: attachments.length,
+      pageCount: pages.length,
       exportId,
       generatedAt: new Date().toISOString()
     }

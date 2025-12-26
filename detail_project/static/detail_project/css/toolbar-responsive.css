@@ -695,6 +695,86 @@
   animation: shake 0.5s;
 }
 
+/* ===== Loading Spinner for Save Button ===== */
+.btn-save.loading {
+  pointer-events: none;
+  opacity: 0.85;
+  position: relative;
+}
+
+.btn-save.loading .btn-text {
+  opacity: 0;
+}
+
+.btn-save.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  left: 50%;
+  margin-top: -8px;
+  margin-left: -8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===== Visual Feedback - Grid Row Hover ===== */
+.tanstack-grid-virtual-row:hover {
+  background-color: rgba(var(--bs-primary-rgb), 0.04);
+}
+
+.tanstack-grid-virtual-row:hover .tanstack-grid-cell {
+  background-color: transparent;
+}
+
+/* Active row highlight */
+.tanstack-grid-virtual-row.active,
+.tanstack-grid-virtual-row:focus-within {
+  background-color: rgba(var(--bs-primary-rgb), 0.08);
+  box-shadow: inset 3px 0 0 var(--bs-primary);
+}
+
+/* ===== Cell Editing Glow Effect ===== */
+.tanstack-grid-cell.editing {
+  box-shadow: 0 0 0 2px var(--bs-primary), 0 4px 12px rgba(var(--bs-primary-rgb), 0.25);
+  z-index: 5;
+  position: relative;
+}
+
+.tanstack-grid-cell.editing .tanstack-cell-editor {
+  border: none;
+  box-shadow: none;
+  background: white;
+}
+
+/* ===== Tab Switch Transition ===== */
+.tab-content>.tab-pane {
+  transition: opacity 0.2s ease-in-out;
+}
+
+.tab-content>.tab-pane:not(.active) {
+  opacity: 0;
+}
+
+.tab-content>.tab-pane.active {
+  opacity: 1;
+}
+
+/* ===== Modified Cell Indicator ===== */
+.tanstack-grid-cell.modified {
+  background-color: rgba(var(--bs-warning-rgb), 0.1);
+  border-left: 2px solid var(--bs-warning);
+}
+
 @keyframes shake {
 
   0%,

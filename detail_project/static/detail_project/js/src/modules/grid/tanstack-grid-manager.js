@@ -14,7 +14,8 @@ import { validateCellValue } from '@modules/shared/validation-utils.js';
 import { StateManager } from '@modules/core/state-manager.js';
 import { CellRendererFactory } from './renderers/CellRendererFactory.js';
 
-const DEFAULT_ROW_HEIGHT = 56;
+// Optimized for more visible rows - coordinated with CSS --kt-row-height
+const DEFAULT_ROW_HEIGHT = 44;
 
 const flexRender = (template, context) => {
   if (typeof template === 'function') {
@@ -39,12 +40,7 @@ export class TanStackGridManager {
     this.currentRows = [];
     this.rowHeight = options.rowHeight || DEFAULT_ROW_HEIGHT;
     this.inputMode = (state?.inputMode || 'percentage').toLowerCase();
-    this.topScroll = null;
-    this.topScrollInner = null;
     this._handleScroll = this._handleScroll.bind(this);
-    this._handleTopScroll = this._handleTopScroll.bind(this);
-    this._syncingBodyScroll = false;
-    this._syncingTopScroll = false;
     this.activeEditor = null;
     this._editorNavDirection = null;
     this.totalColumnWidth = 0;
@@ -75,22 +71,11 @@ export class TanStackGridManager {
     this.bodyInner.className = 'tanstack-grid-virtual-container';
     this.bodyScroll.appendChild(this.bodyInner);
 
-    this.topScroll = domTargets.topScroll || null;
-    this.topScrollInner = domTargets.topScrollInner || null;
-
     this.container.innerHTML = '';
     this.container.appendChild(this.headerContainer);
     this.container.appendChild(this.bodyScroll);
 
-    if (domTargets.topScroll && domTargets.topScrollInner) {
-      domTargets.topScroll.classList.remove('d-none');
-    }
-
     this.bodyScroll.addEventListener('scroll', this._handleScroll, { passive: true });
-
-    if (this.topScroll) {
-      this.topScroll.addEventListener('scroll', this._handleTopScroll, { passive: true });
-    }
   }
 
   updateData({ tree = [], timeColumns = [], inputMode, timeScale } = {}) {
@@ -154,9 +139,6 @@ export class TanStackGridManager {
     if (this.bodyScroll) {
       this.bodyScroll.removeEventListener('scroll', this._handleScroll);
     }
-    if (this.topScroll) {
-      this.topScroll.removeEventListener('scroll', this._handleTopScroll);
-    }
     this.table = null;
     this.virtualizer = null;
     this.container = null;
@@ -167,23 +149,10 @@ export class TanStackGridManager {
       this.virtualizer.measure();
       this._renderVirtualRows();
     }
-    if (this.topScroll && !this._syncingTopScroll) {
-      this._syncingBodyScroll = true;
-      this.topScroll.scrollLeft = this.bodyScroll.scrollLeft;
-      this._syncingBodyScroll = false;
-    }
     this._syncHeaderScroll();
   }
 
-  _handleTopScroll() {
-    if (this._syncingBodyScroll || !this.bodyScroll) {
-      return;
-    }
-    this._syncingTopScroll = true;
-    this.bodyScroll.scrollLeft = this.topScroll.scrollLeft;
-    this._syncingTopScroll = false;
-    this._syncHeaderScroll();
-  }
+
 
   _defineColumns(timeColumns = []) {
     let pinnedOffset = 0;
@@ -381,10 +350,10 @@ export class TanStackGridManager {
     const itemsToRender = virtualItems.length
       ? virtualItems
       : rows.map((_, index) => ({
-          index,
-          start: index * this.rowHeight,
-          size: this.rowHeight,
-        }));
+        index,
+        start: index * this.rowHeight,
+        size: this.rowHeight,
+      }));
 
     this.bodyInner.innerHTML = '';
     const totalSize = this.virtualizer.getTotalSize() || rows.length * this.rowHeight;
@@ -444,9 +413,14 @@ export class TanStackGridManager {
 
     cells.forEach((cell) => {
       const rect = cell.getBoundingClientRect();
+      // AUDIT FIX: Extract weekNumber from data attribute for Kurva S positioning
+      const weekNumAttr = cell.dataset.weekNumber;
+      const weekNumber = weekNumAttr ? parseInt(weekNumAttr, 10) : null;
+
       rects.push({
         pekerjaanId: String(cell.dataset.pekerjaanId || cell.dataset.rowId || ''),
         columnId: String(cell.dataset.columnId || ''),
+        weekNumber: Number.isFinite(weekNumber) ? weekNumber : null,
         x: rect.x - containerRect.x + this.bodyScroll.scrollLeft,
         y: rect.y - containerRect.y + this.bodyScroll.scrollTop,
         width: rect.width,
@@ -518,6 +492,13 @@ export class TanStackGridManager {
     cellEl.dataset.cellId = cellKey;
     cellEl.dataset.pekerjaanId = String(pekerjaanId);
     cellEl.dataset.columnId = String(columnId);
+
+    // AUDIT FIX: Add week number for Kurva S positioning
+    const weekNum = columnMeta?.weekNumber || columnMeta?.week_number;
+    if (Number.isFinite(weekNum)) {
+      cellEl.dataset.weekNumber = String(weekNum);
+    }
+
     const rowEditable = this._isRowEditable(row);
     const isEditable = rowEditable && this._isColumnEditable(columnDef);
     cellEl.tabIndex = isEditable ? 0 : -1;

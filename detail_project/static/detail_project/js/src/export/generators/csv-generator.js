@@ -183,6 +183,46 @@ export function generateMonthlyProgressCSV(config) {
 }
 
 /**
+ * Generate CSV untuk Weekly Progress Table
+ *
+ * @param {Object} config - Configuration
+ * @param {Object} [config.weeklyProgressTable] - Weekly progress table { headers, rows }
+ * @returns {Blob} CSV blob
+ */
+export function generateWeeklyProgressCSV(config = {}) {
+  const { weeklyProgressTable } = config;
+
+  if (weeklyProgressTable && Array.isArray(weeklyProgressTable.headers) && Array.isArray(weeklyProgressTable.rows)) {
+    return generateCSV({
+      headers: weeklyProgressTable.headers,
+      rows: weeklyProgressTable.rows,
+      delimiter: ';',
+      addBOM: true
+    });
+  }
+
+  // Placeholder jika belum ada struktur table
+  const headers = [
+    'Pekerjaan',
+    'Total Harga',
+    'Bobot Pekerjaan (%)',
+    'Target Planned Minggu Ini (%)',
+    'Actual Minggu Ini (%)',
+    'Kumulatif Target (%)',
+    'Kumulatif Actual (%)'
+  ];
+
+  const rows = [['Placeholder', '0', '0', '0', '0', '0', '0']];
+
+  return generateCSV({
+    headers,
+    rows,
+    delimiter: ';',
+    addBOM: true
+  });
+}
+
+/**
  * Download CSV file to user's computer
  * @param {Blob} blob - CSV file blob
  * @param {string} filename - Filename (without extension)

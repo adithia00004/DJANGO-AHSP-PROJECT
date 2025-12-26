@@ -17,6 +17,8 @@
 
 <!-- NEW: Redesigned Gantt CSS -->
 <link rel="stylesheet" href="{% static 'detail_project/css/gantt-chart-redesign.css' %}">
+<!-- Fullscreen Mode -->
+<link rel="stylesheet" href="{% static 'detail_project/css/fullscreen-mode.css' %}">
 {% endblock %}
 
 {% block dp_content %}
@@ -249,37 +251,30 @@
   data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
   data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
-  <!-- Tab Navigation -->
+  <!-- Tab Navigation - unified container, mode switching via JS -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="grid-tab" data-bs-toggle="tab" data-bs-target="#grid-view" type="button"
-        role="tab" aria-controls="grid-view" aria-selected="true">
+      <button class="nav-link active" id="grid-tab" data-mode="grid" type="button" role="tab">
         <i class="bi bi-grid-3x3-gap"></i> Grid View
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="gantt-tab" data-bs-toggle="tab" data-bs-target="#gantt-view" type="button" role="tab"
-        aria-controls="gantt-view" aria-selected="false">
-        <i class="bi bi-calendar3"></i> Gantt
+      <button class="nav-link" id="gantt-tab" data-mode="gantt" type="button" role="tab">
+        <i class="bi bi-calendar3"></i> Gantt Chart
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="scurve-tab" data-bs-toggle="tab" data-bs-target="#scurve-view" type="button"
-        role="tab" aria-controls="scurve-view" aria-selected="false">
-        <i class="bi bi-graph-up"></i> S-Curve
+      <button class="nav-link" id="scurve-tab" data-mode="kurva" type="button" role="tab">
+        <i class="bi bi-graph-up"></i> Kurva S
       </button>
     </li>
   </ul>
 
-  <!-- Tab Content -->
+  <!-- UNIFIED Tab Content - ONE container for ALL modes -->
   <div class="tab-content" id="viewTabsContent">
-    <!-- Grid View Tab -->
-    <div class="tab-pane fade show active" id="grid-view" role="tabpanel" aria-labelledby="grid-tab">
+    <div class="tab-pane fade show active" id="unified-view" role="tabpanel">
       <div class="tanstack-grid-section" id="tanstack-grid-section">
-        <div class="horizontal-scroll-wrapper" id="tanstack-grid-scroll-top">
-          <div class="horizontal-scroll-inner" id="tanstack-grid-scroll-inner"></div>
-        </div>
-        <div id="tanstack-grid-container" class="tanstack-grid-container">
+        <div id="tanstack-grid-container" class="tanstack-grid-container chart-view-container">
           <div class="tanstack-grid-body" id="tanstack-grid-body"></div>
         </div>
       </div>
@@ -288,6 +283,7 @@
       <div class="status-bar">
         <div class="status-left">
           <span id="status-info">Ready</span>
+          <span id="current-mode-label" class="badge bg-primary ms-2">Grid</span>
         </div>
         <div class="status-right">
           <span>Modified: <strong id="status-modified">0</strong></span>
@@ -295,30 +291,9 @@
         </div>
       </div>
     </div>
-
-    <!-- Gantt View Tab - REDESIGNED -->
-    <div class="tab-pane fade" id="gantt-view" role="tabpanel" aria-labelledby="gantt-tab">
-      {# NEW Gantt Chart Redesign - Modern split-view layout #}
-      <div id="gantt-redesign-container" class="gantt-redesign-wrapper">
-        {# Initial loading state #}
-        <div class="gantt-initial-loader">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading Gantt Chart...</span>
-          </div>
-          <p class="mt-3 text-muted">Initializing Gantt Chart...</p>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- S-Curve View Tab -->
-    <div class="tab-pane fade" id="scurve-view" role="tabpanel" aria-labelledby="scurve-tab">
-      <div id="scurve-container" style="height: 600px; padding: 20px;">
-        <div id="scurve-chart" style="width: 100%; height: 560px;"></div>
-      </div>
-    </div>
   </div>
 </div>
+
 
 <!-- Modals -->
 <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
@@ -376,7 +351,8 @@
           </label>
           <div class="list-group">
             <label class="list-group-item list-group-item-action d-flex align-items-start">
-              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="full" id="reportTypeFull" checked>
+              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="full"
+                id="reportTypeFull" checked>
               <div class="flex-grow-1">
                 <h6 class="mb-1 fw-bold">A. Rekap Laporan (Full Report)</h6>
                 <small class="text-muted">
@@ -388,7 +364,8 @@
               </div>
             </label>
             <label class="list-group-item list-group-item-action d-flex align-items-start">
-              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="monthly" id="reportTypeMonthly">
+              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="monthly"
+                id="reportTypeMonthly">
               <div class="flex-grow-1">
                 <h6 class="mb-1 fw-bold">B. Laporan Bulanan (Monthly Report)</h6>
                 <small class="text-muted">
@@ -399,7 +376,8 @@
               </div>
             </label>
             <label class="list-group-item list-group-item-action d-flex align-items-start">
-              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="weekly" id="reportTypeWeekly">
+              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="reportType" value="weekly"
+                id="reportTypeWeekly">
               <div class="flex-grow-1">
                 <h6 class="mb-1 fw-bold">C. Laporan Mingguan (Weekly Report)</h6>
                 <small class="text-muted">
@@ -461,6 +439,47 @@
           </div>
         </div>
 
+        <!-- Professional Report Format (Always Enabled for PDF/Word) -->
+        <div class="mb-4">
+          <label class="form-label fw-bold">
+            <i class="bi bi-file-earmark-richtext"></i> Format Laporan
+          </label>
+          <!-- Hidden input - professional format is always enabled for PDF/Word -->
+          <input type="hidden" id="useProfessionalFormat" value="true">
+          <div class="alert alert-success py-2 px-3 small mb-0">
+            <i class="bi bi-check-circle-fill text-success"></i>
+            <strong>Laporan Tertulis Profesional</strong>
+            <small class="text-muted d-block mt-1">
+              Format resmi dengan Cover Page, Ringkasan Eksekutif, Grid Terpisah (Rencana vs Realisasi), dan Lembar
+              Pengesahan.
+            </small>
+          </div>
+          <div class="alert alert-warning mt-2 py-2 px-3 small" id="professionalFormatNote" style="display: none;">
+            <i class="bi bi-info-circle"></i>
+            Format profesional hanya tersedia untuk <strong>PDF</strong> dan <strong>Word</strong>.
+            Untuk XLSX/CSV, akan menggunakan format data tabel standar.
+          </div>
+        </div>
+
+
+        <!-- Period Selection for Monthly/Weekly (visible when using Professional + Monthly/Weekly) -->
+        <div class="mb-4" id="periodSelectionSection" style="display: none;">
+          <label class="form-label fw-bold">
+            <i class="bi bi-calendar-range"></i> Pilih Periode
+          </label>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small text-muted" id="periodLabel">Bulan ke-</label>
+              <input type="number" class="form-control" id="periodNumber" min="1" value="1" placeholder="1">
+            </div>
+            <div class="col-6">
+              <small class="text-muted d-block mt-4 pt-2">
+                <i class="bi bi-info-circle"></i> Akan dibandingkan dengan periode sebelumnya
+              </small>
+            </div>
+          </div>
+        </div>
+
         <!-- Export Preview/Info -->
         <div class="alert alert-info mb-0" role="alert">
           <h6 class="alert-heading">
@@ -493,7 +512,8 @@
 </div>
 
 <!-- Export Progress Modal -->
-<div class="modal fade" id="exportProgressModal" tabindex="-1" aria-labelledby="exportProgressLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+<div class="modal fade" id="exportProgressModal" tabindex="-1" aria-labelledby="exportProgressLabel" aria-hidden="true"
+  data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
@@ -506,7 +526,8 @@
           <span class="visually-hidden">Loading...</span>
         </div>
         <p class="mb-2 fw-bold" id="exportProgressStatus">Mempersiapkan data...</p>
-        <p class="small text-muted mb-0" id="exportProgressDetail">Harap tunggu, proses mungkin memakan waktu beberapa detik.</p>
+        <p class="small text-muted mb-0" id="exportProgressDetail">Harap tunggu, proses mungkin memakan waktu beberapa
+          detik.</p>
       </div>
     </div>
   </div>
@@ -514,10 +535,10 @@
 
 <!-- Export Modal Preview Update Script -->
 <script>
-  (function() {
+  (function () {
     'use strict';
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
       const exportModal = document.getElementById('exportModal');
       if (!exportModal) return;
 
@@ -526,6 +547,10 @@
       const includeGanttCheckbox = exportModal.querySelector('#includeGantt');
       const includeKurvaSCheckbox = exportModal.querySelector('#includeKurvaS');
       const exportPreviewText = exportModal.querySelector('#exportPreviewText');
+      const useProfessionalCheckbox = exportModal.querySelector('#useProfessionalFormat');
+      const professionalFormatNote = exportModal.querySelector('#professionalFormatNote');
+      const periodSelectionSection = exportModal.querySelector('#periodSelectionSection');
+      const periodLabel = exportModal.querySelector('#periodLabel');
 
       const reportTypeLabels = {
         'full': 'Rekap Laporan (Full Report)',
@@ -545,6 +570,33 @@
         const selectedFormat = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
         const includeGantt = includeGanttCheckbox?.checked;
         const includeKurvaS = includeKurvaSCheckbox?.checked;
+        // Professional format is always enabled for PDF/Word (hidden input or default true)
+        const isPdfOrWord = (selectedFormat === 'pdf' || selectedFormat === 'word');
+        const useProfessional = useProfessionalCheckbox?.type === 'checkbox'
+          ? useProfessionalCheckbox.checked
+          : (useProfessionalCheckbox?.value === 'true' || isPdfOrWord);
+
+        // Update period label based on report type
+        if (periodLabel) {
+          if (selectedReportType === 'monthly') {
+            periodLabel.textContent = 'Bulan ke-';
+          } else {
+            periodLabel.textContent = 'Minggu ke-';
+          }
+        }
+
+        // Show/hide period selection for professional + monthly/weekly
+        if (periodSelectionSection) {
+          const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly');
+          periodSelectionSection.style.display = showPeriod ? 'block' : 'none';
+        }
+
+        // Show warning if XLSX/CSV selected (professional not available for those)
+        if (professionalFormatNote) {
+          const showWarning = !isPdfOrWord;
+          professionalFormatNote.style.display = showWarning ? 'block' : 'none';
+        }
+
 
         const charts = [];
         if (includeGantt && selectedReportType === 'full') {
@@ -556,13 +608,27 @@
 
         const chartsText = charts.length > 0 ? charts.join(', ') : 'Tidak ada chart';
 
+        // Build preview text
+        let previewHtml = `
+          <strong>Laporan:</strong> ${reportTypeLabels[selectedReportType]}<br>
+          <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
+          <strong>Charts:</strong> ${chartsText}<br>
+        `;
+
+        if (useProfessional) {
+          previewHtml += `<strong>Mode:</strong> <span class="text-success">Laporan Tertulis Profesional ✓</span><br>`;
+          previewHtml += `<strong>Fitur:</strong> Cover Page, `;
+          if (selectedReportType === 'full') {
+            previewHtml += `Daftar Isi, Grid Terpisah (Rencana/Realisasi)`;
+          } else {
+            previewHtml += `Ringkasan Eksekutif, Perbandingan Periode`;
+          }
+        } else {
+          previewHtml += `<strong>Halaman:</strong> Auto-paginated (smart splitting)`;
+        }
+
         if (exportPreviewText) {
-          exportPreviewText.innerHTML = `
-            <strong>Laporan:</strong> ${reportTypeLabels[selectedReportType]}<br>
-            <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
-            <strong>Charts:</strong> ${chartsText}<br>
-            <strong>Halaman:</strong> Auto-paginated (smart splitting)
-          `;
+          exportPreviewText.innerHTML = previewHtml;
         }
 
         // Disable/enable Gantt checkbox based on report type
@@ -583,6 +649,7 @@
       formatInputs.forEach(input => input.addEventListener('change', updatePreview));
       if (includeGanttCheckbox) includeGanttCheckbox.addEventListener('change', updatePreview);
       if (includeKurvaSCheckbox) includeKurvaSCheckbox.addEventListener('change', updatePreview);
+      if (useProfessionalCheckbox) useProfessionalCheckbox.addEventListener('change', updatePreview);
 
       // Initial preview update
       updatePreview();
@@ -610,12 +677,7 @@
       const viewTabs = document.getElementById('viewTabs');
 
       if (!toolbarSecondary || !viewTabs) return;
-
-      /**
-       * Show/hide Advanced Options based on active tab
-       * - Grid View: Show Advanced Options
-       * - Gantt/S-Curve: Hide Advanced Options
-       */
+      /**        * Show/hide Advanced Options based on active tab        * - Grid View: Show Advanced Options        * - Gantt/S-Curve: Hide Advanced Options        */
       function updateAdvancedOptionsVisibility(activeTabId) {
         const isGridView = activeTabId === 'grid-tab';
 
@@ -628,14 +690,14 @@
           toolbarSecondary.classList.add('d-none');
           if (toolbarToggleBtn) toolbarToggleBtn.classList.add('d-none');
         }
-
-        console.log('[Toolbar] Advanced Options:', isGridView ? 'visible' : 'hidden', '| Tab:', activeTabId);
       }
 
-      // Listen for Bootstrap tab show events
-      viewTabs.addEventListener('shown.bs.tab', function (event) {
-        const activeTabId = event.target.id;
-        updateAdvancedOptionsVisibility(activeTabId);
+      // Listen for tab clicks (unified container - no Bootstrap tab switching)
+      viewTabs.addEventListener('click', function (event) {
+        const tabBtn = event.target.closest('[data-mode]');
+        if (tabBtn) {
+          updateAdvancedOptionsVisibility(tabBtn.id);
+        }
       });
 
       // Set initial state based on active tab
@@ -647,13 +709,14 @@
   })();
 </script>
 
+
 <!-- MODERN VITE MODULE LOADING -->
 {% if DEBUG and use_vite_dev_server %}
 {# Development mode: Load from Vite dev server with HMR #}
 <script type="module" src="http://localhost:5173/@vite/client"></script>
 <script type="module" src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"></script>
 <script>
-  console.log('%cdYs? VITE DEV MODE', 'background: #646cff; color: white; padding: 4px 8px; border-radius: 3px;');
+  console.log('%c🔥 VITE DEV MODE', 'background: #646cff; color: white; padding: 4px 8px; border-radius: 3px;');
   console.log('Hot Module Replacement (HMR) enabled');
   console.log('Dev server: http://localhost:5173');
 </script>
@@ -664,8 +727,7 @@
 <link rel="stylesheet" href="{% static css_asset %}">
 {% endfor %}
 <script type="module" src="{% static jadwal_entry.file %}"></script>
-<script>
-  console.log('%cdY"? PRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
+<script>le.log('%cdY"? PRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
   console.log('Using built assets from static/dist/ (manifest resolved)');
 </script>
 {% endif %}
@@ -682,12 +744,12 @@ If you need to rollback ke stack lama:
 2. Nonaktifkan Vite dev server dan gunakan bundel statis lama (build manual diperlukan).
 
 Modern stack provides:
-- âœ… ES6 modules with tree-shaking
-- âœ… Hot Module Replacement (HMR) in dev
-- âœ… Code splitting & lazy loading
-- âœ… Better performance (28% smaller bundle)
-- âœ… Modern debugging with source maps
-- âœ… No memory leaks (event delegation)
+- ✅ ES6 modules with tree-shaking
+- ✅ Hot Module Replacement (HMR) in dev
+- ✅ Code splitting & lazy loading
+- ✅ Better performance (28% smaller bundle)
+- ✅ Modern debugging with source maps
+- ✅ No memory leaks (event delegation)
 =============================================================================
 {% endcomment %}
 

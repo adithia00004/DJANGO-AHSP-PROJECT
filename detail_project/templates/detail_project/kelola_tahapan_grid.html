@@ -13,6 +13,8 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/toolbar-responsive.css' %}">
 <!-- NEW: Redesigned Gantt CSS -->
 <link rel="stylesheet" href="{% static 'detail_project/css/gantt-chart-redesign.css' %}">
+<!-- Fullscreen Mode -->
+<link rel="stylesheet" href="{% static 'detail_project/css/fullscreen-mode.css' %}">
 {% endblock %}
 
 {% block dp_content %}
@@ -64,7 +66,8 @@
     <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-expand-all">
       <i class="bi bi-arrows-expand"></i> Expand
     </button>
-    <button type="button" class="btn btn-danger btn-sm ms-2" id="btn-reset-progress" title="Reset semua progress pekerjaan ke 0">
+    <button type="button" class="btn btn-danger btn-sm ms-2" id="btn-reset-progress"
+      title="Reset semua progress pekerjaan ke 0">
       <i class="bi bi-arrow-counterclockwise"></i> Reset Progress
     </button>
     <button type="button" class="btn btn-primary btn-sm" id="btn-export-excel">
@@ -77,28 +80,29 @@
 </div>
 
 <!-- Main App Container -->
-<div id="tahapan-grid-app"
-     data-project-id="{{ project.id }}"
-     data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/"
-     data-project-name="{{ project.nama|escape }}"
-     data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
-     data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
-     data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
+<div id="tahapan-grid-app" data-project-id="{{ project.id }}"
+  data-api-base="/detail_project/api/project/{{ project.id }}/tahapan/" data-project-name="{{ project.nama|escape }}"
+  data-project-start="{{ project.tanggal_mulai|date:'Y-m-d' }}"
+  data-project-end="{{ project.tanggal_selesai|date:'Y-m-d' }}"
+  data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
   <!-- Tab Navigation -->
   <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="grid-tab" data-bs-toggle="tab" data-bs-target="#grid-view" type="button" role="tab">
+      <button class="nav-link active" id="grid-tab" data-bs-toggle="tab" data-bs-target="#grid-view" type="button"
+        role="tab">
         <i class="bi bi-grid-3x3-gap"></i> Grid View
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="gantt-tab" data-bs-toggle="tab" data-bs-target="#gantt-view" type="button" role="tab">
+      <button class="nav-link" id="gantt-tab" data-bs-toggle="tab" data-bs-target="#gantt-view" type="button"
+        role="tab">
         <i class="bi bi-calendar3"></i> Gantt Chart
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="scurve-tab" data-bs-toggle="tab" data-bs-target="#scurve-view" type="button" role="tab">
+      <button class="nav-link" id="scurve-tab" data-bs-toggle="tab" data-bs-target="#scurve-view" type="button"
+        role="tab">
         <i class="bi bi-graph-up"></i> Kurva S
       </button>
     </li>
@@ -133,7 +137,8 @@
 </div>
 
 <!-- Confirmation Modal for Reset Progress -->
-<div class="modal fade" id="resetProgressModal" tabindex="-1" aria-labelledby="resetProgressModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+<div class="modal fade" id="resetProgressModal" tabindex="-1" aria-labelledby="resetProgressModalLabel"
+  aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header bg-danger text-white">
@@ -209,7 +214,8 @@
 
 <!-- Core Data & Logic Modules (Load first - dependencies) -->
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/data_loader_module.js' %}" defer></script>
-<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/time_column_generator_module.js' %}" defer></script>
+<script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/time_column_generator_module.js' %}"
+  defer></script>
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/validation_module.js' %}" defer></script>
 <script src="{% static 'detail_project/js/jadwal_pekerjaan/kelola_tahapan/save_handler_module.js' %}" defer></script>
 

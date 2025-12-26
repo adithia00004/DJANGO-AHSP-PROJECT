@@ -1,0 +1,36 @@
+{
+  "editor.formatOnSave": true,
+  
+  "[html]": {
+    "editor.defaultFormatter": null,
+    "editor.formatOnSave": false
+  },
+  "[django-html]": {
+    "editor.defaultFormatter": null,
+    "editor.formatOnSave": false
+  },
+  "[jinja-html]": {
+    "editor.defaultFormatter": null,
+    "editor.formatOnSave": false
+  },
+  
+  "files.associations": {
+    "**/templates/**/*.html": "django-html"
+  },
+  
+  "emmet.includeLanguages": {
+    "django-html": "html"
+  },
+  
+  "prettier.ignorePath": ".prettierignore",
+  
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}

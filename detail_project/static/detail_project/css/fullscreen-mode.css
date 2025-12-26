@@ -1,0 +1,254 @@
+/* =====================================================================
+   FULLSCREEN MODE - Jadwal Pekerjaan
+   Unified fullscreen overlay for Grid, Gantt, and Kurva S modes
+   ===================================================================== */
+
+/* ===== Fullscreen Toggle Button ===== */
+
+/* Ensure containers have relative position for button placement */
+#scurve-container,
+#gantt-redesign-container,
+.tanstack-grid-container {
+    position: relative;
+}
+
+.fullscreen-toggle-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 100;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.fullscreen-toggle-btn:hover {
+    background: var(--bs-primary);
+    color: white;
+    border-color: var(--bs-primary);
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
+}
+
+.fullscreen-toggle-btn:active {
+    transform: scale(0.98);
+}
+
+.fullscreen-toggle-btn i {
+    font-size: 14px;
+}
+
+/* Dark mode support */
+[data-bs-theme="dark"] .fullscreen-toggle-btn {
+    background: rgba(30, 30, 30, 0.95);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #e5e7eb;
+}
+
+[data-bs-theme="dark"] .fullscreen-toggle-btn:hover {
+    background: var(--bs-primary);
+    color: white;
+}
+
+/* ===== Fullscreen Overlay Container ===== */
+.fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    /* Must be higher than --dp-z-topbar (12044) and --dp-z-toolbar (12041) */
+    z-index: 12050;
+    background: var(--bs-body-bg, #ffffff);
+    display: flex;
+    flex-direction: column;
+    animation: fullscreen-enter 0.3s ease-out;
+}
+
+@keyframes fullscreen-enter {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes fullscreen-exit {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+}
+
+.fullscreen-overlay.exiting {
+    animation: fullscreen-exit 0.2s ease-in forwards;
+}
+
+/* ===== Fullscreen Header ===== */
+.fullscreen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    flex-shrink: 0;
+}
+
+.fullscreen-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--bs-body-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fullscreen-title i {
+    color: var(--bs-primary);
+}
+
+.fullscreen-close-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--bs-body-color);
+}
+
+.fullscreen-close-btn:hover {
+    background: var(--bs-danger);
+    border-color: var(--bs-danger);
+    color: white;
+}
+
+/* ===== Fullscreen Content Area ===== */
+.fullscreen-content {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+
+/* Grid mode fullscreen - ensure interactivity */
+.fullscreen-overlay .tanstack-grid-container {
+    height: 100%;
+}
+
+.fullscreen-overlay .tanstack-grid-body {
+    max-height: calc(100vh - 120px);
+}
+
+/* Ensure input cells remain interactive */
+.fullscreen-overlay .tanstack-grid-cell.editable {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.fullscreen-overlay .tanstack-grid-cell.editing {
+    z-index: 10;
+}
+
+.fullscreen-overlay .tanstack-cell-editor {
+    pointer-events: auto;
+}
+
+/* ===== Mode-specific adjustments ===== */
+
+/* Kurva S fullscreen - container and chart */
+.fullscreen-overlay #scurve-container,
+.fullscreen-content #scurve-container {
+    height: calc(100vh - 80px) !important;
+    padding: 16px !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.fullscreen-overlay #scurve-chart,
+.fullscreen-content #scurve-chart {
+    flex: 1;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: calc(100vh - 120px);
+}
+
+/* uPlot chart wrapper in fullscreen */
+.fullscreen-overlay .uplot,
+.fullscreen-content .uplot,
+.fullscreen-overlay .u-wrap,
+.fullscreen-content .u-wrap {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Kurva S canvas overlay in fullscreen */
+.fullscreen-overlay .kurva-s-canvas-overlay {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 120px);
+}
+
+/* Gantt fullscreen */
+.fullscreen-overlay #gantt-redesign-container,
+.fullscreen-content #gantt-redesign-container {
+    height: calc(100vh - 80px) !important;
+    overflow: auto;
+}
+
+.fullscreen-overlay .gantt-overlay-mode .tanstack-grid-body {
+    max-height: calc(100vh - 120px);
+}
+
+/* ===== Keyboard hint ===== */
+.fullscreen-hint {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 12px;
+    border-radius: 4px;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.fullscreen-hint:hover {
+    opacity: 1;
+}
+
+/* ===== Responsive adjustments ===== */
+@media (max-width: 768px) {
+    .fullscreen-header {
+        padding: 8px 12px;
+    }
+
+    .fullscreen-title {
+        font-size: 0.875rem;
+    }
+
+    .fullscreen-hint {
+        display: none;
+    }
+}

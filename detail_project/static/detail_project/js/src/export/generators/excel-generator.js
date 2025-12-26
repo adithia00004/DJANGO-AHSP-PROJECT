@@ -216,7 +216,16 @@ export async function generateExcel(config) {
     sheetCount: workbook.worksheets.length
   });
 
-  return blob;
+  return {
+    blob,
+    metadata: {
+      reportType,
+      format: 'xlsx',
+      sheetCount: workbook.worksheets.length,
+      size: blob.size,
+      generatedAt: new Date().toISOString()
+    }
+  };
 }
 
 /**
@@ -225,14 +234,29 @@ export async function generateExcel(config) {
  * @param {string} filename - Filename (without extension)
  */
 export function downloadExcel(blob, filename = 'export') {
+  // Validate blob
+  if (!blob || !(blob instanceof Blob)) {
+    console.error('[ExcelGenerator] Invalid blob:', blob);
+    throw new Error('Invalid blob provided to downloadExcel');
+  }
+
+  console.log('[ExcelGenerator] Downloading file:', {
+    filename: `${filename}.xlsx`,
+    size: blob.size,
+    type: blob.type
+  });
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `${filename}.xlsx`;
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 
-  console.log('[ExcelGenerator] File downloaded:', `${filename}.xlsx`);
+  // Clean up with slight delay to ensure download starts
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    console.log('[ExcelGenerator] File downloaded:', `${filename}.xlsx`);
+  }, 100);
 }
