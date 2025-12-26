@@ -431,6 +431,82 @@ describe('StateManager', () => {
       expect(stateManager.states.actual.assignmentMap.has('123-col_1')).toBe(false);
     });
   });
+
+  describe('Single Source of Truth - flatPekerjaan', () => {
+    test('getFlatPekerjaan returns empty array initially', () => {
+      const rows = stateManager.getFlatPekerjaan();
+      expect(Array.isArray(rows)).toBe(true);
+      expect(rows.length).toBe(0);
+    });
+
+    test('setFlatPekerjaan stores rows', () => {
+      const mockRows = [
+        { id: 1, nama: 'Pekerjaan A' },
+        { id: 2, nama: 'Pekerjaan B' },
+        { id: 3, nama: 'Pekerjaan C' },
+      ];
+
+      stateManager.setFlatPekerjaan(mockRows);
+      const rows = stateManager.getFlatPekerjaan();
+
+      expect(rows.length).toBe(3);
+      expect(rows[0].nama).toBe('Pekerjaan A');
+    });
+
+    test('setFlatPekerjaan logs count', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+
+      const mockRows = [{ id: 1 }, { id: 2 }];
+      stateManager.setFlatPekerjaan(mockRows);
+
+      expect(consoleSpy).toHaveBeenCalledWith('[StateManager]', 'Set 2 pekerjaan rows');
+      consoleSpy.mockRestore();
+    });
+
+    test('setFlatPekerjaan handles non-array gracefully', () => {
+      stateManager.setFlatPekerjaan(null);
+      expect(stateManager.getFlatPekerjaan().length).toBe(0);
+
+      stateManager.setFlatPekerjaan('invalid');
+      expect(stateManager.getFlatPekerjaan().length).toBe(0);
+    });
+  });
+
+  describe('Single Source of Truth - timeColumns', () => {
+    test('getTimeColumns returns empty array initially', () => {
+      const cols = stateManager.getTimeColumns();
+      expect(Array.isArray(cols)).toBe(true);
+      expect(cols.length).toBe(0);
+    });
+
+    test('setTimeColumns stores columns', () => {
+      const mockColumns = [
+        { id: 'col_1', label: 'Week 1' },
+        { id: 'col_2', label: 'Week 2' },
+      ];
+
+      stateManager.setTimeColumns(mockColumns);
+      const cols = stateManager.getTimeColumns();
+
+      expect(cols.length).toBe(2);
+      expect(cols[0].label).toBe('Week 1');
+    });
+
+    test('setTimeColumns logs count', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+
+      const mockColumns = [{ id: 'col_1' }, { id: 'col_2' }, { id: 'col_3' }];
+      stateManager.setTimeColumns(mockColumns);
+
+      expect(consoleSpy).toHaveBeenCalledWith('[StateManager]', 'Set 3 time columns');
+      consoleSpy.mockRestore();
+    });
+
+    test('setTimeColumns handles non-array gracefully', () => {
+      stateManager.setTimeColumns(undefined);
+      expect(stateManager.getTimeColumns().length).toBe(0);
+    });
+  });
 });
 
 describe('ModeState', () => {

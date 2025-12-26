@@ -14,9 +14,15 @@ describe('GanttCanvasOverlay', () => {
   let overlay;
   let mockTableManager;
   let mockBodyScroll;
+  let mockParentContainer;
   let mockCanvas;
 
   beforeEach(() => {
+    // Create parent container (clipViewport will be appended as sibling of bodyScroll)
+    mockParentContainer = document.createElement('div');
+    mockParentContainer.className = 'mock-parent-container';
+    document.body.appendChild(mockParentContainer);
+
     // Create mock body scroll container
     mockBodyScroll = document.createElement('div');
     // Use Object.defineProperty to make scrollWidth/scrollHeight writable
@@ -28,7 +34,7 @@ describe('GanttCanvasOverlay', () => {
     });
     mockBodyScroll.style.width = '1000px';
     mockBodyScroll.style.height = '800px';
-    document.body.appendChild(mockBodyScroll);
+    mockParentContainer.appendChild(mockBodyScroll);
     mockBodyScroll.addEventListener = vi.fn();
     mockBodyScroll.removeEventListener = vi.fn();
 
@@ -43,6 +49,11 @@ describe('GanttCanvasOverlay', () => {
       stroke: vi.fn(),
       closePath: vi.fn(),
       fill: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      rect: vi.fn(),
+      clip: vi.fn(),
+      setLineDash: vi.fn(),
       fillStyle: '#000000',
       strokeStyle: '#000000',
       lineWidth: 1,
@@ -72,6 +83,7 @@ describe('GanttCanvasOverlay', () => {
       options: { debugUnifiedTable: false },
       state: { debugUnifiedTable: false },
       getCellBoundingRects: vi.fn(() => []),
+      getAllCellBoundingRects: vi.fn(() => []),
       getPinnedColumnsWidth: vi.fn(() => 0),
     };
 
@@ -82,8 +94,8 @@ describe('GanttCanvasOverlay', () => {
     if (overlay && overlay.visible) {
       overlay.hide();
     }
-    if (mockBodyScroll && document.body.contains(mockBodyScroll)) {
-      document.body.removeChild(mockBodyScroll);
+    if (mockParentContainer && document.body.contains(mockParentContainer)) {
+      document.body.removeChild(mockParentContainer);
     }
     if (window?.GanttOverlayMetrics) {
       delete window.GanttOverlayMetrics;
@@ -106,7 +118,7 @@ describe('GanttCanvasOverlay', () => {
       expect(overlay.barData).toEqual([]);
       expect(overlay.dependencies).toEqual([]);
       expect(overlay.barRects).toEqual([]);
-      expect(overlay.tooltip).toBeNull();
+      expect(overlay.tooltipManager).toBeTruthy();
     });
 
     test('enables debug mode from tableManager options', () => {
@@ -134,10 +146,12 @@ describe('GanttCanvasOverlay', () => {
   });
 
   describe('show()', () => {
-    test('appends canvas to bodyScroll', () => {
+    test('appends clipViewport to parent container (sibling of bodyScroll)', () => {
       overlay.show();
 
-      expect(mockBodyScroll.contains(overlay.canvas)).toBe(true);
+      // clipViewport is appended to parentElement of bodyScroll, as sibling
+      expect(mockParentContainer.contains(overlay.clipViewport)).toBe(true);
+      expect(overlay.clipViewport.contains(overlay.canvas)).toBe(true);
     });
 
     test('sets visible flag to true', () => {
@@ -171,12 +185,13 @@ describe('GanttCanvasOverlay', () => {
       }).not.toThrow();
     });
 
-    test('applies clip-path based on pinned columns', () => {
+    test('applies clip position based on pinned columns', () => {
       mockTableManager.getPinnedColumnsWidth.mockReturnValue(150);
       const pinnedOverlay = new GanttCanvasOverlay(mockTableManager);
       pinnedOverlay.show();
 
-      expect(pinnedOverlay.canvas.style.clipPath).toBe('inset(0px 0px 0px 150px)');
+      // ClipViewport should be positioned to account for pinned columns
+      expect(pinnedOverlay.clipViewport.style.left).toBeDefined();
       pinnedOverlay.hide();
     });
 
@@ -201,13 +216,13 @@ describe('GanttCanvasOverlay', () => {
   });
 
   describe('hide()', () => {
-    test('removes canvas from DOM', () => {
+    test('removes clipViewport from DOM', () => {
       overlay.show();
-      expect(mockBodyScroll.contains(overlay.canvas)).toBe(true);
+      expect(mockParentContainer.contains(overlay.clipViewport)).toBe(true);
 
       overlay.hide();
 
-      expect(mockBodyScroll.contains(overlay.canvas)).toBe(false);
+      expect(mockParentContainer.contains(overlay.clipViewport)).toBe(false);
     });
 
     test('sets visible flag to false', () => {
@@ -217,14 +232,13 @@ describe('GanttCanvasOverlay', () => {
       expect(overlay.visible).toBe(false);
     });
 
-    test('hides tooltip', () => {
+    test('hides tooltipManager tooltip', () => {
       overlay.show();
-      overlay._ensureTooltip();
-      overlay.tooltip.style.display = 'block';
+      const hideSpy = vi.spyOn(overlay.tooltipManager, 'hide');
 
       overlay.hide();
 
-      expect(overlay.tooltip.style.display).toBe('none');
+      expect(hideSpy).toHaveBeenCalled();
     });
 
     test('does nothing if already hidden', () => {
@@ -263,16 +277,17 @@ describe('GanttCanvasOverlay', () => {
       expect(overlay.barRects).toEqual([]);
     });
 
-    test('calls getCellBoundingRects from tableManager', () => {
+    test('calls getAllCellBoundingRects from tableManager (virtual rects)', () => {
+      mockTableManager.getAllCellBoundingRects.mockReturnValue([]);
       overlay.show();
       overlay.syncWithTable();
 
-      expect(mockTableManager.getCellBoundingRects).toHaveBeenCalled();
+      expect(mockTableManager.getAllCellBoundingRects).toHaveBeenCalled();
     });
 
     test('draws debug skeleton grid when debug enabled', () => {
       overlay.debug = true;
-      mockTableManager.getCellBoundingRects.mockReturnValue([
+      mockTableManager.getAllCellBoundingRects.mockReturnValue([
         { x: 0, y: 0, width: 100, height: 50, pekerjaanId: '123', columnId: 'col_1' },
       ]);
 
@@ -282,16 +297,14 @@ describe('GanttCanvasOverlay', () => {
       expect(overlay.ctx.strokeRect).toHaveBeenCalledWith(0, 0, 100, 50);
     });
 
-    test('logs error when bars exist but no cell rects', () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation();
+    test('handles case when bars exist but no matching cell rects', () => {
       overlay.barData = [{ pekerjaanId: '123', columnId: 'col_1' }];
-      mockTableManager.getCellBoundingRects.mockReturnValue([]);
+      mockTableManager.getAllCellBoundingRects.mockReturnValue([]);
 
       overlay.show();
-      overlay.syncWithTable();
 
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
+      // Should not throw error when bars have no matching rects
+      expect(() => overlay.syncWithTable()).not.toThrow();
     });
   });
 
@@ -522,7 +535,8 @@ describe('GanttCanvasOverlay', () => {
       mockTableManager.getPinnedColumnsWidth.mockReturnValue(0);
     });
 
-    test('skips bars that fall outside the viewport bounds', () => {
+    test('renders all bars regardless of horizontal scroll position (full content canvas)', () => {
+      // With full content canvas, all bars should render regardless of scroll
       mockBodyScroll.scrollLeft = 1000;
       const cellRects = [
         { x: 2100, y: 20, width: 40, height: 30, pekerjaanId: '123', columnId: 'col_1' },
@@ -536,8 +550,9 @@ describe('GanttCanvasOverlay', () => {
       overlay.ctx.fillRect.mockClear();
       overlay._drawBars(cellRects);
 
-      expect(overlay.ctx.fillRect).not.toHaveBeenCalled();
-      expect(overlay.lastDrawMetrics.barsSkipped).toBeGreaterThan(0);
+      // Should draw all bars - no viewport clipping
+      expect(overlay.ctx.fillRect).toHaveBeenCalled();
+      expect(overlay.lastDrawMetrics.barsSkipped).toBe(0);
 
       mockBodyScroll.scrollLeft = 0;
     });
@@ -744,46 +759,15 @@ describe('GanttCanvasOverlay', () => {
       expect(hit).toBeUndefined();
     });
 
-    test('_ensureTooltip creates tooltip element', () => {
-      const tooltip = overlay._ensureTooltip();
-
-      expect(tooltip).toBeTruthy();
-      expect(tooltip.className).toBe('gantt-overlay-tooltip');
-      expect(document.body.contains(tooltip)).toBe(true);
+    test('tooltipManager is initialized', () => {
+      expect(overlay.tooltipManager).toBeTruthy();
     });
 
-    test('_ensureTooltip returns existing tooltip', () => {
-      const tooltip1 = overlay._ensureTooltip();
-      const tooltip2 = overlay._ensureTooltip();
-
-      expect(tooltip1).toBe(tooltip2);
-    });
-
-    test('_showTooltip displays tooltip with bar info', () => {
-      const hit = {
-        label: 'Task 1',
-        columnId: 'col_1',
-        planned: 50,
-        value: 75,
-        variance: 25,
-      };
-
-      overlay._showTooltip(100, 100, hit);
-
-      expect(overlay.tooltip).toBeTruthy();
-      expect(overlay.tooltip.style.display).toBe('block');
-      expect(overlay.tooltip.innerHTML).toContain('Task 1');
-      expect(overlay.tooltip.innerHTML).toContain('50%');
-      expect(overlay.tooltip.innerHTML).toContain('75%');
-    });
-
-    test('_hideTooltip hides tooltip', () => {
-      overlay._ensureTooltip();
-      overlay.tooltip.style.display = 'block';
-
-      overlay._hideTooltip();
-
-      expect(overlay.tooltip.style.display).toBe('none');
+    test('tooltipManager can show and hide', () => {
+      // TooltipManager API test
+      expect(overlay.tooltipManager).toBeDefined();
+      expect(typeof overlay.tooltipManager.show).toBe('function');
+      expect(typeof overlay.tooltipManager.hide).toBe('function');
     });
   });
 

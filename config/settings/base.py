@@ -387,6 +387,11 @@ USE_VITE_DEV_SERVER = os.getenv("USE_VITE_DEV_SERVER", "True").lower() == "true"
 # Each row has ~20 fields → 200 rows × 20 = 4000 fields
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 99999
 
+# Increase max request body size for export with image attachments
+# Default is 2.5MB which is too small for Gantt/Kurva S chart exports
+# Set to 50MB to accommodate high-DPI chart images
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+
 REFERENSI_CONFIG = {
     "page_sizes": {
         "jobs": 25,
