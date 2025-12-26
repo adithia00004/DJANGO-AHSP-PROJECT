@@ -398,6 +398,10 @@ export class DataLoader {
         this.state.pekerjaanTree = cachedTree;
         this.state.flatPekerjaan = flattenTree(cachedTree);
         initialiseExpandedNodes(cachedTree, this.state);
+
+        // Single source of truth: Update StateManager
+        this.stateManager.setFlatPekerjaan(this.state.flatPekerjaan);
+
         console.log(`[DataLoader] Using cached pekerjaan tree (${this.state.flatPekerjaan.length} nodes)`);
         return this.state.pekerjaanTree;
       }
@@ -416,6 +420,9 @@ export class DataLoader {
       initialiseExpandedNodes(tree, this.state);
 
       this._setCache('pekerjaan', JSON.parse(JSON.stringify(tree)));
+
+      // Single source of truth: Update StateManager
+      this.stateManager.setFlatPekerjaan(this.state.flatPekerjaan);
 
       console.log(`[DataLoader] ✅ Loaded ${this.state.flatPekerjaan.length} pekerjaan nodes`);
       return this.state.pekerjaanTree;

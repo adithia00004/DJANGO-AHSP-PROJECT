@@ -433,6 +433,64 @@ export class TanStackGridManager {
     return rects;
   }
 
+  /**
+   * Get ALL cell bounding rects (virtual calculation, not dependent on DOM)
+   * This returns rects for EVERY row x column combination, not just visible cells.
+   * Used by Gantt and Kurva S overlays which need to render bars for all cells.
+   */
+  getAllCellBoundingRects() {
+    if (!this.table || !this.currentColumns || !this.bodyScroll) {
+      return [];
+    }
+
+    const rows = this.table.getRowModel().rows || [];
+    const rects = [];
+    const rowHeight = this.rowHeight || 44;
+
+    // Calculate column positions
+    let columnX = 0;
+    const columnPositions = [];
+    const timeColumns = [];
+
+    this.currentColumns.forEach((col) => {
+      const width = col.meta?.width || 120;
+      const isPinned = col.meta?.pinned === true;
+
+      if (!isPinned && col.meta?.timeColumn) {
+        columnPositions.push({
+          id: col.id,
+          x: columnX,
+          width: width,
+          weekNumber: col.meta?.columnMeta?.weekNumber || null,
+        });
+        timeColumns.push(col);
+      }
+      columnX += width;
+    });
+
+    // Generate rects for all row x column combinations
+    rows.forEach((row, rowIndex) => {
+      const pekerjaanId = row.original?.pekerjaanId || row.original?.id || row.id;
+      const y = rowIndex * rowHeight;
+
+      columnPositions.forEach((colPos) => {
+        rects.push({
+          pekerjaanId: String(pekerjaanId),
+          columnId: String(colPos.id),
+          weekNumber: colPos.weekNumber,
+          x: colPos.x,
+          y: y,
+          width: colPos.width,
+          height: rowHeight,
+          scrollTop: this.bodyScroll?.scrollTop || 0,
+          scrollLeft: this.bodyScroll?.scrollLeft || 0,
+        });
+      });
+    });
+
+    return rects;
+  }
+
   _renderTreeCell(cellEl, row) {
     cellEl.classList.add('tree-cell');
     const level = row.original?.level || 0;

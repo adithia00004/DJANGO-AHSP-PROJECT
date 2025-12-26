@@ -117,7 +117,7 @@ export class KurvaSCanvasOverlay {
     this.visible = false;
     this._log('hide');
     this._hideLegend();
-    this._hideTooltip();
+    this.tooltipManager.hide();
   }
 
   syncWithTable() {

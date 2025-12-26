@@ -82,6 +82,18 @@ export class StateManager {
      */
     this._listeners = new Set();
 
+    /**
+     * Single source of truth: Flat list of all pekerjaan rows
+     * @type {Array<Object>}
+     */
+    this.flatPekerjaan = [];
+
+    /**
+     * Single source of truth: Time columns configuration
+     * @type {Array<Object>}
+     */
+    this.timeColumns = [];
+
     console.log(LOG_PREFIX, 'Initialized with dual state architecture');
   }
 
@@ -99,8 +111,8 @@ export class StateManager {
 
     // Priority: modifiedCells > assignmentMap > 0
     return state.modifiedCells.get(cellKey) ??
-           state.assignmentMap.get(cellKey) ??
-           0;
+      state.assignmentMap.get(cellKey) ??
+      0;
   }
 
   /**
@@ -271,6 +283,40 @@ export class StateManager {
     this._invalidateCache(mode);
 
     console.log(LOG_PREFIX, `Loaded ${dataMap.size} assignments into ${mode.toUpperCase()} state`);
+  }
+
+  /**
+   * Set flat pekerjaan rows (single source of truth for all modes)
+   * @param {Array<Object>} rows - Flat list of pekerjaan objects
+   */
+  setFlatPekerjaan(rows) {
+    this.flatPekerjaan = Array.isArray(rows) ? rows : [];
+    console.log(LOG_PREFIX, `Set ${this.flatPekerjaan.length} pekerjaan rows`);
+  }
+
+  /**
+   * Get flat pekerjaan rows
+   * @returns {Array<Object>}
+   */
+  getFlatPekerjaan() {
+    return this.flatPekerjaan;
+  }
+
+  /**
+   * Set time columns configuration (single source of truth for all modes)
+   * @param {Array<Object>} columns - Time columns array
+   */
+  setTimeColumns(columns) {
+    this.timeColumns = Array.isArray(columns) ? columns : [];
+    console.log(LOG_PREFIX, `Set ${this.timeColumns.length} time columns`);
+  }
+
+  /**
+   * Get time columns configuration
+   * @returns {Array<Object>}
+   */
+  getTimeColumns() {
+    return this.timeColumns;
   }
 
   /**

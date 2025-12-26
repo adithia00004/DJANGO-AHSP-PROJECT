@@ -1,3 +1,6 @@
+import { getCssVar, getBtnColor } from '../shared/canvas-utils.js';
+import { TooltipManager } from '../shared/tooltip-manager.js';
+
 export class GanttCanvasOverlay {
   constructor(tableManager) {
     this.tableManager = tableManager;
@@ -13,45 +16,39 @@ export class GanttCanvasOverlay {
       top: 0;
       left: 0;
       pointer-events: auto;
-      z-index: 1;
     `;
     this.ctx = this.canvas.getContext('2d');
-    this.mask = document.createElement('div');
-    this.mask.className = 'gantt-overlay-mask';
-    this.mask.style.cssText = `
+
+    // ClipViewport: container with overflow:hidden to clip canvas
+    // pointer-events:none allows scroll events to pass through to bodyScroll
+    this.clipViewport = document.createElement('div');
+    this.clipViewport.className = 'gantt-clip-viewport';
+    this.clipViewport.style.cssText = `
       position: absolute;
-      top: 0;
-      left: 0;
+      overflow: hidden;
       pointer-events: none;
-      z-index: 10;
-      background: var(--grid-frozen-bg, var(--bs-body-bg));
+      z-index: 1;
     `;
+    // Canvas needs pointer-events:auto for tooltip interaction
+    this.canvas.style.pointerEvents = 'auto';
+    this.clipViewport.appendChild(this.canvas);
     this.visible = false;
     this.barData = [];
     this.dependencies = [];
     this.barRects = [];
-    this.tooltip = null;
+    this.tooltipManager = new TooltipManager({ zIndex: 20 });
     this.pinnedWidth = 0;
-    this.scrollLeft = 0; // Track scroll position for coordinate adjustment
-    this._syncScheduled = false; // Track if sync is already scheduled
+    this.scrollLeft = 0;
+    this.scrollTop = 0;  // Track vertical scroll for transform
     this.lastDrawMetrics = { barsDrawn: 0, barsSkipped: 0 };
 
     const scrollTarget = this.tableManager?.bodyScroll;
     if (scrollTarget) {
-      // FIXED: Immediate transform update on scroll (no lag)
+      // OPTIMIZED: Transform-only scroll (no re-render)
+      // Re-render only happens on: data change, resize, mode switch
       scrollTarget.addEventListener('scroll', () => {
         if (this.visible) {
-          // Update transform IMMEDIATELY to prevent overlap on fast scroll
           this._updateTransform();
-
-          // Full sync can be throttled for performance
-          if (!this._syncScheduled) {
-            this._syncScheduled = true;
-            requestAnimationFrame(() => {
-              this._syncScheduled = false;
-              this.syncWithTable();
-            });
-          }
         }
       }, { passive: true });
     }
@@ -64,96 +61,121 @@ export class GanttCanvasOverlay {
     const scrollArea = this.tableManager?.bodyScroll;
     if (!scrollArea) return;
     scrollArea.style.position = scrollArea.style.position || 'relative';
-    scrollArea.style.overflow = 'auto'; // Ensure overflow is clipped
 
-    // Ensure parent clips overflow to avoid covering frozen columns
-    const parent = scrollArea.parentElement;
-    if (parent) {
-      parent.style.overflow = 'hidden';
-      parent.style.position = 'relative';
+    // Attach clipViewport as sibling of scrollArea
+    const container = scrollArea.parentElement;
+    if (container && !this.clipViewport.parentNode) {
+      container.appendChild(this.clipViewport);
     }
 
     this._updatePinnedClip();
-
-    if (!this.mask.parentNode) {
-      scrollArea.appendChild(this.mask);
-    }
-    scrollArea.appendChild(this.canvas);
     this.visible = true;
-    console.log('[GanttOverlay] ✅ OVERLAY SHOWN - Canvas clipping enabled to prevent overflow');
-    this._log('show');
+    this._log('show', { clipping: true, container: 'sibling-of-bodyScroll' });
     this.syncWithTable();
   }
 
   hide() {
     if (!this.visible) return;
-    if (this.canvas.parentNode) {
-      this.canvas.parentNode.removeChild(this.canvas);
-    }
-    if (this.mask.parentNode) {
-      this.mask.parentNode.removeChild(this.mask);
+    if (this.clipViewport.parentNode) {
+      this.clipViewport.parentNode.removeChild(this.clipViewport);
     }
     this.visible = false;
     this._log('hide');
-    this._hideTooltip();
+    this.tooltipManager.hide();
   }
 
+  // Immediate transform update for smooth scrolling (GPU-accelerated)
+  // Canvas moves via NEGATIVE transform to simulate viewport scrolling
   _updateTransform() {
-    // FIXED: Immediate transform update without full canvas re-render
-    // This prevents overlap lag on fast scroll
     const scrollArea = this.tableManager?.bodyScroll;
     if (!scrollArea) return;
 
     this.scrollLeft = scrollArea.scrollLeft || 0;
-    this.canvas.style.transform = `translateX(${this.scrollLeft}px)`;
+    this.scrollTop = scrollArea.scrollTop || 0;
+    // Negative transform: canvas shifts opposite to scroll direction
+    this.canvas.style.transform = `translate(${-this.scrollLeft}px, ${-this.scrollTop}px)`;
   }
 
   syncWithTable() {
     const scrollArea = this.tableManager?.bodyScroll;
-    if (!scrollArea) return;
+    const container = scrollArea?.parentElement;
+    if (!scrollArea || !container) return;
 
     this._updatePinnedClip();
-
-    // FIXED: Canvas uses translate to stay aligned while keeping left boundary fixed
     this.scrollLeft = scrollArea.scrollLeft || 0;
+    this.scrollTop = scrollArea.scrollTop || 0;
 
-    // CRITICAL FIX: Canvas width should be VIEWPORT width, not full scrollWidth
-    // Full scrollWidth can exceed browser limits (32,767px) causing blank canvas
-    // We only need to render what's visible in the viewport
-    const viewportWidth = scrollArea.clientWidth - this.pinnedWidth;
-    const MAX_CANVAS_WIDTH = 32000; // Browser safety limit
+    // Get header height to position clipViewport below header
+    const header = container.querySelector('.tanstack-grid-header');
+    const headerHeight = header?.offsetHeight || 0;
 
-    this.canvas.width = Math.min(viewportWidth, MAX_CANVAS_WIDTH);
-    this.canvas.height = Math.min(scrollArea.clientHeight, 16000); // Height limit too
+    // Use bounding rect for accurate viewport sizing
+    const containerRect = container.getBoundingClientRect();
+    const scrollAreaRect = scrollArea.getBoundingClientRect();
 
-    // Use transform instead of left to avoid affecting layout
-    // Translate compensates for scroll to keep canvas fixed after frozen column
+    // Margins to avoid covering scrollbars and add spacing
+    const marginLeft = 10;   // Space from frozen columns
+    const marginRight = 20;  // Space for vertical scrollbar
+    // Note: marginBottom not needed for height since pointer-events:none allows scroll through
+
+    // ClipViewport: positioned after frozen columns, acts as viewport window
+    const viewportWidth = containerRect.width - this.pinnedWidth - marginLeft - marginRight;
+    const viewportHeight = scrollAreaRect.height; // Full height, no margin needed
+
+    this.clipViewport.style.left = `${this.pinnedWidth + marginLeft}px`;
+    this.clipViewport.style.top = `${headerHeight}px`;
+    this.clipViewport.style.width = `${viewportWidth}px`;
+    this.clipViewport.style.height = `${viewportHeight}px`;
+
+    // Canvas size = FULL content size (both width and height)
+    const MAX_CANVAS_WIDTH = 32000;
+    const MAX_CANVAS_HEIGHT = 16000;
+    // Use full scrollWidth for canvas - pinnedWidth is handled by clipViewport positioning
+    const contentWidth = Math.max(scrollArea.scrollWidth, 100);
+    const contentHeight = scrollArea.scrollHeight || scrollArea.clientHeight;
+
+    this.canvas.width = Math.min(contentWidth, MAX_CANVAS_WIDTH);
+    this.canvas.height = Math.min(contentHeight, MAX_CANVAS_HEIGHT);
+
+    // Canvas position inside clipViewport
     this.canvas.style.position = 'absolute';
-    this.canvas.style.left = `${this.pinnedWidth}px`; // Static: start after frozen
+    this.canvas.style.left = '0px';
     this.canvas.style.top = '0px';
-    this.canvas.style.transform = `translateX(${this.scrollLeft}px)`; // Dynamic: compensate scroll
+    // Negative transform for both horizontal and vertical scroll
+    this.canvas.style.transform = `translate(${-this.scrollLeft}px, ${-this.scrollTop}px)`;
 
-    // Mask no longer needed since canvas doesn't overlap frozen area
-    if (this.mask) {
-      this.mask.style.display = 'none';
-    }
-
-    const cellRects = typeof this.tableManager.getCellBoundingRects === 'function'
-      ? this.tableManager.getCellBoundingRects()
-      : [];
+    // Use getAllCellBoundingRects for virtual calculation (all cells)
+    // Fallback to getCellBoundingRects for visible-only cells
+    const cellRects = typeof this.tableManager.getAllCellBoundingRects === 'function'
+      ? this.tableManager.getAllCellBoundingRects()
+      : typeof this.tableManager.getCellBoundingRects === 'function'
+        ? this.tableManager.getCellBoundingRects()
+        : [];
 
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     // Clear and clip to the canvas; mask element handles frozen cover.
     this.ctx.save();
     this.barRects = [];
 
-    console.log('[GanttOverlay] 🔍 SYNC DEBUG:', {
+    this._log('sync-debug', {
       canvasSize: { w: this.canvas.width, h: this.canvas.height },
       scrollAreaSize: { w: scrollArea.scrollWidth, h: scrollArea.scrollHeight },
       visibleSize: { w: scrollArea.clientWidth, h: scrollArea.clientHeight },
       scroll: { left: scrollArea.scrollLeft, top: scrollArea.scrollTop },
       cellRects: cellRects.length,
       bars: this.barData.length,
+    });
+
+    // DEBUG: Analyze cellRects column distribution
+    const columnIds = [...new Set(cellRects.map(r => r.columnId))];
+    const maxX = cellRects.length > 0 ? Math.max(...cellRects.map(r => r.x + r.width)) : 0;
+    console.log('[GanttOverlay] 📐 CellRects analysis:', {
+      totalCells: cellRects.length,
+      uniqueColumns: columnIds.length,
+      sampleColumnIds: columnIds.slice(0, 10),
+      maxX: maxX,
+      canvasWidth: this.canvas.width,
+      scrollWidth: scrollArea.scrollWidth,
     });
 
     this._log('sync', {
@@ -165,22 +187,15 @@ export class GanttCanvasOverlay {
     });
 
     if (this.barData.length > 0 && cellRects.length === 0) {
-      console.error('[GanttOverlay] Have bar data but no cell rects. Overlay cannot draw bars.', {
-        bars: this.barData.length,
-      });
+      this._log('warn-no-cell-rects', { bars: this.barData.length });
     }
 
     // Outline cells only when debugging alignment
     if (this.debug) {
       this.ctx.strokeStyle = '#e2e8f0';
       cellRects.forEach((rect) => {
-        // FIXED: Convert to canvas-relative coordinates for debug grid
-        // Account for both pinnedWidth and scrollLeft
-        const canvasX = rect.x - this.pinnedWidth - this.scrollLeft;
-
-        // Viewport culling: skip cells outside canvas bounds
-        if (canvasX < -rect.width || canvasX > this.canvas.width) return;
-
+        // Canvas-relative coordinates (no scrollLeft, handled by transform)
+        const canvasX = rect.x - this.pinnedWidth;
         this.ctx.strokeRect(canvasX, rect.y, rect.width, rect.height);
       });
     }
@@ -290,25 +305,21 @@ export class GanttCanvasOverlay {
           barsSkipped += 1;
           return;
         }
-        const rectRight = rect.x + rect.width;
-        if (rectRight <= clipLeft || (viewportRight !== null && rect.x >= viewportRight)) {
-          barsSkipped += 1;
-          return;
-        }
+
+        // No viewport clipping needed - canvas is full content width
+        // ClipViewport handles visibility, we render ALL bars
 
         const paddingX = 0; // no gap to keep continuity
         const paddingY = 2;
         const maxWidth = rect.width - paddingX * 2;
 
-        // FIXED: Convert absolute coordinates to canvas-relative coordinates
-        // Canvas starts at pinnedWidth and is translated by scrollLeft
-        // Canvas is only viewport-width, so we render relative to current viewport
-        const baseX = (rect.x - this.pinnedWidth - this.scrollLeft) + paddingX;
+        // Canvas is full content width, so coordinates are relative to pinnedWidth only
+        // No scrollLeft adjustment needed - transform handles viewport positioning
+        const baseX = (rect.x - this.pinnedWidth) + paddingX;
         const baseY = rect.y + paddingY;
 
-        // CRITICAL: Skip bars outside canvas bounds (viewport culling)
-        // Canvas width is limited to viewport, so skip bars outside
-        if (baseX < -rect.width || baseX > this.canvas.width) {
+        // Skip bars with negative X (shouldn't happen with correct cell rects)
+        if (baseX < -rect.width) {
           barsSkipped += 1;
           return;
         }
@@ -352,6 +363,14 @@ export class GanttCanvasOverlay {
     });
 
     this.lastDrawMetrics = { barsDrawn, barsSkipped };
+    // DEBUG: Log render stats
+    console.log('[GanttOverlay] 📊 Render stats:', {
+      barsDrawn,
+      barsSkipped,
+      total: this.barData.length,
+      cellRectsCount: cellRects.length,
+      canvasSize: { w: this.canvas.width, h: this.canvas.height },
+    });
     this._log('bars:drawn', { drawn: barsDrawn, skipped: barsSkipped, total: this.barData.length });
   }
 
@@ -369,11 +388,10 @@ export class GanttCanvasOverlay {
       );
       if (!fromRect || !toRect) return;
 
-      // FIXED: Convert to canvas-relative coordinates
-      // Account for both pinnedWidth and scrollLeft
-      const fromX = (fromRect.x - this.pinnedWidth - this.scrollLeft) + fromRect.width;
+      // Canvas-relative coordinates (no scrollLeft, handled by transform)
+      const fromX = (fromRect.x - this.pinnedWidth) + fromRect.width;
       const fromY = fromRect.y + fromRect.height / 2;
-      const toX = toRect.x - this.pinnedWidth - this.scrollLeft;
+      const toX = toRect.x - this.pinnedWidth;
       const toY = toRect.y + toRect.height / 2;
 
       this.ctx.strokeStyle = dep.color || '#94a3b8';
@@ -404,46 +422,22 @@ export class GanttCanvasOverlay {
 
   _resolveActualColor(variance) {
     const cssVar =
-      this._getCssVar('--gantt-actual-fill') ||
-      this._getCssVar('--bs-warning') ||
-      this._getBtnColor('.progress-mode-tabs .btn-outline-warning') ||
-      this._getBtnColor('.progress-mode-tabs .btn-warning');
+      getCssVar('--gantt-actual-fill') ||
+      getCssVar('--bs-warning') ||
+      getBtnColor('.progress-mode-tabs .btn-outline-warning') ||
+      getBtnColor('.progress-mode-tabs .btn-warning');
     if (cssVar) return cssVar;
     return this._resolveVarianceColor(variance);
   }
 
   _getPlannedColor() {
     return (
-      this._getCssVar('--gantt-bar-fill') ||
-      this._getCssVar('--bs-info') ||
-      this._getBtnColor('.progress-mode-tabs .btn-outline-info') ||
-      this._getBtnColor('.progress-mode-tabs .btn-info') ||
+      getCssVar('--gantt-bar-fill') ||
+      getCssVar('--bs-info') ||
+      getBtnColor('.progress-mode-tabs .btn-outline-info') ||
+      getBtnColor('.progress-mode-tabs .btn-info') ||
       '#e2e8f0'
     );
-  }
-
-  _getCssVar(name) {
-    try {
-      const root = document.documentElement;
-      const value = getComputedStyle(root).getPropertyValue(name);
-      return value && value.trim().length ? value.trim() : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  _getBtnColor(selector) {
-    try {
-      const el = document.querySelector(selector);
-      if (!el) return null;
-      const style = getComputedStyle(el);
-      return style.getPropertyValue('background-color')?.trim() ||
-        style.getPropertyValue('border-color')?.trim() ||
-        style.getPropertyValue('color')?.trim() ||
-        null;
-    } catch (e) {
-      return null;
-    }
   }
 
   _bindPointerEvents() {
@@ -454,14 +448,23 @@ export class GanttCanvasOverlay {
       const y = e.clientY - rect.top;
       const hit = this._hitTest(x, y);
       if (hit) {
-        this._showTooltip(e.clientX, e.clientY, hit);
+        // Format tooltip content for Gantt bar
+        const tooltipData = {
+          label: `Pekerjaan: ${hit.label || hit.pekerjaanId}`,
+          color: hit.color || '#3b82f6',
+          weekNumber: null,
+          columnId: hit.columnId,
+          progress: hit.value,
+          weekProgress: hit.planned,
+        };
+        this.tooltipManager.show(e.clientX, e.clientY, tooltipData);
       } else {
-        this._hideTooltip();
+        this.tooltipManager.hide();
       }
     });
 
     this.canvas.addEventListener('mouseleave', () => {
-      this._hideTooltip();
+      this.tooltipManager.hide();
     });
   }
 
@@ -469,44 +472,6 @@ export class GanttCanvasOverlay {
     return this.barRects.find(
       (b) => x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height,
     );
-  }
-
-  _ensureTooltip() {
-    if (this.tooltip) return this.tooltip;
-    this.tooltip = document.createElement('div');
-    this.tooltip.className = 'gantt-overlay-tooltip';
-    this.tooltip.style.cssText = `
-      position: fixed;
-      padding: 4px 8px;
-      background: rgba(17,24,39,0.85);
-      color: #f8fafc;
-      border-radius: 4px;
-      font-size: 12px;
-      pointer-events: none;
-      z-index: 20;
-      display: none;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-    `;
-    document.body.appendChild(this.tooltip);
-    return this.tooltip;
-  }
-
-  _showTooltip(clientX, clientY, hit) {
-    const tip = this._ensureTooltip();
-    const name = hit.label || hit.pekerjaanId;
-    const planned = Number.isFinite(hit.planned) ? `${hit.planned}%` : '-';
-    const actual = Number.isFinite(hit.value) ? `${hit.value}%` : '-';
-    const variance = Number.isFinite(hit.variance) ? `${hit.variance}%` : '-';
-    tip.innerHTML = `Pekerjaan: ${name}<br/>Kolom: ${hit.columnId}<br/>Planned: ${planned}<br/>Actual: ${actual}<br/>Variance: ${variance}`;
-    tip.style.left = `${clientX + 10}px`;
-    tip.style.top = `${clientY + 10}px`;
-    tip.style.display = 'block';
-  }
-
-  _hideTooltip() {
-    if (this.tooltip) {
-      this.tooltip.style.display = 'none';
-    }
   }
 
   _log(event, payload) {

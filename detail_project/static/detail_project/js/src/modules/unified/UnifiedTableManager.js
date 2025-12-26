@@ -2,6 +2,7 @@ import { TanStackGridManager } from '../grid/tanstack-grid-manager.js';
 import { GanttCanvasOverlay } from '../gantt/GanttCanvasOverlay.js';
 import { KurvaSCanvasOverlay } from '../kurva-s/KurvaSCanvasOverlay.js';
 import { buildProgressDataset } from '../kurva-s/dataset-builder.js';
+import StateManager from '../core/state-manager.js';
 
 export class UnifiedTableManager {
   constructor(state, options = {}) {
@@ -106,49 +107,47 @@ export class UnifiedTableManager {
   }
 
   _buildBarData(payload = {}) {
-    let tree = Array.isArray(payload.tree) ? payload.tree : [];
-    let columns = Array.isArray(payload.timeColumns) ? payload.timeColumns : [];
-    const gridRows = this.tanstackGrid?.currentRows || [];
-    const gridColumns = this.tanstackGrid?.currentColumns || [];
-    const flatRows = Array.isArray(this.state?.flatPekerjaan) ? this.state.flatPekerjaan : [];
+    // Single source of truth: Get data from StateManager
+    const stateManager = StateManager.getInstance();
 
-    if ((!tree.length || tree.length <= 1) && gridRows.length > tree.length) {
-      tree = gridRows;
+    // Priority 1: StateManager (single source of truth)
+    // Priority 2: payload (for backward compatibility)
+    // Priority 3: this.state (fallback)
+    let flatRows = stateManager.getFlatPekerjaan();
+    let columns = stateManager.getTimeColumns();
+
+    // Fallback if StateManager is empty
+    if (!flatRows.length) {
+      flatRows = Array.isArray(this.state?.flatPekerjaan) ? this.state.flatPekerjaan : [];
     }
-    if ((!tree.length || tree.length <= 1) && flatRows.length) {
-      tree = flatRows.map((row) => ({
-        pekerjaanId: row.id || row.pekerjaan_id,
-        name: row.nama || row.name,
-        raw: row,
-        subRows: [],
-      }));
+    if (!columns.length) {
+      columns = Array.isArray(this.state?.timeColumns) ? this.state.timeColumns : [];
     }
 
-    const hasTimeMeta = columns.some((c) => c?.meta?.timeColumn);
-    if ((!columns.length || !hasTimeMeta) && gridColumns.length) {
-      columns = gridColumns;
-    }
-    if (!columns.length && Array.isArray(this.state?.timeColumns)) {
-      columns = this.state.timeColumns.map((col) => ({
-        id: col.id,
-        fieldId: col.fieldId,
-        meta: { timeColumn: true, columnMeta: col },
-      }));
-    }
+    // Convert flatRows to tree format for backward compatibility
+    const tree = flatRows.map((row) => ({
+      pekerjaanId: row.id || row.pekerjaan_id,
+      name: row.nama || row.name,
+      raw: row,
+      subRows: row.children || [],
+    }));
+
+    // Wrap columns with meta for compatibility
+    const wrappedColumns = columns.map((col) => ({
+      id: col.id,
+      fieldId: col.fieldId,
+      meta: { timeColumn: true, columnMeta: col },
+    }));
 
     const barData = [];
-    const stateManager = this.state?.stateManager || this.state?.stateManagerInstance || this.options?.stateManager;
-    const mergedPlanned = typeof stateManager?.getAllCellsForMode === 'function'
-      ? stateManager.getAllCellsForMode('planned')
-      : this._mergeModeState(stateManager?.states?.planned);
-    const mergedActual = typeof stateManager?.getAllCellsForMode === 'function'
-      ? stateManager.getAllCellsForMode('actual')
-      : this._mergeModeState(stateManager?.states?.actual);
+    // Use already-acquired stateManager from above
+    const mergedPlanned = stateManager.getAllCellsForMode('planned');
+    const mergedActual = stateManager.getAllCellsForMode('actual');
     const activeMode = (this.state?.progressMode || stateManager?.currentMode || 'planned').toLowerCase();
 
     console.log('[UnifiedTable] 🔍 BuildBarData DEBUG:', {
       rows: tree.length,
-      cols: columns.length,
+      cols: wrappedColumns.length,
       plannedSize: mergedPlanned?.size || 0,
       actualSize: mergedActual?.size || 0,
       activeMode,
@@ -160,16 +159,30 @@ export class UnifiedTableManager {
 
     this._log('buildBarData:start', {
       rows: tree.length,
-      cols: columns.length,
+      cols: wrappedColumns.length,
       plannedSize: mergedPlanned?.size || 0,
       actualSize: mergedActual?.size || 0,
       activeMode,
-      timeColumnsWithMeta: columns.filter((c) => c.meta?.timeColumn).length,
-      sampleColumns: columns.slice(0, 5).map((c) => c.fieldId || c.id || c.meta?.columnMeta?.fieldId || c.meta?.columnMeta?.id),
+      timeColumnsWithMeta: wrappedColumns.filter((c) => c.meta?.timeColumn).length,
+      sampleColumns: wrappedColumns.slice(0, 5).map((c) => c.fieldId || c.id || c.meta?.columnMeta?.fieldId || c.meta?.columnMeta?.id),
       sampleRows: tree.slice(0, 3).map((r) => r.pekerjaanId || r.id || r.raw?.pekerjaan_id),
     });
 
     const rowsForBars = this._flattenRows(tree);
+
+    // DEBUG: Log tree source and flatten result
+    console.log('[UnifiedTable] 🌳 Tree source DEBUG:', {
+      'payload.tree': Array.isArray(payload.tree) ? payload.tree.length : 'not array',
+      'fromStateManager': flatRows.length,
+      'treeBefore': tree.length,
+      'treeAfter (flattened)': rowsForBars.length,
+      'sampleTree': tree.slice(0, 2).map(r => ({
+        id: r.pekerjaanId || r.id || r.raw?.pekerjaan_id,
+        name: r.name || r.raw?.nama,
+        subRows: r.subRows?.length || 0,
+        children: r.children?.length || 0,
+      })),
+    });
     const rowIndex = new Map();
     rowsForBars.forEach((row) => {
       const pekerjaanId = row.pekerjaanId || row.id || row.raw?.pekerjaan_id;
@@ -180,7 +193,7 @@ export class UnifiedTableManager {
     });
 
     const columnIndex = new Map();
-    columns.forEach((col) => {
+    wrappedColumns.forEach((col) => {
       const meta = this._resolveColumnMeta(col);
       if (!meta?.timeColumn) return;
       const columnId = col.fieldId || col.id || meta.fieldId || meta.id || meta.columnId || meta.column_id;
@@ -192,6 +205,26 @@ export class UnifiedTableManager {
       ...Array.from(mergedPlanned?.keys?.() || []),
       ...Array.from(mergedActual?.keys?.() || []),
     ]);
+
+    // DEBUG: Log matching analysis
+    const sampleCellKeys = Array.from(allKeys).slice(0, 5);
+    const sampleRowIds = Array.from(rowIndex.keys()).slice(0, 5);
+    const sampleColIds = Array.from(columnIndex.keys()).slice(0, 5);
+    console.log('[UnifiedTable] 🔗 Matching DEBUG:', {
+      'allKeys.size': allKeys.size,
+      'rowIndex.size': rowIndex.size,
+      'columnIndex.size': columnIndex.size,
+      'sampleCellKeys': sampleCellKeys,
+      'sampleRowIds': sampleRowIds,
+      'sampleColIds': sampleColIds,
+      // Check if first cell key matches
+      'firstKeyMatch': sampleCellKeys.length > 0 ? {
+        cellKey: sampleCellKeys[0],
+        split: sampleCellKeys[0]?.split('-'),
+        rowExists: rowIndex.has(sampleCellKeys[0]?.split('-')?.[0]),
+        colExists: columnIndex.has(sampleCellKeys[0]?.split('-')?.[1]),
+      } : null,
+    });
 
     allKeys.forEach((cellKey) => {
       const [pkjIdRaw, colIdRaw] = String(cellKey).split('-');

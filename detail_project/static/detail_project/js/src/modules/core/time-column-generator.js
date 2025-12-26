@@ -6,6 +6,8 @@
  * Date: 2025-11-19
  */
 
+import { StateManager } from './state-manager.js';
+
 // =========================================================================
 // CONSTANTS
 // =========================================================================
@@ -161,6 +163,15 @@ export class TimeColumnGenerator {
     }
 
     console.log(`[TimeColumnGenerator] ✅ Generated ${this.state.timeColumns.length} time columns`);
+
+    // Single source of truth: Update StateManager
+    try {
+      const stateManager = StateManager.getInstance();
+      stateManager.setTimeColumns(this.state.timeColumns);
+    } catch (e) {
+      console.warn('[TimeColumnGenerator] Could not update StateManager:', e.message);
+    }
+
     return this.state.timeColumns;
   }
 
