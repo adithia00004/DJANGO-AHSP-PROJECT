@@ -1,0 +1,50 @@
+{
+  "_chart-modules-!~{005}~.js": {
+    "file": "assets/chart-modules-Saz_VHki.css",
+    "src": "_chart-modules-!~{005}~.js"
+  },
+  "_chart-modules-BTvI1U37.js": {
+    "file": "assets/js/chart-modules-BTvI1U37.js",
+    "name": "chart-modules",
+    "isDynamicEntry": true,
+    "imports": [
+      "_core-modules-BVA9karD.js"
+    ],
+    "css": [
+      "assets/chart-modules-Saz_VHki.css"
+    ]
+  },
+  "_core-modules-BVA9karD.js": {
+    "file": "assets/js/core-modules-BVA9karD.js",
+    "name": "core-modules"
+  },
+  "_grid-modules-DtAsJ2MV.js": {
+    "file": "assets/js/grid-modules-DtAsJ2MV.js",
+    "name": "grid-modules",
+    "imports": [
+      "_core-modules-BVA9karD.js"
+    ]
+  },
+  "_vendor-export-CDHfpktA.js": {
+    "file": "assets/js/vendor-export-CDHfpktA.js",
+    "name": "vendor-export",
+    "isDynamicEntry": true
+  },
+  "js/src/jadwal_kegiatan_app.js": {
+    "file": "assets/js/jadwal-kegiatan-C4WBO3Yh.js",
+    "name": "jadwal-kegiatan",
+    "src": "js/src/jadwal_kegiatan_app.js",
+    "isEntry": true,
+    "imports": [
+      "_vendor-export-CDHfpktA.js",
+      "_grid-modules-DtAsJ2MV.js",
+      "_chart-modules-BTvI1U37.js",
+      "_core-modules-BVA9karD.js"
+    ],
+    "dynamicImports": [
+      "_chart-modules-BTvI1U37.js",
+      "_vendor-export-CDHfpktA.js",
+      "_chart-modules-BTvI1U37.js"
+    ]
+  }
+}
