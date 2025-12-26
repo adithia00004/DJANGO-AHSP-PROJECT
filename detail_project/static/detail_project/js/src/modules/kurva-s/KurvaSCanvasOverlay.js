@@ -8,6 +8,9 @@
  * - Legend for planned vs actual
  */
 
+import { createCanvas, createClipViewport, getContext2D, hitTestPoint, isDarkMode } from './canvas-utils.js';
+import { TooltipManager, createLegend, updateLegendColors } from './tooltip-manager.js';
+
 export class KurvaSCanvasOverlay {
   constructor(tableManager, options = {}) {
     this.tableManager = tableManager;
@@ -28,27 +31,12 @@ export class KurvaSCanvasOverlay {
     this.projectId = options.projectId || null;
 
     // Main canvas for curve plotting
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'kurva-s-canvas-overlay';
-    this.canvas.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: auto;
-      background: transparent;
-    `;
-    this.ctx = this.canvas.getContext('2d');
+    this.canvas = createCanvas('kurva-s-canvas-overlay');
+    this.ctx = getContext2D(this.canvas);
 
     // ClipViewport wrapper - FIXED overlay that clips canvas to visible area
     // z-index 10 is sufficient to be above bodyScroll for mouse events
-    this.clipViewport = document.createElement('div');
-    this.clipViewport.className = 'kurva-s-clip-viewport';
-    this.clipViewport.style.cssText = `
-      position: absolute;
-      overflow: hidden;
-      pointer-events: auto;
-      z-index: 10;
-    `;
+    this.clipViewport = createClipViewport('kurva-s-clip-viewport', 10);
     // Canvas goes inside clipViewport
     this.clipViewport.appendChild(this.canvas);
 
@@ -56,7 +44,7 @@ export class KurvaSCanvasOverlay {
     this.curveData = { planned: [], actual: [] };
     this.legendElement = null;
     this.curvePoints = []; // For tooltip hit-testing
-    this.tooltip = null;
+    this.tooltipManager = new TooltipManager({ zIndex: 50 });
 
     // Scroll handler: Update CSS transform to sync canvas with scroll (viewport concept)
     // Only transform update needed - no re-render for performance
@@ -701,68 +689,30 @@ export class KurvaSCanvasOverlay {
       return;
     }
 
-    // Detect dark mode
-    const isDarkMode = this._isDarkMode();
+    // Create legend using shared utility
+    this.legendElement = createLegend({
+      plannedColor: this._getPlannedColor(),
+      actualColor: this._getActualColor(),
+      zIndex: 40
+    });
 
-    // Create legend element - repositioned to top-right to reduce overlap
-    this.legendElement = document.createElement('div');
-    this.legendElement.className = 'kurva-s-legend';
-    this.legendElement.style.cssText = `
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: ${isDarkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)'};
-      border: 1px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'};
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, ${isDarkMode ? '0.5' : '0.15'});
-      z-index: 40;
-      pointer-events: none;
-      display: flex;
-      gap: 16px;
-      align-items: center;
-    `;
-
-    const plannedColor = this._getPlannedColor();
-    const actualColor = this._getActualColor();
-    const textColor = isDarkMode ? '#e5e7eb' : '#374151';
-
-    this.legendElement.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <div style="width: 24px; height: 4px; background: ${plannedColor}; border-radius: 2px;"></div>
-        <span style="color: ${textColor}; font-weight: 500;">Planned</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <div style="width: 24px; height: 4px; background: ${actualColor}; border-radius: 2px;"></div>
-        <span style="color: ${textColor}; font-weight: 500;">Actual</span>
-      </div>
-    `;
+    // Change to fixed positioning for legend
+    this.legendElement.style.position = 'fixed';
 
     document.body.appendChild(this.legendElement);
   }
 
   _updateLegendColors() {
     if (!this.legendElement) return;
-    const isDarkMode = this._isDarkMode();
-    this.legendElement.style.background = isDarkMode ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-    this.legendElement.style.borderColor = isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
-    this.legendElement.style.boxShadow = `0 4px 12px rgba(0, 0, 0, ${isDarkMode ? '0.5' : '0.15'})`;
-
-    const textColor = isDarkMode ? '#e5e7eb' : '#374151';
-    const spans = this.legendElement.querySelectorAll('span');
-    spans.forEach(span => span.style.color = textColor);
+    updateLegendColors(
+      this.legendElement,
+      this._getPlannedColor(),
+      this._getActualColor()
+    );
   }
 
   _isDarkMode() {
-    // Check if body has dark mode class or if system prefers dark mode
-    const bodyClassList = document.body.classList;
-    if (bodyClassList.contains('dark-mode') || bodyClassList.contains('dark')) {
-      return true;
-    }
-    // Check CSS variable or system preference
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return isDarkMode();
   }
 
   _hideLegend() {
@@ -811,19 +761,19 @@ export class KurvaSCanvasOverlay {
       this._log('tooltip-coords', { visualX, visualY, canvasX, canvasY, scrollLeft: this.scrollLeft, scrollTop: this.scrollTop });
 
       // Hit test: find closest point within 15px radius
-      const hit = this._hitTestPoint(canvasX, canvasY, 15);
+      const hit = hitTestPoint(this.curvePoints, canvasX, canvasY, 15);
       this._log('tooltip-hit', hit);
       if (hit) {
-        this._showTooltip(e.clientX, e.clientY, hit);
+        this.tooltipManager.show(e.clientX, e.clientY, hit);
         this.canvas.style.cursor = 'pointer';
       } else {
-        this._hideTooltip();
+        this.tooltipManager.hide();
         this.canvas.style.cursor = 'default';
       }
     });
 
     this.canvas.addEventListener('mouseleave', () => {
-      this._hideTooltip();
+      this.tooltipManager.hide();
       this.canvas.style.cursor = 'default';
     });
 
@@ -836,64 +786,6 @@ export class KurvaSCanvasOverlay {
         scrollArea.scrollTop += e.deltaY;
       }
     }, { passive: true });
-  }
-
-  _hitTestPoint(x, y, radius) {
-    if (!this.curvePoints) return null;
-
-    for (const point of this.curvePoints) {
-      const dx = point.x - x;
-      const dy = point.y - y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance <= radius) {
-        return point;
-      }
-    }
-    return null;
-  }
-
-  _ensureTooltip() {
-    if (this.tooltip) return this.tooltip;
-    this.tooltip = document.createElement('div');
-    this.tooltip.className = 'kurvas-overlay-tooltip';
-    this.tooltip.style.cssText = `
-      position: fixed;
-      padding: 8px 12px;
-      background: rgba(17, 24, 39, 0.95);
-      color: #f8fafc;
-      border-radius: 6px;
-      font-size: 12px;
-      pointer-events: none;
-      z-index: 50;
-      display: none;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-      line-height: 1.5;
-    `;
-    document.body.appendChild(this.tooltip);
-    return this.tooltip;
-  }
-
-  _showTooltip(clientX, clientY, point) {
-    const tip = this._ensureTooltip();
-    const weekLabel = point.weekNumber ? `Week ${point.weekNumber}` : point.columnId;
-    const progressLabel = Number.isFinite(point.progress) ? `${point.progress.toFixed(1)}%` : '-';
-    const weekProgressLabel = Number.isFinite(point.weekProgress) ? `${point.weekProgress.toFixed(1)}%` : '-';
-
-    tip.innerHTML = `
-      <div style="font-weight: 600; margin-bottom: 4px; color: ${point.color};">${point.label}</div>
-      <div><strong>${weekLabel}</strong></div>
-      <div>Cumulative: ${progressLabel}</div>
-      <div>Week Progress: ${weekProgressLabel}</div>
-    `;
-    tip.style.left = `${clientX + 12}px`;
-    tip.style.top = `${clientY + 12}px`;
-    tip.style.display = 'block';
-  }
-
-  _hideTooltip() {
-    if (this.tooltip) {
-      this.tooltip.style.display = 'none';
-    }
   }
 
   _log(event, payload) {
