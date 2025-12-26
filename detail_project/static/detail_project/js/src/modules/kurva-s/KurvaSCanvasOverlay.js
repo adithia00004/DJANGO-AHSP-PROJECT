@@ -40,14 +40,14 @@ export class KurvaSCanvasOverlay {
     this.ctx = this.canvas.getContext('2d');
 
     // ClipViewport wrapper - FIXED overlay that clips canvas to visible area
-    // High z-index ensures it's above bodyScroll for mouse events
+    // z-index 10 is sufficient to be above bodyScroll for mouse events
     this.clipViewport = document.createElement('div');
     this.clipViewport.className = 'kurva-s-clip-viewport';
     this.clipViewport.style.cssText = `
       position: absolute;
       overflow: hidden;
       pointer-events: auto;
-      z-index: 1000;
+      z-index: 10;
     `;
     // Canvas goes inside clipViewport
     this.clipViewport.appendChild(this.canvas);
@@ -86,7 +86,7 @@ export class KurvaSCanvasOverlay {
   }
 
   show() {
-    console.log('[KurvaS] show() called', { alreadyVisible: this.visible });
+    this._log('show', { alreadyVisible: this.visible });
     if (this.visible) return;
     const scrollArea = this.tableManager?.bodyScroll;
     const container = scrollArea?.parentElement;
@@ -102,7 +102,7 @@ export class KurvaSCanvasOverlay {
     }
     container.appendChild(this.clipViewport);
 
-    console.log('[KurvaS] clipViewport added to container (sibling)', {
+    this._log('clipViewport-attached', {
       clipViewportInDOM: !!this.clipViewport.parentNode,
       canvasInClipViewport: !!this.canvas.parentNode,
       zIndex: this.clipViewport.style.zIndex,
@@ -262,7 +262,7 @@ export class KurvaSCanvasOverlay {
     const centerX = canvasRect.left + canvasRect.width / 2;
     const centerY = canvasRect.top + canvasRect.height / 2;
     const elementAtCenter = document.elementFromPoint(centerX, centerY);
-    console.log('[KurvaS] syncWithTable complete', {
+    this._log('sync-complete', {
       canvasWidth: this.canvas.width,
       canvasHeight: this.canvas.height,
       canvasRect: { top: canvasRect.top, left: canvasRect.left, width: canvasRect.width, height: canvasRect.height },
@@ -694,46 +694,6 @@ export class KurvaSCanvasOverlay {
     });
   }
 
-  _drawYAxisLabels(canvasHeight) {
-    if (!this.yAxisContainer) return;
-    this.yAxisContainer.innerHTML = '';
-
-    const y0 = canvasHeight - 40;
-    const y100 = 40;
-
-    // Background
-    const bg = document.createElement('div');
-    bg.style.position = 'absolute';
-    bg.style.inset = '0';
-    bg.style.background = 'rgba(255, 255, 255, 0.9)';
-    bg.style.borderLeft = '1px solid #dee2e6';
-    this.yAxisContainer.appendChild(bg);
-
-    const percentages = [0, 20, 40, 60, 80, 100];
-    percentages.forEach((pct) => {
-      const y = this._interpolateY(pct, y0, y100);
-
-      const tick = document.createElement('div');
-      tick.style.position = 'absolute';
-      tick.style.left = '0';
-      tick.style.top = `${y}px`;
-      tick.style.width = '100%';
-      tick.style.height = '1px';
-      tick.style.borderTop = '1px solid #dee2e6';
-      this.yAxisContainer.appendChild(tick);
-
-      const label = document.createElement('div');
-      label.textContent = `${pct}%`;
-      label.style.position = 'absolute';
-      label.style.left = '10px';
-      label.style.top = `${y - 6}px`;
-      label.style.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      label.style.color = '#495057';
-      label.style.lineHeight = '12px';
-      this.yAxisContainer.appendChild(label);
-    });
-  }
-
   _showLegend() {
     if (this.legendElement) {
       this.legendElement.style.display = 'flex';
@@ -758,7 +718,7 @@ export class KurvaSCanvasOverlay {
       font-size: 13px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       box-shadow: 0 4px 12px rgba(0, 0, 0, ${isDarkMode ? '0.5' : '0.15'});
-      z-index: 25;
+      z-index: 40;
       pointer-events: none;
       display: flex;
       gap: 16px;
@@ -851,13 +811,13 @@ export class KurvaSCanvasOverlay {
     // Add hover tooltip for curve points
     this.canvas.addEventListener('mousemove', (e) => {
       // DEBUG: Log to verify event is firing
-      console.log('[KurvaS Tooltip] mousemove', {
+      this._log('tooltip-mousemove', {
         visible: this.visible,
         curvePointsCount: this.curvePoints?.length || 0,
       });
 
       if (!this.visible || !this.curvePoints || this.curvePoints.length === 0) {
-        console.log('[KurvaS Tooltip] Early return - no points');
+        this._log('tooltip-early-return', { reason: 'no-points' });
         return;
       }
 
@@ -872,11 +832,11 @@ export class KurvaSCanvasOverlay {
       const canvasX = visualX + this.scrollLeft;
       const canvasY = visualY + this.scrollTop;
 
-      console.log('[KurvaS Tooltip] Mouse coords', { visualX, visualY, canvasX, canvasY, scrollLeft: this.scrollLeft, scrollTop: this.scrollTop });
+      this._log('tooltip-coords', { visualX, visualY, canvasX, canvasY, scrollLeft: this.scrollLeft, scrollTop: this.scrollTop });
 
       // Hit test: find closest point within 15px radius
       const hit = this._hitTestPoint(canvasX, canvasY, 15);
-      console.log('[KurvaS Tooltip] Hit test result', hit);
+      this._log('tooltip-hit', hit);
       if (hit) {
         this._showTooltip(e.clientX, e.clientY, hit);
         this.canvas.style.cursor = 'pointer';
@@ -928,7 +888,7 @@ export class KurvaSCanvasOverlay {
       border-radius: 6px;
       font-size: 12px;
       pointer-events: none;
-      z-index: 30;
+      z-index: 50;
       display: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
       line-height: 1.5;
