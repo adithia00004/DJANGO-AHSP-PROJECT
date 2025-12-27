@@ -1863,3 +1863,55 @@
 /* NOTE: Removed overflow:hidden overrides on viewTabsContent and tab-pane
    to allow horizontal scrollbar to be visible. The scrollbar was being 
    clipped by these rules. */
+
+/* ===== CELL EDITOR STYLING ===== */
+/* Input editor for inline cell editing */
+.tanstack-cell-editor {
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--bs-primary, #0d6efd);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: inherit;
+  background-color: var(--grid-bg, #ffffff);
+  color: var(--grid-text, #212529);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.tanstack-cell-editor:focus {
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+
+/* Cell editing state */
+.tanstack-grid-cell.editing {
+  padding: 0;
+  background-color: transparent;
+}
+
+/* Dark mode cell editor styling */
+[data-bs-theme="dark"] .tanstack-cell-editor,
+[data-bs-theme="dark"] .tanstack-cell-editor.form-control,
+[data-bs-theme="dark"] .tanstack-grid-cell .tanstack-cell-editor,
+[data-bs-theme="dark"] .tanstack-grid-cell.editing input {
+  background-color: #2d2d2d !important;
+  color: #ffffff !important;
+  border-color: #3d8bfd !important;
+}
+
+[data-bs-theme="dark"] .tanstack-cell-editor:focus,
+[data-bs-theme="dark"] .tanstack-cell-editor.form-control:focus,
+[data-bs-theme="dark"] .tanstack-grid-cell .tanstack-cell-editor:focus,
+[data-bs-theme="dark"] .tanstack-grid-cell.editing input:focus {
+  background-color: #2d2d2d !important;
+  color: #ffffff !important;
+  border-color: #3d8bfd !important;
+  box-shadow: 0 0 0 2px rgba(61, 139, 253, 0.35) !important;
+}
+
+/* Override Bootstrap's dark mode input styling */
+[data-bs-theme="dark"] input[type="number"].tanstack-cell-editor {
+  background-color: #2d2d2d !important;
+  color: #ffffff !important;
+}

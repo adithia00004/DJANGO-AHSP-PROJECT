@@ -51,7 +51,44 @@ export class GanttCanvasOverlay {
           this._updateTransform();
         }
       }, { passive: true });
+
+      // Prevent wheel scroll from propagating to parent containers
+      scrollTarget.addEventListener('wheel', (event) => {
+        const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = scrollTarget;
+
+        const atTop = scrollTop <= 0;
+        const atBottom = scrollTop + clientHeight >= scrollHeight;
+        const atLeft = scrollLeft <= 0;
+        const atRight = scrollLeft + clientWidth >= scrollWidth;
+
+        const scrollingUp = event.deltaY < 0;
+        const scrollingDown = event.deltaY > 0;
+        const scrollingLeft = event.deltaX < 0;
+        const scrollingRight = event.deltaX > 0;
+
+        const shouldPropagate =
+          (atTop && scrollingUp && Math.abs(event.deltaY) > Math.abs(event.deltaX)) ||
+          (atBottom && scrollingDown && Math.abs(event.deltaY) > Math.abs(event.deltaX)) ||
+          (atLeft && scrollingLeft && Math.abs(event.deltaX) > Math.abs(event.deltaY)) ||
+          (atRight && scrollingRight && Math.abs(event.deltaX) > Math.abs(event.deltaY));
+
+        if (!shouldPropagate) {
+          event.stopPropagation();
+        }
+      }, { passive: true });
     }
+
+    // Forward wheel events from canvas to bodyScroll
+    // Canvas has pointer-events:auto so it captures wheel events, need to forward to scroll
+    this.canvas.addEventListener('wheel', (event) => {
+      const scrollTarget = this.tableManager?.bodyScroll;
+      if (scrollTarget) {
+        scrollTarget.scrollLeft += event.deltaX;
+        scrollTarget.scrollTop += event.deltaY;
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, { passive: false });  // Need non-passive to call preventDefault
 
     this._bindPointerEvents();
   }

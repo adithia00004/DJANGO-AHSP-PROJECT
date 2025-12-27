@@ -76,6 +76,36 @@ export class TanStackGridManager {
     this.container.appendChild(this.bodyScroll);
 
     this.bodyScroll.addEventListener('scroll', this._handleScroll, { passive: true });
+
+    // Prevent wheel scroll from propagating to parent containers
+    // This ensures scrolling within the grid doesn't scroll the entire page
+    this.bodyScroll.addEventListener('wheel', (event) => {
+      const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = this.bodyScroll;
+
+      // Check if we're at scroll boundaries
+      const atTop = scrollTop <= 0;
+      const atBottom = scrollTop + clientHeight >= scrollHeight;
+      const atLeft = scrollLeft <= 0;
+      const atRight = scrollLeft + clientWidth >= scrollWidth;
+
+      // Determine scroll direction
+      const scrollingUp = event.deltaY < 0;
+      const scrollingDown = event.deltaY > 0;
+      const scrollingLeft = event.deltaX < 0;
+      const scrollingRight = event.deltaX > 0;
+
+      // Only allow propagation if we're at a boundary AND scrolling towards that boundary
+      const shouldPropagate =
+        (atTop && scrollingUp && Math.abs(event.deltaY) > Math.abs(event.deltaX)) ||
+        (atBottom && scrollingDown && Math.abs(event.deltaY) > Math.abs(event.deltaX)) ||
+        (atLeft && scrollingLeft && Math.abs(event.deltaX) > Math.abs(event.deltaY)) ||
+        (atRight && scrollingRight && Math.abs(event.deltaX) > Math.abs(event.deltaY));
+
+      // If not at boundary or scrolling away from boundary, prevent propagation
+      if (!shouldPropagate) {
+        event.stopPropagation();
+      }
+    }, { passive: true });
   }
 
   updateData({ tree = [], timeColumns = [], inputMode, timeScale } = {}) {
