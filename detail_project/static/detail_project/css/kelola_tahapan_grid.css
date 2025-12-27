@@ -1637,16 +1637,17 @@
   background-color: var(--bs-tertiary-bg);
   box-shadow: 1px 0 0 var(--grid-frozen-border);
   color: var(--grid-text);
-  /* Keep frozen headers above the canvas overlay */
-  z-index: 5;
+  /* Keep frozen headers ABOVE all hover/editing states */
+  z-index: 12;
 }
 
 .tanstack-grid-cell.pinned {
   background-color: var(--bs-body-bg);
   box-shadow: 1px 0 0 var(--grid-frozen-border);
   color: var(--grid-text);
-  /* Keep frozen cells above the canvas overlay */
-  z-index: 4;
+  /* Keep frozen cells ABOVE all hover/editing states */
+  z-index: 10;
+  position: sticky;
 }
 
 [data-bs-theme="dark"] .tanstack-grid-header-cell.pinned {

@@ -116,14 +116,15 @@ export class GanttCanvasOverlay {
     // Margins to avoid covering scrollbars and add spacing
     const marginLeft = 10;   // Space from frozen columns
     const marginRight = 20;  // Space for vertical scrollbar
-    // Note: marginBottom not needed for height since pointer-events:none allows scroll through
+    const marginTop = 5;     // Space from header
+    const marginBottom = 10;  // Space from bottom
 
     // ClipViewport: positioned after frozen columns, acts as viewport window
     const viewportWidth = containerRect.width - this.pinnedWidth - marginLeft - marginRight;
-    const viewportHeight = scrollAreaRect.height; // Full height, no margin needed
+    const viewportHeight = scrollAreaRect.height - marginTop - marginBottom;
 
     this.clipViewport.style.left = `${this.pinnedWidth + marginLeft}px`;
-    this.clipViewport.style.top = `${headerHeight}px`;
+    this.clipViewport.style.top = `${headerHeight + marginTop}px`;
     this.clipViewport.style.width = `${viewportWidth}px`;
     this.clipViewport.style.height = `${viewportHeight}px`;
 
@@ -310,13 +311,14 @@ export class GanttCanvasOverlay {
         // ClipViewport handles visibility, we render ALL bars
 
         const paddingX = 0; // no gap to keep continuity
-        const paddingY = 2;
+        const paddingY = 3;
+        const topOffset = 7; // Additional offset to move bars down
         const maxWidth = rect.width - paddingX * 2;
 
         // Canvas is full content width, so coordinates are relative to pinnedWidth only
         // No scrollLeft adjustment needed - transform handles viewport positioning
         const baseX = (rect.x - this.pinnedWidth) + paddingX;
-        const baseY = rect.y + paddingY;
+        const baseY = rect.y + paddingY + topOffset;  // Move down by topOffset
 
         // Skip bars with negative X (shouldn't happen with correct cell rects)
         if (baseX < -rect.width) {
@@ -324,7 +326,8 @@ export class GanttCanvasOverlay {
           return;
         }
 
-        const fullHeight = Math.max(8, rect.height - paddingY * 2);
+        // Reduce height to account for topOffset (bar is shifted down)
+        const fullHeight = Math.max(8, rect.height - paddingY * 2 - topOffset);
         const trackHeight = fullHeight / 2; // split planned/actual vertically
 
         const plannedValue = Number.isFinite(bar.planned) ? Math.max(0, Math.min(100, bar.planned)) : 0;

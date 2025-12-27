@@ -124,7 +124,7 @@ export class UnifiedTableManager {
     // For monthly mode, we aggregate weekly data into monthly buckets for OUTPUT
     let columns = stateManager.getTimeColumns();
 
-    console.log(`[BuildBarData] MODE: ${displayScale}, columns=${columns.length}`);
+    this._log('buildBarData:mode', { displayScale, columns: columns.length });
 
     // Fallback if StateManager is empty
     if (!flatRows.length) {
@@ -132,7 +132,7 @@ export class UnifiedTableManager {
     }
     if (!columns.length) {
       columns = Array.isArray(this.state?.timeColumns) ? this.state.timeColumns : [];
-      console.log('[BuildBarData] FALLBACK columns used:', columns.length);
+      this._log('buildBarData:fallback', { columns: columns.length });
     }
 
     // Convert flatRows to tree format for backward compatibility
@@ -329,13 +329,7 @@ export class UnifiedTableManager {
 
     this._log('buildBarData:done', { bars: barData.length, displayScale });
 
-    // DEBUG: Final result
-    console.log(`[BuildBarData] FINAL: displayScale=${displayScale}, totalBars=${barData.length}`);
-    if (barData.length > 0) {
-      console.log('[BuildBarData] Sample bar columnIds:', barData.slice(0, 5).map(b => b.columnId));
-    } else {
-      console.log('[BuildBarData] ⚠️ NO BARS GENERATED!');
-    }
+
 
     return barData;
   }
@@ -436,7 +430,7 @@ export class UnifiedTableManager {
     // For MONTHLY mode: Use same data source as Gantt (StateManager cell data)
     // This bypasses grid columns which change with display mode
     if (isMonthly) {
-      console.log('[BuildCurveData] MONTHLY - Using StateManager data directly (like Gantt)');
+      this._log('buildCurveData:monthly', { mode: 'StateManager' });
       return this._buildMonthlyCurveFromStateManager();
     }
 
@@ -448,7 +442,7 @@ export class UnifiedTableManager {
       columns = gridColumns;
     }
 
-    console.log(`[BuildCurveData] WEEKLY - Grid columns: ${columns.length}`);
+    this._log('buildCurveData:weekly', { columns: columns.length });
 
     // Fallback if empty
     if (!columns.length && Array.isArray(this.state?.timeColumns)) {
@@ -461,7 +455,7 @@ export class UnifiedTableManager {
       return meta?.timeColumn;
     });
 
-    console.log(`[BuildCurveData] After filter: ${timeColumns.length} time columns`);
+    this._log('buildCurveData:filtered', { timeColumns: timeColumns.length });
 
     if (timeColumns.length === 0) {
       this._log('buildCurveData:noTimeColumns', { columnsTotal: columns.length });
@@ -510,24 +504,7 @@ export class UnifiedTableManager {
     // Monthly aggregation: group every 4 weeks, take max cumulative value
     // (isMonthly already declared at top of function)
 
-    // Monthly aggregation: group every 4 weeks, take max cumulative value
-    if (isMonthly) {
-      // DEBUG: log weekly points before aggregation WITH progress values
-      console.log(`[BuildCurveData] BEFORE aggregation: planned=${plannedCurve.length}, actual=${actualCurve.length}`);
-      console.log('[BuildCurveData] WEEKLY progress:', plannedCurve.slice(0, 8).map(p => ({
-        col: p.columnId,
-        cum: p.cumulativeProgress,
-      })));
-
-      plannedCurve = this._aggregateCurveToMonthly(plannedCurve);
-      actualCurve = this._aggregateCurveToMonthly(actualCurve);
-
-      console.log(`[BuildCurveData] AFTER aggregation: planned=${plannedCurve.length}, actual=${actualCurve.length}`);
-      console.log('[BuildCurveData] MONTHLY progress:', plannedCurve.map(p => ({
-        col: p.columnId,
-        cum: p.cumulativeProgress,
-      })));
-    }
+    // Note: Monthly aggregation is handled in _buildMonthlyCurveFromStateManager
 
     this._log('buildCurveData:result', {
       plannedPoints: plannedCurve.length,
@@ -538,11 +515,7 @@ export class UnifiedTableManager {
       displayScale,
     });
 
-    // DEBUG: Log curve data for visibility
-    console.log(`[BuildCurveData] MODE: ${displayScale}, planned=${plannedCurve.length}, actual=${actualCurve.length}`);
-    if (plannedCurve.length > 0) {
-      console.log('[BuildCurveData] Sample planned columnIds:', plannedCurve.slice(0, 5).map(p => p.columnId));
-    }
+
 
     return {
       planned: plannedCurve,
@@ -644,8 +617,13 @@ export class UnifiedTableManager {
     const hargaLookup = buildHargaLookup(this.state || {});
     let totalBiaya = Number(this.state?.totalBiayaProject) || 0;
 
-    console.log(`[BuildMonthlyCurve] planned=${mergedPlanned?.size}, actual=${mergedActual?.size}, pekerjaan=${flatPekerjaan.length}`);
-    console.log(`[BuildMonthlyCurve] totalBiaya=${totalBiaya}, hargaLookup size=${hargaLookup.size}`);
+    this._log('buildMonthlyCurve:start', {
+      planned: mergedPlanned?.size,
+      actual: mergedActual?.size,
+      pekerjaan: flatPekerjaan.length,
+      totalBiaya,
+      hargaLookupSize: hargaLookup.size,
+    });
 
     if (!flatPekerjaan.length) {
       return { planned: [], actual: [] };
@@ -675,8 +653,10 @@ export class UnifiedTableManager {
       return numA - numB;
     });
 
-    console.log(`[BuildMonthlyCurve] Extracted ${sortedColumnIds.length} unique column IDs`);
-    console.log('[BuildMonthlyCurve] Sample column IDs:', sortedColumnIds.slice(0, 5));
+    this._log('buildMonthlyCurve:columns', {
+      extracted: sortedColumnIds.length,
+      sample: sortedColumnIds.slice(0, 5),
+    });
 
     if (sortedColumnIds.length === 0) {
       return { planned: [], actual: [] };
@@ -702,11 +682,11 @@ export class UnifiedTableManager {
       weightMap.set(id, weight);
     });
 
-    // DEBUG: Show weight distribution
     const weights = Array.from(weightMap.values());
-    console.log('[BuildMonthlyCurve] Total weights sum:', weights.reduce((a, b) => a + b, 0).toFixed(4));
-    console.log('[BuildMonthlyCurve] Sample weights:', weights.slice(0, 5).map(w => w.toFixed(4)));
-    console.log('[BuildMonthlyCurve] Sample weights:', weights.slice(0, 5).map(w => w.toFixed(4)));
+    this._log('buildMonthlyCurve:weights', {
+      sum: weights.reduce((a, b) => a + b, 0).toFixed(4),
+      sample: weights.slice(0, 5).map(w => w.toFixed(4)),
+    });
 
     // Step 3: Calculate weighted progress per column
     const weeklyPlanned = [];
@@ -750,15 +730,21 @@ export class UnifiedTableManager {
       });
     });
 
-    console.log(`[BuildMonthlyCurve] Weekly: planned=${weeklyPlanned.length}, actual=${weeklyActual.length}`);
-    console.log('[BuildMonthlyCurve] Sample weekly cumulative:', weeklyPlanned.slice(0, 8).map(p => p.cumulativeProgress.toFixed(2)));
+    this._log('buildMonthlyCurve:weekly', {
+      planned: weeklyPlanned.length,
+      actual: weeklyActual.length,
+      sampleCumulative: weeklyPlanned.slice(0, 8).map(p => p.cumulativeProgress.toFixed(2)),
+    });
 
     // Step 4: Aggregate to monthly (every 4 weeks)
     const monthlyPlanned = this._aggregateCurveToMonthly(weeklyPlanned);
     const monthlyActual = this._aggregateCurveToMonthly(weeklyActual);
 
-    console.log(`[BuildMonthlyCurve] Monthly: planned=${monthlyPlanned.length}, actual=${monthlyActual.length}`);
-    console.log('[BuildMonthlyCurve] Sample monthly cumulative:', monthlyPlanned.slice(0, 4).map(p => p.cumulativeProgress.toFixed(2)));
+    this._log('buildMonthlyCurve:result', {
+      monthlyPlanned: monthlyPlanned.length,
+      monthlyActual: monthlyActual.length,
+      sampleCumulative: monthlyPlanned.slice(0, 4).map(p => p.cumulativeProgress.toFixed(2)),
+    });
 
     return {
       planned: monthlyPlanned,

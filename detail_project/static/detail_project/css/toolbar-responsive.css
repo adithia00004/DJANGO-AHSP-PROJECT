@@ -270,15 +270,7 @@
     gap: 1rem;
   }
 
-  /* Hide time scale selector on tablet - available in More menu */
-  .time-scale-selector {
-    display: none;
-  }
-
-  /* Hide week boundary on tablet - available in More menu */
-  .week-boundary-controls {
-    display: none;
-  }
+  /* Time Scale and Week Boundary now visible on tablet */
 }
 
 /* Mobile (< 768px) - Minimal layout */
@@ -365,13 +357,15 @@
     padding: 0.375rem 0.5rem;
   }
 
-  /* Secondary row always hidden on mobile */
+
+  /* Secondary toolbar now visible on mobile too */
   .toolbar-secondary {
-    display: none !important;
+    flex-wrap: wrap;
+    padding: 0.375rem 0.5rem;
   }
 
   .toolbar-toggle {
-    display: none !important;
+    display: none;
   }
 
   /* More menu button visible */
@@ -736,6 +730,11 @@
 
 .tanstack-grid-virtual-row:hover .tanstack-grid-cell {
   background-color: transparent;
+}
+
+/* CRITICAL: Keep frozen cells SOLID on hover to prevent ghost text showing through */
+.tanstack-grid-virtual-row:hover .tanstack-grid-cell.pinned {
+  background-color: var(--bs-body-bg) !important;
 }
 
 /* Active row highlight */
