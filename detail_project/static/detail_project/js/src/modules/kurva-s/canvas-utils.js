@@ -26,6 +26,8 @@ export function createCanvas(className = 'kurva-s-canvas') {
 /**
  * Creates a clip viewport wrapper for canvas
  * ClipViewport is a fixed overlay that clips canvas to visible area
+ * pointer-events: none allows scroll events to pass through to bodyScroll
+ * Canvas inside must have pointer-events: auto for tooltip interaction
  *
  * @param {string} className - CSS class name for the viewport
  * @param {number} zIndex - Z-index for stacking (default: 10)
@@ -37,7 +39,7 @@ export function createClipViewport(className = 'kurva-s-clip-viewport', zIndex =
   clipViewport.style.cssText = `
     position: absolute;
     overflow: hidden;
-    pointer-events: auto;
+    pointer-events: none;
     z-index: ${zIndex};
   `;
   return clipViewport;

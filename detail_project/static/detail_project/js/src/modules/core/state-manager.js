@@ -94,6 +94,20 @@ export class StateManager {
      */
     this.timeColumns = [];
 
+    /**
+     * Chart data cache (from SSoT API)
+     * Key: "{timescale}:{mode}" e.g. "weekly:both"
+     * @type {Map<string, Object>}
+     * @private
+     */
+    this._chartDataCache = new Map();
+
+    /**
+     * Project ID for API calls
+     * @type {number|null}
+     */
+    this.projectId = null;
+
     console.log(LOG_PREFIX, 'Initialized with dual state architecture');
   }
 
@@ -244,6 +258,9 @@ export class StateManager {
 
     // Invalidate cache
     this._invalidateCache(this.currentMode);
+
+    // Also invalidate chart data cache (SSoT API data needs refresh)
+    this.invalidateChartCache();
 
     console.log(LOG_PREFIX, `Committed ${count} changes to ${this.currentMode.toUpperCase()} assignmentMap`);
 
@@ -452,6 +469,112 @@ export class StateManager {
     console.log(LOG_PREFIX, 'State reset');
 
     this._notifyListeners({ type: 'reset' });
+  }
+
+  /**
+   * Fetch chart data from SSoT API (with caching)
+   * @param {string} timescale - 'weekly' or 'monthly'
+   * @param {string} mode - 'planned', 'actual', or 'both'
+   * @returns {Promise<Object>} Chart data from API
+   */
+  async fetchChartData(timescale = 'weekly', mode = 'both') {
+    const cacheKey = `${timescale}:${mode}`;
+
+    // Return cached data if available
+    if (this._chartDataCache.has(cacheKey)) {
+      console.log(LOG_PREFIX, 'Using cached chart data for:', cacheKey);
+      return this._chartDataCache.get(cacheKey);
+    }
+
+    if (!this.projectId) {
+      console.warn(LOG_PREFIX, 'No projectId set, cannot fetch chart data');
+      return null;
+    }
+
+    try {
+      console.log(LOG_PREFIX, 'Fetching chart data from API:', cacheKey);
+
+      const response = await fetch(
+        `/detail_project/api/v2/project/${this.projectId}/chart-data/?timescale=${timescale}&mode=${mode}`,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          credentials: 'same-origin'
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Cache the response
+      this._chartDataCache.set(cacheKey, data);
+
+      console.log(LOG_PREFIX, 'Chart data fetched:', {
+        timescale,
+        columns: data.columns?.length || 0,
+        rows: data.rows?.length || 0
+      });
+
+      // Notify listeners
+      this._notifyListeners({
+        type: 'chartDataLoaded',
+        timescale,
+        mode,
+        data
+      });
+
+      return data;
+
+    } catch (error) {
+      console.error(LOG_PREFIX, 'Failed to fetch chart data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get cached chart data (synchronous)
+   * @param {string} timescale - 'weekly' or 'monthly'
+   * @param {string} mode - 'planned', 'actual', or 'both'
+   * @returns {Object|null} Cached chart data or null
+   */
+  getChartData(timescale = 'weekly', mode = 'both') {
+    const cacheKey = `${timescale}:${mode}`;
+    return this._chartDataCache.get(cacheKey) || null;
+  }
+
+  /**
+   * Invalidate chart data cache (call after save or data change)
+   * @param {string} [timescale] - Specific timescale to invalidate, or all if omitted
+   */
+  invalidateChartCache(timescale = null) {
+    if (timescale) {
+      // Remove specific timescale entries
+      for (const key of this._chartDataCache.keys()) {
+        if (key.startsWith(timescale + ':')) {
+          this._chartDataCache.delete(key);
+        }
+      }
+      console.log(LOG_PREFIX, 'Chart cache invalidated for timescale:', timescale);
+    } else {
+      // Clear all
+      this._chartDataCache.clear();
+      console.log(LOG_PREFIX, 'All chart cache invalidated');
+    }
+  }
+
+  /**
+   * Set project ID for API calls
+   * @param {number} projectId
+   */
+  setProjectId(projectId) {
+    this.projectId = projectId;
+    console.log(LOG_PREFIX, 'Project ID set:', projectId);
   }
 
   /**

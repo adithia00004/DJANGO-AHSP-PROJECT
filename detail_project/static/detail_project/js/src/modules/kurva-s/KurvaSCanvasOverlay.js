@@ -10,6 +10,7 @@
 
 import { createCanvas, createClipViewport, getContext2D, hitTestPoint, isDarkMode } from './canvas-utils.js';
 import { TooltipManager, createLegend, updateLegendColors } from './tooltip-manager.js';
+import { StateManager } from '../core/state-manager.js';
 
 export class KurvaSCanvasOverlay {
   constructor(tableManager, options = {}) {
@@ -102,8 +103,104 @@ export class KurvaSCanvasOverlay {
     this._log('show', { overlay: true, container: 'sibling-of-bodyScroll', zIndex: 10 });
     this._showLegend();
 
-    // Wait for virtualizer cells, then render
+    // Data will be provided by UnifiedTableManager._refreshKurvaSOverlay() → renderCurve()
+    // This uses _buildCurveData() which uses StateManager - same data source as Gantt
     this._waitForCellsAndRender();
+  }
+
+  /**
+   * Fetch curve data from SSoT API via StateManager
+   * @returns {Promise<void>}
+   */
+  async _fetchCurveDataFromAPI() {
+    try {
+      const stateManager = StateManager.getInstance();
+
+      // Set project ID if available
+      if (this.projectId && !stateManager.projectId) {
+        stateManager.setProjectId(this.projectId);
+      }
+
+      // Determine timescale (default weekly, can be changed by setTimescale)
+      const timescale = this.timescale || 'weekly';
+
+      // Fetch from SSoT API
+      const chartData = await stateManager.fetchChartData(timescale, 'both');
+
+      if (chartData && chartData.curveData) {
+        this._log('curveData-from-api', {
+          timescale,
+          plannedPoints: chartData.curveData.planned?.length || 0,
+          actualPoints: chartData.curveData.actual?.length || 0
+        });
+
+        // Convert API format to internal format
+        this.curveData = {
+          planned: this._convertApiCurveData(chartData.curveData.planned, 'planned'),
+          actual: this._convertApiCurveData(chartData.curveData.actual, 'actual')
+        };
+      } else {
+        this._log('curveData-fallback', { reason: 'API returned no curveData' });
+        // Fallback: keep existing curveData or use empty
+      }
+    } catch (error) {
+      this._log('curveData-error', { error: error.message });
+      // On error, proceed with existing curveData
+    }
+  }
+
+  /**
+   * Convert API curve data format to internal format
+   * @param {Array} apiData - Array of {weekNumber/monthNumber, cumulative, label}
+   * @param {string} type - 'planned' or 'actual'
+   * @returns {Array} Internal format {columnId, progress, ...}
+   */
+  _convertApiCurveData(apiData, type) {
+    if (!Array.isArray(apiData)) return [];
+
+    return apiData.map(point => {
+      const weekNumber = point.weekNumber;
+      const monthNumber = point.monthNumber;
+
+      // Build columnId in format matching grid cells 
+      // Grid uses 'col_X' where X is the column index (0-based)
+      // But API returns weekNumber (1-based), so we try multiple formats
+      const columnId = weekNumber != null
+        ? String(weekNumber)  // Try as string first, _mapDataToCanvasPoints will handle it
+        : monthNumber != null
+          ? String(monthNumber)
+          : null;
+
+      return {
+        columnId,          // Primary lookup key
+        weekId: weekNumber != null ? String(weekNumber) : null,
+        week: weekNumber,  // Numeric week for fallback
+        month: monthNumber,
+        progress: point.cumulative || 0,
+        cumulative: point.cumulative || 0,
+        cumulativeProgress: point.cumulative || 0,  // Add this for _mapDataToCanvasPoints
+        label: point.label || '',
+        type
+      };
+    });
+  }
+
+  /**
+   * Set timescale for curve data (weekly or monthly)
+   * @param {string} timescale - 'weekly' or 'monthly'
+   */
+  setTimescale(timescale) {
+    if (timescale !== this.timescale) {
+      this.timescale = timescale;
+      // Invalidate cached curve data
+      this.curveData = { planned: [], actual: [] };
+      // If visible, refetch and re-render
+      if (this.visible) {
+        this._fetchCurveDataFromAPI().then(() => {
+          this.syncWithTable();
+        });
+      }
+    }
   }
 
   hide() {
@@ -129,9 +226,13 @@ export class KurvaSCanvasOverlay {
     }
 
     // Get cell rects FIRST to determine canvas bounds
-    const cellRects = typeof this.tableManager.getCellBoundingRects === 'function'
-      ? this.tableManager.getCellBoundingRects()
-      : [];
+    // Use getAllCellBoundingRects for virtual calculation (all cells) like Gantt
+    // Fallback to getCellBoundingRects for visible-only cells
+    const cellRects = typeof this.tableManager.getAllCellBoundingRects === 'function'
+      ? this.tableManager.getAllCellBoundingRects()
+      : typeof this.tableManager.getCellBoundingRects === 'function'
+        ? this.tableManager.getCellBoundingRects()
+        : [];
 
     if (cellRects.length === 0) {
       this._log('warn-no-cell-rects', { message: 'No cell rects available for plotting' });
@@ -556,11 +657,35 @@ export class KurvaSCanvasOverlay {
         ? dataPoint.cumulativeProgress
         : dataPoint.progress || 0;
 
-      const columnGridLine = columnGridLines.get(String(columnId));
+      // Try direct match first
+      let columnGridLine = columnGridLines.get(String(columnId));
+
+      // Fallback: Try weekNumber-based lookup with various formats
+      if (!columnGridLine && dataPoint.week) {
+        const weekNum = dataPoint.week;
+        // Try common column ID formats
+        const tryFormats = [
+          String(weekNum),           // "1", "2", ...
+          `week_${weekNum}`,         // "week_1", "week_2", ...
+          `col_${weekNum}`,          // "col_1", "col_2", ...
+          `col_${weekNum - 1}`,      // "col_0", "col_1", ... (0-indexed)
+        ];
+        for (const fmt of tryFormats) {
+          if (columnGridLines.has(fmt)) {
+            columnGridLine = columnGridLines.get(fmt);
+            break;
+          }
+        }
+      }
+
       if (!columnGridLine) {
         if (this.debug && !this._missingColumnLog.has(String(columnId))) {
           this._missingColumnLog.add(String(columnId));
-          this._log('skip-missing-column', { columnId, availableColumns: columnGridLines.size })
+          this._log('skip-missing-column', {
+            columnId,
+            weekNumber: dataPoint.week,
+            availableColumns: Array.from(columnGridLines.keys()).slice(0, 5)
+          });
         }
         return;
       }
@@ -706,16 +831,13 @@ export class KurvaSCanvasOverlay {
 
       const rect = this.canvas.getBoundingClientRect();
 
-      // Mouse position in canvas visual space
-      const visualX = e.clientX - rect.left;
-      const visualY = e.clientY - rect.top;
+      // Canvas visual coords = canvas drawing coords
+      // getBoundingClientRect() already incorporates CSS transform (translate(-scrollX, -scrollY))
+      // So we DON'T need to add scroll offset - visual position = drawing position
+      const canvasX = e.clientX - rect.left;
+      const canvasY = e.clientY - rect.top;
 
-      // Canvas uses CSS transform to move with scroll (viewport concept)
-      // So canvas coordinates = visual + scroll offset
-      const canvasX = visualX + this.scrollLeft;
-      const canvasY = visualY + this.scrollTop;
-
-      this._log('tooltip-coords', { visualX, visualY, canvasX, canvasY, scrollLeft: this.scrollLeft, scrollTop: this.scrollTop });
+      this._log('tooltip-coords', { canvasX, canvasY, scrollLeft: this.scrollLeft, scrollTop: this.scrollTop });
 
       // Hit test: find closest point within 15px radius
       const hit = hitTestPoint(this.curvePoints, canvasX, canvasY, 15);

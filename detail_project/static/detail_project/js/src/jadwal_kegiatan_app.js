@@ -1892,9 +1892,20 @@ class JadwalKegiatanApp {
 
     this.state.displayScale = normalized;
     this._syncToolbarRadios();
+
+    // SSoT: Invalidate chart cache so API fetch uses new timescale
+    if (this.stateManager) {
+      this.stateManager.invalidateChartCache();
+    }
+
     this._syncGridViews();
     this._renderGrid();
     this._updateCharts();
+
+    // SSoT: Propagate timescale to Kurva S overlay
+    if (this.unifiedManager?.overlays?.kurva) {
+      this.unifiedManager.overlays.kurva.setTimescale(normalized);
+    }
 
     if (normalized === 'weekly') {
       this.showToast('Time scale diatur ke Weekly', 'info', 2000);

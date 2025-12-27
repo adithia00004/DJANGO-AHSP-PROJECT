@@ -363,14 +363,6 @@ export class GanttCanvasOverlay {
     });
 
     this.lastDrawMetrics = { barsDrawn, barsSkipped };
-    // DEBUG: Log render stats
-    console.log('[GanttOverlay] 📊 Render stats:', {
-      barsDrawn,
-      barsSkipped,
-      total: this.barData.length,
-      cellRectsCount: cellRects.length,
-      canvasSize: { w: this.canvas.width, h: this.canvas.height },
-    });
     this._log('bars:drawn', { drawn: barsDrawn, skipped: barsSkipped, total: this.barData.length });
   }
 

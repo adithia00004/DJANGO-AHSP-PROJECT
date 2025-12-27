@@ -281,6 +281,12 @@ urlpatterns = [
          views_api.api_kurva_s_data,
          name='api_kurva_s_data'),
 
+    # ===== API: CHART DATA (SSoT for Grid, Gantt, Kurva S) =====
+    # Unified endpoint for all chart views with timescale support
+    path('api/v2/project/<int:project_id>/chart-data/',
+         views_api.api_chart_data,
+         name='api_chart_data'),
+
     # ===== API: KURVA S HARGA DATA (Phase 1) =====
     # Provides weekly cost progression data for cost-based S-curve
     path('api/v2/project/<int:project_id>/kurva-s-harga/',

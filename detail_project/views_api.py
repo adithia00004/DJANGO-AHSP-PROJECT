@@ -5233,3 +5233,250 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     )
 
     return JsonResponse(response_data)
+
+
+# ============================================================================
+# API: CHART DATA (Single Source of Truth for Grid, Gantt, Kurva S)
+# ============================================================================
+
+@require_GET
+@login_required
+def api_chart_data(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    Unified Chart Data API - Single Source of Truth for all chart views.
+    
+    This endpoint provides consistent data for:
+    - Grid View (columns + rows)
+    - Gantt Chart (bar data with progress values)
+    - Kurva S (weighted curve data)
+    
+    Uses JadwalPekerjaanExportAdapter for consistency with PDF/Word export.
+    
+    Query Parameters:
+        timescale: 'weekly' (default) | 'monthly'
+        mode: 'planned' | 'actual' | 'both' (default)
+    
+    Response:
+    {
+        "timescale": "weekly",
+        "columns": [
+            {"id": "week_1", "label": "W1", "weekNumber": 1, "startDate": "...", "endDate": "..."}
+        ],
+        "rows": [
+            {"pekerjaanId": 123, "name": "Task A", "type": "pekerjaan", "bobot": 30.5,
+             "cells": {"week_1": {"planned": 10, "actual": 8}}}
+        ],
+        "curveData": {
+            "planned": [{"weekNumber": 1, "cumulative": 4.5, "weekly": 4.5, "label": "W1"}],
+            "actual": [{"weekNumber": 1, "cumulative": 3.2, "weekly": 3.2, "label": "W1"}]
+        },
+        "summary": {
+            "totalPlanned": 45.5,
+            "totalActual": 38.2,
+            "variance": -7.3,
+            "totalPekerjaan": 88,
+            "totalWeeks": 20
+        }
+    }
+    
+    URL: /detail-project/api/v2/project/<project_id>/chart-data/
+    Method: GET
+    Auth: login_required
+    """
+    from dashboard.models import Project
+    from .exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
+    from decimal import Decimal
+    
+    # Get project
+    try:
+        project = get_object_or_404(Project, id=project_id)
+    except Exception:
+        return JsonResponse({'error': 'Project not found'}, status=404)
+    
+    # Parse query parameters
+    timescale = request.GET.get('timescale', 'weekly').lower()
+    if timescale not in ('weekly', 'monthly'):
+        timescale = 'weekly'
+    
+    mode = request.GET.get('mode', 'both').lower()
+    if mode not in ('planned', 'actual', 'both'):
+        mode = 'both'
+    
+    try:
+        # Use the export adapter for consistency with PDF/Word export
+        adapter = JadwalPekerjaanExportAdapter(project)
+        rekap_data = adapter.get_rekap_report_data()
+        
+        # Extract data from adapter results
+        weekly_columns = rekap_data.get('weekly_columns', [])
+        kurva_s_raw = rekap_data.get('kurva_s_data', [])
+        summary_raw = rekap_data.get('summary', {})
+        meta = rekap_data.get('meta', {})
+        
+        # Get base rows with hierarchy info
+        base_rows, hierarchy = adapter._build_base_rows()
+        progress_map, _ = adapter._build_progress_map()
+        actual_map = adapter._build_actual_progress_map()
+        
+        # Build columns based on timescale
+        if timescale == 'monthly':
+            columns_raw = adapter._build_monthly_columns(weekly_columns)
+        else:
+            columns_raw = weekly_columns
+        
+        # Transform columns to API format
+        columns = []
+        for col in columns_raw:
+            col_data = {
+                'id': f"week_{col.get('week_number', 0)}" if timescale == 'weekly' else f"month_{col.get('month_number', 0)}",
+                'label': col.get('label', ''),
+                'startDate': col.get('range', '').split(' - ')[0] if col.get('range') else None,
+                'endDate': col.get('range', '').split(' - ')[-1] if col.get('range') else None,
+            }
+            if timescale == 'weekly':
+                col_data['weekNumber'] = col.get('week_number', 0)
+            else:
+                col_data['monthNumber'] = col.get('month_number', 0)
+                col_data['childWeeks'] = col.get('child_weeks', [])
+            columns.append(col_data)
+        
+        # Build rows with cell values
+        rows = []
+        for row in base_rows:
+            row_type = row.get('type', 'unknown')
+            pekerjaan_id = row.get('pekerjaan_id')
+            
+            row_data = {
+                'id': pekerjaan_id or row.get('id'),
+                'name': row.get('uraian', ''),
+                'type': row_type,
+                'level': hierarchy.get(pekerjaan_id, 0) if pekerjaan_id else 0,
+                'volume': row.get('volume_display', ''),
+                'unit': row.get('unit', ''),
+            }
+            
+            # Add bobot for pekerjaan rows
+            if row_type == 'pekerjaan' and pekerjaan_id:
+                harga = adapter._get_pekerjaan_harga(pekerjaan_id)
+                rekap_cache = adapter._build_rekap_harga_cache()
+                total_harga = sum(rekap_cache.values()) if rekap_cache else Decimal('1')
+                bobot = float((harga / total_harga * 100) if total_harga > 0 else 0)
+                row_data['bobot'] = round(bobot, 2)
+                row_data['pekerjaanId'] = pekerjaan_id
+            
+            # Build cells with progress values
+            cells = {}
+            if row_type == 'pekerjaan' and pekerjaan_id:
+                for col in columns_raw:
+                    if timescale == 'weekly':
+                        week_num = col.get('week_number', 0)
+                        planned_val = float(progress_map.get((pekerjaan_id, week_num), Decimal('0')))
+                        actual_val = float(actual_map.get((pekerjaan_id, week_num), Decimal('0')))
+                        col_id = f"week_{week_num}"
+                    else:
+                        # Monthly: aggregate child weeks
+                        child_weeks = col.get('child_weeks', [])
+                        planned_val = sum(
+                            float(progress_map.get((pekerjaan_id, wk), Decimal('0')))
+                            for wk in child_weeks
+                        )
+                        actual_val = sum(
+                            float(actual_map.get((pekerjaan_id, wk), Decimal('0')))
+                            for wk in child_weeks
+                        )
+                        col_id = f"month_{col.get('month_number', 0)}"
+                    
+                    if mode == 'planned':
+                        cells[col_id] = {'planned': planned_val}
+                    elif mode == 'actual':
+                        cells[col_id] = {'actual': actual_val}
+                    else:
+                        cells[col_id] = {'planned': planned_val, 'actual': actual_val}
+            
+            row_data['cells'] = cells
+            rows.append(row_data)
+        
+        # Transform curve data
+        curve_data = {'planned': [], 'actual': []}
+        
+        if timescale == 'weekly':
+            # Weekly curve points from adapter
+            for point in kurva_s_raw:
+                curve_data['planned'].append({
+                    'weekNumber': point.get('week', 0),
+                    'cumulative': point.get('planned', 0),
+                    'label': point.get('label', f"W{point.get('week', 0)}"),
+                })
+                curve_data['actual'].append({
+                    'weekNumber': point.get('week', 0),
+                    'cumulative': point.get('actual', 0),
+                    'label': point.get('label', f"W{point.get('week', 0)}"),
+                })
+        else:
+            # Monthly: aggregate curve data by month
+            month_cols = adapter._build_monthly_columns(weekly_columns)
+            from collections import defaultdict
+            monthly_planned = defaultdict(float)
+            monthly_actual = defaultdict(float)
+            
+            for point in kurva_s_raw:
+                week_num = point.get('week', 0)
+                # Find which month this week belongs to
+                for mcol in month_cols:
+                    if week_num in mcol.get('child_weeks', []):
+                        month_num = mcol.get('month_number', 0)
+                        # For cumulative, take the max week's cumulative value
+                        if week_num == max(mcol.get('child_weeks', [week_num])):
+                            monthly_planned[month_num] = point.get('planned', 0)
+                            monthly_actual[month_num] = point.get('actual', 0)
+                        break
+            
+            for mcol in month_cols:
+                month_num = mcol.get('month_number', 0)
+                curve_data['planned'].append({
+                    'monthNumber': month_num,
+                    'cumulative': monthly_planned.get(month_num, 0),
+                    'label': mcol.get('label', f"M{month_num}"),
+                })
+                curve_data['actual'].append({
+                    'monthNumber': month_num,
+                    'cumulative': monthly_actual.get(month_num, 0),
+                    'label': mcol.get('label', f"M{month_num}"),
+                })
+        
+        # Build summary
+        summary = {
+            'totalPlanned': summary_raw.get('total_planned', 0),
+            'totalActual': summary_raw.get('total_actual', 0),
+            'variance': summary_raw.get('variance', 0),
+            'totalPekerjaan': meta.get('total_pekerjaan', len([r for r in base_rows if r.get('type') == 'pekerjaan'])),
+            'totalWeeks': meta.get('total_weeks', len(weekly_columns)),
+            'totalMonths': meta.get('total_months', len(adapter._build_monthly_columns(weekly_columns))),
+        }
+        
+        response_data = {
+            'timescale': timescale,
+            'columns': columns,
+            'rows': rows,
+            'curveData': curve_data,
+            'summary': summary,
+            'timestamp': datetime.now().isoformat(),
+        }
+        
+        logger.info(
+            f"[Chart Data API] Served {timescale} data for project {project_id}: "
+            f"{len(columns)} columns, {len(rows)} rows"
+        )
+        
+        return JsonResponse(response_data)
+        
+    except Exception as e:
+        logger.error(
+            f"[Chart Data API] Error for project {project_id}: {str(e)}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to generate chart data',
+            'detail': str(e)
+        }, status=500)
+

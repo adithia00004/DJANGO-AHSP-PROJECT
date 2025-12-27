@@ -406,7 +406,9 @@
 }
 
 [data-bs-theme="dark"] .toolbar-secondary {
+  background: linear-gradient(180deg, rgba(33, 37, 41, 0.98) 0%, rgba(25, 28, 31, 1) 100%);
   border-top-color: var(--bs-border-color);
+  border-bottom-color: var(--bs-border-color);
 }
 
 [data-bs-theme="dark"] .toolbar-toggle {
