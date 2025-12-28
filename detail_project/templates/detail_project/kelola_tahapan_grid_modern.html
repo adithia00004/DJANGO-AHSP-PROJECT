@@ -467,9 +467,11 @@
           <label class="form-label fw-bold">
             <i class="bi bi-calendar-range"></i> Pilih Periode
           </label>
-          <div class="row g-2">
+
+          <!-- Single Period Input (for weekly) -->
+          <div id="singlePeriodInput" class="row g-2">
             <div class="col-6">
-              <label class="form-label small text-muted" id="periodLabel">Bulan ke-</label>
+              <label class="form-label small text-muted" id="periodLabel">Minggu ke-</label>
               <input type="number" class="form-control" id="periodNumber" min="1" value="1" placeholder="1">
             </div>
             <div class="col-6">
@@ -477,6 +479,60 @@
                 <i class="bi bi-info-circle"></i> Akan dibandingkan dengan periode sebelumnya
               </small>
             </div>
+          </div>
+
+          <!-- Multi-Month Selection (for monthly only) -->
+          <div id="multiMonthInput" style="display: none;">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label small text-muted mb-0">Pilih bulan (bisa lebih dari satu)</label>
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAllMonths">Semua</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearMonths">Reset</button>
+              </div>
+            </div>
+            <div class="month-checkbox-grid d-flex flex-wrap gap-2" id="monthCheckboxGrid">
+              <!-- Dynamically populated by JS or hardcoded for 12 months -->
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="1" class="d-none"> Bulan 1
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="2" class="d-none"> Bulan 2
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="3" class="d-none"> Bulan 3
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="4" class="d-none"> Bulan 4
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="5" class="d-none"> Bulan 5
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="6" class="d-none"> Bulan 6
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="7" class="d-none"> Bulan 7
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="8" class="d-none"> Bulan 8
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="9" class="d-none"> Bulan 9
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="10" class="d-none"> Bulan 10
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="11" class="d-none"> Bulan 11
+              </label>
+              <label class="btn btn-outline-primary btn-sm month-checkbox">
+                <input type="checkbox" name="months" value="12" class="d-none"> Bulan 12
+              </label>
+            </div>
+            <small class="text-muted d-block mt-2">
+              <i class="bi bi-info-circle"></i> Setiap bulan akan memiliki Cover Page, Progress Pelaksanaan, dan Kurva S
+              tersendiri dalam satu PDF.
+            </small>
           </div>
         </div>
 
@@ -552,6 +608,13 @@
       const periodSelectionSection = exportModal.querySelector('#periodSelectionSection');
       const periodLabel = exportModal.querySelector('#periodLabel');
 
+      // Multi-month elements
+      const singlePeriodInput = exportModal.querySelector('#singlePeriodInput');
+      const multiMonthInput = exportModal.querySelector('#multiMonthInput');
+      const monthCheckboxes = exportModal.querySelectorAll('input[name="months"]');
+      const btnSelectAllMonths = exportModal.querySelector('#btnSelectAllMonths');
+      const btnClearMonths = exportModal.querySelector('#btnClearMonths');
+
       const reportTypeLabels = {
         'full': 'Rekap Laporan (Full Report)',
         'monthly': 'Laporan Bulanan (Monthly Report)',
@@ -565,6 +628,33 @@
         'csv': 'CSV'
       };
 
+      // Update checkbox button styling
+      function updateMonthCheckboxStyling() {
+        monthCheckboxes.forEach(cb => {
+          const label = cb.closest('label');
+          if (label) {
+            if (cb.checked) {
+              label.classList.remove('btn-outline-primary');
+              label.classList.add('btn-primary', 'active');
+            } else {
+              label.classList.remove('btn-primary', 'active');
+              label.classList.add('btn-outline-primary');
+            }
+          }
+        });
+      }
+
+      // Get selected months array
+      function getSelectedMonths() {
+        const selected = [];
+        monthCheckboxes.forEach(cb => {
+          if (cb.checked) {
+            selected.push(parseInt(cb.value, 10));
+          }
+        });
+        return selected.sort((a, b) => a - b);
+      }
+
       function updatePreview() {
         const selectedReportType = exportModal.querySelector('input[name="reportType"]:checked')?.value || 'full';
         const selectedFormat = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
@@ -576,19 +666,21 @@
           ? useProfessionalCheckbox.checked
           : (useProfessionalCheckbox?.value === 'true' || isPdfOrWord);
 
-        // Update period label based on report type
-        if (periodLabel) {
-          if (selectedReportType === 'monthly') {
-            periodLabel.textContent = 'Bulan ke-';
-          } else {
-            periodLabel.textContent = 'Minggu ke-';
-          }
-        }
-
-        // Show/hide period selection for professional + monthly/weekly
+        // Show/hide period selection based on report type
         if (periodSelectionSection) {
           const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly');
           periodSelectionSection.style.display = showPeriod ? 'block' : 'none';
+
+          // Toggle between single input (weekly) and multi-month (monthly)
+          if (singlePeriodInput && multiMonthInput) {
+            if (selectedReportType === 'monthly') {
+              singlePeriodInput.style.display = 'none';
+              multiMonthInput.style.display = 'block';
+            } else {
+              singlePeriodInput.style.display = 'flex';
+              multiMonthInput.style.display = 'none';
+            }
+          }
         }
 
         // Show warning if XLSX/CSV selected (professional not available for those)
@@ -620,6 +712,18 @@
           previewHtml += `<strong>Fitur:</strong> Cover Page, `;
           if (selectedReportType === 'full') {
             previewHtml += `Daftar Isi, Grid Terpisah (Rencana/Realisasi)`;
+          } else if (selectedReportType === 'monthly') {
+            // Show selected months info
+            const selectedMonths = getSelectedMonths();
+            if (selectedMonths.length > 0) {
+              if (selectedMonths.length === 1) {
+                previewHtml += `Bulan ${selectedMonths[0]}`;
+              } else {
+                previewHtml += `Bulan ${selectedMonths[0]}-${selectedMonths[selectedMonths.length - 1]} (${selectedMonths.length} bulan)`;
+              }
+            } else {
+              previewHtml += `<span class="text-warning">Pilih minimal 1 bulan</span>`;
+            }
           } else {
             previewHtml += `Ringkasan Eksekutif, Perbandingan Periode`;
           }
@@ -651,8 +755,34 @@
       if (includeKurvaSCheckbox) includeKurvaSCheckbox.addEventListener('change', updatePreview);
       if (useProfessionalCheckbox) useProfessionalCheckbox.addEventListener('change', updatePreview);
 
+      // Month checkbox event listeners
+      monthCheckboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          updateMonthCheckboxStyling();
+          updatePreview();
+        });
+      });
+
+      // Select All / Reset buttons
+      if (btnSelectAllMonths) {
+        btnSelectAllMonths.addEventListener('click', () => {
+          monthCheckboxes.forEach(cb => cb.checked = true);
+          updateMonthCheckboxStyling();
+          updatePreview();
+        });
+      }
+
+      if (btnClearMonths) {
+        btnClearMonths.addEventListener('click', () => {
+          monthCheckboxes.forEach(cb => cb.checked = false);
+          updateMonthCheckboxStyling();
+          updatePreview();
+        });
+      }
+
       // Initial preview update
       updatePreview();
+      updateMonthCheckboxStyling();
     });
   })();
 </script>

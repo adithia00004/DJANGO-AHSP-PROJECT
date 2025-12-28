@@ -479,6 +479,7 @@ class ExportManager:
         format_type: str,
         report_type: str = 'rekap',
         period: int | None = None,
+        months: list[int] | None = None,  # NEW: support multi-month export
         attachments: list | None = None,
         gantt_data: dict | None = None,
     ) -> HttpResponse:
@@ -496,7 +497,8 @@ class ExportManager:
         Args:
             format_type: 'pdf' or 'word'
             report_type: 'rekap', 'monthly', or 'weekly'
-            period: Month number (1-based) for monthly, Week number for weekly
+            period: Month number (1-based) for monthly, Week number for weekly (backward compat)
+            months: List of month numbers for multi-month export (NEW)
             attachments: Chart attachments [{"title": str, "bytes": bytes}]
             
         Returns:
@@ -537,8 +539,22 @@ class ExportManager:
         if report_type == 'rekap':
             report_data = adapter.get_rekap_report_data()
         elif report_type == 'monthly':
-            month = period or 1
-            report_data = adapter.get_monthly_comparison_data(month)
+            # Multi-month support (NEW)
+            if months and len(months) >= 1:
+                # Build data for each month
+                all_months_data = []
+                for m in sorted(months):
+                    month_data = adapter.get_monthly_comparison_data(m)
+                    all_months_data.append({'month': m, 'data': month_data})
+                report_data = {
+                    'months_data': all_months_data,
+                    'months': sorted(months),
+                    'project_info': adapter._get_project_info(),
+                }
+            else:
+                # Single month (backward compatible)
+                month = period or 1
+                report_data = adapter.get_monthly_comparison_data(month)
         elif report_type == 'weekly':
             week = period or 1
             report_data = adapter.get_weekly_comparison_data(week)
@@ -566,7 +582,36 @@ class ExportManager:
                 'Kurva S Progress Kumulatif',
                 'Gantt Chart'
             ]
-        elif report_type in ('monthly', 'weekly'):
+        elif report_type == 'monthly':
+            # Check for multi-month mode
+            if 'months_data' in report_data:
+                # Multi-month: pass all months data to exporter
+                data['months_data'] = report_data.get('months_data', [])
+                data['months'] = report_data.get('months', [])
+            else:
+                # Single month (existing logic)
+                data['period'] = report_data.get('period', {})
+                data['current_data'] = report_data.get('current_data', {})
+                data['previous_data'] = report_data.get('previous_data', {})
+                data['comparison'] = report_data.get('comparison', {})
+                data['executive_summary'] = report_data.get('executive_summary', {})
+                data['hierarchy_progress'] = report_data.get('hierarchy_progress', [])
+                data['detail_table'] = report_data.get('detail_table', {})
+                # Kurva S chart data (cumulative only)
+                data['kurva_s_data'] = report_data.get('kurva_s_data', [])
+                data['cumulative_end_week'] = report_data.get('cumulative_end_week', 0)
+                # ALL weekly columns for full table
+                data['all_weekly_columns'] = report_data.get('all_weekly_columns', [])
+                data['total_project_weeks'] = report_data.get('total_project_weeks', 0)
+                # Filtered columns (backward compat)
+                data['weekly_columns'] = report_data.get('weekly_columns', [])
+                # Row data
+                data['base_rows'] = report_data.get('base_rows', [])
+                data['hierarchy'] = report_data.get('hierarchy', {})
+                data['planned_map'] = report_data.get('planned_map', {})
+                data['actual_map'] = report_data.get('actual_map', {})
+                data['month'] = report_data.get('month', period)
+        elif report_type == 'weekly':
             data['period'] = report_data.get('period', {})
             data['current_data'] = report_data.get('current_data', {})
             data['previous_data'] = report_data.get('previous_data', {})
@@ -574,23 +619,16 @@ class ExportManager:
             data['executive_summary'] = report_data.get('executive_summary', {})
             data['hierarchy_progress'] = report_data.get('hierarchy_progress', [])
             data['detail_table'] = report_data.get('detail_table', {})
-            # Kurva S chart data (cumulative only)
             data['kurva_s_data'] = report_data.get('kurva_s_data', [])
             data['cumulative_end_week'] = report_data.get('cumulative_end_week', 0)
-            # ALL weekly columns for full table
             data['all_weekly_columns'] = report_data.get('all_weekly_columns', [])
             data['total_project_weeks'] = report_data.get('total_project_weeks', 0)
-            # Filtered columns (backward compat)
             data['weekly_columns'] = report_data.get('weekly_columns', [])
-            # Row data
             data['base_rows'] = report_data.get('base_rows', [])
             data['hierarchy'] = report_data.get('hierarchy', {})
             data['planned_map'] = report_data.get('planned_map', {})
             data['actual_map'] = report_data.get('actual_map', {})
-            if report_type == 'monthly':
-                data['month'] = report_data.get('month', period)
-            else:
-                data['week'] = report_data.get('week', period)
+            data['week'] = report_data.get('week', period)
 
         if attachments:
             data['attachments'] = attachments

@@ -3957,6 +3957,27 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
         report_type = request.GET.get('report_type') or payload.get('report_type', 'rekap')
         period_str = request.GET.get('period') or payload.get('period')
         format_type = request.GET.get('format') or payload.get('format', 'pdf')
+        
+        # Parse months parameter for multi-month export (NEW)
+        months_raw = request.GET.get('months') or payload.get('months')
+        months = None
+        if months_raw:
+            try:
+                if isinstance(months_raw, list):
+                    months = [int(m) for m in months_raw]
+                elif isinstance(months_raw, str):
+                    months = [int(m.strip()) for m in months_raw.split(',') if m.strip()]
+                # Validate months are positive integers
+                if months and any(m < 1 for m in months):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Invalid months: all values must be positive integers.'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid months format: {months_raw}. Must be comma-separated integers or list."
+                }, status=400)
 
         # Validate report_type
         if report_type not in ('rekap', 'monthly', 'weekly'):
@@ -3972,7 +3993,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
                 'message': f"Invalid format: {format_type}. Must be 'pdf' or 'word'."
             }, status=400)
 
-        # Parse period for monthly/weekly
+        # Parse period for monthly/weekly (backward compatibility for single month)
         period = None
         if period_str:
             try:
@@ -4000,6 +4021,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
             format_type=format_type,
             report_type=report_type,
             period=period,
+            months=months,  # NEW: pass months list
             attachments=attachments,
             gantt_data=gantt_data
         )

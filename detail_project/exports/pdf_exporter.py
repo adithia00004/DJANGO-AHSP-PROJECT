@@ -484,63 +484,53 @@ class PDFExporter(ConfigExporterBase):
         report_type = data.get('report_type', 'rekap')
         project_info = data.get('project_info', {})
         
-        # 1. Cover Page
-        if report_type == 'rekap':
-            cover_elements = self._build_cover_page(report_type, project_info)
-        else:
-            period_info = data.get('period', {})
-            if report_type == 'monthly':
-                period_info['month'] = data.get('month', 1)
-            else:
-                period_info['week'] = data.get('week', 1)
-            cover_elements = self._build_cover_page(report_type, project_info, period_info)
+        # =====================================================================
+        # MULTI-MONTH EXPORT SUPPORT
+        # =====================================================================
+        months_data = data.get('months_data', [])
         
-        story.extend(cover_elements)
-        story.append(PageBreak())
-        
-        # 2. Table of Contents (for rekap only)
-        if report_type == 'rekap':
-            sections = data.get('sections', [])
-            if sections:
-                toc_elements = self._build_table_of_contents(sections)
-                story.extend(toc_elements)
+        if report_type == 'monthly' and months_data:
+            # Multi-month mode: loop over each month's data
+            for month_idx, month_entry in enumerate(months_data):
+                month = month_entry.get('month', 1)
+                month_data = month_entry.get('data', {})
+                
+                # 1. Cover Page for this month
+                period_info = month_data.get('period', {})
+                period_info['month'] = month
+                cover_elements = self._build_cover_page('monthly', project_info, period_info)
+                story.extend(cover_elements)
                 story.append(PageBreak())
-        
-        # 3. Progress Pelaksanaan Page (for monthly/weekly)
-        # Combines: Identitas, Ringkasan Progress, Rincian Progress
-        if report_type in ('monthly', 'weekly'):
-            exec_summary = data.get('executive_summary', {})
-            hierarchy_data = data.get('hierarchy_progress', [])
-            month = data.get('month', 1)
-            
-            progress_elements = self._build_progress_pelaksanaan_page(
-                month=month,
-                project_info=project_info,
-                summary=exec_summary,
-                hierarchy_data=hierarchy_data,
-                period_info=data.get('period', {})
-            )
-            story.extend(progress_elements)
-            story.append(PageBreak())
-            
-            # 5. Kurva S Kumulatif (for monthly - uses same approach as rekap)
-            if report_type == 'monthly':
-                month = data.get('month', 1)
-                cumulative_end_week = data.get('cumulative_end_week', month * 4)
-                total_project_weeks = data.get('total_project_weeks', cumulative_end_week)
-                kurva_s_data = data.get('kurva_s_data', [])  # Chart data (cumulative only)
-                all_weekly_columns = data.get('all_weekly_columns', [])  # ALL weeks for table
-                base_rows = data.get('base_rows', [])
-                hierarchy = data.get('hierarchy', {})
-                planned_map_str = data.get('planned_map', {})
-                actual_map_str = data.get('actual_map', {})
+                
+                # 2. Progress Pelaksanaan for this month
+                exec_summary = month_data.get('executive_summary', {})
+                hierarchy_data = month_data.get('hierarchy_progress', [])
+                
+                progress_elements = self._build_progress_pelaksanaan_page(
+                    month=month,
+                    project_info=project_info,
+                    summary=exec_summary,
+                    hierarchy_data=hierarchy_data,
+                    period_info=period_info
+                )
+                story.extend(progress_elements)
+                story.append(PageBreak())
+                
+                # 3. Kurva S sections for this month
+                cumulative_end_week = month_data.get('cumulative_end_week', month * 4)
+                total_project_weeks = month_data.get('total_project_weeks', cumulative_end_week)
+                kurva_s_data = month_data.get('kurva_s_data', [])
+                all_weekly_columns = month_data.get('all_weekly_columns', [])
+                base_rows = month_data.get('base_rows', [])
+                hierarchy = month_data.get('hierarchy', {})
+                planned_map_str = month_data.get('planned_map', {})
+                actual_map_str = month_data.get('actual_map', {})
                 
                 if kurva_s_data or all_weekly_columns:
                     # Switch to LANDSCAPE for Kurva S pages
                     story.append(NextPageTemplate('landscape'))
                     story.append(PageBreak())
                     
-                    # Title appears after the header line (which is drawn by NumberedCanvas)
                     section_title = ParagraphStyle(
                         'SectionHeader',
                         fontSize=14,
@@ -554,15 +544,13 @@ class PDFExporter(ConfigExporterBase):
                     ))
                     story.append(Spacer(1, 5*mm))
                     
-                    # Build all rows from base_rows (include klasifikasi, sub_klasifikasi, pekerjaan)
-                    # Include ALL weeks for table columns
+                    # Build hierarchy rows
                     hierarchy_rows = []
                     for idx, row in enumerate(base_rows):
                         row_type = row.get('type', 'pekerjaan')
                         pek_id = row.get('pekerjaan_id')
                         level = hierarchy.get(idx, 2)
                         
-                        # Determine level based on type if not in hierarchy
                         if row_type == 'klasifikasi':
                             level = 1
                         elif row_type == 'sub_klasifikasi':
@@ -570,7 +558,6 @@ class PDFExporter(ConfigExporterBase):
                         else:
                             level = level if level > 0 else 3
                         
-                        # Extract weekly planned/actual values for ALL weeks (only for pekerjaan)
                         week_planned = []
                         week_actual = []
                         if row_type == 'pekerjaan' and pek_id:
@@ -581,7 +568,6 @@ class PDFExporter(ConfigExporterBase):
                                 week_planned.append(str(planned_val) if planned_val else '')
                                 week_actual.append(str(actual_val) if actual_val else '')
                         
-                        # Use correct field names from base_rows
                         hierarchy_rows.append({
                             'type': row_type,
                             'name': row.get('uraian', ''),
@@ -592,8 +578,6 @@ class PDFExporter(ConfigExporterBase):
                             'week_actual': week_actual
                         })
                     
-                    # Use monthly-specific Kurva S table (returns List[Drawing] for pagination)
-                    # Table: ALL weeks, Chart: only cumulative on first page
                     if hierarchy_rows:
                         monthly_kurva_pages = self._build_monthly_kurva_s_table(
                             hierarchy_rows,
@@ -601,23 +585,20 @@ class PDFExporter(ConfigExporterBase):
                             all_weekly_columns,
                             total_project_weeks=total_project_weeks,
                             cumulative_end_week=cumulative_end_week,
-                            row_height=22,  # Increased for 2-line text support
-                            project_info=project_info  # For signature section on last page
+                            row_height=22,
+                            project_info=project_info
                         )
-                        # Add each page with page breaks between them
                         for page_idx, kurva_drawing in enumerate(monthly_kurva_pages):
                             if kurva_drawing:
                                 story.append(kurva_drawing)
                                 if page_idx < len(monthly_kurva_pages) - 1:
-                                    story.append(PageBreak())  # Page break between pages
+                                    story.append(PageBreak())
                         story.append(Spacer(1, 10*mm))
                     
-                    # === Portrait Kurva S Page (monthly segment table + chart) ===
-                    # Switch to PORTRAIT A3 for table-focused view (750pt width)
+                    # Portrait Kurva S Page
                     story.append(NextPageTemplate('portrait_a3'))
                     story.append(PageBreak())
                     
-                    # Title for portrait page
                     portrait_title = ParagraphStyle(
                         'PortraitSectionHeader',
                         fontSize=14,
@@ -631,27 +612,14 @@ class PDFExporter(ConfigExporterBase):
                     ))
                     story.append(Spacer(1, 5*mm))
                     
-                    # Build portrait chart as monthly segment table + chart overlay
-                    # Use hierarchy_data from 'hierarchy_progress' (same as Rincian Progress)
-                    # Returns List[Drawing] with pagination
-                    hierarchy_data = data.get('hierarchy_progress', [])
-                    
-                    # Get weekly progress data - prefer adapter format (flat key: pek_id-week)
-                    # Fallback to gantt_data format (nested: {pek_id: {week: val}})
-                    planned_progress = data.get('planned_map', {})
-                    actual_progress = data.get('actual_map', {})
-                    
-                    # Fallback to gantt_data if adapter maps are empty
-                    if not planned_progress:
-                        gantt_data = data.get('gantt_data', {})
-                        planned_progress = gantt_data.get('planned', {})
-                        actual_progress = gantt_data.get('actual', {})
+                    planned_progress = month_data.get('planned_map', {})
+                    actual_progress = month_data.get('actual_map', {})
                     
                     portrait_charts = self._build_portrait_kurva_s_chart(
                         kurva_s_data,
                         cumulative_end_week=cumulative_end_week,
-                        hierarchy_rows=hierarchy_data,  # Use same data as Rincian Progress
-                        summary=data.get('executive_summary', {}),
+                        hierarchy_rows=hierarchy_data,
+                        summary=exec_summary,
                         month=month,
                         project_info=project_info,
                         planned_progress=planned_progress,
@@ -664,10 +632,201 @@ class PDFExporter(ConfigExporterBase):
                                 if p_idx < len(portrait_charts) - 1:
                                     story.append(PageBreak())
                         story.append(Spacer(1, 10*mm))
-                    
-                    # Signature is now embedded in portrait chart, no separate page needed
+                
+                # Return to portrait for next month's cover (except last month)
+                if month_idx < len(months_data) - 1:
+                    story.append(NextPageTemplate('portrait'))
+                    story.append(PageBreak())
+        
+        else:
+            # =====================================================================
+            # SINGLE MONTH / REKAP / WEEKLY (existing logic)
+            # =====================================================================
             
+            # 1. Cover Page
+            if report_type == 'rekap':
+                cover_elements = self._build_cover_page(report_type, project_info)
+            else:
+                period_info = data.get('period', {})
+                if report_type == 'monthly':
+                    period_info['month'] = data.get('month', 1)
+                else:
+                    period_info['week'] = data.get('week', 1)
+                cover_elements = self._build_cover_page(report_type, project_info, period_info)
+            
+            story.extend(cover_elements)
             story.append(PageBreak())
+            
+            # 2. Table of Contents (for rekap only)
+            if report_type == 'rekap':
+                sections = data.get('sections', [])
+                if sections:
+                    toc_elements = self._build_table_of_contents(sections)
+                    story.extend(toc_elements)
+                    story.append(PageBreak())
+            
+            # 3. Progress Pelaksanaan Page (for monthly/weekly)
+            # Combines: Identitas, Ringkasan Progress, Rincian Progress
+            if report_type in ('monthly', 'weekly'):
+                exec_summary = data.get('executive_summary', {})
+                hierarchy_data = data.get('hierarchy_progress', [])
+                month = data.get('month', 1)
+                
+                progress_elements = self._build_progress_pelaksanaan_page(
+                    month=month,
+                    project_info=project_info,
+                    summary=exec_summary,
+                    hierarchy_data=hierarchy_data,
+                    period_info=data.get('period', {})
+                )
+                story.extend(progress_elements)
+                story.append(PageBreak())
+                
+                # 5. Kurva S Kumulatif (for monthly - uses same approach as rekap)
+                if report_type == 'monthly':
+                    month = data.get('month', 1)
+                    cumulative_end_week = data.get('cumulative_end_week', month * 4)
+                    total_project_weeks = data.get('total_project_weeks', cumulative_end_week)
+                    kurva_s_data = data.get('kurva_s_data', [])  # Chart data (cumulative only)
+                    all_weekly_columns = data.get('all_weekly_columns', [])  # ALL weeks for table
+                    base_rows = data.get('base_rows', [])
+                    hierarchy = data.get('hierarchy', {})
+                    planned_map_str = data.get('planned_map', {})
+                    actual_map_str = data.get('actual_map', {})
+                    
+                    if kurva_s_data or all_weekly_columns:
+                        # Switch to LANDSCAPE for Kurva S pages
+                        story.append(NextPageTemplate('landscape'))
+                        story.append(PageBreak())
+                        
+                        # Title appears after the header line (which is drawn by NumberedCanvas)
+                        section_title = ParagraphStyle(
+                            'SectionHeader',
+                            fontSize=14,
+                            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                            fontName='Helvetica-Bold',
+                            spaceAfter=5*mm,
+                        )
+                        story.append(Paragraph(
+                            f"<b>RINGKASAN PROGRESS KURVA S (Grafik: Minggu 1 - Minggu {cumulative_end_week})</b>", 
+                            section_title
+                        ))
+                        story.append(Spacer(1, 5*mm))
+                        
+                        # Build all rows from base_rows (include klasifikasi, sub_klasifikasi, pekerjaan)
+                        # Include ALL weeks for table columns
+                        hierarchy_rows = []
+                        for idx, row in enumerate(base_rows):
+                            row_type = row.get('type', 'pekerjaan')
+                            pek_id = row.get('pekerjaan_id')
+                            level = hierarchy.get(idx, 2)
+                            
+                            # Determine level based on type if not in hierarchy
+                            if row_type == 'klasifikasi':
+                                level = 1
+                            elif row_type == 'sub_klasifikasi':
+                                level = 2
+                            else:
+                                level = level if level > 0 else 3
+                            
+                            # Extract weekly planned/actual values for ALL weeks (only for pekerjaan)
+                            week_planned = []
+                            week_actual = []
+                            if row_type == 'pekerjaan' and pek_id:
+                                for wk in range(1, total_project_weeks + 1):
+                                    key = f"{pek_id}-{wk}"
+                                    planned_val = planned_map_str.get(key, 0)
+                                    actual_val = actual_map_str.get(key, 0)
+                                    week_planned.append(str(planned_val) if planned_val else '')
+                                    week_actual.append(str(actual_val) if actual_val else '')
+                            
+                            # Use correct field names from base_rows
+                            hierarchy_rows.append({
+                                'type': row_type,
+                                'name': row.get('uraian', ''),
+                                'volume': row.get('volume_display', '') if row_type == 'pekerjaan' else '',
+                                'satuan': row.get('unit', '') if row_type == 'pekerjaan' else '',
+                                'level': level,
+                                'week_planned': week_planned,
+                                'week_actual': week_actual
+                            })
+                        
+                        # Use monthly-specific Kurva S table (returns List[Drawing] for pagination)
+                        # Table: ALL weeks, Chart: only cumulative on first page
+                        if hierarchy_rows:
+                            monthly_kurva_pages = self._build_monthly_kurva_s_table(
+                                hierarchy_rows,
+                                kurva_s_data,
+                                all_weekly_columns,
+                                total_project_weeks=total_project_weeks,
+                                cumulative_end_week=cumulative_end_week,
+                                row_height=22,  # Increased for 2-line text support
+                                project_info=project_info  # For signature section on last page
+                            )
+                            # Add each page with page breaks between them
+                            for page_idx, kurva_drawing in enumerate(monthly_kurva_pages):
+                                if kurva_drawing:
+                                    story.append(kurva_drawing)
+                                    if page_idx < len(monthly_kurva_pages) - 1:
+                                        story.append(PageBreak())  # Page break between pages
+                            story.append(Spacer(1, 10*mm))
+                        
+                        # === Portrait Kurva S Page (monthly segment table + chart) ===
+                        # Switch to PORTRAIT A3 for table-focused view (750pt width)
+                        story.append(NextPageTemplate('portrait_a3'))
+                        story.append(PageBreak())
+                        
+                        # Title for portrait page
+                        portrait_title = ParagraphStyle(
+                            'PortraitSectionHeader',
+                            fontSize=14,
+                            textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                            fontName='Helvetica-Bold',
+                            spaceAfter=5*mm,
+                        )
+                        story.append(Paragraph(
+                            f"<b>GRAFIK KURVA S (Tampilan Bulanan)</b>", 
+                            portrait_title
+                        ))
+                        story.append(Spacer(1, 5*mm))
+                        
+                        # Build portrait chart as monthly segment table + chart overlay
+                        # Use hierarchy_data from 'hierarchy_progress' (same as Rincian Progress)
+                        # Returns List[Drawing] with pagination
+                        hierarchy_data = data.get('hierarchy_progress', [])
+                        
+                        # Get weekly progress data - prefer adapter format (flat key: pek_id-week)
+                        # Fallback to gantt_data format (nested: {pek_id: {week: val}})
+                        planned_progress = data.get('planned_map', {})
+                        actual_progress = data.get('actual_map', {})
+                        
+                        # Fallback to gantt_data if adapter maps are empty
+                        if not planned_progress:
+                            gantt_data = data.get('gantt_data', {})
+                            planned_progress = gantt_data.get('planned', {})
+                            actual_progress = gantt_data.get('actual', {})
+                        
+                        portrait_charts = self._build_portrait_kurva_s_chart(
+                            kurva_s_data,
+                            cumulative_end_week=cumulative_end_week,
+                            hierarchy_rows=hierarchy_data,  # Use same data as Rincian Progress
+                            summary=data.get('executive_summary', {}),
+                            month=month,
+                            project_info=project_info,
+                            planned_progress=planned_progress,
+                            actual_progress=actual_progress
+                        )
+                        if portrait_charts:
+                            for p_idx, p_chart in enumerate(portrait_charts):
+                                if p_chart:
+                                    story.append(p_chart)
+                                    if p_idx < len(portrait_charts) - 1:
+                                        story.append(PageBreak())
+                            story.append(Spacer(1, 10*mm))
+                        
+                        # Signature is now embedded in portrait chart, no separate page needed
+                
+                story.append(PageBreak())
         
         # 6. Grid Pages (for rekap - Planned section - NO chart here, chart in RINGKASAN)
         if report_type == 'rekap':
@@ -1007,7 +1166,28 @@ class PDFExporter(ConfigExporterBase):
         pdf_content = buffer.getvalue()
         buffer.close()
         
-        filename = f"Laporan_{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.pdf"
+        # Generate filename based on report type and months
+        project_name_safe = project_name.replace(' ', '_') if project_name else 'Project'
+        date_suffix = self.config.export_date.strftime('%Y%m%d')
+        
+        if report_type == 'monthly':
+            months = data.get('months', [])
+            if months and len(months) > 1:
+                # Multi-month: Laporan Bulan {min}-{max} NamaProject.pdf
+                min_m, max_m = min(months), max(months)
+                filename = f"Laporan_Bulan_{min_m}-{max_m}_{project_name_safe}_{date_suffix}.pdf"
+            else:
+                # Single month
+                month = data.get('month', 1)
+                if months:
+                    month = months[0]
+                filename = f"Laporan_Bulan_{month}_{project_name_safe}_{date_suffix}.pdf"
+        elif report_type == 'weekly':
+            week = data.get('week', 1)
+            filename = f"Laporan_Minggu_{week}_{project_name_safe}_{date_suffix}.pdf"
+        else:
+            filename = f"Laporan_Rekap_{project_name_safe}_{date_suffix}.pdf"
+        
         return self._create_response(pdf_content, filename, 'application/pdf')
     
     

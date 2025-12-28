@@ -933,6 +933,10 @@ class JadwalKegiatanApp {
         : (professionalInput?.value === 'true' || (format === 'pdf' || format === 'word'));
       const periodNumber = parseInt(exportModal.querySelector('#periodNumber')?.value || '1', 10);
 
+      // Collect selected months from checkboxes (for multi-month export)
+      const monthCheckboxes = exportModal.querySelectorAll('input[name="months"]:checked');
+      const selectedMonths = Array.from(monthCheckboxes).map(cb => parseInt(cb.value, 10)).sort((a, b) => a - b);
+
       // Map old report type values to new export system values
       const reportTypeMapping = {
         'full': 'rekap',      // Laporan Rekap (Full timeline)
@@ -947,7 +951,8 @@ class JadwalKegiatanApp {
         reportType,
         format,
         useProfessional,
-        periodNumber
+        periodNumber,
+        selectedMonths  // Log selected months
       });
 
       // Show progress modal
@@ -1094,7 +1099,9 @@ class JadwalKegiatanApp {
         const payload = {
           report_type: reportType,
           format: format,
-          period: (reportType === 'monthly' || reportType === 'weekly') ? periodNumber : null,
+          // Multi-month support: send months array for monthly reports
+          period: (reportType === 'weekly') ? periodNumber : null,
+          months: (reportType === 'monthly' && selectedMonths.length > 0) ? selectedMonths : null,
           attachments: attachments.map(att => ({
             title: att.title,
             bytes: att.bytes,
