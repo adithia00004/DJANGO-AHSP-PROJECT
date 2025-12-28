@@ -1915,3 +1915,19 @@
   background-color: #2d2d2d !important;
   color: #ffffff !important;
 }
+
+/* ===== CELL FOCUS INDICATOR ===== */
+/* Replace browser default blue outline with grey transparent background */
+.tanstack-grid-cell:focus {
+  outline: none;
+  /* Remove browser default outline */
+  background-color: rgba(128, 128, 128, 0.3) !important;
+  /* Grey 30% transparent */
+}
+
+/* Dark mode focus indicator */
+[data-bs-theme="dark"] .tanstack-grid-cell:focus {
+  outline: none;
+  background-color: rgba(180, 180, 180, 0.3) !important;
+  /* Lighter grey for dark mode */
+}

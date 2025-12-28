@@ -732,6 +732,19 @@ class JadwalPekerjaanExportAdapter:
         period_start = current_weeks[0].get("start_date") if current_weeks else None
         period_end = current_weeks[-1].get("end_date") if current_weeks else None
 
+        # Calculate Kurva S data (cumulative) up to current month only
+        # Chart will only show up to month * 4 weeks
+        weekly_columns_for_chart = [
+            col for col in weekly_columns
+            if col.get("week_number", 0) <= current_end_week
+        ]
+        kurva_s_data = self._calculate_kurva_s_data(
+            progress_map, actual_map, base_rows, weekly_columns_for_chart
+        )
+        
+        # Total weeks in project (for table - render ALL weeks)
+        total_project_weeks = len(weekly_columns)
+
         return {
             "month": month,
             "period": {
@@ -752,6 +765,20 @@ class JadwalPekerjaanExportAdapter:
                 base_rows, hierarchy, progress_map, actual_map,
                 current_start_week, current_end_week
             ),
+            # Kurva S chart data (cumulative up to current month)
+            "kurva_s_data": kurva_s_data,
+            "cumulative_end_week": current_end_week,  # Chart stops here
+            # ALL weekly columns for table (full project duration)
+            "all_weekly_columns": weekly_columns,
+            "total_project_weeks": total_project_weeks,
+            # Filtered columns (for backward compatibility)
+            "weekly_columns": weekly_columns_for_chart,
+            # Row data
+            "base_rows": base_rows,
+            "hierarchy": hierarchy,
+            # Progress maps for ALL weeks
+            "planned_map": {f"{k[0]}-{k[1]}": float(v) for k, v in progress_map.items()},
+            "actual_map": {f"{k[0]}-{k[1]}": float(v) for k, v in actual_map.items()},
         }
 
     def get_weekly_comparison_data(self, week: int) -> Dict[str, Any]:
@@ -1097,6 +1124,7 @@ class JadwalPekerjaanExportAdapter:
                     "type": "pekerjaan",
                     "level": level,
                     "name": uraian,
+                    "pekerjaan_id": pek_id,  # Added for Portrait Kurva S progress lookup
                     "volume": float(volume),
                     "harga_satuan": float(harga_satuan),
                     "harga": float(harga_dengan_markup),

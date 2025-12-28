@@ -93,47 +93,47 @@ class NumberedCanvas(pdf_canvas.Canvas):
             return
         
         width, height = self._pagesize
-        margin = 12 * mm
+        side_margin = 12 * mm  # Left/right margin
         
         # Colors
         header_color = colors.HexColor(UTS.TEXT_SECONDARY)
         footer_color = colors.HexColor(UTS.TEXT_MUTED)
         line_color = colors.HexColor(UTS.LIGHT_BORDER)
         
-        # ===== HEADER =====
-        header_y = height - margin
+        # ===== HEADER (closer to top edge) =====
+        header_offset = 8 * mm  # Distance from top edge (was 12mm)
+        header_y = height - header_offset
         
         # Header line
         self.setStrokeColor(line_color)
         self.setLineWidth(0.5)
-        self.line(margin, header_y - 3*mm, width - margin, header_y - 3*mm)
+        self.line(side_margin, header_y - 3*mm, width - side_margin, header_y - 3*mm)
         
         # Project name (left)
         self.setFont('Helvetica', 8)
         self.setFillColor(header_color)
         project_name = (self._project_name or '')[:50]
-        self.drawString(margin, header_y, project_name)
+        self.drawString(side_margin, header_y, project_name)
         
         # Section title (right)
         section_title = (self._section_title or '')[:30]
-        self.drawRightString(width - margin, header_y, section_title)
+        self.drawRightString(width - side_margin, header_y, section_title)
         
-        # ===== FOOTER =====
-        footer_y = margin
+        # ===== FOOTER (closer to bottom edge) =====
+        footer_offset = 6 * mm  # Distance from bottom edge (was 12mm)
+        footer_y = footer_offset
         
         # Footer line
         self.setStrokeColor(line_color)
-        self.line(margin, footer_y + 6*mm, width - margin, footer_y + 6*mm)
+        self.line(side_margin, footer_y + 6*mm, width - side_margin, footer_y + 6*mm)
         
-        # Page number (center) - adjust display to not count cover
-        self.setFont('Helvetica', 8)
-        self.setFillColor(footer_color)
-        display_page = self._page_count - 1  # Don't count cover as page 1
-        page_text = f'Halaman {display_page}'
-        self.drawCentredString(width / 2, footer_y, page_text)
+        # Page number removed per user request
+        # display_page = self._page_count - 1
+        # page_text = f'Halaman {display_page}'
+        # self.drawCentredString(width / 2, footer_y, page_text)
         
         # Watermark (right)
-        self.drawRightString(width - margin, footer_y, 'Dashboard-RAB.com')
+        self.drawRightString(width - side_margin, footer_y, 'Dashboard-RAB.com')
 
 
 
@@ -404,11 +404,14 @@ class PDFExporter(ConfigExporterBase):
         
         if report_type_check == 'monthly':
             # Monthly reports: Use BaseDocTemplate for mixed orientation
-            # Force A4 for monthly reports (A3 is for Jadwal Grid only)
+            # Portrait A4: for signature page, progress page
+            # Portrait A3: for Kurva S portrait segment table (needs 750pt width)
+            # Landscape A3: for Kurva S landscape table (needs 1100pt width)
             portrait_size = A4  # A4 Portrait (210 x 297 mm)
-            landscape_size = landscape(A4)  # A4 Landscape (297 x 210 mm)
+            portrait_a3_size = A3  # A3 Portrait (297 x 420 mm = 842 x 1190 pt)
+            landscape_size = landscape(A3)  # A3 Landscape (420 x 297 mm = 1190 x 842 pt)
             
-            # Calculate frame dimensions for Portrait
+            # Calculate frame dimensions for Portrait A4
             pw, ph = portrait_size
             portrait_frame = Frame(
                 margin_left, margin_bottom,
@@ -418,7 +421,17 @@ class PDFExporter(ConfigExporterBase):
                 leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
             )
             
-            # Calculate frame dimensions for Landscape
+            # Calculate frame dimensions for Portrait A3
+            pa3w, pa3h = portrait_a3_size
+            portrait_a3_frame = Frame(
+                margin_left, margin_bottom,
+                pa3w - margin_left - margin_right,
+                pa3h - margin_top - margin_bottom,
+                id='portrait_a3_frame',
+                leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0
+            )
+            
+            # Calculate frame dimensions for Landscape A3
             lw, lh = landscape_size
             landscape_frame = Frame(
                 margin_left, margin_bottom,
@@ -434,6 +447,11 @@ class PDFExporter(ConfigExporterBase):
                 frames=[portrait_frame],
                 pagesize=portrait_size
             )
+            portrait_a3_template = PageTemplate(
+                id='portrait_a3',
+                frames=[portrait_a3_frame],
+                pagesize=portrait_a3_size
+            )
             landscape_template = PageTemplate(
                 id='landscape',
                 frames=[landscape_frame],
@@ -442,7 +460,7 @@ class PDFExporter(ConfigExporterBase):
             
             doc = BaseDocTemplate(
                 buffer,
-                pageTemplates=[portrait_template, landscape_template],
+                pageTemplates=[portrait_template, portrait_a3_template, landscape_template],
                 title=self.config.title
             )
         else:
@@ -505,75 +523,149 @@ class PDFExporter(ConfigExporterBase):
             story.extend(progress_elements)
             story.append(PageBreak())
             
-            # 5. Kurva S Kumulatif (for monthly - uses attachment if available)
+            # 5. Kurva S Kumulatif (for monthly - uses same approach as rekap)
             if report_type == 'monthly':
                 month = data.get('month', 1)
-                end_week = month * 4
+                cumulative_end_week = data.get('cumulative_end_week', month * 4)
+                total_project_weeks = data.get('total_project_weeks', cumulative_end_week)
+                kurva_s_data = data.get('kurva_s_data', [])  # Chart data (cumulative only)
+                all_weekly_columns = data.get('all_weekly_columns', [])  # ALL weeks for table
+                base_rows = data.get('base_rows', [])
+                hierarchy = data.get('hierarchy', {})
+                planned_map_str = data.get('planned_map', {})
+                actual_map_str = data.get('actual_map', {})
                 
-                # Switch to LANDSCAPE for Kurva S page
-                story.append(NextPageTemplate('landscape'))
-                story.append(PageBreak())
-                
-                title_style = ParagraphStyle(
-                    'SectionTitle',
-                    fontSize=14,
-                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
-                    fontName='Helvetica-Bold',
-                    spaceAfter=3*mm,
-                )
-                story.append(Paragraph(
-                    f"<b>KURVA S KUMULATIF (Minggu 1 - Minggu {end_week})</b>", 
-                    title_style
-                ))
-                story.append(Spacer(1, 5*mm))
-                
-                # Add Kurva S chart if available in attachments
-                # Now in LANDSCAPE mode - full width available
-                kurva_s_image = data.get('kurva_s_image')
-                if kurva_s_image:
-                    try:
-                        from base64 import b64decode
-                        img_bytes = b64decode(kurva_s_image.split(',')[1] if ',' in kurva_s_image else kurva_s_image)
-                        img = Image(BytesIO(img_bytes))
-                        # Landscape A4: 297mm width, ~260mm usable
-                        max_w = 260 * mm
-                        max_h = 140 * mm
-                        iw, ih = img.wrap(0, 0)
-                        scale = min(max_w / max(iw, 1), max_h / max(ih, 1), 1.0)
-                        img.drawWidth = iw * scale
-                        img.drawHeight = ih * scale
-                        story.append(img)
-                    except Exception:
-                        pass
-                
-                # Switch back to PORTRAIT for next pages
-                story.append(NextPageTemplate('portrait'))
-                story.append(PageBreak())
-            
-            # 6. Tabel Progress Bulanan / Detail Progress Table
-            detail_table = data.get('detail_table', {})
-            if detail_table and detail_table.get('rows'):
-                title_style = ParagraphStyle(
-                    'SectionTitle',
-                    fontSize=14,
-                    textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
-                    fontName='Helvetica-Bold',
-                    spaceAfter=3*mm,
-                )
-                if report_type == 'monthly':
-                    story.append(Paragraph("<b>TABEL PROGRESS BULANAN</b>", title_style))
-                else:
-                    story.append(Paragraph("<b>DETAIL PROGRESS PER PEKERJAAN</b>", title_style))
-                story.append(Spacer(1, 5*mm))
-                
-                table = self._build_detail_progress_table(detail_table)
-                story.append(table)
-            
-            # 7. Lembar Pengesahan (for monthly)
-            if report_type == 'monthly':
-                story.append(PageBreak())
-                sig_elements = self._build_monthly_signature_page()
-                story.extend(sig_elements)
+                if kurva_s_data or all_weekly_columns:
+                    # Switch to LANDSCAPE for Kurva S pages
+                    story.append(NextPageTemplate('landscape'))
+                    story.append(PageBreak())
+                    
+                    # Title appears after the header line (which is drawn by NumberedCanvas)
+                    section_title = ParagraphStyle(
+                        'SectionHeader',
+                        fontSize=14,
+                        textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                        fontName='Helvetica-Bold',
+                        spaceAfter=5*mm,
+                    )
+                    story.append(Paragraph(
+                        f"<b>RINGKASAN PROGRESS KURVA S (Grafik: Minggu 1 - Minggu {cumulative_end_week})</b>", 
+                        section_title
+                    ))
+                    story.append(Spacer(1, 5*mm))
+                    
+                    # Build all rows from base_rows (include klasifikasi, sub_klasifikasi, pekerjaan)
+                    # Include ALL weeks for table columns
+                    hierarchy_rows = []
+                    for idx, row in enumerate(base_rows):
+                        row_type = row.get('type', 'pekerjaan')
+                        pek_id = row.get('pekerjaan_id')
+                        level = hierarchy.get(idx, 2)
+                        
+                        # Determine level based on type if not in hierarchy
+                        if row_type == 'klasifikasi':
+                            level = 1
+                        elif row_type == 'sub_klasifikasi':
+                            level = 2
+                        else:
+                            level = level if level > 0 else 3
+                        
+                        # Extract weekly planned/actual values for ALL weeks (only for pekerjaan)
+                        week_planned = []
+                        week_actual = []
+                        if row_type == 'pekerjaan' and pek_id:
+                            for wk in range(1, total_project_weeks + 1):
+                                key = f"{pek_id}-{wk}"
+                                planned_val = planned_map_str.get(key, 0)
+                                actual_val = actual_map_str.get(key, 0)
+                                week_planned.append(str(planned_val) if planned_val else '')
+                                week_actual.append(str(actual_val) if actual_val else '')
+                        
+                        # Use correct field names from base_rows
+                        hierarchy_rows.append({
+                            'type': row_type,
+                            'name': row.get('uraian', ''),
+                            'volume': row.get('volume_display', '') if row_type == 'pekerjaan' else '',
+                            'satuan': row.get('unit', '') if row_type == 'pekerjaan' else '',
+                            'level': level,
+                            'week_planned': week_planned,
+                            'week_actual': week_actual
+                        })
+                    
+                    # Use monthly-specific Kurva S table (returns List[Drawing] for pagination)
+                    # Table: ALL weeks, Chart: only cumulative on first page
+                    if hierarchy_rows:
+                        monthly_kurva_pages = self._build_monthly_kurva_s_table(
+                            hierarchy_rows,
+                            kurva_s_data,
+                            all_weekly_columns,
+                            total_project_weeks=total_project_weeks,
+                            cumulative_end_week=cumulative_end_week,
+                            row_height=22,  # Increased for 2-line text support
+                            project_info=project_info  # For signature section on last page
+                        )
+                        # Add each page with page breaks between them
+                        for page_idx, kurva_drawing in enumerate(monthly_kurva_pages):
+                            if kurva_drawing:
+                                story.append(kurva_drawing)
+                                if page_idx < len(monthly_kurva_pages) - 1:
+                                    story.append(PageBreak())  # Page break between pages
+                        story.append(Spacer(1, 10*mm))
+                    
+                    # === Portrait Kurva S Page (monthly segment table + chart) ===
+                    # Switch to PORTRAIT A3 for table-focused view (750pt width)
+                    story.append(NextPageTemplate('portrait_a3'))
+                    story.append(PageBreak())
+                    
+                    # Title for portrait page
+                    portrait_title = ParagraphStyle(
+                        'PortraitSectionHeader',
+                        fontSize=14,
+                        textColor=colors.HexColor(UTS.PRIMARY_LIGHT),
+                        fontName='Helvetica-Bold',
+                        spaceAfter=5*mm,
+                    )
+                    story.append(Paragraph(
+                        f"<b>GRAFIK KURVA S (Tampilan Bulanan)</b>", 
+                        portrait_title
+                    ))
+                    story.append(Spacer(1, 5*mm))
+                    
+                    # Build portrait chart as monthly segment table + chart overlay
+                    # Use hierarchy_data from 'hierarchy_progress' (same as Rincian Progress)
+                    # Returns List[Drawing] with pagination
+                    hierarchy_data = data.get('hierarchy_progress', [])
+                    
+                    # Get weekly progress data - prefer adapter format (flat key: pek_id-week)
+                    # Fallback to gantt_data format (nested: {pek_id: {week: val}})
+                    planned_progress = data.get('planned_map', {})
+                    actual_progress = data.get('actual_map', {})
+                    
+                    # Fallback to gantt_data if adapter maps are empty
+                    if not planned_progress:
+                        gantt_data = data.get('gantt_data', {})
+                        planned_progress = gantt_data.get('planned', {})
+                        actual_progress = gantt_data.get('actual', {})
+                    
+                    portrait_charts = self._build_portrait_kurva_s_chart(
+                        kurva_s_data,
+                        cumulative_end_week=cumulative_end_week,
+                        hierarchy_rows=hierarchy_data,  # Use same data as Rincian Progress
+                        summary=data.get('executive_summary', {}),
+                        month=month,
+                        project_info=project_info,
+                        planned_progress=planned_progress,
+                        actual_progress=actual_progress
+                    )
+                    if portrait_charts:
+                        for p_idx, p_chart in enumerate(portrait_charts):
+                            if p_chart:
+                                story.append(p_chart)
+                                if p_idx < len(portrait_charts) - 1:
+                                    story.append(PageBreak())
+                        story.append(Spacer(1, 10*mm))
+                    
+                    # Signature is now embedded in portrait chart, no separate page needed
             
             story.append(PageBreak())
         
@@ -652,7 +744,7 @@ class PDFExporter(ConfigExporterBase):
                     fontName='Helvetica-Bold',
                     spaceAfter=5*mm,
                 )
-                story.append(Paragraph("<b>RINGKASAN PROGRESS KURVA S</b>", section_title))
+                story.append(Paragraph("<b>GRAFIK KURVA S</b>", section_title))
                 story.append(Spacer(1, 5*mm))
                 
                 # Extract pekerjaan rows from planned_pages and actual_pages data
@@ -900,10 +992,12 @@ class PDFExporter(ConfigExporterBase):
                 continue
             story.append(PageBreak())
         
-        # 8. Signature Section
-        if self.config.signature_config.enabled:
-            sig_elements = self._build_signatures()
-            story.extend(sig_elements)
+        # 8. Signature Section - REMOVED for monthly reports per user request
+        # This used config-based labels instead of the correct 3-column layout
+        # The correct signature is in _build_progress_signature_section() (Pelaksana, Pengawas, Pemilik)
+        # if self.config.signature_config.enabled:
+        #     sig_elements = self._build_signatures()
+        #     story.extend(sig_elements)
         
         # Build PDF with NumberedCanvas for headers/footers
         project_name = project_info.get('nama', self.config.project_name) or ''
@@ -1418,7 +1512,8 @@ class PDFExporter(ConfigExporterBase):
         
         elements.append(sig_table)
         
-        return elements
+        # Wrap in KeepTogether so signature section stays together
+        return [KeepTogether(elements)]
 
     def _build_monthly_signature_page(self) -> List:
         """
@@ -1507,7 +1602,8 @@ class PDFExporter(ConfigExporterBase):
         
         elements.append(sig_table)
         
-        return elements
+        # Wrap in KeepTogether to ensure signature section stays on same page
+        return [KeepTogether(elements)]
 
     # ------------------------------------------------------------------
     # Professional Report Methods (Laporan Tertulis)
@@ -2201,8 +2297,6 @@ class PDFExporter(ConfigExporterBase):
             ['Kumulatif Target', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
             ['Kumulatif Realisasi', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
             ['Deviasi Kumulatif', ':', f"{summary.get('deviation_cumulative', 0):+.2f}%"],
-            ['', '', ''],
-            ['Status', ':', f'<font color="{status_color}"><b>{status}</b></font>'],
         ]
         
         summary_table = Table(metrics, colWidths=[60*mm, 5*mm, 50*mm])
@@ -3209,6 +3303,971 @@ class PDFExporter(ConfigExporterBase):
         drawing.add(String(width/2 + 13, legend_y + 1, 'Actual', fontSize=7, fontName='Helvetica'))
         
         return drawing
+
+    def _build_monthly_kurva_s_table(
+        self,
+        pekerjaan_rows: List[Dict],
+        kurva_s_data: List[Dict],
+        all_weekly_columns: List[Dict],
+        total_project_weeks: int,
+        cumulative_end_week: int,
+        row_height: float = 16,
+        project_info: Dict[str, Any] = None
+    ) -> List[Drawing]:
+        """
+        Build Monthly Kurva S table with ALL weeks, paginated across multiple A3 landscape pages.
+        
+        Layout requirements:
+        - Columns: Uraian Pekerjaan, Volume, Satuan, + ALL weekly columns
+        - Table shows ALL 50++ weeks (full project)
+        - Chart (Kurva S line) drawn on every page (segmented)
+        - Rows paginated across pages when exceeding height
+        - Signature section embedded on last page
+        
+        Args:
+            pekerjaan_rows: List of dicts with 'name', 'volume', 'satuan', 'level'
+            kurva_s_data: List of dicts with 'week', 'planned', 'actual' (cumulative only)
+            all_weekly_columns: All weekly columns for full project
+            total_project_weeks: Total weeks in project (for table columns)
+            cumulative_end_week: Week number where chart stops
+            row_height: Height per row
+            project_info: Dict with signature data (nama_kontraktor, nama_konsultan, etc.)
+            
+        Returns:
+            List of Drawing objects (one per page)
+        """
+        if not pekerjaan_rows:
+            return []
+        
+        # =================================================================
+        # A3 LANDSCAPE DIMENSIONS
+        # A3 = 420mm × 297mm = 1190pt × 842pt
+        # Header zone: 8mm offset + 5mm text = ~37pt reserved at top
+        # Footer zone: 6mm offset + 8mm text = ~40pt reserved at bottom
+        # Usable height: 842 - 37 - 40 = ~765pt, use 720pt for safety
+        # =================================================================
+        page_width = 1100  # A3 Landscape usable width
+        max_height = 720   # A3 Landscape usable height (was 773, reduced for header/footer)
+        
+        # Use ALL project weeks for table columns
+        num_weeks = total_project_weeks if total_project_weeks > 0 else len(all_weekly_columns)
+        total_rows = len(pekerjaan_rows)
+        
+        if num_weeks == 0:
+            return []
+        
+        # =================================================================
+        # COLUMN WIDTH CALCULATION
+        # RULE: All weeks MUST fit on 1 sheet (no horizontal pagination)
+        # Priority: Fit weeks first, then allocate remaining to static cols
+        # =================================================================
+        
+        # Week column constraints
+        min_week_width = 12  # Minimum for readability (~5pt font)
+        max_week_width = 45  # Maximum to prevent excessive whitespace
+        
+        # Static columns constraints
+        min_uraian_width = 80   # Minimum for 2-line text ~18 chars
+        max_uraian_width = 350  # Maximum when few weeks (prevent too wide)
+        volume_width = 35
+        satuan_width = 30
+        vol_sat_total = volume_width + satuan_width  # 65pt fixed
+        
+        # Calculate ideal week width
+        available_for_weeks = page_width - min_uraian_width - vol_sat_total
+        ideal_week_width = available_for_weeks / num_weeks if num_weeks > 0 else max_week_width
+        
+        # Apply week width constraints
+        if ideal_week_width < min_week_width:
+            # Not enough space - weeks at minimum, uraian shrinks
+            week_width = min_week_width
+            uraian_width = page_width - (num_weeks * week_width) - vol_sat_total
+            uraian_width = max(min_uraian_width, uraian_width)  # Floor at minimum
+        elif ideal_week_width > max_week_width:
+            # Plenty of space - weeks at maximum, uraian expands
+            week_width = max_week_width
+            uraian_width = page_width - (num_weeks * week_width) - vol_sat_total
+            uraian_width = min(max_uraian_width, uraian_width)  # Cap at maximum
+        else:
+            # Goldilocks zone - balanced allocation
+            week_width = ideal_week_width
+            uraian_width = page_width - (num_weeks * week_width) - vol_sat_total
+            uraian_width = max(min_uraian_width, min(max_uraian_width, uraian_width))
+        
+        static_total = uraian_width + vol_sat_total
+        total_table_width = static_total + (num_weeks * week_width)
+        
+        # =================================================================
+        # PAGINATION CALCULATION (ROWS ONLY)
+        # Chart on every page (segmented), Signature on LAST page
+        # =================================================================
+        header_height = 20  # Row for column headers
+        chart_overlay_height = 40  # Space above table for chart lines
+        legend_height = 25  # Legend below table (first page only)
+        signature_height = 140  # ~50mm for signature section (last page only)
+        
+        # First page: chart + legend
+        first_page_row_space = max_height - header_height - chart_overlay_height - legend_height - 20
+        # Middle pages: no legend, no signature
+        middle_page_row_space = max_height - header_height - chart_overlay_height - 20
+        # Last page: signature section (no legend)
+        last_page_row_space = max_height - header_height - chart_overlay_height - signature_height - 20
+        
+        rows_per_first_page = int(first_page_row_space / row_height)
+        rows_per_middle_page = int(middle_page_row_space / row_height)
+        rows_per_last_page = int(last_page_row_space / row_height)
+        
+        # Calculate pages needed (accounting for reserved signature space on last page)
+        if total_rows <= rows_per_first_page:
+            # All fits on first page (which is also last page)
+            # Need to recalculate with signature space
+            first_and_last_row_space = max_height - header_height - chart_overlay_height - legend_height - signature_height - 20
+            rows_per_single_page = int(first_and_last_row_space / row_height)
+            if total_rows <= rows_per_single_page:
+                num_pages = 1
+            else:
+                # Need 2 pages
+                num_pages = 2
+        else:
+            # Calculate how many middle pages needed
+            remaining_after_first = total_rows - rows_per_first_page
+            
+            # How many rows can fit on middle pages + last page?
+            if remaining_after_first <= rows_per_last_page:
+                num_pages = 2  # First + Last
+            else:
+                # Need middle pages
+                remaining_after_last_reserved = remaining_after_first - rows_per_last_page
+                middle_pages = max(0, (remaining_after_last_reserved + rows_per_middle_page - 1) // rows_per_middle_page)
+                num_pages = 1 + middle_pages + 1  # First + Middle + Last
+        
+        # Colors from UTS
+        header_bg = colors.HexColor(UTS.PRIMARY_LIGHT)
+        header_text = colors.white
+        klasifikasi_bg = colors.HexColor(UTS.KLASIFIKASI_BG)
+        sub_klas_bg = colors.HexColor(UTS.SUB_KLASIFIKASI_BG)
+        border_color = colors.HexColor('#cccccc')
+        outer_border = colors.HexColor('#333333')
+        
+        # =================================================================
+        # VIRTUAL FULL TABLE CONCEPT
+        # Full table height: header + all rows
+        # Chart spans from top (100%) to bottom (0%) of full table
+        # Each page shows a "slice" of the full table + chart
+        # =================================================================
+        full_virtual_height = header_height + (total_rows * row_height)
+        
+        drawings = []
+        
+        for page_num in range(num_pages):
+            is_first_page = (page_num == 0)
+            is_last_page = (page_num == num_pages - 1)
+            is_single_page = (num_pages == 1)
+            
+            # Calculate which rows are on this page
+            if is_first_page:
+                if is_single_page:
+                    # Single page: first + last, use reduced row count
+                    first_and_last_row_space = max_height - header_height - chart_overlay_height - legend_height - signature_height - 20
+                    max_rows_single = int(first_and_last_row_space / row_height)
+                    rows_this_page = min(max_rows_single, total_rows)
+                else:
+                    rows_this_page = min(rows_per_first_page, total_rows)
+                global_row_start = 0
+            elif is_last_page:
+                # Last page (not first): fewer rows due to signature
+                global_row_start = rows_per_first_page
+                if num_pages > 2:
+                    # Add middle pages rows
+                    global_row_start += (num_pages - 2) * rows_per_middle_page
+                rows_this_page = total_rows - global_row_start
+            else:
+                # Middle page
+                global_row_start = rows_per_first_page + (page_num - 1) * rows_per_middle_page
+                global_row_end = min(global_row_start + rows_per_middle_page, total_rows)
+                rows_this_page = global_row_end - global_row_start
+            
+            if rows_this_page <= 0:
+                break
+            
+            page_rows = pekerjaan_rows[global_row_start:global_row_start + rows_this_page]
+            
+            # Calculate page height - include signature space on last page
+            table_height = header_height + (rows_this_page * row_height)
+            legend_space = legend_height if is_first_page else 0
+            sig_space = signature_height if is_last_page else 0
+            page_total_height = table_height + chart_overlay_height + legend_space + sig_space + 10
+            
+            drawing = Drawing(total_table_width, page_total_height)
+            
+            # === Draw Table for this page ===
+            table_top = page_total_height - chart_overlay_height - 5
+            table_bottom = table_top - table_height
+            
+            # Outer border
+            drawing.add(Rect(0, table_bottom, total_table_width, table_height,
+                            fillColor=None, strokeColor=outer_border, strokeWidth=1.5))
+            
+            # Header row background
+            header_y = table_top - header_height
+            drawing.add(Rect(0, header_y, total_table_width, header_height,
+                            fillColor=header_bg, strokeColor=outer_border, strokeWidth=0.5))
+            
+            # Header text (larger fonts for A3)
+            drawing.add(String(5, header_y + 6, 'Uraian Pekerjaan',
+                              fontSize=8, fontName='Helvetica-Bold', fillColor=header_text))
+            drawing.add(String(uraian_width + 3, header_y + 6, 'Vol',
+                              fontSize=8, fontName='Helvetica-Bold', fillColor=header_text))
+            drawing.add(String(uraian_width + volume_width + 3, header_y + 6, 'Sat',
+                              fontSize=8, fontName='Helvetica-Bold', fillColor=header_text))
+            
+            # Week headers
+            for i in range(num_weeks):
+                if i < len(all_weekly_columns):
+                    col = all_weekly_columns[i]
+                    week_num = col.get('week_number', i + 1)
+                else:
+                    week_num = i + 1
+                
+                x = static_total + (i * week_width) + week_width/2
+                # Adaptive font size based on week_width
+                week_font_size = 6 if week_width >= 15 else 5
+                drawing.add(String(x, header_y + 6, f'W{week_num}',
+                                  fontSize=week_font_size, fontName='Helvetica-Bold', 
+                                  fillColor=header_text, textAnchor='middle'))
+            
+            # Data rows for this page
+            for row_idx, row in enumerate(page_rows):
+                row_y = header_y - (row_idx + 1) * row_height
+                level = row.get('level', 3)
+                row_type = row.get('type', 'pekerjaan')
+                
+                # Background color based on level
+                if level == 1:
+                    bg_color = klasifikasi_bg
+                    font_weight = 'Helvetica-Bold'
+                elif level == 2:
+                    bg_color = sub_klas_bg
+                    font_weight = 'Helvetica-Bold'
+                else:
+                    bg_color = colors.white if row_idx % 2 == 0 else colors.HexColor('#f8f9fa')
+                    font_weight = 'Helvetica'
+                
+                # Uraian column
+                drawing.add(Rect(0, row_y, uraian_width, row_height,
+                                fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                
+                indent = '  ' * (level - 1) if level > 1 else ''
+                raw_name = row.get('name', '')
+                # Calculate chars per line based on uraian_width (at 7pt, ~4pt per char)
+                chars_per_line = int((uraian_width - 4) / 4)
+                # Account for indent in available space
+                text_chars = chars_per_line - len(indent)
+                
+                if len(raw_name) > text_chars:
+                    # 2-line rendering - both lines get same indent
+                    line1 = indent + raw_name[:text_chars]
+                    remaining = raw_name[text_chars:]
+                    if len(remaining) > text_chars - 2:
+                        line2 = indent + remaining[:text_chars - 3] + '..'
+                    else:
+                        line2 = indent + remaining
+                    
+                    drawing.add(String(2, row_y + row_height * 0.6, line1,
+                                      fontSize=7, fontName=font_weight))
+                    drawing.add(String(2, row_y + row_height * 0.2, line2,
+                                      fontSize=7, fontName=font_weight))
+                else:
+                    full_name = indent + raw_name
+                    drawing.add(String(2, row_y + row_height * 0.35, full_name,
+                                      fontSize=7, fontName=font_weight))
+                
+                # Volume column
+                drawing.add(Rect(uraian_width, row_y, volume_width, row_height,
+                                fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                volume_text = str(row.get('volume', ''))[:6]
+                drawing.add(String(uraian_width + 2, row_y + row_height * 0.35, volume_text,
+                                  fontSize=7, fontName='Helvetica'))
+                
+                # Satuan column
+                drawing.add(Rect(uraian_width + volume_width, row_y, satuan_width, row_height,
+                                fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                satuan_text = str(row.get('satuan', ''))[:5]
+                drawing.add(String(uraian_width + volume_width + 2, row_y + row_height * 0.35, satuan_text,
+                                  fontSize=7, fontName='Helvetica'))
+                
+                # Week columns with progress values
+                week_planned = row.get('week_planned', [])
+                week_actual = row.get('week_actual', [])
+                
+                for i in range(num_weeks):
+                    x = static_total + (i * week_width)
+                    drawing.add(Rect(x, row_y, week_width, row_height,
+                                    fillColor=colors.white, strokeColor=border_color, strokeWidth=0.2))
+                    
+                    week_num = i + 1
+                    if row_type == 'pekerjaan' and week_num <= cumulative_end_week:
+                        planned_val = week_planned[i] if i < len(week_planned) else ''
+                        actual_val = week_actual[i] if i < len(week_actual) else ''
+                        
+                        cell_center_x = x + week_width / 2
+                        
+                        if planned_val:
+                            drawing.add(String(cell_center_x, row_y + row_height * 0.6, str(planned_val)[:4],
+                                              fontSize=5, fontName='Helvetica',
+                                              fillColor=colors.HexColor(UTS.PLANNED_COLOR),
+                                              textAnchor='middle'))
+                        
+                        if actual_val:
+                            drawing.add(String(cell_center_x, row_y + row_height * 0.15, str(actual_val)[:4],
+                                              fontSize=5, fontName='Helvetica',
+                                              fillColor=colors.HexColor(UTS.ACTUAL_COLOR),
+                                              textAnchor='middle'))
+            
+            # =================================================================
+            # KURVA S CHART - Rendered on EVERY page (segmented)
+            # Uses global Y coordinate system, then translated to page coordinates
+            # =================================================================
+            chart_weeks = min(len(kurva_s_data), cumulative_end_week)
+            
+            if chart_weeks > 0:
+                # Global coordinates (virtual full table)
+                # 100% at top of header (global Y = full_virtual_height)
+                # 0% at bottom of last row (global Y = 0)
+                
+                def global_progress_to_y(progress):
+                    """Map progress 0-100% to global virtual height"""
+                    return (progress / 100.0) * full_virtual_height
+                
+                def global_y_to_page_y(global_y):
+                    """Convert global Y to page Y coordinate, accounting for row offset"""
+                    # global_row_start is the first row on this page
+                    # Page Y coordinate system: table_top = header, going down
+                    
+                    # In global coords: row 0 bottom is at 0, row N-1 top is at full_virtual_height - header
+                    # This page shows rows [global_row_start : global_row_start + rows_this_page]
+                    
+                    # Global Y for top of this page's data:
+                    page_global_top = full_virtual_height - header_height - (global_row_start * row_height)
+                    # Global Y for bottom of this page's data:
+                    page_global_bottom = page_global_top - (rows_this_page * row_height)
+                    
+                    # Map global Y to page Y
+                    # page_global_top -> table_top - header_height
+                    # page_global_bottom -> table_bottom
+                    
+                    page_data_top = table_top - header_height
+                    page_data_bottom = table_bottom
+                    
+                    if page_global_top == page_global_bottom:
+                        return page_data_bottom
+                    
+                    # Linear interpolation
+                    t = (global_y - page_global_bottom) / (page_global_top - page_global_bottom)
+                    return page_data_bottom + t * (page_data_top - page_data_bottom)
+                
+                def week_to_x(week_idx):
+                    return static_total + (week_idx * week_width) + week_width / 2
+                
+                def clip_line_to_page(y1, y2, x1, x2, min_y, max_y):
+                    """Clip a line segment to visible Y range, returns clipped coordinates or None"""
+                    # Both points above or below visible area
+                    if (y1 > max_y and y2 > max_y) or (y1 < min_y and y2 < min_y):
+                        return None
+                    
+                    # Clip to visible area
+                    clipped_y1, clipped_y2 = y1, y2
+                    clipped_x1, clipped_x2 = x1, x2
+                    
+                    if y1 > max_y:
+                        t = (max_y - y2) / (y1 - y2)
+                        clipped_y1 = max_y
+                        clipped_x1 = x2 + t * (x1 - x2)
+                    elif y1 < min_y:
+                        t = (min_y - y2) / (y1 - y2)
+                        clipped_y1 = min_y
+                        clipped_x1 = x2 + t * (x1 - x2)
+                    
+                    if y2 > max_y:
+                        t = (max_y - y1) / (y2 - y1)
+                        clipped_y2 = max_y
+                        clipped_x2 = x1 + t * (x2 - x1)
+                    elif y2 < min_y:
+                        t = (min_y - y1) / (y2 - y1)
+                        clipped_y2 = min_y
+                        clipped_x2 = x1 + t * (x2 - x1)
+                    
+                    return (clipped_x1, clipped_y1, clipped_x2, clipped_y2)
+                
+                # Visible Y range for this page (chart should NOT overlap header)
+                visible_min_y = table_bottom
+                visible_max_y = table_top - header_height  # Stop at bottom of header, not top
+                
+                # Generate curve points in global coordinates, then convert to page coords
+                week0_x = static_total
+                week0_global_y = global_progress_to_y(0)
+                
+                # Planned curve
+                planned_global_points = [(week0_x, week0_global_y)]
+                for i, data in enumerate(kurva_s_data[:chart_weeks]):
+                    planned_val = data.get('planned', 0) or 0
+                    planned_global_points.append((week_to_x(i), global_progress_to_y(planned_val)))
+                
+                # Convert to page coords and draw
+                planned_page_points = [(x, global_y_to_page_y(y)) for x, y in planned_global_points]
+                
+                for j in range(len(planned_page_points) - 1):
+                    x1, y1 = planned_page_points[j]
+                    x2, y2 = planned_page_points[j+1]
+                    
+                    clipped = clip_line_to_page(y1, y2, x1, x2, visible_min_y, visible_max_y)
+                    if clipped:
+                        drawing.add(Line(clipped[0], clipped[1], clipped[2], clipped[3],
+                                        strokeColor=colors.HexColor(UTS.PLANNED_COLOR), strokeWidth=2.5))
+                
+                # Draw planned markers (only if visible)
+                for px, py in planned_page_points[1:]:
+                    if visible_min_y <= py <= visible_max_y:
+                        drawing.add(Rect(px-4, py-4, 8, 8, 
+                                        fillColor=colors.HexColor(UTS.PLANNED_COLOR), 
+                                        strokeColor=colors.white, strokeWidth=1))
+                
+                # Actual curve
+                actual_global_points = [(week0_x, week0_global_y)]
+                for i, data in enumerate(kurva_s_data[:chart_weeks]):
+                    actual_val = data.get('actual', 0) or 0
+                    actual_global_points.append((week_to_x(i), global_progress_to_y(actual_val)))
+                
+                # Convert to page coords and draw
+                actual_page_points = [(x, global_y_to_page_y(y)) for x, y in actual_global_points]
+                
+                for j in range(len(actual_page_points) - 1):
+                    x1, y1 = actual_page_points[j]
+                    x2, y2 = actual_page_points[j+1]
+                    
+                    clipped = clip_line_to_page(y1, y2, x1, x2, visible_min_y, visible_max_y)
+                    if clipped:
+                        drawing.add(Line(clipped[0], clipped[1], clipped[2], clipped[3],
+                                        strokeColor=colors.HexColor(UTS.ACTUAL_COLOR), strokeWidth=2.5))
+                
+                # Draw actual markers (only if visible)
+                for ax, ay in actual_page_points[1:]:
+                    if visible_min_y <= ay <= visible_max_y:
+                        drawing.add(Rect(ax-4, ay-4, 8, 8, 
+                                        fillColor=colors.HexColor(UTS.ACTUAL_COLOR), 
+                                        strokeColor=colors.white, strokeWidth=1))
+            
+            # === Legend (only on first page) - positioned above table, aligned with week columns ===
+            if is_first_page:
+                # Position legend in chart overlay area, right side (aligned with week columns)
+                legend_x = static_total + 10  # Start from week columns area
+                legend_y_top = table_top + chart_overlay_height - 5  # Above table in chart area
+                
+                # Vertical layout (stacked)
+                # Rencana line
+                drawing.add(Rect(legend_x, legend_y_top - 8, 10, 8, 
+                                fillColor=colors.HexColor(UTS.PLANNED_COLOR)))
+                drawing.add(String(legend_x + 13, legend_y_top - 7, 'Rencana', 
+                                  fontSize=7, fontName='Helvetica'))
+                # Realisasi line (below Rencana)
+                drawing.add(Rect(legend_x, legend_y_top - 20, 10, 8, 
+                                fillColor=colors.HexColor(UTS.ACTUAL_COLOR)))
+                drawing.add(String(legend_x + 13, legend_y_top - 19, 'Realisasi', 
+                                  fontSize=7, fontName='Helvetica'))
+            
+            # Page indicator removed per user request
+            # if not is_first_page and not is_last_page:
+            #     drawing.add(String(total_table_width / 2, table_bottom - 10, 
+            #                       f'(Halaman {page_num + 1} dari {num_pages})',
+            #                       fontSize=7, fontName='Helvetica-Oblique',
+            #                       textAnchor='middle', fillColor=colors.grey))
+            
+            # =================================================================
+            # SIGNATURE SECTION REMOVED per user request
+            # =================================================================
+            
+            drawings.append(drawing)
+        
+        return drawings
+
+    def _build_portrait_kurva_s_chart(
+        self,
+        kurva_s_data: List[Dict],
+        cumulative_end_week: int,
+        hierarchy_rows: List[Dict] = None,
+        summary: Dict[str, Any] = None,
+        month: int = 1,
+        project_info: Dict[str, Any] = None,
+        planned_progress: Dict[str, Dict] = None,
+        actual_progress: Dict[str, Dict] = None
+    ) -> List[Drawing]:
+        """
+        Build Portrait mode Kurva S table with 4-week segment chart overlay.
+        
+        NEW Layout (A3 Portrait):
+        - Table: Uraian, Volume, Satuan, Total Harga, Bobot, Week1-4
+        - Kurva S overlay on week columns (4 weeks only for this month)
+        - Pagination for rows, signature on last page
+        
+        Args:
+            kurva_s_data: Cumulative Kurva S data
+            cumulative_end_week: Final week for chart (for reference)
+            hierarchy_rows: ALL data rows (klasifikasi, sub, pekerjaan)
+            summary: Executive summary data
+            month: Month number (1=Week 1-4, 2=Week 5-8, etc.)
+            project_info: For signature section
+            
+        Returns:
+            List of Drawing objects (one per page)
+        """
+        if not hierarchy_rows:
+            return []
+        
+        # =================================================================
+        # A3 PORTRAIT DIMENSIONS
+        # A3 = 297mm × 420mm = 842pt × 1190pt
+        # Header zone: 8mm offset + 5mm text = ~37pt reserved at top
+        # Footer zone: 6mm offset + 8mm text = ~40pt reserved at bottom
+        # Usable height: 1190 - 37 - 40 = ~1113pt, use 1000pt for safety
+        # =================================================================
+        page_width = 750  # Safe A3 portrait width
+        max_height = 1000  # A3 portrait usable height (was 1050, reduced for header/footer)
+        
+        # Calculate which 4 weeks to show for this month
+        week_start = (month - 1) * 4  # 0-indexed
+        week_end = week_start + 4
+        weeks_this_month = [week_start + 1, week_start + 2, week_start + 3, week_start + 4]
+        
+        total_rows = len(hierarchy_rows)
+        if total_rows == 0:
+            return []
+        
+        # =================================================================
+        # COLUMN WIDTHS (fixed for portrait)
+        # Total: 750pt for A3 Portrait
+        # =================================================================
+        uraian_width = 350      # Reduced from 450 to make room for progress columns
+        volume_width = 25
+        satuan_width = 25
+        harga_width = 65
+        bobot_width = 30
+        progress_lalu_width = 45  # NEW: Progress Bulan Lalu
+        progress_ini_width = 45   # NEW: Progress Bulan Ini
+        week_width = 25
+        num_weeks = 4
+        
+        static_total = uraian_width + volume_width + satuan_width + harga_width + bobot_width + progress_lalu_width + progress_ini_width
+        weeks_total = num_weeks * week_width  # 140pt
+        total_table_width = static_total + weeks_total  # 750pt
+        
+        # =================================================================
+        # PAGINATION CALCULATION
+        # =================================================================
+        row_height = 25  # 2-line text support
+        header_height = 20
+        chart_overlay_height = 30
+        legend_height = 25
+        signature_height = 140
+        
+        # First page: fewer rows due to title area
+        first_page_row_space = max_height - header_height - chart_overlay_height - legend_height - 50
+        middle_page_row_space = max_height - header_height - chart_overlay_height - 30
+        last_page_row_space = max_height - header_height - chart_overlay_height - signature_height - 30
+        
+        rows_per_first_page = int(first_page_row_space / row_height)
+        rows_per_middle_page = int(middle_page_row_space / row_height)
+        rows_per_last_page = int(last_page_row_space / row_height)
+        
+        # Calculate pages needed
+        if total_rows <= rows_per_first_page:
+            first_and_last_space = max_height - header_height - chart_overlay_height - legend_height - signature_height - 50
+            rows_per_single = int(first_and_last_space / row_height)
+            num_pages = 1 if total_rows <= rows_per_single else 2
+        else:
+            remaining = total_rows - rows_per_first_page
+            if remaining <= rows_per_last_page:
+                num_pages = 2
+            else:
+                remaining -= rows_per_last_page
+                middle_pages = max(0, (remaining + rows_per_middle_page - 1) // rows_per_middle_page)
+                num_pages = 1 + middle_pages + 1
+        
+        # Colors
+        header_bg = colors.HexColor(UTS.PRIMARY_LIGHT)
+        header_text = colors.white
+        klasifikasi_bg = colors.HexColor(UTS.KLASIFIKASI_BG)
+        sub_klas_bg = colors.HexColor(UTS.SUB_KLASIFIKASI_BG)
+        border_color = colors.HexColor('#cccccc')
+        outer_border = colors.HexColor('#333333')
+        planned_color = colors.HexColor(UTS.PLANNED_COLOR)
+        actual_color = colors.HexColor(UTS.ACTUAL_COLOR)
+        
+        # Get Kurva S data for the 4 weeks of this month
+        month_kurva_data = kurva_s_data[week_start:week_end] if kurva_s_data else []
+        
+        # Full virtual table for chart Y calculation
+        full_virtual_height = header_height + (total_rows * row_height)
+        
+        drawings = []
+        
+        for page_num in range(num_pages):
+            is_first_page = (page_num == 0)
+            is_last_page = (page_num == num_pages - 1)
+            is_single_page = (num_pages == 1)
+            
+            # Calculate rows for this page
+            if is_first_page:
+                if is_single_page:
+                    max_rows_single = int((max_height - header_height - chart_overlay_height - legend_height - signature_height - 50) / row_height)
+                    rows_this_page = min(max_rows_single, total_rows)
+                else:
+                    rows_this_page = min(rows_per_first_page, total_rows)
+                global_row_start = 0
+            elif is_last_page:
+                global_row_start = rows_per_first_page
+                if num_pages > 2:
+                    global_row_start += (num_pages - 2) * rows_per_middle_page
+                rows_this_page = total_rows - global_row_start
+            else:
+                global_row_start = rows_per_first_page + (page_num - 1) * rows_per_middle_page
+                rows_this_page = min(rows_per_middle_page, total_rows - global_row_start)
+            
+            if rows_this_page <= 0:
+                break
+            
+            page_rows = hierarchy_rows[global_row_start:global_row_start + rows_this_page]
+            
+            # Calculate page height
+            table_height = header_height + (rows_this_page * row_height)
+            legend_space = legend_height if is_first_page else 0
+            sig_space = signature_height if is_last_page else 0
+            title_space = 40 if is_first_page else 10
+            page_total_height = table_height + chart_overlay_height + legend_space + sig_space + title_space + 10
+            
+            drawing = Drawing(total_table_width, page_total_height)
+            
+            # === Title (first page only) ===
+            if is_first_page:
+                drawing.add(String(total_table_width / 2, page_total_height - 15,
+                                  f'KURVA S - BULAN {month} (Minggu {weeks_this_month[0]} - {weeks_this_month[3]})',
+                                  fontSize=12, fontName='Helvetica-Bold',
+                                  textAnchor='middle', fillColor=colors.HexColor(UTS.PRIMARY_LIGHT)))
+            
+            # === Draw Table ===
+            table_top = page_total_height - title_space - chart_overlay_height
+            table_bottom = table_top - table_height
+            
+            # Outer border
+            drawing.add(Rect(0, table_bottom, total_table_width, table_height,
+                            fillColor=None, strokeColor=outer_border, strokeWidth=1.5))
+            
+            # Header row
+            header_y = table_top - header_height
+            drawing.add(Rect(0, header_y, total_table_width, header_height,
+                            fillColor=header_bg, strokeColor=outer_border, strokeWidth=0.5))
+            
+            # Header text
+            x_pos = 3
+            drawing.add(String(x_pos, header_y + 6, 'Uraian Pekerjaan', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text))
+            # Center-aligned headers
+            x_pos = uraian_width + volume_width/2
+            drawing.add(String(x_pos, header_y + 6, 'Vol', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            x_pos = uraian_width + volume_width + satuan_width/2
+            drawing.add(String(x_pos, header_y + 6, 'Sat', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            x_pos = uraian_width + volume_width + satuan_width + harga_width/2
+            drawing.add(String(x_pos, header_y + 6, 'Total Harga', fontSize=6, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            x_pos = uraian_width + volume_width + satuan_width + harga_width + bobot_width/2
+            drawing.add(String(x_pos, header_y + 6, 'Bobot', fontSize=6, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            # NEW: Progress columns
+            x_pos = uraian_width + volume_width + satuan_width + harga_width + bobot_width + progress_lalu_width/2
+            drawing.add(String(x_pos, header_y + 6, 'Prog. Bulan Lalu', fontSize=5, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            x_pos = uraian_width + volume_width + satuan_width + harga_width + bobot_width + progress_lalu_width + progress_ini_width/2
+            drawing.add(String(x_pos, header_y + 6, 'Prog. Bulan Ini', fontSize=5, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            
+            # Week headers
+            for i, wk in enumerate(weeks_this_month):
+                x = static_total + (i * week_width) + week_width/2
+                drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=6, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            
+            # Data rows
+            for row_idx, row in enumerate(page_rows):
+                row_y = header_y - (row_idx + 1) * row_height
+                level = row.get('level', 3)
+                row_type = row.get('type', 'pekerjaan')
+                
+                # Background color
+                if row_type == 'klasifikasi':
+                    bg_color = klasifikasi_bg
+                    font_weight = 'Helvetica-Bold'
+                elif row_type == 'sub_klasifikasi':
+                    bg_color = sub_klas_bg
+                    font_weight = 'Helvetica-Bold'
+                else:
+                    bg_color = colors.white if row_idx % 2 == 0 else colors.HexColor('#f8f9fa')
+                    font_weight = 'Helvetica'
+                
+                # Uraian column - use 'name' or 'uraian' (same as Rincian Progress)
+                drawing.add(Rect(0, row_y, uraian_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                # Optimized text rendering - use full column width
+                indent_chars = ' ' * (level * 2) if level > 0 else ''  # 2 spaces per level
+                raw_name = row.get('name', '') or row.get('uraian', '')
+                # Balanced char width: 380pt - 4pt = 376pt usable
+                # At 7pt Helvetica, average ~3.3pt per char → ~114 chars per line
+                uraian_font_size = 7
+                char_width = 3.3  # Safe value between 3.0 (too tight) and 3.5 (too loose)
+                usable_width = uraian_width - 4  # 2pt left + 2pt right padding
+                chars_per_line = int(usable_width / char_width)
+                # Account for indent in available space
+                text_chars = chars_per_line - len(indent_chars)
+                
+                if len(raw_name) > text_chars:
+                    # 2-line rendering - both lines get same indent
+                    line1 = indent_chars + raw_name[:text_chars]
+                    remaining = raw_name[text_chars:]
+                    if len(remaining) > text_chars - 2:
+                        line2 = indent_chars + remaining[:text_chars-2] + '..'
+                    else:
+                        line2 = indent_chars + remaining
+                    drawing.add(String(2, row_y + row_height * 0.65, line1, fontSize=uraian_font_size, fontName=font_weight))
+                    drawing.add(String(2, row_y + row_height * 0.25, line2, fontSize=uraian_font_size, fontName=font_weight))
+                else:
+                    # Single line - vertically centered
+                    full_name = indent_chars + raw_name
+                    drawing.add(String(2, row_y + row_height * 0.35, full_name, fontSize=uraian_font_size, fontName=font_weight))
+                
+                # Volume - center aligned
+                drawing.add(Rect(uraian_width, row_y, volume_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                if row_type == 'pekerjaan':
+                    vol = row.get('volume', 0) or 0
+                    try:
+                        vol_str = f"{float(vol):.1f}" if vol else ''
+                    except (ValueError, TypeError):
+                        vol_str = str(vol)[:5]
+                    drawing.add(String(uraian_width + volume_width/2, row_y + row_height * 0.35, vol_str[:5], fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                
+                # Satuan - center aligned
+                drawing.add(Rect(uraian_width + volume_width, row_y, satuan_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                if row_type == 'pekerjaan':
+                    sat = row.get('satuan', '') or ''
+                    drawing.add(String(uraian_width + volume_width + satuan_width/2, row_y + row_height * 0.35, str(sat)[:4], fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                
+                # Total Harga - hierarchy_progress uses 'harga' directly
+                drawing.add(Rect(uraian_width + volume_width + satuan_width, row_y, harga_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                if row_type == 'pekerjaan':
+                    try:
+                        harga = float(row.get('harga', 0) or 0)
+                    except (ValueError, TypeError):
+                        harga = 0
+                    if harga > 0:
+                        harga_fmt = f"Rp{int(harga):,}".replace(',', '.')
+                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width/2, row_y + row_height * 0.35, harga_fmt[:14], fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                
+                # Bobot - hierarchy_progress uses 'bobot' directly
+                drawing.add(Rect(uraian_width + volume_width + satuan_width + harga_width, row_y, bobot_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                if row_type == 'pekerjaan':
+                    try:
+                        bobot = float(row.get('bobot', 0) or 0)
+                    except (ValueError, TypeError):
+                        bobot = 0
+                    if bobot > 0:
+                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width + bobot_width/2, row_y + row_height * 0.35, f"{bobot:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                
+                # Progress Bulan Lalu
+                progress_lalu_x = uraian_width + volume_width + satuan_width + harga_width + bobot_width
+                drawing.add(Rect(progress_lalu_x, row_y, progress_lalu_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                if row_type == 'pekerjaan':
+                    try:
+                        prog_lalu = float(row.get('progress_bulan_lalu', 0) or 0)
+                    except (ValueError, TypeError):
+                        prog_lalu = 0
+                    if prog_lalu > 0:
+                        drawing.add(String(progress_lalu_x + progress_lalu_width/2, row_y + row_height * 0.35, f"{prog_lalu:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                
+                # Progress Bulan Ini
+                progress_ini_x = progress_lalu_x + progress_lalu_width
+                drawing.add(Rect(progress_ini_x, row_y, progress_ini_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
+                if row_type == 'pekerjaan':
+                    try:
+                        prog_ini = float(row.get('progress_bulan_ini', 0) or 0)
+                    except (ValueError, TypeError):
+                        prog_ini = 0
+                    if prog_ini > 0:
+                        drawing.add(String(progress_ini_x + progress_ini_width/2, row_y + row_height * 0.35, f"{prog_ini:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                
+                # Week columns with progress values - with enhanced borders
+                # Get row identifier for progress lookup
+                row_id = str(row.get('id', row.get('pekerjaan_id', '')))
+                
+                def safe_float(val):
+                    """Safely convert value to float, handling empty strings."""
+                    if val is None or val == '':
+                        return 0.0
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return 0.0
+                
+                # Week cell color - slightly different to distinguish
+                week_bg = bg_color
+                week_border = colors.HexColor('#666666')  # Darker border for week columns
+                
+                for i in range(num_weeks):
+                    week_x = static_total + (i * week_width)
+                    # Thicker inner vertical grid (0.8pt)
+                    drawing.add(Rect(week_x, row_y, week_width, row_height, fillColor=week_bg, strokeColor=week_border, strokeWidth=0.8))
+                    
+                    if row_type == 'pekerjaan':
+                        week_num = week_start + i + 1  # weeks are 1-indexed
+                        
+                        # Look up progress from dicts 
+                        # Adapter format: "{pekerjaan_id}-{week_number}" -> value (flat key)
+                        # Or gantt_data format: {pekerjaan_id: {week_num: value}} (nested)
+                        planned_val = 0.0
+                        actual_val = 0.0
+                        
+                        if planned_progress and row_id:
+                            # Try flat key format first (adapter planned_map)
+                            flat_key = f"{row_id}-{week_num}"
+                            if flat_key in planned_progress:
+                                planned_val = safe_float(planned_progress.get(flat_key, 0))
+                            else:
+                                # Fallback to nested dict format (gantt_data)
+                                row_planned = planned_progress.get(row_id, {})
+                                if isinstance(row_planned, dict):
+                                    planned_val = safe_float(row_planned.get(week_num, 0))
+                        
+                        if actual_progress and row_id:
+                            # Try flat key format first (adapter actual_map)
+                            flat_key = f"{row_id}-{week_num}"
+                            if flat_key in actual_progress:
+                                actual_val = safe_float(actual_progress.get(flat_key, 0))
+                            else:
+                                # Fallback to nested dict format (gantt_data)
+                                row_actual = actual_progress.get(row_id, {})
+                                if isinstance(row_actual, dict):
+                                    actual_val = safe_float(row_actual.get(week_num, 0))
+                        
+                        if planned_val or actual_val:
+                            cell_center = week_x + week_width / 2
+                            if planned_val:
+                                drawing.add(String(cell_center, row_y + row_height * 0.65, f"{planned_val:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle', fillColor=planned_color))
+                            if actual_val:
+                                drawing.add(String(cell_center, row_y + row_height * 0.25, f"{actual_val:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle', fillColor=actual_color))
+            
+            # === Draw thick outer border around entire week columns area ===
+            week_area_x = static_total
+            week_area_width = num_weeks * week_width
+            week_area_top = table_top
+            week_area_bottom = table_bottom
+            thick_border = colors.HexColor('#333333')  # Dark border
+            # Draw outer rectangle (no fill, just stroke)
+            drawing.add(Rect(week_area_x, week_area_bottom, week_area_width, week_area_top - week_area_bottom,
+                           fillColor=None, strokeColor=thick_border, strokeWidth=1.5))
+            
+            # === Kurva S Chart Overlay (on week columns only) ===
+            if len(month_kurva_data) > 0:
+                # Chart coordinate conversion for this month's segment
+                def global_progress_to_y(progress):
+                    return (progress / 100.0) * full_virtual_height
+                
+                def global_y_to_page_y(global_y):
+                    page_global_top = full_virtual_height - header_height - (global_row_start * row_height)
+                    page_global_bottom = page_global_top - (rows_this_page * row_height)
+                    page_data_top = table_top - header_height
+                    page_data_bottom = table_bottom
+                    if page_global_top == page_global_bottom:
+                        return page_data_bottom
+                    t = (global_y - page_global_bottom) / (page_global_top - page_global_bottom)
+                    return page_data_bottom + t * (page_data_top - page_data_bottom)
+                
+                def week_to_x(week_idx_in_month):
+                    return static_total + (week_idx_in_month * week_width) + week_width / 2
+                
+                visible_min_y = table_bottom
+                visible_max_y = table_top - header_height
+                
+                def clip_line_to_page(y1, y2, x1, x2, min_y, max_y):
+                    if (y1 > max_y and y2 > max_y) or (y1 < min_y and y2 < min_y):
+                        return None
+                    clipped_y1, clipped_y2, clipped_x1, clipped_x2 = y1, y2, x1, x2
+                    if y1 > max_y:
+                        t = (max_y - y2) / (y1 - y2)
+                        clipped_y1, clipped_x1 = max_y, x2 + t * (x1 - x2)
+                    elif y1 < min_y:
+                        t = (min_y - y2) / (y1 - y2)
+                        clipped_y1, clipped_x1 = min_y, x2 + t * (x1 - x2)
+                    if y2 > max_y:
+                        t = (max_y - y1) / (y2 - y1)
+                        clipped_y2, clipped_x2 = max_y, x1 + t * (x2 - x1)
+                    elif y2 < min_y:
+                        t = (min_y - y1) / (y2 - y1)
+                        clipped_y2, clipped_x2 = min_y, x1 + t * (x2 - x1)
+                    return (clipped_x1, clipped_y1, clipped_x2, clipped_y2)
+                
+                # Start from previous month's end value (or 0 if month 1)
+                if week_start > 0 and week_start <= len(kurva_s_data):
+                    prev_planned = kurva_s_data[week_start - 1].get('planned', 0) or 0
+                    prev_actual = kurva_s_data[week_start - 1].get('actual', 0) or 0
+                else:
+                    prev_planned, prev_actual = 0, 0
+                
+                start_x = static_total
+                start_y_planned = global_y_to_page_y(global_progress_to_y(prev_planned))
+                start_y_actual = global_y_to_page_y(global_progress_to_y(prev_actual))
+                
+                # Planned curve
+                planned_points = [(start_x, start_y_planned)]
+                for i, data in enumerate(month_kurva_data):
+                    planned_val = data.get('planned', 0) or 0
+                    planned_points.append((week_to_x(i), global_y_to_page_y(global_progress_to_y(planned_val))))
+                
+                for j in range(len(planned_points) - 1):
+                    x1, y1 = planned_points[j]
+                    x2, y2 = planned_points[j + 1]
+                    clipped = clip_line_to_page(y1, y2, x1, x2, visible_min_y, visible_max_y)
+                    if clipped:
+                        drawing.add(Line(clipped[0], clipped[1], clipped[2], clipped[3], strokeColor=planned_color, strokeWidth=2))
+                
+                for px, py in planned_points[1:]:
+                    if visible_min_y <= py <= visible_max_y:
+                        drawing.add(Rect(px-3, py-3, 6, 6, fillColor=planned_color, strokeColor=colors.white, strokeWidth=1))
+                
+                # Actual curve
+                actual_points = [(start_x, start_y_actual)]
+                for i, data in enumerate(month_kurva_data):
+                    actual_val = data.get('actual', 0) or 0
+                    actual_points.append((week_to_x(i), global_y_to_page_y(global_progress_to_y(actual_val))))
+                
+                for j in range(len(actual_points) - 1):
+                    x1, y1 = actual_points[j]
+                    x2, y2 = actual_points[j + 1]
+                    clipped = clip_line_to_page(y1, y2, x1, x2, visible_min_y, visible_max_y)
+                    if clipped:
+                        drawing.add(Line(clipped[0], clipped[1], clipped[2], clipped[3], strokeColor=actual_color, strokeWidth=2))
+                
+                for ax, ay in actual_points[1:]:
+                    if visible_min_y <= ay <= visible_max_y:
+                        drawing.add(Rect(ax-3, ay-3, 6, 6, fillColor=actual_color, strokeColor=colors.white, strokeWidth=1))
+            
+            # === Legend (first page only) - positioned above table, aligned with week columns ===
+            if is_first_page:
+                # Position legend in chart overlay area, right side (aligned with week columns)
+                legend_x = static_total + 10  # Start from week columns area
+                legend_y_top = table_top + chart_overlay_height - 5  # Above table in chart area
+                
+                # Vertical layout (stacked)
+                # Rencana line
+                drawing.add(Rect(legend_x, legend_y_top - 8, 10, 8, fillColor=planned_color))
+                drawing.add(String(legend_x + 13, legend_y_top - 7, 'Rencana', fontSize=7, fontName='Helvetica'))
+                # Realisasi line (below Rencana)
+                drawing.add(Rect(legend_x, legend_y_top - 20, 10, 8, fillColor=actual_color))
+                drawing.add(String(legend_x + 13, legend_y_top - 19, 'Realisasi', fontSize=7, fontName='Helvetica'))
+            
+            # === Signature section REMOVED per user request ===
+            
+            drawings.append(drawing)
+        
+        return drawings
     
     def _build_pekerjaan_table_with_kurva_overlay(
         self, 

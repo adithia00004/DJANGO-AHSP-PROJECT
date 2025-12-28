@@ -574,6 +574,19 @@ class ExportManager:
             data['executive_summary'] = report_data.get('executive_summary', {})
             data['hierarchy_progress'] = report_data.get('hierarchy_progress', [])
             data['detail_table'] = report_data.get('detail_table', {})
+            # Kurva S chart data (cumulative only)
+            data['kurva_s_data'] = report_data.get('kurva_s_data', [])
+            data['cumulative_end_week'] = report_data.get('cumulative_end_week', 0)
+            # ALL weekly columns for full table
+            data['all_weekly_columns'] = report_data.get('all_weekly_columns', [])
+            data['total_project_weeks'] = report_data.get('total_project_weeks', 0)
+            # Filtered columns (backward compat)
+            data['weekly_columns'] = report_data.get('weekly_columns', [])
+            # Row data
+            data['base_rows'] = report_data.get('base_rows', [])
+            data['hierarchy'] = report_data.get('hierarchy', {})
+            data['planned_map'] = report_data.get('planned_map', {})
+            data['actual_map'] = report_data.get('actual_map', {})
             if report_type == 'monthly':
                 data['month'] = report_data.get('month', period)
             else:

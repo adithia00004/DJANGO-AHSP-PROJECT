@@ -106,6 +106,9 @@ export class TanStackGridManager {
         event.stopPropagation();
       }
     }, { passive: true });
+
+    // NOTE: Tab navigation between cells is intentionally disabled
+    // due to virtualization conflicts. Use Enter for vertical navigation.
   }
 
   updateData({ tree = [], timeColumns = [], inputMode, timeScale } = {}) {
@@ -624,8 +627,39 @@ export class TanStackGridManager {
           editHandler(event);
         } else if (event.key === 'Tab') {
           event.preventDefault();
+
+          // Calculate target column
+          const columns = this.currentColumns || [];
+          const ids = columns.map(col => col.id);
+          const currentIndex = ids.indexOf(baseContext.columnId);
           const direction = event.shiftKey ? 'prev' : 'next';
-          this._focusSiblingCell(baseContext, direction);
+          const step = direction === 'prev' ? -1 : 1;
+          let targetIndex = currentIndex + step;
+
+          // Find next editable column
+          while (targetIndex >= 0 && targetIndex < columns.length) {
+            if (this._isColumnEditable(columns[targetIndex])) {
+              break;
+            }
+            targetIndex += step;
+          }
+
+          if (targetIndex < 0 || targetIndex >= columns.length) return;
+
+          const targetColumnId = columns[targetIndex].id;
+          const safeRowId = CSS.escape(baseContext.pekerjaanId);
+          const safeColumnId = CSS.escape(targetColumnId);
+
+          // CRITICAL: Only navigate if target cell EXISTS in DOM
+          const targetCell = this.bodyInner?.querySelector(
+            `.tanstack-grid-cell[data-row-id="${safeRowId}"][data-column-id="${safeColumnId}"]`
+          );
+
+          if (targetCell) {
+            // Target exists - safe to navigate
+            targetCell.focus();
+          }
+          // If target doesn't exist, do nothing (block to prevent jump)
         } else if (this._shouldAutoBeginEditFromKey(event)) {
           event.preventDefault();
           this._beginEditCell(cellEl, baseContext);

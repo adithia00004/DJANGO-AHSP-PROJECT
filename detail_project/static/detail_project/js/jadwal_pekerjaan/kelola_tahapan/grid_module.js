@@ -459,10 +459,18 @@
         enterEditMode(cell, ctx);
         event.preventDefault();
         break;
-      case 'Tab':
-        navigateCell(ctx, event.shiftKey ? 'left' : 'right');
+      case 'Tab': {
+        const direction = event.shiftKey ? 'left' : 'right';
+        console.log('[Grid] Tab pressed, direction:', direction, 'current cell:', cell.dataset.colId);
+
+        // CRITICAL: Prevent default BEFORE navigation
+        // This stops browser from jumping to next focusable element
         event.preventDefault();
+        event.stopPropagation();
+
+        navigateCell(ctx, direction);
         break;
+      }
       case 'ArrowUp':
         navigateCell(ctx, 'up');
         event.preventDefault();
@@ -637,10 +645,19 @@
   }
 
   function navigateCell(ctx, direction) {
-    if (!ctx.state.currentCell) return;
+    console.log('[Grid] navigateCell called, direction:', direction);
+
+    if (!ctx.state.currentCell) {
+      console.warn('[Grid] No current cell');
+      return;
+    }
 
     const currentRow = ctx.state.currentCell.closest('tr');
-    if (!currentRow) return;
+    if (!currentRow) {
+      console.warn('[Grid] No current row');
+      return;
+    }
+
     const currentIndex = Array.from(currentRow.children).indexOf(ctx.state.currentCell);
     let nextCell = null;
 
@@ -660,20 +677,233 @@
         break;
       }
       case 'left':
-        nextCell = ctx.state.currentCell.previousElementSibling;
-        break;
       case 'right':
-        nextCell = ctx.state.currentCell.nextElementSibling;
+        console.log('[Grid] Horizontal navigation detected');
+        // For horizontal navigation, always check if we need to scroll first
+        nextCell = findNextHorizontalCell(ctx, direction, currentRow, currentIndex);
+        console.log('[Grid] findNextHorizontalCell returned:', nextCell);
         break;
       default:
         break;
     }
 
-    if (nextCell && nextCell.classList.contains('time-cell')) {
+    // Handle different return values
+    if (nextCell === 'scrolling') {
+      // Scroll is happening asynchronously - do nothing here
+      // scrollToRevealNextCell will handle the focus
+      console.log('[Grid] Scrolling in progress - async focus will happen');
+      return;
+    }
+
+    if (nextCell && typeof nextCell === 'object' && nextCell.classList && nextCell.classList.contains('time-cell')) {
+      console.log('[Grid] Moving to next cell:', nextCell.dataset.colId);
       ctx.state.currentCell = nextCell;
       nextCell.focus();
       nextCell.click();
+    } else {
+      console.log('[Grid] No next cell found');
     }
+  }
+
+  /**
+   * Find next cell in horizontal direction, scrolling if necessary
+   * This prevents Tab from jumping to first column when reaching viewport edge
+   *
+   * STRATEGY:
+   * 1. Check if next cell exists in DOM (already rendered)
+   * 2. If yes -> return it immediately
+   * 3. If no -> check if column exists in state.timeColumns
+   * 4. If column exists -> trigger scroll and async focus
+   * 5. If no more columns -> stay at current position
+   */
+  function findNextHorizontalCell(ctx, direction, currentRow, currentIndex) {
+    const currentCell = ctx.state.currentCell;
+    const currentColId = currentCell.dataset.colId;
+
+    console.log('[Grid] findNextHorizontalCell - current col:', currentColId, 'direction:', direction);
+
+    // Find current column index in state.timeColumns (the source of truth)
+    if (!ctx.state.timeColumns || !Array.isArray(ctx.state.timeColumns)) {
+      console.warn('[Grid] No timeColumns in state');
+      return null;
+    }
+
+    console.log('[Grid] Total columns:', ctx.state.timeColumns.length);
+
+    const currentColIndex = ctx.state.timeColumns.findIndex(col => String(col.id) === String(currentColId));
+    console.log('[Grid] Current col index:', currentColIndex);
+
+    if (currentColIndex === -1) {
+      // Current column not found in state - fallback to DOM navigation
+      console.warn('[Grid] Current column not found in timeColumns, using DOM fallback');
+      return direction === 'right'
+        ? currentCell.nextElementSibling
+        : currentCell.previousElementSibling;
+    }
+
+    // Calculate target column index
+    const targetColIndex = direction === 'right' ? currentColIndex + 1 : currentColIndex - 1;
+    console.log('[Grid] Target col index:', targetColIndex);
+
+    // Check if target column exists in state
+    if (targetColIndex < 0 || targetColIndex >= ctx.state.timeColumns.length) {
+      // We're at the actual edge - no more columns exist
+      console.log('[Grid] At edge - no more columns');
+      return null;
+    }
+
+    const targetColId = ctx.state.timeColumns[targetColIndex].id;
+    console.log('[Grid] Target col ID:', targetColId);
+
+    // CRITICAL: Check if current cell is at viewport edge
+    // If yes, we MUST scroll first before checking DOM
+    const isAtViewportEdge = isCellAtViewportEdge(ctx, currentCell, direction);
+    console.log('[Grid] Is at viewport edge?', isAtViewportEdge);
+
+    if (isAtViewportEdge) {
+      // At viewport edge - MUST scroll first
+      console.log('[Grid] At viewport edge - forcing scroll');
+      scrollToRevealNextCell(ctx, direction, currentRow, currentIndex, targetColId);
+      // Return special marker to prevent default Tab behavior
+      return 'scrolling';
+    }
+
+    // Not at edge - try to find the target cell in DOM
+    const targetCell = currentRow.querySelector(`[data-col-id="${targetColId}"]`);
+
+    if (targetCell && targetCell.classList.contains('time-cell')) {
+      // Cell already rendered - return it
+      console.log('[Grid] Target cell found in DOM');
+      return targetCell;
+    }
+
+    // Cell not rendered yet but not at edge - still scroll
+    console.log('[Grid] Target cell NOT in DOM - triggering scroll');
+    scrollToRevealNextCell(ctx, direction, currentRow, currentIndex, targetColId);
+
+    // Return special marker to prevent default Tab behavior
+    return 'scrolling';
+  }
+
+  /**
+   * Check if current cell is at the edge of viewport
+   * This determines if we need to scroll before Tab navigation
+   */
+  function isCellAtViewportEdge(ctx, cell, direction) {
+    const dom = resolveDom(ctx.state);
+    const scrollContainer = dom.rightPanelScroll;
+
+    if (!scrollContainer) {
+      return false;
+    }
+
+    const cellRect = cell.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    if (direction === 'right') {
+      // Check if cell is near right edge of viewport
+      // Consider edge if cell's right is within 2x cell width of container's right
+      const distanceToEdge = containerRect.right - cellRect.right;
+      const threshold = cellRect.width * 2;
+      console.log('[Grid] Distance to right edge:', distanceToEdge, 'threshold:', threshold);
+      return distanceToEdge < threshold;
+    } else if (direction === 'left') {
+      // Check if cell is near left edge of viewport
+      const distanceToEdge = cellRect.left - containerRect.left;
+      const threshold = cellRect.width * 2;
+      console.log('[Grid] Distance to left edge:', distanceToEdge, 'threshold:', threshold);
+      return distanceToEdge < threshold;
+    }
+
+    return false;
+  }
+
+  /**
+   * Scroll viewport to reveal next cell, then focus it
+   * Handles virtual scrolling where cells are not rendered until visible
+   *
+   * IMPORTANT: This function prevents Tab from jumping to column 1
+   * by ensuring horizontal scroll happens before focus moves
+   *
+   * @param {Object} ctx - Context object with state and DOM refs
+   * @param {string} direction - 'left' or 'right'
+   * @param {HTMLElement} currentRow - Current row element
+   * @param {number} currentIndex - Current cell index in row (unused but kept for compatibility)
+   * @param {string|number} targetColId - Target column ID to focus after scroll
+   */
+  function scrollToRevealNextCell(ctx, direction, currentRow, currentIndex, targetColId) {
+    console.log('[Grid] scrollToRevealNextCell - target col:', targetColId, 'direction:', direction);
+
+    const dom = resolveDom(ctx.state);
+    const scrollContainer = dom.rightPanelScroll;
+
+    if (!scrollContainer) {
+      console.warn('[Grid] No scroll container found');
+      return;
+    }
+
+    const currentCell = ctx.state.currentCell;
+    const cellRect = currentCell.getBoundingClientRect();
+    const scrollLeft = scrollContainer.scrollLeft;
+
+    console.log('[Grid] Current scroll:', scrollLeft, 'Cell width:', cellRect.width);
+
+    // Calculate how much to scroll
+    // We want to reveal the next cell by scrolling exactly one cell width
+    let scrollAmount = 0;
+
+    if (direction === 'right') {
+      // Scroll right: move by current cell width to reveal next column
+      scrollAmount = cellRect.width;
+    } else if (direction === 'left') {
+      // Scroll left: move by current cell width to reveal previous column
+      scrollAmount = -cellRect.width;
+    }
+
+    const targetScrollLeft = Math.max(0, scrollLeft + scrollAmount);
+    console.log('[Grid] Target scroll:', targetScrollLeft);
+
+    // Perform scroll
+    scrollContainer.scrollLeft = targetScrollLeft;
+    console.log('[Grid] Scroll set to:', scrollContainer.scrollLeft);
+
+    // Use double RAF to ensure DOM has updated after scroll
+    // First RAF: browser schedules repaint
+    requestAnimationFrame(() => {
+      console.log('[Grid] First RAF');
+      // Second RAF: repaint has completed, cells should be rendered
+      requestAnimationFrame(() => {
+        console.log('[Grid] Second RAF - looking for target cell');
+        // Try to find the target cell by column ID (most reliable)
+        let nextCell = null;
+
+        if (targetColId) {
+          nextCell = currentRow.querySelector(`[data-col-id="${targetColId}"]`);
+          console.log('[Grid] Query by targetColId result:', nextCell);
+        }
+
+        // Fallback: try sibling navigation
+        if (!nextCell) {
+          console.log('[Grid] Trying sibling fallback');
+          if (direction === 'right') {
+            nextCell = currentCell.nextElementSibling;
+          } else if (direction === 'left') {
+            nextCell = currentCell.previousElementSibling;
+          }
+          console.log('[Grid] Sibling navigation result:', nextCell);
+        }
+
+        if (nextCell && nextCell.classList.contains('time-cell')) {
+          // Success! Cell is now rendered after scroll
+          console.log('[Grid] SUCCESS - focusing on:', nextCell.dataset.colId);
+          ctx.state.currentCell = nextCell;
+          nextCell.focus();
+          nextCell.click();
+        } else {
+          console.error('[Grid] FAILED - no cell found after scroll');
+        }
+      });
+    });
   }
 
   function syncHeaderHeights(stateOverride) {
