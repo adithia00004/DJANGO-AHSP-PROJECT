@@ -11,7 +11,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
     SimpleDocTemplate, BaseDocTemplate, PageTemplate, Frame,
-    Table, TableStyle, Paragraph, 
+    Table, TableStyle, Paragraph, Flowable,
     Spacer, PageBreak, KeepTogether, Image, NextPageTemplate
 )
 from reportlab.graphics.shapes import Drawing, String, Line, Rect, Circle
@@ -59,19 +59,42 @@ class NumberedCanvas(pdf_canvas.Canvas):
     and adds page numbers at the end.
     
     Features:
-    - Header: Project name (left) | Section title (right)
-    - Footer: Page X of Y (center) | Print date (right)
+    - Header: Project name (left) | Segment title with page (1/X) (right)
+    - Footer: Watermark (right)
+    - Segment-aware page numbering that resets per segment
     """
     
     def __init__(self, *args, project_name='', section_title='', **kwargs):
         self._project_name = project_name
         self._section_title = section_title
         self._page_count = 0
+        
+        # Segment tracking for (1/X) format
+        self._current_segment = ''           # Current segment name e.g. "Rincian Progress Bulan ke-3"
+        self._segment_pages = {}             # {segment_name: [page_numbers]}
+        self._page_segments = {}             # {absolute_page: segment_name}
+        self._segment_page_within = {}       # {absolute_page: page_within_segment}
+        
         super().__init__(*args, **kwargs)
     
+    def set_segment(self, segment_name):
+        """Set current segment name. Call this when entering a new segment."""
+        self._current_segment = segment_name
+        if segment_name and segment_name not in self._segment_pages:
+            self._segment_pages[segment_name] = []
+    
     def showPage(self):
-        """Called when a page finishes - draw decorations first."""
+        """Called when a page finishes - track segment and draw decorations."""
         self._page_count += 1
+        
+        # Track which segment this page belongs to
+        if self._current_segment:
+            self._page_segments[self._page_count] = self._current_segment
+            if self._current_segment not in self._segment_pages:
+                self._segment_pages[self._current_segment] = []
+            self._segment_pages[self._current_segment].append(self._page_count)
+            # Calculate page within segment
+            self._segment_page_within[self._page_count] = len(self._segment_pages[self._current_segment])
         
         # Draw header/footer on THIS page BEFORE finishing
         self._draw_header_footer()
@@ -81,6 +104,8 @@ class NumberedCanvas(pdf_canvas.Canvas):
     
     def save(self):
         """Save with page decorations already drawn."""
+        # Second pass: Update segment page totals (X in 1/X)
+        # Note: This happens after all pages are built, so we know totals
         super().save()
     
     def _draw_header_footer(self):
@@ -101,7 +126,7 @@ class NumberedCanvas(pdf_canvas.Canvas):
         line_color = colors.HexColor(UTS.LIGHT_BORDER)
         
         # ===== HEADER (closer to top edge) =====
-        header_offset = 8 * mm  # Distance from top edge (was 12mm)
+        header_offset = 8 * mm  # Distance from top edge
         header_y = height - header_offset
         
         # Header line
@@ -115,22 +140,26 @@ class NumberedCanvas(pdf_canvas.Canvas):
         project_name = (self._project_name or '')[:50]
         self.drawString(side_margin, header_y, project_name)
         
-        # Section title (right)
-        section_title = (self._section_title or '')[:30]
-        self.drawRightString(width - side_margin, header_y, section_title)
+        # Segment title with page number (right)
+        segment_name = self._page_segments.get(self._page_count, self._section_title or '')
+        page_within = self._segment_page_within.get(self._page_count, 0)
+        
+        if segment_name and page_within > 0:
+            # Format: "Segment Name - Halaman 1"
+            # Note: Total unknown during single-pass, would need two-pass for (1/X) format
+            right_text = f"{segment_name} - Halaman {page_within}"
+        else:
+            right_text = (self._section_title or '')[:30]
+        
+        self.drawRightString(width - side_margin, header_y, right_text[:60])
         
         # ===== FOOTER (closer to bottom edge) =====
-        footer_offset = 6 * mm  # Distance from bottom edge (was 12mm)
+        footer_offset = 6 * mm  # Distance from bottom edge
         footer_y = footer_offset
         
         # Footer line
         self.setStrokeColor(line_color)
         self.line(side_margin, footer_y + 6*mm, width - side_margin, footer_y + 6*mm)
-        
-        # Page number removed per user request
-        # display_page = self._page_count - 1
-        # page_text = f'Halaman {display_page}'
-        # self.drawCentredString(width / 2, footer_y, page_text)
         
         # Watermark (right)
         self.drawRightString(width - side_margin, footer_y, 'Dashboard-RAB.com')
@@ -149,6 +178,36 @@ def make_numbered_canvas(project_name='', section_title=''):
         return NumberedCanvas(*args, project_name=project_name, 
                             section_title=section_title, **kwargs)
     return canvas_maker
+
+
+class SegmentMarker(Flowable):
+    """
+    Invisible flowable that signals a segment change to NumberedCanvas.
+    
+    When this flowable is drawn, it tells the canvas to start a new segment
+    for page numbering purposes.
+    
+    Usage:
+        story.append(SegmentMarker("Rincian Progress Bulan ke-3"))
+        story.append(rincian_table)
+        story.append(SegmentMarker(""))  # End segment
+    """
+    
+    def __init__(self, segment_name):
+        Flowable.__init__(self)
+        self.segment_name = segment_name
+        self.width = 0
+        self.height = 0
+    
+    def draw(self):
+        """Signal segment change to canvas."""
+        canvas = self.canv
+        if hasattr(canvas, 'set_segment'):
+            canvas.set_segment(self.segment_name)
+    
+    def wrap(self, availWidth, availHeight):
+        """This flowable takes no space."""
+        return (0, 0)
 
 
 class PDFExporter(ConfigExporterBase):
@@ -531,6 +590,9 @@ class PDFExporter(ConfigExporterBase):
                     story.append(NextPageTemplate('landscape'))
                     story.append(PageBreak())
                     
+                    # Segment marker for Kurva S Landscape
+                    story.append(SegmentMarker(f"Kurva S Lengkap Bulan ke-{month}"))
+                    
                     section_title = ParagraphStyle(
                         'SectionHeader',
                         fontSize=14,
@@ -599,6 +661,9 @@ class PDFExporter(ConfigExporterBase):
                     story.append(NextPageTemplate('portrait_a3'))
                     story.append(PageBreak())
                     
+                    # Start Kurva S Portrait segment
+                    story.append(SegmentMarker(f"Kurva S Bulanan Bulan ke-{month}"))
+                    
                     portrait_title = ParagraphStyle(
                         'PortraitSectionHeader',
                         fontSize=14,
@@ -635,6 +700,8 @@ class PDFExporter(ConfigExporterBase):
                 
                 # Return to portrait for next month's cover (except last month)
                 if month_idx < len(months_data) - 1:
+                    # Clear segment before cover page
+                    story.append(SegmentMarker(""))
                     story.append(NextPageTemplate('portrait'))
                     story.append(PageBreak())
         
@@ -698,6 +765,9 @@ class PDFExporter(ConfigExporterBase):
                         # Switch to LANDSCAPE for Kurva S pages
                         story.append(NextPageTemplate('landscape'))
                         story.append(PageBreak())
+                        
+                        # Segment marker for Kurva S Landscape
+                        story.append(SegmentMarker(f"Kurva S Lengkap Bulan ke-{month}"))
                         
                         # Title appears after the header line (which is drawn by NumberedCanvas)
                         section_title = ParagraphStyle(
@@ -775,6 +845,9 @@ class PDFExporter(ConfigExporterBase):
                         # Switch to PORTRAIT A3 for table-focused view (750pt width)
                         story.append(NextPageTemplate('portrait_a3'))
                         story.append(PageBreak())
+                        
+                        # Start Kurva S Portrait segment
+                        story.append(SegmentMarker(f"Kurva S Bulanan Bulan ke-{month}"))
                         
                         # Title for portrait page
                         portrait_title = ParagraphStyle(
@@ -2072,35 +2145,33 @@ class PDFExporter(ConfigExporterBase):
         # --- RIGHT COLUMN: RINGKASAN PROGRESS ---
         ringkasan_header = Paragraph("RINGKASAN PROGRESS", section_title_style)
         
-        # Status color
+        # Deviation color: Green positive, Red negative, Yellow/Amber zero
         deviation = summary.get('deviation_cumulative', 0)
-        if deviation >= 0:
-            status_text = "ON TRACK"
-            status_color = UTS.STATUS_ON_TRACK
-        elif deviation >= -5:
-            status_text = "SEDIKIT TERLAMBAT"
-            status_color = UTS.STATUS_BEHIND
+        if deviation > 0:
+            deviation_color = '#22c55e'  # Green
+        elif deviation < 0:
+            deviation_color = '#ef4444'  # Red
         else:
-            status_text = "TERLAMBAT"
-            status_color = UTS.STATUS_CRITICAL
+            deviation_color = '#eab308'  # Yellow/Amber
+        
+        # Format deviation with color
+        deviation_para = Paragraph(
+            f'<font color="{deviation_color}"><b>{deviation:+.2f}%</b></font>',
+            ParagraphStyle('Deviation', fontSize=8, fontName='Helvetica')
+        )
         
         ringkasan_data = [
             ['Rencana Bulan Ini', ':', f"{summary.get('target_period', 0):.2f}%"],
             ['Actual Bulan Ini', ':', f"{summary.get('actual_period', 0):.2f}%"],
             ['Akumulasi Rencana', ':', f"{summary.get('cumulative_target', 0):.2f}%"],
             ['Akumulasi Actual', ':', f"{summary.get('cumulative_actual', 0):.2f}%"],
-            ['Deviasi', ':', f"{deviation:+.2f}%"],
+            ['Deviasi', ':', deviation_para],  # Colored deviation
         ]
         
         ringkasan_cells = []
         for row in ringkasan_data:
             ringkasan_cells.append(row)
-        # Add status row with color
-        status_para = Paragraph(
-            f'<font color="{status_color}"><b>{status_text}</b></font>',
-            ParagraphStyle('Status', fontSize=8, fontName='Helvetica')
-        )
-        ringkasan_cells.append(['Status', ':', status_para])
+        # Status row removed - deviation color now indicates status
         
         ringkasan_table = Table(ringkasan_cells, colWidths=[40*mm, 3*mm, 47*mm])
         ringkasan_table.setStyle(TableStyle([
@@ -2136,23 +2207,75 @@ class PDFExporter(ConfigExporterBase):
         # ==============================================
         # SEGMENT 3: TABEL RINCIAN PROGRESS
         # ==============================================
+        # Start segment tracking for page numbering (X/Y format)
+        segment_name = f"Rincian Progress Bulan ke-{month}"
+        elements.append(SegmentMarker(segment_name))
+        
         elements.append(Paragraph("RINCIAN PROGRESS", section_title_style))
         elements.append(Spacer(1, 2*mm))
         
-        # Table headers - 7 columns now
-        # URAIAN | VOLUME | HARGA SATUAN | TOTAL HARGA | BOBOT | PROGRESS INI | PROGRESS LALU
+        # Table headers - 8 columns now
+        # URAIAN | VOLUME | HARGA SATUAN | TOTAL HARGA | BOBOT | KUM. LALU | PROGRESS INI | KUM. INI
         headers = [
             'URAIAN PEKERJAAN', 
             'VOLUME', 
             'HARGA\nSATUAN', 
             'TOTAL\nHARGA', 
             'BOBOT\n(%)', 
+            'KUMULATIF\nBULAN LALU',
             'PROGRESS\nBULAN INI', 
-            'PROGRESS\nBULAN LALU'
+            'KUMULATIF\nBULAN INI'
         ]
         
-        def P(text, bold=False, align='LEFT', size=7, color=None):
+        # Smart truncation calculation
+        # Column width: 55mm = 155.9pt, Avg char width for Helvetica 7pt ≈ 2.5pt
+        # With padding (2mm each side = ~5.7pt each), effective width = 155.9 - 11.4 = 144.5pt
+        URAIAN_COL_WIDTH_PT = 144.5  # Effective width after padding
+        
+        def smart_truncate(text, font_size=7, max_lines=2, indent_level=0):
+            """
+            Smart truncation based on actual column width and font size.
+            
+            Args:
+                text: Text to truncate
+                font_size: Font size in points
+                max_lines: Maximum lines allowed (default 2)
+                indent_level: Hierarchy level for indent (2 spaces per level)
+            """
+            if not text:
+                return ''
+            text = str(text)
+            
+            # Average char width estimation for Helvetica
+            # 7pt ≈ 2.5pt per char, 7.5pt ≈ 2.7pt, 8pt ≈ 2.9pt
+            avg_char_width = font_size * 0.38  # Empirical factor for Helvetica
+            
+            # Calculate chars per line
+            chars_per_line = int(URAIAN_COL_WIDTH_PT / avg_char_width)
+            
+            # Subtract indent (2 chars per level)
+            indent_chars = indent_level * 2
+            effective_chars_per_line = chars_per_line - indent_chars
+            
+            # Max chars = chars_per_line * max_lines
+            max_chars = effective_chars_per_line * max_lines
+            
+            if len(text) <= max_chars:
+                return text
+            
+            return text[:max_chars-3].rstrip() + '...'
+        
+        def P(text, bold=False, align='LEFT', size=7, color=None, max_chars=None, max_lines=None, indent_level=0):
             """Helper to create Paragraph with style."""
+            # Smart truncate if max_lines specified
+            if max_lines and text:
+                text = smart_truncate(str(text), font_size=size, max_lines=max_lines, indent_level=indent_level)
+            # Legacy: truncate if max_chars specified
+            elif max_chars and text:
+                text = str(text)
+                if len(text) > max_chars:
+                    text = text[:max_chars-3].rstrip() + '...'
+            
             al = {'LEFT': TA_LEFT, 'CENTER': TA_CENTER, 'RIGHT': TA_RIGHT}.get(align, TA_LEFT)
             st = ParagraphStyle(
                 'Cell', 
@@ -2183,8 +2306,9 @@ class PDFExporter(ConfigExporterBase):
         data_rows = []
         total_harga = 0
         total_bobot = 0
+        total_kumulatif_lalu = 0
         total_progress_ini = 0
-        total_progress_lalu = 0
+        total_progress_kumulatif = 0
         
         for item in hierarchy_data:
             level = item.get('level', 0)
@@ -2196,6 +2320,10 @@ class PDFExporter(ConfigExporterBase):
             bobot = item.get('bobot', 0) or 0
             progress_ini = item.get('progress_bulan_ini', 0) or 0
             progress_lalu = item.get('progress_bulan_lalu', 0) or 0
+            # Kumulatif bulan lalu = same as progress_lalu (cumulative up to prev month)
+            kumulatif_lalu = progress_lalu
+            # Calculate cumulative progress = previous + current month
+            progress_kumulatif = progress_lalu + progress_ini
             
             # Indentation for hierarchy
             indent = "  " * level
@@ -2225,7 +2353,8 @@ class PDFExporter(ConfigExporterBase):
                 harga_fmt = ""
                 bobot_fmt = ""
                 progress_ini_fmt = ""
-                progress_lalu_fmt = ""
+                kumulatif_lalu_fmt = ""
+                progress_kumulatif_fmt = ""
             else:
                 # Pekerjaan: show all values
                 volume_fmt = f"{volume:,.2f}".replace(',', '.') if volume > 0 else "-"
@@ -2233,16 +2362,18 @@ class PDFExporter(ConfigExporterBase):
                 harga_fmt = f"Rp {harga:,.0f}".replace(',', '.') if harga > 0 else "-"
                 bobot_fmt = f"{bobot:.2f}%" if bobot > 0 else "-"
                 progress_ini_fmt = f"{progress_ini:.2f}%"
-                progress_lalu_fmt = f"{progress_lalu:.2f}%"
+                kumulatif_lalu_fmt = f"{kumulatif_lalu:.2f}%"
+                progress_kumulatif_fmt = f"{progress_kumulatif:.2f}%"
             
             row = [
-                P(display_name, bold=row_bold, align='LEFT', size=font_size),
+                P(display_name, bold=row_bold, align='LEFT', size=font_size, max_lines=2, indent_level=level),  # Smart truncation
                 P(volume_fmt, bold=row_bold, align='CENTER', size=font_size),
-                P(harga_satuan_fmt, bold=row_bold, align='RIGHT', size=font_size),
-                P(harga_fmt, bold=row_bold, align='RIGHT', size=font_size),
+                P(harga_satuan_fmt, bold=row_bold, align='CENTER', size=font_size),
+                P(harga_fmt, bold=row_bold, align='CENTER', size=font_size),
                 P(bobot_fmt, bold=row_bold, align='CENTER', size=font_size),
+                P(kumulatif_lalu_fmt, bold=row_bold, align='CENTER', size=font_size),
                 P(progress_ini_fmt, bold=row_bold, align='CENTER', size=font_size),
-                P(progress_lalu_fmt, bold=row_bold, align='CENTER', size=font_size),
+                P(progress_kumulatif_fmt, bold=row_bold, align='CENTER', size=font_size),
             ]
             data_rows.append((row, item_type))
             
@@ -2250,8 +2381,9 @@ class PDFExporter(ConfigExporterBase):
             if item_type == 'pekerjaan':
                 total_harga += harga
                 total_bobot += bobot
+                total_kumulatif_lalu += kumulatif_lalu
                 total_progress_ini += progress_ini
-                total_progress_lalu += progress_lalu
+                total_progress_kumulatif += progress_kumulatif
         
         # Fix bobot rounding - if close to 100%, round to exactly 100%
         if 99.9 <= total_bobot <= 100.1:
@@ -2261,11 +2393,12 @@ class PDFExporter(ConfigExporterBase):
         total_row = [
             P("TOTAL", bold=True, align='LEFT', size=7),
             P("", bold=True, align='CENTER', size=7),
-            P("", bold=True, align='RIGHT', size=7),
-            P(f"Rp {total_harga:,.0f}".replace(',', '.'), bold=True, align='RIGHT', size=7),
+            P("", bold=True, align='CENTER', size=7),  # Changed to CENTER
+            P(f"Rp {total_harga:,.0f}".replace(',', '.'), bold=True, align='CENTER', size=7),  # Changed to CENTER
             P(f"{total_bobot:.2f}%", bold=True, align='CENTER', size=7),
+            P(f"{total_kumulatif_lalu:.2f}%", bold=True, align='CENTER', size=7),
             P(f"{total_progress_ini:.2f}%", bold=True, align='CENTER', size=7),
-            P(f"{total_progress_lalu:.2f}%", bold=True, align='CENTER', size=7),
+            P(f"{total_progress_kumulatif:.2f}%", bold=True, align='CENTER', size=7),
         ]
         
         # Build full table data
@@ -2275,50 +2408,79 @@ class PDFExporter(ConfigExporterBase):
         table_data.append(total_row)
         
         # Column widths - A4 Portrait usable ~180mm
-        # URAIAN(60) | VOLUME(14) | H.SATUAN(26) | TOTAL(26) | BOBOT(14) | PROG.INI(23) | PROG.LALU(23) = 186mm
-        col_widths = [60*mm, 14*mm, 26*mm, 26*mm, 14*mm, 23*mm, 23*mm]
+        # URAIAN(55) | VOL(12) | H.SAT(22) | TOTAL(22) | BOBOT(12) | KUM.LALU(18) | PROG.INI(18) | KUM.INI(18) = 177mm
+        col_widths = [55*mm, 12*mm, 22*mm, 22*mm, 12*mm, 18*mm, 18*mm, 18*mm]
         
-        rincian_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        # ==========================================
+        # TABLE SPLITTING FOR KEEPTOGETHER WITH SIGNATURE
+        # ==========================================
+        MIN_ROWS_WITH_SIGNATURE = 5
         
-        # Table styling
-        style_commands = [
-            # Header - blue background, white text
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            # Grid
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(UTS.LIGHT_BORDER)),
-            ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
-            ('LEFTPADDING', (0, 0), (-1, -1), 1*mm),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 1*mm),
-            # Total row (last row)
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8f4f8')),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ]
+        # Common table styling function
+        def apply_table_style(table, rows_data):
+            style_cmds = [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(UTS.PRIMARY_LIGHT)),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(UTS.LIGHT_BORDER)),
+                ('TOPPADDING', (0, 0), (-1, -1), 1.5*mm),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5*mm),
+                ('LEFTPADDING', (0, 0), (-1, -1), 1*mm),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 1*mm),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8f4f8')),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('LINEBEFORE', (5, 0), (5, -1), 1.0, colors.HexColor('#888888')),
+                ('LINEAFTER', (7, 0), (7, -1), 1.0, colors.HexColor('#888888')),
+            ]
+            for i, (_, item_type) in enumerate(rows_data):
+                row_idx = i + 1
+                if item_type == 'klasifikasi':
+                    style_cmds.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#e2e8f0')))
+                elif item_type == 'sub_klasifikasi':
+                    style_cmds.append(('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#f1f5f9')))
+            table.setStyle(TableStyle(style_cmds))
         
-        # Row backgrounds based on type
-        for i, (row, item_type) in enumerate(data_rows):
-            row_idx = i + 1  # +1 for header
-            if item_type == 'klasifikasi':
-                style_commands.append(
-                    ('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#e2e8f0'))
-                )
-            elif item_type == 'sub_klasifikasi':
-                style_commands.append(
-                    ('BACKGROUND', (0, row_idx), (-1, row_idx), colors.HexColor('#f1f5f9'))
-                )
-        
-        rincian_table.setStyle(TableStyle(style_commands))
-        elements.append(rincian_table)
-        
-        # ==============================================
-        # SEGMENT 4: LEMBAR PENGESAHAN
-        # ==============================================
+        # Build signature section
         sig_section = self._build_progress_signature_section(project_info)
-        elements.extend(sig_section)
+        sig_inner = sig_section[0]._content if hasattr(sig_section[0], '_content') else sig_section
+        
+        if len(data_rows) > MIN_ROWS_WITH_SIGNATURE:
+            # SPLIT TABLE: Main table + Closing table
+            split_point = len(data_rows) - MIN_ROWS_WITH_SIGNATURE
+            
+            # Main table
+            main_rows = data_rows[:split_point]
+            main_table_data = [header_row] + [row for row, _ in main_rows]
+            main_table = Table(main_table_data, colWidths=col_widths, repeatRows=1)
+            apply_table_style(main_table, main_rows)
+            elements.append(main_table)
+            
+            # Closing table (5 rows + TOTAL) with signature
+            closing_rows = data_rows[split_point:]
+            closing_table_data = [header_row] + [row for row, _ in closing_rows] + [total_row]
+            closing_table = Table(closing_table_data, colWidths=col_widths)
+            apply_table_style(closing_table, closing_rows)
+            
+            keep_block = [closing_table, Spacer(1, 8*mm)]
+            if isinstance(sig_inner, list):
+                keep_block.extend(sig_inner)
+            else:
+                keep_block.append(sig_inner)
+            elements.append(KeepTogether(keep_block))
+        else:
+            # NO SPLIT: Small table
+            table_data = [header_row] + [row for row, _ in data_rows] + [total_row]
+            rincian_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+            apply_table_style(rincian_table, data_rows)
+            
+            keep_block = [rincian_table, Spacer(1, 8*mm)]
+            if isinstance(sig_inner, list):
+                keep_block.extend(sig_inner)
+            else:
+                keep_block.append(sig_inner)
+            elements.append(KeepTogether(keep_block))
         
         return elements
     
@@ -3542,39 +3704,40 @@ class PDFExporter(ConfigExporterBase):
         # Priority: Fit weeks first, then allocate remaining to static cols
         # =================================================================
         
+        # Left margin for print safety (prevents cutoff)
+        left_margin = 15  # 15pt margin from left edge
+        effective_page_width = page_width - left_margin
+        
         # Week column constraints
         min_week_width = 12  # Minimum for readability (~5pt font)
         max_week_width = 45  # Maximum to prevent excessive whitespace
         
-        # Static columns constraints
-        min_uraian_width = 80   # Minimum for 2-line text ~18 chars
-        max_uraian_width = 350  # Maximum when few weeks (prevent too wide)
-        volume_width = 35
-        satuan_width = 30
-        vol_sat_total = volume_width + satuan_width  # 65pt fixed
+        # Static columns: Only Uraian Pekerjaan (Volume/Satuan removed)
+        min_uraian_width = 150   # Minimum for 2-line text ~25 chars
+        max_uraian_width = 400   # Maximum when few weeks (prevent too wide)
         
         # Calculate ideal week width
-        available_for_weeks = page_width - min_uraian_width - vol_sat_total
+        available_for_weeks = effective_page_width - min_uraian_width
         ideal_week_width = available_for_weeks / num_weeks if num_weeks > 0 else max_week_width
         
         # Apply week width constraints
         if ideal_week_width < min_week_width:
             # Not enough space - weeks at minimum, uraian shrinks
             week_width = min_week_width
-            uraian_width = page_width - (num_weeks * week_width) - vol_sat_total
+            uraian_width = effective_page_width - (num_weeks * week_width)
             uraian_width = max(min_uraian_width, uraian_width)  # Floor at minimum
         elif ideal_week_width > max_week_width:
             # Plenty of space - weeks at maximum, uraian expands
             week_width = max_week_width
-            uraian_width = page_width - (num_weeks * week_width) - vol_sat_total
+            uraian_width = effective_page_width - (num_weeks * week_width)
             uraian_width = min(max_uraian_width, uraian_width)  # Cap at maximum
         else:
             # Goldilocks zone - balanced allocation
             week_width = ideal_week_width
-            uraian_width = page_width - (num_weeks * week_width) - vol_sat_total
+            uraian_width = effective_page_width - (num_weeks * week_width)
             uraian_width = max(min_uraian_width, min(max_uraian_width, uraian_width))
         
-        static_total = uraian_width + vol_sat_total
+        static_total = uraian_width
         total_table_width = static_total + (num_weeks * week_width)
         
         # =================================================================
@@ -3684,21 +3847,17 @@ class PDFExporter(ConfigExporterBase):
             table_top = page_total_height - chart_overlay_height - 5
             table_bottom = table_top - table_height
             
-            # Outer border
-            drawing.add(Rect(0, table_bottom, total_table_width, table_height,
+            # Outer border - with left margin offset
+            drawing.add(Rect(left_margin, table_bottom, total_table_width, table_height,
                             fillColor=None, strokeColor=outer_border, strokeWidth=1.5))
             
             # Header row background
             header_y = table_top - header_height
-            drawing.add(Rect(0, header_y, total_table_width, header_height,
+            drawing.add(Rect(left_margin, header_y, total_table_width, header_height,
                             fillColor=header_bg, strokeColor=outer_border, strokeWidth=0.5))
             
-            # Header text (larger fonts for A3)
-            drawing.add(String(5, header_y + 6, 'Uraian Pekerjaan',
-                              fontSize=8, fontName='Helvetica-Bold', fillColor=header_text))
-            drawing.add(String(uraian_width + 3, header_y + 6, 'Vol',
-                              fontSize=8, fontName='Helvetica-Bold', fillColor=header_text))
-            drawing.add(String(uraian_width + volume_width + 3, header_y + 6, 'Sat',
+            # Header text (larger fonts for A3) - with left margin offset
+            drawing.add(String(left_margin + 5, header_y + 6, 'Uraian Pekerjaan',
                               fontSize=8, fontName='Helvetica-Bold', fillColor=header_text))
             
             # Week headers
@@ -3709,7 +3868,7 @@ class PDFExporter(ConfigExporterBase):
                 else:
                     week_num = i + 1
                 
-                x = static_total + (i * week_width) + week_width/2
+                x = left_margin + static_total + (i * week_width) + week_width/2  # Add left_margin offset
                 # Adaptive font size based on week_width
                 week_font_size = 6 if week_width >= 15 else 5
                 drawing.add(String(x, header_y + 6, f'W{week_num}',
@@ -3733,55 +3892,49 @@ class PDFExporter(ConfigExporterBase):
                     bg_color = colors.white if row_idx % 2 == 0 else colors.HexColor('#f8f9fa')
                     font_weight = 'Helvetica'
                 
-                # Uraian column
-                drawing.add(Rect(0, row_y, uraian_width, row_height,
+                # Uraian column - with left margin offset
+                drawing.add(Rect(left_margin, row_y, uraian_width, row_height,
                                 fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
                 
-                indent = '  ' * (level - 1) if level > 1 else ''
-                raw_name = row.get('name', '')
-                # Calculate chars per line based on uraian_width (at 7pt, ~4pt per char)
-                chars_per_line = int((uraian_width - 4) / 4)
+                # Optimized text rendering - same pattern as Kurva S Bulanan
+                indent_chars = ' ' * (level * 2) if level > 0 else ''  # 2 spaces per level
+                raw_name = row.get('name', '') or row.get('uraian', '')
+                
+                # Balanced char width: ~3.3pt per char for 7pt Helvetica
+                uraian_font_size = 7
+                char_width = 3.3  # Safe value between 3.0 (too tight) and 3.5 (too loose)
+                usable_width = uraian_width - 10  # 4pt left + 6pt right padding
+                chars_per_line = int(usable_width / char_width)
+                
                 # Account for indent in available space
-                text_chars = chars_per_line - len(indent)
+                text_chars = chars_per_line - len(indent_chars)
                 
                 if len(raw_name) > text_chars:
                     # 2-line rendering - both lines get same indent
-                    line1 = indent + raw_name[:text_chars]
+                    line1 = indent_chars + raw_name[:text_chars]
                     remaining = raw_name[text_chars:]
                     if len(remaining) > text_chars - 2:
-                        line2 = indent + remaining[:text_chars - 3] + '..'
+                        line2 = indent_chars + remaining[:text_chars-2] + '..'
                     else:
-                        line2 = indent + remaining
-                    
-                    drawing.add(String(2, row_y + row_height * 0.6, line1,
-                                      fontSize=7, fontName=font_weight))
-                    drawing.add(String(2, row_y + row_height * 0.2, line2,
-                                      fontSize=7, fontName=font_weight))
+                        line2 = indent_chars + remaining
+                    drawing.add(String(left_margin + 4, row_y + row_height * 0.65, line1, 
+                                      fontSize=uraian_font_size, fontName=font_weight))
+                    drawing.add(String(left_margin + 4, row_y + row_height * 0.25, line2, 
+                                      fontSize=uraian_font_size, fontName=font_weight))
                 else:
-                    full_name = indent + raw_name
-                    drawing.add(String(2, row_y + row_height * 0.35, full_name,
-                                      fontSize=7, fontName=font_weight))
+                    # Single line - vertically centered
+                    full_name = indent_chars + raw_name
+                    drawing.add(String(left_margin + 4, row_y + row_height * 0.35, full_name, 
+                                      fontSize=uraian_font_size, fontName=font_weight))
                 
-                # Volume column
-                drawing.add(Rect(uraian_width, row_y, volume_width, row_height,
-                                fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
-                volume_text = str(row.get('volume', ''))[:6]
-                drawing.add(String(uraian_width + 2, row_y + row_height * 0.35, volume_text,
-                                  fontSize=7, fontName='Helvetica'))
-                
-                # Satuan column
-                drawing.add(Rect(uraian_width + volume_width, row_y, satuan_width, row_height,
-                                fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
-                satuan_text = str(row.get('satuan', ''))[:5]
-                drawing.add(String(uraian_width + volume_width + 2, row_y + row_height * 0.35, satuan_text,
-                                  fontSize=7, fontName='Helvetica'))
+                # Volume and Satuan columns REMOVED to give more space to Uraian
                 
                 # Week columns with progress values
                 week_planned = row.get('week_planned', [])
                 week_actual = row.get('week_actual', [])
                 
                 for i in range(num_weeks):
-                    x = static_total + (i * week_width)
+                    x = left_margin + static_total + (i * week_width)  # Add left_margin offset
                     drawing.add(Rect(x, row_y, week_width, row_height,
                                     fillColor=colors.white, strokeColor=border_color, strokeWidth=0.2))
                     
@@ -3847,7 +4000,7 @@ class PDFExporter(ConfigExporterBase):
                     return page_data_bottom + t * (page_data_top - page_data_bottom)
                 
                 def week_to_x(week_idx):
-                    return static_total + (week_idx * week_width) + week_width / 2
+                    return left_margin + static_total + (week_idx * week_width) + week_width / 2  # Add left_margin
                 
                 def clip_line_to_page(y1, y2, x1, x2, min_y, max_y):
                     """Clip a line segment to visible Y range, returns clipped coordinates or None"""
@@ -3884,7 +4037,8 @@ class PDFExporter(ConfigExporterBase):
                 visible_max_y = table_top - header_height  # Stop at bottom of header, not top
                 
                 # Generate curve points in global coordinates, then convert to page coords
-                week0_x = static_total
+                # Week 0 starting point should be at left edge of W1 column
+                week0_x = left_margin + static_total  # Fixed: was missing left_margin
                 week0_global_y = global_progress_to_y(0)
                 
                 # Planned curve
@@ -4155,19 +4309,19 @@ class PDFExporter(ConfigExporterBase):
             x_pos = uraian_width + volume_width + satuan_width/2
             drawing.add(String(x_pos, header_y + 6, 'Sat', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
             x_pos = uraian_width + volume_width + satuan_width + harga_width/2
-            drawing.add(String(x_pos, header_y + 6, 'Total Harga', fontSize=6, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            drawing.add(String(x_pos, header_y + 6, 'Total Harga', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
             x_pos = uraian_width + volume_width + satuan_width + harga_width + bobot_width/2
-            drawing.add(String(x_pos, header_y + 6, 'Bobot', fontSize=6, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            drawing.add(String(x_pos, header_y + 6, 'Bobot', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
             # NEW: Progress columns
             x_pos = uraian_width + volume_width + satuan_width + harga_width + bobot_width + progress_lalu_width/2
-            drawing.add(String(x_pos, header_y + 6, 'Prog. Bulan Lalu', fontSize=5, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            drawing.add(String(x_pos, header_y + 6, 'Prog. Lalu', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
             x_pos = uraian_width + volume_width + satuan_width + harga_width + bobot_width + progress_lalu_width + progress_ini_width/2
-            drawing.add(String(x_pos, header_y + 6, 'Prog. Bulan Ini', fontSize=5, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+            drawing.add(String(x_pos, header_y + 6, 'Prog. Ini', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
             
             # Week headers
             for i, wk in enumerate(weeks_this_month):
                 x = static_total + (i * week_width) + week_width/2
-                drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=6, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
+                drawing.add(String(x, header_y + 6, f'W{wk}', fontSize=7, fontName='Helvetica-Bold', fillColor=header_text, textAnchor='middle'))
             
             # Data rows
             for row_idx, row in enumerate(page_rows):
@@ -4223,13 +4377,13 @@ class PDFExporter(ConfigExporterBase):
                         vol_str = f"{float(vol):.1f}" if vol else ''
                     except (ValueError, TypeError):
                         vol_str = str(vol)[:5]
-                    drawing.add(String(uraian_width + volume_width/2, row_y + row_height * 0.35, vol_str[:5], fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                    drawing.add(String(uraian_width + volume_width/2, row_y + row_height * 0.35, vol_str[:5], fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Satuan - center aligned
                 drawing.add(Rect(uraian_width + volume_width, row_y, satuan_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
                 if row_type == 'pekerjaan':
                     sat = row.get('satuan', '') or ''
-                    drawing.add(String(uraian_width + volume_width + satuan_width/2, row_y + row_height * 0.35, str(sat)[:4], fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                    drawing.add(String(uraian_width + volume_width + satuan_width/2, row_y + row_height * 0.35, str(sat)[:4], fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Total Harga - hierarchy_progress uses 'harga' directly
                 drawing.add(Rect(uraian_width + volume_width + satuan_width, row_y, harga_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
@@ -4240,7 +4394,7 @@ class PDFExporter(ConfigExporterBase):
                         harga = 0
                     if harga > 0:
                         harga_fmt = f"Rp{int(harga):,}".replace(',', '.')
-                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width/2, row_y + row_height * 0.35, harga_fmt[:14], fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width/2, row_y + row_height * 0.35, harga_fmt[:14], fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Bobot - hierarchy_progress uses 'bobot' directly
                 drawing.add(Rect(uraian_width + volume_width + satuan_width + harga_width, row_y, bobot_width, row_height, fillColor=bg_color, strokeColor=border_color, strokeWidth=0.3))
@@ -4250,7 +4404,7 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         bobot = 0
                     if bobot > 0:
-                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width + bobot_width/2, row_y + row_height * 0.35, f"{bobot:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(uraian_width + volume_width + satuan_width + harga_width + bobot_width/2, row_y + row_height * 0.35, f"{bobot:.1f}%", fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Progress Bulan Lalu
                 progress_lalu_x = uraian_width + volume_width + satuan_width + harga_width + bobot_width
@@ -4261,7 +4415,7 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         prog_lalu = 0
                     if prog_lalu > 0:
-                        drawing.add(String(progress_lalu_x + progress_lalu_width/2, row_y + row_height * 0.35, f"{prog_lalu:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(progress_lalu_x + progress_lalu_width/2, row_y + row_height * 0.35, f"{prog_lalu:.1f}%", fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Progress Bulan Ini
                 progress_ini_x = progress_lalu_x + progress_lalu_width
@@ -4272,7 +4426,7 @@ class PDFExporter(ConfigExporterBase):
                     except (ValueError, TypeError):
                         prog_ini = 0
                     if prog_ini > 0:
-                        drawing.add(String(progress_ini_x + progress_ini_width/2, row_y + row_height * 0.35, f"{prog_ini:.1f}%", fontSize=5, fontName='Helvetica', textAnchor='middle'))
+                        drawing.add(String(progress_ini_x + progress_ini_width/2, row_y + row_height * 0.35, f"{prog_ini:.1f}%", fontSize=7, fontName='Helvetica', textAnchor='middle'))
                 
                 # Week columns with progress values - with enhanced borders
                 # Get row identifier for progress lookup
