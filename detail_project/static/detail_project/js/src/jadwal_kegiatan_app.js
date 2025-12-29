@@ -23,7 +23,8 @@ import {
 } from '@modules/shared/ux-enhancements.js'; // UX Enhancements
 import {
   FullscreenModeManager,
-  addFullscreenButton
+  addFullscreenButton,
+  addDownloadImageButton
 } from '@modules/shared/fullscreen-mode.js'; // Fullscreen Mode
 
 // Phase 4: New Export Offscreen Rendering System
@@ -3173,6 +3174,523 @@ class JadwalKegiatanApp {
         });
       });
     }
+
+    // Add download image button (for Gantt and Kurva S modes)
+    const downloadBtn = addDownloadImageButton(container, {
+      title: 'Download Chart as PNG Image',
+      onClick: () => this._handleDownloadChartImage()
+    });
+
+    // Show/hide download button based on display mode
+    this._updateDownloadButtonVisibility(downloadBtn);
+  }
+
+  /**
+   * Update download button visibility based on display mode
+   * Only show for Gantt and Kurva S modes
+   * @private
+   */
+  _updateDownloadButtonVisibility(btn) {
+    if (!btn) {
+      btn = document.querySelector('.download-image-btn');
+    }
+    if (!btn) return;
+
+    const displayMode = this.state.displayMode || 'grid';
+    // Show only for gantt and scurve modes
+    if (displayMode === 'gantt' || displayMode === 'scurve') {
+      btn.style.display = 'flex';
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  /**
+   * Handle download chart as full PNG image
+   * @private
+   */
+  async _handleDownloadChartImage() {
+    const displayMode = this.state.displayMode || 'grid';
+
+    if (displayMode !== 'gantt' && displayMode !== 'scurve') {
+      Toast.info('Download hanya tersedia untuk mode Gantt Chart dan Kurva S', {
+        duration: 3000,
+        position: 'top-right'
+      });
+      return;
+    }
+
+    try {
+      Toast.info('Rendering chart image...', { duration: 2000, position: 'top-right' });
+
+      // Get state for rendering
+      const exportState = this._transformStateForExport();
+      let dataURL = null;
+      let filename = '';
+      const projectName = this.state.projectInfo?.nama_proyek || 'Project';
+      const dateStr = new Date().toISOString().slice(0, 10);
+
+      if (displayMode === 'gantt') {
+        // Render full Gantt chart
+        dataURL = await this._renderGanttFullImage(exportState);
+        filename = `${projectName}_GanttChart_Full_${dateStr}.png`;
+      } else if (displayMode === 'scurve') {
+        // Render full Kurva S chart
+        dataURL = await this._renderKurvaSFullImage(exportState);
+        filename = `${projectName}_KurvaS_Full_${dateStr}.png`;
+      }
+
+      if (!dataURL) {
+        throw new Error('Failed to render chart image');
+      }
+
+      // Trigger download
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '_'); // Sanitize filename
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      Toast.success(`${displayMode === 'gantt' ? 'Gantt Chart' : 'Kurva S'} downloaded as PNG!`, {
+        duration: 3000,
+        position: 'top-right'
+      });
+
+      console.log('[JadwalKegiatanApp] Chart image downloaded:', filename);
+    } catch (error) {
+      console.error('[JadwalKegiatanApp] Error downloading chart image:', error);
+      Toast.error('Gagal download chart image: ' + error.message, {
+        duration: 5000,
+        position: 'top-right'
+      });
+    }
+  }
+
+  /**
+   * Render full Gantt chart as single PNG image
+   * @private
+   */
+  async _renderGanttFullImage(exportState) {
+    const rows = exportState.hierarchyRows || [];
+    const timeColumns = exportState.weekColumns || [];
+    const planned = exportState.plannedProgress || {};
+    const actual = exportState.actualProgress || {};
+
+    if (rows.length === 0 || timeColumns.length === 0) {
+      throw new Error('No data available for Gantt chart');
+    }
+
+    // Layout dimensions
+    const LABEL_WIDTH = 300;
+    const COL_WIDTH = 50;
+    const HEADER_HEIGHT = 50;
+    const LEGEND_HEIGHT = 40;
+
+    // Text wrapping settings (like PDF export)
+    const BASE_ROW_HEIGHT = 20;
+    const LINE_HEIGHT = 11;
+    const MAX_CHARS_PER_LINE = 50;
+    const FONT_SIZE = 9;
+    const LABEL_PADDING = 5;
+
+    // Helper: wrap text and return lines
+    const wrapText = (text, maxChars) => {
+      if (!text) return [''];
+      const words = text.split(' ');
+      const lines = [];
+      let currentLine = '';
+
+      words.forEach(word => {
+        if ((currentLine + ' ' + word).trim().length <= maxChars) {
+          currentLine = (currentLine + ' ' + word).trim();
+        } else {
+          if (currentLine) lines.push(currentLine);
+          currentLine = word.length > maxChars ? word.substring(0, maxChars) : word;
+        }
+      });
+      if (currentLine) lines.push(currentLine);
+      return lines.length > 0 ? lines : [''];
+    };
+
+    // Helper: calculate row height based on text
+    const calculateRowHeight = (text, indent) => {
+      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
+      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
+      return Math.max(BASE_ROW_HEIGHT, 6 + (lines.length * LINE_HEIGHT));
+    };
+
+    // Pre-calculate row heights
+    const rowHeights = rows.map(row => {
+      const indent = (row.level || 0) * 15;
+      const text = row.name || row.uraian || '';
+      return calculateRowHeight(text, indent);
+    });
+
+    // Calculate total height
+    const totalRowsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
+    const canvasWidth = LABEL_WIDTH + (timeColumns.length * COL_WIDTH) + 20;
+    const canvasHeight = HEADER_HEIGHT + LEGEND_HEIGHT + totalRowsHeight + 20;
+
+    // Create offscreen canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Draw legend at top
+    ctx.fillStyle = '#00CED1';
+    ctx.fillRect(20, 10, 20, 12);
+    ctx.fillStyle = '#333';
+    ctx.font = '11px Arial';
+    ctx.fillText('Rencana', 45, 20);
+
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(120, 10, 20, 12);
+    ctx.fillText('Realisasi', 145, 20);
+
+    const startY = LEGEND_HEIGHT;
+
+    // Draw header row with week labels
+    ctx.fillStyle = '#f0f9ff';
+    ctx.fillRect(0, startY, canvasWidth, HEADER_HEIGHT);
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeRect(0, startY, canvasWidth, HEADER_HEIGHT);
+
+    ctx.fillStyle = '#1e3a5f';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText('URAIAN PEKERJAAN', 10, startY + 30);
+
+    // Week headers
+    timeColumns.forEach((col, idx) => {
+      const x = LABEL_WIDTH + (idx * COL_WIDTH);
+      ctx.strokeRect(x, startY, COL_WIDTH, HEADER_HEIGHT);
+      ctx.fillStyle = '#1e3a5f';
+      ctx.font = '9px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`W${col.week || idx + 1}`, x + COL_WIDTH / 2, startY + 30);
+    });
+    ctx.textAlign = 'left';
+
+    // Draw data rows with dynamic heights
+    let currentY = startY + HEADER_HEIGHT;
+    rows.forEach((row, rowIdx) => {
+      const rowHeight = rowHeights[rowIdx];
+      const isKlasifikasi = row.type === 'klasifikasi' || row.type === 'sub_klasifikasi';
+
+      // Row background
+      ctx.fillStyle = isKlasifikasi ? '#f8fafc' : (rowIdx % 2 === 0 ? '#ffffff' : '#fafafa');
+      ctx.fillRect(0, currentY, canvasWidth, rowHeight);
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.strokeRect(0, currentY, LABEL_WIDTH, rowHeight);
+
+      // Row label with indent and text wrapping
+      const indent = (row.level || 0) * 15;
+      const text = row.name || row.uraian || '';
+      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
+      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
+
+      ctx.fillStyle = isKlasifikasi ? '#1e3a5f' : '#374151';
+      ctx.font = isKlasifikasi ? `bold ${FONT_SIZE}px Arial` : `${FONT_SIZE}px Arial`;
+
+      lines.forEach((line, lineIdx) => {
+        const textY = currentY + 12 + (lineIdx * LINE_HEIGHT);
+        ctx.fillText(line, LABEL_PADDING + indent, textY);
+      });
+
+      // Draw progress bars for each week - CONTINUOUS BARS
+      const taskId = row.id || row.pekerjaan_id;
+      if (!isKlasifikasi && taskId) {
+        timeColumns.forEach((col, colIdx) => {
+          const x = LABEL_WIDTH + (colIdx * COL_WIDTH);
+          ctx.strokeStyle = '#e5e7eb';
+          ctx.strokeRect(x, currentY, COL_WIDTH, rowHeight);
+
+          const weekNum = col.week || colIdx + 1;
+          const plannedVal = (planned[taskId] && planned[taskId][weekNum]) || 0;
+          const actualVal = (actual[taskId] && actual[taskId][weekNum]) || 0;
+
+          const barHeight = Math.min(8, (rowHeight - 6) / 2);
+          const barY1 = currentY + 3;
+          const barY2 = currentY + rowHeight - barHeight - 3;
+          const fullBarWidth = COL_WIDTH;
+
+          // Actual bar (top)
+          if (actualVal > 0) {
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(x, barY1, fullBarWidth, barHeight);
+          }
+
+          // Planned bar (bottom)
+          if (plannedVal > 0) {
+            ctx.fillStyle = '#00CED1';
+            ctx.fillRect(x, barY2, fullBarWidth, barHeight);
+          }
+        });
+      } else {
+        // Draw cell borders for klasifikasi rows
+        timeColumns.forEach((col, colIdx) => {
+          const x = LABEL_WIDTH + (colIdx * COL_WIDTH);
+          ctx.strokeStyle = '#e5e7eb';
+          ctx.strokeRect(x, currentY, COL_WIDTH, rowHeight);
+        });
+      }
+
+      currentY += rowHeight;
+    });
+
+    return canvas.toDataURL('image/png');
+  }
+
+  /**
+   * Render full Kurva S chart as single PNG image
+   * Table with rows + S-curve LINE OVERLAY on week grid (like PDF export)
+   * @private
+   */
+  async _renderKurvaSFullImage(exportState) {
+    const rows = exportState.hierarchyRows || [];
+    const timeColumns = exportState.weekColumns || [];
+    const planned = exportState.plannedProgress || {};
+    const actual = exportState.actualProgress || {};
+
+    if (rows.length === 0 || timeColumns.length === 0) {
+      throw new Error('No data available for Kurva S chart');
+    }
+
+    // Layout dimensions
+    const LABEL_WIDTH = 300;
+    const COL_WIDTH = 50;
+    const HEADER_HEIGHT = 50;
+    const LEGEND_HEIGHT = 40;
+
+    // Text wrapping settings (like PDF export)
+    const BASE_ROW_HEIGHT = 20;
+    const LINE_HEIGHT = 11;
+    const MAX_CHARS_PER_LINE = 50;
+    const FONT_SIZE = 9;
+    const LABEL_PADDING = 5;
+
+    // Helper: wrap text and return lines
+    const wrapText = (text, maxChars) => {
+      if (!text) return [''];
+      const words = text.split(' ');
+      const lines = [];
+      let currentLine = '';
+
+      words.forEach(word => {
+        if ((currentLine + ' ' + word).trim().length <= maxChars) {
+          currentLine = (currentLine + ' ' + word).trim();
+        } else {
+          if (currentLine) lines.push(currentLine);
+          currentLine = word.length > maxChars ? word.substring(0, maxChars) : word;
+        }
+      });
+      if (currentLine) lines.push(currentLine);
+      return lines.length > 0 ? lines : [''];
+    };
+
+    // Helper: calculate row height based on text
+    const calculateRowHeight = (text, indent) => {
+      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
+      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
+      return Math.max(BASE_ROW_HEIGHT, 6 + (lines.length * LINE_HEIGHT));
+    };
+
+    // Pre-calculate row heights
+    const rowHeights = rows.map(row => {
+      const indent = (row.level || 0) * 15;
+      const text = row.name || row.uraian || '';
+      return calculateRowHeight(text, indent);
+    });
+
+    // Calculate total height
+    const totalRowsHeight = rowHeights.reduce((sum, h) => sum + h, 0);
+    const canvasWidth = LABEL_WIDTH + (timeColumns.length * COL_WIDTH) + 20;
+    const canvasHeight = HEADER_HEIGHT + LEGEND_HEIGHT + totalRowsHeight + 20;
+
+    // Create offscreen canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Draw legend at top
+    ctx.fillStyle = '#00CED1';
+    ctx.fillRect(20, 10, 20, 12);
+    ctx.fillStyle = '#333';
+    ctx.font = '11px Arial';
+    ctx.fillText('Rencana (Kurva S)', 45, 20);
+
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(200, 10, 20, 12);
+    ctx.fillText('Realisasi (Kurva S)', 225, 20);
+
+    const startY = LEGEND_HEIGHT;
+
+    // Draw header row with week labels
+    ctx.fillStyle = '#f0f9ff';
+    ctx.fillRect(0, startY, canvasWidth, HEADER_HEIGHT);
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeRect(0, startY, canvasWidth, HEADER_HEIGHT);
+
+    ctx.fillStyle = '#1e3a5f';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText('URAIAN PEKERJAAN', 10, startY + 30);
+
+    // Week headers
+    timeColumns.forEach((col, idx) => {
+      const x = LABEL_WIDTH + (idx * COL_WIDTH);
+      ctx.strokeRect(x, startY, COL_WIDTH, HEADER_HEIGHT);
+      ctx.fillStyle = '#1e3a5f';
+      ctx.font = '9px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`W${col.week || idx + 1}`, x + COL_WIDTH / 2, startY + 30);
+    });
+    ctx.textAlign = 'left';
+
+    // Draw data rows with dynamic heights
+    let currentY = startY + HEADER_HEIGHT;
+    // Store Y positions for S-curve overlay
+    const rowYPositions = [];
+
+    rows.forEach((row, rowIdx) => {
+      const rowHeight = rowHeights[rowIdx];
+      rowYPositions.push({ y: currentY, height: rowHeight });
+      const isKlasifikasi = row.type === 'klasifikasi' || row.type === 'sub_klasifikasi';
+
+      // Row background
+      ctx.fillStyle = isKlasifikasi ? '#f8fafc' : (rowIdx % 2 === 0 ? '#ffffff' : '#fafafa');
+      ctx.fillRect(0, currentY, canvasWidth, rowHeight);
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.strokeRect(0, currentY, LABEL_WIDTH, rowHeight);
+
+      // Row label with indent and text wrapping
+      const indent = (row.level || 0) * 15;
+      const text = row.name || row.uraian || '';
+      const availableChars = Math.floor((LABEL_WIDTH - indent - LABEL_PADDING * 2) / (FONT_SIZE * 0.55));
+      const lines = wrapText(text, Math.min(availableChars, MAX_CHARS_PER_LINE));
+
+      ctx.fillStyle = isKlasifikasi ? '#1e3a5f' : '#374151';
+      ctx.font = isKlasifikasi ? `bold ${FONT_SIZE}px Arial` : `${FONT_SIZE}px Arial`;
+
+      lines.forEach((line, lineIdx) => {
+        const textY = currentY + 12 + (lineIdx * LINE_HEIGHT);
+        ctx.fillText(line, LABEL_PADDING + indent, textY);
+      });
+
+      // Draw week cell borders (grid lines for S-curve)
+      timeColumns.forEach((col, colIdx) => {
+        const x = LABEL_WIDTH + (colIdx * COL_WIDTH);
+        ctx.strokeStyle = '#e5e7eb';
+        ctx.strokeRect(x, currentY, COL_WIDTH, rowHeight);
+      });
+
+      currentY += rowHeight;
+    });
+
+    // ============================================
+    // KURVA S OVERLAY (Lines on top of table)
+    // ============================================
+    const chartLeft = LABEL_WIDTH;
+    const chartTop = startY + HEADER_HEIGHT;
+    const chartHeight = totalRowsHeight;
+    const chartBottom = chartTop + chartHeight;
+
+    // Calculate cumulative totals per week
+    const weeklyPlannedTotal = new Array(timeColumns.length).fill(0);
+    const weeklyActualTotal = new Array(timeColumns.length).fill(0);
+    let totalBobot = 0;
+
+    rows.forEach(row => {
+      const taskId = row.id || row.pekerjaan_id;
+      if (!taskId || row.type === 'klasifikasi' || row.type === 'sub_klasifikasi') return;
+
+      totalBobot += 1;
+
+      let cumPlanned = 0;
+      let cumActual = 0;
+
+      timeColumns.forEach((col, idx) => {
+        const weekNum = col.week || idx + 1;
+        const p = (planned[taskId] && planned[taskId][weekNum]) || 0;
+        const a = (actual[taskId] && actual[taskId][weekNum]) || 0;
+        cumPlanned += p;
+        cumActual += a;
+        weeklyPlannedTotal[idx] += cumPlanned;
+        weeklyActualTotal[idx] += cumActual;
+      });
+    });
+
+    // Normalize to percentage (max = 100% * numPekerjaan)
+    const maxPossible = totalBobot * 100;
+    const plannedPoints = weeklyPlannedTotal.map(v => maxPossible > 0 ? Math.min(100, (v / maxPossible) * 100) : 0);
+    const actualPoints = weeklyActualTotal.map(v => maxPossible > 0 ? Math.min(100, (v / maxPossible) * 100) : 0);
+
+    // Helper: progress to Y coordinate (0% at bottom, 100% at top)
+    const progressToY = (progress) => chartBottom - (progress / 100 * chartHeight);
+
+    // Helper: week index to X coordinate (right edge of week column)
+    const weekToX = (weekIdx) => chartLeft + (weekIdx + 1) * COL_WIDTH;
+
+    // Draw Planned S-curve line
+    ctx.strokeStyle = '#00CED1';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(chartLeft, progressToY(0)); // Start at 0%
+    plannedPoints.forEach((val, idx) => {
+      const x = weekToX(idx);
+      const y = progressToY(val);
+      ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Draw Planned markers (circles)
+    ctx.fillStyle = '#00CED1';
+    ctx.beginPath();
+    ctx.arc(chartLeft, progressToY(0), 4, 0, Math.PI * 2);
+    ctx.fill();
+    plannedPoints.forEach((val, idx) => {
+      const x = weekToX(idx);
+      const y = progressToY(val);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Draw Actual S-curve line
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(chartLeft, progressToY(0)); // Start at 0%
+    actualPoints.forEach((val, idx) => {
+      const x = weekToX(idx);
+      const y = progressToY(val);
+      ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Draw Actual markers (circles)
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(chartLeft, progressToY(0), 4, 0, Math.PI * 2);
+    ctx.fill();
+    actualPoints.forEach((val, idx) => {
+      const x = weekToX(idx);
+      const y = progressToY(val);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    return canvas.toDataURL('image/png');
   }
 
   _clearApiFailedRows() {
@@ -3283,7 +3801,7 @@ class JadwalKegiatanApp {
       if (!fieldKey) {
         return;
       }
-      const cellKey = `${pekerjaanId}-${fieldKey}`;
+      const cellKey = `${pekerjaanId} -${fieldKey} `;
       let value = null;
       if (modifiedCells && modifiedCells.has(cellKey)) {
         value = modifiedCells.get(cellKey);
@@ -3315,7 +3833,7 @@ class JadwalKegiatanApp {
       if (!fieldKey) {
         return;
       }
-      const cellKey = `${pekerjaanId}-${fieldKey}`;
+      const cellKey = `${pekerjaanId} -${fieldKey} `;
       let volumeValue = null;
 
       if (overrides && overrides.has(cellKey)) {
@@ -3750,7 +4268,7 @@ class JadwalKegiatanApp {
     if (this._currencyFormatter) {
       return this._currencyFormatter.format(numeric);
     }
-    return `Rp ${numeric.toLocaleString('id-ID')}`;
+    return `Rp ${numeric.toLocaleString('id-ID')} `;
   }
 
   _validateRowTotalsBeforeSave() {
@@ -3860,15 +4378,15 @@ class JadwalKegiatanApp {
         if (item.missingCapacity) {
           return `- Pekerjaan ${item.pekerjaan_id}: volume tidak dapat disimpan karena master volume 0`;
         }
-        return `- Pekerjaan ${item.pekerjaan_id}: total volume ${item.total.toFixed(3)} > kapasitas ${item.capacity.toFixed(3)}`;
+        return `- Pekerjaan ${item.pekerjaan_id}: total volume ${item.total.toFixed(3)} > kapasitas ${item.capacity.toFixed(3)} `;
       }
       if (item.type === 'cost') {
         if (item.missingCapacity) {
           return `- Pekerjaan ${item.pekerjaan_id}: biaya aktual tidak dapat disimpan karena master biaya 0`;
         }
-        return `- Pekerjaan ${item.pekerjaan_id}: total biaya ${this._formatCurrency(item.total)} > batas ${this._formatCurrency(item.capacity)}`;
+        return `- Pekerjaan ${item.pekerjaan_id}: total biaya ${this._formatCurrency(item.total)} > batas ${this._formatCurrency(item.capacity)} `;
       }
-      return `- Pekerjaan ${item.pekerjaan_id}: total ${item.total.toFixed(2)}% > 100%`;
+      return `- Pekerjaan ${item.pekerjaan_id}: total ${item.total.toFixed(2)}% > 100 % `;
     });
 
     if (combined.length > 3) {
@@ -3877,7 +4395,7 @@ class JadwalKegiatanApp {
 
     this._markFailedRowsFromIds(ids);
     this._setSaveErrorRows(ids);
-    this.showToast(`Tidak dapat menyimpan:\n${messages.join('\n')}`, 'danger', 5000);
+    this.showToast(`Tidak dapat menyimpan: \n${messages.join('\n')} `, 'danger', 5000);
     return false;
   }
 
@@ -3910,7 +4428,7 @@ class JadwalKegiatanApp {
       domRefs.totalProgressEl.textContent =
         totalProgress === null
           ? '-'
-          : `${totalProgress.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`;
+          : `${totalProgress.toLocaleString('id-ID', { maximumFractionDigits: 1 })}% `;
     }
   }
 
@@ -3927,7 +4445,7 @@ class JadwalKegiatanApp {
     if (this.state?.assignmentMap instanceof Map && this.state.assignmentMap.size > 0) {
       const pekerjaanTotals = new Map();
       this.state.assignmentMap.forEach((value, cellKey) => {
-        const [pekerjaanId] = `${cellKey}`.split('-');
+        const [pekerjaanId] = `${cellKey} `.split('-');
         const numericValue = Number(value) || 0;
         const current = pekerjaanTotals.get(pekerjaanId) || 0;
         pekerjaanTotals.set(pekerjaanId, current + numericValue);
@@ -4051,21 +4569,21 @@ class JadwalKegiatanApp {
       const endWeek = blockColumns[blockColumns.length - 1]?.weekNumber ?? startWeek + blockColumns.length - 1;
       const startLabel = blockColumns[0]?.rangeLabel || blockColumns[0]?.label || '';
       const endLabel = blockColumns[blockColumns.length - 1]?.rangeLabel || blockColumns[blockColumns.length - 1]?.label || '';
-      const label = `Month ${blockIndex + 1}`;
-      const rangeLabel = `Week ${startWeek}-${endWeek}`;
+      const label = `Month ${blockIndex + 1} `;
+      const rangeLabel = `Week ${startWeek} -${endWeek} `;
       const startDate = this._coerceDate(blockColumns[0]?.startDate || blockColumns[0]?.start_date);
       const endDate = this._coerceDate(blockColumns[blockColumns.length - 1]?.endDate || blockColumns[blockColumns.length - 1]?.end_date);
       const rangeText = this._formatShortRange(startDate, endDate);
 
       aggregated.push({
-        id: `month-${blockIndex + 1}`,
-        fieldId: `month_${blockIndex + 1}`,
+        id: `month - ${blockIndex + 1} `,
+        fieldId: `month_${blockIndex + 1} `,
         label,
         rangeLabel: rangeText || rangeLabel,
         rangeText,
         startDate,
         endDate,
-        tooltip: startLabel && endLabel ? `${startLabel} \u2014 ${endLabel}` : `${label}: Week ${startWeek}-${endWeek}`,
+        tooltip: startLabel && endLabel ? `${startLabel} \u2014 ${endLabel} ` : `${label}: Week ${startWeek} -${endWeek} `,
         generationMode: 'monthly',
         type: 'monthly',
         index: blockIndex,
@@ -4268,6 +4786,11 @@ class JadwalKegiatanApp {
         if (this.unifiedManager) {
           this.unifiedManager.switchMode(mode);
         }
+
+        // 5. Update state displayMode and download button visibility
+        const modeToDisplayMode = { grid: 'grid', gantt: 'gantt', kurva: 'scurve' };
+        this.state.displayMode = modeToDisplayMode[mode] || 'grid';
+        this._updateDownloadButtonVisibility();
       });
     });
   }

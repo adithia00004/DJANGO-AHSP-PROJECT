@@ -232,7 +232,7 @@ export class UnifiedTableManager {
         return;
       }
       const plannedValue = this._resolveValue(mergedPlanned, cellKey, 0);
-      const actualValue = this._resolveValue(mergedActual, cellKey, plannedValue);
+      const actualValue = this._resolveValue(mergedActual, cellKey, 0);
       if (!Number.isFinite(plannedValue) && !Number.isFinite(actualValue)) {
         return;
       }
