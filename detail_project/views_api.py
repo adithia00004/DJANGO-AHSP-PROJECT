@@ -3993,7 +3993,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
                 'message': f"Invalid format: {format_type}. Must be 'pdf' or 'word'."
             }, status=400)
 
-        # Parse period for monthly/weekly (backward compatibility for single month)
+        # Parse period for monthly/weekly (backward compatibility for single month/week)
         period = None
         if period_str:
             try:
@@ -4002,6 +4002,27 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
                 return JsonResponse({
                     'status': 'error',
                     'message': f"Invalid period: {period_str}. Must be an integer."
+                }, status=400)
+
+        # Parse weeks parameter for multi-week export (NEW)
+        weeks_raw = request.GET.get('weeks') or payload.get('weeks')
+        weeks = None
+        if weeks_raw:
+            try:
+                if isinstance(weeks_raw, list):
+                    weeks = [int(w) for w in weeks_raw]
+                elif isinstance(weeks_raw, str):
+                    weeks = [int(w.strip()) for w in weeks_raw.split(',') if w.strip()]
+                # Validate weeks are positive integers
+                if weeks and any(w < 1 for w in weeks):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Invalid weeks: all values must be positive integers.'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid weeks format: {weeks_raw}. Must be comma-separated integers or list."
                 }, status=400)
 
         # Parse attachments (for POST)
@@ -4022,6 +4043,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
             report_type=report_type,
             period=period,
             months=months,  # NEW: pass months list
+            weeks=weeks,    # NEW: pass weeks list
             attachments=attachments,
             gantt_data=gantt_data
         )

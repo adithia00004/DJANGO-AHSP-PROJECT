@@ -8,7 +8,12 @@
 
 import { generateRekapReport, exportRekapReport } from './reports/rekap-report.js';
 import { generateMonthlyReport, exportMonthlyReport } from './reports/monthly-report.js';
-import { generateWeeklyReport, exportWeeklyReport } from './reports/weekly-report.js';
+import {
+  generateWeeklyReport,
+  exportWeeklyReport,
+  generateMultiWeeklyReport,
+  exportMultiWeeklyReport
+} from './reports/weekly-report.js';
 import { estimatePageCount, validateRowsHierarchy } from './core/pagination-utils.js';
 
 /**
@@ -83,7 +88,8 @@ export const EXPORT_CONFIG = {
  * @param {Object} exportRequest.state - Application state
  * @param {Object} [exportRequest.options={}] - Additional options
  * @param {number} [exportRequest.month] - Month number (for monthly report)
- * @param {number} [exportRequest.week] - Week number (for weekly report)
+ * @param {number} [exportRequest.week] - Week number (for single-week report)
+ * @param {Array<number>} [exportRequest.weeks] - Week numbers array (for multi-week report)
  * @param {boolean} [exportRequest.autoDownload=true] - Auto-download file setelah generate
  * @returns {Promise<{blob: Blob, metadata: Object}>} Export result
  */
@@ -95,6 +101,7 @@ export async function exportReport(exportRequest) {
     options = {},
     month = null,
     week = null,
+    weeks = null,  // Array of weeks for multi-week export
     autoDownload = true
   } = exportRequest;
 
@@ -114,6 +121,7 @@ export async function exportReport(exportRequest) {
     format,
     month,
     week,
+    weeks,
     autoDownload
   });
 
@@ -151,13 +159,23 @@ export async function exportReport(exportRequest) {
         break;
 
       case EXPORT_CONFIG.reportTypes.WEEKLY:
-        if (!week) {
-          throw new Error('[ExportCoordinator] week parameter required for weekly report');
-        }
-        if (autoDownload) {
-          result = await exportWeeklyReport(state, format, week, mergedOptions);
+        // Support both single week and multi-week (array)
+        if (weeks && weeks.length > 0) {
+          // Multi-week batch export
+          if (autoDownload) {
+            result = await exportMultiWeeklyReport(state, format, weeks, mergedOptions);
+          } else {
+            result = await generateMultiWeeklyReport(state, format, weeks, mergedOptions);
+          }
+        } else if (week) {
+          // Single week export
+          if (autoDownload) {
+            result = await exportWeeklyReport(state, format, week, mergedOptions);
+          } else {
+            result = await generateWeeklyReport(state, format, week, mergedOptions);
+          }
         } else {
-          result = await generateWeeklyReport(state, format, week, mergedOptions);
+          throw new Error('[ExportCoordinator] week or weeks parameter required for weekly report');
         }
         break;
 
@@ -277,8 +295,8 @@ export function validateExportRequest(exportRequest) {
     errors.push('month parameter required for monthly report');
   }
 
-  if (exportRequest.reportType === EXPORT_CONFIG.reportTypes.WEEKLY && !exportRequest.week) {
-    errors.push('week parameter required for weekly report');
+  if (exportRequest.reportType === EXPORT_CONFIG.reportTypes.WEEKLY && !exportRequest.week && !exportRequest.weeks) {
+    errors.push('week or weeks parameter required for weekly report');
   }
 
   // State validation
@@ -304,5 +322,7 @@ export {
   generateMonthlyReport,
   exportMonthlyReport,
   generateWeeklyReport,
-  exportWeeklyReport
+  exportWeeklyReport,
+  generateMultiWeeklyReport,
+  exportMultiWeeklyReport
 };

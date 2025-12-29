@@ -480,6 +480,7 @@ class ExportManager:
         report_type: str = 'rekap',
         period: int | None = None,
         months: list[int] | None = None,  # NEW: support multi-month export
+        weeks: list[int] | None = None,   # NEW: support multi-week export
         attachments: list | None = None,
         gantt_data: dict | None = None,
     ) -> HttpResponse:
@@ -556,8 +557,22 @@ class ExportManager:
                 month = period or 1
                 report_data = adapter.get_monthly_comparison_data(month)
         elif report_type == 'weekly':
-            week = period or 1
-            report_data = adapter.get_weekly_comparison_data(week)
+            # Multi-week support (NEW)
+            if weeks and len(weeks) >= 1:
+                # Build data for each week
+                all_weeks_data = []
+                for w in sorted(weeks):
+                    week_data = adapter.get_weekly_comparison_data(w)
+                    all_weeks_data.append({'week': w, 'data': week_data})
+                report_data = {
+                    'weeks_data': all_weeks_data,
+                    'weeks': sorted(weeks),
+                    'project_info': adapter._get_project_info(),
+                }
+            else:
+                # Single week (backward compatible)
+                week = period or 1
+                report_data = adapter.get_weekly_comparison_data(week)
         else:
             report_data = adapter.get_export_data()
 
@@ -612,23 +627,30 @@ class ExportManager:
                 data['actual_map'] = report_data.get('actual_map', {})
                 data['month'] = report_data.get('month', period)
         elif report_type == 'weekly':
-            data['period'] = report_data.get('period', {})
-            data['current_data'] = report_data.get('current_data', {})
-            data['previous_data'] = report_data.get('previous_data', {})
-            data['comparison'] = report_data.get('comparison', {})
-            data['executive_summary'] = report_data.get('executive_summary', {})
-            data['hierarchy_progress'] = report_data.get('hierarchy_progress', [])
-            data['detail_table'] = report_data.get('detail_table', {})
-            data['kurva_s_data'] = report_data.get('kurva_s_data', [])
-            data['cumulative_end_week'] = report_data.get('cumulative_end_week', 0)
-            data['all_weekly_columns'] = report_data.get('all_weekly_columns', [])
-            data['total_project_weeks'] = report_data.get('total_project_weeks', 0)
-            data['weekly_columns'] = report_data.get('weekly_columns', [])
-            data['base_rows'] = report_data.get('base_rows', [])
-            data['hierarchy'] = report_data.get('hierarchy', {})
-            data['planned_map'] = report_data.get('planned_map', {})
-            data['actual_map'] = report_data.get('actual_map', {})
-            data['week'] = report_data.get('week', period)
+            # Check for multi-week mode
+            if 'weeks_data' in report_data:
+                # Multi-week: pass all weeks data to exporter
+                data['weeks_data'] = report_data.get('weeks_data', [])
+                data['weeks'] = report_data.get('weeks', [])
+            else:
+                # Single week (existing logic)
+                data['period'] = report_data.get('period', {})
+                data['current_data'] = report_data.get('current_data', {})
+                data['previous_data'] = report_data.get('previous_data', {})
+                data['comparison'] = report_data.get('comparison', {})
+                data['executive_summary'] = report_data.get('executive_summary', {})
+                data['hierarchy_progress'] = report_data.get('hierarchy_progress', [])
+                data['detail_table'] = report_data.get('detail_table', {})
+                data['kurva_s_data'] = report_data.get('kurva_s_data', [])
+                data['cumulative_end_week'] = report_data.get('cumulative_end_week', 0)
+                data['all_weekly_columns'] = report_data.get('all_weekly_columns', [])
+                data['total_project_weeks'] = report_data.get('total_project_weeks', 0)
+                data['weekly_columns'] = report_data.get('weekly_columns', [])
+                data['base_rows'] = report_data.get('base_rows', [])
+                data['hierarchy'] = report_data.get('hierarchy', {})
+                data['planned_map'] = report_data.get('planned_map', {})
+                data['actual_map'] = report_data.get('actual_map', {})
+                data['week'] = report_data.get('week', period)
 
         if attachments:
             data['attachments'] = attachments

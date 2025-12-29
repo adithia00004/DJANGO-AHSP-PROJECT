@@ -966,134 +966,149 @@ class JadwalKegiatanApp {
       }
 
       // ========================================================================
-      // Phase 5: Professional Export (Direct API Call)
+      // Phase 5: Professional Export (Direct API Call) - For ALL report types
+      // Weekly skips chart rendering, Rekap/Monthly include charts
       // ========================================================================
       if (useProfessional && (format === 'pdf' || format === 'word')) {
-        this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (300 DPI)...');
+        // Skip chart rendering for weekly reports (no charts needed)
+        const skipChartRendering = (reportType === 'weekly');
+
+        if (!skipChartRendering) {
+          this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (300 DPI)...');
+        } else {
+          this._updateExportProgress('Generating weekly report...', 'Memproses data mingguan...');
+        }
+
 
         const projectId = this.state?.projectId;
         if (!projectId) {
           throw new Error('Project ID not found');
         }
 
-        // Transform state for chart rendering
-        const exportState = this._transformStateForExport();
+        // Transform state for chart rendering (only needed for rekap/monthly)
+        const exportState = skipChartRendering ? {} : this._transformStateForExport();
 
-        // Render chart attachments
+        // Render chart attachments (skip for weekly)
         const attachments = [];
 
-        try {
-          // 1. Render Kurva S
-          if (includeKurvaS && exportState.kurvaSData && exportState.kurvaSData.length > 0) {
-            this._updateExportProgress('Rendering Kurva S...', 'Membuat grafik progress kumulatif...');
+        if (!skipChartRendering) {
+          try {
+            // 1. Render Kurva S
+            if (includeKurvaS && exportState.kurvaSData && exportState.kurvaSData.length > 0) {
+              this._updateExportProgress('Rendering Kurva S...', 'Membuat grafik progress kumulatif...');
 
-            const kurvaSDataURL = await renderKurvaS({
-              granularity: 'weekly',
-              data: exportState.kurvaSData,
-              width: 1200,
-              height: 600,
-              dpi: 300,
-              backgroundColor: '#ffffff',
-              timezone: 'Asia/Jakarta'
-            });
-
-            if (kurvaSDataURL && kurvaSDataURL.startsWith('data:image/png;base64,')) {
-              // Convert dataURL to base64 bytes
-              const base64Data = kurvaSDataURL.split(',')[1];
-              attachments.push({
-                title: 'Kurva S Progress Kumulatif',
-                data_url: kurvaSDataURL,
-                bytes: base64Data,
-                format: 'png'
+              const kurvaSDataURL = await renderKurvaS({
+                granularity: 'weekly',
+                data: exportState.kurvaSData,
+                width: 1200,
+                height: 600,
+                dpi: 300,
+                backgroundColor: '#ffffff',
+                timezone: 'Asia/Jakarta'
               });
-              console.log('[Export] Kurva S rendered successfully');
+
+              if (kurvaSDataURL && kurvaSDataURL.startsWith('data:image/png;base64,')) {
+                // Convert dataURL to base64 bytes
+                const base64Data = kurvaSDataURL.split(',')[1];
+                attachments.push({
+                  title: 'Kurva S Progress Kumulatif',
+                  data_url: kurvaSDataURL,
+                  bytes: base64Data,
+                  format: 'png'
+                });
+                console.log('[Export] Kurva S rendered successfully');
+              }
             }
+
+            // 2. Render Gantt Chart (Planned)
+            if (includeGantt && exportState.hierarchyRows && exportState.hierarchyRows.length > 0) {
+              this._updateExportProgress('Rendering Gantt Planned...', 'Membuat chart jadwal rencana...');
+
+              const ganttPlannedPages = await renderGanttPaged({
+                rows: exportState.hierarchyRows,
+                timeColumns: exportState.weekColumns,
+                planned: exportState.plannedProgress,
+                actual: null,
+                layout: {
+                  labelWidthPx: 600,
+                  timeColWidthPx: 70,
+                  rowHeightPx: 28,
+                  headerHeightPx: 60,
+                  dpi: 300,
+                  fontSize: 11,
+                  fontFamily: 'Arial',
+                  backgroundColor: '#ffffff',
+                  gridColor: '#e0e0e0',
+                  textColor: '#333333',
+                  plannedColor: '#00CED1',
+                  actualColor: '#FFD700'
+                }
+              });
+
+              // Add each page as attachment
+              ganttPlannedPages.forEach((page, idx) => {
+                if (page.dataURL && page.dataURL.startsWith('data:image/png;base64,')) {
+                  const base64Data = page.dataURL.split(',')[1];
+                  attachments.push({
+                    title: `Gantt Chart Planned - ${page.pageInfo?.weekRange || `Page ${idx + 1}`}`,
+                    data_url: page.dataURL,
+                    bytes: base64Data,
+                    format: 'png'
+                  });
+                }
+              });
+              console.log(`[Export] Gantt Planned rendered: ${ganttPlannedPages.length} pages`);
+
+              // 3. Render Gantt Chart (Actual)
+              this._updateExportProgress('Rendering Gantt Actual...', 'Membuat chart jadwal realisasi...');
+
+              const ganttActualPages = await renderGanttPaged({
+                rows: exportState.hierarchyRows,
+                timeColumns: exportState.weekColumns,
+                planned: null,
+                actual: exportState.actualProgress,
+                layout: {
+                  labelWidthPx: 600,
+                  timeColWidthPx: 70,
+                  rowHeightPx: 28,
+                  headerHeightPx: 60,
+                  dpi: 300,
+                  fontSize: 11,
+                  fontFamily: 'Arial',
+                  backgroundColor: '#ffffff',
+                  gridColor: '#e0e0e0',
+                  textColor: '#333333',
+                  plannedColor: '#00CED1',
+                  actualColor: '#FFD700'
+                }
+              });
+
+              ganttActualPages.forEach((page, idx) => {
+                if (page.dataURL && page.dataURL.startsWith('data:image/png;base64,')) {
+                  const base64Data = page.dataURL.split(',')[1];
+                  attachments.push({
+                    title: `Gantt Chart Actual - ${page.pageInfo?.weekRange || `Page ${idx + 1}`}`,
+                    data_url: page.dataURL,
+                    bytes: base64Data,
+                    format: 'png'
+                  });
+                }
+              });
+              console.log(`[Export] Gantt Actual rendered: ${ganttActualPages.length} pages`);
+            }
+          } catch (chartError) {
+            console.warn('[Export] Chart rendering failed, continuing without charts:', chartError);
           }
-
-          // 2. Render Gantt Chart (Planned)
-          if (includeGantt && exportState.hierarchyRows && exportState.hierarchyRows.length > 0) {
-            this._updateExportProgress('Rendering Gantt Planned...', 'Membuat chart jadwal rencana...');
-
-            const ganttPlannedPages = await renderGanttPaged({
-              rows: exportState.hierarchyRows,
-              timeColumns: exportState.weekColumns,
-              planned: exportState.plannedProgress,
-              actual: null,
-              layout: {
-                labelWidthPx: 600,
-                timeColWidthPx: 70,
-                rowHeightPx: 28,
-                headerHeightPx: 60,
-                dpi: 300,
-                fontSize: 11,
-                fontFamily: 'Arial',
-                backgroundColor: '#ffffff',
-                gridColor: '#e0e0e0',
-                textColor: '#333333',
-                plannedColor: '#00CED1',
-                actualColor: '#FFD700'
-              }
-            });
-
-            // Add each page as attachment
-            ganttPlannedPages.forEach((page, idx) => {
-              if (page.dataURL && page.dataURL.startsWith('data:image/png;base64,')) {
-                const base64Data = page.dataURL.split(',')[1];
-                attachments.push({
-                  title: `Gantt Chart Planned - ${page.pageInfo?.weekRange || `Page ${idx + 1}`}`,
-                  data_url: page.dataURL,
-                  bytes: base64Data,
-                  format: 'png'
-                });
-              }
-            });
-            console.log(`[Export] Gantt Planned rendered: ${ganttPlannedPages.length} pages`);
-
-            // 3. Render Gantt Chart (Actual)
-            this._updateExportProgress('Rendering Gantt Actual...', 'Membuat chart jadwal realisasi...');
-
-            const ganttActualPages = await renderGanttPaged({
-              rows: exportState.hierarchyRows,
-              timeColumns: exportState.weekColumns,
-              planned: null,
-              actual: exportState.actualProgress,
-              layout: {
-                labelWidthPx: 600,
-                timeColWidthPx: 70,
-                rowHeightPx: 28,
-                headerHeightPx: 60,
-                dpi: 300,
-                fontSize: 11,
-                fontFamily: 'Arial',
-                backgroundColor: '#ffffff',
-                gridColor: '#e0e0e0',
-                textColor: '#333333',
-                plannedColor: '#00CED1',
-                actualColor: '#FFD700'
-              }
-            });
-
-            ganttActualPages.forEach((page, idx) => {
-              if (page.dataURL && page.dataURL.startsWith('data:image/png;base64,')) {
-                const base64Data = page.dataURL.split(',')[1];
-                attachments.push({
-                  title: `Gantt Chart Actual - ${page.pageInfo?.weekRange || `Page ${idx + 1}`}`,
-                  data_url: page.dataURL,
-                  bytes: base64Data,
-                  format: 'png'
-                });
-              }
-            });
-            console.log(`[Export] Gantt Actual rendered: ${ganttActualPages.length} pages`);
-          }
-        } catch (chartError) {
-          console.warn('[Export] Chart rendering failed, continuing without charts:', chartError);
-        }
+        } // End of if (!skipChartRendering)
 
         this._updateExportProgress('Generating professional report...', 'Cover page, grids, signatures...');
 
         // Build professional export URL
         const professionalUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+
+        // Collect selected weeks from checkboxes (for weekly reports)
+        const weekCheckboxes = exportModal.querySelectorAll('input[name="weeks"]:checked');
+        const selectedWeeks = Array.from(weekCheckboxes).map(cb => parseInt(cb.value, 10)).sort((a, b) => a - b);
 
         // Build request body with attachments and structured data
         const payload = {
@@ -1102,13 +1117,15 @@ class JadwalKegiatanApp {
           // Multi-month support: send months array for monthly reports
           period: (reportType === 'weekly') ? periodNumber : null,
           months: (reportType === 'monthly' && selectedMonths.length > 0) ? selectedMonths : null,
+          // Multi-week support: send weeks array for weekly reports
+          weeks: (reportType === 'weekly' && selectedWeeks.length > 0) ? selectedWeeks : null,
           attachments: attachments.map(att => ({
             title: att.title,
             bytes: att.bytes,
             format: att.format
           })),
-          // Include structured Gantt data for backend rendering
-          gantt_data: {
+          // Include structured Gantt data for backend rendering (only for non-weekly)
+          gantt_data: skipChartRendering ? null : {
             rows: exportState.hierarchyRows || [],
             time_columns: exportState.weekColumns || [],
             planned: exportState.plannedProgress || {},
@@ -1171,12 +1188,12 @@ class JadwalKegiatanApp {
       this._updateExportProgress('Rendering charts...', 'Menggunakan uPlot & Custom Canvas (offscreen)');
 
       // Transform application state to export system format
-      const exportState = this._transformStateForExport();
+      const phase4ExportState = this._transformStateForExport();
 
       const result = await exportReport({
         reportType,     // 'rekap' | 'monthly' | 'weekly'
         format,         // 'pdf' | 'word' | 'xlsx' | 'csv'
-        state: exportState,  // ← Use transformed state
+        state: phase4ExportState,  // ← Use transformed state
         autoDownload: true, // Auto-download after generation
         options: {
           includeGantt,
@@ -2638,11 +2655,11 @@ class JadwalKegiatanApp {
     /* DISABLED CODE
     const bodyEl = this.state.domRefs?.ganttSummaryBody;
     const totalEl = this.state.domRefs?.ganttSummaryTotal;
-
+ 
     if (!bodyEl) {
       return;
     }
-
+ 
     const setEmptyState = (message) => {
       bodyEl.innerHTML = `
         <tr>
@@ -2653,22 +2670,22 @@ class JadwalKegiatanApp {
         totalEl.textContent = '';
       }
     };
-
+ 
     if (!this.ganttChart) {
       setEmptyState('Gantt chart belum siap ditampilkan.');
       return;
     }
-
+ 
     const rows = this.ganttChart.getSummaryRows();
     const stats = typeof this.ganttChart.getSummaryStats === 'function'
       ? this.ganttChart.getSummaryStats()
       : { total: rows.length, complete: 0, inProgress: 0, notStarted: 0 };
-
+ 
     if (!rows.length) {
       setEmptyState('Tidak ada pekerjaan yang memiliki jadwal.');
       return;
     }
-
+ 
     const summaryHtml = rows.map((row) => {
       const safeName = this._escapeHtml(row.shortLabel || row.label || '-');
       const safePath = this._escapeHtml(row.pathLabel || '');
@@ -2681,7 +2698,7 @@ class JadwalKegiatanApp {
           <div class="gantt-summary-range">${this._escapeHtml(row.planned.startLabel || '-')} s/d ${this._escapeHtml(row.planned.endLabel || '-')}</div>
         `
         : '<span class="text-muted small">Belum ada data</span>';
-
+ 
       const actualBlock = row.actual?.hasData
         ? `
           <div class="gantt-summary-chip actual">
@@ -2691,16 +2708,16 @@ class JadwalKegiatanApp {
           <div class="gantt-summary-range">${this._escapeHtml(row.actual.startLabel || '-')} s/d ${this._escapeHtml(row.actual.endLabel || '-')}</div>
         `
         : '<span class="text-muted small">Belum ada data</span>';
-
+ 
       let deltaClass = 'text-muted';
       if (row.delta > 0) {
         deltaClass = 'text-danger';
       } else if (row.delta < 0) {
         deltaClass = 'text-success';
       }
-
+ 
       const deltaLabel = this._escapeHtml(row.deltaLabel || '0%');
-
+ 
       return `
         <tr>
           <td class="text-muted">${row.index}</td>
@@ -2716,9 +2733,9 @@ class JadwalKegiatanApp {
         </tr>
       `;
     }).join('');
-
+ 
     bodyEl.innerHTML = summaryHtml;
-
+ 
     if (totalEl) {
       totalEl.textContent = `${stats.total} pekerjaan • ${stats.complete} selesai • ${stats.inProgress} berjalan`;
     }
@@ -2740,27 +2757,27 @@ class JadwalKegiatanApp {
     if (!bodyEl) {
       return;
     }
-
+ 
     if (!this.ganttChart) {
       bodyEl.innerHTML = '<div class="text-muted text-center py-3">Gantt chart belum siap ditampilkan.</div>';
       return;
     }
-
+ 
     const rows = this.ganttChart.getHierarchy();
     if (!rows.length) {
       bodyEl.innerHTML = '<div class="text-muted text-center py-3">Tidak ada pekerjaan untuk ditampilkan.</div>';
       return;
     }
-
+ 
     const rowHeight = Math.max(32, Math.round(this.ganttChart.getRowHeight()));
     bodyEl.style.setProperty('--gantt-tree-row-height', `${rowHeight}px`);
-
+ 
     const treeHtml = rows.map((row, index) => {
       const indentLevel = Math.max(0, (row.level || 0) - 1);
       const subtitleParts = Array.isArray(row.pathParts) ? row.pathParts.slice(0, -1) : [];
       const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' / ') : '';
       const prefixDot = row.level > 0 ? '•'.repeat(Math.min(row.level, 3)) : '';
-
+ 
       return `
         <div class="gantt-tree-row" data-row-index="${index}">
           <span class="tree-prefix">${prefixDot}</span>
@@ -2771,7 +2788,7 @@ class JadwalKegiatanApp {
         </div>
       `;
     }).join('');
-
+ 
     bodyEl.innerHTML = treeHtml;
     this._attachGanttScrollSync();
     */ // END DISABLED CODE

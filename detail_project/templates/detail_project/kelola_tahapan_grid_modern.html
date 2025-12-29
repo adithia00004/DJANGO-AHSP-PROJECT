@@ -490,51 +490,40 @@
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearMonths">Reset</button>
               </div>
             </div>
-            <div class="month-checkbox-grid d-flex flex-wrap gap-2" id="monthCheckboxGrid">
-              <!-- Dynamically populated by JS or hardcoded for 12 months -->
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="1" class="d-none"> Bulan 1
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="2" class="d-none"> Bulan 2
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="3" class="d-none"> Bulan 3
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="4" class="d-none"> Bulan 4
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="5" class="d-none"> Bulan 5
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="6" class="d-none"> Bulan 6
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="7" class="d-none"> Bulan 7
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="8" class="d-none"> Bulan 8
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="9" class="d-none"> Bulan 9
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="10" class="d-none"> Bulan 10
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="11" class="d-none"> Bulan 11
-              </label>
-              <label class="btn btn-outline-primary btn-sm month-checkbox">
-                <input type="checkbox" name="months" value="12" class="d-none"> Bulan 12
-              </label>
+            <!-- Scrollable container for dynamic month checkboxes -->
+            <div class="month-checkbox-grid d-flex flex-wrap gap-2" id="monthCheckboxGrid"
+              style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
+              <!-- Will be dynamically populated by initializeMonthCheckboxes() -->
+              <span class="text-muted small">Loading months...</span>
             </div>
             <small class="text-muted d-block mt-2">
               <i class="bi bi-info-circle"></i> Setiap bulan akan memiliki Cover Page, Progress Pelaksanaan, dan Kurva S
               tersendiri dalam satu PDF.
             </small>
           </div>
+
+          <!-- Multi-Week Selection (for weekly only) -->
+          <div id="multiWeekInput" style="display: none;">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label small text-muted mb-0">Pilih minggu (bisa lebih dari satu)</label>
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAllWeeks">Semua</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearWeeks">Reset</button>
+              </div>
+            </div>
+            <!-- Scrollable container for dynamic week checkboxes -->
+            <div class="week-checkbox-grid d-flex flex-wrap gap-2" id="weekCheckboxGrid"
+              style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
+              <!-- Will be dynamically populated by initializeWeekCheckboxes() -->
+              <span class="text-muted small">Loading weeks...</span>
+            </div>
+            <small class="text-muted d-block mt-2">
+              <i class="bi bi-info-circle"></i> Setiap minggu akan memiliki Cover Page dan Progress Pelaksanaan. Semua
+              minggu digabung dalam satu PDF.
+            </small>
+          </div>
         </div>
+
 
         <!-- Export Preview/Info -->
         <div class="alert alert-info mb-0" role="alert">
@@ -611,9 +600,105 @@
       // Multi-month elements
       const singlePeriodInput = exportModal.querySelector('#singlePeriodInput');
       const multiMonthInput = exportModal.querySelector('#multiMonthInput');
-      const monthCheckboxes = exportModal.querySelectorAll('input[name="months"]');
+      let monthCheckboxes = exportModal.querySelectorAll('input[name="months"]');
       const btnSelectAllMonths = exportModal.querySelector('#btnSelectAllMonths');
       const btnClearMonths = exportModal.querySelector('#btnClearMonths');
+      const monthCheckboxGrid = exportModal.querySelector('#monthCheckboxGrid');
+
+      // Multi-week elements
+      const multiWeekInput = exportModal.querySelector('#multiWeekInput');
+      let weekCheckboxes = exportModal.querySelectorAll('input[name="weeks"]');
+      const btnSelectAllWeeks = exportModal.querySelector('#btnSelectAllWeeks');
+      const btnClearWeeks = exportModal.querySelector('#btnClearWeeks');
+      const weekCheckboxGrid = exportModal.querySelector('#weekCheckboxGrid');
+
+      // Initialize week checkboxes dynamically based on project data
+      function initializeWeekCheckboxes() {
+        if (!weekCheckboxGrid) return;
+
+        // Primary source: Django template variable (server-side calculated)
+        // Note: Django evaluates {{ total_weeks|default:12 }} to an integer at render time
+        let totalWeeks = parseInt('{{ total_weeks|default:12 }}', 10) || 12;
+
+        // Fallback: Try to get from window.__JADWAL_APP_STATE__ (set by TanStackGridManager)
+        if (window.__JADWAL_APP_STATE__ && window.__JADWAL_APP_STATE__.weekColumns) {
+          const jsWeeks = window.__JADWAL_APP_STATE__.weekColumns.length;
+          if (jsWeeks > totalWeeks) {
+            totalWeeks = jsWeeks;
+          }
+        }
+
+        // Minimum 4 weeks, max 200 weeks
+        totalWeeks = Math.max(4, Math.min(200, totalWeeks));
+
+        // Clear existing content
+        weekCheckboxGrid.innerHTML = '';
+
+        // Create checkboxes dynamically
+        for (let w = 1; w <= totalWeeks; w++) {
+          const label = document.createElement('label');
+          label.className = 'btn btn-outline-info btn-sm week-checkbox';
+          label.innerHTML = `<input type="checkbox" name="weeks" value="${w}" class="d-none"> Minggu ${w}`;
+          weekCheckboxGrid.appendChild(label);
+        }
+
+        // Refresh the weekCheckboxes reference
+        weekCheckboxes = exportModal.querySelectorAll('input[name="weeks"]');
+
+        // Add event listeners to new checkboxes
+        weekCheckboxes.forEach(cb => {
+          cb.addEventListener('change', () => {
+            updateWeekCheckboxStyling();
+            updatePreview();
+          });
+        });
+
+        console.log('[ExportModal] Initialized ' + totalWeeks + ' week checkboxes');
+      }
+
+      // Initialize month checkboxes dynamically based on project data
+      function initializeMonthCheckboxes() {
+        if (!monthCheckboxGrid) return;
+
+        // Primary source: Django template variable (server-side calculated)
+        let totalMonths = parseInt('{{ total_months|default:12 }}', 10) || 12;
+
+        // Fallback: calculate from weeks if available
+        if (window.__JADWAL_APP_STATE__ && window.__JADWAL_APP_STATE__.weekColumns) {
+          const jsWeeks = window.__JADWAL_APP_STATE__.weekColumns.length;
+          const jsMonths = Math.ceil(jsWeeks / 4);
+          if (jsMonths > totalMonths) {
+            totalMonths = jsMonths;
+          }
+        }
+
+        // Minimum 1 month, max 50 months
+        totalMonths = Math.max(1, Math.min(50, totalMonths));
+
+        // Clear existing content
+        monthCheckboxGrid.innerHTML = '';
+
+        // Create checkboxes dynamically
+        for (let m = 1; m <= totalMonths; m++) {
+          const label = document.createElement('label');
+          label.className = 'btn btn-outline-primary btn-sm month-checkbox';
+          label.innerHTML = `<input type="checkbox" name="months" value="${m}" class="d-none"> Bulan ${m}`;
+          monthCheckboxGrid.appendChild(label);
+        }
+
+        // Refresh the monthCheckboxes reference
+        monthCheckboxes = exportModal.querySelectorAll('input[name="months"]');
+
+        // Add event listeners to new checkboxes
+        monthCheckboxes.forEach(cb => {
+          cb.addEventListener('change', () => {
+            updateMonthCheckboxStyling();
+            updatePreview();
+          });
+        });
+
+        console.log('[ExportModal] Initialized ' + totalMonths + ' month checkboxes');
+      }
 
       const reportTypeLabels = {
         'full': 'Rekap Laporan (Full Report)',
@@ -628,7 +713,8 @@
         'csv': 'CSV'
       };
 
-      // Update checkbox button styling
+
+      // Update checkbox button styling for months
       function updateMonthCheckboxStyling() {
         monthCheckboxes.forEach(cb => {
           const label = cb.closest('label');
@@ -644,10 +730,37 @@
         });
       }
 
+      // Update checkbox button styling for weeks
+      function updateWeekCheckboxStyling() {
+        weekCheckboxes.forEach(cb => {
+          const label = cb.closest('label');
+          if (label) {
+            if (cb.checked) {
+              label.classList.remove('btn-outline-info');
+              label.classList.add('btn-info', 'active');
+            } else {
+              label.classList.remove('btn-info', 'active');
+              label.classList.add('btn-outline-info');
+            }
+          }
+        });
+      }
+
       // Get selected months array
       function getSelectedMonths() {
         const selected = [];
         monthCheckboxes.forEach(cb => {
+          if (cb.checked) {
+            selected.push(parseInt(cb.value, 10));
+          }
+        });
+        return selected.sort((a, b) => a - b);
+      }
+
+      // Get selected weeks array
+      function getSelectedWeeks() {
+        const selected = [];
+        weekCheckboxes.forEach(cb => {
           if (cb.checked) {
             selected.push(parseInt(cb.value, 10));
           }
@@ -671,17 +784,22 @@
           const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly');
           periodSelectionSection.style.display = showPeriod ? 'block' : 'none';
 
-          // Toggle between single input (weekly) and multi-month (monthly)
-          if (singlePeriodInput && multiMonthInput) {
+          // Toggle between multi-month (monthly) and multi-week (weekly)
+          if (singlePeriodInput && multiMonthInput && multiWeekInput) {
+            singlePeriodInput.style.display = 'none'; // Never show single input anymore
             if (selectedReportType === 'monthly') {
-              singlePeriodInput.style.display = 'none';
               multiMonthInput.style.display = 'block';
-            } else {
-              singlePeriodInput.style.display = 'flex';
+              multiWeekInput.style.display = 'none';
+            } else if (selectedReportType === 'weekly') {
               multiMonthInput.style.display = 'none';
+              multiWeekInput.style.display = 'block';
+            } else {
+              multiMonthInput.style.display = 'none';
+              multiWeekInput.style.display = 'none';
             }
           }
         }
+
 
         // Show warning if XLSX/CSV selected (professional not available for those)
         if (professionalFormatNote) {
@@ -724,8 +842,19 @@
             } else {
               previewHtml += `<span class="text-warning">Pilih minimal 1 bulan</span>`;
             }
+          } else if (selectedReportType === 'weekly') {
+            // Show selected weeks info
+            const selectedWeeks = getSelectedWeeks();
+            if (selectedWeeks.length > 0) {
+              if (selectedWeeks.length === 1) {
+                previewHtml += `Minggu ${selectedWeeks[0]}`;
+              } else {
+                previewHtml += `Minggu ${selectedWeeks[0]}-${selectedWeeks[selectedWeeks.length - 1]} (${selectedWeeks.length} minggu)`;
+              }
+            } else {
+              previewHtml += `<span class="text-warning">Pilih minimal 1 minggu</span>`;
+            }
           } else {
-            previewHtml += `Ringkasan Eksekutif, Perbandingan Periode`;
           }
         } else {
           previewHtml += `<strong>Halaman:</strong> Auto-paginated (smart splitting)`;
@@ -780,9 +909,51 @@
         });
       }
 
+      // Week checkbox event listeners
+      weekCheckboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+          updateWeekCheckboxStyling();
+          updatePreview();
+        });
+      });
+
+      // Select All / Reset buttons for weeks
+      if (btnSelectAllWeeks) {
+        btnSelectAllWeeks.addEventListener('click', () => {
+          weekCheckboxes.forEach(cb => cb.checked = true);
+          updateWeekCheckboxStyling();
+          updatePreview();
+        });
+      }
+
+      if (btnClearWeeks) {
+        btnClearWeeks.addEventListener('click', () => {
+          weekCheckboxes.forEach(cb => cb.checked = false);
+          updateWeekCheckboxStyling();
+          updatePreview();
+        });
+      }
+
       // Initial preview update
       updatePreview();
+
+      // Initialize month checkboxes dynamically on load
+      initializeMonthCheckboxes();
       updateMonthCheckboxStyling();
+
+      // Initialize week checkboxes dynamically on load
+      initializeWeekCheckboxes();
+      updateWeekCheckboxStyling();
+
+      // Reinitialize checkboxes when modal is shown (in case app state updated)
+      exportModal.addEventListener('show.bs.modal', function () {
+        // Re-check week/month count from latest app state
+        initializeMonthCheckboxes();
+        initializeWeekCheckboxes();
+        updateMonthCheckboxStyling();
+        updateWeekCheckboxStyling();
+        updatePreview();
+      });
     });
   })();
 </script>

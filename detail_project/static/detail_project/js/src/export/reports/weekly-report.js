@@ -5,20 +5,21 @@
  * - Title: "Laporan pekerjaan A Minggu ke-X"
  * - Identity: Week X period dates
  * - Project Identity (Name, Owner, Location, Budget)
- * - Main Table with 7 columns:
- *   1. Pekerjaan
- *   2. Total Harga
- *   3. Bobot Pekerjaan (%)
- *   4. Target Planned Minggu Ini (%)
- *   5. Actual Minggu Ini (%)
- *   6. Kumulatif Target (%)
- *   7. Kumulatif Actual (%)
+ * - Main Table with 8 columns (same as backend pdf_exporter.py):
+ *   1. Uraian Pekerjaan
+ *   2. Volume
+ *   3. Harga Satuan
+ *   4. Total Harga
+ *   5. Bobot (%)
+ *   6. Kumulatif Minggu Lalu (%)
+ *   7. Progress Minggu Ini (%)
+ *   8. Kumulatif Minggu Ini (%)
  *
  * @module export/reports/weekly-report
  */
 
-import { generatePDF, downloadPDF } from '../generators/pdf-generator.js';
-import { generateWord, downloadWord } from '../generators/word-generator.js';
+import { downloadPDF } from '../generators/pdf-generator.js';
+import { downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
 import { generateWeeklyProgressCSV, downloadCSV } from '../generators/csv-generator.js';
 
@@ -136,7 +137,7 @@ function calculateWeeklyProgress(state, week) {
 }
 
 /**
- * Prepare main table data with 7 columns
+ * Prepare main table data with 8 columns
  * @param {Object} state - Application state
  * @param {number} week - Week number
  * @returns {Array} Table rows
@@ -150,8 +151,16 @@ function prepareMainTable(state, week) {
       plannedThisWeek: 0,
       actualThisWeek: 0,
       cumulativePlanned: 0,
-      cumulativeActual: 0
+      cumulativeActual: 0,
+      cumulativePrevWeek: 0
     };
+
+    // Calculate cumulative up to previous week
+    let cumulativePrevWeek = 0;
+    const actualProgress = state.actualProgress || {};
+    for (let w = 1; w < week; w++) {
+      cumulativePrevWeek += actualProgress[row.id]?.[w] || 0;
+    }
 
     return {
       id: row.id,
@@ -159,16 +168,101 @@ function prepareMainTable(state, week) {
       level: row.level,
       name: row.name,
       parentId: row.parentId,
+      volume: row.volume || 0,
+      hargaSatuan: row.hargaSatuan || 0,
       totalHarga: row.totalHarga || 0,
       bobot: taskWeights[row.id] || 0,
       plannedThisWeek: progress.plannedThisWeek,
       actualThisWeek: progress.actualThisWeek,
       cumulativePlanned: progress.cumulativePlanned,
-      cumulativeActual: progress.cumulativeActual
+      cumulativeActual: progress.cumulativeActual,
+      cumulativePrevWeek: cumulativePrevWeek
     };
   });
 
   return tableRows;
+}
+
+/**
+ * Extract project ID from current URL
+ */
+function extractProjectIdFromUrl() {
+  // URL patterns: /detail_project/<project_id>/... or /project/<project_id>/...
+  const match = window.location.pathname.match(/\/(detail_project|project)\/([\d]+)/);
+  return match ? parseInt(match[2], 10) : null;
+}
+
+/**
+ * Generate Weekly Report via Backend API
+ * Calls the professional export endpoint directly, bypassing frontend image rendering.
+ * 
+ * @param {Object} state - Application state (for projectId lookup)
+ * @param {string} format - 'pdf' or 'word'
+ * @param {number|Array<number>} weeksOrWeek - Single week number or array of weeks
+ * @param {Object} options - Additional options
+ * @returns {Promise<{blob: Blob, metadata: Object}>}
+ */
+async function generateWeeklyReportFromBackend(state, format, weeksOrWeek, options = {}) {
+  // Get project ID from state or URL
+  const projectId = state.projectId || extractProjectIdFromUrl();
+  if (!projectId) {
+    throw new Error('[WeeklyReport] projectId not found in state or URL');
+  }
+
+  // Build URL params
+  const params = new URLSearchParams({
+    report_type: 'weekly',
+    format: format
+  });
+
+  // Support both single week and array of weeks
+  if (Array.isArray(weeksOrWeek)) {
+    params.set('weeks', weeksOrWeek.join(','));
+  } else {
+    params.set('period', String(weeksOrWeek));
+  }
+
+  const url = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/?${params.toString()}`;
+
+  console.log('[WeeklyReport] Calling backend API:', url);
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Backend export failed: ${response.status} - ${errorText}`);
+  }
+
+  const blob = await response.blob();
+
+  // Extract filename from Content-Disposition if available
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = Array.isArray(weeksOrWeek)
+    ? `weekly_W${Math.min(...weeksOrWeek)}-W${Math.max(...weeksOrWeek)}.${format === 'word' ? 'docx' : 'pdf'}`
+    : `weekly_W${weeksOrWeek}.${format === 'word' ? 'docx' : 'pdf'}`;
+
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i);
+    if (match && match[1]) {
+      filename = match[1].replace(/["']/g, '');
+    }
+  }
+
+  return {
+    blob,
+    metadata: {
+      reportType: 'weekly',
+      format: format,
+      weeks: Array.isArray(weeksOrWeek) ? weeksOrWeek : [weeksOrWeek],
+      generatedAt: new Date().toISOString(),
+      filename
+    }
+  };
 }
 
 // ============================================================================
@@ -178,30 +272,10 @@ function prepareMainTable(state, week) {
 /**
  * Generate Laporan Mingguan (Weekly Report)
  *
- * Status: ✅ FULLY IMPLEMENTED (Phase 4)
- *
- * Components:
- * - ✅ Report Title: "Laporan pekerjaan A Minggu ke-X"
- * - ✅ Identity: Week X period (dd-mm-yyyy - dd-mm-yyyy)
- * - ✅ Project Identity: Name, Owner, Location, Budget
- * - ✅ Main Table with 7 columns:
- *   - Pekerjaan
- *   - Total Harga
- *   - Bobot Pekerjaan (%)
- *   - Target Planned Minggu Ini (%)
- *   - Actual Minggu Ini (%)
- *   - Kumulatif Target (%)
- *   - Kumulatif Actual (%)
+ * For PDF and Word formats, calls the backend professional export endpoint directly.
+ * For Excel and CSV, generates locally.
  *
  * @param {Object} state - Application state
- * @param {Array<Object>} state.hierarchyRows - Task hierarchy: [{ id, type, level, name, parentId, totalHarga }]
- * @param {Array<Object>} state.weekColumns - Week columns: [{ week, startDate, endDate }]
- * @param {Object} state.plannedProgress - Planned progress: { taskId: { week: progress } }
- * @param {Object} state.actualProgress - Actual progress: { taskId: { week: progress } }
- * @param {string} state.projectName - Project name
- * @param {string} state.projectOwner - Project owner
- * @param {string} state.projectLocation - Project location
- * @param {number} state.projectBudget - Project budget
  * @param {string} format - Export format: 'pdf' | 'word' | 'xlsx' | 'csv'
  * @param {number} week - Target week number (1-based)
  * @param {Object} [options={}] - Additional options
@@ -219,44 +293,39 @@ export async function generateWeeklyReport(state, format, week, options = {}) {
     throw new Error('[WeeklyReport] hierarchyRows tidak boleh kosong');
   }
 
-  // Determine DPI based on format
-  const dpi = (format === 'pdf' || format === 'word') ? 300 : 150;
-
   const attachments = [];
 
   try {
-    // ========================================================================
-    // Phase 4: Complete Weekly Report Implementation
-    // ========================================================================
-
     // 1. Prepare Report Header (Title, Period, Project Identity)
     console.log('[WeeklyReport] Preparing report header...');
     const header = prepareReportHeader(state, week);
     console.log('[WeeklyReport] Header:', header.title);
 
-    // 2. Prepare Main Table (7 columns)
+    // 2. Prepare Main Table
     console.log('[WeeklyReport] Preparing main table...');
     const mainTable = prepareMainTable(state, week);
     console.log('[WeeklyReport] Main table prepared:', mainTable.length, 'rows');
 
-    // 3. Prepare Weekly Progress Table (for grid data)
+    // 3. Prepare Weekly Progress Table (for grid data) - 8 columns matching backend
     const weeklyProgressTable = {
       headers: [
-        'Pekerjaan',
+        'Uraian Pekerjaan',
+        'Volume',
+        'Harga Satuan',
         'Total Harga',
-        'Bobot Pekerjaan (%)',
-        'Target Planned Minggu Ini (%)',
-        'Actual Minggu Ini (%)',
-        'Kumulatif Target (%)',
-        'Kumulatif Actual (%)'
+        'Bobot (%)',
+        'Kumulatif Minggu Lalu (%)',
+        'Progress Minggu Ini (%)',
+        'Kumulatif Minggu Ini (%)'
       ],
       rows: mainTable.map(row => [
         row.name,
+        row.volume || '-',
+        row.hargaSatuan || '-',
         row.totalHarga,
         row.bobot.toFixed(2),
-        row.plannedThisWeek.toFixed(2),
+        row.cumulativePrevWeek?.toFixed(2) || '0.00',
         row.actualThisWeek.toFixed(2),
-        row.cumulativePlanned.toFixed(2),
         row.cumulativeActual.toFixed(2)
       ]),
       metadata: {
@@ -273,21 +342,9 @@ export async function generateWeeklyReport(state, format, week, options = {}) {
 
     switch (format) {
       case 'pdf':
-        result = await generatePDF({
-          attachments,
-          gridData: weeklyProgressTable,
-          reportType: 'weekly',
-          options: { week, ...options }
-        });
-        break;
-
       case 'word':
-        result = await generateWord({
-          attachments,
-          gridData: weeklyProgressTable,
-          reportType: 'weekly',
-          options: { week, ...options }
-        });
+        // For PDF and Word, call backend directly (bypasses attachment requirement)
+        result = await generateWeeklyReportFromBackend(state, format, week, options);
         break;
 
       case 'xlsx':
@@ -343,25 +400,127 @@ export async function generateWeeklyReport(state, format, week, options = {}) {
  * @param {string} [filename='weekly'] - Base filename
  */
 export async function exportWeeklyReport(state, format, week, options = {}, filename = 'weekly') {
-  const result = await generateWeeklyReport(state, format, week, options);
+  try {
+    const result = await generateWeeklyReport(state, format, week, options);
 
-  // Auto-download based on format
-  const fullFilename = `${filename}_W${week}`;
+    // Auto-download based on format
+    const fullFilename = `${filename}_W${week}`;
 
-  switch (format) {
-    case 'pdf':
-      downloadPDF(result.blob, fullFilename);
-      break;
-    case 'word':
-      downloadWord(result.blob, fullFilename);
-      break;
-    case 'xlsx':
-      downloadExcel(result.blob, fullFilename);
-      break;
-    case 'csv':
-      downloadCSV(result.blob, fullFilename);
-      break;
+    switch (format) {
+      case 'pdf':
+        downloadPDF(result.blob, fullFilename);
+        break;
+      case 'word':
+        downloadWord(result.blob, fullFilename);
+        break;
+      case 'xlsx':
+        downloadExcel(result.blob, fullFilename);
+        break;
+      case 'csv':
+        downloadCSV(result.blob, fullFilename);
+        break;
+    }
+
+    // Hide export progress modal after successful download
+    hideExportProgressModal();
+
+    return result;
+  } catch (error) {
+    // Hide modal on error too
+    hideExportProgressModal();
+    throw error;
+  }
+}
+
+/**
+ * Helper to hide the export progress modal
+ * This is needed because weekly export bypasses the normal flow in jadwal_kegiatan_app.js
+ */
+function hideExportProgressModal() {
+  try {
+    const modal = document.getElementById('exportProgressModal');
+    if (modal && window.bootstrap) {
+      const modalInstance = window.bootstrap.Modal.getInstance(modal);
+      if (modalInstance) {
+        modalInstance.hide();
+      }
+    }
+  } catch (e) {
+    console.warn('[WeeklyReport] Failed to hide progress modal:', e);
+  }
+}
+
+// ============================================================================
+// Multi-Week Export Functions (for batch export like multi-month)
+// ============================================================================
+
+/**
+ * Generate Laporan Mingguan for multiple weeks (combined PDF)
+ * Uses backend API directly for PDF/Word exports.
+ * 
+ * @param {Object} state - Application state
+ * @param {string} format - Export format: 'pdf' | 'word'
+ * @param {Array<number>} weeks - Array of week numbers (1-based)
+ * @param {Object} [options={}] - Additional options
+ * @returns {Promise<{blob: Blob|null, metadata: Object}>} Export result
+ */
+export async function generateMultiWeeklyReport(state, format, weeks, options = {}) {
+  console.log('[WeeklyReport] Generating multi-week report:', {
+    format,
+    weeks,
+    rows: state.hierarchyRows?.length || 0
+  });
+
+  // Validate
+  if (!weeks || weeks.length === 0) {
+    throw new Error('[WeeklyReport] weeks array tidak boleh kosong');
   }
 
-  return result;
+  // For PDF/Word, call backend API directly with weeks array
+  if (format === 'pdf' || format === 'word') {
+    return await generateWeeklyReportFromBackend(state, format, weeks, options);
+  }
+
+  // For other formats (xlsx, csv), not supported yet
+  throw new Error(`[WeeklyReport] Multi-week export not supported for format: ${format}`);
+}
+
+/**
+ * Generate and download Laporan Mingguan for multiple weeks
+ * 
+ * @param {Object} state - Application state
+ * @param {string} format - Export format
+ * @param {Array<number>} weeks - Array of week numbers
+ * @param {Object} [options={}] - Additional options
+ * @param {string} [filename='weekly'] - Base filename
+ */
+export async function exportMultiWeeklyReport(state, format, weeks, options = {}, filename = 'weekly') {
+  const result = await generateMultiWeeklyReport(state, format, weeks, options);
+
+  // Create filename with week range
+  const minWeek = Math.min(...weeks);
+  const maxWeek = Math.max(...weeks);
+  const fullFilename = weeks.length === 1
+    ? `${filename}_W${minWeek}`
+    : `${filename}_W${minWeek}-W${maxWeek}`;
+
+  try {
+    switch (format) {
+      case 'pdf':
+        downloadPDF(result.blob, fullFilename);
+        break;
+      case 'word':
+        downloadWord(result.blob, fullFilename);
+        break;
+    }
+
+    // Hide export progress modal after successful download
+    hideExportProgressModal();
+
+    return result;
+  } catch (error) {
+    // Hide modal on error too
+    hideExportProgressModal();
+    throw error;
+  }
 }

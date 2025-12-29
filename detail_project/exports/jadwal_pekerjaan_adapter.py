@@ -825,6 +825,11 @@ class JadwalPekerjaanExportAdapter:
         week_col = next((col for col in weekly_columns if col.get("week_number") == week), None)
         period_start = week_col.get("start_date") if week_col else None
         period_end = week_col.get("end_date") if week_col else None
+        
+        # Build hierarchy progress for weekly report table
+        hierarchy_progress = self._build_weekly_hierarchy_progress(
+            base_rows, hierarchy, progress_map, actual_map, week
+        )
 
         return {
             "week": week,
@@ -837,6 +842,7 @@ class JadwalPekerjaanExportAdapter:
             "comparison": comparison,
             "executive_summary": self._build_executive_summary(current_data, previous_data, "weekly"),
             "project_info": self._get_project_info(),
+            "hierarchy_progress": hierarchy_progress,  # Added for PDF table rows
             "detail_table": self._build_period_detail_table(
                 base_rows, hierarchy, progress_map, actual_map, week, week
             ),
@@ -1150,6 +1156,107 @@ class JadwalPekerjaanExportAdapter:
         # The PDF renderer will calculate if needed
         
         return result
+
+    def _build_weekly_hierarchy_progress(
+        self,
+        base_rows: List[Dict[str, Any]],
+        hierarchy: Dict[int, int],
+        planned_map: Dict[Tuple[int, int], Decimal],
+        actual_map: Dict[Tuple[int, int], Decimal],
+        week: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Build hierarchical progress data for Weekly Report table.
+        Similar to _build_hierarchy_progress but with weekly field names.
+        
+        Returns list of rows with:
+        - type: 'klasifikasi', 'sub_klasifikasi', or 'pekerjaan'
+        - level: hierarchy level for indentation
+        - name: uraian pekerjaan
+        - volume: quantity
+        - harga_satuan: unit price
+        - harga: total harga per pekerjaan
+        - bobot: percentage of total project cost
+        - progress_minggu_ini: actual progress this week
+        - progress_minggu_lalu: cumulative actual progress up to previous week
+        """
+        volume_map = self._load_volume_map()
+        
+        # Calculate total harga for bobot
+        total_harga = Decimal("0")
+        pekerjaan_rows = [r for r in base_rows if r.get("type") == "pekerjaan"]
+        for row in pekerjaan_rows:
+            pek_id = row.get("pekerjaan_id")
+            if pek_id:
+                total_harga += self._get_pekerjaan_harga(pek_id)
+        
+        result = []
+        
+        for idx, row in enumerate(base_rows):
+            row_type = row.get("type")
+            level = hierarchy.get(idx, 0)
+            uraian = row.get("uraian", "")
+            
+            if row_type == "pekerjaan":
+                pek_id = row.get("pekerjaan_id")
+                
+                # Get volume
+                from detail_project.models import VolumePekerjaan
+                volume = Decimal("0")
+                try:
+                    vol = VolumePekerjaan.objects.get(pekerjaan_id=pek_id)
+                    volume = self._to_decimal(vol.quantity)
+                except VolumePekerjaan.DoesNotExist:
+                    volume = Decimal("1")
+                
+                harga_dengan_markup = self._get_pekerjaan_harga(pek_id) if pek_id else Decimal("0")
+                # Harga satuan = total / volume
+                harga_satuan = harga_dengan_markup / volume if volume > 0 else Decimal("0")
+                
+                bobot = float(harga_dengan_markup / total_harga * 100) if total_harga > 0 else 0.0
+                
+                # Calculate actual progress THIS WEEK ONLY (raw value)
+                actual_ini = float(actual_map.get((pek_id, week), Decimal("0"))) if pek_id else 0.0
+                
+                # Calculate cumulative actual progress UP TO PREVIOUS WEEK (raw value)
+                actual_lalu = 0.0
+                if week > 1 and pek_id:
+                    for w in range(1, week):
+                        actual_lalu += float(actual_map.get((pek_id, w), Decimal("0")))
+                
+                # Weighted by bobot for total contribution (same as monthly)
+                progress_ini = actual_ini * bobot / 100 if bobot > 0 else 0.0
+                progress_lalu = actual_lalu * bobot / 100 if bobot > 0 else 0.0
+                
+                result.append({
+                    "type": "pekerjaan",
+                    "level": level,
+                    "name": uraian,
+                    "pekerjaan_id": pek_id,
+                    "volume": float(volume),
+                    "harga_satuan": float(harga_satuan),
+                    "harga": float(harga_dengan_markup),
+                    "bobot": round(bobot, 2),
+                    "progress_minggu_ini": round(progress_ini, 2),  # Weighted by bobot
+                    "progress_minggu_lalu": round(progress_lalu, 2),  # Weighted by bobot
+                })
+                
+            else:
+                # Klasifikasi or sub_klasifikasi - placeholders
+                result.append({
+                    "type": row_type or "klasifikasi",
+                    "level": level,
+                    "name": uraian,
+                    "volume": 0,
+                    "harga_satuan": 0,
+                    "harga": 0,
+                    "bobot": 0,
+                    "progress_minggu_ini": 0,
+                    "progress_minggu_lalu": 0,
+                })
+        
+        return result
+
 
     def _build_period_detail_table(
         self,
