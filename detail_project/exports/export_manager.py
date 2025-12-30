@@ -505,6 +505,10 @@ class ExportManager:
         Returns:
             HttpResponse with exported file
         """
+        import time
+        start_time = time.time()
+        print(f"[ExportManager] [TIME] Starting {report_type} {format_type} export...")
+        
         from reportlab.platypus import PageBreak, Spacer
         from reportlab.lib.units import mm
         
@@ -663,11 +667,21 @@ class ExportManager:
         if not exporter_class:
             raise ValueError(f"Unsupported format: {format_type}")
 
+        print(f"[ExportManager] [TIME] Data prepared in {time.time() - start_time:.2f}s, {len(attachments or [])} attachments")
+        
+        # Word format is disabled due to performance issues
+        if format_type == 'word':
+            raise ValueError("Word export is currently disabled. Please use PDF or Excel format.")
+        
         exporter = exporter_class(config)
         
-        # For PDF and Word, use special professional export method
-        if format_type in ('pdf', 'word') and hasattr(exporter, 'export_professional'):
-            return exporter.export_professional(data)
+        # For PDF and Excel, use special professional export method
+        if format_type in ('pdf', 'xlsx') and hasattr(exporter, 'export_professional'):
+            export_start = time.time()
+            result = exporter.export_professional(data)
+            print(f"[ExportManager] [TIME] Exporter finished in {time.time() - export_start:.2f}s")
+            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            return result
         
         return exporter.export(data)
 

@@ -129,7 +129,7 @@ export function getExportSystemInfo() {
       monthlyReport: 'fully_implemented',  // ✅ Phase 4
       weeklyReport: 'fully_implemented'     // ✅ Phase 4
     },
-    supportedFormats: ['pdf', 'word', 'xlsx', 'csv'],
+    supportedFormats: ['pdf', 'xlsx', 'csv'],  // Note: 'word' removed due to performance issues
     supportedReportTypes: ['rekap', 'monthly', 'weekly'],
     dependencies: {
       uplot: '^1.6.24',

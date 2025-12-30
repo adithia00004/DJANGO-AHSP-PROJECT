@@ -84,6 +84,9 @@ export async function generatePDF(config) {
   // Always use session-based API (init/upload-pages/finalize) since backend does not expose /api/export/generate
   const BATCH_SIZE = 10;
 
+  // Get format from options (allows xlsx reuse of this function)
+  const format = options.format || 'pdf';
+
   // Step 1: Initialize export session
   const initRes = await fetch('/detail_project/api/export/init', {
     method: 'POST',
@@ -93,7 +96,7 @@ export async function generatePDF(config) {
     },
     body: JSON.stringify({
       reportType,
-      format: 'pdf',
+      format: format,  // Use dynamic format
       estimatedPages: pages.length,
       projectName,
       metadata: {
@@ -165,7 +168,7 @@ export async function generatePDF(config) {
     blob,
     metadata: {
       reportType,
-      format: 'pdf',
+      format: format,
       pageCount: pages.length,
       exportId,
       generatedAt: new Date().toISOString()

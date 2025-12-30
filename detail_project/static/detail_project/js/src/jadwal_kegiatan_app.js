@@ -975,10 +975,14 @@ class JadwalKegiatanApp {
         const skipChartRendering = (reportType === 'weekly');
 
         if (!skipChartRendering) {
-          this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (300 DPI)...');
+          this._updateExportProgress('Rendering charts...', 'Kurva S dan Gantt Chart (150 DPI)...');
         } else {
           this._updateExportProgress('Generating weekly report...', 'Memproses data mingguan...');
         }
+
+        // Time tracking for performance analysis
+        const exportStartTime = performance.now();
+        console.log('[Export] ⏱️ Starting export process...');
 
 
         const projectId = this.state?.projectId;
@@ -997,13 +1001,14 @@ class JadwalKegiatanApp {
             // 1. Render Kurva S
             if (includeKurvaS && exportState.kurvaSData && exportState.kurvaSData.length > 0) {
               this._updateExportProgress('Rendering Kurva S...', 'Membuat grafik progress kumulatif...');
+              const kurvaSStart = performance.now();
 
               const kurvaSDataURL = await renderKurvaS({
                 granularity: 'weekly',
                 data: exportState.kurvaSData,
                 width: 1200,
                 height: 600,
-                dpi: 300,
+                dpi: 150,  // Reduced from 300 for faster export
                 backgroundColor: '#ffffff',
                 timezone: 'Asia/Jakarta'
               });
@@ -1017,13 +1022,14 @@ class JadwalKegiatanApp {
                   bytes: base64Data,
                   format: 'png'
                 });
-                console.log('[Export] Kurva S rendered successfully');
+                console.log(`[Export] ⏱️ Kurva S rendered in ${(performance.now() - kurvaSStart).toFixed(0)}ms`);
               }
             }
 
             // 2. Render Gantt Chart (Planned)
             if (includeGantt && exportState.hierarchyRows && exportState.hierarchyRows.length > 0) {
               this._updateExportProgress('Rendering Gantt Planned...', 'Membuat chart jadwal rencana...');
+              const ganttPlannedStart = performance.now();
 
               const ganttPlannedPages = await renderGanttPaged({
                 rows: exportState.hierarchyRows,
@@ -1035,7 +1041,7 @@ class JadwalKegiatanApp {
                   timeColWidthPx: 70,
                   rowHeightPx: 28,
                   headerHeightPx: 60,
-                  dpi: 300,
+                  dpi: 150,  // Reduced from 300 for faster export
                   fontSize: 11,
                   fontFamily: 'Arial',
                   backgroundColor: '#ffffff',
@@ -1058,10 +1064,11 @@ class JadwalKegiatanApp {
                   });
                 }
               });
-              console.log(`[Export] Gantt Planned rendered: ${ganttPlannedPages.length} pages`);
+              console.log(`[Export] ⏱️ Gantt Planned rendered (${ganttPlannedPages.length} pages) in ${(performance.now() - ganttPlannedStart).toFixed(0)}ms`);
 
               // 3. Render Gantt Chart (Actual)
               this._updateExportProgress('Rendering Gantt Actual...', 'Membuat chart jadwal realisasi...');
+              const ganttActualStart = performance.now();
 
               const ganttActualPages = await renderGanttPaged({
                 rows: exportState.hierarchyRows,
@@ -1073,7 +1080,7 @@ class JadwalKegiatanApp {
                   timeColWidthPx: 70,
                   rowHeightPx: 28,
                   headerHeightPx: 60,
-                  dpi: 300,
+                  dpi: 150,  // Reduced from 300 for faster export
                   fontSize: 11,
                   fontFamily: 'Arial',
                   backgroundColor: '#ffffff',
@@ -1095,7 +1102,7 @@ class JadwalKegiatanApp {
                   });
                 }
               });
-              console.log(`[Export] Gantt Actual rendered: ${ganttActualPages.length} pages`);
+              console.log(`[Export] ⏱️ Gantt Actual rendered (${ganttActualPages.length} pages) in ${(performance.now() - ganttActualStart).toFixed(0)}ms`);
             }
           } catch (chartError) {
             console.warn('[Export] Chart rendering failed, continuing without charts:', chartError);
@@ -1134,7 +1141,8 @@ class JadwalKegiatanApp {
           }
         };
 
-        console.log('[Export] Sending payload with', attachments.length, 'attachments');
+        console.log('[Export] ⏱️ Sending payload with', attachments.length, 'attachments, size:', JSON.stringify(payload).length, 'bytes');
+        const apiCallStart = performance.now();
 
         const response = await fetch(professionalUrl, {
           method: 'POST',
@@ -1144,6 +1152,8 @@ class JadwalKegiatanApp {
           },
           body: JSON.stringify(payload)
         });
+
+        console.log(`[Export] ⏱️ API response received in ${(performance.now() - apiCallStart).toFixed(0)}ms`);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -1168,13 +1178,16 @@ class JadwalKegiatanApp {
         // Hide progress modal
         this._hideExportProgressModal();
 
+        // Calculate total time
+        const totalTime = (performance.now() - exportStartTime).toFixed(0);
+
         // Show success toast
-        Toast.success('Laporan Tertulis Profesional berhasil di-export!', {
+        Toast.success(`Laporan berhasil di-export! (${totalTime}ms)`, {
           duration: 3000,
           position: 'top-right'
         });
 
-        console.log('[Export Phase 5] Professional export completed:', { reportType, format, filename });
+        console.log(`[Export] ✅ Professional export completed in ${totalTime}ms:`, { reportType, format, filename });
         return;
       }
 

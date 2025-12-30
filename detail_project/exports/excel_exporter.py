@@ -238,3 +238,308 @@ class ExcelExporter(ConfigExporterBase):
             return round(inches * 7, 2)
         except Exception:
             return None
+
+    # ==================================================================
+    # Professional Export for Rekap Report
+    # ==================================================================
+    
+    def export_professional(self, data: Dict[str, Any]):
+        """
+        Export professionally styled Excel for Rekap/Monthly/Weekly reports.
+        
+        Creates multiple sheets:
+        - Sheet 1: Ringkasan (Project Info)
+        - Sheet 2: Grid Planned 
+        - Sheet 3: Grid Actual
+        - Sheet 4: Kurva S (Data + Native Chart)
+        """
+        if not OPENPYXL_AVAILABLE:
+            raise RuntimeError('openpyxl belum terpasang. Install via "pip install openpyxl".')
+        
+        import time
+        start_time = time.time()
+        print(f"[ExcelExporter] Starting professional export...")
+        
+        from openpyxl.chart import LineChart, Reference
+        from openpyxl.chart.label import DataLabelList
+        
+        wb = Workbook()
+        report_type = data.get('report_type', 'rekap')
+        
+        # Get data
+        planned_pages = data.get('planned_pages', [])
+        actual_pages = data.get('actual_pages', [])
+        kurva_s_data = data.get('kurva_s_data', [])
+        summary = data.get('summary', {})
+        project_info = data.get('project_info', {})
+        
+        # Sheet 1: Ringkasan
+        ws_ringkasan = wb.active
+        ws_ringkasan.title = "Ringkasan"
+        self._build_ringkasan_sheet(ws_ringkasan, project_info, summary, data)
+        
+        # Sheet 2: Grid Planned
+        ws_planned = wb.create_sheet("Grid Planned")
+        self._build_grid_sheet(ws_planned, planned_pages, "RENCANA (PLANNED)")
+        
+        # Sheet 3: Grid Actual 
+        ws_actual = wb.create_sheet("Grid Actual")
+        self._build_grid_sheet(ws_actual, actual_pages, "REALISASI (ACTUAL)")
+        
+        # Sheet 4: Kurva S with Native Chart
+        ws_kurva = wb.create_sheet("Kurva S")
+        self._build_kurva_s_sheet(ws_kurva, kurva_s_data)
+        
+        print(f"[ExcelExporter] [TIME] Workbook built in {time.time() - start_time:.2f}s")
+        
+        # Save to response
+        output = BytesIO()
+        wb.save(output)
+        
+        from datetime import date
+        filename = f"Laporan_{report_type}_{date.today()}.xlsx"
+        
+        print(f"[ExcelExporter] [OK] Total export time: {time.time() - start_time:.2f}s")
+        
+        return self._create_response(
+            output.getvalue(),
+            filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    
+    def _build_ringkasan_sheet(self, ws, project_info: Dict, summary: Dict, data: Dict):
+        """Build summary sheet with project info."""
+        # Styles
+        title_font = Font(size=16, bold=True)
+        header_font = Font(size=11, bold=True)
+        border = self._get_thin_border()
+        header_fill = PatternFill('solid', fgColor='E8F0FE')
+        
+        row = 1
+        
+        # Title
+        ws.cell(row=row, column=1, value="LAPORAN REKAPITULASI JADWAL PEKERJAAN")
+        ws.cell(row=row, column=1).font = title_font
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+        row += 2
+        
+        # Project Info
+        info_items = [
+            ("Nama Proyek", project_info.get('nama_proyek', self.config.project_name if self.config else '-')),
+            ("Lokasi", project_info.get('lokasi', '-')),
+            ("Tanggal Export", data.get('export_date', '')),
+            ("Total Minggu", str(len(data.get('kurva_s_data', [])))),
+        ]
+        
+        for label, value in info_items:
+            ws.cell(row=row, column=1, value=label)
+            ws.cell(row=row, column=1).font = header_font
+            ws.cell(row=row, column=2, value=value)
+            row += 1
+        
+        row += 1
+        
+        # Summary section
+        ws.cell(row=row, column=1, value="RINGKASAN PROGRESS")
+        ws.cell(row=row, column=1).font = title_font
+        row += 1
+        
+        summary_items = [
+            ("Progress Rencana", f"{summary.get('planned_progress', 0):.2f}%"),
+            ("Progress Realisasi", f"{summary.get('actual_progress', 0):.2f}%"),
+            ("Deviasi", f"{summary.get('deviation', 0):.2f}%"),
+        ]
+        
+        for label, value in summary_items:
+            ws.cell(row=row, column=1, value=label)
+            ws.cell(row=row, column=1).font = header_font
+            ws.cell(row=row, column=1).border = border
+            ws.cell(row=row, column=2, value=value)
+            ws.cell(row=row, column=2).border = border
+            row += 1
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 25
+        ws.column_dimensions['B'].width = 40
+    
+    def _build_grid_sheet(self, ws, pages: List[Dict], title: str):
+        """Build Grid sheet with hierarchy, borders, merge, and indentation."""
+        if not pages:
+            ws.cell(row=1, column=1, value="Tidak ada data")
+            return
+        
+        # Styles
+        title_font = Font(size=14, bold=True)
+        header_font = Font(size=9, bold=True)
+        data_font = Font(size=8, name='Arial')
+        border = self._get_thin_border()
+        header_fill = PatternFill('solid', fgColor='E8F0FE')
+        klasifikasi_fill = PatternFill('solid', fgColor='D9E8FB')
+        sub_klasifikasi_fill = PatternFill('solid', fgColor='F0F4F8')
+        
+        row = 1
+        
+        # Title
+        ws.cell(row=row, column=1, value=f"GRID VIEW - {title}")
+        ws.cell(row=row, column=1).font = title_font
+        row += 2
+        
+        # Process each page
+        for page_idx, page in enumerate(pages):
+            table_data = page.get('table_data', {})
+            headers = table_data.get('headers', [])
+            rows = table_data.get('rows', [])
+            hierarchy = page.get('hierarchy_levels', {})
+            
+            if page_idx > 0:
+                row += 2  # Space between pages
+            
+            # Headers
+            if headers:
+                # Column A: No (narrow)
+                # Column B-C: Uraian (merged)
+                # Column D: Volume
+                # Column E onwards: Week columns
+                
+                col = 1
+                for h_idx, header in enumerate(headers):
+                    cell = ws.cell(row=row, column=col, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.border = border
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    col += 1
+                row += 1
+            
+            # Data rows
+            for r_idx, row_data in enumerate(rows):
+                level = hierarchy.get(r_idx, 3)
+                
+                col = 1
+                for c_idx, cell_value in enumerate(row_data):
+                    cell = ws.cell(row=row, column=col, value=cell_value if cell_value else '')
+                    cell.font = data_font
+                    cell.border = border
+                    
+                    # Apply hierarchy styling
+                    if level == 1:  # Klasifikasi
+                        cell.fill = klasifikasi_fill
+                        cell.font = Font(size=9, bold=True, name='Arial')
+                    elif level == 2:  # Sub Klasifikasi
+                        cell.fill = sub_klasifikasi_fill
+                        cell.font = Font(size=8, bold=True, name='Arial')
+                    
+                    # Indentation for Uraian column (column 1, index 0)
+                    if c_idx == 0:
+                        indent = max(0, level - 1) * 2
+                        cell.alignment = Alignment(indent=indent, wrap_text=True)
+                    else:
+                        cell.alignment = Alignment(horizontal='center')
+                    
+                    col += 1
+                row += 1
+        
+        # Freeze header row
+        ws.freeze_panes = 'A4'
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 40  # Uraian
+        ws.column_dimensions['B'].width = 10  # Volume
+        ws.column_dimensions['C'].width = 8   # Satuan
+        # Week columns
+        for col_idx in range(4, 60):
+            ws.column_dimensions[get_column_letter(col_idx)].width = 7
+    
+    def _build_kurva_s_sheet(self, ws, kurva_s_data: List[Dict]):
+        """Build Kurva S sheet with data table and native LineChart."""
+        from openpyxl.chart import LineChart, Reference
+        from openpyxl.chart.label import DataLabelList
+        from openpyxl.chart.series import SeriesLabel
+        
+        if not kurva_s_data:
+            ws.cell(row=1, column=1, value="Tidak ada data Kurva S")
+            return
+        
+        # Styles
+        title_font = Font(size=14, bold=True)
+        header_font = Font(size=10, bold=True)
+        border = self._get_thin_border()
+        header_fill = PatternFill('solid', fgColor='E8F0FE')
+        
+        row = 1
+        
+        # Title
+        ws.cell(row=row, column=1, value="KURVA S - PROGRESS KUMULATIF")
+        ws.cell(row=row, column=1).font = title_font
+        row += 2
+        
+        # Headers
+        headers = ['Minggu', 'Rencana (%)', 'Realisasi (%)']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center')
+        row += 1
+        
+        data_start_row = row
+        
+        # Data rows
+        for item in kurva_s_data:
+            week_label = item.get('label', item.get('week', ''))
+            planned = item.get('planned_cumulative', item.get('planned', 0))
+            actual = item.get('actual_cumulative', item.get('actual', 0))
+            
+            ws.cell(row=row, column=1, value=week_label).border = border
+            ws.cell(row=row, column=2, value=planned).border = border
+            ws.cell(row=row, column=2).number_format = '0.00'
+            ws.cell(row=row, column=3, value=actual).border = border
+            ws.cell(row=row, column=3).number_format = '0.00'
+            row += 1
+        
+        data_end_row = row - 1
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 12
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 15
+        
+        # Create Native LineChart
+        chart = LineChart()
+        chart.title = "Kurva S Progress"
+        chart.style = 10
+        chart.y_axis.title = "% Kumulatif"
+        chart.x_axis.title = "Minggu"
+        chart.width = 18
+        chart.height = 10
+        
+        # Data references
+        planned_data = Reference(ws, min_col=2, min_row=data_start_row - 1, 
+                                  max_row=data_end_row)
+        actual_data = Reference(ws, min_col=3, min_row=data_start_row - 1, 
+                                 max_row=data_end_row)
+        categories = Reference(ws, min_col=1, min_row=data_start_row, 
+                               max_row=data_end_row)
+        
+        chart.add_data(planned_data, titles_from_data=True)
+        chart.add_data(actual_data, titles_from_data=True)
+        chart.set_categories(categories)
+        
+        # Style series
+        if chart.series:
+            chart.series[0].graphicalProperties.line.solidFill = "4285F4"  # Blue - Planned
+            chart.series[0].graphicalProperties.line.width = 25000  # 2.5pt
+            if len(chart.series) > 1:
+                chart.series[1].graphicalProperties.line.solidFill = "34A853"  # Green - Actual
+                chart.series[1].graphicalProperties.line.width = 25000
+        
+        # Position chart below data (aligned with column E)
+        chart_position = f"E{data_start_row - 1}"
+        ws.add_chart(chart, chart_position)
+    
+    def _get_thin_border(self):
+        """Get standard thin border."""
+        thin = Side(style='thin', color='999999')
+        return Border(left=thin, right=thin, top=thin, bottom=thin)
+

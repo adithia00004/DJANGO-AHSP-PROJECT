@@ -167,14 +167,14 @@ export async function generateRekapReport(state, format, options = {}) {
         break;
 
       case 'xlsx':
-        result = await generateExcel({
-          reportType: 'rekap',
+        // Use backend API for Excel generation (like PDF)
+        result = await generatePDF({
           attachments,
-          rows: state.hierarchyRows,
-          timeColumns: state.weekColumns,
-          planned: state.plannedProgress,
-          actual: state.actualProgress
+          gridData: null,
+          reportType: 'rekap',
+          options: { ...options, format: 'xlsx' }  // Override to xlsx
         });
+        // Note: Backend will detect format from the request and use ExcelExporter
         break;
 
       case 'csv':

@@ -401,10 +401,12 @@
               <i class="bi bi-file-earmark-pdf"></i> PDF
             </label>
 
+            <!-- Word format disabled due to performance issues
             <input type="radio" class="btn-check" name="exportFormat" id="formatWord" value="word">
             <label class="btn btn-outline-primary" for="formatWord">
               <i class="bi bi-file-earmark-word"></i> Word
             </label>
+            -->
 
             <input type="radio" class="btn-check" name="exportFormat" id="formatExcel" value="xlsx">
             <label class="btn btn-outline-success" for="formatExcel">
@@ -456,7 +458,7 @@
           </div>
           <div class="alert alert-warning mt-2 py-2 px-3 small" id="professionalFormatNote" style="display: none;">
             <i class="bi bi-info-circle"></i>
-            Format profesional hanya tersedia untuk <strong>PDF</strong> dan <strong>Word</strong>.
+            Format profesional hanya tersedia untuk <strong>PDF</strong>.
             Untuk XLSX/CSV, akan menggunakan format data tabel standar.
           </div>
         </div>
@@ -773,11 +775,11 @@
         const selectedFormat = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
         const includeGantt = includeGanttCheckbox?.checked;
         const includeKurvaS = includeKurvaSCheckbox?.checked;
-        // Professional format is always enabled for PDF/Word (hidden input or default true)
-        const isPdfOrWord = (selectedFormat === 'pdf' || selectedFormat === 'word');
+        // Professional format is always enabled for PDF (Word disabled)
+        const isPdf = (selectedFormat === 'pdf');
         const useProfessional = useProfessionalCheckbox?.type === 'checkbox'
           ? useProfessionalCheckbox.checked
-          : (useProfessionalCheckbox?.value === 'true' || isPdfOrWord);
+          : (useProfessionalCheckbox?.value === 'true' || isPdf);
 
         // Show/hide period selection based on report type
         if (periodSelectionSection) {
@@ -803,7 +805,7 @@
 
         // Show warning if XLSX/CSV selected (professional not available for those)
         if (professionalFormatNote) {
-          const showWarning = !isPdfOrWord;
+          const showWarning = !isPdf;
           professionalFormatNote.style.display = showWarning ? 'block' : 'none';
         }
 

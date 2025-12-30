@@ -633,9 +633,21 @@ class JadwalPekerjaanExportAdapter:
         Returns:
             Dict with 'planned_section', 'actual_section', 'kurva_s_data', 'summary'
         """
+        import time
+        start = time.time()
+        step_times = {}
+        
+        step_start = time.time()
         weekly_tahapan = self._fetch_weekly_tahapan()
+        step_times['fetch_tahapan'] = time.time() - step_start
+        
+        step_start = time.time()
         progress_map, progress_meta = self._build_progress_map()
+        step_times['build_progress_map'] = time.time() - step_start
+        
+        step_start = time.time()
         actual_map = self._build_actual_progress_map()
+        step_times['build_actual_map'] = time.time() - step_start
 
         self.project_start, self.project_end = self._resolve_project_dates(
             weekly_tahapan,
@@ -643,28 +655,51 @@ class JadwalPekerjaanExportAdapter:
             progress_meta.get("latest_end"),
         )
 
+        step_start = time.time()
         weekly_columns = self._build_weekly_columns(
             weekly_tahapan, progress_meta.get("max_week_number", 0)
         )
+        step_times['build_weekly_columns'] = time.time() - step_start
+        
+        step_start = time.time()
         monthly_columns = self._build_monthly_columns(weekly_columns)
+        step_times['build_monthly_columns'] = time.time() - step_start
 
+        step_start = time.time()
         base_rows, hierarchy = self._build_base_rows()
+        step_times['build_base_rows'] = time.time() - step_start
 
         # Build planned section pages
+        step_start = time.time()
         planned_pages = self._build_section_pages(
             base_rows, hierarchy, weekly_columns, progress_map, "PLANNED"
         )
+        step_times['build_planned_pages'] = time.time() - step_start
 
         # Build actual section pages
+        step_start = time.time()
         actual_pages = self._build_section_pages(
             base_rows, hierarchy, weekly_columns, actual_map, "ACTUAL"
         )
+        step_times['build_actual_pages'] = time.time() - step_start
 
         # Calculate kurva S data
+        step_start = time.time()
         kurva_s_data = self._calculate_kurva_s_data(progress_map, actual_map, base_rows, weekly_columns)
+        step_times['calculate_kurva_s'] = time.time() - step_start
 
         # Calculate summary
+        step_start = time.time()
         summary = self._calculate_project_summary(progress_map, actual_map, base_rows, weekly_columns)
+        step_times['calculate_summary'] = time.time() - step_start
+
+        # Log all timings
+        total = time.time() - start
+        print(f"[JadwalAdapter] get_rekap_report_data timing breakdown:")
+        for step, duration in step_times.items():
+            pct = (duration / total) * 100 if total > 0 else 0
+            print(f"  - {step}: {duration:.2f}s ({pct:.1f}%)")
+        print(f"[JadwalAdapter] Total: {total:.2f}s")
 
         return {
             "planned_pages": planned_pages,
