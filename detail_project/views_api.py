@@ -3987,10 +3987,10 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
             }, status=400)
 
         # Validate format
-        if format_type not in ('pdf', 'word'):
+        if format_type not in ('pdf', 'word', 'xlsx'):
             return JsonResponse({
                 'status': 'error',
-                'message': f"Invalid format: {format_type}. Must be 'pdf' or 'word'."
+                'message': f"Invalid format: {format_type}. Must be 'pdf', 'word', or 'xlsx'."
             }, status=400)
 
         # Parse period for monthly/weekly (backward compatibility for single month/week)

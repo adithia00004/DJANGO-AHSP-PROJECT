@@ -101,7 +101,8 @@ export async function generatePDF(config) {
       projectName,
       metadata: {
         options,
-        hasGridData: Boolean(gridData)
+        hasGridData: Boolean(gridData),
+        projectId: options.projectId || window.PROJECT_ID || null  // For ExportManager
       }
     })
   });

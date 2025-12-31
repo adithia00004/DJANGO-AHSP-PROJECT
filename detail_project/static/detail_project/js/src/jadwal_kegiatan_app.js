@@ -442,6 +442,12 @@ class JadwalKegiatanApp {
     this.state.projectStart = dataset.projectStart || this.state.projectStart;
     this.state.projectEnd = dataset.projectEnd || this.state.projectEnd;
 
+    // Additional project info for exports
+    this.state.projectLocation = dataset.projectLocation || this.state.projectLocation || '-';
+    this.state.projectOwner = dataset.projectOwner || this.state.projectOwner || '-';
+    this.state.projectSourceOfFunds = dataset.projectSourceOfFunds || this.state.projectSourceOfFunds || '-';
+    this.state.projectBudget = Number(dataset.projectBudget || this.state.projectBudget || 0) || 0;
+
     const allowedTimeScales = new Set(['daily', 'weekly', 'monthly', 'custom']);
     const datasetScale =
       (dataset.defaultTimeScale ||
@@ -658,6 +664,22 @@ class JadwalKegiatanApp {
     };
 
     // Use flatPekerjaan first (already flattened), fallback to pekerjaanTree
+    // IMPORTANT: Merge volumeMap and hargaMap for correct values
+    const volumeMap = stateData.volumeMap || new Map();
+    const hargaMap = stateData.hargaMap || new Map();
+
+    // Debug log available maps
+    console.log('[JadwalKegiatanApp] volumeMap size:', volumeMap instanceof Map ? volumeMap.size : Object.keys(volumeMap).length);
+    console.log('[JadwalKegiatanApp] hargaMap size:', hargaMap instanceof Map ? hargaMap.size : Object.keys(hargaMap).length);
+
+    // Helper to get value from Map or Object
+    const getMapValue = (map, key) => {
+      if (map instanceof Map) {
+        return map.get(key) || map.get(String(key)) || map.get(Number(key)) || 0;
+      }
+      return map[key] || map[String(key)] || 0;
+    };
+
     if (stateData.flatPekerjaan && stateData.flatPekerjaan.length > 0) {
       stateData.flatPekerjaan.forEach((node, idx) => {
         const nodeName = node.uraian || node.nama || node.name || node.snapshot_uraian ||
@@ -665,17 +687,33 @@ class JadwalKegiatanApp {
         const nodeCode = node.kode || node.snapshot_kode || node.code || '';
         const nodeId = node.pekerjaan_id || node.id || `node-${idx}`;
 
+        // Get volume from volumeMap (loaded from API), fallback to node.volume
+        const volume = getMapValue(volumeMap, nodeId) || node.volume || 0;
+
+        // Get totalHarga from hargaMap (loaded from kurva-s-data API), fallback to node fields
+        const totalHarga = getMapValue(hargaMap, nodeId) || node.totalHarga || node.total_harga || node.harga || node.budgeted_cost || 0;
+
+        // Calculate harga_satuan if we have both volume and totalHarga
+        let hargaSatuan = node.hargaSatuan || node.harga_satuan || 0;
+        if (hargaSatuan === 0 && volume > 0 && totalHarga > 0) {
+          hargaSatuan = totalHarga / volume;
+        }
+
+        // Get satuan from node
+        const satuan = node.satuan || node.snapshot_satuan || '-';
+
         hierarchyRows.push({
           id: nodeId,
           type: node.type || 'pekerjaan',
           level: node.level || 0,
           name: nodeName,
           code: nodeCode,
+          kode: nodeCode, // Also add as kode for excel-generator
           parentId: node.parentId || node.parent_id || null,
-          totalHarga: node.totalHarga || node.total_harga || node.harga || 0,
-          volume: node.volume || 0,
-          satuan: node.satuan || node.snapshot_satuan || '',
-          hargaSatuan: node.hargaSatuan || node.harga_satuan || 0
+          totalHarga: totalHarga,
+          volume: volume,
+          satuan: satuan,
+          hargaSatuan: hargaSatuan
         });
       });
     } else if (stateData.pekerjaanTree && stateData.pekerjaanTree.length > 0) {
@@ -684,7 +722,8 @@ class JadwalKegiatanApp {
 
     console.log('[JadwalKegiatanApp] hierarchyRows built:', hierarchyRows.length);
     if (hierarchyRows.length > 0) {
-      console.log('[JadwalKegiatanApp] Sample row:', hierarchyRows[0]);
+      const samplePekerjaan = hierarchyRows.find(r => r.type === 'pekerjaan');
+      console.log('[JadwalKegiatanApp] Sample pekerjaan row:', samplePekerjaan);
     }
 
     // ============================================================================
@@ -837,7 +876,7 @@ class JadwalKegiatanApp {
     // Calculate from hargaMap + progress data if available
     // ============================================================================
     const kurvaSData = [];
-    const hargaMap = stateData.hargaMap || {};
+    const kurvaSHargaMap = stateData.hargaMap || {};
     const totalBiaya = stateData.totalBiayaProject || 0;
 
     // Calculate cumulative progress per week
@@ -851,7 +890,7 @@ class JadwalKegiatanApp {
         if (row.type !== 'pekerjaan') return;
 
         const rowId = String(row.id);
-        const taskHarga = hargaMap[rowId] || row.totalHarga || 0;
+        const taskHarga = kurvaSHargaMap[rowId] || row.totalHarga || 0;
 
         // Get progress for this task this week
         const plannedPct = (plannedProgress[rowId] && plannedProgress[rowId][weekNum]) || 0;
@@ -891,9 +930,10 @@ class JadwalKegiatanApp {
       actualProgress,
       kurvaSData,
       projectName: stateData.projectName || stateData.project?.name || 'Unnamed Project',
-      projectOwner: stateData.projectOwner || stateData.project?.owner || 'N/A',
-      projectLocation: stateData.projectLocation || stateData.project?.location || 'N/A',
-      projectBudget: stateData.projectBudget || stateData.project?.budget || 0,
+      projectOwner: stateData.projectOwner || stateData.project?.owner || '-',
+      projectLocation: stateData.projectLocation || stateData.project?.location || '-',
+      projectBudget: stateData.projectBudget || totalBiaya || stateData.project?.budget || 0,
+      projectSourceOfFunds: stateData.projectSourceOfFunds || '-',
       projectStart: stateData.projectStart || null,
       projectEnd: stateData.projectEnd || null
     };
@@ -904,7 +944,9 @@ class JadwalKegiatanApp {
       kurvaSData: exportState.kurvaSData.length,
       plannedProgressTasks: Object.keys(exportState.plannedProgress).length,
       actualProgressTasks: Object.keys(exportState.actualProgress).length,
-      projectName: exportState.projectName
+      projectName: exportState.projectName,
+      projectLocation: exportState.projectLocation,
+      projectBudget: exportState.projectBudget
     });
 
     return exportState;

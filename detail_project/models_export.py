@@ -37,10 +37,12 @@ class ExportSession(models.Model):
     # Format choices
     FORMAT_PDF = 'pdf'
     FORMAT_WORD = 'word'
+    FORMAT_XLSX = 'xlsx'
 
     FORMAT_CHOICES = [
         (FORMAT_PDF, 'PDF'),
         (FORMAT_WORD, 'Word Document'),
+        (FORMAT_XLSX, 'Excel Workbook'),
     ]
 
     # Report type choices

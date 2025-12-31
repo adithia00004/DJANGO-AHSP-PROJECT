@@ -594,6 +594,39 @@ class ExportManager:
             data['summary'] = report_data.get('summary', {})
             data['meta'] = report_data.get('meta', {})
             data['weekly_columns'] = report_data.get('weekly_columns', [])  # For Gantt date headers
+            
+            # Build base_rows_with_harga from database via adapter
+            # This includes harga_satuan, total_harga, satuan for each pekerjaan
+            try:
+                raw_base_rows, _ = adapter._build_base_rows()
+                base_rows_with_harga = []
+                for row in raw_base_rows:
+                    if row.get('type') == 'pekerjaan':
+                        pek_id = row.get('pekerjaan_id')
+                        total_harga = adapter._get_pekerjaan_harga(pek_id) if pek_id else 0
+                        # Get volume to calculate harga_satuan
+                        volume_str = row.get('volume_display', '0')
+                        # Parse volume (Indonesian format: "100,000" = 100.0)
+                        try:
+                            vol_parsed = float(str(volume_str).replace('.', '').replace(',', '.'))
+                        except:
+                            vol_parsed = 0
+                        harga_satuan = float(total_harga) / vol_parsed if vol_parsed > 0 else 0
+                        
+                        base_rows_with_harga.append({
+                            'pekerjaan_id': pek_id,
+                            'uraian': row.get('uraian', ''),
+                            'satuan': row.get('unit', ''),
+                            'volume': vol_parsed,
+                            'harga_satuan': harga_satuan,
+                            'total_harga': float(total_harga),
+                        })
+                data['base_rows_with_harga'] = base_rows_with_harga
+                print(f"[ExportManager] Added {len(base_rows_with_harga)} rows with harga data")
+            except Exception as e:
+                print(f"[ExportManager] Warning: Could not build base_rows_with_harga: {e}")
+                data['base_rows_with_harga'] = []
+            
             # Include cover page sections
             data['sections'] = [
                 'Grid View - Rencana (Planned)',

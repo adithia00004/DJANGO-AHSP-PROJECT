@@ -245,8 +245,10 @@
   data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}" data-enable-uplot-kurva="true"
   data-project-name="{{ project.nama|escape }}" data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
   data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}" data-default-time-scale="weekly"
-  data-default-input-mode="percentage" data-week-start-day="{{ project.week_start_day|default:0 }}"
-  data-week-end-day="{{ project.week_end_day|default:6 }}"
+  data-project-location="{{ project.lokasi|default:'-' }}" data-project-owner="{{ project.nama_client|default:'-' }}"
+  data-project-source-of-funds="{{ project.sumber_dana|default:'-' }}"
+  data-project-budget="{{ project.anggaran_owner|default:0 }}" data-default-input-mode="percentage"
+  data-week-start-day="{{ project.week_start_day|default:0 }}" data-week-end-day="{{ project.week_end_day|default:6 }}"
   data-api-week-boundary="{% url 'detail_project:api_update_week_boundaries' project.id %}"
   data-api-regenerate-tahapan="{% url 'detail_project:api_v2_regenerate_tahapan' project.id %}"
   data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">

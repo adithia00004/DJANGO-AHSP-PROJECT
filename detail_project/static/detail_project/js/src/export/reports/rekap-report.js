@@ -167,14 +167,62 @@ export async function generateRekapReport(state, format, options = {}) {
         break;
 
       case 'xlsx':
-        // Use backend API for Excel generation (like PDF)
-        result = await generatePDF({
-          attachments,
-          gridData: null,
-          reportType: 'rekap',
-          options: { ...options, format: 'xlsx' }  // Override to xlsx
-        });
-        // Note: Backend will detect format from the request and use ExcelExporter
+        // Direct call to backend ExportManager for native Excel with charts
+        // DO NOT use generatePDF - that's for image-based export
+        {
+          // Try multiple sources for projectId
+          let projectId = state.projectId || options.projectId || window.PROJECT_ID;
+
+          // Fallback: extract from URL (e.g., /jadwal-pekerjaan/109/)
+          if (!projectId) {
+            const urlMatch = window.location.pathname.match(/\/(\d+)\//);
+            if (urlMatch) {
+              projectId = urlMatch[1];
+            }
+          }
+
+          // Fallback: try to get from state manager or app
+          if (!projectId && window.jadwalApp?.state?.projectId) {
+            projectId = window.jadwalApp.state.projectId;
+          }
+
+          if (!projectId) {
+            throw new Error('[RekapReport] projectId is required for xlsx export. Cannot determine project ID.');
+          }
+
+          // Call professional export endpoint directly
+          const xlsxUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+
+          console.log('[RekapReport] Calling backend xlsx export:', xlsxUrl, 'projectId:', projectId);
+
+          const response = await fetch(xlsxUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.split('=')[1] || ''
+            },
+            body: JSON.stringify({
+              format: 'xlsx',
+              report_type: 'rekap'
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Excel export failed: ${response.status} - ${errorText}`);
+          }
+
+          const blob = await response.blob();
+          result = {
+            blob,
+            metadata: {
+              reportType: 'rekap',
+              format: 'xlsx',
+              size: blob.size,
+              generatedAt: new Date().toISOString()
+            }
+          };
+        }
         break;
 
       case 'csv':

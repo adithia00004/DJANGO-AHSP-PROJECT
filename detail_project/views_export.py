@@ -289,12 +289,14 @@ def export_finalize(request):
             session.mark_failed('No pages uploaded')
             return JsonResponse({'error': 'No pages uploaded'}, status=400)
 
-        # Generate PDF or Word based on format
+        # Generate PDF, Word in Excel based on format
         try:
             if session.format_type == ExportSession.FORMAT_PDF:
                 output_file, file_size = generate_pdf_from_pages(session, pages)
             elif session.format_type == ExportSession.FORMAT_WORD:
                 output_file, file_size = generate_word_from_pages(session, pages)
+            elif session.format_type == ExportSession.FORMAT_XLSX:
+                output_file, file_size = generate_excel_from_pages(session, pages)
             else:
                 raise ValueError(f"Unsupported format: {session.format_type}")
 
@@ -445,6 +447,126 @@ def generate_word_from_pages(session, pages):
     # Create ContentFile
     content_file = ContentFile(word_bytes, name=filename)
     file_size = len(word_bytes)
+
+    return content_file, file_size
+
+
+def generate_excel_from_pages(session, pages):
+    """
+    Generate Excel workbook using ExportManager for native charts.
+    
+    For Rekap reports, uses professional export with:
+    - Cover sheet with project info
+    - Kurva S sheet with data table and native LineChart
+    - Input Progress-Gantt sheet (SSOT for input values)
+
+    Args:
+        session: ExportSession instance
+        pages: QuerySet of ExportPage instances
+
+    Returns:
+        tuple: (ContentFile, file_size)
+    """
+    from io import BytesIO
+    from django.core.files.base import ContentFile
+    
+    logger.info(f"[generate_excel_from_pages] session={session.export_id}, report_type={session.report_type}, metadata={session.metadata}")
+    
+    # Try to use ExportManager for professional export with native charts
+    if session.report_type in ('rekap', 'monthly', 'weekly'):
+        try:
+            # Get project from session metadata
+            project_id = session.metadata.get('projectId') if session.metadata else None
+            logger.info(f"[generate_excel_from_pages] projectId from metadata: {project_id}")
+            
+            if project_id:
+                from .models import Project
+                project = Project.objects.get(id=project_id)
+                logger.info(f"[generate_excel_from_pages] Found project: {project.nama}")
+                
+                from .exports.export_manager import ExportManager
+                manager = ExportManager(project)
+                
+                # Use professional export for native chart support
+                logger.info(f"[generate_excel_from_pages] Calling export_jadwal_professional...")
+                response = manager.export_jadwal_professional(
+                    format_type='xlsx',
+                    report_type=session.report_type
+                )
+                
+                # Extract bytes from response
+                excel_bytes = response.content
+                logger.info(f"[generate_excel_from_pages] Professional export success, size={len(excel_bytes)} bytes")
+                
+                # Create filename
+                filename = f"{session.export_id}.xlsx"
+                content_file = ContentFile(excel_bytes, name=filename)
+                file_size = len(excel_bytes)
+                
+                logger.info(f"Generated professional Excel for session {session.export_id}")
+                return content_file, file_size
+            else:
+                logger.warning(f"[generate_excel_from_pages] projectId not found in metadata")
+                
+        except Exception as e:
+            logger.warning(f"Professional export failed, falling back to image-based: {str(e)}", exc_info=True)
+            # Fall through to image-based export
+    
+    # Fallback: Simple image-based Excel (for non-rekap or if professional fails)
+    from openpyxl import Workbook
+    from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.styles import Font
+
+    # Create Excel workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Ringkasan"
+
+    # Add title
+    ws['A1'] = f"Laporan {session.report_type.upper()} - {session.project_name}"
+    ws['A1'].font = Font(size=16, bold=True)
+    ws.merge_cells('A1:D1')
+
+    # Add each page as image in separate sheet
+    for page in pages:
+        # Decode base64 image
+        image_data = page.image_data
+        if image_data.startswith('data:image/png;base64,'):
+            image_data = image_data.split(',', 1)[1]
+
+        image_bytes = base64.b64decode(image_data)
+        image_buffer = BytesIO(image_bytes)
+
+        # Create sheet for this image
+        try:
+            safe_title = (page.title or f"Page {page.page_number}")[:31]
+            # Remove invalid characters
+            safe_title = ''.join(c for c in safe_title if c not in '[]:*?/\\')
+            ws_img = wb.create_sheet(title=safe_title)
+
+            # Add image
+            xl_img = XLImage(image_buffer)
+            ws_img.add_image(xl_img, 'A1')
+
+        except Exception as e:
+            logger.error(f"Error adding page {page.page_number} to Excel: {str(e)}")
+            # Continue with other pages
+            continue
+
+    # Save to buffer
+    buffer = BytesIO()
+    wb.save(buffer)
+
+    # Get Excel bytes
+    excel_bytes = buffer.getvalue()
+    buffer.close()
+
+    # Create filename
+    filename = f"{session.export_id}.xlsx"
+
+    # Create ContentFile
+    content_file = ContentFile(excel_bytes, name=filename)
+    file_size = len(excel_bytes)
 
     return content_file, file_size
 
