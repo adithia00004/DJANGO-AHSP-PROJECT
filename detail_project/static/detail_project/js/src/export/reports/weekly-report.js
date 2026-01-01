@@ -348,11 +348,72 @@ export async function generateWeeklyReport(state, format, week, options = {}) {
         break;
 
       case 'xlsx':
-        result = await generateExcel({
-          reportType: 'weekly',
-          attachments,
-          weeklyProgressTable
-        });
+        // For xlsx, call backend professional export API
+        {
+          let projectId = state.projectId || extractProjectIdFromUrl();
+          if (!projectId && window.jadwalApp?.state?.projectId) {
+            projectId = window.jadwalApp.state.projectId;
+          }
+
+          if (!projectId) {
+            throw new Error('[WeeklyReport] projectId is required for xlsx export');
+          }
+
+          const xlsxUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+
+          // Support multi-week export via options.weeks array
+          const weeks = options?.weeks;
+          const isMultiWeek = weeks && Array.isArray(weeks) && weeks.length > 0;
+
+          console.log('[WeeklyReport] Calling backend xlsx export:', xlsxUrl, 'projectId:', projectId,
+            isMultiWeek ? `weeks: [${weeks.join(',')}]` : `week: ${week}`);
+
+          const response = await fetch(xlsxUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.split('=')[1] || ''
+            },
+            body: JSON.stringify({
+              format: 'xlsx',
+              report_type: 'weekly',
+              // For multi-week: send weeks array; for single week: send period
+              period: isMultiWeek ? null : week,
+              weeks: isMultiWeek ? weeks : null
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Excel export failed: ${response.status} - ${errorText}`);
+          }
+
+          const blob = await response.blob();
+
+          // Extract filename from Content-Disposition
+          const contentDisposition = response.headers.get('Content-Disposition');
+          let xlsxFilename = isMultiWeek
+            ? `Laporan_Minggu_${weeks[0]}-${weeks[weeks.length - 1]}.xlsx`
+            : `Laporan_Minggu_${week}.xlsx`;
+
+          if (contentDisposition) {
+            const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i);
+            if (match && match[1]) {
+              xlsxFilename = match[1].replace(/["']/g, '');
+            }
+          }
+
+          result = {
+            blob,
+            metadata: {
+              reportType: 'weekly',
+              format: 'xlsx',
+              weeks: isMultiWeek ? weeks : [week],
+              generatedAt: new Date().toISOString(),
+              filename: xlsxFilename
+            }
+          };
+        }
         break;
 
       case 'csv':
@@ -481,7 +542,66 @@ export async function generateMultiWeeklyReport(state, format, weeks, options = 
     return await generateWeeklyReportFromBackend(state, format, weeks, options);
   }
 
-  // For other formats (xlsx, csv), not supported yet
+  // For xlsx, call backend professional export API
+  if (format === 'xlsx') {
+    let projectId = state.projectId || extractProjectIdFromUrl();
+    if (!projectId && window.jadwalApp?.state?.projectId) {
+      projectId = window.jadwalApp.state.projectId;
+    }
+
+    if (!projectId) {
+      throw new Error('[WeeklyReport] projectId is required for xlsx multi-week export');
+    }
+
+    const xlsxUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+
+    console.log('[WeeklyReport] Calling backend xlsx multi-week export:', xlsxUrl, 'projectId:', projectId, `weeks: [${weeks.join(',')}]`);
+
+    const response = await fetch(xlsxUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.split('=')[1] || ''
+      },
+      body: JSON.stringify({
+        format: 'xlsx',
+        report_type: 'weekly',
+        period: null,
+        weeks: weeks
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Excel multi-week export failed: ${response.status} - ${errorText}`);
+    }
+
+    const blob = await response.blob();
+
+    // Extract filename from Content-Disposition
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let xlsxFilename = `Laporan_Minggu_${weeks[0]}-${weeks[weeks.length - 1]}.xlsx`;
+
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i);
+      if (match && match[1]) {
+        xlsxFilename = match[1].replace(/["']/g, '');
+      }
+    }
+
+    return {
+      blob,
+      metadata: {
+        reportType: 'weekly',
+        format: 'xlsx',
+        weeks: weeks,
+        generatedAt: new Date().toISOString(),
+        filename: xlsxFilename
+      }
+    };
+  }
+
+  // For other formats (csv), not supported yet
   throw new Error(`[WeeklyReport] Multi-week export not supported for format: ${format}`);
 }
 
@@ -511,6 +631,9 @@ export async function exportMultiWeeklyReport(state, format, weeks, options = {}
         break;
       case 'word':
         downloadWord(result.blob, fullFilename);
+        break;
+      case 'xlsx':
+        downloadExcel(result.blob, fullFilename);
         break;
     }
 

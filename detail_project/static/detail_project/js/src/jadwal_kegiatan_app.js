@@ -1250,6 +1250,10 @@ class JadwalKegiatanApp {
       // Transform application state to export system format
       const phase4ExportState = this._transformStateForExport();
 
+      // Collect selected weeks from checkboxes (for weekly reports)
+      const weekCheckboxesPhase4 = exportModal.querySelectorAll('input[name="weeks"]:checked');
+      const selectedWeeksPhase4 = Array.from(weekCheckboxesPhase4).map(cb => parseInt(cb.value, 10)).sort((a, b) => a - b);
+
       const result = await exportReport({
         reportType,     // 'rekap' | 'monthly' | 'weekly'
         format,         // 'pdf' | 'word' | 'xlsx' | 'csv'
@@ -1259,7 +1263,9 @@ class JadwalKegiatanApp {
         month: reportType === 'monthly' ? (selectedMonths.length > 0 ? selectedMonths[0] : periodNumber) : null,
         // Multi-month support: pass full array for xlsx export
         months: reportType === 'monthly' && selectedMonths.length > 0 ? selectedMonths : null,
-        week: reportType === 'weekly' ? periodNumber : null,    // For weekly reports
+        week: reportType === 'weekly' ? (selectedWeeksPhase4.length > 0 ? selectedWeeksPhase4[0] : periodNumber) : null,
+        // Multi-week support: pass full array for xlsx export
+        weeks: reportType === 'weekly' && selectedWeeksPhase4.length > 0 ? selectedWeeksPhase4 : null,
         options: {
           includeGantt,
           includeKurvaS

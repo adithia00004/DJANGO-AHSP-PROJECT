@@ -131,6 +131,7 @@ export async function exportReport(exportRequest) {
   const mergedOptions = {
     ...options,
     months,  // Pass months array to options for multi-month export
+    weeks,   // Pass weeks array to options for multi-week export
     layout: {
       ...EXPORT_CONFIG.layout,
       ...(options.layout || {})

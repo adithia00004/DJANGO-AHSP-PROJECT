@@ -752,6 +752,64 @@ class ExportManager:
                 # Multi-week: pass all weeks data to exporter
                 data['weeks_data'] = report_data.get('weeks_data', [])
                 data['weeks'] = report_data.get('weeks', [])
+                
+                print(f"[ExportManager] Multi-week export: {len(data['weeks'])} weeks: {data['weeks']}")
+                
+                # For single-week selection via checkbox, also set 'week' for Excel exporter
+                if data['weeks'] and len(data['weeks']) == 1:
+                    data['week'] = data['weeks'][0]
+                    print(f"[ExportManager] Weekly: Single week {data['week']} selected via checkbox")
+                
+                # ============================================================
+                # USE get_monthly_comparison_data(1) TO GET ALL REQUIRED DATA
+                # This returns all_weekly_columns, base_rows, planned_map, actual_map
+                # that are needed for Excel SSOT sheet
+                # ============================================================
+                full_data = adapter.get_monthly_comparison_data(1)
+                
+                # Get first week's data for executive summary
+                first_week_data = data['weeks_data'][0]['data'] if data['weeks_data'] else {}
+                data['executive_summary'] = first_week_data.get('executive_summary', {})
+                
+                # Pass ALL required fields for Excel SSOT sheet
+                data['base_rows'] = full_data.get('base_rows', [])
+                data['all_weekly_columns'] = full_data.get('all_weekly_columns', [])
+                data['planned_map'] = full_data.get('planned_map', {})
+                data['actual_map'] = full_data.get('actual_map', {})
+                data['total_project_weeks'] = full_data.get('total_project_weeks', 0)
+                
+                print(f"[ExportManager] Multi-week: base_rows={len(data['base_rows'])}, weekly_cols={len(data['all_weekly_columns'])}")
+                print(f"[ExportManager] Multi-week: planned_map={len(data['planned_map'])}, actual_map={len(data['actual_map'])}")
+                
+                # Build base_rows_with_harga using adapter methods
+                try:
+                    raw_base_rows, _ = adapter._build_base_rows()
+                    base_rows_with_harga = []
+                    for row in raw_base_rows:
+                        if row.get('type') == 'pekerjaan':
+                            pek_id = row.get('pekerjaan_id')
+                            total_harga = adapter._get_pekerjaan_harga(pek_id) if pek_id else 0
+                            volume_str = row.get('volume_display', '0')
+                            try:
+                                vol_parsed = float(str(volume_str).replace('.', '').replace(',', '.'))
+                            except:
+                                vol_parsed = 0
+                            harga_satuan = float(total_harga) / vol_parsed if vol_parsed > 0 else 0
+                            
+                            base_rows_with_harga.append({
+                                'pekerjaan_id': pek_id,
+                                'uraian': row.get('uraian', ''),
+                                'satuan': row.get('unit', ''),
+                                'volume': vol_parsed,
+                                'harga_satuan': harga_satuan,
+                                'total_harga': float(total_harga),
+                            })
+                    data['base_rows_with_harga'] = base_rows_with_harga
+                    print(f"[ExportManager] Multi-week: Added {len(base_rows_with_harga)} rows with harga data")
+                except Exception as e:
+                    print(f"[ExportManager] Multi-week: Could not build base_rows_with_harga: {e}")
+                    data['base_rows_with_harga'] = []
+                    
             else:
                 # Single week (existing logic)
                 data['period'] = report_data.get('period', {})
@@ -797,6 +855,13 @@ class ExportManager:
             export_start = time.time()
             result = exporter.export_monthly_professional(data)
             print(f"[ExportManager] [TIME] Monthly Excel exporter finished in {time.time() - export_start:.2f}s")
+            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            return result
+        elif format_type == 'xlsx' and report_type == 'weekly' and hasattr(exporter, 'export_weekly_professional'):
+            # Weekly Excel export
+            export_start = time.time()
+            result = exporter.export_weekly_professional(data)
+            print(f"[ExportManager] [TIME] Weekly Excel exporter finished in {time.time() - export_start:.2f}s")
             print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
             return result
         elif format_type in ('pdf', 'xlsx') and hasattr(exporter, 'export_professional'):

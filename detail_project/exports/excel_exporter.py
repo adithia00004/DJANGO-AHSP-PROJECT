@@ -2731,3 +2731,506 @@ class ExcelExporter(ConfigExporterBase):
         
         print(f"[ExcelExporter] Rincian Progress M{month} sheet created: {len(pekerjaan_rows)} rows")
 
+    # =========================================================================
+    # PROFESSIONAL EXPORT FOR LAPORAN MINGGUAN (WEEKLY REPORT)
+    # =========================================================================
+
+    def export_weekly_professional(self, data: Dict[str, Any]):
+        """
+        Export professionally styled Excel for Weekly reports.
+        
+        Creates sheets:
+        - Sheet 1: Data Master (SSOT) - contains all project data
+        - Sheet 2..N: Rincian Progress W{n} for each selected week
+        
+        NOTE: Weekly report does NOT include Kurva S sheets
+        
+        Args:
+            data: Dict with keys:
+                - weeks: Array of week numbers (e.g., [1, 2, 3, 4])
+                - week: Single week number (fallback)
+                - project_info: Project information
+                - base_rows: Pekerjaan rows
+                - all_weekly_columns: All weekly columns
+                - planned_map, actual_map: Progress maps
+        """
+        if not OPENPYXL_AVAILABLE:
+            raise ImportError("openpyxl is required for Excel export")
+
+        print("[ExcelExporter] Starting Weekly Professional export...")
+
+        week = data.get('week', 1)
+        weeks_list = data.get('weeks', [week])
+        if not weeks_list:
+            weeks_list = [week]
+            
+        project_info = data.get('project_info', {})
+        base_rows = data.get('base_rows', [])
+        all_weekly_columns = data.get('all_weekly_columns', [])
+        
+        # Parse planned_map and actual_map (same as monthly)
+        planned_map_str = data.get('planned_map', {})
+        actual_map_str = data.get('actual_map', {})
+        
+        planned_map = {}
+        for key, val in planned_map_str.items():
+            parts = key.split('-')
+            if len(parts) == 2:
+                pek_id = int(parts[0])
+                week_num = int(parts[1])
+                if pek_id not in planned_map:
+                    planned_map[pek_id] = {}
+                planned_map[pek_id][week_num] = float(val)
+        
+        actual_map = {}
+        for key, val in actual_map_str.items():
+            parts = key.split('-')
+            if len(parts) == 2:
+                pek_id = int(parts[0])
+                week_num = int(parts[1])
+                if pek_id not in actual_map:
+                    actual_map[pek_id] = {}
+                actual_map[pek_id][week_num] = float(val)
+
+        print(f"[ExcelExporter] Weekly export: {len(weeks_list)} weeks: {weeks_list}")
+        print(f"[ExcelExporter] Weekly: {len(base_rows)} rows, {len(all_weekly_columns)} total weeks")
+
+        # Merge harga data from base_rows_with_harga
+        base_rows_with_harga = data.get('base_rows_with_harga', [])
+        if base_rows_with_harga:
+            print(f"[ExcelExporter] Weekly: Merging {len(base_rows_with_harga)} rows with harga data...")
+            harga_lookup = {}
+            for hrow in base_rows_with_harga:
+                uraian = hrow.get('uraian', '')
+                if uraian:
+                    harga_lookup[uraian] = hrow
+            
+            for brow in base_rows:
+                uraian = brow.get('name', brow.get('uraian', ''))
+                if uraian in harga_lookup:
+                    hdata = harga_lookup[uraian]
+                    brow['satuan'] = hdata.get('satuan', brow.get('satuan', '-'))
+                    brow['harga_satuan'] = hdata.get('harga_satuan', 0)
+                    brow['total_harga'] = hdata.get('total_harga', 0)
+                    brow['volume'] = hdata.get('volume', brow.get('volume', 0))
+
+        # Create workbook
+        wb = Workbook()
+        
+        # ================================================================
+        # Sheet 1: Data Master (SSOT) - contains all project data
+        # ================================================================
+        ws_ssot = wb.active
+        ws_ssot.title = 'Data Master'
+        ssot_ranges = self._build_ssot_sheet(
+            ws_ssot, project_info, base_rows, all_weekly_columns, planned_map, actual_map
+        )
+        
+        print(f"[ExcelExporter] Multi-week export: {len(weeks_list)} weeks: {weeks_list}")
+        
+        # Get executive summary from data
+        executive_summary = data.get('executive_summary', {})
+        
+        # ================================================================
+        # Create Rincian Progress sheet for each week
+        # ================================================================
+        for w in sorted(weeks_list):
+            ws_rincian = wb.create_sheet(f'Rincian Progress W{w}')
+            self._build_weekly_rincian_sheet(
+                ws_rincian, 
+                week=w,
+                ssot_ranges=ssot_ranges,
+                project_info=project_info,
+                executive_summary=executive_summary
+            )
+            print(f"[ExcelExporter] Created sheet: Rincian Progress W{w}")
+
+        # Save to buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        # Create filename
+        project_name = project_info.get('nama', 'Project').replace(' ', '_')
+        date_suffix = self.config.export_date.strftime('%Y%m%d')
+        
+        if len(weeks_list) == 1:
+            filename = f"Laporan_Minggu_{weeks_list[0]}_{project_name}_{date_suffix}.xlsx"
+        else:
+            filename = f"Laporan_Minggu_{weeks_list[0]}-{weeks_list[-1]}_{project_name}_{date_suffix}.xlsx"
+
+        print(f"[ExcelExporter] Weekly export complete: {filename}")
+        return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    def _build_weekly_rincian_sheet(self, ws, week: int, ssot_ranges: Dict, project_info: Dict,
+                                      executive_summary: Dict = None):
+        """
+        Build Rincian Progress sheet for weekly report.
+        
+        Structure (same as monthly):
+        1. Title: "LAPORAN MINGGU KE-{N}"
+        2. Project info section (formulas from Data Master)
+        3. Ringkasan Progress section (SUMPRODUCT formulas)
+        4. Tabel Rincian Progress with 10 columns
+        5. Lembar Pengesahan
+        
+        Note: Klasifikasi/Sub-klasifikasi rows only show No and Uraian, other columns are blank.
+        """
+        border = self._get_thin_border()
+        ssot_name = 'Data Master'
+        current_row = 1
+
+        # ==============================================
+        # TITLE
+        # ==============================================
+        ws.merge_cells(f'A{current_row}:J{current_row}')
+        title_cell = ws[f'A{current_row}']
+        title_cell.value = f'LAPORAN PROGRESS MINGGU KE-{week}'
+        title_cell.font = Font(size=14, bold=True, color=COLORS['PRIMARY'])
+        title_cell.alignment = Alignment(horizontal='center')
+        current_row += 2
+
+        # ==============================================
+        # PROJECT INFO (FORMULAS referencing Data Master)
+        # Layout: A-B merged for labels, C for ":", D-J merged for values
+        # This makes labels wider and more readable
+        # ==============================================
+        
+        # Nama Proyek
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        ws[f'A{current_row}'] = 'Nama Proyek'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'C{current_row}'] = ':'
+        ws.merge_cells(f'D{current_row}:J{current_row}')
+        ws[f'D{current_row}'] = f"='{ssot_name}'!C3"
+        current_row += 1
+        
+        # Lokasi
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        ws[f'A{current_row}'] = 'Lokasi'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'C{current_row}'] = ':'
+        ws.merge_cells(f'D{current_row}:J{current_row}')
+        ws[f'D{current_row}'] = f"='{ssot_name}'!G3"
+        current_row += 1
+        
+        # Pemilik
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        ws[f'A{current_row}'] = 'Pemilik'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'C{current_row}'] = ':'
+        ws.merge_cells(f'D{current_row}:J{current_row}')
+        ws[f'D{current_row}'] = f"='{ssot_name}'!C4"
+        current_row += 1
+        
+        # Minggu ke
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        ws[f'A{current_row}'] = 'Minggu ke'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'C{current_row}'] = ':'
+        ws.merge_cells(f'D{current_row}:J{current_row}')
+        ws[f'D{current_row}'] = week
+        current_row += 2
+        
+        # ==============================================
+        # RINGKASAN PROGRESS (SUMPRODUCT formulas)
+        # Layout: A-D merged for labels (long text), E for ":", F-G merged for values
+        # ==============================================
+        ws.merge_cells(f'A{current_row}:D{current_row}')
+        ws[f'A{current_row}'] = 'RINGKASAN PROGRESS'
+        ws[f'A{current_row}'].font = Font(bold=True, size=11)
+        current_row += 1
+        
+        # Get table range from ssot_ranges for SUMPRODUCT formulas
+        table_info = ssot_ranges['table']
+        data_start = table_info['data_start_row']
+        data_end = table_info['data_end_row']
+        week_col_map = table_info['week_col_map']
+        
+        # Progress Kumulatif s.d. Minggu Lalu (SUMPRODUCT of bobot * SUM(week1..week-1))
+        ws.merge_cells(f'A{current_row}:D{current_row}')
+        ws[f'A{current_row}'] = 'Progress Kumulatif s.d. Minggu Lalu'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'E{current_row}'] = ':'
+        ws.merge_cells(f'F{current_row}:G{current_row}')
+        prev_week = week - 1
+        if prev_week > 0 and week_col_map:
+            prev_week_cols = [week_col_map[wk] for wk in range(1, prev_week + 1) if wk in week_col_map]
+            if prev_week_cols:
+                week_ranges = '+'.join([f"'{ssot_name}'!{col}{data_start}:{col}{data_end}" for col in prev_week_cols])
+                formula = f"=SUMPRODUCT('{ssot_name}'!G{data_start}:G{data_end},({week_ranges}))"
+                ws[f'F{current_row}'] = formula
+            else:
+                ws[f'F{current_row}'] = 0
+        else:
+            ws[f'F{current_row}'] = 0
+        ws[f'F{current_row}'].number_format = '0.00%'
+        current_row += 1
+
+        # Progress Minggu Ini (SUMPRODUCT of bobot * current week)
+        ws.merge_cells(f'A{current_row}:D{current_row}')
+        ws[f'A{current_row}'] = 'Progress Minggu Ini'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'E{current_row}'] = ':'
+        ws.merge_cells(f'F{current_row}:G{current_row}')
+        if week in week_col_map:
+            week_col = week_col_map[week]
+            formula = f"=SUMPRODUCT('{ssot_name}'!G{data_start}:G{data_end},'{ssot_name}'!{week_col}{data_start}:{week_col}{data_end})"
+            ws[f'F{current_row}'] = formula
+        else:
+            ws[f'F{current_row}'] = 0
+        ws[f'F{current_row}'].number_format = '0.00%'
+        current_row += 1
+
+        # Progress Kumulatif s.d. Minggu Ini (SUMPRODUCT of bobot * SUM(week1..week))
+        ws.merge_cells(f'A{current_row}:D{current_row}')
+        ws[f'A{current_row}'] = 'Progress Kumulatif s.d. Minggu Ini'
+        ws[f'A{current_row}'].font = Font(bold=True)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='left')
+        ws[f'E{current_row}'] = ':'
+        ws.merge_cells(f'F{current_row}:G{current_row}')
+        if week_col_map:
+            cum_week_cols = [week_col_map[wk] for wk in range(1, week + 1) if wk in week_col_map]
+            if cum_week_cols:
+                week_ranges = '+'.join([f"'{ssot_name}'!{col}{data_start}:{col}{data_end}" for col in cum_week_cols])
+                formula = f"=SUMPRODUCT('{ssot_name}'!G{data_start}:G{data_end},({week_ranges}))"
+                ws[f'F{current_row}'] = formula
+            else:
+                ws[f'F{current_row}'] = 0
+        else:
+            ws[f'F{current_row}'] = 0
+        ws[f'F{current_row}'].number_format = '0.00%'
+        current_row += 2
+        
+        # ==============================================
+        # TABEL RINCIAN PROGRESS (10 columns)
+        # ==============================================
+        ws[f'A{current_row}'] = 'RINCIAN PROGRESS PER PEKERJAAN'
+        ws[f'A{current_row}'].font = Font(bold=True, size=12)
+        current_row += 1
+        
+        # Table headers
+        headers = ['No', 'Uraian Pekerjaan', 'Volume', 'Satuan', 'Harga Satuan', 
+                   'Total Harga', 'Bobot (%)', 'Kum. Minggu Lalu', 'Progress Minggu Ini', 'Kum. Minggu Ini']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=current_row, column=col, value=header)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        
+        ws.row_dimensions[current_row].height = 30
+        header_row = current_row
+        current_row += 1
+        table_data_start = current_row
+        
+        # Data rows - formulas referencing SSOT
+        pekerjaan_rows = ssot_ranges['pekerjaan_rows']
+        
+        for pek in pekerjaan_rows:
+            ssot_row = pek['planned_row']
+            item_type = pek['type']
+            
+            # Row styling
+            if item_type == 'klasifikasi':
+                bg_color = COLORS['KLASIFIKASI_BG']
+                is_bold = True
+                is_header = True
+            elif item_type in ('sub-klasifikasi', 'sub_klasifikasi'):
+                bg_color = COLORS['SUB_KLASIFIKASI_BG']
+                is_bold = True
+                is_header = True
+            else:
+                bg_color = None
+                is_bold = False
+                is_header = False
+            
+            if is_header:
+                # KLASIFIKASI/SUB-KLASIFIKASI: Only Uraian, No and other columns empty
+                # Col A: Empty (no number for klasifikasi)
+                ws.cell(row=current_row, column=1, value='').border = border
+                
+                # Col B: Uraian (reference)
+                uraian_cell = ws.cell(row=current_row, column=2, value=f"='{ssot_name}'!B{ssot_row}")
+                uraian_cell.border = border
+                uraian_cell.font = Font(bold=is_bold)
+                uraian_cell.alignment = Alignment(wrap_text=True, vertical='center')
+                
+                # Cols C-J: Empty
+                for col in range(3, 11):
+                    cell = ws.cell(row=current_row, column=col, value='')
+                    cell.border = border
+            else:
+                # PEKERJAAN: Full data with formulas
+                
+                # Col A: No (reference)
+                ws.cell(row=current_row, column=1, value=f"='{ssot_name}'!A{ssot_row}").border = border
+                
+                # Col B: Uraian (reference)
+                uraian_cell = ws.cell(row=current_row, column=2, value=f"='{ssot_name}'!B{ssot_row}")
+                uraian_cell.border = border
+                uraian_cell.font = Font(bold=is_bold)
+                uraian_cell.alignment = Alignment(wrap_text=True, vertical='center')
+                
+                # Col C: Volume (reference)
+                ws.cell(row=current_row, column=3, value=f"='{ssot_name}'!C{ssot_row}").border = border
+                ws.cell(row=current_row, column=3).number_format = '#,##0.00'
+                
+                # Col D: Satuan (reference)
+                ws.cell(row=current_row, column=4, value=f"='{ssot_name}'!D{ssot_row}").border = border
+                
+                # Col E: Harga Satuan (reference)
+                ws.cell(row=current_row, column=5, value=f"='{ssot_name}'!E{ssot_row}").border = border
+                ws.cell(row=current_row, column=5).number_format = '#,##0'
+                
+                # Col F: Total Harga (reference)
+                ws.cell(row=current_row, column=6, value=f"='{ssot_name}'!F{ssot_row}").border = border
+                ws.cell(row=current_row, column=6).number_format = '#,##0'
+                
+                # Col G: Bobot (reference)
+                ws.cell(row=current_row, column=7, value=f"='{ssot_name}'!G{ssot_row}").border = border
+                ws.cell(row=current_row, column=7).number_format = '0.00%'
+                
+                # Col H: Kumulatif Minggu Lalu = Bobot * SUM(week1..week-1)
+                # Formula: =G{row}*SUM(weeks1..prev)
+                if prev_week > 0:
+                    kum_lalu_formulas = []
+                    for wk in range(1, prev_week + 1):
+                        if wk in week_col_map:
+                            col_letter = week_col_map[wk]
+                            kum_lalu_formulas.append(f"'{ssot_name}'!{col_letter}{ssot_row}")
+                    if kum_lalu_formulas:
+                        # Bobot * SUM(previous weeks progress)
+                        sum_formula = f"SUM({','.join(kum_lalu_formulas)})"
+                        ws.cell(row=current_row, column=8, value=f"=G{current_row}*{sum_formula}").border = border
+                    else:
+                        ws.cell(row=current_row, column=8, value=0).border = border
+                else:
+                    ws.cell(row=current_row, column=8, value=0).border = border
+                ws.cell(row=current_row, column=8).number_format = '0.00%;-0.00%;"-"'
+                
+                # Col I: Progress Minggu Ini = Bobot * current week progress
+                if week in week_col_map:
+                    col_letter = week_col_map[week]
+                    # Bobot * this week progress
+                    ws.cell(row=current_row, column=9, value=f"=G{current_row}*'{ssot_name}'!{col_letter}{ssot_row}").border = border
+                else:
+                    ws.cell(row=current_row, column=9, value=0).border = border
+                ws.cell(row=current_row, column=9).number_format = '0.00%;-0.00%;"-"'
+                
+                # Col J: Kumulatif Minggu Ini = Bobot * SUM(week1..current week)
+                kum_ini_formulas = []
+                for wk in range(1, week + 1):
+                    if wk in week_col_map:
+                        col_letter = week_col_map[wk]
+                        kum_ini_formulas.append(f"'{ssot_name}'!{col_letter}{ssot_row}")
+                if kum_ini_formulas:
+                    sum_formula = f"SUM({','.join(kum_ini_formulas)})"
+                    ws.cell(row=current_row, column=10, value=f"=G{current_row}*{sum_formula}").border = border
+                else:
+                    ws.cell(row=current_row, column=10, value=0).border = border
+                ws.cell(row=current_row, column=10).number_format = '0.00%;-0.00%;"-"'
+            
+            # Apply background color
+            if bg_color:
+                for col in range(1, 11):
+                    ws.cell(row=current_row, column=col).fill = PatternFill('solid', fgColor=bg_color)
+            
+            current_row += 1
+        
+        # ==============================================
+        # TOTAL ROW (Sum of Total Harga and Bobot)
+        # ==============================================
+        total_row = current_row
+        
+        # Col A-E: "TOTAL" label merged
+        ws.merge_cells(f'A{total_row}:E{total_row}')
+        ws[f'A{total_row}'] = 'TOTAL'
+        ws[f'A{total_row}'].font = Font(bold=True)
+        ws[f'A{total_row}'].alignment = Alignment(horizontal='right')
+        ws[f'A{total_row}'].border = border
+        for col in range(2, 6):
+            ws.cell(row=total_row, column=col).border = border
+        
+        # Col F: Sum Total Harga
+        ws.cell(row=total_row, column=6, value=f"=SUM(F{table_data_start}:F{total_row-1})").border = border
+        ws.cell(row=total_row, column=6).font = Font(bold=True)
+        ws.cell(row=total_row, column=6).number_format = '#,##0'
+        
+        # Col G: Sum Bobot (should be 100%)
+        ws.cell(row=total_row, column=7, value=f"=SUM(G{table_data_start}:G{total_row-1})").border = border
+        ws.cell(row=total_row, column=7).font = Font(bold=True)
+        ws.cell(row=total_row, column=7).number_format = '0.00%'
+        
+        # Col H: Sum Kumulatif Minggu Lalu
+        ws.cell(row=total_row, column=8, value=f"=SUM(H{table_data_start}:H{total_row-1})").border = border
+        ws.cell(row=total_row, column=8).font = Font(bold=True)
+        ws.cell(row=total_row, column=8).number_format = '0.00%'
+        
+        # Col I: Sum Progress Minggu Ini
+        ws.cell(row=total_row, column=9, value=f"=SUM(I{table_data_start}:I{total_row-1})").border = border
+        ws.cell(row=total_row, column=9).font = Font(bold=True)
+        ws.cell(row=total_row, column=9).number_format = '0.00%'
+        
+        # Col J: Sum Kumulatif Minggu Ini
+        ws.cell(row=total_row, column=10, value=f"=SUM(J{table_data_start}:J{total_row-1})").border = border
+        ws.cell(row=total_row, column=10).font = Font(bold=True)
+        ws.cell(row=total_row, column=10).number_format = '0.00%'
+        
+        current_row = total_row + 3
+        
+        # ==============================================
+        # LEMBAR PENGESAHAN (same as monthly)
+        # ==============================================
+        ws.merge_cells(f'A{current_row}:J{current_row}')
+        ws[f'A{current_row}'] = 'LEMBAR PENGESAHAN'
+        ws[f'A{current_row}'].font = Font(bold=True, size=11)
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
+        current_row += 2
+        
+        # Three signature columns
+        ws.merge_cells(f'A{current_row}:C{current_row}')
+        ws[f'A{current_row}'] = 'Dibuat oleh,'
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells(f'E{current_row}:F{current_row}')
+        ws[f'E{current_row}'] = 'Diperiksa oleh,'
+        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells(f'H{current_row}:J{current_row}')
+        ws[f'H{current_row}'] = 'Disetujui oleh,'
+        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
+        
+        current_row += 4  # Space for signatures
+        
+        ws.merge_cells(f'A{current_row}:C{current_row}')
+        ws[f'A{current_row}'] = '(Nama Pelaksana)'
+        ws[f'A{current_row}'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells(f'E{current_row}:F{current_row}')
+        ws[f'E{current_row}'] = '(Nama Pengawas)'
+        ws[f'E{current_row}'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells(f'H{current_row}:J{current_row}')
+        ws[f'H{current_row}'] = '(Nama Pemilik)'
+        ws[f'H{current_row}'].alignment = Alignment(horizontal='center')
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 40
+        ws.column_dimensions['C'].width = 10
+        ws.column_dimensions['D'].width = 8
+        ws.column_dimensions['E'].width = 14
+        ws.column_dimensions['F'].width = 14
+        ws.column_dimensions['G'].width = 10
+        ws.column_dimensions['H'].width = 13
+        ws.column_dimensions['I'].width = 13
+        ws.column_dimensions['J'].width = 13
+        
+        print(f"[ExcelExporter] Rincian Progress W{week} sheet created: {len(pekerjaan_rows)} rows")
