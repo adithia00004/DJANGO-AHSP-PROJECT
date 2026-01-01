@@ -1164,9 +1164,12 @@ class JadwalKegiatanApp {
         const payload = {
           report_type: reportType,
           format: format,
-          // Multi-month support: send months array for monthly reports
-          period: (reportType === 'weekly') ? periodNumber : null,
-          months: (reportType === 'monthly' && selectedMonths.length > 0) ? selectedMonths : null,
+          // Monthly period: use periodNumber if no multi-select, otherwise null
+          period: (reportType === 'monthly' && (!selectedMonths || selectedMonths.length === 0))
+            ? periodNumber
+            : (reportType === 'weekly' ? periodNumber : null),
+          // Multi-month support: send months array for monthly reports when multi-select
+          months: (reportType === 'monthly' && selectedMonths && selectedMonths.length > 0) ? selectedMonths : null,
           // Multi-week support: send weeks array for weekly reports
           weeks: (reportType === 'weekly' && selectedWeeks.length > 0) ? selectedWeeks : null,
           attachments: attachments.map(att => ({
@@ -1183,6 +1186,7 @@ class JadwalKegiatanApp {
           }
         };
 
+        console.log('[Export] 🔍 DEBUG: period=', payload.period, 'periodNumber=', periodNumber, 'reportType=', reportType);
         console.log('[Export] ⏱️ Sending payload with', attachments.length, 'attachments, size:', JSON.stringify(payload).length, 'bytes');
         const apiCallStart = performance.now();
 
@@ -1251,6 +1255,11 @@ class JadwalKegiatanApp {
         format,         // 'pdf' | 'word' | 'xlsx' | 'csv'
         state: phase4ExportState,  // ← Use transformed state
         autoDownload: true, // Auto-download after generation
+        // For monthly: use first selected month from checkbox, fallback to periodNumber
+        month: reportType === 'monthly' ? (selectedMonths.length > 0 ? selectedMonths[0] : periodNumber) : null,
+        // Multi-month support: pass full array for xlsx export
+        months: reportType === 'monthly' && selectedMonths.length > 0 ? selectedMonths : null,
+        week: reportType === 'weekly' ? periodNumber : null,    // For weekly reports
         options: {
           includeGantt,
           includeKurvaS
@@ -2711,11 +2720,11 @@ class JadwalKegiatanApp {
     /* DISABLED CODE
     const bodyEl = this.state.domRefs?.ganttSummaryBody;
     const totalEl = this.state.domRefs?.ganttSummaryTotal;
- 
+   
     if (!bodyEl) {
       return;
     }
- 
+   
     const setEmptyState = (message) => {
       bodyEl.innerHTML = `
         <tr>
@@ -2726,22 +2735,22 @@ class JadwalKegiatanApp {
         totalEl.textContent = '';
       }
     };
- 
+   
     if (!this.ganttChart) {
       setEmptyState('Gantt chart belum siap ditampilkan.');
       return;
     }
- 
+   
     const rows = this.ganttChart.getSummaryRows();
     const stats = typeof this.ganttChart.getSummaryStats === 'function'
       ? this.ganttChart.getSummaryStats()
       : { total: rows.length, complete: 0, inProgress: 0, notStarted: 0 };
- 
+   
     if (!rows.length) {
       setEmptyState('Tidak ada pekerjaan yang memiliki jadwal.');
       return;
     }
- 
+   
     const summaryHtml = rows.map((row) => {
       const safeName = this._escapeHtml(row.shortLabel || row.label || '-');
       const safePath = this._escapeHtml(row.pathLabel || '');
@@ -2754,7 +2763,7 @@ class JadwalKegiatanApp {
           <div class="gantt-summary-range">${this._escapeHtml(row.planned.startLabel || '-')} s/d ${this._escapeHtml(row.planned.endLabel || '-')}</div>
         `
         : '<span class="text-muted small">Belum ada data</span>';
- 
+   
       const actualBlock = row.actual?.hasData
         ? `
           <div class="gantt-summary-chip actual">
@@ -2764,16 +2773,16 @@ class JadwalKegiatanApp {
           <div class="gantt-summary-range">${this._escapeHtml(row.actual.startLabel || '-')} s/d ${this._escapeHtml(row.actual.endLabel || '-')}</div>
         `
         : '<span class="text-muted small">Belum ada data</span>';
- 
+   
       let deltaClass = 'text-muted';
       if (row.delta > 0) {
         deltaClass = 'text-danger';
       } else if (row.delta < 0) {
         deltaClass = 'text-success';
       }
- 
+   
       const deltaLabel = this._escapeHtml(row.deltaLabel || '0%');
- 
+   
       return `
         <tr>
           <td class="text-muted">${row.index}</td>
@@ -2789,9 +2798,9 @@ class JadwalKegiatanApp {
         </tr>
       `;
     }).join('');
- 
+   
     bodyEl.innerHTML = summaryHtml;
- 
+   
     if (totalEl) {
       totalEl.textContent = `${stats.total} pekerjaan • ${stats.complete} selesai • ${stats.inProgress} berjalan`;
     }
@@ -2813,27 +2822,27 @@ class JadwalKegiatanApp {
     if (!bodyEl) {
       return;
     }
- 
+   
     if (!this.ganttChart) {
       bodyEl.innerHTML = '<div class="text-muted text-center py-3">Gantt chart belum siap ditampilkan.</div>';
       return;
     }
- 
+   
     const rows = this.ganttChart.getHierarchy();
     if (!rows.length) {
       bodyEl.innerHTML = '<div class="text-muted text-center py-3">Tidak ada pekerjaan untuk ditampilkan.</div>';
       return;
     }
- 
+   
     const rowHeight = Math.max(32, Math.round(this.ganttChart.getRowHeight()));
     bodyEl.style.setProperty('--gantt-tree-row-height', `${rowHeight}px`);
- 
+   
     const treeHtml = rows.map((row, index) => {
       const indentLevel = Math.max(0, (row.level || 0) - 1);
       const subtitleParts = Array.isArray(row.pathParts) ? row.pathParts.slice(0, -1) : [];
       const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' / ') : '';
       const prefixDot = row.level > 0 ? '•'.repeat(Math.min(row.level, 3)) : '';
- 
+   
       return `
         <div class="gantt-tree-row" data-row-index="${index}">
           <span class="tree-prefix">${prefixDot}</span>
@@ -2844,7 +2853,7 @@ class JadwalKegiatanApp {
         </div>
       `;
     }).join('');
- 
+   
     bodyEl.innerHTML = treeHtml;
     this._attachGanttScrollSync();
     */ // END DISABLED CODE

@@ -100,6 +100,7 @@ export async function exportReport(exportRequest) {
     state,
     options = {},
     month = null,
+    months = null,  // Array of months for multi-month export (NEW)
     week = null,
     weeks = null,  // Array of weeks for multi-week export
     autoDownload = true
@@ -120,6 +121,7 @@ export async function exportReport(exportRequest) {
     reportType,
     format,
     month,
+    months,  // Log months array
     week,
     weeks,
     autoDownload
@@ -128,6 +130,7 @@ export async function exportReport(exportRequest) {
   // Merge layout options dengan EXPORT_CONFIG
   const mergedOptions = {
     ...options,
+    months,  // Pass months array to options for multi-month export
     layout: {
       ...EXPORT_CONFIG.layout,
       ...(options.layout || {})
@@ -148,13 +151,16 @@ export async function exportReport(exportRequest) {
         break;
 
       case EXPORT_CONFIG.reportTypes.MONTHLY:
-        if (!month) {
-          throw new Error('[ExportCoordinator] month parameter required for monthly report');
+        // Accept either single month or months array
+        if (!month && (!months || months.length === 0)) {
+          throw new Error('[ExportCoordinator] month or months parameter required for monthly report');
         }
+        // Use first month from array if single month not provided
+        const effectiveMonth = month || (months && months[0]) || 1;
         if (autoDownload) {
-          result = await exportMonthlyReport(state, format, month, mergedOptions);
+          result = await exportMonthlyReport(state, format, effectiveMonth, mergedOptions);
         } else {
-          result = await generateMonthlyReport(state, format, month, mergedOptions);
+          result = await generateMonthlyReport(state, format, effectiveMonth, mergedOptions);
         }
         break;
 

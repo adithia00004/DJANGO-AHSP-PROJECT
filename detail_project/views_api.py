@@ -3958,6 +3958,13 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
         period_str = request.GET.get('period') or payload.get('period')
         format_type = request.GET.get('format') or payload.get('format', 'pdf')
         
+        # DEBUG: Trace period parameter from frontend
+        print(f"[views_api] DEBUG export_jadwal_pekerjaan_professional called:")
+        print(f"  - report_type: {report_type}")
+        print(f"  - period_str (raw): {period_str}")
+        print(f"  - format_type: {format_type}")
+        print(f"  - payload keys: {list(payload.keys()) if payload else 'empty'}")
+        
         # Parse months parameter for multi-month export (NEW)
         months_raw = request.GET.get('months') or payload.get('months')
         months = None

@@ -559,6 +559,7 @@ class ExportManager:
             else:
                 # Single month (backward compatible)
                 month = period or 1
+                print(f"[ExportManager] Monthly data request: period={period}, using month={month}")
                 report_data = adapter.get_monthly_comparison_data(month)
         elif report_type == 'weekly':
             # Multi-week support (NEW)
@@ -640,6 +641,58 @@ class ExportManager:
                 # Multi-month: pass all months data to exporter
                 data['months_data'] = report_data.get('months_data', [])
                 data['months'] = report_data.get('months', [])
+                
+                print(f"[ExportManager] Multi-month export: {len(data['months'])} months: {data['months']}")
+                
+                # For single-month selection via checkbox, also set 'month' for Excel exporter
+                if data['months'] and len(data['months']) == 1:
+                    data['month'] = data['months'][0]
+                    print(f"[ExportManager] Monthly: Single month {data['month']} selected via checkbox")
+                
+                # Get data from first month to use as base for all sheets
+                first_month_data = data['months_data'][0]['data'] if data['months_data'] else {}
+                
+                # Pass ALL required fields from first month's data for Excel export
+                data['executive_summary'] = first_month_data.get('executive_summary', {})
+                data['hierarchy_progress'] = first_month_data.get('hierarchy_progress', [])
+                data['kurva_s_data'] = first_month_data.get('kurva_s_data', [])
+                data['all_weekly_columns'] = first_month_data.get('all_weekly_columns', [])
+                data['total_project_weeks'] = first_month_data.get('total_project_weeks', 0)
+                data['weekly_columns'] = first_month_data.get('weekly_columns', [])
+                data['base_rows'] = first_month_data.get('base_rows', [])
+                data['hierarchy'] = first_month_data.get('hierarchy', {})
+                data['planned_map'] = first_month_data.get('planned_map', {})
+                data['actual_map'] = first_month_data.get('actual_map', {})
+                
+                # Build base_rows_with_harga for multi-month (same as single)
+                try:
+                    raw_base_rows, _ = adapter._build_base_rows()
+                    base_rows_with_harga = []
+                    for row in raw_base_rows:
+                        if row.get('type') == 'pekerjaan':
+                            pek_id = row.get('pekerjaan_id')
+                            total_harga = adapter._get_pekerjaan_harga(pek_id) if pek_id else 0
+                            volume_str = row.get('volume_display', '0')
+                            try:
+                                vol_parsed = float(str(volume_str).replace('.', '').replace(',', '.'))
+                            except:
+                                vol_parsed = 0
+                            harga_satuan = float(total_harga) / vol_parsed if vol_parsed > 0 else 0
+                            
+                            base_rows_with_harga.append({
+                                'pekerjaan_id': pek_id,
+                                'uraian': row.get('uraian', ''),
+                                'satuan': row.get('unit', ''),
+                                'volume': vol_parsed,
+                                'harga_satuan': harga_satuan,
+                                'total_harga': float(total_harga),
+                            })
+                    data['base_rows_with_harga'] = base_rows_with_harga
+                    print(f"[ExportManager] Multi-month: Added {len(base_rows_with_harga)} rows with harga data")
+                except Exception as e:
+                    print(f"[ExportManager] Multi-month: Could not build base_rows_with_harga: {e}")
+                    data['base_rows_with_harga'] = []
+                    
             else:
                 # Single month (existing logic)
                 data['period'] = report_data.get('period', {})
@@ -663,6 +716,36 @@ class ExportManager:
                 data['planned_map'] = report_data.get('planned_map', {})
                 data['actual_map'] = report_data.get('actual_map', {})
                 data['month'] = report_data.get('month', period)
+                
+                # Build base_rows_with_harga for monthly (same as rekap)
+                try:
+                    raw_base_rows, _ = adapter._build_base_rows()
+                    base_rows_with_harga = []
+                    for row in raw_base_rows:
+                        if row.get('type') == 'pekerjaan':
+                            pek_id = row.get('pekerjaan_id')
+                            total_harga = adapter._get_pekerjaan_harga(pek_id) if pek_id else 0
+                            volume_str = row.get('volume_display', '0')
+                            try:
+                                vol_parsed = float(str(volume_str).replace('.', '').replace(',', '.'))
+                            except:
+                                vol_parsed = 0
+                            harga_satuan = float(total_harga) / vol_parsed if vol_parsed > 0 else 0
+                            
+                            base_rows_with_harga.append({
+                                'pekerjaan_id': pek_id,
+                                'uraian': row.get('uraian', ''),
+                                'satuan': row.get('unit', ''),
+                                'volume': vol_parsed,
+                                'harga_satuan': harga_satuan,
+                                'total_harga': float(total_harga),
+                            })
+                    data['base_rows_with_harga'] = base_rows_with_harga
+                    print(f"[ExportManager] Monthly: Added {len(base_rows_with_harga)} rows with harga data")
+                except Exception as e:
+                    print(f"[ExportManager] Monthly: Could not build base_rows_with_harga: {e}")
+                    data['base_rows_with_harga'] = []
+                    
         elif report_type == 'weekly':
             # Check for multi-week mode
             if 'weeks_data' in report_data:
@@ -708,8 +791,15 @@ class ExportManager:
         
         exporter = exporter_class(config)
         
-        # For PDF and Excel, use special professional export method
-        if format_type in ('pdf', 'xlsx') and hasattr(exporter, 'export_professional'):
+        # For PDF and Excel, use special professional export methods
+        if format_type == 'xlsx' and report_type == 'monthly' and hasattr(exporter, 'export_monthly_professional'):
+            # Monthly Excel export
+            export_start = time.time()
+            result = exporter.export_monthly_professional(data)
+            print(f"[ExportManager] [TIME] Monthly Excel exporter finished in {time.time() - export_start:.2f}s")
+            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            return result
+        elif format_type in ('pdf', 'xlsx') and hasattr(exporter, 'export_professional'):
             export_start = time.time()
             result = exporter.export_professional(data)
             print(f"[ExportManager] [TIME] Exporter finished in {time.time() - export_start:.2f}s")

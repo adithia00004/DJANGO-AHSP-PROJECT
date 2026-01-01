@@ -282,12 +282,81 @@ export async function generateMonthlyReport(state, format, month, options = {}) 
         break;
 
       case 'xlsx':
-        result = await generateExcel({
-          reportType: 'monthly',
-          attachments,
-          monthlyProgressTable,
-          summaryStats
-        });
+        // Direct call to backend ExportManager for native Excel with charts
+        // Same pattern as rekap-report.js but with report_type: 'monthly'
+        {
+          // Try multiple sources for projectId
+          let projectId = state.projectId || options.projectId || window.PROJECT_ID;
+
+          // Fallback: extract from URL (e.g., /jadwal-pekerjaan/109/)
+          if (!projectId) {
+            const urlMatch = window.location.pathname.match(/\/(\d+)\//);
+            if (urlMatch) {
+              projectId = urlMatch[1];
+            }
+          }
+
+          // Fallback: try to get from state manager or app
+          if (!projectId && window.jadwalApp?.state?.projectId) {
+            projectId = window.jadwalApp.state.projectId;
+          }
+
+          if (!projectId) {
+            throw new Error('[MonthlyReport] projectId is required for xlsx export. Cannot determine project ID.');
+          }
+
+          // Call professional export endpoint directly
+          const xlsxUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+
+          // Support multi-month export via options.months array
+          const months = options?.months;
+          const isMultiMonth = months && Array.isArray(months) && months.length > 0;
+
+          console.log('[MonthlyReport] Calling backend xlsx export:', xlsxUrl, 'projectId:', projectId,
+            isMultiMonth ? `months: [${months.join(',')}]` : `month: ${month}`);
+
+          const response = await fetch(xlsxUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.split('=')[1] || ''
+            },
+            body: JSON.stringify({
+              format: 'xlsx',
+              report_type: 'monthly',
+              // For multi-month: send months array; for single month: send period
+              period: isMultiMonth ? null : month,
+              months: isMultiMonth ? months : null
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Excel export failed: ${response.status} - ${errorText}`);
+          }
+
+          // Validate content-type to ensure we got an xlsx file, not an error
+          const contentType = response.headers.get('Content-Type') || '';
+          if (!contentType.includes('spreadsheet') && !contentType.includes('octet-stream')) {
+            // Might be JSON error response
+            const errorText = await response.text();
+            console.error('[MonthlyReport] Unexpected content-type:', contentType, 'Response:', errorText);
+            throw new Error(`Excel export returned invalid content-type: ${contentType}. Response: ${errorText.substring(0, 200)}`);
+          }
+
+          const blob = await response.blob();
+          console.log('[MonthlyReport] Excel blob received:', blob.size, 'bytes, type:', blob.type);
+
+          result = {
+            blob,
+            metadata: {
+              reportType: 'monthly',
+              format: 'xlsx',
+              month,
+              generatedAt: new Date().toISOString()
+            }
+          };
+        }
         break;
 
       case 'csv':
