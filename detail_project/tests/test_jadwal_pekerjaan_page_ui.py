@@ -14,11 +14,11 @@ def test_jadwal_pekerjaan_page_renders_with_core_anchors(client_logged, project)
     expected_anchors = [
         'id="tahapan-grid-app"',
         'id="viewTabs"',
-        'id="grid-view"',
-        'id="gantt-view"',
-        'id="scurve-view"',
+        'id="unified-view"',  # Modern: single unified view container
         'id="tanstack-grid-container"',
-        'id="gantt-redesign-container"',
+        'id="grid-tab"',
+        'id="gantt-tab"',
+        'id="scurve-tab"',
         'id="save-button"',
         'id="btn-reset-progress"',
     ]

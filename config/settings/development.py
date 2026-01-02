@@ -26,15 +26,16 @@ ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS + [
     "*",
 ]))
 
-# Add Django Debug Toolbar if available
-try:
-    import debug_toolbar  # type: ignore  # noqa: F401
-except ImportError:
-    debug_toolbar = None  # pragma: no cover
-else:  # pragma: no cover - debug toolbar optional
-    INSTALLED_APPS += ["debug_toolbar"]
-    MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]
-    INTERNAL_IPS = ["127.0.0.1", "localhost"]
+# Django Debug Toolbar (disabled for cleaner UI)
+# To re-enable, uncomment the lines below:
+# try:
+#     import debug_toolbar  # type: ignore  # noqa: F401
+# except ImportError:
+#     debug_toolbar = None  # pragma: no cover
+# else:  # pragma: no cover - debug toolbar optional
+#     INSTALLED_APPS += ["debug_toolbar"]
+#     MIDDLEWARE += ["debug_toolbar.middleware.DebugToolbarMiddleware"]
+#     INTERNAL_IPS = ["127.0.0.1", "localhost"]
 
 # Use console email backend locally
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

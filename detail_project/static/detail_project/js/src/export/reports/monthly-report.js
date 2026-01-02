@@ -9,7 +9,6 @@ import { renderKurvaS } from '../core/kurva-s-renderer.js';
 import { generatePDF, downloadPDF } from '../generators/pdf-generator.js';
 import { generateWord, downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
-import { generateMonthlyProgressCSV, downloadCSV } from '../generators/csv-generator.js';
 
 // ============================================================================
 // Helper Functions for Monthly Report Data Preparation

@@ -1,11 +1,12 @@
-
+﻿
 // static/detail_project/js/rekap_kebutuhan.js
 // Fully rebuilt client for Rekap Kebutuhan page with advanced filtering & insights
 
 (function () {
   'use strict';
 
-  console.log('📦 [Rekap Kebutuhan] Module loaded');
+  // DEBUG: Confirm JS file is loaded
+  console.log('📦 rekap_kebutuhan.js loaded');
 
   const app = document.getElementById('rk-app');
   if (!app) {

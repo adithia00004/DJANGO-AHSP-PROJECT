@@ -264,10 +264,10 @@ class TestJadwalPekerjaanPageAPI:
         assert response.status_code == 200
         html = response.content.decode("utf-8")
 
-        # Check for unified table container
+        # Check for unified table container and tabs
         assert 'id="tanstack-grid-container"' in html
-        assert 'id="gantt-redesign-container"' in html
-        assert 'id="scurve-view"' in html
+        assert 'id="unified-view"' in html  # Modern unified view
+        assert 'id="gantt-tab"' in html  # Gantt tab button
 
     def test_page_has_correct_mode_tabs(self, client_logged, project):
         """Test that page has Grid, Gantt, and Kurva-S tabs."""
@@ -441,7 +441,8 @@ class TestGanttMode:
         assert response.status_code == 200
         html = response.content.decode("utf-8")
 
-        assert 'id="gantt-redesign-container"' in html
+        # Gantt is rendered dynamically by JavaScript within unified-view
+        assert 'id="unified-view"' in html or 'id="gantt-tab"' in html
 
     def test_gantt_bar_data_calculation(
         self,
@@ -514,7 +515,8 @@ class TestKurvaSMode:
         assert response.status_code == 200
         html = response.content.decode("utf-8")
 
-        assert 'id="scurve-view"' in html
+        # Kurva-S is rendered dynamically by JavaScript within unified-view
+        assert 'id="unified-view"' in html or 'id="scurve-tab"' in html
 
     def test_kurvas_cumulative_calculation(
         self,
@@ -629,8 +631,8 @@ class TestUnifiedTableIntegration:
         html = response.content.decode("utf-8")
         assert 'tanstack-grid-container' in html
 
-        # 3. Verify Gantt mode containers exist
-        assert 'gantt-redesign-container' in html
+        # 3. Verify mode tabs exist (Gantt is rendered dynamically)
+        assert 'gantt-tab' in html or 'unified-view' in html
 
         # 4. Simulate data flow (this would happen via JavaScript in browser)
         payload = unified_table_payload
@@ -652,9 +654,9 @@ class TestUnifiedTableIntegration:
         response = client_logged.get(url)
         assert response.status_code == 200
 
-        # 2. Verify Kurva-S mode container exists
+        # 2. Verify unified view and tabs exist (Kurva-S is rendered dynamically)
         html = response.content.decode("utf-8")
-        assert 'scurve-view' in html
+        assert 'unified-view' in html or 'scurve-tab' in html
 
         # 3. Simulate cumulative calculation
         payload = unified_table_payload
@@ -751,4 +753,4 @@ class TestLegacyGanttRemoval:
 
         # Should contain unified table components
         assert 'tanstack-grid-container' in html
-        assert 'gantt-redesign-container' in html
+        assert 'unified-view' in html or 'gantt-tab' in html  # Modern architecture

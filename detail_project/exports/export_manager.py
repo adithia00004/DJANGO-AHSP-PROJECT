@@ -4,13 +4,15 @@
 # =====================================================================
 
 from typing import Dict, Any
-from django.http import HttpResponse
+import json
+from django.http import HttpResponse, JsonResponse
 from ..export_config import ExportConfig, SignatureConfig, format_currency, JadwalExportLayout
 from ..services import compute_kebutuhan_items, summarize_kebutuhan_rows
 from .csv_exporter import CSVExporter
 from .pdf_exporter import PDFExporter
 from .word_exporter import WordExporter
 from .excel_exporter import ExcelExporter
+from .json_exporter import JSONExporter
 from .rekap_rab_adapter import RekapRABAdapter
 from .rekap_kebutuhan_adapter import RekapKebutuhanAdapter
 from .volume_pekerjaan_adapter import VolumePekerjaanAdapter
@@ -27,6 +29,7 @@ class ExportManager:
         'pdf': PDFExporter,
         'word': WordExporter,
         'xlsx': ExcelExporter,
+        'json': JSONExporter,
     }
     
     def __init__(self, project, user=None):
@@ -846,6 +849,23 @@ class ExportManager:
         # Word format is disabled due to performance issues
         if format_type == 'word':
             raise ValueError("Word export is currently disabled. Please use PDF or Excel format.")
+        
+        # JSON format - export pekerjaan + progress data for import/export
+        if format_type == 'json':
+            export_start = time.time()
+            json_exporter = JSONExporter(self.project)
+            json_data = json_exporter.export_jadwal_pekerjaan()
+            json_string = json.dumps(json_data, indent=2, ensure_ascii=False, default=str)
+            
+            # Create filename: projectName_jadwal_pekerjaan.json
+            project_name = self.project.nama.replace(' ', '_') if self.project.nama else 'project'
+            filename = f"{project_name}_jadwal_pekerjaan.json"
+            
+            response = HttpResponse(json_string, content_type='application/json')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            print(f"[ExportManager] [TIME] JSON export finished in {time.time() - export_start:.2f}s")
+            print(f"[ExportManager] [OK] Total export time: {time.time() - start_time:.2f}s")
+            return response
         
         exporter = exporter_class(config)
         

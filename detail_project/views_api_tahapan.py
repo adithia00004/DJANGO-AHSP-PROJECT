@@ -749,6 +749,21 @@ def api_get_rekap_kebutuhan_enhanced(request, project_id):
         except TahapPelaksanaan.DoesNotExist:
             pass
 
+    # Phase 1.2: Add pekerjaan without progress for warning badge
+    from .models import PekerjaanProgressWeekly
+    pekerjaan_with_progress_ids = set(
+        PekerjaanProgressWeekly.objects.filter(project=project)
+        .values_list('pekerjaan_id', flat=True)
+        .distinct()
+    )
+    all_pekerjaan = Pekerjaan.objects.filter(project=project).values('id', 'snapshot_kode', 'snapshot_uraian')
+    pekerjaan_without_progress = [
+        {'id': p['id'], 'kode': p['snapshot_kode'], 'uraian': p['snapshot_uraian']}
+        for p in all_pekerjaan
+        if p['id'] not in pekerjaan_with_progress_ids
+    ]
+    summary['pekerjaan_without_progress'] = pekerjaan_without_progress
+
     return JsonResponse({
         "ok": True,
         "rows": rows,
@@ -761,6 +776,10 @@ def api_get_rekap_kebutuhan_enhanced(request, project_id):
 def api_get_rekap_kebutuhan_timeline(request, project_id):
     project = _owner_or_404(project_id, request.user)
     params = parse_kebutuhan_query_params(request.GET)
+    
+    # Phase 4: Check for aggregate mode
+    aggregate = request.GET.get('aggregate', '').lower() in ('true', '1', 'yes')
+    
     try:
         data = compute_kebutuhan_timeline(
             project,
@@ -772,11 +791,100 @@ def api_get_rekap_kebutuhan_timeline(request, project_id):
     except Exception as exc:
         return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
 
-    response = {
-        "ok": True,
-        "periods": data.get('periods', []),
-        "meta": data.get('meta', {}),
-    }
+    periods = data.get('periods', [])
+    
+    # Phase 4: If aggregate mode, combine all items across periods
+    if aggregate and periods:
+        from decimal import Decimal
+        from collections import defaultdict
+        
+        aggregated = {}  # key: (kategori, kode, uraian, satuan) -> accumulated data
+        unscheduled_total = Decimal('0')
+        
+        for period in periods:
+            # Skip "Di luar jadwal" from aggregation - track separately
+            if period.get('value') == 'unscheduled':
+                unscheduled_total = Decimal(str(period.get('total_cost_decimal', 0)))
+                continue
+                
+            for item in period.get('items', []):
+                key = (
+                    item.get('kategori', ''),
+                    item.get('kode', ''),
+                    item.get('uraian', ''),
+                    item.get('satuan', '')
+                )
+                
+                qty = item.get('quantity_decimal', Decimal('0'))
+                if not isinstance(qty, Decimal):
+                    qty = Decimal(str(qty or 0))
+                    
+                harga_satuan = item.get('harga_satuan_decimal', Decimal('0'))
+                if not isinstance(harga_satuan, Decimal):
+                    harga_satuan = Decimal(str(harga_satuan or 0))
+                
+                if key not in aggregated:
+                    aggregated[key] = {
+                        'kategori': item.get('kategori', ''),
+                        'kode': item.get('kode', '-'),
+                        'uraian': item.get('uraian', '-'),
+                        'satuan': item.get('satuan', '-'),
+                        'quantity': Decimal('0'),
+                        'harga_satuan': harga_satuan,
+                        'harga_total': Decimal('0'),
+                    }
+                
+                aggregated[key]['quantity'] += qty
+                aggregated[key]['harga_total'] += qty * harga_satuan
+        
+        # Format aggregated items
+        aggregated_items = []
+        for key, info in aggregated.items():
+            aggregated_items.append({
+                'kategori': info['kategori'],
+                'kode': info['kode'],
+                'uraian': info['uraian'],
+                'satuan': info['satuan'],
+                'quantity': str(info['quantity'].quantize(Decimal('0.000001'))).rstrip('0').rstrip('.'),
+                'quantity_decimal': float(info['quantity']),
+                'harga_satuan': f"{info['harga_satuan']:,.0f}".replace(',', '.'),
+                'harga_satuan_decimal': float(info['harga_satuan']),
+                'harga_total': f"{info['harga_total']:,.0f}".replace(',', '.'),
+                'harga_total_decimal': float(info['harga_total']),
+            })
+        
+        # Sort by kategori, kode
+        aggregated_items.sort(key=lambda x: (x['kategori'], x['kode'] or '', x['uraian'] or ''))
+        
+        # Debug: calculate total from aggregated items
+        aggregated_total = sum(info['harga_total'] for info in aggregated.values())
+        
+        # Debug: show per-period totals for comparison (exclude unscheduled)
+        period_totals = [
+            {'label': p.get('label', ''), 'total': float(p.get('total_cost_decimal', 0))}
+            for p in periods
+            if p.get('value') != 'unscheduled'
+        ]
+        
+        # Filter period labels to exclude unscheduled
+        scheduled_labels = [p.get('label', '') for p in periods if p.get('value') != 'unscheduled']
+        
+        response = {
+            "ok": True,
+            "aggregated_items": aggregated_items,
+            "aggregated_total": float(aggregated_total),
+            "unscheduled_total": float(unscheduled_total),  # Items without schedule
+            "period_labels": scheduled_labels,
+            "period_totals": period_totals,  # Debug: per-period breakdown
+            "meta": data.get('meta', {}),
+        }
+    else:
+        response = {
+            "ok": True,
+            "periods": periods,
+            "meta": data.get('meta', {}),
+        }
+    
     return JsonResponse(response)
 
 

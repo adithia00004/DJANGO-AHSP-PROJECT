@@ -163,6 +163,10 @@ def get_project_period_options(project):
     tahapan_dates = TahapPelaksanaan.objects.filter(project=project).values('tanggal_mulai', 'tanggal_selesai')
     week_map = {}
     month_map = {}
+    
+    # Phase 4.1: Track project start date for relative week numbering
+    project_start = None
+    all_dates = []
 
     for item in tahapan_dates:
         start = _ensure_date(item.get('tanggal_mulai'))
@@ -173,15 +177,33 @@ def get_project_period_options(project):
             start, end = end, start
         if not end:
             end = start
+        all_dates.append((start, end))
+    
+    # Find earliest date for project-relative week numbering
+    if all_dates:
+        project_start = min(d[0] for d in all_dates)
+        # Align to week start (Monday)
+        project_start = project_start - timedelta(days=project_start.weekday())
+    
+    for start, end in all_dates:
+        if end < start:
+            start, end = end, start
 
-        # Weeks (ISO)
+        # Weeks (Project-relative numbering)
         cursor = start - timedelta(days=start.weekday())
         while cursor <= end:
             iso_year, iso_week, _ = cursor.isocalendar()
             key = f"{iso_year}-W{iso_week:02d}"
             if key not in week_map:
                 week_end = cursor + timedelta(days=6)
-                label = f"Minggu {iso_week} ({cursor.strftime('%d %b')} - {week_end.strftime('%d %b %Y')})"
+                
+                # Phase 4.1: Calculate project-relative week number (1-based)
+                if project_start:
+                    week_num = ((cursor - project_start).days // 7) + 1
+                else:
+                    week_num = iso_week
+                
+                label = f"Minggu {week_num} ({cursor.strftime('%d %b')} - {week_end.strftime('%d %b %Y')})"
                 week_map[key] = {
                     'value': key,
                     'label': label,

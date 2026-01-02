@@ -346,8 +346,8 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- Report Type Selection -->
-        <div class="mb-4">
+        <!-- Report Type Selection (hidden for JSON) -->
+        <div class="mb-4" id="reportTypeSection">
           <label class="form-label fw-bold">
             <i class="bi bi-file-earmark-text"></i> Jenis Laporan
           </label>
@@ -415,139 +415,131 @@
               <i class="bi bi-file-earmark-excel"></i> Excel
             </label>
 
-            <input type="radio" class="btn-check" name="exportFormat" id="formatCsv" value="csv">
-            <label class="btn btn-outline-secondary" for="formatCsv">
-              <i class="bi bi-file-spreadsheet"></i> CSV
+            <input type="radio" class="btn-check" name="exportFormat" id="formatJson" value="json">
+            <label class="btn btn-outline-secondary" for="formatJson">
+              <i class="bi bi-file-code"></i> JSON
             </label>
           </div>
         </div>
 
-        <!-- Chart Inclusion Options -->
-        <div class="mb-4">
-          <label class="form-label fw-bold">
-            <i class="bi bi-bar-chart"></i> Sertakan Chart
-          </label>
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="includeGantt" checked>
-            <label class="form-check-label" for="includeGantt">
-              <i class="bi bi-calendar3 text-primary"></i> Gantt Chart
-              <small class="text-muted">(Hanya untuk Rekap Laporan)</small>
-            </label>
-          </div>
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="includeKurvaS" checked>
-            <label class="form-check-label" for="includeKurvaS">
-              <i class="bi bi-graph-up text-success"></i> Kurva S
-              <small class="text-muted">(Granularity sesuai jenis laporan)</small>
-            </label>
-          </div>
+        <!-- Toggle Button for Advanced Options -->
+        <div class="mb-3">
+          <button class="btn btn-sm btn-outline-secondary w-100" type="button" data-bs-toggle="collapse"
+            data-bs-target="#advancedExportOptions" aria-expanded="false" aria-controls="advancedExportOptions">
+            <i class="bi bi-chevron-down me-1"></i>
+            <span>Tampilkan Detail</span>
+          </button>
         </div>
 
-        <!-- Professional Report Format (Always Enabled for PDF/Word) -->
-        <div class="mb-4">
-          <label class="form-label fw-bold">
-            <i class="bi bi-file-earmark-richtext"></i> Format Laporan
-          </label>
-          <!-- Hidden input - professional format is always enabled for PDF/Word -->
-          <input type="hidden" id="useProfessionalFormat" value="true">
-          <div class="alert alert-success py-2 px-3 small mb-0">
-            <i class="bi bi-check-circle-fill text-success"></i>
-            <strong>Laporan Tertulis Profesional</strong>
-            <small class="text-muted d-block mt-1">
-              Format resmi dengan Cover Page, Ringkasan Eksekutif, Grid Terpisah (Rencana vs Realisasi), dan Lembar
-              Pengesahan.
-            </small>
-          </div>
-          <div class="alert alert-warning mt-2 py-2 px-3 small" id="professionalFormatNote" style="display: none;">
-            <i class="bi bi-info-circle"></i>
-            Format profesional hanya tersedia untuk <strong>PDF</strong>.
-            Untuk XLSX/CSV, akan menggunakan format data tabel standar.
-          </div>
-        </div>
-
-
-        <!-- Period Selection for Monthly/Weekly (visible when using Professional + Monthly/Weekly) -->
-        <div class="mb-4" id="periodSelectionSection" style="display: none;">
-          <label class="form-label fw-bold">
-            <i class="bi bi-calendar-range"></i> Pilih Periode
-          </label>
-
-          <!-- Single Period Input (for weekly) -->
-          <div id="singlePeriodInput" class="row g-2">
-            <div class="col-6">
-              <label class="form-label small text-muted" id="periodLabel">Minggu ke-</label>
-              <input type="number" class="form-control" id="periodNumber" min="1" value="1" placeholder="1">
+        <!-- Collapsible Advanced Options -->
+        <div class="collapse" id="advancedExportOptions">
+          <!-- Professional Report Format (hidden for JSON) -->
+          <div class="mb-4" id="professionalFormatSection">
+            <label class="form-label fw-bold">
+              <i class="bi bi-file-earmark-richtext"></i> Format Laporan
+            </label>
+            <!-- Hidden input - professional format is always enabled for PDF/Word -->
+            <input type="hidden" id="useProfessionalFormat" value="true">
+            <div class="alert alert-success py-2 px-3 small mb-0">
+              <i class="bi bi-check-circle-fill text-success"></i>
+              <strong>Laporan Tertulis Profesional</strong>
+              <small class="text-muted d-block mt-1">
+                Format resmi dengan Cover Page, Ringkasan Eksekutif, Grid Terpisah (Rencana vs Realisasi), dan Lembar
+                Pengesahan.
+              </small>
             </div>
-            <div class="col-6">
-              <small class="text-muted d-block mt-4 pt-2">
-                <i class="bi bi-info-circle"></i> Akan dibandingkan dengan periode sebelumnya
+            <div class="alert alert-warning mt-2 py-2 px-3 small" id="professionalFormatNote" style="display: none;">
+              <i class="bi bi-info-circle"></i>
+              Format profesional hanya tersedia untuk <strong>PDF</strong>.
+              Untuk XLSX/JSON, akan menggunakan format data tabel standar.
+            </div>
+          </div>
+
+
+          <!-- Period Selection for Monthly/Weekly (visible when using Professional + Monthly/Weekly) -->
+          <div class="mb-4" id="periodSelectionSection" style="display: none;">
+            <label class="form-label fw-bold">
+              <i class="bi bi-calendar-range"></i> Pilih Periode
+            </label>
+
+            <!-- Single Period Input (for weekly) -->
+            <div id="singlePeriodInput" class="row g-2">
+              <div class="col-6">
+                <label class="form-label small text-muted" id="periodLabel">Minggu ke-</label>
+                <input type="number" class="form-control" id="periodNumber" min="1" value="1" placeholder="1">
+              </div>
+              <div class="col-6">
+                <small class="text-muted d-block mt-4 pt-2">
+                  <i class="bi bi-info-circle"></i> Akan dibandingkan dengan periode sebelumnya
+                </small>
+              </div>
+            </div>
+
+            <!-- Multi-Month Selection (for monthly only) -->
+            <div id="multiMonthInput" style="display: none;">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <label class="form-label small text-muted mb-0">Pilih bulan (bisa lebih dari satu)</label>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAllMonths">Semua</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearMonths">Reset</button>
+                </div>
+              </div>
+              <!-- Scrollable container for dynamic month checkboxes -->
+              <div class="month-checkbox-grid d-flex flex-wrap gap-2" id="monthCheckboxGrid"
+                style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
+                <!-- Will be dynamically populated by initializeMonthCheckboxes() -->
+                <span class="text-muted small">Loading months...</span>
+              </div>
+              <small class="text-muted d-block mt-2">
+                <i class="bi bi-info-circle"></i> Setiap bulan akan memiliki Cover Page, Progress Pelaksanaan, dan Kurva
+                S
+                tersendiri dalam satu PDF.
+              </small>
+            </div>
+
+            <!-- Multi-Week Selection (for weekly only) -->
+            <div id="multiWeekInput" style="display: none;">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <label class="form-label small text-muted mb-0">Pilih minggu (bisa lebih dari satu)</label>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAllWeeks">Semua</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearWeeks">Reset</button>
+                </div>
+              </div>
+              <!-- Scrollable container for dynamic week checkboxes -->
+              <div class="week-checkbox-grid d-flex flex-wrap gap-2" id="weekCheckboxGrid"
+                style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
+                <!-- Will be dynamically populated by initializeWeekCheckboxes() -->
+                <span class="text-muted small">Loading weeks...</span>
+              </div>
+              <small class="text-muted d-block mt-2">
+                <i class="bi bi-info-circle"></i> Setiap minggu akan memiliki Cover Page dan Progress Pelaksanaan. Semua
+                minggu digabung dalam satu PDF.
               </small>
             </div>
           </div>
 
-          <!-- Multi-Month Selection (for monthly only) -->
-          <div id="multiMonthInput" style="display: none;">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <label class="form-label small text-muted mb-0">Pilih bulan (bisa lebih dari satu)</label>
-              <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAllMonths">Semua</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearMonths">Reset</button>
-              </div>
-            </div>
-            <!-- Scrollable container for dynamic month checkboxes -->
-            <div class="month-checkbox-grid d-flex flex-wrap gap-2" id="monthCheckboxGrid"
-              style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
-              <!-- Will be dynamically populated by initializeMonthCheckboxes() -->
-              <span class="text-muted small">Loading months...</span>
-            </div>
-            <small class="text-muted d-block mt-2">
-              <i class="bi bi-info-circle"></i> Setiap bulan akan memiliki Cover Page, Progress Pelaksanaan, dan Kurva S
-              tersendiri dalam satu PDF.
-            </small>
-          </div>
 
-          <!-- Multi-Week Selection (for weekly only) -->
-          <div id="multiWeekInput" style="display: none;">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <label class="form-label small text-muted mb-0">Pilih minggu (bisa lebih dari satu)</label>
-              <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSelectAllWeeks">Semua</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearWeeks">Reset</button>
-              </div>
-            </div>
-            <!-- Scrollable container for dynamic week checkboxes -->
-            <div class="week-checkbox-grid d-flex flex-wrap gap-2" id="weekCheckboxGrid"
-              style="max-height: 200px; overflow-y: auto; padding: 8px; border: 1px solid #dee2e6; border-radius: 6px;">
-              <!-- Will be dynamically populated by initializeWeekCheckboxes() -->
-              <span class="text-muted small">Loading weeks...</span>
-            </div>
-            <small class="text-muted d-block mt-2">
-              <i class="bi bi-info-circle"></i> Setiap minggu akan memiliki Cover Page dan Progress Pelaksanaan. Semua
-              minggu digabung dalam satu PDF.
-            </small>
+          <!-- Export Preview/Info -->
+          <div class="alert alert-info mb-0" role="alert">
+            <h6 class="alert-heading">
+              <i class="bi bi-info-circle"></i> Informasi Export
+            </h6>
+            <p class="mb-2 small" id="exportPreviewText">
+              <strong>Laporan:</strong> Rekap Laporan (Full Report)<br>
+              <strong>Format:</strong> PDF<br>
+              <strong>Charts:</strong> Gantt Chart, Kurva S<br>
+              <strong>Halaman:</strong> Auto-paginated (smart splitting)
+            </p>
+            <hr>
+            <p class="mb-0 small">
+              <i class="bi bi-lightbulb text-warning"></i>
+              Sistem akan otomatis memotong kolom/baris yang terlalu banyak dengan pengelompokan semantik
+              (month boundaries, hierarchy-aware splitting).
+            </p>
           </div>
         </div>
-
-
-        <!-- Export Preview/Info -->
-        <div class="alert alert-info mb-0" role="alert">
-          <h6 class="alert-heading">
-            <i class="bi bi-info-circle"></i> Informasi Export
-          </h6>
-          <p class="mb-2 small" id="exportPreviewText">
-            <strong>Laporan:</strong> Rekap Laporan (Full Report)<br>
-            <strong>Format:</strong> PDF<br>
-            <strong>Charts:</strong> Gantt Chart, Kurva S<br>
-            <strong>Halaman:</strong> Auto-paginated (smart splitting)
-          </p>
-          <hr>
-          <p class="mb-0 small">
-            <i class="bi bi-lightbulb text-warning"></i>
-            Sistem akan otomatis memotong kolom/baris yang terlalu banyak dengan pengelompokan semantik
-            (month boundaries, hierarchy-aware splitting).
-          </p>
-        </div>
-      </div>
+      </div> <!-- End of collapse advancedExportOptions -->
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
           <i class="bi bi-x-circle"></i> Batal
@@ -593,8 +585,9 @@
 
       const reportTypeInputs = exportModal.querySelectorAll('input[name="reportType"]');
       const formatInputs = exportModal.querySelectorAll('input[name="exportFormat"]');
-      const includeGanttCheckbox = exportModal.querySelector('#includeGantt');
-      const includeKurvaSCheckbox = exportModal.querySelector('#includeKurvaS');
+      // Charts always included (no user option anymore)
+      const includeGantt = true;
+      const includeKurvaS = true;
       const exportPreviewText = exportModal.querySelector('#exportPreviewText');
       const useProfessionalCheckbox = exportModal.querySelector('#useProfessionalFormat');
       const professionalFormatNote = exportModal.querySelector('#professionalFormatNote');
@@ -615,6 +608,20 @@
       const btnSelectAllWeeks = exportModal.querySelector('#btnSelectAllWeeks');
       const btnClearWeeks = exportModal.querySelector('#btnClearWeeks');
       const weekCheckboxGrid = exportModal.querySelector('#weekCheckboxGrid');
+
+      // Collapse toggle - update button text and icon
+      const advancedOptionsCollapse = document.getElementById('advancedExportOptions');
+      const toggleButton = exportModal.querySelector('[data-bs-target="#advancedExportOptions"]');
+      if (advancedOptionsCollapse && toggleButton) {
+        advancedOptionsCollapse.addEventListener('show.bs.collapse', function () {
+          toggleButton.querySelector('i').classList.replace('bi-chevron-down', 'bi-chevron-up');
+          toggleButton.querySelector('span').textContent = 'Sembunyikan Detail';
+        });
+        advancedOptionsCollapse.addEventListener('hide.bs.collapse', function () {
+          toggleButton.querySelector('i').classList.replace('bi-chevron-up', 'bi-chevron-down');
+          toggleButton.querySelector('span').textContent = 'Tampilkan Detail';
+        });
+      }
 
       // Initialize week checkboxes dynamically based on project data
       function initializeWeekCheckboxes() {
@@ -714,7 +721,7 @@
         'pdf': 'PDF',
         'word': 'Word (DOCX)',
         'xlsx': 'Excel (XLSX)',
-        'csv': 'CSV'
+        'json': 'JSON'
       };
 
 
@@ -775,40 +782,57 @@
       function updatePreview() {
         const selectedReportType = exportModal.querySelector('input[name="reportType"]:checked')?.value || 'full';
         const selectedFormat = exportModal.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
-        const includeGantt = includeGanttCheckbox?.checked;
-        const includeKurvaS = includeKurvaSCheckbox?.checked;
+        // Charts always included (use constants from outer scope)
         // Professional format is always enabled for PDF (Word disabled)
         const isPdf = (selectedFormat === 'pdf');
+        const isJson = (selectedFormat === 'json');
         const useProfessional = useProfessionalCheckbox?.type === 'checkbox'
           ? useProfessionalCheckbox.checked
           : (useProfessionalCheckbox?.value === 'true' || isPdf);
 
-        // Show/hide period selection based on report type
-        if (periodSelectionSection) {
-          const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly');
-          periodSelectionSection.style.display = showPeriod ? 'block' : 'none';
+        // Get section references
+        const reportTypeSection = document.getElementById('reportTypeSection');
+        const chartOptionsSection = document.getElementById('chartOptionsSection');
+        const professionalFormatSection = document.getElementById('professionalFormatSection');
 
-          // Toggle between multi-month (monthly) and multi-week (weekly)
-          if (singlePeriodInput && multiMonthInput && multiWeekInput) {
-            singlePeriodInput.style.display = 'none'; // Never show single input anymore
-            if (selectedReportType === 'monthly') {
-              multiMonthInput.style.display = 'block';
-              multiWeekInput.style.display = 'none';
-            } else if (selectedReportType === 'weekly') {
-              multiMonthInput.style.display = 'none';
-              multiWeekInput.style.display = 'block';
-            } else {
-              multiMonthInput.style.display = 'none';
-              multiWeekInput.style.display = 'none';
+        // Hide irrelevant sections for JSON (JSON only exports raw input data)
+        if (isJson) {
+          if (reportTypeSection) reportTypeSection.style.display = 'none';
+          if (chartOptionsSection) chartOptionsSection.style.display = 'none';
+          if (professionalFormatSection) professionalFormatSection.style.display = 'none';
+          if (periodSelectionSection) periodSelectionSection.style.display = 'none';
+          if (professionalFormatNote) professionalFormatNote.style.display = 'none';
+        } else {
+          if (reportTypeSection) reportTypeSection.style.display = 'block';
+          if (chartOptionsSection) chartOptionsSection.style.display = 'block';
+          if (professionalFormatSection) professionalFormatSection.style.display = 'block';
+
+          // Show/hide period selection based on report type
+          if (periodSelectionSection) {
+            const showPeriod = useProfessional && (selectedReportType === 'monthly' || selectedReportType === 'weekly');
+            periodSelectionSection.style.display = showPeriod ? 'block' : 'none';
+
+            // Toggle between multi-month (monthly) and multi-week (weekly)
+            if (singlePeriodInput && multiMonthInput && multiWeekInput) {
+              singlePeriodInput.style.display = 'none'; // Never show single input anymore
+              if (selectedReportType === 'monthly') {
+                multiMonthInput.style.display = 'block';
+                multiWeekInput.style.display = 'none';
+              } else if (selectedReportType === 'weekly') {
+                multiMonthInput.style.display = 'none';
+                multiWeekInput.style.display = 'block';
+              } else {
+                multiMonthInput.style.display = 'none';
+                multiWeekInput.style.display = 'none';
+              }
             }
           }
-        }
 
-
-        // Show warning if XLSX/CSV selected (professional not available for those)
-        if (professionalFormatNote) {
-          const showWarning = !isPdf;
-          professionalFormatNote.style.display = showWarning ? 'block' : 'none';
+          // Show warning if XLSX selected (professional not available for those)
+          if (professionalFormatNote) {
+            const showWarning = !isPdf;
+            professionalFormatNote.style.display = showWarning ? 'block' : 'none';
+          }
         }
 
 
@@ -823,69 +847,70 @@
         const chartsText = charts.length > 0 ? charts.join(', ') : 'Tidak ada chart';
 
         // Build preview text
-        let previewHtml = `
-          <strong>Laporan:</strong> ${reportTypeLabels[selectedReportType]}<br>
-          <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
-          <strong>Charts:</strong> ${chartsText}<br>
-        `;
+        let previewHtml = '';
 
-        if (useProfessional) {
-          previewHtml += `<strong>Mode:</strong> <span class="text-success">Laporan Tertulis Profesional ✓</span><br>`;
-          previewHtml += `<strong>Fitur:</strong> Cover Page, `;
-          if (selectedReportType === 'full') {
-            previewHtml += `Daftar Isi, Grid Terpisah (Rencana/Realisasi)`;
-          } else if (selectedReportType === 'monthly') {
-            // Show selected months info
-            const selectedMonths = getSelectedMonths();
-            if (selectedMonths.length > 0) {
-              if (selectedMonths.length === 1) {
-                previewHtml += `Bulan ${selectedMonths[0]}`;
+        if (isJson) {
+          // JSON-specific preview
+          previewHtml = `
+            <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
+            <strong>Konten:</strong> Data Input Pekerjaan + Progress<br>
+            <div class="alert alert-info py-2 mt-2 small">
+              <i class="bi bi-info-circle"></i>
+              Export JSON berisi data mentah untuk import/export project.
+              Termasuk: Hierarki pekerjaan, volume, harga, dan progress mingguan.
+            </div>
+          `;
+        } else {
+          previewHtml = `
+            <strong>Laporan:</strong> ${reportTypeLabels[selectedReportType]}<br>
+            <strong>Format:</strong> ${formatLabels[selectedFormat]}<br>
+            <strong>Charts:</strong> ${chartsText}<br>
+          `;
+
+          if (useProfessional) {
+            previewHtml += `<strong>Mode:</strong> <span class="text-success">Laporan Tertulis Profesional ✓</span><br>`;
+            previewHtml += `<strong>Fitur:</strong> Cover Page, `;
+            if (selectedReportType === 'full') {
+              previewHtml += `Daftar Isi, Grid Terpisah (Rencana/Realisasi)`;
+            } else if (selectedReportType === 'monthly') {
+              // Show selected months info
+              const selectedMonths = getSelectedMonths();
+              if (selectedMonths.length > 0) {
+                if (selectedMonths.length === 1) {
+                  previewHtml += `Bulan ${selectedMonths[0]}`;
+                } else {
+                  previewHtml += `Bulan ${selectedMonths[0]}-${selectedMonths[selectedMonths.length - 1]} (${selectedMonths.length} bulan)`;
+                }
               } else {
-                previewHtml += `Bulan ${selectedMonths[0]}-${selectedMonths[selectedMonths.length - 1]} (${selectedMonths.length} bulan)`;
+                previewHtml += `<span class="text-warning">Pilih minimal 1 bulan</span>`;
+              }
+            } else if (selectedReportType === 'weekly') {
+              // Show selected weeks info
+              const selectedWeeks = getSelectedWeeks();
+              if (selectedWeeks.length > 0) {
+                if (selectedWeeks.length === 1) {
+                  previewHtml += `Minggu ${selectedWeeks[0]}`;
+                } else {
+                  previewHtml += `Minggu ${selectedWeeks[0]}-${selectedWeeks[selectedWeeks.length - 1]} (${selectedWeeks.length} minggu)`;
+                }
+              } else {
+                previewHtml += `<span class="text-warning">Pilih minimal 1 minggu</span>`;
               }
             } else {
-              previewHtml += `<span class="text-warning">Pilih minimal 1 bulan</span>`;
-            }
-          } else if (selectedReportType === 'weekly') {
-            // Show selected weeks info
-            const selectedWeeks = getSelectedWeeks();
-            if (selectedWeeks.length > 0) {
-              if (selectedWeeks.length === 1) {
-                previewHtml += `Minggu ${selectedWeeks[0]}`;
-              } else {
-                previewHtml += `Minggu ${selectedWeeks[0]}-${selectedWeeks[selectedWeeks.length - 1]} (${selectedWeeks.length} minggu)`;
-              }
-            } else {
-              previewHtml += `<span class="text-warning">Pilih minimal 1 minggu</span>`;
             }
           } else {
+            previewHtml += `<strong>Halaman:</strong> Auto-paginated (smart splitting)`;
           }
-        } else {
-          previewHtml += `<strong>Halaman:</strong> Auto-paginated (smart splitting)`;
-        }
+        } // End of else block for non-JSON formats
 
         if (exportPreviewText) {
           exportPreviewText.innerHTML = previewHtml;
-        }
-
-        // Disable/enable Gantt checkbox based on report type
-        if (includeGanttCheckbox) {
-          if (selectedReportType !== 'full') {
-            includeGanttCheckbox.checked = false;
-            includeGanttCheckbox.disabled = true;
-            includeGanttCheckbox.parentElement.classList.add('text-muted');
-          } else {
-            includeGanttCheckbox.disabled = false;
-            includeGanttCheckbox.parentElement.classList.remove('text-muted');
-          }
         }
       }
 
       // Listen to changes
       reportTypeInputs.forEach(input => input.addEventListener('change', updatePreview));
       formatInputs.forEach(input => input.addEventListener('change', updatePreview));
-      if (includeGanttCheckbox) includeGanttCheckbox.addEventListener('change', updatePreview);
-      if (includeKurvaSCheckbox) includeKurvaSCheckbox.addEventListener('change', updatePreview);
       if (useProfessionalCheckbox) useProfessionalCheckbox.addEventListener('change', updatePreview);
 
       // Month checkbox event listeners

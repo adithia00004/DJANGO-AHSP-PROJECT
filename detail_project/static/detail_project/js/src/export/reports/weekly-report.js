@@ -21,7 +21,6 @@
 import { downloadPDF } from '../generators/pdf-generator.js';
 import { downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
-import { generateWeeklyProgressCSV, downloadCSV } from '../generators/csv-generator.js';
 
 // ============================================================================
 // Helper Functions for Weekly Report Data Preparation

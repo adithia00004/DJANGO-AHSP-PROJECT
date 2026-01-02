@@ -21,6 +21,10 @@ def test_export_csv_basic(client_logged, project, pekerjaan_custom, detail_tk_sm
     assert resp.status_code == 200
     assert resp["Content-Type"].startswith("text/csv")
     body = resp.content.decode("utf-8")
-    # header + >=1 baris
+    # Skip comment lines (metadata headers) and find data header
     lines = [ln for ln in body.splitlines() if ln.strip()]
-    assert lines and lines[0].startswith("kategori;kode;uraian;satuan;quantity")
+    # Find first non-comment line (data header)
+    data_lines = [ln for ln in lines if not ln.startswith("#")]
+    assert data_lines, "CSV should have data lines after comments"
+    assert data_lines[0].startswith("kategori;kode;uraian;satuan;quantity")
+

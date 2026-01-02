@@ -10,7 +10,22 @@ import { renderGanttPaged } from '../core/gantt-renderer.js';
 import { generatePDF, downloadPDF } from '../generators/pdf-generator.js';
 import { generateWord, downloadWord } from '../generators/word-generator.js';
 import { generateExcel, downloadExcel } from '../generators/excel-generator.js';
-import { generateRekapCSV, downloadCSV } from '../generators/csv-generator.js';
+
+/**
+ * Download JSON blob as file
+ * @param {Blob} blob - JSON blob
+ * @param {string} filename - Base filename (without extension)
+ */
+function downloadJSON(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Generate Laporan Rekap (Full Report)
@@ -225,20 +240,54 @@ export async function generateRekapReport(state, format, options = {}) {
         }
         break;
 
-      case 'csv':
-        result = {
-          blob: generateRekapCSV({
-            rows: state.hierarchyRows,
-            timeColumns: state.weekColumns,
-            planned: state.plannedProgress,
-            actual: state.actualProgress
-          }),
-          metadata: {
-            reportType: 'rekap',
-            format: 'csv',
-            generatedAt: new Date().toISOString()
+      case 'json':
+        // JSON export - calls backend for pekerjaan + progress data
+        {
+          let projectId = state.projectId || options.projectId || window.PROJECT_ID;
+          if (!projectId) {
+            const urlMatch = window.location.pathname.match(/\/(\d+)\//);
+            if (urlMatch) {
+              projectId = urlMatch[1];
+            }
           }
-        };
+          if (!projectId && window.jadwalApp?.state?.projectId) {
+            projectId = window.jadwalApp.state.projectId;
+          }
+          if (!projectId) {
+            throw new Error('[RekapReport] projectId is required for json export');
+          }
+
+          const jsonUrl = `/detail_project/api/project/${projectId}/export/jadwal-pekerjaan/professional/`;
+          console.log('[RekapReport] Calling backend json export:', jsonUrl);
+
+          const response = await fetch(jsonUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.cookie.split('; ').find(c => c.startsWith('csrftoken='))?.split('=')[1] || ''
+            },
+            body: JSON.stringify({
+              format: 'json',
+              report_type: 'rekap'
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`JSON export failed: ${response.status} - ${errorText}`);
+          }
+
+          const blob = await response.blob();
+          result = {
+            blob,
+            metadata: {
+              reportType: 'rekap',
+              format: 'json',
+              size: blob.size,
+              generatedAt: new Date().toISOString()
+            }
+          };
+        }
         break;
 
       default:
@@ -282,8 +331,8 @@ export async function exportRekapReport(state, format, options = {}, filename = 
     case 'xlsx':
       downloadExcel(result.blob, filename);
       break;
-    case 'csv':
-      downloadCSV(result.blob, filename);
+    case 'json':
+      downloadJSON(result.blob, filename);
       break;
   }
 

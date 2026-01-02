@@ -33,7 +33,7 @@ export const EXPORT_CONFIG = {
     PDF: 'pdf',
     WORD: 'word',
     EXCEL: 'xlsx',
-    CSV: 'csv'
+    JSON: 'json'
   },
 
   // DPI settings per format
@@ -41,7 +41,7 @@ export const EXPORT_CONFIG = {
     pdf: 300,
     word: 300,
     xlsx: 150,
-    csv: 0 // Not applicable
+    json: 0 // Not applicable
   },
 
   // Layout parameters

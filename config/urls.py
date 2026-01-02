@@ -68,10 +68,10 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# PHASE 0: Add Debug Toolbar URLs (development only)
-if settings.DEBUG:
-    try:
-        import debug_toolbar
-        urlpatterns = [path('__debug__/', include('debug_toolbar.urls'))] + urlpatterns
-    except ImportError:
-        pass
+# PHASE 0: Debug Toolbar URLs (disabled for cleaner UI)
+# if settings.DEBUG:
+#     try:
+#         import debug_toolbar
+#         urlpatterns = [path('__debug__/', include('debug_toolbar.urls'))] + urlpatterns
+#     except ImportError:
+#         pass

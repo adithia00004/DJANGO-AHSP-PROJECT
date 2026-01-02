@@ -436,13 +436,35 @@ def project_with_dates(db, user):
 
 
 @pytest.fixture
-def pekerjaan_with_volume(db, project_with_dates, sub_klas):
-    """Pekerjaan dengan volume untuk testing progress."""
-    from detail_project.models import Pekerjaan, VolumePekerjaan
+def pekerjaan_with_volume(db, project_with_dates):
+    """
+    Pekerjaan dengan hierarki lengkap (Klasifikasi → SubKlasifikasi → Pekerjaan)
+    dalam project yang sama untuk testing progress.
+    
+    IMPORTANT: Creates its own hierarchy to ensure all data belongs to project_with_dates.
+    This avoids cross-project mismatch issues.
+    """
+    from detail_project.models import Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan
 
+    # Create Klasifikasi in project_with_dates
+    klasifikasi = Klasifikasi.objects.create(
+        project=project_with_dates,
+        name="Klasifikasi Jadwal Test",
+        ordering_index=1
+    )
+
+    # Create SubKlasifikasi in project_with_dates
+    sub_klasifikasi = SubKlasifikasi.objects.create(
+        project=project_with_dates,
+        klasifikasi=klasifikasi,
+        name="Sub Jadwal Test",
+        ordering_index=1
+    )
+
+    # Create Pekerjaan in project_with_dates
     pekerjaan = Pekerjaan.objects.create(
         project=project_with_dates,
-        sub_klasifikasi=sub_klas,
+        sub_klasifikasi=sub_klasifikasi,
         source_type="custom",
         snapshot_kode="PEK-001",
         snapshot_uraian="Pekerjaan Test",

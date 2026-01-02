@@ -64,19 +64,10 @@ export {
   estimatePageCount
 } from './core/pagination-utils.js';
 
-// Generators (for advanced usage)
 export {
   generateExcel,
   downloadExcel
 } from './generators/excel-generator.js';
-
-export {
-  generateCSV,
-  downloadCSV,
-  prepareGridDataForCSV,
-  generateRekapCSV,
-  generateMonthlyProgressCSV
-} from './generators/csv-generator.js';
 
 export {
   generatePDF,
@@ -99,7 +90,7 @@ export {
  * quickExport('monthly', 'xlsx', myState, { month: 2 });
  *
  * @param {string} reportType - 'rekap' | 'monthly' | 'weekly'
- * @param {string} format - 'pdf' | 'word' | 'xlsx' | 'csv'
+ * @param {string} format - 'pdf' | 'word' | 'xlsx' | 'json'
  * @param {Object} state - Application state
  * @param {Object} [options={}] - Additional options
  * @returns {Promise<Object>} Export result
@@ -129,7 +120,7 @@ export function getExportSystemInfo() {
       monthlyReport: 'fully_implemented',  // ✅ Phase 4
       weeklyReport: 'fully_implemented'     // ✅ Phase 4
     },
-    supportedFormats: ['pdf', 'xlsx', 'csv'],  // Note: 'word' removed due to performance issues
+    supportedFormats: ['pdf', 'xlsx', 'json'],  // Note: 'word' removed due to performance issues
     supportedReportTypes: ['rekap', 'monthly', 'weekly'],
     dependencies: {
       uplot: '^1.6.24',

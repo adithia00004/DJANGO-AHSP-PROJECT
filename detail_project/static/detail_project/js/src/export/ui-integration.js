@@ -29,7 +29,7 @@ export class ExportManagerNew {
 
   /**
    * Export data using new offscreen rendering system
-   * @param {string} format - 'csv', 'pdf', 'word', or 'xlsx'
+   * @param {string} format - 'json', 'pdf', 'word', or 'xlsx'
    * @param {object} options - Export options
    * @returns {Promise<void>}
    */
@@ -82,7 +82,7 @@ export class ExportManagerNew {
       'pdf': EXPORT_CONFIG.formats.PDF,
       'word': EXPORT_CONFIG.formats.WORD,
       'xlsx': EXPORT_CONFIG.formats.EXCEL,
-      'csv': EXPORT_CONFIG.formats.CSV
+      'json': EXPORT_CONFIG.formats.JSON
     };
 
     const internalFormat = formatMap[format] || format;
@@ -257,7 +257,7 @@ export class ExportManagerNew {
     }
 
     const extensions = {
-      'csv': 'csv',
+      'json': 'json',
       'pdf': 'pdf',
       'word': 'docx',
       'xlsx': 'xlsx'
