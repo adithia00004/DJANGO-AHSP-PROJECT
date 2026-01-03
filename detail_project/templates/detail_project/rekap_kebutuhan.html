@@ -38,55 +38,23 @@
 
 
 
-  <!-- MINIMALIST: Compact Search & Filter Bar -->
-  <div class="rk-compact-bar mb-3">
+  <!-- Active Filter Chips (shown when filters applied) -->
+  <div id="rk-active-filters" class="mb-2" style="display: none;">
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <!-- Search Input (Prominent) -->
-      <div class="rk-search-main flex-grow-1">
-        <div class="input-group">
-          <span class="input-group-text bg-white border-end-0">
-            <i class="bi bi-search text-muted"></i>
-          </span>
-          <input type="search" id="rk-search" class="form-control border-start-0" placeholder="Cari item kebutuhan..."
-            autocomplete="off" aria-label="Cari item kebutuhan">
-          <button class="btn btn-outline-secondary d-none" type="button" id="rk-search-clear" aria-label="Clear search">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Filter Button (Opens Modal) -->
-      <button type="button" class="btn btn-outline-secondary" id="rk-btn-open-filter" data-bs-toggle="modal"
-        data-bs-target="#rk-filter-modal">
-        <i class="bi bi-funnel"></i>
-        <span class="d-none d-md-inline ms-1">Filter</span>
-        <span id="rk-filter-badge" class="badge bg-primary ms-1 d-none">0</span>
+      <small class="text-body-secondary"><i class="bi bi-funnel-fill"></i> Filter:</small>
+      <div id="rk-filter-chips" class="d-flex gap-1 flex-wrap"></div>
+      <button type="button" class="btn btn-sm btn-link text-danger p-0" id="rk-btn-clear-all-filters">
+        <small>Hapus semua</small>
       </button>
-
-      <!-- Quick Actions -->
-      <a href="{% url 'detail_project:jadwal_pekerjaan' project.id %}" id="rk-jadwal-link"
-        class="btn btn-outline-primary d-none d-md-inline-flex">
-        <i class="bi bi-calendar2-range"></i>
-        <span class="ms-1">Jadwal</span>
-      </a>
-
-      <!-- Warning Badge for Missing Progress -->
-      <span id="rk-progress-warning" class="badge bg-warning text-dark d-none" title="Pekerjaan tanpa progress">
-        <i class="bi bi-exclamation-triangle"></i>
-        <span id="rk-progress-warning-count">0</span> tanpa progress
-      </span>
     </div>
+  </div>
 
-    <!-- Active Filter Chips (shown when filters applied) -->
-    <div id="rk-active-filters" class="mt-2" style="display: none;">
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        <small class="text-muted">Filter:</small>
-        <div id="rk-filter-chips" class="d-flex gap-1 flex-wrap"></div>
-        <button type="button" class="btn btn-sm btn-link text-danger p-0" id="rk-btn-clear-all-filters">
-          <small>Hapus semua</small>
-        </button>
-      </div>
-    </div>
+  <!-- Warning Badge for Missing Progress (moved here for visibility) -->
+  <div id="rk-progress-warning-container" class="mb-2 d-none">
+    <span id="rk-progress-warning" class="badge bg-warning text-dark" title="Pekerjaan tanpa progress">
+      <i class="bi bi-exclamation-triangle"></i>
+      <span id="rk-progress-warning-count">0</span> tanpa progress
+    </span>
   </div>
 
   <!-- MINIMALIST: Filter Modal -->
@@ -230,9 +198,25 @@
 
 
 
-  <!-- Toolbar (REDESIGNED - Phase 4) -->
+  <!-- Toolbar (REDESIGNED - Phase 4) - Moved above analytics -->
 
-  <div id="rk-toolbar" class="rk-toolbar-v2" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
+  <div id="rk-toolbar" class="rk-toolbar-v2 position-relative" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
+
+    <!-- Section 0: Search & Filter (NEW - Consolidated from compact-bar) -->
+    <div class="rk-toolbar-section rk-toolbar-search" role="search" aria-label="Search and filter">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text bg-transparent border-end-0">
+          <i class="bi bi-search text-body-secondary"></i>
+        </span>
+        <input type="search" id="rk-search" class="form-control border-start-0 bg-transparent"
+          placeholder="Cari item..." autocomplete="off" aria-label="Cari item kebutuhan">
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-btn-open-filter" data-bs-toggle="modal"
+        data-bs-target="#rk-filter-modal" title="Filter">
+        <i class="bi bi-funnel"></i>
+        <span id="rk-filter-badge" class="badge bg-primary ms-1 d-none">0</span>
+      </button>
+    </div>
 
     <!-- Section 1: Actions Group -->
     <div class="rk-toolbar-section rk-toolbar-actions" role="group" aria-label="Actions">
@@ -330,106 +314,67 @@
 
       <div class="btn-group btn-group-sm rk-view-toggle" id="rk-view-toggle" role="group" aria-label="Mode tampilan">
         <button type="button" class="btn btn-outline-secondary active" data-view="snapshot" aria-pressed="true"
-          title="Snapshot view">
-          <i class="bi bi-table"></i>
-          <span class="d-none d-lg-inline ms-1">Snapshot</span>
+          title="Tampilkan semua kebutuhan">
+          <i class="bi bi-list-check"></i>
+          <span class="d-none d-lg-inline ms-1">Keseluruhan</span>
         </button>
         <button type="button" class="btn btn-outline-secondary" data-view="timeline" aria-pressed="false"
-          title="Timeline view">
-          <i class="bi bi-calendar3"></i>
-          <span class="d-none d-lg-inline ms-1">Timeline</span>
+          title="Tampilkan kebutuhan per periode waktu">
+          <i class="bi bi-calendar-range"></i>
+          <span class="d-none d-lg-inline ms-1">Per Periode</span>
         </button>
       </div>
 
+      <!-- Timeline Range Picker (Compact - shown only in timeline view) -->
+      <div class="rk-timeline-range-compact d-none" id="rk-toolbar-range-picker">
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-secondary btn-sm active" data-range-type="week" title="Mingguan">
+            <i class="bi bi-calendar-week"></i>
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-range-type="month" title="Bulanan">
+            <i class="bi bi-calendar-month"></i>
+          </button>
+        </div>
+        <select id="rk-toolbar-range-start" class="form-select form-select-sm" style="width: auto; min-width: 100px;">
+          <option value="0">Minggu 1</option>
+        </select>
+        <span class="text-body-secondary">–</span>
+        <select id="rk-toolbar-range-end" class="form-select form-select-sm" style="width: auto; min-width: 100px;">
+          <option value="3">Minggu 4</option>
+        </select>
+      </div>
+
     </div>
 
-    <!-- Section 3: Stats Display (Cards) -->
-    <div class="rk-toolbar-section rk-toolbar-stats" role="group" aria-label="Statistics">
-
-      <!-- Stats Toggle (Mobile/Tablet) -->
-      <button class="btn btn-sm btn-outline-secondary d-lg-none rk-stats-toggle" type="button" data-bs-toggle="collapse"
-        data-bs-target="#rk-stats-collapse" aria-expanded="false" aria-controls="rk-stats-collapse"
-        title="Toggle statistics">
-        <i class="bi bi-graph-up"></i>
-        <span class="badge bg-primary rounded-pill ms-1" id="rk-stats-summary">0</span>
+    <!-- Section 3: Compact Stats (Single Row) -->
+    <div class="rk-toolbar-section rk-toolbar-stats-compact" role="group" aria-label="Statistics">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="rk-btn-toggle-stats" data-bs-toggle="collapse"
+        data-bs-target="#rk-stats-popover" aria-expanded="false" title="Tampilkan statistik">
+        <i class="bi bi-bar-chart-line"></i>
+        <span class="d-none d-md-inline ms-1">Stats</span>
       </button>
-
-      <!-- Stats Cards Container - CATATAN: Hidden by default per user request -->
-      <div class="rk-stats-cards collapse" id="rk-stats-collapse">
-
-        <div class="rk-stat-card rk-stat-card--tk" data-kategori="TK">
-          <div class="rk-stat-icon">
-            <i class="bi bi-people-fill"></i>
-          </div>
-          <div class="rk-stat-content">
-            <div class="rk-stat-label">Tenaga </div>
-            <div class="rk-stat-values">
-              <span class="rk-stat-count" id="rk-count-TK">0</span> item
-            </div>
-          </div>
-        </div>
-
-        <div class="rk-stat-card rk-stat-card--bhn" data-kategori="BHN">
-          <div class="rk-stat-icon">
-            <i class="bi bi-box-seam-fill"></i>
-          </div>
-          <div class="rk-stat-content">
-            <div class="rk-stat-label">Bahan </div>
-            <div class="rk-stat-values">
-              <span class="rk-stat-count" id="rk-count-BHN">0</span> item
-            </div>
-          </div>
-        </div>
-
-        <div class="rk-stat-card rk-stat-card--alt" data-kategori="ALT">
-          <div class="rk-stat-icon">
-            <i class="bi bi-tools"></i>
-          </div>
-          <div class="rk-stat-content">
-            <div class="rk-stat-label">Alat </div>
-            <div class="rk-stat-values">
-              <span class="rk-stat-count" id="rk-count-ALT">0</span> item
-            </div>
-          </div>
-        </div>
-
-        <div class="rk-stat-card rk-stat-card--lain" data-kategori="LAIN">
-          <div class="rk-stat-icon">
-            <i class="bi bi-three-dots"></i>
-          </div>
-          <div class="rk-stat-content">
-            <div class="rk-stat-label">Lainnya </div>
-            <div class="rk-stat-values">
-              <span class="rk-stat-count" id="rk-count-LAIN">0</span> item
-            </div>
-          </div>
-        </div>
-
-        <div class="rk-stat-card rk-stat-card--total rk-stat-card--highlight">
-          <div class="rk-stat-icon">
-            <i class="bi bi-cash-coin"></i>
-          </div>
-          <div class="rk-stat-content">
-            <div class="rk-stat-label">Total</div>
-            <div class="rk-stat-values">
-              <span class="rk-stat-total" id="rk-total-cost">Rp 0</span>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Additional Info (Rows + Timestamp) -->
-      <div class="rk-toolbar-meta small text-muted">
-        <span id="rk-nrows-display">
-          <i class="bi bi-list-ul"></i>
-          <span id="rk-nrows">0</span> baris
-        </span>
-        <span id="rk-generated" class="d-none d-md-inline" title="Waktu pembuatan"></span>
-        <span id="rk-filter-indicator"></span>
-      </div>
-
+      <span class="text-body-secondary small ms-2">
+        <span id="rk-nrows">0</span> item ·
+        <span id="rk-total-cost" class="fw-semibold">Rp 0</span>
+      </span>
     </div>
+
+    <!-- Stats Popover (Hidden by default) -->
+    <div class="collapse rk-stats-popover position-absolute bg-body shadow rounded p-2 mt-1" id="rk-stats-popover"
+      style="z-index: 1000; right: 0; top: 100%;">
+      <div class="d-flex gap-3 small">
+        <span><i class="bi bi-people-fill text-primary"></i> TK: <span id="rk-count-TK">0</span></span>
+        <span><i class="bi bi-box-seam-fill text-success"></i> BHN: <span id="rk-count-BHN">0</span></span>
+        <span><i class="bi bi-tools text-warning"></i> ALT: <span id="rk-count-ALT">0</span></span>
+        <span><i class="bi bi-three-dots text-secondary"></i> LAIN: <span id="rk-count-LAIN">0</span></span>
+      </div>
+    </div>
+
+    <!-- Hidden elements for compatibility -->
+    <span id="rk-generated" class="d-none"></span>
+    <span id="rk-filter-indicator" class="d-none"></span>
+    <span id="rk-stats-summary" class="d-none">0</span>
+    <div id="rk-stats-collapse" class="d-none"></div>
 
   </div>
 
@@ -485,6 +430,26 @@
 
           </tbody>
 
+          <tfoot id="rk-tfoot" class="d-none rk-tfoot">
+            <!-- Subtotal Terjadwal -->
+            <tr class="rk-tfoot-subtotal rk-tfoot-scheduled d-none">
+              <td colspan="6" class="text-end">Subtotal Terjadwal (<span id="rk-footer-scheduled-count">0</span> item)
+              </td>
+              <td class="text-end font-monospace rk-text-success" id="rk-footer-scheduled-total">Rp 0</td>
+            </tr>
+            <!-- Subtotal Belum Terjadwal -->
+            <tr class="rk-tfoot-subtotal rk-tfoot-unscheduled d-none">
+              <td colspan="6" class="text-end">Subtotal Belum Terjadwal (<span id="rk-footer-unscheduled-count">0</span>
+                item)</td>
+              <td class="text-end font-monospace rk-text-warning" id="rk-footer-unscheduled-total">Rp 0</td>
+            </tr>
+            <!-- Grand Total -->
+            <tr class="rk-tfoot-grand-total fw-bold">
+              <td colspan="6" class="text-end">GRAND TOTAL (<span id="rk-footer-count">0</span> item)</td>
+              <td class="text-end font-monospace rk-text-success" id="rk-footer-total">Rp 0</td>
+            </tr>
+          </tfoot>
+
         </table>
 
 
@@ -520,11 +485,11 @@
   <div id="rk-timeline" class="d-none mt-3">
     <div class="dp-card dp-border dp-surface">
       <div class="card-body">
-        <!-- MINIMALIST: Timeline Range Picker -->
-        <div class="rk-timeline-range-picker mb-3 p-3 bg-light rounded">
+        <!-- Legacy Range Picker (HIDDEN - now in toolbar) -->
+        <div class="rk-timeline-range-picker d-none mb-3 p-3 bg-body-secondary rounded">
           <div class="row align-items-end g-3">
             <div class="col-auto">
-              <label class="form-label small text-muted mb-1">Tampilkan</label>
+              <label class="form-label small text-body-secondary mb-1">Tampilkan</label>
               <div class="btn-group btn-group-sm" role="group" aria-label="Period type">
                 <input type="radio" class="btn-check" name="timelinePeriodType" id="timelineWeek" value="week" checked>
                 <label class="btn btn-outline-secondary" for="timelineWeek">Mingguan</label>
@@ -533,11 +498,11 @@
               </div>
             </div>
             <div class="col-auto">
-              <label for="rk-timeline-start" class="form-label small text-muted mb-1">Dari</label>
+              <label for="rk-timeline-start" class="form-label small text-body-secondary mb-1">Dari</label>
               <select id="rk-timeline-start" class="form-select form-select-sm" style="min-width: 150px;"></select>
             </div>
             <div class="col-auto">
-              <label for="rk-timeline-end" class="form-label small text-muted mb-1">Sampai</label>
+              <label for="rk-timeline-end" class="form-label small text-body-secondary mb-1">Sampai</label>
               <select id="rk-timeline-end" class="form-select form-select-sm" style="min-width: 150px;"></select>
             </div>
             <div class="col-auto">

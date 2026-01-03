@@ -11,6 +11,41 @@
   margin: 0 auto;
 }
 
+/* #rk-timeline should stay in place when shown */
+#rk-timeline {
+  margin-top: 1rem;
+}
+
+/* Modal z-index fix: ensure modals appear above topbar */
+/* Topbar typically has z-index: 1030-1050, Bootstrap modal default is 1055 */
+#rk-filter-modal,
+#rk-export-modal,
+#rk-app .modal {
+  z-index: 1070 !important;
+}
+
+#rk-filter-modal .modal-dialog,
+#rk-export-modal .modal-dialog,
+#rk-app .modal .modal-dialog {
+  z-index: 1071 !important;
+}
+
+#rk-filter-modal .modal-content,
+#rk-export-modal .modal-content,
+#rk-app .modal .modal-content {
+  z-index: 1072 !important;
+  position: relative;
+}
+
+.modal-backdrop {
+  z-index: 1065 !important;
+}
+
+/* Ensure topbar doesn't overlap modals when modal is open */
+body.modal-open #dp-topbar {
+  z-index: 1060 !important;
+}
+
 /* ===== NEW: Filter Card ===== */
 .rk-filter-card {
   background: var(--dp-c-surface);
@@ -370,6 +405,47 @@
   gap: 0.75rem;
 }
 
+/* Section 0: Search & Filter (NEW - Consolidated) */
+.rk-toolbar-search {
+  flex: 1 1 auto;
+  min-width: 200px;
+  max-width: 320px;
+  gap: 0.5rem;
+}
+
+.rk-toolbar-search .input-group {
+  flex: 1;
+  border-radius: var(--dp-radius-md, 0.375rem);
+  overflow: hidden;
+  border: 1px solid var(--bs-border-color, var(--dp-c-border));
+  background: var(--bs-body-bg, var(--dp-c-surface));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rk-toolbar-search .input-group:focus-within {
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb, 13, 110, 253), 0.15);
+}
+
+.rk-toolbar-search .input-group-text {
+  border: 0;
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+}
+
+.rk-toolbar-search #rk-search {
+  border: 0;
+  padding-left: 0;
+}
+
+.rk-toolbar-search #rk-search::placeholder {
+  color: var(--bs-secondary-color, var(--dp-c-text-muted));
+  opacity: 0.7;
+}
+
+.rk-toolbar-search #rk-btn-open-filter {
+  flex-shrink: 0;
+}
+
 /* Section 1: Actions Group */
 .rk-toolbar-actions {
   flex-shrink: 0;
@@ -437,12 +513,35 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-/* Section 3: Stats Display */
+/* Section 3: Stats Display (Legacy - hidden) */
 .rk-toolbar-stats {
   flex-direction: column;
   align-items: flex-end;
   gap: 0.5rem;
   margin-left: auto;
+}
+
+/* Section 3: Compact Stats (NEW - Single Row) */
+.rk-toolbar-stats-compact {
+  margin-left: auto;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.rk-toolbar-stats-compact #rk-total-cost {
+  color: var(--bs-success, var(--dp-c-success, #198754));
+}
+
+/* Stats Popover */
+.rk-stats-popover {
+  min-width: 280px;
+  border: 1px solid var(--bs-border-color, var(--dp-c-border));
+}
+
+[data-bs-theme="dark"] .rk-stats-popover {
+  background: var(--bs-dark, #212529) !important;
+  border-color: var(--bs-border-color, rgba(255, 255, 255, 0.1));
 }
 
 .rk-stats-toggle {
@@ -964,6 +1063,143 @@
   background: color-mix(in srgb, var(--dp-c-primary) 10%, var(--dp-c-surface));
 }
 
+/* Table body cells - ensure proper text color in dark mode */
+[data-bs-theme="dark"] .rk-table tbody td {
+  color: var(--dp-c-text, #e5e7eb);
+  border-bottom-color: var(--dp-c-border);
+}
+
+[data-bs-theme="dark"] .rk-table tbody tr {
+  background: var(--dp-c-surface, #1f2937);
+}
+
+[data-bs-theme="dark"] .rk-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--dp-c-surface) 85%, var(--dp-c-bg));
+}
+
+[data-bs-theme="dark"] .rk-table tbody tr:hover {
+  background: color-mix(in srgb, var(--dp-c-primary) 12%, var(--dp-c-surface));
+}
+
+/* Table footer styling for dark mode */
+[data-bs-theme="dark"] .rk-table tfoot tr {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 70%, var(--dp-c-bg));
+}
+
+[data-bs-theme="dark"] .rk-table tfoot td {
+  color: var(--dp-c-text, #e5e7eb);
+  border-top: 2px solid var(--dp-c-border);
+  font-weight: 600;
+}
+
+/* Success text color in dark mode (for totals) */
+[data-bs-theme="dark"] .rk-table .text-success,
+[data-bs-theme="dark"] .rk-table td.text-success {
+  color: #4ade80 !important;
+  /* Bright green for dark mode */
+}
+
+/* Bold/semibold text should use lighter colors in dark mode */
+[data-bs-theme="dark"] .rk-table td.fw-bold,
+[data-bs-theme="dark"] .rk-table td.fw-semibold {
+  color: var(--dp-c-text, #f3f4f6);
+}
+
+/* ===== Group Header Rows (rk-group-header) ===== */
+/* Light mode */
+.rk-table tr.rk-group-header td {
+  background: linear-gradient(135deg, #e9ecef 0%, #f8f9fa 100%);
+  color: #212529;
+  font-weight: 600;
+  border-bottom: 2px solid var(--dp-c-border);
+}
+
+/* Dark mode */
+[data-bs-theme="dark"] .rk-table tr.rk-group-header td {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.08) 100%);
+  color: var(--dp-c-text, #e5e7eb);
+  border-bottom-color: rgba(59, 130, 246, 0.3);
+}
+
+/* ===== Subtotal Rows (rk-subtotal-row) ===== */
+/* Light mode */
+.rk-table tr.rk-subtotal-row td {
+  background: #f8f9fa;
+  color: #212529;
+  border-top: 1px solid var(--dp-c-border);
+  border-bottom: 2px solid var(--dp-c-border);
+}
+
+/* Dark mode */
+[data-bs-theme="dark"] .rk-table tr.rk-subtotal-row td {
+  background: rgba(30, 41, 59, 0.8);
+  color: var(--dp-c-text, #e5e7eb);
+  border-top-color: var(--dp-c-border);
+  border-bottom-color: var(--dp-c-border);
+}
+
+/* ===== Theme-aware text colors (rk-text-*) ===== */
+/* Light mode - success */
+.rk-text-success {
+  color: #198754;
+}
+
+/* Dark mode - success */
+[data-bs-theme="dark"] .rk-text-success {
+  color: #4ade80 !important;
+}
+
+/* Light mode - warning */
+.rk-text-warning {
+  color: #856404;
+}
+
+/* Dark mode - warning */
+[data-bs-theme="dark"] .rk-text-warning {
+  color: #fbbf24 !important;
+}
+
+/* Grand total row in dark mode */
+[data-bs-theme="dark"] .rk-table tfoot tr.grand-total td {
+  background: color-mix(in srgb, var(--dp-c-success) 20%, var(--dp-c-surface));
+  color: #4ade80;
+  font-weight: 700;
+}
+
+/* ===== Footer Subtotal Rows (rk-tfoot-*) ===== */
+/* Light mode - tfoot styling */
+.rk-tfoot tr {
+  background: #f8f9fa;
+}
+
+.rk-tfoot tr.rk-tfoot-subtotal td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--dp-c-border);
+}
+
+.rk-tfoot tr.rk-tfoot-grand-total td {
+  padding: 0.75rem;
+  border-top: 2px solid var(--dp-c-border);
+  background: linear-gradient(135deg, #e8f5e9 0%, #f1f8f1 100%);
+}
+
+/* Dark mode - tfoot */
+[data-bs-theme="dark"] .rk-tfoot tr {
+  background: rgba(30, 41, 59, 0.9);
+}
+
+[data-bs-theme="dark"] .rk-tfoot tr.rk-tfoot-subtotal td {
+  background: rgba(30, 41, 59, 0.7);
+  color: var(--dp-c-text, #e5e7eb);
+  border-bottom-color: var(--dp-c-border);
+}
+
+[data-bs-theme="dark"] .rk-tfoot tr.rk-tfoot-grand-total td {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(30, 41, 59, 0.95) 100%);
+  color: var(--dp-c-text, #f3f4f6);
+  border-top-color: rgba(34, 197, 94, 0.4);
+}
+
 /* ===== Loading & Empty States ===== */
 #rk-loading i.bi-inbox,
 #rk-empty i.bi-inbox {
@@ -1259,10 +1495,34 @@
   padding: 0.2rem 0.4rem;
 }
 
-/* Timeline Range Picker */
+/* Timeline Range Picker (Compact - in toolbar) */
+.rk-timeline-range-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--bs-border-color, var(--dp-c-border));
+}
+
+.rk-timeline-range-compact select {
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bs-body-bg, var(--dp-c-surface));
+  color: var(--bs-body-color, var(--dp-c-text));
+  border-color: var(--bs-border-color, var(--dp-c-border));
+}
+
+.rk-timeline-range-compact .btn-group .btn.active {
+  background: var(--bs-primary, #0d6efd);
+  color: white;
+  border-color: var(--bs-primary, #0d6efd);
+}
+
+/* Timeline Range Picker (Legacy - in timeline section) */
 .rk-timeline-range-picker {
-  background: var(--dp-c-surface-2, #f8f9fa);
-  border: 1px solid var(--dp-c-border-subtle, rgba(0, 0, 0, 0.06));
+  background: var(--bs-body-tertiary-bg, var(--dp-c-surface-2, #f8f9fa));
+  border: 1px solid var(--bs-border-color, var(--dp-c-border-subtle, rgba(0, 0, 0, 0.06)));
 }
 
 .rk-timeline-range-picker select {

@@ -45,10 +45,13 @@
   };
 
   const qtyFormatter = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 4 });
+
+  // Accounting format for currency: Rp 1.234.567,89
   const currencyFormatter = new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,  // No decimals for cleaner display
   });
 
   const formatQtyValue = (value) => {
@@ -59,8 +62,10 @@
 
   const formatCurrencyValue = (value) => {
     const num = Number(value);
-    if (!Number.isFinite(num)) return 'Rp 0';
-    return currencyFormatter.format(num);
+    if (!Number.isFinite(num)) return 'Rp 0';
+    // Round to nearest whole number for cleaner accounting display
+    const rounded = Math.round(num);
+    return currencyFormatter.format(rounded);
   };
 
   // PHASE 5 UI FIX 2.1: Smart number scaling for chart labels
@@ -135,6 +140,7 @@
     tahapanMenu: $('#rk-tahapan-menu'),
     tahapanLabel: $('#rk-tahapan-label'),
     klasifikasiMenu: $('#rk-klasifikasi-menu'),
+    modalKlasifikasi: $('#rk-klasifikasi'),  // Modal select element
     subMenu: $('#rk-subklasifikasi-menu'),
     pekerjaanMenu: $('#rk-pekerjaan-menu'),
     pekerjaanSearch: $('#rk-pekerjaan-search'),
@@ -154,6 +160,16 @@
     qtyLAIN: $('#rk-qty-LAIN'),
     nrows: $('#rk-nrows'),
     totalCost: $('#rk-total-cost'),
+    tfoot: $('#rk-tfoot'),
+    footerCount: $('#rk-footer-count'),
+    footerTotal: $('#rk-footer-total'),
+    // Scheduled/Unscheduled breakdown in footer
+    tfootScheduledRow: $('.rk-tfoot-scheduled'),
+    tfootUnscheduledRow: $('.rk-tfoot-unscheduled'),
+    footerScheduledCount: $('#rk-footer-scheduled-count'),
+    footerScheduledTotal: $('#rk-footer-scheduled-total'),
+    footerUnscheduledCount: $('#rk-footer-unscheduled-count'),
+    footerUnscheduledTotal: $('#rk-footer-unscheduled-total'),
     generatedAt: $('#rk-generated'),
     chartMix: $('#rk-chart-mix'),
     chartMixSummary: $('#rk-chart-mix-summary'),
@@ -399,7 +415,18 @@
       return;
     }
     setEmptyState(false);
-    const html = rows.map((row) => {
+
+    // DEBUG: Check if is_scheduled field is present
+    console.log('[Keseluruhan Debug] First row sample:', rows[0]);
+    console.log('[Keseluruhan Debug] is_scheduled field present:', 'is_scheduled' in (rows[0] || {}));
+
+    // Separate scheduled and unscheduled items
+    const scheduled = rows.filter(r => r.is_scheduled);
+    const unscheduled = rows.filter(r => !r.is_scheduled);
+    console.log('[Keseluruhan Debug] Scheduled:', scheduled.length, 'Unscheduled:', unscheduled.length);
+
+    // Helper to render item rows
+    const renderItemRow = (row) => {
       const qty = formatQtyValue(row.quantity_decimal ?? row.quantity);
       const hargaSatuan = formatCurrencyValue(row.harga_satuan_decimal ?? row.harga_satuan);
       const hargaTotal = formatCurrencyValue(row.harga_total_decimal ?? row.harga_total);
@@ -417,34 +444,183 @@
           <td class="text-end">${hargaSatuan}</td>
           <td class="text-end fw-semibold">${hargaTotal}</td>
         </tr>`;
-    }).join('');
+    };
+
+    // Helper to calculate subtotal
+    const calcSubtotal = (items) => items.reduce((sum, r) => sum + Math.round(r.harga_total_decimal ?? 0), 0);
+
+    let html = '';
+
+    // Scheduled group
+    if (scheduled.length > 0) {
+      const scheduledSubtotal = calcSubtotal(scheduled);
+      html += `
+        <tr class="rk-group-header">
+          <td colspan="7" class="fw-bold">
+            <i class="bi bi-calendar-check me-2"></i>Item Terjadwal (${scheduled.length} item)
+          </td>
+        </tr>`;
+      html += scheduled.map(renderItemRow).join('');
+      html += `
+        <tr class="rk-subtotal-row">
+          <td colspan="6" class="text-end fw-semibold">Subtotal Terjadwal</td>
+          <td class="text-end fw-bold rk-text-success">${formatCurrencyValue(scheduledSubtotal)}</td>
+        </tr>`;
+    }
+
+    // Unscheduled group
+    if (unscheduled.length > 0) {
+      const unscheduledSubtotal = calcSubtotal(unscheduled);
+      html += `
+        <tr class="rk-group-header">
+          <td colspan="7" class="fw-bold">
+            <i class="bi bi-clock-history me-2"></i>Item Belum Terjadwal (${unscheduled.length} item)
+          </td>
+        </tr>`;
+      html += unscheduled.map(renderItemRow).join('');
+      html += `
+        <tr class="rk-subtotal-row">
+          <td colspan="6" class="text-end fw-semibold">Subtotal Belum Terjadwal</td>
+          <td class="text-end fw-bold rk-text-warning">${formatCurrencyValue(unscheduledSubtotal)}</td>
+        </tr>`;
+    }
+
     refs.tbody.innerHTML = html;
+
+    // Update footer subtotals breakdown
+    const scheduledSubtotalVal = scheduled.length > 0 ? calcSubtotal(scheduled) : 0;
+    const unscheduledSubtotalVal = unscheduled.length > 0 ? calcSubtotal(unscheduled) : 0;
+    const grandTotal = scheduledSubtotalVal + unscheduledSubtotalVal;
+
+    // Show/hide scheduled subtotal row
+    if (refs.tfootScheduledRow) {
+      if (scheduled.length > 0) {
+        refs.tfootScheduledRow.classList.remove('d-none');
+        if (refs.footerScheduledCount) refs.footerScheduledCount.textContent = scheduled.length;
+        if (refs.footerScheduledTotal) refs.footerScheduledTotal.textContent = formatCurrencyValue(scheduledSubtotalVal);
+      } else {
+        refs.tfootScheduledRow.classList.add('d-none');
+      }
+    }
+
+    // Show/hide unscheduled subtotal row
+    if (refs.tfootUnscheduledRow) {
+      if (unscheduled.length > 0) {
+        refs.tfootUnscheduledRow.classList.remove('d-none');
+        if (refs.footerUnscheduledCount) refs.footerUnscheduledCount.textContent = unscheduled.length;
+        if (refs.footerUnscheduledTotal) refs.footerUnscheduledTotal.textContent = formatCurrencyValue(unscheduledSubtotalVal);
+      } else {
+        refs.tfootUnscheduledRow.classList.add('d-none');
+      }
+    }
+
+    // Update grand total
+    if (refs.footerCount) refs.footerCount.textContent = scheduled.length + unscheduled.length;
+    if (refs.footerTotal) refs.footerTotal.textContent = formatCurrencyValue(grandTotal);
+
+    // Show tfoot if there are any rows
+    if (refs.tfoot) {
+      if (scheduled.length > 0 || unscheduled.length > 0) {
+        refs.tfoot.classList.remove('d-none');
+      } else {
+        refs.tfoot.classList.add('d-none');
+      }
+    }
   };
 
-  const updateStats = (meta = {}) => {
+  const updateStats = (meta = {}, rows = []) => {
     const counts = meta.counts_per_kategori || {};
     // Update item counts only (qty removed as not relevant for users)
     if (refs.countTK) refs.countTK.textContent = counts.TK || 0;
     if (refs.countBHN) refs.countBHN.textContent = counts.BHN || 0;
     if (refs.countALT) refs.countALT.textContent = counts.ALT || 0;
     if (refs.countLAIN) refs.countLAIN.textContent = counts.LAIN || 0;
-    if (refs.nrows) refs.nrows.textContent = meta.n_rows || 0;
-    if (refs.totalCost) refs.totalCost.textContent = meta.grand_total_cost || 'Rp 0';
+    if (refs.nrows) refs.nrows.textContent = meta.n_rows || rows.length || 0;
+
+    // Use numeric value for consistent accounting format
+    // Try multiple sources: decimal field, parse from string, or calculate from rows
+    let totalValue = meta.grand_total_cost_decimal ?? meta.grand_total_numeric ?? 0;
+
+    if (!totalValue && meta.grand_total_cost) {
+      let numStr = String(meta.grand_total_cost);
+
+      // Detect format: if no "Rp" and no comma, it's decimal format (e.g., 523248870.82)
+      // Indonesian format has: Rp prefix, dots for thousands, comma for decimal
+      const isDecimalFormat = !numStr.includes('Rp') && !numStr.includes(',') && /^\d+\.?\d*$/.test(numStr.trim());
+
+      if (isDecimalFormat) {
+        // Direct parse - it's already in standard decimal format
+        const parsed = parseFloat(numStr);
+        if (Number.isFinite(parsed)) totalValue = parsed;
+      } else {
+        // Indonesian format: "Rp 100.000.000,00"
+        numStr = numStr.replace(/[Rp\s]/gi, ''); // Remove Rp and spaces
+        numStr = numStr.replace(/\./g, '');       // Remove thousand separators (dots)
+        numStr = numStr.replace(',', '.');        // Convert decimal comma to dot
+        const parsed = parseFloat(numStr);
+        if (Number.isFinite(parsed)) totalValue = parsed;
+      }
+    }
+
+    if (!totalValue && rows.length > 0) {
+      // Calculate from rows as fallback - round each value
+      totalValue = rows.reduce((sum, r) => sum + Math.round(r.harga_total_decimal ?? r.harga_total ?? 0), 0);
+    }
+
+    if (refs.totalCost) refs.totalCost.textContent = formatCurrencyValue(totalValue);
     if (refs.generatedAt) refs.generatedAt.textContent = meta.generated_at || '';
+
+    // Show and populate tfoot grand total row
+    const rowCount = meta.n_rows || rows.length || 0;
+    if (refs.tfoot && rowCount > 0) {
+      refs.tfoot.classList.remove('d-none');
+      if (refs.footerCount) refs.footerCount.textContent = rowCount;
+      if (refs.footerTotal) refs.footerTotal.textContent = formatCurrencyValue(totalValue);
+    } else if (refs.tfoot) {
+      refs.tfoot.classList.add('d-none');
+    }
+  };
+
+  // Update toolbar stats from timeline data
+  const updateStatsFromTimeline = (items, totalCost) => {
+    const counts = { TK: 0, BHN: 0, ALT: 0, LAIN: 0 };
+    items.forEach(item => {
+      if (counts.hasOwnProperty(item.kategori)) counts[item.kategori]++;
+    });
+    if (refs.countTK) refs.countTK.textContent = counts.TK;
+    if (refs.countBHN) refs.countBHN.textContent = counts.BHN;
+    if (refs.countALT) refs.countALT.textContent = counts.ALT;
+    if (refs.countLAIN) refs.countLAIN.textContent = counts.LAIN;
+    if (refs.nrows) refs.nrows.textContent = items.length;
+    if (refs.totalCost) refs.totalCost.textContent = formatCurrencyValue(totalCost);
   };
 
   const updateScopeIndicator = (meta = {}) => {
     if (!refs.scopeIndicator) return;
     const chips = [];
+
+    // View mode indicator
+    if (currentViewMode === 'timeline') {
+      // Build period label for timeline
+      const mode = timelineRangeState?.mode || 'week';
+      const options = mode === 'week'
+        ? (filterMeta.periods?.weeks || [])
+        : (filterMeta.periods?.months || []);
+      const startOpt = options[timelineRangeState?.startIdx || 0];
+      const endOpt = options[timelineRangeState?.endIdx || 0];
+      const periodLabel = startOpt && endOpt
+        ? `${startOpt.label || startOpt.value} – ${endOpt.label || endOpt.value}`
+        : 'Rentang Waktu';
+      chips.push(`<span class="badge bg-info-subtle text-info"><i class="bi bi-calendar-range me-1"></i>Per Periode: ${esc(periodLabel)}</span>`);
+    } else {
+      chips.push('<span class="badge bg-success-subtle text-success"><i class="bi bi-list-check me-1"></i>Keseluruhan</span>');
+    }
+
+    // Tahapan mode (if active)
     if (currentFilter.mode === 'tahapan' && meta.tahapan) {
       chips.push(`<span class="badge bg-primary-subtle text-primary">Tahapan: ${esc(meta.tahapan.nama || '#')}</span>`);
-    } else {
-      chips.push('<span class="badge bg-secondary-subtle text-secondary">Mode: Keseluruhan</span>');
     }
-    const periodLabel = describePeriodChip();
-    if (periodLabel) {
-      chips.push(`<span class="badge bg-info-subtle text-info">Waktu: ${esc(periodLabel)}</span>`);
-    }
+
     refs.scopeIndicator.innerHTML = chips.join(' ');
   };
   const updateFilterIndicator = () => {
@@ -544,21 +720,12 @@
     const values = data.map(item => item.value);
     const scaleInfo = detectScale(values);
 
-    const titleConfig = scaleInfo.scale > 1
-      ? {
-        text: `Komposisi Biaya`,
-        subtext: `dalam ${scaleInfo.label}`,
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' },
-        subtextStyle: { fontSize: 11, color: '#6c757d' },
-      }
-      : {
-        text: 'Komposisi Biaya',
-        left: 'center',
-        top: 10,
-        textStyle: { fontSize: 14, fontWeight: 'bold' },
-      };
+    const titleConfig = {
+      text: 'Komposisi Biaya',
+      left: 'center',
+      top: 10,
+      textStyle: { fontSize: 14, fontWeight: 'bold' },
+    };
 
     chartMixInstance.setOption({
       title: titleConfig,
@@ -859,71 +1026,42 @@
       ? `${periodLabels[0]} - ${periodLabels[periodLabels.length - 1]}`
       : (periodLabels[0] || 'Semua Periode');
 
-    // Calculate totals
-    const totalQty = items.reduce((sum, item) => sum + (item.quantity_decimal || 0), 0);
-    const totalCost = items.reduce((sum, item) => sum + (item.harga_total_decimal || 0), 0);
-
-    // Debug: sum of per-period totals
-    const sumPeriodTotals = periodTotals.reduce((sum, p) => sum + (p.total || 0), 0);
-
-    // Build period breakdown for debug
-    const periodBreakdown = periodTotals.length > 0
-      ? `<div class="mt-2 text-muted small">
-           <strong>Debug Breakdown:</strong><br>
-           ${periodTotals.map(p => `${p.label}: ${formatCurrencyValue(p.total)}`).join('<br>')}
-           <br><strong>Sum Period:</strong> ${formatCurrencyValue(sumPeriodTotals)}
-           <br><strong>Aggregated:</strong> ${formatCurrencyValue(totalCost)}
-           ${unscheduledTotal > 0 ? `<br><span class="text-warning"><strong>Di luar jadwal (tidak termasuk):</strong> ${formatCurrencyValue(unscheduledTotal)}</span>` : ''}
-         </div>`
-      : '';
+    // Calculate totals - round each value to eliminate decimals
+    const totalQty = items.reduce((sum, item) => sum + Math.round(item.quantity_decimal || 0), 0);
+    const totalCost = items.reduce((sum, item) => sum + Math.round(item.harga_total_decimal || 0), 0);
 
     const html = `
       <div class="rk-aggregated-timeline">
-        <div class="rk-aggregated-header mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <div>
-            <h6 class="mb-0">
-              <i class="bi bi-table"></i> Rekap Kebutuhan
-            </h6>
-            <small class="text-muted">${esc(periodLabel)} · ${items.length} item</small>
-            ${periodBreakdown}
-          </div>
-          <div class="d-flex gap-2">
-            <span class="badge bg-success">
-              <i class="bi bi-currency-dollar"></i> Total: ${formatCurrencyValue(totalCost)}
-            </span>
-          </div>
-        </div>
-        
-        <div class="table-responsive">
-          <table class="table table-sm table-hover rk-aggregated-table">
+        <div class="table-responsive dp-scrollbar">
+          <table class="rk-table table table-sm table-hover align-middle mb-0">
             <thead class="table-light">
               <tr>
-                <th style="width: 50%;">Uraian</th>
-                <th>Satuan</th>
-                <th class="text-end">Harga Satuan</th>
-                <th class="text-end">Kuantitas</th>
-                <th class="text-end">Total Harga</th>
+                <th style="width:90px" class="text-nowrap">Kat</th>
+                <th style="width:160px" class="text-nowrap">Kode</th>
+                <th>Uraian</th>
+                <th style="width:90px">Satuan</th>
+                <th style="width:140px" class="text-end text-nowrap">Kuantitas</th>
+                <th style="width:140px" class="text-end text-nowrap">Harga Satuan</th>
+                <th style="width:160px" class="text-end text-nowrap">Total Harga</th>
               </tr>
             </thead>
             <tbody>
               ${items.map((item) => `
                 <tr>
-                  <td>
-                    <span class="badge bg-${getCategoryColor(item.kategori)} me-1">${item.kategori}</span>
-                    ${esc(item.uraian || '-')}
-                  </td>
-                  <td>${esc(item.satuan || '-')}</td>
-                  <td class="text-end font-monospace">${formatCurrencyValue(item.harga_satuan_decimal || item.harga_satuan)}</td>
+                  <td><span class="badge bg-${getCategoryColor(item.kategori)}">${item.kategori}</span></td>
+                  <td class="text-nowrap">${esc(item.kode || '-')}</td>
+                  <td>${esc(item.uraian || '-')}</td>
+                  <td class="text-nowrap">${esc(item.satuan || '-')}</td>
                   <td class="text-end font-monospace">${formatQtyValue(item.quantity_decimal || item.quantity)}</td>
-                  <td class="text-end font-monospace fw-bold">${formatCurrencyValue(item.harga_total_decimal || item.harga_total)}</td>
+                  <td class="text-end font-monospace">${formatCurrencyValue(item.harga_satuan_decimal || item.harga_satuan)}</td>
+                  <td class="text-end font-monospace fw-semibold">${formatCurrencyValue(item.harga_total_decimal || item.harga_total)}</td>
                 </tr>
               `).join('')}
             </tbody>
-            <tfoot class="table-light fw-bold">
-              <tr>
-                <td colspan="3" class="text-end">TOTAL</td>
-                <td class="text-end font-monospace">${formatQtyValue(totalQty)}</td>
-                <td class="text-end font-monospace">${formatCurrencyValue(totalCost)}</td>
+            <tfoot>
+              <tr class="table-light fw-bold">
+                <td colspan="6" class="text-end">GRAND TOTAL (${items.length} item)</td>
+                <td class="text-end font-monospace text-success">${formatCurrencyValue(totalCost)}</td>
               </tr>
             </tfoot>
           </table>
@@ -932,6 +1070,9 @@
     `;
 
     refs.timelineContent.innerHTML = html;
+
+    // Sync toolbar stats with timeline data
+    updateStatsFromTimeline(items, totalCost);
   };
 
   // Helper for category badge color
@@ -995,19 +1136,35 @@
   };
 
   const renderKlasifikasiOptions = () => {
-    if (!refs.klasifikasiMenu) return;
-    if (!filterMeta.klasifikasi.length) {
-      refs.klasifikasiMenu.innerHTML = '<div class="text-muted small px-2 py-1">Belum ada klasifikasi</div>';
-      return;
+    // Render to menu (legacy)
+    if (refs.klasifikasiMenu) {
+      if (!filterMeta.klasifikasi.length) {
+        refs.klasifikasiMenu.innerHTML = '<div class="text-muted small px-2 py-1">Belum ada klasifikasi</div>';
+      } else {
+        const html = filterMeta.klasifikasi.map((row) => {
+          const checked = currentFilter.klasifikasi_ids.includes(row.id);
+          return `<label class="rk-dropdown-item">
+            <input type="checkbox" class="form-check-input klasifikasi-check" value="${row.id}" ${checked ? 'checked' : ''}>
+            <span>${esc(row.name)} <small class="text-muted">(${row.pekerjaan_count || 0})</small></span>
+          </label>`;
+        }).join('');
+        refs.klasifikasiMenu.innerHTML = html;
+      }
     }
-    const html = filterMeta.klasifikasi.map((row) => {
-      const checked = currentFilter.klasifikasi_ids.includes(row.id);
-      return `<label class="rk-dropdown-item">
-        <input type="checkbox" class="form-check-input klasifikasi-check" value="${row.id}" ${checked ? 'checked' : ''}>
-        <span>${esc(row.name)} <small class="text-muted">(${row.pekerjaan_count || 0})</small></span>
-      </label>`;
-    }).join('');
-    refs.klasifikasiMenu.innerHTML = html;
+
+    // Render to modal select element (#rk-klasifikasi)
+    if (refs.modalKlasifikasi) {
+      if (!filterMeta.klasifikasi.length) {
+        refs.modalKlasifikasi.innerHTML = '<option value="">Tidak ada klasifikasi</option>';
+      } else {
+        const optionsHtml = filterMeta.klasifikasi.map((row) => {
+          const selected = currentFilter.klasifikasi_ids.includes(row.id);
+          const subCount = row.sub?.length || 0;
+          return `<option value="${row.id}" ${selected ? 'selected' : ''}>${esc(row.name)} (${row.pekerjaan_count || 0} pekerjaan, ${subCount} sub)</option>`;
+        }).join('');
+        refs.modalKlasifikasi.innerHTML = optionsHtml;
+      }
+    }
   };
 
   const getSubOptions = () => {
@@ -1187,16 +1344,42 @@
     setLoading(true);
     try {
       const query = buildQueryString();
-      const data = await apiCall(`${endpoint}${query}`);
-      lastData = data; // PHASE 5 TRACK 3.1: Store for autocomplete cache
-      const rows = data.rows || [];
+
+      // Fetch both Keseluruhan and Timeline data in parallel
+      const [keseluruhanData, timelineData] = await Promise.all([
+        apiCall(`${endpoint}${query}`),
+        timelineEndpoint ? apiCall(`${timelineEndpoint}?aggregate=1&full_range=1`) : Promise.resolve(null)
+      ]);
+
+      lastData = keseluruhanData; // PHASE 5 TRACK 3.1: Store for autocomplete cache
+      let rows = keseluruhanData.rows || [];
+
+      // Cross-reference with Timeline data to determine is_scheduled
+      if (timelineData && timelineData.aggregated_items) {
+        const scheduledItemKeys = new Set(
+          timelineData.aggregated_items.map(item =>
+            `${item.kategori}|${item.kode}|${item.uraian}|${item.satuan}`
+          )
+        );
+
+        // Mark each row as scheduled/unscheduled
+        rows = rows.map(row => ({
+          ...row,
+          is_scheduled: scheduledItemKeys.has(
+            `${row.kategori}|${row.kode}|${row.uraian}|${row.satuan}`
+          )
+        }));
+
+        console.log('[Keseluruhan] Scheduled items from Timeline:', scheduledItemKeys.size);
+      }
+
       renderRows(rows);
-      updateStats(data.meta || {});
-      updateScopeIndicator(data.meta || {});
+      updateStats(keseluruhanData.meta || {}, rows);  // Pass rows for fallback total calculation
+      updateScopeIndicator(keseluruhanData.meta || {});
       updateFilterIndicator();
       updateAnalyticsFromRows(rows);
       // Phase 1.2: Update warning badge for pekerjaan without progress
-      updateProgressWarning(data.meta?.pekerjaan_without_progress || []);
+      updateProgressWarning(keseluruhanData.meta?.pekerjaan_without_progress || []);
     } catch (error) {
       console.error('[rk] gagal memuat rekap kebutuhan', error);
       showToast('Gagal memuat data: ' + error.message, 'danger');
@@ -1290,6 +1473,15 @@
     refs.viewToggleButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === mode);
     });
+
+    // Toggle toolbar range picker visibility
+    const toolbarRangePicker = $('#rk-toolbar-range-picker');
+    if (toolbarRangePicker) {
+      toolbarRangePicker.classList.toggle('d-none', mode !== 'timeline');
+    }
+
+    // Update scope indicator to reflect view mode change
+    updateScopeIndicator();
 
     // Smooth transition between views
     if (mode === 'timeline') {
@@ -2051,6 +2243,21 @@
         renderSubOptions();
         updateDropdownLabels();
       }
+
+      // Handle modal select element (#rk-klasifikasi)
+      if (target.id === 'rk-klasifikasi') {
+        const selectedOptions = Array.from(target.selectedOptions);
+        const values = selectedOptions.map(opt => parseInt(opt.value, 10)).filter(Number.isFinite);
+        currentFilter.klasifikasi_ids = values;
+
+        // Sync with checkbox menu
+        $$('.klasifikasi-check').forEach(cb => {
+          cb.checked = values.includes(parseInt(cb.value, 10));
+        });
+
+        renderSubOptions();
+        updateDropdownLabels();
+      }
       if (target.matches('.sub-check')) {
         const values = $$('.sub-check').filter((cb) => cb.checked).map((cb) => parseInt(cb.value, 10)).filter(Number.isFinite);
         currentFilter.sub_klasifikasi_ids = values;
@@ -2272,16 +2479,22 @@
   };
 
   const initTimelineRangePicker = () => {
+    // Legacy in-timeline picker elements
     const startSelect = $('#rk-timeline-start');
     const endSelect = $('#rk-timeline-end');
     const applyBtn = $('#rk-timeline-apply');
     const weekRadio = $('#timelineWeek');
     const monthRadio = $('#timelineMonth');
 
-    if (!startSelect || !endSelect) return;
+    // NEW: Toolbar compact range picker elements
+    const toolbarStartSelect = $('#rk-toolbar-range-start');
+    const toolbarEndSelect = $('#rk-toolbar-range-end');
+    const toolbarRangeTypeButtons = $$('#rk-toolbar-range-picker [data-range-type]');
+
+    if (!startSelect && !toolbarStartSelect) return;
 
     // Populate from filterMeta periods
-    const populateRangeOptions = (mode) => {
+    const populateRangeOptions = (mode, syncToolbar = true) => {
       timelineRangeState.mode = mode;
       const options = mode === 'week'
         ? (filterMeta.periods?.weeks || [])
@@ -2298,13 +2511,20 @@
         `<option value="${idx}">${opt.label || opt.value}</option>`
       ).join('') || '<option value="">Tidak ada data</option>';
 
-      startSelect.innerHTML = optionsHtml;
-      endSelect.innerHTML = optionsHtml;
+      // Populate legacy picker
+      if (startSelect) startSelect.innerHTML = optionsHtml;
+      if (endSelect) endSelect.innerHTML = optionsHtml;
+
+      // Populate toolbar picker
+      if (syncToolbar && toolbarStartSelect) toolbarStartSelect.innerHTML = optionsHtml;
+      if (syncToolbar && toolbarEndSelect) toolbarEndSelect.innerHTML = optionsHtml;
 
       // Default: first 4 periods or all if less
       const defaultEnd = Math.min(3, options.length - 1);
-      startSelect.selectedIndex = 0;
-      endSelect.selectedIndex = Math.max(0, defaultEnd);
+      if (startSelect) startSelect.selectedIndex = 0;
+      if (endSelect) endSelect.selectedIndex = Math.max(0, defaultEnd);
+      if (toolbarStartSelect) toolbarStartSelect.selectedIndex = 0;
+      if (toolbarEndSelect) toolbarEndSelect.selectedIndex = Math.max(0, defaultEnd);
 
       timelineRangeState.startIdx = 0;
       timelineRangeState.endIdx = defaultEnd;
@@ -2313,7 +2533,7 @@
     // Initial populate
     populateRangeOptions('week');
 
-    // Handle mode toggle
+    // Handle mode toggle (legacy radio buttons)
     if (weekRadio) {
       weekRadio.addEventListener('change', () => {
         if (weekRadio.checked) {
@@ -2330,7 +2550,7 @@
       });
     }
 
-    // Handle apply button
+    // Handle apply button (legacy)
     if (applyBtn) {
       applyBtn.addEventListener('click', () => {
         timelineRangeState.startIdx = parseInt(startSelect.value) || 0;
@@ -2339,7 +2559,43 @@
       });
     }
 
-    console.log('📅 Timeline range picker initialized');
+    // NEW: Toolbar range type toggle
+    toolbarRangeTypeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.rangeType;
+        toolbarRangeTypeButtons.forEach(b => b.classList.toggle('active', b === btn));
+        populateRangeOptions(mode, true);
+        // Auto-apply on mode change
+        if (currentViewMode === 'timeline') {
+          loadTimelineDataWithRange();
+        }
+      });
+    });
+
+    // NEW: Toolbar range selects - auto-apply on change
+    if (toolbarStartSelect) {
+      toolbarStartSelect.addEventListener('change', () => {
+        timelineRangeState.startIdx = parseInt(toolbarStartSelect.value) || 0;
+        // Sync legacy picker
+        if (startSelect) startSelect.value = toolbarStartSelect.value;
+        if (currentViewMode === 'timeline') {
+          loadTimelineDataWithRange();
+        }
+      });
+    }
+
+    if (toolbarEndSelect) {
+      toolbarEndSelect.addEventListener('change', () => {
+        timelineRangeState.endIdx = parseInt(toolbarEndSelect.value) || 0;
+        // Sync legacy picker
+        if (endSelect) endSelect.value = toolbarEndSelect.value;
+        if (currentViewMode === 'timeline') {
+          loadTimelineDataWithRange();
+        }
+      });
+    }
+
+    console.log('📅 Timeline range picker initialized (toolbar + legacy)');
   };
 
   // Modified timeline loader with range filter - uses same aggregate mode
