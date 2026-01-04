@@ -1,7 +1,7 @@
 {% extends "detail_project/base_detail.html" %}
 {% load static %}
 {% block dp_topbar_extra %}
-  {% include "detail_project/_sync_indicator.html" with scope="rincian" watch="both" change_status=change_status auto_option=True %}
+{% include "detail_project/_sync_led.html" with scope="rincian" watch="ahsp,harga" change_status=change_status %}
 {% endblock %}
 {% block title %}Rincian AHSP – {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="rincian_ahsp"{% endblock %}
@@ -9,108 +9,128 @@
 {% block detail_css %}{% endblock %}
 
 {% block extra_head %}
-  {{ block.super }}
-  {# Selaraskan UI/UX dengan Template AHSP; hindari harga_items.css untuk mencegah konflik gaya #}
-  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/rincian_ahsp.css' %}">
+{{ block.super }}
+{# Selaraskan UI/UX dengan Template AHSP; hindari harga_items.css untuk mencegah konflik gaya #}
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/rincian_ahsp.css' %}">
 {% endblock %}
 
 {# Gunakan toolbar di dalam konten agar parity dengan template_ahsp #}
 {% block dp_toolbar %}{% endblock %}
 
 {% block dp_content %}
-<div id="rekap-app"
-     class="ra-app"
-     data-project-id="{{ project.id }}"
-     data-ep-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
-     data-ep-pricing="{% url 'detail_project:api_project_pricing' project.id %}"
-     data-ep-detail-prefix="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
-     data-ep-pricing-item-prefix="{% url 'detail_project:api_pekerjaan_pricing' project.id 0 %}"
-     data-ep-reset-prefix="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
-     data-locale="id-ID">
+<div id="rekap-app" class="ra-app" data-project-id="{{ project.id }}"
+  data-ep-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
+  data-ep-pricing="{% url 'detail_project:api_project_pricing' project.id %}"
+  data-ep-detail-prefix="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
+  data-ep-pricing-item-prefix="{% url 'detail_project:api_pekerjaan_pricing' project.id 0 %}"
+  data-ep-reset-prefix="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}" data-locale="id-ID">
 
-  <!-- Header (parity) -->
-  <header class="ra-page-header">
-    <h1 class="ra-title">Rincian AHSP</h1>
-    <p class="ra-subtitle">Detail komponen AHSP per pekerjaan (dengan harga dan total).</p>
-  </header>
-
-  <!-- Toolbar (sticky, konsisten SSOT) -->
-  <div id="ra-toolbar" class="ra-toolbar dp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Rincian AHSP">
-    <!-- Searchbar (adapt lp-toolbar-search) -->
-    <div class="ra-combobox ra-searchbar flex-grow-1" role="search">
-      <div class="input-group dp-toolbar-search ra-toolbar-search">
-        <span class="input-group-text" id="ra-search-addon">
-          <i class="bi bi-search" aria-hidden="true"></i>
-        </span>
-        <input id="ra-job-search"
-               type="search"
-               class="form-control ux-focusable"
-               placeholder="Cari pekerjaan…"
-               autocomplete="off"
-               aria-label="Cari pekerjaan"
-               aria-describedby="ra-search-addon">
-        <button id="ra-toolbar-find"
-                class="btn btn-primary dp-btn dp-btn-sm btn-neon ms-1"
-                type="button"
-                title="Cari">
-          <i class="bi bi-search" aria-hidden="true"></i> Cari
-        </button>
-      </div>
+  <!-- Toolbar (simplified, compact - matching Template AHSP) -->
+  <div id="ra-toolbar"
+    class="ra-toolbar dp-toolbar d-flex align-items-center gap-2 mb-2 dp-sticky-topbar dp-layer-toolbar" role="toolbar"
+    aria-label="Toolbar Rincian AHSP">
+    <!-- Search -->
+    <div class="input-group input-group-sm flex-grow-1" style="max-width: 320px;">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input id="ra-job-search" type="search" class="form-control" placeholder="Cari pekerjaan..." autocomplete="off">
     </div>
 
-
-    {# Hint keyboard dihapus sesuai permintaan #}
-
-    <!-- Export (dropdown, konsisten dengan Rekap) -->
-    <div class="btn-group dp-btn-group ux-dropdown">
-      <button type="button" class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export options">
-        <i class="bi bi-download" aria-hidden="true"></i>
-        <span class="d-none d-sm-inline">Export</span>
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="ra-btn-export"><i class="bi bi-file-earmark-spreadsheet text-success me-2" aria-hidden="true"></i>Export CSV</button></li>
-        <li><button class="dropdown-item" type="button" id="ra-btn-export-pdf"><i class="bi bi-file-earmark-pdf text-danger me-2" aria-hidden="true"></i>Export PDF</button></li>
-        <li><button class="dropdown-item" type="button" id="ra-btn-export-word"><i class="bi bi-file-earmark-word text-primary me-2" aria-hidden="true"></i>Export Word</button></li>
-      </ul>
-    </div>
-
-    <!-- Metrics (Grand Total saja; BUK badge dihapus) -->
-    <div class="d-inline-flex align-items-center gap-2">
-      <div id="rk-grand" class="ux-mono small text-muted" aria-live="polite">Grand Total: Rp 0,00</div>
+    <!-- Grand Total -->
+    <div id="rk-grand" class="small fw-semibold text-body-secondary" aria-live="polite">
+      Grand Total: <span class="text-primary">Rp 0</span>
     </div>
 
     <!-- Dirty indicator -->
-    <div class="ra-dirty-indicator d-inline-flex align-items-center small text-muted" aria-live="polite">
-      <span id="ra-dirty-dot" class="dot me-1" hidden>●</span>
-      <span id="ra-dirty-text" hidden>Belum disimpan</span>
+    <div class="ra-dirty-indicator d-inline-flex align-items-center small" aria-live="polite">
+      <span id="ra-dirty-dot" class="text-warning me-1" hidden>●</span>
+      <span id="ra-dirty-text" class="text-warning small" hidden>Belum disimpan</span>
     </div>
 
-    <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm" data-bs-toggle="modal" data-bs-target="#raHelpModal" aria-label="Buka bantuan">
-      <i class="bi bi-question-circle" aria-hidden="true"></i>
-      <span class="d-none d-sm-inline">Bantuan</span>
-    </button>
+    <div class="ms-auto d-flex align-items-center gap-1">
+      <!-- Export dropdown -->
+      <div class="btn-group">
+        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"
+          aria-expanded="false" title="Export">
+          <i class="bi bi-download"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><button class="dropdown-item" type="button" id="ra-btn-export-xlsx"><i
+                class="bi bi-file-earmark-excel text-success me-2"></i>Excel (XLSX)</button></li>
+          <li><button class="dropdown-item" type="button" id="ra-btn-export-pdf"><i
+                class="bi bi-file-earmark-pdf text-danger me-2"></i>PDF</button></li>
+          <li><button class="dropdown-item" type="button" id="ra-btn-export-word"><i
+                class="bi bi-file-earmark-word text-primary me-2"></i>Word</button></li>
+        </ul>
+      </div>
 
-    <!-- Simpan -->
-    <button id="ra-btn-save" class="btn btn-success dp-btn dp-btn-sm d-inline-flex align-items-center gap-2" type="button" disabled>
-      <span class="spinner-border spinner-border-sm" id="ra-btn-save-spin" role="status" aria-hidden="true" hidden></span>
-      <i class="bi bi-save" aria-hidden="true"></i>
-      <span class="d-none d-sm-inline">Simpan</span>
-    </button>
+      <!-- Help -->
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
+        data-bs-target="#raHelpModal" title="Bantuan">
+        <i class="bi bi-question-circle"></i>
+      </button>
+
+      <!-- Save -->
+      <button id="ra-btn-save" class="btn btn-success btn-sm d-inline-flex align-items-center gap-1" type="button"
+        disabled>
+        <span class="spinner-border spinner-border-sm" id="ra-btn-save-spin" role="status" hidden></span>
+        <i class="bi bi-save"></i>
+        <span class="d-none d-sm-inline">Simpan</span>
+      </button>
+    </div>
   </div>
 
   <!-- Body grid: LEFT (list) | RESIZER | RIGHT (detail) -->
   <div class="ra-body">
     <!-- LEFT: daftar pekerjaan -->
     <aside class="rk-left ra-sidebar" aria-label="Daftar pekerjaan">
+      <!-- Filter header (matching Template AHSP) -->
+      <div class="ra-filter-header d-flex align-items-center gap-2 mb-2 pb-2 border-bottom">
+        <span class="small fw-semibold text-body-secondary">Pekerjaan</span>
+        <span class="badge bg-secondary" id="ra-count-visible">0</span>
+
+        <!-- Dropdown Filter -->
+        <div class="dropdown ms-auto">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+            data-bs-auto-close="outside" aria-expanded="false">
+            <i class="bi bi-funnel"></i> Filter
+          </button>
+          <div class="dropdown-menu dropdown-menu-end p-2" style="min-width: 160px;">
+            <div class="form-check">
+              <input class="form-check-input ra-filter-check" type="checkbox" value="ref" id="ra-check-ref" checked>
+              <label class="form-check-label small" for="ra-check-ref">
+                <span class="badge bg-info me-1">REF</span> Referensi
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input ra-filter-check" type="checkbox" value="ref_modified" id="ra-check-mod"
+                checked>
+              <label class="form-check-label small" for="ra-check-mod">
+                <span class="badge bg-warning text-dark me-1">MOD</span> Modified
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input ra-filter-check" type="checkbox" value="custom" id="ra-check-cus" checked>
+              <label class="form-check-label small" for="ra-check-cus">
+                <span class="badge bg-success me-1">CUS</span> Custom
+              </label>
+            </div>
+            <hr class="my-2">
+            <button type="button" class="btn btn-sm btn-link p-0" id="ra-filter-reset">Reset filter</button>
+          </div>
+        </div>
+      </div>
       <ul id="rk-list" class="ra-job-list" role="listbox" aria-label="Pekerjaan">
-        <li class="rk-item ra-job-item"><div class="row-note">Memuat…</div></li>
+        <li class="rk-item ra-job-item">
+          <div class="row-note">Memuat…</div>
+        </li>
       </ul>
     </aside>
 
     <!-- RESIZER -->
-    <div id="rk-resizer" class="rk-resizer ux-resizer" role="separator" aria-orientation="vertical" aria-label="Resize panel" tabindex="0"></div>
+    <div id="rk-resizer" class="rk-resizer ux-resizer" role="separator" aria-orientation="vertical"
+      aria-label="Resize panel" tabindex="0"></div>
 
     <!-- RIGHT: header + tabel detail satu pekerjaan -->
     <section class="rk-right ra-editor" aria-label="Detail pekerjaan terpilih">
@@ -136,23 +156,28 @@
           </span>
 
           <!-- Override Status Indicator -->
-          <span id="rk-pkj-ovr-chip" class="rk-chip ra-chip-warn ux-mono mono" hidden title="Pekerjaan ini memiliki override aktif">
+          <span id="rk-pkj-ovr-chip" class="rk-chip ra-chip-warn ux-mono mono" hidden
+            title="Pekerjaan ini memiliki override aktif">
             <i class="bi bi-sliders" aria-hidden="true"></i>&nbsp;Override Aktif
           </span>
 
           <!-- Action Buttons -->
           <div class="btn-group btn-group-sm">
-            <button id="rk-btn-override" class="btn btn-outline-primary d-inline-flex align-items-center gap-1" type="button" data-bs-toggle="modal" data-bs-target="#raOverrideModal" title="Atur override untuk pekerjaan ini">
+            <button id="rk-btn-override" class="btn btn-outline-primary d-inline-flex align-items-center gap-1"
+              type="button" data-bs-toggle="modal" data-bs-target="#raOverrideModal"
+              title="Atur override untuk pekerjaan ini">
               <i class="bi bi-sliders" aria-hidden="true"></i><span>Override</span>
             </button>
-            <button id="rk-btn-reset" class="btn btn-outline-warning d-inline-flex align-items-center gap-1" type="button" title="Reset semua override ke default" disabled>
+            <button id="rk-btn-reset" class="btn btn-outline-warning d-inline-flex align-items-center gap-1"
+              type="button" title="Reset semua override ke default" disabled>
               <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span>Reset</span>
             </button>
           </div>
         </div>
-      </div>\n<!-- Tabel detail -->
+      </div>TABEL AHSP<!-- Tabel detail -->
       <div class="ra-table-wrap">
-        <table id="ra-table" class="table table-sm ra-table ra-table table-hover" aria-label="Rincian AHSP (pekerjaan terpilih)">
+        <table id="ra-table" class="table table-sm ra-table ra-table table-hover"
+          aria-label="Rincian AHSP (pekerjaan terpilih)">
           <colgroup>
             <col class="col-no">
             <col class="col-uraian">
@@ -174,7 +199,9 @@
             </tr>
           </thead>
           <tbody id="rk-tbody-detail">
-            <tr><td colspan="7" class="row-note">Pilih pekerjaan untuk melihat rincian.</td></tr>
+            <tr>
+              <td colspan="7" class="row-note">Pilih pekerjaan untuk melihat rincian.</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -212,7 +239,8 @@
             <label for="ovr-buk-custom" class="form-label fw-bold">Override Profit/Margin (BUK) (%)</label>
             <div class="input-group">
               <span class="input-group-text"><i class="bi bi-percent" aria-hidden="true"></i></span>
-              <input type="text" class="form-control" id="ovr-buk-custom" inputmode="decimal" placeholder="Kosongkan untuk menggunakan default" aria-label="Custom Profit/Margin (BUK)">
+              <input type="text" class="form-control" id="ovr-buk-custom" inputmode="decimal"
+                placeholder="Kosongkan untuk menggunakan default" aria-label="Custom Profit/Margin (BUK)">
               <span class="input-group-text">%</span>
             </div>
             <div class="form-text">Masukkan 0–100. Kosongkan untuk kembali ke default proyek.</div>
@@ -246,7 +274,9 @@
         <div class="modal-body">
           <!-- Overview -->
           <h6 class="fw-bold mb-2">📋 Gambaran Umum</h6>
-          <p class="mb-3">Halaman Rincian AHSP menampilkan detail komponen biaya per pekerjaan dengan harga satuan dan total. Anda dapat melihat breakdown lengkap komponen TK (Tenaga Kerja), BHN (Bahan), ALT (Peralatan), dan LAIN (Lainnya).</p>
+          <p class="mb-3">Halaman Rincian AHSP menampilkan detail komponen biaya per pekerjaan dengan harga satuan dan
+            total. Anda dapat melihat breakdown lengkap komponen TK (Tenaga Kerja), BHN (Bahan), ALT (Peralatan), dan
+            LAIN (Lainnya).</p>
 
           <!-- Basic Usage -->
           <h6 class="fw-bold mb-2">💡 Cara Penggunaan</h6>
@@ -299,8 +329,10 @@
           <!-- Override BUK -->
           <h6 class="fw-bold mb-2">🔧 Override Profit/Margin (BUK)</h6>
           <ul class="mb-3">
-            <li><strong>Apply Override:</strong> Pilih pekerjaan → Klik <strong>Override</strong> → Masukkan nilai 0–100% → Klik <strong>Terapkan Override</strong></li>
-            <li><strong>Hapus Override:</strong> Klik <strong>Hapus Override</strong> untuk kembali ke default proyek</li>
+            <li><strong>Apply Override:</strong> Pilih pekerjaan → Klik <strong>Override</strong> → Masukkan nilai
+              0–100% → Klik <strong>Terapkan Override</strong></li>
+            <li><strong>Hapus Override:</strong> Klik <strong>Hapus Override</strong> untuk kembali ke default proyek
+            </li>
             <li><strong>Validasi:</strong> Nilai harus antara 0–100%, negatif atau >100% akan ditolak</li>
             <li><strong>Indikator:</strong> Pekerjaan dengan override ditandai chip kuning pada list</li>
           </ul>
@@ -310,7 +342,8 @@
           <ul class="mb-3">
             <li><strong>Drag resizer:</strong> Klik dan drag garis vertikal antara list dan detail</li>
             <li><strong>Keyboard:</strong> Focus resizer → <kbd>←</kbd>/<kbd>→</kbd> untuk adjust (shift = faster)</li>
-            <li><strong>Reset:</strong> Double-click resizer atau tekan <kbd>R</kbd> saat focus untuk reset ke default</li>
+            <li><strong>Reset:</strong> Double-click resizer atau tekan <kbd>R</kbd> saat focus untuk reset ke default
+            </li>
           </ul>
 
           <!-- Tips -->
@@ -345,14 +378,30 @@
       </div>
     </div>
   </div>
+
+  <!-- Export Loading Modal -->
+  <div class="modal fade" id="raExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+    aria-labelledby="raExportLoadingLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-body text-center py-4">
+          <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <h6 class="mb-1" id="raExportLoadingLabel">Memproses Export</h6>
+          <p class="text-muted small mb-0" id="raExportLoadingText">Mohon tunggu...</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
+{{ block.super }}
 
-  <!-- Export Manager (MUST load BEFORE rincian_ahsp.js) -->
-  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+<!-- Export Manager (MUST load BEFORE rincian_ahsp.js) -->
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
 
-  <script src="{% static 'detail_project/js/rincian_ahsp.js' %}"></script>
+<script src="{% static 'detail_project/js/rincian_ahsp.js' %}"></script>
 {% endblock %}

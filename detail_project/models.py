@@ -309,6 +309,80 @@ class HargaItemProject(TimeStampedModel):
         return f"{self.kode_item} — {self.uraian}"
 
 
+class ItemConversionProfile(TimeStampedModel):
+    """
+    Stores market unit conversion data for HargaItemProject.
+    Allows converting base units (e.g., Kg) to market units (e.g., Batang).
+    
+    Example:
+    - Besi sold per Batang (1 batang = 10 kg)
+    - market_unit = "batang"
+    - market_price = 240000 (price per batang)
+    - factor_to_base = 10 (1 batang = 10 kg)
+    """
+    
+    METHOD_DIRECT = 'direct'
+    METHOD_CALC = 'calc'
+    METHOD_HYBRID = 'hybrid'
+    
+    METHOD_CHOICES = [
+        (METHOD_DIRECT, 'Direct Input'),
+        (METHOD_CALC, 'Calculated'),
+        (METHOD_HYBRID, 'Hybrid'),
+    ]
+    
+    harga_item = models.OneToOneField(
+        HargaItemProject,
+        on_delete=models.CASCADE,
+        related_name='conversion_profile'
+    )
+    
+    # Market unit info
+    market_unit = models.CharField(max_length=50, help_text="Satuan pembelian dari supplier (e.g., batang, zak, dump_truck)")
+    market_price = models.DecimalField(
+        max_digits=18, decimal_places=2,
+        help_text="Harga per satuan market"
+    )
+    factor_to_base = models.DecimalField(
+        max_digits=12, decimal_places=6,
+        help_text="1 market unit = X base units (e.g., 1 batang = 10 kg)"
+    )
+    
+    # Optional calculation parameters
+    density = models.DecimalField(
+        max_digits=12, decimal_places=6, blank=True, null=True,
+        help_text="Massa jenis (kg/m³) for volume-to-mass conversion"
+    )
+    capacity_m3 = models.DecimalField(
+        max_digits=12, decimal_places=6, blank=True, null=True,
+        help_text="Kapasitas per market unit dalam m³"
+    )
+    capacity_ton = models.DecimalField(
+        max_digits=12, decimal_places=6, blank=True, null=True,
+        help_text="Kapasitas per market unit dalam ton"
+    )
+    
+    method = models.CharField(max_length=10, choices=METHOD_CHOICES, default=METHOD_DIRECT)
+    
+    class Meta:
+        verbose_name = "Item Conversion Profile"
+        verbose_name_plural = "Item Conversion Profiles"
+    
+    def __str__(self):
+        return f"{self.harga_item.kode_item}: 1 {self.market_unit} = {self.factor_to_base} {self.harga_item.satuan}"
+    
+    def convert_qty_to_market(self, base_qty):
+        """Convert base quantity to market quantity."""
+        if self.factor_to_base and self.factor_to_base > 0:
+            return base_qty / self.factor_to_base
+        return base_qty
+    
+    def get_market_total(self, base_qty):
+        """Calculate total cost using market price."""
+        market_qty = self.convert_qty_to_market(base_qty)
+        return market_qty * self.market_price
+
+
 class DetailAHSPProject(TimeStampedModel):
     project = models.ForeignKey('dashboard.Project', on_delete=models.CASCADE, related_name='detail_ahsp')
     pekerjaan = models.ForeignKey(Pekerjaan, on_delete=models.CASCADE, related_name='detail_list')

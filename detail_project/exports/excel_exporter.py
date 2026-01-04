@@ -28,52 +28,103 @@ except ImportError:  # pragma: no cover - optional dependency
     OPENPYXL_AVAILABLE = False
 
 
-def safe_float(value, default=0.0):
+def parse_number(value, default=0.0):
     """
-    Safely convert value to float, handling various formats:
-    - European format: '0,00%' or '1.234,56' or '100,000' (3 decimals)
-    - Standard format: '0.00%' or '1,234.56'
-    - Percentage signs: remove and divide by 100
+    Unified number parser for Excel exports.
+    
+    Handles:
+    - Indonesian format: dot as thousands (150.000 = 150000), comma as decimal (150.000,50)
+    - US/Standard format: comma as thousands (150,000), dot as decimal (150,000.50)
+    - European format: 1.234,56 = 1234.56
+    - Percentage: '50%' -> 0.5, '50,00%' -> 0.5
+    - Decimal types
+    
+    Args:
+        value: Input value (string, int, float, Decimal)
+        default: Default value if parsing fails
+        
+    Returns:
+        float: Parsed number
     """
-    if value is None:
+    if value is None or value == '' or value == '-':
         return default
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, (int, float)):
         return float(value)
-    if isinstance(value, str):
-        s = value.strip()
-        if not s:
-            return default
-        # Check for percentage
-        is_percent = '%' in s
-        s = s.replace('%', '')
-        # Handle European format (comma as decimal, dot as thousands)
-        # vs US format (dot as decimal, comma as thousands)
+    if isinstance(value, Decimal):
+        return float(value)
+    if not isinstance(value, str):
+        return default
+        
+    s = value.strip()
+    if not s:
+        return default
+    
+    # Check for percentage
+    is_percent = '%' in s
+    s = s.replace('%', '').strip()
+    
+    try:
+        # Case 1: Both comma and dot present
         if ',' in s and '.' in s:
-            # If comma comes after dot: 1.234,56 = European = 1234.56
-            # If dot comes after comma: 1,234.56 = US = 1234.56
-            if s.rfind(',') > s.rfind('.'):
-                # European: 1.234,56
+            # Determine which is decimal separator by position
+            comma_pos = s.rfind(',')
+            dot_pos = s.rfind('.')
+            
+            if comma_pos > dot_pos:
+                # Indonesian/European: 1.234.567,89 -> comma is decimal
                 s = s.replace('.', '').replace(',', '.')
             else:
-                # US: 1,234.56
+                # US: 1,234,567.89 -> dot is decimal
                 s = s.replace(',', '')
+        
+        # Case 2: Only comma
         elif ',' in s:
-            # Only comma: could be European decimal or US thousands
-            # If single comma with 1-3 digits after: treat as decimal
-            # (volume uses 3 decimals: "100,000")
             parts = s.split(',')
-            if len(parts) == 2 and len(parts[1]) <= 3:
-                s = s.replace(',', '.')
+            if len(parts) == 2:
+                after_comma = parts[1]
+                # Indonesian thousands: "150,000" (3 digits after) -> 150000
+                # Decimal: "150,5" or "150,50" (1-2 digits after) -> 150.5
+                if len(after_comma) == 3 and after_comma.isdigit():
+                    # Likely thousands separator
+                    s = s.replace(',', '')
+                elif len(after_comma) <= 2:
+                    # Likely decimal separator
+                    s = s.replace(',', '.')
+                else:
+                    # Koefisien with many decimals: "0,001234" -> 0.001234
+                    s = s.replace(',', '.')
             else:
+                # Multiple commas = thousands: "1,234,567"
                 s = s.replace(',', '')
-        try:
-            result = float(s)
-            if is_percent:
-                result /= 100.0
-            return result
-        except (ValueError, TypeError):
-            return default
-    return default
+        
+        # Case 3: Only dot
+        elif '.' in s:
+            parts = s.split('.')
+            if len(parts) > 2:
+                # Multiple dots = thousands: "1.234.567" -> 1234567
+                s = s.replace('.', '')
+            elif len(parts) == 2:
+                after_dot = parts[1]
+                before_dot = parts[0]
+                # Indonesian thousands: "150.000" (3 digits, short before) -> 150000
+                # Also: "1.500.000" but already handled by len(parts) > 2
+                if len(after_dot) == 3 and len(before_dot) <= 3 and after_dot.isdigit():
+                    s = s.replace('.', '')
+                # else: keep as decimal (e.g., "3.14", "0.5")
+        
+        result = float(s)
+        
+        if is_percent:
+            result /= 100.0
+            
+        return result
+        
+    except (ValueError, TypeError):
+        return default
+
+
+# Alias for backward compatibility
+safe_float = parse_number
 
 
 # Style constants matching ExcelJS
@@ -123,6 +174,19 @@ class ExcelExporter(ConfigExporterBase):
         if not OPENPYXL_AVAILABLE:
             raise RuntimeError('openpyxl belum terpasang. Install via "pip install openpyxl".')
 
+        # Check if this is Rincian AHSP data (has 'sections' with 'pekerjaan' and 'groups')
+        sections = data.get('sections', [])
+        is_rincian_ahsp = bool(
+            sections and 
+            isinstance(sections[0], dict) and 
+            'pekerjaan' in sections[0] and 
+            'groups' in sections[0]
+        )
+
+        if is_rincian_ahsp:
+            return self._export_rincian_ahsp_2sheet(data)
+
+        # Standard export logic (unchanged)
         wb = Workbook()
         self._sheet_index = 0
 
@@ -201,6 +265,278 @@ class ExcelExporter(ConfigExporterBase):
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
+    def _export_rincian_ahsp_2sheet(self, data: Dict[str, Any]):
+        """
+        Export Rincian AHSP with 2 sheets:
+        1. Rekap - Summary with references to Rincian sheet
+        2. Rincian - Full detail per pekerjaan
+        """
+        wb = Workbook()
+        border = self._get_thin_border()
+        sections = data.get('sections', [])
+
+        # ========== SHEET 1: RINCIAN (Detail) ==========
+        ws_rincian = wb.active
+        ws_rincian.title = "Rincian"
+        
+        current_row = 1
+        
+        # Title
+        ws_rincian.cell(row=current_row, column=1, value="RINCIAN ANALISA HARGA SATUAN PEKERJAAN")
+        ws_rincian.cell(row=current_row, column=1).font = Font(size=16, bold=True)
+        current_row += 2
+
+        # Identity rows
+        for label, _, value in build_identity_rows(self.config):
+            ws_rincian.cell(row=current_row, column=1, value=label)
+            ws_rincian.cell(row=current_row, column=2, value=value)
+            current_row += 1
+        current_row += 1
+
+        # Track G cell references for each pekerjaan (for Rekap cross-reference)
+        pekerjaan_refs = []  # List of {kode, uraian, e_cell, f_cell, g_cell}
+
+        # Write each pekerjaan section
+        for section in sections:
+            pekerjaan = section.get('pekerjaan', {})
+            groups = section.get('groups', [])
+            totals = section.get('totals', {})
+            
+            pek_kode = pekerjaan.get('kode', '')
+            pek_uraian = pekerjaan.get('uraian', '')
+            
+            # Write pekerjaan section and track row numbers
+            section_start_row = current_row
+            current_row = self._write_pekerjaan_section_with_tracking(
+                ws_rincian, current_row, section, pekerjaan_refs
+            )
+            current_row += 2
+
+        # Apply column widths for Rincian
+        ws_rincian.column_dimensions['A'].width = 5
+        ws_rincian.column_dimensions['B'].width = 40
+        ws_rincian.column_dimensions['C'].width = 15
+        ws_rincian.column_dimensions['D'].width = 10
+        ws_rincian.column_dimensions['E'].width = 12
+        ws_rincian.column_dimensions['F'].width = 15
+        ws_rincian.column_dimensions['G'].width = 18
+
+        # ========== SHEET 2: REKAP (Summary with References) ==========
+        ws_rekap = wb.create_sheet("Rekap", 0)  # Insert at beginning
+        
+        current_row = 1
+        
+        # Title
+        ws_rekap.cell(row=current_row, column=1, value="REKAP ANALISA HARGA SATUAN PEKERJAAN")
+        ws_rekap.cell(row=current_row, column=1).font = Font(size=16, bold=True)
+        current_row += 2
+
+        # Identity rows
+        for label, _, value in build_identity_rows(self.config):
+            ws_rekap.cell(row=current_row, column=1, value=label)
+            ws_rekap.cell(row=current_row, column=2, value=value)
+            current_row += 1
+        current_row += 2
+
+        # Headers
+        headers = ['No', 'Kode', 'Uraian Pekerjaan', 'E — Jumlah (A+B+C+LAIN)', 'F — Profit/Margin', 'G — Harga Satuan']
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws_rekap.cell(row=current_row, column=col_idx, value=header)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor=COLORS['HEADER_BG'])
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws_rekap.row_dimensions[current_row].height = 30
+        current_row += 1
+
+        # Data rows with cross-sheet references
+        for idx, ref in enumerate(pekerjaan_refs, 1):
+            ws_rekap.cell(row=current_row, column=1, value=idx).border = border
+            ws_rekap.cell(row=current_row, column=2, value=ref['kode']).border = border
+            ws_rekap.cell(row=current_row, column=3, value=ref['uraian']).border = border
+            
+            # E column - reference to Rincian sheet
+            e_cell = ws_rekap.cell(row=current_row, column=4, value=f"=Rincian!{ref['e_cell']}")
+            e_cell.number_format = '#,##0'
+            e_cell.border = border
+            
+            # F column - reference to Rincian sheet
+            f_cell = ws_rekap.cell(row=current_row, column=5, value=f"=Rincian!{ref['f_cell']}")
+            f_cell.number_format = '#,##0'
+            f_cell.border = border
+            
+            # G column - reference to Rincian sheet
+            g_cell = ws_rekap.cell(row=current_row, column=6, value=f"=Rincian!{ref['g_cell']}")
+            g_cell.number_format = '#,##0'
+            g_cell.font = Font(bold=True)
+            g_cell.border = border
+            
+            current_row += 1
+
+        # Column widths for Rekap
+        ws_rekap.column_dimensions['A'].width = 5
+        ws_rekap.column_dimensions['B'].width = 15
+        ws_rekap.column_dimensions['C'].width = 45
+        ws_rekap.column_dimensions['D'].width = 20
+        ws_rekap.column_dimensions['E'].width = 18
+        ws_rekap.column_dimensions['F'].width = 18
+
+        # Save
+        output = BytesIO()
+        wb.save(output)
+        filename = f"Rincian_AHSP_{self.config.export_date.strftime('%Y%m%d')}.xlsx"
+        return self._create_response(
+            output.getvalue(),
+            filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    def _write_pekerjaan_section_with_tracking(self, ws, start_row: int, section: Dict[str, Any], pekerjaan_refs: List[Dict]) -> int:
+        """Write pekerjaan section and track E, F, G cell references."""
+        pekerjaan = section.get('pekerjaan', {})
+        groups = section.get('groups', [])
+        totals = section.get('totals', {})
+        border = self._get_thin_border()
+
+        pek_name = pekerjaan.get('uraian') or pekerjaan.get('name', '')
+        pek_kode = pekerjaan.get('kode', '')
+        pek_header = f"{pek_kode} - {pek_name}" if pek_kode else pek_name
+        
+        # Pekerjaan header
+        ws.cell(row=start_row, column=1, value=pek_header)
+        ws.cell(row=start_row, column=1).font = Font(bold=True, size=11)
+        ws.cell(row=start_row, column=1).fill = PatternFill('solid', fgColor='E0E7FF')
+        start_row += 1
+
+        # Sub-headers
+        sub_headers = ['No', 'Uraian', 'Kode', 'Satuan', 'Koefisien', 'Harga Satuan', 'Jumlah Harga']
+        for col_idx, header in enumerate(sub_headers, 1):
+            cell = ws.cell(row=start_row, column=col_idx, value=header)
+            cell.font = Font(bold=True, size=9)
+            cell.fill = PatternFill('solid', fgColor='F3F4F6')
+            cell.border = border
+        start_row += 1
+
+        subtotal_cells = []
+        
+        for group in groups:
+            group_title = group.get('title', '')
+            group_rows = group.get('rows', [])
+            
+            if not group_rows:
+                continue
+            
+            # Group title
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=7)
+            cell = ws.cell(row=start_row, column=1, value=group_title)
+            cell.font = Font(bold=True, size=9, italic=True)
+            cell.fill = PatternFill('solid', fgColor='FFF3CD')
+            cell.border = border
+            start_row += 1
+            
+            group_first_row = start_row
+            
+            for row_data in group_rows:
+                for col_idx, val in enumerate(row_data, 1):
+                    cell = ws.cell(row=start_row, column=col_idx)
+                    cell.border = border
+                    
+                    if col_idx == 7:
+                        cell.value = f"=E{start_row}*F{start_row}"
+                        cell.number_format = '#,##0'
+                    elif col_idx == 5:
+                        cell.value = self._parse_number(val)
+                        cell.number_format = '0.000000'
+                    elif col_idx == 6:
+                        cell.value = self._parse_number(val)
+                        cell.number_format = '#,##0'
+                    else:
+                        cell.value = val
+                start_row += 1
+            
+            group_last_row = start_row - 1
+            
+            # Subtotal
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+            cell = ws.cell(row=start_row, column=1, value=f"Subtotal {group.get('short_title', '')}")
+            cell.font = Font(bold=True, size=9)
+            cell.alignment = Alignment(horizontal='right')
+            cell.border = border
+            
+            subtotal_cell = ws.cell(row=start_row, column=7)
+            subtotal_cell.value = f"=SUM(G{group_first_row}:G{group_last_row})"
+            subtotal_cell.font = Font(bold=True)
+            subtotal_cell.border = border
+            subtotal_cell.number_format = '#,##0'
+            
+            subtotal_cells.append(f"G{start_row}")
+            start_row += 1
+
+        # Totals E, F, G
+        markup_pct = float(totals.get('markup_eff', '10.00').replace(',', '.')) if totals else 10.0
+        
+        # E row
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+        cell = ws.cell(row=start_row, column=1, value="Jumlah (E)")
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='right')
+        cell.fill = PatternFill('solid', fgColor='E8F5E9')
+        cell.border = border
+        
+        e_row = start_row
+        e_formula = "=" + "+".join(subtotal_cells) if subtotal_cells else "=0"
+        cell = ws.cell(row=start_row, column=7, value=e_formula)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill('solid', fgColor='E8F5E9')
+        cell.border = border
+        cell.number_format = '#,##0'
+        start_row += 1
+        
+        # F row
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+        cell = ws.cell(row=start_row, column=1, value=f"Profit/Margin {markup_pct:.2f}% (F)")
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='right')
+        cell.fill = PatternFill('solid', fgColor='FFF8E1')
+        cell.border = border
+        
+        f_row = start_row
+        f_formula = f"=G{e_row}*{markup_pct/100}"
+        cell = ws.cell(row=start_row, column=7, value=f_formula)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill('solid', fgColor='FFF8E1')
+        cell.border = border
+        cell.number_format = '#,##0'
+        start_row += 1
+        
+        # G row
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+        cell = ws.cell(row=start_row, column=1, value="Harga Satuan Pekerjaan (G = E + F)")
+        cell.font = Font(bold=True, size=10)
+        cell.alignment = Alignment(horizontal='right')
+        cell.fill = PatternFill('solid', fgColor='BBDEFB')
+        cell.border = border
+        
+        g_row = start_row
+        g_formula = f"=G{e_row}+G{f_row}"
+        cell = ws.cell(row=start_row, column=7, value=g_formula)
+        cell.font = Font(bold=True, size=10)
+        cell.fill = PatternFill('solid', fgColor='BBDEFB')
+        cell.border = border
+        cell.number_format = '#,##0'
+        start_row += 1
+
+        # Track references for Rekap sheet
+        pekerjaan_refs.append({
+            'kode': pek_kode,
+            'uraian': pek_name,
+            'e_cell': f"G{e_row}",
+            'f_cell': f"G{f_row}",
+            'g_cell': f"G{g_row}",
+        })
+
+        return start_row
+
     def _create_sheet(self, wb: Workbook, title: str, is_first: bool = False):
         sanitized = self._sanitize_title(title)
         if is_first:
@@ -245,16 +581,21 @@ class ExcelExporter(ConfigExporterBase):
     def _write_pekerjaan_section(self, ws, start_row: int, section: Dict[str, Any]) -> int:
         pekerjaan = section.get('pekerjaan', {})
         items = section.get('items', [])
+        groups = section.get('groups', [])  # RincianAHSP uses groups
         border = self._get_thin_border()
 
-        # Pekerjaan header
-        ws.cell(row=start_row, column=1, value=pekerjaan.get('name', ''))
+        # Pekerjaan header - use 'uraian' or 'name'
+        pek_name = pekerjaan.get('uraian') or pekerjaan.get('name', '')
+        pek_kode = pekerjaan.get('kode', '')
+        pek_header = f"{pek_kode} - {pek_name}" if pek_kode else pek_name
+        
+        ws.cell(row=start_row, column=1, value=pek_header)
         ws.cell(row=start_row, column=1).font = Font(bold=True, size=11)
         ws.cell(row=start_row, column=1).fill = PatternFill('solid', fgColor='E0E7FF')
         start_row += 1
 
         # Sub-headers
-        sub_headers = ['No', 'Kode', 'Uraian Item', 'Satuan', 'Koefisien', 'Harga Satuan', 'Jumlah Harga']
+        sub_headers = ['No', 'Uraian', 'Kode', 'Satuan', 'Koefisien', 'Harga Satuan', 'Jumlah Harga']
         for col_idx, header in enumerate(sub_headers, 1):
             cell = ws.cell(row=start_row, column=col_idx, value=header)
             cell.font = Font(bold=True, size=9)
@@ -262,18 +603,141 @@ class ExcelExporter(ConfigExporterBase):
             cell.border = border
         start_row += 1
 
-        # Items
-        for idx, item in enumerate(items, 1):
-            ws.cell(row=start_row, column=1, value=idx).border = border
-            ws.cell(row=start_row, column=2, value=item.get('kode', '')).border = border
-            ws.cell(row=start_row, column=3, value=item.get('uraian', '')).border = border
-            ws.cell(row=start_row, column=4, value=item.get('satuan', '')).border = border
-            ws.cell(row=start_row, column=5, value=item.get('koefisien', '')).border = border
-            ws.cell(row=start_row, column=6, value=item.get('harga_satuan', '')).border = border
-            ws.cell(row=start_row, column=7, value=item.get('jumlah_harga', '')).border = border
+        # Handle groups structure (from RincianAHSPAdapter)
+        if groups:
+            subtotal_cells = []  # Track subtotal row references for E formula
+            
+            for group in groups:
+                group_title = group.get('title', '')
+                group_rows = group.get('rows', [])
+                
+                if not group_rows:
+                    continue
+                
+                # Group title row
+                ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=7)
+                cell = ws.cell(row=start_row, column=1, value=group_title)
+                cell.font = Font(bold=True, size=9, italic=True)
+                cell.fill = PatternFill('solid', fgColor='FFF3CD')  # Yellow-ish for section
+                cell.border = border
+                start_row += 1
+                
+                # Track row numbers for this group's detail rows (for subtotal SUM formula)
+                group_first_row = start_row
+                
+                # Group detail rows (list of lists: [No, Uraian, Kode, Satuan, Koefisien, HargaSatuan, JumlahHarga])
+                # Columns: E=Koefisien, F=Harga Satuan, G=Jumlah Harga (formula: E*F)
+                for row_data in group_rows:
+                    for col_idx, val in enumerate(row_data, 1):
+                        cell = ws.cell(row=start_row, column=col_idx)
+                        cell.border = border
+                        
+                        if col_idx == 7:
+                            # Jumlah Harga = Koefisien (col 5) × Harga Satuan (col 6)
+                            # Use formula instead of static value
+                            cell.value = f"=E{start_row}*F{start_row}"
+                            cell.number_format = '#,##0'
+                        elif col_idx == 5:
+                            # Koefisien - parse to number
+                            cell.value = self._parse_number(val)
+                            cell.number_format = '0.000000'
+                        elif col_idx == 6:
+                            # Harga Satuan - parse to number
+                            cell.value = self._parse_number(val)
+                            cell.number_format = '#,##0'
+                        else:
+                            cell.value = val
+                    start_row += 1
+                
+                group_last_row = start_row - 1
+                
+                # Subtotal row with SUM formula
+                ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+                cell = ws.cell(row=start_row, column=1, value=f"Subtotal {group.get('short_title', '')}")
+                cell.font = Font(bold=True, size=9)
+                cell.alignment = Alignment(horizontal='right')
+                cell.border = border
+                
+                # Subtotal formula: SUM of Jumlah Harga column (G) for this group
+                subtotal_cell = ws.cell(row=start_row, column=7)
+                subtotal_cell.value = f"=SUM(G{group_first_row}:G{group_last_row})"
+                subtotal_cell.font = Font(bold=True)
+                subtotal_cell.border = border
+                subtotal_cell.number_format = '#,##0'
+                
+                subtotal_cells.append(f"G{start_row}")
+                start_row += 1
+
+            # Total section (E, F, G) with formulas
+            totals = section.get('totals', {})
+            markup_pct = float(totals.get('markup_eff', '10.00').replace(',', '.')) if totals else 10.0
+            
+            # Jumlah E = SUM of all subtotals
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+            cell = ws.cell(row=start_row, column=1, value="Jumlah (E)")
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='right')
+            cell.fill = PatternFill('solid', fgColor='E8F5E9')
+            cell.border = border
+            
+            e_row = start_row
+            e_formula = "=" + "+".join(subtotal_cells) if subtotal_cells else "=0"
+            cell = ws.cell(row=start_row, column=7, value=e_formula)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill('solid', fgColor='E8F5E9')
+            cell.border = border
+            cell.number_format = '#,##0'
             start_row += 1
+            
+            # Profit/Margin F = E × markup%
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+            cell = ws.cell(row=start_row, column=1, value=f"Profit/Margin {markup_pct:.2f}% (F)")
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='right')
+            cell.fill = PatternFill('solid', fgColor='FFF8E1')
+            cell.border = border
+            
+            f_row = start_row
+            f_formula = f"=G{e_row}*{markup_pct/100}"
+            cell = ws.cell(row=start_row, column=7, value=f_formula)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill('solid', fgColor='FFF8E1')
+            cell.border = border
+            cell.number_format = '#,##0'
+            start_row += 1
+            
+            # HSP G = E + F
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=6)
+            cell = ws.cell(row=start_row, column=1, value="Harga Satuan Pekerjaan (G = E + F)")
+            cell.font = Font(bold=True, size=10)
+            cell.alignment = Alignment(horizontal='right')
+            cell.fill = PatternFill('solid', fgColor='BBDEFB')
+            cell.border = border
+            
+            g_formula = f"=G{e_row}+G{f_row}"
+            cell = ws.cell(row=start_row, column=7, value=g_formula)
+            cell.font = Font(bold=True, size=10)
+            cell.fill = PatternFill('solid', fgColor='BBDEFB')
+            cell.border = border
+            cell.number_format = '#,##0'
+            start_row += 1
+        else:
+            # Fallback: old items structure
+            for idx, item in enumerate(items, 1):
+                ws.cell(row=start_row, column=1, value=idx).border = border
+                ws.cell(row=start_row, column=2, value=item.get('uraian', '')).border = border
+                ws.cell(row=start_row, column=3, value=item.get('kode', '')).border = border
+                ws.cell(row=start_row, column=4, value=item.get('satuan', '')).border = border
+                ws.cell(row=start_row, column=5, value=item.get('koefisien', '')).border = border
+                ws.cell(row=start_row, column=6, value=item.get('harga_satuan', '')).border = border
+                ws.cell(row=start_row, column=7, value=item.get('jumlah_harga', '')).border = border
+                start_row += 1
 
         return start_row
+    
+    def _parse_number(self, val):
+        """Wrapper for global parse_number function - for consistency across all Excel exports."""
+        return parse_number(val, default=0)
 
     def _apply_column_widths(self, ws, widths: List[float] | None):
         if not widths:

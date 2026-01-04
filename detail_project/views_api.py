@@ -2374,6 +2374,65 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         status=status_code
     )
 
+
+# ---------- View: Item Conversion Profiles ----------
+@login_required
+@require_GET
+def api_get_conversion_profiles(request: HttpRequest, project_id: int):
+    """
+    GET conversion profiles for all items in this project.
+    Returns a dictionary keyed by item kode for easy frontend lookup.
+    
+    Response:
+    {
+        "ok": true,
+        "profiles": {
+            "BHN-001": {
+                "id": 1,
+                "market_unit": "batang",
+                "market_price": "240000.00",
+                "factor_to_base": "10.000000",
+                "base_unit": "kg",
+                "density": null,
+                "capacity_m3": null,
+                "capacity_ton": null,
+                "method": "direct"
+            },
+            ...
+        }
+    }
+    """
+    from .models import ItemConversionProfile
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    # Fetch all conversion profiles for this project
+    profiles_qs = (ItemConversionProfile.objects
+                   .filter(harga_item__project=project)
+                   .select_related('harga_item'))
+    
+    result = {}
+    for p in profiles_qs:
+        result[p.harga_item.kode_item] = {
+            "id": p.id,
+            "harga_item_id": p.harga_item.id,
+            "market_unit": p.market_unit,
+            "market_price": to_dp_str(p.market_price, 2),
+            "factor_to_base": to_dp_str(p.factor_to_base, 6),
+            "base_unit": p.harga_item.satuan or "",
+            "density": to_dp_str(p.density, 6) if p.density else None,
+            "capacity_m3": to_dp_str(p.capacity_m3, 6) if p.capacity_m3 else None,
+            "capacity_ton": to_dp_str(p.capacity_ton, 6) if p.capacity_ton else None,
+            "method": p.method,
+        }
+    
+    return JsonResponse({
+        "ok": True,
+        "profiles": result,
+        "count": len(result),
+    })
+
+
 # ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
 @require_http_methods(["GET","POST"])
@@ -2884,6 +2943,26 @@ def api_get_change_status(request: HttpRequest, project_id: int):
         tracker.last_harga_change.isoformat() if tracker and tracker.last_harga_change else None
     )
 
+    # Get latest pekerjaan change timestamp
+    pekerjaan_latest = Pekerjaan.objects.filter(
+        project=project,
+    ).order_by('-updated_at').values_list('updated_at', flat=True).first()
+    pekerjaan_changed_at = pekerjaan_latest.isoformat() if pekerjaan_latest else None
+
+    # Get latest volume change timestamp (VolumePekerjaan)
+    volume_changed_at = None
+    try:
+        from detail_project.models import VolumePekerjaan
+        volume_latest = VolumePekerjaan.objects.filter(
+            pekerjaan__project=project,
+        ).order_by('-updated_at').values_list('updated_at', flat=True).first()
+        volume_changed_at = volume_latest.isoformat() if volume_latest else None
+    except Exception:
+        pass
+
+    # Jadwal tracking - placeholder for future implementation
+    jadwal_changed_at = None
+
     pekerjaan_qs = Pekerjaan.objects.filter(
         project=project,
         detail_last_modified__isnull=False,
@@ -2907,6 +2986,9 @@ def api_get_change_status(request: HttpRequest, project_id: int):
             "ok": True,
             "ahsp_changed_at": ahsp_changed_at,
             "harga_changed_at": harga_changed_at,
+            "pekerjaan_changed_at": pekerjaan_changed_at,
+            "volume_changed_at": volume_changed_at,
+            "jadwal_changed_at": jadwal_changed_at,
             "affected_pekerjaan_count": affected_count,
             "recent_pekerjaan": recent,
         }
@@ -3804,6 +3886,24 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_rincian_ahsp_xlsx(request: HttpRequest, project_id: int):
+    """Export Rincian AHSP to Excel XLSX"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        orientation = request.GET.get('orientation')
+        return manager.export_rincian_ahsp('xlsx', orientation=orientation)
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
 
 
 # ============================================================================

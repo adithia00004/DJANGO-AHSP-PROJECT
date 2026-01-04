@@ -98,6 +98,18 @@ class WordExporter:
         Returns:
             HttpResponse with .docx file
         """
+        # Check if this is Rincian AHSP data
+        sections = data.get('sections', [])
+        is_rincian_ahsp = bool(
+            sections and 
+            isinstance(sections[0], dict) and 
+            'pekerjaan' in sections[0] and 
+            'groups' in sections[0]
+        )
+
+        if is_rincian_ahsp:
+            return self._export_rincian_ahsp(data)
+
         self.doc = Document()
         self._setup_page_layout('A4', 'landscape')
         
@@ -146,6 +158,259 @@ class WordExporter:
                 self.doc.add_page_break()
         
         return self._create_response('export')
+
+    def _export_rincian_ahsp(self, data: Dict[str, Any]) -> HttpResponse:
+        """
+        Export Rincian AHSP to Word document.
+        
+        Structure:
+        1. Rekap (summary table)
+        2. Rincian (detail per pekerjaan)
+        3. Lembar Pengesahan (at bottom of last rincian page)
+        """
+        self.doc = Document()
+        self._setup_page_layout('A4', 'portrait')
+        
+        sections = data.get('sections', [])
+        
+        # ========== SECTION 1: REKAP ==========
+        title_para = self.doc.add_paragraph()
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title_para.add_run('REKAP ANALISA HARGA SATUAN PEKERJAAN')
+        title_run.bold = True
+        title_run.font.size = Pt(16)
+        
+        # Identity rows
+        identity_rows = build_identity_rows(self.config)
+        if identity_rows:
+            self.doc.add_paragraph()
+            id_table = self.doc.add_table(rows=len(identity_rows), cols=3)
+            for i, row_data in enumerate(identity_rows):
+                for j, cell_text in enumerate(row_data):
+                    id_table.rows[i].cells[j].text = str(cell_text)
+        
+        self.doc.add_paragraph()
+        
+        # Rekap table
+        rekap_headers = ['No', 'Kode', 'Uraian Pekerjaan', 'E — Jumlah', 'F — Profit/Margin', 'G — Harga Satuan']
+        rekap_table = self.doc.add_table(rows=len(sections) + 1, cols=6)
+        rekap_table.style = 'Table Grid'
+        
+        # Header row
+        for col_idx, header_text in enumerate(rekap_headers):
+            cell = rekap_table.rows[0].cells[col_idx]
+            cell.text = header_text
+            self._style_header_cell(cell)
+        
+        # Data rows
+        for idx, section in enumerate(sections):
+            pekerjaan = section.get('pekerjaan', {})
+            totals = section.get('totals', {})
+            row = rekap_table.rows[idx + 1]
+            
+            row.cells[0].text = str(idx + 1)
+            row.cells[1].text = pekerjaan.get('kode', '')
+            row.cells[2].text = pekerjaan.get('uraian', '')
+            row.cells[3].text = totals.get('E', '0')
+            row.cells[4].text = totals.get('F', '0')
+            row.cells[5].text = totals.get('G', '0')
+            # Bold G column
+            for para in row.cells[5].paragraphs:
+                for run in para.runs:
+                    run.bold = True
+        
+        # Column widths for rekap
+        rekap_widths = [Mm(8), Mm(20), Mm(55), Mm(30), Mm(30), Mm(32)]
+        for row in rekap_table.rows:
+            for col_idx, cell in enumerate(row.cells):
+                cell.width = rekap_widths[col_idx]
+        
+        self.doc.add_page_break()
+        
+        # ========== SECTION 2: RINCIAN ==========
+        rincian_title = self.doc.add_paragraph()
+        rincian_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        rincian_run = rincian_title.add_run('RINCIAN ANALISA HARGA SATUAN PEKERJAAN')
+        rincian_run.bold = True
+        rincian_run.font.size = Pt(16)
+        
+        self.doc.add_paragraph()
+        
+        # Write each pekerjaan section (no Grand Total)
+        for idx, section in enumerate(sections):
+            pekerjaan = section.get('pekerjaan', {})
+            groups = section.get('groups', [])
+            totals = section.get('totals', {})
+            
+            pek_kode = pekerjaan.get('kode', '')
+            pek_uraian = pekerjaan.get('uraian', '')
+            
+            # Pekerjaan header
+            header_para = self.doc.add_paragraph()
+            header_run = header_para.add_run(f"{pek_kode} - {pek_uraian}" if pek_kode else pek_uraian)
+            header_run.bold = True
+            header_run.font.size = Pt(11)
+            
+            # Detail table headers
+            headers = ['No', 'Uraian', 'Kode', 'Satuan', 'Koefisien', 'Harga Satuan', 'Jumlah Harga']
+            
+            # Count total rows for table
+            total_rows = 1  # header
+            for group in groups:
+                if group.get('rows'):
+                    total_rows += 1  # group title
+                    total_rows += len(group.get('rows', []))
+                    total_rows += 1  # subtotal
+            total_rows += 3  # E, F, G
+            
+            table = self.doc.add_table(rows=total_rows, cols=7)
+            table.style = 'Table Grid'
+            
+            # Header row
+            for col_idx, header_text in enumerate(headers):
+                cell = table.rows[0].cells[col_idx]
+                cell.text = header_text
+                self._style_header_cell(cell)
+            
+            row_idx = 1
+            
+            # Write groups
+            for group in groups:
+                group_title = group.get('title', '')
+                group_rows = group.get('rows', [])
+                group_subtotal = group.get('subtotal', '')
+                
+                if not group_rows:
+                    continue
+                
+                # Group title
+                if row_idx < len(table.rows):
+                    table.rows[row_idx].cells[0].text = group_title
+                    for para in table.rows[row_idx].cells[0].paragraphs:
+                        for run in para.runs:
+                            run.bold = True
+                            run.italic = True
+                            run.font.size = Pt(9)
+                    row_idx += 1
+                
+                # Group detail rows
+                for row_data in group_rows:
+                    if row_idx < len(table.rows):
+                        for col_idx, val in enumerate(row_data):
+                            if col_idx < 7:
+                                table.rows[row_idx].cells[col_idx].text = str(val) if val else ''
+                        row_idx += 1
+                
+                # Subtotal row
+                if row_idx < len(table.rows):
+                    table.rows[row_idx].cells[0].text = f"Subtotal {group.get('short_title', '')}"
+                    for para in table.rows[row_idx].cells[0].paragraphs:
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                        for run in para.runs:
+                            run.bold = True
+                    table.rows[row_idx].cells[6].text = str(group_subtotal)
+                    for para in table.rows[row_idx].cells[6].paragraphs:
+                        for run in para.runs:
+                            run.bold = True
+                    row_idx += 1
+            
+            # Total E
+            if row_idx < len(table.rows):
+                table.rows[row_idx].cells[0].text = "Jumlah (E)"
+                for para in table.rows[row_idx].cells[0].paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    for run in para.runs:
+                        run.bold = True
+                table.rows[row_idx].cells[6].text = totals.get('E', '0')
+                for para in table.rows[row_idx].cells[6].paragraphs:
+                    for run in para.runs:
+                        run.bold = True
+                row_idx += 1
+            
+            # Total F (Profit/Margin)
+            if row_idx < len(table.rows):
+                markup = totals.get('markup_eff', '10.00')
+                table.rows[row_idx].cells[0].text = f"Profit/Margin {markup}% (F)"
+                for para in table.rows[row_idx].cells[0].paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    for run in para.runs:
+                        run.bold = True
+                table.rows[row_idx].cells[6].text = totals.get('F', '0')
+                for para in table.rows[row_idx].cells[6].paragraphs:
+                    for run in para.runs:
+                        run.bold = True
+                row_idx += 1
+            
+            # Total G (Harga Satuan Pekerjaan)
+            if row_idx < len(table.rows):
+                table.rows[row_idx].cells[0].text = "Harga Satuan Pekerjaan (G = E + F)"
+                for para in table.rows[row_idx].cells[0].paragraphs:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    for run in para.runs:
+                        run.bold = True
+                        run.font.size = Pt(10)
+                table.rows[row_idx].cells[6].text = totals.get('G', '0')
+                for para in table.rows[row_idx].cells[6].paragraphs:
+                    for run in para.runs:
+                        run.bold = True
+                        run.font.size = Pt(10)
+            
+            # Column widths
+            widths = [Mm(10), Mm(50), Mm(25), Mm(15), Mm(20), Mm(25), Mm(30)]
+            for row in table.rows:
+                for col_idx, cell in enumerate(row.cells):
+                    cell.width = widths[col_idx]
+            
+            # Spacing between pekerjaan tables (no page break - more compact)
+            if idx < len(sections) - 1:
+                self.doc.add_paragraph()  # 1 line spacing
+                self.doc.add_paragraph()  # 2 lines total
+        
+        # ========== SECTION 3: LEMBAR PENGESAHAN ==========
+        # Add some spacing (not a new page, at bottom of last rincian)
+        self.doc.add_paragraph()
+        self.doc.add_paragraph()
+        
+        # Approval section title
+        approval_title = self.doc.add_paragraph()
+        approval_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        approval_run = approval_title.add_run('LEMBAR PENGESAHAN')
+        approval_run.bold = True
+        approval_run.font.size = Pt(12)
+        
+        self.doc.add_paragraph()
+        
+        # Approval table (2 columns for Pemilik Proyek and Konsultan Perencana)
+        approval_table = self.doc.add_table(rows=5, cols=2)
+        approval_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        
+        # Row 0: Headers
+        approval_table.rows[0].cells[0].text = "Pemilik Proyek"
+        approval_table.rows[0].cells[1].text = "Konsultan Perencana"
+        for cell in approval_table.rows[0].cells:
+            for para in cell.paragraphs:
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in para.runs:
+                    run.bold = True
+        
+        # Row 1-3: Empty space for signature
+        for i in range(1, 4):
+            for cell in approval_table.rows[i].cells:
+                cell.text = ""
+        
+        # Row 4: Name lines
+        approval_table.rows[4].cells[0].text = "(_________________________)"
+        approval_table.rows[4].cells[1].text = "(_________________________)"
+        for cell in approval_table.rows[4].cells:
+            for para in cell.paragraphs:
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Set column widths
+        for row in approval_table.rows:
+            row.cells[0].width = Mm(80)
+            row.cells[1].width = Mm(80)
+        
+        return self._create_response('rincian_ahsp')
     
     def export_rekap(self, data: Dict[str, Any]) -> HttpResponse:
         """

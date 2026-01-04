@@ -2106,7 +2106,7 @@ def compute_rekap_for_project(project):
     for p in (Pekerjaan.objects
               .filter(project=project)
               .order_by('ordering_index', 'id')
-              .values('id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan', 'markup_override_percent')):
+              .values('id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan', 'markup_override_percent', 'source_type')):
         pkj_id   = p['id']
         A        = agg.get(pkj_id, {}).get('TK', 0.0)  or 0.0
         B        = agg.get(pkj_id, {}).get('BHN', 0.0) or 0.0
@@ -2131,6 +2131,7 @@ def compute_rekap_for_project(project):
             kode         = p['snapshot_kode'],
             uraian       = p['snapshot_uraian'],
             satuan       = p['snapshot_satuan'],
+            source_type  = p.get('source_type', ''),  # Added for UI filtering
 
             A=A, B=B, C=C, D=D,
             LAIN=LAIN,

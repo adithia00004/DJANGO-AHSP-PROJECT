@@ -61,6 +61,9 @@ urlpatterns = [
     path('api/project/<int:project_id>/change-status/', views_api.api_get_change_status, name='api_get_change_status'),
     path('api/project/<int:project_id>/audit-trail/', views_api.api_get_audit_trail, name='api_get_audit_trail'),
     
+    # ===== API: Conversion Profiles =====
+    path('api/project/<int:project_id>/conversion-profiles/', views_api.api_get_conversion_profiles, name='api_get_conversion_profiles'),
+    
     # ===== API: Project Pricing (Profit/Margin) =====
     path('api/project/<int:project_id>/pricing/', views_api.api_project_pricing, name='api_project_pricing'),
     
@@ -159,6 +162,10 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/rincian-ahsp/word/',
           views_api.export_rincian_ahsp_word,
           name='export_rincian_ahsp_word'),
+
+     path('api/project/<int:project_id>/export/rincian-ahsp/xlsx/',
+          views_api.export_rincian_ahsp_xlsx,
+          name='export_rincian_ahsp_xlsx'),
 
      # Export Jadwal Pekerjaan
      path('api/project/<int:project_id>/export/jadwal-pekerjaan/csv/',

@@ -3,7 +3,8 @@ from django.contrib import admin
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     HargaItemProject, DetailAHSPProject, DetailAHSPExpanded,
-    TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+    TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly,
+    ItemConversionProfile
 )
 
 @admin.register(Klasifikasi)
@@ -49,6 +50,15 @@ class HargaItemProjectAdmin(admin.ModelAdmin):
     search_fields = ("kode_item", "uraian", "project__nama")
     ordering = ("project", "kode_item")
     raw_id_fields = ("project",)
+
+
+@admin.register(ItemConversionProfile)
+class ItemConversionProfileAdmin(admin.ModelAdmin):
+    list_display = ("id", "harga_item", "market_unit", "market_price", "factor_to_base", "method")
+    list_filter = ("harga_item__project", "method")
+    search_fields = ("harga_item__kode_item", "harga_item__uraian", "market_unit")
+    ordering = ("harga_item__project", "harga_item__kode_item")
+    raw_id_fields = ("harga_item",)
 
 @admin.register(DetailAHSPProject)
 class DetailAHSPProjectAdmin(admin.ModelAdmin):

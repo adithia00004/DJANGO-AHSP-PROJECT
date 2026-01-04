@@ -18,7 +18,7 @@
 
 {% endblock %}
 
-{% block title %}Rekap Kebutuhan â€” {{ project.nama }}{% endblock %}
+{% block title %}Rekap Kebutuhan {{ project.nama }}{% endblock %}
 
 
 
@@ -30,7 +30,8 @@
   data-export-csv="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}"
   data-export-pdf="{% url 'detail_project:api_export_rekap_kebutuhan_pdf' project.id %}"
   data-export-word="{% url 'detail_project:api_export_rekap_kebutuhan_word' project.id %}"
-  data-timeline-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_timeline' project.id %}">
+  data-timeline-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_timeline' project.id %}"
+  data-conversion-endpoint="{% url 'detail_project:api_get_conversion_profiles' project.id %}">
 
 
 
@@ -325,6 +326,20 @@
         </button>
       </div>
 
+      <!-- Unit Mode Toggle (Base vs Market) -->
+      <div class="btn-group btn-group-sm ms-2" id="rk-unit-toggle" role="group" aria-label="Mode satuan">
+        <button type="button" class="btn btn-outline-secondary active" data-unit="base" aria-pressed="true"
+          title="Tampilkan dalam satuan dasar (dari Template AHSP)">
+          <i class="bi bi-rulers"></i>
+          <span class="d-none d-lg-inline ms-1">Satuan Dasar</span>
+        </button>
+        <button type="button" class="btn btn-outline-secondary" data-unit="market" aria-pressed="false"
+          title="Tampilkan dalam satuan beli (dari Supplier)">
+          <i class="bi bi-cart3"></i>
+          <span class="d-none d-lg-inline ms-1">Satuan Beli</span>
+        </button>
+      </div>
+
       <!-- Timeline Range Picker (Compact - shown only in timeline view) -->
       <div class="rk-timeline-range-compact d-none" id="rk-toolbar-range-picker">
         <div class="btn-group btn-group-sm" role="group">
@@ -367,6 +382,38 @@
         <span><i class="bi bi-box-seam-fill text-success"></i> BHN: <span id="rk-count-BHN">0</span></span>
         <span><i class="bi bi-tools text-warning"></i> ALT: <span id="rk-count-ALT">0</span></span>
         <span><i class="bi bi-three-dots text-secondary"></i> LAIN: <span id="rk-count-LAIN">0</span></span>
+      </div>
+    </div>
+
+    <!-- Column Visibility Dropdown -->
+    <div class="dropdown ms-2" id="rk-col-visibility">
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+        aria-expanded="false" title="Pilih kolom yang ditampilkan">
+        <i class="bi bi-layout-three-columns"></i>
+        <span class="d-none d-md-inline ms-1">Kolom</span>
+      </button>
+      <div class="dropdown-menu dropdown-menu-end p-2" style="min-width: 220px;">
+        <div class="small text-body-secondary mb-2 fw-semibold">Tampilkan Kolom:</div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-satuan-beli" data-col="satuan-beli">
+          <label class="form-check-label small" for="rk-col-satuan-beli">Satuan Beli (Supplier)</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-faktor" data-col="faktor">
+          <label class="form-check-label small" for="rk-col-faktor">Faktor Konversi</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-qty-beli" data-col="qty-beli">
+          <label class="form-check-label small" for="rk-col-qty-beli">Qty Satuan Beli</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-harga-beli" data-col="harga-beli">
+          <label class="form-check-label small" for="rk-col-harga-beli">Harga per Satuan Beli</label>
+        </div>
+        <hr class="my-2">
+        <button class="btn btn-sm btn-link p-0 text-body-secondary" id="rk-col-reset">
+          <i class="bi bi-arrow-counterclockwise"></i> Reset ke default
+        </button>
       </div>
     </div>
 

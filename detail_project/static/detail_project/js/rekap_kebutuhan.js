@@ -119,6 +119,18 @@
   let timelineCache = [];
   let lastData = null; // PHASE 5 TRACK 3.1: Store last fetched data for autocomplete
 
+  // Phase 4: Unit conversion state
+  let currentUnitMode = 'base'; // 'base' or 'market'
+  let conversionProfiles = {}; // keyed by kode: { market_unit, market_price, factor_to_base, ... }
+  let conversionProfilesLoaded = false;
+  const conversionEndpoint = app?.dataset?.conversionEndpoint; // 'app' defined at line 10
+  const LS_CONV_PREFIX = 'hiConv:'; // localStorage key prefix (shared with harga_items.js)
+
+  // Phase 5: Column visibility state
+  const LS_COL_VISIBILITY_KEY = 'rk_col_visibility';
+  const DEFAULT_VISIBLE_COLS = {}; // All optional columns hidden by default
+  let visibleColumns = { ...DEFAULT_VISIBLE_COLS }; // { 'satuan-beli': true, 'faktor': false, ... }
+
   let chartMixInstance = null;
   let chartCostInstance = null;
   let costChartMode = 'compact';
@@ -182,6 +194,12 @@
     jadwalLink: $('#rk-jadwal-link'),
     progressWarning: $('#rk-progress-warning'),
     progressWarningCount: $('#rk-progress-warning-count'),
+    progressWarningContainer: $('#rk-progress-warning-container'),
+    // Phase 4: Unit conversion toggle refs
+    unitToggleButtons: $$('#rk-unit-toggle [data-unit]'),
+    // Phase 5: Column visibility refs
+    colToggleCheckboxes: $$('.rk-col-toggle'),
+    colResetBtn: $('#rk-col-reset'),
   };
 
   const showToast = (message, type = 'info') => {
@@ -425,12 +443,35 @@
     const unscheduled = rows.filter(r => !r.is_scheduled);
     console.log('[Keseluruhan Debug] Scheduled:', scheduled.length, 'Unscheduled:', unscheduled.length);
 
-    // Helper to render item rows
+    // Helper to render item rows with unit conversion support
     const renderItemRow = (row) => {
-      const qty = formatQtyValue(row.quantity_decimal ?? row.quantity);
-      const hargaSatuan = formatCurrencyValue(row.harga_satuan_decimal ?? row.harga_satuan);
-      const hargaTotal = formatCurrencyValue(row.harga_total_decimal ?? row.harga_total);
+      // Apply unit conversion if in market mode
+      let satuan = row.satuan || '-';
+      let qty = row.quantity_decimal ?? row.quantity ?? 0;
+      let hargaSatuan = row.harga_satuan_decimal ?? row.harga_satuan ?? 0;
+      let hargaTotal = row.harga_total_decimal ?? row.harga_total ?? 0;
+      let conversionNote = '';
+
+      if (currentUnitMode === 'market') {
+        const conversion = getConversion(row.kode);
+        if (conversion && conversion.factor_to_base) {
+          const converted = applyConversion(row, conversion);
+          satuan = converted.satuan;
+          qty = converted.qty;
+          hargaSatuan = converted.harga_satuan;
+          hargaTotal = converted.harga_total;
+          conversionNote = converted.conversionNote || '';
+        }
+      }
+
+      const qtyFormatted = formatQtyValue(qty);
+      const hargaSatuanFormatted = formatCurrencyValue(hargaSatuan);
+      const hargaTotalFormatted = formatCurrencyValue(hargaTotal);
       const pekerjaanNama = row.pekerjaan || row.pekerjaan_nama || '';
+      const satuanDisplay = conversionNote
+        ? `<span title="${esc(conversionNote)}" class="text-info cursor-help">${esc(satuan)} <i class="bi bi-arrow-left-right small"></i></span>`
+        : esc(satuan);
+
       return `
         <tr>
           <td class="text-uppercase text-muted small fw-semibold">${esc(row.kategori || '-')}</td>
@@ -439,10 +480,10 @@
             <div class="fw-semibold">${esc(row.uraian || '-')}</div>
             ${pekerjaanNama ? `<div class="text-muted small">${esc(pekerjaanNama)}</div>` : ''}
           </td>
-          <td>${esc(row.satuan || '-')}</td>
-          <td class="text-end">${qty}</td>
-          <td class="text-end">${hargaSatuan}</td>
-          <td class="text-end fw-semibold">${hargaTotal}</td>
+          <td>${satuanDisplay}</td>
+          <td class="text-end">${qtyFormatted}</td>
+          <td class="text-end">${hargaSatuanFormatted}</td>
+          <td class="text-end fw-semibold">${hargaTotalFormatted}</td>
         </tr>`;
     };
 
@@ -1390,6 +1431,194 @@
     }
   };
 
+  // ===== Phase 4: Unit Conversion Profiles Loading =====
+  /**
+   * Load conversion profiles using hybrid approach:
+   * 1. Try server endpoint first
+   * 2. Fallback to localStorage (shared with Harga Items)
+   * 3. Items without profile use base unit (no conversion)
+   */
+  const loadConversionProfiles = async () => {
+    if (conversionProfilesLoaded) return conversionProfiles;
+
+    // Try server first
+    if (conversionEndpoint) {
+      try {
+        const res = await fetch(conversionEndpoint, { credentials: 'same-origin' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && data.profiles) {
+            conversionProfiles = data.profiles;
+            conversionProfilesLoaded = true;
+            console.log('[RK] Loaded', Object.keys(conversionProfiles).length, 'conversion profiles from server');
+            return conversionProfiles;
+          }
+        }
+      } catch (e) {
+        console.warn('[RK] Failed to load conversion profiles from server, falling back to localStorage:', e);
+      }
+    }
+
+    // Fallback: try localStorage (scan for all hiConv: keys)
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(LS_CONV_PREFIX)) {
+          const kode = key.slice(LS_CONV_PREFIX.length);
+          try {
+            const profile = JSON.parse(localStorage.getItem(key));
+            if (profile && profile.factor_to_base) {
+              conversionProfiles[kode] = {
+                market_unit: profile.unit || '',
+                market_price: profile.price_market || '0',
+                factor_to_base: profile.factor_to_base || '1',
+                base_unit: profile.base_unit || '',
+                method: profile.method || 'direct',
+              };
+            }
+          } catch { }
+        }
+      }
+      if (Object.keys(conversionProfiles).length > 0) {
+        console.log('[RK] Loaded', Object.keys(conversionProfiles).length, 'conversion profiles from localStorage');
+      }
+    } catch (e) {
+      console.warn('[RK] localStorage not available:', e);
+    }
+
+    conversionProfilesLoaded = true;
+    return conversionProfiles;
+  };
+
+  /**
+   * Get conversion data for an item's kode
+   * Returns null if no conversion profile exists (use base unit)
+   */
+  const getConversion = (kode) => {
+    return conversionProfiles[kode] || null;
+  };
+
+  /**
+   * Apply conversion to a row's values for market unit display
+   * Returns { satuan, qty, harga_satuan, harga_total, conversionNote }
+   */
+  const applyConversion = (row, conversion) => {
+    if (!conversion || !conversion.factor_to_base) {
+      // No conversion - return base values unchanged
+      return {
+        satuan: row.satuan || '-',
+        qty: row.total_quantity,
+        harga_satuan: row.harga_satuan_decimal ?? row.harga_satuan ?? 0,
+        harga_total: row.harga_total_decimal ?? row.harga_total ?? 0,
+        conversionNote: null,
+      };
+    }
+
+    const factor = parseFloat(conversion.factor_to_base) || 1;
+    const marketPrice = parseFloat(conversion.market_price) || 0;
+    const baseQty = parseFloat(row.total_quantity) || 0;
+
+    // Convert: market_qty = base_qty / factor
+    const marketQty = baseQty / factor;
+    const marketTotal = marketQty * marketPrice;
+
+    return {
+      satuan: conversion.market_unit || row.satuan || '-',
+      qty: marketQty,
+      harga_satuan: marketPrice,
+      harga_total: marketTotal,
+      conversionNote: `1 ${conversion.market_unit} = ${factor} ${conversion.base_unit || row.satuan}`,
+    };
+  };
+
+  // Unit toggle event handler
+  const setupUnitToggle = () => {
+    if (!refs.unitToggleButtons || refs.unitToggleButtons.length === 0) return;
+
+    refs.unitToggleButtons.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const newMode = btn.dataset.unit;
+        if (newMode === currentUnitMode) return;
+
+        // Update UI
+        refs.unitToggleButtons.forEach(b => {
+          b.classList.toggle('active', b.dataset.unit === newMode);
+          b.setAttribute('aria-pressed', b.dataset.unit === newMode);
+        });
+
+        currentUnitMode = newMode;
+
+        // Load profiles if switching to market mode for first time
+        if (newMode === 'market' && !conversionProfilesLoaded) {
+          await loadConversionProfiles();
+        }
+
+        // Re-render current view with new unit mode
+        // Use tableRowsCache which has is_scheduled field, not lastData.rows
+        if (currentViewMode === 'snapshot' && tableRowsCache.length > 0) {
+          renderRows(tableRowsCache);
+        }
+
+        console.log('[RK] Unit mode switched to:', newMode);
+      });
+    });
+  };
+
+  // ===== Phase 5: Column Visibility Setup =====
+  /**
+   * Load column visibility from localStorage and setup event handlers
+   */
+  const setupColumnVisibility = () => {
+    // Load from localStorage
+    try {
+      const saved = localStorage.getItem(LS_COL_VISIBILITY_KEY);
+      if (saved) {
+        visibleColumns = JSON.parse(saved);
+      }
+    } catch { }
+
+    // Sync checkboxes with state
+    refs.colToggleCheckboxes.forEach(cb => {
+      const col = cb.dataset.col;
+      cb.checked = !!visibleColumns[col];
+    });
+
+    // Handle checkbox change
+    refs.colToggleCheckboxes.forEach(cb => {
+      cb.addEventListener('change', () => {
+        const col = cb.dataset.col;
+        visibleColumns[col] = cb.checked;
+
+        // Save to localStorage
+        try {
+          localStorage.setItem(LS_COL_VISIBILITY_KEY, JSON.stringify(visibleColumns));
+        } catch { }
+
+        // Re-render table
+        if (currentViewMode === 'snapshot' && tableRowsCache.length > 0) {
+          renderRows(tableRowsCache);
+        }
+      });
+    });
+
+    // Handle reset button
+    if (refs.colResetBtn) {
+      refs.colResetBtn.addEventListener('click', () => {
+        visibleColumns = { ...DEFAULT_VISIBLE_COLS };
+        refs.colToggleCheckboxes.forEach(cb => {
+          cb.checked = false;
+        });
+        try {
+          localStorage.removeItem(LS_COL_VISIBILITY_KEY);
+        } catch { }
+
+        if (currentViewMode === 'snapshot' && tableRowsCache.length > 0) {
+          renderRows(tableRowsCache);
+        }
+      });
+    }
+  };
+
   const loadTimelineData = async () => {
     if (!timelineEndpoint) return;
     setTimelineLoading(true);
@@ -2295,6 +2524,12 @@
         });
       });
     }
+
+    // Phase 4: Setup unit toggle (Satuan Dasar / Satuan Beli)
+    setupUnitToggle();
+
+    // Phase 5: Setup column visibility toggle
+    setupColumnVisibility();
 
     if (refs.costModeToggle) {
       refs.costModeToggle.addEventListener('click', () => {

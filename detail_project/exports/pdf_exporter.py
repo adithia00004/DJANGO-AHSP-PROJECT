@@ -536,6 +536,7 @@ class PDFExporter(ConfigExporterBase):
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(header_bg)),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 7),  # Match group title size
                 ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ])
         
@@ -652,27 +653,216 @@ class PDFExporter(ConfigExporterBase):
                     story.append(PageBreak())
         # Sections at root level (Rincian AHSP style)
         elif 'sections' in data and data['sections'] and isinstance(data['sections'][0], dict) and 'pekerjaan' in data['sections'][0]:
-            # Rincian AHSP: sections with pekerjaan data
-            build_page(data)
-
-            # Add summary at the end
-            if 'summary' in data:
-                story.append(Spacer(1, 10*mm))
-                summary = data['summary']
-                summary_lines = [
-                    f"<b>Total Pekerjaan:</b> {summary.get('total_pekerjaan', 0)}",
-                    f"<b>Total Items:</b> {summary.get('total_items', 0)}",
-                    f"<b>Grand Total:</b> Rp {summary.get('grand_total', '0')}",
-                ]
-                for line in summary_lines:
-                    para = Paragraph(line, self.styles['normal'])
-                    story.append(para)
-                    story.append(Spacer(1, 2*mm))
-
-            # Add signatures if enabled
-            if self.config.signature_config.enabled:
-                bundle = self._build_signatures()
-                story.extend(bundle)
+            # Rincian AHSP: Build complete export with Rekap + Rincian + Pengesahan
+            sections = data.get('sections', [])
+            
+            # Create compact header style (matching group title size ~9pt)
+            compact_header_style = ParagraphStyle(
+                'CompactHeader',
+                parent=self.styles['normal'],
+                fontSize=9,
+                fontName='Helvetica-Bold',
+                spaceAfter=3*mm,
+                alignment=TA_LEFT
+            )
+            
+            # ========== SECTION 1: REKAP ==========
+            story.append(Paragraph('<b>REKAP ANALISA HARGA SATUAN PEKERJAAN</b>', compact_header_style))
+            story.append(Spacer(1, 3*mm))
+            
+            # Build Rekap table
+            rekap_headers = ['No', 'Kode', 'Uraian Pekerjaan', 'E — Jumlah', 'F — Profit/Margin', 'G — Harga Satuan']
+            
+            # Create wrap style for long text
+            rekap_wrap_style = ParagraphStyle(
+                'RekapWrap',
+                parent=self.styles['normal'],
+                fontSize=8,
+                leading=10,
+                wordWrap='CJK'
+            )
+            
+            rekap_rows = []
+            for idx, section in enumerate(sections):
+                pekerjaan = section.get('pekerjaan', {})
+                totals = section.get('totals', {})
+                # Wrap Uraian column with Paragraph
+                uraian_text = pekerjaan.get('uraian', '')
+                rekap_rows.append([
+                    str(idx + 1),
+                    pekerjaan.get('kode', ''),
+                    Paragraph(uraian_text, rekap_wrap_style) if uraian_text else '',
+                    totals.get('E', '0'),
+                    totals.get('F', '0'),
+                    totals.get('G', '0'),
+                ])
+            
+            rekap_table_data = [rekap_headers] + rekap_rows
+            rekap_col_widths = [8*mm, 20*mm, 55*mm, 30*mm, 30*mm, 32*mm]
+            rekap_table = Table(rekap_table_data, colWidths=rekap_col_widths, repeatRows=1)
+            rekap_style = self._get_base_table_style()
+            rekap_style.append(('FONTNAME', (0, 1), (-1, -1), 'Helvetica'))
+            rekap_style.append(('FONTSIZE', (0, 1), (-1, -1), 8))
+            rekap_style.append(('FONTNAME', (5, 1), (5, -1), 'Helvetica-Bold'))  # G column bold
+            rekap_table.setStyle(TableStyle(rekap_style))
+            story.append(rekap_table)
+            
+            story.append(PageBreak())
+            
+            # ========== SECTION 2: RINCIAN ==========
+            story.append(Paragraph('<b>RINCIAN ANALISA HARGA SATUAN PEKERJAAN</b>', compact_header_style))
+            story.append(Spacer(1, 3*mm))
+            
+            # Style for pekerjaan title (slightly smaller)
+            pek_title_style = ParagraphStyle(
+                'PekTitle',
+                parent=self.styles['normal'],
+                fontSize=8,
+                fontName='Helvetica-Bold',
+                spaceAfter=2*mm
+            )
+            
+            for pek_idx, section in enumerate(sections):
+                pekerjaan = section.get('pekerjaan', {})
+                groups = section.get('groups', [])
+                totals = section.get('totals', {})
+                
+                pek_kode = pekerjaan.get('kode', '')
+                pek_uraian = pekerjaan.get('uraian', '')
+                
+                # Pekerjaan header
+                pek_title = f"<b>{pek_kode} - {pek_uraian}</b>" if pek_kode else f"<b>{pek_uraian}</b>"
+                story.append(Paragraph(pek_title, pek_title_style))
+                
+                # Build detail table for this pekerjaan
+                detail_headers = ['No', 'Uraian', 'Kode', 'Satuan', 'Koefisien', 'Harga Satuan', 'Jumlah Harga']
+                detail_rows = []
+                
+                # Create a paragraph style for wrapping text
+                wrap_style = ParagraphStyle(
+                    'WrapText',
+                    parent=self.styles['normal'],
+                    fontSize=7,
+                    leading=9,
+                    wordWrap='CJK'
+                )
+                wrap_style_bold = ParagraphStyle(
+                    'WrapTextBold',
+                    parent=wrap_style,
+                    fontName='Helvetica-Bold'
+                )
+                wrap_style_italic = ParagraphStyle(
+                    'WrapTextItalic',
+                    parent=wrap_style,
+                    fontName='Helvetica-BoldOblique'
+                )
+                
+                for group in groups:
+                    group_title = group.get('title', '')
+                    group_rows = group.get('rows', [])
+                    group_subtotal = group.get('subtotal', '')
+                    
+                    if not group_rows:
+                        continue
+                    
+                    # Group title row - span across first 6 columns
+                    detail_rows.append(('group_title', [Paragraph(group_title, wrap_style_italic), '', '', '', '', '', '']))
+                    
+                    # Group detail rows - wrap uraian column
+                    for row_data in group_rows:
+                        row_list = list(row_data)
+                        # Wrap column 1 (Uraian) with Paragraph
+                        if len(row_list) > 1 and row_list[1]:
+                            row_list[1] = Paragraph(str(row_list[1]), wrap_style)
+                        detail_rows.append(('detail', row_list))
+                    
+                    # Subtotal row - span across first 6 columns
+                    subtotal_text = f"Subtotal {group.get('short_title', '')}"
+                    detail_rows.append(('subtotal', [Paragraph(subtotal_text, wrap_style_bold), '', '', '', '', '', str(group_subtotal)]))
+                
+                # E, F, G totals - span across first 6 columns
+                detail_rows.append(('total_e', [Paragraph('Jumlah (E)', wrap_style_bold), '', '', '', '', '', totals.get('E', '0')]))
+                markup = totals.get('markup_eff', '10.00')
+                detail_rows.append(('total_f', [Paragraph(f"Profit/Margin {markup}% (F)", wrap_style_bold), '', '', '', '', '', totals.get('F', '0')]))
+                detail_rows.append(('total_g', [Paragraph('Harga Satuan Pekerjaan (G = E + F)', wrap_style_bold), '', '', '', '', '', totals.get('G', '0')]))
+                
+                # Build table
+                table_data = [detail_headers] + [row[1] for row in detail_rows]
+                detail_col_widths = [10*mm, 50*mm, 25*mm, 15*mm, 20*mm, 25*mm, 30*mm]
+                detail_table = Table(table_data, colWidths=detail_col_widths, repeatRows=1)
+                
+                detail_style = self._get_base_table_style()
+                detail_style.append(('FONTSIZE', (0, 1), (-1, -1), 7))
+                
+                # Apply row-specific styling with SPAN for merged cells
+                for row_idx, (row_type, _) in enumerate(detail_rows):
+                    table_row = row_idx + 1  # +1 for header
+                    if row_type == 'group_title':
+                        # Merge columns 0-5 for group title
+                        detail_style.append(('SPAN', (0, table_row), (5, table_row)))
+                        detail_style.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-BoldOblique'))
+                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#f0f0f0')))
+                    elif row_type == 'subtotal':
+                        # Merge columns 0-5 for subtotal
+                        detail_style.append(('SPAN', (0, table_row), (5, table_row)))
+                        detail_style.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
+                        detail_style.append(('ALIGN', (0, table_row), (5, table_row), 'RIGHT'))
+                    elif row_type in ('total_e', 'total_f'):
+                        # Merge columns 0-5 for totals
+                        detail_style.append(('SPAN', (0, table_row), (5, table_row)))
+                        detail_style.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
+                        detail_style.append(('ALIGN', (0, table_row), (5, table_row), 'RIGHT'))
+                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#e8f5e9')))
+                    elif row_type == 'total_g':
+                        # Merge columns 0-5 for HSP total
+                        detail_style.append(('SPAN', (0, table_row), (5, table_row)))
+                        detail_style.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
+                        detail_style.append(('FONTSIZE', (0, table_row), (-1, table_row), 9))
+                        detail_style.append(('ALIGN', (0, table_row), (5, table_row), 'RIGHT'))
+                        detail_style.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#c8e6c9')))
+                
+                detail_table.setStyle(TableStyle(detail_style))
+                
+                # For last pekerjaan, keep table together with approval section
+                if pek_idx == len(sections) - 1:
+                    # Build approval section
+                    approval_elements = []
+                    approval_elements.append(Spacer(1, 10*mm))
+                    approval_elements.append(Paragraph('<b>LEMBAR PENGESAHAN</b>', ParagraphStyle(
+                        'ApprovalTitle',
+                        parent=self.styles['normal'],
+                        fontSize=9,
+                        alignment=TA_CENTER,
+                        fontName='Helvetica-Bold',
+                        spaceAfter=8*mm
+                    )))
+                    
+                    # Approval table (2 columns)
+                    approval_data = [
+                        ['Pemilik Proyek', 'Konsultan Perencana'],
+                        ['', ''],
+                        ['', ''],
+                        ['', ''],
+                        ['(_________________________)', '(_________________________)'],
+                    ]
+                    approval_table = Table(approval_data, colWidths=[80*mm, 80*mm])
+                    approval_style = [
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, -1), 9),
+                        ('TOPPADDING', (0, 0), (-1, -1), 6),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ]
+                    approval_table.setStyle(TableStyle(approval_style))
+                    approval_elements.append(approval_table)
+                    
+                    # Keep last table + approval together
+                    story.append(KeepTogether([detail_table] + approval_elements))
+                else:
+                    story.append(detail_table)
+                    # Spacing between pekerjaan tables (no page break - more compact)
+                    story.append(Spacer(1, 10*mm))  # ~2 lines spacing
         else:
             build_page(data)
             if self.config.signature_config.enabled:
@@ -682,9 +872,10 @@ class PDFExporter(ConfigExporterBase):
                 bundle.extend(self._build_signatures())
                 story.append(KeepTogether(bundle))
         
-        # Append appendix recap if provided
+        # Append appendix recap if provided (but not for Rincian AHSP - already has Rekap at beginning)
+        is_rincian_ahsp = 'sections' in data and data['sections'] and isinstance(data['sections'][0], dict) and 'pekerjaan' in data['sections'][0]
         recap = data.get('recap')
-        if recap and isinstance(recap, dict):
+        if recap and isinstance(recap, dict) and not is_rincian_ahsp:
             # Page break before appendix when there is prior content
             if story:
                 story.append(PageBreak())
