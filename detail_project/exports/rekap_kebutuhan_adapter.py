@@ -84,27 +84,100 @@ class RekapKebutuhanAdapter:
             return f"Bulan {start_raw} - {end_raw}"
         return ''
 
-    def get_export_data(self) -> Dict[str, Any]:
-        """Transform Rekap Kebutuhan data (flat) for export"""
-        headers = ['Kategori', 'Kode', 'Uraian', 'Satuan', 'Quantity', 'Harga Satuan', 'Total Harga']
+    def get_export_data(self, unit_mode: str = 'base') -> Dict[str, Any]:
+        """
+        Transform Rekap Kebutuhan data (flat) for export.
+        
+        Args:
+            unit_mode: 'base' for Satuan Dasar, 'market' for Satuan Beli
+                - base: Shows base unit (kg), base quantity, calculated base price
+                - market: Shows market unit (batang), converted quantity, market price
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+        from detail_project.models import HargaItemProject, ItemConversionProfile
+        
+        headers = ['No', 'Kode', 'Uraian', 'Satuan', 'Qty', 'Harga Satuan', 'Total Harga']
         if self.rows_override is not None:
             rows_src = self.rows_override
         else:
             from detail_project.services import compute_kebutuhan_items
             rows_src = compute_kebutuhan_items(self.project)
+        
+        # If market mode, build conversion profile lookup
+        conversion_map = {}
+        if unit_mode == 'market':
+            # Get all HargaItemProject kode -> conversion profile mapping
+            harga_items = HargaItemProject.objects.filter(
+                project=self.project
+            ).select_related('conversion_profile')
+            
+            for hi in harga_items:
+                try:
+                    if hasattr(hi, 'conversion_profile') and hi.conversion_profile:
+                        conv = hi.conversion_profile
+                        if conv.factor_to_base and conv.factor_to_base > 0:
+                            conversion_map[hi.kode_item] = {
+                                'market_unit': conv.market_unit or hi.satuan,
+                                'market_price': conv.market_price,
+                                'factor_to_base': conv.factor_to_base,
+                            }
+                except Exception:
+                    pass
+        
         rows: List[List[str]] = []
-
         counts = Counter()
+        
         for r in rows_src:
             kat = (r.get('kategori') or '').upper()
+            kode = r.get('kode', '') or '-'
+            uraian = r.get('uraian', '') or '-'
+            satuan = r.get('satuan', '') or '-'
+            quantity = r.get('quantity', 0)
+            harga_satuan = r.get('harga_satuan', 0)
+            harga_total = r.get('harga_total', 0)
+            
+            # Apply unit mode conversion if market mode and has conversion profile
+            if unit_mode == 'market' and kode in conversion_map:
+                conv = conversion_map[kode]
+                try:
+                    # Convert quantity: base_qty / factor_to_base = market_qty
+                    base_qty = Decimal(str(quantity)) if quantity else Decimal('0')
+                    factor = Decimal(str(conv['factor_to_base']))
+                    market_qty = (base_qty / factor).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
+                    
+                    # Replace with market values
+                    satuan = conv['market_unit']
+                    quantity = float(market_qty)
+                    harga_satuan = float(conv['market_price'])
+                    # Total stays the same (market_qty * market_price = base_qty * base_price)
+                except Exception:
+                    pass  # Keep original values on error
+            
+            # Format values
+            def fmt_qty(val):
+                try:
+                    v = float(val)
+                    if v == int(v):
+                        return f"{int(v):,}".replace(',', '.')
+                    return f"{v:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                except:
+                    return str(val)
+            
+            def fmt_currency(val):
+                try:
+                    v = int(float(val))
+                    return f"Rp {v:,}".replace(',', '.')
+                except:
+                    return str(val)
+            
             rows.append([
-                kat,
-                r.get('kode', '') or '-',
-                r.get('uraian', '') or '-',
-                r.get('satuan', '') or '-',
-                str(r.get('quantity', '0')),
-                str(r.get('harga_satuan', '0')),
-                str(r.get('harga_total', '0')),
+                str(len(rows) + 1),  # No (1-indexed)
+                kode,
+                uraian,
+                satuan,
+                fmt_qty(quantity),
+                fmt_currency(harga_satuan),
+                fmt_currency(harga_total),
             ])
             counts[kat] += 1
 
@@ -114,6 +187,11 @@ class RekapKebutuhanAdapter:
             ['Bahan (BHN)', str(counts.get('BHN', 0))],
             ['Alat (ALT)', str(counts.get('ALT', 0))],
         ]
+        
+        # Add unit mode indicator to footer
+        mode_label = 'Satuan Dasar' if unit_mode == 'base' else 'Satuan Beli'
+        footer_rows.append(['Mode Satuan', mode_label])
+        
         summary = getattr(self, 'summary', {}) or {}
         if summary.get('grand_total_cost'):
             footer_rows.append(['Grand Total Harga', str(summary['grand_total_cost'])])
@@ -152,17 +230,40 @@ class RekapKebutuhanAdapter:
                 ' | '.join(parts) if parts else 'Aktif'
             ])
 
-        # Column widths for 5 columns (approximate proportions)
-        total_width = 277  # A4 landscape content width in mm minus margins
+        # Column widths for A4 Portrait (raw values in mm)
+        # A4 portrait: 210mm, margins: 10+10=20mm, usable: ~190mm
         col_widths = [
-            0.10 * total_width,  # Kategori
-            0.14 * total_width,  # Kode
-            0.36 * total_width,  # Uraian
-            0.10 * total_width,  # Satuan
-            0.10 * total_width,  # Quantity
-            0.10 * total_width,  # Harga Satuan
-            0.10 * total_width,  # Total Harga
-        ]
+            8,     # No
+            18,    # Kode
+            64,    # Uraian (widest)
+            14,    # Satuan
+            20,    # Qty
+            30,    # Harga Satuan
+            36,    # Total Harga
+        ]  # Total: 190mm
+
+        # Determine if charts should be included
+        # Charts are ONLY included when exporting full project data (no time filter)
+        time_scope_active = self.summary.get('time_scope_active', False)
+        include_charts = not time_scope_active
+
+        # Build chart data for distribution chart (only if including charts)
+        chart_data = None
+        if include_charts:
+            # Calculate category totals for pie chart
+            category_totals = {}
+            for r in rows_src:
+                kat = (r.get('kategori') or 'LAIN').upper()
+                total = float(r.get('harga_total', 0) or 0)
+                category_totals[kat] = category_totals.get(kat, 0) + total
+
+            chart_data = {
+                'distribution': {
+                    'labels': list(category_totals.keys()),
+                    'values': list(category_totals.values()),
+                },
+                'counts': dict(counts),
+            }
 
         return {
             'table_data': {
@@ -171,4 +272,8 @@ class RekapKebutuhanAdapter:
             },
             'col_widths': col_widths,
             'footer_rows': footer_rows,
+            'include_charts': include_charts,
+            'chart_data': chart_data,
+            'unit_mode': unit_mode,
         }
+

@@ -1473,16 +1473,29 @@
 
       // Get loading modal
       const loadingModalEl = document.getElementById('raExportLoadingModal');
-      const loadingModal = loadingModalEl ? new bootstrap.Modal(loadingModalEl) : null;
+      let loadingModal = null;
       const loadingText = document.getElementById('raExportLoadingText');
 
       // Helper to show/hide loading modal
       const showLoading = (formatName) => {
         if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
-        if (loadingModal) loadingModal.show();
+        if (loadingModalEl) {
+          loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
+          loadingModal.show();
+        }
       };
       const hideLoading = () => {
-        if (loadingModal) loadingModal.hide();
+        // Use setTimeout to ensure modal closes after async operations complete
+        setTimeout(() => {
+          if (loadingModal) {
+            loadingModal.hide();
+          }
+          // Fallback: remove backdrop if still present
+          document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+          document.body.classList.remove('modal-open');
+          document.body.style.overflow = '';
+          document.body.style.paddingRight = '';
+        }, 300);
       };
 
       const btnCSV = document.getElementById('btn-export-csv') || document.getElementById('ra-btn-export');

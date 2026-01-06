@@ -2433,6 +2433,102 @@ def api_get_conversion_profiles(request: HttpRequest, project_id: int):
     })
 
 
+@login_required
+@require_http_methods(["POST"])
+@transaction.atomic
+def api_save_conversion_profile(request: HttpRequest, project_id: int):
+    """
+    POST save/update a conversion profile for a harga item.
+    
+    Request body:
+    {
+        "harga_item_id": 123,
+        "market_unit": "batang",
+        "market_price": "240000.00",
+        "factor_to_base": "10.000000",
+        "density": null,
+        "capacity_m3": null,
+        "capacity_ton": null,
+        "method": "direct"
+    }
+    
+    Response:
+    {
+        "ok": true,
+        "profile_id": 1,
+        "message": "Conversion profile saved"
+    }
+    """
+    from .models import ItemConversionProfile, HargaItemProject
+    from decimal import Decimal, InvalidOperation
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+    
+    harga_item_id = data.get("harga_item_id")
+    if not harga_item_id:
+        return JsonResponse({"ok": False, "error": "harga_item_id required"}, status=400)
+    
+    # Verify harga item belongs to project
+    try:
+        harga_item = HargaItemProject.objects.get(id=harga_item_id, project=project)
+    except HargaItemProject.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "Harga item not found"}, status=404)
+    
+    # Parse decimal values
+    def parse_decimal(val, default=None):
+        if val is None or val == '' or val == 'null':
+            return default
+        try:
+            # Handle Indonesian format (dot as thousands, comma as decimal)
+            s = str(val).strip()
+            if ',' in s and '.' in s:
+                s = s.replace('.', '').replace(',', '.')
+            elif ',' in s:
+                s = s.replace(',', '.')
+            return Decimal(s)
+        except (InvalidOperation, ValueError):
+            return default
+    
+    market_unit = data.get("market_unit", "").strip()
+    market_price = parse_decimal(data.get("market_price"), Decimal("0"))
+    factor_to_base = parse_decimal(data.get("factor_to_base"), Decimal("1"))
+    density = parse_decimal(data.get("density"))
+    capacity_m3 = parse_decimal(data.get("capacity_m3"))
+    capacity_ton = parse_decimal(data.get("capacity_ton"))
+    method = data.get("method", "direct")
+    
+    if not market_unit:
+        return JsonResponse({"ok": False, "error": "market_unit required"}, status=400)
+    if factor_to_base <= 0:
+        return JsonResponse({"ok": False, "error": "factor_to_base must be positive"}, status=400)
+    
+    # Create or update conversion profile
+    profile, created = ItemConversionProfile.objects.update_or_create(
+        harga_item=harga_item,
+        defaults={
+            "market_unit": market_unit,
+            "market_price": market_price,
+            "factor_to_base": factor_to_base,
+            "density": density,
+            "capacity_m3": capacity_m3,
+            "capacity_ton": capacity_ton,
+            "method": method,
+        }
+    )
+    
+    return JsonResponse({
+        "ok": True,
+        "profile_id": profile.id,
+        "created": created,
+        "message": "Conversion profile saved",
+    })
+
+
 # ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
 @require_http_methods(["GET","POST"])
@@ -3379,6 +3475,7 @@ def export_rekap_kebutuhan_pdf(request: HttpRequest, project_id: int):
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
         params = parse_kebutuhan_query_params(request.GET)
+        unit_mode = request.GET.get('unit_mode', 'base')  # 'base' or 'market'
         return manager.export_rekap_kebutuhan(
             'pdf',
             mode=params['mode'],
@@ -3386,6 +3483,7 @@ def export_rekap_kebutuhan_pdf(request: HttpRequest, project_id: int):
             filters=params['filters'],
             search=params['search'],
             time_scope=params.get('time_scope'),
+            unit_mode=unit_mode,
         )
         
     except Exception as e:
@@ -3415,6 +3513,7 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
         params = parse_kebutuhan_query_params(request.GET)
+        unit_mode = request.GET.get('unit_mode', 'base')  # 'base' or 'market'
         return manager.export_rekap_kebutuhan(
             'word',
             mode=params['mode'],
@@ -3422,6 +3521,7 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
             filters=params['filters'],
             search=params['search'],
             time_scope=params.get('time_scope'),
+            unit_mode=unit_mode,
         )
         
     except Exception as e:
@@ -3430,6 +3530,74 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         return JsonResponse({
             'status': 'error',
             'message': f'Export Word gagal: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_GET
+def export_rekap_kebutuhan_json(request: HttpRequest, project_id: int):
+    """
+    Export Rekap Kebutuhan ke format JSON.
+
+    Thin controller - delegasi ke ExportManager.
+    """
+    try:
+        # 1. Auth & get project
+        project = _owner_or_404(project_id, request.user)
+
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        params = parse_kebutuhan_query_params(request.GET)
+        return manager.export_rekap_kebutuhan(
+            'json',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+        )
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_GET
+def export_rekap_kebutuhan_xlsx(request: HttpRequest, project_id: int):
+    """
+    Export Rekap Kebutuhan ke format Excel (XLSX).
+    
+    Thin controller - delegasi ke ExportManager.
+    """
+    try:
+        # 1. Auth & get project
+        project = _owner_or_404(project_id, request.user)
+        
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        params = parse_kebutuhan_query_params(request.GET)
+        unit_mode = request.GET.get('unit_mode', 'base')  # 'base' or 'market'
+        return manager.export_rekap_kebutuhan(
+            'xlsx',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+            unit_mode=unit_mode,
+        )
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export Excel gagal: {str(e)}'
         }, status=500)
 
 
@@ -3727,25 +3895,45 @@ def export_rekap_rab_xlsx(request: HttpRequest, project_id: int):
         }, status=500)
 
 
+@login_required
+@require_GET
+def export_rekap_rab_json(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format JSON.
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('json')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
 # ============================================================================
 # EXPORT: VOLUME PEKERJAAN (CSV / PDF / WORD)
 # ============================================================================
 
 @login_required
 @require_GET
-def export_volume_pekerjaan_csv(request: HttpRequest, project_id: int):
-    """Export Volume Pekerjaan to CSV"""
+def export_volume_pekerjaan_xlsx(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to Excel (xlsx) with formula references"""
     try:
         project = _owner_or_404(project_id, request.user)
         # Extract parameters from query string (optional: ?params={"panjang":100,"lebar":50})
         parameters = _extract_parameters_from_request(request)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_volume_pekerjaan('csv', parameters=parameters)
+        return manager.export_volume_pekerjaan('xlsx', parameters=parameters)
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+        return JsonResponse({'status': 'error', 'message': f'Export Excel gagal: {str(e)}'}, status=500)
 
 
 @login_required
@@ -3780,6 +3968,23 @@ def export_volume_pekerjaan_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_volume_pekerjaan_json(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to JSON"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        # Extract parameters from query string
+        parameters = _extract_parameters_from_request(request)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_volume_pekerjaan('json', parameters=parameters)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export JSON gagal: {str(e)}'}, status=500)
 
 
 # ============================================================================
@@ -3829,6 +4034,104 @@ def export_harga_items_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_harga_items_xlsx(request: HttpRequest, project_id: int):
+    """Export Harga Items to Excel XLSX"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_harga_items('xlsx')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_harga_items_json(request: HttpRequest, project_id: int):
+    """Export Harga Items to JSON file"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .models import HargaItemProject, ItemConversionProfile
+        from decimal import Decimal
+        import json
+        from datetime import datetime
+        
+        # Fetch harga items with conversion profiles
+        items_qs = (
+            HargaItemProject.objects
+            .filter(project=project, expanded_refs__project=project)
+            .distinct()
+            .select_related('conversion_profile')
+            .order_by('kategori', 'kode_item')
+        )
+        
+        # Kategori labels
+        kategori_labels = {
+            'TK': 'Tenaga Kerja',
+            'BHN': 'Bahan',
+            'ALT': 'Alat',
+            'LAIN': 'Lainnya'
+        }
+        
+        items_data = []
+        for item in items_qs:
+            item_dict = {
+                'id': item.id,
+                'kode_item': item.kode_item,
+                'uraian': item.uraian,
+                'satuan': item.satuan,
+                'kategori': item.kategori,
+                'kategori_label': kategori_labels.get(item.kategori, item.kategori),
+                'harga_satuan': float(item.harga_satuan) if item.harga_satuan else None,
+            }
+            
+            # Add conversion profile if exists
+            try:
+                if hasattr(item, 'conversion_profile') and item.conversion_profile:
+                    conv = item.conversion_profile
+                    item_dict['conversion'] = {
+                        'market_unit': conv.market_unit,
+                        'market_price': float(conv.market_price) if conv.market_price else None,
+                        'factor_to_base': float(conv.factor_to_base) if conv.factor_to_base else None,
+                        'density': float(conv.density) if conv.density else None,
+                        'capacity_m3': float(conv.capacity_m3) if conv.capacity_m3 else None,
+                        'capacity_ton': float(conv.capacity_ton) if conv.capacity_ton else None,
+                        'method': conv.method,
+                    }
+            except Exception:
+                pass
+            
+            items_data.append(item_dict)
+        
+        # Build export data
+        export_data = {
+            'export_info': {
+                'type': 'harga_items',
+                'project_id': project.id,
+                'project_name': project.nama_proyek if hasattr(project, 'nama_proyek') else str(project),
+                'exported_at': datetime.now().isoformat(),
+                'total_items': len(items_data),
+            },
+            'items': items_data,
+        }
+        
+        # Create response
+        json_content = json.dumps(export_data, indent=2, ensure_ascii=False)
+        response = HttpResponse(json_content, content_type='application/json')
+        filename = f"harga_items_{project.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export JSON gagal: {str(e)}'}, status=500)
 
 
 # ============================================================================

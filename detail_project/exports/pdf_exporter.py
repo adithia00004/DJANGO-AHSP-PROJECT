@@ -619,10 +619,21 @@ class PDFExporter(ConfigExporterBase):
 
             else:
                 # Single table page
-                table = self._build_table(section)
+                if is_pengesahan:
+                    # Pengesahan page - use dedicated 3-column summary table
+                    table = self._build_pengesahan_table(section)
+                elif 'row_types' in section:
+                    # RAB detail page with hierarchy - use simple table with merging
+                    table = self._build_simple_table(section)
+                elif section.get('col_widths'):
+                    # Custom col_widths provided (Rekap Kebutuhan) - use simple table
+                    table = self._build_simple_table(section)
+                else:
+                    # Timeline/Kurva S tables - use TableLayoutCalculator
+                    table = self._build_table(section)
 
                 # On pengesahan, try to keep table + footer together when possible
-                if is_pengesahan and 'footer_rows' in section:
+                if is_pengesahan and section.get('footer_rows'):  # Also check non-empty
                     bundle = []
                     bundle.append(table)
                     bundle.append(Spacer(1, 3*mm))
@@ -630,7 +641,7 @@ class PDFExporter(ConfigExporterBase):
                     story.append(KeepTogether(bundle))
                 else:
                     story.append(table)
-                    if 'footer_rows' in section:
+                    if section.get('footer_rows'):  # Also check if non-empty
                         story.append(Spacer(1, 3*mm))
                         story.append(self._build_footer_table(section['footer_rows']))
 
@@ -640,15 +651,20 @@ class PDFExporter(ConfigExporterBase):
         pages = data.get('pages')
         if pages:
             for idx, section in enumerate(pages):
-                is_pengesahan = (idx == 1)
+                is_pengesahan = section.get('include_signatures', False)
                 build_page(section, is_pengesahan=is_pengesahan)
 
-                # Add signatures after first page (Volume Pekerjaan)
-                if idx == 0 and self.config.signature_config.enabled:
+                # Add signatures if this page has include_signatures=True
+                if section.get('include_signatures') and self.config.signature_config.enabled:
+                    story.append(Spacer(1, 15*mm))
                     bundle = self._build_signatures()
-                    story.extend(bundle)
+                    if section.get('keep_together'):
+                        # Wrap the last few elements (footer + signatures) in KeepTogether
+                        story.extend(bundle)
+                    else:
+                        story.extend(bundle)
 
-                # Page break between pages
+                # Page break between pages (but not after the last page)
                 if idx < len(pages) - 1:
                     story.append(PageBreak())
         # Sections at root level (Rincian AHSP style)
@@ -1868,6 +1884,170 @@ class PDFExporter(ConfigExporterBase):
         
         return elements
     
+    def _build_simple_table(self, data: Dict[str, Any]) -> Table:
+        """
+        Build a simple table for data like Harga Items.
+        Handles category rows with merged cells and styling.
+        """
+        table_data = data.get('table_data', {})
+        headers = table_data.get('headers', [])
+        rows = table_data.get('rows', [])
+        col_widths = [w * mm for w in data.get('col_widths', [])]
+        row_types = data.get('row_types', [])
+        
+        if not headers or not rows:
+            return Table([['No data']])
+        
+        # Create wrap style for text
+        wrap_style = ParagraphStyle(
+            'SimpleWrap',
+            parent=self.styles['normal'],
+            fontSize=8,
+            leading=10,
+            wordWrap='CJK'
+        )
+        wrap_style_bold = ParagraphStyle(
+            'SimpleWrapBold',
+            parent=wrap_style,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Build table data with Paragraphs for wrapping
+        table_rows = [headers]
+        
+        # Detect which columns should wrap based on headers
+        wrap_columns = set()
+        for col_idx, header in enumerate(headers):
+            header_lower = str(header).lower()
+            if 'uraian' in header_lower or 'keterangan' in header_lower or 'formula' in header_lower:
+                wrap_columns.add(col_idx)
+        
+        for row_idx, row in enumerate(rows):
+            row_type = row_types[row_idx] if row_idx < len(row_types) else 'item'
+            
+            if row_type == 'category':
+                # Category row - first cell and last cell, merge middle columns
+                wrapped_row = [Paragraph(str(row[0]) if row else '', wrap_style_bold)]
+                # Fill middle cells with empty strings (will be merged)
+                wrapped_row.extend(['' for _ in range(len(headers) - 2)])
+                # Keep last cell for total value
+                wrapped_row.append(row[-1] if len(row) > 1 else '')
+            elif row_type == 'subcategory':
+                # Subcategory row - similar to category but with different style
+                wrapped_row = [Paragraph(str(row[0]) if row else '', wrap_style_bold)]
+                wrapped_row.extend(['' for _ in range(len(headers) - 2)])
+                wrapped_row.append(row[-1] if len(row) > 1 else '')
+            else:
+                # Normal row - wrap text-heavy columns
+                wrapped_row = []
+                for col_idx, cell in enumerate(row):
+                    cell_text = str(cell) if cell else ''
+                    # Convert newlines to HTML <br/> for ReportLab
+                    if '\n' in cell_text:
+                        cell_text = cell_text.replace('\n', '<br/>')
+                        wrapped_row.append(Paragraph(cell_text, wrap_style))
+                    elif col_idx in wrap_columns:  # Detected wrap columns by header
+                        wrapped_row.append(Paragraph(cell_text, wrap_style))
+                    else:
+                        wrapped_row.append(cell_text)
+            table_rows.append(wrapped_row)
+        
+        # Create table
+        table = Table(table_rows, colWidths=col_widths if col_widths else None, repeatRows=1)
+        
+        # Base style
+        style_cmds = self._get_base_table_style()
+        style_cmds.append(('FONTSIZE', (0, 1), (-1, -1), 8))
+        
+        # Apply category and subcategory row styling
+        for row_idx, row_type in enumerate(row_types):
+            table_row = row_idx + 1  # +1 for header
+            if row_type == 'category':
+                # Merge middle cells (keep first and last for name and total)
+                if len(headers) > 2:
+                    style_cmds.append(('SPAN', (0, table_row), (-2, table_row)))
+                style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
+                style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#D0D0D0')))
+                style_cmds.append(('ALIGN', (0, table_row), (-2, table_row), 'LEFT'))
+            elif row_type == 'subcategory':
+                # Merge middle cells for subcategory too
+                if len(headers) > 2:
+                    style_cmds.append(('SPAN', (0, table_row), (-2, table_row)))
+                style_cmds.append(('FONTNAME', (0, table_row), (-1, table_row), 'Helvetica-Bold'))
+                style_cmds.append(('BACKGROUND', (0, table_row), (-1, table_row), colors.HexColor('#E8E8E8')))
+                style_cmds.append(('ALIGN', (0, table_row), (-2, table_row), 'LEFT'))
+                style_cmds.append(('LEFTPADDING', (0, table_row), (0, table_row), 12))  # Indent sub
+        
+        # Column 0 (Uraian) left-aligned
+        style_cmds.append(('ALIGN', (0, 1), (0, -1), 'LEFT'))
+        # Columns 1 to second-to-last center-aligned
+        if len(headers) > 2:
+            style_cmds.append(('ALIGN', (1, 1), (-2, -1), 'CENTER'))
+        # Last column (Jumlah Harga) right-aligned
+        style_cmds.append(('ALIGN', (-1, 1), (-1, -1), 'RIGHT'))
+        
+        table.setStyle(TableStyle(style_cmds))
+        return table
+
+    def _build_pengesahan_table(self, data: Dict[str, Any]) -> Table:
+        """
+        Build dedicated 3-column table for REKAPITULASI RENCANA ANGGARAN BIAYA.
+        
+        This is separate from _build_simple_table to ensure pengesahan page
+        only has 3 columns: No, Uraian Klasifikasi, Jumlah Harga
+        """
+        table_data = data.get('table_data', {})
+        headers = table_data.get('headers', ['No', 'Uraian Pekerjaan', 'Jumlah Harga (Rp)'])
+        rows = table_data.get('rows', [])
+        col_widths = data.get('col_widths', [20, 100, 70])  # Default widths in mm
+        
+        if not rows:
+            return Table([['No data']])
+        
+        # Convert col_widths to points
+        col_widths_pt = [w * mm for w in col_widths]
+        
+        # Build table rows
+        table_rows = [headers]  # Header row
+        for row in rows:
+            # Ensure exactly 3 columns
+            if len(row) >= 3:
+                table_rows.append([str(row[0]), str(row[1]), str(row[2])])
+            elif len(row) == 2:
+                table_rows.append(['', str(row[0]), str(row[1])])
+            else:
+                table_rows.append([str(row[0]) if row else '', '', ''])
+        
+        # Create table
+        table = Table(table_rows, colWidths=col_widths_pt, repeatRows=1)
+        
+        # Style
+        style_cmds = [
+            # Header styling
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1976D2')),  # Primary blue
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            
+            # Data styling
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),  # Border gray
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            
+            # Column alignment: No=center, Uraian=left, Jumlah=right
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # No column
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Uraian column
+            ('ALIGN', (2, 1), (2, -1), 'RIGHT'),   # Jumlah column
+        ]
+        
+        table.setStyle(TableStyle(style_cmds))
+        return table
+
     def _build_table(self, data: Dict[str, Any]) -> Table:
         """Build main data table with hierarchy styling"""
         table_data = data.get('table_data', {})

@@ -27,7 +27,7 @@
 <div id="rk-app" class="dp-container" data-project-id="{{ project.id }}"
   data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_enhanced' project.id %}"
   data-filter-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_filters' project.id %}"
-  data-export-csv="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}"
+  data-export-xlsx="{% url 'detail_project:api_export_rekap_kebutuhan_xlsx' project.id %}"
   data-export-pdf="{% url 'detail_project:api_export_rekap_kebutuhan_pdf' project.id %}"
   data-export-word="{% url 'detail_project:api_export_rekap_kebutuhan_word' project.id %}"
   data-timeline-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_timeline' project.id %}"
@@ -222,85 +222,12 @@
     <!-- Section 1: Actions Group -->
     <div class="rk-toolbar-section rk-toolbar-actions" role="group" aria-label="Actions">
 
-      <div class="btn-group" role="group">
-
-        <button type="button" class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown"
-          aria-expanded="false" aria-label="Export options" title="Export data">
-
-          <i class="bi bi-download" aria-hidden="true"></i>
-
-          <span class="d-none d-md-inline ms-1">Export</span>
-
-        </button>
-
-        <ul class="dropdown-menu">
-
-          <li>
-
-            <button class="dropdown-item" type="button" id="btn-export-csv">
-
-              <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
-
-              Export CSV
-
-            </button>
-
-          </li>
-
-          <li>
-
-            <button class="dropdown-item" type="button" id="btn-export-pdf">
-
-              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-
-              Export PDF
-
-            </button>
-
-          </li>
-
-          <li>
-
-            <button class="dropdown-item" type="button" id="btn-export-word">
-
-              <i class="bi bi-file-earmark-word text-primary me-2"></i>
-
-              Export Word
-
-            </button>
-
-          </li>
-
-          <li>
-            <hr class="dropdown-divider">
-          </li>
-
-          <li>
-            <button class="dropdown-item fw-semibold" type="button" id="btn-export-modal">
-              <i class="bi bi-sliders text-secondary me-2"></i>
-              Export dengan Opsi...
-            </button>
-          </li>
-
-          <li>
-            <hr class="dropdown-divider">
-          </li>
-
-          <li>
-
-            <button class="dropdown-item" type="button" id="btn-export-charts">
-
-              <i class="bi bi-file-earmark-image text-info me-2"></i>
-
-              Export Chart (PNG)
-
-            </button>
-
-          </li>
-
-        </ul>
-
-      </div>
+      <!-- Export Button - Opens Modal (Simplified - No Dropdown) -->
+      <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
+        data-bs-target="#rk-export-modal" title="Export data" id="btn-open-export-modal">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-md-inline ms-1">Export</span>
+      </button>
 
       <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-btn-refresh" aria-label="Refresh data"
         title="Refresh data (Ctrl+R)">
@@ -309,6 +236,7 @@
       </button>
 
     </div>
+
 
     <!-- Section 2: View Group (Search moved to compact bar) -->
     <div class="rk-toolbar-section rk-toolbar-search-view" role="group" aria-label="View toggle">
@@ -643,7 +571,7 @@
           <label class="form-label fw-bold">
             <i class="bi bi-filetype-pdf"></i> Format Export
           </label>
-          <div class="btn-group w-100" role="group" aria-label="Export format selection">
+          <div class="btn-group w-100 flex-wrap" role="group" aria-label="Export format selection">
             <input type="radio" class="btn-check" name="rkExportFormat" id="rkFormatPdf" value="pdf" checked>
             <label class="btn btn-outline-danger" for="rkFormatPdf">
               <i class="bi bi-file-earmark-pdf"></i> PDF
@@ -654,12 +582,34 @@
               <i class="bi bi-file-earmark-word"></i> Word
             </label>
 
-            <input type="radio" class="btn-check" name="rkExportFormat" id="rkFormatCsv" value="csv">
-            <label class="btn btn-outline-success" for="rkFormatCsv">
-              <i class="bi bi-file-earmark-spreadsheet"></i> CSV
+            <input type="radio" class="btn-check" name="rkExportFormat" id="rkFormatXlsx" value="xlsx">
+            <label class="btn btn-outline-success" for="rkFormatXlsx">
+              <i class="bi bi-file-earmark-excel"></i> Excel
             </label>
           </div>
         </div>
+
+        <!-- Unit Mode Selection (for period-based exports) -->
+        <div class="mb-4" id="rk-export-unit-mode-section">
+          <label class="form-label fw-bold">
+            <i class="bi bi-rulers"></i> Mode Satuan
+          </label>
+          <div class="btn-group w-100" role="group" aria-label="Unit mode selection">
+            <input type="radio" class="btn-check" name="rkUnitMode" id="rkUnitBase" value="base" checked>
+            <label class="btn btn-outline-secondary" for="rkUnitBase">
+              <i class="bi bi-rulers"></i> Satuan Dasar
+            </label>
+
+            <input type="radio" class="btn-check" name="rkUnitMode" id="rkUnitMarket" value="market">
+            <label class="btn btn-outline-secondary" for="rkUnitMarket">
+              <i class="bi bi-cart3"></i> Satuan Beli
+            </label>
+          </div>
+          <small class="text-muted d-block mt-1">
+            Satuan Beli menggunakan konversi dari Harga Items (jika tersedia)
+          </small>
+        </div>
+
 
         <!-- Status Message -->
         <div id="rk-export-status" class="alert alert-info py-2 d-none">
@@ -672,6 +622,22 @@
         <button type="button" class="btn btn-primary" id="rk-export-confirm">
           <i class="bi bi-download"></i> Export
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Export Loading Modal -->
+<div class="modal fade" id="rkExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+  aria-labelledby="rkExportLoadingLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <h6 class="mb-1" id="rkExportLoadingLabel">Memproses Export</h6>
+        <p class="text-muted small mb-0" id="rkExportLoadingText">Mohon tunggu...</p>
       </div>
     </div>
   </div>

@@ -111,47 +111,118 @@ class WordExporter:
             return self._export_rincian_ahsp(data)
 
         self.doc = Document()
-        self._setup_page_layout('A4', 'landscape')
+        self._setup_page_layout('A4', 'portrait')
         
+        # Handle single-table data (e.g., Harga Items) vs multi-page data
         pages = data.get('pages', [])
+        if not pages and 'table_data' in data:
+            # Single table data - wrap it as a single page
+            pages = [data]
         
         for idx, page in enumerate(pages):
             # Page title
-            title = page.get('title', f'Page {idx + 1}')
+            title = page.get('title') or self.config.title or f'Page {idx + 1}'
             self._build_section_header(title)
+            
+            # Project identity
+            from ..export_config import build_identity_rows
+            for label, _, value in build_identity_rows(self.config):
+                para = self.doc.add_paragraph()
+                para.add_run(f"{label}: ").bold = True
+                para.add_run(str(value))
+            
+            self.doc.add_paragraph()  # Spacing
             
             # Build table from page data
             table_data = page.get('table_data', {})
             headers = table_data.get('headers', [])
             rows = table_data.get('rows', [])
+            row_types = page.get('row_types', [])
+            is_pengesahan_page = page.get('include_signatures', False)
             
             if headers and rows:
-                # Create table
-                num_cols = len(headers)
-                num_rows = len(rows) + 1
+                if is_pengesahan_page:
+                    # Pengesahan page - use dedicated 3-column table
+                    self._build_pengesahan_word_table(table_data, page.get('col_widths', []))
+                else:
+                    # Regular table - use existing logic
+                    num_cols = len(headers)
+                    num_rows = len(rows) + 1
+                    
+                    table = self.doc.add_table(rows=num_rows, cols=num_cols)
+                    table.style = 'Table Grid'
                 
-                table = self.doc.add_table(rows=num_rows, cols=num_cols)
-                table.style = 'Table Grid'
-                
-                # Header row
-                for col_idx, header_text in enumerate(headers):
-                    cell = table.rows[0].cells[col_idx]
-                    cell.text = str(header_text)
-                    self._style_header_cell(cell)
-                
-                # Data rows
-                for row_idx, row_data in enumerate(rows):
-                    for col_idx, cell_value in enumerate(row_data):
-                        if col_idx < num_cols:
-                            table.rows[row_idx + 1].cells[col_idx].text = str(cell_value) if cell_value else ''
-                
-                self._enable_header_repeat(table)
+                    # Header row
+                    for col_idx, header_text in enumerate(headers):
+                        cell = table.rows[0].cells[col_idx]
+                        cell.text = str(header_text)
+                        self._style_header_cell(cell)
+                    
+                    # Data rows
+                    for row_idx, row_data in enumerate(rows):
+                        row_type = row_types[row_idx] if row_idx < len(row_types) else 'item'
+                        table_row = table.rows[row_idx + 1]
+                        
+                        if row_type == 'category':
+                            # Category row - merge all cells and bold
+                            # Merge cells for category header
+                            for col_idx in range(1, num_cols):
+                                table_row.cells[0].merge(table_row.cells[col_idx])
+                            table_row.cells[0].text = str(row_data[0]) if row_data else ''
+                            for para in table_row.cells[0].paragraphs:
+                                for run in para.runs:
+                                    run.bold = True
+                                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            # Apply gray background using shading
+                            from docx.oxml.ns import qn
+                            from docx.oxml import OxmlElement
+                            shading = OxmlElement('w:shd')
+                            shading.set(qn('w:fill'), 'E8E8E8')
+                            table_row.cells[0]._tc.get_or_add_tcPr().append(shading)
+                        else:
+                            # Normal item row
+                            for col_idx, cell_value in enumerate(row_data):
+                                if col_idx < num_cols:
+                                    cell = table_row.cells[col_idx]
+                                    text = str(cell_value) if cell_value else ''
+                                    # Handle multi-line text (with \n)
+                                    if '\n' in text:
+                                        lines = text.split('\n')
+                                        cell.text = ''  # Clear default paragraph
+                                        for i, line in enumerate(lines):
+                                            if i == 0:
+                                                cell.paragraphs[0].text = line
+                                            else:
+                                                cell.add_paragraph(line)
+                                    else:
+                                        cell.text = text
+                    
+                    self._enable_header_repeat(table)
+                    
+                    # Set column widths if specified
+                    col_widths = page.get('col_widths', [])
+                    if col_widths:
+                        for row in table.rows:
+                            for col_idx, cell in enumerate(row.cells):
+                                if col_idx < len(col_widths):
+                                    cell.width = Mm(col_widths[col_idx])
             
             # Footer rows
             footer_rows = page.get('footer_rows', [])
-            for footer in footer_rows:
-                para = self.doc.add_paragraph()
-                para.add_run(str(footer))
+            if footer_rows:
+                self.doc.add_paragraph()  # Spacing
+                for footer in footer_rows:
+                    para = self.doc.add_paragraph()
+                    if isinstance(footer, (list, tuple)) and len(footer) >= 2:
+                        para.add_run(f"{footer[0]}: ").bold = True
+                        para.add_run(str(footer[1]))
+                    else:
+                        para.add_run(str(footer))
+            
+            # Add signatures if this page has include_signatures=True
+            if page.get('include_signatures') and self.config.signature_config.enabled:
+                self.doc.add_paragraph()  # Spacing
+                self._build_signature_section()
             
             # Page break if not last page
             if idx < len(pages) - 1:
@@ -575,7 +646,7 @@ class WordExporter:
     # PAGE LAYOUT SETUP
     # =========================================================================
     
-    def _setup_page_layout(self, size: str = 'A4', orientation: str = 'landscape'):
+    def _setup_page_layout(self, size: str = 'A4', orientation: str = 'portrait'):
         """
         Configure page size, orientation, and margins.
         
@@ -585,24 +656,23 @@ class WordExporter:
         """
         section = self.doc.sections[0]
         
-        # Page size
+        # A4: 210mm x 297mm (Portrait), A3: 297mm x 420mm (Portrait)
         if size.upper() == 'A3':
-            section.page_width = Mm(420)
-            section.page_height = Mm(297)
+            base_width = Mm(297)
+            base_height = Mm(420)
         else:  # A4
-            section.page_width = Mm(297)
-            section.page_height = Mm(210)
+            base_width = Mm(210)
+            base_height = Mm(297)
         
-        # Orientation
+        # Apply orientation
         if orientation == 'landscape':
             section.orientation = WD_ORIENT.LANDSCAPE
-            # Swap width/height for landscape
-            new_width = section.page_height
-            new_height = section.page_width
-            section.page_width = new_width
-            section.page_height = new_height
-        else:
+            section.page_width = base_height  # Swap for landscape
+            section.page_height = base_width
+        else:  # portrait
             section.orientation = WD_ORIENT.PORTRAIT
+            section.page_width = base_width
+            section.page_height = base_height
         
         # Margins from config
         section.top_margin = Mm(self.config.margin_top)
@@ -633,6 +703,136 @@ class WordExporter:
         new_section.bottom_margin = Mm(self.config.margin_bottom)
         new_section.left_margin = Mm(self.config.margin_left)
         new_section.right_margin = Mm(self.config.margin_right)
+    
+    def _build_signature_section(self, project_info: Dict[str, Any] = None):
+        """
+        Build signature section with signature boxes.
+        Uses config.signature_config for signature data.
+        
+        Args:
+            project_info: Optional project info dict (for backward compatibility)
+        """
+        # Add title
+        title_para = self.doc.add_paragraph()
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title_para.add_run('LEMBAR PENGESAHAN')
+        title_run.bold = True
+        title_run.font.size = Pt(14)
+        
+        self.doc.add_paragraph()  # Spacing
+        
+        # Get signature data from config
+        sig_config = self.config.signature_config
+        signatures = sig_config.signatures if sig_config and sig_config.enabled else []
+        
+        if not signatures:
+            # Fallback to default signatures if none configured
+            signatures = [
+                {'label': 'Pemilik Proyek', 'name': '', 'position': ''},
+                {'label': 'Konsultan Perencana', 'name': '', 'position': ''},
+            ]
+        
+        # Create 2-column table for signatures (side-by-side)
+        num_cols = min(len(signatures), 3)
+        table = self.doc.add_table(rows=4, cols=num_cols)
+        
+        for col_idx, sig in enumerate(signatures[:num_cols]):
+            # Row 0: Label
+            cell0 = table.rows[0].cells[col_idx]
+            cell0.text = sig.get('label', '')
+            for para in cell0.paragraphs:
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for run in para.runs:
+                    run.bold = True
+            
+            # Row 1: Blank space for actual signature
+            cell1 = table.rows[1].cells[col_idx]
+            cell1.text = ''
+            cell1.paragraphs[0].add_run('\n\n\n')  # Signature space
+            
+            # Row 2: Name
+            cell2 = table.rows[2].cells[col_idx]
+            name = sig.get('name', '')
+            cell2.text = name if name else '________________________'
+            for para in cell2.paragraphs:
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Row 3: Position
+            cell3 = table.rows[3].cells[col_idx]
+            position = sig.get('position', '')
+            cell3.text = position if position else ''
+            for para in cell3.paragraphs:
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    def _build_pengesahan_word_table(self, table_data: Dict[str, Any], col_widths: List = None):
+        """
+        Build dedicated 3-column table for REKAPITULASI RENCANA ANGGARAN BIAYA.
+        
+        This is separate from the generic table building to ensure pengesahan page
+        only has 3 columns: No, Uraian Klasifikasi, Jumlah Harga
+        
+        Args:
+            table_data: Dict with 'headers' and 'rows'
+            col_widths: List of column widths in mm [15, 105, 70]
+        """
+        headers = table_data.get('headers', ['No', 'Uraian Pekerjaan', 'Jumlah Harga (Rp)'])
+        rows = table_data.get('rows', [])
+        
+        if not rows:
+            para = self.doc.add_paragraph("Tidak ada data")
+            return
+        
+        # Default col widths if not provided
+        if not col_widths:
+            col_widths = [15, 105, 70]
+        
+        # Create table with exactly 3 columns
+        num_cols = 3
+        num_rows = len(rows) + 1  # +1 for header
+        
+        table = self.doc.add_table(rows=num_rows, cols=num_cols)
+        table.style = 'Table Grid'
+        
+        # Header row
+        for col_idx, header_text in enumerate(headers[:num_cols]):
+            cell = table.rows[0].cells[col_idx]
+            cell.text = str(header_text)
+            # Style header cell (bold)
+            for para in cell.paragraphs:
+                for run in para.runs:
+                    run.bold = True
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # Data rows
+        for row_idx, row_data in enumerate(rows):
+            table_row = table.rows[row_idx + 1]
+            
+            # Get exactly 3 values
+            if len(row_data) >= 3:
+                values = [row_data[0], row_data[1], row_data[2]]
+            elif len(row_data) == 2:
+                values = ['', row_data[0], row_data[1]]
+            else:
+                values = [row_data[0] if row_data else '', '', '']
+            
+            for col_idx, value in enumerate(values):
+                cell = table_row.cells[col_idx]
+                cell.text = str(value) if value else ''
+                
+                # Column alignment
+                for para in cell.paragraphs:
+                    if col_idx == 0:  # No column - center
+                        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    elif col_idx == 1:  # Uraian - left
+                        para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    else:  # Jumlah - right
+                        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        
+        # Set column widths
+        for row in table.rows:
+            for col_idx, cell in enumerate(row.cells):
+                if col_idx < len(col_widths):
+                    cell.width = Mm(col_widths[col_idx])
     
     # =========================================================================
     # COVER PAGE
@@ -1117,50 +1317,7 @@ class WordExporter:
             row.cells[1].text = f"{item.get('planned', 0):.2f}"
             row.cells[2].text = f"{item.get('actual', 0):.2f}"
             row.cells[3].text = f"{item.get('deviation', 0):.2f}"
-    
-    # =========================================================================
-    # SIGNATURE SECTION
-    # =========================================================================
-    
-    def _build_signature_section(self, project_info: Dict[str, Any]):
-        """
-        Build signature section with 3 columns.
-        
-        Args:
-            project_info: Project info with signature names
-        """
-        self._build_section_header('LEMBAR PENGESAHAN')
-        
-        table = self.doc.add_table(rows=5, cols=3)
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        
-        # Column headers
-        headers = ['PELAKSANA', 'PENGAWAS', 'PEMILIK PEKERJAAN']
-        for idx, header in enumerate(headers):
-            cell = table.rows[0].cells[idx]
-            cell.text = header
-            for para in cell.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                for run in para.runs:
-                    run.bold = True
-        
-        # Signature space
-        for row_idx in range(1, 4):
-            for col_idx in range(3):
-                table.rows[row_idx].cells[col_idx].text = ''
-        
-        # Names
-        names = [
-            project_info.get('nama_kontraktor', ''),
-            project_info.get('nama_konsultan', ''),
-            project_info.get('nama_pemilik', ''),
-        ]
-        for idx, name in enumerate(names):
-            cell = table.rows[4].cells[idx]
-            cell.text = name
-            for para in cell.paragraphs:
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
+
     # =========================================================================
     # RESPONSE CREATION
     # =========================================================================

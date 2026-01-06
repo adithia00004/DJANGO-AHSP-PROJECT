@@ -32,7 +32,7 @@
 
   <!-- Actions -->
   <div class="ms-auto d-flex align-items-center gap-2">
-    <!-- Export dropdown (CSV/PDF/Word) -->
+    <!-- Export dropdown (CSV/PDF/Word/JSON) -->
     <div class="btn-group ux-dropdown" role="group">
       <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown"
         aria-expanded="false" aria-label="Export options">
@@ -40,12 +40,17 @@
         <span class="d-none d-sm-inline">Export</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="btn-export-csv"><i
-              class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Export CSV</button></li>
+        <li><button class="dropdown-item" type="button" id="btn-export-xlsx"><i
+              class="bi bi-file-earmark-excel text-success me-2"></i>Excel (XLSX)</button></li>
         <li><button class="dropdown-item" type="button" id="btn-export-pdf"><i
-              class="bi bi-file-earmark-pdf text-danger me-2"></i>Export PDF</button></li>
+              class="bi bi-file-earmark-pdf text-danger me-2"></i>PDF</button></li>
         <li><button class="dropdown-item" type="button" id="btn-export-word"><i
-              class="bi bi-file-earmark-word text-primary me-2"></i>Export Word</button></li>
+              class="bi bi-file-earmark-word text-primary me-2"></i>Word</button></li>
+        <li>
+          <hr class="dropdown-divider">
+        </li>
+        <li><button class="dropdown-item" type="button" id="btn-export-json"><i
+              class="bi bi-filetype-json text-warning me-2"></i>JSON</button></li>
       </ul>
     </div>
 
@@ -100,10 +105,10 @@
         <span id="hi-buk-help" class="ux-text-xs text-muted">Tersimpan per proyek & dipakai di Rekap AHSP.</span>
       </div>
     </div>
+  </div>
 
-
-    <!-- ===== Filter Buttons ===== -->
-    <div class="dp-card dp-border dp-surface mt-3 p-2" id="hi-filter-section">
+  <!-- ===== Filter Buttons ===== -->
+  <div class="dp-card dp-border dp-surface mt-3 p-2" id="hi-filter-section">
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="small text-body-secondary me-2">Filter:</span>
         <div class="btn-group btn-group-sm" role="group" aria-label="Filter kategori">
@@ -173,7 +178,6 @@
           perubahan.</div>
       </div>
     </div>
-  </div>
 
   <!-- ===== Modal: Konversi Harga (Option B - Compact 2-Column) ===== -->
   <div class="modal fade ux-modal" id="hiConvModal" tabindex="-1" aria-labelledby="hiConvLabel" aria-hidden="true">
@@ -279,7 +283,26 @@
     </div>
   </div>
 
-  {% endblock %}
+  <!-- Export Loading Modal -->
+  <div class="modal fade" id="hiExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+    aria-labelledby="hiExportLoadingLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-body text-center py-4">
+          <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <h6 class="mb-1" id="hiExportLoadingLabel">Memproses Export</h6>
+          <p class="text-muted small mb-0" id="hiExportLoadingText">Mohon tunggu...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- End #hi-app -->
+
+{% endblock %}
 
   {% block extra_js %}
   {{ block.super }}
@@ -289,4 +312,93 @@
   <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
 
   <script src="{% static 'detail_project/js/harga_items.js' %}"></script>
+
+  <script>
+    // Initialize export buttons for Harga Items
+    (function () {
+      const projectId = document.getElementById('hi-app')?.dataset?.projectId;
+      if (!projectId || typeof ExportManager === 'undefined') {
+        console.warn('[HargaItems] ExportManager not available');
+        return;
+      }
+
+      const exporter = new ExportManager(projectId, 'harga-items');
+
+      // Get loading modal
+      const loadingModalEl = document.getElementById('hiExportLoadingModal');
+      let loadingModal = null;
+      const loadingText = document.getElementById('hiExportLoadingText');
+
+      const showLoading = (formatName) => {
+        if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
+        if (loadingModalEl) {
+          // Get fresh instance each time
+          loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
+          loadingModal.show();
+        }
+      };
+      const hideLoading = () => {
+        // Use Bootstrap's hide method if modal exists
+        if (loadingModal) {
+          try {
+            loadingModal.hide();
+          } catch (e) {
+            console.warn('[HI] Modal hide error:', e);
+          }
+        }
+        // Force cleanup after short delay
+        setTimeout(() => {
+          // Force remove modal show state
+          if (loadingModalEl) {
+            loadingModalEl.classList.remove('show');
+            loadingModalEl.style.display = 'none';
+            loadingModalEl.setAttribute('aria-hidden', 'true');
+          }
+          // Remove all backdrops
+          document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+          // Reset body
+          document.body.classList.remove('modal-open');
+          document.body.style.overflow = '';
+          document.body.style.paddingRight = '';
+        }, 150);
+      };
+
+      const btnXLSX = document.getElementById('btn-export-xlsx');
+      const btnPDF = document.getElementById('btn-export-pdf');
+      const btnWord = document.getElementById('btn-export-word');
+
+      if (btnXLSX) {
+        btnXLSX.addEventListener('click', async (e) => {
+          e.preventDefault();
+          showLoading('Excel');
+          try { await exporter.exportAs('xlsx'); } finally { hideLoading(); }
+        });
+      }
+      if (btnPDF) {
+        btnPDF.addEventListener('click', async (e) => {
+          e.preventDefault();
+          showLoading('PDF');
+          try { await exporter.exportAs('pdf'); } finally { hideLoading(); }
+        });
+      }
+      if (btnWord) {
+        btnWord.addEventListener('click', async (e) => {
+          e.preventDefault();
+          showLoading('Word');
+          try { await exporter.exportAs('word'); } finally { hideLoading(); }
+        });
+      }
+
+      const btnJSON = document.getElementById('btn-export-json');
+      if (btnJSON) {
+        btnJSON.addEventListener('click', async (e) => {
+          e.preventDefault();
+          showLoading('JSON');
+          try { await exporter.exportAs('json'); } finally { hideLoading(); }
+        });
+      }
+
+      console.log('[HargaItems] Export buttons initialized');
+    })();
+  </script>
   {% endblock %}

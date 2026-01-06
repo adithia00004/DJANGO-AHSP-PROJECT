@@ -22,16 +22,60 @@ from detail_project.models import (
 
 class JSONExporter:
     """Export project data as JSON for import/export functionality."""
-    
+
     VERSION = "1.0"
+
+    def __init__(self, config_or_project):
+        """
+        Initialize JSONExporter.
+
+        Args:
+            config_or_project: Either ExportConfig object (from ExportManager)
+                             or Project instance (legacy usage)
+        """
+        # Support both ExportConfig (new) and Project (legacy)
+        from ..export_config import ExportConfig
+        if isinstance(config_or_project, ExportConfig):
+            # ExportConfig object - extract project_name for filename
+            self.project = None
+            self.project_name = config_or_project.project_name
+            self.config = config_or_project
+        else:
+            # Direct Project instance
+            self.project = config_or_project
+            self.project_name = config_or_project.nama
+            self.config = None
     
-    def __init__(self, project: Project):
-        self.project = project
-    
+    def export(self, data: Dict[str, Any]):
+        """
+        Generic export method called by ExportManager.
+
+        Args:
+            data: Export data dict with 'pages' or direct content
+
+        Returns:
+            HttpResponse with JSON content
+        """
+        from django.http import HttpResponse
+        import json
+
+        # Convert data to JSON string
+        json_string = json.dumps(data, indent=2, ensure_ascii=False, default=self._json_serializer)
+
+        # Create filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{self.project_name}_{timestamp}.json"
+
+        # Create response
+        response = HttpResponse(json_string, content_type='application/json')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        return response
+
     def export_jadwal_pekerjaan(self) -> Dict[str, Any]:
         """
         Export Jadwal Pekerjaan data as JSON.
-        
+
         Returns:
             Dict containing pekerjaan structure and progress data
         """

@@ -7,8 +7,21 @@
    ✅ Cards: border 2px, radius --dp-radius-lg, box-shadow
    ✅ Table: padding .5rem .75rem, scrollbar custom
    ✅ Dropdown: padding .75rem, animation slideIn
-   ✅ Modal: z-index +100, styling konsisten
+   ✅ Modal: z-index 10050 (above toolbar 1020)
    ===================================================================== */
+
+/* ===== EXPORT LOADING MODAL Z-INDEX FIX ===== */
+/* Only target the export loading modal, not sidebar or other modals */
+#hiExportLoadingModal {
+  z-index: 1055 !important;
+  /* Bootstrap modal default is 1055 */
+}
+
+/* Target only backdrop that follows the export modal, not all backdrops */
+#hiExportLoadingModal+.modal-backdrop {
+  z-index: 1050 !important;
+  /* Bootstrap backdrop default is 1050 */
+}
 
 /* ===== TOOLBAR (FIXED: sticky, overflow, z-index) ===== */
 #hi-toolbar {

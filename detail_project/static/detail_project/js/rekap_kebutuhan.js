@@ -487,8 +487,21 @@
         </tr>`;
     };
 
-    // Helper to calculate subtotal
-    const calcSubtotal = (items) => items.reduce((sum, r) => sum + Math.round(r.harga_total_decimal ?? 0), 0);
+    // Helper to calculate subtotal - considers unit conversion in market mode
+    const calcSubtotal = (items) => items.reduce((sum, r) => {
+      let total = r.harga_total_decimal ?? 0;
+
+      // Apply conversion if in market mode
+      if (currentUnitMode === 'market') {
+        const conversion = getConversion(r.kode);
+        if (conversion && conversion.factor_to_base) {
+          const converted = applyConversion(r, conversion);
+          total = converted.harga_total;
+        }
+      }
+
+      return sum + Math.round(total);
+    }, 0);
 
     let html = '';
 
@@ -1505,18 +1518,21 @@
   const applyConversion = (row, conversion) => {
     if (!conversion || !conversion.factor_to_base) {
       // No conversion - return base values unchanged
+      // Use same fallback chain as the conversion branch
+      const baseQty = parseFloat(row.quantity_decimal ?? row.quantity) || 0;
       return {
         satuan: row.satuan || '-',
-        qty: row.total_quantity,
-        harga_satuan: row.harga_satuan_decimal ?? row.harga_satuan ?? 0,
-        harga_total: row.harga_total_decimal ?? row.harga_total ?? 0,
+        qty: baseQty,
+        harga_satuan: parseFloat(row.harga_satuan_decimal ?? row.harga_satuan) || 0,
+        harga_total: parseFloat(row.harga_total_decimal ?? row.harga_total) || 0,
         conversionNote: null,
       };
     }
 
     const factor = parseFloat(conversion.factor_to_base) || 1;
     const marketPrice = parseFloat(conversion.market_price) || 0;
-    const baseQty = parseFloat(row.total_quantity) || 0;
+    // Use quantity_decimal first (consistent with renderItemRow), fallback to total_quantity or quantity
+    const baseQty = parseFloat(row.quantity_decimal ?? row.total_quantity ?? row.quantity) || 0;
 
     // Convert: market_qty = base_qty / factor
     const marketQty = baseQty / factor;
@@ -1796,11 +1812,8 @@
   };
 
   const initExportButtons = () => {
-    const exporter = window.ExportManager ? new window.ExportManager(projectId, 'rekap-kebutuhan') : null;
+    const exporter = window.ExportManager ? new window.ExportManager(projectId, 'rekap-kebutuhan', { modalId: 'rkExportLoadingModal' }) : null;
     const triggerExport = async (format) => {
-      // Show progress feedback
-      showExportProgress();
-
       const query = buildQueryParams();
 
       // PHASE 5: Add view mode and filename to query
@@ -1827,18 +1840,19 @@
     const btnCsv = $('#btn-export-csv');
     const btnPdf = $('#btn-export-pdf');
     const btnWord = $('#btn-export-word');
-    const btnCharts = $('#btn-export-charts');
-    const btnExportModal = $('#btn-export-modal');
+    const btnJson = $('#btn-export-json');
 
+    // NOTE: Dropdown buttons removed from HTML - modal only now
+    // Keep bindings for backward compatibility if buttons exist
     if (btnCsv) btnCsv.addEventListener('click', () => triggerExport('csv'));
     if (btnPdf) btnPdf.addEventListener('click', () => triggerExport('pdf'));
     if (btnWord) btnWord.addEventListener('click', () => triggerExport('word'));
-    if (btnCharts) btnCharts.addEventListener('click', exportChartsAsImages);
-    if (btnExportModal) btnExportModal.addEventListener('click', openExportModal);
+    if (btnJson) btnJson.addEventListener('click', () => triggerExport('json'));
 
-    // Initialize export modal
+    // Initialize export modal (primary export method)
     initExportModal(triggerExport);
   };
+
 
   // Phase 2: Export Modal Logic
   const openExportModal = () => {
@@ -1910,6 +1924,10 @@
           exportParams.period_end = periodEnd?.value || '';
         }
 
+        // Get unit mode selection
+        const unitMode = document.querySelector('input[name="rkUnitMode"]:checked')?.value || 'base';
+        exportParams.unit_mode = unitMode;
+
         // Show status
         if (statusEl) statusEl.classList.remove('d-none');
         if (statusText) statusText.textContent = `Memproses export ${format.toUpperCase()}...`;
@@ -1917,12 +1935,13 @@
 
         try {
           // Use same export logic but with custom params
-          const exporter = window.ExportManager ? new window.ExportManager(projectId, 'rekap-kebutuhan') : null;
+          // DON'T create new exporter with modal - use global exporter or create without modal
+          const modalExporter = window.ExportManager ? new window.ExportManager(projectId, 'rekap-kebutuhan') : null;
           exportParams.view_mode = currentViewMode;
           exportParams.filename = generateExportFilename(format).replace('.' + format, '');
 
-          if (exporter) {
-            await exporter.exportAs(format, { query: exportParams });
+          if (modalExporter) {
+            await modalExporter.exportAs(format, { query: exportParams });
           } else {
             const map = { csv: exportCsvUrl, pdf: exportPdfUrl, word: exportWordUrl };
             const base = map[format];

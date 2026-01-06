@@ -41,7 +41,7 @@ class ExportManager:
         Export Rekap RAB
         
         Args:
-            format_type: 'csv', 'pdf', or 'word'
+            format_type: 'csv', 'pdf', 'word', 'xlsx', or 'json'
         
         Returns:
             HttpResponse with exported file
@@ -53,33 +53,56 @@ class ExportManager:
         adapter = RekapRABAdapter(self.project)
         data_raw = adapter.get_export_data()
 
+        # Convert hierarchy_levels to row_types for PDF cell merging
+        hierarchy_levels = data_raw.get('hierarchy_levels', {})
+        row_types = []
+        rows = data_raw.get('table_data', {}).get('rows', [])
+        for i in range(len(rows)):
+            level = hierarchy_levels.get(i, 3)  # Default level 3 = pekerjaan (item)
+            if level == 1:
+                row_types.append('category')  # Klasifikasi - merge all columns
+            elif level == 2:
+                row_types.append('subcategory')  # Sub - merge all columns
+            else:
+                row_types.append('item')  # Pekerjaan - normal row
+
         # Build two-page payload per requirements
-        # Page 1: Rencana Anggaran Biaya (full table)
+        # Page 1: Rencana Anggaran Biaya (full table) - NO signatures on this page
         page1 = {
-            'title': 'Rencana Anggaran Biaya',
+            'title': 'RENCANA ANGGARAN BIAYA',
             'table_data': data_raw.get('table_data', {}),
-            'hierarchy_levels': data_raw.get('hierarchy_levels', {}),
+            'hierarchy_levels': hierarchy_levels,
+            'row_types': row_types,  # Added for PDF cell merging
             'col_widths': data_raw.get('col_widths', []),
             'footer_rows': data_raw.get('footer_rows', []),
+            'include_signatures': False,  # No signatures on RAB detail page
         }
 
         # Page 2: Pengesahan (rekap per klasifikasi + footer + signatures)
         page2_table = {
-            'headers': ['Klasifikasi', 'Total Harga (Rp)'],
-            'rows': data_raw.get('summary_by_klasifikasi', []),
+            'headers': ['No', 'Uraian Klasifikasi', 'Jumlah Harga (Rp)'],
+            'rows': [],
         }
-        # Set column widths to match print (approx 80/20 of 277mm)
-        page2_col_widths = [0.80 * 277, 0.20 * 277]
+        # Build numbered summary rows
+        summary_rows = data_raw.get('summary_by_klasifikasi', [])
+        for idx, row in enumerate(summary_rows, 1):
+            page2_table['rows'].append([str(idx), row[0], row[1]])
+        
+        # Set column widths for portrait: 15/105/70 split of 190mm usable width
+        page2_col_widths = [15, 105, 70]
 
         page2 = {
             'title': 'REKAPITULASI RENCANA ANGGARAN BIAYA',
             'table_data': page2_table,
             'footer_rows': data_raw.get('footer_rows', []),
             'col_widths': page2_col_widths,
+            'include_signatures': True,  # Signatures on pengesahan page
+            'keep_together': True,  # Keep table + footer + signatures together
         }
 
         data = {
-            'pages': [page1, page2]
+            'pages': [page1, page2],
+            'include_signatures': True,  # Enable signatures for document
         }
         
         # Get exporter
@@ -158,6 +181,7 @@ class ExportManager:
             signature_config=sig_config,
             export_by=self.user.get_full_name() if self.user else '',
             extra_identity=extra_identity,
+            page_orientation='portrait',  # Portrait layout for Rekap RAB
             # Layout (mm)
             margin_top=10,
             margin_bottom=10,
@@ -178,43 +202,224 @@ class ExportManager:
         filters: dict | None = None,
         search: str | None = None,
         time_scope: dict | None = None,
+        unit_mode: str = 'base',  # NEW: 'base' or 'market'
     ) -> HttpResponse:
-        """Export Rekap Kebutuhan (flat table)"""
-        config = self._create_config()
-
-        rows_raw = compute_kebutuhan_items(
-            self.project,
-            mode=mode,
-            tahapan_id=tahapan_id,
-            filters=filters,
-            time_scope=time_scope,
+        """
+        Export Rekap Kebutuhan.
+        
+        For 'all' period: Single table with all items, includes charts
+        For time range (week/month): Multi-page export with one table per period
+        
+        Args:
+            format_type: 'csv', 'pdf', 'word', 'xlsx', or 'json'
+            mode: 'all' or 'tahapan'
+            tahapan_id: Optional tahapan filter
+            filters: Dict of filters
+            search: Search query
+            time_scope: Time scope filter - if mode is week_range/month_range, 
+                        generates per-period pages
+            unit_mode: 'base' for satuan dasar, 'market' for satuan beli
+        """
+        from ..services import compute_kebutuhan_timeline
+        
+        # Use _create_config_simple with portrait orientation
+        # (User specified portrait layout for Rekap Kebutuhan)
+        config = self._create_config_simple(
+            'REKAP KEBUTUHAN MATERIAL',
+            page_orientation='portrait'  # User specified portrait
         )
-        rows, summary = summarize_kebutuhan_rows(rows_raw, search=search or '')
+
+        scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all', None))
+        is_range_mode = scope_active and time_scope.get('mode', '').endswith('_range')
+        
         filters = filters or {}
-        scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
-        filters_applied = bool(
-            (filters.get('klasifikasi_ids'))
-            or (filters.get('sub_klasifikasi_ids'))
-            or (filters.get('kategori_items'))
-            or (filters.get('pekerjaan_ids'))
-            or (search and search.strip())
-            or (mode == 'tahapan' and tahapan_id)
-            or scope_active
-        )
-        summary.update({
-            'mode': mode,
-            'tahapan_id': tahapan_id,
-            'filters': filters,
-            'search': search or '',
-            'time_scope': time_scope,
-            'time_scope_active': scope_active,
-            'filters_applied': filters_applied,
-        })
+        
+        # ====================================================================
+        # MODE 1: Per-period export (when time range is selected)
+        # Creates multi-page output with one table per week/month
+        # ====================================================================
+        if is_range_mode:
+            from decimal import Decimal, ROUND_HALF_UP
+            from ..models import HargaItemProject, ItemConversionProfile
+            
+            timeline_data = compute_kebutuhan_timeline(
+                self.project,
+                mode=mode,
+                tahapan_id=tahapan_id,
+                filters=filters,
+                time_scope=time_scope,
+            )
+            
+            periods = timeline_data.get('periods', [])
+            
+            # Build conversion map for market mode
+            conversion_map = {}
+            if unit_mode == 'market':
+                harga_items = HargaItemProject.objects.filter(
+                    project=self.project
+                ).select_related('conversion_profile')
+                
+                for hi in harga_items:
+                    try:
+                        if hasattr(hi, 'conversion_profile') and hi.conversion_profile:
+                            conv = hi.conversion_profile
+                            if conv.factor_to_base and conv.factor_to_base > 0:
+                                conversion_map[hi.kode_item] = {
+                                    'market_unit': conv.market_unit or hi.satuan,
+                                    'market_price': conv.market_price,
+                                    'factor_to_base': conv.factor_to_base,
+                                }
+                    except Exception:
+                        pass
+            
+            # Helper functions for formatting
+            def fmt_qty(val):
+                try:
+                    v = float(val)
+                    if v == int(v):
+                        return f"{int(v):,}".replace(',', '.')
+                    return f"{v:,.3f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                except:
+                    return str(val)
+            
+            def fmt_currency(val):
+                try:
+                    v = int(float(val))
+                    return f"Rp {v:,}".replace(',', '.')
+                except:
+                    return str(val)
+            
+            # Build multi-page data
+            pages = []
+            # Optimized columns for A4 Portrait: No, Kode, Uraian, Satuan, Qty, Harga Satuan, Total
+            headers = ['No', 'Kode', 'Uraian', 'Satuan', 'Qty', 'Harga Satuan', 'Total Harga']
+            
+            # Column widths for A4 Portrait (raw values in mm)
+            # A4 portrait: 210mm, margins: 10+10=20mm, usable: ~190mm
+            col_widths = [
+                8,     # No
+                18,    # Kode
+                64,    # Uraian (widest)
+                14,    # Satuan
+                20,    # Qty
+                30,    # Harga Satuan
+                36,    # Total Harga
+            ]  # Total: 190mm
+            
+            for period in periods:
+                # Skip "Di luar jadwal" for now
+                if period.get('value') == 'unscheduled':
+                    continue
+                    
+                items = period.get('items', [])
+                if not items:
+                    continue
+                
+                # Build rows for this period
+                rows = []
+                for idx, item in enumerate(items, 1):
+                    kode = item.get('kode', '-')
+                    satuan = item.get('satuan', '-')
+                    quantity = item.get('quantity', 0)
+                    harga_satuan = item.get('harga_satuan', 0)
+                    harga_total = item.get('harga_total', 0)
+                    
+                    # Apply unit mode conversion if market mode
+                    if unit_mode == 'market' and kode in conversion_map:
+                        conv = conversion_map[kode]
+                        try:
+                            base_qty = Decimal(str(quantity)) if quantity else Decimal('0')
+                            factor = Decimal(str(conv['factor_to_base']))
+                            market_qty = (base_qty / factor).quantize(Decimal('0.001'), rounding=ROUND_HALF_UP)
+                            
+                            satuan = conv['market_unit']
+                            quantity = float(market_qty)
+                            harga_satuan = float(conv['market_price'])
+                        except Exception:
+                            pass
+                    
+                    rows.append([
+                        str(idx),  # No
+                        kode,
+                        item.get('uraian', '-'),
+                        satuan,
+                        fmt_qty(quantity),
+                        fmt_currency(harga_satuan),
+                        fmt_currency(harga_total),
+                    ])
+                
+                pages.append({
+                    'title': period.get('label', 'Periode'),
+                    'table_data': {
+                        'headers': headers,
+                        'rows': rows,
+                    },
+                    'col_widths': col_widths,
+                    'footer_rows': [],  # No footer per requirements
+                    'include_signatures': False,
+                })
+            
+            if not pages:
+                # Fallback: empty page if no periods have data
+                pages.append({
+                    'title': 'Tidak ada data untuk rentang waktu ini',
+                    'table_data': {'headers': headers, 'rows': []},
+                    'col_widths': col_widths,
+                    'footer_rows': [],
+                    'include_signatures': False,
+                })
+            
+            data = {
+                'pages': pages,
+                'include_charts': False,  # No charts for per-period
+                'unit_mode': unit_mode,
+                'meta': {
+                    'mode': mode,
+                    'time_scope': time_scope,
+                    'time_scope_active': True,
+                    'period_count': len(pages),
+                    'is_per_period': True,
+                },
+            }
+        
+        # ====================================================================
+        # MODE 2: Full export (keseluruhan proyek)
+        # Single table with all items, includes charts
+        # ====================================================================
+        else:
+            rows_raw = compute_kebutuhan_items(
+                self.project,
+                mode=mode,
+                tahapan_id=tahapan_id,
+                filters=filters,
+                time_scope=time_scope,
+            )
+            rows, summary = summarize_kebutuhan_rows(rows_raw, search=search or '')
+            
+            filters_applied = bool(
+                (filters.get('klasifikasi_ids'))
+                or (filters.get('sub_klasifikasi_ids'))
+                or (filters.get('kategori_items'))
+                or (filters.get('pekerjaan_ids'))
+                or (search and search.strip())
+                or (mode == 'tahapan' and tahapan_id)
+                or scope_active
+            )
+            summary.update({
+                'mode': mode,
+                'tahapan_id': tahapan_id,
+                'filters': filters,
+                'search': search or '',
+                'time_scope': time_scope,
+                'time_scope_active': scope_active,
+                'filters_applied': filters_applied,
+            })
 
-        adapter = RekapKebutuhanAdapter(self.project, rows=rows, summary=summary)
-        data = adapter.get_export_data()
-        if summary:
-            data.setdefault('meta', summary)
+            adapter = RekapKebutuhanAdapter(self.project, rows=rows, summary=summary)
+            data = adapter.get_export_data(unit_mode=unit_mode)
+            # unit_mode already in data from adapter
+            if summary:
+                data.setdefault('meta', summary)
 
         exporter_class = self.EXPORTER_MAP.get(format_type)
         if not exporter_class:
@@ -223,12 +428,15 @@ class ExportManager:
         exporter = exporter_class(config)
         return exporter.export(data)
 
+
     def export_volume_pekerjaan(self, format_type: str, parameters: dict = None) -> HttpResponse:
         """
-        Export Volume Pekerjaan
+        Export Volume Pekerjaan with 2 segments:
+        1. Parameter Perhitungan - table of parameters
+        2. Volume & Formula - work items with formulas
 
         Args:
-            format_type: 'csv', 'pdf', or 'word'
+            format_type: 'csv', 'pdf', 'word', or 'xlsx'
             parameters: Optional dict of parameter values {'panjang': 100.0, 'lebar': 50.0, ...}
 
         Returns:
@@ -238,7 +446,7 @@ class ExportManager:
         config = self._create_config_simple('VOLUME PEKERJAAN', page_orientation='portrait')
 
         # Get data with parameters
-        adapter = VolumePekerjaanAdapter(self.project, parameters=parameters)
+        adapter = VolumePekerjaanAdapter(self.project, include_signatures=True, parameters=parameters)
         data = adapter.get_export_data()
 
         # Get exporter
@@ -248,7 +456,11 @@ class ExportManager:
 
         exporter = exporter_class(config)
 
-        # Export!
+        # Use specialized export for XLSX with formula references
+        if format_type == 'xlsx':
+            return exporter.export_volume_pekerjaan(data, adapter)
+
+        # Standard export for other formats
         return exporter.export(data)
 
     def export_harga_items(self, format_type: str) -> HttpResponse:

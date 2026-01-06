@@ -695,27 +695,13 @@
     if (!projectId) {
       // bind CSV local only
       btnExportCSV?.addEventListener('click', exportCSVLocal);
-      btnExportPDF?.addEventListener('click', () => toast && toast('Export PDF belum tersedia', 'info'));
-      btnExportWord?.addEventListener('click', () => toast && toast('Export Word belum tersedia', 'info'));
       return;
     }
+    // ExportManager initialization is now handled in the template with modal spinner
+    // Only provide CSV local fallback here if ExportManager loads fail
     if (typeof ExportManager === 'undefined') {
+      console.log('[HI] ExportManager not available, using local CSV fallback');
       btnExportCSV?.addEventListener('click', exportCSVLocal);
-      btnExportPDF?.addEventListener('click', () => toast && toast('Export PDF belum tersedia', 'info'));
-      btnExportWord?.addEventListener('click', () => toast && toast('Export Word belum tersedia', 'info'));
-      return;
-    }
-    try {
-      // Page type for backend endpoints (to be provided server-side)
-      const exporter = new ExportManager(projectId, 'harga-items');
-      btnExportCSV?.addEventListener('click', (e) => { e.preventDefault(); exporter.exportAs('csv'); });
-      btnExportPDF?.addEventListener('click', (e) => { e.preventDefault(); exporter.exportAs('pdf'); });
-      btnExportWord?.addEventListener('click', (e) => { e.preventDefault(); exporter.exportAs('word'); });
-    } catch (err) {
-      console.warn('[HI] ExportManager init failed, fallback to local CSV', err);
-      btnExportCSV?.addEventListener('click', exportCSVLocal);
-      btnExportPDF?.addEventListener('click', () => toast && toast('Export PDF belum tersedia', 'info'));
-      btnExportWord?.addEventListener('click', () => toast && toast('Export Word belum tersedia', 'info'));
     }
   })();
 
@@ -907,8 +893,12 @@
       convCtx.tr.classList.remove('hi-row-empty');
       convCtx.tr.classList.toggle('hi-row-zero', Number(canon) === 0);
       const orig = convCtx.tr.dataset.origCanon || '';
-      const isDirty = (orig && orig !== canon);
-      setRowDirtyVisual(convCtx.tr, isDirty);
+      const isDirtyRow = (orig && orig !== canon);
+      setRowDirtyVisual(convCtx.tr, isDirtyRow);
+      // P0 FIX: Activate save button when conversion changes value
+      if (isDirtyRow) {
+        setDirty(true);
+      }
     }
 
     // simpan profil
@@ -932,6 +922,40 @@
       if (prof.remember) { localStorage.setItem(lsk(convCtx.kode), JSON.stringify(prof)); }
       else { localStorage.removeItem(lsk(convCtx.kode)); }
     } catch { }
+
+    // POST to server if 'remember' is checked (save to database)
+    if (prof.remember && projectId && convCtx.id) {
+      const saveUrl = `/detail_project/api/project/${projectId}/conversion-profile/save/`;
+      fetch(saveUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          harga_item_id: convCtx.id,
+          market_unit: prof.unit,
+          market_price: prof.price_market,
+          factor_to_base: prof.factor_to_base,
+          density: prof.density || null,
+          capacity_m3: prof.capacity_m3 || null,
+          capacity_ton: prof.capacity_ton || null,
+          method: prof.method
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok) {
+            console.log('[CONV] Profile saved to server:', data.profile_id);
+            toast('✅ Pengaturan konversi tersimpan', 'success', 2000);
+          } else {
+            console.warn('[CONV] Failed to save profile:', data.error);
+          }
+        })
+        .catch(err => console.warn('[CONV] Save error:', err));
+    }
 
     if (window.bootstrap && $convModal) {
       window.bootstrap.Modal.getOrCreateInstance($convModal).hide();

@@ -63,6 +63,7 @@ urlpatterns = [
     
     # ===== API: Conversion Profiles =====
     path('api/project/<int:project_id>/conversion-profiles/', views_api.api_get_conversion_profiles, name='api_get_conversion_profiles'),
+    path('api/project/<int:project_id>/conversion-profile/save/', views_api.api_save_conversion_profile, name='api_save_conversion_profile'),
     
     # ===== API: Project Pricing (Profit/Margin) =====
     path('api/project/<int:project_id>/pricing/', views_api.api_project_pricing, name='api_project_pricing'),
@@ -111,23 +112,31 @@ urlpatterns = [
          views_api.export_rekap_rab_xlsx,
          name='export_rekap_rab_xlsx'),
 
-     # Export Rekap Kebutuhan
-     path('api/project/<int:project_id>/export/rekap-kebutuhan/csv/',
-          views_api.api_export_rekap_kebutuhan_csv,
-          name='api_export_rekap_kebutuhan_csv'),  # ✅ CORRECT NAME
+    path('api/project/<int:project_id>/export/rekap-rab/json/',
+         views_api.export_rekap_rab_json,
+         name='export_rekap_rab_json'),
 
+     # Export Rekap Kebutuhan (PDF, Word, XLSX, JSON - no CSV)
      path('api/project/<int:project_id>/export/rekap-kebutuhan/pdf/',
           views_api.export_rekap_kebutuhan_pdf,
-          name='api_export_rekap_kebutuhan_pdf'),  # ✅ ADD api_ prefix
+          name='api_export_rekap_kebutuhan_pdf'),
 
      path('api/project/<int:project_id>/export/rekap-kebutuhan/word/',
           views_api.export_rekap_kebutuhan_word,
-          name='api_export_rekap_kebutuhan_word'),  # ✅ ADD api_ prefix
+          name='api_export_rekap_kebutuhan_word'),
+
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/xlsx/',
+          views_api.export_rekap_kebutuhan_xlsx,
+          name='api_export_rekap_kebutuhan_xlsx'),
+
+     path('api/project/<int:project_id>/export/rekap-kebutuhan/json/',
+          views_api.export_rekap_kebutuhan_json,
+          name='api_export_rekap_kebutuhan_json'),
 
      # Export Volume Pekerjaan
-     path('api/project/<int:project_id>/export/volume-pekerjaan/csv/',
-          views_api.export_volume_pekerjaan_csv,
-          name='export_volume_pekerjaan_csv'),
+     path('api/project/<int:project_id>/export/volume-pekerjaan/xlsx/',
+          views_api.export_volume_pekerjaan_xlsx,
+          name='export_volume_pekerjaan_xlsx'),
 
      path('api/project/<int:project_id>/export/volume-pekerjaan/pdf/',
           views_api.export_volume_pekerjaan_pdf,
@@ -136,6 +145,10 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/volume-pekerjaan/word/',
           views_api.export_volume_pekerjaan_word,
           name='export_volume_pekerjaan_word'),
+
+     path('api/project/<int:project_id>/export/volume-pekerjaan/json/',
+          views_api.export_volume_pekerjaan_json,
+          name='export_volume_pekerjaan_json'),
 
      # Export Harga Items
      path('api/project/<int:project_id>/export/harga-items/csv/',
@@ -188,6 +201,23 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/jadwal-pekerjaan/professional/',
           views_api.export_jadwal_pekerjaan_professional,
           name='export_jadwal_pekerjaan_professional'),
+
+     # Export Harga Items
+     path('api/project/<int:project_id>/export/harga-items/pdf/',
+          views_api.export_harga_items_pdf,
+          name='export_harga_items_pdf'),
+
+     path('api/project/<int:project_id>/export/harga-items/word/',
+          views_api.export_harga_items_word,
+          name='export_harga_items_word'),
+
+     path('api/project/<int:project_id>/export/harga-items/xlsx/',
+          views_api.export_harga_items_xlsx,
+          name='export_harga_items_xlsx'),
+
+     path('api/project/<int:project_id>/export/harga-items/json/',
+          views_api.export_harga_items_json,
+          name='export_harga_items_json'),
 
 
     

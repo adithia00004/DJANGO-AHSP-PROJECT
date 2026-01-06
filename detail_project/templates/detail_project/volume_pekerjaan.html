@@ -8,52 +8,37 @@
 {% block detail_css %}{% endblock %}
 
 {% block extra_css %}
-  {{ block.super }}
-  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
 {% endblock %}
 
 {% block dp_content %}
 
 <!-- ===== Toolbar (REFACTORED - Using Component Library) ===== -->
-<div id="vp-toolbar"
-     class="dp-toolbar"
-     role="toolbar"
-     aria-label="Toolbar Volume Pekerjaan">
+<div id="vp-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Volume Pekerjaan">
 
   <!-- Searchbar (Component Library) -->
   <div class="input-group dp-toolbar-search vp-searchbar position-relative" role="search">
     <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
-    <input id="vp-search" type="search" class="form-control"
-           placeholder="Cari Klasifikasi / Sub / Pekerjaan..."
-           autocomplete="off"
-           aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
+    <input id="vp-search" type="search" class="form-control" placeholder="Cari Klasifikasi / Sub / Pekerjaan..."
+      autocomplete="off" aria-controls="vp-search-results" aria-expanded="false" aria-haspopup="listbox">
     <span id="vp-search-prefix-badge"
-          class="badge text-bg-secondary position-absolute end-0 top-50 translate-middle-y me-2 d-none"
-          title="Prefix filter terdeteksi"
-          data-bs-toggle="tooltip"></span>
-    <div id="vp-search-results"
-         class="dp-autocomplete vp-search-dropdown d-none dp-scrollbar"
-         role="listbox"
-         aria-label="Hasil pencarian"
-         aria-expanded="false"></div>
+      class="badge text-bg-secondary position-absolute end-0 top-50 translate-middle-y me-2 d-none"
+      title="Prefix filter terdeteksi" data-bs-toggle="tooltip"></span>
+    <div id="vp-search-results" class="dp-autocomplete vp-search-dropdown d-none dp-scrollbar" role="listbox"
+      aria-label="Hasil pencarian" aria-expanded="false"></div>
   </div>
 
   <!-- Actions kiri toolbar -->
   <div class="d-flex align-items-center gap-2">
     <!-- PERBAIKAN #2: Expand/Collapse All buttons (seperti list_pekerjaan) -->
-    <button id="vp-expand-all"
-            class="btn btn-sm btn-outline-secondary dp-btn-sm"
-            type="button"
-            title="Expand semua Klasifikasi dan Sub"
-            aria-label="Expand all">
+    <button id="vp-expand-all" class="btn btn-sm btn-outline-secondary dp-btn-sm" type="button"
+      title="Expand semua Klasifikasi dan Sub" aria-label="Expand all">
       <i class="bi bi-arrows-expand" aria-hidden="true"></i>
     </button>
-    <button id="vp-collapse-all"
-            class="btn btn-sm btn-outline-secondary dp-btn-sm"
-            type="button"
-            title="Collapse semua Klasifikasi dan Sub"
-            aria-label="Collapse all">
+    <button id="vp-collapse-all" class="btn btn-sm btn-outline-secondary dp-btn-sm" type="button"
+      title="Collapse semua Klasifikasi dan Sub" aria-label="Collapse all">
       <i class="bi bi-arrows-collapse" aria-hidden="true"></i>
     </button>
   </div>
@@ -61,30 +46,24 @@
   <!-- Actions kanan -->
   <div class="ms-auto d-flex align-items-center gap-2">
     <!-- Save Button (Component Library) -->
-    <button id="btn-save"
-            class="btn btn-success dp-btn dp-btn-sm"
-            type="button"
-            title="Simpan perubahan"
-            aria-label="Simpan">
+    <button id="btn-save" class="btn btn-success dp-btn dp-btn-sm" type="button" title="Simpan perubahan"
+      aria-label="Simpan">
       <i class="bi bi-save" aria-hidden="true"></i>
       <span class="d-none d-sm-inline">Simpan</span>
     </button>
 
     <!-- Export dropdown (Component Library Button Group) -->
     <div class="btn-group dp-btn-group" role="group" aria-label="Opsi export">
-      <button type="button"
-              class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-              aria-label="Export options">
+      <button type="button" class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle" data-bs-toggle="dropdown"
+        aria-expanded="false" aria-label="Export options">
         <i class="bi bi-download" aria-hidden="true"></i>
         <span class="d-none d-sm-inline">Export</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
         <li>
-          <button class="dropdown-item" type="button" id="btn-export-csv">
-            <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
-            Export CSV
+          <button class="dropdown-item" type="button" id="btn-export-xlsx">
+            <i class="bi bi-file-earmark-excel text-success me-2"></i>
+            Export Excel
           </button>
         </li>
         <li>
@@ -99,30 +78,71 @@
             Export Word
           </button>
         </li>
+        <li>
+          <hr class="dropdown-divider">
+        </li>
+        <li>
+          <button class="dropdown-item" type="button" id="btn-export-json">
+            <i class="bi bi-filetype-json text-warning me-2"></i>
+            Export JSON
+          </button>
+        </li>
       </ul>
     </div>
 
     <!-- Parameter Sidebar Toggle (Component Library) -->
-    <button type="button"
-            id="btn-vp-sidebar-toggle"
-            class="btn btn-primary dp-btn dp-btn-sm js-vp-sidebar-toggle"
-            aria-controls="vp-sidebar"
-            aria-expanded="false">
+    <button type="button" id="btn-vp-sidebar-toggle" class="btn btn-primary dp-btn dp-btn-sm js-vp-sidebar-toggle"
+      aria-controls="vp-sidebar" aria-expanded="false">
       <i class="bi bi-sliders2"></i>
       <span class="d-none d-sm-inline">Parameter</span>
     </button>
 
     <!-- Bantuan Formula (Component Library) -->
-    <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm"
-            data-bs-toggle="modal" data-bs-target="#vpFormulaHelpModal"
-            aria-label="Buka bantuan formula">
+    <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm" data-bs-toggle="modal"
+      data-bs-target="#vpFormulaHelpModal" aria-label="Buka bantuan formula">
       <i class="bi bi-question-circle"></i>
       <span class="d-none d-sm-inline">Bantuan</span>
     </button>
   </div>
 </div>
 
-<div id="vp-sync-banner" class="alert alert-warning d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
+<!-- Summary Statistics Bar -->
+<div id="vp-summary-bar" class="dp-summary-bar" role="status" aria-live="polite">
+  <span class="badge bg-secondary" id="vp-stat-total">
+    <i class="bi bi-list-task me-1"></i><span class="stat-value">0</span> Pekerjaan
+  </span>
+  <span class="badge bg-success" id="vp-stat-filled">
+    <i class="bi bi-check-circle me-1"></i><span class="stat-value">0</span> Terisi
+  </span>
+  <span class="badge bg-warning text-dark" id="vp-stat-empty">
+    <i class="bi bi-exclamation-circle me-1"></i><span class="stat-value">0</span> Belum Diisi
+  </span>
+  <span class="badge bg-info" id="vp-stat-formula">
+    <i class="bi bi-calculator me-1"></i><span class="stat-value">0</span> Formula
+  </span>
+</div>
+
+<!-- Quick Filter Bar -->
+<div id="vp-filter-bar" class="dp-filter-bar">
+  <span class="small text-muted me-2">Filter:</span>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Filter status">
+    <button type="button" class="btn btn-outline-secondary active" data-filter="all">
+      <i class="bi bi-grid-3x3-gap me-1"></i>Semua
+    </button>
+    <button type="button" class="btn btn-outline-success" data-filter="filled">
+      <i class="bi bi-check-circle me-1"></i>Terisi
+    </button>
+    <button type="button" class="btn btn-outline-warning" data-filter="empty">
+      <i class="bi bi-exclamation-circle me-1"></i>Belum Diisi
+    </button>
+    <button type="button" class="btn btn-outline-info" data-filter="formula">
+      <i class="bi bi-calculator me-1"></i>Formula
+    </button>
+  </div>
+</div>
+
+<div id="vp-sync-banner" class="alert alert-warning d-flex align-items-center gap-3 d-none" role="status"
+  aria-live="polite">
   <div>
     <div class="fw-semibold">Perlu update volume/tahapan</div>
     <div id="vp-sync-text" class="small text-muted">Beberapa pekerjaan wajib diperiksa ulang sebelum ekspor.</div>
@@ -132,31 +152,21 @@
   </button>
 </div>
 
-<div id="vol-app"
-     class="dp-container ux-scrollbar ux-scroll-smooth"
-     data-project-id="{% firstof project.id project_id %}"
-     data-endpoint-save="{% url 'detail_project:api_save_volume_pekerjaan' project.id %}"
-     data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}"
-     data-endpoint-tree="/detail_project/api/project/{{ project.id }}/list-pekerjaan/tree/">
+<div id="vol-app" class="dp-container ux-scrollbar ux-scroll-smooth"
+  data-project-id="{% firstof project.id project_id %}"
+  data-endpoint-save="{% url 'detail_project:api_save_volume_pekerjaan' project.id %}"
+  data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}"
+  data-endpoint-tree="/detail_project/api/project/{{ project.id }}/list-pekerjaan/tree/">
   <!-- ===== Overlay Sidebar Kanan (REFACTORED - Component Library) ===== -->
-  <aside id="vp-sidebar"
-         class="dp-sidebar-overlay"
-         role="complementary"
-         data-side="right"
-         data-align="topbar"
-         data-hoverclose="1"
-         data-resize-sense="east"
-         aria-labelledby="vpSidebarTitle"
-         aria-hidden="true">
+  <aside id="vp-sidebar" class="dp-sidebar-overlay" role="complementary" data-side="right" data-align="topbar"
+    data-hoverclose="1" data-resize-sense="east" aria-labelledby="vpSidebarTitle" aria-hidden="true">
 
     <!-- Inner Panel (Component Library) -->
     <div class="dp-sidebar-inner dp-scrollbar">
       <div class="dp-sidebar-header">
         <h6 id="vpSidebarTitle">Parameter Perhitungan</h6>
-        <button type="button"
-                class="btn btn-sm btn-outline-secondary dp-btn-sm js-vp-sidebar-close"
-                data-action="close-sidebar"
-                aria-label="Tutup">
+        <button type="button" class="btn btn-sm btn-outline-secondary dp-btn-sm js-vp-sidebar-close"
+          data-action="close-sidebar" aria-label="Tutup">
           <i class="bi bi-x-lg"></i>
         </button>
       </div>
@@ -198,27 +208,34 @@
               <!-- Export dropup (Bootstrap dropdown like Template) -->
               <div class="dropup">
                 <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="vp-var-export-btn"
-                        data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">
+                  data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">
                   <i class="bi bi-file-arrow-down"></i> Export
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="vp-var-export-btn">
                   <li><button class="dropdown-item" type="button" id="vp-export-json">Export JSON</button></li>
                   <li><button class="dropdown-item" type="button" id="vp-export-csv">Export CSV</button></li>
                   <li><button class="dropdown-item" type="button" id="vp-export-xlsx">Export XLSX</button></li>
-                  <li><hr class="dropdown-divider"></li>
-                  <li><button class="dropdown-item" type="button" id="vp-export-copy-json">Copy JSON to Clipboard</button></li>
+                  <li>
+                    <hr class="dropdown-divider">
+                  </li>
+                  <li><button class="dropdown-item" type="button" id="vp-export-copy-json">Copy JSON to
+                      Clipboard</button></li>
                 </ul>
               </div>
 
               <!-- Template dropup (sample files / generator) -->
               <div class="dropup vp-template-dropdown">
-                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"
+                  aria-expanded="false">
                   Template
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
-                  <li><button class="dropdown-item" type="button" id="vp-template-xlsx-gen">Generate Template (.xlsx)</button></li>
-                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
-                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
+                  <li><button class="dropdown-item" type="button" id="vp-template-xlsx-gen">Generate Template
+                      (.xlsx)</button></li>
+                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}"
+                      download>Template (.csv)</a></li>
+                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}"
+                      download>Template (.json)</a></li>
                 </ul>
               </div>
             </div>
@@ -247,92 +264,88 @@
       </colgroup>
       <tbody>
         {% if pekerjaan %}
-          {# Kelompokkan pekerjaan -> Klasifikasi #}
-          {% regroup pekerjaan by sub_klasifikasi.klasifikasi as by_klas %}
+        {# Kelompokkan pekerjaan -> Klasifikasi #}
+        {% regroup pekerjaan by sub_klasifikasi.klasifikasi as by_klas %}
 
-          {% for klas in by_klas %}
-            <tr>
-              <td colspan="5" class="p-0">
-                <!-- Klasifikasi Card (Component Library) -->
-                <div class="card dp-card-primary vp-klas-card mb-3" data-klas-id="{{ klas.grouper.id }}">
-                  <div class="card-header">
-                    <span class="dp-card-title-primary">{{ klas.grouper.name|default:"(Tanpa Klasifikasi)" }}</span>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary dp-btn-sm vp-card-toggle ms-auto"
-                            data-type="klas" data-key="{{ klas.grouper.id }}"
-                            aria-expanded="true" title="Collapse/Expand">
+        {% for klas in by_klas %}
+        <tr>
+          <td colspan="5" class="p-0">
+            <!-- Klasifikasi Card (Component Library) -->
+            <div class="card dp-card-primary vp-klas-card mb-3" data-klas-id="{{ klas.grouper.id }}">
+              <div class="card-header">
+                <span class="dp-card-title-primary">{{ klas.grouper.name|default:"(Tanpa Klasifikasi)" }}</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary dp-btn-sm vp-card-toggle ms-auto"
+                  data-type="klas" data-key="{{ klas.grouper.id }}" aria-expanded="true" title="Collapse/Expand">
+                  <i class="bi bi-caret-down-fill"></i>
+                </button>
+              </div>
+              <div class="card-body">
+                {# Di dalam Klas, kelompokkan lagi -> SubKlasifikasi #}
+                {% regroup klas.list by sub_klasifikasi as by_sub %}
+
+                {% for sub in by_sub %}
+                <!-- Sub-Klasifikasi Card (Component Library) -->
+                <div class="dp-card-secondary vp-sub-card mb-3" data-sub-id="{{ sub.grouper.id }}"
+                  data-klas-id="{{ klas.grouper.id }}">
+                  <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="dp-card-title-secondary">{{ sub.grouper.name|default:"(Tanpa Sub)" }}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary dp-btn-sm vp-card-toggle"
+                      data-type="sub" data-key="{{ sub.grouper.id }}" aria-expanded="true" title="Collapse/Expand">
                       <i class="bi bi-caret-down-fill"></i>
                     </button>
                   </div>
-                  <div class="card-body">
-                    {# Di dalam Klas, kelompokkan lagi -> SubKlasifikasi #}
-                    {% regroup klas.list by sub_klasifikasi as by_sub %}
-
-                    {% for sub in by_sub %}
-                      <!-- Sub-Klasifikasi Card (Component Library) -->
-                      <div class="dp-card-secondary vp-sub-card mb-3" data-sub-id="{{ sub.grouper.id }}" data-klas-id="{{ klas.grouper.id }}">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                          <span class="dp-card-title-secondary">{{ sub.grouper.name|default:"(Tanpa Sub)" }}</span>
-                          <button type="button"
-                                  class="btn btn-sm btn-outline-secondary dp-btn-sm vp-card-toggle"
-                                  data-type="sub" data-key="{{ sub.grouper.id }}"
-                                  aria-expanded="true" title="Collapse/Expand">
-                            <i class="bi bi-caret-down-fill"></i>
-                          </button>
-                        </div>
-                        <div class="vp-sub-body">
-                          <!-- Table (Component Library) -->
-                          <table class="table dp-table vp-table">
-                            <colgroup>
-                              <col style="width:6ch">              <!-- No -->
-                              <col class="col-urai">               <!-- Uraian -->
-                              <col style="width:10ch">             <!-- Satuan -->
-                              <col class="col-qty" style="width:48ch"> <!-- Quantity (lebih lebar untuk formula panjang) -->
-                            </colgroup>
-                            <thead class="table-light">
-                              <tr>
-                                <th class="text-center">No</th>
-                                <th class="text-wrap text-start">Uraian</th>
-                                <th>Satuan</th>
-                                <th>Quantity</th>
-                              </tr>
-                            </thead>
-                              <tbody>
-                                {% for p in sub.list %}
-                                  <tr data-pekerjaan-id="{{ p.id }}"
-                                      data-klasid="{{ klas.grouper.id }}"
-                                      data-subid="{{ sub.grouper.id }}">
-                                    <td>{{ forloop.counter }}</td>
-                                    <td class="text-wrap text-start">{% firstof p.snapshot_uraian p.uraian p.nama '-' %}</td>
-                                    <td>{% firstof p.snapshot_satuan p.satuan '-' %}</td>
-                                    <td>
-                                      <div class="d-flex align-items-start gap-2 vp-cell">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
-                                                title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
-                                                aria-pressed="false">fx</button>
-                                        <div class="flex-grow-1">
-                                          <input type="text"
-                                                inputmode="decimal"
-                                                class="form-control form-control-sm qty-input"
-                                                aria-label="Quantity (gunakan koma sebagai desimal, mis. 12,345)">
-                                          <div class="form-text fx-preview text-muted small"></div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                {% endfor %}
-                              </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    {% endfor %}
+                  <div class="vp-sub-body">
+                    <!-- Table (Component Library) -->
+                    <table class="table dp-table vp-table">
+                      <colgroup>
+                        <col style="width:6ch"> <!-- No -->
+                        <col class="col-urai"> <!-- Uraian -->
+                        <col style="width:10ch"> <!-- Satuan -->
+                        <col class="col-qty" style="width:48ch"> <!-- Quantity (lebih lebar untuk formula panjang) -->
+                      </colgroup>
+                      <thead class="table-light">
+                        <tr>
+                          <th class="text-center">No</th>
+                          <th class="text-wrap text-start">Uraian</th>
+                          <th>Satuan</th>
+                          <th>Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for p in sub.list %}
+                        <tr data-pekerjaan-id="{{ p.id }}" data-klasid="{{ klas.grouper.id }}"
+                          data-subid="{{ sub.grouper.id }}">
+                          <td>{{ forloop.counter }}</td>
+                          <td class="text-wrap text-start">{% firstof p.snapshot_uraian p.uraian p.nama '-' %}</td>
+                          <td>{% firstof p.snapshot_satuan p.satuan '-' %}</td>
+                          <td>
+                            <div class="d-flex align-items-start gap-2 vp-cell">
+                              <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
+                                title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
+                                aria-pressed="false">fx</button>
+                              <div class="flex-grow-1">
+                                <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input"
+                                  aria-label="Quantity (gunakan koma sebagai desimal, mis. 12,345)">
+                                <div class="form-text fx-preview text-muted small"></div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              </td>
-            </tr>
-          {% endfor %}
+                {% endfor %}
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
         {% else %}
-          <tr><td colspan="5" class="text-muted">Belum ada pekerjaan.</td></tr>
+        <tr>
+          <td colspan="5" class="text-muted">Belum ada pekerjaan.</td>
+        </tr>
         {% endif %}
       </tbody>
     </table>
@@ -345,7 +358,8 @@
     <div class="d-flex align-items-center gap-2">
       <span id="vp-save-status" class="text-muted small" role="status" aria-live="polite"></span>
       <button class="btn btn-success btn-neon d-inline-flex align-items-center gap-2" id="btn-save-vol">
-        <span class="spinner-border spinner-border-sm" id="btn-save-spin" role="status" aria-hidden="true" hidden></span>
+        <span class="spinner-border spinner-border-sm" id="btn-save-spin" role="status" aria-hidden="true"
+          hidden></span>
         <span>Simpan Volume</span>
       </button>
     </div>
@@ -374,7 +388,8 @@
         <h6 class="mb-1">Operator Dasar</h6>
         <p class="mb-2"><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>( )</code></p>
         <h6 class="mb-1">Fungsi Umum</h6>
-        <p class="mb-2"><code>sum(a,b,...)</code>, <code>min(a,b)</code>, <code>max(a,b)</code>, <code>round(x,2)</code></p>
+        <p class="mb-2"><code>sum(a,b,...)</code>, <code>min(a,b)</code>, <code>max(a,b)</code>, <code>round(x,2)</code>
+        </p>
         <h6 class="mb-1">Contoh</h6>
         <ul class="mb-0">
           <li><code>= panjang * lebar * tinggi</code></li>
@@ -397,29 +412,150 @@
 <div id="vp-toasts" class="toast-container position-fixed top-0 end-0 p-3 dp-layer-toast"></div>
 <!-- Single toast (fallback untuk TOAST.ok/warn/err) -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" aria-live="polite" aria-atomic="true">
-  <div id="vp-toast" class="toast text-bg-dark border-0" role="status" aria-live="assertive" aria-atomic="true" data-bs-delay="1600">
+  <div id="vp-toast" class="toast text-bg-dark border-0" role="status" aria-live="assertive" aria-atomic="true"
+    data-bs-delay="1600">
     <div class="toast-body" id="vp-toast-body">OK</div>
   </div>
 </div>
 <!-- Hover hotspot kanan -->
 <div class="vp-overlay-hotspot" aria-hidden="true"></div>
 
+<!-- Export Loading Modal -->
+<div class="modal fade" id="vpExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
+  aria-labelledby="vpExportLoadingLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-body text-center py-4">
+        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <h6 class="mb-1" id="vpExportLoadingLabel">Memproses Export</h6>
+        <p class="text-muted small mb-0" id="vpExportLoadingText">Mohon tunggu...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
+{{ block.super }}
 
-  <script defer src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
-  <!-- XLSX untuk import .xlsx -->
-  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script defer src="{% static 'detail_project/js/vol_formula_engine.js' %}"></script>
+<!-- XLSX untuk import .xlsx -->
+<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- Tambahan baru (harus sebelum volume_pekerjaan.js) -->
-  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
-  <script src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
-  <script src="{% static 'detail_project/js/volume_runtime.js' %}"></script>
+<!-- Tambahan baru (harus sebelum volume_pekerjaan.js) -->
+<script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+<script src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
+<script src="{% static 'detail_project/js/volume_runtime.js' %}"></script>
 
-  <!-- Export Manager (MUST load BEFORE volume_pekerjaan.js) -->
-  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+<!-- Export Manager (MUST load BEFORE volume_pekerjaan.js) -->
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
 
-  <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
+<script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
+
+<script>
+  // Initialize export buttons for Volume Pekerjaan with modal spinner
+  (function () {
+    const projectId = document.getElementById('vol-app')?.dataset?.projectId;
+    if (!projectId || typeof ExportManager === 'undefined') {
+      console.warn('[VolumePekerjaan] ExportManager not available');
+      return;
+    }
+
+    const exporter = new ExportManager(projectId, 'volume-pekerjaan');
+
+    // Export lock to prevent double-clicking
+    let isExporting = false;
+
+    // Get loading modal
+    const loadingModalEl = document.getElementById('vpExportLoadingModal');
+    let loadingModal = null;
+    const loadingText = document.getElementById('vpExportLoadingText');
+
+    const showLoading = (formatName) => {
+      if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
+      if (loadingModalEl) {
+        loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
+        loadingModal.show();
+      }
+    };
+
+    const hideLoading = () => {
+      if (loadingModal) {
+        try {
+          loadingModal.hide();
+        } catch (e) {
+          console.warn('[VP] Modal hide error:', e);
+        }
+      }
+      // Force cleanup after short delay
+      setTimeout(() => {
+        if (loadingModalEl) {
+          loadingModalEl.classList.remove('show');
+          loadingModalEl.style.display = 'none';
+          loadingModalEl.setAttribute('aria-hidden', 'true');
+        }
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+      }, 150);
+    };
+
+    // Collect parameters from volume_pekerjaan.js variables
+    const getParameters = () => {
+      // Use exposed function from volume_pekerjaan.js
+      if (typeof window.vpGetVariables === 'function') {
+        return window.vpGetVariables();
+      }
+      // Fallback: return empty if not available
+      console.warn('[VP Export] vpGetVariables not available');
+      return {};
+    };
+
+    // Generic export handler with lock
+    const handleExport = async (format, formatName, e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      // Prevent double-click
+      if (isExporting) {
+        console.log('[VP] Export already in progress, ignoring');
+        return;
+      }
+
+      isExporting = true;
+      showLoading(formatName);
+
+      try {
+        await exporter.exportAs(format, { parameters: getParameters() });
+      } finally {
+        hideLoading();
+        isExporting = false;
+      }
+    };
+
+    const btnXLSX = document.getElementById('btn-export-xlsx');
+    const btnPDF = document.getElementById('btn-export-pdf');
+    const btnWord = document.getElementById('btn-export-word');
+    const btnJSON = document.getElementById('btn-export-json');
+
+    if (btnXLSX) {
+      btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e), { once: false });
+    }
+    if (btnPDF) {
+      btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e), { once: false });
+    }
+    if (btnWord) {
+      btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e), { once: false });
+    }
+    if (btnJSON) {
+      btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e), { once: false });
+    }
+
+    console.log('[VolumePekerjaan] Export buttons initialized with lock');
+  })();
+</script>
 {% endblock %}

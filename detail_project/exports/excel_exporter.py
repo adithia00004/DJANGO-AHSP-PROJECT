@@ -265,6 +265,278 @@ class ExcelExporter(ConfigExporterBase):
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
+    def export_volume_pekerjaan(self, data: Dict[str, Any], adapter=None):
+        """
+        Export Volume Pekerjaan with 2 sheets:
+        1. Parameters - Parameter table with values (SSOT for formula references)
+        2. Volume Pekerjaan - Main table with Excel formula references
+        
+        Args:
+            data: Export data from VolumePekerjaanAdapter
+            adapter: Adapter instance for formula conversion
+        """
+        if not OPENPYXL_AVAILABLE:
+            raise RuntimeError('openpyxl belum terpasang. Install via "pip install openpyxl".')
+
+        wb = Workbook()
+        border = self._get_thin_border()
+        
+        pages = data.get('pages', [])
+        if len(pages) < 2:
+            # Fallback to standard export
+            return self.export(data)
+        
+        volume_page = pages[0]  # Volume & Formula (main content)
+        param_page = pages[1]   # Parameters (appendix)
+        parameter_cells = data.get('parameter_cells', {})
+        
+        # ========== SHEET 1: PARAMETERS ==========
+        ws_params = wb.active
+        ws_params.title = "Parameters"
+        
+        current_row = 1
+        
+        # Title
+        ws_params.cell(row=current_row, column=1, value=param_page.get('title', 'DAFTAR PARAMETER'))
+        ws_params.cell(row=current_row, column=1).font = Font(size=14, bold=True, color='4472C4')
+        current_row += 2
+        
+        # Identity rows (project info)
+        for label, _, value in build_identity_rows(self.config):
+            ws_params.cell(row=current_row, column=1, value=label)
+            ws_params.cell(row=current_row, column=1).font = Font(bold=True)
+            ws_params.cell(row=current_row, column=2, value=value)
+            current_row += 1
+        current_row += 1
+        
+        # Parameter table
+        param_table = param_page.get('table_data', {})
+        param_headers = param_table.get('headers', [])
+        param_rows = param_table.get('rows', [])
+        
+        # Track actual cell locations for formula references
+        param_value_cells = {}  # {param_code: 'D5', ...}
+        param_header_row = current_row
+        
+        # Headers
+        for col_idx, header in enumerate(param_headers, 1):
+            cell = ws_params.cell(row=current_row, column=col_idx, value=header)
+            cell.font = Font(bold=True, color='FFFFFF', size=9)
+            cell.fill = PatternFill('solid', fgColor='4472C4')
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        current_row += 1
+        
+        # Parameter rows
+        for row_idx, row in enumerate(param_rows):
+            for col_idx, val in enumerate(row, 1):
+                cell = ws_params.cell(row=current_row, column=col_idx, value=val)
+                cell.font = Font(size=9)
+                cell.border = border
+                if col_idx == 4:  # Value column - right align numbers
+                    cell.alignment = Alignment(horizontal='right')
+                    # Store cell reference (param code is in column 2)
+                    if len(row) > 1:
+                        param_code = row[1]  # Kode column
+                        param_value_cells[param_code] = f'D{current_row}'
+            current_row += 1
+        
+        # Apply column widths
+        param_widths = param_page.get('col_widths', [12, 40, 80, 50])
+        for idx, w in enumerate(param_widths):
+            ws_params.column_dimensions[get_column_letter(idx + 1)].width = self._mm_to_excel_width(w)
+        
+        # ========== SHEET 2: VOLUME PEKERJAAN ==========
+        ws_volume = wb.create_sheet("Volume Pekerjaan")
+        
+        current_row = 1
+        
+        # Title
+        ws_volume.cell(row=current_row, column=1, value=volume_page.get('title', 'VOLUME PEKERJAAN'))
+        ws_volume.cell(row=current_row, column=1).font = Font(size=14, bold=True, color='4472C4')
+        current_row += 2
+        
+        # Identity rows
+        for label, _, value in build_identity_rows(self.config):
+            ws_volume.cell(row=current_row, column=1, value=label)
+            ws_volume.cell(row=current_row, column=1).font = Font(bold=True)
+            ws_volume.cell(row=current_row, column=2, value=value)
+            current_row += 1
+        current_row += 1
+        
+        # Volume table
+        volume_table = volume_page.get('table_data', {})
+        volume_headers = volume_table.get('headers', [])
+        volume_rows = volume_table.get('rows', [])
+        hierarchy_levels = volume_page.get('hierarchy_levels', {})
+        row_types = volume_page.get('row_types', [])
+        num_cols = len(volume_headers)
+        
+        # Headers
+        for col_idx, header in enumerate(volume_headers, 1):
+            cell = ws_volume.cell(row=current_row, column=col_idx, value=header)
+            cell.font = Font(bold=True, color='FFFFFF', size=9)
+            cell.fill = PatternFill('solid', fgColor='4472C4')
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        current_row += 1
+        
+        # Volume rows
+        for row_idx, row in enumerate(volume_rows):
+            row_type = row_types[row_idx] if row_idx < len(row_types) else 'item'
+            
+            if row_type == 'category':
+                # Category row - merge and style
+                cell = ws_volume.cell(row=current_row, column=1, value=row[0] if row else '')
+                cell.font = Font(bold=True, size=9)
+                cell.fill = PatternFill('solid', fgColor='E8E8E8')
+                cell.border = border
+                
+                if num_cols > 1:
+                    ws_volume.merge_cells(start_row=current_row, start_column=1, 
+                                         end_row=current_row, end_column=num_cols)
+                for col_idx in range(2, num_cols + 1):
+                    ws_volume.cell(row=current_row, column=col_idx).border = border
+            else:
+                # Normal row
+                for col_idx, val in enumerate(row, 1):
+                    cell = ws_volume.cell(row=current_row, column=col_idx)
+                    cell.font = Font(size=9)
+                    cell.border = border
+                    
+                    # Column 3 is Formula - try to convert to Excel formula
+                    if col_idx == 3 and adapter and val and str(val).startswith('='):
+                        try:
+                            excel_formula = self._convert_volume_formula(val, param_value_cells)
+                            cell.value = excel_formula
+                        except Exception:
+                            cell.value = val  # Fallback to raw formula
+                    else:
+                        cell.value = val
+                    
+                    # Text wrapping for Uraian column (column 2)
+                    if col_idx == 2:
+                        cell.alignment = Alignment(vertical='top', wrap_text=True)
+                    # Right-align numeric columns (Volume = last column)
+                    elif col_idx == num_cols:
+                        cell.alignment = Alignment(horizontal='right', vertical='top')
+                
+                # Apply indent for hierarchy
+                level = hierarchy_levels.get(row_idx, 0)
+                if level > 0:
+                    ws_volume.cell(row=current_row, column=1).alignment = Alignment(indent=level)
+            
+            current_row += 1
+        
+        # Footer
+        footer_rows = volume_page.get('footer_rows', [])
+        if footer_rows:
+            current_row += 1
+            for footer in footer_rows:
+                ws_volume.cell(row=current_row, column=1, value=footer[0] if footer else '')
+                ws_volume.cell(row=current_row, column=1).font = Font(bold=True)
+                if len(footer) > 1:
+                    ws_volume.cell(row=current_row, column=2, value=footer[1])
+                current_row += 1
+        
+        # Apply column widths
+        volume_widths = volume_page.get('col_widths', [10, 70, 55, 20, 27])
+        for idx, w in enumerate(volume_widths):
+            ws_volume.column_dimensions[get_column_letter(idx + 1)].width = self._mm_to_excel_width(w)
+        
+        # ========== SHEET 3: PENGESAHAN (Signatures) ==========
+        signature_data = data.get('signature_data')
+        if data.get('include_signatures') and signature_data:
+            ws_sign = wb.create_sheet("Pengesahan")
+            self._write_signature_sheet(ws_sign, signature_data)
+        
+        # Save workbook
+        output = BytesIO()
+        wb.save(output)
+        filename = f"Volume_Pekerjaan_{self.config.export_date.strftime('%Y%m%d')}.xlsx"
+        return self._create_response(
+            output.getvalue(),
+            filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    def _convert_volume_formula(self, formula_str: str, param_cells: Dict[str, str]) -> str:
+        """
+        Convert volume formula to Excel formula with cell references.
+        
+        Example:
+            Input: "= panjang * lebar"
+            param_cells: {'panjang': 'D5', 'lebar': 'D6'}
+            Output: "=Parameters!$D$5*Parameters!$D$6"
+        """
+        import re
+        
+        if not formula_str or not formula_str.strip().startswith('='):
+            return formula_str
+        
+        excel_formula = formula_str.strip()
+        
+        # Replace each parameter with its cell reference
+        for param, cell_ref in param_cells.items():
+            # Extract column letter and row number
+            col = ''.join(c for c in cell_ref if c.isalpha())
+            row = ''.join(c for c in cell_ref if c.isdigit())
+            
+            # Use word boundary to avoid partial replacements
+            pattern = r'\b' + re.escape(param) + r'\b'
+            replacement = f"Parameters!${col}${row}"
+            excel_formula = re.sub(pattern, replacement, excel_formula, flags=re.IGNORECASE)
+        
+        return excel_formula
+
+    def _write_signature_sheet(self, ws, signature_data: Dict[str, Any]):
+        """Write signature/pengesahan sheet matching Harga Items format."""
+        border = self._get_thin_border()
+        
+        # Title
+        ws.cell(row=1, column=1, value="LEMBAR PENGESAHAN")
+        ws.cell(row=1, column=1).font = Font(size=14, bold=True)
+        ws.merge_cells('A1:F1')
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal='center')
+        
+        # Signature table starts at row 5
+        start_row = 5
+        
+        # Left signature
+        ws.cell(row=start_row, column=2, value=signature_data.get('left_title', 'Disetujui Oleh,'))
+        ws.cell(row=start_row, column=2).font = Font(bold=True)
+        ws.cell(row=start_row, column=2).alignment = Alignment(horizontal='center')
+        
+        # Right signature
+        ws.cell(row=start_row, column=5, value=signature_data.get('right_title', 'Dibuat Oleh,'))
+        ws.cell(row=start_row, column=5).font = Font(bold=True)
+        ws.cell(row=start_row, column=5).alignment = Alignment(horizontal='center')
+        
+        # Space for signature
+        space_row = start_row + 5
+        
+        # Names
+        ws.cell(row=space_row, column=2, value=signature_data.get('left_name', '...........................'))
+        ws.cell(row=space_row, column=2).alignment = Alignment(horizontal='center')
+        
+        ws.cell(row=space_row, column=5, value=signature_data.get('right_name', '...........................'))
+        ws.cell(row=space_row, column=5).alignment = Alignment(horizontal='center')
+        
+        # Positions
+        ws.cell(row=space_row + 1, column=2, value=signature_data.get('left_position', 'Pejabat Pembuat Komitmen'))
+        ws.cell(row=space_row + 1, column=2).alignment = Alignment(horizontal='center')
+        
+        ws.cell(row=space_row + 1, column=5, value=signature_data.get('right_position', 'Konsultan Perencana'))
+        ws.cell(row=space_row + 1, column=5).alignment = Alignment(horizontal='center')
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 30
+        ws.column_dimensions['C'].width = 10
+        ws.column_dimensions['D'].width = 10
+        ws.column_dimensions['E'].width = 30
+        ws.column_dimensions['F'].width = 5
+
     def _export_rincian_ahsp_2sheet(self, data: Dict[str, Any]):
         """
         Export Rincian AHSP with 2 sheets:
@@ -557,20 +829,50 @@ class ExcelExporter(ConfigExporterBase):
         headers = table_data.get('headers') or []
         rows = table_data.get('rows') or []
         hierarchy = section.get('hierarchy_levels') or {}
+        row_types = section.get('row_types') or []
         border = self._get_thin_border()
+
+        num_cols = len(headers)
 
         if headers:
             for col_idx, header in enumerate(headers, 1):
                 cell = ws.cell(row=start_row, column=col_idx, value=header)
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill('solid', fgColor='E8E8E8')
+                cell.font = Font(bold=True, color='FFFFFF')
+                cell.fill = PatternFill('solid', fgColor='4472C4')
                 cell.border = border
+                cell.alignment = Alignment(horizontal='center', vertical='center')
             start_row += 1
 
         for row_idx, row in enumerate(rows):
-            for col_idx, val in enumerate(row, 1):
-                cell = ws.cell(row=start_row, column=col_idx, value=val)
+            row_type = row_types[row_idx] if row_idx < len(row_types) else 'item'
+            
+            if row_type == 'category':
+                # Category row - merge cells and apply styling
+                cell = ws.cell(row=start_row, column=1, value=row[0] if row else '')
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill('solid', fgColor='E8E8E8')
                 cell.border = border
+                
+                # Merge cells from column 1 to last column
+                if num_cols > 1:
+                    ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=num_cols)
+                
+                # Apply border to merged area
+                for col_idx in range(2, num_cols + 1):
+                    ws.cell(row=start_row, column=col_idx).border = border
+            else:
+                # Normal row
+                for col_idx, val in enumerate(row, 1):
+                    cell = ws.cell(row=start_row, column=col_idx, value=val)
+                    cell.border = border
+                    # Check if cell has multi-line content
+                    has_newline = isinstance(val, str) and '\n' in val
+                    # Right-align price column (last column)
+                    if col_idx == num_cols:
+                        cell.alignment = Alignment(horizontal='right', vertical='top', wrap_text=has_newline)
+                    elif has_newline:
+                        cell.alignment = Alignment(vertical='top', wrap_text=True)
+                        
             level = hierarchy.get(row_idx, 0)
             if level > 0:
                 ws.cell(row=start_row, column=1).alignment = Alignment(indent=level * 2)
