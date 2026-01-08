@@ -36,7 +36,8 @@ from ..export_config import (
     get_level_style,
     build_identity_rows,
 )
-from .table_styles import UnifiedTableStyles as UTS
+from .table_styles import UnifiedTableStyles as UTS, ExportDefaults as ED
+from .signature_config import SignatureLayoutRules as SLR
 
 
 class WordExporter:

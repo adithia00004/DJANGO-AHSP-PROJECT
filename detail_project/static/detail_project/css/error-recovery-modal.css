@@ -1,0 +1,280 @@
+/* =====================================================================
+   ERROR RECOVERY MODAL - SSOT Styling
+   Consistent with core.css tokens
+   ===================================================================== */
+
+/* Modal Overlay */
+.error-recovery-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: var(--dp-z-modal, 13000);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.error-recovery-overlay.show {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Modal Container */
+.error-recovery-modal {
+    background: var(--dp-c-surface, #fff);
+    border-radius: var(--dp-radius-lg, 0.75rem);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 450px;
+    width: 90%;
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal Header */
+.error-recovery-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--dp-c-border, #e5e7eb);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.error-recovery-header .error-icon {
+    font-size: 1.75rem;
+    flex-shrink: 0;
+}
+
+.error-recovery-header .error-icon.timeout {
+    color: var(--dp-c-warning, #ffc107);
+}
+
+.error-recovery-header .error-icon.network {
+    color: var(--dp-c-danger, #dc3545);
+}
+
+.error-recovery-header .error-icon.server {
+    color: var(--dp-c-danger, #dc3545);
+}
+
+.error-recovery-header .error-icon.unknown {
+    color: var(--dp-c-warning, #ffc107);
+}
+
+.error-recovery-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--dp-c-text, #1f2937);
+    margin: 0;
+}
+
+/* Modal Body */
+.error-recovery-body {
+    padding: 1.5rem;
+}
+
+.error-recovery-message {
+    color: var(--dp-c-text-muted, #6b7280);
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+}
+
+/* Action Buttons */
+.error-recovery-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.error-recovery-btn {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border-radius: var(--dp-radius-md, 0.5rem);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+}
+
+.error-recovery-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.error-recovery-btn:active {
+    transform: translateY(0);
+}
+
+/* Wait Button (Primary) */
+.error-recovery-btn.btn-wait {
+    background: var(--dp-c-primary, #0d6efd);
+    color: #fff;
+}
+
+.error-recovery-btn.btn-wait:hover {
+    background: var(--dp-c-primary-dark, #0a58ca);
+}
+
+/* Reload Button (Secondary) */
+.error-recovery-btn.btn-reload {
+    background: var(--dp-c-surface-2, #f3f4f6);
+    color: var(--dp-c-text, #1f2937);
+    border: 1px solid var(--dp-c-border, #e5e7eb);
+}
+
+.error-recovery-btn.btn-reload:hover {
+    background: var(--dp-c-border, #e5e7eb);
+}
+
+/* Sub-action text */
+.error-recovery-btn small {
+    font-weight: 400;
+    opacity: 0.8;
+    font-size: 0.75rem;
+}
+
+/* Checkbox Option */
+.error-recovery-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--dp-c-text-muted, #6b7280);
+    font-size: 0.875rem;
+}
+
+.error-recovery-option input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
+/* Footer Tip */
+.error-recovery-footer {
+    padding: 1rem 1.5rem;
+    background: var(--dp-c-surface-2, #f9fafb);
+    border-top: 1px solid var(--dp-c-border, #e5e7eb);
+}
+
+.error-recovery-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--dp-c-text-muted, #6b7280);
+    margin: 0;
+}
+
+.error-recovery-tip .tip-icon {
+    color: var(--dp-c-info, #0dcaf0);
+    flex-shrink: 0;
+}
+
+/* Loading State */
+.error-recovery-btn.loading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.error-recovery-btn.loading::after {
+    content: '';
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Countdown Timer */
+.error-recovery-countdown {
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--dp-c-text-muted, #6b7280);
+    margin-top: 0.75rem;
+}
+
+.error-recovery-countdown strong {
+    color: var(--dp-c-primary, #0d6efd);
+    font-weight: 600;
+}
+
+/* Dark Mode Support */
+[data-bs-theme="dark"] .error-recovery-modal {
+    background: var(--dp-c-surface, #1f2937);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+[data-bs-theme="dark"] .error-recovery-title {
+    color: var(--dp-c-text, #f3f4f6);
+}
+
+[data-bs-theme="dark"] .error-recovery-btn.btn-reload {
+    background: var(--dp-c-surface-2, #374151);
+    color: var(--dp-c-text, #f3f4f6);
+    border-color: var(--dp-c-border, #4b5563);
+}
+
+[data-bs-theme="dark"] .error-recovery-btn.btn-reload:hover {
+    background: var(--dp-c-border, #4b5563);
+}
+
+[data-bs-theme="dark"] .error-recovery-footer {
+    background: var(--dp-c-surface-2, #374151);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .error-recovery-modal {
+        width: 95%;
+        margin: 1rem;
+    }
+
+    .error-recovery-actions {
+        flex-direction: column;
+    }
+
+    .error-recovery-header {
+        padding: 1rem;
+    }
+
+    .error-recovery-body {
+        padding: 1rem;
+    }
+}

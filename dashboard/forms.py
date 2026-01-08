@@ -26,7 +26,7 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = "__all__"
-        exclude = ["owner", "index_project", "is_active", "created_at", "updated_at", "tahun_project"]
+        exclude = ["owner", "index_project", "is_active", "created_at", "updated_at", "tahun_project", "week_start_day", "week_end_day"]
         widgets = {
             "nama": forms.TextInput(attrs={"class": "form-control", "placeholder": "Masukkan nama project"}),
             "sumber_dana": forms.TextInput(attrs={"class": "form-control"}),

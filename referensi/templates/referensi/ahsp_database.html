@@ -3,7 +3,7 @@
 {% load static %}
 
 {% block extra_css %}
-    <link rel="stylesheet" href="{% static 'referensi/css/ahsp_database.css' %}">
+<link rel="stylesheet" href="{% static 'referensi/css/ahsp_database.css' %}">
 {% endblock %}
 
 {% block title %}Database Referensi AHSP{% endblock %}
@@ -19,372 +19,398 @@
         </p>
     </div>
 
+    {# Stats Summary Header #}
+    <div class="ahsp-stats-header">
+        <div class="ahsp-stat-item">
+            <i class="bi bi-briefcase-fill"></i>
+            <div>
+                <div class="stat-value">{{ jobs.summary.total_filtered|default:0 }}</div>
+                <div class="stat-label">Total Pekerjaan</div>
+            </div>
+        </div>
+        <div class="ahsp-stat-item">
+            <i class="bi bi-list-check"></i>
+            <div>
+                <div class="stat-value">{{ items.summary.total_filtered|default:0 }}</div>
+                <div class="stat-label">Total Rincian</div>
+            </div>
+        </div>
+        <div class="ahsp-stat-item">
+            <i class="bi bi-exclamation-triangle-fill" style="color: var(--ahsp-warning);"></i>
+            <div>
+                <div class="stat-value">{{ jobs.summary.anomaly_displayed|default:0 }}</div>
+                <div class="stat-label">Anomali</div>
+            </div>
+        </div>
+        {% if jobs.summary.truncated or items.summary.truncated %}
+        <div class="ahsp-stat-item">
+            <i class="bi bi-eye-slash" style="color: var(--ahsp-text-muted);"></i>
+            <div>
+                <div class="stat-value small text-muted">Ditampilkan: {{ jobs.summary.displayed }}/{{
+                    jobs.summary.total_filtered }}</div>
+                <div class="stat-label">Terbatas {{ jobs.summary.limit }} baris</div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
     {% url 'referensi:ahsp_database' as base_url %}
     <ul class="nav nav-pills flex-wrap" role="tablist">
         {% with job_query=jobs.filter_params|urlencode %}
-            <li class="nav-item" role="presentation">
-                <a
-                    class="nav-link {% if active_tab == 'jobs' %}active{% endif %}"
-                    href="{{ base_url }}?tab=jobs{% if job_query %}&{{ job_query }}{% endif %}"
-                    role="tab"
-                >
-                    <i class="bi bi-briefcase me-2"></i>Pekerjaan AHSP
-                </a>
-            </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if active_tab == 'jobs' %}active{% endif %}"
+                href="{{ base_url }}?tab=jobs{% if job_query %}&{{ job_query }}{% endif %}" role="tab">
+                <i class="bi bi-briefcase me-2"></i>Pekerjaan AHSP
+            </a>
+        </li>
         {% endwith %}
         {% with item_query=items.filter_params|urlencode %}
-            <li class="nav-item" role="presentation">
-                <a
-                    class="nav-link {% if active_tab == 'items' %}active{% endif %}"
-                    href="{{ base_url }}?tab=items{% if item_query %}&{{ item_query }}{% endif %}"
-                    role="tab"
-                >
-                    <i class="bi bi-table me-2"></i>Rincian Item
-                </a>
-            </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link {% if active_tab == 'items' %}active{% endif %}"
+                href="{{ base_url }}?tab=items{% if item_query %}&{{ item_query }}{% endif %}" role="tab">
+                <i class="bi bi-table me-2"></i>Rincian Item
+            </a>
+        </li>
         {% endwith %}
     </ul>
 
     {% if active_tab == 'jobs' %}
-        <form method="post" class="card shadow-sm border-0">
-            {% csrf_token %}
-            <input type="hidden" name="active_tab" value="jobs">
-            <input type="hidden" name="tab" value="jobs">
-            {{ jobs.formset.management_form }}
+    <form method="post" class="card shadow-sm border-0">
+        {% csrf_token %}
+        <input type="hidden" name="active_tab" value="jobs">
+        <input type="hidden" name="tab" value="jobs">
+        {{ jobs.formset.management_form }}
 
-            <div class="card-header bg-body-tertiary p-3">
-                <div class="row g-2 align-items-center">
-                    {# Left: Row Limit Control #}
-                    <div class="col-auto">
-                        <div class="d-flex align-items-center gap-2">
-                            <label class="small text-muted mb-0">Tampilkan:</label>
-                            <select class="form-select form-select-sm" id="rowLimitJobs" style="width: auto;">
-                                <option value="20">20</option>
-                                <option value="50" selected>50</option>
-                                <option value="100">100</option>
-                                <option value="200">200</option>
-                            </select>
-                            <span class="small text-muted">baris</span>
-                        </div>
-                    </div>
-
-                    {# Column Visibility Toggle #}
-                    <div class="col-auto">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnColumnToggleJobs">
-                            <i class="bi bi-layout-three-columns"></i> Kolom
-                        </button>
-                    </div>
-
-                    {# Center: Search Bar with Autocomplete #}
-                    <div class="col">
-                        <div class="position-relative">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input
-                                    type="text"
-                                    class="form-control"
-                                    id="quickSearchJobs"
-                                    placeholder="Cari data... (tekan Enter atau klik Search)"
-                                    autocomplete="off"
-                                >
-                                <button class="btn btn-primary" type="button" id="btnSearchJobs">
-                                    <i class="bi bi-search"></i> Search
-                                </button>
-                            </div>
-                            {# Autocomplete Dropdown #}
-                            <div class="autocomplete-dropdown" id="autocompleteJobsDropdown"></div>
-                        </div>
-                    </div>
-
-                    {# Right: Action Buttons #}
-                    <div class="col-12 col-md-auto">
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="button" class="btn btn-danger btn-sm" id="btnBulkDelete">
-                                <i class="bi bi-trash"></i> Hapus Data
-                            </button>
-                            <button type="submit" class="btn btn-primary btn-sm">
-                                <i class="bi bi-save"></i> Simpan
-                            </button>
-                        </div>
-                    </div>
+        {# Unified Toolbar #}
+        <div class="ahsp-unified-toolbar">
+            {# Search Section #}
+            <div class="ahsp-toolbar-section search-section">
+                <div class="ahsp-search-wrapper">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" class="form-control form-control-sm" id="quickSearchJobs"
+                        placeholder="Cari kode, nama, atau klasifikasi..." autocomplete="off">
                 </div>
+                <button class="btn btn-primary btn-sm" type="button" id="btnSearchJobs">
+                    <i class="bi bi-search"></i>
+                </button>
+                <div class="autocomplete-dropdown" id="autocompleteJobsDropdown"></div>
             </div>
 
-            <div class="card-body p-0">
-                {% if jobs.rows %}
-                    <div class="table-responsive ahsp-table-responsive">
-                        <table class="table table-sm table-striped align-middle mb-0 ahsp-database-table" id="tableJobs">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="sortable" data-sort="kode" style="min-width: 9rem;">
-                                        Kode AHSP <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="nama" style="min-width: 20rem;">
-                                        Nama Pekerjaan <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="klasifikasi" style="min-width: 9rem;">
-                                        Klasifikasi <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="sub_klasifikasi" style="min-width: 9rem;">
-                                        Sub-klasifikasi <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="satuan" style="min-width: 7rem;">
-                                        Satuan <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="sumber" style="min-width: 8rem;">
-                                        Sumber <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="source_file" style="min-width: 10rem;">
-                                        File Sumber <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th style="min-width: 12rem;">Rincian</th>
-                                    <th style="min-width: 12rem;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in jobs.rows %}
-                                    <tr class="align-top {% if row.anomaly_reasons %}table-warning{% endif %}">
-                                        <td>
-                                            {{ row.form.id }}
-                                            {{ row.form.kode_ahsp }}
-                                            {% if row.form.kode_ahsp.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.kode_ahsp.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.nama_ahsp }}
-                                            {% if row.form.nama_ahsp.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.nama_ahsp.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.klasifikasi }}
-                                            {% if row.form.klasifikasi.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.klasifikasi.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.sub_klasifikasi }}
-                                            {% if row.form.sub_klasifikasi.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.sub_klasifikasi.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.satuan }}
-                                            {% if row.form.satuan.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.satuan.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.sumber }}
-                                            {% if row.form.sumber.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.sumber.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.source_file }}
-                                            {% if row.form.source_file.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.source_file.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <div class="d-flex flex-column gap-1 small">
-                                                <span class="badge bg-primary-subtle text-primary-emphasis">TK: {{ row.category_counts.TK|intcomma }}</span>
-                                                <span class="badge bg-info-subtle text-info-emphasis">BHN: {{ row.category_counts.BHN|intcomma }}</span>
-                                                <span class="badge bg-secondary-subtle text-secondary-emphasis">ALT: {{ row.category_counts.ALT|intcomma }}</span>
-                                                <span class="badge bg-dark-subtle text-dark-emphasis">LAIN: {{ row.category_counts.LAIN|intcomma }}</span>
-                                                <span class="badge bg-body-secondary text-body fw-semibold">Total: {{ row.object.rincian_total|intcomma }}</span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            {% if row.anomaly_reasons %}
-                                                <ul class="list-unstyled small mb-0">
-                                                    {% for reason in row.anomaly_reasons %}
-                                                        <li><i class="bi bi-exclamation-triangle-fill text-warning"></i> {{ reason }}</li>
-                                                    {% endfor %}
-                                                </ul>
-                                            {% else %}
-                                                <span class="badge bg-success-subtle text-success-emphasis">
-                                                    <i class="bi bi-check-circle"></i> Data terlihat normal
-                                                </span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="p-5 text-center text-muted">
-                        <i class="bi bi-database-x fs-1 d-block mb-2"></i>
-                        <p class="mb-1">Tidak ada data yang cocok dengan filter saat ini.</p>
-                        <p class="small mb-0">Silakan ubah filter atau lakukan impor data baru.</p>
-                    </div>
-                {% endif %}
+            <div class="ahsp-toolbar-divider"></div>
+
+            {# Controls Section #}
+            <div class="ahsp-toolbar-section">
+                <select class="form-select form-select-sm" id="rowLimitJobs" style="width: auto;"
+                    title="Baris per halaman">
+                    <option value="20">20</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnColumnToggleJobs"
+                    title="Atur Kolom">
+                    <i class="bi bi-layout-three-columns"></i>
+                </button>
             </div>
-        </form>
+
+            <div class="ahsp-toolbar-divider"></div>
+
+            {# Actions Section #}
+            <div class="ahsp-toolbar-section">
+                <div class="dropdown">
+                    <button class="btn btn-outline-danger btn-sm dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown">
+                        <i class="bi bi-trash"></i> Hapus
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" id="btnBulkDelete"><i class="bi bi-trash me-2"></i>Hapus
+                                Berdasarkan Sumber</a></li>
+                    </ul>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="bi bi-save"></i> Simpan
+                </button>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            {% if jobs.rows %}
+            <div class="table-responsive ahsp-table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0 ahsp-database-table" id="tableJobs">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable" data-sort="kode" style="min-width: 9rem;">
+                                Kode AHSP <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="nama" style="min-width: 20rem;">
+                                Nama Pekerjaan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="klasifikasi" style="min-width: 9rem;">
+                                Klasifikasi <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="sub_klasifikasi" style="min-width: 9rem;">
+                                Sub-klasifikasi <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="satuan" style="min-width: 7rem;">
+                                Satuan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="sumber" style="min-width: 8rem;">
+                                Sumber <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="source_file" style="min-width: 10rem;">
+                                File Sumber <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th style="min-width: 12rem;">Rincian</th>
+                            <th style="min-width: 12rem;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in jobs.rows %}
+                        <tr class="align-top {% if row.anomaly_reasons %}table-warning{% endif %}">
+                            <td>
+                                {{ row.form.id }}
+                                {{ row.form.kode_ahsp }}
+                                {% if row.form.kode_ahsp.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.kode_ahsp.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.nama_ahsp }}
+                                {% if row.form.nama_ahsp.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.nama_ahsp.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.klasifikasi }}
+                                {% if row.form.klasifikasi.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.klasifikasi.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.sub_klasifikasi }}
+                                {% if row.form.sub_klasifikasi.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.sub_klasifikasi.errors|striptags }}
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.satuan }}
+                                {% if row.form.satuan.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.satuan.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.sumber }}
+                                {% if row.form.sumber.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.sumber.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.source_file }}
+                                {% if row.form.source_file.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.source_file.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="ahsp-rincian-badges">
+                                    <span class="badge bg-primary-subtle text-primary-emphasis"
+                                        title="Tenaga Kerja">TK:{{ row.category_counts.TK }}</span>
+                                    <span class="badge bg-info-subtle text-info-emphasis" title="Bahan">BHN:{{
+                                        row.category_counts.BHN }}</span>
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis" title="Alat">ALT:{{
+                                        row.category_counts.ALT }}</span>
+                                    {% if row.category_counts.LAIN > 0 %}
+                                    <span class="badge bg-dark-subtle text-dark-emphasis" title="Lainnya">+{{
+                                        row.category_counts.LAIN }}</span>
+                                    {% endif %}
+                                    <span class="badge bg-body-secondary text-body fw-semibold"
+                                        title="Total Rincian">Σ{{ row.object.rincian_total }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if row.anomaly_reasons %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis"
+                                    title="{{ row.anomaly_reasons|join:', ' }}">
+                                    <i class="bi bi-exclamation-triangle"></i> {{ row.anomaly_reasons|length }} masalah
+                                </span>
+                                {% else %}
+                                <span class="badge bg-success-subtle text-success-emphasis">
+                                    <i class="bi bi-check-circle"></i> OK
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-database-x fs-1 d-block mb-2"></i>
+                <p class="mb-1">Tidak ada data yang cocok dengan filter saat ini.</p>
+                <p class="small mb-0">Silakan ubah filter atau lakukan impor data baru.</p>
+            </div>
+            {% endif %}
+        </div>
+    </form>
     {% else %}
-        <form method="post" class="card shadow-sm border-0">
-            {% csrf_token %}
-            <input type="hidden" name="active_tab" value="items">
-            <input type="hidden" name="tab" value="items">
-            <input type="hidden" name="item_q" value="{{ items.filters.search }}">
-            <input type="hidden" name="item_kategori" value="{{ items.filters.kategori }}">
-            <input type="hidden" name="item_job" value="{{ items.filters.job_value }}">
-            {{ items.formset.management_form }}
+    <form method="post" class="card shadow-sm border-0">
+        {% csrf_token %}
+        <input type="hidden" name="active_tab" value="items">
+        <input type="hidden" name="tab" value="items">
+        <input type="hidden" name="item_q" value="{{ items.filters.search }}">
+        <input type="hidden" name="item_kategori" value="{{ items.filters.kategori }}">
+        <input type="hidden" name="item_job" value="{{ items.filters.job_value }}">
+        {{ items.formset.management_form }}
 
-            <div class="card-header bg-body-tertiary p-3">
-                <div class="row g-2 align-items-center">
-                    {# Left: Row Limit Control #}
-                    <div class="col-auto">
-                        <div class="d-flex align-items-center gap-2">
-                            <label class="small text-muted mb-0">Tampilkan:</label>
-                            <select class="form-select form-select-sm" id="rowLimitItems" style="width: auto;">
-                                <option value="20">20</option>
-                                <option value="50" selected>50</option>
-                                <option value="100">100</option>
-                                <option value="200">200</option>
-                            </select>
-                            <span class="small text-muted">baris</span>
-                        </div>
+        <div class="card-header bg-body-tertiary p-3">
+            <div class="row g-2 align-items-center">
+                {# Left: Row Limit Control #}
+                <div class="col-auto">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="small text-muted mb-0">Tampilkan:</label>
+                        <select class="form-select form-select-sm" id="rowLimitItems" style="width: auto;">
+                            <option value="20">20</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                        </select>
+                        <span class="small text-muted">baris</span>
                     </div>
+                </div>
 
-                    {# Column Visibility Toggle #}
-                    <div class="col-auto">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnColumnToggleItems">
-                            <i class="bi bi-layout-three-columns"></i> Kolom
-                        </button>
-                    </div>
+                {# Column Visibility Toggle #}
+                <div class="col-auto">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnColumnToggleItems">
+                        <i class="bi bi-layout-three-columns"></i> Kolom
+                    </button>
+                </div>
 
-                    {# Center: Search Bar with Autocomplete #}
-                    <div class="col">
-                        <div class="position-relative">
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input
-                                    type="text"
-                                    class="form-control"
-                                    id="quickSearchItems"
-                                    placeholder="Cari data... (tekan Enter atau klik Search)"
-                                    autocomplete="off"
-                                >
-                                <button class="btn btn-primary" type="button" id="btnSearchItems">
-                                    <i class="bi bi-search"></i> Search
-                                </button>
-                            </div>
-                            {# Autocomplete Dropdown #}
-                            <div class="autocomplete-dropdown" id="autocompleteItemsDropdown"></div>
-                        </div>
-                    </div>
-
-                    {# Right: Action Buttons #}
-                    <div class="col-12 col-md-auto">
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="submit" class="btn btn-primary btn-sm">
-                                <i class="bi bi-save"></i> Simpan
+                {# Center: Search Bar with Autocomplete #}
+                <div class="col">
+                    <div class="position-relative">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="quickSearchItems"
+                                placeholder="Cari data... (tekan Enter atau klik Search)" autocomplete="off">
+                            <button class="btn btn-primary" type="button" id="btnSearchItems">
+                                <i class="bi bi-search"></i> Search
                             </button>
                         </div>
+                        {# Autocomplete Dropdown #}
+                        <div class="autocomplete-dropdown" id="autocompleteItemsDropdown"></div>
+                    </div>
+                </div>
+
+                {# Right: Action Buttons #}
+                <div class="col-12 col-md-auto">
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="bi bi-save"></i> Simpan
+                        </button>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="card-body p-0">
-                {% if items.rows %}
-                    <div class="table-responsive ahsp-table-responsive">
-                        <table class="table table-sm table-striped align-middle mb-0 ahsp-database-table" id="tableItems">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="sortable" data-sort="pekerjaan" style="min-width: 12rem;">
-                                        Pekerjaan <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="kategori" style="min-width: 7rem;">
-                                        Kategori <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="kode_item" style="min-width: 8rem;">
-                                        Kode Item <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="uraian" style="min-width: 22rem;">
-                                        Uraian <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="satuan" style="min-width: 7rem;">
-                                        Satuan <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th class="sortable" data-sort="koefisien" style="min-width: 7rem;" class="text-end">
-                                        Koefisien <i class="bi bi-arrow-down-up text-muted"></i>
-                                    </th>
-                                    <th style="min-width: 12rem;">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in items.rows %}
-                                    <tr class="align-top {% if row.anomaly_reasons %}table-warning{% endif %}">
-                                        <td>
-                                            <div class="fw-semibold text-break">{{ row.job.kode_ahsp }}</div>
-                                            <div class="small text-muted text-break">{{ row.job.nama_ahsp|default:"-" }}</div>
-                                        </td>
-                                        <td>
-                                            {{ row.form.id }}
-                                            {{ row.form.kategori }}
-                                            {% if row.form.kategori.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.kategori.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.kode_item }}
-                                            {% if row.form.kode_item.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.kode_item.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.uraian_item }}
-                                            {% if row.form.uraian_item.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.uraian_item.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {{ row.form.satuan_item }}
-                                            {% if row.form.satuan_item.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.satuan_item.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td class="text-end">
-                                            {{ row.form.koefisien }}
-                                            {% if row.form.koefisien.errors %}
-                                                <div class="text-danger small mt-1">{{ row.form.koefisien.errors|striptags }}</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if row.anomaly_reasons %}
-                                                <ul class="list-unstyled small mb-0">
-                                                    {% for reason in row.anomaly_reasons %}
-                                                        <li><i class="bi bi-exclamation-triangle-fill text-warning"></i> {{ reason }}</li>
-                                                    {% endfor %}
-                                                </ul>
-                                            {% else %}
-                                                <span class="badge bg-success-subtle text-success-emphasis">
-                                                    <i class="bi bi-check-circle"></i> Data terlihat normal
-                                                </span>
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="p-5 text-center text-muted">
-                        <i class="bi bi-database-x fs-1 d-block mb-2"></i>
-                        <p class="mb-1">Tidak ada rincian yang cocok dengan filter saat ini.</p>
-                        <p class="small mb-0">Pilih pekerjaan tertentu atau lakukan impor data baru.</p>
-                    </div>
-                {% endif %}
+        <div class="card-body p-0">
+            {% if items.rows %}
+            <div class="table-responsive ahsp-table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0 ahsp-database-table" id="tableItems">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="sortable" data-sort="pekerjaan" style="min-width: 12rem;">
+                                Pekerjaan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="kategori" style="min-width: 7rem;">
+                                Kategori <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="kode_item" style="min-width: 8rem;">
+                                Kode Item <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="uraian" style="min-width: 22rem;">
+                                Uraian <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="satuan" style="min-width: 7rem;">
+                                Satuan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="koefisien" style="min-width: 7rem;" class="text-end">
+                                Koefisien <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th style="min-width: 12rem;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in items.rows %}
+                        <tr class="align-top {% if row.anomaly_reasons %}table-warning{% endif %}">
+                            <td>
+                                <div class="fw-semibold text-break">{{ row.job.kode_ahsp }}</div>
+                                <div class="small text-muted text-break">{{ row.job.nama_ahsp|default:"-" }}</div>
+                            </td>
+                            <td>
+                                {{ row.form.id }}
+                                {{ row.form.kategori }}
+                                {% if row.form.kategori.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.kategori.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.kode_item }}
+                                {% if row.form.kode_item.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.kode_item.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.uraian_item }}
+                                {% if row.form.uraian_item.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.uraian_item.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ row.form.satuan_item }}
+                                {% if row.form.satuan_item.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.satuan_item.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {{ row.form.koefisien }}
+                                {% if row.form.koefisien.errors %}
+                                <div class="text-danger small mt-1">{{ row.form.koefisien.errors|striptags }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if row.anomaly_reasons %}
+                                <ul class="list-unstyled small mb-0">
+                                    {% for reason in row.anomaly_reasons %}
+                                    <li><i class="bi bi-exclamation-triangle-fill text-warning"></i> {{ reason }}</li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <span class="badge bg-success-subtle text-success-emphasis">
+                                    <i class="bi bi-check-circle"></i> Data terlihat normal
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-        </form>
+            {% else %}
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-database-x fs-1 d-block mb-2"></i>
+                <p class="mb-1">Tidak ada rincian yang cocok dengan filter saat ini.</p>
+                <p class="small mb-0">Pilih pekerjaan tertentu atau lakukan impor data baru.</p>
+            </div>
+            {% endif %}
+        </div>
+    </form>
     {% endif %}
 </div>
 
 {# Modal for Column Visibility Toggle #}
-<div class="modal fade" id="modalColumnToggle" tabindex="-1" aria-labelledby="modalColumnToggleLabel" aria-hidden="true">
+<div class="modal fade" id="modalColumnToggle" tabindex="-1" aria-labelledby="modalColumnToggleLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
@@ -410,7 +436,8 @@
 </div>
 
 {# Modal for Save Confirmation #}
-<div class="modal fade" id="modalSaveConfirmation" tabindex="-1" aria-labelledby="modalSaveConfirmationLabel" aria-hidden="true">
+<div class="modal fade" id="modalSaveConfirmation" tabindex="-1" aria-labelledby="modalSaveConfirmationLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-warning-subtle">
@@ -422,13 +449,15 @@
             <div class="modal-body">
                 <div class="alert alert-info mb-3">
                     <i class="bi bi-info-circle-fill"></i>
-                    <strong>Anda akan menyimpan <span id="saveChangeCount" class="text-primary">0</span> perubahan.</strong>
+                    <strong>Anda akan menyimpan <span id="saveChangeCount" class="text-primary">0</span>
+                        perubahan.</strong>
                 </div>
                 <div id="saveChangesList" class="small mb-3">
                     {# Dynamic list of changes will be inserted here #}
                 </div>
                 <p class="text-muted small mb-0">
-                    <i class="bi bi-database"></i> Perubahan ini akan langsung tersimpan ke database dan tidak dapat dibatalkan.
+                    <i class="bi bi-database"></i> Perubahan ini akan langsung tersimpan ke database dan tidak dapat
+                    dibatalkan.
                 </p>
             </div>
             <div class="modal-footer">
@@ -451,12 +480,14 @@
                 <h5 class="modal-title" id="modalBulkDeleteLabel">
                     <i class="bi bi-trash"></i> Hapus Data Berdasarkan Sumber
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-warning">
                     <i class="bi bi-exclamation-triangle-fill"></i>
-                    <strong>Peringatan!</strong> Operasi ini akan menghapus data secara permanen dan tidak dapat dibatalkan.
+                    <strong>Peringatan!</strong> Operasi ini akan menghapus data secara permanen dan tidak dapat
+                    dibatalkan.
                 </div>
 
                 <form id="formBulkDelete">
@@ -465,7 +496,7 @@
                         <select class="form-select" id="deleteSumber" name="sumber">
                             <option value="">-- Pilih Sumber --</option>
                             {% for sumber in jobs_filter_options.sumber %}
-                                <option value="{{ sumber }}">{{ sumber }}</option>
+                            <option value="{{ sumber }}">{{ sumber }}</option>
                             {% endfor %}
                         </select>
                         <div class="form-text">Atau</div>
@@ -473,7 +504,8 @@
 
                     <div class="mb-3">
                         <label for="deleteSourceFile" class="form-label">Filter berdasarkan File Sumber</label>
-                        <input type="text" class="form-control" id="deleteSourceFile" name="source_file" placeholder="Nama file sumber">
+                        <input type="text" class="form-control" id="deleteSourceFile" name="source_file"
+                            placeholder="Nama file sumber">
                         <div class="form-text">Masukkan nama file yang ingin dihapus (case-insensitive)</div>
                     </div>
 

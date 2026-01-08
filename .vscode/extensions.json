@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "batisteo.vscode-django",
-        "esbenp.prettier-vscode"
+        "esbenp.prettier-vscode",
+        "monosans.djlint"
     ]
 }

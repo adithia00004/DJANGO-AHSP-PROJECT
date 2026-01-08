@@ -64,6 +64,10 @@ INSTALLED_APPS = [
 # ---------------------------------------------------------------------------
 
 MIDDLEWARE = [
+    # Error handling (must be first to catch all exceptions)
+    "config.middleware.exception_handler.ExceptionHandlerMiddleware",
+    "config.middleware.timeout.TimeoutMiddleware",
+    # Django core
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -76,6 +80,9 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "referensi.middleware.ImportRateLimitMiddleware",  # Rate limiting for imports
 ]
+
+# Request timeout configuration (3 minutes)
+REQUEST_TIMEOUT_SECONDS = 180
 
 # ---------------------------------------------------------------------------
 # URLs / WSGI
@@ -219,16 +226,18 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Cache (Phase 4: Redis Cache Layer)
+# Cache (Phase 4: Redis Cache Layer - OPTIONAL)
 # ---------------------------------------------------------------------------
 
-# Redis cache backend for high performance
-CACHE_BACKEND = os.getenv("CACHE_BACKEND", "redis")  # 'redis', 'db', or 'locmem'
+# Cache backend: 'redis', 'db', or 'locmem'
+# Default to locmem for easy local development (no Redis required)
+# Set CACHE_BACKEND=redis to enable Redis caching
+CACHE_BACKEND = os.getenv("CACHE_BACKEND", "locmem")
 
+# If Redis is explicitly requested, verify django_redis is available
 if CACHE_BACKEND == "redis":
     try:
         import importlib
-
         importlib.import_module("django_redis")
     except ModuleNotFoundError:
         CACHE_BACKEND = "locmem"

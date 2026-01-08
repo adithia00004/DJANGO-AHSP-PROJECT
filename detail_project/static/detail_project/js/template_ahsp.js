@@ -368,13 +368,18 @@
           delay: 250,
           data: params => ({ q: params.term }),
           processResults: (data, params) => {
-            const remote = (data.results || []).map(x => ({
-              id: `ahsp:${x.id}`,
-              text: `${x.kode_ahsp} — ${x.nama_ahsp}`,
-              kode_ahsp: x.kode_ahsp,
-              nama_ahsp: x.nama_ahsp,
-              satuan: x.satuan || ''
-            }));
+            const remote = (data.results || []).map(x => {
+              // Extract year/version from sumber (e.g., "AHSP SNI 2025" -> "SNI 2025")
+              const sumberLabel = x.sumber ? ` (${x.sumber.replace(/^AHSP\s*/i, '')})` : '';
+              return {
+                id: `ahsp:${x.id}`,
+                text: `${x.kode_ahsp} — ${x.nama_ahsp}${sumberLabel}`,
+                kode_ahsp: x.kode_ahsp,
+                nama_ahsp: x.nama_ahsp,
+                satuan: x.satuan || '',
+                sumber: x.sumber || ''
+              };
+            });
             const local = localProjectOptions(params?.term);
             const groups = [];
             if (local.length) groups.push({ text: 'Pekerjaan Proyek', children: local });
@@ -1431,19 +1436,27 @@
     toast('✅ CSV berhasil di-export', 'success');
   });
 
-  // toast notification - use global DP.core.toast if available
+  // toast notification - delegate to global DP.toast
   /**
    * Show toast notification with auto-dismiss
    * @param {string} msg - Message to display
-   * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+   * @param {string} type - Type: 'success', 'error', 'warning', 'info', 'warn'
    * @param {number} delay - Auto-dismiss delay in ms (default: 3000)
    */
   function toast(msg, type = 'info', delay = 3000) {
     console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
 
-    // Use global DP.core.toast if available (with correct z-index)
+    // Normalize type (warn -> warning)
+    const normalizedType = type === 'warn' ? 'warning' : type;
+
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[normalizedType]) {
+      return window.DP.toast[normalizedType](msg, delay);
+    }
+
+    // Fallback to legacy API
     if (window.DP && window.DP.core && window.DP.core.toast) {
-      window.DP.core.toast.show(msg, type, delay);
+      window.DP.core.toast.show(msg, normalizedType, delay);
       return;
     }
 

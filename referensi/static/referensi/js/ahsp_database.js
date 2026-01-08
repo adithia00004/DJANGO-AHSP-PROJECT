@@ -3,7 +3,7 @@
  * Handles: Bulk Delete, Table Sorting, Change Tracking, Save Confirmation
  */
 
-(function() {
+(function () {
     'use strict';
 
     // =====================================================
@@ -19,10 +19,16 @@
     }
 
     function showToast(message, type = 'success') {
-        // Simple toast notification
+        // Use global DP.toast if available
+        if (window.DP && window.DP.toast && window.DP.toast[type]) {
+            window.DP.toast[type](message);
+            return;
+        }
+
+        // Fallback to inline toast
         const toast = document.createElement('div');
         toast.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-        toast.style.zIndex = '99999'; // Higher than topbar
+        toast.style.zIndex = '99999';
         toast.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -525,7 +531,7 @@
     // 4. INITIALIZATION
     // =====================================================
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         quickSearchModule.init();
         bulkDeleteModule.init();
         tableSortModule.init();

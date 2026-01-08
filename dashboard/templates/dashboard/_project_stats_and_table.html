@@ -9,7 +9,8 @@
       <h6 class="mb-0">
         <i class="fas fa-filter"></i> Filter & Pencarian
       </h6>
-      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+        data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">
         <i class="fas fa-chevron-down" id="filterChevron"></i> <span id="filterToggleText">Tampilkan Filter</span>
       </button>
     </div>
@@ -107,155 +108,202 @@
 </div>
 <!-- ========== END ADVANCED FILTERING ========== -->
 
-<!-- FASE 2.3: Bulk Actions Bar -->
-<div class="card shadow-sm mb-3" id="bulkActionsBar" style="display: none;">
-  <div class="card-body py-2">
-    <div class="d-flex justify-content-between align-items-center">
-      <div>
-        <span id="selectedCount" class="badge bg-primary me-2">0</span>
-        <span class="text-muted">project dipilih</span>
-      </div>
-      <div class="btn-group btn-group-sm" role="group">
-        <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn" title="Edit langsung di tabel">
-          <i class="fas fa-edit"></i> Mass Edit
-        </button>
-        <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
-          <i class="fas fa-trash"></i> Hapus
-        </button>
-        <button type="button" class="btn btn-outline-warning" id="bulkArchiveBtn" title="Archive project terpilih">
-          <i class="fas fa-archive"></i> Archive
-        </button>
-        <button type="button" class="btn btn-outline-success" id="bulkUnarchiveBtn" title="Aktifkan kembali project terpilih">
-          <i class="fas fa-check-circle"></i> Aktifkan
-        </button>
-        <button type="button" class="btn btn-outline-info" id="bulkExportBtn" title="Export project terpilih">
-          <i class="fas fa-file-excel"></i> Export
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- ========== UNIFIED TOOLBAR ========== -->
+<div class="dashboard-unified-toolbar mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <!-- Left: Primary Actions -->
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <!-- Add Project (opens modal) -->
+      <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addProjectModal">
+        <i class="fas fa-plus"></i> <span class="d-none d-sm-inline">Tambah Project</span>
+      </button>
 
-<!-- Mass Edit Mode Action Bar -->
-<div class="card shadow-sm mb-3 border-warning" id="massEditActionBar" style="display: none;">
-  <div class="card-body py-2 bg-light">
-    <div class="d-flex justify-content-between align-items-center">
-      <div>
-        <i class="fas fa-edit text-warning me-2"></i>
-        <strong class="text-warning">Mode Edit Aktif</strong>
-        <small class="text-muted ms-2">| Edit langsung di tabel, lalu simpan semua perubahan</small>
+      <!-- Import JSON -->
+      <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="modal"
+        data-bs-target="#importProjectModal">
+        <i class="fas fa-file-import"></i> <span class="d-none d-md-inline">Import JSON</span>
+      </button>
+
+      <!-- Upload Excel -->
+      <a href="{% url 'dashboard:project_upload' %}" class="btn btn-outline-success btn-sm">
+        <i class="fas fa-file-excel"></i> <span class="d-none d-md-inline">Upload Excel</span>
+      </a>
+
+      <div class="vr d-none d-sm-block"></div>
+
+      <!-- Bulk Edit Toggle -->
+      <button type="button" class="btn btn-outline-warning btn-sm" id="bulkModeToggleBtn"
+        title="Aktifkan mode bulk edit">
+        <i class="fas fa-tasks"></i> <span class="d-none d-md-inline">Bulk Edit</span>
+      </button>
+    </div>
+
+    <!-- Right: Filter Toggle & Search -->
+    <div class="d-flex align-items-center gap-2">
+      <!-- Quick Search -->
+      <div class="input-group input-group-sm" style="max-width: 250px;">
+        <input type="text" class="form-control" id="quickSearchInput" placeholder="Cari project...">
+        <button class="btn btn-outline-secondary" type="button" id="quickSearchBtn">
+          <i class="fas fa-search"></i>
+        </button>
       </div>
-      <div class="btn-group btn-group-sm" role="group">
-        <button type="button" class="btn btn-success" id="massEditSaveAllBtn" title="Simpan semua perubahan">
-          <i class="fas fa-save"></i> Simpan Semua
-        </button>
-        <button type="button" class="btn btn-secondary" id="massEditCancelBtn" title="Batal dan kembali ke mode view">
-          <i class="fas fa-times"></i> Batal
-        </button>
+
+      <!-- Filter Toggle -->
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse"
+        data-bs-target="#filterPanel" aria-expanded="false">
+        <i class="fas fa-filter"></i> <span class="d-none d-md-inline">Filter</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Bulk Actions Bar (hidden by default, shown when bulk mode active) -->
+  <div class="card shadow-sm mt-2" id="bulkActionsBar" style="display: none;">
+    <div class="card-body py-2 bg-warning-subtle">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <span id="selectedCount" class="badge bg-primary me-2">0</span>
+          <span class="text-muted">project dipilih</span>
+        </div>
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn" title="Edit langsung di tabel">
+            <i class="fas fa-edit"></i> Mass Edit
+          </button>
+          <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
+            <i class="fas fa-trash"></i> Hapus
+          </button>
+          <button type="button" class="btn btn-outline-warning" id="bulkArchiveBtn" title="Archive project terpilih">
+            <i class="fas fa-archive"></i> Archive
+          </button>
+          <button type="button" class="btn btn-outline-success" id="bulkUnarchiveBtn" title="Aktifkan kembali">
+            <i class="fas fa-check-circle"></i> Aktifkan
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="bulkCancelBtn" title="Batal">
+            <i class="fas fa-times"></i> Batal
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mass Edit Action Bar (hidden by default) -->
+  <div class="card shadow-sm mt-2 border-warning" id="massEditActionBar" style="display: none;">
+    <div class="card-body py-2 bg-warning-subtle">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <i class="fas fa-edit text-warning me-2"></i>
+          <strong class="text-warning">Mode Edit Aktif</strong>
+          <small class="text-muted ms-2 d-none d-md-inline">| Edit langsung di tabel</small>
+        </div>
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-success" id="massEditSaveAllBtn" title="Simpan semua perubahan">
+            <i class="fas fa-save"></i> Simpan
+          </button>
+          <button type="button" class="btn btn-secondary" id="massEditCancelBtn" title="Batal">
+            <i class="fas fa-times"></i> Batal
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </div>
+<!-- ========== END UNIFIED TOOLBAR ========== -->
 
 <!-- Tabel Proyek Ringkasan -->
 <div class="dashboard-table-wrapper table-responsive shadow-sm ux-scrollbar">
   <!-- Desktop Table View -->
-  <table class="dashboard-project-table table table-hover table-bordered align-middle text-nowrap">
+  <table class="dashboard-project-table table table-hover table-bordered align-middle">
     <thead class="table-light dp-thead-sticky">
       <tr>
-        <th class="text-center" style="width: 40px;">
+        <th class="text-center checkbox-column" style="width: 40px;">
           <input type="checkbox" id="selectAll" class="form-check-input" title="Pilih semua">
         </th>
-        <th>Nama Project</th>
-        <th>Tahun</th>
-        <th>Sumber Dana</th>
-        <th>Lokasi</th>
+        <th style="width: 250px; min-width: 200px;">Nama Project</th>
+        <th class="text-center" style="width: 160px;">Aksi</th>
+        <th class="text-center" style="width: 100px;">Status</th>
         <th>Nama Client</th>
         <th>Anggaran</th>
         <th>Tanggal Mulai</th>
         <th>Tanggal Selesai</th>
-        <th>Durasi (hari)</th>
-        <th>Status</th>
-        <th class="text-center">Aksi</th>
       </tr>
     </thead>
     <tbody>
       {% for project in projects %}
-      <tr data-project-id="{{ project.pk }}"
-          data-nama="{{ project.nama|default:'' }}"
-          data-sumber-dana="{{ project.sumber_dana|default:'' }}"
-          data-lokasi-project="{{ project.lokasi_project|default:'' }}"
-          data-nama-client="{{ project.nama_client|default:'' }}"
-          data-anggaran-owner="{{ project.anggaran_owner|default:'' }}"
-          data-tanggal-mulai="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
-          data-tanggal-selesai="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}"
-          data-durasi-hari="{{ project.durasi_hari|default:'' }}"
-          data-ket-project1="{{ project.ket_project1|default:'' }}"
-          data-ket-project2="{{ project.ket_project2|default:'' }}"
-          data-jabatan-client="{{ project.jabatan_client|default:'' }}"
-          data-instansi-client="{{ project.instansi_client|default:'' }}"
-          data-nama-kontraktor="{{ project.nama_kontraktor|default:'' }}"
-          data-instansi-kontraktor="{{ project.instansi_kontraktor|default:'' }}"
-          data-nama-konsultan-perencana="{{ project.nama_konsultan_perencana|default:'' }}"
-          data-instansi-konsultan-perencana="{{ project.instansi_konsultan_perencana|default:'' }}"
-          data-nama-konsultan-pengawas="{{ project.nama_konsultan_pengawas|default:'' }}"
-          data-instansi-konsultan-pengawas="{{ project.instansi_konsultan_pengawas|default:'' }}"
-          data-deskripsi="{{ project.deskripsi|default:'' }}"
-          data-kategori="{{ project.kategori|default:'' }}">
-        <td class="text-center">
-          <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}" data-project-name="{{ project.nama }}">
+      <tr data-project-id="{{ project.pk }}" data-nama="{{ project.nama|default:'' }}"
+        data-sumber-dana="{{ project.sumber_dana|default:'' }}"
+        data-lokasi-project="{{ project.lokasi_project|default:'' }}"
+        data-nama-client="{{ project.nama_client|default:'' }}"
+        data-anggaran-owner="{{ project.anggaran_owner|default:'' }}"
+        data-tanggal-mulai="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
+        data-tanggal-selesai="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}"
+        data-durasi-hari="{{ project.durasi_hari|default:'' }}"
+        data-ket-project1="{{ project.ket_project1|default:'' }}"
+        data-ket-project2="{{ project.ket_project2|default:'' }}"
+        data-jabatan-client="{{ project.jabatan_client|default:'' }}"
+        data-instansi-client="{{ project.instansi_client|default:'' }}"
+        data-nama-kontraktor="{{ project.nama_kontraktor|default:'' }}"
+        data-instansi-kontraktor="{{ project.instansi_kontraktor|default:'' }}"
+        data-nama-konsultan-perencana="{{ project.nama_konsultan_perencana|default:'' }}"
+        data-instansi-konsultan-perencana="{{ project.instansi_konsultan_perencana|default:'' }}"
+        data-nama-konsultan-pengawas="{{ project.nama_konsultan_pengawas|default:'' }}"
+        data-instansi-konsultan-pengawas="{{ project.instansi_konsultan_pengawas|default:'' }}"
+        data-deskripsi="{{ project.deskripsi|default:'' }}" data-kategori="{{ project.kategori|default:'' }}">
+
+        <!-- Checkbox for mass edit -->
+        <td class="text-center checkbox-column">
+          <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}"
+            data-project-name="{{ project.nama }}">
         </td>
-        <td>
-          <a href="{% url 'detail_project:list_pekerjaan' project.pk %}" class="text-decoration-none" title="Lihat daftar pekerjaan">
+
+        <!-- Nama Project (wrapped text) -->
+        <td style="white-space: normal; word-wrap: break-word;">
+          <a href="{% url 'detail_project:list_pekerjaan' project.pk %}" class="text-decoration-none fw-medium"
+            title="Lihat daftar pekerjaan">
             {{ project.nama|default:"—" }}
           </a>
         </td>
-        <td>{{ project.tahun_project|default:"—" }}</td>
-        <td>{{ project.sumber_dana|default:"—" }}</td>
-        <td>{{ project.lokasi_project|default:"—" }}</td>
-        <td>{{ project.nama_client|default:"—" }}</td>
-        <td>Rp{{ project.anggaran_owner|default:0|floatformat:0|intcomma }}</td>
-        <td>{{ project.tanggal_mulai|date:"d M Y"|default:"—" }}</td>
-        <td>{{ project.tanggal_selesai|date:"d M Y"|default:"—" }}</td>
-        <td class="text-center">{{ project.durasi_hari|default:"—" }}</td>
-        <td>
-          {% load tz %}
-          {% now "Y-m-d" as today_str %}
-          {% if project.tanggal_selesai and project.tanggal_mulai %}
-            {% if project.tanggal_selesai|date:"Y-m-d" < today_str %}
-              <span class="badge bg-danger">Terlambat</span>
-            {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
-              <span class="badge bg-secondary">Belum Mulai</span>
-            {% else %}
-              <span class="badge bg-success">Berjalan</span>
-            {% endif %}
-          {% else %}
-            <span class="badge bg-light text-dark">—</span>
-          {% endif %}
-        </td>
-        <td class="text-center">
-          <!-- Masuk ke Detail Pekerjaan -->
-          <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-outline-success" title="Detail Pekerjaan">
-            <i class="fas fa-list"></i>
-          </a>
-          <!-- Edit -->
-          <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
-            class="btn btn-sm btn-outline-warning" title="Edit Project">
-            <i class="fas fa-edit"></i>
+
+        <!-- Aksi -->
+        <td class="text-center text-nowrap">
+          <!-- Primary Action: Detail Pekerjaan -->
+          <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-success"
+            title="Detail Pekerjaan">
+            <i class="fas fa-list"></i> Pekerjaan
           </a>
 
-          <!-- Duplicate -->
-          <a href="{% url 'dashboard:project_duplicate' project.pk %}?next={{ request.get_full_path|urlencode }}"
-            class="btn btn-sm btn-outline-secondary" title="Duplikat Project">
-            <i class="fas fa-clone"></i>
-          </a>
-          <!-- Delete (POST via modal) -->
-          <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}" title="Hapus Project">
-            <i class="fas fa-trash"></i>
-          </button>
+          <!-- Dropdown for secondary actions -->
+          <div class="btn-group">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"
+              aria-expanded="false" title="Opsi lainnya">
+              <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <a class="dropdown-item"
+                  href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}">
+                  <i class="fas fa-edit text-warning me-2"></i> Edit Project
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/"
+                  download>
+                  <i class="fas fa-download text-info me-2"></i> Export JSON
+                </a>
+              </li>
+              <li>
+                <hr class="dropdown-divider">
+              </li>
+              <li>
+                <button type="button" class="dropdown-item text-danger" data-bs-toggle="modal"
+                  data-bs-target="#deleteModal-{{ project.pk }}">
+                  <i class="fas fa-trash me-2"></i> Hapus Project
+                </button>
+              </li>
+            </ul>
+          </div>
 
           <!-- Modal Konfirmasi Hapus -->
-          <div class="modal fade" id="deleteModal-{{ project.pk }}" tabindex="-1" aria-labelledby="deleteModalLabel-{{ project.pk }}" aria-hidden="true">
+          <div class="modal fade" id="deleteModal-{{ project.pk }}" tabindex="-1"
+            aria-labelledby="deleteModalLabel-{{ project.pk }}" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
               <div class="modal-content">
                 <div class="modal-header">
@@ -276,12 +324,39 @@
               </div>
             </div>
           </div>
-
         </td>
+
+        <!-- Status -->
+        <td class="text-center">
+          {% load tz %}
+          {% now "Y-m-d" as today_str %}
+          {% if project.tanggal_selesai and project.tanggal_mulai %}
+          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Terlambat</span>
+            {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
+            <span class="badge bg-secondary">Belum Mulai</span>
+            {% else %}
+            <span class="badge bg-success">Berjalan</span>
+            {% endif %}
+            {% else %}
+            <span class="badge bg-light text-dark">—</span>
+            {% endif %}
+        </td>
+
+        <!-- Nama Client -->
+        <td>{{ project.nama_client|default:"—" }}</td>
+
+        <!-- Anggaran -->
+        <td class="text-nowrap">Rp{{ project.anggaran_owner|default:0|floatformat:0|intcomma }}</td>
+
+        <!-- Tanggal Mulai -->
+        <td class="text-nowrap">{{ project.tanggal_mulai|date:"d M Y"|default:"—" }}</td>
+
+        <!-- Tanggal Selesai -->
+        <td class="text-nowrap">{{ project.tanggal_selesai|date:"d M Y"|default:"—" }}</td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="13" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
+        <td colspan="8" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -300,23 +375,29 @@
         </h5>
       </div>
       <div class="card-checkbox-mobile">
-        <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}" data-project-name="{{ project.nama }}">
+        <input type="checkbox" class="form-check-input project-checkbox" value="{{ project.pk }}"
+          data-project-name="{{ project.nama }}">
       </div>
     </div>
 
     <!-- Card Body -->
     <div class="card-body-mobile">
       <div class="info-row-mobile">
-        <span class="label"><i class="fas fa-calendar"></i> Tahun:</span>
-        <span class="value">{{ project.tahun_project|default:"—" }}</span>
-      </div>
-      <div class="info-row-mobile">
-        <span class="label"><i class="fas fa-money-bill"></i> Sumber Dana:</span>
-        <span class="value">{{ project.sumber_dana|default:"—" }}</span>
-      </div>
-      <div class="info-row-mobile">
-        <span class="label"><i class="fas fa-map-marker-alt"></i> Lokasi:</span>
-        <span class="value">{{ project.lokasi_project|default:"—" }}</span>
+        <span class="label"><i class="fas fa-info-circle"></i> Status:</span>
+        <span class="value">
+          {% load tz %}
+          {% now "Y-m-d" as today_str %}
+          {% if project.tanggal_selesai and project.tanggal_mulai %}
+          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Terlambat</span>
+        {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
+        <span class="badge bg-secondary">Belum Mulai</span>
+        {% else %}
+        <span class="badge bg-success">Berjalan</span>
+        {% endif %}
+        {% else %}
+        <span class="badge bg-light text-dark">—</span>
+        {% endif %}
+        </span>
       </div>
       <div class="info-row-mobile">
         <span class="label"><i class="fas fa-user"></i> Client:</span>
@@ -327,26 +408,12 @@
         <span class="value">Rp {{ project.anggaran_owner|default:0|floatformat:0|intcomma }}</span>
       </div>
       <div class="info-row-mobile">
-        <span class="label"><i class="fas fa-clock"></i> Durasi:</span>
-        <span class="value">{{ project.durasi_hari|default:"—" }} hari</span>
+        <span class="label"><i class="fas fa-calendar"></i> Mulai:</span>
+        <span class="value">{{ project.tanggal_mulai|date:"d M Y"|default:"—" }}</span>
       </div>
       <div class="info-row-mobile">
-        <span class="label"><i class="fas fa-info-circle"></i> Status:</span>
-        <span class="value">
-          {% load tz %}
-          {% now "Y-m-d" as today_str %}
-          {% if project.tanggal_selesai and project.tanggal_mulai %}
-            {% if project.tanggal_selesai|date:"Y-m-d" < today_str %}
-              <span class="badge bg-danger">Terlambat</span>
-            {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
-              <span class="badge bg-secondary">Belum Mulai</span>
-            {% else %}
-              <span class="badge bg-success">Berjalan</span>
-            {% endif %}
-          {% else %}
-            <span class="badge bg-light text-dark">—</span>
-          {% endif %}
-        </span>
+        <span class="label"><i class="fas fa-calendar-check"></i> Selesai:</span>
+        <span class="value">{{ project.tanggal_selesai|date:"d M Y"|default:"—" }}</span>
       </div>
     </div>
 
@@ -355,13 +422,16 @@
       <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-outline-success">
         <i class="fas fa-list"></i> Pekerjaan
       </a>
-      <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-warning">
+      <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
+        class="btn btn-sm btn-outline-warning">
         <i class="fas fa-edit"></i> Edit
       </a>
-      <a href="{% url 'dashboard:project_duplicate' project.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary">
-        <i class="fas fa-clone"></i> Duplikat
+      <a href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/"
+        class="btn btn-sm btn-outline-info" title="Export" download>
+        <i class="fas fa-download"></i> Export
       </a>
-      <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}">
+      <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+        data-bs-target="#deleteModal-{{ project.pk }}">
         <i class="fas fa-trash"></i> Hapus
       </button>
     </div>
@@ -401,245 +471,253 @@
 </div>
 
 <!-- Pagination -->
-{% if projects.paginator.num_pages > 1 %}
-{% with pnum=projects.number|stringformat:"s" %}
-<nav aria-label="Pagination" class="mt-2">
-  <ul class="pagination pagination-sm justify-content-end mb-0">
-    {% if projects.has_previous %}
-      <li class="page-item">
-        <a class="page-link"
-           href="?page={{ projects.previous_page_number }}{% if request.GET %}&{{ request.GET.urlencode|default:''|cut:'page='|cut:pnum }}{% endif %}"
-           aria-label="Previous">&laquo;</a>
-      </li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">&laquo;</span></li>
-    {% endif %}
-
-    {% for num in projects.paginator.page_range %}
-      {% if num == projects.number %}
-        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-      {% elif num >= projects.number|add:-2 and num <= projects.number|add:2 %}
-        <li class="page-item">
-          <a class="page-link"
-             href="?page={{ num }}{% if request.GET %}&{{ request.GET.urlencode|default:''|cut:'page='|cut:pnum }}{% endif %}">{{ num }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-
-    {% if projects.has_next %}
-      <li class="page-item">
-        <a class="page-link"
-           href="?page={{ projects.next_page_number }}{% if request.GET %}&{{ request.GET.urlencode|default:''|cut:'page='|cut:pnum }}{% endif %}"
-           aria-label="Next">&raquo;</a>
-      </li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">&raquo;</span></li>
-    {% endif %}
-  </ul>
-</nav>
-{% endwith %}
-{% endif %}
+<!-- Pagination removed - using full scroll -->
 
 <!-- FASE 2.3: Bulk Actions JavaScript -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', function () {
     const selectAllCheckbox = document.getElementById('selectAll');
     const desktopTable = document.querySelector('.dashboard-project-table');
+    const tableWrapper = document.querySelector('.dashboard-table-wrapper');
+    const bulkModeToggleBtn = document.getElementById('bulkModeToggleBtn');
+    const bulkCancelBtn = document.getElementById('bulkCancelBtn');
 
     // Only get checkboxes from desktop table to avoid counting mobile duplicates
     const projectCheckboxes = desktopTable ? desktopTable.querySelectorAll('.project-checkbox') : [];
     const bulkActionsBar = document.getElementById('bulkActionsBar');
     const selectedCountSpan = document.getElementById('selectedCount');
 
+    // === BULK MODE TOGGLE ===
+    let bulkModeActive = false;
+
+    function toggleBulkMode(enable) {
+      bulkModeActive = enable;
+
+      if (enable) {
+        tableWrapper.classList.add('bulk-mode-active');
+        bulkModeToggleBtn.classList.add('active');
+        bulkActionsBar.style.display = 'block';
+      } else {
+        tableWrapper.classList.remove('bulk-mode-active');
+        bulkModeToggleBtn.classList.remove('active');
+        bulkActionsBar.style.display = 'none';
+        // Uncheck all when exiting bulk mode
+        projectCheckboxes.forEach(cb => cb.checked = false);
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+        updateBulkActionsUI();
+      }
+    }
+
+    if (bulkModeToggleBtn) {
+      bulkModeToggleBtn.addEventListener('click', function () {
+        toggleBulkMode(!bulkModeActive);
+      });
+    }
+
+    if (bulkCancelBtn) {
+      bulkCancelBtn.addEventListener('click', function () {
+        toggleBulkMode(false);
+      });
+    }
+
     // Function to update UI based on selection
     function updateBulkActionsUI() {
-        // Only count checked boxes in desktop table
-        const checkedBoxes = desktopTable ? desktopTable.querySelectorAll('.project-checkbox:checked') : [];
-        const count = checkedBoxes.length;
+      // Only count checked boxes in desktop table
+      const checkedBoxes = desktopTable ? desktopTable.querySelectorAll('.project-checkbox:checked') : [];
+      const count = checkedBoxes.length;
 
-        selectedCountSpan.textContent = count;
+      selectedCountSpan.textContent = count;
 
-        if (count > 0) {
-            bulkActionsBar.style.display = 'block';
-        } else {
-            bulkActionsBar.style.display = 'none';
-        }
+      if (count > 0) {
+        bulkActionsBar.style.display = 'block';
+      } else {
+        bulkActionsBar.style.display = 'none';
+      }
 
-        // Update "Select All" checkbox state
-        if (count === projectCheckboxes.length && projectCheckboxes.length > 0) {
-            selectAllCheckbox.checked = true;
-            selectAllCheckbox.indeterminate = false;
-        } else if (count > 0) {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = true;
-        } else {
-            selectAllCheckbox.checked = false;
-            selectAllCheckbox.indeterminate = false;
-        }
+      // Update "Select All" checkbox state
+      if (count === projectCheckboxes.length && projectCheckboxes.length > 0) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+      } else if (count > 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true;
+      } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      }
     }
 
     // Select All functionality
     if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', function() {
-            const isChecked = this.checked;
-            projectCheckboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-            });
-            updateBulkActionsUI();
+      selectAllCheckbox.addEventListener('change', function () {
+        const isChecked = this.checked;
+        projectCheckboxes.forEach(checkbox => {
+          checkbox.checked = isChecked;
         });
+        updateBulkActionsUI();
+      });
     }
 
     // Individual checkbox change
     projectCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updateBulkActionsUI);
+      checkbox.addEventListener('change', updateBulkActionsUI);
     });
 
     // Get selected project IDs
     function getSelectedProjectIds() {
-        const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
-        return Array.from(checkedBoxes).map(cb => cb.value);
+      const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
+      return Array.from(checkedBoxes).map(cb => cb.value);
     }
 
     // Get CSRF token
     function getCSRFToken() {
-        return document.querySelector('[name=csrfmiddlewaretoken]').value ||
-               document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+      return document.querySelector('[name=csrfmiddlewaretoken]').value ||
+        document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     }
 
     // Bulk Delete
-    document.getElementById('bulkDeleteBtn').addEventListener('click', function() {
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    if (bulkDeleteBtn) {
+      bulkDeleteBtn.addEventListener('click', function () {
         const selectedIds = getSelectedProjectIds();
         if (selectedIds.length === 0) return;
 
         if (confirm(`Yakin ingin menghapus ${selectedIds.length} project terpilih? Project akan di-archive (soft delete).`)) {
-            fetch('{% url "dashboard:bulk_delete" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCSRFToken()
-                },
-                body: JSON.stringify({ project_ids: selectedIds })
-            })
+          fetch('{% url "dashboard:bulk_delete" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ project_ids: selectedIds })
+          })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    alert(`Berhasil menghapus ${data.deleted_count} project.`);
-                    window.location.reload();
-                } else {
-                    alert('Error: ' + (data.error || 'Unknown error'));
-                }
+              if (data.success) {
+                alert(`Berhasil menghapus ${data.deleted_count} project.`);
+                window.location.reload();
+              } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+              }
             })
             .catch(error => {
-                console.error('Error:', error);
-                alert('Terjadi kesalahan saat menghapus project.');
+              console.error('Error:', error);
+              alert('Terjadi kesalahan saat menghapus project.');
             });
         }
-    });
+      });
+    }
 
     // Bulk Archive
-    document.getElementById('bulkArchiveBtn').addEventListener('click', function() {
+    const bulkArchiveBtn = document.getElementById('bulkArchiveBtn');
+    if (bulkArchiveBtn) {
+      bulkArchiveBtn.addEventListener('click', function () {
         const selectedIds = getSelectedProjectIds();
         if (selectedIds.length === 0) return;
 
         if (confirm(`Yakin ingin meng-archive ${selectedIds.length} project terpilih?`)) {
-            fetch('{% url "dashboard:bulk_archive" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCSRFToken()
-                },
-                body: JSON.stringify({ project_ids: selectedIds })
-            })
+          fetch('{% url "dashboard:bulk_archive" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ project_ids: selectedIds })
+          })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    alert(`Berhasil meng-archive ${data.archived_count} project.`);
-                    window.location.reload();
-                } else {
-                    alert('Error: ' + (data.error || 'Unknown error'));
-                }
+              if (data.success) {
+                alert(`Berhasil meng-archive ${data.archived_count} project.`);
+                window.location.reload();
+              } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+              }
             })
             .catch(error => {
-                console.error('Error:', error);
-                alert('Terjadi kesalahan saat meng-archive project.');
+              console.error('Error:', error);
+              alert('Terjadi kesalahan saat meng-archive project.');
             });
         }
-    });
+      });
+    }
 
     // Bulk Unarchive
-    document.getElementById('bulkUnarchiveBtn').addEventListener('click', function() {
+    const bulkUnarchiveBtn = document.getElementById('bulkUnarchiveBtn');
+    if (bulkUnarchiveBtn) {
+      bulkUnarchiveBtn.addEventListener('click', function () {
         const selectedIds = getSelectedProjectIds();
         if (selectedIds.length === 0) return;
 
         if (confirm(`Yakin ingin mengaktifkan kembali ${selectedIds.length} project terpilih?`)) {
-            fetch('{% url "dashboard:bulk_unarchive" %}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCSRFToken()
-                },
-                body: JSON.stringify({ project_ids: selectedIds })
-            })
+          fetch('{% url "dashboard:bulk_unarchive" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify({ project_ids: selectedIds })
+          })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    alert(`Berhasil mengaktifkan ${data.unarchived_count} project.`);
-                    window.location.reload();
-                } else {
-                    alert('Error: ' + (data.error || 'Unknown error'));
-                }
+              if (data.success) {
+                alert(`Berhasil mengaktifkan ${data.unarchived_count} project.`);
+                window.location.reload();
+              } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+              }
             })
             .catch(error => {
-                console.error('Error:', error);
-                alert('Terjadi kesalahan saat mengaktifkan project.');
+              console.error('Error:', error);
+              alert('Terjadi kesalahan saat mengaktifkan project.');
             });
         }
-    });
+      });
+    }
 
-    // Bulk Export
-    document.getElementById('bulkExportBtn').addEventListener('click', function() {
+    // Bulk Export (removed from toolbar but kept handler for backwards compatibility)
+    const bulkExportBtn = document.getElementById('bulkExportBtn');
+    if (bulkExportBtn) {
+      bulkExportBtn.addEventListener('click', function () {
         const selectedIds = getSelectedProjectIds();
         if (selectedIds.length === 0) return;
 
-        // Build export URL with selected IDs as query parameters
         const idsParam = selectedIds.map(id => `ids=${id}`).join('&');
         const exportUrl = `{% url 'dashboard:bulk_export_excel' %}?${idsParam}`;
-
-        // Open in new window to trigger download
         window.location.href = exportUrl;
-    });
-});
+      });
+    }
+  });
 
-// ============================================================================
-// Scroll Detection for Better UX (Added 2025-11-06)
-// ============================================================================
-document.addEventListener('DOMContentLoaded', function() {
+  // ============================================================================
+  // Scroll Detection for Better UX (Added 2025-11-06)
+  // ============================================================================
+  document.addEventListener('DOMContentLoaded', function () {
     // Detect horizontal scroll and add visual indicators
     function setupScrollDetection() {
-        const scrollableElements = document.querySelectorAll('.ux-scrollbar');
+      const scrollableElements = document.querySelectorAll('.ux-scrollbar');
 
-        scrollableElements.forEach(element => {
-            function checkScroll() {
-                const hasHorizontalScroll = element.scrollWidth > element.clientWidth;
-                const isScrolled = element.scrollLeft > 0;
-                const isAtEnd = element.scrollLeft >= (element.scrollWidth - element.clientWidth - 5);
+      scrollableElements.forEach(element => {
+        function checkScroll() {
+          const hasHorizontalScroll = element.scrollWidth > element.clientWidth;
+          const isScrolled = element.scrollLeft > 0;
+          const isAtEnd = element.scrollLeft >= (element.scrollWidth - element.clientWidth - 5);
 
-                if (hasHorizontalScroll && !isAtEnd) {
-                    element.classList.add('has-scroll');
-                } else {
-                    element.classList.remove('has-scroll');
-                }
-            }
+          if (hasHorizontalScroll && !isAtEnd) {
+            element.classList.add('has-scroll');
+          } else {
+            element.classList.remove('has-scroll');
+          }
+        }
 
-            // Check on load
-            checkScroll();
+        // Check on load
+        checkScroll();
 
-            // Check on scroll
-            element.addEventListener('scroll', checkScroll);
+        // Check on scroll
+        element.addEventListener('scroll', checkScroll);
 
-            // Check on resize
-            window.addEventListener('resize', checkScroll);
-        });
+        // Check on resize
+        window.addEventListener('resize', checkScroll);
+      });
     }
 
     setupScrollDetection();
@@ -647,19 +725,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Smooth scroll for table navigation
     const tableWrapper = document.querySelector('.dashboard-table-wrapper');
     if (tableWrapper) {
-        tableWrapper.style.scrollBehavior = 'smooth';
+      tableWrapper.style.scrollBehavior = 'smooth';
     }
 
     // Add keyboard navigation for table
     const table = document.querySelector('.dashboard-project-table');
     if (table) {
-        table.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowRight' && tableWrapper) {
-                tableWrapper.scrollLeft += 50;
-            } else if (e.key === 'ArrowLeft' && tableWrapper) {
-                tableWrapper.scrollLeft -= 50;
-            }
-        });
+      table.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight' && tableWrapper) {
+          tableWrapper.scrollLeft += 50;
+        } else if (e.key === 'ArrowLeft' && tableWrapper) {
+          tableWrapper.scrollLeft -= 50;
+        }
+      });
     }
 
     // Filter Panel Toggle
@@ -668,30 +746,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterToggleText = document.getElementById('filterToggleText');
 
     if (filterPanel && filterChevron && filterToggleText) {
-        filterPanel.addEventListener('show.bs.collapse', function () {
-            filterChevron.classList.remove('fa-chevron-down');
-            filterChevron.classList.add('fa-chevron-up');
-            filterToggleText.textContent = 'Sembunyikan Filter';
+      filterPanel.addEventListener('show.bs.collapse', function () {
+        filterChevron.classList.remove('fa-chevron-down');
+        filterChevron.classList.add('fa-chevron-up');
+        filterToggleText.textContent = 'Sembunyikan Filter';
+      });
+
+      filterPanel.addEventListener('hide.bs.collapse', function () {
+        filterChevron.classList.remove('fa-chevron-up');
+        filterChevron.classList.add('fa-chevron-down');
+        filterToggleText.textContent = 'Tampilkan Filter';
+      });
+
+      // Auto-expand filter panel if any filter is active
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasActiveFilters = Array.from(urlParams.keys()).some(key =>
+        key !== 'page' && urlParams.get(key) !== ''
+      );
+
+      if (hasActiveFilters) {
+        const collapseInstance = new bootstrap.Collapse(filterPanel, {
+          toggle: false
         });
-
-        filterPanel.addEventListener('hide.bs.collapse', function () {
-            filterChevron.classList.remove('fa-chevron-up');
-            filterChevron.classList.add('fa-chevron-down');
-            filterToggleText.textContent = 'Tampilkan Filter';
-        });
-
-        // Auto-expand filter panel if any filter is active
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasActiveFilters = Array.from(urlParams.keys()).some(key =>
-          key !== 'page' && urlParams.get(key) !== ''
-        );
-
-        if (hasActiveFilters) {
-            const collapseInstance = new bootstrap.Collapse(filterPanel, {
-                toggle: false
-            });
-            collapseInstance.show();
-        }
+        collapseInstance.show();
+      }
     }
-});
+  });
 </script>

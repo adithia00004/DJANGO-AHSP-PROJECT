@@ -197,6 +197,33 @@ def ahsp_database(request):
     return render(request, "referensi/ahsp_database.html", context)
 
 
+@login_required
+@permission_required(
+    ("referensi.view_ahspreferensi", "referensi.change_ahspreferensi"),
+    raise_exception=True,
+)
+def ahsp_database_api(request):
+    """
+    Lightweight view for API-based AHSP Database.
+    
+    Only passes minimal context needed for initial render.
+    Data is loaded via JavaScript API calls.
+    """
+    # Get sources for filter dropdown (lightweight query)
+    sources = list(
+        AHSPReferensi.objects
+        .values_list('sumber', flat=True)
+        .distinct()
+        .order_by('sumber')
+    )
+    sources = [s for s in sources if s]  # Remove empty values
+    
+    context = {
+        'sources': sources,
+    }
+    return render(request, "referensi/ahsp_database_api.html", context)
+
+
 def _build_redirect_url(tab, tab_filters, extra_params=None):
     base_url = reverse("referensi:ahsp_database")
     params = {

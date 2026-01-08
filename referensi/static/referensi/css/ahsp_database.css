@@ -1,7 +1,119 @@
-﻿/* Table Container */
+﻿/* =============================================================================
+   AHSP Database CSS - Design Tokens & Styles
+   
+   Design Token Hierarchy:
+   - Primary colors: Brand and action colors
+   - Surface colors: Backgrounds and cards
+   - Text colors: Primary, secondary, muted
+   - State colors: Success, warning, danger, info
+   - Border & spacing: Consistent sizing
+   ============================================================================= */
+
+/* ===== DESIGN TOKENS - LIGHT MODE ===== */
+:root {
+    /* Primary Colors */
+    --ahsp-primary: #0d6efd;
+    --ahsp-primary-hover: #0b5ed7;
+    --ahsp-primary-subtle: rgba(13, 110, 253, 0.1);
+
+    /* Surface Colors */
+    --ahsp-bg-body: #ffffff;
+    --ahsp-bg-card: #ffffff;
+    --ahsp-bg-header: #f8f9fa;
+    --ahsp-bg-hover: rgba(0, 0, 0, 0.04);
+    --ahsp-bg-selected: rgba(13, 110, 253, 0.08);
+
+    /* Text Colors */
+    --ahsp-text-primary: #212529;
+    --ahsp-text-secondary: #6c757d;
+    --ahsp-text-muted: #adb5bd;
+
+    /* State Colors */
+    --ahsp-success: #198754;
+    --ahsp-success-subtle: rgba(25, 135, 84, 0.1);
+    --ahsp-warning: #ffc107;
+    --ahsp-warning-subtle: rgba(255, 193, 7, 0.15);
+    --ahsp-danger: #dc3545;
+    --ahsp-danger-subtle: rgba(220, 53, 69, 0.1);
+    --ahsp-info: #0dcaf0;
+    --ahsp-info-subtle: rgba(13, 202, 240, 0.1);
+
+    /* Borders */
+    --ahsp-border-color: #dee2e6;
+    --ahsp-border-light: #e9ecef;
+    --ahsp-border-radius: 0.375rem;
+    --ahsp-border-radius-lg: 0.5rem;
+
+    /* Shadows */
+    --ahsp-shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    --ahsp-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+
+    /* Spacing */
+    --ahsp-spacing-xs: 0.25rem;
+    --ahsp-spacing-sm: 0.5rem;
+    --ahsp-spacing-md: 1rem;
+    --ahsp-spacing-lg: 1.5rem;
+
+    /* Typography */
+    --ahsp-font-size-sm: 0.8125rem;
+    --ahsp-font-size-base: 0.875rem;
+    --ahsp-font-size-lg: 1rem;
+
+    /* Z-Index Layers */
+    --ahsp-z-dropdown: 1000;
+    --ahsp-z-sticky: 1010;
+    --ahsp-z-modal-backdrop: 1040;
+    --ahsp-z-modal: 1050;
+    --ahsp-z-toast: 1060;
+}
+
+/* ===== DESIGN TOKENS - DARK MODE ===== */
+[data-bs-theme="dark"] {
+    /* Primary Colors */
+    --ahsp-primary: #6ea8fe;
+    --ahsp-primary-hover: #8bb9fe;
+    --ahsp-primary-subtle: rgba(110, 168, 254, 0.15);
+
+    /* Surface Colors */
+    --ahsp-bg-body: #1a1d21;
+    --ahsp-bg-card: #212529;
+    --ahsp-bg-header: #2b3035;
+    --ahsp-bg-hover: rgba(255, 255, 255, 0.05);
+    --ahsp-bg-selected: rgba(110, 168, 254, 0.12);
+
+    /* Text Colors */
+    --ahsp-text-primary: #f8f9fa;
+    --ahsp-text-secondary: #adb5bd;
+    --ahsp-text-muted: #6c757d;
+
+    /* State Colors */
+    --ahsp-success: #75b798;
+    --ahsp-success-subtle: rgba(117, 183, 152, 0.15);
+    --ahsp-warning: #ffda6a;
+    --ahsp-warning-subtle: rgba(255, 218, 106, 0.15);
+    --ahsp-danger: #ea868f;
+    --ahsp-danger-subtle: rgba(234, 134, 143, 0.15);
+    --ahsp-info: #6edff6;
+    --ahsp-info-subtle: rgba(110, 223, 246, 0.15);
+
+    /* Borders */
+    --ahsp-border-color: #495057;
+    --ahsp-border-light: #343a40;
+
+    /* Shadows */
+    --ahsp-shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.2);
+    --ahsp-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+}
+
+/* =============================================================================
+   TABLE STYLES
+   ============================================================================= */
+
+/* Table Container */
 .ahsp-table-responsive {
     width: 100%;
     overflow-x: auto;
+    border-radius: var(--ahsp-border-radius);
     /* overflow-y cannot be visible when overflow-x is auto - CSS limitation */
 }
 
@@ -9,7 +121,8 @@
 .ahsp-database-table {
     min-width: 1100px;
     width: 100%;
-    font-size: 0.875rem;
+    font-size: var(--ahsp-font-size-base);
+    color: var(--ahsp-text-primary);
 }
 
 .ahsp-database-table thead th {
@@ -26,7 +139,7 @@
 }
 
 .ahsp-database-table th.sortable:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: var(--ahsp-bg-hover);
 }
 
 .ahsp-database-table th.sortable i {
@@ -66,27 +179,27 @@
 
 /* Change Tracking - Modified Fields */
 .ahsp-database-table .is-modified {
-    border-left: 3px solid #ffc107 !important;
-    border-color: #ffc107 !important;
-    /* No background color - works in both light and dark mode */
+    border-left: 3px solid var(--ahsp-warning);
+    border-color: var(--ahsp-warning);
 }
 
 .ahsp-database-table .is-modified:focus {
-    border-left: 3px solid #ffc107 !important;
-    border-color: #ffc107 !important;
-    box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.25);
+    border-left: 3px solid var(--ahsp-warning);
+    border-color: var(--ahsp-warning);
+    box-shadow: 0 0 0 0.25rem var(--ahsp-warning-subtle);
 }
 
 /* Badges & Small Text */
 .ahsp-database-table .badge,
 .ahsp-database-table .small,
 .ahsp-database-table .text-muted {
-    font-size: 0.8125rem;
+    font-size: var(--ahsp-font-size-sm);
 }
 
 /* Modal Improvements */
 .modal.fade.show {
-    z-index: 99999 !important; /* Higher than topbar */
+    z-index: 99999 !important;
+    /* Higher than topbar */
 }
 
 .modal-backdrop.show {
@@ -116,9 +229,12 @@ button[type="submit"].btn-warning {
 }
 
 @keyframes pulse-warning {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
     }
+
     50% {
         box-shadow: 0 0 0 0.5rem rgba(255, 193, 7, 0);
     }
@@ -164,7 +280,8 @@ button[type="submit"].btn-warning {
 /* ===================================================== */
 
 .autocomplete-dropdown {
-    position: fixed; /* Changed from absolute to fixed to escape overflow clipping */
+    position: fixed;
+    /* Changed from absolute to fixed to escape overflow clipping */
     /* top, left, width will be dynamically set by JavaScript */
     z-index: 9999;
     display: none;
@@ -237,24 +354,27 @@ button[type="submit"].btn-warning {
 /* ===================================================== */
 
 .row-highlighted {
-    background-color: #fff3cd !important;
+    background-color: var(--dp-c-warning-bg, #fff3cd) !important;
     animation: highlightPulse 0.6s ease-in-out;
-    box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+    box-shadow: 0 0 0 3px var(--dp-c-warning-focus, rgba(255, 193, 7, 0.3));
     position: relative;
     z-index: 10;
 }
 
 @keyframes highlightPulse {
-    0%, 100% {
-        background-color: #fff3cd;
+
+    0%,
+    100% {
+        background-color: var(--dp-c-warning-bg, #fff3cd);
     }
+
     50% {
-        background-color: #ffd970;
+        background-color: var(--dp-c-warning-hover, #ffd970);
     }
 }
 
 .table-striped tbody .row-highlighted {
-    background-color: #fff3cd !important;
+    background-color: var(--dp-c-warning-bg, #fff3cd) !important;
 }
 
 /* ===================================================== */
@@ -317,7 +437,7 @@ button[type="submit"].btn-warning {
 
 .column-resizer:hover,
 .column-resizer.resizing {
-    background-color: #0d6efd;
+    background-color: var(--dp-c-primary, #0d6efd);
 }
 
 .column-resizer::after {
@@ -428,6 +548,7 @@ body.column-resizing {
         transform: translateY(-50px);
         opacity: 0;
     }
+
     to {
         transform: translateY(0);
         opacity: 1;
@@ -444,6 +565,7 @@ body.column-resizing {
         transform: translate(-50%, -100%);
         opacity: 0;
     }
+
     to {
         transform: translate(-50%, 0);
         opacity: 1;
@@ -573,12 +695,10 @@ body.column-resizing {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        rgba(var(--bs-primary-rgb), 0.05),
-        transparent
-    );
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(var(--bs-primary-rgb), 0.05),
+            transparent);
     transition: left 0.5s ease;
 }
 
@@ -605,7 +725,7 @@ body.column-resizing {
     .ahsp-database-table tbody tr:hover {
         box-shadow: 0 2px 4px rgba(255, 255, 255, 0.05);
     }
-    
+
     .btn:hover:not(:disabled) {
         box-shadow: 0 4px 8px rgba(255, 255, 255, 0.1);
     }
@@ -652,7 +772,431 @@ body.column-resizing {
     from {
         opacity: 0;
     }
+
     to {
         opacity: 0.5;
+    }
+}
+
+/* ===================================================== */
+/* BORDER ENHANCEMENT - Proportional Border Visibility   */
+/* ===================================================== */
+/* Mempertegas border untuk meningkatkan segmentasi visual */
+
+:root {
+    /* Border Width Tokens */
+    --ref-border-thin: 1px;
+    --ref-border-normal: 2px;
+    --ref-border-emphasis: 3px;
+}
+
+/* ----- Cards & Main Container ----- */
+.card {
+    border-width: var(--ref-border-normal, 2px);
+    border-style: solid;
+    border-color: var(--bs-border-color, #dee2e6);
+}
+
+.card.border-0 {
+    border-width: var(--ref-border-normal, 2px) !important;
+    border-style: solid !important;
+    border-color: var(--bs-border-color, #dee2e6) !important;
+}
+
+.card.shadow-sm {
+    border-width: var(--ref-border-normal, 2px);
+}
+
+.card-header {
+    border-bottom-width: var(--ref-border-normal, 2px);
+}
+
+.card-body {
+    border-top: none;
+}
+
+/* ----- Nav Pills (Tab Navigation) ----- */
+.nav-pills .nav-link {
+    border: var(--ref-border-normal, 2px) solid transparent;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.nav-pills .nav-link:hover {
+    border-color: var(--bs-border-color, #dee2e6);
+}
+
+.nav-pills .nav-link.active {
+    border-color: var(--bs-primary, #0d6efd);
+}
+
+/* ----- Tables ----- */
+.ahsp-database-table {
+    border: var(--ref-border-normal, 2px) solid var(--bs-border-color, #dee2e6);
+}
+
+.ahsp-database-table thead {
+    border-bottom: var(--ref-border-normal, 2px) solid var(--bs-border-color, #dee2e6);
+}
+
+.ahsp-database-table thead th {
+    border-bottom-width: var(--ref-border-normal, 2px);
+    border-right: var(--ref-border-thin, 1px) solid var(--bs-border-color, #dee2e6);
+}
+
+.ahsp-database-table thead th:last-child {
+    border-right: none;
+}
+
+.ahsp-database-table td {
+    border: var(--ref-border-thin, 1px) solid var(--bs-border-color, #dee2e6);
+}
+
+/* Table responsive wrapper */
+.ahsp-table-responsive {
+    border: var(--ref-border-emphasis, 3px) solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.375rem;
+}
+
+/* ----- Form Controls in Table ----- */
+.ahsp-database-table .form-control,
+.ahsp-database-table .form-select {
+    border-width: var(--ref-border-thin, 1px);
+}
+
+.ahsp-database-table .form-control:focus,
+.ahsp-database-table .form-select:focus {
+    border-width: var(--ref-border-normal, 2px);
+}
+
+/* ----- Search Input Group ----- */
+.input-group .form-control,
+.input-group .form-select {
+    border-width: var(--ref-border-thin, 1px);
+}
+
+.input-group .input-group-text {
+    border-width: var(--ref-border-thin, 1px);
+}
+
+.input-group .btn {
+    border-width: var(--ref-border-thin, 1px);
+}
+
+/* ----- Modals ----- */
+.modal-content {
+    border-width: var(--ref-border-normal, 2px);
+    border-style: solid;
+    border-color: var(--bs-border-color, #dee2e6);
+}
+
+.modal-header {
+    border-bottom-width: var(--ref-border-thin, 1px);
+}
+
+.modal-footer {
+    border-top-width: var(--ref-border-thin, 1px);
+}
+
+/* Modal with colored header */
+#modalBulkDelete .modal-content {
+    border-color: var(--bs-danger, #dc3545);
+}
+
+#modalSaveConfirmation .modal-content {
+    border-color: var(--bs-warning, #ffc107);
+}
+
+/* ----- Autocomplete Dropdown ----- */
+.autocomplete-dropdown {
+    border-width: var(--ref-border-normal, 2px);
+}
+
+/* ----- Alerts ----- */
+.alert {
+    border-width: var(--ref-border-normal, 2px);
+}
+
+/* ----- List Group ----- */
+.list-group {
+    border: var(--ref-border-thin, 1px) solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.375rem;
+}
+
+.list-group-item {
+    border-width: var(--ref-border-thin, 1px);
+}
+
+#columnToggleList .list-group-item {
+    border-left-width: 3px;
+}
+
+/* ----- Badges with borders ----- */
+.badge {
+    border: var(--ref-border-thin, 1px) solid transparent;
+}
+
+.badge.bg-primary-subtle,
+.badge.bg-info-subtle,
+.badge.bg-secondary-subtle,
+.badge.bg-success-subtle,
+.badge.bg-warning-subtle,
+.badge.bg-danger-subtle,
+.badge.bg-dark-subtle {
+    border-color: currentColor;
+    border-width: var(--ref-border-thin, 1px);
+    border-style: solid;
+}
+
+/* ----- Form Selects (Row Limit) ----- */
+#rowLimitJobs,
+#rowLimitItems {
+    border-width: var(--ref-border-thin, 1px);
+}
+
+/* ----- Buttons ----- */
+.btn-outline-secondary,
+.btn-outline-primary,
+.btn-outline-danger {
+    border-width: var(--ref-border-normal, 2px);
+}
+
+/* ----- Dark Mode Adjustments ----- */
+@media (prefers-color-scheme: dark) {
+
+    .card,
+    .card.border-0,
+    .modal-content,
+    .ahsp-table-responsive {
+        border-color: var(--bs-border-color, #495057);
+    }
+}
+
+[data-bs-theme="dark"] .card,
+[data-bs-theme="dark"] .card.border-0,
+[data-bs-theme="dark"] .modal-content,
+[data-bs-theme="dark"] .ahsp-table-responsive {
+    border-color: var(--bs-border-color, #495057);
+}
+
+/* =============================================================================
+   PHASE 2: UNIFIED TOOLBAR & STATS HEADER
+   ============================================================================= */
+
+/* Stats Summary Header */
+.ahsp-stats-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ahsp-spacing-md);
+    padding: var(--ahsp-spacing-md);
+    background: linear-gradient(135deg, var(--ahsp-primary-subtle) 0%, transparent 100%);
+    border-radius: var(--ahsp-border-radius-lg);
+    margin-bottom: var(--ahsp-spacing-md);
+}
+
+.ahsp-stat-item {
+    display: flex;
+    align-items: center;
+    gap: var(--ahsp-spacing-sm);
+    padding: var(--ahsp-spacing-sm) var(--ahsp-spacing-md);
+    background: var(--ahsp-bg-card);
+    border-radius: var(--ahsp-border-radius);
+    box-shadow: var(--ahsp-shadow-sm);
+}
+
+.ahsp-stat-item i {
+    font-size: 1.25rem;
+    color: var(--ahsp-primary);
+}
+
+.ahsp-stat-item .stat-value {
+    font-size: var(--ahsp-font-size-lg);
+    font-weight: 600;
+    color: var(--ahsp-text-primary);
+}
+
+.ahsp-stat-item .stat-label {
+    font-size: var(--ahsp-font-size-sm);
+    color: var(--ahsp-text-secondary);
+}
+
+/* Unified Toolbar */
+.ahsp-unified-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ahsp-spacing-sm);
+    padding: var(--ahsp-spacing-md);
+    background: var(--ahsp-bg-header);
+    border-bottom: 1px solid var(--ahsp-border-color);
+    border-radius: var(--ahsp-border-radius-lg) var(--ahsp-border-radius-lg) 0 0;
+}
+
+.ahsp-toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: var(--ahsp-spacing-sm);
+}
+
+.ahsp-toolbar-section.search-section {
+    flex: 1;
+    min-width: 200px;
+}
+
+.ahsp-toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--ahsp-border-color);
+    margin: 0 var(--ahsp-spacing-sm);
+}
+
+/* Search Input Enhancement */
+.ahsp-search-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+.ahsp-search-wrapper .form-control {
+    padding-left: 2.5rem;
+    border-radius: var(--ahsp-border-radius);
+}
+
+.ahsp-search-wrapper .search-icon {
+    position: absolute;
+    left: var(--ahsp-spacing-md);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ahsp-text-muted);
+    pointer-events: none;
+}
+
+/* =============================================================================
+   PHASE 3: TABLE IMPROVEMENTS
+   ============================================================================= */
+
+/* Sticky Table Header */
+.ahsp-database-table thead {
+    position: sticky;
+    top: 0;
+    z-index: var(--ahsp-z-sticky);
+    background: var(--ahsp-bg-header);
+}
+
+.ahsp-database-table thead th {
+    background: var(--ahsp-bg-header);
+    border-bottom: 2px solid var(--ahsp-border-color);
+}
+
+/* Compact Category Badges */
+.ahsp-rincian-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.ahsp-rincian-badges .badge {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    font-weight: 500;
+}
+
+/* Row Action Dropdown */
+.ahsp-row-actions {
+    display: flex;
+    gap: var(--ahsp-spacing-xs);
+    justify-content: center;
+}
+
+.ahsp-row-actions .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: var(--ahsp-font-size-sm);
+}
+
+.ahsp-row-actions .dropdown-menu {
+    min-width: 120px;
+}
+
+.ahsp-row-actions .dropdown-item {
+    font-size: var(--ahsp-font-size-sm);
+    padding: 0.375rem 0.75rem;
+}
+
+/* Anomaly Row Highlight */
+.ahsp-database-table tr.has-anomaly {
+    background-color: var(--ahsp-warning-subtle);
+}
+
+[data-bs-theme="dark"] .ahsp-database-table tr.has-anomaly {
+    background-color: var(--ahsp-warning-subtle);
+}
+
+/* Selected Row */
+.ahsp-database-table tr.selected {
+    background-color: var(--ahsp-bg-selected);
+}
+
+/* Data Quality Progress Bar */
+.ahsp-quality-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--ahsp-border-light);
+    overflow: hidden;
+    margin-top: var(--ahsp-spacing-xs);
+}
+
+.ahsp-quality-bar .progress-fill {
+    height: 100%;
+    background: var(--ahsp-success);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+/* Quick Filter Toggle Buttons */
+.ahsp-quick-filters {
+    display: flex;
+    gap: var(--ahsp-spacing-sm);
+}
+
+.ahsp-quick-filters .btn-filter {
+    padding: 0.25rem 0.75rem;
+    font-size: var(--ahsp-font-size-sm);
+    border-radius: 50px;
+    background: var(--ahsp-bg-card);
+    border: 1px solid var(--ahsp-border-color);
+    color: var(--ahsp-text-secondary);
+    transition: all 0.2s ease;
+}
+
+.ahsp-quick-filters .btn-filter:hover {
+    border-color: var(--ahsp-primary);
+    color: var(--ahsp-primary);
+}
+
+.ahsp-quick-filters .btn-filter.active {
+    background: var(--ahsp-primary);
+    border-color: var(--ahsp-primary);
+    color: #fff;
+}
+
+/* =============================================================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================================================= */
+
+@media (max-width: 768px) {
+    .ahsp-stats-header {
+        flex-direction: column;
+    }
+
+    .ahsp-unified-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .ahsp-toolbar-section {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .ahsp-toolbar-divider {
+        display: none;
     }
 }

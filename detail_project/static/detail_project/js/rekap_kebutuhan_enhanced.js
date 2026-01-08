@@ -62,11 +62,17 @@
   }
 
   function showToast(message, type = 'info') {
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[type]) {
+      return window.DP.toast[type](message);
+    }
+    // Fallback to legacy API
     if (window.DP && window.DP.core && window.DP.core.toast) {
       window.DP.core.toast.show(message, type);
-    } else {
-      console.log(`[${type}] ${message}`);
+      return;
     }
+    // Console fallback
+    console.log(`[${type}] ${message}`);
   }
 
   async function apiCall(url, options = {}) {

@@ -23,7 +23,81 @@
   /* Bootstrap backdrop default is 1050 */
 }
 
-/* ===== TOOLBAR (FIXED: sticky, overflow, z-index) ===== */
+/* =====================================================================
+   BORDER ENHANCEMENT SECTION
+   Konsisten dengan dashboard, list_pekerjaan, referensi, volume_pekerjaan
+   ===================================================================== */
+
+/* Border thickness tokens */
+:root {
+  --hi-border-thin: 1px;
+  --hi-border-normal: 2px;
+  --hi-border-emphasis: 3px;
+}
+
+/* Toolbar - 2px border bottom */
+#hi-toolbar {
+  border-bottom-width: var(--hi-border-normal);
+}
+
+/* Cards - enhanced borders */
+#hi-app .dp-card {
+  border-width: var(--hi-border-normal);
+}
+
+/* Table container - enhanced border */
+#hi-app .table-responsive {
+  border: var(--hi-border-normal) solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+}
+
+/* Filter section - enhanced border */
+#hi-filter-section {
+  border-width: var(--hi-border-normal);
+}
+
+/* Modal borders - enhanced */
+#hiConvModal .modal-content {
+  border-width: var(--hi-border-normal);
+}
+
+/* Form controls within toolbar */
+#hi-toolbar .input-group .form-control,
+#hi-toolbar .input-group .input-group-text {
+  border-width: var(--hi-border-thin);
+}
+
+#hi-toolbar .input-group .form-control:focus {
+  border-width: var(--hi-border-normal);
+}
+
+/* Buttons - enhanced borders */
+#hi-toolbar .btn {
+  border-width: var(--hi-border-normal);
+}
+
+/* Category badges - enhanced borders */
+.hi-cat-badge {
+  border-width: var(--hi-border-thin);
+}
+
+/* Alert/Banner borders */
+#hi-sync-banner {
+  border-width: var(--hi-border-normal);
+}
+
+/* Lock card border */
+.hi-lock-card {
+  border-width: var(--hi-border-normal);
+}
+
+/* Dark mode border adjustments */
+[data-bs-theme="dark"] #hi-app .dp-card,
+[data-bs-theme="dark"] #hi-filter-section,
+[data-bs-theme="dark"] #hi-app .table-responsive {
+  border-color: var(--dp-c-border);
+}
+
 #hi-toolbar {
   position: sticky;
   top: var(--dp-topbar-h, 56px);
@@ -57,7 +131,7 @@
   padding-top: .375rem;
   padding-bottom: .375rem;
   border-color: var(--dp-c-border);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
   height: auto;
   min-height: 32px;
   display: flex;
@@ -104,7 +178,7 @@
   border-radius: var(--dp-radius-md, 6px);
   box-shadow: var(--dp-shadow-sm);
   white-space: nowrap;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
   min-height: 32px;
   display: inline-flex;
   align-items: center;
@@ -255,7 +329,7 @@
   border-color: var(--dp-c-border);
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
 }
 
 /* Price input - wider to fit 7 digit numbers with formatting (e.g., 1.200.000) */
@@ -400,7 +474,7 @@
   border-color: var(--dp-c-border);
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
 }
 
 #hiConvModal .form-control:focus,
@@ -478,7 +552,7 @@
   font-size: var(--ux-font-xs);
   padding: .375rem .75rem;
   border-radius: var(--dp-radius-md);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
 #hiConvModal .btn:hover {

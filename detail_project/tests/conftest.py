@@ -88,9 +88,18 @@ def other_user(db):
 
 @pytest.fixture
 def client_logged(db, user):
+    """
+    Create authenticated client using actual login flow.
+    
+    Uses client.login() instead of force_login() to ensure proper
+    session handling with AllAuth middleware stack.
+    """
     c = Client()
-    c.force_login(user)
-    # Hindari DisallowedHost ketika pakai test client
+    # Use actual login instead of force_login to work with AllAuth
+    success = c.login(username=user.username, password='secret')
+    assert success, "Login failed - check user fixture password"
+    
+    # Set test server host
     c.defaults["HTTP_HOST"] = "testserver"
     return c
 
@@ -398,6 +407,167 @@ def ahsp_ref(db):
         nama_ahsp="Referensi A",
         satuan="OH",
     )
+
+
+# ================= Complete Referensi Mode Fixtures =================
+@pytest.fixture
+def ahsp_ref_with_rincian(db):
+    """
+    Create complete AHSPReferensi with RincianReferensi items.
+    This simulates real reference data for testing.
+    """
+    from referensi.models import AHSPReferensi, RincianReferensi
+    
+    # Create AHSP
+    ahsp = AHSPReferensi.objects.create(
+        kode_ahsp="A.1.001",
+        nama_ahsp="Galian Tanah Keras",
+        satuan="m3",
+        sumber="SNI 2024",
+        klasifikasi="Pekerjaan Tanah",
+        sub_klasifikasi="Galian",
+    )
+    
+    # Create Rincian items (TK, BHN, ALT)
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="TK",
+        kode_item="TK.01",
+        uraian_item="Pekerja",
+        satuan_item="OH",
+        koefisien=Decimal("0.75"),
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="TK",
+        kode_item="TK.02",
+        uraian_item="Mandor",
+        satuan_item="OH",
+        koefisien=Decimal("0.025"),
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="ALT",
+        kode_item="ALT.01",
+        uraian_item="Excavator",
+        satuan_item="jam",
+        koefisien=Decimal("0.05"),
+    )
+    
+    return ahsp
+
+
+@pytest.fixture
+def pekerjaan_referensi(db, project, sub_klas, ahsp_ref_with_rincian):
+    """
+    Create Pekerjaan with source_type='referensi' linked to AHSPReferensi.
+    This triggers signal to populate DetailAHSPProject from reference data.
+    """
+    from detail_project.models import Pekerjaan, VolumePekerjaan
+    
+    pekerjaan = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klas,
+        source_type="ref",  # Use 'ref' not 'referensi'
+        ref=ahsp_ref_with_rincian,  # FK field is 'ref' not 'ahsp_referensi'
+        snapshot_kode=ahsp_ref_with_rincian.kode_ahsp,
+        snapshot_uraian=ahsp_ref_with_rincian.nama_ahsp,
+        snapshot_satuan=ahsp_ref_with_rincian.satuan,
+        ordering_index=1,
+    )
+    
+    # Add volume
+    VolumePekerjaan.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        quantity=Decimal("100.00"),
+    )
+    
+    return pekerjaan
+
+
+@pytest.fixture
+def project_with_referensi_pekerjaan(db, user):
+    """
+    Create a complete project with referensi-mode pekerjaan.
+    Includes: Project → Klasifikasi → SubKlasifikasi → Pekerjaan(referensi) → DetailAHSPProject
+    """
+    from referensi.models import AHSPReferensi, RincianReferensi
+    from detail_project.models import (
+        Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan
+    )
+    
+    Project = _import_project_model()
+    
+    # Create project
+    project = Project.objects.create(
+        owner=user,
+        nama="Project With Referensi",
+        sumber_dana="APBN",
+        lokasi_project="Jakarta",
+        nama_client="Client Test",
+        anggaran_owner=Decimal("500000000.00"),
+        tanggal_mulai=date.today(),
+        tahun_project=date.today().year,
+    )
+    
+    # Create hierarchy
+    klas = Klasifikasi.objects.create(
+        project=project,
+        name="Pekerjaan Persiapan",
+        ordering_index=1
+    )
+    sub_klas = SubKlasifikasi.objects.create(
+        project=project,
+        klasifikasi=klas,
+        name="Pembersihan Lahan",
+        ordering_index=1
+    )
+    
+    # Create AHSPReferensi with rincian
+    ahsp = AHSPReferensi.objects.create(
+        kode_ahsp="A.1.1",
+        nama_ahsp="Pembersihan Lahan Semak",
+        satuan="m2",
+        sumber="SNI 2024",
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="TK",
+        kode_item="TK.001",
+        uraian_item="Pekerja Biasa",
+        satuan_item="OH",
+        koefisien=Decimal("0.10"),
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="BHN",
+        kode_item="BHN.001",
+        uraian_item="Air Bersih",
+        satuan_item="liter",
+        koefisien=Decimal("5.00"),
+    )
+    
+    # Create Pekerjaan with referensi mode
+    pekerjaan = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klas,
+        source_type="ref",  # Use 'ref' not 'referensi'
+        ref=ahsp,  # FK field is 'ref' not 'ahsp_referensi'
+        snapshot_kode=ahsp.kode_ahsp,
+        snapshot_uraian=ahsp.nama_ahsp,
+        snapshot_satuan=ahsp.satuan,
+        ordering_index=1,
+    )
+    
+    # Add volume
+    VolumePekerjaan.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        quantity=Decimal("500.00"),
+    )
+    
+    return project
 
 
 # ================= Jadwal Pekerjaan (Weekly Canonical Storage) =================

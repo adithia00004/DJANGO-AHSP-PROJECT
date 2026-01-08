@@ -1,0 +1,8 @@
+{# templates/detail_project/_searchbar.html #}
+{# Usage: {% include '_searchbar.html' with id="vp-search" placeholder="Cari..." %} #}
+<div class="input-group dp-toolbar-search" role="search">
+    <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+    <input id="{{ id|default:'dp-search' }}" type="search" class="form-control"
+        placeholder="{{ placeholder|default:'Cari...' }}" autocomplete="off"
+        aria-label="{{ placeholder|default:'Cari...' }}">
+</div>

@@ -1,0 +1,307 @@
+{% extends "referensi/base.html" %}
+{% load humanize %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'referensi/css/ahsp_database.css' %}">
+{% endblock %}
+
+{% block title %}Database Referensi AHSP{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-4" id="ahsp-database-app">
+    <div>
+        <h1 class="h3 mb-1">Database Referensi AHSP</h1>
+        <p class="text-muted mb-0">
+            Pantau dan perbarui data referensi AHSP secara langsung. Klik sel untuk mengedit.
+        </p>
+    </div>
+
+    {# Stats Summary Header - Loaded via API #}
+    <div class="ahsp-stats-header" id="stats-header">
+        <div class="ahsp-stat-item">
+            <i class="bi bi-briefcase-fill"></i>
+            <div>
+                <div class="stat-value" id="stat-jobs">-</div>
+                <div class="stat-label">Total Pekerjaan</div>
+            </div>
+        </div>
+        <div class="ahsp-stat-item">
+            <i class="bi bi-list-check"></i>
+            <div>
+                <div class="stat-value" id="stat-items">-</div>
+                <div class="stat-label">Total Rincian</div>
+            </div>
+        </div>
+        <div class="ahsp-stat-item">
+            <i class="bi bi-exclamation-triangle-fill" style="color: var(--ahsp-warning);"></i>
+            <div>
+                <div class="stat-value" id="stat-anomalies">-</div>
+                <div class="stat-label">Anomali</div>
+            </div>
+        </div>
+    </div>
+
+    {# Tab Navigation #}
+    <ul class="nav nav-pills flex-wrap" role="tablist" id="database-tabs">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-jobs" data-tab="jobs" type="button" role="tab">
+                <i class="bi bi-briefcase me-2"></i>Pekerjaan AHSP
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-items" data-tab="items" type="button" role="tab">
+                <i class="bi bi-table me-2"></i>Rincian Item
+            </button>
+        </li>
+    </ul>
+
+    {# Main Content Card #}
+    <div class="card shadow-sm border-0">
+        {# Unified Toolbar #}
+        <div class="ahsp-unified-toolbar">
+            {# Search Section #}
+            <div class="ahsp-toolbar-section search-section">
+                <div class="ahsp-search-wrapper">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" class="form-control form-control-sm" id="search-input"
+                        placeholder="Cari kode, nama, atau klasifikasi..." autocomplete="off">
+                </div>
+                <button class="btn btn-primary btn-sm" type="button" id="btn-search">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+
+            <div class="ahsp-toolbar-divider"></div>
+
+            {# Filter Section #}
+            <div class="ahsp-toolbar-section">
+                <select class="form-select form-select-sm" id="filter-sumber" style="width: auto;"
+                    title="Filter Sumber">
+                    <option value="">Semua Sumber</option>
+                    {% for s in sources %}
+                    <option value="{{ s }}">{{ s }}</option>
+                    {% endfor %}
+                </select>
+                <div class="ahsp-quick-filters">
+                    <button class="btn-filter" id="filter-anomaly" title="Tampilkan hanya data bermasalah">
+                        <i class="bi bi-exclamation-triangle"></i> Anomali
+                    </button>
+                </div>
+            </div>
+
+            <div class="ahsp-toolbar-divider"></div>
+
+            {# Pagination Info #}
+            <div class="ahsp-toolbar-section">
+                <span class="small text-muted" id="pagination-info">Memuat...</span>
+            </div>
+
+            <div class="ahsp-toolbar-divider"></div>
+
+            {# Actions Section #}
+            <div class="ahsp-toolbar-section">
+                <div class="dropdown">
+                    <button class="btn btn-outline-danger btn-sm dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown">
+                        <i class="bi bi-trash"></i> Hapus
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="#" id="btn-bulk-delete"><i class="bi bi-trash me-2"></i>Hapus
+                                Berdasarkan Sumber</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        {# Table Container #}
+        <div class="card-body p-0">
+            <div class="table-responsive ahsp-table-responsive" id="table-container">
+                {# Loading State #}
+                <div class="text-center py-5" id="loading-indicator">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Memuat...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Memuat data...</p>
+                </div>
+
+                {# Jobs Table (initially hidden) #}
+                <table class="table table-sm table-hover align-middle mb-0 ahsp-database-table d-none" id="table-jobs">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="kode_ahsp" style="min-width: 9rem;">
+                                Kode AHSP <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="nama_ahsp" style="min-width: 18rem;">
+                                Nama Pekerjaan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="klasifikasi" style="min-width: 8rem;">
+                                Klasifikasi <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="sub_klasifikasi" style="min-width: 8rem;">
+                                Sub-klasifikasi <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="satuan" style="min-width: 6rem;">
+                                Satuan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="sumber" style="min-width: 7rem;">
+                                Sumber <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th style="min-width: 8rem;">Rincian</th>
+                            <th style="min-width: 5rem;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-jobs">
+                        {# Rows rendered via JavaScript #}
+                    </tbody>
+                </table>
+
+                {# Items Table (initially hidden) #}
+                <table class="table table-sm table-hover align-middle mb-0 ahsp-database-table d-none" id="table-items">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 10rem;">Pekerjaan</th>
+                            <th class="sortable" data-sort="kategori" style="min-width: 6rem;">
+                                Kategori <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="kode_item" style="min-width: 7rem;">
+                                Kode <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="uraian_item" style="min-width: 18rem;">
+                                Uraian <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable" data-sort="satuan_item" style="min-width: 6rem;">
+                                Satuan <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th class="sortable text-end" data-sort="koefisien" style="min-width: 7rem;">
+                                Koefisien <i class="bi bi-arrow-down-up text-muted"></i>
+                            </th>
+                            <th style="min-width: 5rem;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-items">
+                        {# Rows rendered via JavaScript #}
+                    </tbody>
+                </table>
+
+                {# Empty State #}
+                <div class="text-center py-5 d-none" id="empty-state">
+                    <i class="bi bi-database-x fs-1 text-muted d-block mb-2"></i>
+                    <p class="mb-1">Tidak ada data yang cocok dengan filter saat ini.</p>
+                    <p class="small text-muted">Coba ubah filter atau kata kunci pencarian.</p>
+                </div>
+            </div>
+        </div>
+
+        {# Pagination Footer #}
+        <div class="card-footer bg-body-tertiary">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <label class="small text-muted mb-0">Tampilkan:</label>
+                    <select class="form-select form-select-sm" id="page-size" style="width: auto;">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <nav aria-label="Pagination">
+                    <ul class="pagination pagination-sm mb-0" id="pagination-controls">
+                        {# Rendered via JavaScript #}
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Inline Edit Popover Template #}
+<div class="modal fade" id="edit-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="edit-modal-title">Edit</h6>
+                <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body py-3">
+                <input type="hidden" id="edit-pk">
+                <input type="hidden" id="edit-field">
+                <input type="hidden" id="edit-type">
+                <div id="edit-input-container">
+                    {# Input rendered dynamically based on field type #}
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btn-save-edit">
+                    <i class="bi bi-check-lg"></i> Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Bulk Delete Modal - Reuse existing #}
+<div class="modal fade" id="modalBulkDelete" tabindex="-1" aria-labelledby="modalBulkDeleteLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalBulkDeleteLabel">
+                    <i class="bi bi-trash"></i> Hapus Data Berdasarkan Sumber
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <strong>Perhatian!</strong> Operasi ini akan menghapus data secara permanen.
+                </div>
+                <div class="mb-3">
+                    <label for="delete-sumber" class="form-label">Pilih Sumber</label>
+                    <select class="form-select" id="delete-sumber">
+                        <option value="">-- Pilih Sumber --</option>
+                        {% for s in sources %}
+                        <option value="{{ s }}">{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="delete-preview" class="d-none">
+                    <hr>
+                    <h6>Preview Penghapusan:</h6>
+                    <div id="delete-preview-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary" id="btn-preview-delete">
+                    <i class="bi bi-eye"></i> Preview
+                </button>
+                <button type="button" class="btn btn-danger d-none" id="btn-confirm-delete">
+                    <i class="bi bi-trash"></i> Hapus Data
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Configuration passed from Django
+    window.AHSP_CONFIG = {
+        apiUrls: {
+            listJobs: "{% url 'referensi:api_list_jobs' %}",
+            updateJob: "{% url 'referensi:api_update_job' pk=0 %}".replace('/0/', '/{pk}/'),
+            listItems: "{% url 'referensi:api_list_items' %}",
+            updateItem: "{% url 'referensi:api_update_item' pk=0 %}".replace('/0/', '/{pk}/'),
+            stats: "{% url 'referensi:api_get_stats' %}",
+            deletePreview: "{% url 'referensi:api_delete_preview' %}",
+            deleteExecute: "{% url 'referensi:api_bulk_delete' %}",
+        },
+        csrfToken: "{{ csrf_token }}",
+    };
+</script>
+<script src="{% static 'referensi/js/ahsp_database_api.js' %}"></script>
+{% endblock %}

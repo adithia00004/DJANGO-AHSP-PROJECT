@@ -4,7 +4,7 @@
  * Adapted from ahsp_database_v2.js
  */
 
-(function() {
+(function () {
     'use strict';
 
     // =====================================================
@@ -18,6 +18,13 @@
     }
 
     function showToast(message, type = 'success') {
+        // Use global DP.toast if available
+        if (window.DP && window.DP.toast && window.DP.toast[type]) {
+            window.DP.toast[type](message);
+            return;
+        }
+
+        // Fallback to inline toast
         const toast = document.createElement('div');
         toast.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
         toast.style.zIndex = '99999';
@@ -1327,29 +1334,29 @@
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             })
-            .then(response => response.json())
-            .then(data => {
-                this.saveModal.hide();
+                .then(response => response.json())
+                .then(data => {
+                    this.saveModal.hide();
 
-                if (data.success) {
-                    this.showSuccessNotification(data);
-                    this.changedFields.clear();
-                    this.captureInitialState();
-                    this.updateSaveButtonState();
-                    document.querySelectorAll('.is-modified').forEach(el => el.classList.remove('is-modified'));
-                } else {
-                    showToast(data.message || 'Gagal menyimpan perubahan', 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Save error:', error);
-                showToast('Terjadi kesalahan saat menyimpan', 'danger');
-                this.saveModal.hide();
-            })
-            .finally(() => {
-                btnSave.disabled = false;
-                btnSave.innerHTML = originalHTML;
-            });
+                    if (data.success) {
+                        this.showSuccessNotification(data);
+                        this.changedFields.clear();
+                        this.captureInitialState();
+                        this.updateSaveButtonState();
+                        document.querySelectorAll('.is-modified').forEach(el => el.classList.remove('is-modified'));
+                    } else {
+                        showToast(data.message || 'Gagal menyimpan perubahan', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Save error:', error);
+                    showToast('Terjadi kesalahan saat menyimpan', 'danger');
+                    this.saveModal.hide();
+                })
+                .finally(() => {
+                    btnSave.disabled = false;
+                    btnSave.innerHTML = originalHTML;
+                });
         },
 
         showSuccessNotification(data) {
@@ -1468,7 +1475,7 @@
     // INITIALIZATION
     // =====================================================
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // Initialize modules
         importNotificationModule.init();
         validationIndicatorModule.init();

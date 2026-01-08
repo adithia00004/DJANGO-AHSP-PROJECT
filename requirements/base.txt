@@ -38,4 +38,3 @@ reportlab==4.0.9
 # Cache Layer (Redis)
 redis==5.2.1
 django-redis==5.4.0
-hiredis==3.0.0

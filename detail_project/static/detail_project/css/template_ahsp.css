@@ -495,7 +495,7 @@
 }
 
 .ta-app .ta-job-item .primary .kode {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
   font-size: var(--ux-font-xs);
   font-weight: 600;
   color: var(--dp-c-muted);

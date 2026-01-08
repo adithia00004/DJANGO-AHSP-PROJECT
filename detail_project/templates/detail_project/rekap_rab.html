@@ -10,6 +10,7 @@
 {% block extra_css %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/rekap_rab.css' %}">
 
 <!-- Print System (Hybrid) -->
@@ -27,9 +28,13 @@
   data-project-code="{{ project.kode_project|default:'-' }}" data-project-location="{{ project.lokasi|default:'-' }}"
   data-project-year="{{ project.tahun_anggaran|default:'-' }}">
 
+  <!-- Page Title -->
+  <h1 class="h5 mb-3">Rekap RAB</h1>
+
   <!-- ============== TOOLBAR (ENHANCED) ============== -->
-  <div id="rab-toolbar" class="rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 ux-toolbar-inputs"
-    role="toolbar" aria-label="Rekap RAB toolbar">
+  <div id="rab-toolbar"
+    class="dp-toolbar rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 ux-toolbar-inputs" role="toolbar"
+    aria-label="Rekap RAB toolbar">
 
     <!-- Search -->
     <div class="input-group rab-toolbar-search">
@@ -42,12 +47,12 @@
 
     <!-- Expand/Collapse -->
     <div class="btn-group ms-1" role="group" aria-label="Expand dan Collapse">
-      <button id="btn-expand" class="btn btn-outline-secondary" type="button" title="Expand semua baris"
+      <button id="btn-expand" class="btn btn-outline-secondary dp-btn" type="button" title="Expand semua baris"
         aria-label="Expand semua">
         <i class="bi bi-arrows-expand" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Expand All</span>
       </button>
-      <button id="btn-collapse" class="btn btn-outline-secondary" type="button" title="Collapse semua baris"
+      <button id="btn-collapse" class="btn btn-outline-secondary dp-btn" type="button" title="Collapse semua baris"
         aria-label="Collapse semua">
         <i class="bi bi-arrows-collapse" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Collapse All</span>
@@ -56,12 +61,12 @@
 
     <!-- View modes -->
     <div class="btn-group ms-1" role="group" aria-label="Mode tampilan">
-      <button id="btn-subtotal" class="btn btn-outline-secondary" type="button"
+      <button id="btn-subtotal" class="btn btn-outline-secondary dp-btn" type="button"
         title="Tampilkan hanya subtotal (sembunyikan detail pekerjaan)" aria-label="Toggle subtotal only">
         <i class="bi bi-list-nested" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Subtotal</span>
       </button>
-      <button id="btn-density" class="btn btn-outline-secondary" type="button" title="Toggle compact mode"
+      <button id="btn-density" class="btn btn-outline-secondary dp-btn" type="button" title="Toggle compact mode"
         aria-label="Toggle density">
         <i class="bi bi-layout-text-window-reverse" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Compact</span>
@@ -71,15 +76,15 @@
 
     <!-- Actions (Right side) -->
     <div class="ms-auto d-flex align-items-center gap-2">
-      <button id="btn-refresh" class="btn btn-outline-secondary" type="button" title="Muat ulang data dari server"
-        aria-label="Refresh data">
+      <button id="btn-refresh" class="btn btn-outline-secondary dp-btn" type="button"
+        title="Muat ulang data dari server" aria-label="Refresh data">
         <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Refresh</span>
       </button>
 
       <!-- Export Dropdown (CSV/PDF/Word) -->
       <div class="btn-group ux-dropdown" role="group">
-        <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown"
+        <button type="button" class="btn btn-outline-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
           aria-expanded="false" aria-label="Export options">
           <i class="bi bi-download" aria-hidden="true"></i>
           <span class="d-none d-md-inline">Export</span>
@@ -116,7 +121,7 @@
       </div>
 
       <!-- Print button -->
-      <button id="btn-print" class="btn btn-success" type="button" title="Cetak atau simpan ke PDF"
+      <button id="btn-print" class="btn btn-success dp-btn" type="button" title="Cetak atau simpan ke PDF"
         aria-label="Print / Save PDF">
         <i class="bi bi-printer-fill" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Print</span>
@@ -244,20 +249,7 @@
   </div>
 
   <!-- Export Loading Modal -->
-  <div class="modal fade" id="rabExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
-    aria-labelledby="rabExportLoadingLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content">
-        <div class="modal-body text-center py-4">
-          <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-          <h6 class="mb-1" id="rabExportLoadingLabel">Memproses Export</h6>
-          <p class="text-muted small mb-0" id="rabExportLoadingText">Mohon tunggu...</p>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% include 'detail_project/_export_loading_modal.html' with modal_id="rabExportLoadingModal" %}
 
 </div>
 {% endblock %}

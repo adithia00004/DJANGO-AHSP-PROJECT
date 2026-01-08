@@ -1,8 +1,31 @@
-# Ignore Django templates (contains Django template syntax that breaks formatters)
+# =============================================================================
+# Prettier Ignore - Django Project
+# =============================================================================
+
+# Django Templates - Contains {% %} and {{ }} syntax that Prettier breaks
 **/templates/**/*.html
 
-# Ignore generated/built files
-**/static/**/dist/**
-**/node_modules/**
+# Generated files
 *.min.js
 *.min.css
+**/dist/**
+**/build/**
+
+# Third-party libraries
+**/vendor/**
+**/node_modules/**
+
+# Django specific
+**/static/admin/**
+**/staticfiles/**
+**/media/**
+
+# Migrations
+**/migrations/**
+
+# Python files (handled by Black/autopep8)
+*.py
+
+# Env and configs
+.env*
+*.log

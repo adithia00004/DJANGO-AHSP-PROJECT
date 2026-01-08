@@ -28,9 +28,11 @@ pytest-cov==6.0.0
 # Phase 4: Redis Cache Layer
 redis==5.2.1
 django-redis==5.4.0
-hiredis==3.0.0  # C parser for better performance
 
 # Phase 5: Celery Async Tasks
 celery==5.4.0
 celery[redis]==5.4.0
 flower==2.0.1  # Celery monitoring
+
+# Phase 6: Production Error Tracking
+sentry-sdk[django]==2.19.2

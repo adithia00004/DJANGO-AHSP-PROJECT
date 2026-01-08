@@ -62,11 +62,15 @@ class Project(models.Model):
 
     week_start_day = models.PositiveSmallIntegerField(
         default=0,
-        help_text='Angka hari awal minggu (0=Senin ... 6=Minggu) untuk siklus progress mingguan'
+        blank=True,
+        null=True,
+        help_text='Angka hari awal minggu (0=Senin, 1=Selasa ... 6=Minggu) untuk siklus progress mingguan'
     )
     week_end_day = models.PositiveSmallIntegerField(
         default=6,
-        help_text='Angka hari akhir minggu (0=Senin ... 6=Minggu) untuk siklus progress mingguan'
+        blank=True,
+        null=True,
+        help_text='Angka hari akhir minggu (0=Senin, 1=Selasa ... 6=Minggu) untuk siklus progress mingguan'
     )
 
     is_active = models.BooleanField(default=True, db_index=True)

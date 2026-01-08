@@ -212,7 +212,8 @@
   <div id="rk-toast" class="rk-toast-wrap" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Modal: Override Settings -->
-  <div class="modal fade" id="raOverrideModal" tabindex="-1" aria-labelledby="raOverrideLabel" aria-hidden="true">
+  <div class="modal fade dp-modal" id="raOverrideModal" tabindex="-1" aria-labelledby="raOverrideLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content">
         <div class="modal-header">
@@ -262,7 +263,7 @@
   </div>
 
   <!-- Modal: Bantuan Rincian AHSP (TIER 4: Enhanced with keyboard shortcuts) -->
-  <div class="modal fade" id="raHelpModal" tabindex="-1" aria-labelledby="raHelpLabel" aria-hidden="true">
+  <div class="modal fade dp-modal" id="raHelpModal" tabindex="-1" aria-labelledby="raHelpLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-scrollable modal-lg">
       <div class="modal-content">
         <div class="modal-header">
@@ -380,20 +381,7 @@
   </div>
 
   <!-- Export Loading Modal -->
-  <div class="modal fade" id="raExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
-    aria-labelledby="raExportLoadingLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content">
-        <div class="modal-body text-center py-4">
-          <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-          <h6 class="mb-1" id="raExportLoadingLabel">Memproses Export</h6>
-          <p class="text-muted small mb-0" id="raExportLoadingText">Mohon tunggu...</p>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% include 'detail_project/_export_loading_modal.html' with modal_id="raExportLoadingModal" %}
 </div>
 {% endblock %}
 

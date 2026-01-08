@@ -1,6 +1,7 @@
 <!-- templates/base.html -->
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <title>{% block title %}ADITHIA RAMADHANI{% endblock %}</title>
@@ -9,27 +10,35 @@
     {% load static %}
     {% load crispy_forms_tags %}
 
-    <style>html:not([data-theme-ready]){visibility:hidden}</style>
+    <style>
+        html:not([data-theme-ready]) {
+            visibility: hidden
+        }
+    </style>
     <script>
 
-    /* Early theme boot (no-FLASH) — honor saved or OS */
-    (function () {
-        var KEY = 'ui.theme';
-        var saved = null;
-        try { saved = localStorage.getItem(KEY) || 'auto'; } catch(e){}
-        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var theme = (saved === 'auto') ? (prefersDark ? 'dark' : 'light') : saved;
-        var r = document.documentElement;
-        r.setAttribute('data-bs-theme', theme);  // Bootstrap
-        r.setAttribute('data-theme', theme);     // Custom tokens (if needed)
-        r.setAttribute('data-theme-ready','true'); // reveal setelah tema terpasang
-    })();
+        /* Early theme boot (no-FLASH) — honor saved or OS */
+        (function () {
+            var KEY = 'ui.theme';
+            var saved = null;
+            try { saved = localStorage.getItem(KEY) || 'auto'; } catch (e) { }
+            var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            var theme = (saved === 'auto') ? (prefersDark ? 'dark' : 'light') : saved;
+            var r = document.documentElement;
+            r.setAttribute('data-bs-theme', theme);  // Bootstrap
+            r.setAttribute('data-theme', theme);     // Custom tokens (if needed)
+            r.setAttribute('data-theme-ready', 'true'); // reveal setelah tema terpasang
+        })();
     </script>
 
     <!-- SSOT core.css (HARUS lebih dulu), lalu corporate theme, lalu vendor -->
     <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
     <!-- Professional Corporate Theme - Applied Globally -->
     <link rel="stylesheet" href="{% static 'detail_project/css/corporate-theme.css' %}">
+    <!-- Error Recovery Modal -->
+    <link rel="stylesheet" href="{% static 'detail_project/css/error-recovery-modal.css' %}">
+    <!-- Global Toast Notifications -->
+    <link rel="stylesheet" href="{% static 'detail_project/css/toast-global.css' %}">
 
 
     <!--===================== Vendor CSS =====================-->
@@ -50,28 +59,35 @@
         #messagesModal .modal-dialog {
             max-width: 700px;
         }
+
         #messagesModal .modal-body {
             max-height: 70vh;
         }
+
         #messagesModal .messages-list .alert:last-child {
             margin-bottom: 0 !important;
         }
+
         #messagesModal .modal-header.bg-success,
         #messagesModal .modal-header.bg-danger,
         #messagesModal .modal-header.bg-info {
             border-bottom: none;
         }
+
         #messagesModal .modal-header .btn-close {
             filter: brightness(0) invert(1);
         }
+
         #messagesModal .modal-header.bg-warning .btn-close {
             filter: none;
         }
+
         /* Better text wrapping in messages */
         #messagesModal .alert p {
             word-wrap: break-word;
             overflow-wrap: break-word;
         }
+
         /* Icon styling */
         #messagesModal .alert .bi {
             margin-top: 0.125rem;
@@ -81,25 +97,30 @@
         .error-message-container {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
+
         .error-message-container .error-title {
             font-size: 1.25rem;
             font-weight: 600;
             margin-bottom: 1.5rem;
             color: #dc3545;
         }
+
         .error-message-container .error-section {
             margin-bottom: 1.5rem;
         }
+
         .error-message-container .section-title {
             font-size: 1.1rem;
             font-weight: 600;
             margin-bottom: 0.75rem;
             color: #495057;
         }
+
         .error-message-container .section-desc {
             margin-bottom: 1rem;
             color: #6c757d;
         }
+
         .error-message-container .duplicate-data-box {
             background-color: #fff3cd;
             border-left: 4px solid #ffc107;
@@ -107,27 +128,33 @@
             margin-bottom: 1rem;
             border-radius: 0.25rem;
         }
+
         .error-message-container .field-value {
             font-family: 'Courier New', monospace;
             font-size: 0.95rem;
             padding: 0.25rem 0;
             color: #d63384;
         }
+
         .error-message-container .cause-list {
             list-style: none;
             padding-left: 0;
         }
+
         .error-message-container .cause-list li {
             padding: 0.5rem 0;
             padding-left: 1.5rem;
             position: relative;
         }
+
         .error-message-container .cause-list li.likely {
             color: #198754;
         }
+
         .error-message-container .cause-list li.possible {
             color: #fd7e14;
         }
+
         .error-message-container .solution-option {
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
@@ -135,20 +162,24 @@
             padding: 1rem;
             margin-bottom: 1rem;
         }
+
         .error-message-container .option-header {
             font-weight: 600;
             color: #0d6efd;
             margin-bottom: 0.75rem;
             font-size: 1.05rem;
         }
+
         .error-message-container .option-steps {
             margin-bottom: 0;
             padding-left: 1.25rem;
         }
+
         .error-message-container .option-steps li {
             padding: 0.25rem 0;
             color: #495057;
         }
+
         .error-message-container code {
             background-color: #f8f9fa;
             padding: 0.2rem 0.4rem;
@@ -159,71 +190,65 @@
     </style>
 
     <!-- Favicon (inline fallback; tidak 404 meskipun file statik belum ada) -->
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230d6efd'/%3E%3Ctext x='50%25' y='54%25' font-size='36' text-anchor='middle' fill='white' font-family='Arial,Helvetica,sans-serif'%3EA%3C/text%3E%3C/svg%3E">
-    {# Jika nanti punya file, boleh ganti/link-kan ulang: #}
-    {# <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}"> #}
+    <link rel="icon"
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230d6efd'/%3E%3Ctext x='50%25' y='54%25' font-size='36' text-anchor='middle' fill='white' font-family='Arial,Helvetica,sans-serif'%3EA%3C/text%3E%3C/svg%3E">
 
     <!-- CSRF meta token (opsional, bantu debug/dev) -->
     <meta name="csrf-token" content="{{ csrf_token }}">
 
 
 </head>
+
 <body {% block body_attrs %}{% endblock %} class="bg-body d-flex flex-column min-vh-100 dp-map">
     <!-- CSRF seed: memastikan cookie csrftoken tersedia untuk fetch() -->
     <form style="display:none">{% csrf_token %}</form>
 
     <!-- Navbar -->
-     {% block topbar %}
-        <nav id="dp-topbar"
-        class="navbar navbar-expand-lg bg-body border-bottom shadow-sm sticky-top dp-z-topbar py-3"
+    {% block topbar %}
+    <nav id="dp-topbar" class="navbar navbar-expand-lg bg-body border-bottom shadow-sm sticky-top dp-z-topbar py-3"
         role="navigation" aria-label="Primary">
         <div class="container">
 
             <!-- Brand -->
             <a class="navbar-brand d-flex align-items-center gap-2" href="/">
-            <span class="d-inline-flex align-items-center justify-content-center rounded-2 p-1 border">
-                <i class="bi bi-app"></i>
-            </span>
-            <span class="fw-semibold">WELCOME TO SIMPAN</span>
+                <span class="d-inline-flex align-items-center justify-content-center rounded-2 p-1 border">
+                    <i class="bi bi-app"></i>
+                </span>
+                <span class="fw-semibold">WELCOME TO SIMPAN</span>
             </a>
 
             <!-- Toggler (mobile) -->
-            <button class="navbar-toggler" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#topbarMenu"
-                    aria-controls="topbarMenu" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topbarMenu"
+                aria-controls="topbarMenu" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
             </button>
 
             <!-- Menu -->
             <div class="collapse navbar-collapse" id="topbarMenu">
-            <div class="ms-auto d-flex align-items-center gap-2">
+                <div class="ms-auto d-flex align-items-center gap-2">
 
-                <!-- Theme toggle -->
-                <button id="theme-toggle" data-action="toggle-theme"
-                        class="btn btn-outline-secondary btn-sm"
-                        type="button"
-                        aria-pressed="false"
-                        aria-label="Toggle theme"
-                        title="Light/Dark">
-                <i id="theme-icon" class="bi bi-moon-stars"></i>
-                </button>
+                    <!-- Theme toggle -->
+                    <button id="theme-toggle" data-action="toggle-theme" class="btn btn-outline-secondary btn-sm"
+                        type="button" aria-pressed="false" aria-label="Toggle theme" title="Light/Dark">
+                        <i id="theme-icon" class="bi bi-moon-stars"></i>
+                    </button>
 
-                {% if user.is_authenticated %}
-                <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-info btn-sm">Dashboard</a>
-                <form action="{% url 'account_logout' %}" method="post" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
-                </form>
-                {% else %}
-                <a href="{% url 'account_login' %}" class="btn btn-outline-primary btn-sm">Login</a>
-                <a href="{% url 'account_signup' %}" class="btn btn-outline-secondary btn-sm">Daftar</a>
-                {% endif %}
+                    {% if user.is_authenticated %}
+                    <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-info btn-sm">Dashboard</a>
+                    <form action="{% url 'account_logout' %}" method="post" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
+                    </form>
+                    {% else %}
+                    <a href="{% url 'account_login' %}" class="btn btn-outline-primary btn-sm">Login</a>
+                    <a href="{% url 'account_signup' %}" class="btn btn-outline-secondary btn-sm">Daftar</a>
+                    {% endif %}
 
-            </div>
+                </div>
             </div>
 
         </div>
-        </nav>
+    </nav>
     {% endblock %}
 
     <!-- Main Content -->
@@ -254,14 +279,12 @@
 
     <!-- Hidden messages data for JavaScript -->
     {% if messages %}
-        <div id="django-messages-data" style="display: none;">
-            {% for message in messages %}
-                <div class="message-item"
-                     data-level="{{ message.level }}"
-                     data-tags="{{ message.tags }}"
-                     data-message="{{ message|escapejs }}"></div>
-            {% endfor %}
-        </div>
+    <div id="django-messages-data" style="display: none;">
+        {% for message in messages %}
+        <div class="message-item" data-level="{{ message.level }}" data-tags="{{ message.tags }}"
+            data-message="{{ message|escapejs }}"></div>
+        {% endfor %}
+    </div>
     {% endif %}
 
     <!-- Footer -->
@@ -275,16 +298,21 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Messages Modal Handler -->
     <script defer src="{% static 'detail_project/js/messages_modal.js' %}"></script>
+    <!-- Global Toast Notifications -->
+    <script defer src="{% static 'detail_project/js/core/toast.js' %}"></script>
+    <!-- Global Error Handler with Recovery Dialog -->
+    <script defer src="{% static 'detail_project/js/src/utils/error-handler.js' %}"></script>
 
 
     {% block extra_js %}
-   
-        <!-- Formset handler -->
-        <script src="{% static 'dashboard/js/formset.js' %}" defer></script>
-        <!-- Dashboard UI handler -->
-        <script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
-        <!-- Sidebar controller (global, no-rename) -->
-        <script src="{% static 'detail_project/js/sidebar_global.js' %}" defer></script>
+
+    <!-- Formset handler -->
+    <script src="{% static 'dashboard/js/formset.js' %}" defer></script>
+    <!-- Dashboard UI handler -->
+    <script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
+    <!-- Sidebar controller (global, no-rename) -->
+    <script src="{% static 'detail_project/js/sidebar_global.js' %}" defer></script>
     {% endblock %}
 </body>
+
 </html>

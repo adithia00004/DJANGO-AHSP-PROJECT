@@ -6,203 +6,223 @@
 {% block detail_css %}{% endblock %}
 
 {% block extra_css %}
-  {{ block.super }}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"/>
-  <link rel="stylesheet" href="{% static 'detail_project/css/list_pekerjaan.css' %}">
+{{ block.super }}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/list_pekerjaan.css' %}">
 {% endblock %}
 
 {% block dp_content %}
-  {# ===== [A] ALERT (GLOBAL) ===== #}
-  {% include 'detail_project/_alert.html' %}
+{# ===== [A] ALERT (GLOBAL) ===== #}
+{% include 'detail_project/_alert.html' %}
 
-  {# ===== [B] ROOT WRAPPER / PAGE SHELL ===== #}
-  <div id="lp-app"
-       class="lp-app container-fluid list-pekerjaan ux-scrollbar ux-scroll-smooth"
-       data-project-id="{{ project.id }}"
-       data-ref-year="{{ project.tahun_project|default:'' }}"
-       data-dom-version="lp-v2"
-       data-compact-default="1">
+{# ===== [B] ROOT WRAPPER / PAGE SHELL ===== #}
+<div id="lp-app" class="lp-app container-fluid list-pekerjaan ux-scrollbar ux-scroll-smooth"
+  data-project-id="{{ project.id }}" data-ref-year="{{ project.tahun_project|default:'' }}" data-dom-version="lp-v2"
+  data-compact-default="1">
 
-    {# ===== [C] TOOLBAR ===== #}
-    <div class="lp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-layer-toolbar dp-sticky-topbar bg-body border-bottom ux-toolbar-inputs"
-         style="height: var(--lp-toolbar-h);">
-      <button class="btn btn-outline-secondary lp-btn btn-sidebar-toggle"
-              data-toggle="side-right"
-              type="button"
-              role="button"
-              aria-haspopup="dialog"
-              aria-controls="lp-sidebar"
-              aria-expanded="false"
-              title="{% trans 'Buka navigasi' %}">
-        <i class="bi bi-list"></i> {% trans "Navigasi" %}
+  {# Page Title #}
+  <h1 class="h5 mb-3">{% trans "List Pekerjaan" %}</h1>
+
+  {# ===== [C] TOOLBAR (Redesigned - Consistent with other pages) ===== #}
+  <div id="lp-toolbar"
+    class="dp-toolbar lp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom px-3 ux-toolbar-inputs"
+    role="toolbar" aria-label="{% trans 'Toolbar List Pekerjaan' %}">
+
+    {# Left Section: Primary Actions #}
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary dp-btn lp-btn btn-sidebar-toggle" data-toggle="side-right"
+        type="button" role="button" aria-haspopup="dialog" aria-controls="lp-sidebar" aria-expanded="false"
+        title="{% trans 'Buka navigasi' %}">
+        <i class="bi bi-list" aria-hidden="true"></i>
+        <span class="d-none d-sm-inline">{% trans "Navigasi" %}</span>
       </button>
 
-      <button id="btn-add-klas" class="btn btn-primary lp-btn" type="button" title="{% trans 'Tambah Klasifikasi' %}">
-        <i class="bi bi-plus-circle"></i> {% trans "Klasifikasi" %}
+      <button id="btn-add-klas" class="btn btn-sm btn-primary dp-btn lp-btn" type="button"
+        title="{% trans 'Tambah Klasifikasi' %}">
+        <i class="bi bi-plus-circle" aria-hidden="true"></i>
+        <span class="d-none d-sm-inline">{% trans "Klasifikasi" %}</span>
       </button>
 
-      <button id="btn-save" class="btn btn-success lp-btn btn-neon" type="button" title="{% trans 'Simpan perubahan' %}">
-        <i class="bi bi-save"></i> {% trans "Simpan" %}
+      <button id="btn-compact" class="btn btn-sm btn-outline-secondary dp-btn lp-btn" type="button" data-state="off"
+        title="{% trans 'Compact mode' %}">
+        <i class="bi bi-aspect-ratio" aria-hidden="true"></i>
+        <span class="d-none d-md-inline">{% trans "Compact" %}</span>
       </button>
+    </div>
 
-      <button id="btn-compact" class="btn btn-outline-secondary lp-btn" type="button" data-state="off" title="{% trans 'Compact mode' %}">
-        <i class="bi bi-aspect-ratio"></i> {% trans "Compact" %}
-      </button>
-
-      <div class="ms-auto d-flex align-items-center gap-2">
-        <div class="input-group lp-toolbar-search">
-          <span class="input-group-text"><i class="bi bi-search"></i></span>
-          <input id="lp-nav-search" type="search" class="form-control lp-nav-search ux-focusable" placeholder="{% trans 'Cari di navigasi…' %}" autocomplete="off" aria-label="{% trans 'Cari di navigasi' %}">
-          <button id="lp-toolbar-find" class="btn btn-primary lp-btn btn-neon ms-1" type="button" title="{% trans 'Cari' %}">
-            <i class="bi bi-search"></i> {% trans "Cari" %}
-          </button>
-        </div>
-        <span id="lp-toolbar-announce" class="dp-visually-hidden" aria-live="polite"></span>
-
-        {# P2: Info tooltip about drag-and-drop impact #}
-        <button type="button" class="btn btn-outline-info btn-sm lp-btn"
-                data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-html="true"
-                title="<strong>💡 Drag & Drop</strong><br>
-                       <small>Perubahan urutan pekerjaan akan mempengaruhi:<br>
-                       • Volume Pekerjaan<br>
-                       • Rekap RAB<br>
-                       • Rincian AHSP<br>
-                       • Jadwal/Gantt Chart<br>
-                       • Export PDF/Word/CSV</small>">
-          <i class="bi bi-info-circle"></i>
-        </button>
+    {# Middle Section: Search (flex-grow) #}
+    <div class="position-relative flex-grow-1 lp-searchbar" role="search" style="max-width: 400px;">
+      <div class="input-group lp-toolbar-search">
+        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+        <input id="lp-nav-search" type="search" class="form-control lp-nav-search ux-focusable"
+          placeholder="{% trans 'Cari di navigasi…' %}" autocomplete="off" aria-label="{% trans 'Cari di navigasi' %}">
       </div>
+      <span id="lp-toolbar-announce" class="dp-visually-hidden" aria-live="polite"></span>
     </div>
 
-    {# P2: Banner notification about cross-page impact #}
-    <div class="alert alert-info alert-dismissible fade show mx-3 mb-3" role="alert">
-      <div class="d-flex align-items-start gap-2">
-        <i class="bi bi-lightbulb flex-shrink-0" style="font-size: 1.25rem;"></i>
-        <div class="flex-grow-1 small">
-          <strong>Fitur Drag & Drop Aktif</strong><br>
-          Anda dapat mengubah urutan pekerjaan dengan drag & drop pada kolom nomor <span class="badge bg-secondary">⋮⋮</span>.
-          Perubahan urutan akan otomatis tersinkronisasi ke semua halaman terkait setelah disimpan.
-        </div>
-        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert" aria-label="Close"></button>
-      </div>
+    {# Right Section: Export, Save & Info #}
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {# Export JSON button #}
+      <a id="btn-export-json" class="btn btn-sm btn-outline-primary dp-btn lp-btn"
+        href="{% url 'detail_project:export_list_pekerjaan_json' project.id %}" title="{% trans 'Export ke JSON' %}"
+        download>
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-md-inline">{% trans "Export" %}</span>
+      </a>
+
+      {# Info tooltip about drag-and-drop impact #}
+      <button type="button" class="btn btn-sm btn-outline-info dp-btn lp-btn" data-bs-toggle="tooltip"
+        data-bs-placement="bottom" data-bs-html="true"
+        title="<strong>💡 Drag & Drop</strong><br><small>Perubahan urutan akan mempengaruhi semua halaman terkait.</small>">
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+      </button>
+
+      <button id="btn-save" class="btn btn-sm btn-success dp-btn lp-btn d-inline-flex align-items-center gap-2"
+        type="button" title="{% trans 'Simpan perubahan' %}" aria-live="polite">
+        <i class="bi bi-save" aria-hidden="true"></i>
+        <span class="d-none d-sm-inline">{% trans "Simpan" %}</span>
+      </button>
     </div>
-
-    {# ===== [D] LAYOUT: OVERLAY NAV + MAIN ===== #}
-    <div class="position-relative">
-
-      {# Hotspot kanan untuk membuka Overlay Nav saat hover di tepi kanan #}
-      <div class="lp-overlay-hotspot" aria-hidden="true"></div>
-
-      <!-- Sidebar Overlay (LP) -->
-      <aside id="lp-sidebar" class="dp-z-sidebar" role="dialog" aria-modal="true"
-             aria-label="{% trans 'Navigasi List Pekerjaan' %}" data-hoverclose="1" data-resize-sense="east">
-        <div class="lp-sidebar-inner dp-surface dp-border">
-          <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2">
-            <h6 class="m-0">{% trans "Navigasi" %}</h6>
-            <div class="d-flex align-items-center gap-2">
-              <button id="btn-add-klas--sidebar" class="btn btn-sm btn-primary lp-btn" type="button" title="{% trans 'Tambah Klasifikasi' %}">
-                <i class="bi bi-plus-circle"></i> {% trans "Klas" %}
-              </button>
-              <button id="btn-add-sub--sidebar" class="btn btn-sm btn-outline-primary lp-btn" type="button" title="{% trans 'Tambah Sub-Klasifikasi' %}">
-                <i class="bi bi-node-plus"></i> {% trans "Sub" %}
-              </button>
-              <button class="btn btn-sm btn-outline-secondary lp-btn" type="button" data-action="close-sidebar" title="{% trans 'Tutup' %}">
-                <i class="bi bi-x-lg"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- Search di dalam sidebar -->
-          <div class="lp-sidebar-search mt-2">
-            <div class="input-group">
-              <span class="input-group-text"><i class="bi bi-search"></i></span>
-              <input id="lp-nav-search-side" type="search" class="form-control lp-nav-search ux-focusable"
-                     placeholder="{% trans 'Cari Klas/Sub/Pekerjaan…' %}" autocomplete="off"
-                     aria-label="{% trans 'Cari di navigasi' %}"
-                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lp-nav-suggest">
-              <button class="btn btn-outline-secondary lp-nav-search-commit" type="button" title="{% trans 'Cari' %}">
-                <i class="bi bi-arrow-return-right"></i>
-              </button>
-            </div>
-            <div id="lp-nav-suggest" class="lp-autocomplete d-none dp-layer-search" role="listbox" aria-label="{% trans 'Saran pencarian' %}"></div>
-          </div>
-
-          <div class="d-flex align-items-center gap-2 mt-2">
-            <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-expand-all"
-                    type="button" title="{% trans 'Expand semua' %}" aria-controls="lp-nav">
-              <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-sm-inline">{% trans "Expand all" %}</span>
-            </button>
-            <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-collapse-all"
-                    type="button" title="{% trans 'Collapse semua' %}" aria-controls="lp-nav">
-              <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-sm-inline">{% trans "Collapse all" %}</span>
-            </button>
-            <span class="visually-hidden" aria-live="polite" id="lp-nav-announce"></span>
-          </div>
-
-          <nav id="lp-nav" class="lp-nav mt-2" role="tree" aria-label="{% trans 'Navigasi List Pekerjaan' %}"></nav>
-        </div>
-      </aside>
-
-      <!-- MAIN AREA (Feel v1: kartu Klasifikasi → Sub berisi tabel lokal) -->
-      <main class="lp-main">
-        <!-- Container utama mirip versi lama -->
-        <div id="klas-list" class="vstack gap-3">
-          <div class="text-muted small">
-            {% trans "Mulai dengan tombol +Klasifikasi, lalu +Sub dan +Pekerjaan. Mode baris: Ref / Ref Modified / Custom." %}
-          </div>
-        </div>
-
-        {# Simpan tabel global sebagai fallback (disembunyikan via CSS/JS) #}
-        <div class="lp-table-wrap d-none" aria-hidden="true">
-          <table id="lp-table" class="table lp-table table-hover ux-table-compact">
-            <colgroup>
-              <col class="col-num">
-              <col class="col-mode">
-              <col class="col-ref">
-              <col class="col-urai">
-              <col class="col-sat">
-              <col class="col-act">
-            </colgroup>
-            <thead class="dp-thead-sticky">
-              <tr>
-                <th scope="col">#</th>
-                <th scope="col">{% trans "Mode" %}</th>
-                <th scope="col">{% trans "Referensi AHSP" %}</th>
-                <th scope="col">{% trans "Uraian" %}</th>
-                <th scope="col">{% trans "Satuan" %}</th>
-                <th scope="col">{% trans "Aksi" %}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td colspan="6" class="text-muted small">{% trans "Gunakan area di atas (kartu) untuk mengelola data." %}</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </main>
-    </div>
-
-    {# ===== [E] FAB (SAVE) ===== #}
-    <button id="btn-save-fab"
-            class="btn btn-success position-fixed d-none dp-z-toolbar"
-            type="button"
-            title="{% trans 'Simpan' %}">
-      <i class="bi bi-save"></i>
-    </button>
-
-    {# ===== [F] TEMPLATE BARIS ===== #}
-    {% include 'detail_project/_pekerjaan_row.html' %}
   </div>
+
+  {# P2: Banner notification about cross-page impact #}
+  <div class="alert alert-info alert-dismissible fade show mx-3 mb-3" role="alert">
+    <div class="d-flex align-items-start gap-2">
+      <i class="bi bi-lightbulb flex-shrink-0" style="font-size: 1.25rem;"></i>
+      <div class="flex-grow-1 small">
+        <strong>Fitur Drag & Drop Aktif</strong><br>
+        Anda dapat mengubah urutan pekerjaan dengan drag & drop pada kolom nomor <span
+          class="badge bg-secondary">⋮⋮</span>.
+        Perubahan urutan akan otomatis tersinkronisasi ke semua halaman terkait setelah disimpan.
+      </div>
+      <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  </div>
+
+  {# ===== [D] LAYOUT: OVERLAY NAV + MAIN ===== #}
+  <div class="position-relative">
+
+    {# Hotspot kanan untuk membuka Overlay Nav saat hover di tepi kanan #}
+    <div class="lp-overlay-hotspot" aria-hidden="true"></div>
+
+    <!-- Sidebar Overlay (LP) -->
+    <aside id="lp-sidebar" class="dp-z-sidebar" role="dialog" aria-modal="true"
+      aria-label="{% trans 'Navigasi List Pekerjaan' %}" data-hoverclose="1" data-resize-sense="east">
+      <div class="lp-sidebar-inner dp-surface dp-border">
+        <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2">
+          <h6 class="m-0">{% trans "Navigasi" %}</h6>
+          <div class="d-flex align-items-center gap-2">
+            <button id="btn-add-klas--sidebar" class="btn btn-sm btn-primary lp-btn" type="button"
+              title="{% trans 'Tambah Klasifikasi' %}">
+              <i class="bi bi-plus-circle"></i> {% trans "Klas" %}
+            </button>
+            <button id="btn-add-sub--sidebar" class="btn btn-sm btn-outline-primary lp-btn" type="button"
+              title="{% trans 'Tambah Sub-Klasifikasi' %}">
+              <i class="bi bi-node-plus"></i> {% trans "Sub" %}
+            </button>
+            <button class="btn btn-sm btn-outline-secondary lp-btn" type="button" data-action="close-sidebar"
+              title="{% trans 'Tutup' %}">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Search di dalam sidebar -->
+        <div class="lp-sidebar-search mt-2">
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input id="lp-nav-search-side" type="search" class="form-control lp-nav-search ux-focusable"
+              placeholder="{% trans 'Cari Klas/Sub/Pekerjaan…' %}" autocomplete="off"
+              aria-label="{% trans 'Cari di navigasi' %}" role="combobox" aria-autocomplete="list" aria-expanded="false"
+              aria-controls="lp-nav-suggest">
+            <button class="btn btn-outline-secondary lp-nav-search-commit" type="button" title="{% trans 'Cari' %}">
+              <i class="bi bi-arrow-return-right"></i>
+            </button>
+          </div>
+          <div id="lp-nav-suggest" class="lp-autocomplete d-none dp-layer-search" role="listbox"
+            aria-label="{% trans 'Saran pencarian' %}"></div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-expand-all" type="button"
+            title="{% trans 'Expand semua' %}" aria-controls="lp-nav">
+            <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-sm-inline">{% trans "Expand all" %}</span>
+          </button>
+          <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-collapse-all" type="button"
+            title="{% trans 'Collapse semua' %}" aria-controls="lp-nav">
+            <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-sm-inline">{% trans "Collapse all"
+              %}</span>
+          </button>
+          <span class="visually-hidden" aria-live="polite" id="lp-nav-announce"></span>
+        </div>
+
+        <nav id="lp-nav" class="lp-nav mt-2" role="tree" aria-label="{% trans 'Navigasi List Pekerjaan' %}"></nav>
+      </div>
+    </aside>
+
+    <!-- MAIN AREA (Feel v1: kartu Klasifikasi → Sub berisi tabel lokal) -->
+    <main class="lp-main">
+      <!-- Container utama mirip versi lama -->
+      <div id="klas-list" class="vstack gap-3">
+        <div class="text-muted small">
+          {% trans "Mulai dengan tombol +Klasifikasi, lalu +Sub dan +Pekerjaan. Mode baris: Ref / Ref Modified /
+          Custom." %}
+        </div>
+      </div>
+
+      {# Simpan tabel global sebagai fallback (disembunyikan via CSS/JS) #}
+      <div class="lp-table-wrap d-none" aria-hidden="true">
+        <table id="lp-table" class="table lp-table table-hover ux-table-compact">
+          <colgroup>
+            <col class="col-num">
+            <col class="col-mode">
+            <col class="col-ref">
+            <col class="col-urai">
+            <col class="col-sat">
+            <col class="col-act">
+          </colgroup>
+          <thead class="dp-thead-sticky">
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">{% trans "Mode" %}</th>
+              <th scope="col">{% trans "Referensi AHSP" %}</th>
+              <th scope="col">{% trans "Uraian" %}</th>
+              <th scope="col">{% trans "Satuan" %}</th>
+              <th scope="col">{% trans "Aksi" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="6" class="text-muted small">{% trans "Gunakan area di atas (kartu) untuk mengelola data." %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  {# ===== [E] FAB (SAVE) ===== #}
+  <button id="btn-save-fab" class="btn btn-success position-fixed d-none dp-z-toolbar" type="button"
+    title="{% trans 'Simpan' %}">
+    <i class="bi bi-save"></i>
+  </button>
+
+  {# ===== [F] TEMPLATE BARIS ===== #}
+  {% include 'detail_project/_pekerjaan_row.html' %}
+</div>
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
-  <script defer src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{{ block.super }}
+<script defer src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-  <script defer src="{% static 'detail_project/js/core/http.js' %}"></script>
-  <script defer src="{% static 'detail_project/js/core/format.js' %}"></script>
-  <script defer src="{% static 'detail_project/js/core/toast.js' %}"></script>
-  <script defer src="{% static 'detail_project/js/core/keys.js' %}"></script>
+<script defer src="{% static 'detail_project/js/core/http.js' %}"></script>
+<script defer src="{% static 'detail_project/js/core/format.js' %}"></script>
+<script defer src="{% static 'detail_project/js/core/toast.js' %}"></script>
+<script defer src="{% static 'detail_project/js/core/keys.js' %}"></script>
 
-  <script defer src="{% static 'detail_project/js/list_pekerjaan.js' %}"></script>
+<script defer src="{% static 'detail_project/js/list_pekerjaan.js' %}"></script>
 {% endblock %}

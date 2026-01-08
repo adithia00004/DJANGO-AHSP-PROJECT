@@ -15,6 +15,9 @@
 
 {% block dp_content %}
 
+<!-- Page Title -->
+<h1 class="h5 mb-3">Volume Pekerjaan</h1>
+
 <!-- ===== Toolbar (REFACTORED - Using Component Library) ===== -->
 <div id="vp-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Volume Pekerjaan">
 
@@ -367,7 +370,8 @@
 </div>
 
 <!-- Modal: Bantuan Formula -->
-<div class="modal fade" id="vpFormulaHelpModal" tabindex="-1" aria-labelledby="vpFormulaHelpLabel" aria-hidden="true">
+<div class="modal fade dp-modal" id="vpFormulaHelpModal" tabindex="-1" aria-labelledby="vpFormulaHelpLabel"
+  aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable modal-md">
     <div class="modal-content">
       <div class="modal-header">
@@ -421,20 +425,7 @@
 <div class="vp-overlay-hotspot" aria-hidden="true"></div>
 
 <!-- Export Loading Modal -->
-<div class="modal fade" id="vpExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
-  aria-labelledby="vpExportLoadingLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-sm">
-    <div class="modal-content">
-      <div class="modal-body text-center py-4">
-        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <h6 class="mb-1" id="vpExportLoadingLabel">Memproses Export</h6>
-        <p class="text-muted small mb-0" id="vpExportLoadingText">Mohon tunggu...</p>
-      </div>
-    </div>
-  </div>
-</div>
+{% include 'detail_project/_export_loading_modal.html' with modal_id="vpExportLoadingModal" %}
 
 {% endblock %}
 

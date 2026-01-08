@@ -36,6 +36,90 @@ class ExportManager:
         self.project = project
         self.user = user
     
+    # =========================================================================
+    # SSOT METHODS - Centralized configuration
+    # =========================================================================
+    
+    def _get_project_identity(self) -> dict:
+        """
+        SSOT: Extract project identity fields with fallback logic.
+        
+        Returns:
+            dict with keys: name, code, location, year, owner, extra
+        """
+        # Project name with fallback
+        name = (
+            getattr(self.project, 'nama_project', None)
+            or getattr(self.project, 'nama', None)
+            or '-'
+        )
+        
+        # Project code with fallback
+        code = (
+            getattr(self.project, 'kode_project', None)
+            or getattr(self.project, 'index_project', None)
+            or '-'
+        )
+        
+        # Location
+        lokasi = getattr(self.project, 'lokasi', '') or '-'
+        
+        # Year
+        tahun = str(getattr(self.project, 'tahun_anggaran', '') or '-')
+        
+        # Owner/Client
+        owner = getattr(self.project, 'nama_client', '') or '-'
+        
+        # Extra identity fields
+        ket1 = getattr(self.project, 'ket_project1', None)
+        ket2 = getattr(self.project, 'ket_project2', None)
+        instansi = getattr(self.project, 'instansi_client', None)
+        tahun_project = getattr(self.project, 'tahun_anggaran', None)
+        sumber_dana = getattr(self.project, 'sumber_dana', None)
+        lokasi_project = getattr(self.project, 'lokasi', None)
+        ang_owner = getattr(self.project, 'anggaran_owner', None)
+        anggaran_fmt = f"Rp {format_currency(ang_owner)}" if ang_owner is not None else 'Rp 0'
+        
+        return {
+            'name': name,
+            'code': code,
+            'location': lokasi,
+            'year': tahun,
+            'owner': owner,
+            'extra': {
+                'ket_project1': ket1,
+                'ket_project2': ket2,
+                'instansi_client': instansi,
+                'tahun_project': tahun_project,
+                'sumber_dana': sumber_dana,
+                'lokasi_project': lokasi_project,
+                'project_anggaran': anggaran_fmt,
+            }
+        }
+    
+    def _get_signature_config(self, preset: str = 'PERENCANAAN') -> SignatureConfig:
+        """
+        SSOT: Get signature configuration based on document preset.
+        
+        Args:
+            preset: 'PERENCANAAN', 'PELAKSANAAN', or 'FULL'
+                   - PERENCANAAN: Owner + Konsultan Perencana (RAB, Kebutuhan, etc.)
+                   - PELAKSANAAN: Owner + Kontraktor + Pengawas (Jadwal, Progress)
+                   - FULL: All 4 roles
+        
+        Returns:
+            SignatureConfig with appropriate signatures
+        """
+        from .signature_config import SignaturePresets
+        
+        signatures = SignaturePresets.build_signatures(self.project, preset)
+        
+        return SignatureConfig(
+            enabled=True,
+            signatures=signatures
+        )
+    
+
     def export_rekap_rab(self, format_type: str) -> HttpResponse:
         """
         Export Rekap RAB
@@ -116,81 +200,34 @@ class ExportManager:
         return exporter.export(data)
     
     def _create_config(self) -> ExportConfig:
-        """Create export configuration"""
-        # Signature configuration
-        sig_config = SignatureConfig(
-            enabled=True,
-            signatures=[
-                {
-                    'label': 'Pemilik Proyek',
-                    'name': getattr(self.project, 'nama_client', '') or '',
-                    'position': ''
-                },
-                {
-                    'label': 'Konsultan Perencana',
-                    'name': '',
-                    'position': ''
-                },
-            ]
-        )
-
-        # Project identity fields aligned with page/print data attributes
-        name = (
-            getattr(self.project, 'nama_project', None)
-            or getattr(self.project, 'nama', None)
-            or '-'
-        )
-        code = (
-            getattr(self.project, 'kode_project', None)
-            or getattr(self.project, 'index_project', None)
-            or getattr(self.project, 'kode', None)
-            or '-'
-        )
-        lokasi = getattr(self.project, 'lokasi', '') or '-'
-        tahun = str(getattr(self.project, 'tahun_anggaran', '') or '-')
-
-        # Build extra identity fields to mirror page/print identity
-        # Values aligned with _project_identity.html
-        ket1 = getattr(self.project, 'ket_project1', None)
-        ket2 = getattr(self.project, 'ket_project2', None)
-        instansi = getattr(self.project, 'instansi_client', None)
-        tahun_project = getattr(self.project, 'tahun_project', None)
-        sumber_dana = getattr(self.project, 'sumber_dana', None)
-        lokasi_project = getattr(self.project, 'lokasi_project', None)
-        ang_owner = getattr(self.project, 'anggaran_owner', None)
-        anggaran_fmt = f"Rp {format_currency(ang_owner)}" if ang_owner is not None else 'Rp 0'
-
-        extra_identity = {
-            'ket_project1': ket1,
-            'ket_project2': ket2,
-            'instansi_client': instansi,
-            'tahun_project': tahun_project,
-            'sumber_dana': sumber_dana,
-            'lokasi_project': lokasi_project,
-            'project_anggaran': anggaran_fmt,
-        }
-
+        """Create export configuration for Rekap RAB (uses PERENCANAAN preset)"""
+        from .table_styles import ExportDefaults as ED
+        
+        # Use SSOT methods
+        identity = self._get_project_identity()
+        sig_config = self._get_signature_config('PERENCANAAN')
+        
         # Tighter layout + slightly smaller fonts to fit table + signatures on one page
         return ExportConfig(
             title='REKAPITULASI RENCANA ANGGARAN BIAYA',
-            project_name=name,
-            project_code=code,
-            location=lokasi,
-            year=tahun,
-            owner=getattr(self.project, 'nama_client', '') or '-',
+            project_name=identity['name'],
+            project_code=identity['code'],
+            location=identity['location'],
+            year=identity['year'],
+            owner=identity['owner'],
             signature_config=sig_config,
             export_by=self.user.get_full_name() if self.user else '',
-            extra_identity=extra_identity,
-            page_orientation='portrait',  # Portrait layout for Rekap RAB
-            # Layout (mm)
-            margin_top=10,
-            margin_bottom=10,
-            margin_left=10,
-            margin_right=10,
-            # Fonts
-            font_size_title=16,
-            font_size_header=8,
-            font_size_normal=8,
+            extra_identity=identity['extra'],
+            page_orientation=ED.DEFAULT_ORIENTATION,  # Portrait
+            # Layout (mm) - from ExportDefaults
+            margin_top=ED.MARGIN_TOP,
+            margin_bottom=ED.MARGIN_BOTTOM,
+            margin_left=ED.MARGIN_LEFT,
+            margin_right=ED.MARGIN_RIGHT,
+            # Fonts - from ExportDefaults
+            font_size_title=ED.FONT_SIZE_TITLE,
+            font_size_header=ED.FONT_SIZE_HEADER,
+            font_size_normal=ED.FONT_SIZE_NORMAL,
         )
 
     def export_rekap_kebutuhan(
@@ -559,7 +596,8 @@ class ExportManager:
         config = self._create_config_simple(
             title,
             page_orientation='landscape',
-            page_size=JadwalExportLayout.PAGE_SIZE
+            page_size=JadwalExportLayout.PAGE_SIZE,
+            signature_preset='PELAKSANAAN'  # Jadwal uses Pelaksanaan preset
         )
 
         # Apply layout defaults for Jadwal exports
@@ -602,91 +640,54 @@ class ExportManager:
         exporter = exporter_class(config)
         return exporter.export(data)
 
-    def _create_config_simple(self, title: str, page_orientation: str = 'portrait', page_size: str = 'A4') -> ExportConfig:
+    def _create_config_simple(
+        self,
+        title: str,
+        page_orientation: str = 'portrait',
+        page_size: str = 'A4',
+        signature_preset: str = 'PERENCANAAN'
+    ) -> ExportConfig:
         """
-        Create export configuration with signature section
-        For Volume Pekerjaan, Harga Items, and Rincian AHSP pages
+        Create export configuration with signature section.
+        
+        For Volume Pekerjaan, Harga Items, Rincian AHSP, Jadwal pages.
 
         Args:
             title: Document title
             page_orientation: 'portrait' or 'landscape' (default: portrait)
+            page_size: 'A4' or 'A3' (default: A4)
+            signature_preset: 'PERENCANAAN', 'PELAKSANAAN', or 'FULL'
 
         Returns:
             ExportConfig object
         """
-        # Project identity fields
-        name = (
-            getattr(self.project, 'nama_project', None)
-            or getattr(self.project, 'nama', None)
-            or '-'
-        )
-        code = (
-            getattr(self.project, 'kode_project', None)
-            or getattr(self.project, 'index_project', None)
-            or getattr(self.project, 'kode', None)
-            or '-'
-        )
-        lokasi = getattr(self.project, 'lokasi', '') or '-'
-        tahun = str(getattr(self.project, 'tahun_anggaran', '') or '-')
-
-        # Build extra identity fields
-        ket1 = getattr(self.project, 'ket_project1', None)
-        ket2 = getattr(self.project, 'ket_project2', None)
-        instansi = getattr(self.project, 'instansi_client', None)
-        tahun_project = getattr(self.project, 'tahun_project', None)
-        sumber_dana = getattr(self.project, 'sumber_dana', None)
-        lokasi_project = getattr(self.project, 'lokasi_project', None)
-        ang_owner = getattr(self.project, 'anggaran_owner', None)
-        anggaran_fmt = f"Rp {format_currency(ang_owner)}" if ang_owner is not None else 'Rp 0'
-
-        extra_identity = {
-            'ket_project1': ket1,
-            'ket_project2': ket2,
-            'instansi_client': instansi,
-            'tahun_project': tahun_project,
-            'sumber_dana': sumber_dana,
-            'lokasi_project': lokasi_project,
-            'project_anggaran': anggaran_fmt,
-        }
-
-        # Enable signatures with Lembar Pengesahan
-        sig_config = SignatureConfig(
-            enabled=True,
-            signatures=[
-                {
-                    'label': 'Pemilik Proyek',
-                    'name': getattr(self.project, 'nama_client', '') or '',
-                    'position': ''
-                },
-                {
-                    'label': 'Konsultan Perencana',
-                    'name': '',
-                    'position': ''
-                },
-            ]
-        )
+        from .table_styles import ExportDefaults as ED
+        
+        # Use SSOT methods
+        identity = self._get_project_identity()
+        sig_config = self._get_signature_config(signature_preset)
 
         return ExportConfig(
             title=title,
-            project_name=name,
-            project_code=code,
-            location=lokasi,
-            year=tahun,
-            owner=getattr(self.project, 'nama_client', '') or '-',
+            project_name=identity['name'],
+            project_code=identity['code'],
+            location=identity['location'],
+            year=identity['year'],
+            owner=identity['owner'],
             signature_config=sig_config,
             export_by=self.user.get_full_name() if self.user else '',
-            extra_identity=extra_identity,
+            extra_identity=identity['extra'],
             page_orientation=page_orientation,
             page_size=page_size,
-            # Consistent margins (same as Rekap RAB)
-            margin_top=10,
-            margin_bottom=10,
-            margin_left=10,
-            margin_right=10,
-            # Fonts
-            font_size_title=16,
-            font_size_header=8,
-            font_size_normal=8,
+            # Margins from ExportDefaults
+            margin_top=ED.MARGIN_TOP,
+            margin_bottom=ED.MARGIN_BOTTOM,
+            margin_left=ED.MARGIN_LEFT,
+            margin_right=ED.MARGIN_RIGHT,
+            # Fonts from ExportDefaults
+            font_size_title=ED.FONT_SIZE_TITLE,
+            font_size_header=ED.FONT_SIZE_HEADER,
+            font_size_normal=ED.FONT_SIZE_NORMAL,
         )
 
     def export_jadwal_professional(
@@ -738,7 +739,8 @@ class ExportManager:
         config = self._create_config_simple(
             title,
             page_orientation='landscape',
-            page_size=JadwalExportLayout.PAGE_SIZE
+            page_size=JadwalExportLayout.PAGE_SIZE,
+            signature_preset='PELAKSANAAN'  # Jadwal uses Pelaksanaan preset
         )
         config.margin_top = JadwalExportLayout.MARGIN_TOP
         config.margin_bottom = JadwalExportLayout.MARGIN_BOTTOM

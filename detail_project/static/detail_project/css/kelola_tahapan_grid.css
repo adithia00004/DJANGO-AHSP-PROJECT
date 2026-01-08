@@ -452,7 +452,7 @@
 .col-volume {
   width: 80px;
   text-align: right;
-  font-family: 'Courier New', monospace;
+  font-family: var(--dp-font-mono);
   white-space: nowrap;
 }
 
@@ -655,7 +655,7 @@
   text-align: center;
   cursor: cell;
   min-height: 32px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--dp-font-mono);
   font-size: 0.9rem;
   width: 80px;
   min-width: 80px;

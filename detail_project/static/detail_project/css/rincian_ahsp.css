@@ -305,7 +305,7 @@
 .ra-app .ra-job-item .primary .kode,
 .ra-app .rk-item .primary .kode,
 .ra-app .rk-item-kode {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
   font-size: var(--ux-font-xs);
   font-weight: 600;
   color: var(--dp-c-muted);
@@ -780,7 +780,7 @@
 
 /* Override input khusus */
 #rk-ovr-input {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
   text-align: right;
   font-size: var(--ux-font-xs);
 }
@@ -811,7 +811,7 @@
 /* ===== MONOSPACE ===== */
 .ra-app .mono,
 .ra-app .ux-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
 }
 
 /* ===== TOAST ===== */

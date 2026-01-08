@@ -51,10 +51,17 @@
     </div>
 
     <div class="ms-auto d-flex align-items-center gap-1">
-      <!-- Export -->
+      <!-- Export CSV -->
       <button type="button" class="btn btn-outline-secondary btn-sm" id="ta-btn-export" title="Export CSV">
-        <i class="bi bi-download"></i>
+        <i class="bi bi-filetype-csv"></i>
       </button>
+
+      <!-- Export JSON -->
+      <a class="btn btn-outline-primary btn-sm" id="ta-btn-export-json"
+        href="{% url 'detail_project:export_template_ahsp_json' project.id %}" title="Export JSON (semua pekerjaan)"
+        download>
+        <i class="bi bi-filetype-json"></i>
+      </a>
 
       <!-- Help -->
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"

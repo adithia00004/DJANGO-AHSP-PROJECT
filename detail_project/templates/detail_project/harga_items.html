@@ -11,14 +11,18 @@
 
 {% block extra_head %}
 {{ block.super }}
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/harga_items.css' %}">
 {% endblock %}
 
 {% block dp_content %}
 
+<!-- Page Title -->
+<h1 class="h5 mb-3">Harga Items</h1>
+
 <!-- ===== Toolbar (sticky, konsisten SSOT) ===== -->
 <div id="hi-toolbar"
-  class="d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom px-3 ux-toolbar-inputs"
+  class="dp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar border-bottom px-3 ux-toolbar-inputs"
   role="toolbar" aria-label="Toolbar Harga Items">
 
   <!-- Searchbar -->
@@ -34,7 +38,7 @@
   <div class="ms-auto d-flex align-items-center gap-2">
     <!-- Export dropdown (CSV/PDF/Word/JSON) -->
     <div class="btn-group ux-dropdown" role="group">
-      <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown"
+      <button type="button" class="btn btn-sm btn-outline-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
         aria-expanded="false" aria-label="Export options">
         <i class="bi bi-download" aria-hidden="true"></i>
         <span class="d-none d-sm-inline">Export</span>
@@ -54,7 +58,7 @@
       </ul>
     </div>
 
-    <button id="hi-btn-save" class="btn btn-sm btn-success d-inline-flex align-items-center gap-2" type="button"
+    <button id="hi-btn-save" class="btn btn-sm btn-success dp-btn d-inline-flex align-items-center gap-2" type="button"
       aria-live="polite">
       <span class="spinner-border spinner-border-sm" id="hi-save-spin" role="status" aria-hidden="true" hidden></span>
       <i class="bi bi-save" aria-hidden="true"></i>
@@ -109,78 +113,79 @@
 
   <!-- ===== Filter Buttons ===== -->
   <div class="dp-card dp-border dp-surface mt-3 p-2" id="hi-filter-section">
-      <div class="d-flex flex-wrap gap-2 align-items-center">
-        <span class="small text-body-secondary me-2">Filter:</span>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Filter kategori">
-          <button type="button" class="btn btn-outline-secondary hi-filter-btn active" data-filter="all">
-            Semua <span class="badge bg-secondary ms-1" id="hi-count-all">0</span>
-          </button>
-          <button type="button" class="btn btn-outline-primary hi-filter-btn" data-filter="TK">
-            <i class="bi bi-people-fill"></i> TK <span class="badge bg-primary ms-1" id="hi-count-TK">0</span>
-          </button>
-          <button type="button" class="btn btn-outline-success hi-filter-btn" data-filter="BHN">
-            <i class="bi bi-box-seam-fill"></i> BHN <span class="badge bg-success ms-1" id="hi-count-BHN">0</span>
-          </button>
-          <button type="button" class="btn btn-outline-warning hi-filter-btn" data-filter="ALT">
-            <i class="bi bi-tools"></i> ALT <span class="badge bg-warning text-dark ms-1" id="hi-count-ALT">0</span>
-          </button>
-          <button type="button" class="btn btn-outline-secondary hi-filter-btn" data-filter="LAIN">
-            <i class="bi bi-three-dots"></i> Lain <span class="badge bg-secondary ms-1" id="hi-count-LAIN">0</span>
-          </button>
-        </div>
-        <div class="vr mx-2 d-none d-md-block"></div>
-        <button type="button" class="btn btn-sm btn-outline-danger hi-filter-btn" data-filter="empty">
-          <i class="bi bi-exclamation-circle"></i> Belum Diisi <span class="badge bg-danger ms-1"
-            id="hi-count-empty">0</span>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <span class="small text-body-secondary me-2">Filter:</span>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Filter kategori">
+        <button type="button" class="btn btn-outline-secondary hi-filter-btn active" data-filter="all">
+          Semua <span class="badge bg-secondary ms-1" id="hi-count-all">0</span>
+        </button>
+        <button type="button" class="btn btn-outline-primary hi-filter-btn" data-filter="TK">
+          <i class="bi bi-people-fill"></i> TK <span class="badge bg-primary ms-1" id="hi-count-TK">0</span>
+        </button>
+        <button type="button" class="btn btn-outline-success hi-filter-btn" data-filter="BHN">
+          <i class="bi bi-box-seam-fill"></i> BHN <span class="badge bg-success ms-1" id="hi-count-BHN">0</span>
+        </button>
+        <button type="button" class="btn btn-outline-warning hi-filter-btn" data-filter="ALT">
+          <i class="bi bi-tools"></i> ALT <span class="badge bg-warning text-dark ms-1" id="hi-count-ALT">0</span>
+        </button>
+        <button type="button" class="btn btn-outline-secondary hi-filter-btn" data-filter="LAIN">
+          <i class="bi bi-three-dots"></i> Lain <span class="badge bg-secondary ms-1" id="hi-count-LAIN">0</span>
         </button>
       </div>
+      <div class="vr mx-2 d-none d-md-block"></div>
+      <button type="button" class="btn btn-sm btn-outline-danger hi-filter-btn" data-filter="empty">
+        <i class="bi bi-exclamation-circle"></i> Belum Diisi <span class="badge bg-danger ms-1"
+          id="hi-count-empty">0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== Tabel Utama ===== -->
+  <div class="dp-card dp-border dp-surface mt-3">
+    <div class="table-responsive">
+      <table class="hi-table table table-sm table-hover ux-table-compact align-middle mb-0"
+        aria-label="Daftar Harga Items proyek">
+        <colgroup>
+          <col class="col-no">
+          <col class="col-kat">
+          <col class="col-kode">
+          <col class="col-urai">
+          <col class="col-sat">
+          <col class="col-inp">
+          <col class="col-rp">
+        </colgroup>
+
+        <!-- Header sticky pakai offset global (topbar + dp-toolbar-h) -->
+        <thead class="table-light dp-thead-sticky">
+          <tr>
+            <th class="text-center">No</th>
+            <th class="text-nowrap">Kategori</th>
+            <th class="font-monospace">Kode</th>
+            <th>Uraian</th>
+            <th class="text-nowrap">Satuan</th>
+            <th class="text-nowrap">Harga</th>
+            <th class="text-nowrap">Nominal</th>
+          </tr>
+        </thead>
+
+        <tbody id="hi-tbody">
+          <tr class="hi-empty">
+            <td colspan="7">Memuat data…</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <!-- ===== Tabel Utama ===== -->
-    <div class="dp-card dp-border dp-surface mt-3">
-      <div class="table-responsive">
-        <table class="hi-table table table-sm table-hover ux-table-compact align-middle mb-0"
-          aria-label="Daftar Harga Items proyek">
-          <colgroup>
-            <col class="col-no">
-            <col class="col-kat">
-            <col class="col-kode">
-            <col class="col-urai">
-            <col class="col-sat">
-            <col class="col-inp">
-            <col class="col-rp">
-          </colgroup>
-
-          <!-- Header sticky pakai offset global (topbar + dp-toolbar-h) -->
-          <thead class="table-light dp-thead-sticky">
-            <tr>
-              <th class="text-center">No</th>
-              <th class="text-nowrap">Kategori</th>
-              <th class="font-monospace">Kode</th>
-              <th>Uraian</th>
-              <th class="text-nowrap">Satuan</th>
-              <th class="text-nowrap">Harga</th>
-              <th class="text-nowrap">Nominal</th>
-            </tr>
-          </thead>
-
-          <tbody id="hi-tbody">
-            <tr class="hi-empty">
-              <td colspan="7">Memuat data…</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">
-        <div id="hi-stats" class="ux-text-sm">0 item</div>
-        <div class="ux-text-xs text-muted">Tip: ketik angka bebas (., ,), sistem akan merapikan. Simpan untuk menyimpan
-          perubahan.</div>
-      </div>
+    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top">
+      <div id="hi-stats" class="ux-text-sm">0 item</div>
+      <div class="ux-text-xs text-muted">Tip: ketik angka bebas (., ,), sistem akan merapikan. Simpan untuk menyimpan
+        perubahan.</div>
     </div>
+  </div>
 
   <!-- ===== Modal: Konversi Harga (Option B - Compact 2-Column) ===== -->
-  <div class="modal fade ux-modal" id="hiConvModal" tabindex="-1" aria-labelledby="hiConvLabel" aria-hidden="true">
+  <div class="modal fade dp-modal ux-modal" id="hiConvModal" tabindex="-1" aria-labelledby="hiConvLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header py-2">
@@ -284,121 +289,108 @@
   </div>
 
   <!-- Export Loading Modal -->
-  <div class="modal fade" id="hiExportLoadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
-    aria-labelledby="hiExportLoadingLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content">
-        <div class="modal-body text-center py-4">
-          <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-          <h6 class="mb-1" id="hiExportLoadingLabel">Memproses Export</h6>
-          <p class="text-muted small mb-0" id="hiExportLoadingText">Mohon tunggu...</p>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% include 'detail_project/_export_loading_modal.html' with modal_id="hiExportLoadingModal" %}
 
 </div>
 <!-- End #hi-app -->
 
 {% endblock %}
 
-  {% block extra_js %}
-  {{ block.super }}
-  <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
+{% block extra_js %}
+{{ block.super }}
+<script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
 
-  <!-- Export Manager (MUST load BEFORE harga_items.js) -->
-  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+<!-- Export Manager (MUST load BEFORE harga_items.js) -->
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
 
-  <script src="{% static 'detail_project/js/harga_items.js' %}"></script>
+<script src="{% static 'detail_project/js/harga_items.js' %}"></script>
 
-  <script>
-    // Initialize export buttons for Harga Items
-    (function () {
-      const projectId = document.getElementById('hi-app')?.dataset?.projectId;
-      if (!projectId || typeof ExportManager === 'undefined') {
-        console.warn('[HargaItems] ExportManager not available');
-        return;
+<script>
+  // Initialize export buttons for Harga Items
+  (function () {
+    const projectId = document.getElementById('hi-app')?.dataset?.projectId;
+    if (!projectId || typeof ExportManager === 'undefined') {
+      console.warn('[HargaItems] ExportManager not available');
+      return;
+    }
+
+    const exporter = new ExportManager(projectId, 'harga-items');
+
+    // Get loading modal
+    const loadingModalEl = document.getElementById('hiExportLoadingModal');
+    let loadingModal = null;
+    const loadingText = document.getElementById('hiExportLoadingText');
+
+    const showLoading = (formatName) => {
+      if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
+      if (loadingModalEl) {
+        // Get fresh instance each time
+        loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
+        loadingModal.show();
       }
-
-      const exporter = new ExportManager(projectId, 'harga-items');
-
-      // Get loading modal
-      const loadingModalEl = document.getElementById('hiExportLoadingModal');
-      let loadingModal = null;
-      const loadingText = document.getElementById('hiExportLoadingText');
-
-      const showLoading = (formatName) => {
-        if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
+    };
+    const hideLoading = () => {
+      // Use Bootstrap's hide method if modal exists
+      if (loadingModal) {
+        try {
+          loadingModal.hide();
+        } catch (e) {
+          console.warn('[HI] Modal hide error:', e);
+        }
+      }
+      // Force cleanup after short delay
+      setTimeout(() => {
+        // Force remove modal show state
         if (loadingModalEl) {
-          // Get fresh instance each time
-          loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
-          loadingModal.show();
+          loadingModalEl.classList.remove('show');
+          loadingModalEl.style.display = 'none';
+          loadingModalEl.setAttribute('aria-hidden', 'true');
         }
-      };
-      const hideLoading = () => {
-        // Use Bootstrap's hide method if modal exists
-        if (loadingModal) {
-          try {
-            loadingModal.hide();
-          } catch (e) {
-            console.warn('[HI] Modal hide error:', e);
-          }
-        }
-        // Force cleanup after short delay
-        setTimeout(() => {
-          // Force remove modal show state
-          if (loadingModalEl) {
-            loadingModalEl.classList.remove('show');
-            loadingModalEl.style.display = 'none';
-            loadingModalEl.setAttribute('aria-hidden', 'true');
-          }
-          // Remove all backdrops
-          document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-          // Reset body
-          document.body.classList.remove('modal-open');
-          document.body.style.overflow = '';
-          document.body.style.paddingRight = '';
-        }, 150);
-      };
+        // Remove all backdrops
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        // Reset body
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+      }, 150);
+    };
 
-      const btnXLSX = document.getElementById('btn-export-xlsx');
-      const btnPDF = document.getElementById('btn-export-pdf');
-      const btnWord = document.getElementById('btn-export-word');
+    const btnXLSX = document.getElementById('btn-export-xlsx');
+    const btnPDF = document.getElementById('btn-export-pdf');
+    const btnWord = document.getElementById('btn-export-word');
 
-      if (btnXLSX) {
-        btnXLSX.addEventListener('click', async (e) => {
-          e.preventDefault();
-          showLoading('Excel');
-          try { await exporter.exportAs('xlsx'); } finally { hideLoading(); }
-        });
-      }
-      if (btnPDF) {
-        btnPDF.addEventListener('click', async (e) => {
-          e.preventDefault();
-          showLoading('PDF');
-          try { await exporter.exportAs('pdf'); } finally { hideLoading(); }
-        });
-      }
-      if (btnWord) {
-        btnWord.addEventListener('click', async (e) => {
-          e.preventDefault();
-          showLoading('Word');
-          try { await exporter.exportAs('word'); } finally { hideLoading(); }
-        });
-      }
+    if (btnXLSX) {
+      btnXLSX.addEventListener('click', async (e) => {
+        e.preventDefault();
+        showLoading('Excel');
+        try { await exporter.exportAs('xlsx'); } finally { hideLoading(); }
+      });
+    }
+    if (btnPDF) {
+      btnPDF.addEventListener('click', async (e) => {
+        e.preventDefault();
+        showLoading('PDF');
+        try { await exporter.exportAs('pdf'); } finally { hideLoading(); }
+      });
+    }
+    if (btnWord) {
+      btnWord.addEventListener('click', async (e) => {
+        e.preventDefault();
+        showLoading('Word');
+        try { await exporter.exportAs('word'); } finally { hideLoading(); }
+      });
+    }
 
-      const btnJSON = document.getElementById('btn-export-json');
-      if (btnJSON) {
-        btnJSON.addEventListener('click', async (e) => {
-          e.preventDefault();
-          showLoading('JSON');
-          try { await exporter.exportAs('json'); } finally { hideLoading(); }
-        });
-      }
+    const btnJSON = document.getElementById('btn-export-json');
+    if (btnJSON) {
+      btnJSON.addEventListener('click', async (e) => {
+        e.preventDefault();
+        showLoading('JSON');
+        try { await exporter.exportAs('json'); } finally { hideLoading(); }
+      });
+    }
 
-      console.log('[HargaItems] Export buttons initialized');
-    })();
-  </script>
-  {% endblock %}
+    console.log('[HargaItems] Export buttons initialized');
+  })();
+</script>
+{% endblock %}

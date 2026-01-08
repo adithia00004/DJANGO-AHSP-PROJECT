@@ -175,9 +175,8 @@ def dashboard_view(request):
             prefix='form',
         )
 
-    paginator = Paginator(queryset, 10)
-    page_number = request.GET.get('page')
-    paginated_projects = paginator.get_page(page_number)
+    # No pagination - return all projects with scroll
+    all_filtered_projects = list(queryset)
 
     # === FASE 2.1: Analytics & Statistics ===
     all_active_projects = Project.objects.filter(owner=request.user, is_active=True)
@@ -186,7 +185,8 @@ def dashboard_view(request):
 
     # Summary Statistics
     total_projects = all_active_projects.count()
-    total_anggaran = all_active_projects.aggregate(total=Sum('anggaran_owner'))['total'] or 0
+    total_anggaran_raw = all_active_projects.aggregate(total=Sum('anggaran_owner'))['total']
+    total_anggaran = float(total_anggaran_raw) if total_anggaran_raw else 0
     projects_this_year = all_active_projects.filter(tahun_project=current_year).count()
 
     # Active projects (with deadline in next 30 days or currently running)
@@ -198,7 +198,8 @@ def dashboard_view(request):
 
     # Projects by Year (for chart)
     projects_by_year = all_active_projects.values('tahun_project').annotate(
-        count=Count('id')
+        count=Count('id'),
+        total_anggaran=Sum('anggaran_owner')
     ).order_by('tahun_project')
 
     # Projects by Sumber Dana (for chart)
@@ -228,7 +229,7 @@ def dashboard_view(request):
     ).order_by('tanggal_selesai')[:5]
 
     context = {
-        'projects': paginated_projects,
+        'projects': all_filtered_projects,
         'filter_form': filter_form,
         'formset': formset,
         'total_projects': queryset.count(),

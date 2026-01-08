@@ -38,6 +38,26 @@ urlpatterns = [
     path('api/project/<int:project_id>/list-pekerjaan/tree/',   views_api.api_get_list_pekerjaan_tree, name='api_get_list_pekerjaan_tree'),
     path('api/project/<int:project_id>/list-pekerjaan/upsert/', views_api.api_upsert_list_pekerjaan, name='api_upsert_list_pekerjaan'),
 
+    # Export List Pekerjaan (JSON)
+    path('api/project/<int:project_id>/export/list-pekerjaan/json/',
+         views_api.export_list_pekerjaan_json,
+         name='export_list_pekerjaan_json'),
+
+    # Export Template AHSP (JSON)
+    path('api/project/<int:project_id>/export/template-ahsp/json/',
+         views_api.export_template_ahsp_json,
+         name='export_template_ahsp_json'),
+
+    # Export Full Project Backup (JSON)
+    path('api/project/<int:project_id>/export/full-backup/json/',
+         views_api.export_project_full_json,
+         name='export_project_full_json'),
+
+    # Import Project from JSON Backup
+    path('api/project/import/json/',
+         views_api.import_project_from_json,
+         name='import_project_from_json'),
+
     # ===== API: Volume =====
     path('api/project/<int:project_id>/volume-pekerjaan/save/', views_api.api_save_volume_pekerjaan, name='api_save_volume_pekerjaan'),
     path('api/project/<int:project_id>/volume-pekerjaan/list/', views_api.api_list_volume_pekerjaan, name='api_list_volume_pekerjaan'),  # NEW

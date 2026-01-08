@@ -1,7 +1,7 @@
 {# templates/detail_project/_pekerjaan_row.html #}
 
 <template id="tpl-pekerjaan-row-table">
-  <tr class="lp-row" data-id="" data-source-type="" data-ref-id="" data-order="">
+  <tr class="lp-row" data-id="" data-source-type="" data-ref-id="" data-order="" data-ahsp-sumber="">
     <td class="col-num"></td>
 
     <td class="col-mode">
@@ -11,21 +11,19 @@
           <option value="ref_modified">Referensi (Dimodifikasi)</option>
           <option value="custom">Kustom</option>
         </select>
-        <span class="source-badge badge rounded-pill text-bg-secondary source-hint"></span>
+        <select class="form-select form-select-sm ahsp-source-select" aria-label="Pilih sumber AHSP"
+          data-sources-url="{% url 'referensi:api_list_sources' %}">
+          <!-- Options populated dynamically via JS -->
+        </select>
       </div>
     </td>
 
     <td class="col-ref">
       <div class="vstack gap-1">
         <div class="select2-host">
-          <select
-            class="form-select ref-select native-select"
-            style="width:100%"
-            aria-label="Cari referensi AHSP"
-            data-placeholder="Cari AHSP referensi…"
-            data-ajax-url="{% url 'referensi:api_search_ahsp' %}"
-            data-minlength="2"
-            data-allowclear="1">
+          <select class="form-select ref-select native-select" style="width:100%" aria-label="Cari referensi AHSP"
+            data-placeholder="Cari AHSP referensi…" data-ajax-url="{% url 'referensi:api_search_ahsp' %}"
+            data-minlength="2" data-allowclear="1">
             <option></option>
           </select>
         </div>
@@ -46,14 +44,15 @@
     </td>
 
     <td class="col-act">
-      <button type="button" class="btn btn-danger btn-sm btn-neon btn-del" title="Hapus baris" aria-label="Hapus baris">✕</button>
+      <button type="button" class="btn btn-danger btn-sm btn-neon btn-del" title="Hapus baris"
+        aria-label="Hapus baris">✕</button>
     </td>
   </tr>
 </template>
 
 <template id="tpl-pekerjaan-row-legacy">
-  <div class="lp-row d-flex align-items-start gap-2"
-       data-id="" data-source-type="" data-ref-id="" data-order="">
+  <div class="lp-row d-flex align-items-start gap-2" data-id="" data-source-type="" data-ref-id="" data-order=""
+    data-ahsp-sumber="">
 
     <div class="lp-col lp-col--order">
       <input type="number" min="1" class="form-control input-order" placeholder="#" />
@@ -69,12 +68,8 @@
 
     <div class="lp-col lp-col--ref w-100">
       <div class="select2-host">
-        <select
-          class="form-select ref-select native-select"
-          data-placeholder="Cari AHSP referensi…"
-          data-ajax-url="{% url 'referensi:api_search_ahsp' %}"
-          data-minlength="1"
-          data-allowclear="1">
+        <select class="form-select ref-select native-select" data-placeholder="Cari AHSP referensi…"
+          data-ajax-url="{% url 'referensi:api_search_ahsp' %}" data-minlength="1" data-allowclear="1">
           <option></option>
         </select>
       </div>
@@ -96,7 +91,10 @@
     </div>
 
     <div class="lp-col lp-col--badge">
-      <span class="badge text-bg-secondary source-badge">—</span>
+      <select class="form-select form-select-sm ahsp-source-select" aria-label="Pilih sumber AHSP"
+        data-sources-url="{% url 'referensi:api_list_sources' %}">
+        <!-- Options populated dynamically via JS -->
+      </select>
     </div>
 
     <div class="lp-col lp-col--actions">

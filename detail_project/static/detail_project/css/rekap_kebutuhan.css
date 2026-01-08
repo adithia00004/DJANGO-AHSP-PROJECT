@@ -21,29 +21,29 @@
 #rk-filter-modal,
 #rk-export-modal,
 #rk-app .modal {
-  z-index: 1070 !important;
+  z-index: var(--dp-z-modal) !important;
 }
 
 #rk-filter-modal .modal-dialog,
 #rk-export-modal .modal-dialog,
 #rk-app .modal .modal-dialog {
-  z-index: 1071 !important;
+  z-index: calc(var(--dp-z-modal) + 1) !important;
 }
 
 #rk-filter-modal .modal-content,
 #rk-export-modal .modal-content,
 #rk-app .modal .modal-content {
-  z-index: 1072 !important;
+  z-index: calc(var(--dp-z-modal) + 2) !important;
   position: relative;
 }
 
 .modal-backdrop {
-  z-index: 1065 !important;
+  z-index: calc(var(--dp-z-modal) - 5) !important;
 }
 
 /* Ensure topbar doesn't overlap modals when modal is open */
 body.modal-open #dp-topbar {
-  z-index: 1060 !important;
+  z-index: calc(var(--dp-z-modal) - 10) !important;
 }
 
 /* ===== NEW: Filter Card ===== */
@@ -1108,8 +1108,8 @@ body.modal-open #dp-topbar {
 /* ===== Group Header Rows (rk-group-header) ===== */
 /* Light mode */
 .rk-table tr.rk-group-header td {
-  background: linear-gradient(135deg, #e9ecef 0%, #f8f9fa 100%);
-  color: #212529;
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-text);
   font-weight: 600;
   border-bottom: 2px solid var(--dp-c-border);
 }
@@ -1124,8 +1124,8 @@ body.modal-open #dp-topbar {
 /* ===== Subtotal Rows (rk-subtotal-row) ===== */
 /* Light mode */
 .rk-table tr.rk-subtotal-row td {
-  background: #f8f9fa;
-  color: #212529;
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-text);
   border-top: 1px solid var(--dp-c-border);
   border-bottom: 2px solid var(--dp-c-border);
 }

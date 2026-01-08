@@ -6,16 +6,90 @@ Central module containing all shared styling constants for:
 - Grid View (Planned/Actual)
 - Kurva S
 - Gantt Chart
+- Export Defaults (fonts, margins, page settings)
 
 Usage:
     from .table_styles import UnifiedTableStyles as UTS
+    from .table_styles import ExportDefaults as ED
     
     header_bg = colors.HexColor(UTS.HEADER_BG)
     font_size = UTS.HEADER_FONT_SIZE
+    margin = ED.MARGIN_TOP
 """
 
 from reportlab.lib import colors
 from reportlab.lib.units import mm
+
+
+# =============================================================================
+# EXPORT DEFAULTS (SSOT)
+# =============================================================================
+
+class ExportDefaults:
+    """
+    SSOT: Base defaults for all export formats (PDF, Word, Excel).
+    
+    This class centralizes common settings used across all exports:
+    - Font sizes for title, header, and normal text
+    - Page margins
+    - Default page size and orientation
+    
+    Usage:
+        from .table_styles import ExportDefaults as ED
+        
+        config.font_size_title = ED.FONT_SIZE_TITLE
+        config.margin_top = ED.MARGIN_TOP
+    """
+    
+    # =========================================
+    # FONT SIZES (pt)
+    # =========================================
+    
+    FONT_SIZE_TITLE = 16        # Document title (e.g., "REKAP RAB")
+    FONT_SIZE_SUBTITLE = 12     # Subtitle/section headers
+    FONT_SIZE_HEADER = 8        # Table headers
+    FONT_SIZE_NORMAL = 8        # Normal text/table data
+    FONT_SIZE_SMALL = 7         # Small text/footnotes
+    FONT_SIZE_TINY = 6          # Very small (dense tables)
+    
+    # =========================================
+    # MARGINS (mm)
+    # =========================================
+    
+    MARGIN_TOP = 10
+    MARGIN_BOTTOM = 10
+    MARGIN_LEFT = 10
+    MARGIN_RIGHT = 10
+    
+    # =========================================
+    # PAGE DEFAULTS
+    # =========================================
+    
+    DEFAULT_PAGE_SIZE = 'A4'
+    DEFAULT_ORIENTATION = 'portrait'
+    
+    # =========================================
+    # HELPER METHODS
+    # =========================================
+    
+    @classmethod
+    def get_margins_mm(cls) -> tuple:
+        """Get all margins as tuple (top, right, bottom, left)."""
+        return (cls.MARGIN_TOP, cls.MARGIN_RIGHT, cls.MARGIN_BOTTOM, cls.MARGIN_LEFT)
+    
+    @classmethod
+    def get_margins_pt(cls) -> tuple:
+        """Get all margins in points (for ReportLab)."""
+        return (
+            cls.MARGIN_TOP * mm,
+            cls.MARGIN_RIGHT * mm,
+            cls.MARGIN_BOTTOM * mm,
+            cls.MARGIN_LEFT * mm
+        )
+
+
+# Shorthand alias
+ED = ExportDefaults
 
 
 class UnifiedTableStyles:

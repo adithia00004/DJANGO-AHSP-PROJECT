@@ -285,7 +285,7 @@
     if ($ovrInput) $ovrInput.placeholder = enabled ? "Override %" : "Override tidak tersedia";
   }
 
-  // Toast notification - aligned with Template AHSP pattern
+  // Toast notification - delegate to global DP.toast
   /**
    * Show toast notification with auto-dismiss
    * @param {string} msg - Message to display
@@ -294,15 +294,21 @@
    */
   function showToast(msg, type = 'info', delay = null) {
     console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
+    const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
+    const duration = delay || defaultDelay;
 
-    // Use global DP.core.toast if available (with correct z-index)
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[type]) {
+      return window.DP.toast[type](msg, duration);
+    }
+
+    // Fallback to legacy API
     if (window.DP && window.DP.core && window.DP.core.toast) {
-      const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
-      window.DP.core.toast.show(msg, type, delay || defaultDelay);
+      window.DP.core.toast.show({ message: msg, variant: type, delay: duration });
       return;
     }
 
-    // Fallback to inline implementation
+    // Final fallback to inline implementation
     if (!$toast) { console.log(`[${type}]`, msg); return; }
 
     const config = {
@@ -353,9 +359,7 @@
       setTimeout(() => div.remove(), 300);
     });
 
-    // Auto-dismiss (error stays longer)
-    const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
-    const duration = delay || defaultDelay;
+    // Auto-dismiss
     setTimeout(() => {
       if (div.parentNode) {
         div.style.animation = 'slideOutRight 0.3s ease-in';

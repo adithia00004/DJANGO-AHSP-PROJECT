@@ -293,7 +293,13 @@ export class ExportManagerNew {
       btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Exporting...';
     }
 
-    // Show toast notification
+    // Show toast notification - prefer global DP.toast
+    if (window.DP && window.DP.toast && window.DP.toast.export) {
+      window.DP.toast.export.started(format.toUpperCase());
+      return;
+    }
+
+    // Fallback to Bootstrap toast
     if (window.bootstrap && window.bootstrap.Toast) {
       const toastHtml = `
         <div class="toast align-items-center text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
@@ -343,6 +349,13 @@ export class ExportManagerNew {
 
     const message = error.message || 'Unknown error occurred';
 
+    // Prefer global DP.toast
+    if (window.DP && window.DP.toast && window.DP.toast.export) {
+      window.DP.toast.export.failed(format.toUpperCase(), message);
+      return;
+    }
+
+    // Fallback to Bootstrap toast
     if (window.bootstrap && window.bootstrap.Toast) {
       const toastHtml = `
         <div class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">

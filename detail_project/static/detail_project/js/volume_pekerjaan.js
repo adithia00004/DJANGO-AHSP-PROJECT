@@ -178,13 +178,31 @@
     return { jget, jpost };
   })();
 
-  // ---- Toast helper: gunakan DP.core.toast bila ada
+  // ---- Toast helper: prefer global DP.toast, fallback to DP.core.toast
   const TOAST = (function () {
-    const t = (window.DP && DP.core && DP.core.toast) ? DP.core.toast : null;
+    const newApi = window.DP && window.DP.toast;
+    const legacyApi = window.DP && window.DP.core && window.DP.core.toast;
     return {
-      ok(msg) { t ? t.show({ message: msg, variant: 'success' }) : showToast(msg, 'success'); },
-      warn(msg) { t ? t.show({ message: msg, variant: 'warning' }) : showToast(msg, 'warning'); },
-      err(msg) { t ? t.show({ message: msg, variant: 'danger' }) : showToast(msg, 'danger'); },
+      ok(msg) {
+        if (newApi) return newApi.success(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'success' });
+        showToast(msg, 'success');
+      },
+      warn(msg) {
+        if (newApi) return newApi.warning(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'warning' });
+        showToast(msg, 'warning');
+      },
+      err(msg) {
+        if (newApi) return newApi.error(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'danger' });
+        showToast(msg, 'danger');
+      },
+      info(msg) {
+        if (newApi) return newApi.info(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'info' });
+        showToast(msg, 'info');
+      },
       action(msg, actions) { showActionToast(msg, actions); }
     };
   })();

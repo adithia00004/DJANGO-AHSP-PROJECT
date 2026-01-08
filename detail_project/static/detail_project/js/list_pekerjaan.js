@@ -17,9 +17,9 @@
   // ========= [UTILITIES] Logging & Guards ====================================
   const __DEBUG__ = false; // set true untuk log/diagnostic
 
-  const log  = (...a) => __DEBUG__ && console.debug('[LP]', ...a);
+  const log = (...a) => __DEBUG__ && console.debug('[LP]', ...a);
   const warn = (...a) => __DEBUG__ && console.warn('[LP]', ...a);
-  const err  = (...a) => console.error('[LP]', ...a); // error tetap tampil
+  const err = (...a) => console.error('[LP]', ...a); // error tetap tampil
 
   // jQuery alias (boleh null jika belum ter-load saat eval; cek dilakukan runtime)
   const $ = window.jQuery || window.$;
@@ -37,28 +37,28 @@
   // ========= [CORE SHORTCUTS] jfetch & toast =================================
   const jfetch = (window.DP && DP.core && DP.core.http && DP.core.http.jfetch)
     ? DP.core.http.jfetch
-    : async function(url, opts = {}) {
-        const res  = await fetch(url, { credentials: 'same-origin', ...opts });
-        const ok   = res.ok;
-        const ctyp = res.headers.get('content-type') || '';
-        const body = ctyp.includes('application/json') ? await res.json() : await res.text();
-        if (!ok) {
-          const e = new Error('HTTP ' + res.status);
-          e.status = res.status; e.body = body;
-          throw e;
-        }
-        return body;
-      };
+    : async function (url, opts = {}) {
+      const res = await fetch(url, { credentials: 'same-origin', ...opts });
+      const ok = res.ok;
+      const ctyp = res.headers.get('content-type') || '';
+      const body = ctyp.includes('application/json') ? await res.json() : await res.text();
+      if (!ok) {
+        const e = new Error('HTTP ' + res.status);
+        e.status = res.status; e.body = body;
+        throw e;
+      }
+      return body;
+    };
 
   const tShow = (window.DP && DP.core && DP.core.toast && DP.core.toast.show)
     ? DP.core.toast.show
-    : (msg)=>alert(msg);
+    : (msg) => alert(msg);
 
   // ========= [DOM REFS] Sidebar & Area Utama =================================
-  const edgeSidebar    = document.getElementById('lpSidebar'); // (hover-edge) — nonaktif khusus halaman
+  const edgeSidebar = document.getElementById('lpSidebar'); // (hover-edge) — nonaktif khusus halaman
   const overlaySidebar = document.getElementById('lp-sidebar'); // Overlay (aktif)
-  const overlayPanel   = overlaySidebar?.querySelector('.lp-sidebar-inner');
-  const rightHotspot   = document.querySelector('.lp-overlay-hotspot'); // hotspot kanan (baru)
+  const overlayPanel = overlaySidebar?.querySelector('.lp-sidebar-inner');
+  const rightHotspot = document.querySelector('.lp-overlay-hotspot'); // hotspot kanan (baru)
   const HOVER_AUTO_CLOSE = (overlaySidebar?.dataset.hoverclose ?? '1') !== '0';
   let overlayOpenMode = null; // 'hover' | 'manual' | null
   const mainArea = document.querySelector('.lp-main'); // untuk ARIA hide saat overlay terbuka
@@ -72,8 +72,8 @@
   function ensureLegacyLayoutContainer() {
     // Cari elemen-elemen potensial
     const tableWrap = document.querySelector('.lp-table-wrap');
-    const table     = document.getElementById('lp-table');
-    let   klasList  = document.getElementById('klas-list');
+    const table = document.getElementById('lp-table');
+    let klasList = document.getElementById('klas-list');
 
     // Jika #klas-list sudah berupa DIV card container → tidak perlu migrasi
     if (klasList && klasList.tagName !== 'TBODY') {
@@ -118,18 +118,18 @@
   let klasWrap = ensureLegacyLayoutContainer();
 
   // Tombol (kanonik + alias class)
-  const btnAddKlasAll    = Array.from(document.querySelectorAll('#btn-add-klas, .js-add-klas'));
-  const btnSaveAll       = Array.from(document.querySelectorAll('#btn-save, .js-save'));
-  const btnCompactAll    = Array.from(document.querySelectorAll('#btn-compact, .js-compact'));
+  const btnAddKlasAll = Array.from(document.querySelectorAll('#btn-add-klas, .js-add-klas'));
+  const btnSaveAll = Array.from(document.querySelectorAll('#btn-save, .js-save'));
+  const btnCompactAll = Array.from(document.querySelectorAll('#btn-compact, .js-compact'));
   const btnSidebarTogAll = Array.from(document.querySelectorAll('#btn-sidebar-toggle, .js-sidebar-toggle, .btn-sidebar-toggle'));
 
   // Sidebar Nav anchors
-  const navWrap           = document.getElementById('lp-nav');
-  const navSearchSide     = document.getElementById('lp-nav-search-side');
-  const navSearchToolbar  = document.getElementById('lp-nav-search');
-  const navAnnounce       = document.getElementById('lp-nav-announce');
-  const tbAnnounce        = document.getElementById('lp-toolbar-announce');
-  const btnExpandAllAll   = Array.from(document.querySelectorAll('.lp-nav-expand-all, #lp-nav-expand-all'));
+  const navWrap = document.getElementById('lp-nav');
+  const navSearchSide = document.getElementById('lp-nav-search-side');
+  const navSearchToolbar = document.getElementById('lp-nav-search');
+  const navAnnounce = document.getElementById('lp-nav-announce');
+  const tbAnnounce = document.getElementById('lp-toolbar-announce');
+  const btnExpandAllAll = Array.from(document.querySelectorAll('.lp-nav-expand-all, #lp-nav-expand-all'));
   const btnCollapseAllAll = Array.from(document.querySelectorAll('.lp-nav-collapse-all, #lp-nav-collapse-all'));
 
   // ========= [A11Y] Live region ==============================================
@@ -502,12 +502,12 @@
   }
 
   // ========= [SIDEBAR-EDGE (STUB)] Dinonaktifkan di halaman ini ==============
-  function openEdge() {}
-  function closeEdge() {}
-  function isEdgeOpen(){ return false; }
+  function openEdge() { }
+  function closeEdge() { }
+  function isEdgeOpen() { return false; }
 
   // ========= [HOVER-EDGE KANAN] untuk Overlay lokal (desktop) =================
-  function setupRightHoverEdge(){
+  function setupRightHoverEdge() {
     if (!rightHotspot || !overlaySidebar) return;
     const isDesktop = () => window.matchMedia('(min-width: 992px)').matches;
     const panel = overlayPanel || overlaySidebar;   // penting: pakai panel, bukan aside
@@ -517,8 +517,8 @@
     rightHotspot.addEventListener('mouseenter', () => {
       if (!isDesktop()) return;
       clearTimeout(tOut);
-      tIn = setTimeout(() => setOverlayVisible(true, {autofocus:false, mode:'hover'}), ENTER_DELAY);
-    }, { passive:true });
+      tIn = setTimeout(() => setOverlayVisible(true, { autofocus: false, mode: 'hover' }), ENTER_DELAY);
+    }, { passive: true });
 
     rightHotspot.addEventListener('mouseleave', () => {
       if (!isDesktop()) return;
@@ -526,27 +526,27 @@
       if (HOVER_AUTO_CLOSE && overlayOpenMode === 'hover' && !panel.matches(':hover')) {
         tOut = setTimeout(() => setOverlayVisible(false), LEAVE_DELAY);
       }
-    }, { passive:true });
+    }, { passive: true });
 
-    panel.addEventListener('mouseenter', () => { clearTimeout(tOut); }, { passive:true });
+    panel.addEventListener('mouseenter', () => { clearTimeout(tOut); }, { passive: true });
 
     panel.addEventListener('mouseleave', () => {
       if (!isDesktop()) return;
       if (HOVER_AUTO_CLOSE && overlayOpenMode === 'hover' && !rightHotspot.matches(':hover')) {
         tOut = setTimeout(() => setOverlayVisible(false), LEAVE_DELAY);
       }
-    }, { passive:true });
+    }, { passive: true });
   }
-  try { setupRightHoverEdge(); } catch(_){}
+  try { setupRightHoverEdge(); } catch (_) { }
 
   // ========= [OVERLAY SIDEBAR] Open/Close & Focus Trap =======================
   let lastFocusBeforeOpen = null;
 
   // [TDZ-SAFE] Predeclare suggest boxes agar aman ketika overlay ditutup cepat
   let sideSuggest = null;
-  let tbSuggest   = null;
+  let tbSuggest = null;
 
-  function setOverlayVisible(show, opts = {}){
+  function setOverlayVisible(show, opts = {}) {
     const { autofocus = true, mode = null } = opts;
     if (!overlaySidebar) return;
 
@@ -565,45 +565,45 @@
     // ARIA sync & announce
     overlaySidebar.setAttribute('aria-hidden', show ? 'false' : 'true');
     if (mainArea) {
-      if (show) mainArea.setAttribute('aria-hidden','true');
+      if (show) mainArea.setAttribute('aria-hidden', 'true');
       else mainArea.removeAttribute('aria-hidden');
     }
     try {
       document.dispatchEvent(new CustomEvent('lp:overlay:change', { detail: { open: !!show } }));
-    } catch(_){}
+    } catch (_) { }
 
     if (show) {
       overlayOpenMode = mode || overlayOpenMode || 'manual';
       lastFocusBeforeOpen = document.activeElement;
-      if (autofocus) requestAnimationFrame(()=> navSearchSide?.focus());
+      if (autofocus) requestAnimationFrame(() => navSearchSide?.focus());
       startFocusTrap();
-      try { localStorage.setItem('lp_sidebar_open', '1'); } catch {}
+      try { localStorage.setItem('lp_sidebar_open', '1'); } catch { }
     } else {
       overlayOpenMode = null;
       stopFocusTrap();
       if (navSearchSide) { navSearchSide.value = ''; }
       if (sideSuggest) { hideSuggestions(sideSuggest); } // TDZ-safe
-      try { localStorage.setItem('lp_sidebar_open', '0'); } catch {}
+      try { localStorage.setItem('lp_sidebar_open', '0'); } catch { }
       if (lastFocusBeforeOpen && document.contains(lastFocusBeforeOpen)) lastFocusBeforeOpen.focus();
       else btnSidebarTogAll[0]?.focus();
     }
   }
 
-  function isOverlayOpen(){
+  function isOverlayOpen() {
     return !!(overlaySidebar &&
       (overlaySidebar.classList.contains('show') || overlaySidebar.classList.contains('is-open')));
   }
 
-  (function restoreOverlayState(){
+  (function restoreOverlayState() {
     if (!overlaySidebar) return;
     try {
       const pref = localStorage.getItem('lp_sidebar_open');
       if (pref === '1') setOverlayVisible(true);
-    } catch {}
+    } catch { }
   })();
 
-  btnSidebarTogAll.forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
+  btnSidebarTogAll.forEach(btn => {
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       if (isOverlayOpen()) setOverlayVisible(false);
       else setOverlayVisible(true, { mode: 'manual' });
@@ -666,10 +666,10 @@
       return cs.visibility !== 'hidden' && cs.display !== 'none';
     });
   }
-  function startFocusTrap(){
+  function startFocusTrap() {
     if (!overlaySidebar) return;
     const cont = overlaySidebar;
-    trapKeydown = (e)=>{
+    trapKeydown = (e) => {
       if (!isOverlayOpen()) return;
       if (e.key !== 'Tab') return;
       const focusables = getFocusable(cont);
@@ -680,7 +680,7 @@
     };
     document.addEventListener('keydown', trapKeydown, true);
   }
-  function stopFocusTrap(){
+  function stopFocusTrap() {
     if (trapKeydown) document.removeEventListener('keydown', trapKeydown, true);
     trapKeydown = null;
   }
@@ -691,7 +691,7 @@
     return;
   }
   const projectId = root.dataset.projectId;
-  const REF_YEAR  = root.dataset.refYear || null;
+  const REF_YEAR = root.dataset.refYear || null;
 
   // ========= [HELPERS] Umum ===================================================
   const uid = () => Math.random().toString(36).slice(2, 9);
@@ -703,80 +703,153 @@
     });
   }
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, m => ({'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#39;'}[m]));
+    return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
   function truncateText(str, n = 100) {
     const arr = Array.from(String(str || ""));
     return arr.length > n ? arr.slice(0, n).join('') + '…' : String(str || "");
   }
   function buildSourceLabel(src) {
-    if (src === 'ref')          return REF_YEAR ? `Ref AHSP ${REF_YEAR}` : 'Ref';
+    if (src === 'ref') return REF_YEAR ? `Ref AHSP ${REF_YEAR}` : 'Ref';
     if (src === 'ref_modified') return REF_YEAR ? `AHSP ${REF_YEAR} (modified)` : 'Ref (modified)';
     return 'Kustom';
   }
 
+  // ========= [AHSP SOURCE SELECTION] ==========================================
+  // Global state for available AHSP sources
+  let availableAhspSources = [];
+  let defaultAhspSource = null;
+  let ahspSourcesLoaded = false;
+
+  /**
+   * Fetch available AHSP sources from backend.
+   * Called once on page init, results cached in module scope.
+   */
+  async function fetchAhspSources() {
+    if (ahspSourcesLoaded) return;
+    try {
+      const sourcesUrl = document.querySelector('[data-sources-url]')?.dataset.sourcesUrl
+        || '/referensi/api/sources';
+      const data = await jfetch(sourcesUrl);
+      availableAhspSources = data.sources || [];
+      defaultAhspSource = data.default || (availableAhspSources[0] || null);
+      ahspSourcesLoaded = true;
+      log('[AHSP-SRC] Loaded sources:', availableAhspSources, 'default:', defaultAhspSource);
+    } catch (e) {
+      warn('[AHSP-SRC] Failed to load sources:', e);
+      availableAhspSources = [];
+      defaultAhspSource = null;
+    }
+  }
+
+  /**
+   * Populate the AHSP source dropdown for a given row.
+   * @param {HTMLElement} row - The pekerjaan row element
+   * @param {string} [preselect] - Value to preselect (if any)
+   */
+  function populateAhspSourceDropdown(row, preselect = null) {
+    const dropdown = row.querySelector('.ahsp-source-select');
+    if (!dropdown) return;
+
+    const selectedValue = preselect || defaultAhspSource || '';
+    dropdown.innerHTML = availableAhspSources
+      .map(s => {
+        const selected = (s === selectedValue) ? ' selected' : '';
+        return `<option value="${escapeHtml(s)}"${selected}>${escapeHtml(s)}</option>`;
+      })
+      .join('');
+
+    // Store in dataset for later reference
+    if (selectedValue) {
+      row.dataset.ahspSumber = selectedValue;
+    }
+  }
+
+  /**
+   * Update AHSP source dropdown visibility based on mode.
+   * - ref / ref_modified: show dropdown
+   * - custom: hide dropdown
+   */
+  function updateAhspSourceVisibility(row) {
+    const mode = row.querySelector('.src')?.value || row.dataset.sourceType;
+    const dropdown = row.querySelector('.ahsp-source-select');
+    if (!dropdown) return;
+
+    const isRefLike = (mode === 'ref' || mode === 'ref_modified');
+    dropdown.style.display = isRefLike ? '' : 'none';
+    dropdown.disabled = !isRefLike;
+  }
+
+  /**
+   * Get current AHSP source for a row (from dropdown or dataset).
+   */
+  function getRowAhspSource(row) {
+    const dropdown = row.querySelector('.ahsp-source-select');
+    return dropdown?.value || row.dataset.ahspSumber || defaultAhspSource || '';
+  }
+
   // Mapper aman untuk berbagai format respons API → {id, text}
-  function mapToSelect2Results(input){
-    try{
+  function mapToSelect2Results(input) {
+    try {
       if (!input) return [];
       if (Array.isArray(input)) {
         return input.map(it => ({
-          id:  String(it.id   ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
-          text:String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
+          id: String(it.id ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
+          text: String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
         })).filter(x => x.id && x.text);
       }
       if (Array.isArray(input.results)) return input.results;
       if (Array.isArray(input.items)) {
         return input.items.map(it => ({
-          id:  String(it.id   ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
-          text:String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
+          id: String(it.id ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
+          text: String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
         })).filter(x => x.id && x.text);
       }
       const src = Array.isArray(input.data) ? input.data : Object.values(input);
       if (Array.isArray(src) && src.length && typeof src[0] === 'object') {
         return src.map(it => ({
-          id:  String(it.id   ?? it.pk ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
-          text:String(it.text ?? it.label
-                 ?? (it.kode_ahsp && it.nama_ahsp
-                      ? `${it.kode_ahsp} — ${it.nama_ahsp}`
-                      : (it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')))
+          id: String(it.id ?? it.pk ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
+          text: String(it.text ?? it.label
+            ?? (it.kode_ahsp && it.nama_ahsp
+              ? `${it.kode_ahsp} — ${it.nama_ahsp}`
+              : (it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')))
         })).filter(x => x.id && x.text);
       }
       return [];
-    }catch(_){ return []; }
+    } catch (_) { return []; }
   }
 
-  function escRe(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
-  function highlightLabel(raw, kw){
+  function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function highlightLabel(raw, kw) {
     if (!kw) return escapeHtml(raw);
     const re = new RegExp(`(${escRe(kw)})`, 'ig');
     return escapeHtml(raw).replace(re, '<span class="lp-hit">$1</span>');
   }
 
   // ========= [URAIAN] Preview 2-baris & Edit =================================
-  function autoResize(ta){ if(!ta) return; ta.style.height='auto'; ta.style.height = Math.max(ta.scrollHeight, ta.offsetHeight) + 'px'; }
-  function syncPreview(td){
+  function autoResize(ta) { if (!ta) return; ta.style.height = 'auto'; ta.style.height = Math.max(ta.scrollHeight, ta.offsetHeight) + 'px'; }
+  function syncPreview(td) {
     const ta = td?.querySelector('.uraian');
     const pv = td?.querySelector('.lp-urai-preview');
     if (!ta || !pv) return;
-    pv.textContent = (ta.value || '').replace(/\s+$/g,'');
+    pv.textContent = (ta.value || '').replace(/\s+$/g, '');
   }
-  function enterEdit(td){
+  function enterEdit(td) {
     if (!td) return;
     td.classList.add('is-editing');
     const ta = td.querySelector('.uraian');
     if (!ta) return;
-    requestAnimationFrame(()=>{
+    requestAnimationFrame(() => {
       ta.focus();
-      try{ const n = ta.value?.length || 0; ta.setSelectionRange(n,n); }catch{}
+      try { const n = ta.value?.length || 0; ta.setSelectionRange(n, n); } catch { }
       autoResize(ta);
     });
   }
-  function applyUraianGate(td){
-    const tr  = td.closest('tr'); if (!tr) return;
+  function applyUraianGate(td) {
+    const tr = td.closest('tr'); if (!tr) return;
     const src = tr.dataset.sourceType || '';
-    const ta  = td.querySelector('.uraian');
-    const pv  = td.querySelector('.lp-urai-preview');
+    const ta = td.querySelector('.uraian');
+    const pv = td.querySelector('.lp-urai-preview');
     if (!ta || !pv) return;
 
     const editable = (src === 'custom' || src === 'ref_modified');
@@ -784,23 +857,25 @@
     ta.tabIndex = editable ? 0 : -1;
     pv.style.cursor = editable ? 'text' : 'default';
   }
-  function setupUraianInteractivity(scope = document){
+  function setupUraianInteractivity(scope = document) {
     // dukung selector lama (td.col-urai) dan baru
-    scope.querySelectorAll('td.col-urai, #lp-table tbody td:nth-child(4)').forEach((td)=>{
+    scope.querySelectorAll('td.col-urai, #lp-table tbody td:nth-child(4)').forEach((td) => {
       const ta = td.querySelector('.uraian');
       let pv = td.querySelector('.lp-urai-preview');
       if (!ta) return;
       if (!pv) { pv = document.createElement('div'); pv.className = 'lp-urai-preview'; td.prepend(pv); }
       syncPreview(td); autoResize(ta); applyUraianGate(td);
-      pv.onclick = ()=> enterEdit(td);
-      ta.addEventListener('input', ()=>{ autoResize(ta); syncPreview(td); setDirty(true); });
-      ta.addEventListener('focus', ()=> td.classList.add('is-editing'));
-      ta.addEventListener('blur',  ()=> { td.classList.remove('is-editing'); syncPreview(td); });
+      pv.onclick = () => enterEdit(td);
+      ta.addEventListener('input', () => { autoResize(ta); syncPreview(td); setDirty(true); });
+      ta.addEventListener('focus', () => td.classList.add('is-editing'));
+      ta.addEventListener('blur', () => { td.classList.remove('is-editing'); syncPreview(td); });
     });
   }
-  document.addEventListener('DOMContentLoaded', ()=>{
+  document.addEventListener('DOMContentLoaded', () => {
     setupUraianInteractivity(document);
-    try { setupRightHoverEdge(); } catch(_){}
+    try { setupRightHoverEdge(); } catch (_) { }
+    // Fetch available AHSP sources for dropdown population
+    fetchAhspSources().catch(e => warn('[AHSP-SRC] Init fetch failed:', e));
   });
 
   // ========= [BUILDERS] Klas / Sub / Row =====================================
@@ -827,12 +902,12 @@
     div.dataset.tempId = `k${kCounter}_${Date.now()}`;
     const subWrap = div.querySelector('.sub-wrap');
     div.querySelector('.btn-add-sub').onclick = () => { addSub(subWrap); scheduleSidebarRebuild(); };
-    div.querySelector('.btn-del').onclick     = () => { div.remove(); scheduleSidebarRebuild(); setDirty(true); };
+    div.querySelector('.btn-del').onclick = () => { div.remove(); scheduleSidebarRebuild(); setDirty(true); };
     div.querySelector('.klas-name').addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
 
     klasWrap.appendChild(div);
-    requestAnimationFrame(()=>{
-      div.scrollIntoView({ behavior:'smooth', block:'start' });
+    requestAnimationFrame(() => {
+      div.scrollIntoView({ behavior: 'smooth', block: 'start' });
       div.classList.add('lp-flash');
       const inp = div.querySelector('.klas-name'); inp?.focus();
       say('Klasifikasi ditambahkan'); tbAnnounce && (tbAnnounce.textContent = 'Klasifikasi ditambahkan');
@@ -888,12 +963,12 @@
     attachDropZone(tbody);
 
     block.querySelector('.btn-add-pekerjaan').onclick = () => { addPekerjaan(tbody); scheduleSidebarRebuild(); };
-    block.querySelector('.btn-del').onclick           = () => { block.remove(); scheduleSidebarRebuild(); setDirty(true); };
+    block.querySelector('.btn-del').onclick = () => { block.remove(); scheduleSidebarRebuild(); setDirty(true); };
     block.querySelector('.sub-name').addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
 
     container.appendChild(block);
-    requestAnimationFrame(()=>{
-      block.scrollIntoView({ behavior:'smooth', block:'start' });
+    requestAnimationFrame(() => {
+      block.scrollIntoView({ behavior: 'smooth', block: 'start' });
       block.classList.add('lp-flash');
       const inp = block.querySelector('.sub-name'); inp?.focus();
       say('Sub-Klasifikasi ditambahkan'); tbAnnounce && (tbAnnounce.textContent = 'Sub-Klasifikasi ditambahkan');
@@ -991,11 +1066,36 @@
     const srcSel = row.querySelector('.src');
     if (srcSel) srcSel.value = mode;
 
+    // ----- AHSP Source dropdown init -----
+    const ahspSrcSel = row.querySelector('.ahsp-source-select');
+    if (ahspSrcSel && ahspSourcesLoaded) {
+      // Populate dropdown with available sources
+      populateAhspSourceDropdown(row, preset.ahsp_sumber || null);
+      // Set initial visibility based on mode
+      updateAhspSourceVisibility(row);
+
+      // Event: when source changes, clear current reference and notify user
+      ahspSrcSel.addEventListener('change', () => {
+        row.dataset.ahspSumber = ahspSrcSel.value;
+        // Clear current reference selection since source changed
+        if (HAS_S2 && $sel && $sel.length && $sel.val()) {
+          $sel.val(null).trigger('change');
+          delete row.dataset.refId;
+          tShow('Referensi di-reset karena sumber AHSP berubah', 'info');
+        } else if (selEl && selEl.value) {
+          selEl.value = '';
+          delete row.dataset.refId;
+          tShow('Referensi di-reset karena sumber AHSP berubah', 'info');
+        }
+        setDirty(true);
+      });
+    }
+
     // ----- Select2 init (dengan guard jQuery/Select2) -----
     let host, $sel;
-    const selEl       = row.querySelector('.ref-select');
-    const ajaxUrl     = selEl?.dataset.ajaxUrl || '/referensi/api/search';
-    const minLen      = Number(selEl?.dataset.minlength || 2);
+    const selEl = row.querySelector('.ref-select');
+    const ajaxUrl = selEl?.dataset.ajaxUrl || '/referensi/api/search';
+    const minLen = Number(selEl?.dataset.minlength || 2);
     const placeholder = selEl?.dataset.placeholder || 'Cari referensi kode/nama…';
 
     if (HAS_JQ) {
@@ -1015,7 +1115,11 @@
           delay: 140,
           transport: function (params, success, failure) {
             const q = params.data && params.data.q ? params.data.q : '';
-            fetch(`${ajaxUrl}?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' })
+            // Include AHSP sumber filter from row dropdown
+            const sumber = getRowAhspSource(row);
+            const urlParams = new URLSearchParams({ q });
+            if (sumber) urlParams.set('sumber', sumber);
+            fetch(`${ajaxUrl}?${urlParams.toString()}`, { credentials: 'same-origin' })
               .then(r => r.json())
               .then(json => success({ results: mapToSelect2Results(json) }))
               .catch(failure);
@@ -1023,7 +1127,7 @@
           processResults: function (data) { return data; }
         },
         closeOnSelect: true,
-        templateResult: function(item) {
+        templateResult: function (item) {
           if (item.loading) return item.text;
           return $(
             `<div class="s2-option">
@@ -1031,7 +1135,7 @@
             </div>`
           );
         },
-        templateSelection: function(item) {
+        templateSelection: function (item) {
           const full = item.text || '';
           const short = truncateText(full, S2_TRUNC);
           return $(`<div class="s2-selection-wrap" title="${escapeHtml(full)}">${escapeHtml(short)}</div>`);
@@ -1043,7 +1147,7 @@
       $sel.on('select2:open', function () {
         $('.select2-host.s2-open').removeClass('s2-open');
         host.addClass('s2-open');
-        setTimeout(() => { try { $('.select2-container--open .select2-search__field').trigger('focus'); } catch{} }, 0);
+        setTimeout(() => { try { $('.select2-container--open .select2-search__field').trigger('focus'); } catch { } }, 0);
 
         // blokir Enter agar tidak bentrok dengan shortcut global
         const $input = $('.select2-container--open .select2-search__field');
@@ -1059,13 +1163,13 @@
 
       // Clear via Delete/Backspace pada selection
       const $selection = host.find('.select2-selection');
-      $selection.on('keydown', function(e){
+      $selection.on('keydown', function (e) {
         if ((e.key === 'Delete' || e.key === 'Backspace') && $sel.val()) {
           $sel.val(null).trigger('change'); e.preventDefault(); e.stopPropagation();
         }
       });
 
-      $sel.on('select2:open', function(){
+      $sel.on('select2:open', function () {
         const $input = $('.select2-container--open .select2-search__field');
         const onKey = (e) => {
           if ((e.key === 'Delete' || e.key === 'Backspace') && !$input.val() && $sel.val()) {
@@ -1086,9 +1190,9 @@
           const item = $sel.select2('data')[0];
           const full = item?.text ? String(item.text) : '';
           const parts = full.split('—');
-          const ura  = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
+          const ura = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
           if (ura) { ta.value = ura; }
-          const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)'); 
+          const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
           syncPreview(td || row);
           autoResize(ta);
         }
@@ -1113,8 +1217,8 @@
     if (ref_id) {
       const lbl = ref_label
         || (snapshot_kode && snapshot_uraian
-              ? `${snapshot_kode || ''}${snapshot_kode && snapshot_uraian ? ' — ' : ''}${snapshot_uraian || ''}`
-              : null);
+          ? `${snapshot_kode || ''}${snapshot_kode && snapshot_uraian ? ' — ' : ''}${snapshot_uraian || ''}`
+          : null);
       if (HAS_S2 && $sel && $sel.length) {
         preselectSelect2($sel, ref_id, lbl);
       } else if (selEl) {
@@ -1125,9 +1229,9 @@
       }
     }
 
-    const uraianInput  = row.querySelector('.uraian');
-    const satuanInput  = row.querySelector('.satuan');
-    const sourceHint   = row.querySelector('.source-hint');
+    const uraianInput = row.querySelector('.uraian');
+    const satuanInput = row.querySelector('.satuan');
+    const sourceHint = row.querySelector('.source-hint');
 
     if (uraian && uraianInput) uraianInput.value = uraian;
     if (satuan && satuanInput) satuanInput.value = satuan;
@@ -1136,7 +1240,7 @@
       const v = srcSel?.value;
       const oldSourceType = row.dataset.sourceType;  // Save old value before update
       row.dataset.sourceType = v || '';
-      const isCustom  = (v === 'custom');
+      const isCustom = (v === 'custom');
       const isRefLike = (v === 'ref' || v === 'ref_modified');
 
       // AUTO-RESET: Reset uraian/satuan when changing FROM custom TO ref/ref_modified
@@ -1170,6 +1274,8 @@
       }
 
       if (sourceHint) sourceHint.textContent = buildSourceLabel(v);
+      // Update AHSP source dropdown visibility based on mode
+      updateAhspSourceVisibility(row);
       row.querySelector('.current-ref')?.remove();
 
       const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
@@ -1181,8 +1287,8 @@
 
     // Autofocus UX saat tambah baru (bukan saat loadTree)
     if (autofocus) {
-      requestAnimationFrame(()=>{
-        row.scrollIntoView({ behavior:'smooth', block:'nearest' });
+      requestAnimationFrame(() => {
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         const srcNow = srcSel?.value;
         if (srcNow === 'ref' || srcNow === 'ref_modified') {
           if (HAS_JQ) {
@@ -1207,7 +1313,7 @@
           const item = $sel.select2('data')[0];
           const text = item?.text ? String(item.text) : '';
           const parts = text.split('—');
-          const ura  = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
+          const ura = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
           if (ura) uraianInput.value = ura;
           const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
           if (td) { syncPreview(td); autoResize(uraianInput); }
@@ -1250,22 +1356,22 @@
     const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
     kCards.forEach((kc, ki) => {
       const kName = kc.querySelector('.klas-name')?.value?.trim()
-        || kc.dataset.title || kc.getAttribute?.('data-title') || `Klasifikasi ${ki+1}`;
-      const kAnchor = kc.dataset.anchorId || kc.id || `k_auto_${ki+1}`;
+        || kc.dataset.title || kc.getAttribute?.('data-title') || `Klasifikasi ${ki + 1}`;
+      const kAnchor = kc.dataset.anchorId || kc.id || `k_auto_${ki + 1}`;
       const nodeK = { id: kAnchor, name: kName, sub: [] };
 
       const subWrap = kc.querySelector('.sub-wrap');
       Array.from(subWrap?.children || []).forEach((sb, si) => {
-        const sName = sb.querySelector('.sub-name')?.value?.trim() || `Sub ${ki+1}.${si+1}`;
-        const sAnchor = sb.dataset.anchorId || sb.id || `s_auto_${ki+1}_${si+1}`;
+        const sName = sb.querySelector('.sub-name')?.value?.trim() || `Sub ${ki + 1}.${si + 1}`;
+        const sAnchor = sb.dataset.anchorId || sb.id || `s_auto_${ki + 1}_${si + 1}`;
         const nodeS = { id: sAnchor, name: sName, pekerjaan: [] };
 
         const rows = sb.querySelectorAll('tbody tr');
         Array.from(rows || []).forEach((tr, pi) => {
           const uraian = tr.querySelector('.uraian')?.value?.trim()
             || tr.querySelector('.current-ref .ref-uraian')?.textContent?.trim()
-            || `Pekerjaan ${pi+1}`;
-          const pAnchor = tr.dataset.anchorId || tr.id || `p_auto_${ki+1}_${si+1}_${pi+1}`;
+            || `Pekerjaan ${pi + 1}`;
+          const pAnchor = tr.dataset.anchorId || tr.id || `p_auto_${ki + 1}_${si + 1}_${pi + 1}`;
           nodeS.pekerjaan.push({ id: pAnchor, name: uraian });
         });
 
@@ -1298,39 +1404,39 @@
     return box;
   }
 
-  function rankText(s, q){
+  function rankText(s, q) {
     const t = s.toLowerCase(), qq = q.toLowerCase();
     const idx = t.indexOf(qq);
     if (idx === -1) return Infinity;
-    return idx + Math.abs(s.length - qq.length)*0.01;
+    return idx + Math.abs(s.length - qq.length) * 0.01;
   }
-  function buildGroupedSuggestions(tree, q){
+  function buildGroupedSuggestions(tree, q) {
     const out = { klas: [], sub: [], pekerjaan: [] };
     if (!q || q.length < 2) return out;
-    tree.forEach(K=>{
+    tree.forEach(K => {
       const rk = rankText(K.name, q);
       if (Number.isFinite(rk)) out.klas.push({ id: K.id, name: K.name, r: rk });
-      (K.sub||[]).forEach(S=>{
+      (K.sub || []).forEach(S => {
         const rs = rankText(S.name, q);
         if (Number.isFinite(rs)) out.sub.push({ id: S.id, name: S.name, r: rs });
-        (S.pekerjaan||[]).forEach(P=>{
+        (S.pekerjaan || []).forEach(P => {
           const rp = rankText(P.name, q);
           if (Number.isFinite(rp)) out.pekerjaan.push({ id: P.id, name: P.name, r: rp });
         });
       });
     });
-    out.klas.sort((a,b)=>a.r-b.r); out.sub.sort((a,b)=>a.r-b.r); out.pekerjaan.sort((a,b)=>a.r-b.r);
+    out.klas.sort((a, b) => a.r - b.r); out.sub.sort((a, b) => a.r - b.r); out.pekerjaan.sort((a, b) => a.r - b.r);
     return out;
   }
-  function renderSuggest(box, groups, q){
+  function renderSuggest(box, groups, q) {
     if (!box) return;
     if (!q || q.length < 2 || (!groups.klas.length && !groups.sub.length && !groups.pekerjaan.length)) {
       hideSuggestions(box); return;
     }
-    const makeGroup = (title, arr)=> arr.length ? `
+    const makeGroup = (title, arr) => arr.length ? `
       <div class="lp-ac-group">
         <div class="lp-ac-title">${title}</div>
-        ${arr.slice(0, 8).map(i=>`<div class="lp-ac-item" data-id="${escapeHtml(i.id)}">${escapeHtml(i.name)}</div>`).join('')}
+        ${arr.slice(0, 8).map(i => `<div class="lp-ac-item" data-id="${escapeHtml(i.id)}">${escapeHtml(i.name)}</div>`).join('')}
       </div>` : '';
     box.innerHTML = [
       makeGroup('Klasifikasi', groups.klas),
@@ -1338,15 +1444,15 @@
       makeGroup('Pekerjaan', groups.pekerjaan),
     ].join('');
     box.classList.remove('d-none');
-    if (box === sideSuggest)  { navSearchSide?.setAttribute('aria-expanded', 'true'); }
-    if (box === tbSuggest)    { navSearchToolbar?.setAttribute('aria-expanded', 'true'); }
+    if (box === sideSuggest) { navSearchSide?.setAttribute('aria-expanded', 'true'); }
+    if (box === tbSuggest) { navSearchToolbar?.setAttribute('aria-expanded', 'true'); }
     const total = groups.klas.length + groups.sub.length + groups.pekerjaan.length;
     const msg = total ? `${total} hasil` : 'Tidak ada hasil';
     if (box === sideSuggest) { navAnnounce && (navAnnounce.textContent = msg); }
-    if (box === tbSuggest)   { tbAnnounce && (tbAnnounce.textContent = msg); }
+    if (box === tbSuggest) { tbAnnounce && (tbAnnounce.textContent = msg); }
 
-    box.querySelectorAll('.lp-ac-item').forEach(it=>{
-      it.addEventListener('click', ()=>{
+    box.querySelectorAll('.lp-ac-item').forEach(it => {
+      it.addEventListener('click', () => {
         const id = it.getAttribute('data-id');
         if (id) {
           scrollToAnchor(id);
@@ -1355,21 +1461,21 @@
       });
     });
   }
-  function hideSuggestions(box){
+  function hideSuggestions(box) {
     if (!box) return;
     box.classList.add('d-none');
-    if (box === sideSuggest)  { navSearchSide?.setAttribute('aria-expanded', 'false'); }
-    if (box === tbSuggest)    { navSearchToolbar?.setAttribute('aria-expanded', 'false'); }
+    if (box === sideSuggest) { navSearchSide?.setAttribute('aria-expanded', 'false'); }
+    if (box === tbSuggest) { navSearchToolbar?.setAttribute('aria-expanded', 'false'); }
   }
 
-  function handleSearchInput(which){
+  function handleSearchInput(which) {
     const q = which === 'side' ? (navSearchSide?.value || '') : (navSearchToolbar?.value || '');
     const tree = collectTree();
     const groups = buildGroupedSuggestions(tree, q);
     if (which === 'side') renderSuggest(sideSuggest, groups, q);
     else renderSuggest(tbSuggest, groups, q);
   }
-  function commitSearch(which){
+  function commitSearch(which) {
     const box = which === 'side' ? sideSuggest : tbSuggest;
     const first = box && !box.classList.contains('d-none') ? box.querySelector('.lp-ac-item') : null;
     if (first) {
@@ -1425,14 +1531,14 @@
         label.innerHTML = highlightLabel(K.name, keywords);
         label.href = `#${K.id}`;
         label.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(K.id); });
-        const count = el('span', 'lp-node__count', `${(K.sub||[]).length} sub`);
+        const count = el('span', 'lp-node__count', `${(K.sub || []).length} sub`);
 
         head.appendChild(toggle); head.appendChild(label); head.appendChild(count);
-        head.setAttribute('role','treeitem'); head.setAttribute('aria-expanded','false');
+        head.setAttribute('role', 'treeitem'); head.setAttribute('aria-expanded', 'false');
         node.appendChild(head);
 
         const children = el('div', 'lp-node__children');
-        children.setAttribute('role','group');
+        children.setAttribute('role', 'group');
         node.appendChild(children);
 
         head.addEventListener('click', (e) => {
@@ -1453,11 +1559,11 @@
           const countS = el('span', 'lp-node__count', `${(S.pekerjaan || []).length}`);
 
           headS.appendChild(toggleS); headS.appendChild(labelS); headS.appendChild(countS);
-          headS.setAttribute('role','treeitem'); headS.setAttribute('aria-expanded','false');
+          headS.setAttribute('role', 'treeitem'); headS.setAttribute('aria-expanded', 'false');
           nodeS.appendChild(headS);
 
           const childrenS = el('div', 'lp-node__children');
-          childrenS.setAttribute('role','group');
+          childrenS.setAttribute('role', 'group');
           nodeS.appendChild(childrenS);
 
           let openS = false;
@@ -1475,7 +1581,7 @@
             labelP.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(P.id); });
 
             headP.appendChild(bullet); headP.appendChild(labelP);
-            headP.setAttribute('role','treeitem');
+            headP.setAttribute('role', 'treeitem');
             item.appendChild(headP);
             childrenS.appendChild(item);
           });
@@ -1505,7 +1611,7 @@
   sideSuggest = navSearchSide
     ? ensureSuggest(navSearchSide.closest('.lp-sidebar-search') || overlayPanel || document.body, 'lp-nav-suggest')
     : null;
-  tbSuggest   = navSearchToolbar
+  tbSuggest = navSearchToolbar
     ? ensureSuggest(navSearchToolbar.closest('.lp-toolbar-search') || document.body, 'lp-nav-suggest-toolbar')
     : null;
 
@@ -1557,7 +1663,7 @@
               snapshot_kode: p.snapshot_kode || null,
               snapshot_uraian: p.snapshot_uraian || null
             },
-            { autofocus:false });
+              { autofocus: false });
             if (p.id) row.dataset.id = p.id;
           });
         });
@@ -1581,7 +1687,7 @@
       return;
     }
 
-    const btn  = document.querySelector('#btn-save');
+    const btn = document.querySelector('#btn-save');
     const orig = btn?.textContent;
     btn?.setAttribute('disabled', 'true');
     if (btn) btn.textContent = 'Menyimpan…';
@@ -1593,7 +1699,7 @@
     const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
 
     kCards.forEach((kc, ki) => {
-      const subWrap  = kc.querySelector('.sub-wrap');
+      const subWrap = kc.querySelector('.sub-wrap');
       const kNameRaw = (kc.querySelector('.klas-name')?.value || '').trim();
       const hasAnySub = subWrap && subWrap.children.length > 0;
       if (!hasAnySub && !kNameRaw) return;
@@ -1610,7 +1716,7 @@
       };
 
       Array.from(subWrap?.children || []).forEach((sb, si) => {
-        const rows     = sb.querySelectorAll('tbody tr');
+        const rows = sb.querySelectorAll('tbody tr');
         const sNameRaw = (sb.querySelector('.sub-name')?.value || '').trim();
         if (!rows.length && !sNameRaw) return;
 
@@ -1625,7 +1731,7 @@
         };
 
         rows.forEach(tr => {
-          const src    = tr.querySelector('.src')?.value;
+          const src = tr.querySelector('.src')?.value;
 
           // Baca nilai select2/native tanpa bergantung pada jQuery
           let refRaw;
@@ -1661,11 +1767,11 @@
 
           globalOrder += 1;
 
-          const existingId    = tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined;
+          const existingId = tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined;
           // BUGFIX: Use originalRefId (set at load) instead of refId (updated on select)
           const originalRefId = (tr.dataset.originalRefId ?? null);
           const originalSourceType = (tr.dataset.originalSourceType ?? 'custom');
-          const isRefChanged  = (refIdNum != null) && (String(refIdNum) !== String(originalRefId ?? ''));
+          const isRefChanged = (refIdNum != null) && (String(refIdNum) !== String(originalRefId ?? ''));
 
           const p = {
             id: existingId,
@@ -1796,7 +1902,7 @@
 
   // ========= [BINDING] Toolbar & Sidebar Buttons =============================
   btnAddKlasAll.forEach(b => b.addEventListener('click', () => newKlas()));
-  btnSaveAll.forEach(b  => b.addEventListener('click', () => handleSave()));
+  btnSaveAll.forEach(b => b.addEventListener('click', () => handleSave()));
 
   // Track "klas terakhir yang disentuh" di views utama
   let lastKlasTarget = null;
@@ -1809,7 +1915,7 @@
 
   // Sidebar buttons (+Klas / +Sub)
   const btnAddKlasSide = document.getElementById('btn-add-klas--sidebar');
-  const btnAddSubSide  = document.getElementById('btn-add-sub--sidebar');
+  const btnAddSubSide = document.getElementById('btn-add-sub--sidebar');
 
   btnAddKlasSide?.addEventListener('click', () => {
     const card = newKlas();
@@ -1844,23 +1950,23 @@
   });
 
   // ========= [UI PREFERENCES] Compact Toggle =================================
-  (function setupCompactToggle(){
+  (function setupCompactToggle() {
     const KEY = 'lp_compact_v2';
     const app = root;
-    const saved  = localStorage.getItem(KEY);
-    const defOn  = (app.dataset.compactDefault === '1');
+    const saved = localStorage.getItem(KEY);
+    const defOn = (app.dataset.compactDefault === '1');
     const initialOn = saved === '1' ? true : saved === '0' ? false : defOn;
 
     applyCompact(initialOn);
-    btnCompactAll.forEach(btn=>{
+    btnCompactAll.forEach(btn => {
       btn.setAttribute('aria-pressed', String(initialOn));
       btn.addEventListener('click', (e) => { e.preventDefault(); applyCompact(!app.classList.contains('compact')); });
     });
 
     function applyCompact(on) {
       app.classList.toggle('compact', on);
-      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch {}
-      btnCompactAll.forEach(b=> b.setAttribute('aria-pressed', String(on)));
+      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch { }
+      btnCompactAll.forEach(b => b.setAttribute('aria-pressed', String(on)));
     }
   })();
 
@@ -1870,24 +1976,24 @@
   });
 
   // ========= [SCROLL SPY] Sinkron active node di tree ========================
-  function setupScrollSpy(){
+  function setupScrollSpy() {
     if (setupScrollSpy._done) return;
-    const io = new IntersectionObserver(entries=>{
-      const vis = entries.filter(e=>e.isIntersecting)
-                         .sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
+    const io = new IntersectionObserver(entries => {
+      const vis = entries.filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
       if (!vis) return;
       const id = vis.target.id || vis.target.dataset.anchorId;
       if (!id) return;
-      navWrap?.querySelectorAll('.lp-node--active').forEach(n=>n.classList.remove('lp-node--active'));
+      navWrap?.querySelectorAll('.lp-node--active').forEach(n => n.classList.remove('lp-node--active'));
       const link = navWrap?.querySelector(`a.lp-node__label[href="#${CSS.escape(id)}"]`);
       link?.closest('.lp-node')?.classList.add('lp-node--active');
     }, { rootMargin: '-45% 0px -50% 0px', threshold: 0.01 });
-    document.querySelectorAll('[data-anchor-id]').forEach(el=> io.observe(el));
+    document.querySelectorAll('[data-anchor-id]').forEach(el => io.observe(el));
     setupScrollSpy._done = true;
   }
 
   // ========= [OVERLAY RESIZE] Persist width ==================================
-  (function enableOverlayResize(){
+  (function enableOverlayResize() {
     const aside = overlaySidebar;
     const panel = overlayPanel;
     if (!aside || !panel) return;
@@ -1895,38 +2001,38 @@
     if (!resizer) { resizer = document.createElement('div'); resizer.className = 'lp-resizer'; panel.appendChild(resizer); }
     // preferensi arah: 'east' (drag kanan membesar) atau 'west' (drag kiri membesar)
     const RESIZE_SENSE = (overlaySidebar?.dataset.resizeSense || 'west').toLowerCase();
-    try{
+    try {
       const saved = localStorage.getItem('lp_sidebar_w');
       if (saved) {
-        document.documentElement.style.setProperty('--lp-sidebar-w', `${parseInt(saved,10)}px`);
+        document.documentElement.style.setProperty('--lp-sidebar-w', `${parseInt(saved, 10)}px`);
       } else {
         document.documentElement.style.setProperty('--lp-sidebar-w', `486px`);
       }
-    }catch{}
-    let drag=false, startX=0, startW=0;
-    resizer.addEventListener('mousedown', (e)=>{
-      drag=true; startX=e.clientX; startW=panel.getBoundingClientRect().width; e.preventDefault();
-      document.body.style.userSelect='none';
+    } catch { }
+    let drag = false, startX = 0, startW = 0;
+    resizer.addEventListener('mousedown', (e) => {
+      drag = true; startX = e.clientX; startW = panel.getBoundingClientRect().width; e.preventDefault();
+      document.body.style.userSelect = 'none';
     });
-    window.addEventListener('mousemove', (e)=>{
+    window.addEventListener('mousemove', (e) => {
       if (!drag) return;
       const MIN_W = 320, MAX_W = 760;
       const dx = e.clientX - startX;
       const wRaw = (RESIZE_SENSE === 'east') ? (startW - dx) : (startW + dx);
-      const w    = Math.min(Math.max(wRaw, MIN_W), MAX_W);
+      const w = Math.min(Math.max(wRaw, MIN_W), MAX_W);
       document.documentElement.style.setProperty('--lp-sidebar-w', `${w}px`);
     });
-    window.addEventListener('mouseup', ()=>{
-      if (!drag) return; drag=false; document.body.style.userSelect='';
+    window.addEventListener('mouseup', () => {
+      if (!drag) return; drag = false; document.body.style.userSelect = '';
       const v = getComputedStyle(document.documentElement).getPropertyValue('--lp-sidebar-w');
       const w = parseInt(v, 10);
-      if (Number.isFinite(w)) { try{ localStorage.setItem('lp_sidebar_w', String(w)); }catch{} }
+      if (Number.isFinite(w)) { try { localStorage.setItem('lp_sidebar_w', String(w)); } catch { } }
     });
   })();
 
   // ========= [TOPBAR OFFSET] Sinkron CSS var =================================
-  (function syncTopbarOffset(){
-    function recalc(){
+  (function syncTopbarOffset() {
+    function recalc() {
       const tb = document.getElementById('dp-topbar') || document.querySelector('#dp-topbar');
       if (!tb) return;
       const rect = tb.getBoundingClientRect();
@@ -1940,7 +2046,7 @@
   })();
 
   // ========= [START] Bootstrap module ========================================
-  (async function start(){
+  (async function start() {
     if (!projectId) warn('data-project-id pada #lp-app kosong; sebagian fitur (load/save) non-aktif.');
     if (typeof $ === 'undefined') warn('jQuery belum tersedia saat init awal (defer race?), lanjut saja.');
     if (typeof $?.fn?.select2 !== 'function') warn('Select2 belum terpasang; dropdown ref tetap jalan tanpa enhance.');
@@ -1953,11 +2059,11 @@
       const { bindMap } = window.DP.core.keys;
       bindMap(document, {
         'Ctrl+S': () => handleSave(),
-        'Cmd+S':  () => handleSave(),
-        'Esc':    () => { if (isOverlayOpen()) setOverlayVisible(false); },
-        '/':      () => { if (isOverlayOpen()) navSearchSide?.focus(); else navSearchToolbar?.focus(); }
+        'Cmd+S': () => handleSave(),
+        'Esc': () => { if (isOverlayOpen()) setOverlayVisible(false); },
+        '/': () => { if (isOverlayOpen()) navSearchSide?.focus(); else navSearchToolbar?.focus(); }
       }, { scopeSelector: '#lp-app' });
-    } catch(_){ /* no-op jika core belum siap */ }
+    } catch (_) { /* no-op jika core belum siap */ }
 
     await loadTree();
     setupRightHoverEdge();
@@ -1983,7 +2089,7 @@
   // ========= [DEBUG] =========================================================
   window.LP_DEBUG = {
     newKlas, addSub, addPekerjaan, handleSave, scheduleSidebarRebuild,
-    report(){
+    report() {
       const map = {
         '#lp-app': !!root,
         '#klas-list (DIV)': !!klasWrap && klasWrap.tagName !== 'TBODY',

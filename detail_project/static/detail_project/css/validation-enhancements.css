@@ -2,44 +2,47 @@
  * Validation Enhancements CSS
  * Additional styles for real-time validation feedback
  * License: MIT
+ * 
+ * REFACTORED: Now uses SSOT tokens from core.css
+ * Colors reference: --dp-c-danger, --dp-c-warning, --dp-c-success, --dp-c-primary, --dp-c-info
  */
 
 /* ===== Cell Validation States ===== */
 
 /* Validation Error State */
 .time-cell.validation-error {
-  background-color: #fee;
-  border: 2px solid #dc3545 !important;
+  background-color: var(--ux-validation-error-bg, color-mix(in srgb, var(--dp-c-danger) 10%, var(--dp-c-bg)));
+  border: 2px solid var(--dp-c-danger) !important;
   animation: shake 0.3s ease-in-out;
 }
 
 [data-bs-theme="dark"] .time-cell.validation-error {
-  background-color: #3d1517;
-  border: 2px solid #ff4444 !important;
+  background-color: var(--ux-validation-error-bg-dark, #3d1517);
+  border: 2px solid var(--dp-c-danger) !important;
 }
 
 /* Validation Warning State */
 .time-cell.validation-warning {
-  background-color: #fff8e1;
-  border: 2px solid #ffc107 !important;
+  background-color: var(--ux-validation-warn-bg, color-mix(in srgb, var(--dp-c-warning) 15%, var(--dp-c-bg)));
+  border: 2px solid var(--dp-c-warning) !important;
   position: relative;
 }
 
 [data-bs-theme="dark"] .time-cell.validation-warning {
-  background-color: #3d3520;
-  border: 2px solid #ffbb33 !important;
+  background-color: var(--ux-validation-warn-bg-dark, #3d3520);
+  border: 2px solid var(--dp-c-warning) !important;
 }
 
 /* Validation Success State */
 .time-cell.validation-success {
-  background-color: #d1f2eb;
-  border: 1px solid #28a745;
+  background-color: var(--ux-validation-success-bg, color-mix(in srgb, var(--dp-c-success) 15%, var(--dp-c-bg)));
+  border: 1px solid var(--dp-c-success);
   transition: background-color 0.3s ease;
 }
 
 [data-bs-theme="dark"] .time-cell.validation-success {
-  background-color: #1a3329;
-  border: 1px solid #00c851;
+  background-color: var(--ux-validation-success-bg-dark, #1a3329);
+  border: 1px solid var(--dp-c-success);
 }
 
 /* Remove success state after 1 second */
@@ -61,7 +64,7 @@
   white-space: nowrap;
   z-index: 1000;
   pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--dp-shadow-md);
   animation: tooltipFadeIn 0.2s ease-out;
 }
 
@@ -78,22 +81,22 @@
 
 /* Error tooltip */
 .validation-tooltip-error {
-  background-color: #dc3545;
-  color: white;
+  background-color: var(--dp-c-danger);
+  color: var(--dp-c-bg);
 }
 
 .validation-tooltip-error::before {
-  border-bottom-color: #dc3545;
+  border-bottom-color: var(--dp-c-danger);
 }
 
 /* Warning tooltip */
 .validation-tooltip-warning {
-  background-color: #ffc107;
-  color: #212529;
+  background-color: var(--dp-c-warning);
+  color: var(--dp-c-text);
 }
 
 .validation-tooltip-warning::before {
-  border-bottom-color: #ffc107;
+  border-bottom-color: var(--dp-c-warning);
 }
 
 /* ===== Progress Indicators ===== */
@@ -109,44 +112,34 @@
 }
 
 .progress-indicator.progress-error {
-  background-color: #dc3545;
-  color: white;
+  background-color: var(--dp-c-danger);
+  color: var(--dp-c-bg);
   animation: pulse 1s ease-in-out infinite;
 }
 
 .progress-indicator.progress-warning {
-  background-color: #ffc107;
-  color: #212529;
+  background-color: var(--dp-c-warning);
+  color: var(--dp-c-text);
 }
 
 .progress-indicator.progress-success {
-  background-color: #28a745;
-  color: white;
+  background-color: var(--dp-c-success);
+  color: var(--dp-c-bg);
 }
 
-[data-bs-theme="dark"] .progress-indicator.progress-error {
-  background-color: #ff4444;
-}
-
-[data-bs-theme="dark"] .progress-indicator.progress-warning {
-  background-color: #ffbb33;
-}
-
-[data-bs-theme="dark"] .progress-indicator.progress-success {
-  background-color: #00c851;
-}
+/* Dark mode overrides use same tokens - they auto-adjust */
 
 /* ===== Cell Input Styling ===== */
 
 .time-cell.editing {
   padding: 0 !important;
-  background-color: white;
-  border: 2px solid #0d6efd !important;
-  box-shadow: 0 0 0 3px rgba(13, 110, 252, 0.25);
+  background-color: var(--dp-c-bg);
+  border: 2px solid var(--dp-c-primary) !important;
+  box-shadow: 0 0 0 3px var(--dp-c-focus);
 }
 
 [data-bs-theme="dark"] .time-cell.editing {
-  background-color: #2d2d2d;
+  background-color: var(--dp-c-surface);
 }
 
 .cell-input {
@@ -170,36 +163,45 @@
 
 .cell-input[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* ===== Row States ===== */
 
 .row-selected {
-  background-color: rgba(13, 110, 252, 0.1) !important;
+  background-color: var(--dp-c-primary-subtle) !important;
 }
 
 [data-bs-theme="dark"] .row-selected {
-  background-color: rgba(13, 110, 252, 0.2) !important;
+  background-color: var(--dp-row-hover) !important;
 }
 
 /* ===== Animations ===== */
+/* NOTE: @keyframes cannot use CSS variables in older browsers, keeping hardcoded values */
 
 @keyframes shake {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateX(0);
   }
+
   25% {
     transform: translateX(-4px);
   }
+
   75% {
     transform: translateX(4px);
   }
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.7;
   }
@@ -210,6 +212,7 @@
     opacity: 0;
     transform: translateX(-50%) translateY(-4px);
   }
+
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
@@ -220,31 +223,24 @@
   0% {
     background-color: #d1f2eb;
   }
+
   70% {
     background-color: #d1f2eb;
   }
+
   100% {
     background-color: transparent;
   }
 }
 
-[data-bs-theme="dark"] @keyframes successFade {
-  0% {
-    background-color: #1a3329;
-  }
-  70% {
-    background-color: #1a3329;
-  }
-  100% {
-    background-color: transparent;
-  }
-}
+/* NOTE: Dark mode successFade uses same animation - the element's 
+   base background will be dark from CSS variable, animation fades to transparent */
 
 /* ===== Dirty State Indicator ===== */
 
 .has-unsaved-changes::after {
   content: '●';
-  color: #ffc107;
+  color: var(--dp-c-warning);
   margin-left: 4px;
   animation: pulse 2s ease-in-out infinite;
 }
@@ -265,7 +261,7 @@
   width: 16px;
   height: 16px;
   margin: -8px 0 0 -8px;
-  border: 2px solid #0d6efd;
+  border: 2px solid var(--dp-c-primary);
   border-radius: 50%;
   border-top-color: transparent;
   animation: spin 0.6s linear infinite;
@@ -286,7 +282,7 @@
   padding: 12px 20px;
   border-radius: 8px;
   font-size: 0.875rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--dp-shadow-lg);
   z-index: 9999;
   opacity: 0;
   transform: translateY(20px);
@@ -300,30 +296,30 @@
 }
 
 .toast-success {
-  background-color: #28a745;
-  color: white;
+  background-color: var(--dp-c-success);
+  color: var(--dp-c-bg);
 }
 
 .toast-danger {
-  background-color: #dc3545;
-  color: white;
+  background-color: var(--dp-c-danger);
+  color: var(--dp-c-bg);
 }
 
 .toast-warning {
-  background-color: #ffc107;
-  color: #212529;
+  background-color: var(--dp-c-warning);
+  color: var(--dp-c-text);
 }
 
 .toast-info {
-  background-color: #17a2b8;
-  color: white;
+  background-color: var(--dp-c-info);
+  color: var(--dp-c-bg);
 }
 
 /* ===== Accessibility Improvements ===== */
 
 /* Focus visible for keyboard navigation */
 .time-cell:focus-visible {
-  outline: 2px solid #0d6efd;
+  outline: 2px solid var(--dp-c-primary);
   outline-offset: 2px;
 }
 
@@ -344,6 +340,7 @@
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
+
   .time-cell.validation-error,
   .time-cell.validation-success,
   .validation-tooltip,
@@ -357,6 +354,7 @@
 /* ===== Print Styles ===== */
 
 @media print {
+
   .validation-tooltip,
   .toast {
     display: none !important;
