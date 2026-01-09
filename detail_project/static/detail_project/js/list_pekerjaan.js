@@ -50,9 +50,12 @@
       return body;
     };
 
-  const tShow = (window.DP && DP.core && DP.core.toast && DP.core.toast.show)
-    ? DP.core.toast.show
-    : (msg) => alert(msg);
+  const tShow = (function () {
+    if (window.DP && DP.toast && DP.toast.show) return DP.toast.show;
+    if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) return DP.core.toast.show;
+    if (typeof window.showToast === 'function') return window.showToast;
+    return (msg) => console.warn('[LP] Toast:', msg);
+  })();
 
   // ========= [DOM REFS] Sidebar & Area Utama =================================
   const edgeSidebar = document.getElementById('lpSidebar'); // (hover-edge) — nonaktif khusus halaman
@@ -146,6 +149,7 @@
 
   // ========= [DIRTY TRACKING] Prevent Data Loss ==============================
   let isDirty = false;
+  let allowUnload = false;
   let dirtySuppressCount = 0;
 
   function setDirty(dirty) {
@@ -181,14 +185,53 @@
     }
   }
 
+  function getModalApi() {
+    return (window.DP && DP.core && DP.core.modal) ? DP.core.modal : null;
+  }
+
+  async function confirmReload(reason) {
+    const modalApi = getModalApi();
+    if (!modalApi || !modalApi.confirm) return false;
+    if (!isDirty) {
+      allowUnload = true;
+      window.location.reload();
+      return true;
+    }
+    const message = reason
+      ? `${reason}\n\nPerubahan belum disimpan akan hilang jika Anda melanjutkan.`
+      : 'Perubahan belum disimpan akan hilang jika Anda melanjutkan reload halaman.';
+    const ok = await modalApi.confirm(message, {
+      title: 'Konfirmasi Reload',
+      confirmText: 'Reload',
+      cancelText: 'Batal',
+      confirmClass: 'btn btn-danger',
+    });
+    if (ok) {
+      allowUnload = true;
+      window.location.reload();
+    }
+    return ok;
+  }
+
   // Prevent accidental data loss on page close/refresh
   window.addEventListener('beforeunload', (e) => {
-    if (isDirty) {
+    if (isDirty && !allowUnload) {
       const msg = 'Anda memiliki perubahan yang belum disimpan. Yakin ingin keluar?';
       e.preventDefault();
       e.returnValue = msg; // Chrome requires returnValue
       return msg;
     }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!isDirty) return;
+    const key = String(e.key || '').toLowerCase();
+    const isReload = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && key === 'r');
+    if (!isReload) return;
+    const modalApi = getModalApi();
+    if (!modalApi || !modalApi.confirm) return;
+    e.preventDefault();
+    confirmReload('Anda akan memuat ulang halaman.');
   });
 
   // ========= [CROSS-TAB SYNC] BroadcastChannel API ===========================
@@ -221,13 +264,20 @@
               <strong>Perubahan dari tab lain</strong><br>
               <small>Urutan pekerjaan telah diubah di tab lain.</small>
               <div class="mt-2">
-                <button class="btn btn-sm btn-warning" onclick="location.reload()">
+                <button class="btn btn-sm btn-warning" data-action="lp-reload">
                   <i class="bi bi-arrow-clockwise"></i> Refresh Sekarang
                 </button>
               </div>
               <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             `;
             document.body.appendChild(banner);
+
+            const reloadBtn = banner.querySelector('[data-action="lp-reload"]');
+            if (reloadBtn) {
+              reloadBtn.addEventListener('click', () => {
+                confirmReload('Perubahan dari tab lain tidak akan terlihat sebelum reload.');
+              });
+            }
 
             // Auto-remove after 30 seconds
             setTimeout(() => banner.remove(), 30000);
@@ -472,16 +522,18 @@
   }
 
   // ========= [DIAGNOSTICS] Cek Anchor Wajib ==================================
+  // Note: Navigation elements (#lp-nav, expand/collapse) removed - replaced by Template Library
   const REQUIRED = [
     ['#lp-app', !!root],
     ['#klas-list (DIV legacy)', !!klasWrap && klasWrap.tagName !== 'TBODY'],
     ['#btn-add-klas', btnAddKlasAll.length > 0],
     ['#btn-save', btnSaveAll.length > 0],
     ['#btn-compact', btnCompactAll.length > 0],
-    ['#lp-nav', !!navWrap],
-    ['#lp-nav-search-side', !!navSearchSide],
-    ['.lp-nav-expand-all/#lp-nav-expand-all', btnExpandAllAll.length > 0],
-    ['.lp-nav-collapse-all/#lp-nav-collapse-all', btnCollapseAllAll.length > 0],
+    // Navigation elements no longer required (replaced by Template Library sidebar)
+    // ['#lp-nav', !!navWrap],
+    // ['#lp-nav-search-side', !!navSearchSide],
+    // ['.lp-nav-expand-all/#lp-nav-expand-all', btnExpandAllAll.length > 0],
+    // ['.lp-nav-collapse-all/#lp-nav-collapse-all', btnCollapseAllAll.length > 0],
   ];
   function injectDiagBanner(missingKeys) {
     if (!root) return;
@@ -2109,4 +2161,332 @@
       return map;
     }
   };
+
+  // ========= [TEMPLATE LIBRARY] ===============================================
+  (async function initTemplateLibrary() {
+    const templateList = document.getElementById('template-list');
+    const templateSearch = document.getElementById('template-search');
+    const templateCategory = document.getElementById('template-category');
+    const btnSaveAsTemplate = document.getElementById('btn-save-as-template');
+    const btnConfirmImport = document.getElementById('btn-confirm-import');
+    const btnConfirmSaveTemplate = document.getElementById('btn-confirm-save-template');
+
+    let currentTemplates = [];
+    let selectedTemplateId = null;
+
+    // Load templates on sidebar open
+    async function loadTemplates() {
+      if (!templateList) return;
+      templateList.innerHTML = '<div class=\"text-center text-muted py-3\"><i class=\"bi bi-arrow-clockwise spin\"></i> Memuat template...</div>';
+
+      try {
+        const q = (templateSearch?.value || '').trim();
+        const cat = templateCategory?.value || '';
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (cat) params.set('category', cat);
+
+        const data = await jfetch(`/detail_project/api/templates/?${params}`);
+        currentTemplates = data.templates || [];
+        renderTemplateList();
+      } catch (err) {
+        templateList.innerHTML = '<div class=\"template-list-empty\"><i class=\"bi bi-exclamation-circle\"></i> Gagal memuat template</div>';
+        err('[TEMPLATE]', err);
+      }
+    }
+
+    function renderTemplateList() {
+      if (!templateList) return;
+      if (!currentTemplates.length) {
+        templateList.innerHTML = '<div class=\"template-list-empty\"><i class=\"bi bi-inbox\"></i> Belum ada template</div>';
+        return;
+      }
+
+      templateList.innerHTML = currentTemplates.map(t => `
+        <div class=\"template-item\" data-template-id=\"${t.id}\">
+          <div class=\"template-item-content\">
+            <div class=\"template-item-name\">${t.name}</div>
+            <div class=\"template-item-meta\">
+              ${t.total_klasifikasi} klas, ${t.total_sub} sub, ${t.total_pekerjaan} pkj
+            </div>
+          </div>
+          <i class=\"bi bi-chevron-right template-item-arrow\"></i>
+        </div>
+      `).join('');
+
+      // Bind click
+      templateList.querySelectorAll('.template-item').forEach(el => {
+        el.onclick = () => openTemplatePreview(parseInt(el.dataset.templateId));
+      });
+    }
+
+    async function openTemplatePreview(templateId) {
+      selectedTemplateId = templateId;
+
+      const previewName = document.getElementById('template-preview-name');
+      const previewDesc = document.getElementById('template-preview-desc');
+      const previewStats = document.getElementById('template-preview-stats');
+      const previewTree = document.getElementById('template-preview-tree');
+
+      if (!previewTree) return;
+
+      // Show modal with loading
+      previewTree.innerHTML = '<div class=\"text-center py-3\"><i class=\"bi bi-arrow-clockwise spin\"></i></div>';
+      if (previewName) previewName.textContent = 'Memuat...';
+      if (previewDesc) previewDesc.textContent = '';
+      if (previewStats) previewStats.textContent = '';
+
+      const modal = new bootstrap.Modal(document.getElementById('templatePreviewModal'));
+      modal.show();
+
+      try {
+        const data = await jfetch(`/detail_project/api/templates/${templateId}/`);
+        const t = data.template;
+
+        if (previewName) previewName.textContent = t.name;
+        if (previewDesc) previewDesc.textContent = t.description || '';
+        if (previewStats) {
+          previewStats.innerHTML = `<i class=\"bi bi-info-circle\"></i> <strong>${t.total_klasifikasi}</strong> Klasifikasi, <strong>${t.total_sub}</strong> Sub, <strong>${t.total_pekerjaan}</strong> Pekerjaan`;
+        }
+
+        // Render tree
+        const content = t.content || {};
+        const klasList = content.klasifikasi || [];
+
+        previewTree.innerHTML = klasList.map(k => {
+          const subHtml = (k.sub || []).map(s => {
+            const pkjCount = (s.pekerjaan || []).length;
+            return `<div class=\"template-sub-item\"><i class=\"bi bi-folder2\"></i> ${s.name} <span class=\"text-muted\">(${pkjCount} pkj)</span></div>`;
+          }).join('');
+          return `<div class=\"template-klas-item\"><div class=\"template-klas-name\"><i class=\"bi bi-folder-fill text-primary\"></i> ${k.name}</div>${subHtml}</div>`;
+        }).join('') || '<div class=\"text-muted\">Template kosong</div>';
+
+      } catch (err) {
+        previewTree.innerHTML = '<div class=\"text-danger\">Gagal memuat detail template</div>';
+        console.error('[TEMPLATE]', err);
+      }
+    }
+
+    // Import template
+    btnConfirmImport?.addEventListener('click', async () => {
+      if (!selectedTemplateId || !projectId) return;
+
+      btnConfirmImport.disabled = true;
+      btnConfirmImport.innerHTML = '<i class=\"bi bi-arrow-clockwise spin\"></i> Importing...';
+
+      try {
+        const data = await jfetch(`/detail_project/api/project/${projectId}/templates/${selectedTemplateId}/import/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: '{}'
+        });
+
+        bootstrap.Modal.getInstance(document.getElementById('templatePreviewModal'))?.hide();
+        tShow(data.message || 'Template berhasil diimport!', 'success');
+        await loadTree();  // Refresh data
+        setDirty(true);
+
+      } catch (err) {
+        tShow('Gagal import template: ' + (err.body?.message || err.message), 'danger');
+      } finally {
+        btnConfirmImport.disabled = false;
+        btnConfirmImport.innerHTML = '<i class=\"bi bi-check-circle\"></i> Import Template';
+      }
+    });
+
+    // Save as template
+    btnSaveAsTemplate?.addEventListener('click', () => {
+      const modal = new bootstrap.Modal(document.getElementById('saveTemplateModal'));
+      modal.show();
+    });
+
+    btnConfirmSaveTemplate?.addEventListener('click', async () => {
+      const nameInput = document.getElementById('new-template-name');
+      const descInput = document.getElementById('new-template-desc');
+      const catInput = document.getElementById('new-template-category');
+
+      const name = (nameInput?.value || '').trim();
+      if (!name) {
+        tShow('Nama template wajib diisi', 'warning');
+        nameInput?.focus();
+        return;
+      }
+
+      btnConfirmSaveTemplate.disabled = true;
+      btnConfirmSaveTemplate.innerHTML = '<i class=\"bi bi-arrow-clockwise spin\"></i> Menyimpan...';
+
+      try {
+        const data = await jfetch(`/detail_project/api/project/${projectId}/templates/create/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: JSON.stringify({
+            name: name,
+            description: descInput?.value || '',
+            category: catInput?.value || 'lainnya'
+          })
+        });
+
+        bootstrap.Modal.getInstance(document.getElementById('saveTemplateModal'))?.hide();
+        tShow(data.message || 'Template berhasil disimpan!', 'success');
+
+        // Clear form
+        if (nameInput) nameInput.value = '';
+        if (descInput) descInput.value = '';
+
+        // Reload templates
+        loadTemplates();
+
+      } catch (err) {
+        tShow('Gagal menyimpan template: ' + (err.body?.message || err.message), 'danger');
+      } finally {
+        btnConfirmSaveTemplate.disabled = false;
+        btnConfirmSaveTemplate.innerHTML = '<i class=\"bi bi-save\"></i> Simpan Template';
+      }
+    });
+
+    // ========== Import from File ==========
+    const btnImportFromFile = document.getElementById('btn-import-from-file');
+    const importFileInput = document.getElementById('import-template-file');
+
+    btnImportFromFile?.addEventListener('click', () => {
+      importFileInput?.click();
+    });
+
+    importFileInput?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Reset for next selection
+      e.target.value = '';
+
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        // Validate template format
+        if (!data.export_type || !['project_template', 'list_pekerjaan'].includes(data.export_type)) {
+          tShow('Format file tidak valid. Gunakan file template JSON.', 'warning');
+          return;
+        }
+
+        // Show confirmation
+        const stats = data.stats || {};
+        const msg = `Import template dari file:\n\n` +
+          `• Klasifikasi: ${stats.total_klasifikasi || '?'}\n` +
+          `• Sub-Klasifikasi: ${stats.total_sub || '?'}\n` +
+          `• Pekerjaan: ${stats.total_pekerjaan || '?'}\n\n` +
+          `Lanjutkan import?`;
+
+        if (!confirm(msg)) return;
+
+        btnImportFromFile.disabled = true;
+        btnImportFromFile.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Importing...';
+
+        // Use api_import_template endpoint by creating temporary template first
+        // Or directly use import helper via POST
+        const response = await jfetch(`/detail_project/api/project/${projectId}/templates/import-file/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+          body: JSON.stringify({ content: data })
+        });
+
+        tShow(response.message || 'Import berhasil!', 'success');
+        setDirty();
+
+        // Reload page to show new data
+        setTimeout(() => location.reload(), 1000);
+
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          tShow('File JSON tidak valid', 'danger');
+        } else {
+          tShow('Gagal import: ' + (err.body?.message || err.message), 'danger');
+        }
+      } finally {
+        btnImportFromFile.disabled = false;
+        btnImportFromFile.innerHTML = '<i class="bi bi-upload"></i> Import dari File';
+      }
+    });
+
+    // Search & filter
+    let searchTimeout;
+    templateSearch?.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(loadTemplates, 300);
+    });
+
+    templateCategory?.addEventListener('change', loadTemplates);
+
+    // Load templates when sidebar opens
+    const sidebar = document.getElementById('lp-sidebar');
+    if (sidebar) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach(m => {
+          if (m.attributeName === 'class' && sidebar.classList.contains('visible')) {
+            loadTemplates();
+          }
+        });
+      });
+      observer.observe(sidebar, { attributes: true });
+    }
+
+    // Initial load if sidebar is visible
+    if (sidebar?.classList.contains('visible')) {
+      loadTemplates();
+    }
+
+    // ========== Toolbar Template Dropdown Handlers ==========
+    const btnToolbarSave = document.getElementById('btn-toolbar-save-template');
+    const btnToolbarImport = document.getElementById('btn-toolbar-import-file');
+
+    // Toolbar: Save as Template -> Open modal
+    btnToolbarSave?.addEventListener('click', () => {
+      const modal = new bootstrap.Modal(document.getElementById('saveTemplateModal'));
+      modal.show();
+    });
+
+    // Toolbar: Import from File -> Trigger file input
+    btnToolbarImport?.addEventListener('click', () => {
+      importFileInput?.click();
+    });
+
+    // Toolbar: Open sidebar - use global sidebar toggle
+    document.querySelectorAll('[data-action="open-sidebar"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Use DP.side from sidebar_global.js
+        if (typeof window.DP !== 'undefined' && DP.side) {
+          DP.side.open('right');
+          // Trigger template load
+          setTimeout(loadTemplates, 100);
+        } else {
+          console.warn('[TEMPLATE] DP.side not available, trying fallback');
+          // Fallback: directly toggle sidebar classes
+          const sb = document.getElementById('lp-sidebar');
+          if (sb) {
+            sb.classList.add('is-open');
+            document.documentElement.classList.add('lp-side-open');
+            loadTemplates();
+          }
+        }
+      });
+    });
+
+    // Close sidebar
+    document.querySelectorAll('[data-action="close-sidebar"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (typeof window.DP !== 'undefined' && DP.side) {
+          DP.side.close('right');
+        } else {
+          const sb = document.getElementById('lp-sidebar');
+          if (sb) {
+            sb.classList.remove('is-open');
+            document.documentElement.classList.remove('lp-side-open');
+          }
+        }
+      });
+    });
+
+    log('[TEMPLATE] Template Library initialized');
+  })();
+
 })();

@@ -1042,3 +1042,97 @@ class ProjectChangeStatus(TimeStampedModel):
 
     def __str__(self):
         return f"ChangeStatus[{self.project_id}]"
+
+
+class PekerjaanTemplate(TimeStampedModel):
+    """
+    Template Library - reusable work item templates.
+    
+    Stores complete hierarchy: Klasifikasi → SubKlasifikasi → Pekerjaan
+    in JSON format for easy import into any project's List Pekerjaan.
+    
+    Example categories:
+    - "Rumah Sederhana", "Ruko 2 Lantai", "Sumur Bor", "Jalan Paving"
+    """
+    
+    CATEGORY_CHOICES = [
+        ('rumah', 'Rumah'),
+        ('ruko', 'Ruko'),
+        ('infrastruktur', 'Infrastruktur'),
+        ('utilitas', 'Utilitas'),
+        ('lainnya', 'Lainnya'),
+    ]
+    
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Nama template (e.g., 'Template Rumah Sederhana Tipe 36')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Deskripsi singkat template"
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='lainnya',
+        help_text="Kategori template untuk filtering"
+    )
+    
+    # JSON content - same format as export_list_pekerjaan_json
+    content = models.JSONField(
+        help_text="Hierarchical data: {klasifikasi: [{name, sub: [{name, pekerjaan: [...]}]}]}"
+    )
+    
+    # Metadata
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_templates'
+    )
+    is_public = models.BooleanField(
+        default=True,
+        help_text="If True, visible to all users. If False, only creator can see."
+    )
+    usage_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Track how many times this template has been imported"
+    )
+    
+    # Quick stats (denormalized for display)
+    total_klasifikasi = models.PositiveIntegerField(default=0)
+    total_sub = models.PositiveIntegerField(default=0)
+    total_pekerjaan = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ['-usage_count', '-created_at']
+        verbose_name = 'Template Pekerjaan'
+        verbose_name_plural = 'Template Pekerjaan'
+        indexes = [
+            models.Index(fields=['category', '-usage_count']),
+            models.Index(fields=['is_public', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.total_klasifikasi} klas, {self.total_pekerjaan} pkj)"
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate stats from content."""
+        if self.content and isinstance(self.content, dict):
+            klasifikasi = self.content.get('klasifikasi', [])
+            self.total_klasifikasi = len(klasifikasi)
+            self.total_sub = sum(len(k.get('sub', [])) for k in klasifikasi)
+            self.total_pekerjaan = sum(
+                len(s.get('pekerjaan', []))
+                for k in klasifikasi
+                for s in k.get('sub', [])
+            )
+        super().save(*args, **kwargs)
+    
+    def increment_usage(self):
+        """Increment usage counter."""
+        self.usage_count += 1
+        self.save(update_fields=['usage_count', 'updated_at'])
+

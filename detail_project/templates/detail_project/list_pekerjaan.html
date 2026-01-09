@@ -61,14 +61,48 @@
       <span id="lp-toolbar-announce" class="dp-visually-hidden" aria-live="polite"></span>
     </div>
 
-    {# Right Section: Export, Save & Info #}
+    {# Right Section: Template, Export, Save & Info #}
     <div class="ms-auto d-flex align-items-center gap-2">
-      {# Export JSON button #}
-      <a id="btn-export-json" class="btn btn-sm btn-outline-primary dp-btn lp-btn"
-        href="{% url 'detail_project:export_list_pekerjaan_json' project.id %}" title="{% trans 'Export ke JSON' %}"
-        download>
-        <i class="bi bi-download" aria-hidden="true"></i>
-        <span class="d-none d-md-inline">{% trans "Export" %}</span>
+      {# Template dropdown button - NEW #}
+      <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-primary dp-btn lp-btn dropdown-toggle" data-bs-toggle="dropdown"
+          aria-expanded="false" title="{% trans 'Template Pekerjaan' %}">
+          <i class="bi bi-collection" aria-hidden="true"></i>
+          <span class="d-none d-md-inline">{% trans "Template" %}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            <button class="dropdown-item" type="button" data-action="open-sidebar">
+              <i class="bi bi-grid-3x3-gap"></i> {% trans "Lihat Template Library" %}
+            </button>
+          </li>
+          <li>
+            <hr class="dropdown-divider">
+          </li>
+          <li>
+            <button id="btn-toolbar-save-template" class="dropdown-item" type="button">
+              <i class="bi bi-bookmark-plus text-success"></i> {% trans "Simpan Sebagai Template" %}
+            </button>
+          </li>
+          <li>
+            <button id="btn-toolbar-import-file" class="dropdown-item" type="button">
+              <i class="bi bi-upload text-primary"></i> {% trans "Import dari File" %}
+            </button>
+          </li>
+          <li>
+            <a class="dropdown-item" href="{% url 'detail_project:export_template_json' project.id %}" download>
+              <i class="bi bi-download text-success"></i> {% trans "Export Template JSON" %}
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      {# Export JSON button (legacy) #}
+      <a id="btn-export-json" class="btn btn-sm btn-outline-secondary dp-btn lp-btn"
+        href="{% url 'detail_project:export_list_pekerjaan_json' project.id %}"
+        title="{% trans 'Export Data (Legacy)' %}" download>
+        <i class="bi bi-filetype-json" aria-hidden="true"></i>
+        <span class="d-none d-lg-inline">{% trans "Export Data" %}</span>
       </a>
 
       {# Info tooltip about drag-and-drop impact #}
@@ -106,58 +140,71 @@
     {# Hotspot kanan untuk membuka Overlay Nav saat hover di tepi kanan #}
     <div class="lp-overlay-hotspot" aria-hidden="true"></div>
 
-    <!-- Sidebar Overlay (LP) -->
-    <aside id="lp-sidebar" class="dp-z-sidebar" role="dialog" aria-modal="true"
-      aria-label="{% trans 'Navigasi List Pekerjaan' %}" data-hoverclose="1" data-resize-sense="east">
+    <!-- Sidebar Overlay (Template Library) -->
+    <aside id="lp-sidebar" class="dp-sidebar dp-z-sidebar" role="dialog" aria-modal="true"
+      aria-label="{% trans 'Template Pekerjaan' %}" aria-hidden="true" data-side="right" data-hoverclose="1"
+      data-resize-sense="east">
       <div class="lp-sidebar-inner dp-surface dp-border">
+        <!-- Header -->
         <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2">
-          <h6 class="m-0">{% trans "Navigasi" %}</h6>
-          <div class="d-flex align-items-center gap-2">
-            <button id="btn-add-klas--sidebar" class="btn btn-sm btn-primary lp-btn" type="button"
-              title="{% trans 'Tambah Klasifikasi' %}">
-              <i class="bi bi-plus-circle"></i> {% trans "Klas" %}
-            </button>
-            <button id="btn-add-sub--sidebar" class="btn btn-sm btn-outline-primary lp-btn" type="button"
-              title="{% trans 'Tambah Sub-Klasifikasi' %}">
-              <i class="bi bi-node-plus"></i> {% trans "Sub" %}
-            </button>
-            <button class="btn btn-sm btn-outline-secondary lp-btn" type="button" data-action="close-sidebar"
-              title="{% trans 'Tutup' %}">
-              <i class="bi bi-x-lg"></i>
-            </button>
-          </div>
+          <h6 class="m-0"><i class="bi bi-collection"></i> {% trans "Template Library" %}</h6>
+          <button class="btn btn-sm btn-outline-secondary lp-btn" type="button" data-action="close-sidebar"
+            title="{% trans 'Tutup' %}">
+            <i class="bi bi-x-lg"></i>
+          </button>
         </div>
 
-        <!-- Search di dalam sidebar -->
-        <div class="lp-sidebar-search mt-2">
-          <div class="input-group">
+        <!-- Search & Filter -->
+        <div class="lp-sidebar-search mt-3">
+          <div class="input-group input-group-sm">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input id="lp-nav-search-side" type="search" class="form-control lp-nav-search ux-focusable"
-              placeholder="{% trans 'Cari Klas/Sub/Pekerjaan…' %}" autocomplete="off"
-              aria-label="{% trans 'Cari di navigasi' %}" role="combobox" aria-autocomplete="list" aria-expanded="false"
-              aria-controls="lp-nav-suggest">
-            <button class="btn btn-outline-secondary lp-nav-search-commit" type="button" title="{% trans 'Cari' %}">
-              <i class="bi bi-arrow-return-right"></i>
-            </button>
+            <input id="template-search" type="search" class="form-control" placeholder="{% trans 'Cari template...' %}"
+              autocomplete="off">
           </div>
-          <div id="lp-nav-suggest" class="lp-autocomplete d-none dp-layer-search" role="listbox"
-            aria-label="{% trans 'Saran pencarian' %}"></div>
         </div>
 
-        <div class="d-flex align-items-center gap-2 mt-2">
-          <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-expand-all" type="button"
-            title="{% trans 'Expand semua' %}" aria-controls="lp-nav">
-            <i class="bi bi-arrows-angle-expand"></i> <span class="d-none d-sm-inline">{% trans "Expand all" %}</span>
-          </button>
-          <button class="btn btn-sm btn-outline-secondary lp-btn lp-nav-collapse-all" type="button"
-            title="{% trans 'Collapse semua' %}" aria-controls="lp-nav">
-            <i class="bi bi-arrows-angle-contract"></i> <span class="d-none d-sm-inline">{% trans "Collapse all"
-              %}</span>
-          </button>
-          <span class="visually-hidden" aria-live="polite" id="lp-nav-announce"></span>
+        <!-- Category Filter -->
+        <div class="mt-2">
+          <select id="template-category" class="form-select form-select-sm">
+            <option value="">{% trans "Semua Kategori" %}</option>
+            <option value="rumah">{% trans "Rumah" %}</option>
+            <option value="ruko">{% trans "Ruko" %}</option>
+            <option value="infrastruktur">{% trans "Infrastruktur" %}</option>
+            <option value="utilitas">{% trans "Utilitas" %}</option>
+            <option value="lainnya">{% trans "Lainnya" %}</option>
+          </select>
         </div>
 
-        <nav id="lp-nav" class="lp-nav mt-2" role="tree" aria-label="{% trans 'Navigasi List Pekerjaan' %}"></nav>
+        <!-- Template List -->
+        <div id="template-list" class="template-list mt-3">
+          <div class="text-center text-muted py-3">
+            <i class="bi bi-arrow-clockwise spin"></i> {% trans "Memuat template..." %}
+          </div>
+        </div>
+
+        <!-- Quick Actions: Template -->
+        <div class="template-actions mt-3 pt-3 border-top">
+          <h6 class="small text-muted mb-2"><i class="bi bi-lightning"></i> {% trans "Aksi Template" %}</h6>
+
+          <button id="btn-save-as-template" class="btn btn-sm btn-success w-100 mb-2" type="button"
+            title="{% trans 'Simpan pekerjaan saat ini sebagai template reusable' %}">
+            <i class="bi bi-bookmark-plus"></i> {% trans "Simpan Sebagai Template" %}
+          </button>
+
+          <button id="btn-import-from-file" class="btn btn-sm btn-outline-primary w-100 mb-2" type="button"
+            title="{% trans 'Import template dari file JSON' %}">
+            <i class="bi bi-upload"></i> {% trans "Import dari File" %}
+          </button>
+
+          <a id="btn-export-template" href="{% url 'detail_project:export_template_json' project.id %}"
+            class="btn btn-sm btn-outline-success w-100" download
+            title="{% trans 'Download pekerjaan sebagai template JSON' %}">
+            <i class="bi bi-download"></i> {% trans "Export Template JSON" %}
+          </a>
+        </div>
+
+        <!-- Hidden file input for import -->
+        <input type="file" id="import-template-file" accept=".json" class="d-none">
       </div>
     </aside>
 
@@ -201,6 +248,80 @@
         </table>
       </div>
     </main>
+  </div>
+
+  {# ===== [D.2] TEMPLATE PREVIEW MODAL ===== #}
+  <div class="modal fade" id="templatePreviewModal" tabindex="-1" aria-labelledby="templatePreviewModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content dp-surface">
+        <div class="modal-header">
+          <h5 class="modal-title" id="templatePreviewModalLabel">
+            <i class="bi bi-collection"></i> <span id="template-preview-name">Template</span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="template-preview-desc" class="text-muted small mb-3"></div>
+          <div id="template-preview-stats" class="alert alert-info py-2 px-3 small"></div>
+          <h6 class="mt-3 mb-2">{% trans "Rincian Pekerjaan:" %}</h6>
+          <div id="template-preview-tree" class="template-preview-tree"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x"></i> {% trans "Batal" %}
+          </button>
+          <button type="button" class="btn btn-success" id="btn-confirm-import">
+            <i class="bi bi-check-circle"></i> {% trans "Import Template" %}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ===== [D.3] SAVE AS TEMPLATE MODAL ===== #}
+  <div class="modal fade" id="saveTemplateModal" tabindex="-1" aria-labelledby="saveTemplateModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content dp-surface">
+        <div class="modal-header">
+          <h5 class="modal-title" id="saveTemplateModalLabel">
+            <i class="bi bi-bookmark-plus"></i> {% trans "Simpan Sebagai Template" %}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="new-template-name" class="form-label">{% trans "Nama Template" %} *</label>
+            <input type="text" class="form-control" id="new-template-name"
+              placeholder="{% trans 'Contoh: Template Rumah Sederhana Tipe 36' %}" required>
+          </div>
+          <div class="mb-3">
+            <label for="new-template-desc" class="form-label">{% trans "Deskripsi" %}</label>
+            <textarea class="form-control" id="new-template-desc" rows="2"
+              placeholder="{% trans 'Deskripsi singkat tentang template ini...' %}"></textarea>
+          </div>
+          <div class="mb-3">
+            <label for="new-template-category" class="form-label">{% trans "Kategori" %}</label>
+            <select class="form-select" id="new-template-category">
+              <option value="rumah">{% trans "Rumah" %}</option>
+              <option value="ruko">{% trans "Ruko" %}</option>
+              <option value="infrastruktur">{% trans "Infrastruktur" %}</option>
+              <option value="utilitas">{% trans "Utilitas" %}</option>
+              <option value="lainnya" selected>{% trans "Lainnya" %}</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x"></i> {% trans "Batal" %}
+          </button>
+          <button type="button" class="btn btn-success" id="btn-confirm-save-template">
+            <i class="bi bi-save"></i> {% trans "Simpan Template" %}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   {# ===== [E] FAB (SAVE) ===== #}

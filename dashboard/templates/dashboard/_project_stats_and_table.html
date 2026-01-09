@@ -35,14 +35,6 @@
             {{ filter_form.sort_by }}
           </div>
 
-          <!-- Active Status -->
-          <div class="col-md-3">
-            <label for="{{ filter_form.is_active.id_for_label }}" class="form-label">
-              {{ filter_form.is_active.label }}
-            </label>
-            {{ filter_form.is_active }}
-          </div>
-
           <!-- Year Filter -->
           <div class="col-md-3">
             <label for="{{ filter_form.tahun_project.id_for_label }}" class="form-label">
@@ -79,7 +71,7 @@
 
           <!-- Date Range -->
           <div class="col-md-6">
-            <label class="form-label">Tanggal Mulai</label>
+            <label class="form-label">Rentang Waktu Aktif</label>
             <div class="input-group input-group-sm">
               {{ filter_form.tanggal_mulai_from }}
               <span class="input-group-text">s/d</span>
@@ -133,8 +125,8 @@
 
       <!-- Bulk Edit Toggle -->
       <button type="button" class="btn btn-outline-warning btn-sm" id="bulkModeToggleBtn"
-        title="Aktifkan mode bulk edit">
-        <i class="fas fa-tasks"></i> <span class="d-none d-md-inline">Bulk Edit</span>
+        title="Aktifkan mode edit project">
+        <i class="fas fa-tasks"></i> <span class="d-none d-md-inline">Edit Project</span>
       </button>
     </div>
 
@@ -166,16 +158,10 @@
         </div>
         <div class="btn-group btn-group-sm" role="group">
           <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn" title="Edit langsung di tabel">
-            <i class="fas fa-edit"></i> Mass Edit
+            <i class="fas fa-edit"></i> Edit Data
           </button>
           <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
             <i class="fas fa-trash"></i> Hapus
-          </button>
-          <button type="button" class="btn btn-outline-warning" id="bulkArchiveBtn" title="Archive project terpilih">
-            <i class="fas fa-archive"></i> Archive
-          </button>
-          <button type="button" class="btn btn-outline-success" id="bulkUnarchiveBtn" title="Aktifkan kembali">
-            <i class="fas fa-check-circle"></i> Aktifkan
           </button>
           <button type="button" class="btn btn-outline-secondary" id="bulkCancelBtn" title="Batal">
             <i class="fas fa-times"></i> Batal
@@ -228,8 +214,9 @@
     </thead>
     <tbody>
       {% for project in projects %}
-      <tr data-project-id="{{ project.pk }}" data-nama="{{ project.nama|default:'' }}"
-        data-sumber-dana="{{ project.sumber_dana|default:'' }}"
+      <tr data-project-id="{{ project.pk }}"
+        data-search="{{ project.index_project|default:'' }} {{ project.nama|default:'' }} {{ project.tahun_project|default:'' }} {{ project.sumber_dana|default:'' }} {{ project.lokasi_project|default:'' }} {{ project.nama_client|default:'' }} {{ project.anggaran_owner|default:'' }} {{ project.tanggal_mulai|date:'Y-m-d'|default:'' }} {{ project.tanggal_selesai|date:'Y-m-d'|default:'' }} {{ project.durasi_hari|default:'' }} {{ project.ket_project1|default:'' }} {{ project.ket_project2|default:'' }} {{ project.jabatan_client|default:'' }} {{ project.instansi_client|default:'' }} {{ project.nama_kontraktor|default:'' }} {{ project.instansi_kontraktor|default:'' }} {{ project.nama_konsultan_perencana|default:'' }} {{ project.instansi_konsultan_perencana|default:'' }} {{ project.nama_konsultan_pengawas|default:'' }} {{ project.instansi_konsultan_pengawas|default:'' }} {{ project.deskripsi|default:'' }} {{ project.kategori|default:'' }}"
+        data-nama="{{ project.nama|default:'' }}" data-sumber-dana="{{ project.sumber_dana|default:'' }}"
         data-lokasi-project="{{ project.lokasi_project|default:'' }}"
         data-nama-client="{{ project.nama_client|default:'' }}"
         data-anggaran-owner="{{ project.anggaran_owner|default:'' }}"
@@ -264,41 +251,24 @@
 
         <!-- Aksi -->
         <td class="text-center text-nowrap">
-          <!-- Primary Action: Detail Pekerjaan -->
-          <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-success"
-            title="Detail Pekerjaan">
-            <i class="fas fa-list"></i> Pekerjaan
-          </a>
-
-          <!-- Dropdown for secondary actions -->
-          <div class="btn-group">
-            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"
-              aria-expanded="false" title="Opsi lainnya">
-              <i class="fas fa-ellipsis-v"></i>
+          <div class="d-inline-flex gap-1 project-action-icons">
+            <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}"
+              class="btn btn-sm btn-outline-success" title="Detail Pekerjaan" aria-label="Detail Pekerjaan">
+              <i class="fas fa-list"></i>
+            </a>
+            <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
+              class="btn btn-sm btn-outline-warning" title="Edit Project" aria-label="Edit Project">
+              <i class="fas fa-edit"></i>
+            </a>
+            <a href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/?include_progress=1"
+              class="btn btn-sm btn-outline-info" title="Export Project (JSON)" aria-label="Export Project (JSON)"
+              download>
+              <i class="fas fa-download"></i>
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-danger" title="Hapus Project" aria-label="Hapus Project"
+              data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}">
+              <i class="fas fa-trash"></i>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li>
-                <a class="dropdown-item"
-                  href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}">
-                  <i class="fas fa-edit text-warning me-2"></i> Edit Project
-                </a>
-              </li>
-              <li>
-                <a class="dropdown-item" href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/"
-                  download>
-                  <i class="fas fa-download text-info me-2"></i> Export JSON
-                </a>
-              </li>
-              <li>
-                <hr class="dropdown-divider">
-              </li>
-              <li>
-                <button type="button" class="dropdown-item text-danger" data-bs-toggle="modal"
-                  data-bs-target="#deleteModal-{{ project.pk }}">
-                  <i class="fas fa-trash me-2"></i> Hapus Project
-                </button>
-              </li>
-            </ul>
           </div>
 
           <!-- Modal Konfirmasi Hapus -->
@@ -328,18 +298,18 @@
 
         <!-- Status -->
         <td class="text-center">
-          {% load tz %}
-          {% now "Y-m-d" as today_str %}
           {% if project.tanggal_selesai and project.tanggal_mulai %}
-          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Terlambat</span>
-            {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
-            <span class="badge bg-secondary">Belum Mulai</span>
-            {% else %}
-            <span class="badge bg-success">Berjalan</span>
-            {% endif %}
-            {% else %}
-            <span class="badge bg-light text-dark">—</span>
-            {% endif %}
+          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Selesai</span>
+            {% elif project.tanggal_selesai|date:"Y-m-d" <= deadline_threshold_str %} <span
+              class="badge bg-warning text-dark">Deadline</span>
+              {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
+              <span class="badge bg-secondary">Belum Mulai</span>
+              {% else %}
+              <span class="badge bg-success">Berjalan</span>
+              {% endif %}
+              {% else %}
+              <span class="badge bg-light text-dark">—</span>
+              {% endif %}
         </td>
 
         <!-- Nama Client -->
@@ -364,7 +334,8 @@
 
   <!-- Mobile Card View (shows on screens < 992px) -->
   {% for project in projects %}
-  <div class="project-mobile-card" style="display: none;">
+  <div class="project-mobile-card" style="display: none;"
+    data-search="{{ project.index_project|default:'' }} {{ project.nama|default:'' }} {{ project.tahun_project|default:'' }} {{ project.sumber_dana|default:'' }} {{ project.lokasi_project|default:'' }} {{ project.nama_client|default:'' }} {{ project.anggaran_owner|default:'' }} {{ project.tanggal_mulai|date:'Y-m-d'|default:'' }} {{ project.tanggal_selesai|date:'Y-m-d'|default:'' }} {{ project.durasi_hari|default:'' }} {{ project.ket_project1|default:'' }} {{ project.ket_project2|default:'' }} {{ project.jabatan_client|default:'' }} {{ project.instansi_client|default:'' }} {{ project.nama_kontraktor|default:'' }} {{ project.instansi_kontraktor|default:'' }} {{ project.nama_konsultan_perencana|default:'' }} {{ project.instansi_konsultan_perencana|default:'' }} {{ project.nama_konsultan_pengawas|default:'' }} {{ project.instansi_konsultan_pengawas|default:'' }} {{ project.deskripsi|default:'' }} {{ project.kategori|default:'' }}">
     <!-- Card Header -->
     <div class="card-header-mobile">
       <div class="card-title-mobile">
@@ -385,19 +356,19 @@
       <div class="info-row-mobile">
         <span class="label"><i class="fas fa-info-circle"></i> Status:</span>
         <span class="value">
-          {% load tz %}
-          {% now "Y-m-d" as today_str %}
           {% if project.tanggal_selesai and project.tanggal_mulai %}
-          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Terlambat</span>
-        {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
-        <span class="badge bg-secondary">Belum Mulai</span>
-        {% else %}
-        <span class="badge bg-success">Berjalan</span>
-        {% endif %}
-        {% else %}
-        <span class="badge bg-light text-dark">—</span>
-        {% endif %}
-        </span>
+          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Selesai</span>
+        {% elif project.tanggal_selesai|date:"Y-m-d" <= deadline_threshold_str %} <span
+          class="badge bg-warning text-dark">Deadline</span>
+          {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
+          <span class="badge bg-secondary">Belum Mulai</span>
+          {% else %}
+          <span class="badge bg-success">Berjalan</span>
+          {% endif %}
+          {% else %}
+          <span class="badge bg-light text-dark">—</span>
+          {% endif %}
+          </span>
       </div>
       <div class="info-row-mobile">
         <span class="label"><i class="fas fa-user"></i> Client:</span>
@@ -419,21 +390,24 @@
 
     <!-- Card Actions -->
     <div class="card-actions-mobile">
-      <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-outline-success">
-        <i class="fas fa-list"></i> Pekerjaan
-      </a>
-      <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
-        class="btn btn-sm btn-outline-warning">
-        <i class="fas fa-edit"></i> Edit
-      </a>
-      <a href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/"
-        class="btn btn-sm btn-outline-info" title="Export" download>
-        <i class="fas fa-download"></i> Export
-      </a>
-      <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
-        data-bs-target="#deleteModal-{{ project.pk }}">
-        <i class="fas fa-trash"></i> Hapus
-      </button>
+      <div class="d-flex flex-wrap gap-1 project-action-icons">
+        <a href="{% url 'detail_project:list_pekerjaan' project_id=project.pk %}" class="btn btn-sm btn-outline-success"
+          title="Detail Pekerjaan" aria-label="Detail Pekerjaan">
+          <i class="fas fa-list"></i>
+        </a>
+        <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
+          class="btn btn-sm btn-outline-warning" title="Edit Project" aria-label="Edit Project">
+          <i class="fas fa-edit"></i>
+        </a>
+        <a href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/?include_progress=1"
+          class="btn btn-sm btn-outline-info" title="Export Project (JSON)" aria-label="Export Project (JSON)" download>
+          <i class="fas fa-download"></i>
+        </a>
+        <button type="button" class="btn btn-sm btn-outline-danger" title="Hapus Project" aria-label="Hapus Project"
+          data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
     </div>
 
     <!-- Delete Modal (reuse from table) -->
@@ -473,6 +447,29 @@
 <!-- Pagination -->
 <!-- Pagination removed - using full scroll -->
 
+<!-- Confirmation Modal (global for dashboard actions) -->
+<div class="modal fade" id="dpConfirmModal" tabindex="-1" aria-labelledby="dpConfirmTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning-subtle">
+        <h5 class="modal-title" id="dpConfirmTitle">Konfirmasi</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body" id="dpConfirmBody">
+        Anda yakin ingin melanjutkan?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="dpConfirmCancelBtn" data-bs-dismiss="modal">
+          Batal
+        </button>
+        <button type="button" class="btn btn-warning" id="dpConfirmOkBtn">
+          Lanjutkan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- FASE 2.3: Bulk Actions JavaScript -->
 <script>
   document.addEventListener('DOMContentLoaded', function () {
@@ -486,6 +483,23 @@
     const projectCheckboxes = desktopTable ? desktopTable.querySelectorAll('.project-checkbox') : [];
     const bulkActionsBar = document.getElementById('bulkActionsBar');
     const selectedCountSpan = document.getElementById('selectedCount');
+
+    const toast = (message, type = 'info', duration) => {
+      if (window.DP?.toast?.show) {
+        window.DP.toast.show({ message, type, duration });
+        return;
+      }
+      if (window.showToast) {
+        window.showToast(message, type, duration || 3000);
+      }
+    };
+
+    const confirmAction = (options) => {
+      if (window.DPConfirm) {
+        return window.DPConfirm(options);
+      }
+      return Promise.resolve(false);
+    };
 
     // === BULK MODE TOGGLE ===
     let bulkModeActive = false;
@@ -578,99 +592,126 @@
     // Bulk Delete
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     if (bulkDeleteBtn) {
-      bulkDeleteBtn.addEventListener('click', function () {
+      bulkDeleteBtn.addEventListener('click', async function () {
         const selectedIds = getSelectedProjectIds();
-        if (selectedIds.length === 0) return;
-
-        if (confirm(`Yakin ingin menghapus ${selectedIds.length} project terpilih? Project akan di-archive (soft delete).`)) {
-          fetch('{% url "dashboard:bulk_delete" %}', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': getCSRFToken()
-            },
-            body: JSON.stringify({ project_ids: selectedIds })
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                alert(`Berhasil menghapus ${data.deleted_count} project.`);
-                window.location.reload();
-              } else {
-                alert('Error: ' + (data.error || 'Unknown error'));
-              }
-            })
-            .catch(error => {
-              console.error('Error:', error);
-              alert('Terjadi kesalahan saat menghapus project.');
-            });
+        if (selectedIds.length === 0) {
+          toast('Pilih minimal satu project untuk dihapus.', 'warning');
+          return;
         }
+
+        const confirmed = await confirmAction({
+          title: 'Konfirmasi Hapus',
+          message: `Yakin ingin menghapus ${selectedIds.length} project terpilih? Project akan di-archive (soft delete).`,
+          confirmText: 'Hapus',
+          confirmClass: 'btn-danger'
+        });
+        if (!confirmed) return;
+
+        fetch('{% url "dashboard:bulk_delete" %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+          },
+          body: JSON.stringify({ project_ids: selectedIds })
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              toast(`Berhasil menghapus ${data.deleted_count} project.`, 'success');
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              toast(data.error || 'Terjadi kesalahan saat menghapus project.', 'error');
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            toast('Terjadi kesalahan saat menghapus project.', 'error');
+          });
       });
     }
 
     // Bulk Archive
     const bulkArchiveBtn = document.getElementById('bulkArchiveBtn');
     if (bulkArchiveBtn) {
-      bulkArchiveBtn.addEventListener('click', function () {
+      bulkArchiveBtn.addEventListener('click', async function () {
         const selectedIds = getSelectedProjectIds();
-        if (selectedIds.length === 0) return;
-
-        if (confirm(`Yakin ingin meng-archive ${selectedIds.length} project terpilih?`)) {
-          fetch('{% url "dashboard:bulk_archive" %}', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': getCSRFToken()
-            },
-            body: JSON.stringify({ project_ids: selectedIds })
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                alert(`Berhasil meng-archive ${data.archived_count} project.`);
-                window.location.reload();
-              } else {
-                alert('Error: ' + (data.error || 'Unknown error'));
-              }
-            })
-            .catch(error => {
-              console.error('Error:', error);
-              alert('Terjadi kesalahan saat meng-archive project.');
-            });
+        if (selectedIds.length === 0) {
+          toast('Pilih minimal satu project untuk di-archive.', 'warning');
+          return;
         }
+
+        const confirmed = await confirmAction({
+          title: 'Konfirmasi Archive',
+          message: `Yakin ingin meng-archive ${selectedIds.length} project terpilih?`,
+          confirmText: 'Archive',
+          confirmClass: 'btn-warning'
+        });
+        if (!confirmed) return;
+
+        fetch('{% url "dashboard:bulk_archive" %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+          },
+          body: JSON.stringify({ project_ids: selectedIds })
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              toast(`Berhasil meng-archive ${data.archived_count} project.`, 'success');
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              toast(data.error || 'Terjadi kesalahan saat meng-archive project.', 'error');
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            toast('Terjadi kesalahan saat meng-archive project.', 'error');
+          });
       });
     }
 
     // Bulk Unarchive
     const bulkUnarchiveBtn = document.getElementById('bulkUnarchiveBtn');
     if (bulkUnarchiveBtn) {
-      bulkUnarchiveBtn.addEventListener('click', function () {
+      bulkUnarchiveBtn.addEventListener('click', async function () {
         const selectedIds = getSelectedProjectIds();
-        if (selectedIds.length === 0) return;
-
-        if (confirm(`Yakin ingin mengaktifkan kembali ${selectedIds.length} project terpilih?`)) {
-          fetch('{% url "dashboard:bulk_unarchive" %}', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': getCSRFToken()
-            },
-            body: JSON.stringify({ project_ids: selectedIds })
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                alert(`Berhasil mengaktifkan ${data.unarchived_count} project.`);
-                window.location.reload();
-              } else {
-                alert('Error: ' + (data.error || 'Unknown error'));
-              }
-            })
-            .catch(error => {
-              console.error('Error:', error);
-              alert('Terjadi kesalahan saat mengaktifkan project.');
-            });
+        if (selectedIds.length === 0) {
+          toast('Pilih minimal satu project untuk diaktifkan.', 'warning');
+          return;
         }
+
+        const confirmed = await confirmAction({
+          title: 'Konfirmasi Aktifkan',
+          message: `Yakin ingin mengaktifkan kembali ${selectedIds.length} project terpilih?`,
+          confirmText: 'Aktifkan',
+          confirmClass: 'btn-success'
+        });
+        if (!confirmed) return;
+
+        fetch('{% url "dashboard:bulk_unarchive" %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+          },
+          body: JSON.stringify({ project_ids: selectedIds })
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              toast(`Berhasil mengaktifkan ${data.unarchived_count} project.`, 'success');
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              toast(data.error || 'Terjadi kesalahan saat mengaktifkan project.', 'error');
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            toast('Terjadi kesalahan saat mengaktifkan project.', 'error');
+          });
       });
     }
 

@@ -58,9 +58,20 @@
   });
 
   // P0 FIX: Toast notification system (import from core)
-  const toast = window.DP && window.DP.core && window.DP.core.toast
-    ? (msg, variant = 'info', delay = 3000) => window.DP.core.toast.show(msg, variant, delay)
-    : (msg) => console.log('[TOAST]', msg);
+  const toast = (msg, variant = 'info', delay = 3000) => {
+    const type = variant === 'danger' ? 'error' : variant;
+    if (window.DP && DP.toast && DP.toast.show) return DP.toast.show(msg, type, delay);
+    if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) return DP.core.toast.show(msg, type, delay);
+    if (typeof window.showToast === 'function') return window.showToast(msg, type, delay);
+    console.warn('[HI] Toast:', msg);
+  };
+
+  const confirmModal = (message, options = {}) => {
+    const modalApi = window.DP && DP.core && DP.core.modal ? DP.core.modal : null;
+    if (modalApi && modalApi.confirm) return modalApi.confirm(message, options);
+    if (window.DP && DP.toast) DP.toast.warning('Konfirmasi tidak tersedia.');
+    return Promise.resolve(false);
+  };
 
   // State
   const katMap = { TK: 'Tenaga', BHN: 'Bahan', ALT: 'Alat', LAIN: 'Lainnya' };
@@ -71,6 +82,7 @@
 
   // P0 FIX: Dirty state tracking & optimistic locking
   let dirty = false;
+  let allowUnload = false;
   let projectUpdatedAt = null;  // Timestamp for optimistic locking
   let formLocked = false;
   let pendingTemplateReloadJobs = new Set(
@@ -95,10 +107,8 @@
   function openTemplatePage() {
     if (templateUrl) {
       window.open(templateUrl, '_blank', 'noopener');
-    } else if (TOAST) {
-      TOAST.warn('Halaman Template AHSP tidak tersedia.');
     } else {
-      alert('Halaman Template AHSP tidak tersedia.');
+      toast('Halaman Template AHSP tidak tersedia.', 'warning');
     }
   }
 
@@ -214,14 +224,48 @@
     return Dim.OTHER;
   }
 
+  function doSafeReload() {
+    allowUnload = true;
+    window.location.reload();
+  }
+
+  async function confirmReload(reason) {
+    if (!dirty) {
+      doSafeReload();
+      return true;
+    }
+    const message = reason
+      ? `${reason}\n\nPerubahan harga yang belum disimpan akan hilang jika Anda melanjutkan.`
+      : 'Perubahan harga yang belum disimpan akan hilang jika Anda melanjutkan reload halaman.';
+    const ok = await confirmModal(message, {
+      title: 'Konfirmasi Reload',
+      confirmText: 'Reload',
+      cancelText: 'Batal',
+      confirmClass: 'btn btn-danger',
+    });
+    if (ok) {
+      doSafeReload();
+    }
+    return ok;
+  }
+
   // P0 FIX: Unsaved changes warning - prevent data loss on browser close/refresh
   window.addEventListener('beforeunload', (e) => {
-    if (dirty) {
+    if (dirty && !allowUnload) {
       const msg = 'Anda memiliki perubahan harga yang belum disimpan. Yakin ingin meninggalkan halaman?';
       e.preventDefault();
       e.returnValue = msg;
       return msg;
     }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!dirty) return;
+    const key = String(e.key || '').toLowerCase();
+    const isReload = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && key === 'r');
+    if (!isReload) return;
+    e.preventDefault();
+    confirmReload('Anda akan memuat ulang halaman.');
   });
 
   // ===== Konversi: in-memory + localStorage per Kode
@@ -559,20 +603,28 @@
       if (!j.ok && j.conflict) {
         console.warn('[SAVE] Conflict detected - data modified by another user');
 
-        const confirmMsg = (
-          "⚠️ KONFLIK DATA TERDETEKSI!\n\n" +
-          "Data harga telah diubah oleh pengguna lain sejak Anda membukanya.\n\n" +
-          "Pilihan:\n" +
-          "• OK = Muat Ulang (lihat perubahan terbaru, data Anda akan hilang)\n" +
-          "• Cancel = Timpa (simpan data Anda, perubahan pengguna lain akan hilang)\n\n" +
-          "⚠️ Timpa hanya jika Anda yakin perubahan Anda lebih penting!"
-        );
+        const confirmMsg = [
+          'Konflik data terdeteksi.',
+          '',
+          'Data harga telah diubah oleh pengguna lain sejak Anda membukanya.',
+          '',
+          'Pilih "Muat Ulang" untuk melihat perubahan terbaru (data Anda akan hilang).',
+          'Pilih "Timpa" untuk menyimpan data Anda (perubahan pengguna lain akan hilang).',
+        ].join('\n');
 
-        if (confirm(confirmMsg)) {
+        const doReload = await confirmModal(confirmMsg, {
+          title: 'Konfirmasi Konflik',
+          confirmText: 'Muat Ulang',
+          cancelText: 'Timpa',
+          confirmClass: 'btn btn-primary',
+          cancelClass: 'btn btn-danger',
+        });
+
+        if (doReload) {
           // User chose to reload - refresh page
           console.log('[SAVE] User chose to reload');
           toast('🔄 Memuat ulang data terbaru...', 'info');
-          setTimeout(() => window.location.reload(), 1000);
+          setTimeout(() => doSafeReload(), 1000);
         } else {
           // User chose to force overwrite - retry without timestamp
           console.log('[SAVE] User chose to force overwrite');
@@ -871,7 +923,7 @@
   });
 
   // apply konversi
-  $convApply?.addEventListener('click', () => {
+  $convApply?.addEventListener('click', async () => {
     const canon = recalcConv(true);
     if (!canon) { $convError?.classList.remove('d-none'); return; }
 
@@ -882,8 +934,11 @@
       const wasManual = convCtx.tr.dataset.manualEdited === '1';
       const curCanon = toCanon(input?.value);
       if (wasManual && curCanon && curCanon !== canon) {
-        const ok = window.confirm('Nilai harga pada baris ini telah diisi manual. Terapkan hasil konversi akan mengganti nilai tersebut. Lanjutkan?');
-        if (!ok) return;
+      const ok = await confirmModal(
+        'Nilai harga pada baris ini telah diisi manual. Terapkan hasil konversi akan mengganti nilai tersebut. Lanjutkan?',
+        { title: 'Konfirmasi', confirmText: 'Lanjutkan', cancelText: 'Batal' },
+      );
+      if (!ok) return;
       }
     }
     if (input) { input.value = toUI(canon); input.classList.remove('ux-invalid'); }

@@ -1,0 +1,18 @@
+Method,Name,Error,Occurrences
+GET,/api/project/[id]/volume-pekerjaan/list/,HTTPError('404 Client Error: Not Found for url: /api/project/[id]/volume-pekerjaan/list/'),7
+GET,/detail-project/[id]/list-pekerjaan/,HTTPError('404 Client Error: Not Found for url: /detail-project/[id]/list-pekerjaan/'),13
+GET,/detail-project/[id]/harga-items/,HTTPError('404 Client Error: Not Found for url: /detail-project/[id]/harga-items/'),7
+GET,/api/project/[id]/harga-items/list/,HTTPError('404 Client Error: Not Found for url: /api/project/[id]/harga-items/list/'),5
+GET,/api/project/[id]/rekap-kebutuhan/,HTTPError('404 Client Error: Not Found for url: /api/project/[id]/rekap-kebutuhan/'),8
+GET,/api/export/harga-items/csv/,HTTPError('404 Client Error: Not Found for url: /api/export/harga-items/csv/'),1
+GET,/api/project/[id]/tahapan/,HTTPError('404 Client Error: Not Found for url: /api/project/[id]/tahapan/'),7
+GET,/detail-project/[id]/jadwal-pekerjaan/,HTTPError('404 Client Error: Not Found for url: /detail-project/[id]/jadwal-pekerjaan/'),14
+GET,/detail-project/[id]/template-ahsp/,HTTPError('404 Client Error: Not Found for url: /detail-project/[id]/template-ahsp/'),10
+GET,/api/export/rekap-rab/xlsx/,HTTPError('404 Client Error: Not Found for url: /api/export/rekap-rab/xlsx/'),1
+GET,/detail-project/[id]/volume-pekerjaan/,HTTPError('404 Client Error: Not Found for url: /detail-project/[id]/volume-pekerjaan/'),7
+GET,/api/v2/project/[id]/assignments/,HTTPError('404 Client Error: Not Found for url: /api/v2/project/[id]/assignments/'),8
+GET,/detail-project/[id]/rekap-rab/,HTTPError('404 Client Error: Not Found for url: /detail-project/[id]/rekap-rab/'),16
+GET,/api/v2/project/[id]/kurva-s-data/,HTTPError('404 Client Error: Not Found for url: /api/v2/project/[id]/kurva-s-data/'),3
+GET,/api/v2/project/[id]/chart-data/,HTTPError('404 Client Error: Not Found for url: /api/v2/project/[id]/chart-data/'),5
+GET,/api/project/[id]/list-pekerjaan/tree/,HTTPError('404 Client Error: Not Found for url: /api/project/[id]/list-pekerjaan/tree/'),21
+GET,/api/project/[id]/rekap/,HTTPError('404 Client Error: Not Found for url: /api/project/[id]/rekap/'),5

@@ -4,7 +4,8 @@ from django.core.paginator import Paginator
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, CharField
+from django.db.models.functions import Cast
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.utils.safestring import mark_safe
@@ -52,13 +53,35 @@ def dashboard_view(request):
         # Basic search
         search = filter_form.cleaned_data.get('search')
         if search:
-            queryset = queryset.filter(
+            queryset = queryset.annotate(
+                anggaran_str=Cast('anggaran_owner', CharField()),
+                tahun_str=Cast('tahun_project', CharField()),
+                durasi_str=Cast('durasi_hari', CharField()),
+                tanggal_mulai_str=Cast('tanggal_mulai', CharField()),
+                tanggal_selesai_str=Cast('tanggal_selesai', CharField()),
+            ).filter(
+                Q(index_project__icontains=search) |
                 Q(nama__icontains=search) |
                 Q(deskripsi__icontains=search) |
                 Q(sumber_dana__icontains=search) |
                 Q(lokasi_project__icontains=search) |
                 Q(nama_client__icontains=search) |
-                Q(kategori__icontains=search)
+                Q(ket_project1__icontains=search) |
+                Q(ket_project2__icontains=search) |
+                Q(jabatan_client__icontains=search) |
+                Q(instansi_client__icontains=search) |
+                Q(nama_kontraktor__icontains=search) |
+                Q(instansi_kontraktor__icontains=search) |
+                Q(nama_konsultan_perencana__icontains=search) |
+                Q(instansi_konsultan_perencana__icontains=search) |
+                Q(nama_konsultan_pengawas__icontains=search) |
+                Q(instansi_konsultan_pengawas__icontains=search) |
+                Q(kategori__icontains=search) |
+                Q(anggaran_str__icontains=search) |
+                Q(tahun_str__icontains=search) |
+                Q(durasi_str__icontains=search) |
+                Q(tanggal_mulai_str__icontains=search) |
+                Q(tanggal_selesai_str__icontains=search)
             )
 
         # Filter by year
@@ -75,18 +98,33 @@ def dashboard_view(request):
         status = filter_form.cleaned_data.get('status_timeline')
         if status:
             today = date.today()
+            deadline_threshold = today + timedelta(days=30)
             if status == 'belum_mulai':
-                queryset = queryset.filter(tanggal_mulai__gt=today)
+                queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_mulai__gt=today,
+                    tanggal_selesai__gt=deadline_threshold
+                )
             elif status == 'berjalan':
                 queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
                     tanggal_mulai__lte=today,
-                    tanggal_selesai__gte=today
+                    tanggal_selesai__gt=deadline_threshold
                 )
-            elif status == 'terlambat':
-                queryset = queryset.filter(tanggal_selesai__lt=today)
+            elif status == 'deadline':
+                queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_selesai__gte=today,
+                    tanggal_selesai__lte=deadline_threshold
+                )
             elif status == 'selesai':
                 # Projects that finished on time (ended in the past, but not marked overdue)
                 queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
                     tanggal_selesai__lt=today,
                     tanggal_mulai__lte=today
                 )
@@ -102,10 +140,20 @@ def dashboard_view(request):
         # Filter by date range
         tanggal_from = filter_form.cleaned_data.get('tanggal_mulai_from')
         tanggal_to = filter_form.cleaned_data.get('tanggal_mulai_to')
-        if tanggal_from:
-            queryset = queryset.filter(tanggal_mulai__gte=tanggal_from)
-        if tanggal_to:
-            queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
+        if tanggal_from or tanggal_to:
+            queryset = queryset.filter(
+                tanggal_mulai__isnull=False,
+                tanggal_selesai__isnull=False
+            )
+            if tanggal_from and tanggal_to:
+                queryset = queryset.filter(
+                    tanggal_mulai__lte=tanggal_to,
+                    tanggal_selesai__gte=tanggal_from
+                )
+            elif tanggal_from:
+                queryset = queryset.filter(tanggal_selesai__gte=tanggal_from)
+            elif tanggal_to:
+                queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
 
         # Filter by active status
         is_active_filter = filter_form.cleaned_data.get('is_active')
@@ -228,6 +276,24 @@ def dashboard_view(request):
         tanggal_selesai__lt=today
     ).order_by('tanggal_selesai')[:5]
 
+    # Status counts (match table logic)
+    status_with_timeline = all_active_projects.filter(
+        tanggal_mulai__isnull=False,
+        tanggal_selesai__isnull=False
+    )
+    status_selesai = status_with_timeline.filter(tanggal_selesai__lt=today).count()
+    status_deadline = status_with_timeline.filter(
+        tanggal_selesai__gte=today,
+        tanggal_selesai__lte=deadline_threshold
+    ).count()
+    status_belum_mulai = status_with_timeline.filter(
+        tanggal_selesai__gt=deadline_threshold,
+        tanggal_mulai__gt=today
+    ).count()
+    status_berjalan = status_with_timeline.filter(
+        tanggal_selesai__gt=deadline_threshold,
+        tanggal_mulai__lte=today
+    ).count()
     context = {
         'projects': all_filtered_projects,
         'filter_form': filter_form,
@@ -241,6 +307,12 @@ def dashboard_view(request):
             'active_projects_count': active_projects_count,
             'upcoming_deadlines': upcoming_deadlines,
             'overdue_projects': overdue_projects,
+            'status_counts': {
+                'selesai': status_selesai,
+                'deadline': status_deadline,
+                'belum_mulai': status_belum_mulai,
+                'berjalan': status_berjalan,
+            },
         },
         # Chart data (JSON serialized for JavaScript)
         'chart_data': {
@@ -251,6 +323,8 @@ def dashboard_view(request):
         # Recent activity
         'recent_created': recent_created,
         'recent_updated': recent_updated,
+        'today_str': today.strftime('%Y-%m-%d'),
+        'deadline_threshold_str': deadline_threshold.strftime('%Y-%m-%d'),
     }
     return render(request, 'dashboard/dashboard.html', context)
 

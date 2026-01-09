@@ -545,6 +545,8 @@ body.lp-overlay-open {
   box-shadow: var(--dp-shadow-sm);
   transition: box-shadow var(--ux-duration-200) var(--ux-ease);
   margin-bottom: 1rem;
+  /* FIX: Allow Select2 dropdown to escape card boundaries - critical for dropdown visibility */
+  overflow: visible !important;
 }
 
 #klas-list .card:hover {
@@ -565,7 +567,7 @@ body.lp-overlay-open {
   padding: 1rem;
   background: var(--dp-c-bg);
   /* FIX: Allow Select2 dropdown to escape card boundaries */
-  overflow: visible;
+  overflow: visible !important;
 }
 
 /* Input nama Klas/Sub - PERBAIKAN FONT WEIGHT HIERARKI */
@@ -590,7 +592,7 @@ body.lp-overlay-open {
   margin-bottom: .75rem;
   box-shadow: var(--dp-shadow-sm);
   /* FIX: Allow Select2 dropdown to escape sub-wrap boundaries */
-  overflow: visible;
+  overflow: visible !important;
 }
 
 /* Tabel lokal di dalam Sub (kompak, mirip v1) - PERBAIKAN BORDER */
@@ -1414,4 +1416,126 @@ body.lp-overlay-open {
 [data-bs-theme="dark"] .modal-content,
 [data-bs-theme="dark"] .lp-autocomplete {
   border-color: var(--dp-c-border, #495057);
+}
+
+/* =====================================================
+   TEMPLATE LIBRARY STYLES
+   ===================================================== */
+
+/* Template List Container */
+.template-list {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Template List Item */
+.template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--dp-c-surface-2);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  cursor: pointer;
+  transition: background-color var(--ux-duration-150) var(--ux-ease),
+    border-color var(--ux-duration-150) var(--ux-ease);
+}
+
+.template-item:hover {
+  background: var(--dp-c-primary-subtle, rgba(var(--dp-primary-rgb), 0.1));
+  border-color: var(--dp-c-primary);
+}
+
+.template-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.template-item-name {
+  font-weight: 600;
+  font-size: var(--ux-font-sm);
+  color: var(--dp-c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.template-item-meta {
+  font-size: var(--ux-font-xs);
+  color: var(--dp-c-muted);
+  margin-top: 0.125rem;
+}
+
+.template-item-arrow {
+  color: var(--dp-c-muted);
+  margin-left: 0.5rem;
+}
+
+/* Template Preview Tree */
+.template-preview-tree {
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: var(--ux-font-sm);
+  background: var(--dp-c-surface-2);
+  border-radius: var(--dp-radius-md);
+  padding: 0.75rem;
+}
+
+.template-klas-item {
+  margin-bottom: 0.5rem;
+}
+
+.template-klas-name {
+  font-weight: 600;
+  color: var(--dp-c-text);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.template-sub-item {
+  margin-left: 1.25rem;
+  margin-top: 0.25rem;
+}
+
+.template-sub-name {
+  color: var(--dp-c-text);
+  font-weight: 500;
+}
+
+.template-pkj-list {
+  margin-left: 1.25rem;
+  color: var(--dp-c-muted);
+  font-size: var(--ux-font-xs);
+}
+
+/* Empty State */
+.template-list-empty {
+  text-align: center;
+  color: var(--dp-c-muted);
+  padding: 2rem 1rem;
+}
+
+.template-list-empty i {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* Loading Spinner */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }

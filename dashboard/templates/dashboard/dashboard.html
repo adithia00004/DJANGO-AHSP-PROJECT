@@ -171,7 +171,7 @@
             <div class="insight-box insight-warning">
               <div class="insight-icon"><i class="fas fa-tasks"></i></div>
               <div class="insight-content">
-                <div class="insight-label">Completion Rate</div>
+                <div class="insight-label">Cakupan Jadwal</div>
                 <div class="insight-value" id="completionRate">-</div>
               </div>
             </div>
@@ -374,6 +374,15 @@
                 File JSON harus berasal dari Export Project (format: project_backup_*.json)
               </div>
             </div>
+            <div class="alert alert-info small mb-3">
+              <strong>Yang akan terjadi saat Import:</strong>
+              <ul class="mb-0 ps-3">
+                <li>Project baru akan dibuat berdasarkan data di file JSON.</li>
+                <li>Struktur detail project (klasifikasi, sub‑klasifikasi, pekerjaan, harga item) ikut diimpor.</li>
+                <li>Progress/jadwal hanya diimpor jika opsi "Import jadwal/progress" dicentang.</li>
+                <li>Project hasil import akan muncul di dashboard setelah proses selesai.</li>
+              </ul>
+            </div>
             <div class="mb-3">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="importProgress" name="import_progress" value="1">
@@ -402,11 +411,26 @@
       const resultDiv = document.getElementById('importResult');
       const submitBtn = document.getElementById('importSubmitBtn');
       const spinner = document.getElementById('importSpinner');
+      const modal = document.getElementById('importProjectModal');
+      const fileInput = document.getElementById('importFile');
+      const progressCheckbox = document.getElementById('importProgress');
+
+      // Reset modal state when it's closed
+      modal.addEventListener('hidden.bs.modal', function () {
+        // Only reset if import was successful (button is hidden)
+        if (submitBtn.classList.contains('d-none')) {
+          form.reset();
+          resultDiv.classList.add('d-none');
+          submitBtn.classList.remove('d-none');
+          submitBtn.disabled = false;
+          fileInput.disabled = false;
+          progressCheckbox.disabled = false;
+        }
+      });
 
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
 
-        const fileInput = document.getElementById('importFile');
         if (!fileInput.files.length) {
           resultDiv.className = 'alert alert-warning';
           resultDiv.textContent = 'Pilih file JSON terlebih dahulu.';
@@ -436,21 +460,36 @@
           if (data.status === 'success') {
             resultDiv.className = 'alert alert-success';
             resultDiv.innerHTML = `
-            <strong>✅ ${data.message}</strong><br>
-            <small>
-              Klasifikasi: ${data.stats?.klasifikasi || 0} | 
-              Sub: ${data.stats?.sub_klasifikasi || 0} | 
-              Pekerjaan: ${data.stats?.pekerjaan || 0} | 
-              Harga Items: ${data.stats?.harga_items || 0}
-            </small>
-            <br><br>
-            <a href="/detail_project/${data.project_id}/list-pekerjaan/" class="btn btn-sm btn-primary">
-              Buka Project
-            </a>
+            <div class="text-center">
+              <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+              <h5 class="mb-2">✅ Import Berhasil!</h5>
+              <p class="mb-2">${data.message}</p>
+              <div class="small text-muted mb-3">
+                Klasifikasi: ${data.stats?.klasifikasi || 0} | 
+                Sub: ${data.stats?.sub_klasifikasi || 0} | 
+                Pekerjaan: ${data.stats?.pekerjaan || 0} | 
+                Harga Items: ${data.stats?.harga_items || 0}
+              </div>
+              <div class="d-flex gap-2 justify-content-center">
+                <a href="/detail_project/${data.project_id}/list-pekerjaan/" class="btn btn-primary">
+                  <i class="fas fa-folder-open"></i> Buka Project
+                </a>
+                <button type="button" class="btn btn-outline-secondary" onclick="location.reload()">
+                  <i class="fas fa-sync"></i> Refresh Dashboard
+                </button>
+              </div>
+            </div>
           `;
+
+            // Disable form elements to prevent double import
+            submitBtn.classList.add('d-none');
+            fileInput.disabled = true;
+            progressCheckbox.disabled = true;
+
           } else {
             resultDiv.className = 'alert alert-danger';
             resultDiv.textContent = data.message || 'Import gagal.';
+            submitBtn.disabled = false;
           }
           resultDiv.classList.remove('d-none');
 
@@ -458,8 +497,8 @@
           resultDiv.className = 'alert alert-danger';
           resultDiv.textContent = 'Error: ' + err.message;
           resultDiv.classList.remove('d-none');
-        } finally {
           submitBtn.disabled = false;
+        } finally {
           spinner.classList.add('d-none');
         }
       });
@@ -508,8 +547,41 @@
     // Flag to track if charts have been initialized
     let chartsInitialized = false;
 
-    // Common chart options
-    const commonOptions = {
+    const chartInstances = [];
+    const root = document.documentElement;
+
+    const getCssVar = (name, fallback) => {
+      const value = getComputedStyle(root).getPropertyValue(name).trim();
+      return value || fallback;
+    };
+
+    const isDarkMode = () => {
+      const explicitTheme = root.getAttribute('data-bs-theme');
+      if (explicitTheme) {
+        return explicitTheme === 'dark';
+      }
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    };
+
+    const getChartTheme = () => {
+      const dark = isDarkMode();
+      return {
+        text: getCssVar('--dp-c-text', dark ? '#e2e8f0' : '#1f2937'),
+        textMuted: getCssVar('--dp-c-muted', dark ? '#94a3b8' : '#6b7280'),
+        grid: dark ? 'rgba(148, 163, 184, 0.2)' : 'rgba(15, 23, 42, 0.08)',
+        tooltipBg: dark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(15, 23, 42, 0.85)',
+        tooltipText: '#f8fafc',
+        tooltipBorder: dark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(15, 23, 42, 0.12)'
+      };
+    };
+
+    const applyChartDefaults = (theme) => {
+      if (!window.Chart) return;
+      Chart.defaults.color = theme.text;
+      Chart.defaults.borderColor = theme.grid;
+    };
+
+    const buildCommonOptions = (theme) => ({
       responsive: true,
       maintainAspectRatio: true,
       aspectRatio: 2,
@@ -520,37 +592,112 @@
           labels: {
             boxWidth: 12,
             font: { size: 11 },
-            padding: 10
+            padding: 10,
+            color: theme.text
           }
         },
         tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.8)',
+          backgroundColor: theme.tooltipBg,
+          borderColor: theme.tooltipBorder,
+          borderWidth: 1,
+          titleColor: theme.tooltipText,
+          bodyColor: theme.tooltipText,
           padding: 12,
           titleFont: { size: 13, weight: 'bold' },
           bodyFont: { size: 12 },
           callbacks: {
             label: function (context) {
+              const getParsedValue = (ctx) => {
+                if (ctx.parsed && typeof ctx.parsed === 'object') {
+                  if (typeof ctx.parsed.y === 'number') return ctx.parsed.y;
+                  if (typeof ctx.parsed.x === 'number') return ctx.parsed.x;
+                }
+                if (typeof ctx.parsed === 'number') return ctx.parsed;
+                if (typeof ctx.raw === 'number') return ctx.raw;
+                const numeric = Number(ctx.raw);
+                return Number.isFinite(numeric) ? numeric : null;
+              };
+
               let label = context.dataset.label || '';
               if (label) {
                 label += ': ';
               }
-              if (context.parsed !== null) {
+              const value = getParsedValue(context);
+              if (value !== null) {
                 if (context.dataset.label && context.dataset.label.includes('Anggaran')) {
-                  label += 'Rp ' + new Intl.NumberFormat('id-ID').format(context.parsed);
+                  label += 'Rp ' + new Intl.NumberFormat('id-ID').format(value);
                 } else {
-                  label += context.parsed;
+                  label += value;
                 }
+              } else {
+                label += '-';
               }
               return label;
             }
           }
         }
       }
+    });
+
+    const applyThemeToChart = (chart, theme) => {
+      if (!chart) return;
+
+      const plugins = chart.options.plugins || {};
+      if (plugins.legend && plugins.legend.labels) {
+        plugins.legend.labels.color = theme.text;
+      }
+      if (plugins.tooltip) {
+        plugins.tooltip.backgroundColor = theme.tooltipBg;
+        plugins.tooltip.borderColor = theme.tooltipBorder;
+        plugins.tooltip.borderWidth = 1;
+        plugins.tooltip.titleColor = theme.tooltipText;
+        plugins.tooltip.bodyColor = theme.tooltipText;
+      }
+
+      const scales = chart.options.scales || {};
+      Object.values(scales).forEach((scale) => {
+        if (scale.ticks) {
+          scale.ticks.color = theme.textMuted;
+        } else {
+          scale.ticks = { color: theme.textMuted };
+        }
+        if (scale.grid) {
+          scale.grid.color = theme.grid;
+        } else {
+          scale.grid = { color: theme.grid };
+        }
+        if (scale.border) {
+          scale.border.color = theme.grid;
+        }
+      });
+
+      chart.update();
     };
+
+    const registerChart = (chart, theme) => {
+      if (!chart) return;
+      chartInstances.push(chart);
+      applyThemeToChart(chart, theme);
+    };
+
+    let chartTheme = getChartTheme();
+    let commonOptions = buildCommonOptions(chartTheme);
+    applyChartDefaults(chartTheme);
+
+    const updateChartTheme = () => {
+      chartTheme = getChartTheme();
+      commonOptions = buildCommonOptions(chartTheme);
+      applyChartDefaults(chartTheme);
+      chartInstances.forEach((chart) => applyThemeToChart(chart, chartTheme));
+    };
+
+    const themeObserver = new MutationObserver(updateChartTheme);
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-bs-theme'] });
 
     // Get data from Django with safe parsing
     let projectsByYearData = [];
     let projectsBySumberData = [];
+    let budgetByYearData = [];
     let analytics = {
       total: 0,
       totalBudget: 0,
@@ -561,21 +708,23 @@
     try {
       const yearDataRaw = {{ chart_data.projects_by_year|default:"[]"|safe }};
       const sumberDataRaw = {{ chart_data.projects_by_sumber|default:"[]"|safe }};
+      const budgetDataRaw = {{ chart_data.budget_by_year|default:"[]"|safe }};
 
-      projectsByYearData = Array.isArray(yearDataRaw) ? yearDataRaw : [];
-      projectsBySumberData = Array.isArray(sumberDataRaw) ? sumberDataRaw : [];
+  projectsByYearData = Array.isArray(yearDataRaw) ? yearDataRaw : [];
+  projectsBySumberData = Array.isArray(sumberDataRaw) ? sumberDataRaw : [];
+  budgetByYearData = Array.isArray(budgetDataRaw) ? budgetDataRaw : [];
 
-      analytics = {
-        total: {% localize off %}{{ analytics.total_projects|default:0 }}{% endlocalize %},
-        totalBudget: {% localize off %}{{ analytics.total_anggaran|default:0 }}{% endlocalize %},
-        thisYear: {% localize off %}{{ analytics.projects_this_year|default:0 }}{% endlocalize %},
-        active: {% localize off %}{{ analytics.active_projects_count|default:0 }}{% endlocalize %}
-      };
+    analytics = {
+      total: {% localize off %}{{ analytics.total_projects|default:0 }}{% endlocalize %},
+      totalBudget: {% localize off %}{{ analytics.total_anggaran|default:0 }}{% endlocalize %},
+      thisYear: {% localize off %}{{ analytics.projects_this_year|default:0 }}{% endlocalize %},
+      active: {% localize off %}{{ analytics.active_projects_count|default:0 }}{% endlocalize %}
+    };
     } catch (e) {
-      console.error('Error parsing chart data:', e);
-      projectsByYearData = [];
-      projectsBySumberData = [];
-    }
+    console.error('Error parsing chart data:', e);
+    projectsByYearData = [];
+    projectsBySumberData = [];
+  }
 
   // Debug logging
   console.log('Chart Data Loaded:', {
@@ -602,7 +751,7 @@
         const maxCount = Math.max(...counts);
         const maxYear = years[counts.indexOf(maxCount)];
 
-        new Chart(ctx, {
+        const chart = new Chart(ctx, {
           type: 'bar',
           data: {
             labels: years,
@@ -629,12 +778,13 @@
                 grid: { color: 'rgba(0,0,0,0.05)' }
               },
               x: {
-                ticks: { font: { size: 11 } },
+                ticks: { font: { size: 11 }, color: chartTheme.textMuted },
                 grid: { display: false }
               }
             }
           }
         });
+        registerChart(chart, chartTheme);
 
         // Update summary
         document.getElementById('yearChartSummary').innerHTML =
@@ -653,19 +803,13 @@
     }
 
     // Chart 2: Budget per Tahun
-    if (projectsByYearData && projectsByYearData.length > 0) {
+    if (budgetByYearData && budgetByYearData.length > 0) {
       const ctx = document.getElementById('budgetByYearChart');
       if (ctx) {
-        // Calculate budget per year from projects data
-        const yearBudgetMap = new Map();
-        projectsByYearData.forEach(item => {
-          yearBudgetMap.set(item.tahun_project, item.total_anggaran || 0);
-        });
+        const years = budgetByYearData.map(item => item.tahun_project || 'N/A');
+        const budgets = budgetByYearData.map(item => item.total_budget || 0);
 
-        const years = Array.from(yearBudgetMap.keys());
-        const budgets = Array.from(yearBudgetMap.values());
-
-        new Chart(ctx, {
+        const chart = new Chart(ctx, {
           type: 'line',
           data: {
             labels: years,
@@ -703,20 +847,23 @@
                 grid: { color: 'rgba(0,0,0,0.05)' }
               },
               x: {
-                ticks: { font: { size: 11 } },
+                ticks: { font: { size: 11 }, color: chartTheme.textMuted },
                 grid: { display: false }
               }
             }
           }
         });
+        registerChart(chart, chartTheme);
 
         // Update summary
-        const avgBudget = budgets.reduce((a, b) => a + b, 0) / budgets.length;
-        const maxBudget = Math.max(...budgets);
-        document.getElementById('budgetChartSummary').innerHTML =
-          `<small class="text-success">Tertinggi: <strong>Rp ${(maxBudget / 1000000000).toFixed(1)}M</strong></small>`;
-        document.getElementById('avgBudget').textContent =
-          'Rp ' + (avgBudget / 1000000000).toFixed(1) + 'M';
+        if (budgets.length > 0) {
+          const avgBudget = budgets.reduce((a, b) => a + b, 0) / budgets.length;
+          const maxBudget = Math.max(...budgets);
+          document.getElementById('budgetChartSummary').innerHTML =
+            `<small class="text-success">Tertinggi: <strong>Rp ${(maxBudget / 1000000000).toFixed(1)}M</strong></small>`;
+          document.getElementById('avgBudget').textContent =
+            'Rp ' + (avgBudget / 1000000000).toFixed(1) + 'M';
+        }
       }
     } else {
       // Show empty state
@@ -748,7 +895,7 @@
         const maxCount = Math.max(...data);
         const topSumber = labels[data.indexOf(maxCount)];
 
-        new Chart(ctx, {
+        const chart = new Chart(ctx, {
           type: 'doughnut',
           data: {
             labels: labels,
@@ -784,6 +931,7 @@
             }
           }
         });
+        registerChart(chart, chartTheme);
 
         // Update summary
         document.getElementById('sumberChartSummary').innerHTML =
@@ -805,61 +953,72 @@
     // Chart 4: Status Timeline (Doughnut)
     const ctx4 = document.getElementById('projectsStatusChart');
     if (ctx4 && analytics.total > 0) {
-      // Calculate status distribution
-      const statusData = {
-        'Selesai': Math.floor(analytics.total * 0.3),
-        'Berjalan': analytics.active,
-        'Terlambat': {{ analytics.overdue_projects|length|default:0 }},
-        'Belum Mulai': Math.floor(analytics.total * 0.1)
+      const statusCounts = {
+        selesai: {% localize off %}{{ analytics.status_counts.selesai|default:0 }}{% endlocalize %},
+        deadline: {% localize off %}{{ analytics.status_counts.deadline|default:0 }}{% endlocalize %},
+        belumMulai: {% localize off %}{{ analytics.status_counts.belum_mulai|default:0 }}{% endlocalize %},
+        berjalan: {% localize off %}{{ analytics.status_counts.berjalan|default:0 }}{% endlocalize %}
       };
 
-      new Chart(ctx4, {
-        type: 'doughnut',
-        data: {
-          labels: Object.keys(statusData),
-          datasets: [{
-            data: Object.values(statusData),
-            backgroundColor: [
-              'rgba(40, 167, 69, 0.8)',
-              'rgba(0, 123, 255, 0.8)',
-              'rgba(220, 53, 69, 0.8)',
-              'rgba(255, 193, 7, 0.8)'
-            ],
-            borderColor: '#fff',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          ...commonOptions,
-          cutout: '60%',
-          plugins: {
-            ...commonOptions.plugins,
-            legend: {
-              position: 'bottom',
-              labels: {
-                boxWidth: 12,
-                font: { size: 10 },
-                padding: 8
-              }
-            }
+  // Calculate status distribution
+  const statusData = {
+    'Selesai': statusCounts.selesai,
+    'Deadline': statusCounts.deadline,
+    'Belum Mulai': statusCounts.belumMulai,
+    'Berjalan': statusCounts.berjalan
+  };
+
+  const statusBadgeColors = [
+    getCssVar('--bs-danger', '#dc3545'),    // Selesai (match table: bg-danger)
+    getCssVar('--bs-warning', '#ffc107'),   // Deadline (match table: bg-warning)
+    getCssVar('--bs-secondary', '#6c757d'), // Belum Mulai (match table: bg-secondary)
+    getCssVar('--bs-success', '#198754')    // Berjalan (match table: bg-success)
+  ];
+
+  const chart = new Chart(ctx4, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(statusData),
+      datasets: [{
+        data: Object.values(statusData),
+        backgroundColor: statusBadgeColors,
+        borderColor: '#fff',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      ...commonOptions,
+      cutout: '60%',
+      plugins: {
+        ...commonOptions.plugins,
+        legend: {
+          position: 'bottom',
+          labels: {
+            boxWidth: 12,
+            font: { size: 10 },
+            padding: 8
           }
         }
-      });
-
-      // Update summary
-      const completionRate = analytics.total > 0
-        ? Math.round((statusData['Selesai'] / analytics.total) * 100)
-        : 0;
-      document.getElementById('statusChartSummary').innerHTML =
-        `<small class="text-warning">Completion: <strong>${completionRate}%</strong></small>`;
-      document.getElementById('completionRate').textContent = completionRate + '%';
-    } else if (ctx4) {
-      // Empty state for Chart 4
-      const parent = ctx4.parentElement;
-      parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-tasks fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p></div>';
+      }
     }
+  });
+  registerChart(chart, chartTheme);
 
-    console.log('Charts initialized successfully!');
+  // Update summary
+  const timelineCount = statusCounts.selesai + statusCounts.deadline + statusCounts.belumMulai + statusCounts.berjalan;
+  const completionRate = analytics.total > 0
+    ? Math.round((timelineCount / analytics.total) * 100)
+    : 0;
+  document.getElementById('statusChartSummary').innerHTML =
+    `<small class="text-warning">Jadwal: <strong>${completionRate}%</strong></small>`;
+  document.getElementById('completionRate').textContent = completionRate + '%';
+    } else if (ctx4) {
+    // Empty state for Chart 4
+    const parent = ctx4.parentElement;
+    parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-tasks fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p></div>';
+  }
+
+  console.log('Charts initialized successfully!');
   }
 
   // Listen for the Bootstrap collapse panel to be shown

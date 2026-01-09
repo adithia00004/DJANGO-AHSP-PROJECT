@@ -201,7 +201,11 @@
         });
 
         console.log('🔄 Column widths reset');
-        alert('Ukuran kolom telah direset ke default');
+        if (window.DP?.toast?.show) {
+          window.DP.toast.show({ message: 'Ukuran kolom telah direset ke default', type: 'success' });
+        } else if (window.showToast) {
+          window.showToast('Ukuran kolom telah direset ke default', 'success', 2500);
+        }
       } catch (e) {
         console.warn('Failed to reset column widths', e);
       }
@@ -300,8 +304,17 @@
       }
     });
 
-    document.getElementById('resetColumnWidthsBtn').addEventListener('click', function() {
-      if (confirm('Reset semua ukuran kolom ke default?')) {
+    document.getElementById('resetColumnWidthsBtn').addEventListener('click', async function() {
+      if (!window.DPConfirm) {
+        return;
+      }
+      const confirmed = await window.DPConfirm({
+        title: 'Reset Ukuran Kolom',
+        message: 'Reset semua ukuran kolom ke default?',
+        confirmText: 'Reset',
+        confirmClass: 'btn-warning'
+      });
+      if (confirmed) {
         window.formsetResizableTable.resetColumnWidths();
       }
     });

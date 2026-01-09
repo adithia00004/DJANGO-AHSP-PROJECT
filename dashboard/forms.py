@@ -212,12 +212,12 @@ class ProjectFilterForm(forms.Form):
         required=False,
         choices=[
             ('', 'Semua Status'),
-            ('belum_mulai', 'Belum Mulai'),
-            ('berjalan', 'Sedang Berjalan'),
-            ('terlambat', 'Terlambat'),
             ('selesai', 'Selesai'),
+            ('deadline', 'Deadline (< 1 bulan)'),
+            ('belum_mulai', 'Belum Mulai'),
+            ('berjalan', 'Berjalan'),
         ],
-        label="Status Timeline",
+        label="Status",
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
 

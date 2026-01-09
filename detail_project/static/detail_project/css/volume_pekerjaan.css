@@ -750,17 +750,18 @@ body[data-page="volume_pekerjaan"] {
 
 #vp-var-table thead th:nth-child(1),
 #vp-var-table tbody td:nth-child(1) {
-  width: 45%;
+  width: 40%;
 }
 
 #vp-var-table thead th:nth-child(2),
 #vp-var-table tbody td:nth-child(2) {
-  width: 35%;
+  width: 30%;
 }
 
 #vp-var-table thead th:nth-child(3),
 #vp-var-table tbody td:nth-child(3) {
-  width: 20%;
+  width: 30%;
+  overflow: visible;
 }
 
 /* Input full width dalam cell */
@@ -785,6 +786,34 @@ body[data-page="volume_pekerjaan"] {
 
 #vp-var-table .btn {
   white-space: nowrap;
+}
+
+/* ===== ADD PARAMETER ROW STYLING ===== */
+/* Container untuk btn-group Simpan/Batal */
+#vp-var-table .btn-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* Tombol Simpan/Batal styling */
+#vp-var-table .var-save,
+#vp-var-table .var-cancel {
+  font-size: 0.65rem;
+  padding: 0.2rem 0.4rem;
+  white-space: nowrap;
+}
+
+/* Versi stacked untuk layar sempit */
+@media (max-width: 576px) {
+  #vp-var-table .btn-group {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  #vp-var-table .btn-group .btn {
+    border-radius: var(--dp-radius-sm) !important;
+  }
 }
 
 /* Hint text (Kode dibuat otomatis) */
@@ -1055,4 +1084,68 @@ td.text-wrap.text-start {
   100% {
     box-shadow: 0 0 0 12px transparent;
   }
+}
+
+
+/* ===========================================================
+   XI) SYNC STATUS INDICATOR (for parameter server sync)
+   =========================================================== */
+.vp-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  transition: all 0.3s ease;
+}
+
+.vp-sync-indicator.sync-pending {
+  color: var(--dp-c-info, #0dcaf0);
+  animation: vpSyncPulse 1s ease-in-out infinite;
+}
+
+.vp-sync-indicator.sync-synced {
+  color: var(--dp-c-success, #198754);
+  animation: vpSyncFadeIn 0.3s ease;
+}
+
+.vp-sync-indicator.sync-error {
+  color: var(--dp-c-danger, #dc3545);
+}
+
+@keyframes vpSyncPulse {
+
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes vpSyncFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Dark mode adjustments */
+[data-bs-theme="dark"] .vp-sync-indicator.sync-synced {
+  color: #4dff88;
+}
+
+[data-bs-theme="dark"] .vp-sync-indicator.sync-error {
+  color: #ff6b6b;
 }

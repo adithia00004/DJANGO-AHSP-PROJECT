@@ -75,3 +75,12 @@ if settings.DEBUG:
 #         urlpatterns = [path('__debug__/', include('debug_toolbar.urls'))] + urlpatterns
 #     except ImportError:
 #         pass
+
+# Django Silk Profiling URLs (development only)
+if settings.DEBUG:
+    try:
+        import silk  # noqa: F401
+        urlpatterns = [path('silk/', include('silk.urls', namespace='silk'))] + urlpatterns
+    except ImportError:
+        pass
+

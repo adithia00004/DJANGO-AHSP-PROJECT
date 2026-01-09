@@ -58,6 +58,29 @@ urlpatterns = [
          views_api.import_project_from_json,
          name='import_project_from_json'),
 
+    # ===== API: Template Library (List Pekerjaan Templates) =====
+    path('api/templates/',
+         views_api.api_list_templates,
+         name='api_list_templates'),
+    path('api/templates/<int:template_id>/',
+         views_api.api_get_template_detail,
+         name='api_get_template_detail'),
+    path('api/templates/<int:template_id>/delete/',
+         views_api.api_delete_template,
+         name='api_delete_template'),
+    path('api/project/<int:project_id>/templates/create/',
+         views_api.api_create_template,
+         name='api_create_template'),
+    path('api/project/<int:project_id>/templates/<int:template_id>/import/',
+         views_api.api_import_template,
+         name='api_import_template'),
+    path('api/project/<int:project_id>/templates/export/',
+         views_api.export_template_json,
+         name='export_template_json'),
+    path('api/project/<int:project_id>/templates/import-file/',
+         views_api.api_import_template_from_file,
+         name='api_import_template_from_file'),
+
     # ===== API: Volume =====
     path('api/project/<int:project_id>/volume-pekerjaan/save/', views_api.api_save_volume_pekerjaan, name='api_save_volume_pekerjaan'),
     path('api/project/<int:project_id>/volume-pekerjaan/list/', views_api.api_list_volume_pekerjaan, name='api_list_volume_pekerjaan'),  # NEW
@@ -90,6 +113,12 @@ urlpatterns = [
     
     # Pricing per-pekerjaan
     path('api/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/pricing/', views_api.api_pekerjaan_pricing, name='api_pekerjaan_pricing'),
+
+    # ===== API: Project Parameters (for volume formula calculations) =====
+    path('api/project/<int:project_id>/parameters/', views_api.api_project_parameters, name='api_project_parameters'),
+    path('api/project/<int:project_id>/parameters/<int:param_id>/', views_api.api_project_parameter_detail, name='api_project_parameter_detail'),
+    path('api/project/<int:project_id>/parameters/sync/', views_api.api_project_parameters_sync, name='api_project_parameters_sync'),
+
 
     # ===== API: Rekap =====
     path('api/project/<int:project_id>/rekap/', views_api.api_get_rekap_rab, name='api_get_rekap_rab'),

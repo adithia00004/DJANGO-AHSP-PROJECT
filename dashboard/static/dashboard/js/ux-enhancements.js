@@ -15,6 +15,106 @@
   'use strict';
 
   // ============================================================================
+  // 0. CONFIRM MODAL HELPER
+  // ============================================================================
+
+  function ensureConfirmModal() {
+    let modalEl = document.getElementById('dpConfirmModal');
+    if (modalEl) return modalEl;
+
+    const modalHtml = `
+      <div class="modal fade" id="dpConfirmModal" tabindex="-1" aria-labelledby="dpConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+              <h5 class="modal-title" id="dpConfirmTitle">Konfirmasi</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+            </div>
+            <div class="modal-body" id="dpConfirmBody">Anda yakin ingin melanjutkan?</div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" id="dpConfirmCancelBtn" data-bs-dismiss="modal">Batal</button>
+              <button type="button" class="btn btn-warning" id="dpConfirmOkBtn">Lanjutkan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    return document.getElementById('dpConfirmModal');
+  }
+
+  function showConfirm(options = {}) {
+    const modalEl = ensureConfirmModal();
+    const titleEl = modalEl.querySelector('#dpConfirmTitle');
+    const bodyEl = modalEl.querySelector('#dpConfirmBody');
+    const cancelBtn = modalEl.querySelector('#dpConfirmCancelBtn');
+    const confirmBtn = modalEl.querySelector('#dpConfirmOkBtn');
+
+    const {
+      title = 'Konfirmasi',
+      message = 'Anda yakin ingin melanjutkan?',
+      confirmText = 'Lanjutkan',
+      cancelText = 'Batal',
+      confirmClass = 'btn-primary'
+    } = options;
+
+    return new Promise((resolve) => {
+      if (!titleEl || !bodyEl || !cancelBtn || !confirmBtn) {
+        resolve(false);
+        return;
+      }
+
+      titleEl.textContent = title;
+      bodyEl.textContent = message;
+      cancelBtn.textContent = cancelText;
+      confirmBtn.textContent = confirmText;
+      confirmBtn.className = `btn ${confirmClass}`;
+
+      if (!window.bootstrap || !bootstrap.Modal) {
+        resolve(false);
+        return;
+      }
+
+      const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+      let resolved = false;
+
+      const cleanup = () => {
+        confirmBtn.removeEventListener('click', handleConfirm);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modalEl.removeEventListener('hidden.bs.modal', handleHidden);
+      };
+
+      const handleConfirm = () => {
+        resolved = true;
+        cleanup();
+        modalInstance.hide();
+        resolve(true);
+      };
+
+      const handleCancel = () => {
+        cleanup();
+        modalInstance.hide();
+        resolve(false);
+      };
+
+      const handleHidden = () => {
+        if (resolved) return;
+        cleanup();
+        resolve(false);
+      };
+
+      confirmBtn.addEventListener('click', handleConfirm);
+      cancelBtn.addEventListener('click', handleCancel);
+      modalEl.addEventListener('hidden.bs.modal', handleHidden);
+
+      modalInstance.show();
+    });
+  }
+
+  window.DPConfirm = showConfirm;
+
+  // ============================================================================
   // 1. FLOATING ACTION BUTTON (FAB)
   // ============================================================================
 
@@ -155,6 +255,16 @@
       };
     }
 
+    function getSearchText(element) {
+      if (!element) return '';
+      const datasetSearch = element.dataset?.search;
+      if (datasetSearch) return datasetSearch.toLowerCase();
+      if (element.dataset) {
+        return Object.values(element.dataset).join(' ').toLowerCase();
+      }
+      return element.textContent.toLowerCase();
+    }
+
     // Search function
     function performSearch(query) {
       const searchTerm = query.toLowerCase().trim();
@@ -172,7 +282,7 @@
       if (projectTable) {
         const rows = projectTable.querySelectorAll('tbody tr');
         rows.forEach(row => {
-          const text = row.textContent.toLowerCase();
+          const text = getSearchText(row);
           if (text.includes(searchTerm)) {
             row.style.display = '';
             visibleCount++;
@@ -184,7 +294,7 @@
 
       // Search in mobile cards
       projectCards.forEach(card => {
-        const text = card.textContent.toLowerCase();
+        const text = getSearchText(card);
         if (text.includes(searchTerm)) {
           card.style.display = '';
           visibleCount++;

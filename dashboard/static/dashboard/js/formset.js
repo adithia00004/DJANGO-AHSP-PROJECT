@@ -142,7 +142,11 @@
       e.preventDefault();
       const max = parseInt(maxFormsInput?.value || "100000", 10);
       if (getTotal() >= max) {
-        alert("Jumlah baris sudah mencapai batas maksimum.");
+        if (window.DP?.toast?.show) {
+          window.DP.toast.show({ message: "Jumlah baris sudah mencapai batas maksimum.", type: "warning" });
+        } else if (window.showToast) {
+          window.showToast("Jumlah baris sudah mencapai batas maksimum.", "warning", 3000);
+        }
         return;
       }
       addRow();

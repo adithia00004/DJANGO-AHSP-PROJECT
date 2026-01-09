@@ -2615,6 +2615,282 @@ def api_project_pricing(request: HttpRequest, project_id: int):
     })
 
 
+# ========== API: Project Parameters (for volume formula calculations) ==========
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@transaction.atomic
+def api_project_parameters(request: HttpRequest, project_id: int):
+    """
+    GET  -> List all parameters for project
+           Returns: { ok: true, parameters: [...] }
+    
+    POST -> Create new parameter
+            Body: { name, value, label?, unit?, description? }
+            Returns: { ok: true, parameter: {...}, created: true }
+    """
+    from .models import ProjectParameter
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    if request.method == "GET":
+        params = ProjectParameter.objects.filter(project=project).order_by('name')
+        return JsonResponse({
+            "ok": True,
+            "parameters": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "value": str(p.value),
+                    "label": p.label or p.name,
+                    "unit": p.unit or "",
+                    "description": p.description or "",
+                }
+                for p in params
+            ]
+        })
+    
+    # POST: Create new parameter
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+    
+    name = str(payload.get("name", "")).strip().lower()
+    if not name:
+        return JsonResponse({"ok": False, "errors": [_err("name", "Nama parameter wajib diisi")]}, status=400)
+    
+    # Validate name format (no spaces, alphanumeric + underscore)
+    import re
+    if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+        return JsonResponse({
+            "ok": False, 
+            "errors": [_err("name", "Nama harus huruf kecil, angka, underscore saja (awali huruf/underscore)")]
+        }, status=400)
+    
+    # Check duplicate
+    if ProjectParameter.objects.filter(project=project, name=name).exists():
+        return JsonResponse({
+            "ok": False, 
+            "errors": [_err("name", f"Parameter '{name}' sudah ada")]
+        }, status=400)
+    
+    # Parse value
+    value = parse_any(payload.get("value", 0))
+    if value is None:
+        value = Decimal("0")
+    
+    param = ProjectParameter.objects.create(
+        project=project,
+        name=name,
+        value=value,
+        label=payload.get("label", "") or name,
+        unit=payload.get("unit", "") or "",
+        description=payload.get("description", "") or "",
+    )
+    
+    return JsonResponse({
+        "ok": True,
+        "created": True,
+        "parameter": {
+            "id": param.id,
+            "name": param.name,
+            "value": str(param.value),
+            "label": param.label,
+            "unit": param.unit,
+            "description": param.description,
+        }
+    }, status=201)
+
+
+@login_required
+@require_http_methods(["GET", "PUT", "DELETE"])
+@transaction.atomic
+def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id: int):
+    """
+    GET    -> Get single parameter
+    PUT    -> Update parameter (value, label, unit, description)
+    DELETE -> Delete parameter
+    """
+    from .models import ProjectParameter
+    
+    project = _owner_or_404(project_id, request.user)
+    param = get_object_or_404(ProjectParameter, id=param_id, project=project)
+    
+    if request.method == "GET":
+        return JsonResponse({
+            "ok": True,
+            "parameter": {
+                "id": param.id,
+                "name": param.name,
+                "value": str(param.value),
+                "label": param.label,
+                "unit": param.unit,
+                "description": param.description,
+            }
+        })
+    
+    if request.method == "DELETE":
+        name = param.name
+        param.delete()
+        return JsonResponse({"ok": True, "deleted": True, "name": name})
+    
+    # PUT: Update parameter
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+    
+    updated_fields = []
+    
+    if "value" in payload:
+        value = parse_any(payload.get("value"))
+        if value is not None:
+            param.value = value
+            updated_fields.append("value")
+    
+    if "label" in payload:
+        param.label = str(payload.get("label", "")).strip() or param.name
+        updated_fields.append("label")
+    
+    if "unit" in payload:
+        param.unit = str(payload.get("unit", "")).strip()
+        updated_fields.append("unit")
+    
+    if "description" in payload:
+        param.description = str(payload.get("description", "")).strip()
+        updated_fields.append("description")
+    
+    if updated_fields:
+        updated_fields.append("updated_at")
+        param.save(update_fields=updated_fields)
+    
+    return JsonResponse({
+        "ok": True,
+        "updated": True,
+        "parameter": {
+            "id": param.id,
+            "name": param.name,
+            "value": str(param.value),
+            "label": param.label,
+            "unit": param.unit,
+            "description": param.description,
+        }
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_project_parameters_sync(request: HttpRequest, project_id: int):
+    """
+    Bulk sync parameters from localStorage to database.
+    
+    POST body: {
+        "parameters": {
+            "code1": { "value": 10, "label": "Label 1" },
+            "code2": { "value": 20, "label": "Label 2" },
+            ...
+        },
+        "mode": "merge" | "replace"  // default: merge
+    }
+    
+    - merge: Update existing, create new, keep others
+    - replace: Delete all existing, create from payload
+    
+    Returns: { ok: true, created: N, updated: N, deleted: N }
+    """
+    from .models import ProjectParameter
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+    
+    params_data = payload.get("parameters", {})
+    mode = payload.get("mode", "merge")
+    
+    if not isinstance(params_data, dict):
+        return JsonResponse({"ok": False, "errors": [_err("parameters", "Harus berupa object/dictionary")]}, status=400)
+    
+    created_count = 0
+    updated_count = 0
+    deleted_count = 0
+    
+    import re
+    
+    if mode == "replace":
+        # Delete all existing parameters
+        deleted_count = ProjectParameter.objects.filter(project=project).delete()[0]
+        
+        # Create all from payload
+        for code, data in params_data.items():
+            name = str(code).strip().lower()
+            if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+                continue  # Skip invalid names
+            
+            value = parse_any(data.get("value", 0)) if isinstance(data, dict) else parse_any(data)
+            if value is None:
+                value = Decimal("0")
+            
+            label = data.get("label", name) if isinstance(data, dict) else name
+            unit = data.get("unit", "") if isinstance(data, dict) else ""
+            
+            ProjectParameter.objects.create(
+                project=project,
+                name=name,
+                value=value,
+                label=label or name,
+                unit=unit,
+            )
+            created_count += 1
+    else:
+        # Merge mode: update existing, create new
+        existing = {p.name: p for p in ProjectParameter.objects.filter(project=project)}
+        
+        for code, data in params_data.items():
+            name = str(code).strip().lower()
+            if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+                continue  # Skip invalid names
+            
+            value = parse_any(data.get("value", 0)) if isinstance(data, dict) else parse_any(data)
+            if value is None:
+                value = Decimal("0")
+            
+            label = data.get("label", name) if isinstance(data, dict) else name
+            unit = data.get("unit", "") if isinstance(data, dict) else ""
+            
+            if name in existing:
+                # Update existing
+                param = existing[name]
+                param.value = value
+                param.label = label or name
+                if unit:
+                    param.unit = unit
+                param.save(update_fields=["value", "label", "unit", "updated_at"])
+                updated_count += 1
+            else:
+                # Create new
+                ProjectParameter.objects.create(
+                    project=project,
+                    name=name,
+                    value=value,
+                    label=label or name,
+                    unit=unit,
+                )
+                created_count += 1
+    
+    return JsonResponse({
+        "ok": True,
+        "created": created_count,
+        "updated": updated_count,
+        "deleted": deleted_count,
+        "mode": mode,
+    })
+
+
 # ---------- View 5: Detail Gabungan ----------
 @login_required
 @require_POST
@@ -2844,19 +3120,37 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
 @login_required
 def api_list_harga_items(request: HttpRequest, project_id: int):
     """
-    List all Harga Items used in this project.
+    List all Harga Items in this project.
 
-    DUAL STORAGE UPDATE:
-    - Reads from DetailAHSPExpanded (expanded components) instead of DetailAHSPProject (raw input)
-    - Shows only base components (TK/BHN/ALT) from bundle expansion
-    - Bundle items (LAIN) are NOT shown (they're expanded to components)
+    UPDATED (2026-01-09):
+    - Shows items that are USED in DetailAHSPExpanded (excludes bundle items)
+    - ALSO shows standalone items (no expanded refs AND no detail refs) for import support
+    - This ensures imported items appear while bundle items are excluded
 
     P0 FIX (2025-11-11):
     - Added project_updated_at for optimistic locking
     """
+    from django.db.models import Q, Exists, OuterRef
+    from .models import DetailAHSPExpanded, DetailAHSPProject
+    
     project = _owner_or_404(project_id, request.user)
+    
+    # Items used in DetailAHSPExpanded (expanded components)
+    used_in_expanded = Q(expanded_refs__project=project)
+    
+    # Standalone items: not referenced anywhere (for import support)
+    # These are items created by import that aren't yet linked to any AHSP
+    has_expanded_refs = Exists(
+        DetailAHSPExpanded.objects.filter(harga_item=OuterRef('pk'))
+    )
+    has_detail_refs = Exists(
+        DetailAHSPProject.objects.filter(harga_item=OuterRef('pk'))
+    )
+    standalone = ~has_expanded_refs & ~has_detail_refs
+    
     qs = (HargaItemProject.objects
-          .filter(project=project, expanded_refs__project=project)  # DUAL STORAGE: expanded_refs instead of detail_refs
+          .filter(project=project)
+          .filter(used_in_expanded | standalone)
           .distinct()
           .order_by('kode_item'))
     items = list(qs.values('id','kode_item','kategori','uraian','satuan','harga_satuan'))
@@ -5915,7 +6209,7 @@ def export_list_pekerjaan_json(request: HttpRequest, project_id: int):
                         "snapshot_satuan": p.snapshot_satuan or "",
                         "ordering_index": p.ordering_index,
                         "budgeted_cost": str(p.budgeted_cost or 0),
-                        "ref_ahsp_id": p.ref_id if p.source_type == Pekerjaan.SourceType.REF else None,
+                        "ref_ahsp_id": p.ref_id if p.source_type == Pekerjaan.SOURCE_REF else None,
                     })
                 k_obj["sub"].append(s_obj)
             klasifikasi_data.append(k_obj)
@@ -6026,6 +6320,305 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
 # ============================================================================
 # EXPORT: FULL PROJECT BACKUP (for migration/restore)
 # ============================================================================
+
+def _build_export_data(project, mode='full', template_meta=None, include_progress=False):
+    """
+    Build export data structure based on mode.
+    
+    Args:
+        project: Project instance
+        mode: 'full' or 'template'
+            - full: Export everything (project metadata, harga, volume, jadwal)
+            - template: Export hierarchy + DetailAHSP only (no prices/volume)
+        template_meta: dict with name, description, category for template mode
+        include_progress: Include jadwal/progress data (full mode only)
+    
+    Returns:
+        dict: Complete export data structure
+    """
+    from .models import (
+        VolumeFormulaState, ProjectParameter, ProjectPricing,
+        TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+    )
+    
+    is_full = mode == 'full'
+    
+    # ========== Export Klasifikasi ==========
+    klasifikasi_list = []
+    klas_map = {}  # old_id -> export_id
+    for idx, k in enumerate(Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')):
+        klas_map[k.id] = idx + 1
+        klasifikasi_list.append({
+            "_export_id": idx + 1,
+            "name": k.name,
+            "ordering_index": k.ordering_index,
+        })
+    
+    # ========== Export SubKlasifikasi ==========
+    sub_list = []
+    sub_map = {}  # old_id -> export_id
+    for idx, s in enumerate(SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')):
+        sub_map[s.id] = idx + 1
+        sub_list.append({
+            "_export_id": idx + 1,
+            "_klasifikasi_ref": klas_map.get(s.klasifikasi_id),
+            "name": s.name,
+            "ordering_index": s.ordering_index,
+        })
+    
+    # ========== Export HargaItemProject (FULL mode only) ==========
+    harga_list = []
+    harga_map = {}  # old_id -> export_id
+    if is_full:
+        harga_items = HargaItemProject.objects.filter(project=project).order_by('id')
+        for idx, h in enumerate(harga_items):
+            harga_map[h.id] = idx + 1
+            harga_list.append({
+                "_export_id": idx + 1,
+                "kode_item": h.kode_item,
+                "uraian": h.uraian or "",
+                "satuan": h.satuan or "",
+                "kategori": h.kategori,
+                "harga_satuan": str(h.harga_satuan or 0),
+            })
+    else:
+        # Template mode: build harga_map for DetailAHSP ref but don't export prices
+        for h in HargaItemProject.objects.filter(project=project):
+            harga_map[h.id] = h.kode_item  # Use kode as reference instead of export_id
+    
+    # ========== Export ItemConversionProfile (FULL mode only) ==========
+    conversion_list = []
+    if is_full:
+        for cp in ItemConversionProfile.objects.filter(harga_item__project=project).select_related('harga_item'):
+            conversion_list.append({
+                "_harga_item_ref": harga_map.get(cp.harga_item_id),
+                "market_unit": cp.market_unit,
+                "market_price": str(cp.market_price or 0),
+                "factor_to_base": str(cp.factor_to_base or 1),
+                "density": str(cp.density) if cp.density else None,
+                "capacity_m3": str(cp.capacity_m3) if cp.capacity_m3 else None,
+                "capacity_ton": str(cp.capacity_ton) if cp.capacity_ton else None,
+                "method": cp.method,
+            })
+    
+    # ========== Export Pekerjaan ==========
+    pekerjaan_list = []
+    pekerjaan_map = {}  # old_id -> export_id
+    pekerjaan_snapshot_map = {}  # old_id -> snapshot_kode (for template mode bundle refs)
+    pekerjaan_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+    for idx, p in enumerate(pekerjaan_qs):
+        pekerjaan_map[p.id] = idx + 1
+        pekerjaan_snapshot_map[p.id] = p.snapshot_kode or f"PKJ-{idx+1}"
+        
+        pekerjaan_data = {
+            "_export_id": idx + 1,
+            "_sub_klasifikasi_ref": sub_map.get(p.sub_klasifikasi_id),
+            "source_type": _src_to_str(p.source_type),
+            "snapshot_kode": getattr(p, "snapshot_kode", None) or "",
+            "snapshot_uraian": p.snapshot_uraian or "",
+            "snapshot_satuan": p.snapshot_satuan or "",
+            "ordering_index": p.ordering_index,
+            "ref_id": p.ref_id,  # Direct reference to AHSPReferensi
+        }
+        
+        # Full mode includes budgeted_cost
+        if is_full:
+            pekerjaan_data["budgeted_cost"] = str(p.budgeted_cost or 0)
+        
+        pekerjaan_list.append(pekerjaan_data)
+    
+    # ========== Export VolumePekerjaan (FULL mode only) ==========
+    volume_list = []
+    if is_full:
+        for v in VolumePekerjaan.objects.filter(project=project).select_related('pekerjaan'):
+            volume_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(v.pekerjaan_id),
+                "quantity": str(v.quantity or 0),
+            })
+    
+    # ========== Export DetailAHSPProject ==========
+    detail_list = []
+    detail_map = {}
+    details = DetailAHSPProject.objects.filter(project=project).select_related(
+        'harga_item', 'ref_pekerjaan'
+    ).order_by('pekerjaan_id', 'id')
+    
+    for idx, d in enumerate(details):
+        detail_map[d.id] = idx + 1
+        
+        detail_data = {
+            "_export_id": idx + 1,
+            "_pekerjaan_ref": pekerjaan_map.get(d.pekerjaan_id),
+            "kategori": d.kategori,
+            "kode": d.kode,
+            "uraian": d.uraian or "",
+            "satuan": d.satuan or "",
+            "koefisien": str(d.koefisien or 0),
+        }
+        
+        if is_full:
+            # Full mode: use export_id reference
+            detail_data["_harga_item_ref"] = harga_map.get(d.harga_item_id)
+            detail_data["ref_ahsp_id"] = d.ref_ahsp_id
+            detail_data["_ref_pekerjaan_ref"] = pekerjaan_map.get(d.ref_pekerjaan_id) if d.ref_pekerjaan_id else None
+        else:
+            # Template mode: use kode as harga reference, snapshot_kode for bundle
+            detail_data["harga_item_kode"] = harga_map.get(d.harga_item_id)  # This is the kode string
+            
+            # Bundle reference for LAIN category
+            if d.kategori == 'LAIN':
+                if d.ref_pekerjaan_id:
+                    detail_data["bundle_type"] = "pekerjaan"
+                    detail_data["bundle_ref_snapshot_kode"] = pekerjaan_snapshot_map.get(d.ref_pekerjaan_id)
+                elif d.ref_ahsp_id:
+                    detail_data["bundle_type"] = "ahsp"
+                    detail_data["bundle_ref_ahsp_id"] = d.ref_ahsp_id
+    
+        detail_list.append(detail_data)
+    
+    # ========== Build Export Data ==========
+    if is_full:
+        # Full mode - complete project backup
+        
+        # Export VolumeFormulaState
+        formula_list = []
+        for vf in VolumeFormulaState.objects.filter(project=project):
+            formula_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(vf.pekerjaan_id),
+                "raw": vf.raw,
+                "is_fx": vf.is_fx,
+            })
+        
+        # Export ProjectParameter
+        parameter_list = []
+        for pp in ProjectParameter.objects.filter(project=project):
+            parameter_list.append({
+                "name": pp.name,
+                "value": str(pp.value),
+                "label": pp.label or "",
+                "unit": pp.unit or "",
+                "description": pp.description or "",
+            })
+        
+        # Export ProjectPricing
+        pricing_data = None
+        try:
+            pricing = project.pricing
+            pricing_data = {
+                "markup_percent": str(pricing.markup_percent),
+                "ppn_percent": str(pricing.ppn_percent),
+                "rounding_base": pricing.rounding_base,
+            }
+        except ProjectPricing.DoesNotExist:
+            pass
+        
+        # Project metadata
+        project_data = {
+            "nama": project.nama,
+            "sumber_dana": project.sumber_dana,
+            "lokasi_project": project.lokasi_project,
+            "nama_client": project.nama_client,
+            "anggaran_owner": str(project.anggaran_owner or 0),
+            "tanggal_mulai": project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
+            "tanggal_selesai": project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+            "durasi_hari": project.durasi_hari,
+            "ket_project1": project.ket_project1 or "",
+            "ket_project2": project.ket_project2 or "",
+            "jabatan_client": project.jabatan_client or "",
+            "instansi_client": project.instansi_client or "",
+            "nama_kontraktor": project.nama_kontraktor or "",
+            "instansi_kontraktor": project.instansi_kontraktor or "",
+            "nama_konsultan_perencana": project.nama_konsultan_perencana or "",
+            "instansi_konsultan_perencana": project.instansi_konsultan_perencana or "",
+            "nama_konsultan_pengawas": project.nama_konsultan_pengawas or "",
+            "instansi_konsultan_pengawas": project.instansi_konsultan_pengawas or "",
+            "deskripsi": project.deskripsi or "",
+            "kategori": project.kategori or "",
+            "week_start_day": project.week_start_day,
+            "week_end_day": project.week_end_day,
+        }
+        
+        export_data = {
+            "export_type": "project_full_backup",
+            "export_version": "2.0",
+            "export_date": timezone.now().isoformat(),
+            "include_progress": include_progress,
+            "project": project_data,
+            "klasifikasi": klasifikasi_list,
+            "sub_klasifikasi": sub_list,
+            "harga_items": harga_list,
+            "conversion_profiles": conversion_list,
+            "pekerjaan": pekerjaan_list,
+            "volume": volume_list,
+            "detail_ahsp": detail_list,
+            "volume_formulas": formula_list,
+            "parameters": parameter_list,
+            "pricing": pricing_data,
+        }
+        
+        # Optional: Include progress/jadwal data
+        if include_progress:
+            tahapan_list = []
+            tahapan_map = {}
+            for idx, t in enumerate(TahapPelaksanaan.objects.filter(project=project).order_by('urutan', 'id')):
+                tahapan_map[t.id] = idx + 1
+                tahapan_list.append({
+                    "_export_id": idx + 1,
+                    "nama": t.nama,
+                    "urutan": t.urutan,
+                })
+            
+            pekerjaan_tahapan_list = []
+            for pt in PekerjaanTahapan.objects.filter(tahap__project=project).select_related('tahap', 'pekerjaan'):
+                pekerjaan_tahapan_list.append({
+                    "_tahap_ref": tahapan_map.get(pt.tahap_id),
+                    "_pekerjaan_ref": pekerjaan_map.get(pt.pekerjaan_id),
+                    "bobot": str(pt.bobot or 0),
+                })
+            
+            progress_list = []
+            for pw in PekerjaanProgressWeekly.objects.filter(project=project):
+                progress_list.append({
+                    "_pekerjaan_ref": pekerjaan_map.get(pw.pekerjaan_id),
+                    "week_number": pw.week_number,
+                    "week_start_date": pw.week_start_date.isoformat() if pw.week_start_date else None,
+                    "week_end_date": pw.week_end_date.isoformat() if pw.week_end_date else None,
+                    "planned_proportion": str(pw.planned_proportion or 0),
+                    "actual_proportion": str(pw.actual_proportion or 0),
+                })
+            
+            export_data["jadwal"] = {
+                "tahapan": tahapan_list,
+                "pekerjaan_tahapan": pekerjaan_tahapan_list,
+                "progress_weekly": progress_list,
+            }
+    
+    else:
+        # Template mode - hierarchy + DetailAHSP only
+        export_data = {
+            "export_type": "project_template",
+            "export_version": "2.0",
+            "export_date": timezone.now().isoformat(),
+            "template_meta": template_meta or {
+                "name": f"Template dari {project.nama}",
+                "description": "",
+                "category": "lainnya",
+                "source_project": project.nama,
+            },
+            "klasifikasi": klasifikasi_list,
+            "sub_klasifikasi": sub_list,
+            "pekerjaan": pekerjaan_list,
+            "detail_ahsp": detail_list,
+            "stats": {
+                "total_klasifikasi": len(klasifikasi_list),
+                "total_sub": len(sub_list),
+                "total_pekerjaan": len(pekerjaan_list),
+                "total_detail": len(detail_list),
+            }
+        }
+    
+    return export_data
+
 
 @login_required
 @require_GET
@@ -6171,10 +6764,43 @@ def export_project_full_json(request: HttpRequest, project_id: int):
                 "_ref_pekerjaan_ref": pekerjaan_map.get(d.ref_pekerjaan_id) if d.ref_pekerjaan_id else None,
             })
         
+        # ========== Export VolumeFormulaState ==========
+        from .models import VolumeFormulaState, ProjectParameter, ProjectPricing
+        formula_list = []
+        for vf in VolumeFormulaState.objects.filter(project=project):
+            formula_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(vf.pekerjaan_id),
+                "raw": vf.raw,
+                "is_fx": vf.is_fx,
+            })
+        
+        # ========== Export ProjectParameter ==========
+        parameter_list = []
+        for pp in ProjectParameter.objects.filter(project=project):
+            parameter_list.append({
+                "name": pp.name,
+                "value": str(pp.value),
+                "label": pp.label or "",
+                "unit": pp.unit or "",
+                "description": pp.description or "",
+            })
+        
+        # ========== Export ProjectPricing ==========
+        pricing_data = None
+        try:
+            pricing = project.pricing
+            pricing_data = {
+                "markup_percent": str(pricing.markup_percent),
+                "ppn_percent": str(pricing.ppn_percent),
+                "rounding_base": pricing.rounding_base,
+            }
+        except ProjectPricing.DoesNotExist:
+            pass
+        
         # Build export data
         export_data = {
             "export_type": "project_full_backup",
-            "export_version": "1.0",
+            "export_version": "1.1",  # Bumped version for new fields
             "source_project_id": project_id,
             "export_date": timezone.now().isoformat(),
             "include_progress": include_progress,
@@ -6186,6 +6812,10 @@ def export_project_full_json(request: HttpRequest, project_id: int):
             "pekerjaan": pekerjaan_list,
             "volume_pekerjaan": volume_list,
             "detail_ahsp": detail_list,
+            # NEW in v1.1
+            "volume_formula_states": formula_list,
+            "project_parameters": parameter_list,
+            "project_pricing": pricing_data,
         }
         
         # ========== Optional: Export Progress Data ==========
@@ -6195,20 +6825,20 @@ def export_project_full_json(request: HttpRequest, project_id: int):
             # TahapPelaksanaan
             tahap_list = []
             tahap_map = {}
-            for idx, t in enumerate(TahapPelaksanaan.objects.filter(project=project).order_by('ordering_index', 'id')):
+            for idx, t in enumerate(TahapPelaksanaan.objects.filter(project=project).order_by('urutan', 'id')):
                 tahap_map[t.id] = idx + 1
                 tahap_list.append({
                     "_export_id": idx + 1,
                     "nama": t.nama,
-                    "ordering_index": t.ordering_index,
+                    "urutan": t.urutan,
                     "warna": getattr(t, 'warna', None) or "",
                 })
             
             # PekerjaanTahapan
             assignment_list = []
-            for a in PekerjaanTahapan.objects.filter(tahap__project=project):
+            for a in PekerjaanTahapan.objects.filter(tahapan__project=project):
                 assignment_list.append({
-                    "_tahap_ref": tahap_map.get(a.tahap_id),
+                    "_tahap_ref": tahap_map.get(a.tahapan_id),
                     "_pekerjaan_ref": pekerjaan_map.get(a.pekerjaan_id),
                     "proporsi_volume": str(getattr(a, 'proporsi_volume', 0) or 0),
                 })
@@ -6219,6 +6849,8 @@ def export_project_full_json(request: HttpRequest, project_id: int):
                 progress_list.append({
                     "_pekerjaan_ref": pekerjaan_map.get(pw.pekerjaan_id),
                     "week_number": pw.week_number,
+                    "week_start_date": pw.week_start_date.isoformat() if pw.week_start_date else None,
+                    "week_end_date": pw.week_end_date.isoformat() if pw.week_end_date else None,
                     "planned_proportion": str(getattr(pw, 'planned_proportion', 0) or 0),
                     "actual_proportion": str(getattr(pw, 'actual_proportion', 0) or 0),
                 })
@@ -6252,7 +6884,7 @@ def export_project_full_json(request: HttpRequest, project_id: int):
         
         response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
         safe_name = project.nama.replace(' ', '_').replace('/', '-')[:50]
-        filename = f"project_backup_{safe_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filename = f"project_backup_v1.1_{safe_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
         
@@ -6287,7 +6919,15 @@ def import_project_from_json(request: HttpRequest):
     
     try:
         # Parse JSON from request body or file upload
-        if request.FILES.get('file'):
+        content_type = request.content_type or ''
+        
+        if 'multipart' in content_type:
+            # Multipart form data - expect file upload
+            if not request.FILES.get('file'):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'No file uploaded'
+                }, status=400)
             import_file = request.FILES['file']
             try:
                 data = json.load(import_file)
@@ -6297,8 +6937,15 @@ def import_project_from_json(request: HttpRequest):
                     'message': f'Invalid JSON file: {str(e)}'
                 }, status=400)
         else:
+            # Direct JSON body
             try:
-                data = json.loads(request.body)
+                body = request.body
+                if not body:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'No file or JSON body provided'
+                    }, status=400)
+                data = json.loads(body)
             except json.JSONDecodeError as e:
                 return JsonResponse({
                     'status': 'error',
@@ -6372,16 +7019,24 @@ def import_project_from_json(request: HttpRequest):
         
         # ========== Import HargaItemProject ==========
         harga_map = {}  # export_id -> new_id
-        for h in data.get('harga_items', []):
-            new_h = HargaItemProject.objects.create(
-                project=new_project,
-                kode_item=h['kode_item'],
-                uraian=h['uraian'],
-                satuan=h.get('satuan', ''),
-                kategori=h['kategori'],
-                harga_satuan=Decimal(h.get('harga_satuan', '0')),
-            )
-            harga_map[h['_export_id']] = new_h.id
+        harga_items_data = data.get('harga_items', [])
+        logger.info(f"[IMPORT] Starting harga_items import: {len(harga_items_data)} items in JSON")
+        
+        for h in harga_items_data:
+            try:
+                new_h = HargaItemProject.objects.create(
+                    project=new_project,
+                    kode_item=h['kode_item'],
+                    uraian=h['uraian'],
+                    satuan=h.get('satuan', ''),
+                    kategori=h['kategori'],
+                    harga_satuan=Decimal(h.get('harga_satuan', '0')),
+                )
+                harga_map[h['_export_id']] = new_h.id
+            except Exception as e:
+                logger.error(f"[IMPORT] Failed to import harga_item {h.get('kode_item')}: {e}")
+        
+        logger.info(f"[IMPORT] Completed harga_items import: {len(harga_map)} items created")
         
         # ========== Import ItemConversionProfile ==========
         for cp in data.get('conversion_profiles', []):
@@ -6458,29 +7113,47 @@ def import_project_from_json(request: HttpRequest):
                 ref_pekerjaan_id=ref_pkj_id,
             )
         
-        # ========== Optional: Import Progress Data ==========
-        tahap_map = {}
-        if import_progress and data.get('tahap_pelaksanaan'):
-            for t in data.get('tahap_pelaksanaan', []):
-                new_t = TahapPelaksanaan.objects.create(
+        # ========== Import VolumeFormulaState (NEW in v1.1) ==========
+        from .models import VolumeFormulaState, ProjectParameter, ProjectPricing
+        for vf in data.get('volume_formula_states', []):
+            pkj_id = pekerjaan_map.get(vf.get('_pekerjaan_ref'))
+            if pkj_id:
+                VolumeFormulaState.objects.create(
                     project=new_project,
-                    nama=t['nama'],
-                    ordering_index=t['ordering_index'],
+                    pekerjaan_id=pkj_id,
+                    raw=vf.get('raw', ''),
+                    is_fx=vf.get('is_fx', True),
                 )
-                if hasattr(new_t, 'warna') and t.get('warna'):
-                    new_t.warna = t['warna']
-                    new_t.save()
-                tahap_map[t['_export_id']] = new_t.id
-            
-            for a in data.get('pekerjaan_tahapan', []):
-                tahap_id = tahap_map.get(a['_tahap_ref'])
-                pkj_id = pekerjaan_map.get(a['_pekerjaan_ref'])
-                if tahap_id and pkj_id:
-                    PekerjaanTahapan.objects.create(
-                        tahap_id=tahap_id,
-                        pekerjaan_id=pkj_id,
-                    )
-            
+        
+        # ========== Import ProjectParameter (NEW in v1.1) ==========
+        for pp in data.get('project_parameters', []):
+            ProjectParameter.objects.create(
+                project=new_project,
+                name=pp['name'],
+                value=Decimal(pp.get('value', '0')),
+                label=pp.get('label', ''),
+                unit=pp.get('unit', ''),
+                description=pp.get('description', ''),
+            )
+        
+        # ========== Import ProjectPricing (NEW in v1.1) ==========
+        if data.get('project_pricing'):
+            pp = data['project_pricing']
+            ProjectPricing.objects.create(
+                project=new_project,
+                markup_percent=Decimal(pp.get('markup_percent', '10')),
+                ppn_percent=Decimal(pp.get('ppn_percent', '11')),
+                rounding_base=int(pp.get('rounding_base', 10000)),
+            )
+        
+        # ========== Optional: Import Progress Data ==========
+        # NOTE: We SKIP importing TahapPelaksanaan and PekerjaanTahapan
+        # because they are DERIVED DATA that will be auto-regenerated from
+        # PekerjaanProgressWeekly (canonical storage) when user opens the
+        # Jadwal Pekerjaan page. This avoids duplicate key conflicts.
+        # The exported data still contains these for reference/debugging.
+        
+        if import_progress and data.get('progress_weekly'):
             # ========== Smart Week Adjustment ==========
             # Calculate actual project weeks from new project dates
             from math import ceil
@@ -6503,10 +7176,30 @@ def import_project_from_json(request: HttpRequest):
                         skipped_weeks += 1
                         continue  # Skip this week - it's beyond project scope
                     
+                    # Get or calculate week dates
+                    if pw.get('week_start_date') and pw.get('week_end_date'):
+                        # Use dates from export
+                        week_start = date.fromisoformat(pw['week_start_date'])
+                        week_end = date.fromisoformat(pw['week_end_date'])
+                    else:
+                        # Calculate from project start date + week_number
+                        from datetime import timedelta
+                        if new_project.tanggal_mulai:
+                            week_start = new_project.tanggal_mulai + timedelta(days=(week_num - 1) * 7)
+                            week_end = week_start + timedelta(days=6)
+                        else:
+                            # Fallback: use today as base
+                            from datetime import date as date_today
+                            base = date_today.today()
+                            week_start = base + timedelta(days=(week_num - 1) * 7)
+                            week_end = week_start + timedelta(days=6)
+                    
                     PekerjaanProgressWeekly.objects.create(
                         project=new_project,
                         pekerjaan_id=pkj_id,
                         week_number=week_num,
+                        week_start_date=week_start,
+                        week_end_date=week_end,
                         planned_proportion=Decimal(pw.get('planned_proportion', '0')),
                         actual_proportion=Decimal(pw.get('actual_proportion', '0')),
                     )
@@ -6543,3 +7236,613 @@ def import_project_from_json(request: HttpRequest):
             'status': 'error',
             'message': f'Import gagal: {str(e)}'
         }, status=500)
+
+
+# =====================================================
+# TEMPLATE LIBRARY API ENDPOINTS
+# Lightweight import/export for Klasifikasi/Sub/Pekerjaan
+# =====================================================
+
+from .models import PekerjaanTemplate
+
+
+@login_required
+@require_GET
+def api_list_templates(request: HttpRequest):
+    """
+    List all available templates.
+    
+    Query params:
+    - category: filter by category (rumah, ruko, infrastruktur, utilitas, lainnya)
+    - q: search by name
+    
+    Returns list of templates with basic info (no content).
+    """
+    qs = PekerjaanTemplate.objects.filter(is_public=True)
+    
+    # Filter by category
+    category = request.GET.get('category', '').strip()
+    if category:
+        qs = qs.filter(category=category)
+    
+    # Search by name
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(name__icontains=q)
+    
+    templates = []
+    for t in qs[:50]:  # Limit to 50
+        templates.append({
+            'id': t.id,
+            'name': t.name,
+            'description': t.description,
+            'category': t.category,
+            'category_display': t.get_category_display(),
+            'total_klasifikasi': t.total_klasifikasi,
+            'total_sub': t.total_sub,
+            'total_pekerjaan': t.total_pekerjaan,
+            'usage_count': t.usage_count,
+            'created_at': t.created_at.isoformat() if t.created_at else None,
+        })
+    
+    return JsonResponse({
+        'ok': True,
+        'templates': templates,
+        'total': len(templates)
+    })
+
+
+@login_required
+@require_GET
+def api_get_template_detail(request: HttpRequest, template_id: int):
+    """
+    Get full template detail including content.
+    
+    Returns hierarchical structure for preview/import.
+    """
+    try:
+        template = PekerjaanTemplate.objects.get(id=template_id)
+    except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+    
+    return JsonResponse({
+        'ok': True,
+        'template': {
+            'id': template.id,
+            'name': template.name,
+            'description': template.description,
+            'category': template.category,
+            'category_display': template.get_category_display(),
+            'total_klasifikasi': template.total_klasifikasi,
+            'total_sub': template.total_sub,
+            'total_pekerjaan': template.total_pekerjaan,
+            'usage_count': template.usage_count,
+            'content': template.content,  # Full hierarchical data
+            'created_at': template.created_at.isoformat() if template.created_at else None,
+        }
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_create_template(request: HttpRequest, project_id: int):
+    """
+    Create a new template from current project's List Pekerjaan.
+    
+    Payload:
+    {
+        "name": "Template Rumah Sederhana",
+        "description": "Template RAB untuk rumah tipe 36",
+        "category": "rumah"  // optional, default "lainnya"
+    }
+    
+    Exports current Klasifikasi → Sub → Pekerjaan → DetailAHSP structure to template.
+    Uses unified _build_export_data helper with 'template' mode.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Payload JSON tidak valid'
+        }, status=400)
+    
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Nama template wajib diisi'
+        }, status=400)
+    
+    # Check duplicate name
+    if PekerjaanTemplate.objects.filter(name=name).exists():
+        return JsonResponse({
+            'ok': False,
+            'message': f'Template dengan nama "{name}" sudah ada'
+        }, status=400)
+    
+    description = (payload.get('description') or '').strip()
+    category = payload.get('category', 'lainnya')
+    if category not in dict(PekerjaanTemplate.CATEGORY_CHOICES):
+        category = 'lainnya'
+    
+    # Build content using unified helper with template mode
+    template_meta = {
+        "name": name,
+        "description": description,
+        "category": category,
+        "source_project": project.nama,
+    }
+    content = _build_export_data(project, mode='template', template_meta=template_meta)
+    
+    # Check if there's data to export
+    if not content.get('pekerjaan'):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Project tidak memiliki data Pekerjaan untuk di-export'
+        }, status=400)
+    
+    # Create template - store the full export data as content
+    template = PekerjaanTemplate.objects.create(
+        name=name,
+        description=description,
+        category=category,
+        content=content,  # Now includes klasifikasi, sub, pekerjaan, detail_ahsp
+        created_by=request.user,
+        is_public=True,
+    )
+    
+    return JsonResponse({
+        'ok': True,
+        'message': f'Template "{name}" berhasil dibuat',
+        'template_id': template.id,
+        'stats': content.get('stats', {})
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_delete_template(request: HttpRequest, template_id: int):
+    """Delete a template (only creator or superuser can delete)."""
+    try:
+        template = PekerjaanTemplate.objects.get(id=template_id)
+    except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+    
+    # Check permission
+    if template.created_by != request.user and not request.user.is_superuser:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Anda tidak memiliki izin untuk menghapus template ini'
+        }, status=403)
+    
+    name = template.name
+    template.delete()
+    
+    return JsonResponse({
+        'ok': True,
+        'message': f'Template "{name}" berhasil dihapus'
+    })
+
+
+def _import_template_data(project, data, user=None):
+    """
+    Import template data into existing project.
+    
+    Supports both new flat format (from _build_export_data) and legacy nested format.
+    
+    Args:
+        project: Target project (must exist)
+        data: Template content dict
+        user: Request user (optional, for logging)
+    
+    Returns:
+        tuple: (stats dict, errors list)
+    """
+    from decimal import Decimal
+    
+    stats = {'klasifikasi': 0, 'sub': 0, 'pekerjaan': 0, 'detail': 0}
+    errors = []
+    
+    # Get next ordering indices
+    max_k = Klasifikasi.objects.filter(project=project).aggregate(Max('ordering_index'))['ordering_index__max'] or 0
+    max_p = Pekerjaan.objects.filter(project=project).aggregate(Max('ordering_index'))['ordering_index__max'] or 0
+    
+    # Detect format: new (flat arrays) or legacy (nested)
+    is_new_format = 'sub_klasifikasi' in data and isinstance(data.get('sub_klasifikasi'), list)
+    
+    # Maps for ID remapping
+    klas_map = {}   # export_id -> new_id
+    sub_map = {}    # export_id -> new_id
+    pkj_map = {}    # export_id -> new_id
+    pkj_snapshot_map = {}  # snapshot_kode -> new_id
+    
+    if is_new_format:
+        # ========== New Format (flat arrays) ==========
+        
+        # Pass 1: Import Klasifikasi
+        for k_data in data.get('klasifikasi', []):
+            max_k += 1
+            try:
+                k_obj = Klasifikasi.objects.create(
+                    project=project,
+                    name=k_data.get('name', f'Klasifikasi {max_k}'),
+                    ordering_index=max_k
+                )
+                klas_map[k_data.get('_export_id')] = k_obj.id
+                stats['klasifikasi'] += 1
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat klasifikasi: {e}")
+        
+        # Pass 2: Import SubKlasifikasi
+        for s_data in data.get('sub_klasifikasi', []):
+            klas_id = klas_map.get(s_data.get('_klasifikasi_ref'))
+            if not klas_id:
+                errors.append(f"Sub '{s_data.get('name')}' skip: klasifikasi tidak ditemukan")
+                continue
+            try:
+                s_obj = SubKlasifikasi.objects.create(
+                    project=project,
+                    klasifikasi_id=klas_id,
+                    name=s_data.get('name', 'Sub'),
+                    ordering_index=s_data.get('ordering_index', 1)
+                )
+                sub_map[s_data.get('_export_id')] = s_obj.id
+                stats['sub'] += 1
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat sub: {e}")
+        
+        # Pass 3: Import Pekerjaan
+        for p_data in data.get('pekerjaan', []):
+            max_p += 1
+            sub_id = sub_map.get(p_data.get('_sub_klasifikasi_ref'))
+            if not sub_id:
+                errors.append(f"Pekerjaan skip: sub tidak ditemukan")
+                continue
+            
+            src_str = p_data.get('source_type', 'custom')
+            src = {
+                'ref': Pekerjaan.SOURCE_REF,
+                'ref_modified': Pekerjaan.SOURCE_REF_MOD,
+                'custom': Pekerjaan.SOURCE_CUSTOM,
+            }.get(src_str, Pekerjaan.SOURCE_CUSTOM)
+            
+            ref_obj = None
+            ref_id = p_data.get('ref_id')
+            if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and ref_id:
+                try:
+                    ref_obj = AHSPReferensi.objects.get(id=ref_id)
+                except AHSPReferensi.DoesNotExist:
+                    src = Pekerjaan.SOURCE_CUSTOM
+            
+            kode = p_data.get('snapshot_kode') or ''
+            if src == Pekerjaan.SOURCE_CUSTOM and not kode:
+                kode = generate_custom_code(project)
+            
+            try:
+                pkj = Pekerjaan.objects.create(
+                    project=project,
+                    sub_klasifikasi_id=sub_id,
+                    source_type=src,
+                    ref=ref_obj,
+                    snapshot_kode=kode,
+                    snapshot_uraian=p_data.get('snapshot_uraian', ''),
+                    snapshot_satuan=p_data.get('snapshot_satuan', ''),
+                    ordering_index=max_p
+                )
+                pkj_map[p_data.get('_export_id')] = pkj.id
+                pkj_snapshot_map[kode] = pkj.id
+                stats['pekerjaan'] += 1
+                
+                # Auto-expand bundle for REF types (if no custom detail_ahsp provided)
+                if ref_obj and src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
+                    try:
+                        expand_bundle_to_components(pkj)
+                    except Exception:
+                        pass
+                        
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat pekerjaan: {e}")
+        
+        # Pass 4: Import DetailAHSPProject (for custom/ref_modified)
+        for d_data in data.get('detail_ahsp', []):
+            pkj_id = pkj_map.get(d_data.get('_pekerjaan_ref'))
+            if not pkj_id:
+                continue  # Skip if pekerjaan wasn't created
+            
+            # Get or create HargaItem
+            harga_kode = d_data.get('harga_item_kode') or d_data.get('kode')
+            if not harga_kode:
+                continue
+            
+            try:
+                harga_item, _ = HargaItemProject.objects.get_or_create(
+                    project=project,
+                    kode_item=harga_kode,
+                    defaults={
+                        'uraian': d_data.get('uraian', ''),
+                        'satuan': d_data.get('satuan', ''),
+                        'kategori': d_data.get('kategori', 'LAIN'),
+                        'harga_satuan': Decimal('0'),  # Price not imported in template mode
+                    }
+                )
+                
+                # Handle bundle references for LAIN category
+                ref_pekerjaan = None
+                ref_ahsp = None
+                
+                if d_data.get('kategori') == 'LAIN':
+                    bundle_type = d_data.get('bundle_type')
+                    if bundle_type == 'pekerjaan':
+                        ref_kode = d_data.get('bundle_ref_snapshot_kode')
+                        if ref_kode and ref_kode in pkj_snapshot_map:
+                            ref_pekerjaan = Pekerjaan.objects.filter(id=pkj_snapshot_map[ref_kode]).first()
+                    elif bundle_type == 'ahsp':
+                        ref_ahsp_id = d_data.get('bundle_ref_ahsp_id')
+                        if ref_ahsp_id:
+                            try:
+                                ref_ahsp = AHSPReferensi.objects.get(id=ref_ahsp_id)
+                            except AHSPReferensi.DoesNotExist:
+                                pass
+                
+                # Create DetailAHSP
+                DetailAHSPProject.objects.create(
+                    project=project,
+                    pekerjaan_id=pkj_id,
+                    harga_item=harga_item,
+                    kategori=d_data.get('kategori', 'LAIN'),
+                    kode=d_data.get('kode', ''),
+                    uraian=d_data.get('uraian', ''),
+                    satuan=d_data.get('satuan', ''),
+                    koefisien=Decimal(d_data.get('koefisien', '0')),
+                    ref_ahsp=ref_ahsp,
+                    ref_pekerjaan=ref_pekerjaan,
+                )
+                stats['detail'] += 1
+                
+            except Exception as e:
+                errors.append(f"Gagal import detail: {e}")
+    
+    else:
+        # ========== Legacy Format (nested) ==========
+        # For backward compatibility with old templates
+        
+        klasifikasi_list = data.get('klasifikasi', [])
+        k_counter = max_k
+        p_counter = max_p
+        
+        for k_data in klasifikasi_list:
+            k_counter += 1
+            k_name = (k_data.get('name') or f"Klasifikasi {k_counter}").strip()
+            
+            try:
+                k_obj = Klasifikasi.objects.create(
+                    project=project,
+                    name=k_name,
+                    ordering_index=k_counter
+                )
+                stats['klasifikasi'] += 1
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat klasifikasi '{k_name}': {e}")
+                continue
+            
+            for si, s_data in enumerate(k_data.get('sub', [])):
+                s_name = (s_data.get('name') or f"{k_counter}.{si+1}").strip()
+                
+                try:
+                    s_obj = SubKlasifikasi.objects.create(
+                        project=project,
+                        klasifikasi=k_obj,
+                        name=s_name,
+                        ordering_index=s_data.get('ordering_index', si + 1)
+                    )
+                    stats['sub'] += 1
+                except IntegrityError as e:
+                    errors.append(f"Gagal membuat sub '{s_name}': {e}")
+                    continue
+                
+                for p_data in s_data.get('pekerjaan', []):
+                    p_counter += 1
+                    src_str = p_data.get('source_type', 'custom')
+                    src = {
+                        'ref': Pekerjaan.SOURCE_REF,
+                        'ref_modified': Pekerjaan.SOURCE_REF_MOD,
+                        'custom': Pekerjaan.SOURCE_CUSTOM,
+                    }.get(src_str, Pekerjaan.SOURCE_CUSTOM)
+                    
+                    ref_obj = None
+                    ref_id = p_data.get('ref_ahsp_id') or p_data.get('ref_id')
+                    if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and ref_id:
+                        try:
+                            ref_obj = AHSPReferensi.objects.get(id=ref_id)
+                        except AHSPReferensi.DoesNotExist:
+                            src = Pekerjaan.SOURCE_CUSTOM
+                    
+                    kode = p_data.get('snapshot_kode') or ''
+                    if src == Pekerjaan.SOURCE_CUSTOM and not kode:
+                        kode = generate_custom_code(project)
+                    
+                    try:
+                        pkj = Pekerjaan.objects.create(
+                            project=project,
+                            sub_klasifikasi=s_obj,
+                            source_type=src,
+                            ref=ref_obj,
+                            snapshot_kode=kode,
+                            snapshot_uraian=p_data.get('snapshot_uraian', ''),
+                            snapshot_satuan=p_data.get('snapshot_satuan', ''),
+                            ordering_index=p_counter
+                        )
+                        stats['pekerjaan'] += 1
+                        
+                        if ref_obj and src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
+                            try:
+                                expand_bundle_to_components(pkj)
+                            except Exception:
+                                pass
+                                
+                    except IntegrityError as e:
+                        errors.append(f"Gagal membuat pekerjaan: {e}")
+    
+    return stats, errors
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_import_template(request: HttpRequest, project_id: int, template_id: int):
+    """
+    Import template into project's List Pekerjaan.
+    
+    Uses unified _import_template_data helper.
+    Adds Klasifikasi/Sub/Pekerjaan/DetailAHSP from template to existing data (no overwrite).
+    Increments template's usage count.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        template = PekerjaanTemplate.objects.get(id=template_id)
+    except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+    
+    content = template.content
+    if not content or not isinstance(content, dict):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak memiliki konten yang valid'
+        }, status=400)
+    
+    # Check for pekerjaan data (new format) or klasifikasi (legacy format)
+    has_pekerjaan = content.get('pekerjaan') or content.get('klasifikasi')
+    if not has_pekerjaan:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak memiliki data pekerjaan'
+        }, status=400)
+    
+    # Use unified import helper
+    stats, errors = _import_template_data(project, content, user=request.user)
+    
+    # Increment usage count
+    template.increment_usage()
+    
+    # Invalidate cache
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+    
+    response_data = {
+        'ok': True,
+        'message': f'Template "{template.name}" berhasil diimport',
+        'stats': stats
+    }
+    
+    if errors:
+        response_data['warnings'] = errors
+    
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_import_template_from_file(request: HttpRequest, project_id: int):
+    """
+    Import template content directly from JSON file upload.
+    
+    Payload:
+    {
+        "content": { ... template JSON content ... }
+    }
+    
+    Uses unified _import_template_data helper.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Payload JSON tidak valid'
+        }, status=400)
+    
+    content = payload.get('content')
+    if not content or not isinstance(content, dict):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Content template tidak valid'
+        }, status=400)
+    
+    # Check for data
+    has_data = content.get('pekerjaan') or content.get('klasifikasi')
+    if not has_data:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak memiliki data pekerjaan'
+        }, status=400)
+    
+    # Use unified import helper
+    stats, errors = _import_template_data(project, content, user=request.user)
+    
+    # Invalidate cache
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+    
+    response_data = {
+        'ok': True,
+        'message': f'Import dari file berhasil!',
+        'stats': stats
+    }
+    
+    if errors:
+        response_data['warnings'] = errors
+    
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_GET
+def export_template_json(request: HttpRequest, project_id: int):
+    """
+    Export current project's List Pekerjaan as template JSON file.
+    
+    Uses unified _build_export_data helper with 'template' mode.
+    Returns downloadable JSON file.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    template_name = request.GET.get('name', f'Template dari {project.nama}')
+    template_desc = request.GET.get('description', '')
+    template_cat = request.GET.get('category', 'lainnya')
+    
+    template_meta = {
+        "name": template_name,
+        "description": template_desc,
+        "category": template_cat,
+        "source_project": project.nama,
+    }
+    
+    export_data = _build_export_data(project, mode='template', template_meta=template_meta)
+    
+    if not export_data.get('pekerjaan'):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Project tidak memiliki data pekerjaan untuk di-export'
+        }, status=400)
+    
+    response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
+    filename = f"template_{project.nama.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+

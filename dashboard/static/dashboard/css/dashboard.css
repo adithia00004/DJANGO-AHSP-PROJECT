@@ -168,6 +168,43 @@ table .dp-thead-sticky th {
   border-radius: var(--dp-radius-md);
 }
 
+/* Highlighted action button (Download Template) */
+.btn-download-template {
+  background: linear-gradient(135deg, #ffb703 0%, #fb8500 100%);
+  border: 1px solid #fb8500;
+  color: #1f2937;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(251, 133, 0, 0.25);
+}
+
+.btn-download-template:hover,
+.btn-download-template:focus {
+  background: linear-gradient(135deg, #ffd166 0%, #f77f00 100%);
+  border-color: #f77f00;
+  color: #1f2937;
+  box-shadow: 0 8px 20px rgba(251, 133, 0, 0.35);
+}
+
+.btn-download-template:focus-visible {
+  outline: 2px solid rgba(255, 183, 3, 0.6);
+  outline-offset: 2px;
+}
+
+:root[data-bs-theme="dark"] .btn-download-template {
+  background: linear-gradient(135deg, #ffd166 0%, #fcbf49 100%);
+  border-color: #fcbf49;
+  color: #111827;
+  box-shadow: 0 6px 18px rgba(255, 209, 102, 0.25);
+}
+
+:root[data-bs-theme="dark"] .btn-download-template:hover,
+:root[data-bs-theme="dark"] .btn-download-template:focus {
+  background: linear-gradient(135deg, #ffe08a 0%, #ffca6b 100%);
+  border-color: #ffca6b;
+  color: #111827;
+  box-shadow: 0 8px 22px rgba(255, 209, 102, 0.35);
+}
+
 /* ===== Project list table (rounded, single-border) ===== */
 .dashboard-table-wrapper {
   border: 2px solid var(--dp-c-border, #e5e7eb);
@@ -455,6 +492,16 @@ table .dp-thead-sticky th {
 
 .dashboard-project-table td .btn i {
   font-size: 0.875rem;
+}
+
+/* Action icons: compact, centered */
+.project-action-icons .btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Tooltip improvements */
@@ -1606,7 +1653,7 @@ table .dp-thead-sticky th {
 
 /* Chart Cards */
 .chart-card {
-  background: white;
+  background: var(--dp-c-surface, #fff);
   border-radius: 8px;
   border: 1px solid var(--dp-c-border, #dee2e6);
   overflow: hidden;
@@ -1622,15 +1669,29 @@ table .dp-thead-sticky th {
 }
 
 /* Chart Card Header */
+:root {
+  --dash-chart-header-bg: #e9ecef;
+  --dash-chart-header-text: var(--dp-c-text, #212529);
+  --dash-chart-header-muted: var(--dp-c-muted, #6c757d);
+}
+
+:root[data-bs-theme="dark"] {
+  --dash-chart-header-bg: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
+  --dash-chart-header-text: var(--dp-c-text, #e2e8f0);
+  --dash-chart-header-muted: var(--dp-c-muted, #94a3b8);
+}
+
 .chart-card-header {
   padding: 0.75rem 1rem;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: var(--dash-chart-header-bg);
   border-bottom: 2px solid var(--dp-c-border, #dee2e6);
+  color: var(--dash-chart-header-text);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
 }
+
 
 .chart-title {
   display: flex;
@@ -1638,7 +1699,7 @@ table .dp-thead-sticky th {
   gap: 0.5rem;
   font-weight: 600;
   font-size: 0.9rem;
-  color: var(--dp-c-text-primary, #212529);
+  color: var(--dash-chart-header-text, var(--dp-c-text, #212529));
 }
 
 .chart-title i {
@@ -1648,6 +1709,11 @@ table .dp-thead-sticky th {
 .chart-summary {
   font-size: 0.75rem;
   white-space: nowrap;
+  color: var(--dp-c-muted, #6c757d);
+}
+
+.chart-summary .text-muted {
+  color: var(--dash-chart-header-muted, var(--dp-c-muted, #6c757d)) !important;
 }
 
 /* Chart Card Body */
@@ -1671,7 +1737,7 @@ table .dp-thead-sticky th {
 }
 
 .insight-box {
-  background: white;
+  background: var(--dp-c-surface, #fff);
   border-radius: 8px;
   padding: 0.75rem;
   border: 1px solid var(--dp-c-border, #dee2e6);
@@ -1708,7 +1774,7 @@ table .dp-thead-sticky th {
   text-transform: uppercase;
   font-weight: 600;
   letter-spacing: 0.5px;
-  color: var(--dp-c-text-secondary, #6c757d);
+  color: var(--dp-c-muted, #6c757d);
   margin-bottom: 0.25rem;
   line-height: 1.2;
 }
@@ -1716,7 +1782,7 @@ table .dp-thead-sticky th {
 .insight-value {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--dp-c-text-primary, #212529);
+  color: var(--dp-c-text, #212529);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1794,22 +1860,41 @@ table .dp-thead-sticky th {
 }
 
 /* Dark Mode Support */
+:root[data-bs-theme="dark"] .enhanced-charts-panel {
+  background: var(--dp-c-surface-1, #1a1a1a);
+}
+
+:root[data-bs-theme="dark"] .chart-card {
+  background: var(--dp-c-surface, #2d2d2d);
+  border-color: var(--dp-c-border, #404040);
+}
+
+:root[data-bs-theme="dark"] .chart-card-header {
+  background: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
+  border-color: var(--dp-c-border, #404040);
+}
+
+:root[data-bs-theme="dark"] .insight-box {
+  background: var(--dp-c-surface, #2d2d2d);
+  border-color: var(--dp-c-border, #404040);
+}
+
 @media (prefers-color-scheme: dark) {
-  .enhanced-charts-panel {
+  :root:not([data-bs-theme]) .enhanced-charts-panel {
     background: var(--dp-c-surface-1, #1a1a1a);
   }
 
-  .chart-card {
+  :root:not([data-bs-theme]) .chart-card {
     background: var(--dp-c-surface, #2d2d2d);
     border-color: var(--dp-c-border, #404040);
   }
 
-  .chart-card-header {
+  :root:not([data-bs-theme]) .chart-card-header {
     background: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
     border-color: var(--dp-c-border, #404040);
   }
 
-  .insight-box {
+  :root:not([data-bs-theme]) .insight-box {
     background: var(--dp-c-surface, #2d2d2d);
     border-color: var(--dp-c-border, #404040);
   }

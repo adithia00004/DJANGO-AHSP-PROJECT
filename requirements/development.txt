@@ -41,3 +41,6 @@ django-stubs==5.1.1  # Django type stubs
 # Performance Profiling
 django-silk==5.1.0  # SQL profiling
 memory-profiler==0.61.0  # Memory profiling
+
+# Load Testing
+locust==2.32.6  # Load testing framework

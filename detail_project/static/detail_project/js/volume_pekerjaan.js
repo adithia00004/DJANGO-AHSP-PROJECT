@@ -41,6 +41,7 @@
   // Autosave timer & guard
   let autosaveTimer = null;
   let saving = false;
+  let allowUnload = false;
 
   // Undo stack (batch autosave/simpan terakhir)
   const undoStack = []; // item: { ts, changes:[{id,before,after}] }
@@ -122,7 +123,24 @@
   try { if (window.bootstrap && toastEl) toastRef = new bootstrap.Toast(toastEl, { delay: 1600 }); } catch { }
 
   function showToast(message, variant) {
-    if (!toastEl || !toastBody || !toastRef) { if (message) alert(message); return; }
+    if (!toastEl || !toastBody || !toastRef) {
+      if (!message) return;
+      const type = variant === 'danger' ? 'error' : (variant || 'info');
+      if (window.DP && DP.toast && DP.toast.show) {
+        DP.toast.show(message, type);
+        return;
+      }
+      if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) {
+        DP.core.toast.show(message, type);
+        return;
+      }
+      if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+        return;
+      }
+      console.warn('[VP] Toast:', message);
+      return;
+    }
     toastEl.classList.remove('text-bg-success', 'text-bg-danger', 'text-bg-warning');
     toastEl.classList.add(variant === 'danger' ? 'text-bg-danger' : variant === 'warning' ? 'text-bg-warning' : 'text-bg-success');
     toastBody.textContent = message || 'OK';
@@ -206,6 +224,22 @@
       action(msg, actions) { showActionToast(msg, actions); }
     };
   })();
+
+  function getModalApi() {
+    return (window.DP && DP.core && DP.core.modal) ? DP.core.modal : null;
+  }
+  function confirmModal(message, options = {}) {
+    const modalApi = getModalApi();
+    if (modalApi && modalApi.confirm) return modalApi.confirm(message, options);
+    if (window.DP && DP.toast) DP.toast.warning('Konfirmasi tidak tersedia.');
+    return Promise.resolve(false);
+  }
+  function alertModal(message, options = {}) {
+    const modalApi = getModalApi();
+    if (modalApi && modalApi.alert) return modalApi.alert(message, options);
+    if (window.DP && DP.toast) DP.toast.info(message);
+    return Promise.resolve(true);
+  }
 
   const sourceChange = window.DP?.sourceChange || null;
   const bannerEl = document.getElementById('vp-sync-banner');
@@ -1117,9 +1151,18 @@
     const tbody = varTable.querySelector('tbody');
     tbody.innerHTML = '';
     const codes = Object.keys(variables);
+
+    // Update count display
+    const countEl = document.getElementById('vp-param-count');
+    if (countEl) countEl.textContent = codes.length;
+
     if (codes.length === 0) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="3" class="text-muted">Belum ada parameter.</td>`;
+      tr.innerHTML = `<td colspan="3" class="text-muted text-center py-4">
+        <i class="bi bi-box-seam d-block mb-2" style="font-size: 2rem; opacity: 0.5;"></i>
+        Belum ada parameter.<br>
+        <small class="text-muted">Klik "Tambah" untuk membuat parameter baru.</small>
+      </td>`;
       tbody.appendChild(tr);
       return;
     }
@@ -1203,9 +1246,15 @@
           }
         });
       }
-      tr.querySelector('.var-del').addEventListener('click', () => {
+      tr.querySelector('.var-del').addEventListener('click', async () => {
         const nm = varLabels[code] || code;
-        if (!confirm(`Hapus parameter "${nm}" (kode: ${code})?`)) return;
+        const ok = await confirmModal(`Hapus parameter "${nm}" (kode: ${code})?`, {
+          title: 'Hapus Parameter',
+          confirmText: 'Hapus',
+          cancelText: 'Batal',
+          confirmClass: 'btn btn-danger',
+        });
+        if (!ok) return;
         delete variables[code];
         delete varLabels[code];
         saveVars();
@@ -1511,15 +1560,22 @@
         throw new Error('format');
       }
       if (parsed.errors && parsed.errors.length) {
-        alert('Beberapa baris diabaikan:\n' + parsed.errors.slice(0, 10).join('\n') + (parsed.errors.length > 10 ? '\n…' : ''));
+        const errText = 'Beberapa baris diabaikan:\n'
+          + parsed.errors.slice(0, 10).join('\n')
+          + (parsed.errors.length > 10 ? '\n...' : '');
+        await alertModal(errText, { title: 'Import Parameter' });
       }
       const nextVars = parsed.vars, nextLabels = parsed.labels;
       const existingCodes = new Set(Object.keys(variables));
       const codes = Object.keys(nextVars);
       const adds = codes.filter(c => !existingCodes.has(c)).length;
       const updates = codes.filter(c => existingCodes.has(c)).length;
-      const summary = `Ditemukan ${codes.length} parameter.\nTambah: ${adds}\nPerbarui: ${updates}.\nOK = Merge, Cancel = Replace`;
-      const doMerge = window.confirm(summary);
+      const summary = `Ditemukan ${codes.length} parameter.\nTambah: ${adds}\nPerbarui: ${updates}.\nPilih Merge untuk gabungkan atau Replace untuk mengganti.`;
+      const doMerge = await confirmModal(summary, {
+        title: 'Konfirmasi Import',
+        confirmText: 'Merge',
+        cancelText: 'Replace',
+      });
       if (doMerge) {
         variables = { ...variables, ...nextVars };
         varLabels = { ...varLabels, ...nextLabels };
@@ -1915,15 +1971,61 @@
     }
   });
 
+  function doSafeReload() {
+    allowUnload = true;
+    window.location.reload();
+  }
+
+  async function confirmReload(reason) {
+    if (!window.__vpDirty) {
+      doSafeReload();
+      return true;
+    }
+    const modalApi = getModalApi();
+    if (!modalApi || !modalApi.confirm) return false;
+    const message = reason
+      ? `${reason}\n\nPerubahan volume yang belum disimpan akan hilang jika Anda melanjutkan.`
+      : 'Perubahan volume yang belum disimpan akan hilang jika Anda melanjutkan reload halaman.';
+    const ok = await modalApi.confirm(message, {
+      title: 'Konfirmasi Reload',
+      confirmText: 'Reload',
+      cancelText: 'Batal',
+      confirmClass: 'btn btn-danger',
+    });
+    if (ok) {
+      doSafeReload();
+    }
+    return ok;
+  }
+
   // Guard before unload
   window.addEventListener('beforeunload', (e) => {
-    if (window.__vpDirty) { e.preventDefault(); e.returnValue = ''; return ''; }
+    if (window.__vpDirty && !allowUnload) { e.preventDefault(); e.returnValue = ''; return ''; }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!window.__vpDirty) return;
+    const key = String(e.key || '').toLowerCase();
+    const isReload = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && key === 'r');
+    if (!isReload) return;
+    const modalApi = getModalApi();
+    if (!modalApi || !modalApi.confirm) return;
+    e.preventDefault();
+    confirmReload('Anda akan memuat ulang halaman.');
   });
 
   // ===== Storage helpers
   function storageKeyVars() { return `volvars:${projectId}`; }
   function storageKeyVarLabels() { return `volvars_labels:${projectId}`; }
   function storageKeyForms() { return `volform:${projectId}`; }
+
+  // API endpoints for parameter sync
+  const EP_PARAMS = `/detail_project/api/project/${projectId}/parameters/`;
+  const EP_PARAMS_SYNC = `/detail_project/api/project/${projectId}/parameters/sync/`;
+
+  // Debounce timer for server sync
+  let paramSyncTimer = null;
+  const PARAM_SYNC_DELAY = 2000; // 2 seconds debounce
 
   function loadVars() {
     try {
@@ -1932,7 +2034,14 @@
       if (typeof variables !== 'object' || !variables) variables = {};
     } catch { variables = {}; }
   }
-  function saveVars() { localStorage.setItem(storageKeyVars(), JSON.stringify(variables)); }
+
+  function saveVars() {
+    // Save to localStorage immediately
+    localStorage.setItem(storageKeyVars(), JSON.stringify(variables));
+    // Debounced sync to server
+    scheduleServerSync();
+  }
+
   function loadVarLabels() {
     try {
       const raw = localStorage.getItem(storageKeyVarLabels());
@@ -1940,7 +2049,111 @@
       if (!varLabels || typeof varLabels !== 'object') varLabels = {};
     } catch { varLabels = {}; }
   }
-  function saveVarLabels() { localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels)); }
+
+  function saveVarLabels() {
+    // Save to localStorage immediately
+    localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels));
+    // Debounced sync to server
+    scheduleServerSync();
+  }
+
+  // Schedule a debounced sync to server
+  function scheduleServerSync() {
+    if (paramSyncTimer) clearTimeout(paramSyncTimer);
+    paramSyncTimer = setTimeout(() => {
+      syncParamsToServer();
+    }, PARAM_SYNC_DELAY);
+  }
+
+  // Sync current parameters to server
+  async function syncParamsToServer() {
+    try {
+      // Build parameters object with values and labels
+      const params = {};
+      for (const code of Object.keys(variables)) {
+        params[code] = {
+          value: variables[code],
+          label: varLabels[code] || code,
+        };
+      }
+
+      const res = await HTTP.jpost(EP_PARAMS_SYNC, {
+        parameters: params,
+        mode: 'merge'
+      });
+
+      if (res.ok && res.data?.ok) {
+        console.log('[VP] Params synced to server:', res.data);
+        // Show subtle sync indicator
+        showParamSyncStatus('synced');
+      } else {
+        console.warn('[VP] Param sync failed:', res);
+        showParamSyncStatus('error');
+      }
+    } catch (err) {
+      console.error('[VP] Param sync error:', err);
+      showParamSyncStatus('error');
+    }
+  }
+
+  // Load parameters from server and merge with localStorage
+  async function loadParamsFromServer() {
+    try {
+      const data = await HTTP.jget(EP_PARAMS);
+      if (data?.ok && Array.isArray(data.parameters)) {
+        // Merge server params with localStorage
+        const serverParams = {};
+        const serverLabels = {};
+
+        for (const p of data.parameters) {
+          serverParams[p.name] = Number(p.value) || 0;
+          serverLabels[p.name] = p.label || p.name;
+        }
+
+        // Server is authoritative - override localStorage
+        variables = { ...variables, ...serverParams };
+        varLabels = { ...varLabels, ...serverLabels };
+
+        // Save merged state to localStorage
+        localStorage.setItem(storageKeyVars(), JSON.stringify(variables));
+        localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels));
+
+        console.log('[VP] Loaded params from server:', Object.keys(serverParams).length);
+        renderVarTable();
+        reevaluateAllFormulas();
+        showParamSyncStatus('synced');
+      }
+    } catch (err) {
+      console.warn('[VP] Failed to load params from server, using localStorage:', err);
+    }
+  }
+
+  // Show sync status in sidebar
+  function showParamSyncStatus(status) {
+    const indicator = document.getElementById('vp-param-sync-status');
+    if (!indicator) return;
+
+    indicator.classList.remove('sync-pending', 'sync-synced', 'sync-error');
+
+    if (status === 'pending') {
+      indicator.classList.add('sync-pending');
+      indicator.title = 'Menyimpan...';
+      indicator.innerHTML = '<i class="bi bi-cloud-arrow-up"></i>';
+    } else if (status === 'synced') {
+      indicator.classList.add('sync-synced');
+      indicator.title = 'Tersimpan';
+      indicator.innerHTML = '<i class="bi bi-cloud-check"></i>';
+      // Fade out after 2 seconds
+      setTimeout(() => {
+        indicator.classList.remove('sync-synced');
+        indicator.innerHTML = '';
+      }, 2000);
+    } else if (status === 'error') {
+      indicator.classList.add('sync-error');
+      indicator.title = 'Gagal menyimpan ke server';
+      indicator.innerHTML = '<i class="bi bi-cloud-slash"></i>';
+    }
+  }
 
   function loadFormulas() {
     try {
@@ -1958,6 +2171,9 @@
   Object.keys(variables).forEach(code => { if (!varLabels[code]) varLabels[code] = code; });
   saveVarLabels();
   renderVarTable();
+
+  // Load from server (async - will merge with localStorage and re-render)
+  loadParamsFromServer();
 
   // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
   rows.forEach(tr => bindRow(tr));
