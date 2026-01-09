@@ -46,17 +46,32 @@ THRESHOLDS = {
     "page_jadwal_pekerjaan": 1500,
     "page_template_ahsp": 1000,
     "page_rekap_rab": 800,
+    "page_volume_pekerjaan": 600,
+    "page_harga_items": 600,
     
-    # API endpoints
+    # API endpoints - Critical
     "api_list_pekerjaan_tree": 300,
     "api_rekap": 500,
     "api_chart_data": 400,
     "api_harga_items_list": 300,
     "api_rekap_kebutuhan": 400,
     
+    # API endpoints - v2.2 New
+    "api_template_export": 1000,  # Template export can be heavy
+    "api_parameters_list": 200,
+    "api_volume_formula_state": 300,
+    "api_detail_ahsp": 200,
+    
+    # API endpoints - Mutations
+    "api_volume_save": 500,
+    "api_parameters_sync": 400,
+    "api_formula_save": 400,
+    
     # Export operations (allow longer times)
     "export_rekap_rab_pdf": 5000,
     "export_rekap_rab_xlsx": 3000,
+    "export_jadwal_pdf": 8000,
+    "export_harga_items_csv": 1000,
 }
 
 # Test project ID (configure based on your test data)

@@ -79,7 +79,7 @@ if SILK_ENABLED:
     )
     
     # Silk Configuration
-    SILKY_PYTHON_PROFILER = True  # Enable Python profiling
+    SILKY_PYTHON_PROFILER = False  # Disabled to prevent profiler conflicts
     SILKY_PYTHON_PROFILER_BINARY = True  # Binary profiling format
     SILKY_PYTHON_PROFILER_RESULT_PATH = BASE_DIR / "logs" / "silk_profiles"
     

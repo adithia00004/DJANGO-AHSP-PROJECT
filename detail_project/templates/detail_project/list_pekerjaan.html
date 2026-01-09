@@ -31,13 +31,6 @@
 
     {# Left Section: Primary Actions #}
     <div class="d-flex align-items-center gap-2">
-      <button class="btn btn-sm btn-outline-secondary dp-btn lp-btn btn-sidebar-toggle" data-toggle="side-right"
-        type="button" role="button" aria-haspopup="dialog" aria-controls="lp-sidebar" aria-expanded="false"
-        title="{% trans 'Buka navigasi' %}">
-        <i class="bi bi-list" aria-hidden="true"></i>
-        <span class="d-none d-sm-inline">{% trans "Navigasi" %}</span>
-      </button>
-
       <button id="btn-add-klas" class="btn btn-sm btn-primary dp-btn lp-btn" type="button"
         title="{% trans 'Tambah Klasifikasi' %}">
         <i class="bi bi-plus-circle" aria-hidden="true"></i>
@@ -97,14 +90,6 @@
         </ul>
       </div>
 
-      {# Export JSON button (legacy) #}
-      <a id="btn-export-json" class="btn btn-sm btn-outline-secondary dp-btn lp-btn"
-        href="{% url 'detail_project:export_list_pekerjaan_json' project.id %}"
-        title="{% trans 'Export Data (Legacy)' %}" download>
-        <i class="bi bi-filetype-json" aria-hidden="true"></i>
-        <span class="d-none d-lg-inline">{% trans "Export Data" %}</span>
-      </a>
-
       {# Info tooltip about drag-and-drop impact #}
       <button type="button" class="btn btn-sm btn-outline-info dp-btn lp-btn" data-bs-toggle="tooltip"
         data-bs-placement="bottom" data-bs-html="true"
@@ -140,10 +125,9 @@
     {# Hotspot kanan untuk membuka Overlay Nav saat hover di tepi kanan #}
     <div class="lp-overlay-hotspot" aria-hidden="true"></div>
 
-    <!-- Sidebar Overlay (Template Library) -->
-    <aside id="lp-sidebar" class="dp-sidebar dp-z-sidebar" role="dialog" aria-modal="true"
-      aria-label="{% trans 'Template Pekerjaan' %}" aria-hidden="true" data-side="right" data-hoverclose="1"
-      data-resize-sense="east">
+    <!-- Sidebar Overlay (Template Library) - Positioned on RIGHT -->
+    <aside id="lp-sidebar" class="dp-z-sidebar" role="dialog" aria-modal="true"
+      aria-label="{% trans 'Template Pekerjaan' %}" aria-hidden="true">
       <div class="lp-sidebar-inner dp-surface dp-border">
         <!-- Header -->
         <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2">

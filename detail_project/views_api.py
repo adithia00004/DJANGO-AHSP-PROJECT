@@ -35,7 +35,7 @@ from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     DetailAHSPProject, DetailAHSPExpanded, DetailAHSPAudit,
     HargaItemProject, ItemConversionProfile, VolumeFormulaState, ProjectPricing,  # Added ItemConversionProfile
-    ProjectChangeStatus,
+    ProjectChangeStatus, ProjectParameter,  # Added ProjectParameter for template import
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
@@ -6594,10 +6594,34 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
             }
     
     else:
-        # Template mode - hierarchy + DetailAHSP only
+        # Template mode - hierarchy + DetailAHSP + Parameters
+        
+        # Export ProjectParameter for template (reusable across projects)
+        parameter_list = []
+        for pp in ProjectParameter.objects.filter(project=project):
+            parameter_list.append({
+                "name": pp.name,
+                "value": str(pp.value),
+                "label": pp.label or "",
+                "unit": pp.unit or "",
+                "description": pp.description or "",
+            })
+        
+        # Export VolumeFormulaState for template (reusable formulas)
+        formula_list = []
+        for vf in VolumeFormulaState.objects.filter(project=project):
+            # Only export if pekerjaan was exported
+            pkj_ref = pekerjaan_map.get(vf.pekerjaan_id)
+            if pkj_ref:
+                formula_list.append({
+                    "_pekerjaan_ref": pkj_ref,
+                    "raw": vf.raw,
+                    "is_fx": vf.is_fx,
+                })
+        
         export_data = {
             "export_type": "project_template",
-            "export_version": "2.0",
+            "export_version": "2.2",  # Bumped version for formulas
             "export_date": timezone.now().isoformat(),
             "template_meta": template_meta or {
                 "name": f"Template dari {project.nama}",
@@ -6609,11 +6633,15 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
             "sub_klasifikasi": sub_list,
             "pekerjaan": pekerjaan_list,
             "detail_ahsp": detail_list,
+            "parameters": parameter_list,
+            "volume_formulas": formula_list,  # NEW v2.2: Volume formulas
             "stats": {
                 "total_klasifikasi": len(klasifikasi_list),
                 "total_sub": len(sub_list),
                 "total_pekerjaan": len(pekerjaan_list),
                 "total_detail": len(detail_list),
+                "total_parameters": len(parameter_list),
+                "total_formulas": len(formula_list),
             }
         }
     
@@ -7694,6 +7722,55 @@ def _import_template_data(project, data, user=None):
                     except IntegrityError as e:
                         errors.append(f"Gagal membuat pekerjaan: {e}")
     
+    # ========== Import Parameters (v2.1+) ==========
+    stats['parameters'] = 0
+    for param_data in data.get('parameters', []):
+        param_name = param_data.get('name', '').strip()
+        if not param_name:
+            continue
+        
+        try:
+            param, created = ProjectParameter.objects.update_or_create(
+                project=project,
+                name=param_name,
+                defaults={
+                    'value': Decimal(param_data.get('value', '0')),
+                    'label': param_data.get('label', ''),
+                    'unit': param_data.get('unit', ''),
+                    'description': param_data.get('description', ''),
+                }
+            )
+            if created:
+                stats['parameters'] += 1
+        except Exception as e:
+            errors.append(f"Gagal import parameter '{param_name}': {e}")
+    
+    # ========== Import Volume Formulas (v2.2+) ==========
+    stats['formulas'] = 0
+    for formula_data in data.get('volume_formulas', []):
+        pkj_ref = formula_data.get('_pekerjaan_ref')
+        pkj_id = pkj_map.get(pkj_ref)
+        if not pkj_id:
+            continue  # Skip if pekerjaan wasn't imported
+        
+        raw_formula = formula_data.get('raw', '')
+        if not raw_formula:
+            continue
+        
+        try:
+            formula, created = VolumeFormulaState.objects.update_or_create(
+                project=project,
+                pekerjaan_id=pkj_id,
+                defaults={
+                    'raw': raw_formula,
+                    'is_fx': formula_data.get('is_fx', False),
+                }
+            )
+            if created:
+                stats['formulas'] += 1
+        except Exception as e:
+            errors.append(f"Gagal import formula: {e}")
+    
     return stats, errors
 
 
@@ -7772,7 +7849,9 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
     
     try:
         payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
+        print(f"[IMPORT DEBUG] Received payload, content keys: {list(payload.keys())}")
+    except Exception as e:
+        print(f"[IMPORT ERROR] Failed to parse JSON: {e}")
         return JsonResponse({
             'ok': False,
             'message': 'Payload JSON tidak valid'
@@ -7780,21 +7859,43 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
     
     content = payload.get('content')
     if not content or not isinstance(content, dict):
+        print(f"[IMPORT ERROR] Invalid content: {type(content)}")
         return JsonResponse({
             'ok': False,
             'message': 'Content template tidak valid'
         }, status=400)
     
+    print(f"[IMPORT DEBUG] Content keys: {list(content.keys())}")
+    print(f"[IMPORT DEBUG] export_type: {content.get('export_type')}, version: {content.get('export_version')}")
+    print(f"[IMPORT DEBUG] klasifikasi: {len(content.get('klasifikasi', []))}, sub: {len(content.get('sub_klasifikasi', []))}")
+    print(f"[IMPORT DEBUG] pekerjaan: {len(content.get('pekerjaan', []))}, detail: {len(content.get('detail_ahsp', []))}")
+    print(f"[IMPORT DEBUG] parameters: {len(content.get('parameters', []))}")
+    
     # Check for data
     has_data = content.get('pekerjaan') or content.get('klasifikasi')
     if not has_data:
+        print(f"[IMPORT ERROR] No pekerjaan or klasifikasi found")
         return JsonResponse({
             'ok': False,
             'message': 'Template tidak memiliki data pekerjaan'
         }, status=400)
     
+    print(f"[IMPORT DEBUG] Starting import to project {project.id} ({project.nama})")
+    
     # Use unified import helper
-    stats, errors = _import_template_data(project, content, user=request.user)
+    try:
+        stats, errors = _import_template_data(project, content, user=request.user)
+        print(f"[IMPORT DEBUG] Import completed. Stats: {stats}")
+        if errors:
+            print(f"[IMPORT WARN] Errors during import: {errors}")
+    except Exception as e:
+        print(f"[IMPORT ERROR] Exception during _import_template_data: {e}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'ok': False,
+            'message': f'Error saat import: {str(e)}'
+        }, status=500)
     
     # Invalidate cache
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
@@ -7808,6 +7909,7 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
     if errors:
         response_data['warnings'] = errors
     
+    print(f"[IMPORT DEBUG] Returning success response: {response_data}")
     return JsonResponse(response_data)
 
 

@@ -207,6 +207,65 @@ class APIUser(HttpUser):
             f"/detail-project/api/v2/project/{project_id}/kurva-s-data/",
             name="/api/v2/project/[id]/kurva-s-data/"
         )
+    
+    @tag('api', 'template')
+    @task(3)
+    def api_template_export(self):
+        """Export project as template JSON - NEW v2.2"""
+        project_id = random.choice(self.project_ids)
+        with self.client.get(
+            f"/detail_project/api/project/{project_id}/templates/export/",
+            name="/api/project/[id]/templates/export/",
+            catch_response=True
+        ) as response:
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    if 'export_version' in data and 'pekerjaan' in data:
+                        response.success()
+                    else:
+                        response.failure("Missing expected fields in template")
+                except:
+                    response.failure("Invalid JSON response")
+            else:
+                response.failure(f"HTTP {response.status_code}")
+    
+    @tag('api', 'volume')
+    @task(4)
+    def api_volume_formula_state(self):
+        """Get volume formula state - reads formula engine data"""
+        project_id = random.choice(self.project_ids)
+        self.client.get(
+            f"/detail_project/api/project/{project_id}/volume/formula-state/",
+            name="/api/project/[id]/volume/formula-state/"
+        )
+    
+    @tag('api', 'parameters')
+    @task(2)
+    def api_parameters_list(self):
+        """Get project parameters list (NEW v2.2)"""
+        project_id = random.choice(self.project_ids)
+        self.client.get(
+            f"/detail_project/api/project/{project_id}/parameters/",
+            name="/api/project/[id]/parameters/"
+        )
+    
+    @tag('api', 'detail_ahsp')
+    @task(3)
+    def api_detail_ahsp(self):
+        """Get detail AHSP for a pekerjaan"""
+        project_id = random.choice(self.project_ids)
+        pekerjaan_id = random.randint(1, 100)
+        with self.client.get(
+            f"/detail_project/api/project/{project_id}/detail-ahsp/{pekerjaan_id}/",
+            name="/api/project/[id]/detail-ahsp/[pekerjaan_id]/",
+            catch_response=True
+        ) as response:
+            # Accept both 200 and 404 (pekerjaan might not exist)
+            if response.status_code in [200, 404]:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")
 
 
 class HeavyUser(HttpUser):
@@ -292,6 +351,90 @@ class HeavyUser(HttpUser):
         pass  # Disabled by default
 
 
+class MutationUser(HttpUser):
+    """
+    Simulates users making POST/PUT/DELETE mutations.
+    Tests concurrent writes and optimistic locking.
+    Represents 5% of expected traffic.
+    
+    WARNING: These tests WRITE data! Use dedicated test database.
+    """
+    weight = 1  # 5% of traffic (adjust based on HeavyUser weight)
+    wait_time = between(5, 15)  # Slower, more deliberate mutations
+    
+    # Toggle to actually perform mutations (default: disabled for safety)
+    MUTATIONS_ENABLED = False
+    
+    def on_start(self):
+        """Initialize mutation user with auth"""
+        self.project_ids = [144]  # Use single test project
+        # Authentication required for mutations
+        # TODO: Implement login flow
+        # self.client.post("/accounts/login/", {"username": "...", "password": "..."})
+    
+    @tag('mutation', 'volume')
+    @task(3)
+    def save_volume_pekerjaan(self):
+        """Save volume pekerjaan - tests optimistic locking"""
+        if not self.MUTATIONS_ENABLED:
+            return
+        
+        project_id = random.choice(self.project_ids)
+        pekerjaan_id = random.randint(1, 20)
+        volume = round(random.uniform(1, 100), 2)
+        
+        with self.client.post(
+            f"/detail_project/api/project/{project_id}/volume-pekerjaan/save/",
+            name="/api/project/[id]/volume-pekerjaan/save/",
+            json={"items": [{"pekerjaan_id": pekerjaan_id, "kuantitas": volume}]},
+            catch_response=True
+        ) as response:
+            if response.status_code in [200, 404]:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")
+    
+    @tag('mutation', 'parameters')
+    @task(2)
+    def sync_parameters(self):
+        """Sync project parameters - tests concurrent parameter updates"""
+        if not self.MUTATIONS_ENABLED:
+            return
+        
+        project_id = random.choice(self.project_ids)
+        
+        with self.client.post(
+            f"/detail_project/api/project/{project_id}/parameters/sync/",
+            name="/api/project/[id]/parameters/sync/",
+            json={"params": [{"name": f"test_param_{random.randint(1,10)}", "value": "10.5"}]},
+            catch_response=True
+        ) as response:
+            if response.status_code in [200, 400]:  # 400 might be validation error
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")
+    
+    @tag('mutation', 'formula')
+    @task(2)
+    def save_volume_formula(self):
+        """Save volume formula - tests formula persistence"""
+        if not self.MUTATIONS_ENABLED:
+            return
+        
+        project_id = random.choice(self.project_ids)
+        
+        with self.client.post(
+            f"/detail_project/api/project/{project_id}/volume/formula/",
+            name="/api/project/[id]/volume/formula/",
+            json={"items": [{"pekerjaan_id": 1, "raw": "=10*5", "is_fx": True}]},
+            catch_response=True
+        ) as response:
+            if response.status_code in [200, 404]:
+                response.success()
+            else:
+                response.failure(f"HTTP {response.status_code}")
+
+
 # ============================================================================
 # Custom Events and Hooks
 # ============================================================================
@@ -305,12 +448,16 @@ def on_test_start(environment, **kwargs):
     print("LOAD TEST STARTED")
     print("=" * 60)
     print("\nTarget: Detail Project Application")
-    print("User Classes: BrowsingUser (60%), APIUser (30%), HeavyUser (10%)")
-    print("\nCritical Endpoints Being Tested:")
-    print("  - /jadwal-pekerjaan/ (Gantt + Kurva S)")
-    print("  - /api/rekap/ (RAB aggregation)")
-    print("  - /api/chart-data/ (time-series)")
-    print("  - Export endpoints (PDF, Excel)")
+    print("User Classes:")
+    print("  - BrowsingUser (55%): Page browsing")
+    print("  - APIUser (27%): API calls")
+    print("  - HeavyUser (9%): Export operations")
+    print("  - MutationUser (9%): POST mutations (disabled by default)")
+    print("\nEndpoints Being Tested:")
+    print("  ⚡ Critical: /jadwal-pekerjaan/, /api/rekap/, /api/chart-data/")
+    print("  📦 Templates: /api/templates/export/ (v2.2)")
+    print("  📊 Volume: /api/volume/formula-state/, /api/parameters/")
+    print("  📑 Export: PDF, Excel, CSV")
     print("=" * 60)
 
 

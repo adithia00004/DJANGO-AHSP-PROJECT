@@ -2348,6 +2348,20 @@
     const btnImportFromFile = document.getElementById('btn-import-from-file');
     const importFileInput = document.getElementById('import-template-file');
 
+    // Helper to get CSRF token
+    const getCsrfToken = () => {
+      // Try from cookie first
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'csrftoken') return value;
+      }
+      // Fallback to meta tag or hidden input
+      return document.querySelector('meta[name="csrf-token"]')?.content
+        || document.querySelector('input[name="csrfmiddlewaretoken"]')?.value
+        || '';
+    };
+
     btnImportFromFile?.addEventListener('click', () => {
       importFileInput?.click();
     });
@@ -2381,6 +2395,10 @@
 
         btnImportFromFile.disabled = true;
         btnImportFromFile.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Importing...';
+
+        // Get CSRF token
+        const csrfToken = getCsrfToken();
+        console.log('[IMPORT] Using CSRF token:', csrfToken ? csrfToken.substring(0, 10) + '...' : 'EMPTY');
 
         // Use api_import_template endpoint by creating temporary template first
         // Or directly use import helper via POST
@@ -2450,41 +2468,82 @@
       importFileInput?.click();
     });
 
-    // Toolbar: Open sidebar - use global sidebar toggle
+    // Toolbar: Open Template Library sidebar (NOT the main navigation sidebar)
     document.querySelectorAll('[data-action="open-sidebar"]').forEach(btn => {
       btn.addEventListener('click', () => {
-        // Use DP.side from sidebar_global.js
-        if (typeof window.DP !== 'undefined' && DP.side) {
-          DP.side.open('right');
-          // Trigger template load
-          setTimeout(loadTemplates, 100);
+        // Directly open #lp-sidebar (Template Library) - NOT dp-sidebar
+        const sb = document.getElementById('lp-sidebar');
+        if (sb) {
+          sb.classList.add('is-open');
+          sb.style.display = 'block';
+          document.body.classList.add('lp-overlay-open');
+          loadTemplates();
+          console.log('[TEMPLATE] Template Library sidebar opened');
         } else {
-          console.warn('[TEMPLATE] DP.side not available, trying fallback');
-          // Fallback: directly toggle sidebar classes
-          const sb = document.getElementById('lp-sidebar');
-          if (sb) {
-            sb.classList.add('is-open');
-            document.documentElement.classList.add('lp-side-open');
-            loadTemplates();
-          }
+          console.warn('[TEMPLATE] #lp-sidebar not found');
         }
       });
     });
 
-    // Close sidebar
+    // Close Template Library sidebar
+    function closeLpSidebar() {
+      const sb = document.getElementById('lp-sidebar');
+      if (sb) {
+        sb.classList.remove('is-open', 'show');
+        sb.style.display = 'none';
+        document.body.classList.remove('lp-overlay-open');
+        console.log('[TEMPLATE] Template Library sidebar closed');
+      }
+    }
+
     document.querySelectorAll('[data-action="close-sidebar"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (typeof window.DP !== 'undefined' && DP.side) {
-          DP.side.close('right');
-        } else {
-          const sb = document.getElementById('lp-sidebar');
-          if (sb) {
-            sb.classList.remove('is-open');
-            document.documentElement.classList.remove('lp-side-open');
-          }
-        }
-      });
+      btn.addEventListener('click', closeLpSidebar);
     });
+
+    // Close on backdrop click (clicking outside .lp-sidebar-inner)
+    document.getElementById('lp-sidebar')?.addEventListener('click', (e) => {
+      // Only close if click is on the backdrop, not the inner content
+      if (e.target.id === 'lp-sidebar') {
+        closeLpSidebar();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const sb = document.getElementById('lp-sidebar');
+        if (sb && (sb.classList.contains('is-open') || sb.style.display === 'block')) {
+          closeLpSidebar();
+        }
+      }
+    });
+
+    // Hover on right edge to open sidebar (desktop only)
+    const hotspot = document.querySelector('.lp-overlay-hotspot');
+    let hoverTimer = null;
+    const HOVER_DELAY = 150; // ms before opening
+
+    if (hotspot && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      hotspot.addEventListener('mouseenter', () => {
+        hoverTimer = setTimeout(() => {
+          const sb = document.getElementById('lp-sidebar');
+          if (sb && !sb.classList.contains('is-open')) {
+            sb.classList.add('is-open');
+            sb.style.display = 'block';
+            document.body.classList.add('lp-overlay-open');
+            loadTemplates();
+            console.log('[TEMPLATE] Sidebar opened via hover');
+          }
+        }, HOVER_DELAY);
+      }, { passive: true });
+
+      hotspot.addEventListener('mouseleave', () => {
+        if (hoverTimer) {
+          clearTimeout(hoverTimer);
+          hoverTimer = null;
+        }
+      }, { passive: true });
+    }
 
     log('[TEMPLATE] Template Library initialized');
   })();
