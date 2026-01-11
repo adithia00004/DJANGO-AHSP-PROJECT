@@ -161,3 +161,8 @@ LOGGING["loggers"]["django.security"] = {
     "level": "ERROR",
     "propagate": False,
 }
+LOGGING["loggers"]["config.middleware.exception_handler"] = {
+    "handlers": ["django_error_file", "console"],
+    "level": "ERROR",
+    "propagate": False,
+}

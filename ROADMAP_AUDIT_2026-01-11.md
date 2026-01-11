@@ -19,6 +19,8 @@ Key findings (evidence-based)
 3) Error spikes in the last tests correlate with export-heavy endpoints being
    unintentionally included. These endpoints hold DB connections for 60-120s,
    causing PgBouncer queue wait timeouts and cascading 500s (including login).
+4) Core-only baseline is now validated after PgBouncer config fix and chart-data optimization
+   Evidence: v26b/v27b core-only reruns (0 failures, P95 < 1s, P99 ~2s)
 
 Root cause of branching and "noisy results"
 - The test workload changed across runs due to tag leakage, so the data is not
@@ -26,8 +28,8 @@ Root cause of branching and "noisy results"
 
 Audit verdict
 - Infrastructure baseline for auth-only is OK.
-- Core workload baseline is NOT yet validated. We must establish a clean core
-  test (no export/admin) before continuing optimization work.
+- Core workload baseline is now validated (core-only, no export/admin).
+- Remaining hotspot focus: login GET and /dashboard/ (P95 ~2.1s / 1.3-1.6s).
 
 Checkpoints to stabilize the plan
 Checkpoint A: Test hygiene (must pass before optimization)
@@ -35,6 +37,7 @@ Checkpoint A: Test hygiene (must pass before optimization)
   locust ... --tags api page phase1 --exclude-tags export admin
 - Verification: stats CSV must NOT contain "/export/" or "/admin/" or
   "/detail_project/[id]/export-test/".
+Status: COMPLETE (v26b/v27b core-only clean)
 
 Checkpoint B: Auth-only baseline (quick health check)
 - 50 users, 180s, rate limits disabled, pool >= 100/20
@@ -43,18 +46,18 @@ Checkpoint B: Auth-only baseline (quick health check)
 Checkpoint C: Core-only baseline (the real gate)
 - 100 users, 300s, rate limits disabled, core-only tags as in A
 - Pass criteria: <1.5% failures, P95 < 2s on core endpoints
+Status: COMPLETE (v26b/v27b core-only: 0 failures, P95 <= 710ms)
 
 Checkpoint D: Mixed workload (separate from core-only)
 - Run export/admin in a separate test track to avoid contaminating core metrics
 - Pass criteria: define acceptable P95 per export class (likely 10-30s)
 
 Updated plan (minimal and reliable)
-1) Establish clean core-only baseline (Checkpoint A + C).
-2) Identify top 2-3 failing endpoints from that clean baseline.
+1) Establish clean core-only baseline (Checkpoint A + C). DONE.
+2) Identify top slow endpoints from clean baseline (login GET, /dashboard/).
 3) Optimize only those endpoints, then rerun the same core-only test.
 4) Only after core is stable, run mixed workload tests (Checkpoint D).
 
 Why this plan reduces wasted time
 - It prevents us from chasing false regressions caused by inconsistent load.
 - Each optimization has a single, reliable test gate.
-

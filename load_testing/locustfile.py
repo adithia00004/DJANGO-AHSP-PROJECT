@@ -355,6 +355,7 @@ class AuthOnlyUser(AuthenticatedUser):
     weight = 1 if AUTH_ONLY else 0
     wait_time = between(1, 2)
 
+    @tag("auth")
     @task(1)
     def idle(self):
         return

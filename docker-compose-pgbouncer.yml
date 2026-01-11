@@ -7,7 +7,8 @@ services:
     environment:
       # Database connection to your existing PostgreSQL
       # Use actual Windows host IP address (update this if IP changes)
-      DATABASES_HOST: host.docker.internal
+      # Force IPv4 to avoid host.docker.internal resolving to IPv6
+      DATABASES_HOST: 192.168.65.254
       DATABASES_PORT: 5432
       DATABASES_USER: postgres
       DATABASES_PASSWORD: ${POSTGRES_PASSWORD}  # Set this in .env file

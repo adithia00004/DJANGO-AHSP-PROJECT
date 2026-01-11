@@ -5880,9 +5880,30 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
         logger.error(f"[Rekap Kebutuhan API] Project not found: {project_id}", exc_info=True)
         return JsonResponse({'error': 'Project not found'}, status=404)
 
+    from django.core.cache import cache
+    from django.db.models import Max
+    from .models import PekerjaanProgressWeekly, VolumePekerjaan
+    from .services import compute_kebutuhan_items, _kebutuhan_signature
+
+    cache_key = f"rekap_kebutuhan_weekly:{project.id}:v1"
+    signature = None
+    try:
+        base_sig = _kebutuhan_signature(project)
+        weekly_ts = PekerjaanProgressWeekly.objects.filter(
+            project=project
+        ).aggregate(last=Max("updated_at"))["last"]
+        signature = tuple(list(base_sig) + [weekly_ts.isoformat() if weekly_ts else "0"])
+        cached = cache.get(cache_key)
+        if cached and cached.get("sig") == signature:
+            return JsonResponse(cached.get("data", {}))
+    except Exception:
+        logger.warning(
+            f"[Rekap Kebutuhan API] Cache precheck failed for project {project_id}",
+            exc_info=True
+        )
+
     # Step 1: Get all kebutuhan items (material/tenaga requirements)
     try:
-        from .services import compute_kebutuhan_items
         kebutuhan_items = compute_kebutuhan_items(project)
     except Exception as e:
         logger.error(
@@ -5905,7 +5926,6 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
         }
 
     # Step 2: Get weekly progress data
-    from .models import PekerjaanProgressWeekly, DetailAHSPProject, VolumePekerjaan
 
     # PERFORMANCE OPTIMIZATION: Prefetch related data to avoid N+1 queries
     # Before: 1000+ queries (N pekerjaan × M components × volume lookups)
@@ -6043,6 +6063,9 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
         f"TK: {total_items_count['TK']}, BHN: {total_items_count['BHN']}, "
         f"ALT: {total_items_count['ALT']}, LAIN: {total_items_count['LAIN']}"
     )
+
+    if signature is not None:
+        cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
 
     return JsonResponse(response_data)
 

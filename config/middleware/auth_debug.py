@@ -1,5 +1,8 @@
 import logging
+import time
 
+from django.conf import settings
+from django.db import connection, reset_queries
 from django.utils.deprecation import MiddlewareMixin
 
 
@@ -15,6 +18,9 @@ class AuthDebugMiddleware(MiddlewareMixin):
     def process_request(self, request):
         if not self._is_auth_request(request):
             return None
+        request._auth_start_ts = time.monotonic()
+        if settings.DEBUG:
+            reset_queries()
 
         forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR")
@@ -53,11 +59,31 @@ class AuthDebugMiddleware(MiddlewareMixin):
         if hasattr(request, "user") and getattr(request.user, "is_authenticated", False):
             user_label = request.user.get_username() or str(request.user.pk)
 
+        duration_ms = None
+        start_ts = getattr(request, "_auth_start_ts", None)
+        if start_ts is not None:
+            duration_ms = (time.monotonic() - start_ts) * 1000
+
+        db_queries = None
+        db_time_ms = None
+        if settings.DEBUG:
+            try:
+                queries = connection.queries
+                db_queries = len(queries)
+                db_time_ms = sum(float(q.get("time", 0.0)) for q in queries) * 1000
+            except Exception:
+                db_queries = None
+                db_time_ms = None
+
         logger.info(
-            "auth_response status=%s path=%s user=%s",
+            "auth_response status=%s method=%s path=%s user=%s duration_ms=%s db_queries=%s db_time_ms=%s",
             response.status_code,
+            request.method,
             request.path,
             user_label,
+            f"{duration_ms:.2f}" if duration_ms is not None else "n/a",
+            db_queries if db_queries is not None else "n/a",
+            f"{db_time_ms:.2f}" if db_time_ms is not None else "n/a",
         )
 
         if response.status_code >= 500:
