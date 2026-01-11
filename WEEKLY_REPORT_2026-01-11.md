@@ -203,3 +203,12 @@ Update (v32 core-only):
 
 Update (audit follow-up):
 - Added response cache for `/api/v2/project/<id>/kurva-s-data/` keyed by rekap signature
+
+Update (v34 core-only after cache warm):
+- v34 (r4): 9,152 requests, 0 failures
+- /api/v2/project/[id]/kurva-s-data/ P95: 150ms (target <300ms achieved)
+- /api/v2/project/[id]/chart-data/ P95: 150ms
+- /api/v2/project/[id]/kurva-s-harga/ P95: 120ms
+- /dashboard/ P95: 140ms
+
+Week 2 Status: ✅ COMPLETE

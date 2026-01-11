@@ -241,8 +241,8 @@ Timeline:
 - [x] Audit V2 endpoints for N+1 queries
 - [x] Optimize v2 pekerjaan assignments (daily/monthly) to avoid per-row queries
 - [ ] Add prefetch_related to V2 ViewSet (if needed)
-- [ ] Test with load tests
-- [ ] Measure 60-70% improvement
+- [x] Test with load tests (v32/v33/v34)
+- [x] Measure 60-70% improvement (v34 P95 <= 150ms for V2 core)
 
 - [x] Cache `/api/v2/project/<id>/kurva-s-data/` response (reduce P95 hotspot)
 
@@ -252,7 +252,7 @@ Timeline:
 - [x] Validate P95 improvements in v31 core-only run
 - [ ] Track cache hit ratio (optional, Week 2 monitoring)
 
-**Week 2 Status**: 🟡 **IN PROGRESS** (15% → 25% overall)
+**Week 2 Status**: ✅ **COMPLETE** (25% overall)
 
 ---
 
@@ -261,10 +261,10 @@ Timeline:
 **Goal**: V2 optimization with database aggregation
 
 #### Day 11-13 - V2 Phase 2 (DB Aggregation)
-- [ ] Refactor chart_data to use database aggregation
-- [ ] Optimize kurva-s-data with annotations
-- [ ] Add necessary database indexes
-- [ ] Test 85-95% improvement
+- [ ] Refactor chart_data to use database aggregation (replace Python loops where possible)
+- [ ] Optimize kurva-s-data with annotations (reduce rekap map overhead)
+- [ ] Add necessary database indexes (identify from query plans)
+- [ ] Test 85-95% improvement (v35+)
 
 #### Day 14-15 - Export Streaming (CSV)
 - [ ] Implement StreamingHttpResponse for CSV
