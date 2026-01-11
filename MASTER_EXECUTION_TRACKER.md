@@ -238,10 +238,13 @@ Timeline:
 - [ ] Start V2 endpoint analysis
 
 #### Day 8-10 - V2 Phase 1 (prefetch)
-- [ ] Audit V2 endpoints for N+1 queries
-- [ ] Add prefetch_related to V2 ViewSet
+- [x] Audit V2 endpoints for N+1 queries
+- [x] Optimize v2 pekerjaan assignments (daily/monthly) to avoid per-row queries
+- [ ] Add prefetch_related to V2 ViewSet (if needed)
 - [ ] Test with load tests
 - [ ] Measure 60-70% improvement
+
+- [x] Cache `/api/v2/project/<id>/kurva-s-data/` response (reduce P95 hotspot)
 
 #### Early Week 2 Quick Wins (post v28b baseline)
 - [x] Cache `/api/v2/project/<id>/rekap-kebutuhan-weekly/` response (reduce weekly P95)
@@ -249,7 +252,7 @@ Timeline:
 - [x] Validate P95 improvements in v31 core-only run
 - [ ] Track cache hit ratio (optional, Week 2 monitoring)
 
-**Week 2 Status**: 🟡 **IN PROGRESS** (5% → 25% overall)
+**Week 2 Status**: 🟡 **IN PROGRESS** (15% → 25% overall)
 
 ---
 

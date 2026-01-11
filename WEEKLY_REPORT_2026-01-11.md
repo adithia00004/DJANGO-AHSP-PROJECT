@@ -189,3 +189,17 @@ Update (v31 core-only after dashboard cache):
 - /dashboard/ P95: 190ms (P50 90ms, P99 310ms)
 - /api/v2/project/[id]/rekap-kebutuhan-weekly/ P95: 160ms (P50 66ms)
 - Login GET still ~2.1s in Locust but server-side audit shows <200ms; treat as client/page-load and defer to later phase.
+
+Update (Week 2 V2 audit):
+- Optimized `api_get_pekerjaan_assignments_v2` to avoid per-row DB queries in daily/monthly modes
+- Uses in-memory weekly progress map for daily/monthly calculations
+
+Update (v32 core-only):
+- v32 (r4): 8,965 requests, 0 failures
+- V2 assignments P95: 99ms (P50 45ms)
+- V2 chart-data P95: 220ms
+- V2 kurva-s-harga P95: 170ms
+- V2 kurva-s-data P95: 910ms (new hotspot)
+
+Update (audit follow-up):
+- Added response cache for `/api/v2/project/<id>/kurva-s-data/` keyed by rekap signature

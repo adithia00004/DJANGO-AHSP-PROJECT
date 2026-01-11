@@ -12,7 +12,7 @@ Key differences from v1:
 """
 
 import json
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, timedelta, date
 
 from django.contrib.auth.decorators import login_required
@@ -31,10 +31,9 @@ from detail_project.models import (
     VolumePekerjaan
 )
 from detail_project.progress_utils import (
+    calculate_week_number,
     get_week_date_range,
     sync_weekly_to_tahapan,
-    get_weekly_progress_for_daily_view,
-    get_weekly_progress_for_monthly_view
 )
 
 # Import helper from original views
@@ -579,6 +578,9 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
     weekly_progress = list(PekerjaanProgressWeekly.objects.filter(
         pekerjaan=pekerjaan
     ).order_by('week_number'))
+    weekly_by_num = {wp.week_number: wp for wp in weekly_progress}
+    project_start = project.tanggal_mulai or date.today()
+    week_end_day = getattr(project, "week_end_day", 6)
 
     # Convert to assignments based on mode
     assignments = []
@@ -589,30 +591,37 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
             continue
 
         if mode == 'daily':
-            # Daily: Get proportion for this day
-            proporsi = get_weekly_progress_for_daily_view(
-                pekerjaan.id,
-                tahap.tanggal_mulai,
-                project.tanggal_mulai
-            )
+            # Daily: derive from weekly canonical data without extra queries
+            week_num = calculate_week_number(tahap.tanggal_mulai, project_start, week_end_day)
+            weekly_record = weekly_by_num.get(week_num)
+            if weekly_record and weekly_record.week_start_date and weekly_record.week_end_date:
+                days_in_week = (weekly_record.week_end_date - weekly_record.week_start_date).days + 1
+                weekly_value = weekly_record.planned_proportion
+                proporsi = (weekly_value / Decimal(days_in_week)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            else:
+                proporsi = Decimal('0.00')
         elif mode == 'weekly':
             # Weekly: Direct from canonical
             urutan_index = tahap.urutan if tahap.urutan is not None else 0
             week_num = urutan_index + 1
-            try:
-                wp = next(w for w in weekly_progress if w.week_number == week_num)
-                # Phase 2E.1: Default to planned_proportion (TODO: support mode parameter)
-                proporsi = wp.planned_proportion
-            except StopIteration:
-                proporsi = Decimal('0.00')
+            weekly_record = weekly_by_num.get(week_num)
+            # Phase 2E.1: Default to planned_proportion (TODO: support mode parameter)
+            proporsi = weekly_record.planned_proportion if weekly_record else Decimal('0.00')
         else:
             # Monthly / Custom: Sum weeks in range
-            proporsi = get_weekly_progress_for_monthly_view(
-                pekerjaan.id,
-                tahap.tanggal_mulai,
-                tahap.tanggal_selesai,
-                project.tanggal_mulai
-            )
+            month_start = tahap.tanggal_mulai
+            month_end = tahap.tanggal_selesai
+            total_prop = Decimal('0.00')
+            for weekly_record in weekly_progress:
+                if not weekly_record.week_start_date or not weekly_record.week_end_date:
+                    continue
+                if weekly_record.week_start_date <= month_end and weekly_record.week_end_date >= month_start:
+                    overlap_start = max(weekly_record.week_start_date, month_start)
+                    overlap_end = min(weekly_record.week_end_date, month_end)
+                    overlap_days = (overlap_end - overlap_start).days + 1
+                    week_days = (weekly_record.week_end_date - weekly_record.week_start_date).days + 1
+                    total_prop += (weekly_record.planned_proportion * Decimal(overlap_days)) / Decimal(week_days)
+            proporsi = total_prop.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
         if proporsi > Decimal('0.00'):
             assignments.append({

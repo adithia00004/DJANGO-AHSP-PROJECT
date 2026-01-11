@@ -5391,6 +5391,25 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
     # TODO: Add proper permission check if needed
     # For now, login_required is sufficient
 
+    from django.core.cache import cache
+    from django.db.models import Max
+    from .models import DetailAHSPExpanded, DetailAHSPProject, VolumePekerjaan, Pekerjaan, ProjectPricing
+
+    def _ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"kurva_s_data:{project.id}:v1"
+    signature = (
+        _ts(DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(ProjectPricing.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+    )
+    cached = cache.get(cache_key)
+    if cached and cached.get("sig") == signature:
+        return JsonResponse(cached.get("data", {}))
+
     # Get rekap data (uses existing compute_rekap_for_project)
     # This already has caching built-in (5 minutes)
     try:
@@ -6067,6 +6086,7 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     if signature is not None:
         cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
 
+    cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
     return JsonResponse(response_data)
 
 
