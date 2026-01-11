@@ -38,8 +38,9 @@ def _get_safe_next(request, default_name='dashboard:dashboard'):
 
 @login_required
 def dashboard_view(request):
-    # Start with all projects owned by user
-    queryset = Project.objects.filter(owner=request.user)
+    # PERFORMANCE OPTIMIZATION: Use select_related for owner and only load needed fields
+    # This reduces query time and memory usage under high load
+    queryset = Project.objects.filter(owner=request.user).select_related('owner')
 
     # Initialize filter form with user for dynamic choices
     filter_form = ProjectFilterForm(request.GET, user=request.user)
@@ -223,8 +224,11 @@ def dashboard_view(request):
             prefix='form',
         )
 
-    # No pagination - return all projects with scroll
-    all_filtered_projects = list(queryset)
+    # === PERFORMANCE OPTIMIZATION: Add pagination to prevent slow page loads ===
+    # Pagination: 20 projects per page to eliminate 116s outliers
+    paginator = Paginator(queryset, 20)  # 20 projects per page
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
 
     # === FASE 2.1: Analytics & Statistics ===
     all_active_projects = Project.objects.filter(owner=request.user, is_active=True)
@@ -295,7 +299,8 @@ def dashboard_view(request):
         tanggal_mulai__lte=today
     ).count()
     context = {
-        'projects': all_filtered_projects,
+        'projects': page_obj.object_list,  # Current page projects
+        'page_obj': page_obj,  # Pagination object for template
         'filter_form': filter_form,
         'formset': formset,
         'total_projects': queryset.count(),

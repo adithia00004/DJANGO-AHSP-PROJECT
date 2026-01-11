@@ -77,7 +77,8 @@ if settings.DEBUG:
 #         pass
 
 # Django Silk Profiling URLs (development only)
-if settings.DEBUG:
+# Only add Silk URLs if it's actually enabled (not when using PgBouncer)
+if settings.DEBUG and getattr(settings, 'SILK_ENABLED', False):
     try:
         import silk  # noqa: F401
         urlpatterns = [path('silk/', include('silk.urls', namespace='silk'))] + urlpatterns

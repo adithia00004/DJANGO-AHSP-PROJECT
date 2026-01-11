@@ -2186,15 +2186,17 @@ def compute_kebutuhan_items(
         normalized_filters,
         normalized_time_scope,
     )
-    signature = _kebutuhan_signature(project)
+    signature = None
 
     bucket = cache.get(cache_namespace)
     if bucket:
         cached_entry = bucket.get(entry_key)
-        if cached_entry and cached_entry.get('sig') == signature:
-            elapsed = (time.perf_counter() - start_time) * 1000
-            logger.info(f"Rekap Kebutuhan CACHE HIT - project={project.id}, elapsed={elapsed:.2f}ms, rows={len(cached_entry.get('data', []))}")
-            return cached_entry.get('data', [])
+        if cached_entry:
+            signature = _kebutuhan_signature(project)
+            if cached_entry.get('sig') == signature:
+                elapsed = (time.perf_counter() - start_time) * 1000
+                logger.info(f"Rekap Kebutuhan CACHE HIT - project={project.id}, elapsed={elapsed:.2f}ms, rows={len(cached_entry.get('data', []))}")
+                return cached_entry.get('data', [])
 
     # ========================================================================
     # STEP 1: Determine scope - pekerjaan mana yang akan di-aggregate
@@ -2244,6 +2246,8 @@ def compute_kebutuhan_items(
         rows = []
         # Cache empty result
         new_bucket = bucket or {}
+        if signature is None:
+            signature = _kebutuhan_signature(project)
         new_bucket[entry_key] = {"sig": signature, "data": rows}
         cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
         return rows
@@ -2427,6 +2431,8 @@ def compute_kebutuhan_items(
 
     new_bucket = bucket or {}
     new_bucket[entry_key] = {"sig": signature, "data": rows}
+    if signature is None:
+        signature = _kebutuhan_signature(project)
     cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
 
     # Performance logging
@@ -2516,22 +2522,22 @@ def validate_kebutuhan_data(project, mode='all', tahapan_id=None, filters=None, 
     timeline_total = Decimal('0')
     timeline_items_seen = set()
     timeline_by_kategori = {}
+    timeline_kategori_seen = defaultdict(set)
 
     for period in timeline_data.get('periods', []):
         for item in period.get('items', []):
-            # Track unique items
             item_key = f"{item.get('kategori')}_{item.get('kode')}"
-            timeline_items_seen.add(item_key)
+            kategori = item.get('kategori', 'UNKNOWN')
 
+            timeline_items_seen.add(item_key)
             cost = Decimal(str(item.get('harga_total') or 0))
             timeline_total += cost
 
-            kategori = item.get('kategori', 'UNKNOWN')
             if kategori not in timeline_by_kategori:
                 timeline_by_kategori[kategori] = {'count': 0, 'total': Decimal('0')}
-            # Don't double-count items across periods
-            if item_key not in [f"{k.get('kategori')}_{k.get('kode')}" for k in period.get('items', [])[:period.get('items', []).index(item)]]:
+            if item_key not in timeline_kategori_seen[kategori]:
                 timeline_by_kategori[kategori]['count'] += 1
+                timeline_kategori_seen[kategori].add(item_key)
             timeline_by_kategori[kategori]['total'] += cost
 
     timeline_count = len(timeline_items_seen)
@@ -2613,9 +2619,39 @@ def compute_kebutuhan_timeline(
     """
     Compute kebutuhan items dan distribusi per periode (mingguan/bulanan).
     """
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+    start_time = time.perf_counter()
+
     period_options = get_project_period_options(project)
     normalized_scope = _normalize_time_scope(time_scope)
     scope_mode = normalized_scope.get('mode', 'all')
+
+    mode_flag = 'tahapan' if (mode == 'tahapan' and tahapan_id) else 'all'
+    normalized_filters = _normalize_kebutuhan_filters(filters)
+    cache_namespace = f"rekap_kebutuhan_timeline:{project.id}"
+    entry_key = _kebutuhan_entry_key(
+        mode_flag,
+        tahapan_id if mode_flag == 'tahapan' else None,
+        normalized_filters,
+        normalized_scope,
+    )
+    signature = None
+
+    bucket = cache.get(cache_namespace)
+    if bucket:
+        cached_entry = bucket.get(entry_key)
+        if cached_entry:
+            signature = _kebutuhan_signature(project)
+            if cached_entry.get('sig') == signature:
+                elapsed = (time.perf_counter() - start_time) * 1000
+                logger.info(
+                    f"Rekap Kebutuhan TIMELINE CACHE HIT - project={project.id}, "
+                    f"elapsed={elapsed:.2f}ms, periods={len(cached_entry.get('data', {}).get('periods', []))}"
+                )
+                return cached_entry.get('data', {})
 
     if scope_mode.startswith('month'):
         bucket_mode = 'month'
@@ -2630,7 +2666,7 @@ def compute_kebutuhan_timeline(
         buckets = period_options['weeks' if bucket_mode == 'week' else 'months']
 
     if not buckets:
-        return {
+        result = {
             'periods': [],
             'meta': {
                 'reason': 'no_schedule',
@@ -2639,6 +2675,12 @@ def compute_kebutuhan_timeline(
                 'grand_total_cost': '0',
             }
         }
+        new_bucket = bucket or {}
+        if signature is None:
+            signature = _kebutuhan_signature(project)
+        new_bucket[entry_key] = {"sig": signature, "data": result}
+        cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+        return result
 
     bucket_map = {}
     for bucket in buckets:
@@ -2653,9 +2695,7 @@ def compute_kebutuhan_timeline(
             'cost_totals': defaultdict(Decimal),
         }
 
-    mode_flag = 'tahapan' if (mode == 'tahapan' and tahapan_id) else 'all'
-    normalized_filters = _normalize_kebutuhan_filters(filters)
-    normalized_time_scope = _normalize_time_scope(time_scope)
+    normalized_time_scope = normalized_scope
 
     if mode_flag == 'tahapan':
         pt_qs = PekerjaanTahapan.objects.filter(
@@ -2696,7 +2736,7 @@ def compute_kebutuhan_timeline(
         }
 
     if not pekerjaan_ids:
-        return {
+        result = {
             'periods': [],
             'meta': {
                 'reason': 'no_scope',
@@ -2705,6 +2745,12 @@ def compute_kebutuhan_timeline(
                 'grand_total_cost': '0',
             }
         }
+        new_bucket = bucket or {}
+        if signature is None:
+            signature = _kebutuhan_signature(project)
+        new_bucket[entry_key] = {"sig": signature, "data": result}
+        cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+        return result
 
     vol_map = dict(
         VolumePekerjaan.objects
@@ -2937,10 +2983,24 @@ def compute_kebutuhan_timeline(
         'grand_total_cost': _format_decimal(grand_total_cost),
     }
 
-    return {
+    result = {
         'periods': periods_payload,
         'meta': meta,
     }
+
+    new_bucket = bucket or {}
+    if signature is None:
+        signature = _kebutuhan_signature(project)
+    new_bucket[entry_key] = {"sig": signature, "data": result}
+    cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+
+    elapsed = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        f"Rekap Kebutuhan TIMELINE COMPUTED - project={project.id}, "
+        f"elapsed={elapsed:.2f}ms, periods={len(periods_payload)}, details={len(details)}"
+    )
+
+    return result
 
 
 
@@ -2968,16 +3028,36 @@ def get_tahapan_summary(project):
             ...
         ]
     """
-    tahapan_list = TahapPelaksanaan.objects.filter(
-        project=project
-    ).prefetch_related('pekerjaan_items').order_by('urutan', 'id')
+    from django.db.models import Max, Count, Sum
+
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"tahapan_summary:{project.id}:v1"
+    cached = cache.get(cache_key)
+    signature = None
+    if cached:
+        signature = (
+            _fmt_ts(TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(tahapan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        if cached.get("sig") == signature:
+            return cached.get("data", [])
+
+    tahapan_list = (
+        TahapPelaksanaan.objects.filter(project=project)
+        .annotate(
+            jumlah_pekerjaan=Count('pekerjaan_items__pekerjaan', distinct=True),
+            total_assigned=Sum('pekerjaan_items__proporsi_volume'),
+        )
+        .order_by('urutan', 'id')
+    )
     
     result = []
     for tahap in tahapan_list:
         # Count pekerjaan dan total proporsi
-        assignments = tahap.pekerjaan_items.all()
-        jumlah_pekerjaan = assignments.values('pekerjaan').distinct().count()
-        total_proporsi = sum(a.proporsi_volume for a in assignments)
+        jumlah_pekerjaan = int(getattr(tahap, 'jumlah_pekerjaan', 0) or 0)
+        total_proporsi = float(getattr(tahap, 'total_assigned', 0) or 0)
         
         result.append({
             'tahapan_id': tahap.id,
@@ -2985,7 +3065,7 @@ def get_tahapan_summary(project):
             'urutan': tahap.urutan,
             'deskripsi': tahap.deskripsi,
             'jumlah_pekerjaan': jumlah_pekerjaan,
-            'total_assigned_proportion': float(total_proporsi),
+            'total_assigned_proportion': total_proporsi,
             'tanggal_mulai': tahap.tanggal_mulai.isoformat() if tahap.tanggal_mulai else None,
             'tanggal_selesai': tahap.tanggal_selesai.isoformat() if tahap.tanggal_selesai else None,
             'created_at': tahap.created_at.isoformat() if tahap.created_at else None,
@@ -2993,6 +3073,16 @@ def get_tahapan_summary(project):
             'generation_mode': tahap.generation_mode,
         })
     
+    new_bucket = cached or {}
+    if signature is None:
+        signature = (
+            _fmt_ts(TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(tahapan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+    new_bucket["sig"] = signature
+    new_bucket["data"] = result
+    cache.set(cache_key, new_bucket, 300)
+
     return result
 
 
@@ -3019,44 +3109,65 @@ def get_unassigned_pekerjaan(project):
             ...
         ]
     """
-    from django.db.models import Sum, F
-    
-    # Get all pekerjaan dengan total assigned proportion
-    pekerjaan_qs = Pekerjaan.objects.filter(
-        project=project
-    ).annotate(
-        total_assigned=Sum('tahapan_assignments__proporsi_volume')
-    ).order_by('ordering_index', 'id')
-    
+    from django.db.models import Sum, Max
+
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"tahapan_unassigned:{project.id}:v1"
+    cached = cache.get(cache_key)
+    signature = None
+    if cached:
+        signature = (
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(pekerjaan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        if cached.get("sig") == signature:
+            return cached.get("data", [])
+
+    pekerjaan_qs = (
+        Pekerjaan.objects
+        .filter(project=project)
+        .select_related('sub_klasifikasi__klasifikasi')
+        .annotate(total_assigned=Sum('tahapan_assignments__proporsi_volume'))
+        .order_by('ordering_index', 'id')
+        .values(
+            'id',
+            'snapshot_kode',
+            'snapshot_uraian',
+            'total_assigned',
+            'sub_klasifikasi__name',
+            'sub_klasifikasi__klasifikasi__name',
+        )
+    )
+
     result = []
-    for pkj in pekerjaan_qs:
-        assigned = float(pkj.total_assigned or 0)
+    for row in pekerjaan_qs:
+        assigned = float(row.get("total_assigned") or 0)
         unassigned = 100.0 - assigned
-        
-        # Skip jika fully assigned
         if abs(unassigned) < 0.01:
             continue
-        
-        # Determine status
-        if assigned < 0.01:
-            status = 'unassigned'
-        else:
-            status = 'partial'
-        
+        status = 'unassigned' if assigned < 0.01 else 'partial'
         result.append({
-            'pekerjaan_id': pkj.id,
-            'kode': pkj.snapshot_kode,
-            'uraian': pkj.snapshot_uraian,
+            'pekerjaan_id': row.get("id"),
+            'kode': row.get("snapshot_kode"),
+            'uraian': row.get("snapshot_uraian"),
             'assigned_proportion': assigned,
             'unassigned_proportion': unassigned,
             'status': status,
-            'klasifikasi': (pkj.sub_klasifikasi.klasifikasi.name 
-                        if pkj.sub_klasifikasi and pkj.sub_klasifikasi.klasifikasi 
-                        else None),
-            'sub_klasifikasi': (pkj.sub_klasifikasi.name
-                            if pkj.sub_klasifikasi
-                            else None),
+            'klasifikasi': row.get("sub_klasifikasi__klasifikasi__name"),
+            'sub_klasifikasi': row.get("sub_klasifikasi__name"),
         })
+
+    new_bucket = cached or {}
+    if signature is None:
+        signature = (
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(pekerjaan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+    new_bucket["sig"] = signature
+    new_bucket["data"] = result
+    cache.set(cache_key, new_bucket, 300)
 
     return result
 

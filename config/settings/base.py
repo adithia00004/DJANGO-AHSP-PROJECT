@@ -126,6 +126,21 @@ if os.getenv("DJANGO_DB_ENGINE", "postgres").lower() == "sqlite":
         }
     }
 else:
+    # PgBouncer support: Use PGBOUNCER_PORT if available, fallback to POSTGRES_PORT
+    # PgBouncer default port: 6432, PostgreSQL default: 5432
+    db_port = os.getenv("PGBOUNCER_PORT") or os.getenv("POSTGRES_PORT", "5432")
+    using_pgbouncer = os.getenv("PGBOUNCER_PORT") is not None
+
+    # Build OPTIONS dict conditionally
+    db_options = {
+        "connect_timeout": int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "10")),
+    }
+
+    # CRITICAL: PgBouncer doesn't support 'options' parameter
+    # Only set PostgreSQL-specific options when NOT using PgBouncer
+    if not using_pgbouncer:
+        db_options["options"] = "-c statement_timeout=60000 -c idle_in_transaction_session_timeout=120000"
+
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -133,9 +148,16 @@ else:
             "USER": os.getenv("POSTGRES_USER", "postgres"),
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", "password"),
             "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-            "PORT": os.getenv("POSTGRES_PORT", "5432"),
-            "CONN_MAX_AGE": int(os.getenv("POSTGRES_CONN_MAX_AGE", "600")),
-            "OPTIONS": {"connect_timeout": int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "10"))},
+            "PORT": db_port,
+            # CRITICAL: When using PgBouncer transaction pooling, set CONN_MAX_AGE to 0
+            # This prevents Django from holding persistent connections that conflict with pooling
+            "CONN_MAX_AGE": 0 if using_pgbouncer else int(os.getenv("POSTGRES_CONN_MAX_AGE", "600")),
+            # CRITICAL: Disable health checks when using PgBouncer (it handles connection health)
+            "CONN_HEALTH_CHECKS": False if using_pgbouncer else (os.getenv("POSTGRES_CONN_HEALTH_CHECKS", "True").lower() == "true"),
+            "OPTIONS": db_options,
+            # CRITICAL: Disable server-side cursors when using PgBouncer transaction pooling
+            # Server-side cursors persist across transactions and break PgBouncer pooling
+            "DISABLE_SERVER_SIDE_CURSORS": using_pgbouncer,
         }
     }
 
@@ -197,9 +219,12 @@ WHITENOISE_USE_FINDERS = DEBUG
 # Sessions / Crispy forms
 # ---------------------------------------------------------------------------
 
-SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+# CRITICAL: Use pure cache backend for Redis sessions (not cached_db)
+# cached_db still writes to database, defeating the purpose of Redis
+# Pure cache backend = sessions ONLY in Redis (fast, concurrent-safe)
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
-SESSION_COOKIE_AGE = 1209600
+SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_SAVE_EVERY_REQUEST = False
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = os.getenv("DJANGO_SESSION_SAMESITE", "Lax")

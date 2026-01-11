@@ -75,7 +75,7 @@ THRESHOLDS = {
 }
 
 # Test project ID (configure based on your test data)
-TEST_PROJECT_ID = 1
+TEST_PROJECT_ID = 144  # Valid project ID from database
 
 
 # ============================================================================

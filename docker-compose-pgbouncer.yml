@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: ahsp_pgbouncer
+    environment:
+      # Database connection to your existing PostgreSQL
+      # Use actual Windows host IP address (update this if IP changes)
+      DATABASES_HOST: host.docker.internal
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD}  # Set this in .env file
+      DATABASES_DBNAME: ahsp_sni_db
+
+      # PgBouncer connection pooling settings
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-140}
+      PGBOUNCER_RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-20}
+      PGBOUNCER_RESERVE_POOL_TIMEOUT: 5
+
+      # Server timeouts (seconds)
+      PGBOUNCER_SERVER_IDLE_TIMEOUT: 600
+      PGBOUNCER_SERVER_LIFETIME: 3600
+      PGBOUNCER_SERVER_CONNECT_TIMEOUT: 15
+
+      # Client timeouts
+      PGBOUNCER_CLIENT_IDLE_TIMEOUT: 600
+
+      # Logging
+      PGBOUNCER_LOG_CONNECTIONS: 1
+      PGBOUNCER_LOG_DISCONNECTIONS: 1
+      PGBOUNCER_LOG_POOLER_ERRORS: 1
+      PGBOUNCER_STATS_PERIOD: 60
+
+    ports:
+      - "6432:6432"
+
+    restart: unless-stopped
+    networks:
+      - ahsp_network
+
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 6432 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  ahsp_network:
+    driver: bridge

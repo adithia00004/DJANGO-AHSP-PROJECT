@@ -20,6 +20,7 @@
 
   let currentPage = 1;
   let hasNext = false;
+  const detailCache = new Map();
 
   function showAlert(message, variant = "info") {
     if (!message) {
@@ -55,6 +56,40 @@
     });
   }
 
+  function renderDiffContent(entry) {
+    const oldText = entry.old_data === undefined ? "null" : JSON.stringify(entry.old_data, null, 2);
+    const newText = entry.new_data === undefined ? "null" : JSON.stringify(entry.new_data, null, 2);
+    return `
+        <div class="audit-diff">
+          <details>
+            <summary>Old Data</summary>
+            <pre>${oldText || "null"}</pre>
+          </details>
+          <details>
+            <summary>New Data</summary>
+            <pre>${newText || "null"}</pre>
+          </details>
+        </div>
+      `;
+  }
+
+  async function fetchDetail(entryId) {
+    const params = new URLSearchParams();
+    params.set("entry_id", entryId);
+    params.set("include_diff", "1");
+    const response = await fetch(`${endpoint}?${params.toString()}`, {
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      throw new Error(`Gagal memuat detail (${response.status})`);
+    }
+    const data = await response.json();
+    if (!data.ok || !data.result) {
+      throw new Error(data.user_message || "Gagal memuat detail.");
+    }
+    return data.result;
+  }
+
   function renderRows(results) {
     if (!results.length) {
       tableBody.innerHTML =
@@ -82,22 +117,34 @@
       const detailCell = document.createElement("td");
       detailCell.colSpan = 7;
       detailCell.classList.add("audit-diff");
-      detailCell.innerHTML = `
-        <div class="audit-diff">
-          <details>
-            <summary>Old Data</summary>
-            <pre>${JSON.stringify(entry.old_data, null, 2) || "null"}</pre>
-          </details>
-          <details>
-            <summary>New Data</summary>
-            <pre>${JSON.stringify(entry.new_data, null, 2) || "null"}</pre>
-          </details>
-        </div>
-      `;
+      if (entry.old_data !== undefined || entry.new_data !== undefined) {
+        detailCell.innerHTML = renderDiffContent(entry);
+        detailCell.dataset.loaded = "1";
+      } else {
+        detailCell.innerHTML = '<div class="text-muted small">Klik "Lihat" untuk memuat detail.</div>';
+      }
       detailCell.style.display = "none";
 
-      detailBtn.addEventListener("click", () => {
+      detailBtn.addEventListener("click", async () => {
         const isVisible = detailCell.style.display === "table-cell";
+        if (!isVisible && !detailCell.dataset.loaded) {
+          const cached = detailCache.get(entry.id);
+          if (cached) {
+            detailCell.innerHTML = renderDiffContent(cached);
+            detailCell.dataset.loaded = "1";
+          } else {
+            detailCell.innerHTML = '<div class="text-muted small">Memuat detail...</div>';
+            try {
+              const detail = await fetchDetail(entry.id);
+              detailCache.set(entry.id, detail);
+              detailCell.innerHTML = renderDiffContent(detail);
+              detailCell.dataset.loaded = "1";
+            } catch (error) {
+              console.error(error);
+              detailCell.innerHTML = '<div class="text-danger small">Gagal memuat detail.</div>';
+            }
+          }
+        }
         detailCell.style.display = isVisible ? "none" : "table-cell";
         detailCell.previousSibling?.classList?.toggle?.("table-active", !isVisible);
       });
@@ -125,6 +172,7 @@
     const params = getFilterParams();
     params.set("page", page);
     params.set("page_size", 20);
+    params.set("include_diff", "0");
 
     tableBody.innerHTML =
       '<tr class="audit-empty"><td colspan="7" class="text-center text-muted py-4">Memuat data...</td></tr>';

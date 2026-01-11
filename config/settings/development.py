@@ -68,6 +68,14 @@ try:
 except ImportError:
     SILK_ENABLED = False
 
+# CRITICAL: Disable Silk when using PgBouncer transaction pooling
+# Silk middleware conflicts with PgBouncer's transaction mode causing query_wait_timeout errors
+# Silk tries to save requests to DB before view execution, which PgBouncer rejects
+using_pgbouncer = os.getenv("PGBOUNCER_PORT") is not None
+if using_pgbouncer:
+    SILK_ENABLED = False
+    print("WARNING: Django Silk DISABLED - incompatible with PgBouncer transaction pooling")
+
 if SILK_ENABLED:
     INSTALLED_APPS += ["silk"]
     
@@ -100,3 +108,56 @@ if SILK_ENABLED:
     import os
     os.makedirs(SILKY_PYTHON_PROFILER_RESULT_PATH, exist_ok=True)
 
+# ---------------------------------------------------------------------------
+# Auth debug logging (development only)
+# ---------------------------------------------------------------------------
+
+AUTH_DEBUG_ENABLED = os.getenv("AUTH_DEBUG", "True").lower() == "true"
+if AUTH_DEBUG_ENABLED:
+    MIDDLEWARE.append("config.middleware.auth_debug.AuthDebugMiddleware")
+
+    auth_debug_log_path = BASE_DIR / "logs" / "auth_debug.log"
+    auth_debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    LOGGING.setdefault("handlers", {})
+    LOGGING.setdefault("loggers", {})
+
+    LOGGING["handlers"]["auth_debug_file"] = {
+        "class": "logging.FileHandler",
+        "filename": str(auth_debug_log_path),
+        "formatter": "standard",
+    }
+    LOGGING["loggers"]["auth_debug"] = {
+        "handlers": ["auth_debug_file", "console"],
+        "level": "DEBUG",
+        "propagate": False,
+    }
+
+# ---------------------------------------------------------------------------
+# Allauth rate limit overrides (development only)
+# ---------------------------------------------------------------------------
+
+if os.getenv("ACCOUNT_RATE_LIMITS_DISABLED", "False").lower() == "true":
+    ACCOUNT_RATE_LIMITS = False
+
+django_error_log_path = BASE_DIR / "logs" / "django_errors.log"
+django_error_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+LOGGING.setdefault("handlers", {})
+LOGGING.setdefault("loggers", {})
+
+LOGGING["handlers"]["django_error_file"] = {
+    "class": "logging.FileHandler",
+    "filename": str(django_error_log_path),
+    "formatter": "standard",
+}
+LOGGING["loggers"]["django.request"] = {
+    "handlers": ["django_error_file", "console"],
+    "level": "ERROR",
+    "propagate": False,
+}
+LOGGING["loggers"]["django.security"] = {
+    "handlers": ["django_error_file", "console"],
+    "level": "ERROR",
+    "propagate": False,
+}

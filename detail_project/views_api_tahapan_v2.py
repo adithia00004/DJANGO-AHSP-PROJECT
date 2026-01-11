@@ -20,7 +20,8 @@ from django.views.decorators.http import require_http_methods, require_GET, requ
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Max
+from django.core.cache import cache
 
 from detail_project.models import (
     TahapPelaksanaan,
@@ -660,36 +661,76 @@ def api_get_project_assignments_v2(request, project_id):
     """
     project = _owner_or_404(project_id, request.user)
 
-    weekly_qs = (
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"v2_assignments:{project.id}:v1"
+    cached = cache.get(cache_key)
+    signature = None
+    if cached:
+        signature = (
+            _fmt_ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        if cached.get("sig") == signature:
+            return JsonResponse(cached.get("data", {"ok": True, "count": 0, "assignments": []}))
+
+    weekly_rows = (
         PekerjaanProgressWeekly.objects
         .filter(project=project)
-        .select_related('pekerjaan')
         .order_by('pekerjaan_id', 'week_number')
+        .values(
+            'pekerjaan_id',
+            'week_number',
+            'planned_proportion',
+            'actual_proportion',
+            'actual_cost',
+            'week_start_date',
+            'week_end_date',
+            'updated_at',
+            'actual_updated_at',
+            'notes',
+            'pekerjaan__budgeted_cost',
+        )
     )
 
     assignments = []
-    for wp in weekly_qs:
+    for row in weekly_rows:
+        planned = row.get('planned_proportion') or 0
+        actual = row.get('actual_proportion') or 0
         assignments.append({
-            'pekerjaan_id': wp.pekerjaan_id,
-            'week_number': wp.week_number,
+            'pekerjaan_id': row.get('pekerjaan_id'),
+            'week_number': row.get('week_number'),
             # Phase 2E.1: Dual mode fields
-            'planned_proportion': float(wp.planned_proportion),
-            'actual_proportion': float(wp.actual_proportion),
-            'proportion': float(wp.planned_proportion),  # Legacy field for compatibility
-            'actual_cost': float(wp.actual_cost or 0),
-            'budgeted_cost': float(getattr(wp.pekerjaan, 'budgeted_cost', 0) or 0),
-            'week_start_date': wp.week_start_date.isoformat() if wp.week_start_date else None,
-            'week_end_date': wp.week_end_date.isoformat() if wp.week_end_date else None,
-            'updated_at': wp.updated_at.isoformat() if wp.updated_at else None,
-            'actual_updated_at': wp.actual_updated_at.isoformat() if wp.actual_updated_at else None,
-            'notes': wp.notes,
+            'planned_proportion': float(planned),
+            'actual_proportion': float(actual),
+            'proportion': float(planned),  # Legacy field for compatibility
+            'actual_cost': float(row.get('actual_cost') or 0),
+            'budgeted_cost': float(row.get('pekerjaan__budgeted_cost') or 0),
+            'week_start_date': row.get('week_start_date').isoformat() if row.get('week_start_date') else None,
+            'week_end_date': row.get('week_end_date').isoformat() if row.get('week_end_date') else None,
+            'updated_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
+            'actual_updated_at': row.get('actual_updated_at').isoformat() if row.get('actual_updated_at') else None,
+            'notes': row.get('notes'),
         })
 
-    return JsonResponse({
+    response_data = {
         'ok': True,
         'count': len(assignments),
         'assignments': assignments,
-    })
+    }
+
+    new_bucket = cached or {}
+    if signature is None:
+        signature = (
+            _fmt_ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+    new_bucket["sig"] = signature
+    new_bucket["data"] = response_data
+    cache.set(cache_key, new_bucket, 300)
+
+    return JsonResponse(response_data)
 
 
 @login_required

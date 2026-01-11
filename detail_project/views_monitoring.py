@@ -2,9 +2,12 @@
 API Monitoring Views - Track deprecated API usage and performance metrics
 """
 
+import os
+
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
 from .decorators import get_deprecation_metrics, reset_deprecation_metrics
 from .utils.performance import (
     get_metrics_summary,
@@ -197,7 +200,7 @@ def api_reset_performance_metrics(request):
     })
 
 
-@login_required
+@csrf_exempt
 def api_report_client_metric(request):
     """
     Receive client-side performance metrics.
@@ -216,14 +219,24 @@ def api_report_client_metric(request):
             'error': 'Method not allowed. Use POST.'
         }, status=405)
 
+    required_key = os.getenv("METRICS_API_KEY")
+    if required_key:
+        provided_key = request.META.get("HTTP_X_METRICS_KEY")
+        if provided_key != required_key:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Invalid metrics key'
+            }, status=403)
+
     try:
         import json
-        data = json.loads(request.body)
+        body = request.body.decode("utf-8") if request.body else "{}"
+        data = json.loads(body)
 
-        metric_type = data.get('type')
-        metric = data.get('metric')
+        metric_type = data.get('type') or data.get('metric_type')
+        metric = data.get('metric') if 'metric' in data else data.get('value')
 
-        if not metric_type or not metric:
+        if not metric_type or metric is None:
             return JsonResponse({
                 'ok': False,
                 'error': 'Missing type or metric'

@@ -120,11 +120,11 @@ class TestDashboardView:
         assert names == sorted(names)
 
     def test_dashboard_pagination(self, client, user):
-        """Test dashboard pagination (10 items per page)."""
+        """Test dashboard pagination (20 items per page)."""
         from dashboard.models import Project
 
-        # Create 15 projects (more than 1 page)
-        for i in range(15):
+        # Create 25 projects (more than 1 page)
+        for i in range(25):
             Project.objects.create(
                 owner=user,
                 nama=f'Project {i:02d}',
@@ -140,7 +140,7 @@ class TestDashboardView:
 
         # Page 1
         response = client.get(url)
-        assert len(response.context['projects']) == 10
+        assert len(response.context['projects']) == 20
 
         # Page 2
         response = client.get(url, {'page': 2})
