@@ -3,7 +3,7 @@
  * Features: Autocomplete Search, Jump to Row, Table Sorting, Change Tracking, Bulk Delete
  */
 
-(function() {
+(function () {
     'use strict';
 
     // =====================================================
@@ -19,6 +19,13 @@
     }
 
     function showToast(message, type = 'success') {
+        // Use global DP.toast if available
+        if (window.DP && window.DP.toast && window.DP.toast[type]) {
+            window.DP.toast[type](message);
+            return;
+        }
+
+        // Fallback to inline toast
         const toast = document.createElement('div');
         toast.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
         toast.style.zIndex = '99999';
@@ -260,7 +267,7 @@
         handleKeydown(e, dropdown, tableId) {
             const items = dropdown.querySelectorAll('.autocomplete-item');
 
-            switch(e.key) {
+            switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
                     this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
@@ -1251,7 +1258,7 @@
     // INITIALIZATION
     // =====================================================
 
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         autocompleteModule.init();
         bulkDeleteModule.init();
         tableSortModule.init();

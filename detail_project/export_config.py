@@ -166,6 +166,45 @@ class ExportLayout:
         }
 
 
+class JadwalExportLayout:
+    """
+    Layout defaults for Jadwal (Grid / Gantt / Kurva S) exports.
+    Tuned for A3 landscape with compact columns and predictable pagination.
+    """
+
+    PAGE_SIZE = 'A3'
+    ORIENTATION = 'landscape'
+
+    # Margins (mm) — slightly larger than default for header/footer room
+    MARGIN_TOP = 12
+    MARGIN_BOTTOM = 12
+    MARGIN_LEFT = 12
+    MARGIN_RIGHT = 12
+
+    # Static column widths (mm) for grid section
+    # UNIFIED: 3 columns only (no Kode) - matches Grid View, Kurva S, Gantt
+    # COL_KODE = 18  # REMOVED - unified structure
+    COL_URAIAN = 75
+    COL_VOLUME = 20
+    COL_SATUAN = 18
+
+    # Timeline columns (mm)
+    WEEKLY_MIN_COL = 12          # fits ~22 cols on A3 after static columns
+    WEEKLY_HARD_LIMIT = 18       # FIXED: max 18 weeks per page (45pt width each)
+    AUTO_MONTHLY_THRESHOLD = 18  # switch to monthly when weeks exceed this
+    MONTHLY_MIN_COL = 22         # month labels are wider
+    MONTHLY_HARD_LIMIT = 12
+
+    # Row handling
+    ROWS_PER_PAGE = 55           # paginate tables with many rows (PDF/Excel)
+    WRAP_MAX_LINES = 3           # cap name/description wrapping
+
+    @classmethod
+    def static_widths_mm(cls) -> list:
+        # UNIFIED: 3 columns (Uraian, Volume, Satuan) - no Kode
+        return [cls.COL_URAIAN, cls.COL_VOLUME, cls.COL_SATUAN]
+
+
 # ============================================================================
 # CONTENT CONFIGURATION
 # ============================================================================
@@ -396,11 +435,26 @@ class ExportConfig:
 
     # Page orientation
     page_orientation: str = 'landscape'  # 'portrait' or 'landscape'
+    page_size: str = ExportLayout.PAGE_SIZE  # 'A4', 'A3', etc.
 
 
 # ============================================================================
 # IDENTITY RENDER HELPERS (single source of truth)
 # ============================================================================
+
+PAGE_DIMENSIONS_MM = {
+    'A4': (210.0, 297.0),
+    'A3': (297.0, 420.0),
+}
+
+
+def get_page_size_mm(page_size: str) -> tuple[float, float]:
+    """
+    Resolve page width/height in millimeters for the requested paper size (portrait orientation).
+    """
+    if not page_size:
+        return PAGE_DIMENSIONS_MM['A4']
+    return PAGE_DIMENSIONS_MM.get(page_size.upper(), PAGE_DIMENSIONS_MM['A4'])
 
 def build_identity_rows(config: ExportConfig) -> list:
     """

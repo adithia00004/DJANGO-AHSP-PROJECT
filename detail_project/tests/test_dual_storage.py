@@ -356,7 +356,8 @@ class TestCUSTOMBundleDualStorage:
         tk_expanded = expanded_details[0]
         assert tk_expanded.kategori == 'TK'
         assert tk_expanded.kode == 'L.01'
-        assert tk_expanded.koefisien == Decimal('6.60')  # 10 × 0.66
+        # Expanded storage kini menyimpan koefisien per-unit (tanpa mengalikan koef bundle)
+        assert tk_expanded.koefisien == Decimal('0.660000')
         assert tk_expanded.source_bundle_kode == 'Bundle - 1 m2 Bekisting'
         assert tk_expanded.expansion_depth == 1
 
@@ -364,12 +365,12 @@ class TestCUSTOMBundleDualStorage:
         bhn1 = expanded_details[1]
         assert bhn1.kategori == 'BHN'
         assert bhn1.kode == 'M.01'
-        assert bhn1.koefisien == Decimal('0.40')  # 10 × 0.04
+        assert bhn1.koefisien == Decimal('0.040000')
 
         bhn2 = expanded_details[2]
         assert bhn2.kategori == 'BHN'
         assert bhn2.kode == 'N.01'
-        assert bhn2.koefisien == Decimal('4.00')  # 10 × 0.40
+        assert bhn2.koefisien == Decimal('0.400000')
 
     def test_harga_items_shows_expanded_components_not_bundle(
         self, client_logged, project, sub_klas, bundle_pekerjaan
@@ -543,17 +544,17 @@ class TestOverrideBugFixed:
 
         # Verify koefisien values
         tk_from_a = tk_rows.get(source_bundle_kode='Bundle A')
-        assert tk_from_a.koefisien == Decimal('5.0')  # 2.0 × 2.5
+        assert tk_from_a.koefisien == Decimal('2.500000')
 
         tk_from_b = tk_rows.get(source_bundle_kode='Bundle B')
-        assert tk_from_b.koefisien == Decimal('4.5')  # 1.5 × 3.0
+        assert tk_from_b.koefisien == Decimal('3.000000')
 
         # Then: BHN rows correct
         bhn_from_a = expanded.get(kode='BHN.001', source_bundle_kode='Bundle A')
-        assert bhn_from_a.koefisien == Decimal('20.0')  # 2.0 × 10.0
+        assert bhn_from_a.koefisien == Decimal('10.000000')
 
         bhn_from_b = expanded.get(kode='BHN.002', source_bundle_kode='Bundle B')
-        assert bhn_from_b.koefisien == Decimal('7.5')  # 1.5 × 5.0
+        assert bhn_from_b.koefisien == Decimal('5.000000')
 
 
 # ==================== TEST CASE 5: ERROR CASES ====================

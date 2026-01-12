@@ -120,11 +120,11 @@ class TestDashboardView:
         assert names == sorted(names)
 
     def test_dashboard_pagination(self, client, user):
-        """Test dashboard pagination (10 items per page)."""
+        """Test dashboard pagination (20 items per page)."""
         from dashboard.models import Project
 
-        # Create 15 projects (more than 1 page)
-        for i in range(15):
+        # Create 25 projects (more than 1 page)
+        for i in range(25):
             Project.objects.create(
                 owner=user,
                 nama=f'Project {i:02d}',
@@ -140,7 +140,7 @@ class TestDashboardView:
 
         # Page 1
         response = client.get(url)
-        assert len(response.context['projects']) == 10
+        assert len(response.context['projects']) == 20
 
         # Page 2
         response = client.get(url, {'page': 2})
@@ -205,6 +205,8 @@ class TestProjectEditView:
             'lokasi_project': 'Bandung',  # Changed
             'nama_client': 'Updated Client',
             'anggaran_owner': '2000000000',  # Changed
+            'week_start_day': '0',
+            'week_end_day': '6',
         }
 
         response = client.post(url, data)
@@ -226,6 +228,87 @@ class TestProjectEditView:
 
         # Should get 404
         assert response.status_code == 404
+
+    def test_project_edit_start_change_resets_progress(self, client, user, project):
+        """Changing project start date should reset weekly progress and regenerate tahapan."""
+        from detail_project.models import (
+            Klasifikasi,
+            SubKlasifikasi,
+            Pekerjaan,
+            TahapPelaksanaan,
+            PekerjaanTahapan,
+            PekerjaanProgressWeekly,
+        )
+        from datetime import timedelta
+
+        project.owner = user
+        project.tanggal_mulai = date(2025, 1, 1)
+        project.tanggal_selesai = date(2025, 3, 1)
+        project.week_start_day = 0
+        project.week_end_day = 6
+        project.save()
+
+        klas = Klasifikasi.objects.create(project=project, name='K', ordering_index=1)
+        sub = SubKlasifikasi.objects.create(project=project, klasifikasi=klas, name='Sub', ordering_index=1)
+        pekerjaan = Pekerjaan.objects.create(
+            project=project,
+            sub_klasifikasi=sub,
+            source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode='PK-1',
+            snapshot_uraian='Pekerjaan Uji',
+            snapshot_satuan='m2',
+            ordering_index=1,
+        )
+
+        week_start = project.tanggal_mulai
+        week_end = week_start + timedelta(days=6)
+        tahapan = TahapPelaksanaan.objects.create(
+            project=project,
+            nama='Week 1',
+            urutan=0,
+            tanggal_mulai=week_start,
+            tanggal_selesai=week_end,
+            is_auto_generated=True,
+            generation_mode='weekly',
+        )
+        PekerjaanTahapan.objects.create(pekerjaan=pekerjaan, tahapan=tahapan, proporsi_volume=Decimal('50.0'))
+        PekerjaanProgressWeekly.objects.create(
+            pekerjaan=pekerjaan,
+            project=project,
+            week_number=1,
+            week_start_date=week_start,
+            week_end_date=week_end,
+            proportion=Decimal('50.0'),
+        )
+
+        client.force_login(user)
+        url = reverse('dashboard:project_edit', kwargs={'pk': project.pk})
+        new_start = date(2025, 2, 1)
+        response = client.post(
+            url,
+            {
+                'nama': project.nama,
+                'tanggal_mulai': new_start.strftime('%Y-%m-%d'),
+                'tanggal_selesai': project.tanggal_selesai.strftime('%Y-%m-%d'),
+                'sumber_dana': project.sumber_dana,
+                'lokasi_project': project.lokasi_project,
+                'nama_client': project.nama_client,
+                'anggaran_owner': str(project.anggaran_owner),
+                'week_start_day': str(project.week_start_day or 0),
+                'week_end_day': str(project.week_end_day or 6),
+            },
+        )
+
+        assert response.status_code == 302
+        project.refresh_from_db()
+        assert project.tanggal_mulai == new_start
+
+        assert PekerjaanProgressWeekly.objects.filter(project=project).count() == 0
+        assert PekerjaanTahapan.objects.filter(tahapan__project=project).count() == 0
+
+        auto_tahapan = TahapPelaksanaan.objects.filter(project=project, is_auto_generated=True).order_by('urutan')
+        assert auto_tahapan.exists()
+        assert auto_tahapan.first().tanggal_mulai == new_start
 
 
 @pytest.mark.django_db

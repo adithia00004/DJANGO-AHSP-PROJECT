@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ahsp_redis
+
+    # Redis Configuration
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --appendonly yes
+      --appendfsync everysec
+
+    # Port mapping
+    ports:
+      - "6379:6379"
+
+    # Persistent storage for session data
+    volumes:
+      - redis_data:/data
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network
+    networks:
+      - ahsp_network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  ahsp_network:
+    driver: bridge

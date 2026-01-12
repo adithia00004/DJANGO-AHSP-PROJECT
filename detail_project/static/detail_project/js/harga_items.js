@@ -1,7 +1,7 @@
 // harga_items.js — Drop-in full version (formal terms + robust conversion)
 // - Patuh SSOT (tidak menulis --dp-*), hanya menulis var halaman (--hi-toolbar-h)
 // - Fitur: autofill 0, validasi angka (negatif/>2dp/out-of-range), bulk paste, konversi satuan
-(function(){
+(function () {
   const ROOT = document.getElementById('hi-app');
   if (!ROOT) return;
 
@@ -23,8 +23,8 @@
   const $filter = document.getElementById('hi-filter');
   const $btnSave = document.getElementById('hi-btn-save');
   // Unified export (dropdown like Rekap RAB)
-  const btnExportCSV  = document.getElementById('btn-export-csv');
-  const btnExportPDF  = document.getElementById('btn-export-pdf');
+  const btnExportCSV = document.getElementById('btn-export-csv');
+  const btnExportPDF = document.getElementById('btn-export-pdf');
   const btnExportWord = document.getElementById('btn-export-word');
   const $stats = document.getElementById('hi-stats');
   const $bukInput = document.getElementById('hi-buk-input');
@@ -40,8 +40,8 @@
   // Sinkron tinggi toolbar (var halaman, bukan global)
   const rootEl = document.querySelector(':root[data-page="harga_items"]') || document.documentElement;
   const toolbar = document.getElementById('hi-toolbar');
-  const debounce = (fn, ms=120)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-  function syncToolbarH(){
+  const debounce = (fn, ms = 120) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  function syncToolbarH() {
     if (!rootEl || !toolbar) return;
     rootEl.style.setProperty('--hi-toolbar-h', Math.ceil(toolbar.getBoundingClientRect().height) + 'px');
   }
@@ -58,19 +58,31 @@
   });
 
   // P0 FIX: Toast notification system (import from core)
-  const toast = window.DP && window.DP.core && window.DP.core.toast
-    ? (msg, variant='info', delay=3000) => window.DP.core.toast.show(msg, variant, delay)
-    : (msg) => console.log('[TOAST]', msg);
+  const toast = (msg, variant = 'info', delay = 3000) => {
+    const type = variant === 'danger' ? 'error' : variant;
+    if (window.DP && DP.toast && DP.toast.show) return DP.toast.show(msg, type, delay);
+    if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) return DP.core.toast.show(msg, type, delay);
+    if (typeof window.showToast === 'function') return window.showToast(msg, type, delay);
+    console.warn('[HI] Toast:', msg);
+  };
+
+  const confirmModal = (message, options = {}) => {
+    const modalApi = window.DP && DP.core && DP.core.modal ? DP.core.modal : null;
+    if (modalApi && modalApi.confirm) return modalApi.confirm(message, options);
+    if (window.DP && DP.toast) DP.toast.warning('Konfirmasi tidak tersedia.');
+    return Promise.resolve(false);
+  };
 
   // State
-  const katMap = { TK:'Tenaga', BHN:'Bahan', ALT:'Alat', LAIN:'Lainnya' };
-  const Dim = { MASS:'mass', VOL:'volume', COUNT:'count', OTHER:'other' };
+  const katMap = { TK: 'Tenaga', BHN: 'Bahan', ALT: 'Alat', LAIN: 'Lainnya' };
+  const Dim = { MASS: 'mass', VOL: 'volume', COUNT: 'count', OTHER: 'other' };
   let rows = [];
   let viewRows = [];
   let bukCanonLoaded = "";
 
   // P0 FIX: Dirty state tracking & optimistic locking
   let dirty = false;
+  let allowUnload = false;
   let projectUpdatedAt = null;  // Timestamp for optimistic locking
   let formLocked = false;
   let pendingTemplateReloadJobs = new Set(
@@ -95,10 +107,8 @@
   function openTemplatePage() {
     if (templateUrl) {
       window.open(templateUrl, '_blank', 'noopener');
-    } else if (TOAST) {
-      TOAST.warn('Halaman Template AHSP tidak tersedia.');
     } else {
-      alert('Halaman Template AHSP tidak tersedia.');
+      toast('Halaman Template AHSP tidak tersedia.', 'warning');
     }
   }
 
@@ -160,23 +170,23 @@
   });
 
   // ===== Helpers: numeric & format
-  const toUI = (s)=> N ? N.formatForUI(N.enforceDp(s||'', DP)) : (s||'');
+  const toUI = (s) => N ? N.formatForUI(N.enforceDp(s || '', DP)) : (s || '');
   // Locale-aware canonicalizer: prevents "100.000" (id-ID grouping) becoming 100.00
-  function canonFromUI(raw, dp){
+  function canonFromUI(raw, dp) {
     const s0 = String(raw ?? '').trim();
     if (!s0) return '';
     const hasDot = s0.includes('.');
     const hasComma = s0.includes(',');
-    if (hasDot && !hasComma){
+    if (hasDot && !hasComma) {
       const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
-      if (dotGrouping.test(s0)){
+      if (dotGrouping.test(s0)) {
         const noGroup = s0.replace(/\./g, '');
         return N ? (N.enforceDp(noGroup, dp) || '') : noGroup;
       }
     }
-    if (hasComma && !hasDot){
+    if (hasComma && !hasDot) {
       const commaGrouping = /^\d{1,3}(,\d{3})+$/;
-      if (commaGrouping.test(s0)){
+      if (commaGrouping.test(s0)) {
         const noGroup = s0.replace(/,/g, '');
         return N ? (N.enforceDp(noGroup, dp) || '') : noGroup;
       }
@@ -187,36 +197,61 @@
     const c = N ? N.canonicalizeForAPI(s0) : s0;
     return N ? (N.enforceDp(c || '', dp) || '') : (c || '');
   }
-  const toCanon = (v)=> canonFromUI(v, DP);
-  const toUI2 = (s)=> N ? N.formatForUI(N.enforceDp(s||'', 2)) : (s||'');
-  const toCanon2 = (v)=> canonFromUI(v, 2);
-  const toCanonFloat = (v, dp=6)=> canonFromUI(v, dp);
-  const rupiah = (canon)=>{
+  const toCanon = (v) => canonFromUI(v, DP);
+  const toUI2 = (s) => N ? N.formatForUI(N.enforceDp(s || '', 2)) : (s || '');
+  const toCanon2 = (v) => canonFromUI(v, 2);
+  const toCanonFloat = (v, dp = 6) => canonFromUI(v, dp);
+  const rupiah = (canon) => {
     if (canon == null || canon === '') return '—';
     const n = Number(canon); if (!isFinite(n)) return '—';
     return fmtRp.format(n);
   };
-  const decCountFromCanon = (canon)=>{
+  const decCountFromCanon = (canon) => {
     const s = String(canon ?? '');
     if (!s) return 0;
     const i = s.lastIndexOf('.');
     return i === -1 ? 0 : (s.length - i - 1);
   };
-  const csrfToken = ()=>{
+  const csrfToken = () => {
     const m = document.cookie.match(/csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
   };
-  function inferDim(u){
-    const s = (u||'').toLowerCase().trim();
-    if (['kg','g','gram','ons','ton','mg'].includes(s)) return Dim.MASS;
-    if (['m3','m³','l','lt','liter','ml'].includes(s)) return Dim.VOL;
-    if (['zak','pcs','buah','unit','bh'].includes(s)) return Dim.COUNT;
+  function inferDim(u) {
+    const s = (u || '').toLowerCase().trim();
+    if (['kg', 'g', 'gram', 'ons', 'ton', 'mg'].includes(s)) return Dim.MASS;
+    if (['m3', 'm³', 'l', 'lt', 'liter', 'ml'].includes(s)) return Dim.VOL;
+    if (['zak', 'pcs', 'buah', 'unit', 'bh'].includes(s)) return Dim.COUNT;
     return Dim.OTHER;
+  }
+
+  function doSafeReload() {
+    allowUnload = true;
+    window.location.reload();
+  }
+
+  async function confirmReload(reason) {
+    if (!dirty) {
+      doSafeReload();
+      return true;
+    }
+    const message = reason
+      ? `${reason}\n\nPerubahan harga yang belum disimpan akan hilang jika Anda melanjutkan.`
+      : 'Perubahan harga yang belum disimpan akan hilang jika Anda melanjutkan reload halaman.';
+    const ok = await confirmModal(message, {
+      title: 'Konfirmasi Reload',
+      confirmText: 'Reload',
+      cancelText: 'Batal',
+      confirmClass: 'btn btn-danger',
+    });
+    if (ok) {
+      doSafeReload();
+    }
+    return ok;
   }
 
   // P0 FIX: Unsaved changes warning - prevent data loss on browser close/refresh
   window.addEventListener('beforeunload', (e) => {
-    if (dirty) {
+    if (dirty && !allowUnload) {
       const msg = 'Anda memiliki perubahan harga yang belum disimpan. Yakin ingin meninggalkan halaman?';
       e.preventDefault();
       e.returnValue = msg;
@@ -224,19 +259,28 @@
     }
   });
 
+  window.addEventListener('keydown', (e) => {
+    if (!dirty) return;
+    const key = String(e.key || '').toLowerCase();
+    const isReload = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && key === 'r');
+    if (!isReload) return;
+    e.preventDefault();
+    confirmReload('Anda akan memuat ulang halaman.');
+  });
+
   // ===== Konversi: in-memory + localStorage per Kode
   const convStore = new Map(); // key: item.id -> profile
-  const lsk = (kode)=> 'hiConv:' + kode;
+  const lsk = (kode) => 'hiConv:' + kode;
 
   // ===== Fetch list
-  async function fetchList(){
+  async function fetchList() {
     setEmpty('Memuat data…');
-    try{
-      const res = await fetch(EP_LIST, { credentials:'same-origin' });
+    try {
+      const res = await fetch(EP_LIST, { credentials: 'same-origin' });
       const j = await res.json();
       if (!j.ok) throw new Error('Gagal memuat.');
-      rows = (j.items || []).map((it,i)=>({
-        idx: i+1,
+      rows = (j.items || []).map((it, i) => ({
+        idx: i + 1,
         id: it.id,
         kode: it.kode_item,
         uraian: it.uraian,
@@ -247,18 +291,18 @@
       }));
 
       // Prefill konversi dari server atau localStorage
-      rows.forEach(r=>{
+      rows.forEach(r => {
         if (r.conv) convStore.set(r.id, r.conv);
         else {
-          try{
+          try {
             const raw = localStorage.getItem(lsk(r.kode));
             if (raw) convStore.set(r.id, JSON.parse(raw));
-          }catch{}
+          } catch { }
         }
       });
 
       // Profit/Margin
-      if (j.meta && typeof j.meta.markup_percent !== 'undefined'){
+      if (j.meta && typeof j.meta.markup_percent !== 'undefined') {
         bukCanonLoaded = String(j.meta.markup_percent || '10.00');
         if ($bukInput) $bukInput.value = toUI2(bukCanonLoaded);
       }
@@ -271,34 +315,34 @@
 
       renderTable(rows);
       setDirty(false);  // Mark as clean after loading
-    }catch(e){
+    } catch (e) {
       setEmpty('Gagal memuat data.');
       console.error(e);
     }
   }
 
-  function setEmpty(text){
+  function setEmpty(text) {
     $tbody.innerHTML = `<tr class="hi-empty"><td colspan="7">${text}</td></tr>`;
     $stats.textContent = '0 item';
   }
 
   // ===== Render table
-  function renderTable(data){
-    if (!data || data.length === 0){ setEmpty('Tidak ada item harga yang digunakan di Detail AHSP.'); return; }
+  function renderTable(data) {
+    if (!data || data.length === 0) { setEmpty('Tidak ada item harga yang digunakan di Detail AHSP.'); return; }
     const fr = document.createDocumentFragment();
     viewRows = [];
-    data.forEach((r,i)=>{
+    data.forEach((r, i) => {
       const tr = document.createElement('tr');
       tr.dataset.itemId = r.id;
-      tr.dataset.kode = (r.kode||'').toLowerCase();
-      tr.dataset.uraian = (r.uraian||'').toLowerCase();
+      tr.dataset.kode = (r.kode || '').toLowerCase();
+      tr.dataset.uraian = (r.uraian || '').toLowerCase();
       tr.dataset.kategori = r.kategori || '';
       tr.dataset.satuan = r.satuan || '';
       const canonDisp = (r.harga_canon === '' ? '0.00' : r.harga_canon);
 
       tr.innerHTML = `
-        <td class="mono text-center">${i+1}</td>
-        <td>${escapeHtml(katMap[r.kategori] || r.kategori || '')}</td>
+        <td class="mono text-center">${i + 1}</td>
+        <td><span class="hi-cat-badge hi-cat-badge-${r.kategori || 'LAIN'}">${escapeHtml(katMap[r.kategori] || r.kategori || 'LAIN')}</span></td>
         <td class="mono">${escapeHtml(r.kode)}</td>
         <td>${escapeHtml(r.uraian)}</td>
         <td>${escapeHtml(r.satuan)}</td>
@@ -322,14 +366,12 @@
       // simpan canon awal untuk deteksi edit/empty
       tr.dataset.origCanon = canonDisp;
       tr.dataset.manualEdited = '0';
-      if (r.harga_canon === '' || r.harga_canon == null) {
+      // Treat null, empty, or 0 as unfilled
+      const isEmptyOrZero = (r.harga_canon === '' || r.harga_canon == null || Number(canonDisp) === 0);
+      if (isEmptyOrZero) {
         tr.classList.add('hi-row-empty');
         const inp = tr.querySelector('.hi-input-price');
         if (inp) inp.classList.add('vp-empty');
-      } else {
-        // Tandai nol sebagai perhatian (merah border kiri), tapi bukan invalid
-        const isZero = (Number(canonDisp) === 0);
-        if (isZero) tr.classList.add('hi-row-zero');
       }
       fr.appendChild(tr);
       viewRows.push(tr);
@@ -337,33 +379,96 @@
     $tbody.innerHTML = '';
     $tbody.appendChild(fr);
     $stats.textContent = `${data.length} item`;
+    updateStats(); // Update summary cards
   }
 
-  const escapeHtml = (s)=> (s??'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  const escapeAttr = (s)=> escapeHtml(s);
+  const escapeHtml = (s) => (s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  const escapeAttr = (s) => escapeHtml(s);
 
-  // ===== Filter
-  $filter?.addEventListener('input', ()=>{
-    const q = ($filter.value||'').trim().toLowerCase();
-    if (!q){ viewRows.forEach(tr=> tr.hidden=false); $stats.textContent = `${viewRows.length} item`; return; }
-    let show=0;
-    viewRows.forEach(tr=>{
-      const hit = tr.dataset.kode.includes(q)
-        || tr.dataset.uraian.includes(q)
-        || (katMap[tr.dataset.kategori]||'').toLowerCase().includes(q);
-      tr.hidden = !hit; if (hit) show++;
+  // ===== Stats Update (Simplified) =====
+  function updateStats() {
+    const total = viewRows.length;
+    let filled = 0, emptyCount = 0;
+    const catCounts = { TK: 0, BHN: 0, ALT: 0, LAIN: 0 };
+
+    viewRows.forEach(tr => {
+      const cat = tr.dataset.kategori || 'LAIN';
+      catCounts[cat] = (catCounts[cat] || 0) + 1;
+
+      const isEmptyRow = tr.classList.contains('hi-row-empty');
+      if (isEmptyRow) {
+        emptyCount++;
+      } else {
+        filled++;
+      }
     });
-    $stats.textContent = `${show} / ${viewRows.length} item`;
+
+    // Update filter counts
+    const countAll = document.getElementById('hi-count-all');
+    const countTK = document.getElementById('hi-count-TK');
+    const countBHN = document.getElementById('hi-count-BHN');
+    const countALT = document.getElementById('hi-count-ALT');
+    const countLAIN = document.getElementById('hi-count-LAIN');
+    const countEmpty = document.getElementById('hi-count-empty');
+    if (countAll) countAll.textContent = total;
+    if (countTK) countTK.textContent = catCounts.TK || 0;
+    if (countBHN) countBHN.textContent = catCounts.BHN || 0;
+    if (countALT) countALT.textContent = catCounts.ALT || 0;
+    if (countLAIN) countLAIN.textContent = catCounts.LAIN || 0;
+    if (countEmpty) countEmpty.textContent = emptyCount;
+  }
+
+  // ===== Category Filter Buttons =====
+  let currentCatFilter = 'all';
+  document.querySelectorAll('.hi-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.hi-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentCatFilter = btn.dataset.filter;
+      applyFilters();
+    });
+  });
+
+  function applyFilters() {
+    const q = ($filter?.value || '').trim().toLowerCase();
+    let show = 0;
+
+    viewRows.forEach(tr => {
+      let matchCat = true;
+      if (currentCatFilter === 'empty') {
+        matchCat = tr.classList.contains('hi-row-empty');
+      } else if (currentCatFilter !== 'all') {
+        matchCat = tr.dataset.kategori === currentCatFilter;
+      }
+
+      let matchSearch = true;
+      if (q) {
+        matchSearch = tr.dataset.kode.includes(q)
+          || tr.dataset.uraian.includes(q)
+          || (katMap[tr.dataset.kategori] || '').toLowerCase().includes(q);
+      }
+
+      const visible = matchCat && matchSearch;
+      tr.hidden = !visible;
+      if (visible) show++;
+    });
+
+    $stats.textContent = show === viewRows.length ? `${show} item` : `${show} / ${viewRows.length} item`;
+  }
+
+  // ===== Search Filter (enhanced)
+  $filter?.addEventListener('input', () => {
+    applyFilters();
   });
 
   // ===== Input/Blur: validasi live + autofill 0
-  function setRowDirtyVisual(tr, isDirty){
+  function setRowDirtyVisual(tr, isDirty) {
     if (!tr) return;
     tr.classList.toggle('hi-row-edited', !!isDirty);
     // Hindari background kuning Bootstrap di dark mode
     if (tr.classList.contains('table-warning')) tr.classList.remove('table-warning');
   }
-  $tbody.addEventListener('input', (e)=>{
+  $tbody.addEventListener('input', (e) => {
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
     const tr = el.closest('tr');
@@ -393,7 +498,7 @@
   });
 
   // ===== Blur: normalisasi ke display format
-  $tbody.addEventListener('blur', (e)=>{
+  $tbody.addEventListener('blur', (e) => {
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
 
@@ -409,7 +514,7 @@
 
     const prev = tr?.querySelector('.hi-price-preview');
     if (prev) prev.textContent = invalid ? '-' : rupiah(canon);
-    if (tr){
+    if (tr) {
       const orig = tr.dataset.origCanon || '';
       const isDirty = (orig && orig !== canon);
       tr.dataset.manualEdited = isDirty ? '1' : '0';
@@ -421,28 +526,28 @@
 
   // ===== Profit/Margin: enforce 2dp pada blur
   // P0 FIX: Mark dirty when BUK/markup changes
-  $bukInput?.addEventListener('input', ()=>{
+  $bukInput?.addEventListener('input', () => {
     const canon = toCanon2($bukInput.value);
     if (canon && canon !== bukCanonLoaded) {
       setDirty(true);
     }
   });
 
-  $bukInput?.addEventListener('blur', ()=>{
+  $bukInput?.addEventListener('blur', () => {
     const canon = toCanon2($bukInput.value);
     $bukInput.value = toUI2(canon || bukCanonLoaded);
   });
 
   // ===== SAVE
-  $btnSave?.addEventListener('click', async ()=>{
-    try{
+  $btnSave?.addEventListener('click', async () => {
+    try {
       const payload = { items: [] };
       const mpCanon = toCanon2($bukInput?.value);
 
       // kumpulkan harga dengan validasi ketat (abort jika ada invalid)
       let invalidCount = 0;
       const idsSaving = [];
-      viewRows.forEach(tr=>{
+      viewRows.forEach(tr => {
         const id = Number(tr.dataset.itemId);
         const input = tr.querySelector('.hi-input-price');
         if (!input) return;
@@ -452,28 +557,28 @@
         const n = Number(canon);
         const invalid = !isFinite(n) || n < 0 || n > MAX_PRICE;
         input.classList.toggle('ux-invalid', invalid);
-        if (invalid){ invalidCount++; return; }
+        if (invalid) { invalidCount++; return; }
 
         payload.items.push({ id, harga_satuan: canon });
         idsSaving.push({ id, canon });
       });
 
-      if (invalidCount > 0){
+      if (invalidCount > 0) {
         toast(`Terdapat ${invalidCount} input tidak valid. Perbaiki sebelum menyimpan.`, 'warning');
         return;
       }
 
       // konversi → jika user minta simpan ke server
       const conversions = [];
-      convStore.forEach((p, id)=>{
-        if (p && p.rememberServer){
+      convStore.forEach((p, id) => {
+        if (p && p.rememberServer) {
           conversions.push({ id, ...p });
         }
       });
       if (conversions.length) payload.conversions = conversions;
       if (mpCanon) payload.markup_percent = mpCanon;
 
-      if (payload.items.length === 0 && !payload.conversions && (!mpCanon || mpCanon === bukCanonLoaded)){
+      if (payload.items.length === 0 && !payload.conversions && (!mpCanon || mpCanon === bukCanonLoaded)) {
         toast('Tidak ada perubahan valid untuk disimpan.', 'info');
         return;
       }
@@ -487,9 +592,9 @@
       $btnSave.disabled = true; spin?.removeAttribute('hidden');
 
       const res = await fetch(EP_SAVE, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', 'X-CSRFToken': csrfToken() },
-        credentials:'same-origin',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+        credentials: 'same-origin',
         body: JSON.stringify(payload),
       });
       const j = await res.json();
@@ -498,20 +603,28 @@
       if (!j.ok && j.conflict) {
         console.warn('[SAVE] Conflict detected - data modified by another user');
 
-        const confirmMsg = (
-          "⚠️ KONFLIK DATA TERDETEKSI!\n\n" +
-          "Data harga telah diubah oleh pengguna lain sejak Anda membukanya.\n\n" +
-          "Pilihan:\n" +
-          "• OK = Muat Ulang (lihat perubahan terbaru, data Anda akan hilang)\n" +
-          "• Cancel = Timpa (simpan data Anda, perubahan pengguna lain akan hilang)\n\n" +
-          "⚠️ Timpa hanya jika Anda yakin perubahan Anda lebih penting!"
-        );
+        const confirmMsg = [
+          'Konflik data terdeteksi.',
+          '',
+          'Data harga telah diubah oleh pengguna lain sejak Anda membukanya.',
+          '',
+          'Pilih "Muat Ulang" untuk melihat perubahan terbaru (data Anda akan hilang).',
+          'Pilih "Timpa" untuk menyimpan data Anda (perubahan pengguna lain akan hilang).',
+        ].join('\n');
 
-        if (confirm(confirmMsg)) {
+        const doReload = await confirmModal(confirmMsg, {
+          title: 'Konfirmasi Konflik',
+          confirmText: 'Muat Ulang',
+          cancelText: 'Timpa',
+          confirmClass: 'btn btn-primary',
+          cancelClass: 'btn btn-danger',
+        });
+
+        if (doReload) {
           // User chose to reload - refresh page
           console.log('[SAVE] User chose to reload');
           toast('🔄 Memuat ulang data terbaru...', 'info');
-          setTimeout(() => window.location.reload(), 1000);
+          setTimeout(() => doSafeReload(), 1000);
         } else {
           // User chose to force overwrite - retry without timestamp
           console.log('[SAVE] User chose to force overwrite');
@@ -539,11 +652,11 @@
             }
 
             // Visual feedback
-            idsSaving.forEach(({id, canon})=>{
+            idsSaving.forEach(({ id, canon }) => {
               const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
               if (!tr) return;
               tr.classList.add('hi-row-saved');
-              setTimeout(()=> tr.classList.remove('hi-row-saved'), 1200);
+              setTimeout(() => tr.classList.remove('hi-row-saved'), 1200);
               tr.classList.remove('hi-row-empty');
               tr.classList.toggle('hi-row-zero', Number(canon) === 0);
               setRowDirtyVisual(tr, false);
@@ -552,7 +665,7 @@
               input?.classList.remove('ux-invalid');
             });
 
-            setTimeout(()=> fetchList(), 900);
+            setTimeout(() => fetchList(), 900);
           } else {
             const errMsg = retryJ.user_message || 'Gagal menyimpan data.';
             toast(errMsg, 'error');
@@ -563,7 +676,7 @@
       }
 
       // P0 FIX: Use user_message from server
-      if (!res.ok || !j.ok){
+      if (!res.ok || !j.ok) {
         const userMsg = j.user_message || 'Sebagian gagal disimpan. Silakan coba lagi.';
         toast(userMsg, 'warning');
         console.warn('[SAVE] Errors:', j.errors || []);
@@ -580,11 +693,11 @@
         }
 
         // Tandai baris-baris yang tersimpan dan bersihkan status dirty/empty
-        idsSaving.forEach(({id, canon})=>{
+        idsSaving.forEach(({ id, canon }) => {
           const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
           if (!tr) return;
           tr.classList.add('hi-row-saved');
-          setTimeout(()=> tr.classList.remove('hi-row-saved'), 1200);
+          setTimeout(() => tr.classList.remove('hi-row-saved'), 1200);
           tr.classList.remove('hi-row-empty');
           tr.classList.toggle('hi-row-zero', Number(canon) === 0);
           setRowDirtyVisual(tr, false);
@@ -593,91 +706,77 @@
           input?.classList.remove('ux-invalid');
         });
         // Tunda refresh agar highlight terlihat
-        setTimeout(()=> fetchList(), 900);
+        setTimeout(() => fetchList(), 900);
       }
-    }catch(e){
+    } catch (e) {
       console.error(e);
       toast('❌ Gagal menyimpan. Periksa koneksi internet Anda.', 'error');
       fetchList();
-    }finally{
+    } finally {
       const spin = document.getElementById('hi-save-spin');
-      $btnSave.disabled = false; spin?.setAttribute('hidden','');
+      $btnSave.disabled = false; spin?.setAttribute('hidden', '');
       // fetchList dipanggil pada cabang di atas
     }
   });
 
   // ===== EXPORT CSV
   // Export CSV (fallback local), or unified via ExportManager if available
-  function exportCSVLocal(){
-    const headers = ['No','Kategori','Kode','Uraian','Satuan','Harga','Nominal'];
+  function exportCSVLocal() {
+    const headers = ['No', 'Kategori', 'Kode', 'Uraian', 'Satuan', 'Harga', 'Nominal'];
     const lines = [headers.join(';')];
-    let idx=0;
-    viewRows.forEach(tr=>{
+    let idx = 0;
+    viewRows.forEach(tr => {
       if (tr.hidden) return;
       const kategori = tr.children[1].textContent.trim();
       const kode = tr.children[2].textContent.trim();
       const uraian = tr.children[3].textContent.trim().replace(/;/g, ',');
       const satuan = tr.children[4].textContent.trim();
       const input = tr.querySelector('.hi-input-price');
-      let canon = toCanon(input.value); if (!canon) canon='0.00';
+      let canon = toCanon(input.value); if (!canon) canon = '0.00';
       const nominal = rupiah(canon).replace(/^Rp\s?/, 'Rp ');
       lines.push([++idx, kategori, kode, uraian, satuan, canon, nominal].join(';'));
     });
-    const blob = new Blob([lines.join('\n')], { type:'text/csv;charset=utf-8;' });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
-    a.download = `harga_items_${(new Date()).toISOString().slice(0,10)}.csv`;
+    a.download = `harga_items_${(new Date()).toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   }
 
-  (function initUnifiedExport(){
-    if (!projectId){
+  (function initUnifiedExport() {
+    if (!projectId) {
       // bind CSV local only
       btnExportCSV?.addEventListener('click', exportCSVLocal);
-      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
-      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
       return;
     }
-    if (typeof ExportManager === 'undefined'){
+    // ExportManager initialization is now handled in the template with modal spinner
+    // Only provide CSV local fallback here if ExportManager loads fail
+    if (typeof ExportManager === 'undefined') {
+      console.log('[HI] ExportManager not available, using local CSV fallback');
       btnExportCSV?.addEventListener('click', exportCSVLocal);
-      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
-      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
-      return;
-    }
-    try{
-      // Page type for backend endpoints (to be provided server-side)
-      const exporter = new ExportManager(projectId, 'harga-items');
-      btnExportCSV?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('csv'); });
-      btnExportPDF?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('pdf'); });
-      btnExportWord?.addEventListener('click', (e)=>{ e.preventDefault(); exporter.exportAs('word'); });
-    }catch(err){
-      console.warn('[HI] ExportManager init failed, fallback to local CSV', err);
-      btnExportCSV?.addEventListener('click', exportCSVLocal);
-      btnExportPDF?.addEventListener('click', ()=> toast && toast('Export PDF belum tersedia', 'info'));
-      btnExportWord?.addEventListener('click', ()=> toast && toast('Export Word belum tersedia', 'info'));
     }
   })();
 
   // ===== BULK PASTE (Kode;[Unit];Harga;[Factor];[Density])
-  document.addEventListener('paste', (e)=>{
+  document.addEventListener('paste', (e) => {
     if (!e.clipboardData) return;
     const text = e.clipboardData.getData('text');
     if (!text || !text.includes('\n')) return; // bukan tabel
     const rowsPaste = text.trim().split(/\r?\n/).map(line => line.split(/\t|;/));
-    let hit=0, invalid=0;
+    let hit = 0, invalid = 0;
     const byKode = new Map();
 
-    rowsPaste.forEach(cols=>{
+    rowsPaste.forEach(cols => {
       const [kode, unit, harga, factor, density] = cols;
-      const k = String(kode||'').trim().toLowerCase(); if (!k) return;
-      const canonHarga = toCanon(harga||'0') || '0.00';
-      const factorCanon = toCanonFloat(factor||'', 6);
-      const densityCanon = toCanonFloat(density||'', 6);
+      const k = String(kode || '').trim().toLowerCase(); if (!k) return;
+      const canonHarga = toCanon(harga || '0') || '0.00';
+      const factorCanon = toCanonFloat(factor || '', 6);
+      const densityCanon = toCanonFloat(density || '', 6);
       byKode.set(k, { unit, harga: canonHarga, factor: factorCanon, density: densityCanon });
     });
 
-    viewRows.forEach(tr=>{
-      const k = (tr.dataset.kode||'').toLowerCase();
+    viewRows.forEach(tr => {
+      const k = (tr.dataset.kode || '').toLowerCase();
       if (!byKode.has(k)) return;
       const { harga, factor, unit, density } = byKode.get(k);
 
@@ -694,7 +793,7 @@
       if (isInv) invalid++; else hit++;
 
       // simpan profil konversi jika ada factor (tanpa push ke server)
-      if (factor){
+      if (factor) {
         convStore.set(Number(tr.dataset.itemId), {
           unit: (unit || '').toString(),
           price_market: toCanon2(harga) || '',
@@ -711,11 +810,11 @@
       }
     });
 
-    toast(`Paste massal: ${hit} baris${invalid?`, ${invalid} tidak valid`:''}.`, invalid ? 'warn' : 'success');
+    toast(`Paste massal: ${hit} baris${invalid ? `, ${invalid} tidak valid` : ''}.`, invalid ? 'warn' : 'success');
   });
 
   // ===== Modal Konversi: setup
-  let convCtx = { tr:null, id:null, kode:'', base:'', baseDim:Dim.OTHER };
+  let convCtx = { tr: null, id: null, kode: '', base: '', baseDim: Dim.OTHER };
 
   const $convModal = document.getElementById('hiConvModal');
   const $convItem = document.getElementById('hi-conv-item');
@@ -737,18 +836,19 @@
   const $convApply = document.getElementById('hi-conv-apply');
   const $convError = document.getElementById('hi-conv-error');
 
-  function setUnitLabel(lbl){ $convUnitLabel.textContent = lbl; }
-  function resetModal(){
-    [$convPrice,$convCapM3,$convCapTon,$convDensity,$convFactor].forEach(i=>{ if(i){ i.value=''; }});
+  function setUnitLabel(lbl) { $convUnitLabel.textContent = lbl; }
+  function resetModal() {
+    [$convPrice, $convCapM3, $convCapTon, $convDensity, $convFactor].forEach(i => { if (i) { i.value = ''; } });
     $convResult.textContent = '—'; $convHint.textContent = '';
     $convApply.disabled = true; $convError?.classList.add('d-none');
-    $convCapM3Wrap.classList.add('d-none'); $convCapTonWrap.classList.add('d-none'); $convDensityWrap.classList.add('d-none');
+    // Add null checks for wrap elements (may not exist in simplified modal)
+    $convCapM3Wrap?.classList.add('d-none'); $convCapTonWrap?.classList.add('d-none'); $convDensityWrap?.classList.add('d-none');
     const formula = document.getElementById('hi-conv-formula');
     if (formula) formula.textContent = 'Rumus: Harga per satuan pembelian dari Supplier ÷ Konstanta konversi';
   }
 
   // buka modal dari baris
-  $tbody.addEventListener('click', (e)=>{
+  $tbody.addEventListener('click', (e) => {
     const btn = e.target.closest('.hi-conv-open'); if (!btn) return;
     const tr = btn.closest('tr'); if (!tr) return;
 
@@ -772,10 +872,10 @@
 
     // restore profil (server/local)
     const prof = convStore.get(convCtx.id) || null;
-    if (prof){
-      const unitOpt = ['dump_truck','m3','ton','zak','custom'].includes(prof.unit) ? prof.unit : 'custom';
+    if (prof) {
+      const unitOpt = ['dump_truck', 'm3', 'ton', 'zak', 'custom'].includes(prof.unit) ? prof.unit : 'custom';
       $convUnit.value = unitOpt;
-      if (unitOpt==='custom'){
+      if (unitOpt === 'custom') {
         $convUnitCustom.classList.remove('d-none');
         $convUnitCustom.value = prof.unit || 'satuan pembelian dari Supplier';
         setUnitLabel($convUnitCustom.value || 'satuan pembelian dari Supplier');
@@ -783,10 +883,10 @@
         setUnitLabel(unitOpt);
       }
       if (prof.price_market) $convPrice.value = toUI2(prof.price_market);
-      if (prof.factor_to_base) $convFactor.value = (N ? N.formatForUI(N.enforceDp(prof.factor_to_base, 6)) : (prof.factor_to_base||''));
-      if (prof.capacity_m3){ $convCapM3Wrap.classList.remove('d-none'); $convCapM3.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_m3, 6)) : (prof.capacity_m3||'')); }
-      if (prof.capacity_ton){ $convCapTonWrap.classList.remove('d-none'); $convCapTon.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_ton, 6)) : (prof.capacity_ton||'')); }
-      if (prof.density){ $convDensityWrap.classList.remove('d-none'); $convDensity.value = (N ? N.formatForUI(N.enforceDp(prof.density, 6)) : (prof.density||'')); }
+      if (prof.factor_to_base) $convFactor.value = (N ? N.formatForUI(N.enforceDp(prof.factor_to_base, 6)) : (prof.factor_to_base || ''));
+      if (prof.capacity_m3) { $convCapM3Wrap.classList.remove('d-none'); $convCapM3.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_m3, 6)) : (prof.capacity_m3 || '')); }
+      if (prof.capacity_ton) { $convCapTonWrap.classList.remove('d-none'); $convCapTon.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_ton, 6)) : (prof.capacity_ton || '')); }
+      if (prof.density) { $convDensityWrap.classList.remove('d-none'); $convDensity.value = (N ? N.formatForUI(N.enforceDp(prof.density, 6)) : (prof.density || '')); }
     }
 
     updateHelperVisibility();
@@ -794,12 +894,12 @@
   });
 
   // perubahan unit
-  $convUnit?.addEventListener('change', ()=>{
+  $convUnit?.addEventListener('change', () => {
     const v = $convUnit.value;
-    if (v === 'custom'){
+    if (v === 'custom') {
       $convUnitCustom.classList.remove('d-none');
       setUnitLabel($convUnitCustom.value || 'satuan pembelian dari Supplier');
-    }else{
+    } else {
       $convUnitCustom.classList.add('d-none');
       setUnitLabel(v);
     }
@@ -807,57 +907,64 @@
     recalcConv();
   });
 
-  $convUnitCustom?.addEventListener('input', ()=>{
-    if ($convUnit.value==='custom'){
+  $convUnitCustom?.addEventListener('input', () => {
+    if ($convUnit.value === 'custom') {
       setUnitLabel($convUnitCustom.value || 'satuan pembelian dari Supplier');
       recalcConv();
     }
   });
 
   // input → hitung ulang
-  [$convPrice,$convCapM3,$convCapTon,$convDensity,$convFactor].forEach(el=>{
-    el?.addEventListener('input', ()=>{
-      if (el=== $convCapM3 || el === $convCapTon || el === $convDensity) autoFillFactor();
+  [$convPrice, $convCapM3, $convCapTon, $convDensity, $convFactor].forEach(el => {
+    el?.addEventListener('input', () => {
+      if (el === $convCapM3 || el === $convCapTon || el === $convDensity) autoFillFactor();
       recalcConv();
     });
   });
 
   // apply konversi
-  $convApply?.addEventListener('click', ()=>{
+  $convApply?.addEventListener('click', async () => {
     const canon = recalcConv(true);
-    if (!canon){ $convError?.classList.remove('d-none'); return; }
+    if (!canon) { $convError?.classList.remove('d-none'); return; }
 
     const input = convCtx.tr?.querySelector('.hi-input-price');
     const prev = convCtx.tr?.querySelector('.hi-price-preview');
     // Jika user sudah edit manual dan nilai akan berbeda, minta konfirmasi
-    if (convCtx.tr){
+    if (convCtx.tr) {
       const wasManual = convCtx.tr.dataset.manualEdited === '1';
       const curCanon = toCanon(input?.value);
-      if (wasManual && curCanon && curCanon !== canon){
-        const ok = window.confirm('Nilai harga pada baris ini telah diisi manual. Terapkan hasil konversi akan mengganti nilai tersebut. Lanjutkan?');
-        if (!ok) return;
+      if (wasManual && curCanon && curCanon !== canon) {
+      const ok = await confirmModal(
+        'Nilai harga pada baris ini telah diisi manual. Terapkan hasil konversi akan mengganti nilai tersebut. Lanjutkan?',
+        { title: 'Konfirmasi', confirmText: 'Lanjutkan', cancelText: 'Batal' },
+      );
+      if (!ok) return;
       }
     }
-    if (input){ input.value = toUI(canon); input.classList.remove('ux-invalid'); }
-    if (prev){ prev.textContent = rupiah(canon); }
+    if (input) { input.value = toUI(canon); input.classList.remove('ux-invalid'); }
+    if (prev) { prev.textContent = rupiah(canon); }
     // Tampilkan indikator edited (kuning) untuk hasil konversi juga
-    if (convCtx.tr){
+    if (convCtx.tr) {
       convCtx.tr.classList.remove('hi-row-empty');
       convCtx.tr.classList.toggle('hi-row-zero', Number(canon) === 0);
       const orig = convCtx.tr.dataset.origCanon || '';
-      const isDirty = (orig && orig !== canon);
-      setRowDirtyVisual(convCtx.tr, isDirty);
+      const isDirtyRow = (orig && orig !== canon);
+      setRowDirtyVisual(convCtx.tr, isDirtyRow);
+      // P0 FIX: Activate save button when conversion changes value
+      if (isDirtyRow) {
+        setDirty(true);
+      }
     }
 
     // simpan profil
-    const unitName = ($convUnit.value==='custom') ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : $convUnit.value;
+    const unitName = ($convUnit.value === 'custom') ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : $convUnit.value;
     const prof = {
       unit: unitName,
       price_market: toCanon2($convPrice.value) || '',
-      factor_to_base: toCanonFloat($convFactor.value,6) || '',
-      density: toCanonFloat($convDensity.value,6) || '',
-      capacity_m3: toCanonFloat($convCapM3.value,6) || '',
-      capacity_ton: toCanonFloat($convCapTon.value,6) || '',
+      factor_to_base: toCanonFloat($convFactor.value, 6) || '',
+      density: toCanonFloat($convDensity.value, 6) || '',
+      capacity_m3: toCanonFloat($convCapM3.value, 6) || '',
+      capacity_ton: toCanonFloat($convCapTon.value, 6) || '',
       method: deriveMethod(),
       base_unit: convCtx.base,
       updated_at: (new Date()).toISOString(),
@@ -866,73 +973,108 @@
     };
     convStore.set(convCtx.id, prof);
 
-    try{
-      if (prof.remember){ localStorage.setItem(lsk(convCtx.kode), JSON.stringify(prof)); }
+    try {
+      if (prof.remember) { localStorage.setItem(lsk(convCtx.kode), JSON.stringify(prof)); }
       else { localStorage.removeItem(lsk(convCtx.kode)); }
-    }catch{}
+    } catch { }
 
-    if (window.bootstrap && $convModal){
+    // POST to server if 'remember' is checked (save to database)
+    if (prof.remember && projectId && convCtx.id) {
+      const saveUrl = `/detail_project/api/project/${projectId}/conversion-profile/save/`;
+      fetch(saveUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          harga_item_id: convCtx.id,
+          market_unit: prof.unit,
+          market_price: prof.price_market,
+          factor_to_base: prof.factor_to_base,
+          density: prof.density || null,
+          capacity_m3: prof.capacity_m3 || null,
+          capacity_ton: prof.capacity_ton || null,
+          method: prof.method
+        })
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok) {
+            console.log('[CONV] Profile saved to server:', data.profile_id);
+            toast('✅ Pengaturan konversi tersimpan', 'success', 2000);
+          } else {
+            console.warn('[CONV] Failed to save profile:', data.error);
+          }
+        })
+        .catch(err => console.warn('[CONV] Save error:', err));
+    }
+
+    if (window.bootstrap && $convModal) {
       window.bootstrap.Modal.getOrCreateInstance($convModal).hide();
     }
     // Tandai baris sebagai tidak manual (diganti hasil konversi)
-    if (convCtx.tr){ convCtx.tr.dataset.manualEdited = '0'; }
+    if (convCtx.tr) { convCtx.tr.dataset.manualEdited = '0'; }
   });
 
   $convModal?.addEventListener('hidden.bs.modal', resetModal);
 
-  function deriveMethod(){
+  function deriveMethod() {
     if ($convFactor.value && ($convCapM3.value || $convCapTon.value || $convDensity.value)) return 'hybrid';
     if ($convFactor.value) return 'direct';
     if ($convCapM3.value || $convCapTon.value || $convDensity.value) return 'calc';
     return 'unknown';
   }
 
-  function updateHelperVisibility(){
+  function updateHelperVisibility() {
     const unit = $convUnit.value;
-    $convCapM3Wrap.classList.add('d-none');
-    $convCapTonWrap.classList.add('d-none');
-    $convDensityWrap.classList.add('d-none');
+    // Add null checks (wrap elements may not exist in simplified modal)
+    $convCapM3Wrap?.classList.add('d-none');
+    $convCapTonWrap?.classList.add('d-none');
+    $convDensityWrap?.classList.add('d-none');
 
-    // tampilkan helper sesuai unit
-    if (unit === 'dump_truck' || unit === 'm3') $convCapM3Wrap.classList.remove('d-none');
-    if (unit === 'ton') $convCapTonWrap.classList.remove('d-none');
+    // tampilkan helper sesuai unit (only if wrap elements exist)
+    if (unit === 'dump_truck' || unit === 'm3') $convCapM3Wrap?.classList.remove('d-none');
+    if (unit === 'ton') $convCapTonWrap?.classList.remove('d-none');
 
     // density hanya bila konversi volume -> massa
-    const unitDim = (unit==='m3' || unit==='dump_truck') ? Dim.VOL : (unit==='ton' ? Dim.MASS : Dim.OTHER);
-    if (unitDim === Dim.VOL && convCtx.baseDim === Dim.MASS) $convDensityWrap.classList.remove('d-none');
+    const unitDim = (unit === 'm3' || unit === 'dump_truck') ? Dim.VOL : (unit === 'ton' ? Dim.MASS : Dim.OTHER);
+    if (unitDim === Dim.VOL && convCtx.baseDim === Dim.MASS) $convDensityWrap?.classList.remove('d-none');
 
     // label unit
-    setUnitLabel(unit==='custom' ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : unit);
+    setUnitLabel(unit === 'custom' ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : unit);
   }
 
-  function autoFillFactor(){
+  function autoFillFactor() {
     // hitung faktor dari parameter (jika masuk akal)
     const unit = $convUnit.value;
     let factor = '';
 
-    if ((unit==='dump_truck' || unit==='m3') && convCtx.baseDim === Dim.MASS){
-      const cap = Number(toCanonFloat($convCapM3.value,6) || 'NaN'); // m3
-      const dens = Number(toCanonFloat($convDensity.value,6) || 'NaN'); // kg/m3
-      if (isFinite(cap) && cap>0 && isFinite(dens) && dens>0){
+    if ((unit === 'dump_truck' || unit === 'm3') && convCtx.baseDim === Dim.MASS) {
+      const cap = Number(toCanonFloat($convCapM3.value, 6) || 'NaN'); // m3
+      const dens = Number(toCanonFloat($convDensity.value, 6) || 'NaN'); // kg/m3
+      if (isFinite(cap) && cap > 0 && isFinite(dens) && dens > 0) {
         factor = String(cap * dens); // m3 * (kg/m3) = kg
       }
-    }else if ((unit==='dump_truck' || unit==='m3') && convCtx.baseDim === Dim.VOL){
-      const cap = Number(toCanonFloat($convCapM3.value,6) || 'NaN'); // m3
-      if (isFinite(cap) && cap>0){ factor = String(cap); } // m3 -> m3
-    }else if (unit==='ton' && convCtx.baseDim === Dim.MASS){
-      const capTon = Number(toCanonFloat($convCapTon.value,6) || 'NaN'); // ton
-      if (isFinite(capTon) && capTon>0){
-        const base = (convCtx.base||'').toLowerCase();
+    } else if ((unit === 'dump_truck' || unit === 'm3') && convCtx.baseDim === Dim.VOL) {
+      const cap = Number(toCanonFloat($convCapM3.value, 6) || 'NaN'); // m3
+      if (isFinite(cap) && cap > 0) { factor = String(cap); } // m3 -> m3
+    } else if (unit === 'ton' && convCtx.baseDim === Dim.MASS) {
+      const capTon = Number(toCanonFloat($convCapTon.value, 6) || 'NaN'); // ton
+      if (isFinite(capTon) && capTon > 0) {
+        const base = (convCtx.base || '').toLowerCase();
         const toKg = base === 'kg' ? 1000 : 1; // asumsi: jika base kg, 1 ton = 1000 kg
         factor = String(capTon * toKg);
       }
     }
-    if (factor){
-      $convFactor.value = N ? N.formatForUI(N.enforceDp(factor,6)) : factor;
+    if (factor) {
+      $convFactor.value = N ? N.formatForUI(N.enforceDp(factor, 6)) : factor;
     }
   }
 
-  function recalcConv(strict=false){
+  function recalcConv(strict = false) {
     const price = toCanon2($convPrice.value);
     const factor = toCanonFloat($convFactor.value, 6);
 
@@ -941,7 +1083,7 @@
     $convApply.disabled = invalid;
     $convError?.classList.toggle('d-none', !invalid);
 
-    if (invalid){
+    if (invalid) {
       $convResult.textContent = '—';
       $convHint.textContent = '';
       return strict ? '' : '';
@@ -954,14 +1096,14 @@
 
     // ringkasan audit
     const bits = [];
-    const unitName = ($convUnit.value==='custom') ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : $convUnit.value;
-    if ($convCapM3.value) bits.push(`${toUI2(toCanonFloat($convCapM3.value,2))} m³`);
-    if ($convCapTon.value) bits.push(`${toUI2(toCanonFloat($convCapTon.value,2))} ton`);
-    if ($convDensity.value) bits.push(`${toUI2(toCanonFloat($convDensity.value,2))} kg/m³`);
+    const unitName = ($convUnit.value === 'custom') ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : $convUnit.value;
+    if ($convCapM3.value) bits.push(`${toUI2(toCanonFloat($convCapM3.value, 2))} m³`);
+    if ($convCapTon.value) bits.push(`${toUI2(toCanonFloat($convCapTon.value, 2))} ton`);
+    if ($convDensity.value) bits.push(`${toUI2(toCanonFloat($convDensity.value, 2))} kg/m³`);
     const factorPretty = toUI2(factor);
     const arrow = factorPretty ? ` → ${factorPretty} ${convCtx.base}` : '';
     $convHint.textContent = bits.length
-      ? `Ringkasan perhitungan: ${unitName}${bits.length?`, `:''}${bits.join(', ')}${arrow}`
+      ? `Ringkasan perhitungan: ${unitName}${bits.length ? `, ` : ''}${bits.join(', ')}${arrow}`
       : '';
 
     return outCanon;

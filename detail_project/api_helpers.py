@@ -10,8 +10,8 @@ Provides:
 
 import functools
 import logging
-from typing import Any, Dict, Optional
-from django.http import JsonResponse
+from typing import Any, Dict, Optional, List
+from django.http import JsonResponse, QueryDict
 from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 
@@ -480,3 +480,90 @@ def api_endpoint(max_requests: int = 100, window: int = 60, category: str = None
             return view_func(request, *args, **kwargs)
         return wrapped_view
     return decorator
+
+
+# ============================================================================
+# REKAP KEBUTUHAN HELPERS
+# ============================================================================
+
+def _parse_int_csv_list(raw: str) -> List[int]:
+    """Parse comma-separated ints safely."""
+    if not raw:
+        return []
+    result: List[int] = []
+    for chunk in raw.split(','):
+        chunk = (chunk or '').strip()
+        if not chunk:
+            continue
+        try:
+            result.append(int(chunk))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def parse_kebutuhan_query_params(query: QueryDict) -> Dict[str, Any]:
+    """
+    Normalize Rekap Kebutuhan query parameters (mode, filters, search).
+
+    Returns dict:
+        {
+            "mode": "all" | "tahapan",
+            "tahapan_id": Optional[int],
+            "filters": {
+                "klasifikasi_ids": [int],
+                "sub_klasifikasi_ids": [int],
+                "kategori_items": [str],
+                "pekerjaan_ids": [int],
+            },
+            "search": str,
+            "time_scope": {"mode": str, "start": Optional[str], "end": Optional[str]},
+        }
+    """
+    mode_raw = (query.get('mode') or 'all').strip().lower()
+    mode = 'tahapan' if mode_raw == 'tahapan' else 'all'
+
+    tahapan_id = None
+    if mode == 'tahapan':
+        tahapan_raw = query.get('tahapan_id')
+        if tahapan_raw:
+            try:
+                tahapan_id = int(tahapan_raw)
+            except (TypeError, ValueError):
+                tahapan_id = None
+
+    filters = {
+        'klasifikasi_ids': _parse_int_csv_list(query.get('klasifikasi')),
+        'sub_klasifikasi_ids': _parse_int_csv_list(query.get('sub_klasifikasi')),
+        'kategori_items': [],
+        'pekerjaan_ids': _parse_int_csv_list(query.get('pekerjaan')),
+    }
+
+    kategori_raw = query.get('kategori')
+    if kategori_raw:
+        allowed = {'TK', 'BHN', 'ALT', 'LAIN'}
+        kategori_list = [
+            chunk.strip().upper()
+            for chunk in kategori_raw.split(',')
+            if chunk.strip()
+        ]
+        filters['kategori_items'] = [k for k in kategori_list if k in allowed]
+
+    search = (query.get('search') or '').strip()
+
+    time_scope = {
+        'mode': (query.get('period_mode') or 'all').strip().lower(),
+        'start': (query.get('period_start') or '').strip(),
+        'end': (query.get('period_end') or '').strip(),
+    }
+
+    tahapan_ids = _parse_int_csv_list(query.get('tahapan_ids'))
+
+    return {
+        'mode': mode,
+        'tahapan_id': tahapan_id,
+        'tahapan_ids': tahapan_ids,
+        'filters': filters,
+        'search': search,
+        'time_scope': time_scope,
+    }

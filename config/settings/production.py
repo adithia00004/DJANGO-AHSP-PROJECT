@@ -96,3 +96,33 @@ SESSION_COOKIE_SAMESITE = "Lax"
 
 # Observability defaults
 PERFORMANCE_LOG_THRESHOLD = float(os.getenv("DJANGO_PERF_THRESHOLD", "0.8"))
+
+# ---------------------------------------------------------------------------
+# Sentry Error Tracking
+# ---------------------------------------------------------------------------
+
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(
+                transaction_style="url",
+                middleware_spans=True,
+            ),
+            LoggingIntegration(
+                level=None,  # Capture all as breadcrumbs
+                event_level="ERROR",  # Only send ERROR+ as events
+            ),
+        ],
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_RATE", "0.1")),
+        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_RATE", "0.1")),
+        send_default_pii=False,  # Privacy: don't send PII
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+    )
+

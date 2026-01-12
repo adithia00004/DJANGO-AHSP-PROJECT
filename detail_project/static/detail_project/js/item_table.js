@@ -10,6 +10,13 @@
   const wrap = document.getElementById('itemsWrap');
   const actions = document.getElementById('itemsActions');
   const btnSave = document.getElementById('btnSaveItems');
+  const toast = (msg, variant = 'error', delay = 4000) => {
+    const type = variant === 'danger' ? 'error' : variant;
+    if (window.DP && DP.toast && DP.toast.show) return DP.toast.show(msg, type, delay);
+    if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) return DP.core.toast.show(msg, type, delay);
+    if (typeof window.showToast === 'function') return window.showToast(msg, type, delay);
+    console.warn('[Items] Toast:', msg);
+  };
 
   function rowTpl(it, editable) {
     return `
@@ -126,13 +133,13 @@
       });
       const data = await resp.json();
       if (!resp.ok || data.error) {
-        alert(data.error || 'Gagal menyimpan');
+        toast(data.error || 'Gagal menyimpan', 'error');
         return;
       }
       // reload current items
       document.getElementById('selectPekerjaan').dispatchEvent(new Event('change'));
     } catch (err) {
-      alert('Error: ' + err);
+      toast('Error: ' + err, 'error');
     }
   });
 })();

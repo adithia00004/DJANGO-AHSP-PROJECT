@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <title>Page not found at /detail_project/api/project/160/export/rekap-kebutuhan/csv/</title>
+  <meta name="robots" content="NONE,NOARCHIVE">
+  <style>
+    html * { padding:0; margin:0; }
+    body * { padding:10px 20px; }
+    body * * { padding:0; }
+    body { font-family: sans-serif; background:#eee; color:#000; }
+    body > :where(header, main, footer) { border-bottom:1px solid #ddd; }
+    h1 { font-weight:normal; margin-bottom:.4em; }
+    h1 small { font-size:60%; color:#666; font-weight:normal; }
+    table { border:none; border-collapse: collapse; width:100%; }
+    td, th { vertical-align:top; padding:2px 3px; }
+    th { width:12em; text-align:right; color:#666; padding-right:.5em; }
+    #info { background:#f6f6f6; }
+    #info ol { margin: 0.5em 4em; }
+    #info ol li { font-family: monospace; }
+    #summary { background: #ffc; }
+    #explanation { background:#eee; border-bottom: 0px none; }
+    pre.exception_value { font-family: sans-serif; color: #575757; font-size: 1.5em; margin: 10px 0 10px 0; }
+  </style>
+</head>
+<body>
+  <header id="summary">
+    <h1>Page not found <small>(404)</small></h1>
+    
+    <table class="meta">
+      <tr>
+        <th scope="row">Request Method:</th>
+        <td>GET</td>
+      </tr>
+      <tr>
+        <th scope="row">Request URL:</th>
+        <td>http://localhost:8000/detail_project/api/project/160/export/rekap-kebutuhan/csv/</td>
+      </tr>
+      
+    </table>
+  </header>
+
+  <main id="info">
+    
+      <p>
+      Using the URLconf defined in <code>config.urls</code>,
+      Django tried these URL patterns, in this order:
+      </p>
+      <ol>
+        
+          <li>
+            
+              <code>
+                health/
+                [name='health_check']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                health/simple/
+                [name='health_check_simple']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                health/ready/
+                [name='readiness_check']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                health/live/
+                [name='liveness_check']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                admin/login/
+                [name='admin_login_redirect']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                admin/
+                
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                accounts/
+                
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                dashboard/
+                
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/list-pekerjaan/
+                [name='list_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/volume-pekerjaan/
+                [name='volume_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/template-ahsp/
+                [name='template_ahsp']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/detail-ahsp/
+                [name='detail_ahsp_legacy']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/harga-items/
+                [name='harga_items']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/orphan-cleanup/
+                [name='orphan_cleanup']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/audit-trail/
+                [name='audit_trail']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/rincian-ahsp/
+                [name='rincian_ahsp']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/detail-ahsp-gabungan/
+                [name='detail_ahsp_gabungan_legacy']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/rekap-rab/
+                [name='rekap_rab']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/rekap-kebutuhan/
+                [name='rekap_kebutuhan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/jadwal-pekerjaan/
+                [name='jadwal_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/export-test/
+                [name='export_test']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                &lt;int:project_id&gt;/rincian-rab/
+                [name='rincian_rab']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/list-pekerjaan/save/
+                [name='api_save_list_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/list-pekerjaan/tree/
+                [name='api_get_list_pekerjaan_tree']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/list-pekerjaan/upsert/
+                [name='api_upsert_list_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/list-pekerjaan/json/
+                [name='export_list_pekerjaan_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/template-ahsp/json/
+                [name='export_template_ahsp_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/full-backup/json/
+                [name='export_project_full_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/import/json/
+                [name='import_project_from_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/templates/
+                [name='api_list_templates']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/templates/&lt;int:template_id&gt;/
+                [name='api_get_template_detail']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/templates/&lt;int:template_id&gt;/delete/
+                [name='api_delete_template']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/templates/create/
+                [name='api_create_template']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/templates/&lt;int:template_id&gt;/import/
+                [name='api_import_template']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/templates/export/
+                [name='export_template_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/templates/import-file/
+                [name='api_import_template_from_file']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/volume-pekerjaan/save/
+                [name='api_save_volume_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/volume-pekerjaan/list/
+                [name='api_list_volume_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/search-ahsp/
+                [name='api_search_ahsp']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/detail-ahsp/&lt;int:pekerjaan_id&gt;/
+                [name='api_get_detail_ahsp']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/detail-ahsp/&lt;int:pekerjaan_id&gt;/save/
+                [name='api_save_detail_ahsp_for_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/detail-ahsp/&lt;int:pekerjaan_id&gt;/reset-to-ref/
+                [name='api_reset_detail_ahsp_to_ref']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/detail-ahsp/save/
+                [name='api_save_detail_ahsp_gabungan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/pekerjaan/&lt;int:pekerjaan_id&gt;/bundle/&lt;int:bundle_id&gt;/expansion/
+                [name='api_get_bundle_expansion']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/harga-items/save/
+                [name='api_save_harga_items']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/harga-items/list/
+                [name='api_list_harga_items']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/orphaned-items/
+                [name='api_list_orphaned_items']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/orphaned-items/cleanup/
+                [name='api_cleanup_orphaned_items']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/change-status/
+                [name='api_get_change_status']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/audit-trail/
+                [name='api_get_audit_trail']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/conversion-profiles/
+                [name='api_get_conversion_profiles']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/conversion-profile/save/
+                [name='api_save_conversion_profile']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/pricing/
+                [name='api_project_pricing']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/pekerjaan/&lt;int:pekerjaan_id&gt;/pricing/
+                [name='api_pekerjaan_pricing']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/parameters/
+                [name='api_project_parameters']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/parameters/&lt;int:param_id&gt;/
+                [name='api_project_parameter_detail']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/parameters/sync/
+                [name='api_project_parameters_sync']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rekap/
+                [name='api_get_rekap_rab']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rekap-kebutuhan/
+                [name='api_get_rekap_kebutuhan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rekap-kebutuhan/validate/
+                [name='api_validate_rekap_kebutuhan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rincian-rab/
+                [name='api_get_rincian_rab']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rincian-rab/export.csv
+                [name='api_export_rincian_rab_csv']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/volume/formula/
+                [name='api_volume_formula_state']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/volume-formula-state/
+                [name='api_volume_formula_state_alias']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/deep-copy/
+                [name='api_deep_copy_project']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/batch-copy/
+                [name='api_batch_copy_project']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-rab/csv/
+                [name='export_rekap_rab_csv']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-rab/pdf/
+                [name='export_rekap_rab_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-rab/word/
+                [name='export_rekap_rab_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-rab/xlsx/
+                [name='export_rekap_rab_xlsx']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-rab/json/
+                [name='export_rekap_rab_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-kebutuhan/pdf/
+                [name='api_export_rekap_kebutuhan_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-kebutuhan/word/
+                [name='api_export_rekap_kebutuhan_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-kebutuhan/xlsx/
+                [name='api_export_rekap_kebutuhan_xlsx']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rekap-kebutuhan/json/
+                [name='api_export_rekap_kebutuhan_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/volume-pekerjaan/xlsx/
+                [name='export_volume_pekerjaan_xlsx']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/volume-pekerjaan/pdf/
+                [name='export_volume_pekerjaan_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/volume-pekerjaan/word/
+                [name='export_volume_pekerjaan_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/volume-pekerjaan/json/
+                [name='export_volume_pekerjaan_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/csv/
+                [name='export_harga_items_csv']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/pdf/
+                [name='export_harga_items_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/word/
+                [name='export_harga_items_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rincian-ahsp/csv/
+                [name='export_rincian_ahsp_csv']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rincian-ahsp/pdf/
+                [name='export_rincian_ahsp_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rincian-ahsp/word/
+                [name='export_rincian_ahsp_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/rincian-ahsp/xlsx/
+                [name='export_rincian_ahsp_xlsx']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/jadwal-pekerjaan/csv/
+                [name='export_jadwal_pekerjaan_csv']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/jadwal-pekerjaan/pdf/
+                [name='export_jadwal_pekerjaan_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/jadwal-pekerjaan/word/
+                [name='export_jadwal_pekerjaan_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/jadwal-pekerjaan/xlsx/
+                [name='export_jadwal_pekerjaan_xlsx']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/jadwal-pekerjaan/professional/
+                [name='export_jadwal_pekerjaan_professional']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/pdf/
+                [name='export_harga_items_pdf']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/word/
+                [name='export_harga_items_word']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/xlsx/
+                [name='export_harga_items_xlsx']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/export/harga-items/json/
+                [name='export_harga_items_json']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/
+                [name='api_list_create_tahapan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/&lt;int:tahapan_id&gt;/
+                [name='api_update_delete_tahapan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/reorder/
+                [name='api_reorder_tahapan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/&lt;int:tahapan_id&gt;/assign/
+                [name='api_assign_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/&lt;int:tahapan_id&gt;/unassign/
+                [name='api_unassign_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/pekerjaan/&lt;int:pekerjaan_id&gt;/assignments/
+                [name='api_get_pekerjaan_assignments']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/validate/
+                [name='api_validate_assignments']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/tahapan/unassigned/
+                [name='api_unassigned_pekerjaan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rekap-kebutuhan/filters/
+                [name='api_get_rekap_kebutuhan_filters']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rekap-kebutuhan-enhanced/
+                [name='api_get_rekap_kebutuhan_enhanced']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/rekap-kebutuhan-timeline/
+                [name='api_get_rekap_kebutuhan_timeline']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/project/&lt;int:project_id&gt;/regenerate-tahapan/
+                [name='api_regenerate_tahapan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/assign-weekly/
+                [name='api_v2_assign_weekly']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/assignments/
+                [name='api_v2_get_project_assignments']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/pekerjaan/&lt;int:pekerjaan_id&gt;/weekly-progress/
+                [name='api_v2_get_weekly_progress']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/pekerjaan/&lt;int:pekerjaan_id&gt;/assignments/
+                [name='api_v2_get_assignments']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/regenerate-tahapan/
+                [name='api_v2_regenerate_tahapan']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/week-boundary/
+                [name='api_update_week_boundaries']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/reset-progress/
+                [name='api_v2_reset_progress']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/kurva-s-data/
+                [name='api_kurva_s_data']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/chart-data/
+                [name='api_chart_data']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/kurva-s-harga/
+                [name='api_kurva_s_harga_data']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/v2/project/&lt;int:project_id&gt;/rekap-kebutuhan-weekly/
+                [name='api_rekap_kebutuhan_weekly']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/monitoring/deprecation-metrics/
+                [name='api_deprecation_metrics']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                monitoring/deprecation-dashboard/
+                [name='deprecation_dashboard']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/monitoring/deprecation-metrics/reset/
+                [name='api_reset_deprecation_metrics']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/monitoring/performance-metrics/
+                [name='api_performance_metrics']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                monitoring/performance-dashboard/
+                [name='performance_dashboard']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/monitoring/performance-metrics/reset/
+                [name='api_reset_performance_metrics']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/monitoring/report-client-metric/
+                [name='api_report_client_metric']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/export/init
+                [name='export_init']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/export/upload-pages
+                [name='export_upload_pages']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/export/finalize
+                [name='export_finalize']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/export/status/&lt;uuid:export_id&gt;
+                [name='export_status']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                detail_project/
+                
+              </code>
+            
+              <code>
+                api/export/download/&lt;uuid:export_id&gt;
+                [name='export_download']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                referensi/
+                
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                
+                [name='home']
+              </code>
+            
+          </li>
+        
+          <li>
+            
+              <code>
+                ^media/(?P&lt;path&gt;.*)$
+                
+              </code>
+            
+          </li>
+        
+      </ol>
+      <p>
+        
+          The current path, <code>detail_project/api/project/160/export/rekap-kebutuhan/csv/</code>,
+        
+        didn’t match any of these.
+      </p>
+    
+  </main>
+
+  <footer id="explanation">
+    <p>
+      You’re seeing this error because you have <code>DEBUG = True</code> in
+      your Django settings file. Change that to <code>False</code>, and Django
+      will display a standard 404 page.
+    </p>
+  </footer>
+</body>
+</html>

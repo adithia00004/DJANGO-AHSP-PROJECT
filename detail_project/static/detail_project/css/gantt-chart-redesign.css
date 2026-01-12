@@ -1,0 +1,991 @@
+/* =====================================================================
+   GANTT CHART REDESIGN - Modern Hierarchical Visualization
+   ===================================================================== */
+
+:root {
+  --gantt-grid-border-color: var(--ag-border-color, var(--bs-border-color));
+  --gantt-grid-divider-color: rgba(0, 0, 0, 0.05);
+}
+
+[data-bs-theme="dark"] {
+  --gantt-grid-border-color: var(--ag-border-color, var(--bs-border-color));
+  --gantt-grid-divider-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ===== Wrapper & Initial Loader ===== */
+.gantt-redesign-wrapper {
+  min-height: 600px;
+  position: relative;
+}
+
+.gantt-initial-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 600px;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+}
+
+.gantt-initial-loader .spinner-border {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* ===== Main Container ===== */
+.gantt-container {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  overflow: auto;
+  /* Enable scrolling for the unified grid */
+  background: var(--bs-body-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  isolation: isolate;
+  /* Create new stacking context for proper z-index layering */
+}
+
+/* ===== Frozen Grid Cells (AG Grid style borders) ===== */
+.gantt-grid {
+  border: 1px solid var(--gantt-grid-border-color);
+  border-radius: 8px;
+  background: var(--bs-body-bg);
+  display: table;
+  /* Use table layout for unified grid */
+  width: max-content;
+  /* Allow horizontal scrolling */
+  min-width: 100%;
+}
+
+.gantt-grid .gantt-row {
+  display: table-row;
+}
+
+.gantt-grid .gantt-cell {
+  display: table-cell;
+  border-bottom: 1px solid var(--gantt-grid-border-color);
+  padding: 0.625rem 0.75rem;
+  vertical-align: middle;
+}
+
+/* Frozen Column Sticky Positioning */
+.gantt-grid .gantt-cell.frozen {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: var(--bs-body-bg);
+  /* Ensure frozen cells cover scrolling content */
+}
+
+/* Stacked frozen columns (multiple sticky columns) */
+.gantt-grid .gantt-cell.frozen[data-column-index="0"] {
+  left: 0;
+}
+
+.gantt-grid .gantt-cell.frozen[data-column-index="1"] {
+  left: var(--frozen-col-0-width, 0);
+}
+
+.gantt-grid .gantt-cell.frozen[data-column-index="2"] {
+  left: calc(var(--frozen-col-0-width, 0) + var(--frozen-col-1-width, 0));
+}
+
+/* Frozen edge shadow for depth */
+.gantt-grid .gantt-cell.frozen-last {
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.08);
+}
+
+[data-bs-theme="dark"] .gantt-grid .gantt-cell.frozen-last {
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Frozen column borders */
+.gantt-grid .gantt-cell.frozen:not(.frozen-last) {
+  border-right: 1px solid var(--gantt-grid-border-color);
+}
+
+.gantt-grid .gantt-cell.frozen.tree-column {
+  border-left: 1px solid var(--gantt-grid-border-color);
+}
+
+/* Timeline cells */
+.gantt-grid .gantt-cell.timeline {
+  border-right: 1px solid var(--gantt-grid-divider-color);
+  position: relative;
+  /* For canvas overlay positioning */
+}
+
+.gantt-grid .gantt-cell.timeline-first {
+  border-left: 1px solid var(--gantt-grid-border-color);
+}
+
+[data-bs-theme="dark"] .gantt-grid .gantt-cell.timeline {
+  border-right: 1px solid var(--gantt-grid-divider-color);
+}
+
+[data-bs-theme="dark"] .gantt-grid .gantt-cell.timeline-first {
+  border-left: 1px solid var(--gantt-grid-border-color);
+}
+
+/* ===== Canvas Overlay Positioning (Frozen Column Architecture) ===== */
+.gantt-canvas-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  /* Allow clicks to pass through to grid cells */
+  z-index: 5;
+  /* Above grid cells, below frozen columns */
+}
+
+.gantt-canvas-overlay canvas {
+  display: block;
+}
+
+/* Mask element to cover bars under frozen columns */
+.gantt-canvas-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--bs-body-bg);
+  pointer-events: none;
+  z-index: 8;
+  /* Below frozen columns (z-index: 10), above canvas (z-index: 5) */
+}
+
+[data-bs-theme="dark"] .gantt-canvas-mask {
+  background: #1e1e1e;
+}
+
+/* ===== DEPRECATED: Panel Containers (Legacy Dual-Panel) ===== */
+/* These styles are deprecated and will be removed in Phase 4 cleanup */
+/* Frozen column architecture uses .gantt-grid with sticky positioning instead */
+
+.gantt-tree-panel-container {
+  /* DEPRECATED: Use .gantt-grid with frozen columns instead */
+  width: 30%;
+  min-width: 250px;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+  position: relative;
+  overflow: hidden;
+  z-index: 20;
+  flex-shrink: 0;
+}
+
+.gantt-timeline-panel-container {
+  /* DEPRECATED: Use .gantt-grid with timeline columns instead */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: white;
+  position: relative;
+  z-index: 1;
+  clip-path: inset(0 0 0 0);
+}
+
+/* ===== Tree Panel (Inside Container) ===== */
+.gantt-tree-panel {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bs-body-bg);
+  position: relative;
+}
+
+.tree-panel-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--bs-border-color);
+  background: var(--bs-light);
+}
+
+.tree-search-container {
+  position: relative;
+}
+
+.tree-search-input {
+  width: 100%;
+  padding: 0.5rem 2.5rem 0.5rem 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+  background: white;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.tree-search-input:focus {
+  outline: none;
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 252, 0.15);
+}
+
+.tree-search-icon {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--bs-secondary);
+  pointer-events: none;
+}
+
+/* ===== Tree Stats Bar ===== */
+.tree-stats-bar {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bs-light);
+  border-bottom: 1px solid var(--bs-border-color);
+  font-size: 0.75rem;
+  color: var(--bs-secondary);
+}
+
+.tree-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tree-stat i {
+  font-size: 0.875rem;
+}
+
+/* ===== Tree Content ===== */
+.tree-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+.tree-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tree-content::-webkit-scrollbar-track {
+  background: var(--bs-light);
+}
+
+.tree-content::-webkit-scrollbar-thumb {
+  background: var(--bs-secondary);
+  border-radius: 4px;
+}
+
+.tree-content::-webkit-scrollbar-thumb:hover {
+  background: var(--bs-primary);
+}
+
+/* ===== Tree Node Row ===== */
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+  user-select: none;
+}
+
+.tree-node-row:hover,
+.tree-node-row.hovered {
+  background: rgba(13, 110, 252, 0.05);
+  border-left: 3px solid var(--bs-primary);
+  padding-left: calc(0.75rem - 3px);
+}
+
+.tree-node-row.selected {
+  background: rgba(13, 110, 252, 0.1);
+  border-left: 3px solid var(--bs-primary);
+  padding-left: calc(0.75rem - 3px);
+  font-weight: 500;
+}
+
+/* Level-based styling */
+.tree-node-row.level-1 {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.tree-node-row.level-2 {
+  font-size: 0.875rem;
+}
+
+.tree-node-row.level-3 {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary);
+}
+
+/* Type-based colors */
+.tree-node-row.klasifikasi {
+  background: rgba(13, 110, 252, 0.02);
+}
+
+.tree-node-row.sub-klasifikasi {
+  background: rgba(25, 135, 84, 0.02);
+}
+
+/* ===== Tree Node Elements ===== */
+.tree-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--bs-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tree-expand-btn:hover {
+  background: var(--bs-light);
+  color: var(--bs-primary);
+}
+
+.tree-expand-spacer {
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.tree-node-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.tree-node-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.tree-node-kode {
+  font-family: var(--dp-font-mono);
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  background: var(--bs-light);
+  border-radius: 0.25rem;
+  color: var(--bs-secondary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tree-node-name {
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Max 3 lines of text with ellipsis */
+}
+
+.tree-node-name mark {
+  background: yellow;
+  color: black;
+  font-weight: 600;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+/* ===== Progress Badge ===== */
+.tree-progress-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 45px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+
+.progress-none {
+  background: var(--bs-light);
+  color: var(--bs-secondary);
+}
+
+.progress-low {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  color: white;
+}
+
+.progress-medium {
+  background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+  color: black;
+}
+
+.progress-high {
+  background: linear-gradient(135deg, #0dcaf0 0%, #0aa2c0 100%);
+  color: black;
+}
+
+.progress-very-high {
+  background: linear-gradient(135deg, #20c997 0%, #198754 100%);
+  color: white;
+}
+
+.progress-complete {
+  background: linear-gradient(135deg, #198754 0%, #146c43 100%);
+  color: white;
+}
+
+/* ===== Resize Handle ===== */
+.tree-resize-handle {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.2s ease;
+}
+
+.tree-resize-handle:hover {
+  background: var(--bs-primary);
+}
+
+.tree-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 30px;
+  background: var(--bs-border-color);
+  border-radius: 1px;
+}
+
+/* ===== Timeline Panel ===== */
+.gantt-timeline-panel {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: white;
+}
+
+.timeline-header {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 2px solid var(--bs-border-color);
+  background: var(--bs-light);
+}
+
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.timeline-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.timeline-toolbar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bs-secondary);
+}
+
+.timeline-zoom-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  background: white;
+  color: var(--bs-secondary);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeline-zoom-btn:hover {
+  background: var(--bs-light);
+  color: var(--bs-primary);
+  border-color: var(--bs-primary);
+}
+
+.timeline-zoom-btn.active {
+  background: var(--bs-primary);
+  color: white;
+  border-color: var(--bs-primary);
+}
+
+/* ===== Timeline Scale ===== */
+.timeline-scale {
+  display: flex;
+  height: 60px;
+  border-bottom: 1px solid var(--bs-border-color);
+  background: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.timeline-scale-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ===== Timeline Content ===== */
+.timeline-content {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+}
+
+.timeline-canvas-wrapper {
+  position: relative;
+  height: 100%;
+  min-height: 100%;
+}
+
+.timeline-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Custom scrollbar for timeline */
+.timeline-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.timeline-content::-webkit-scrollbar-track {
+  background: var(--bs-light);
+}
+
+.timeline-content::-webkit-scrollbar-thumb {
+  background: var(--bs-secondary);
+  border-radius: 5px;
+}
+
+.timeline-content::-webkit-scrollbar-thumb:hover {
+  background: var(--bs-primary);
+}
+
+.timeline-content::-webkit-scrollbar-corner {
+  background: var(--bs-light);
+}
+
+/* ===== Milestone Marker ===== */
+.milestone-marker {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+}
+
+.milestone-marker:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.milestone-marker::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 100vh;
+  background: currentColor;
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+/* ===== Milestone Popup ===== */
+.milestone-popup {
+  position: absolute;
+  min-width: 250px;
+  max-width: 400px;
+  background: white;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.milestone-popup.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.milestone-popup-header {
+  padding: 0.75rem 1rem;
+  background: var(--bs-light);
+  border-bottom: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem 0.5rem 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.milestone-popup-title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.milestone-popup-close {
+  border: none;
+  background: transparent;
+  color: var(--bs-secondary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.milestone-popup-close:hover {
+  background: var(--bs-danger);
+  color: white;
+}
+
+.milestone-popup-body {
+  padding: 1rem;
+}
+
+.milestone-popup-date {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.milestone-popup-description {
+  font-size: 0.875rem;
+  color: var(--bs-body-color);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.milestone-popup-comments {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.milestone-comment {
+  padding: 0.5rem;
+  background: var(--bs-light);
+  border-radius: 0.375rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.milestone-comment-author {
+  font-weight: 600;
+  color: var(--bs-primary);
+  margin-bottom: 0.25rem;
+}
+
+.milestone-comment-text {
+  color: var(--bs-body-color);
+  line-height: 1.4;
+}
+
+.milestone-comment-time {
+  font-size: 0.75rem;
+  color: var(--bs-secondary);
+  margin-top: 0.25rem;
+}
+
+/* ===== Today Marker ===== */
+.today-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: red;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.today-marker::before {
+  content: 'Today';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: red;
+  color: white;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ===== Loading State ===== */
+.gantt-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  color: var(--bs-secondary);
+}
+
+.gantt-loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--bs-light);
+  border-top-color: var(--bs-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===== Empty State ===== */
+.gantt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  padding: 2rem;
+  text-align: center;
+  color: var(--bs-secondary);
+}
+
+.gantt-empty i {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+.gantt-empty h5 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.gantt-empty p {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.7;
+}
+
+/* ===== Dark Mode ===== */
+[data-bs-theme="dark"] .gantt-container {
+  background: #1e1e1e;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .gantt-tree-panel {
+  background: #1e1e1e;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .tree-panel-header,
+[data-bs-theme="dark"] .tree-stats-bar {
+  background: #2d2d2d;
+}
+
+[data-bs-theme="dark"] .tree-search-input {
+  background: #2d2d2d;
+  color: white;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .tree-node-row:hover,
+[data-bs-theme="dark"] .tree-node-row.hovered {
+  background: rgba(13, 110, 252, 0.15);
+}
+
+[data-bs-theme="dark"] .tree-node-kode {
+  background: #2d2d2d;
+}
+
+[data-bs-theme="dark"] .gantt-timeline-panel {
+  background: #1e1e1e;
+}
+
+[data-bs-theme="dark"] .timeline-header {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .timeline-toolbar {
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .timeline-zoom-btn {
+  background: #2d2d2d;
+  border-color: #404040;
+  color: white;
+}
+
+[data-bs-theme="dark"] .timeline-scale {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .milestone-popup {
+  background: #2d2d2d;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .milestone-popup-header {
+  background: #1e1e1e;
+  border-color: #404040;
+}
+
+[data-bs-theme="dark"] .milestone-comment {
+  background: #1e1e1e;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 767px) {
+  .gantt-container {
+    height: auto;
+    min-height: 500px;
+  }
+
+  /* Frozen columns remain sticky on mobile for better UX */
+  .gantt-grid .gantt-cell.frozen {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+  }
+
+  /* Reduce frozen column width on mobile */
+  .gantt-grid .gantt-cell.frozen {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* DEPRECATED: Legacy dual-panel mobile styles */
+  .gantt-tree-panel-container {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--bs-border-color);
+    max-height: 300px;
+  }
+
+  .gantt-tree-panel {
+    width: 100%;
+    max-width: none;
+  }
+
+  .gantt-timeline-panel-container {
+    height: 400px;
+  }
+
+  .gantt-timeline-panel {
+    height: 100%;
+  }
+
+  .tree-resize-handle {
+    display: none;
+  }
+
+  .timeline-toolbar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
+
+/* ===== Accessibility ===== */
+.tree-expand-btn:focus-visible,
+.timeline-zoom-btn:focus-visible,
+.milestone-popup-close:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===== Print Styles ===== */
+@media print {
+  .gantt-container {
+    height: auto;
+    page-break-inside: avoid;
+  }
+
+  .timeline-toolbar,
+  .tree-search-container,
+  .tree-resize-handle {
+    display: none !important;
+  }
+
+  .gantt-tree-panel {
+    width: 25%;
+  }
+
+  .gantt-timeline-panel {
+    width: 75%;
+  }
+}

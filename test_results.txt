@@ -1,0 +1,132 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.1, pytest-8.3.4, pluggy-1.6.0
+django: version: 5.2.4, settings: config.settings.test (from ini)
+rootdir: D:\PORTOFOLIO ADIT\DJANGO AHSP PROJECT
+configfile: pytest.ini
+plugins: Faker-37.5.3, base-url-2.1.0, cov-6.0.0, django-4.9.0
+collected 629 items
+
+detail_project\tests\test_api_formula_state.py .......                   [  1%]
+detail_project\tests\test_api_numeric_endpoints.py .....                 [  1%]
+detail_project\tests\test_api_v2_weekly.py .............                 [  3%]
+detail_project\tests\test_audit_trail.py .....                           [  4%]
+detail_project\tests\test_bundle_quantity_semantic.py ....               [  5%]
+detail_project\tests\test_deepcopy_service.py .......................... [  9%]
+.......                                                                  [ 10%]
+detail_project\tests\test_dual_storage.py .........                      [ 12%]
+detail_project\tests\test_error_handling.py ..............               [ 14%]
+detail_project\tests\test_harga_items_p0_fixes.py .............          [ 16%]
+detail_project\tests\test_harga_items_page.py ...                        [ 16%]
+detail_project\tests\test_hsp_fix.py ..                                  [ 17%]
+detail_project\tests\test_jadwal_data_sync.py ..........                 [ 18%]
+detail_project\tests\test_jadwal_features.py ....................        [ 21%]
+detail_project\tests\test_jadwal_pekerjaan_page_ui.py ......             [ 22%]
+detail_project\tests\test_kurva_s_harga.py ..                            [ 23%]
+detail_project\tests\test_list_pekerjaan.py ...                          [ 23%]
+detail_project\tests\test_list_pekerjaan_api_advanced.py .........       [ 25%]
+detail_project\tests\test_list_pekerjaan_api_extra.py ......             [ 26%]
+detail_project\tests\test_list_pekerjaan_api_full.py ......              [ 27%]
+detail_project\tests\test_list_pekerjaan_api_gaps.py ........            [ 28%]
+detail_project\tests\test_list_pekerjaan_page.py ..                      [ 28%]
+detail_project\tests\test_list_pekerjaan_source_change.py ........       [ 29%]
+detail_project\tests\test_migration_tools.py ....                        [ 30%]
+detail_project\tests\test_models_weekly.py ...................           [ 33%]
+detail_project\tests\test_monitoring_and_progress_utils.py ..            [ 33%]
+detail_project\tests\test_orphan_cleanup.py ......                       [ 34%]
+detail_project\tests\test_page_interactions_comprehensive.py ........... [ 36%]
+........                                                                 [ 37%]
+detail_project\tests\test_phase4_infrastructure.py ..................... [ 41%]
+.......                                                                  [ 42%]
+detail_project\tests\test_phase5_integration.py .................        [ 44%]
+detail_project\tests\test_phase5_security.py ....s...................    [ 48%]
+detail_project\tests\test_phase_2e1_dual_fields.py ....                  [ 49%]
+detail_project\tests\test_pricing_api.py .....                           [ 50%]
+detail_project\tests\test_progress_utils_coverage.py ............        [ 52%]
+detail_project\tests\test_project_pricing_api.py .                       [ 52%]
+detail_project\tests\test_projectparameter.py ...............            [ 54%]
+detail_project\tests\test_referensi_fixtures.py ...ss                    [ 55%]
+detail_project\tests\test_rekap_api.py .                                 [ 55%]
+detail_project\tests\test_rekap_consistency.py ..                        [ 55%]
+detail_project\tests\test_rekap_data_sync.py .....ss.s                   [ 57%]
+detail_project\tests\test_rekap_kebutuhan.py ...                         [ 57%]
+detail_project\tests\test_rekap_kebutuhan_meta_export.py .               [ 58%]
+detail_project\tests\test_rekap_page.py ..                               [ 58%]
+detail_project\tests\test_rekap_rab_with_buk_and_lain.py .               [ 58%]
+detail_project\tests\test_rincian_ahsp.py .............................. [ 63%]
+..                                                                       [ 63%]
+detail_project\tests\test_rincian_progress_cumulative.py s               [ 63%]
+detail_project\tests\test_services_coverage.py ..........                [ 65%]
+detail_project\tests\test_tahapan.py ......................              [ 68%]
+detail_project\tests\test_tahapan_generation_conversion.py ............. [ 70%]
+...                                                                      [ 71%]
+detail_project\tests\test_template_ahsp_bundle.py .............s.......  [ 74%]
+detail_project\tests\test_template_ahsp_p0_p1_fixes.py ..........        [ 76%]
+detail_project\tests\test_template_ahsp_page.py ...                      [ 76%]
+detail_project\tests\test_unified_table_modes.py ....................... [ 80%]
+                                                                         [ 80%]
+detail_project\tests\test_views_api_coverage.py ...s....                 [ 81%]
+detail_project\tests\test_volume_formula_state.py ...                    [ 82%]
+detail_project\tests\test_volume_page.py ...................             [ 85%]
+detail_project\tests\test_volume_pekerjaan_save.py .                     [ 85%]
+detail_project\tests\test_weekly_canonical_validation.py ............... [ 87%]
+..                                                                       [ 88%]
+detail_project\tests\test_workflow_baseline.py ...............           [ 90%]
+detail_project\tests\test_harga_items_p0_fixes.py .......                [ 91%]
+detail_project\tests\test_template_ahsp_p0_p1_fixes.py ......            [ 92%]
+detail_project\tests\test_apps_unit.py ......ss                          [ 93%]
+detail_project\tests\test_error_handling.py ...........                  [ 95%]
+detail_project\tests\test_health_unit.py ...                             [ 96%]
+detail_project\tests\test_monitoring_and_progress_utils.py .........     [ 97%]
+detail_project\tests\test_numeric.py ...                                 [ 97%]
+detail_project\tests\test_page_interactions_comprehensive.py .           [ 98%]
+detail_project\tests\test_rincian_progress_cumulative.py ....            [ 98%]
+detail_project\tests\test_tier0_smoke.py .....                           [ 99%]
+detail_project\tests\test_toolbar_template.py .                          [ 99%]
+detail_project\tests\test_weekly_canonical_validation.py .               [ 99%]
+detail_project\tests\test_workflow_baseline.py .                         [100%]
+
+---------- coverage: platform win32, python 3.13.1-final-0 -----------
+Name                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------
+detail_project\admin_export.py                    56     56     0%   5-191
+detail_project\api_helpers.py                    134     30    78%   320, 339, 360-367, 397-406, 420-426, 441-443, 497, 500-501, 532-533, 544-550
+detail_project\decorators\api_deprecation.py      42      2    95%   135, 141
+detail_project\exceptions.py                      72     15    79%   230-232, 350, 365-390, 426-444
+detail_project\export_config.py                  204     55    73%   55-56, 139, 159, 205, 274-294, 325-326, 345-353, 371, 378, 386-388, 456, 472, 474, 480, 509-546
+detail_project\models.py                         401     79    80%   16-18, 23-24, 41, 51, 57, 74, 89, 155-162, 171-179, 188-191, 200-204, 208, 221, 233, 247-248, 252-256, 260, 265-268, 309, 372, 376-378, 382-383, 438, 524-525, 578, 602, 636, 719, 808, 824, 832, 835, 846-850, 904, 930-936, 954-955, 1044
+detail_project\models_export.py                  112     31    72%   178, 182-184, 189, 194-196, 201-203, 207-208, 212-213, 217-221, 225-227, 231-232, 236-237, 316, 321-323
+detail_project\monitoring_helpers.py             107      7    93%   156, 158, 178-188, 246
+detail_project\numeric.py                         65      4    94%   34, 51-52, 100
+detail_project\performance_optimizations.py       21     21     0%   174-257
+detail_project\progress_utils.py                 173     87    50%   40, 81, 238, 258-268, 297-344, 353-375, 402-487
+detail_project\quick_check_hsp_references.py     111    111     0%   12-232
+detail_project\services.py                      1476    359    76%   77-78, 117, 120-121, 131-135, 146, 152-159, 175, 177, 179, 190, 204, 239, 242, 246, 250, 256, 264-265, 269-281, 302, 305, 328, 332, 350, 352, 355, 371-372, 375, 401, 417, 437-438, 441-442, 459-461, 532, 540, 567, 572-575, 580, 624, 717, 732-733, 746, 751, 790-793, 796, 811-817, 924, 936-937, 994, 1068-1069, 1074-1080, 1152-1153, 1159-1169, 1179, 1185-1187, 1198-1201, 1288-1392, 1445-1495, 1628-1631, 1697-1708, 1744-1745, 1830-1838, 1905-1937, 1950-1951, 1990, 1999-2003, 2044-2045, 2090, 2227, 2284-2305, 2350, 2352, 2391-2392, 2407, 2477-2584, 2621, 2630, 2633, 2661-2668, 2676-2686, 2692-2694, 2699, 2754, 2761, 2763, 2766, 2799, 2804, 2813-2814, 2817, 2826-2827, 2831, 2835, 2841, 2848, 2858, 2892-2914, 3149, 3333-3343, 3364-3406, 3494-3498, 3502, 3508, 3552, 3554, 3567, 3698-3706, 3761, 3765, 3770-3779, 3832, 3921, 3926, 3980, 3988, 4034
+detail_project\signals.py                         59      5    92%   109-113, 122
+detail_project\templatetags\vite.py               96     28    71%   18, 28-32, 49, 52, 72, 76-78, 89, 106, 125-127, 131-134, 146-154, 178
+detail_project\test_performance.py               114    114     0%   12-197
+detail_project\utils\performance.py              111     87    22%   52-88, 106-139, 152-157, 162, 167, 177-180, 190-206, 222-225, 235-246, 259-273, 283-306, 322, 325-352
+detail_project\views.py                          105     14    87%   22, 108-113, 119-131, 181-186, 196-204
+detail_project\views_api.py                     2766   1283    54%   69-70, 86, 110-111, 126, 144, 149-150, 181-214, 233-263, 297-304, 330-341, 347-370, 389-390, 394, 415-417, 423-424, 431-433, 439-440, 446-447, 452-497, 502-503, 510-512, 516-519, 525-526, 583-587, 638-639, 676-677, 693, 710-711, 716-717, 885-886, 927, 941-942, 972-973, 991-992, 1001-1002, 1008-1009, 1036-1040, 1047-1052, 1070-1071, 1087-1091, 1105-1111, 1121-1126, 1159-1160, 1178-1179, 1188-1189, 1193-1197, 1203, 1209, 1225-1230, 1233, 1278-1279, 1285-1286, 1294, 1305-1307, 1326-1328, 1438, 1482-1488, 1511-1512, 1555-1557, 1580-1582, 1628-1629, 1634, 1650, 1663, 1665, 1682-1683, 1691, 1700-1703, 1724-1727, 1733-1754, 1831-1834, 1896-1902, 1934-1939, 1945-2000, 2065-2070, 2093, 2139-2201, 2224-2225, 2262-2263, 2283, 2304-2306, 2315, 2326, 2406-2430, 2463-2525, 2558-2559, 2623-2673, 2779-2840, 2935-2936, 2949, 2960-2961, 2985, 2987, 3018-3020, 3057-3058, 3068, 3109, 3113, 3117-3120, 3130-3133, 3143-3147, 3170, 3209-3210, 3237-3238, 3297-3298, 3362-3383, 3400-3421, 3438-3459, 3473-3492, 3506-3527, 3551-3552, 3567-3568, 3592-3593, 3606, 3659-3660, 3664, 3676, 3706-3707, 3715-3716, 3740-3743, 3769-3772, 3798-3801, 3818-3821, 3833-3841, 3855-3865, 3872-3882, 3889-3899, 3906-3916, 3927-3935, 3942-3950, 3957-3965, 3972-3980, 3987-4063, 4081-4084, 4099-4102, 4115-4120, 4127-4138, 4157-4169, 4183-4195, 4209-4221, 4235-4247, 4283-4286, 4304-4316, 4323, 4336-4394, 4469-4477, 4506-4512, 4522, 4577, 4581, 4601-4663, 4723-4827, 4847-4898, 4963-5038, 5100-5102, 5107-5112, 5183, 5196, 5244, 5329, 5456-5618, 5669-5861, 5879-5944, 5962-6020, 6047-6261, 6281-6542
+detail_project\views_api_tahapan.py              504    177    65%   41-42, 62-66, 85, 92, 111, 137-146, 157-253, 267-295, 339, 355-356, 359-360, 365-375, 380-385, 400, 410-413, 432-460, 556-560, 660-669, 715-716, 749-750, 791-792, 798-872, 949-950, 957-960, 979, 986-990, 1062-1065, 1091-1096, 1143, 1161, 1208, 1252, 1261, 1294-1295, 1303, 1340, 1391, 1412
+detail_project\views_api_tahapan_v2.py           325    111    66%   92, 109-110, 113, 140-141, 144-145, 148-149, 159-164, 170-180, 187-197, 219-221, 255, 298-299, 344-350, 356, 374, 386-389, 410-415, 430-431, 436-437, 444, 487-503, 554-625, 744-745, 750, 754-755, 759, 770, 777-784, 806-807, 837-842, 880-881, 886-887, 891, 899-900, 916-919
+detail_project\views_monitoring.py                69     43    38%   20, 49-68, 83, 97-105, 151-156, 173, 186-194, 213-248
+----------------------------------------------------------------------------
+TOTAL                                           7329   2719    63%
+
+8 files skipped due to complete coverage.
+
+Required test coverage of 60% reached. Total coverage: 62.90%
+
+=========================== short test summary info ===========================
+SKIPPED [1] detail_project\tests\test_phase5_security.py:132: Skipping in test environment - secure cookies disabled for Test Client
+SKIPPED [1] detail_project\tests\test_referensi_fixtures.py:93: DetailAHSPProject not populated - signals may need configuration
+SKIPPED [1] detail_project\tests\test_referensi_fixtures.py:132: Tree API returned empty - may require additional data setup
+SKIPPED [1] detail_project\tests\test_rekap_data_sync.py:368: Requires background signal to populate DetailAHSPExpanded
+SKIPPED [1] detail_project\tests\test_rekap_data_sync.py:568: Timeline calculation uses PekerjaanTahapan, not PekerjaanProgressWeekly. Fixture needs to be updated to create TahapPelaksanaan and PekerjaanTahapan records.
+SKIPPED [1] detail_project\tests\test_rekap_data_sync.py:633: Timeline calculation uses PekerjaanTahapan, not PekerjaanProgressWeekly. Fixture needs to be updated to create TahapPelaksanaan and PekerjaanTahapan records.
+SKIPPED [1] detail_project\tests\test_rincian_progress_cumulative.py:221: Requires Django database setup
+SKIPPED [1] detail_project\tests\test_template_ahsp_bundle.py:659: Bundle expansion in API save not yet implemented - requires dual storage sync
+SKIPPED [1] detail_project\tests\test_views_api_coverage.py:200: API requires DetailAHSPExpanded
+SKIPPED [1] detail_project\tests\test_apps_unit.py:122: warmup_health_check is disabled in apps.py - skipping test
+SKIPPED [1] detail_project\tests\test_apps_unit.py:128: warmup_health_check is disabled in apps.py - skipping test
+================= 618 passed, 11 skipped in 581.42s (0:09:41) =================

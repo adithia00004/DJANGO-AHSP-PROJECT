@@ -13,11 +13,22 @@
   border-radius: var(--dp-radius-md);
   margin-bottom: .5rem;
 }
-.ra-app .ra-title{ margin:0; font-weight:700; font-size: var(--ux-font-lg); letter-spacing:.2px; }
-.ra-app .ra-subtitle{ margin:2px 0 0 0; color:var(--dp-c-muted); font-size: var(--ux-font-md); }
+
+.ra-app .ra-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: var(--ux-font-lg);
+  letter-spacing: .2px;
+}
+
+.ra-app .ra-subtitle {
+  margin: 2px 0 0 0;
+  color: var(--dp-c-muted);
+  font-size: var(--ux-font-md);
+}
 
 /* ===== Toolbar (SELARAS dengan List Pekerjaan/Volume/Rekap RAB) ===== */
-.ra-app .ra-toolbar{
+.ra-app .ra-toolbar {
   /* sticky handled by dp-sticky-topbar class on HTML */
   z-index: var(--dp-z-toolbar);
   background: var(--bs-card-bg, var(--dp-c-surface));
@@ -32,7 +43,7 @@
 }
 
 /* TIER 2 FIX: Standardize button height with explicit calc */
-.ra-app .ra-toolbar .btn{
+.ra-app .ra-toolbar .btn {
   white-space: nowrap;
   font-size: var(--ux-font-xs);
   line-height: 1.5;
@@ -47,28 +58,46 @@
   justify-content: center;
   gap: .35rem;
 }
-.ra-app .ra-toolbar .btn:hover{
+
+.ra-app .ra-toolbar .btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--dp-shadow-md);
 }
-.ra-app .ra-toolbar .btn:active{
+
+.ra-app .ra-toolbar .btn:active {
   transform: translateY(0) scale(0.98);
   box-shadow: var(--dp-shadow-sm);
 }
-.ra-app .ra-searchbar{
+
+.ra-app .ra-searchbar {
   flex: 1 1 clamp(24rem, 50vw, 48rem);
   min-width: 0;
 }
+
 /* sejajarkan ikon & sambungkan border dengan input */
-.ra-app .ra-searchbar .input-group-text{ border-right:0; display:flex; align-items:center; }
-.ra-app .ra-searchbar .form-control{ border-left:0; }
-.ra-app .ra-toolbar-hint{ color: var(--dp-c-muted); font-size: var(--ux-font-xs); }
-.ra-app .ra-toolbar-hint .kbd-hint kbd{ margin: 0 .1rem; }
+.ra-app .ra-searchbar .input-group-text {
+  border-right: 0;
+  display: flex;
+  align-items: center;
+}
+
+.ra-app .ra-searchbar .form-control {
+  border-left: 0;
+}
+
+.ra-app .ra-toolbar-hint {
+  color: var(--dp-c-muted);
+  font-size: var(--ux-font-xs);
+}
+
+.ra-app .ra-toolbar-hint .kbd-hint kbd {
+  margin: 0 .1rem;
+}
 
 /* Input group sizing and theme in toolbar (SELARAS dengan Rekap RAB) */
 /* TIER 2 FIX: Standardize input height to match buttons */
 .ra-app #ra-toolbar .input-group .form-control,
-.ra-app #ra-toolbar .input-group .input-group-text{
+.ra-app #ra-toolbar .input-group .input-group-text {
   font-size: var(--ux-font-xs);
   line-height: 1.5;
   padding-top: .375rem;
@@ -80,23 +109,26 @@
   display: flex;
   align-items: center;
 }
-.ra-app #ra-toolbar .input-group .form-control{
+
+.ra-app #ra-toolbar .input-group .form-control {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
 }
-.ra-app #ra-toolbar .input-group .form-control:focus{
+
+.ra-app #ra-toolbar .input-group .form-control:focus {
   border-color: var(--dp-c-primary);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   outline: 0;
   transform: scale(1.005);
 }
-.ra-app #ra-toolbar .input-group .input-group-text{
+
+.ra-app #ra-toolbar .input-group .input-group-text {
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
 }
 
 /* Toolbar dropdown theme (SELARAS dengan Rekap RAB) */
-.ra-app #ra-toolbar .dropdown-menu{
+.ra-app #ra-toolbar .dropdown-menu {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
@@ -112,6 +144,7 @@
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -119,31 +152,34 @@
 }
 
 /* ===== Body Grid (sidebar | resizer | editor) ===== */
-.ra-app .ra-body{
+.ra-app .ra-body {
   display: grid;
   grid-template-columns:
-    minmax(280px, var(--ra-left-w, 25%))
-    6px
-    minmax(var(--ta-editor-min, 600px), 1fr);
+    minmax(260px, var(--ra-left-w, 22%)) 6px minmax(var(--ta-editor-min, 500px), 1fr);
   gap: 12px;
   align-items: stretch;
+  /* Adaptive height: fill available viewport minus toolbar */
+  height: calc(100vh - var(--ra-toolbar-height, 140px));
+  min-height: 1000px;
 }
-.ra-app #ra-resizer{
+
+.ra-app #ra-resizer {
   grid-column: 2;
   grid-row: 1 / -1;
   cursor: col-resize;
 }
 
-/* Tanpa min-width:0 */
+/* Sidebar and editor fill their grid cell */
 .ra-app .ra-sidebar,
-.ra-app .ra-editor{
+.ra-app .ra-editor {
   overflow: hidden;
+  height: 100%;
 }
 
 /* ===== Sidebar (SELARAS dengan List Pekerjaan) ===== */
-.ra-app .ra-sidebar{
+.ra-app .ra-sidebar {
   background: var(--dp-c-bg);
-  border: 2px solid var(--dp-c-border);
+  border: 1px solid var(--dp-c-border);
   border-radius: var(--dp-radius-lg);
   padding: 10px;
   display: flex;
@@ -151,21 +187,22 @@
   box-shadow: var(--dp-shadow-sm);
   transition: box-shadow var(--ux-duration-200) var(--ux-ease);
 }
-.ra-app .ra-sidebar:hover{
+
+.ra-app .ra-sidebar:hover {
   box-shadow: var(--dp-shadow-md);
 }
 
-/* Job list (IDENTIK) */
+/* Job list fills remaining sidebar height */
 .ra-app .ra-job-list,
 .ra-app #rk-list {
   list-style: none;
-  margin: 8px 0 0 0;
+  margin: 0;
   padding: 0;
-  max-height: calc(100vh - var(--ra-headroom, 220px));
-  overflow: auto;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
-  background-clip: padding-box;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 /* Scroll shadows untuk job list */
@@ -268,7 +305,7 @@
 .ra-app .ra-job-item .primary .kode,
 .ra-app .rk-item .primary .kode,
 .ra-app .rk-item-kode {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
   font-size: var(--ux-font-xs);
   font-weight: 600;
   color: var(--dp-c-muted);
@@ -327,14 +364,14 @@
 }
 
 /* Menyembunyikan chip di dalam job item meta (per permintaan user) */
-.ra-app #rk-list > li.rk-item .rk-item-meta > .rk-chip,
-.ra-app #rk-list > li.rk-item .meta > .rk-chip {
+.ra-app #rk-list>li.rk-item .rk-item-meta>.rk-chip,
+.ra-app #rk-list>li.rk-item .meta>.rk-chip {
   display: none;
 }
 
 /* Menghapus padding dari row-note di dalam rk-item-meta (per permintaan user) */
-.ra-app #rk-list > li.rk-item .rk-item-meta > .row-note,
-.ra-app #rk-list > li.rk-item .meta > .row-note {
+.ra-app #rk-list>li.rk-item .rk-item-meta>.row-note,
+.ra-app #rk-list>li.rk-item .meta>.row-note {
   padding: 0;
   margin: 0;
 }
@@ -409,7 +446,7 @@
   box-shadow: var(--dp-shadow-md);
 }
 
-.ra-app .ra-editor > * {
+.ra-app .ra-editor>* {
   padding-left: 0;
   padding-right: 0;
 }
@@ -611,14 +648,14 @@
 }
 
 /* Zebra striping (IDENTIK) */
-.ra-app table.ra-table tbody tr:nth-child(odd) > *,
-.ra-app table.ra-table tbody tr:nth-child(odd) > * {
+.ra-app table.ra-table tbody tr:nth-child(odd)>*,
+.ra-app table.ra-table tbody tr:nth-child(odd)>* {
   background: color-mix(in srgb, var(--dp-c-surface-2) 30%, transparent);
 }
 
 /* Row hover (IDENTIK) */
-.ra-app table.ra-table tbody tr:hover > *,
-.ra-app table.ra-table tbody tr:hover > * {
+.ra-app table.ra-table tbody tr:hover>*,
+.ra-app table.ra-table tbody tr:hover>* {
   background: color-mix(in srgb, var(--dp-c-primary) 6%, transparent);
 }
 
@@ -694,7 +731,7 @@
 }
 
 .ra-app .btn-sm,
-.ra-app .btn-group-sm > .btn {
+.ra-app .btn-group-sm>.btn {
   font-size: var(--ux-font-xs);
   line-height: 1.1;
   padding: .25rem .5rem;
@@ -711,11 +748,11 @@
 }
 
 .ra-app .btn.btn-neon {
-  box-shadow: 0 0 0 .2rem rgba(13,110,253,.25);
+  box-shadow: 0 0 0 .2rem rgba(13, 110, 253, .25);
 }
 
 .ra-app .btn.btn-neon:hover {
-  box-shadow: 0 0 0 .2rem rgba(13,110,253,.35), 0 0 18px rgba(13,110,253,.45);
+  box-shadow: 0 0 0 .2rem rgba(13, 110, 253, .35), 0 0 18px rgba(13, 110, 253, .45);
 }
 
 /* ===== INPUT CONTROLS (IDENTIK) ===== */
@@ -743,7 +780,7 @@
 
 /* Override input khusus */
 #rk-ovr-input {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
   text-align: right;
   font-size: var(--ux-font-xs);
 }
@@ -774,7 +811,7 @@
 /* ===== MONOSPACE ===== */
 .ra-app .mono,
 .ra-app .ux-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--dp-font-mono);
 }
 
 /* ===== TOAST ===== */
@@ -786,13 +823,26 @@
 }
 
 /* Ensure Help Modal sits above any local overlays (parity with template AHSP) */
-#raHelpModal { z-index: calc(var(--dp-z-modal) + 100) !important; }
-#raHelpModal ~ .modal-backdrop { z-index: calc(var(--dp-z-backdrop) + 100) !important; }
+#raHelpModal {
+  z-index: calc(var(--dp-z-modal) + 100) !important;
+}
+
+#raHelpModal~.modal-backdrop {
+  z-index: calc(var(--dp-z-backdrop) + 100) !important;
+}
 
 /* Dropdown/tooltip/popover layering above content and sticky thead */
-.ra-app .dropdown-menu { z-index: var(--dp-z-dropdown) !important; }
-.ra-app .tooltip { z-index: var(--dp-z-dropdown) !important; }
-.ra-app .popover { z-index: var(--dp-z-dropdown) !important; }
+.ra-app .dropdown-menu {
+  z-index: var(--dp-z-dropdown) !important;
+}
+
+.ra-app .tooltip {
+  z-index: var(--dp-z-dropdown) !important;
+}
+
+.ra-app .popover {
+  z-index: var(--dp-z-dropdown) !important;
+}
 
 /* Sticky thead for rincian table with proper z-index under toolbar */
 .ra-thead-sticky {
@@ -803,10 +853,23 @@
 }
 
 /* Page-scoped modal layering (ensure modal body not covered) */
-body[data-page="rincian_ahsp"] .modal { z-index: calc(var(--dp-z-modal) + 100) !important; }
-body[data-page="rincian_ahsp"] .modal-backdrop { z-index: calc(var(--dp-z-backdrop) + 100) !important; }
-body[data-page="rincian_ahsp"] .modal .modal-content { position: relative; z-index: 1; }
-body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index: 1; }
+body[data-page="rincian_ahsp"] .modal {
+  z-index: calc(var(--dp-z-modal) + 100) !important;
+}
+
+body[data-page="rincian_ahsp"] .modal-backdrop {
+  z-index: calc(var(--dp-z-backdrop) + 100) !important;
+}
+
+body[data-page="rincian_ahsp"] .modal .modal-content {
+  position: relative;
+  z-index: 1;
+}
+
+body[data-page="rincian_ahsp"] .modal .modal-body {
+  position: relative;
+  z-index: 1;
+}
 
 /* ===== RESPONSIVE (IDENTIK dengan Template AHSP) ===== */
 
@@ -866,17 +929,58 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
   }
 }
 
+/* ===== BUNDLE EXPANSION (CRITICAL FIX) ===== */
+.ra-app .bundle-row {
+  position: relative;
+  transition: background-color var(--ux-duration-200) var(--ux-ease);
+}
+
+.ra-app .bundle-row.clickable:hover {
+  background: color-mix(in srgb, var(--dp-c-info) 8%, transparent) !important;
+}
+
+.ra-app .bundle-row.expanded {
+  background: color-mix(in srgb, var(--dp-c-info) 5%, transparent) !important;
+  border-left: 3px solid var(--dp-c-info);
+}
+
+.ra-app .bundle-row.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.ra-app .bundle-expansion {
+  background: #f8f9fa !important;
+}
+
+.ra-app .bundle-expansion td {
+  padding: 0 !important;
+}
+
+.ra-app .bundle-expansion table {
+  margin: 0;
+}
+
+.ra-app .bundle-expansion table tbody tr:hover td {
+  background: color-mix(in srgb, var(--dp-c-info) 6%, transparent);
+}
+
 /* ===== DARK MODE (IDENTIK) ===== */
 [data-bs-theme="dark"] .ra-app .btn-primary {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .25), 0 0 18px rgba(56, 189, 248, .45);
 }
 
 [data-bs-theme="dark"] .ra-app .btn-primary:hover {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .35), 0 0 24px rgba(56, 189, 248, .55);
+}
+
+[data-bs-theme="dark"] .ra-app .bundle-expansion {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 50%, transparent) !important;
 }
 
 /* ===== ACCESSIBILITY (IDENTIK) ===== */
 @media (forced-colors: active) {
+
   .ra-app table.ra-table thead th,
   .ra-app table.ra-table tbody td {
     border-color: CanvasText !important;
@@ -888,6 +992,7 @@ body[data-page="rincian_ahsp"] .modal .modal-body { position: relative; z-index:
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {

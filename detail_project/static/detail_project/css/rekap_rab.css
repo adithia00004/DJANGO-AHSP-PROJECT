@@ -19,6 +19,35 @@
   background: var(--dp-c-bg);
 }
 
+/* =====================================================================
+   BORDER & HIERARCHY ENHANCEMENT SECTION
+   Konsisten dengan halaman lain (dashboard, list_pekerjaan, harga_items)
+   ===================================================================== */
+
+/* Border thickness tokens */
+:root {
+  --rab-border-thin: 1px;
+  --rab-border-normal: 2px;
+  --rab-border-emphasis: 3px;
+
+  /* Hierarchical row colors - Light Mode (using design tokens) */
+  --rab-level1-bg: color-mix(in srgb, var(--dp-c-primary) 12%, var(--dp-c-bg));
+  --rab-level1-border: var(--dp-c-primary);
+  --rab-level2-bg: color-mix(in srgb, var(--dp-c-surface-2) 60%, var(--dp-c-bg));
+  --rab-level2-border: var(--dp-c-border);
+  --rab-level3-bg: var(--dp-c-bg);
+}
+
+/* Dark mode - colors automatically adapt via design tokens */
+/* Additional fine-tuning for dark mode contrast */
+[data-bs-theme="dark"] {
+  --rab-level1-bg: color-mix(in srgb, var(--dp-c-primary) 18%, var(--dp-c-bg));
+  --rab-level1-border: color-mix(in srgb, var(--dp-c-primary) 70%, #fff);
+  --rab-level2-bg: color-mix(in srgb, var(--dp-c-surface-2) 40%, var(--dp-c-bg));
+  --rab-level2-border: var(--dp-c-border);
+  --rab-level3-bg: var(--dp-c-bg);
+}
+
 /* ============== TOOLBAR ============== */
 .rekap-toolbar,
 #rab-toolbar {
@@ -26,12 +55,15 @@
   top: var(--dp-topbar-h);
   z-index: var(--dp-z-toolbar);
   min-height: var(--rab-toolbar-h);
-  background: var(--dp-c-bg);
-  border-bottom: 1px solid var(--dp-c-border);
+  background: var(--dp-c-surface);
+  border: var(--rab-border-normal) solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
   display: flex;
   align-items: center;
   gap: .5rem;
-  padding: .5rem 0;
+  padding: .75rem 1rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
 }
 
@@ -49,7 +81,7 @@
   padding-top: .375rem;
   padding-bottom: .375rem;
   border-color: var(--dp-c-border);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
 }
 
 #rab-toolbar .input-group .form-control {
@@ -77,7 +109,7 @@
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-sm);
   white-space: nowrap;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
 #rab-toolbar .btn i {
@@ -149,6 +181,7 @@
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -185,6 +218,10 @@
 #rekap-table-wrap {
   overflow: auto;
   scrollbar-gutter: stable both-edges;
+  border: var(--rab-border-normal) solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-sm);
+  background: var(--dp-c-surface);
 }
 
 #rekap-table-wrap::-webkit-scrollbar {
@@ -266,39 +303,58 @@
   background: var(--ux-row-hover);
 }
 
-/* ============== HIERARCHICAL ROWS ============== */
-/* Level 1: Klasifikasi */
+/* ============== HIERARCHICAL ROWS (ENHANCED COLORS) ============== */
+/* Level 1: Klasifikasi - Blue theme with strong visual hierarchy */
 #rekap-table tbody tr[data-level="1"] {
-  background: var(--dp-c-surface-1);
+  background: var(--rab-level1-bg);
 }
 
 #rekap-table tbody tr[data-level="1"] td {
   font-weight: 700;
   font-size: var(--ux-font-sm);
-  background: color-mix(in srgb, var(--dp-c-surface-2) 70%, var(--dp-c-bg));
+  background: var(--rab-level1-bg);
+  border-left: none;
 }
 
 #rekap-table tbody tr[data-level="1"] td:first-child {
   padding-left: .75rem;
+  border-left: var(--rab-border-emphasis) solid var(--rab-level1-border);
 }
 
-/* Level 2: Sub-Klasifikasi */
+/* Level 1 hover - subtle emphasis */
+#rekap-table tbody tr[data-level="1"]:hover td {
+  background: color-mix(in srgb, var(--rab-level1-bg) 80%, var(--dp-c-primary));
+}
+
+/* Level 2: Sub-Klasifikasi - Gray theme with medium hierarchy */
 #rekap-table tbody tr[data-level="2"] {
-  background: var(--dp-c-surface);
+  background: var(--rab-level2-bg);
 }
 
 #rekap-table tbody tr[data-level="2"] td {
   font-weight: 600;
-  background: color-mix(in srgb, var(--dp-c-surface-1) 50%, var(--dp-c-bg));
+  background: var(--rab-level2-bg);
+  border-left: none;
 }
 
 #rekap-table tbody tr[data-level="2"] td:first-child {
   padding-left: 1.5rem;
+  border-left: var(--rab-border-normal) solid var(--rab-level2-border);
 }
 
-/* Level 3: Pekerjaan */
+/* Level 2 hover - subtle emphasis */
+#rekap-table tbody tr[data-level="2"]:hover td {
+  background: color-mix(in srgb, var(--rab-level2-bg) 85%, var(--dp-c-border));
+}
+
+/* Level 3: Pekerjaan - Clean white/transparent */
+#rekap-table tbody tr[data-level="3"] {
+  background: var(--rab-level3-bg);
+}
+
 #rekap-table tbody tr[data-level="3"] td {
   font-weight: 400;
+  background: var(--rab-level3-bg);
 }
 
 #rekap-table tbody tr[data-level="3"] td:first-child {
@@ -317,7 +373,7 @@
   border-radius: var(--dp-radius-sm);
   background: transparent;
   border: 1px solid var(--dp-c-border);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: background var(--ux-duration-200) var(--ux-ease), border-color var(--ux-duration-200) var(--ux-ease);
   vertical-align: middle;
 }
 
@@ -353,8 +409,13 @@
 
 /* Jump to result animation */
 @keyframes rabJumpTo {
-  0%   { background: color-mix(in srgb, var(--dp-c-info) 25%, transparent); }
-  100% { background: transparent; }
+  0% {
+    background: color-mix(in srgb, var(--dp-c-info) 25%, transparent);
+  }
+
+  100% {
+    background: transparent;
+  }
 }
 
 #rekap-table .rab-jump-to td {
@@ -366,7 +427,7 @@
   position: relative;
   background: var(--dp-c-surface);
   border-top: 2px solid var(--dp-c-primary);
-  box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, .08);
 }
 
 #rekap-table tfoot th {
@@ -584,6 +645,7 @@
 
 /* ============== PRINT STYLES - ENHANCED & OPTIMIZED ============== */
 @media print {
+
   /* === HIDE UI ELEMENTS === */
   #rab-toolbar,
   #rekap-app .rekap-toolbar,
@@ -778,15 +840,16 @@
 
 /* ============== DARK MODE ENHANCEMENTS ============== */
 [data-bs-theme="dark"] #rab-toolbar .btn-primary {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .25), 0 0 18px rgba(56, 189, 248, .45);
 }
 
 [data-bs-theme="dark"] #rab-toolbar .btn-primary:hover {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .35), 0 0 24px rgba(56, 189, 248, .55);
 }
 
 /* ============== ACCESSIBILITY ============== */
 @media (forced-colors: active) {
+
   #rekap-table thead th,
   #rekap-table tbody td,
   #rekap-table tfoot th {
@@ -803,6 +866,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -831,8 +895,13 @@
 }
 
 @keyframes rabHighlight {
-  0% { background: color-mix(in srgb, var(--dp-c-primary) 35%, transparent); }
-  100% { background: transparent; }
+  0% {
+    background: color-mix(in srgb, var(--dp-c-primary) 35%, transparent);
+  }
+
+  100% {
+    background: transparent;
+  }
 }
 
 .rab-flash {
@@ -840,10 +909,21 @@
 }
 
 @keyframes rabFlash {
-  0% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
-  12% { box-shadow: 0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35); }
-  40% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 1px rgba(13,110,253,.35); }
-  100% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0), inset 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+
+  12% {
+    box-shadow: 0 0 0 6px rgba(13, 110, 253, .22), inset 0 0 0 1px rgba(13, 110, 253, .35);
+  }
+
+  40% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0), inset 0 0 0 1px rgba(13, 110, 253, .35);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0), inset 0 0 0 0 rgba(13, 110, 253, 0);
+  }
 }
 
 /* ============== PRINT BUTTON HANDLER ============== */
@@ -851,7 +931,7 @@
   #btn-print:active {
     transform: scale(0.95);
   }
-  
+
   #btn-print.printing {
     opacity: 0.6;
     pointer-events: none;

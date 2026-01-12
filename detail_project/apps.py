@@ -86,14 +86,16 @@ def ensure_projectparameter_index(connection=None, using=None, **kwargs):
         logger.debug("ProjectParameter index creation skipped: %s", exc)
 
 def warmup_health_check(sender, **kwargs):
-    if not os.environ.get("PYTEST_CURRENT_TEST"):
-        return
-    try:
-        from django.test import Client
-        client = Client()
-        client.get("/health/")
-    except Exception as exc:
-        logger.debug("Health check warmup skipped: %s", exc)
+    # Disabled: can cause database connection leaks during test setup
+    # if not os.environ.get("PYTEST_CURRENT_TEST"):
+    #     return
+    # try:
+    #     from django.test import Client
+    #     client = Client()
+    #     client.get("/health/")
+    # except Exception as exc:
+    #     logger.debug("Health check warmup skipped: %s", exc)
+    pass
 
 class DetailProjectConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'

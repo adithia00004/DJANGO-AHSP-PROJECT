@@ -255,9 +255,9 @@ class TestBundleCreation:
         # Should have 2 components (TK + BHN) from Pekerjaan A
         assert expanded.count() == 2
 
-        # Verify koefisien multiplication (1.5x)
+        # Koefisien expanded menyimpan nilai per unit (agg layer yang mengalikan bundle koef)
         tk_expanded = expanded.get(kategori='TK')
-        assert tk_expanded.koefisien == Decimal('2.500000') * Decimal('1.5')
+        assert tk_expanded.koefisien == Decimal('2.500000')
         assert tk_expanded.source_bundle_kode == 'LAIN.A001'
         assert tk_expanded.expansion_depth == 1
 
@@ -373,7 +373,7 @@ class TestCascadeReExpansion:
 
         # Verify initial state
         expanded_before = DetailAHSPExpanded.objects.filter(pekerjaan=pekerjaan_b, kategori='TK').first()
-        assert expanded_before.koefisien == Decimal('2.500000') * Decimal('2.0')  # 5.0
+        assert expanded_before.koefisien == Decimal('2.500000')
 
         # Step 2: Modify Pekerjaan A (target) directly to simulate edit
         detail = DetailAHSPProject.objects.get(pekerjaan=pekerjaan_a, kategori='TK')
@@ -386,7 +386,7 @@ class TestCascadeReExpansion:
 
         # Step 3: Verify cascade updated Pekerjaan B
         expanded_after = DetailAHSPExpanded.objects.filter(pekerjaan=pekerjaan_b, kategori='TK').first()
-        assert expanded_after.koefisien == Decimal('3.0') * Decimal('2.0')  # 6.0
+        assert expanded_after.koefisien == Decimal('3.000000')
 
     def test_cascade_multi_level(self, baseline_setup, user):
         """Test cascade works through multi-level bundle chain (A←B←C)"""
@@ -424,9 +424,9 @@ class TestCascadeReExpansion:
         )
         populate_expanded_for(pekerjaan_c)
 
-        # Initial state: C should have TK with koef = 2.5 * 2.0 * 1.5 = 7.5
+        # Initial state: C menyimpan koef per-unit (masih mengandung multiplier nested B)
         tk_c_before = DetailAHSPExpanded.objects.get(pekerjaan=pekerjaan_c, kategori='TK')
-        assert tk_c_before.koefisien == Decimal('7.500000')
+        assert tk_c_before.koefisien == Decimal('5.000000')
 
         # Modify A
         detail_a = DetailAHSPProject.objects.get(pekerjaan=pekerjaan_a, kategori='TK')
@@ -436,13 +436,13 @@ class TestCascadeReExpansion:
         populate_expanded_for(pekerjaan_a)
         cascade_bundle_re_expansion(project, pekerjaan_a.id)
 
-        # Verify: B should update (4.0 * 2.0 = 8.0)
+        # Verify: B per-unit mengikuti nilai baru di A
         tk_b_after = DetailAHSPExpanded.objects.get(pekerjaan=pekerjaan_b, kategori='TK')
-        assert tk_b_after.koefisien == Decimal('8.000000')
+        assert tk_b_after.koefisien == Decimal('4.000000')
 
-        # Verify: C should cascade update (4.0 * 2.0 * 1.5 = 12.0)
+        # Verify: C memperbarui komponen nested (masih tanpa pengali bundle C sendiri)
         tk_c_after = DetailAHSPExpanded.objects.get(pekerjaan=pekerjaan_c, kategori='TK')
-        assert tk_c_after.koefisien == Decimal('12.000000')
+        assert tk_c_after.koefisien == Decimal('8.000000')
 
 
 # ============================================================================

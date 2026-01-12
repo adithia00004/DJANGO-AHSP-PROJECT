@@ -21,7 +21,9 @@ htmlcov/
 .ruff_cache/
 
 # Editors / OS
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 .DS_Store
 Thumbs.db
@@ -45,3 +47,5 @@ __pycache__/
 *.map__pycache__/
 *.pyc
 dump.rdb
+test_db.sqlite3
+test_pytest_db.sqlite3

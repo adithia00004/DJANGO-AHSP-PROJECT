@@ -2,6 +2,7 @@
 # NEW FILE: API endpoints untuk Tahapan Pelaksanaan
 
 import json
+from datetime import date, timedelta
 from django.db import models  # ADD THIS if not present
 from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse
@@ -10,19 +11,26 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from django.db.models import Sum, Max
+from django.db.models import Sum, Max, Count
 
 
 from .models import (
     Pekerjaan,
     TahapPelaksanaan, 
-    PekerjaanTahapan
+    PekerjaanTahapan,
+    Klasifikasi,
+    SubKlasifikasi,
 )
 from .services import (
     compute_kebutuhan_items,
+    compute_kebutuhan_timeline,
+    summarize_kebutuhan_rows,
     get_tahapan_summary,
-    get_unassigned_pekerjaan
+    get_unassigned_pekerjaan,
+    get_project_period_options,
 )
+from .api_helpers import parse_kebutuhan_query_params
+from .decorators import api_deprecated
 
 # Helper untuk validasi ownership
 def _owner_or_404(project_id, user):
@@ -294,10 +302,18 @@ def api_reorder_tahapan(request, project_id):
 @login_required
 @require_POST
 @transaction.atomic
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_assign_weekly",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_assign_pekerjaan_to_tahapan(request, project_id, tahapan_id):
     """
     Assign pekerjaan ke tahapan dengan proporsi.
-    
+
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/assign-weekly/ instead.
+    Sunset date: 2025-02-14
+
     Body: {
         "assignments": [
             {
@@ -399,10 +415,18 @@ def api_assign_pekerjaan_to_tahapan(request, project_id, tahapan_id):
 
 @login_required
 @require_POST
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_assign_weekly",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_unassign_pekerjaan_from_tahapan(request, project_id, tahapan_id):
     """
     Unassign pekerjaan dari tahapan.
-    
+
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/assign-weekly/ instead.
+    Sunset date: 2025-02-14
+
     Body: {"pekerjaan_ids": [1, 2, 3]}
     """
     project = _owner_or_404(project_id, request.user)
@@ -438,8 +462,16 @@ def api_unassign_pekerjaan_from_tahapan(request, project_id, tahapan_id):
 
 @login_required
 @require_GET
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_get_assignments",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_get_pekerjaan_assignments(request, project_id, pekerjaan_id):
     """
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/pekerjaan/{pid}/assignments/ instead.
+    Sunset date: 2025-02-14
+
     Get all tahapan assignments untuk satu pekerjaan.
     
     Returns:
@@ -538,6 +570,117 @@ def api_get_unassigned_pekerjaan(request, project_id):
 
 @login_required
 @require_GET
+def api_get_rekap_kebutuhan_filters(request, project_id):
+    """Return klasifikasi & sub-klasifikasi metadata for filter panel."""
+    project = _owner_or_404(project_id, request.user)
+
+    klas_qs = list(
+        Klasifikasi.objects
+        .filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values('id', 'name')
+    )
+    sub_qs = list(
+        SubKlasifikasi.objects
+        .filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values('id', 'name', 'klasifikasi_id')
+    )
+
+    sub_counts = {
+        row['sub_klasifikasi_id']: row['total']
+        for row in (
+            Pekerjaan.objects
+            .filter(project=project)
+            .values('sub_klasifikasi_id')
+            .annotate(total=Count('id'))
+        )
+    }
+    klas_counts = {
+        row['sub_klasifikasi__klasifikasi_id']: row['total']
+        for row in (
+            Pekerjaan.objects
+            .filter(project=project)
+            .values('sub_klasifikasi__klasifikasi_id')
+            .annotate(total=Count('id'))
+        )
+    }
+
+    subs_by_klas = {}
+    for sub in sub_qs:
+        subs_by_klas.setdefault(sub['klasifikasi_id'], []).append({
+            'id': sub['id'],
+            'name': sub['name'],
+            'pekerjaan_count': sub_counts.get(sub['id'], 0),
+        })
+
+    data = []
+    for klas in klas_qs:
+        subs = subs_by_klas.get(klas['id'], [])
+        data.append({
+            'id': klas['id'],
+            'name': klas['name'],
+            'pekerjaan_count': klas_counts.get(klas['id'], 0),
+            'sub': subs,
+        })
+
+    stats = {
+        'total_klasifikasi': len(klas_qs),
+        'total_sub_klasifikasi': len(sub_qs),
+        'total_pekerjaan': sum(klas_counts.values()) if klas_counts else 0,
+    }
+
+    pekerjaan_qs = list(
+        Pekerjaan.objects
+        .filter(project=project)
+        .annotate(tahapan_assigned=Count('tahapan_assignments', distinct=True))
+        .order_by('ordering_index', 'id')
+        .values(
+            'id',
+            'snapshot_kode',
+            'snapshot_uraian',
+            'sub_klasifikasi_id',
+            'sub_klasifikasi__klasifikasi_id',
+            'tahapan_assigned',
+        )
+    )
+    pekerjaan_data = [
+        {
+            'id': row['id'],
+            'kode': row['snapshot_kode'] or '',
+            'nama': row['snapshot_uraian'] or '',
+            'sub_klasifikasi_id': row['sub_klasifikasi_id'],
+            'klasifikasi_id': row['sub_klasifikasi__klasifikasi_id'],
+            'tahapan_count': row['tahapan_assigned'],
+        }
+        for row in pekerjaan_qs
+    ]
+
+    def ensure_date(val):
+        if val is None:
+            return None
+        if isinstance(val, date):
+            return val
+        if hasattr(val, "date"):
+            try:
+                return val.date()
+            except Exception:
+                return None
+        return None
+
+    period_payload = get_project_period_options(project)
+
+    return JsonResponse({
+        'ok': True,
+        'klasifikasi': data,
+        'stats': stats,
+        'pekerjaan': pekerjaan_data,
+        'periods': period_payload,
+    })
+
+
+@login_required
+@require_GET
 def api_get_rekap_kebutuhan_enhanced(request, project_id):
     """
     Enhanced rekap kebutuhan dengan support filtering.
@@ -554,85 +697,195 @@ def api_get_rekap_kebutuhan_enhanced(request, project_id):
         /api/project/1/rekap-kebutuhan/?mode=all&klasifikasi=1,2&kategori=TK,BHN
     """
     project = _owner_or_404(project_id, request.user)
-    
-    # Parse query params
-    mode = request.GET.get('mode', 'all')
-    tahapan_id = request.GET.get('tahapan_id')
-    
-    # Build filters dict
-    filters = {}
-    
-    # Klasifikasi filter
-    if request.GET.get('klasifikasi'):
-        try:
-            klas_ids = [int(x.strip()) for x in request.GET.get('klasifikasi').split(',') if x.strip()]
-            if klas_ids:
-                filters['klasifikasi_ids'] = klas_ids
-        except ValueError:
-            pass
-    
-    # Sub-klasifikasi filter
-    if request.GET.get('sub_klasifikasi'):
-        try:
-            sub_klas_ids = [int(x.strip()) for x in request.GET.get('sub_klasifikasi').split(',') if x.strip()]
-            if sub_klas_ids:
-                filters['sub_klasifikasi_ids'] = sub_klas_ids
-        except ValueError:
-            pass
-    
-    # Kategori item filter
-    if request.GET.get('kategori'):
-        kategori_list = [x.strip().upper() for x in request.GET.get('kategori').split(',') if x.strip()]
-        valid_kat = [k for k in kategori_list if k in ('TK', 'BHN', 'ALT', 'LAIN')]
-        if valid_kat:
-            filters['kategori_items'] = valid_kat
-    
-    # Compute kebutuhan
+    params = parse_kebutuhan_query_params(request.GET)
+    mode = params['mode']
+    tahapan_id = params['tahapan_id']
+    filters = params['filters']
+    search = params['search']
+    time_scope = params.get('time_scope')
+
     try:
-        rows = compute_kebutuhan_items(
+        raw_rows = compute_kebutuhan_items(
             project,
             mode=mode,
-            tahapan_id=int(tahapan_id) if tahapan_id else None,
-            filters=filters if filters else None
+            tahapan_id=tahapan_id,
+            filters=filters,
+            time_scope=time_scope,
         )
     except Exception as e:
-        return JsonResponse({
-            'ok': False,
-            'error': str(e)
-        }, status=500)
-    
-    # Count per kategori
-    counts = {"TK": 0, "BHN": 0, "ALT": 0, "LAIN": 0}
-    for r in rows:
-        k = r.get("kategori")
-        if k in counts:
-            counts[k] += 1
-    
-    # Meta info
-    meta = {
-        "counts_per_kategori": counts,
-        "n_rows": len(rows),
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+    rows, summary = summarize_kebutuhan_rows(raw_rows, search=search)
+
+    scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
+    filters_applied = bool(
+        search
+        or filters['klasifikasi_ids']
+        or filters['sub_klasifikasi_ids']
+        or filters['kategori_items']
+        or filters['pekerjaan_ids']
+        or scope_active
+        or (mode == 'tahapan' and tahapan_id)
+    )
+
+    summary.update({
         "mode": mode,
-        "filters_applied": bool(filters),
-        "generated_at": __import__('django.utils.timezone', fromlist=['now']).now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    
+        "tahapan_id": tahapan_id,
+        "filters_applied": filters_applied,
+        "filters": filters,
+        "search": search,
+        "time_scope": time_scope,
+        "time_scope_active": scope_active,
+    })
+
     if mode == 'tahapan' and tahapan_id:
         try:
             tahap = TahapPelaksanaan.objects.get(id=tahapan_id, project=project)
-            meta['tahapan'] = {
+            summary['tahapan'] = {
                 'tahapan_id': tahap.id,
                 'nama': tahap.nama,
                 'jumlah_pekerjaan': tahap.get_total_pekerjaan()
             }
         except TahapPelaksanaan.DoesNotExist:
             pass
-    
+
+    # Phase 1.2: Add pekerjaan without progress for warning badge
+    from .models import PekerjaanProgressWeekly
+    pekerjaan_with_progress_ids = set(
+        PekerjaanProgressWeekly.objects.filter(project=project)
+        .values_list('pekerjaan_id', flat=True)
+        .distinct()
+    )
+    all_pekerjaan = Pekerjaan.objects.filter(project=project).values('id', 'snapshot_kode', 'snapshot_uraian')
+    pekerjaan_without_progress = [
+        {'id': p['id'], 'kode': p['snapshot_kode'], 'uraian': p['snapshot_uraian']}
+        for p in all_pekerjaan
+        if p['id'] not in pekerjaan_with_progress_ids
+    ]
+    summary['pekerjaan_without_progress'] = pekerjaan_without_progress
+
     return JsonResponse({
         "ok": True,
         "rows": rows,
-        "meta": meta
+        "meta": summary
     })
+
+
+@login_required
+@require_GET
+def api_get_rekap_kebutuhan_timeline(request, project_id):
+    project = _owner_or_404(project_id, request.user)
+    params = parse_kebutuhan_query_params(request.GET)
+    
+    # Phase 4: Check for aggregate mode
+    aggregate = request.GET.get('aggregate', '').lower() in ('true', '1', 'yes')
+    
+    try:
+        data = compute_kebutuhan_timeline(
+            project,
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            time_scope=params.get('time_scope'),
+        )
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+
+    periods = data.get('periods', [])
+    
+    # Phase 4: If aggregate mode, combine all items across periods
+    if aggregate and periods:
+        from decimal import Decimal
+        from collections import defaultdict
+        
+        aggregated = {}  # key: (kategori, kode, uraian, satuan) -> accumulated data
+        unscheduled_total = Decimal('0')
+        
+        for period in periods:
+            # Skip "Di luar jadwal" from aggregation - track separately
+            if period.get('value') == 'unscheduled':
+                unscheduled_total = Decimal(str(period.get('total_cost_decimal', 0)))
+                continue
+                
+            for item in period.get('items', []):
+                key = (
+                    item.get('kategori', ''),
+                    item.get('kode', ''),
+                    item.get('uraian', ''),
+                    item.get('satuan', '')
+                )
+                
+                qty = item.get('quantity_decimal', Decimal('0'))
+                if not isinstance(qty, Decimal):
+                    qty = Decimal(str(qty or 0))
+                    
+                harga_satuan = item.get('harga_satuan_decimal', Decimal('0'))
+                if not isinstance(harga_satuan, Decimal):
+                    harga_satuan = Decimal(str(harga_satuan or 0))
+                
+                if key not in aggregated:
+                    aggregated[key] = {
+                        'kategori': item.get('kategori', ''),
+                        'kode': item.get('kode', '-'),
+                        'uraian': item.get('uraian', '-'),
+                        'satuan': item.get('satuan', '-'),
+                        'quantity': Decimal('0'),
+                        'harga_satuan': harga_satuan,
+                        'harga_total': Decimal('0'),
+                    }
+                
+                aggregated[key]['quantity'] += qty
+                aggregated[key]['harga_total'] += qty * harga_satuan
+        
+        # Format aggregated items
+        aggregated_items = []
+        for key, info in aggregated.items():
+            aggregated_items.append({
+                'kategori': info['kategori'],
+                'kode': info['kode'],
+                'uraian': info['uraian'],
+                'satuan': info['satuan'],
+                'quantity': str(info['quantity'].quantize(Decimal('0.000001'))).rstrip('0').rstrip('.'),
+                'quantity_decimal': float(info['quantity']),
+                'harga_satuan': f"{info['harga_satuan']:,.0f}".replace(',', '.'),
+                'harga_satuan_decimal': float(info['harga_satuan']),
+                'harga_total': f"{info['harga_total']:,.0f}".replace(',', '.'),
+                'harga_total_decimal': float(info['harga_total']),
+            })
+        
+        # Sort by kategori, kode
+        aggregated_items.sort(key=lambda x: (x['kategori'], x['kode'] or '', x['uraian'] or ''))
+        
+        # Debug: calculate total from aggregated items
+        aggregated_total = sum(info['harga_total'] for info in aggregated.values())
+        
+        # Debug: show per-period totals for comparison (exclude unscheduled)
+        period_totals = [
+            {'label': p.get('label', ''), 'total': float(p.get('total_cost_decimal', 0))}
+            for p in periods
+            if p.get('value') != 'unscheduled'
+        ]
+        
+        # Filter period labels to exclude unscheduled
+        scheduled_labels = [p.get('label', '') for p in periods if p.get('value') != 'unscheduled']
+        
+        response = {
+            "ok": True,
+            "aggregated_items": aggregated_items,
+            "aggregated_total": float(aggregated_total),
+            "unscheduled_total": float(unscheduled_total),  # Items without schedule
+            "period_labels": scheduled_labels,
+            "period_totals": period_totals,  # Debug: per-period breakdown
+            "meta": data.get('meta', {}),
+        }
+    else:
+        response = {
+            "ok": True,
+            "periods": periods,
+            "meta": data.get('meta', {}),
+        }
+    
+    return JsonResponse(response)
 
 
 # ============================================================================
@@ -642,9 +895,17 @@ def api_get_rekap_kebutuhan_enhanced(request, project_id):
 @login_required
 @require_POST
 @transaction.atomic
+@api_deprecated(
+    sunset_date="2025-02-14",
+    migration_endpoint="api_v2_regenerate_tahapan",
+    reason="Migrated to weekly canonical storage (v2)"
+)
 def api_regenerate_tahapan(request, project_id):
     """
     Regenerate tahapan based on time scale mode.
+
+    **DEPRECATED**: This endpoint is deprecated. Use /api/v2/project/{id}/regenerate-tahapan/ instead.
+    Sunset date: 2025-02-14
 
     POST Body:
         {

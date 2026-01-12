@@ -11,8 +11,108 @@
  * - Smooth scrolling
  */
 
-(function() {
+(function () {
   'use strict';
+
+  // ============================================================================
+  // 0. CONFIRM MODAL HELPER
+  // ============================================================================
+
+  function ensureConfirmModal() {
+    let modalEl = document.getElementById('dpConfirmModal');
+    if (modalEl) return modalEl;
+
+    const modalHtml = `
+      <div class="modal fade" id="dpConfirmModal" tabindex="-1" aria-labelledby="dpConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+              <h5 class="modal-title" id="dpConfirmTitle">Konfirmasi</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+            </div>
+            <div class="modal-body" id="dpConfirmBody">Anda yakin ingin melanjutkan?</div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" id="dpConfirmCancelBtn" data-bs-dismiss="modal">Batal</button>
+              <button type="button" class="btn btn-warning" id="dpConfirmOkBtn">Lanjutkan</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    return document.getElementById('dpConfirmModal');
+  }
+
+  function showConfirm(options = {}) {
+    const modalEl = ensureConfirmModal();
+    const titleEl = modalEl.querySelector('#dpConfirmTitle');
+    const bodyEl = modalEl.querySelector('#dpConfirmBody');
+    const cancelBtn = modalEl.querySelector('#dpConfirmCancelBtn');
+    const confirmBtn = modalEl.querySelector('#dpConfirmOkBtn');
+
+    const {
+      title = 'Konfirmasi',
+      message = 'Anda yakin ingin melanjutkan?',
+      confirmText = 'Lanjutkan',
+      cancelText = 'Batal',
+      confirmClass = 'btn-primary'
+    } = options;
+
+    return new Promise((resolve) => {
+      if (!titleEl || !bodyEl || !cancelBtn || !confirmBtn) {
+        resolve(false);
+        return;
+      }
+
+      titleEl.textContent = title;
+      bodyEl.textContent = message;
+      cancelBtn.textContent = cancelText;
+      confirmBtn.textContent = confirmText;
+      confirmBtn.className = `btn ${confirmClass}`;
+
+      if (!window.bootstrap || !bootstrap.Modal) {
+        resolve(false);
+        return;
+      }
+
+      const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+      let resolved = false;
+
+      const cleanup = () => {
+        confirmBtn.removeEventListener('click', handleConfirm);
+        cancelBtn.removeEventListener('click', handleCancel);
+        modalEl.removeEventListener('hidden.bs.modal', handleHidden);
+      };
+
+      const handleConfirm = () => {
+        resolved = true;
+        cleanup();
+        modalInstance.hide();
+        resolve(true);
+      };
+
+      const handleCancel = () => {
+        cleanup();
+        modalInstance.hide();
+        resolve(false);
+      };
+
+      const handleHidden = () => {
+        if (resolved) return;
+        cleanup();
+        resolve(false);
+      };
+
+      confirmBtn.addEventListener('click', handleConfirm);
+      cancelBtn.addEventListener('click', handleCancel);
+      modalEl.addEventListener('hidden.bs.modal', handleHidden);
+
+      modalInstance.show();
+    });
+  }
+
+  window.DPConfirm = showConfirm;
 
   // ============================================================================
   // 1. FLOATING ACTION BUTTON (FAB)
@@ -27,7 +127,7 @@
     if (!fabMainBtn || !fabMenu) return;
 
     // Toggle FAB menu
-    fabMainBtn.addEventListener('click', function(e) {
+    fabMainBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       isOpen = !isOpen;
 
@@ -49,14 +149,14 @@
     }
 
     // Close on outside click
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', function (e) {
       if (isOpen && !fabMainBtn.contains(e.target) && !fabMenu.contains(e.target)) {
         closeFABMenu();
       }
     });
 
     // Close on ESC key
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && isOpen) {
         closeFABMenu();
       }
@@ -69,7 +169,7 @@
 
     // Scroll to form
     if (fabScrollToForm) {
-      fabScrollToForm.addEventListener('click', function(e) {
+      fabScrollToForm.addEventListener('click', function (e) {
         e.preventDefault();
         const formSection = document.querySelector('#project-formset-form');
         if (formSection) {
@@ -87,7 +187,7 @@
 
     // Scroll to top
     if (fabScrollToTop) {
-      fabScrollToTop.addEventListener('click', function(e) {
+      fabScrollToTop.addEventListener('click', function (e) {
         e.preventDefault();
         window.scrollTo({ top: 0, behavior: 'smooth' });
         closeFABMenu();
@@ -96,7 +196,7 @@
 
     // Toggle analytics
     if (fabToggleAnalytics) {
-      fabToggleAnalytics.addEventListener('click', function() {
+      fabToggleAnalytics.addEventListener('click', function () {
         const analyticsSection = document.getElementById('analyticsSection');
         if (analyticsSection) {
           const bsCollapse = new bootstrap.Collapse(analyticsSection, { toggle: true });
@@ -109,7 +209,7 @@
     let lastScrollTop = 0;
     const fabContainer = document.querySelector('.quick-actions-fab');
 
-    window.addEventListener('scroll', function() {
+    window.addEventListener('scroll', function () {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
 
       // Show FAB after scrolling down 300px
@@ -155,6 +255,16 @@
       };
     }
 
+    function getSearchText(element) {
+      if (!element) return '';
+      const datasetSearch = element.dataset?.search;
+      if (datasetSearch) return datasetSearch.toLowerCase();
+      if (element.dataset) {
+        return Object.values(element.dataset).join(' ').toLowerCase();
+      }
+      return element.textContent.toLowerCase();
+    }
+
     // Search function
     function performSearch(query) {
       const searchTerm = query.toLowerCase().trim();
@@ -172,7 +282,7 @@
       if (projectTable) {
         const rows = projectTable.querySelectorAll('tbody tr');
         rows.forEach(row => {
-          const text = row.textContent.toLowerCase();
+          const text = getSearchText(row);
           if (text.includes(searchTerm)) {
             row.style.display = '';
             visibleCount++;
@@ -184,7 +294,7 @@
 
       // Search in mobile cards
       projectCards.forEach(card => {
-        const text = card.textContent.toLowerCase();
+        const text = getSearchText(card);
         if (text.includes(searchTerm)) {
           card.style.display = '';
           visibleCount++;
@@ -207,13 +317,13 @@
     }
 
     // Search input event
-    searchInput.addEventListener('input', debounce(function(e) {
+    searchInput.addEventListener('input', debounce(function (e) {
       performSearch(e.target.value);
     }, 300));
 
     // Clear button
     if (clearBtn) {
-      clearBtn.addEventListener('click', function() {
+      clearBtn.addEventListener('click', function () {
         searchInput.value = '';
         showAllProjects();
         clearBtn.style.display = 'none';
@@ -222,7 +332,7 @@
     }
 
     // Keyboard shortcut: Ctrl + K
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         searchInput.focus();
@@ -231,7 +341,7 @@
     });
 
     // ESC to clear and blur
-    searchInput.addEventListener('keydown', function(e) {
+    searchInput.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         this.value = '';
         showAllProjects();
@@ -253,7 +363,7 @@
     if (filterPills.length === 0) return;
 
     filterPills.forEach(pill => {
-      pill.addEventListener('click', function() {
+      pill.addEventListener('click', function () {
         const filterType = this.dataset.filter;
 
         // Update active state
@@ -370,7 +480,7 @@
 
     // Update on form change
     if (filterForm) {
-      filterForm.addEventListener('change', function() {
+      filterForm.addEventListener('change', function () {
         // Give a small delay to allow form to update
         setTimeout(updateActiveFiltersDisplay, 100);
       });
@@ -429,7 +539,7 @@
 
         // Add remove handler
         const removeBtn = tag.querySelector('.remove-filter');
-        removeBtn.addEventListener('click', function() {
+        removeBtn.addEventListener('click', function () {
           removeFilter(filter.key);
         });
       });
@@ -443,7 +553,7 @@
 
     // Clear all filters
     if (clearAllFilters) {
-      clearAllFilters.addEventListener('click', function() {
+      clearAllFilters.addEventListener('click', function () {
         window.location.href = window.location.pathname;
       });
     }
@@ -458,75 +568,25 @@
   // 5. TOAST NOTIFICATIONS
   // ============================================================================
 
-  let toastContainer = null;
+  // ============================================================================
+  // 5. TOAST NOTIFICATIONS - DELEGATE TO GLOBAL DP.toast
+  // ============================================================================
 
-  function initToasts() {
-    // Create toast container if it doesn't exist
-    if (!toastContainer) {
-      toastContainer = document.createElement('div');
-      toastContainer.className = 'toast-container-modern';
-      toastContainer.id = 'toastContainer';
-      document.body.appendChild(toastContainer);
-    }
-  }
-
+  // Delegate to global toast system (loaded from toast.js in base.html)
   function showToast(message, type = 'info', duration = 3000) {
-    if (!toastContainer) initToasts();
-
-    const toast = document.createElement('div');
-    toast.className = `toast-modern toast-${type}`;
-
-    const icons = {
-      success: 'bi-check-circle-fill',
-      error: 'bi-x-circle-fill',
-      warning: 'bi-exclamation-triangle-fill',
-      info: 'bi-info-circle-fill'
-    };
-
-    toast.innerHTML = `
-      <div class="toast-icon">
-        <i class="bi ${icons[type] || icons.info}"></i>
-      </div>
-      <div class="toast-content">
-        <div class="toast-message">${message}</div>
-      </div>
-      <button type="button" class="toast-close" aria-label="Close">
-        <i class="bi bi-x"></i>
-      </button>
-    `;
-
-    toastContainer.appendChild(toast);
-
-    // Animate in
-    setTimeout(() => {
-      toast.classList.add('toast-show');
-    }, 10);
-
-    // Close button
-    const closeBtn = toast.querySelector('.toast-close');
-    closeBtn.addEventListener('click', () => {
-      removeToast(toast);
-    });
-
-    // Auto remove
-    setTimeout(() => {
-      removeToast(toast);
-    }, duration);
+    // Use global DP.toast if available
+    if (window.DP && window.DP.toast && window.DP.toast[type]) {
+      return window.DP.toast[type](message, duration);
+    }
+    // Fallback: log to console if global toast not loaded
+    console.log(`[Toast/${type}] ${message}`);
   }
 
-  function removeToast(toast) {
-    toast.classList.remove('toast-show');
-    toast.classList.add('toast-hide');
-
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 300);
+  // Keep global reference for backward compatibility
+  // NOTE: This should NOT override toast.js since toast.js checks typeof first
+  if (typeof window.showToast === 'undefined') {
+    window.showToast = showToast;
   }
-
-  // Make showToast globally available
-  window.showToast = showToast;
 
   // ============================================================================
   // 6. ENHANCED TABLE INTERACTIONS
@@ -539,18 +599,18 @@
     // Row hover highlight
     const rows = table.querySelectorAll('tbody tr');
     rows.forEach(row => {
-      row.addEventListener('mouseenter', function() {
+      row.addEventListener('mouseenter', function () {
         this.classList.add('row-hover');
       });
 
-      row.addEventListener('mouseleave', function() {
+      row.addEventListener('mouseleave', function () {
         this.classList.remove('row-hover');
       });
 
       // Row selection on checkbox change
       const checkbox = row.querySelector('.project-checkbox');
       if (checkbox) {
-        checkbox.addEventListener('change', function() {
+        checkbox.addEventListener('change', function () {
           if (this.checked) {
             row.classList.add('selected');
           } else {
@@ -573,7 +633,7 @@
   function initSmoothScrolling() {
     // Smooth scroll for all anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function(e) {
+      anchor.addEventListener('click', function (e) {
         const href = this.getAttribute('href');
 
         if (href === '#') return;
@@ -656,13 +716,13 @@
 
   function initAccessibility() {
     // Focus visible on keyboard navigation
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if (e.key === 'Tab') {
         document.body.classList.add('keyboard-nav');
       }
     });
 
-    document.addEventListener('mousedown', function() {
+    document.addEventListener('mousedown', function () {
       document.body.classList.remove('keyboard-nav');
     });
 
@@ -674,7 +734,7 @@
     announcer.setAttribute('aria-atomic', 'true');
     document.body.appendChild(announcer);
 
-    window.announce = function(message) {
+    window.announce = function (message) {
       announcer.textContent = message;
       setTimeout(() => {
         announcer.textContent = '';
@@ -686,14 +746,14 @@
   // INITIALIZATION
   // ============================================================================
 
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', function () {
     console.log('🚀 Initializing UX Enhancements...');
 
     initFAB();
     initQuickSearch();
     initFilterPills();
     initActiveFilters();
-    initToasts();
+    // Toast system is now handled globally via DP.toast
     initTableEnhancements();
     initSmoothScrolling();
     initResponsiveEnhancements();

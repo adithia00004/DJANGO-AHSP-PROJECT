@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+POST,[AUTH] Login POST,HTTPError('500 Server Error: Internal Server Error for url: [AUTH] Login POST'),45

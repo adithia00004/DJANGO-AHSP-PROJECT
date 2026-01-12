@@ -24,3 +24,33 @@
 - **Local permissions:** assign users to the new `Referensi Viewer`, `Editor`, or `Admin` groups (see `docs/PERMISSIONS.md`)
 - **Audit history:** every AHSP & Rincian change is available via the Django admin “History” view (django-simple-history)
 - **CI:** GitHub Actions workflow (`.github/workflows/ci.yml`) runs pytest on pushes and pull requests
+
+## Browser Requirements
+
+> ⚠️ **Minimum browser versions required due to CSS `color-mix()` usage**
+
+| Browser | Minimum Version | Release Date |
+|---------|-----------------|--------------|
+| Chrome | 111+ | March 2023 |
+| Firefox | 113+ | May 2023 |
+| Safari | 16.4+ | March 2023 |
+| Edge | 111+ | March 2023 |
+
+**Note:** Internet Explorer is NOT supported.
+
+## Production Deployment
+
+```bash
+# Environment variables
+export DJANGO_SETTINGS_MODULE="config.settings.production"
+export DJANGO_SECRET_KEY="your-production-secret-key"
+export DJANGO_ALLOWED_HOSTS="yourdomain.com"
+export SENTRY_DSN="your-sentry-dsn"  # Optional
+
+# Deploy
+python manage.py collectstatic --noinput
+python manage.py migrate
+gunicorn config.wsgi:application --bind 0.0.0.0:8000
+```
+
+See `docs/backup-guide.md` for database backup procedures.

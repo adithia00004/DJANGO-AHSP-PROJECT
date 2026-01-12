@@ -1,0 +1,15 @@
+{# templates/detail_project/_empty_state.html #}
+{# Usage: {% include '_empty_state.html' with icon='bi-inbox' title='Tidak ada data' message='Belum ada item.' %} #}
+<div class="dp-empty-state text-center py-5">
+    <i class="bi {{ icon|default:'bi-inbox' }} text-muted" style="font-size: 4rem;" aria-hidden="true"></i>
+    {% if title %}
+    <h5 class="mt-3 text-muted">{{ title }}</h5>
+    {% endif %}
+    <p class="text-muted mb-3">{{ message|default:'Tidak ada data untuk ditampilkan.' }}</p>
+    {% if action_url %}
+    <a href="{{ action_url }}" class="btn btn-primary dp-btn">
+        {% if action_icon %}<i class="bi {{ action_icon }} me-1"></i>{% endif %}
+        {{ action_text|default:'Tambah Baru' }}
+    </a>
+    {% endif %}
+</div>

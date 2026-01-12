@@ -15,13 +15,13 @@
   // ---- Konteks dasar
   const projectId = root.dataset.projectId || root.dataset.pid;
   // NEW: endpoint dari data-attribute (fallback ke pattern lama)
-  const EP_SAVE    = root.dataset.endpointSave
+  const EP_SAVE = root.dataset.endpointSave
     || `/detail_project/api/project/${projectId}/volume-pekerjaan/save/`;
   // State formula (raw,is_fx) disimpan/diambil dari endpoint ini
   const EP_FORMULA_STATE = root.dataset.endpointFormula
     || `/detail_project/api/project/${projectId}/volume-formula-state/`;
   // Pohon data untuk membangun grup Klas/Sub/Pekerjaan 
-  const EP_TREE    = root.dataset.endpointTree
+  const EP_TREE = root.dataset.endpointTree
     || `/detail_project/api/project/${projectId}/list-pekerjaan/tree/`;
 
   // Presisi simpan (DB 3dp), tampilan dinamis 0..3 dp
@@ -41,6 +41,7 @@
   // Autosave timer & guard
   let autosaveTimer = null;
   let saving = false;
+  let allowUnload = false;
 
   // Undo stack (batch autosave/simpan terakhir)
   const undoStack = []; // item: { ts, changes:[{id,before,after}] }
@@ -57,20 +58,20 @@
   const saveStatusEl = document.getElementById('vp-save-status');
   let saveStatusTimer = null;
 
-  function setSaveStatus(message, variant){
-    try{
+  function setSaveStatus(message, variant) {
+    try {
       if (!saveStatusEl) return;
       saveStatusEl.textContent = message || '';
-      saveStatusEl.classList.remove('text-success','text-warning','text-danger');
+      saveStatusEl.classList.remove('text-success', 'text-warning', 'text-danger');
       if (variant === 'success') saveStatusEl.classList.add('text-success');
       else if (variant === 'warning') saveStatusEl.classList.add('text-warning');
       else if (variant === 'danger') saveStatusEl.classList.add('text-danger');
       if (saveStatusTimer) clearTimeout(saveStatusTimer);
-      if (message) saveStatusTimer = setTimeout(()=>{
+      if (message) saveStatusTimer = setTimeout(() => {
         saveStatusEl.textContent = '';
-        saveStatusEl.classList.remove('text-success','text-warning','text-danger');
+        saveStatusEl.classList.remove('text-success', 'text-warning', 'text-danger');
       }, 3200);
-    }catch{}
+    } catch { }
   }
 
   const varTable = document.getElementById('vp-var-table');
@@ -102,14 +103,14 @@
       searchDrop.style.overflow = 'auto';
       // z-index diatur via CSS: var(--vp-z-search, calc(var(--dp-z-toolbar)+1))
       searchDrop.style.zIndex = 'var(--vp-z-search)';
-    } catch {}
+    } catch { }
   }
 
-  ['focus','input','keydown'].forEach(ev => {
+  ['focus', 'input', 'keydown'].forEach(ev => {
     if (searchInput) searchInput.addEventListener(ev, positionSearchDropdown, { passive: true });
   });
   window.addEventListener('resize', positionSearchDropdown, { passive: true });
-  window.addEventListener('scroll', (e)=>{
+  window.addEventListener('scroll', (e) => {
     // keep dropdown anchored during scroll when visible
     if (searchDrop && !searchDrop.classList.contains('d-none')) positionSearchDropdown();
   }, { passive: true });
@@ -119,10 +120,27 @@
   const toastBody = document.getElementById('vp-toast-body');
   const multiToasts = document.getElementById('vp-toasts');
   let toastRef = null;
-  try { if (window.bootstrap && toastEl) toastRef = new bootstrap.Toast(toastEl, { delay: 1600 }); } catch {}
+  try { if (window.bootstrap && toastEl) toastRef = new bootstrap.Toast(toastEl, { delay: 1600 }); } catch { }
 
   function showToast(message, variant) {
-    if (!toastEl || !toastBody || !toastRef) { if (message) alert(message); return; }
+    if (!toastEl || !toastBody || !toastRef) {
+      if (!message) return;
+      const type = variant === 'danger' ? 'error' : (variant || 'info');
+      if (window.DP && DP.toast && DP.toast.show) {
+        DP.toast.show(message, type);
+        return;
+      }
+      if (window.DP && DP.core && DP.core.toast && DP.core.toast.show) {
+        DP.core.toast.show(message, type);
+        return;
+      }
+      if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+        return;
+      }
+      console.warn('[VP] Toast:', message);
+      return;
+    }
     toastEl.classList.remove('text-bg-success', 'text-bg-danger', 'text-bg-warning');
     toastEl.classList.add(variant === 'danger' ? 'text-bg-danger' : variant === 'warning' ? 'text-bg-warning' : 'text-bg-success');
     toastBody.textContent = message || 'OK';
@@ -140,23 +158,23 @@
       <div class="d-flex">
         <div class="toast-body">${escapeHtml(message)}</div>
         <div class="d-flex align-items-center gap-1 me-2">
-          ${actions.map((a,i)=>`<button type="button" class="btn btn-sm ${a.class||'btn-warning'}" data-i="${i}">${escapeHtml(a.label||'OK')}</button>`).join('')}
+          ${actions.map((a, i) => `<button type="button" class="btn btn-sm ${a.class || 'btn-warning'}" data-i="${i}">${escapeHtml(a.label || 'OK')}</button>`).join('')}
           <button type="button" class="btn-close btn-close-white m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
       </div>
     `;
     multiToasts.appendChild(wrapper);
     const t = new bootstrap.Toast(wrapper, { delay: 4000 });
-    actions.forEach((a,i)=>{
+    actions.forEach((a, i) => {
       const btn = wrapper.querySelector(`[data-i="${i}"]`);
-      if (btn) btn.addEventListener('click', () => { try{ a.onClick?.(); }finally{ t.hide(); } });
+      if (btn) btn.addEventListener('click', () => { try { a.onClick?.(); } finally { t.hide(); } });
     });
-    wrapper.addEventListener('hidden.bs.toast', ()=> wrapper.remove());
+    wrapper.addEventListener('hidden.bs.toast', () => wrapper.remove());
     t.show();
   }
 
   // ---- HTTP helper: gunakan DP.core.http bila ada
-  const HTTP = (function(){
+  const HTTP = (function () {
     const h = (window.DP && DP.core && DP.core.http) ? DP.core.http : null;
     async function jget(url) {
       if (h && h.jfetch) return h.jfetch(url, { method: 'GET', normalize: false });
@@ -172,22 +190,56 @@
         credentials: 'same-origin',
         body: JSON.stringify(data)
       });
-      const body = await r.json().catch(()=> ({}));
+      const body = await r.json().catch(() => ({}));
       return { ok: r.ok, status: r.status, data: body, errors: body?.errors || [] };
     }
     return { jget, jpost };
   })();
 
-  // ---- Toast helper: gunakan DP.core.toast bila ada
-  const TOAST = (function(){
-    const t = (window.DP && DP.core && DP.core.toast) ? DP.core.toast : null;
+  // ---- Toast helper: prefer global DP.toast, fallback to DP.core.toast
+  const TOAST = (function () {
+    const newApi = window.DP && window.DP.toast;
+    const legacyApi = window.DP && window.DP.core && window.DP.core.toast;
     return {
-      ok(msg){ t ? t.show({message:msg, variant:'success'}) : showToast(msg, 'success'); },
-      warn(msg){ t ? t.show({message:msg, variant:'warning'}) : showToast(msg, 'warning'); },
-      err(msg){ t ? t.show({message:msg, variant:'danger'}) : showToast(msg, 'danger'); },
-      action(msg, actions){ showActionToast(msg, actions); }
+      ok(msg) {
+        if (newApi) return newApi.success(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'success' });
+        showToast(msg, 'success');
+      },
+      warn(msg) {
+        if (newApi) return newApi.warning(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'warning' });
+        showToast(msg, 'warning');
+      },
+      err(msg) {
+        if (newApi) return newApi.error(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'danger' });
+        showToast(msg, 'danger');
+      },
+      info(msg) {
+        if (newApi) return newApi.info(msg);
+        if (legacyApi) return legacyApi.show({ message: msg, variant: 'info' });
+        showToast(msg, 'info');
+      },
+      action(msg, actions) { showActionToast(msg, actions); }
     };
   })();
+
+  function getModalApi() {
+    return (window.DP && DP.core && DP.core.modal) ? DP.core.modal : null;
+  }
+  function confirmModal(message, options = {}) {
+    const modalApi = getModalApi();
+    if (modalApi && modalApi.confirm) return modalApi.confirm(message, options);
+    if (window.DP && DP.toast) DP.toast.warning('Konfirmasi tidak tersedia.');
+    return Promise.resolve(false);
+  }
+  function alertModal(message, options = {}) {
+    const modalApi = getModalApi();
+    if (modalApi && modalApi.alert) return modalApi.alert(message, options);
+    if (window.DP && DP.toast) DP.toast.info(message);
+    return Promise.resolve(true);
+  }
 
   const sourceChange = window.DP?.sourceChange || null;
   const bannerEl = document.getElementById('vp-sync-banner');
@@ -280,7 +332,7 @@
     return m ? m[1] : '';
   }
   function roundHalfUp(x, places) {
-    const p = Math.max(0, Math.min(20, places|0));
+    const p = Math.max(0, Math.min(20, places | 0));
     const factor = Math.pow(10, p);
     return (x >= 0)
       ? Math.floor(x * factor + 0.5) / factor
@@ -290,7 +342,7 @@
   function formatIdSmart(num) {
     const n = Number(num || 0);
     const hasFrac = Math.abs(n - Math.trunc(n)) > 1e-12;
-    const fracLen = hasFrac ? Math.min(String(n.toFixed(STORE_PLACES)).split('.')[1]?.replace(/0+$/,'').length || 0, STORE_PLACES) : 0;
+    const fracLen = hasFrac ? Math.min(String(n.toFixed(STORE_PLACES)).split('.')[1]?.replace(/0+$/, '').length || 0, STORE_PLACES) : 0;
     try {
       return new Intl.NumberFormat('id-ID', {
         minimumFractionDigits: fracLen,
@@ -331,7 +383,7 @@
     return Number.isFinite(n) ? n : '';
   }
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
 
   function setBtnSaveEnabled() {
@@ -348,22 +400,22 @@
   // ===== Collapse (toggle Klas/Sub) =====
   const COLLAPSE_KEY = `vp_collapse:${projectId}`;
   let collapsed = { klas: {}, sub: {} };
-  try { const raw = localStorage.getItem(COLLAPSE_KEY); if (raw) collapsed = Object.assign({klas:{},sub:{}}, JSON.parse(raw)||{}); } catch {}
-  function saveCollapse(){ try{ localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); }catch{} }
-  function slugKey(s){
-    return String(s||'').trim().toLowerCase().normalize('NFKD')
-      .replace(/[^\w\s-]/g,'').replace(/\s+/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'') || '_';
+  try { const raw = localStorage.getItem(COLLAPSE_KEY); if (raw) collapsed = Object.assign({ klas: {}, sub: {} }, JSON.parse(raw) || {}); } catch { }
+  function saveCollapse() { try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed)); } catch { } }
+  function slugKey(s) {
+    return String(s || '').trim().toLowerCase().normalize('NFKD')
+      .replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '') || '_';
   }
-  function applyCollapseOnTable(){
-    const tbody = document.querySelector('#vp-table tbody'); if(!tbody) return;
+  function applyCollapseOnTable() {
+    const tbody = document.querySelector('#vp-table tbody'); if (!tbody) return;
     let curK = null, curS = null;
-    Array.from(tbody.rows).forEach(tr=>{
-      if(tr.classList.contains('vp-klass')){
+    Array.from(tbody.rows).forEach(tr => {
+      if (tr.classList.contains('vp-klass')) {
         curK = tr.getAttribute('data-klas-id') || slugKey(tr.textContent);
         tr.classList.toggle('is-collapsed', !!collapsed.klas[curK]);
         return;
       }
-      if(tr.classList.contains('vp-sub')){
+      if (tr.classList.contains('vp-sub')) {
         curS = tr.getAttribute('data-sub-id') || slugKey(tr.textContent);
         tr.classList.toggle('is-collapsed', !!collapsed.sub[curS] || !!collapsed.klas[curK]);
         return;
@@ -379,7 +431,7 @@
     document.querySelectorAll('.vp-klas-card, .vp-sub-card').forEach(card => {
       const isKlas = card.classList.contains('vp-klas-card');
       const key = isKlas ? (card.getAttribute('data-klas-id') || slugKey(card.querySelector('.card-header')?.textContent))
-                         : (card.getAttribute('data-sub-id')  || slugKey(card.querySelector('.card-header')?.textContent));
+        : (card.getAttribute('data-sub-id') || slugKey(card.querySelector('.card-header')?.textContent));
       const isCollapsed = isKlas ? !!collapsed.klas[key] : !!collapsed.sub[key];
       card.classList.toggle('is-collapsed', isCollapsed);
       const btn = card.querySelector('.vp-card-toggle');
@@ -392,13 +444,13 @@
   }
 
   // Delegasi klik toggle caret
-  document.addEventListener('click', (e)=>{
+  document.addEventListener('click', (e) => {
     // row-based (fallback dari builder EP_TREE)
     const btnRow = e.target.closest('.vp-toggle');
     if (btnRow) {
       const type = btnRow.getAttribute('data-type'); const key = btnRow.getAttribute('data-key');
-      if(!type || !key) return;
-      if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
+      if (!type || !key) return;
+      if (type === 'klas') collapsed.klas[key] = !collapsed.klas[key];
       else collapsed.sub[key] = !collapsed.sub[key];
       saveCollapse(); applyCollapseOnTable(); applyCollapseOnCards(); return;
     }
@@ -406,8 +458,8 @@
     const btnCard = e.target.closest('.vp-card-toggle');
     if (btnCard) {
       const type = btnCard.getAttribute('data-type'); const key = btnCard.getAttribute('data-key');
-      if(!type || !key) return;
-      if(type==='klas') collapsed.klas[key] = !collapsed.klas[key];
+      if (!type || !key) return;
+      if (type === 'klas') collapsed.klas[key] = !collapsed.klas[key];
       else collapsed.sub[key] = !collapsed.sub[key];
       saveCollapse(); applyCollapseOnCards(); return;
     }
@@ -473,8 +525,8 @@
     const idx = text.toLowerCase().indexOf(q.toLowerCase());
     if (idx === -1) return escapeHtml(text);
     const before = text.slice(0, idx);
-    const match  = text.slice(idx, idx + q.length);
-    const after  = text.slice(idx + q.length);
+    const match = text.slice(idx, idx + q.length);
+    const after = text.slice(idx + q.length);
     return `${escapeHtml(before)}<mark class="vp-mark">${escapeHtml(match)}</mark>${escapeHtml(after)}`;
   }
 
@@ -526,7 +578,7 @@
       const badgeCls = typeBadgeClass(it.type);
       const labelHtml = highlightLabel(it.label, q);
       return `
-        <div class="vp-search-item${i===0?' active':''}" id="${id}" role="option" aria-selected="${i===0?'true':'false'}" data-id="${it.id}" data-type="${it.type}">
+        <div class="vp-search-item${i === 0 ? ' active' : ''}" id="${id}" role="option" aria-selected="${i === 0 ? 'true' : 'false'}" data-id="${it.id}" data-type="${it.type}">
           <span class="vp-search-badge ${badgeCls}">${it.type}</span>
           <span class="vp-search-label">${labelHtml}</span>
         </div>`;
@@ -597,9 +649,9 @@
         return;
       }
       if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(searchState.activeIdx + 1); return; }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(searchState.activeIdx - 1); return; }
-      if (e.key === 'Enter')     { e.preventDefault(); selectSearchIndex(searchState.activeIdx); return; }
-      if (e.key === 'Escape')    { e.preventDefault(); searchDrop.classList.add('d-none'); searchDrop.setAttribute('aria-expanded','false'); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(searchState.activeIdx - 1); return; }
+      if (e.key === 'Enter') { e.preventDefault(); selectSearchIndex(searchState.activeIdx); return; }
+      if (e.key === 'Escape') { e.preventDefault(); searchDrop.classList.add('d-none'); searchDrop.setAttribute('aria-expanded', 'false'); return; }
     });
     document.addEventListener('click', (e) => {
       if (!searchDrop) return;
@@ -709,24 +761,24 @@
   }
 
   // Robust UI->canonical parser for quantity (handles id-ID grouping)
-  function canonFromUIQty(raw){
+  function canonFromUIQty(raw) {
     let s = String(raw ?? '').trim();
     if (!s) return '';
-    s = s.replace(/\u00A0/g,' ').replace(/\s+/g,'').replace(/_/g,'');
+    s = s.replace(/\u00A0/g, ' ').replace(/\s+/g, '').replace(/_/g, '');
     const hasDot = s.includes('.');
     const hasComma = s.includes(',');
-    if (hasDot && !hasComma){
+    if (hasDot && !hasComma) {
       const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
       if (dotGrouping.test(s)) s = s.replace(/\./g, '');
       // else: treat dot as decimal (e.g., 1.25)
-    } else if (hasComma && !hasDot){
+    } else if (hasComma && !hasDot) {
       const commaGrouping = /^\d{1,3}(,\d{3})+$/;
       if (commaGrouping.test(s)) s = s.replace(/,/g, '');
       else s = s.replace(/,/g, '.'); // comma as decimal
-    } else if (hasDot && hasComma){
+    } else if (hasDot && hasComma) {
       const lastComma = s.lastIndexOf(',');
       const lastDot = s.lastIndexOf('.');
-      if (lastComma > lastDot){
+      if (lastComma > lastDot) {
         // comma decimal, dot thousands
         s = s.replace(/\./g, '').replace(/,/g, '.');
       } else {
@@ -786,7 +838,7 @@
       const q = idf.word.toLowerCase();
       items = itemsAll.filter(it => it.name.toLowerCase().startsWith(q));
     }
-    items.sort((a,b) => (varLabels[a.name]||a.name).localeCompare(varLabels[b.name]||b.name, 'id'));
+    items.sort((a, b) => (varLabels[a.name] || a.name).localeCompare(varLabels[b.name] || b.name, 'id'));
     showSuggest(inputEl, items);
   }
 
@@ -795,7 +847,7 @@
     try {
       const payload = { items: [{ pekerjaan_id: id, raw: String(rawInputById[id] || ''), is_fx: !!fxModeById[id] }] };
       await HTTP.jpost(EP_FORMULA_STATE, payload);
-    } catch {}
+    } catch { }
   }
 
   function persistRowFormula(id) {
@@ -819,7 +871,7 @@
     if (next < 0) next = 0;
     if (next >= inputs.length) next = inputs.length - 1;
     const tgt = inputs[next];
-    if (tgt) { tgt.focus(); try { tgt.select(); } catch{} }
+    if (tgt) { tgt.focus(); try { tgt.select(); } catch { } }
   }
 
   function bindRow(tr) {
@@ -831,7 +883,7 @@
     const fxBtn = tr.querySelector('.fx-toggle');
     const preview = tr.querySelector('.fx-preview');
 
-    try { if (window.bootstrap && fxBtn) new bootstrap.Tooltip(fxBtn); } catch {}
+    try { if (window.bootstrap && fxBtn) new bootstrap.Tooltip(fxBtn); } catch { }
 
     // Jika localStorage punya state awal, apply ringan (server akan override saat prefill)
     const initMap = loadFormulas();
@@ -900,16 +952,16 @@
         // Update row markers based on normalized numeric
         const tr2 = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
         const c = canonFromUIQty(input.value);
-        const isEmpty2 = !String(input.value||'').trim();
+        const isEmpty2 = !String(input.value || '').trim();
         input.classList.toggle('vp-empty', isEmpty2);
-        if (tr2){
+        if (tr2) {
           tr2.classList.toggle('vp-row-empty', isEmpty2);
           tr2.classList.toggle('vp-row-zero', (!isEmpty2 && c !== '' && Number(c) === 0));
           tr2.classList.remove('vp-row-invalid');
         }
       } else {
         // Formula mode: only toggle empty flag; vp-row-invalid handled in input handler
-        input.classList.toggle('vp-empty', !String(input.value||'').trim());
+        input.classList.toggle('vp-empty', !String(input.value || '').trim());
       }
       setTimeout(() => hideSuggest(input), 120);
     });
@@ -945,9 +997,9 @@
       const suggestVisible = state && state.box && state.box.style.display !== 'none' && state.items.length > 0;
       if (suggestVisible) {
         if (ev.key === 'ArrowDown') { ev.preventDefault(); moveActive(input, +1); return; }
-        if (ev.key === 'ArrowUp')   { ev.preventDefault(); moveActive(input, -1); return; }
-        if (ev.key === 'Enter')     { const ok = applyActiveSuggestion(input); if (ok) { ev.preventDefault(); return; } }
-        if (ev.key === 'Escape')    { hideSuggest(input); return; }
+        if (ev.key === 'ArrowUp') { ev.preventDefault(); moveActive(input, -1); return; }
+        if (ev.key === 'Enter') { const ok = applyActiveSuggestion(input); if (ok) { ev.preventDefault(); return; } }
+        if (ev.key === 'Escape') { hideSuggest(input); return; }
       }
 
       // Fill-down (Excel-like)
@@ -958,7 +1010,7 @@
         const tgt = document.activeElement;
         if (tgt && tgt.classList.contains('qty-input')) {
           tgt.value = val;
-          tgt.classList.toggle('vp-empty', !String(tgt.value||'').trim());
+          tgt.classList.toggle('vp-empty', !String(tgt.value || '').trim());
           const tr2 = tgt.closest('tr');
           const id2 = parseInt(tr2.dataset.pekerjaanId, 10);
           const pv2 = tr2.querySelector('.fx-preview');
@@ -1099,13 +1151,22 @@
     const tbody = varTable.querySelector('tbody');
     tbody.innerHTML = '';
     const codes = Object.keys(variables);
+
+    // Update count display
+    const countEl = document.getElementById('vp-param-count');
+    if (countEl) countEl.textContent = codes.length;
+
     if (codes.length === 0) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="3" class="text-muted">Belum ada parameter.</td>`;
+      tr.innerHTML = `<td colspan="3" class="text-muted text-center py-4">
+        <i class="bi bi-box-seam d-block mb-2" style="font-size: 2rem; opacity: 0.5;"></i>
+        Belum ada parameter.<br>
+        <small class="text-muted">Klik "Tambah" untuk membuat parameter baru.</small>
+      </td>`;
       tbody.appendChild(tr);
       return;
     }
-    codes.sort((a,b) => (varLabels[a] || a).localeCompare(varLabels[b] || b, 'id'));
+    codes.sort((a, b) => (varLabels[a] || a).localeCompare(varLabels[b] || b, 'id'));
     codes.forEach(code => {
       const val = variables[code];
       const label = varLabels[code] || code;
@@ -1165,15 +1226,15 @@
             labelEl.readOnly = false; valueEl.readOnly = false;
             labelEl.dataset.prev = labelEl.value; valueEl.dataset.prev = valueEl.value;
             if (icon) icon.className = 'bi bi-check-lg';
-            btnEdit.setAttribute('title','Simpan'); btnEdit.setAttribute('aria-label','Simpan');
+            btnEdit.setAttribute('title', 'Simpan'); btnEdit.setAttribute('aria-label', 'Simpan');
             labelEl.focus();
           } else {
             // Save and exit edit mode
             const nextLabel = String(labelEl.value || '').trim();
             const n = parseNumberOrEmpty(valueEl.value);
             let ok = true;
-            if (!nextLabel) { ok = false; labelEl.classList.add('is-invalid'); setTimeout(()=>labelEl.classList.remove('is-invalid'), 1200); labelEl.value = varLabels[code] || code; }
-            if (n === '')     { ok = false; valueEl.classList.add('is-invalid'); setTimeout(()=>valueEl.classList.remove('is-invalid'), 1200); valueEl.value = formatIdSmart(variables[code]); }
+            if (!nextLabel) { ok = false; labelEl.classList.add('is-invalid'); setTimeout(() => labelEl.classList.remove('is-invalid'), 1200); labelEl.value = varLabels[code] || code; }
+            if (n === '') { ok = false; valueEl.classList.add('is-invalid'); setTimeout(() => valueEl.classList.remove('is-invalid'), 1200); valueEl.value = formatIdSmart(variables[code]); }
             if (ok) {
               varLabels[code] = nextLabel; saveVarLabels();
               variables[code] = roundHalfUp(Number(n), STORE_PLACES); saveVars();
@@ -1181,13 +1242,19 @@
             }
             labelEl.readOnly = true; valueEl.readOnly = true;
             if (icon) icon.className = 'bi bi-pencil';
-            btnEdit.setAttribute('title','Ubah'); btnEdit.setAttribute('aria-label','Ubah');
+            btnEdit.setAttribute('title', 'Ubah'); btnEdit.setAttribute('aria-label', 'Ubah');
           }
         });
       }
-      tr.querySelector('.var-del').addEventListener('click', () => {
+      tr.querySelector('.var-del').addEventListener('click', async () => {
         const nm = varLabels[code] || code;
-        if (!confirm(`Hapus parameter "${nm}" (kode: ${code})?`)) return;
+        const ok = await confirmModal(`Hapus parameter "${nm}" (kode: ${code})?`, {
+          title: 'Hapus Parameter',
+          confirmText: 'Hapus',
+          cancelText: 'Batal',
+          confirmClass: 'btn btn-danger',
+        });
+        if (!ok) return;
         delete variables[code];
         delete varLabels[code];
         saveVars();
@@ -1228,7 +1295,7 @@
       tbody.prepend(tr);
 
       const labelEl = tr.querySelector('.var-label');
-      const valEl   = tr.querySelector('.var-value');
+      const valEl = tr.querySelector('.var-value');
       labelEl && labelEl.focus();
 
       const doCancel = () => tr.remove();
@@ -1268,13 +1335,13 @@
   // *XLSX untuk import/export akan aktif jika SheetJS ada (window.XLSX)
 
   function parseCSV(text) {
-    const lines = String(text || '').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const out = [];
     for (const line of lines) {
-      const cells = line.split(/[,;\t]/).map(s=>s.trim());
+      const cells = line.split(/[,;\t]/).map(s => s.trim());
       if (!cells.length) continue;
       // Toleransi header
-      if (/^nama|label$/i.test(cells[0]) || /^nilai|value$/i.test(cells[1]||"")) continue;
+      if (/^nama|label$/i.test(cells[0]) || /^nilai|value$/i.test(cells[1] || "")) continue;
       if (cells.length < 2) continue;
       out.push({ label: cells[0], value: cells[1] });
     }
@@ -1284,15 +1351,15 @@
   function csvFromVars(varsObj, labelsObj) {
     const codes = Object.keys(varsObj);
     const rows = codes
-      .sort((a,b)=>(labelsObj[a]||a).localeCompare(labelsObj[b]||b, 'id'))
-      .map(code => `${(labelsObj[code]||code).replace(/[\r\n,]/g,' ')} , ${String(varsObj[code])}`);
+      .sort((a, b) => (labelsObj[a] || a).localeCompare(labelsObj[b] || b, 'id'))
+      .map(code => `${(labelsObj[code] || code).replace(/[\r\n,]/g, ' ')} , ${String(varsObj[code])}`);
     return ['Nama,Nilai'].concat(rows).join("\n") + "\n";
   }
 
   function tsCompact() {
     const d = new Date();
-    const pad = (n)=> String(n).padStart(2,'0');
-    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
   }
 
   function ensureFileInputs() {
@@ -1341,9 +1408,9 @@
     }
     try {
       const rows = Object.keys(variables)
-        .sort((a,b)=>(varLabels[a]||a).localeCompare(varLabels[b]||b,'id'))
-        .map(code => ({ Nama: (varLabels[code]||code), Nilai: variables[code] }));
-      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama','Nilai'] });
+        .sort((a, b) => (varLabels[a] || a).localeCompare(varLabels[b] || b, 'id'))
+        .map(code => ({ Nama: (varLabels[code] || code), Nilai: variables[code] }));
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama', 'Nilai'] });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Parameter');
       const ts = tsCompact();
@@ -1383,7 +1450,7 @@
     menu.style.top = `${rect.bottom + window.scrollY}px`;
 
     const close = () => { document.removeEventListener('click', onDoc); menu.remove(); };
-    const onDoc = (e) => { if (!menu.contains(e.target) && e.target!==anchorBtn) close(); };
+    const onDoc = (e) => { if (!menu.contains(e.target) && e.target !== anchorBtn) close(); };
     document.addEventListener('click', onDoc);
 
     menu.addEventListener('click', (e) => {
@@ -1413,7 +1480,7 @@
     const outVars = {}, outLabels = {};
     Object.keys(srcVars).forEach(code => {
       let safe = String(code || '').trim();
-      safe = safe.normalize('NFKD').replace(/[^\w]/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
+      safe = safe.normalize('NFKD').replace(/[^\w]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
       if (/^[0-9]/.test(safe)) safe = '_' + safe;
       if (!safe) return;
       const val = parseNumberOrEmpty(srcVars[code]);
@@ -1433,10 +1500,10 @@
     rowsCsv.forEach((r, idx) => {
       const label = String(r.label || '').trim();
       const n = parseNumberOrEmpty(r.value);
-      if (!label) { errors.push(`Baris ${idx+1}: Label kosong`); return; }
-      if (n === '') { errors.push(`Baris ${idx+1}: Nilai bukan angka`); return; }
+      if (!label) { errors.push(`Baris ${idx + 1}: Label kosong`); return; }
+      if (n === '') { errors.push(`Baris ${idx + 1}: Nilai bukan angka`); return; }
       let code = slugifyName(label);
-      if (!code) { errors.push(`Baris ${idx+1}: Kode tidak valid`); return; }
+      if (!code) { errors.push(`Baris ${idx + 1}: Kode tidak valid`); return; }
       if (nextVars[code] != null || variables[code] != null) {
         let i = 2;
         while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
@@ -1455,15 +1522,15 @@
     const ws = wb.Sheets[wb.SheetNames[0]];
     const arr = XLSX.utils.sheet_to_json(ws, { header: 1 }); // 2D array
     const rows = arr.filter(r => r && (r[0] != null || r[1] != null));
-    const body = (rows[0] && /nama|label/i.test(String(rows[0][0])) && /nilai|value/i.test(String(rows[0][1]||"")))
+    const body = (rows[0] && /nama|label/i.test(String(rows[0][0])) && /nilai|value/i.test(String(rows[0][1] || "")))
       ? rows.slice(1) : rows;
     const errors = [];
     const nextVars = {}, nextLabels = {};
     body.forEach((r, idx) => {
       const label = String((r[0] ?? '')).trim();
       const n = parseNumberOrEmpty(r[1]);
-      if (!label) { errors.push(`Baris ${idx+1}: Label kosong`); return; }
-      if (n === '') { errors.push(`Baris ${idx+1}: Nilai bukan angka`); return; }
+      if (!label) { errors.push(`Baris ${idx + 1}: Label kosong`); return; }
+      if (n === '') { errors.push(`Baris ${idx + 1}: Nilai bukan angka`); return; }
       let code = slugifyName(label);
       if (nextVars[code] != null || variables[code] != null) {
         let i = 2; while (nextVars[code] != null || variables[code] != null) code = `${slugifyName(label)}_${i++}`;
@@ -1480,7 +1547,7 @@
     const name = file.name || '';
     const ext = (/\.(\w+)$/.exec(name)?.[1] || '').toLowerCase();
     try {
-      let parsed = { vars:{}, labels:{}, errors:[] };
+      let parsed = { vars: {}, labels: {}, errors: [] };
       if (ext === 'json') {
         const txt = await file.text();
         parsed = parseJSONToVarsLabels(txt);
@@ -1493,15 +1560,22 @@
         throw new Error('format');
       }
       if (parsed.errors && parsed.errors.length) {
-        alert('Beberapa baris diabaikan:\n' + parsed.errors.slice(0,10).join('\n') + (parsed.errors.length>10?'\n…':'') );
+        const errText = 'Beberapa baris diabaikan:\n'
+          + parsed.errors.slice(0, 10).join('\n')
+          + (parsed.errors.length > 10 ? '\n...' : '');
+        await alertModal(errText, { title: 'Import Parameter' });
       }
       const nextVars = parsed.vars, nextLabels = parsed.labels;
       const existingCodes = new Set(Object.keys(variables));
       const codes = Object.keys(nextVars);
       const adds = codes.filter(c => !existingCodes.has(c)).length;
       const updates = codes.filter(c => existingCodes.has(c)).length;
-      const summary = `Ditemukan ${codes.length} parameter.\nTambah: ${adds}\nPerbarui: ${updates}.\nOK = Merge, Cancel = Replace`;
-      const doMerge = window.confirm(summary);
+      const summary = `Ditemukan ${codes.length} parameter.\nTambah: ${adds}\nPerbarui: ${updates}.\nPilih Merge untuk gabungkan atau Replace untuk mengganti.`;
+      const doMerge = await confirmModal(summary, {
+        title: 'Konfirmasi Import',
+        confirmText: 'Merge',
+        cancelText: 'Replace',
+      });
       if (doMerge) {
         variables = { ...variables, ...nextVars };
         varLabels = { ...varLabels, ...nextLabels };
@@ -1523,7 +1597,7 @@
   }
 
   // Hook tombol Import/Export lama → Unified
-  (function installUnifiedIO(){
+  (function installUnifiedIO() {
     ensureFileInputs();
     const btnImport = document.getElementById('vp-var-import-btn');
     const fileInput = document.getElementById('vp-var-import');
@@ -1552,17 +1626,17 @@
   })();
 
   // Generate XLSX template (no static file needed)
-  (function installTemplateGen(){
+  (function installTemplateGen() {
     const btn = document.getElementById('vp-template-xlsx-gen');
     if (!btn) return;
     btn.addEventListener('click', () => {
       if (!(window.XLSX && XLSX.utils && XLSX.writeFile)) { TOAST.warn('Butuh SheetJS untuk XLSX'); return; }
       const rows = [
         { Nama: 'Panjang', Nilai: 0 },
-        { Nama: 'Lebar',   Nilai: 0 },
-        { Nama: 'Tinggi',  Nilai: 0 },
+        { Nama: 'Lebar', Nilai: 0 },
+        { Nama: 'Tinggi', Nilai: 0 },
       ];
-      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama','Nilai'] });
+      const ws = XLSX.utils.json_to_sheet(rows, { header: ['Nama', 'Nilai'] });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Parameter');
       XLSX.writeFile(wb, 'parameters_template.xlsx');
@@ -1611,11 +1685,11 @@
           trS.setAttribute('data-klas-id', kKey);
           trS.innerHTML = `
             <td colspan="5">
-              <button type="button" class="btn btn-link btn-sm vp-toggle" data-type="sub" data-key="${escapeHtml(sKey)}" aria-expanded="${!(collapsed.sub[sKey]||collapsed.klas[kKey])}">
-                <i class="bi ${(collapsed.sub[sKey]||collapsed.klas[kKey]) ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}"></i>
+              <button type="button" class="btn btn-link btn-sm vp-toggle" data-type="sub" data-key="${escapeHtml(sKey)}" aria-expanded="${!(collapsed.sub[sKey] || collapsed.klas[kKey])}">
+                <i class="bi ${(collapsed.sub[sKey] || collapsed.klas[kKey]) ? 'bi-caret-right-fill' : 'bi-caret-down-fill'}"></i>
               </button>
               ${escapeHtml(s.name || '(Tanpa Sub)')}
-            </td>`;          
+            </td>`;
           tbody.appendChild(trS);
 
           (s.pekerjaan || []).forEach(p => {
@@ -1665,19 +1739,19 @@
         if (vlist && Array.isArray(vlist.items)) {
           vlist.items.forEach(it => {
             const id = Number(it.pekerjaan_id);
-            const v  = N ? Number(N.canonicalizeForAPI(it.quantity ?? '0'))
-                         : Number(String(it.quantity || '0').replace(',', '.'));
+            const v = N ? Number(N.canonicalizeForAPI(it.quantity ?? '0'))
+              : Number(String(it.quantity || '0').replace(',', '.'));
             if (Number.isFinite(id) && Number.isFinite(v)) volMap[id] = v;
           });
         }
-      } catch {}
+      } catch { }
       if (Object.keys(volMap).length === 0) {
-        const rekap = await HTTP.jget(`/detail_project/api/project/${projectId}/rekap/`).catch(()=> ({}));
+        const rekap = await HTTP.jget(`/detail_project/api/project/${projectId}/rekap/`).catch(() => ({}));
         if (rekap && Array.isArray(rekap.rows)) {
           rekap.rows.forEach(r => {
             if (r && typeof r.pekerjaan_id === 'number') {
               const v = N ? Number(N.canonicalizeForAPI(r.volume ?? 0))
-                          : Number(r.volume || 0);
+                : Number(r.volume || 0);
               volMap[r.pekerjaan_id] = Number.isFinite(v) ? v : 0;
             }
           });
@@ -1701,7 +1775,7 @@
             serverFormula[it.pekerjaan_id] = { raw: it.raw || '', fx: !!it.is_fx };
           });
         }
-      } catch {}
+      } catch { }
       const localFormula = loadFormulas();
       const formulaState = serverFormula || localFormula;
 
@@ -1738,9 +1812,9 @@
 
       setBtnSaveEnabled();
       buildSearchIndex();
-     // Terapkan state collapse untuk kedua mode (row/card)
-     applyCollapseOnTable();
-     applyCollapseOnCards();
+      // Terapkan state collapse untuk kedua mode (row/card)
+      applyCollapseOnTable();
+      applyCollapseOnCards();
     } catch (e) {
       console.warn('Prefill rekap gagal', e);
       await enhanceWithGroups();
@@ -1774,7 +1848,7 @@
       after: Number(currentValueById[id] ?? 0)
     }));
 
-    const items = changes.map(({id, after}) => {
+    const items = changes.map(({ id, after }) => {
       let q = after;
       if (!Number.isFinite(q)) q = 0;
       const rounded = roundHalfUp(q, STORE_PLACES);
@@ -1790,7 +1864,7 @@
 
     try {
       const res = await HTTP.jpost(EP_SAVE, { items });
-      
+
       const markErrors = (json) => {
         if (!json || !Array.isArray(json.errors)) return;
         const re = /items\[(\d+)\]\.(quantity|pekerjaan_id)/;
@@ -1810,7 +1884,7 @@
         markErrors(json);
         const saved = (typeof json.saved === 'number') ? json.saved : 0;
         TOAST.err(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`);
-        setSaveStatus(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`,'danger');
+        setSaveStatus(`Sebagian/semua gagal disimpan. Tersimpan: ${saved}`, 'danger');
         return;
       }
 
@@ -1870,15 +1944,15 @@
     if (!last || !last.changes || !last.changes.length) { showToast('Tidak ada yang bisa di-undo.', 'warning'); return; }
 
     // Apply "before" ke state & UI lalu kirim simpan
-    last.changes.forEach(({id, before}) => {
+    last.changes.forEach(({ id, before }) => {
       currentValueById[id] = roundHalfUp(Number(before), STORE_PLACES);
       const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
       const input = tr?.querySelector('.qty-input');
       const preview = tr?.querySelector('.fx-preview');
       if (input) {
         input.value = formatIdSmart(currentValueById[id]);
-        input.classList.add('is-valid'); setTimeout(()=>input.classList.remove('is-valid'), 700);
-        input.classList.toggle('vp-empty', !String(input.value||'').trim());
+        input.classList.add('is-valid'); setTimeout(() => input.classList.remove('is-valid'), 700);
+        input.classList.toggle('vp-empty', !String(input.value || '').trim());
       }
       if (preview) preview.textContent = '';
       updateDirty(id);
@@ -1897,15 +1971,61 @@
     }
   });
 
+  function doSafeReload() {
+    allowUnload = true;
+    window.location.reload();
+  }
+
+  async function confirmReload(reason) {
+    if (!window.__vpDirty) {
+      doSafeReload();
+      return true;
+    }
+    const modalApi = getModalApi();
+    if (!modalApi || !modalApi.confirm) return false;
+    const message = reason
+      ? `${reason}\n\nPerubahan volume yang belum disimpan akan hilang jika Anda melanjutkan.`
+      : 'Perubahan volume yang belum disimpan akan hilang jika Anda melanjutkan reload halaman.';
+    const ok = await modalApi.confirm(message, {
+      title: 'Konfirmasi Reload',
+      confirmText: 'Reload',
+      cancelText: 'Batal',
+      confirmClass: 'btn btn-danger',
+    });
+    if (ok) {
+      doSafeReload();
+    }
+    return ok;
+  }
+
   // Guard before unload
   window.addEventListener('beforeunload', (e) => {
-    if (window.__vpDirty) { e.preventDefault(); e.returnValue = ''; return ''; }
+    if (window.__vpDirty && !allowUnload) { e.preventDefault(); e.returnValue = ''; return ''; }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!window.__vpDirty) return;
+    const key = String(e.key || '').toLowerCase();
+    const isReload = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && key === 'r');
+    if (!isReload) return;
+    const modalApi = getModalApi();
+    if (!modalApi || !modalApi.confirm) return;
+    e.preventDefault();
+    confirmReload('Anda akan memuat ulang halaman.');
   });
 
   // ===== Storage helpers
   function storageKeyVars() { return `volvars:${projectId}`; }
   function storageKeyVarLabels() { return `volvars_labels:${projectId}`; }
   function storageKeyForms() { return `volform:${projectId}`; }
+
+  // API endpoints for parameter sync
+  const EP_PARAMS = `/detail_project/api/project/${projectId}/parameters/`;
+  const EP_PARAMS_SYNC = `/detail_project/api/project/${projectId}/parameters/sync/`;
+
+  // Debounce timer for server sync
+  let paramSyncTimer = null;
+  const PARAM_SYNC_DELAY = 2000; // 2 seconds debounce
 
   function loadVars() {
     try {
@@ -1914,7 +2034,14 @@
       if (typeof variables !== 'object' || !variables) variables = {};
     } catch { variables = {}; }
   }
-  function saveVars() { localStorage.setItem(storageKeyVars(), JSON.stringify(variables)); }
+
+  function saveVars() {
+    // Save to localStorage immediately
+    localStorage.setItem(storageKeyVars(), JSON.stringify(variables));
+    // Debounced sync to server
+    scheduleServerSync();
+  }
+
   function loadVarLabels() {
     try {
       const raw = localStorage.getItem(storageKeyVarLabels());
@@ -1922,7 +2049,111 @@
       if (!varLabels || typeof varLabels !== 'object') varLabels = {};
     } catch { varLabels = {}; }
   }
-  function saveVarLabels() { localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels)); }
+
+  function saveVarLabels() {
+    // Save to localStorage immediately
+    localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels));
+    // Debounced sync to server
+    scheduleServerSync();
+  }
+
+  // Schedule a debounced sync to server
+  function scheduleServerSync() {
+    if (paramSyncTimer) clearTimeout(paramSyncTimer);
+    paramSyncTimer = setTimeout(() => {
+      syncParamsToServer();
+    }, PARAM_SYNC_DELAY);
+  }
+
+  // Sync current parameters to server
+  async function syncParamsToServer() {
+    try {
+      // Build parameters object with values and labels
+      const params = {};
+      for (const code of Object.keys(variables)) {
+        params[code] = {
+          value: variables[code],
+          label: varLabels[code] || code,
+        };
+      }
+
+      const res = await HTTP.jpost(EP_PARAMS_SYNC, {
+        parameters: params,
+        mode: 'merge'
+      });
+
+      if (res.ok && res.data?.ok) {
+        console.log('[VP] Params synced to server:', res.data);
+        // Show subtle sync indicator
+        showParamSyncStatus('synced');
+      } else {
+        console.warn('[VP] Param sync failed:', res);
+        showParamSyncStatus('error');
+      }
+    } catch (err) {
+      console.error('[VP] Param sync error:', err);
+      showParamSyncStatus('error');
+    }
+  }
+
+  // Load parameters from server and merge with localStorage
+  async function loadParamsFromServer() {
+    try {
+      const data = await HTTP.jget(EP_PARAMS);
+      if (data?.ok && Array.isArray(data.parameters)) {
+        // Merge server params with localStorage
+        const serverParams = {};
+        const serverLabels = {};
+
+        for (const p of data.parameters) {
+          serverParams[p.name] = Number(p.value) || 0;
+          serverLabels[p.name] = p.label || p.name;
+        }
+
+        // Server is authoritative - override localStorage
+        variables = { ...variables, ...serverParams };
+        varLabels = { ...varLabels, ...serverLabels };
+
+        // Save merged state to localStorage
+        localStorage.setItem(storageKeyVars(), JSON.stringify(variables));
+        localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels));
+
+        console.log('[VP] Loaded params from server:', Object.keys(serverParams).length);
+        renderVarTable();
+        reevaluateAllFormulas();
+        showParamSyncStatus('synced');
+      }
+    } catch (err) {
+      console.warn('[VP] Failed to load params from server, using localStorage:', err);
+    }
+  }
+
+  // Show sync status in sidebar
+  function showParamSyncStatus(status) {
+    const indicator = document.getElementById('vp-param-sync-status');
+    if (!indicator) return;
+
+    indicator.classList.remove('sync-pending', 'sync-synced', 'sync-error');
+
+    if (status === 'pending') {
+      indicator.classList.add('sync-pending');
+      indicator.title = 'Menyimpan...';
+      indicator.innerHTML = '<i class="bi bi-cloud-arrow-up"></i>';
+    } else if (status === 'synced') {
+      indicator.classList.add('sync-synced');
+      indicator.title = 'Tersimpan';
+      indicator.innerHTML = '<i class="bi bi-cloud-check"></i>';
+      // Fade out after 2 seconds
+      setTimeout(() => {
+        indicator.classList.remove('sync-synced');
+        indicator.innerHTML = '';
+      }, 2000);
+    } else if (status === 'error') {
+      indicator.classList.add('sync-error');
+      indicator.title = 'Gagal menyimpan ke server';
+      indicator.innerHTML = '<i class="bi bi-cloud-slash"></i>';
+    }
+  }
 
   function loadFormulas() {
     try {
@@ -1940,6 +2171,9 @@
   Object.keys(variables).forEach(code => { if (!varLabels[code]) varLabels[code] = code; });
   saveVarLabels();
   renderVarTable();
+
+  // Load from server (async - will merge with localStorage and re-render)
+  loadParamsFromServer();
 
   // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
   rows.forEach(tr => bindRow(tr));
@@ -2009,5 +2243,125 @@
   } else {
     initExportButtons();
   }
+
+  // ===== SUMMARY STATISTICS & FILTER BAR =====
+  const summaryBar = document.getElementById('vp-summary-bar');
+  const filterBar = document.getElementById('vp-filter-bar');
+
+  /**
+   * Update summary statistics badges
+   */
+  function updateSummaryStats() {
+    if (!summaryBar) return;
+
+    const allRows = document.querySelectorAll('tr[data-pekerjaan-id]');
+    let total = 0, filled = 0, empty = 0, formula = 0;
+
+    allRows.forEach(row => {
+      const input = row.querySelector('.qty-input');
+      if (!input) return;
+      total++;
+      const val = (input.value || '').trim();
+      if (!val) {
+        empty++;
+      } else {
+        filled++;
+        if (val.startsWith('=')) formula++;
+      }
+    });
+
+    // Update badge values
+    const statTotal = summaryBar.querySelector('#vp-stat-total .stat-value');
+    const statFilled = summaryBar.querySelector('#vp-stat-filled .stat-value');
+    const statEmpty = summaryBar.querySelector('#vp-stat-empty .stat-value');
+    const statFormula = summaryBar.querySelector('#vp-stat-formula .stat-value');
+
+    if (statTotal) statTotal.textContent = total;
+    if (statFilled) statFilled.textContent = filled;
+    if (statEmpty) statEmpty.textContent = empty;
+    if (statFormula) statFormula.textContent = formula;
+  }
+
+  /**
+   * Apply row filter based on filter type
+   */
+  function applyRowFilter(filter) {
+    const allRows = document.querySelectorAll('tr[data-pekerjaan-id]');
+    let visibleCount = 0;
+
+    allRows.forEach(row => {
+      const input = row.querySelector('.qty-input');
+      if (!input) return;
+
+      const val = (input.value || '').trim();
+      const hasFormula = val.startsWith('=');
+      const isEmpty = !val;
+      let show = true;
+
+      switch (filter) {
+        case 'filled':
+          show = !isEmpty;
+          break;
+        case 'empty':
+          show = isEmpty;
+          break;
+        case 'formula':
+          show = hasFormula;
+          break;
+        case 'all':
+        default:
+          show = true;
+      }
+
+      row.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
+    });
+
+    // Update stats after filter
+    updateSummaryStats();
+
+    return visibleCount;
+  }
+
+  // Filter bar click handler
+  if (filterBar) {
+    filterBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-filter]');
+      if (!btn) return;
+
+      const filter = btn.dataset.filter;
+
+      // Toggle active state
+      filterBar.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Apply filter
+      const count = applyRowFilter(filter);
+
+      // Show feedback for empty results
+      if (count === 0 && filter !== 'all') {
+        TOAST.warn(`Tidak ada pekerjaan dengan status "${btn.textContent.trim()}"`);
+      }
+    });
+  }
+
+  // Initial stats update
+  updateSummaryStats();
+
+  // Update stats when input changes (hook into existing input handler)
+  const originalHandleInputChange = typeof handleInputChange === 'function' ? handleInputChange : null;
+  document.addEventListener('input', (e) => {
+    if (e.target.classList.contains('qty-input')) {
+      // Debounce stats update
+      clearTimeout(window._vpStatsTimer);
+      window._vpStatsTimer = setTimeout(updateSummaryStats, 300);
+    }
+  });
+
+  // Expose for external use
+  window.vpUpdateStats = updateSummaryStats;
+
+  // Expose variables for export (returns copy of current parameter values)
+  window.vpGetVariables = () => ({ ...variables });
 
 })();

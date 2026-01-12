@@ -35,7 +35,7 @@
   gap: .5rem;
   padding: .5rem 0;
   flex-wrap: wrap;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  /* No transition on theme properties - prevents dark mode delay */
 }
 
 /* Toolbar Search Input Group */
@@ -52,7 +52,7 @@
   line-height: 1.5;
   padding-top: .375rem;
   padding-bottom: .375rem;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
 }
 
 .dp-toolbar-search .input-group-text {
@@ -75,7 +75,7 @@
 }
 
 /* Toolbar Right Section */
-.dp-toolbar > .ms-auto {
+.dp-toolbar>.ms-auto {
   display: flex !important;
   align-items: center !important;
   gap: .5rem !important;
@@ -97,7 +97,7 @@
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-sm);
   white-space: nowrap;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
 .dp-btn i {
@@ -159,7 +159,7 @@
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-sm);
   white-space: nowrap;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
 .dp-btn-action:hover {
@@ -183,7 +183,7 @@
   border: 2px solid var(--dp-c-border);
   border-radius: var(--dp-radius-lg);
   box-shadow: var(--dp-shadow-sm);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: box-shadow var(--ux-duration-200) var(--ux-ease);
   margin-bottom: 1rem;
   background: var(--dp-c-bg);
 }
@@ -339,7 +339,7 @@
   border-radius: var(--dp-radius-lg);
   box-shadow: var(--dp-shadow-lg);
   transition: transform var(--ux-duration-200) var(--ux-ease),
-              opacity var(--ux-duration-200) var(--ux-ease);
+    opacity var(--ux-duration-200) var(--ux-ease);
   z-index: 1;
 }
 
@@ -375,7 +375,7 @@
   padding: .5rem .75rem;
   border-radius: var(--dp-radius-md);
   cursor: pointer;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: background var(--ux-duration-200) var(--ux-ease), transform var(--ux-duration-200) var(--ux-ease);
 }
 
 .dp-nav-node__header:hover {
@@ -393,7 +393,7 @@
   justify-content: center;
   font-size: .8rem;
   color: var(--dp-c-muted);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: background var(--ux-duration-200) var(--ux-ease);
   flex-shrink: 0;
 }
 
@@ -403,19 +403,19 @@
 }
 
 /* Tree Navigation Labels - Hierarchical Font Weight */
-.dp-nav-node[data-level="klas"] > .dp-nav-node__header .dp-nav-node__label {
+.dp-nav-node[data-level="klas"]>.dp-nav-node__header .dp-nav-node__label {
   font-weight: 700;
   font-size: var(--ux-font-md);
   color: var(--dp-c-text);
 }
 
-.dp-nav-node[data-level="sub"] > .dp-nav-node__header .dp-nav-node__label {
+.dp-nav-node[data-level="sub"]>.dp-nav-node__header .dp-nav-node__label {
   font-weight: 600;
   font-size: var(--ux-font-sm);
   color: var(--dp-c-text);
 }
 
-.dp-nav-node[data-level="job"] > .dp-nav-node__header .dp-nav-node__label {
+.dp-nav-node[data-level="job"]>.dp-nav-node__header .dp-nav-node__label {
   font-weight: 400;
   font-size: var(--ux-font-xs);
   color: var(--dp-c-text);
@@ -448,7 +448,7 @@
 }
 
 /* Active Node */
-.dp-nav-node--active > .dp-nav-node__header {
+.dp-nav-node--active>.dp-nav-node__header {
   background: var(--dp-c-primary-subtle);
   outline: 2px solid color-mix(in srgb, var(--dp-c-primary) 35%, transparent);
   outline-offset: -2px;
@@ -517,6 +517,7 @@
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -550,7 +551,7 @@
   padding: .5rem .75rem;
   border-radius: var(--dp-radius-sm);
   cursor: pointer;
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: background var(--ux-duration-200) var(--ux-ease), transform var(--ux-duration-200) var(--ux-ease);
 }
 
 .dp-autocomplete-item:hover,
@@ -607,12 +608,12 @@
 
 [data-bs-theme="dark"] .dp-btn.btn-primary,
 [data-bs-theme="dark"] .dp-btn.btn-success {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .25), 0 0 18px rgba(56, 189, 248, .45);
 }
 
 [data-bs-theme="dark"] .dp-btn.btn-primary:hover,
 [data-bs-theme="dark"] .dp-btn.btn-success:hover {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .35), 0 0 24px rgba(56, 189, 248, .55);
 }
 
 [data-bs-theme="dark"] .dp-sidebar-overlay {
@@ -682,15 +683,15 @@
     flex-wrap: nowrap;
   }
 
-  .dp-toolbar > .ms-auto {
+  .dp-toolbar>.ms-auto {
     margin-left: 0 !important;
     width: 100%;
     flex-direction: row;
     flex-wrap: wrap;
   }
 
-  .dp-toolbar > .ms-auto .btn,
-  .dp-toolbar > .ms-auto .dp-btn {
+  .dp-toolbar>.ms-auto .btn,
+  .dp-toolbar>.ms-auto .dp-btn {
     flex: 1 1 auto;
     min-width: fit-content;
   }
@@ -729,6 +730,7 @@
    =========================================================== */
 
 @media (forced-colors: active) {
+
   .dp-nav-node__toggle,
   .dp-btn,
   .dp-card-primary {
@@ -742,6 +744,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -789,10 +792,21 @@
 }
 
 @keyframes dpFlash {
-  0%   { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
-  12%  { box-shadow: 0 0 0 6px rgba(13,110,253,.22), inset 0 0 0 1px rgba(13,110,253,.35); }
-  40%  { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 1px rgba(13,110,253,.35); }
-  100% { box-shadow: 0 0 0 0 rgba(13,110,253,0), inset 0 0 0 0 rgba(13,110,253,0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0), inset 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+
+  12% {
+    box-shadow: 0 0 0 6px rgba(13, 110, 253, .22), inset 0 0 0 1px rgba(13, 110, 253, .35);
+  }
+
+  40% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0), inset 0 0 0 1px rgba(13, 110, 253, .35);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0), inset 0 0 0 0 rgba(13, 110, 253, 0);
+  }
 }
 
 /* Loading State */

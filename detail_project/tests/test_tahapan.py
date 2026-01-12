@@ -3,13 +3,17 @@
 
 import pytest
 from decimal import Decimal
+from datetime import date
 from django.urls import reverse
 from django.core.exceptions import ValidationError
 
 from detail_project.models import (
     TahapPelaksanaan,
     PekerjaanTahapan,
-    Pekerjaan
+    Pekerjaan,
+    VolumePekerjaan,
+    DetailAHSPProject,
+    HargaItemProject,
 )
 from detail_project.services import (
     compute_kebutuhan_items,
@@ -29,7 +33,9 @@ def tahap1(db, project):
         project=project,
         nama="Tahap 1: Persiapan",
         urutan=1,
-        deskripsi="Pekerjaan persiapan lahan"
+        deskripsi="Pekerjaan persiapan lahan",
+        tanggal_mulai=date(2025, 1, 6),
+        tanggal_selesai=date(2025, 1, 12),
     )
 
 
@@ -40,7 +46,9 @@ def tahap2(db, project):
         project=project,
         nama="Tahap 2: Struktur",
         urutan=2,
-        deskripsi="Pekerjaan struktur bawah"
+        deskripsi="Pekerjaan struktur bawah",
+        tanggal_mulai=date(2025, 1, 13),
+        tanggal_selesai=date(2025, 1, 19),
     )
 
 
@@ -56,6 +64,51 @@ def pekerjaan_test(db, project, sub_klas):
         snapshot_satuan="m2",
         ordering_index=10
     )
+
+
+def _create_pekerjaan_with_detail(
+    project,
+    sub_klas,
+    kode_suffix: str,
+    uraian: str,
+    kategori: str = "TK",
+    koefisien: Decimal = Decimal("1.0"),
+    volume: Decimal = Decimal("5.0"),
+    harga_satuan: Decimal = Decimal("10000"),
+):
+    pekerjaan = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klas,
+        source_type="custom",
+        snapshot_kode=f"CUST-{kode_suffix}",
+        snapshot_uraian=uraian,
+        snapshot_satuan="OH",
+        ordering_index=20,
+    )
+    harga_item = HargaItemProject.objects.create(
+        project=project,
+        kategori=kategori,
+        kode_item=f"{kategori}.{kode_suffix}",
+        uraian=f"{kategori} {uraian}",
+        satuan="OH",
+        harga_satuan=harga_satuan,
+    )
+    DetailAHSPProject.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        kategori=kategori,
+        kode=f"{kategori}.{kode_suffix}",
+        uraian=uraian,
+        satuan="OH",
+        koefisien=koefisien,
+        harga_item=harga_item,
+    )
+    VolumePekerjaan.objects.update_or_create(
+        project=project,
+        pekerjaan=pekerjaan,
+        defaults={"quantity": volume},
+    )
+    return pekerjaan
 
 
 # =============================================================================
@@ -427,6 +480,133 @@ class TestTahapanAPI:
         assert data['ok'] is True
         assert data['meta']['mode'] == 'tahapan'
         assert data['meta']['tahapan']['tahapan_id'] == tahap1.id
+
+    def test_rekap_kebutuhan_filters_endpoint_includes_pekerjaan_and_periods(
+        self,
+        client_logged,
+        project,
+        pekerjaan_custom,
+        detail_tk_smoke,
+        volume5,
+        tahap1
+    ):
+        url = reverse('detail_project:api_get_rekap_kebutuhan_filters', args=[project.id])
+        response = client_logged.get(url)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload['ok'] is True
+        assert 'pekerjaan' in payload and len(payload['pekerjaan']) >= 1
+        assert 'periods' in payload
+        assert isinstance(payload['periods'].get('weeks'), list)
+        assert len(payload['periods']['weeks']) >= 1
+
+    def test_rekap_kebutuhan_filter_by_pekerjaan(
+        self,
+        client_logged,
+        project,
+        sub_klas,
+        pekerjaan_custom,
+        detail_tk_smoke,
+        volume5,
+        tahap1
+    ):
+        pekerjaan_lain = _create_pekerjaan_with_detail(
+            project,
+            sub_klas,
+            kode_suffix="MAT001",
+            uraian="Material Test",
+            kategori="BHN",
+            koefisien=Decimal("0.5"),
+            volume=Decimal("8.0"),
+            harga_satuan=Decimal("5000"),
+        )
+        PekerjaanTahapan.objects.create(
+            pekerjaan=pekerjaan_lain,
+            tahapan=tahap1,
+            proporsi_volume=Decimal('100')
+        )
+
+        url = reverse('detail_project:api_get_rekap_kebutuhan_enhanced', args=[project.id])
+        response = client_logged.get(url + f'?pekerjaan={pekerjaan_lain.id}')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['ok'] is True
+        assert len(data['rows']) >= 1
+        assert all(row['kode'] == 'BHN.MAT001' for row in data['rows'])
+
+    def test_rekap_kebutuhan_time_scope_week(
+        self,
+        client_logged,
+        project,
+        pekerjaan_custom,
+        detail_tk_smoke,
+        volume5,
+        tahap1,
+        tahap2
+    ):
+        # Split pekerjaan equally across two tahapan/weeks
+        PekerjaanTahapan.objects.create(
+            pekerjaan=pekerjaan_custom,
+            tahapan=tahap1,
+            proporsi_volume=Decimal('50')
+        )
+        PekerjaanTahapan.objects.create(
+            pekerjaan=pekerjaan_custom,
+            tahapan=tahap2,
+            proporsi_volume=Decimal('50')
+        )
+
+        url = reverse('detail_project:api_get_rekap_kebutuhan_enhanced', args=[project.id])
+        resp_all = client_logged.get(url)
+        assert resp_all.status_code == 200
+        data_all = resp_all.json()
+        qty_all = None
+        for row in data_all['rows']:
+            if row['kode'] == 'TK.SMOKE':
+                qty_all = Decimal(str(row.get('quantity_decimal') or row.get('quantity')))
+                break
+        assert qty_all is not None
+
+        iso_year, iso_week, _ = tahap1.tanggal_mulai.isocalendar()
+        week_code = f"{iso_year}-W{iso_week:02d}"
+        resp_week = client_logged.get(url + f'?period_mode=week&period_start={week_code}')
+        assert resp_week.status_code == 200
+        data_week = resp_week.json()
+        qty_week = None
+        for row in data_week['rows']:
+            if row['kode'] == 'TK.SMOKE':
+                qty_week = Decimal(str(row.get('quantity_decimal') or row.get('quantity')))
+                break
+        assert qty_week is not None
+        assert qty_week == qty_all / 2
+
+    def test_rekap_kebutuhan_timeline_api(
+        self,
+        client_logged,
+        project,
+        pekerjaan_custom,
+        detail_tk_smoke,
+        volume5,
+        tahap1,
+        tahap2
+    ):
+        PekerjaanTahapan.objects.create(
+            pekerjaan=pekerjaan_custom,
+            tahapan=tahap1,
+            proporsi_volume=Decimal('60')
+        )
+        PekerjaanTahapan.objects.create(
+            pekerjaan=pekerjaan_custom,
+            tahapan=tahap2,
+            proporsi_volume=Decimal('40')
+        )
+
+        url = reverse('detail_project:api_get_rekap_kebutuhan_timeline', args=[project.id])
+        response = client_logged.get(url + '?period_mode=week')
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload['ok'] is True
+        assert payload['periods']
 
 
 # =============================================================================

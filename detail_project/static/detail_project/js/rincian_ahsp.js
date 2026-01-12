@@ -35,7 +35,7 @@
  * @version TIER 3 Complete
  * @tested 22 test cases (pytest detail_project/tests/test_rincian_ahsp.py)
  */
-(function(){
+(function () {
   const ROOT = document.getElementById('rekap-app');
   if (!ROOT) return;
   const projectId = Number(ROOT.dataset.projectId || '0');
@@ -76,8 +76,8 @@
     maximumFractionDigits: CONSTANTS.CURRENCY_DECIMAL_PLACES
   });
 
-  const EP_REKAP    = ROOT.dataset.epRekap;
-  const EP_PRICING  = ROOT.dataset.epPricing;
+  const EP_REKAP = ROOT.dataset.epRekap;
+  const EP_PRICING = ROOT.dataset.epPricing;
   const EP_DET_PREF = ROOT.dataset.epDetailPrefix;      // ex: ".../detail-ahsp/0/"
   const EP_POV_PREF = ROOT.dataset.epPricingItemPrefix; // ex: ".../pekerjaan/0/pricing/"
 
@@ -102,7 +102,7 @@
    * @param {number} id - Pekerjaan ID
    * @returns {string} Detail endpoint URL
    */
-  const urlDetail      = (id) => substId(EP_DET_PREF, id);
+  const urlDetail = (id) => substId(EP_DET_PREF, id);
 
   /**
    * Generate URL for fetching/updating pricing data for a pekerjaan
@@ -112,20 +112,20 @@
   const urlPricingItem = (id) => substId(EP_POV_PREF, id);
 
   // ====== DOM refs ======
-  const $grid     = ROOT.querySelector('.ra-body'); // grid container - independent dari Template AHSP
+  const $grid = ROOT.querySelector('.ra-body'); // grid container - independent dari Template AHSP
   // Toolbar
   const $badgeBUK = ROOT.querySelector('#rk-badge-buk');
-  const $search   = ROOT.querySelector('#ra-job-search'); // Updated: rk-search → ra-job-search
-  const $grand    = ROOT.querySelector('#rk-grand');
+  const $search = ROOT.querySelector('#ra-job-search'); // Updated: rk-search → ra-job-search
+  const $grand = ROOT.querySelector('#rk-grand');
   // Sidebar
-  const $list     = ROOT.querySelector('#rk-list');
+  const $list = ROOT.querySelector('#rk-list');
   // Kanan (header)
-  const $kode     = ROOT.querySelector('#rk-pkj-kode');
-  const $uraian   = ROOT.querySelector('#rk-pkj-uraian');
-  const $sat      = ROOT.querySelector('#rk-pkj-sat');
-  const $src      = ROOT.querySelector('#rk-pkj-source');
-  const $ovrChip  = ROOT.querySelector('#rk-pkj-ovr-chip');
-  const $eff      = ROOT.querySelector('#rk-eff');
+  const $kode = ROOT.querySelector('#rk-pkj-kode');
+  const $uraian = ROOT.querySelector('#rk-pkj-uraian');
+  const $sat = ROOT.querySelector('#rk-pkj-sat');
+  const $src = ROOT.querySelector('#rk-pkj-source');
+  const $ovrChip = ROOT.querySelector('#rk-pkj-ovr-chip');
+  const $eff = ROOT.querySelector('#rk-eff');
   const $ovrInput = ROOT.querySelector('#rk-ovr-input');
   const $ovrApply = ROOT.querySelector('#rk-ovr-apply');
   const $ovrClear = ROOT.querySelector('#rk-ovr-clear');
@@ -134,12 +134,12 @@
   const $modalApply = ROOT.querySelector('#ovr-apply-btn');
   const $modalClear = ROOT.querySelector('#ovr-clear-btn');
   // Kanan (tabel)
-  const $tbody    = ROOT.querySelector('#rk-tbody-detail');
+  const $tbody = ROOT.querySelector('#rk-tbody-detail');
   // Resizer
-  const $resizer  = ROOT.querySelector('.rk-resizer');
+  const $resizer = ROOT.querySelector('.rk-resizer');
   const $leftPane = ROOT.querySelector('.rk-left');
   // Toast
-  const $toast    = ROOT.querySelector('#rk-toast');
+  const $toast = ROOT.querySelector('#rk-toast');
   const volumeAlertEl = document.getElementById('rk-volume-alert');
   const sourceChange = window.DP?.sourceChange || null;
 
@@ -164,7 +164,7 @@
    * @returns {string} HTML-safe string
    */
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[m]));
 
   /**
@@ -177,29 +177,29 @@
    * @example parseNum("1,234.56") => 1234.56
    * @example parseNum("-100") => 0 (negatives rejected)
    */
-  function parseNum(x){
+  function parseNum(x) {
     if (x == null) return 0;
     let s = String(x).trim();
     if (!s) return 0;
-    s = s.replace(/_/g,'');
+    s = s.replace(/_/g, '');
     const hasComma = s.includes(',');
-    const hasDot   = s.includes('.');
-    if (hasComma && hasDot){
+    const hasDot = s.includes('.');
+    if (hasComma && hasDot) {
       const lastComma = s.lastIndexOf(',');
-      const lastDot   = s.lastIndexOf('.');
-      if (lastComma > lastDot){
+      const lastDot = s.lastIndexOf('.');
+      if (lastComma > lastDot) {
         const fracLen = s.length - lastComma - 1;
-        if (fracLen === 3){ s = s.replace(/,/g,''); }
-        else { s = s.replace(/\./g,'').replace(',', '.'); }
+        if (fracLen === 3) { s = s.replace(/,/g, ''); }
+        else { s = s.replace(/\./g, '').replace(',', '.'); }
       } else {
         const fracLen = s.length - lastDot - 1;
-        if (fracLen === 3){ s = s.replace(/\./g,'').replace(',', '.'); }
-        else { s = s.replace(/,/g,''); }
+        if (fracLen === 3) { s = s.replace(/\./g, '').replace(',', '.'); }
+        else { s = s.replace(/,/g, ''); }
       }
     } else {
-      if (!hasDot && (s.match(/,/g)||[]).length === 1){ s = s.replace(',', '.'); }
-      else if (!hasComma && (s.match(/\./g)||[]).length === 1){ /* ok */ }
-      else { s = s.replace(/\./g,'').replace(',', '.'); }
+      if (!hasDot && (s.match(/,/g) || []).length === 1) { s = s.replace(',', '.'); }
+      else if (!hasComma && (s.match(/\./g) || []).length === 1) { /* ok */ }
+      else { s = s.replace(/\./g, '').replace(',', '.'); }
     }
     const n = Number(s);
     return Number.isFinite(n) && n >= 0 ? n : 0;
@@ -228,31 +228,31 @@
    * - Fixes loading text punctuation
    * @private
    */
-  function applyIconAndUIFixes(){
+  function applyIconAndUIFixes() {
     // Ensure chips use consistent styles
     const srcChip = ROOT.querySelector('#rk-pkj-source');
-    srcChip?.classList.add('ux-chip','ux-mono','mono');
+    srcChip?.classList.add('ux-chip', 'ux-mono', 'mono');
     // Update icons to consistent variants
     const effIcon = ROOT.querySelector('#rk-eff i');
-    if (effIcon && effIcon.classList.contains('bi-lightning-charge')){
+    if (effIcon && effIcon.classList.contains('bi-lightning-charge')) {
       effIcon.classList.remove('bi-lightning-charge');
       effIcon.classList.add('bi-lightning-charge-fill');
     }
     const ovrIcon = ROOT.querySelector('#rk-pkj-ovr-chip i');
-    if (ovrIcon && ovrIcon.classList.contains('bi-sliders')){
+    if (ovrIcon && ovrIcon.classList.contains('bi-sliders')) {
       ovrIcon.classList.remove('bi-sliders');
       ovrIcon.classList.add('bi-sliders2');
     }
     // Table header style
     ROOT.querySelector('#ra-table')?.classList.add('ux-thead');
     // Initial placeholders clean
-    if ($kode)   $kode.textContent = $kode.textContent && $kode.textContent.trim() ? $kode.textContent : '-';
-    if ($sat)    $sat.textContent  = $sat.textContent  && $sat.textContent.trim()  ? $sat.textContent  : '-';
-    if ($src)    $src.textContent  = $src.textContent  && $src.textContent.trim()  ? $src.textContent  : '-';
+    if ($kode) $kode.textContent = $kode.textContent && $kode.textContent.trim() ? $kode.textContent : '-';
+    if ($sat) $sat.textContent = $sat.textContent && $sat.textContent.trim() ? $sat.textContent : '-';
+    if ($src) $src.textContent = $src.textContent && $src.textContent.trim() ? $src.textContent : '-';
     if ($eff && !$eff.textContent.includes('%')) $eff.textContent = 'Profit: -%';
     // Loading note punctuation
     const rowNote = ROOT.querySelector('.ra-job-list .row-note, .ta-job-list .row-note');
-    if (rowNote && /Memuat/.test(rowNote.textContent||'')) rowNote.textContent = 'Memuat…';
+    if (rowNote && /Memuat/.test(rowNote.textContent || '')) rowNote.textContent = 'Memuat…';
   }
 
   /**
@@ -264,12 +264,12 @@
    * @example parsePctUI("12.500,5") => 12500.5
    * @example parsePctUI("") => null
    */
-  function parsePctUI(s){
+  function parsePctUI(s) {
     if (s == null) return null;
-    s = String(s).trim().replace(/\s+/g,'');
-    s = s.replace(/%+$/,'');
+    s = String(s).trim().replace(/\s+/g, '');
+    s = s.replace(/%+$/, '');
     if (s === '') return null;
-    s = s.replace(/\./g,'').replace(',', '.'); // "12.500,5" -> "12500.5"
+    s = s.replace(/\./g, '').replace(',', '.'); // "12.500,5" -> "12500.5"
     const v = Number(s);
     return Number.isFinite(v) ? v : null;
   }
@@ -279,13 +279,13 @@
    * Updates disabled state and placeholder text for inline/modal inputs
    * @param {boolean} enabled - Whether override controls should be enabled
    */
-  function setOverrideUIEnabled(enabled){
+  function setOverrideUIEnabled(enabled) {
     [$ovrInput, $ovrApply, $ovrClear].forEach(el => { if (el) el.disabled = !enabled; });
     if (!enabled && $ovrChip) $ovrChip.hidden = true;
     if ($ovrInput) $ovrInput.placeholder = enabled ? "Override %" : "Override tidak tersedia";
   }
 
-  // Toast notification - aligned with Template AHSP pattern
+  // Toast notification - delegate to global DP.toast
   /**
    * Show toast notification with auto-dismiss
    * @param {string} msg - Message to display
@@ -294,15 +294,21 @@
    */
   function showToast(msg, type = 'info', delay = null) {
     console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
+    const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
+    const duration = delay || defaultDelay;
 
-    // Use global DP.core.toast if available (with correct z-index)
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[type]) {
+      return window.DP.toast[type](msg, duration);
+    }
+
+    // Fallback to legacy API
     if (window.DP && window.DP.core && window.DP.core.toast) {
-      const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
-      window.DP.core.toast.show(msg, type, delay || defaultDelay);
+      window.DP.core.toast.show({ message: msg, variant: type, delay: duration });
       return;
     }
 
-    // Fallback to inline implementation
+    // Final fallback to inline implementation
     if (!$toast) { console.log(`[${type}]`, msg); return; }
 
     const config = {
@@ -353,9 +359,7 @@
       setTimeout(() => div.remove(), 300);
     });
 
-    // Auto-dismiss (error stays longer)
-    const defaultDelay = type === 'error' ? CONSTANTS.TOAST_DURATION_ERROR_MS : CONSTANTS.TOAST_DURATION_DEFAULT_MS;
-    const duration = delay || defaultDelay;
+    // Auto-dismiss
     setTimeout(() => {
       if (div.parentNode) {
         div.style.animation = 'slideOutRight 0.3s ease-in';
@@ -435,8 +439,8 @@
   async function safeJson(r) {
     const ct = (r.headers.get('content-type') || '').toLowerCase();
     if (!ct.includes('application/json')) {
-      const text = await r.text().catch(()=> '');
-      throw new Error(`Non-JSON response (${r.status}): ${text.slice(0,120)}`);
+      const text = await r.text().catch(() => '');
+      throw new Error(`Non-JSON response (${r.status}): ${text.slice(0, 120)}`);
     }
     return r.json();
   }
@@ -448,8 +452,8 @@
    * @returns {Promise<void>}
    * @throws {Error} If API call fails or response is invalid
    */
-  async function loadProjectBUK(){
-    const r = await fetch(EP_PRICING, { credentials:'same-origin' });
+  async function loadProjectBUK() {
+    const r = await fetch(EP_PRICING, { credentials: 'same-origin' });
     const j = await safeJson(r);
     if (!r.ok || !j.ok) throw new Error('pricing fail');
     projectBUK = Number(j.markup_percent);
@@ -464,11 +468,11 @@
    * @throws {Error} If API call fails
    * @performance Uses granular loading (list scope only) to avoid blocking detail panel
    */
-  async function loadRekap(){
+  async function loadRekap() {
     setLoading(true, 'list'); // TIER 3: Granular loading for list only
-    try{
+    try {
       if ($list) $list.innerHTML = `<li class="rk-item"><div class="row-note">Memuat…</div></li>`;
-      const r = await fetch(EP_REKAP, { credentials:'same-origin' });
+      const r = await fetch(EP_REKAP, { credentials: 'same-origin' });
       const j = await safeJson(r);
       if (!r.ok || !j.ok) throw new Error('rekap fail');
       rows = j.rows || [];
@@ -478,7 +482,7 @@
 
       const last = localStorage.getItem('rk-last-pkj-id');
       const firstId = filtered[0]?.pekerjaan_id;
-      const target = (last && rows.some(x => String(x.pekerjaan_id)===last)) ? Number(last) : firstId;
+      const target = (last && rows.some(x => String(x.pekerjaan_id) === last)) ? Number(last) : firstId;
       if (selectedId == null && target) selectItem(target);
     } finally {
       setLoading(false, 'list'); // TIER 3: Clear list loading
@@ -495,10 +499,10 @@
    * @performance Uses AbortController to cancel stale requests
    * @performance Caches results in Map for instant re-selection
    */
-  async function fetchDetail(id){
+  async function fetchDetail(id) {
     ctrlDetail?.abort();
     ctrlDetail = new AbortController();
-    const r = await fetch(urlDetail(id), { credentials:'same-origin', signal: ctrlDetail.signal });
+    const r = await fetch(urlDetail(id), { credentials: 'same-origin', signal: ctrlDetail.signal });
     const j = await safeJson(r);
     if (!r.ok || !j.ok) throw new Error('detail fail');
     cacheDetail.set(id, j);
@@ -513,11 +517,11 @@
    * @throws {Error} If API call fails, endpoint not configured, or is aborted
    * @performance Uses AbortController to cancel stale requests
    */
-  async function getPricingItem(id){
+  async function getPricingItem(id) {
     if (!EP_POV_PREF) throw new Error('pricing item endpoint not provided');
     ctrlPricing?.abort();
     ctrlPricing = new AbortController();
-    const r = await fetch(urlPricingItem(id), { credentials:'same-origin', signal: ctrlPricing.signal });
+    const r = await fetch(urlPricingItem(id), { credentials: 'same-origin', signal: ctrlPricing.signal });
     const j = await safeJson(r);
     if (!r.ok || !j.ok) throw new Error('pricing item fail');
     return j;
@@ -534,13 +538,13 @@
    * @example saveOverride(123, 15.5) // Set override to 15.5%
    * @example saveOverride(123, null) // Clear override, use project default
    */
-  async function saveOverride(id, rawOrNull){
+  async function saveOverride(id, rawOrNull) {
     if (!EP_POV_PREF) throw new Error('pricing item endpoint not provided');
-    const payload = (rawOrNull==null || rawOrNull==='') ? { override_markup: null }
-                                                        : { override_markup: String(rawOrNull).replace('.',',') };
+    const payload = (rawOrNull == null || rawOrNull === '') ? { override_markup: null }
+      : { override_markup: String(rawOrNull).replace('.', ',') };
     const r = await fetch(urlPricingItem(id), {
-      method:'POST', credentials:'same-origin',
-      headers:{'Content-Type':'application/json','X-CSRFToken': csrf()},
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
       body: JSON.stringify(payload)
     });
     const j = await safeJson(r);
@@ -548,22 +552,48 @@
     return j;
   }
 
+  // ====== Source Type Filter State ======
+  function getActiveSourceTypes() {
+    const checks = ROOT.querySelectorAll('.ra-filter-check:checked');
+    return Array.from(checks).map(cb => cb.value);
+  }
+
+  function updateVisibleCount() {
+    const countEl = ROOT.querySelector('#ra-count-visible');
+    if (countEl) countEl.textContent = filtered.length;
+  }
+
   // ====== kiri: list pekerjaan ======
   /**
    * Render job list in left panel with filtering and override indicators
-   * Applies search filter, calculates totals with effective BUK, shows override chips
+   * Applies search filter + source type filter, calculates totals with effective BUK, shows override chips
    * Updates DOM and applies keyboard navigation attributes (TIER 3)
    * @performance Uses DocumentFragment for efficient DOM updates
    * @tier3 Calls makeJobItemsFocusable() for keyboard navigation support
    */
-  function renderList(){
+  function renderList() {
     const q = ($search?.value || '').toLowerCase().trim();
-    filtered = !q ? rows.slice() : rows.filter(r =>
-      (r.kode || '').toLowerCase().includes(q) ||
-      (r.uraian || '').toLowerCase().includes(q)
-    );
+    const activeSourceTypes = getActiveSourceTypes();
 
-    if (!filtered.length){
+    filtered = rows.filter(r => {
+      // Text search filter
+      const matchesText = !q ||
+        (r.kode || '').toLowerCase().includes(q) ||
+        (r.uraian || '').toLowerCase().includes(q);
+
+      // Source type filter - if no source_type in data, show all
+      const sourceType = (r.source_type || '').toLowerCase();
+      // Show if: no active filters, OR source_type matches, OR source_type is empty (data doesn't have it)
+      const matchesSource = activeSourceTypes.length === 0 ||
+        !sourceType ||
+        activeSourceTypes.includes(sourceType);
+
+      return matchesText && matchesSource;
+    });
+
+    updateVisibleCount();
+
+    if (!filtered.length) {
       if ($list) $list.innerHTML = `<li class="rk-item"><div class="row-note">Tidak ada hasil.</div></li>`;
       return;
     }
@@ -573,7 +603,7 @@
       const A = num(r.A), B = num(r.B), C = num(r.C), L = num(r.LAIN || 0);
       const E = A + B + C + L;
       const bukEff = (r.markup_eff != null ? Number(r.markup_eff) : projectBUK);
-      const F = E * (bukEff/100);
+      const F = E * (bukEff / 100);
       const G = E + F;
       // BUG FIX #1: Display G (HSP per satuan) instead of total (G × volume)
 
@@ -584,10 +614,23 @@
       li.setAttribute('role', 'option');
       li.setAttribute('tabindex', '0');
       li.setAttribute('aria-selected', String(r.pekerjaan_id) === String(selectedId) ? 'true' : 'false');
+
+      // Source type badge
+      const srcType = (r.source_type || '').toLowerCase();
+      let srcBadge = '';
+      if (srcType === 'ref') {
+        srcBadge = '<span class="ux-badge-ref mono">REF</span>';
+      } else if (srcType === 'ref_modified') {
+        srcBadge = '<span class="ux-badge-mod mono">MOD</span>';
+      } else if (srcType === 'custom') {
+        srcBadge = '<span class="ux-badge-cus mono">CUS</span>';
+      }
+
       li.innerHTML = `
         <div class="rk-item-title">${esc(r.uraian || '')}</div>
         <div class="rk-item-meta">
           <span class="mono">${esc(r.kode || '')}</span>
+          ${srcBadge}
           ${Math.abs(bukEff - projectBUK) > 1e-6 ? `<span class="rk-chip rk-chip-warn mono">${bukEff.toFixed(2)}%</span>` : ''}
           <span class="rk-chip mono">${esc(r.satuan || '')}</span>
           <span class="row-note">HSP:</span><span class="mono">${fmt(G)}</span>
@@ -598,7 +641,7 @@
       fr.appendChild(li);
     });
 
-    if ($list){
+    if ($list) {
       $list.innerHTML = '';
       $list.appendChild(fr);
     }
@@ -611,7 +654,7 @@
    * Highlight currently selected job item in list
    * Adds/removes 'active' class based on selectedId
    */
-  function highlightActive(){
+  function highlightActive() {
     if (!$list) return;
     const items = $list.querySelectorAll('.rk-item');
     items.forEach(el => {
@@ -628,31 +671,75 @@
    * where D = sum of all pekerjaan totals (with effective BUK)
    * Updates toolbar Grand Total display
    */
-  function updateGrandTotalFromRekap(){
+  function updateGrandTotalFromRekap() {
     if (!$grand) return;
-    try{
+    try {
       let D = 0;
-      for (const r of (rows || [])){
+      for (const r of (rows || [])) {
         D += num(r.total);
       }
-      const grand = D + (D * (Number(projectPPN||0)/100));
+      const grand = D + (D * (Number(projectPPN || 0) / 100));
       $grand.textContent = `Grand Total: ${fmt(grand)}`;
-    }catch{
+    } catch {
       $grand.textContent = `Grand Total: ${fmt(0)}`;
     }
   }
 
+  // CRITICAL FIX #4: Connect Volume Alert to Bundle Changes
   if (projectId && sourceChange) {
     window.addEventListener('dp:source-change', (event) => {
       const detail = event.detail || {};
       if (Number(detail.projectId) !== projectId) return;
+
+      let needsRefresh = false;
+
+      // Handle volume changes (existing logic)
       if (detail.state && detail.state.volume) {
-        pendingVolumeJobs = new Set(
-          Object.keys(detail.state.volume).map((key) => Number(key)).filter((id) => Number.isFinite(id)),
-        );
+        const volumeJobs = Object.keys(detail.state.volume)
+          .map((key) => Number(key))
+          .filter((id) => Number.isFinite(id));
+
+        volumeJobs.forEach(id => pendingVolumeJobs.add(id));
+        needsRefresh = true;
+      }
+
+      // CRITICAL FIX: Handle AHSP/bundle changes (NEW!)
+      if (detail.state && detail.state.ahsp) {
+        const ahspJobs = Object.keys(detail.state.ahsp)
+          .map((key) => Number(key))
+          .filter((id) => Number.isFinite(id));
+
+        // Clear cache for affected pekerjaan (force re-fetch)
+        ahspJobs.forEach(id => {
+          cacheDetail.delete(id);
+          pendingVolumeJobs.add(id); // Re-use existing alert system
+        });
+
+        needsRefresh = true;
+
+        // Show toast notification for AHSP changes
+        const affectedCount = ahspJobs.length;
+        if (affectedCount > 0) {
+          showToast(
+            `⚠️ ${affectedCount} pekerjaan terpengaruh perubahan AHSP. Data otomatis di-refresh.`,
+            'warning',
+            3000
+          );
+        }
+      }
+
+      // Refresh UI jika ada perubahan
+      if (needsRefresh) {
         renderList();
-        if (selectedId) {
+
+        // Re-fetch current selection jika affected
+        if (selectedId && pendingVolumeJobs.has(selectedId)) {
           updateVolumeAlertForSelection(selectedId);
+
+          // Force refresh detail to show new bundle data
+          selectItem(selectedId).catch(err => {
+            console.error('[SOURCE-CHANGE] Failed to refresh detail:', err);
+          });
         }
       }
     });
@@ -669,7 +756,7 @@
    * @performance Uses cached detail if available to avoid re-fetching
    * @tier3 Uses granular loading (detail scope only) to keep list interactive
    */
-  async function selectItem(id){
+  async function selectItem(id) {
     if (!id || Number(id) <= 0) { console.warn('skip selectItem invalid id:', id); return; }
     selectedId = id;
     localStorage.setItem('rk-last-pkj-id', String(id));
@@ -678,12 +765,12 @@
     const myToken = ++selectToken;
 
     setLoading(true, 'detail'); // TIER 3: Granular loading for detail panel only
-    try{
+    try {
       // header awal dari rows
       const r = rows.find(x => x.pekerjaan_id === id);
-      if ($kode)   $kode.textContent   = r?.kode   || '—';
+      if ($kode) $kode.textContent = r?.kode || '—';
       if ($uraian) $uraian.textContent = r?.uraian || '—';
-      if ($sat)    $sat.textContent    = r?.satuan || '—';
+      if ($sat) $sat.textContent = r?.satuan || '—';
 
       // pricing item (optional)
       let effPct = projectBUK;
@@ -692,26 +779,26 @@
         if ($eff) $eff.textContent = `Profit: ${projectBUK.toFixed(2)}%`;
       } else {
         setOverrideUIEnabled(true);
-        try{
+        try {
           const pp = await getPricingItem(id);
           if (myToken !== selectToken) return;
           effPct = Number(pp.effective_markup);
           if ($ovrInput) $ovrInput.value = (pp.override_markup ?? '');
-          if ($ovrChip)  $ovrChip.hidden = !(pp.override_markup != null);
-          if ($eff)      $eff.textContent = `Profit: ${pp.effective_markup}%`;
+          if ($ovrChip) $ovrChip.hidden = !(pp.override_markup != null);
+          if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
           if ($modalInput) $modalInput.value = (pp.override_markup ?? ''); // Sync modal input
-        }catch{
+        } catch {
           if (myToken !== selectToken) return;
           if ($ovrInput) $ovrInput.value = '';
-          if ($ovrChip)  $ovrChip.hidden = true;
-          if ($eff)      $eff.textContent = `Profit: ${projectBUK.toFixed(2)}%`;
+          if ($ovrChip) $ovrChip.hidden = true;
+          if ($eff) $eff.textContent = `Profit: ${projectBUK.toFixed(2)}%`;
           if ($modalInput) $modalInput.value = '';
         }
       }
 
       // detail
       let detail = cacheDetail.get(id);
-      if (!detail){
+      if (!detail) {
         detail = await fetchDetail(id);
       }
       if (myToken !== selectToken) return;
@@ -740,10 +827,10 @@
    * @param {number} effPct - Effective BUK percentage to apply (may be project or override)
    * @performance Uses DocumentFragment for efficient DOM updates
    */
-  function renderDetailTable(items, effPct){
+  function renderDetailTable(items, effPct) {
     if (!$tbody) return;
-    const group = {TK:[],BHN:[],ALT:[],LAIN:[]};
-    for (const it of items){
+    const group = { TK: [], BHN: [], ALT: [], LAIN: [] };
+    for (const it of items) {
       const k = (it.kategori || '').toUpperCase();
       if (group[k]) group[k].push(it);
     }
@@ -751,9 +838,9 @@
     const fr = document.createDocumentFragment();
     let no = 1;
 
-    function addSec(title, arr){
+    function addSec(title, arr, sectionKategori) {
       const trh = document.createElement('tr');
-      trh.className='sec-head';
+      trh.className = 'sec-head';
       trh.innerHTML = `<td colspan="7">${esc(title)}</td>`;
       fr.appendChild(trh);
 
@@ -761,23 +848,49 @@
       arr.forEach((it) => {
         const kf = num(it.koefisien);
         const hr = num(it.harga_satuan);
+
+        // Bundle items memakai formula umum: jumlah = koef × harga (harga = per unit bundle).
+        const isBundle = sectionKategori === 'LAIN' && (it.ref_pekerjaan_id || it.ref_ahsp_id);
         const jm = kf * hr;
+
         subtotal += jm;
         const tr = document.createElement('tr');
+
+        // Add bundle indicator icon
+        const bundleIcon = isBundle
+          ? '<i class="bi bi-box-seam text-info me-1" title="Bundle - Klik untuk lihat komponen"></i>'
+          : '';
+
+        // Add expandable row data attribute for bundle
+        if (isBundle) {
+          tr.dataset.bundleId = it.id;
+          tr.dataset.refPekerjaanId = it.ref_pekerjaan_id || '';
+          tr.dataset.refAhspId = it.ref_ahsp_id || '';
+          tr.classList.add('bundle-row', 'clickable');
+          tr.style.cursor = 'pointer';
+          tr.title = 'Klik untuk melihat detail komponen bundle';
+        }
+
+        const koefTitle = isBundle ? 'Koefisien bundle dipakai untuk ekspansi komponen' : '';
+        const hargaCell = isBundle
+          ? `<span class="text-info" title="Harga satuan per 1 unit bundle (total komponen)">${fmt(hr)}</span>`
+          : fmt(hr);
+        const jumlahTitle = 'Koefisien × Harga Satuan';
+
         tr.innerHTML = `
           <td class="mono">${no++}</td>
-          <td>${esc(it.uraian || '')}</td>
+          <td>${bundleIcon}${esc(it.uraian || '')}</td>
           <td class="mono">${esc(it.kode || '')}</td>
           <td class="mono">${esc(it.satuan || '')}</td>
-          <td class="mono">${kf.toLocaleString(locale,{minimumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES, maximumFractionDigits:CONSTANTS.KOEFISIEN_DECIMAL_PLACES})}</td>
-          <td class="mono">${fmt(hr)}</td>
-          <td class="mono">${fmt(jm)}</td>
+          <td class="mono" title="${koefTitle}">${kf.toLocaleString(locale, { minimumFractionDigits: CONSTANTS.KOEFISIEN_DECIMAL_PLACES, maximumFractionDigits: CONSTANTS.KOEFISIEN_DECIMAL_PLACES })}</td>
+          <td class="mono">${hargaCell}</td>
+          <td class="mono" title="${jumlahTitle}">${fmt(jm)}</td>
         `;
         fr.appendChild(tr);
       });
 
       const trs = document.createElement('tr');
-      trs.className='sec-sum';
+      trs.className = 'sec-sum';
       trs.innerHTML = `<td colspan="6">Subtotal ${esc(title.split('—')[0].trim())}</td><td class="mono">${fmt(subtotal)}</td>`;
       fr.appendChild(trs);
       return subtotal;
@@ -785,30 +898,143 @@
 
     $tbody.innerHTML = '';
     // FIXED: Variable naming aligned with backend (services.py)
-    const A = addSec('A — Tenaga Kerja', group.TK);
-    const B = addSec('B — Bahan',        group.BHN);
-    const C = addSec('C — Peralatan',    group.ALT);
-    const LAIN = addSec('LAIN — Lainnya', group.LAIN);
+    // Pass sectionKategori untuk bundle detection
+    const A = addSec('A — Tenaga Kerja', group.TK, 'TK');
+    const B = addSec('B — Bahan', group.BHN, 'BHN');
+    const C = addSec('C — Peralatan', group.ALT, 'ALT');
+    const LAIN = addSec('LAIN — Lainnya', group.LAIN, 'LAIN');
 
     // FIXED: Rename E → E_base untuk konsistensi dengan backend
     // E_base = biaya komponen sebelum markup (A+B+C+LAIN)
     const E_base = A + B + C + LAIN;
-    const F = E_base * (num(effPct)/100);
+    const F = E_base * (num(effPct) / 100);
     const G = E_base + F;
 
     const tre = document.createElement('tr');
-    tre.className='tot-row';
+    tre.className = 'tot-row';
     tre.innerHTML = `<td colspan="6">E — Jumlah (A+B+C+LAIN)</td><td class="mono">${fmt(E_base)}</td>`;
     const trf = document.createElement('tr');
-    trf.className='tot-row';
+    trf.className = 'tot-row';
     trf.innerHTML = `<td colspan="6">F — Profit/Margin (${num(effPct).toFixed(2)}% × E)</td><td class="mono">${fmt(F)}</td>`;
     const trg = document.createElement('tr');
-    trg.className='tot-row';
+    trg.className = 'tot-row';
     // FIXED: Label lebih jelas - G adalah harga satuan DENGAN markup, bukan HSP
     trg.innerHTML = `<td colspan="6">G — Harga Satuan (E + F)</td><td class="mono">${fmt(G)}</td>`;
 
     fr.appendChild(tre); fr.appendChild(trf); fr.appendChild(trg);
     $tbody.appendChild(fr);
+
+    // Setup bundle row click handlers for expansion
+    setupBundleExpansion();
+  }
+
+  /**
+   * Setup click handlers for bundle rows to show expansion details
+   * @tier3 FIX: Expansion Detail Visibility
+   */
+  function setupBundleExpansion() {
+    const bundleRows = $tbody?.querySelectorAll('.bundle-row');
+    if (!bundleRows) return;
+
+    bundleRows.forEach(row => {
+      row.addEventListener('click', async function () {
+        const bundleId = this.dataset.bundleId;
+
+        // Toggle expansion
+        const existingExpansion = this.nextElementSibling?.classList.contains('bundle-expansion');
+        if (existingExpansion) {
+          this.nextElementSibling.remove();
+          this.classList.remove('expanded');
+          return;
+        }
+
+        // Show loading
+        this.classList.add('loading');
+        const originalCursor = this.style.cursor;
+        this.style.cursor = 'wait';
+
+        try {
+          // Fetch expanded components
+          const components = await fetchBundleExpansion(selectedId, bundleId);
+
+          // Create expansion row
+          const expansionRow = document.createElement('tr');
+          expansionRow.className = 'bundle-expansion';
+          expansionRow.innerHTML = `
+            <td colspan="7" style="padding: 0; background: #f8f9fa;">
+              <div style="padding: 12px 20px; border-left: 3px solid #0dcaf0;">
+                <div class="d-flex align-items-center mb-2">
+                  <i class="bi bi-box-seam text-info me-2"></i>
+                  <strong>Komponen Bundle (${components.length} item)</strong>
+                  <button class="btn btn-sm btn-link ms-auto" onclick="this.closest('.bundle-expansion').remove(); this.closest('.bundle-expansion').previousElementSibling.classList.remove('expanded');">
+                    <i class="bi bi-x-lg"></i> Tutup
+                  </button>
+                </div>
+                <table class="table table-sm table-bordered mb-0" style="font-size: 0.85em;">
+                  <thead style="background: #e9ecef;">
+                    <tr>
+                      <th style="width: 40px;">No</th>
+                      <th>Kategori</th>
+                      <th>Uraian</th>
+                      <th>Kode</th>
+                      <th class="text-center">Satuan</th>
+                      <th class="text-end">Koefisien</th>
+                      <th class="text-end">Harga Satuan</th>
+                      <th class="text-end">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${components.map((c, idx) => `
+                      <tr>
+                        <td class="mono text-center">${idx + 1}</td>
+                        <td><span class="badge bg-secondary">${esc(c.kategori)}</span></td>
+                        <td>${esc(c.uraian)}</td>
+                        <td class="mono">${esc(c.kode)}</td>
+                        <td class="mono text-center">${esc(c.satuan || '-')}</td>
+                        <td class="mono text-end">${num(c.koefisien).toLocaleString(locale, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</td>
+                        <td class="mono text-end">${fmt(c.harga_satuan)}</td>
+                        <td class="mono text-end">${fmt(num(c.koefisien) * num(c.harga_satuan))}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                  <tfoot style="background: #e9ecef; font-weight: bold;">
+                    <tr>
+                      <td colspan="7" class="text-end">Total Bundle:</td>
+                      <td class="mono text-end">${fmt(components.reduce((sum, c) => sum + (num(c.koefisien) * num(c.harga_satuan)), 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </td>
+          `;
+
+          // Insert after current row
+          this.parentNode.insertBefore(expansionRow, this.nextSibling);
+          this.classList.add('expanded');
+
+        } catch (err) {
+          console.error('[BUNDLE] Failed to load expansion:', err);
+          showToast('Gagal memuat detail bundle: ' + err.message, 'error');
+        } finally {
+          this.classList.remove('loading');
+          this.style.cursor = originalCursor;
+        }
+      });
+    });
+  }
+
+  /**
+   * Fetch bundle expansion components from backend
+   * @param {number} pekerjaanId - Current pekerjaan ID
+   * @param {number} bundleId - Bundle detail ID
+   * @returns {Promise<Array>} Array of expanded components
+   */
+  async function fetchBundleExpansion(pekerjaanId, bundleId) {
+    const url = `/api/project/${projectId}/pekerjaan/${pekerjaanId}/bundle/${bundleId}/expansion/`;
+    const r = await fetch(url, { credentials: 'same-origin' });
+    const j = await safeJson(r);
+    if (!r.ok || !j.ok) throw new Error(j.error || 'Failed to fetch bundle expansion');
+    return j.components || [];
   }
 
   // ====== events ======
@@ -820,12 +1046,31 @@
    * @returns {Function} Debounced function
    * @example const debouncedSearch = debounce(search, 300)
    */
-  function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
+  function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
   if ($search) {
     $search.addEventListener('input', debounce(() => {
       renderList();
       highlightActive();
     }, CONSTANTS.SEARCH_DEBOUNCE_MS));
+  }
+
+  // Source Type Filter handlers
+  ROOT.querySelectorAll('.ra-filter-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      renderList();
+      highlightActive();
+    });
+  });
+
+  // Reset filter button
+  const $filterReset = ROOT.querySelector('#ra-filter-reset');
+  if ($filterReset) {
+    $filterReset.addEventListener('click', () => {
+      ROOT.querySelectorAll('.ra-filter-check').forEach(cb => cb.checked = true);
+      if ($search) $search.value = '';
+      renderList();
+      highlightActive();
+    });
   }
 
   // REMOVED: Inline override controls (deprecated - use modal only to avoid duplication)
@@ -1059,8 +1304,8 @@
 
     // Arrow Up/Down: Navigate job list (only when not in input)
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
-        document.activeElement?.tagName !== 'INPUT' &&
-        document.activeElement?.tagName !== 'TEXTAREA') {
+      document.activeElement?.tagName !== 'INPUT' &&
+      document.activeElement?.tagName !== 'TEXTAREA') {
 
       if (filtered.length === 0) return;
 
@@ -1119,26 +1364,26 @@
 
   // Call after rendering list
   const originalRenderList = renderList;
-  renderList = function(...args) {
+  renderList = function (...args) {
     originalRenderList.apply(this, args);
     makeJobItemsFocusable();
   };
 
   // ====== init ======
   (async () => {
-    try{
+    try {
       applyIconAndUIFixes();
       if (!EP_POV_PREF) setOverrideUIEnabled(false);
       await loadProjectBUK();
       await loadRekap();
-    }catch(e){
+    } catch (e) {
       console.error(e);
       if ($list) $list.innerHTML = `<li class="rk-item"><div class="row-note">Gagal memuat.</div></li>`;
     }
   })();
 
   // ====== Resizer: drag/keyboard untuk ubah lebar panel kiri ======
-  (function initResizer(){
+  (function initResizer() {
     if (!$resizer || !$leftPane || !$grid) return;
 
     const setLeftW = (px) => { ROOT.style.setProperty('--ra-left-w', `${px}px`); };
@@ -1230,15 +1475,61 @@
 
       const exporter = new ExportManager(projectId, 'rincian-ahsp');
 
+      // Get loading modal
+      const loadingModalEl = document.getElementById('raExportLoadingModal');
+      let loadingModal = null;
+      const loadingText = document.getElementById('raExportLoadingText');
+
+      // Helper to show/hide loading modal
+      const showLoading = (formatName) => {
+        if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
+        if (loadingModalEl) {
+          loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
+          loadingModal.show();
+        }
+      };
+      const hideLoading = () => {
+        // Use setTimeout to ensure modal closes after async operations complete
+        setTimeout(() => {
+          if (loadingModal) {
+            loadingModal.hide();
+          }
+          // Fallback: remove backdrop if still present
+          document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+          document.body.classList.remove('modal-open');
+          document.body.style.overflow = '';
+          document.body.style.paddingRight = '';
+        }, 300);
+      };
+
       const btnCSV = document.getElementById('btn-export-csv') || document.getElementById('ra-btn-export');
       const btnPDF = document.getElementById('btn-export-pdf') || document.getElementById('ra-btn-export-pdf');
       const btnWord = document.getElementById('btn-export-word') || document.getElementById('ra-btn-export-word');
+      const btnXLSX = document.getElementById('ra-btn-export-xlsx');
+
+      if (btnXLSX) {
+        btnXLSX.addEventListener('click', async (e) => {
+          e.preventDefault();
+          console.log('[RincianAHSP] 📊 Excel XLSX export requested');
+          showLoading('Excel');
+          try {
+            await exporter.exportAs('xlsx');
+          } finally {
+            hideLoading();
+          }
+        });
+      }
 
       if (btnCSV) {
         btnCSV.addEventListener('click', async (e) => {
           e.preventDefault();
           console.log('[RincianAHSP] 📥 CSV export requested');
-          await exporter.exportAs('csv');
+          showLoading('CSV');
+          try {
+            await exporter.exportAs('csv');
+          } finally {
+            hideLoading();
+          }
         });
       }
 
@@ -1246,7 +1537,12 @@
         btnPDF.addEventListener('click', async (e) => {
           e.preventDefault();
           console.log('[RincianAHSP] 📄 PDF export requested');
-          await exporter.exportAs('pdf');
+          showLoading('PDF');
+          try {
+            await exporter.exportAs('pdf');
+          } finally {
+            hideLoading();
+          }
         });
       }
 
@@ -1254,11 +1550,16 @@
         btnWord.addEventListener('click', async (e) => {
           e.preventDefault();
           console.log('[RincianAHSP] 📝 Word export requested');
-          await exporter.exportAs('word');
+          showLoading('Word');
+          try {
+            await exporter.exportAs('word');
+          } finally {
+            hideLoading();
+          }
         });
       }
 
-      console.log('[RincianAHSP] ✓ Export buttons initialized');
+      console.log('[RincianAHSP] ✓ Export buttons initialized (including XLSX)');
     } catch (err) {
       console.error('[RincianAHSP] Export initialization failed:', err);
     }

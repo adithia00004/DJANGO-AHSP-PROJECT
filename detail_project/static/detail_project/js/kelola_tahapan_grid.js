@@ -1,7 +1,7 @@
 ﻿// static/detail_project/js/kelola_tahapan_grid.js
 // Excel-like Grid View for Project Scheduling with Gantt & S-Curve
 
-(function() {
+(function () {
   'use strict';
 
   const appContext = window.KelolaTahapanPageApp || window.JadwalPekerjaanApp || null;
@@ -379,6 +379,12 @@
   }
 
   function showToast(message, type = 'success') {
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[type]) {
+      return window.DP.toast[type](message);
+    }
+
+    // Fallback to local Bootstrap toast
     const toast = document.getElementById('toast');
     const toastBody = document.getElementById('toast-body');
     if (!toast || !toastBody) return;
@@ -1698,21 +1704,21 @@
 
   loadAllData();
 })();
-  function markVolumeResetResolved(ids) {
-    if (!Array.isArray(ids) || !ids.length) return;
-    let changed = false;
-    ids.forEach((id) => {
-      const num = Number(id);
-      if (state.volumeResetJobs.delete(num)) {
-        changed = true;
-      }
-    });
-    try {
-      sourceChange?.markVolumeResolved(projectId, ids);
-    } catch (err) {
-      logger.warn('Kelola Tahapan Page: failed to update volume reset flags', err);
+function markVolumeResetResolved(ids) {
+  if (!Array.isArray(ids) || !ids.length) return;
+  let changed = false;
+  ids.forEach((id) => {
+    const num = Number(id);
+    if (state.volumeResetJobs.delete(num)) {
+      changed = true;
     }
-    if (changed) {
-      renderGrid();
-    }
+  });
+  try {
+    sourceChange?.markVolumeResolved(projectId, ids);
+  } catch (err) {
+    logger.warn('Kelola Tahapan Page: failed to update volume reset flags', err);
   }
+  if (changed) {
+    renderGrid();
+  }
+}

@@ -1,0 +1,17 @@
+Method,Name,Error,Occurrences
+GET,/detail_project/[id]/volume-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/volume-pekerjaan/'),1
+GET,/api/v2/project/[id]/kurva-s-harga/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/kurva-s-harga/'),1
+GET,/api/project/[id]/harga-items/list/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/harga-items/list/'),1
+GET,/detail_project/[id]/rekap-kebutuhan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rekap-kebutuhan/'),2
+GET,/detail_project/[id]/jadwal-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/jadwal-pekerjaan/'),4
+GET,/detail_project/[id]/harga-items/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/harga-items/'),1
+POST,[AUTH] Login POST,HTTPError('500 Server Error: Internal Server Error for url: [AUTH] Login POST'),20
+GET,/api/project/[id]/pekerjaan/[pekerjaan_id]/pricing/,CatchResponseError('HTTP 500'),1
+GET,/api/project/[id]/conversion-profiles/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/conversion-profiles/'),1
+GET,/dashboard/,HTTPError('500 Server Error: Internal Server Error for url: /dashboard/'),5
+GET,/api/project/[id]/rekap-kebutuhan-enhanced/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan-enhanced/'),1
+GET,/api/project/[id]/rincian-rab/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rincian-rab/'),1
+GET,/api/project/[id]/export/template-ahsp/json/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/export/template-ahsp/json/'),21
+GET,/detail_project/[id]/list-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/list-pekerjaan/'),1
+GET,/api/v2/project/[id]/chart-data/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/chart-data/'),1
+POST,/api/monitoring/report-client-metric/,HTTPError('403 Client Error: Forbidden for url: /api/monitoring/report-client-metric/'),10

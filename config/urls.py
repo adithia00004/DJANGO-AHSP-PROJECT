@@ -68,10 +68,20 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# PHASE 0: Add Debug Toolbar URLs (development only)
-if settings.DEBUG:
+# PHASE 0: Debug Toolbar URLs (disabled for cleaner UI)
+# if settings.DEBUG:
+#     try:
+#         import debug_toolbar
+#         urlpatterns = [path('__debug__/', include('debug_toolbar.urls'))] + urlpatterns
+#     except ImportError:
+#         pass
+
+# Django Silk Profiling URLs (development only)
+# Only add Silk URLs if it's actually enabled (not when using PgBouncer)
+if settings.DEBUG and getattr(settings, 'SILK_ENABLED', False):
     try:
-        import debug_toolbar
-        urlpatterns = [path('__debug__/', include('debug_toolbar.urls'))] + urlpatterns
+        import silk  # noqa: F401
+        urlpatterns = [path('silk/', include('silk.urls', namespace='silk'))] + urlpatterns
     except ImportError:
         pass
+

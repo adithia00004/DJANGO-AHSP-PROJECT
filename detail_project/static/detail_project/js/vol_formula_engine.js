@@ -69,8 +69,8 @@
   };
 
   function isIdentStart(ch) { return /[A-Za-z_]/.test(ch); }
-  function isIdentPart(ch)  { return /[A-Za-z0-9_]/.test(ch); }
-  function isDigit(ch)      { return /[0-9]/.test(ch); }
+  function isIdentPart(ch) { return /[A-Za-z0-9_]/.test(ch); }
+  function isDigit(ch) { return /[0-9]/.test(ch); }
 
   function tokenize(expr) {
     const src = String(expr || '').trim();
@@ -86,16 +86,16 @@
       if (/\s/.test(ch)) { i++; continue; }
 
       // number literal (id-ID aware)
-      if (isDigit(ch) || (ch === '.' && isDigit(s[i+1])) || (ch === ',' && isDigit(s[i+1]))) {
+      if (isDigit(ch) || (ch === '.' && isDigit(s[i + 1])) || (ch === ',' && isDigit(s[i + 1]))) {
         let j = i;
         // Consume characters that can be part of a localized number
         // Allow '.' or ',' only if followed by a digit (so "1, 2" won't pull comma)
         while (j < s.length) {
           const c = s[j];
-          const next = s[j+1];
+          const next = s[j + 1];
           if (isDigit(c) || c === '_' ||
-              (c === '.' && isDigit(next)) ||
-              (c === ',' && isDigit(next))) {
+            (c === '.' && isDigit(next)) ||
+            (c === ',' && isDigit(next))) {
             j++;
           } else {
             break;
@@ -163,8 +163,8 @@
       }
 
       // unknown
-      const snippet = s.slice(Math.max(0, i-5), Math.min(s.length, i+5));
-      throw new Error(`Token tidak dikenal di posisi ${i+1}: "${snippet}"`);
+      const snippet = s.slice(Math.max(0, i - 5), Math.min(s.length, i + 5));
+      throw new Error(`Token tidak dikenal di posisi ${i + 1}: "${snippet}"`);
     }
     return tokens;
   }
@@ -292,7 +292,7 @@
     },
     abs: (x) => Math.abs(x),
     round: (x, n = 0) => {
-      n = Number(n|0);
+      n = Number(n | 0);
       const f = Math.pow(10, n);
       // HALF_UP
       return x >= 0 ? Math.floor(x * f + 0.5) / f : Math.ceil(x * f - 0.5) / f;
@@ -317,13 +317,18 @@
       }
       if (t.type === TT.ID) {
         const name = t.value;
-        if (Object.prototype.hasOwnProperty.call(variables, name)) {
-          const v = variables[name];
+        // Case-insensitive variable lookup
+        const nameLower = name.toLowerCase();
+        // Find the key in variables (case-insensitive)
+        const matchedKey = Object.keys(variables).find(k => k.toLowerCase() === nameLower);
+
+        if (matchedKey !== undefined) {
+          const v = variables[matchedKey];
           const num = Number(v);
           if (!Number.isFinite(num)) throw new Error(`Variabel "${name}" bukan angka`);
           st.push(num);
-        } else if (Object.prototype.hasOwnProperty.call(consts, name.toLowerCase())) {
-          st.push(consts[name.toLowerCase()]);
+        } else if (Object.prototype.hasOwnProperty.call(consts, nameLower)) {
+          st.push(consts[nameLower]);
         } else {
           throw new Error(`Variabel tidak dikenal: ${name}`);
         }
@@ -347,7 +352,7 @@
       }
       if (t.type === 'call') {
         const name = String(t.name || '').toLowerCase();
-        const argc = t.argc|0;
+        const argc = t.argc | 0;
         const impl = fnImpl[name];
         if (!impl) throw new Error(`Fungsi tidak dikenal: ${t.name}`);
         if (st.length < argc) throw new Error(`Fungsi ${t.name} kekurangan argumen`);

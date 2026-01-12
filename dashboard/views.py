@@ -1,10 +1,12 @@
 from django.forms import modelformset_factory
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, CharField, Max
+from django.db.models.functions import Cast
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.utils.safestring import mark_safe
@@ -14,6 +16,7 @@ import decimal
 
 from .forms import ProjectForm, ProjectFilterForm, UploadProjectForm
 from .models import Project
+from detail_project.progress_utils import reset_project_progress
 
 import openpyxl
 
@@ -36,8 +39,9 @@ def _get_safe_next(request, default_name='dashboard:dashboard'):
 
 @login_required
 def dashboard_view(request):
-    # Start with all projects owned by user
-    queryset = Project.objects.filter(owner=request.user)
+    # PERFORMANCE OPTIMIZATION: Use select_related for owner and only load needed fields
+    # This reduces query time and memory usage under high load
+    queryset = Project.objects.filter(owner=request.user).select_related('owner')
 
     # Initialize filter form with user for dynamic choices
     filter_form = ProjectFilterForm(request.GET, user=request.user)
@@ -51,13 +55,35 @@ def dashboard_view(request):
         # Basic search
         search = filter_form.cleaned_data.get('search')
         if search:
-            queryset = queryset.filter(
+            queryset = queryset.annotate(
+                anggaran_str=Cast('anggaran_owner', CharField()),
+                tahun_str=Cast('tahun_project', CharField()),
+                durasi_str=Cast('durasi_hari', CharField()),
+                tanggal_mulai_str=Cast('tanggal_mulai', CharField()),
+                tanggal_selesai_str=Cast('tanggal_selesai', CharField()),
+            ).filter(
+                Q(index_project__icontains=search) |
                 Q(nama__icontains=search) |
                 Q(deskripsi__icontains=search) |
                 Q(sumber_dana__icontains=search) |
                 Q(lokasi_project__icontains=search) |
                 Q(nama_client__icontains=search) |
-                Q(kategori__icontains=search)
+                Q(ket_project1__icontains=search) |
+                Q(ket_project2__icontains=search) |
+                Q(jabatan_client__icontains=search) |
+                Q(instansi_client__icontains=search) |
+                Q(nama_kontraktor__icontains=search) |
+                Q(instansi_kontraktor__icontains=search) |
+                Q(nama_konsultan_perencana__icontains=search) |
+                Q(instansi_konsultan_perencana__icontains=search) |
+                Q(nama_konsultan_pengawas__icontains=search) |
+                Q(instansi_konsultan_pengawas__icontains=search) |
+                Q(kategori__icontains=search) |
+                Q(anggaran_str__icontains=search) |
+                Q(tahun_str__icontains=search) |
+                Q(durasi_str__icontains=search) |
+                Q(tanggal_mulai_str__icontains=search) |
+                Q(tanggal_selesai_str__icontains=search)
             )
 
         # Filter by year
@@ -74,18 +100,33 @@ def dashboard_view(request):
         status = filter_form.cleaned_data.get('status_timeline')
         if status:
             today = date.today()
+            deadline_threshold = today + timedelta(days=30)
             if status == 'belum_mulai':
-                queryset = queryset.filter(tanggal_mulai__gt=today)
+                queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_mulai__gt=today,
+                    tanggal_selesai__gt=deadline_threshold
+                )
             elif status == 'berjalan':
                 queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
                     tanggal_mulai__lte=today,
-                    tanggal_selesai__gte=today
+                    tanggal_selesai__gt=deadline_threshold
                 )
-            elif status == 'terlambat':
-                queryset = queryset.filter(tanggal_selesai__lt=today)
+            elif status == 'deadline':
+                queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_selesai__gte=today,
+                    tanggal_selesai__lte=deadline_threshold
+                )
             elif status == 'selesai':
                 # Projects that finished on time (ended in the past, but not marked overdue)
                 queryset = queryset.filter(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
                     tanggal_selesai__lt=today,
                     tanggal_mulai__lte=today
                 )
@@ -101,10 +142,20 @@ def dashboard_view(request):
         # Filter by date range
         tanggal_from = filter_form.cleaned_data.get('tanggal_mulai_from')
         tanggal_to = filter_form.cleaned_data.get('tanggal_mulai_to')
-        if tanggal_from:
-            queryset = queryset.filter(tanggal_mulai__gte=tanggal_from)
-        if tanggal_to:
-            queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
+        if tanggal_from or tanggal_to:
+            queryset = queryset.filter(
+                tanggal_mulai__isnull=False,
+                tanggal_selesai__isnull=False
+            )
+            if tanggal_from and tanggal_to:
+                queryset = queryset.filter(
+                    tanggal_mulai__lte=tanggal_to,
+                    tanggal_selesai__gte=tanggal_from
+                )
+            elif tanggal_from:
+                queryset = queryset.filter(tanggal_selesai__gte=tanggal_from)
+            elif tanggal_to:
+                queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
 
         # Filter by active status
         is_active_filter = filter_form.cleaned_data.get('is_active')
@@ -174,60 +225,143 @@ def dashboard_view(request):
             prefix='form',
         )
 
-    paginator = Paginator(queryset, 10)
-    page_number = request.GET.get('page')
-    paginated_projects = paginator.get_page(page_number)
+    # === PERFORMANCE OPTIMIZATION: Add pagination to prevent slow page loads ===
+    # Pagination: 20 projects per page to eliminate 116s outliers
+    paginator = Paginator(queryset, 20)  # 20 projects per page
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
 
     # === FASE 2.1: Analytics & Statistics ===
     all_active_projects = Project.objects.filter(owner=request.user, is_active=True)
     current_year = timezone.now().year
     today = date.today()
-
-    # Summary Statistics
-    total_projects = all_active_projects.count()
-    total_anggaran = all_active_projects.aggregate(total=Sum('anggaran_owner'))['total'] or 0
-    projects_this_year = all_active_projects.filter(tahun_project=current_year).count()
-
-    # Active projects (with deadline in next 30 days or currently running)
     deadline_threshold = today + timedelta(days=30)
-    active_projects_count = all_active_projects.filter(
-        tanggal_mulai__lte=today,
-        tanggal_selesai__gte=today
-    ).count()
 
-    # Projects by Year (for chart)
-    projects_by_year = all_active_projects.values('tahun_project').annotate(
-        count=Count('id')
-    ).order_by('tahun_project')
+    last_updated = all_active_projects.aggregate(last=Max('updated_at'))['last']
+    last_updated_key = last_updated.isoformat() if last_updated else "none"
+    analytics_cache_key = f"dashboard_analytics:{request.user.id}:{today.isoformat()}:{last_updated_key}"
+    cached_analytics = cache.get(analytics_cache_key)
 
-    # Projects by Sumber Dana (for chart)
-    projects_by_sumber = all_active_projects.values('sumber_dana').annotate(
-        count=Count('id')
-    ).order_by('-count')[:10]  # Top 10
+    if cached_analytics:
+        stats = cached_analytics["stats"]
+        projects_by_year = cached_analytics["projects_by_year"]
+        projects_by_sumber = cached_analytics["projects_by_sumber"]
+        budget_by_year = cached_analytics["budget_by_year"]
+    else:
+        # Summary Statistics (single aggregate query to reduce DB round-trips)
+        stats = all_active_projects.aggregate(
+            total_projects=Count('id'),
+            total_anggaran=Sum('anggaran_owner'),
+            projects_this_year=Count('id', filter=Q(tahun_project=current_year)),
+            active_projects_count=Count(
+                'id',
+                filter=Q(tanggal_mulai__lte=today, tanggal_selesai__gte=today),
+            ),
+            status_selesai=Count(
+                'id',
+                filter=Q(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_selesai__lt=today,
+                ),
+            ),
+            status_deadline=Count(
+                'id',
+                filter=Q(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_selesai__gte=today,
+                    tanggal_selesai__lte=deadline_threshold,
+                ),
+            ),
+            status_belum_mulai=Count(
+                'id',
+                filter=Q(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_selesai__gt=deadline_threshold,
+                    tanggal_mulai__gt=today,
+                ),
+            ),
+            status_berjalan=Count(
+                'id',
+                filter=Q(
+                    tanggal_mulai__isnull=False,
+                    tanggal_selesai__isnull=False,
+                    tanggal_selesai__gt=deadline_threshold,
+                    tanggal_mulai__lte=today,
+                ),
+            ),
+        )
 
-    # Budget by Year (for chart)
-    budget_by_year = all_active_projects.values('tahun_project').annotate(
-        total_budget=Sum('anggaran_owner')
-    ).order_by('tahun_project')
+        # Projects by Year (for chart)
+        projects_by_year = list(all_active_projects.values('tahun_project').annotate(
+            count=Count('id'),
+            total_anggaran=Sum('anggaran_owner')
+        ).order_by('tahun_project'))
 
-    # Recent Activity
-    recent_created = all_active_projects.order_by('-created_at')[:5]
-    recent_updated = all_active_projects.order_by('-updated_at')[:5]
+        # Projects by Sumber Dana (for chart)
+        projects_by_sumber = list(all_active_projects.values('sumber_dana').annotate(
+            count=Count('id')
+        ).order_by('-count')[:10])  # Top 10
+
+        # Budget by Year (derived from projects_by_year to avoid extra query)
+        budget_by_year = [
+            {
+                'tahun_project': row.get('tahun_project'),
+                'total_budget': row.get('total_anggaran'),
+            }
+            for row in projects_by_year
+        ]
+
+        cache.set(
+            analytics_cache_key,
+            {
+                "stats": stats,
+                "projects_by_year": projects_by_year,
+                "projects_by_sumber": projects_by_sumber,
+                "budget_by_year": budget_by_year,
+            },
+            300,
+        )
+
+    total_projects = stats.get('total_projects') or 0
+    total_anggaran_raw = stats.get('total_anggaran')
+    total_anggaran = float(total_anggaran_raw) if total_anggaran_raw else 0
+    projects_this_year = stats.get('projects_this_year') or 0
+    active_projects_count = stats.get('active_projects_count') or 0
+
+    # Recent Activity (limit selected fields to reduce payload)
+    recent_created = all_active_projects.only(
+        'id', 'nama', 'created_at'
+    ).order_by('-created_at')[:5]
+    recent_updated = all_active_projects.only(
+        'id', 'nama', 'updated_at'
+    ).order_by('-updated_at')[:5]
 
     # Projects with upcoming deadlines (next 7 days)
     upcoming_deadline_threshold = today + timedelta(days=7)
-    upcoming_deadlines = all_active_projects.filter(
+    upcoming_deadlines = all_active_projects.only(
+        'id', 'nama', 'tanggal_selesai'
+    ).filter(
         tanggal_selesai__gte=today,
         tanggal_selesai__lte=upcoming_deadline_threshold
     ).order_by('tanggal_selesai')[:5]
 
     # Overdue projects
-    overdue_projects = all_active_projects.filter(
+    overdue_projects = all_active_projects.only(
+        'id', 'nama', 'tanggal_selesai'
+    ).filter(
         tanggal_selesai__lt=today
     ).order_by('tanggal_selesai')[:5]
 
+    status_selesai = stats.get('status_selesai') or 0
+    status_deadline = stats.get('status_deadline') or 0
+    status_belum_mulai = stats.get('status_belum_mulai') or 0
+    status_berjalan = stats.get('status_berjalan') or 0
     context = {
-        'projects': paginated_projects,
+        'projects': page_obj.object_list,  # Current page projects
+        'page_obj': page_obj,  # Pagination object for template
         'filter_form': filter_form,
         'formset': formset,
         'total_projects': queryset.count(),
@@ -239,6 +373,12 @@ def dashboard_view(request):
             'active_projects_count': active_projects_count,
             'upcoming_deadlines': upcoming_deadlines,
             'overdue_projects': overdue_projects,
+            'status_counts': {
+                'selesai': status_selesai,
+                'deadline': status_deadline,
+                'belum_mulai': status_belum_mulai,
+                'berjalan': status_berjalan,
+            },
         },
         # Chart data (JSON serialized for JavaScript)
         'chart_data': {
@@ -249,6 +389,8 @@ def dashboard_view(request):
         # Recent activity
         'recent_created': recent_created,
         'recent_updated': recent_updated,
+        'today_str': today.strftime('%Y-%m-%d'),
+        'deadline_threshold_str': deadline_threshold.strftime('%Y-%m-%d'),
     }
     return render(request, 'dashboard/dashboard.html', context)
 
@@ -262,10 +404,22 @@ def project_detail(request, pk):
 @login_required
 def project_edit(request, pk):
     project = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
+    original_start = project.tanggal_mulai
     if request.method == 'POST':
         form = ProjectForm(request.POST, instance=project)
         if form.is_valid():
-            form.save()
+            new_start = form.cleaned_data.get('tanggal_mulai')
+            start_changed = (original_start or None) != (new_start or None)
+
+            with transaction.atomic():
+                updated_project = form.save()
+                if start_changed:
+                    reset_project_progress(updated_project, regenerate_weekly=True)
+                    messages.warning(
+                        request,
+                        'Tanggal mulai berubah. Semua progress direset dan periode weekly dihitung ulang.'
+                    )
+
             messages.success(request, 'Project berhasil diperbarui.')
             return redirect(_get_safe_next(request))
     else:

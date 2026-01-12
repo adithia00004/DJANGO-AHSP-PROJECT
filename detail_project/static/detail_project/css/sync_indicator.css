@@ -27,3 +27,118 @@
 .dp-sync-indicator__auto-container label {
   cursor: pointer;
 }
+
+/* ===== COMPACT LED SYNC INDICATOR ===== */
+.dp-sync-led {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* LED Dot */
+.dp-sync-led__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* LED States */
+.dp-sync-led__dot--synced {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.dp-sync-led__dot--changed {
+  background: #eab308;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
+  animation: led-pulse 1.5s ease-in-out infinite;
+}
+
+.dp-sync-led__dot--error {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.dp-sync-led__dot--checking {
+  background: #9ca3af;
+  box-shadow: 0 0 4px rgba(156, 163, 175, 0.4);
+  animation: led-blink 1s ease-in-out infinite;
+}
+
+@keyframes led-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes led-blink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Tooltip */
+.dp-sync-led__tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  padding: 0.75rem;
+  background: var(--bs-body-bg, #fff);
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+  z-index: 1050;
+}
+
+.dp-sync-led:hover .dp-sync-led__tooltip,
+.dp-sync-led:focus .dp-sync-led__tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* Dark mode tooltip */
+[data-bs-theme="dark"] .dp-sync-led__tooltip {
+  background: var(--bs-body-bg, #212529);
+  border-color: var(--bs-border-color, #495057);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.dp-sync-led__status {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.dp-sync-led__message {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.dp-sync-led__reload {
+  margin-top: 0.5rem;
+  padding: 0;
+  font-size: 0.75rem;
+}

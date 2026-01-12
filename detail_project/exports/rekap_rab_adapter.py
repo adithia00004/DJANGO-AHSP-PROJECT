@@ -41,7 +41,7 @@ class RekapRABAdapter:
             'Jumlah Harga (Rp)'
         ]
         
-        col_widths = [90, 35, 25, 25, 40, 45]  # in mm
+        col_widths = [65, 25, 18, 20, 30, 32]  # in mm (total: 190mm for A4 Portrait)
         
         # Fetch hierarchical containers
         klasifikasi_list = (

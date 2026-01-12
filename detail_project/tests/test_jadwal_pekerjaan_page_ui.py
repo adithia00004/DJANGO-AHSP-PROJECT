@@ -1,4 +1,5 @@
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 
 
@@ -12,15 +13,13 @@ def test_jadwal_pekerjaan_page_renders_with_core_anchors(client_logged, project)
 
     expected_anchors = [
         'id="tahapan-grid-app"',
-        'id="grid-view"',
-        'id="gantt-view"',
-        'id="scurve-view"',
-        'id="left-tbody"',
-        'id="right-tbody"',
-        'id="gantt-chart"',
-        'id="scurve-chart"',
-        'id="loading-overlay"',
-        'id="btn-save-all"',
+        'id="viewTabs"',
+        'id="unified-view"',  # Modern: single unified view container
+        'id="tanstack-grid-container"',
+        'id="grid-tab"',
+        'id="gantt-tab"',
+        'id="scurve-tab"',
+        'id="save-button"',
         'id="btn-reset-progress"',
     ]
 
@@ -36,17 +35,58 @@ def test_jadwal_pekerjaan_page_includes_module_scripts(client_logged, project):
     assert response.status_code == 200
     html = response.content.decode("utf-8")
 
-    expected_scripts = [
-        "detail_project/js/jadwal_pekerjaan/kelola_tahapan_page_bootstrap.js",
-        "detail_project/js/jadwal_pekerjaan/kelola_tahapan/module_manifest.js",
-        "detail_project/js/jadwal_pekerjaan/kelola_tahapan/shared_module.js",
-        "detail_project/js/jadwal_pekerjaan/kelola_tahapan/grid_module.js",
-        "detail_project/js/jadwal_pekerjaan/kelola_tahapan/gantt_module.js",
-        "detail_project/js/jadwal_pekerjaan/kelola_tahapan/kurva_s_module.js",
-        "detail_project/js/kelola_tahapan_grid.js",
-    ]
-
-    for script in expected_scripts:
-        assert script in html, f"Expected script reference missing: {script}"
-
+    assert "assets/js/jadwal-kegiatan" in html
     assert f'data-api-base="/detail_project/api/project/{project.id}/tahapan/' in html
+    assert f'data-api-save="/detail_project/api/v2/project/{project.id}/assign-weekly/' in html
+    assert 'data-enable-uplot-kurva="true"' in html
+    assert '<div class="tanstack-grid-section"' in html
+
+
+@pytest.mark.django_db
+def test_tanstack_grid_container_not_hidden(client_logged, project):
+    url = reverse("detail_project:jadwal_pekerjaan", args=[project.id])
+    response = client_logged.get(url)
+
+    assert response.status_code == 200
+    html = response.content.decode("utf-8")
+
+    assert 'id="tanstack-grid-container"' in html
+    assert "tanstack-grid-container d-none" not in html
+
+
+@pytest.mark.django_db
+def test_ag_grid_assets_removed(client_logged, project):
+    url = reverse("detail_project:jadwal_pekerjaan", args=[project.id])
+    response = client_logged.get(url)
+
+    assert response.status_code == 200
+    html = response.content.decode("utf-8")
+
+    assert "ag-grid-community" not in html
+    assert "ag-theme-alpine" not in html
+
+
+@pytest.mark.django_db
+@override_settings(USE_VITE_DEV_SERVER=True, DEBUG=True)
+def test_vite_dev_server_mode_loads_correct_path(client_logged, project):
+    """Pastikan mode dev Vite memakai path baru yang singkat"""
+    url = reverse("detail_project:jadwal_pekerjaan", args=[project.id])
+    response = client_logged.get(url)
+
+    assert response.status_code == 200
+    html = response.content.decode("utf-8")
+
+    assert 'src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"' in html
+    assert "detail_project/static/detail_project/js/src/jadwal_kegiatan_app.js" not in html
+
+
+@pytest.mark.django_db
+def test_uplot_flag_always_enabled(client_logged, project):
+    """uPlot harus aktif tanpa bergantung flag settings"""
+    url = reverse("detail_project:jadwal_pekerjaan", args=[project.id])
+    response = client_logged.get(url)
+
+    assert response.status_code == 200
+    html = response.content.decode("utf-8")
+
+    assert 'data-enable-uplot-kurva="true"' in html

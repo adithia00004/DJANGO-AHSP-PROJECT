@@ -1,0 +1,21 @@
+{
+    "project_ids": [1, 2, 3],
+    "base_url": "http://localhost:8000",
+    "test_user": {
+        "username": "testuser",
+        "password": "testpassword123"
+    },
+    "concurrency_levels": {
+        "light": {"users": 10, "spawn_rate": 2},
+        "medium": {"users": 50, "spawn_rate": 5},
+        "heavy": {"users": 100, "spawn_rate": 10},
+        "stress": {"users": 200, "spawn_rate": 20}
+    },
+    "test_duration": "5m",
+    "thresholds": {
+        "avg_response_time_ms": 500,
+        "p95_response_time_ms": 1000,
+        "p99_response_time_ms": 2000,
+        "max_failure_rate_percent": 1
+    }
+}

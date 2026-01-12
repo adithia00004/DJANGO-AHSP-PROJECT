@@ -1,0 +1,19 @@
+Method,Name,Error,Occurrences
+GET,/detail_project/[id]/export-test/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/export-test/'),1
+GET,/detail_project/[id]/rekap-rab/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rekap-rab/'),2
+GET,/detail_project/[id]/jadwal-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/jadwal-pekerjaan/'),1
+GET,/detail_project/[id]/harga-items/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/harga-items/'),1
+POST,[AUTH] Login POST,HTTPError('500 Server Error: Internal Server Error for url: [AUTH] Login POST'),20
+GET,/detail_project/[id]/rincian-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-ahsp/'),3
+GET,/api/v2/project/[id]/assignments/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/assignments/'),1
+GET,/api/project/[id]/pekerjaan/[pekerjaan_id]/pricing/,CatchResponseError('HTTP 500'),3
+GET,/api/project/[id]/conversion-profiles/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/conversion-profiles/'),1
+GET,/api/project/[id]/rekap-kebutuhan-enhanced/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan-enhanced/'),1
+GET,/detail_project/[id]/template-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/template-ahsp/'),1
+GET,/api/project/[id]/export/template-ahsp/json/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/export/template-ahsp/json/'),1
+GET,/detail_project/[id]/list-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/list-pekerjaan/'),1
+GET,/api/project/[id]/search-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/search-ahsp/'),1
+GET,/api/project/[id]/tahapan/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/tahapan/'),1
+GET,/detail_project/[id]/audit-trail/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/audit-trail/'),3
+GET,/api/project/[id]/list-pekerjaan/tree/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/list-pekerjaan/tree/'),2
+POST,/api/monitoring/report-client-metric/,HTTPError('403 Client Error: Forbidden for url: /api/monitoring/report-client-metric/'),7

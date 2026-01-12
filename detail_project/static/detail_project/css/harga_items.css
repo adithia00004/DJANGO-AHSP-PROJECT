@@ -7,99 +7,198 @@
    ✅ Cards: border 2px, radius --dp-radius-lg, box-shadow
    ✅ Table: padding .5rem .75rem, scrollbar custom
    ✅ Dropdown: padding .75rem, animation slideIn
-   ✅ Modal: z-index +100, styling konsisten
+   ✅ Modal: z-index 10050 (above toolbar 1020)
    ===================================================================== */
 
-/* ===== TOOLBAR (SELARAS dengan 4 page rujukan) ===== */
-#hi-toolbar{
+/* ===== EXPORT LOADING MODAL Z-INDEX FIX ===== */
+/* Only target the export loading modal, not sidebar or other modals */
+#hiExportLoadingModal {
+  z-index: 1055 !important;
+  /* Bootstrap modal default is 1055 */
+}
+
+/* Target only backdrop that follows the export modal, not all backdrops */
+#hiExportLoadingModal+.modal-backdrop {
+  z-index: 1050 !important;
+  /* Bootstrap backdrop default is 1050 */
+}
+
+/* =====================================================================
+   BORDER ENHANCEMENT SECTION
+   Konsisten dengan dashboard, list_pekerjaan, referensi, volume_pekerjaan
+   ===================================================================== */
+
+/* Border thickness tokens */
+:root {
+  --hi-border-thin: 1px;
+  --hi-border-normal: 2px;
+  --hi-border-emphasis: 3px;
+}
+
+/* Toolbar - 2px border bottom */
+#hi-toolbar {
+  border-bottom-width: var(--hi-border-normal);
+}
+
+/* Cards - enhanced borders */
+#hi-app .dp-card {
+  border-width: var(--hi-border-normal);
+}
+
+/* Table container - enhanced border */
+#hi-app .table-responsive {
+  border: var(--hi-border-normal) solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+}
+
+/* Filter section - enhanced border */
+#hi-filter-section {
+  border-width: var(--hi-border-normal);
+}
+
+/* Modal borders - enhanced */
+#hiConvModal .modal-content {
+  border-width: var(--hi-border-normal);
+}
+
+/* Form controls within toolbar */
+#hi-toolbar .input-group .form-control,
+#hi-toolbar .input-group .input-group-text {
+  border-width: var(--hi-border-thin);
+}
+
+#hi-toolbar .input-group .form-control:focus {
+  border-width: var(--hi-border-normal);
+}
+
+/* Buttons - enhanced borders */
+#hi-toolbar .btn {
+  border-width: var(--hi-border-normal);
+}
+
+/* Category badges - enhanced borders */
+.hi-cat-badge {
+  border-width: var(--hi-border-thin);
+}
+
+/* Alert/Banner borders */
+#hi-sync-banner {
+  border-width: var(--hi-border-normal);
+}
+
+/* Lock card border */
+.hi-lock-card {
+  border-width: var(--hi-border-normal);
+}
+
+/* Dark mode border adjustments */
+[data-bs-theme="dark"] #hi-app .dp-card,
+[data-bs-theme="dark"] #hi-filter-section,
+[data-bs-theme="dark"] #hi-app .table-responsive {
+  border-color: var(--dp-c-border);
+}
+
+#hi-toolbar {
   position: sticky;
-  top: var(--dp-topbar-h);
-  z-index: var(--dp-z-toolbar);
-  min-height: var(--dp-toolbar-h);
-  background: var(--bs-card-bg);
-  border-bottom: 1px solid var(--bs-card-bg)!important;
-  padding: .5rem 0;
+  top: var(--dp-topbar-h, 56px);
+  z-index: 1020;
+  /* Above content, below modals */
+  min-height: var(--dp-toolbar-h, 48px);
+  background: var(--bs-body-bg, #fff);
+  border-bottom: 1px solid var(--dp-c-border, #dee2e6);
+  padding: .5rem 1rem;
   gap: .5rem;
   flex-wrap: wrap;
-  box-shadow: var(--dp-shadow-sm);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  /* Prevent overflow */
+  overflow: visible;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Dark mode toolbar background */
+[data-bs-theme="dark"] #hi-toolbar {
+  background: var(--bs-body-bg, #212529);
+  border-bottom-color: var(--dp-c-border, #495057);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* Input group sizing (SELARAS dengan Rekap RAB) */
 #hi-toolbar .input-group .form-control,
-#hi-toolbar .input-group .input-group-text{
-  font-size: var(--ux-font-xs);
+#hi-toolbar .input-group .input-group-text {
+  font-size: var(--ux-font-xs, 0.75rem);
   line-height: 1.5;
   padding-top: .375rem;
   padding-bottom: .375rem;
   border-color: var(--dp-c-border);
-  transition: all var(--ux-duration-200) var(--ux-ease);
-  /* FIX: Explicit height for pixel-perfect alignment with buttons */
-  height: calc(1.5em + (.375rem * 2) + 2px);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
+  height: auto;
+  min-height: 32px;
   display: flex;
   align-items: center;
 }
 
-#hi-toolbar .input-group .form-control{
+#hi-toolbar .input-group .form-control {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
 }
 
-#hi-toolbar .input-group .form-control:focus{
+#hi-toolbar .input-group .form-control:focus {
   border-color: var(--dp-c-primary);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   outline: 0;
-  transform: scale(1.005);
 }
 
-#hi-toolbar .input-group .input-group-text{
+#hi-toolbar .input-group .input-group-text {
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
 }
 
-/* Searchbar width (SELARAS dengan List Pekerjaan) */
-.hi-searchbar{
-  flex: 1 1 clamp(24rem, 50vw, 48rem);
-  min-width: 0;
+/* Searchbar width - flexible and responsive */
+.hi-searchbar {
+  flex: 1 1 200px;
+  min-width: 150px;
+  max-width: 500px;
 }
 
-/* Ensure .ms-auto container has proper flex behavior (SELARAS dengan List Pekerjaan) */
-#hi-toolbar > .ms-auto{
+/* Ensure .ms-auto container has proper flex behavior */
+#hi-toolbar>.ms-auto {
   display: flex !important;
   align-items: center !important;
   gap: .5rem !important;
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 /* Button styling (SELARAS dengan 4 page rujukan) */
-#hi-toolbar .btn{
-  font-size: var(--ux-font-xs);
+#hi-toolbar .btn {
+  font-size: var(--ux-font-xs, 0.75rem);
   line-height: 1.5;
   padding: .375rem .75rem;
-  border-radius: var(--dp-radius-md);
+  border-radius: var(--dp-radius-md, 6px);
   box-shadow: var(--dp-shadow-sm);
   white-space: nowrap;
-  transition: all var(--ux-duration-200) var(--ux-ease);
-  /* FIX: Height standardization for pixel-perfect alignment with search input */
-  min-height: calc(1.5em + (.375rem * 2) + 2px);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: .35rem;
+  flex-shrink: 0;
 }
 
-#hi-toolbar .btn:hover{
+#hi-toolbar .btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--dp-shadow-md);
 }
 
-#hi-toolbar .btn:active{
+#hi-toolbar .btn:active {
   transform: translateY(0) scale(0.98);
   box-shadow: var(--dp-shadow-sm);
 }
 
 /* Dropdown menu (SELARAS dengan Rekap RAB) */
-#hi-toolbar .dropdown-menu{
+#hi-toolbar .dropdown-menu {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
@@ -115,6 +214,7 @@
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -128,7 +228,7 @@
 }
 
 /* ===== CARD/PANEL Profit/Margin (SELARAS dengan List Pekerjaan) ===== */
-#hi-app .dp-card{
+#hi-app .dp-card {
   background: var(--dp-c-bg);
   border: 2px solid var(--dp-c-border);
   border-radius: var(--dp-radius-lg);
@@ -136,12 +236,12 @@
   transition: box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
-#hi-app .dp-card:hover{
+#hi-app .dp-card:hover {
   box-shadow: var(--dp-shadow-md);
 }
 
 /* ===== TABLE (SELARAS dengan Rekap RAB) ===== */
-.hi-table{
+.hi-table {
   font-size: var(--ux-font-sm, .875rem);
   line-height: var(--ux-line-md, 1.25rem);
   border-collapse: separate;
@@ -149,7 +249,7 @@
 }
 
 /* Table responsive dengan scrollbar custom */
-.table-responsive{
+.table-responsive {
   scrollbar-gutter: stable both-edges;
   overflow: auto;
 }
@@ -179,12 +279,12 @@
 }
 
 /* THEAD sticky dengan styling konsisten */
-.hi-table thead.dp-thead-sticky{
+.hi-table thead.dp-thead-sticky {
   background: var(--dp-c-surface-2);
   box-shadow: 0 1px 0 var(--dp-c-border);
 }
 
-.hi-table thead th{
+.hi-table thead th {
   background: var(--dp-c-surface-2);
   border-bottom: 2px solid var(--dp-c-border);
   font-size: var(--ux-font-xs);
@@ -196,7 +296,7 @@
 }
 
 /* Table body cells */
-.hi-table tbody td{
+.hi-table tbody td {
   padding: .5rem .75rem;
   vertical-align: middle;
   border-bottom: 1px solid var(--dp-c-border);
@@ -205,63 +305,69 @@
 }
 
 /* Row hover (SELARAS dengan Rekap RAB) */
-.hi-table tbody tr:hover{
+.hi-table tbody tr:hover {
   background: var(--ux-row-hover);
 }
 
 /* Numerik & monospace */
 .hi-table td .font-monospace,
 .hi-table td.mono,
-.hi-table th.font-monospace{
+.hi-table th.font-monospace {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .hi-table td.text-end,
 .hi-table th.text-end,
-.hi-table .hi-price-preview{
+.hi-table .hi-price-preview {
   text-align: right;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* Form controls dalam table */
-.hi-table .form-control{
+.hi-table .form-control {
   font-size: var(--ux-font-xs);
   border-color: var(--dp-c-border);
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
 }
 
-.hi-table .form-control:focus{
+/* Price input - wider to fit 7 digit numbers with formatting (e.g., 1.200.000) */
+.hi-table .hi-input-price {
+  min-width: 120px;
+  width: 120px;
+}
+
+.hi-table .form-control:focus {
   border-color: var(--dp-c-primary);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   outline: 0;
 }
 
 /* Invalid state highlight for price inputs: border-only by default */
-.hi-table .form-control.ux-invalid{
+.hi-table .form-control.ux-invalid {
   border-color: var(--dp-c-danger);
   border-width: 2px;
   box-shadow: none;
 }
 
 /* Empty marker (harga belum diisi di DB) */
-.hi-table .form-control.vp-empty{
+.hi-table .form-control.vp-empty {
   border-style: dashed;
   border-color: var(--dp-c-border);
   opacity: .96;
 }
 
 /* Row states use a left border indicator (border-only) */
-.hi-table tbody tr.hi-row-empty > td:first-child,
-.hi-table tbody tr.hi-row-invalid > td:first-child,
-.hi-table tbody tr.hi-row-zero > td:first-child{
+.hi-table tbody tr.hi-row-empty>td:first-child,
+.hi-table tbody tr.hi-row-invalid>td:first-child,
+.hi-table tbody tr.hi-row-zero>td:first-child {
   border-left-width: 4px;
   border-left-style: solid;
   border-left-color: var(--dp-c-danger);
 }
 
-.hi-table tbody tr.hi-row-edited > td:first-child{
+.hi-table tbody tr.hi-row-edited>td:first-child {
   border-left-width: 4px;
   border-left-style: solid;
   border-left-color: var(--dp-c-warning);
@@ -270,11 +376,20 @@
 /* Row state: saved flash */
 /* Saved (success) border pulse (border color only) */
 @keyframes hiSavedBorderPulse {
-  0%   { border-left-color: color-mix(in srgb, var(--dp-c-success) 65%, transparent); }
-  60%  { border-left-color: color-mix(in srgb, var(--dp-c-success) 35%, transparent); }
-  100% { border-left-color: var(--dp-c-success); }
+  0% {
+    border-left-color: color-mix(in srgb, var(--dp-c-success) 65%, transparent);
+  }
+
+  60% {
+    border-left-color: color-mix(in srgb, var(--dp-c-success) 35%, transparent);
+  }
+
+  100% {
+    border-left-color: var(--dp-c-success);
+  }
 }
-.hi-table tbody tr.hi-row-saved > td:first-child{
+
+.hi-table tbody tr.hi-row-saved>td:first-child {
   border-left-width: 4px;
   border-left-style: solid;
   border-left-color: var(--dp-c-success);
@@ -284,34 +399,40 @@
 /* Row state: empty (harga null asal DB) → border only (left) already handled above */
 
 /* Dark mode: neon-like rings (subtle) to increase contrast */
-[data-bs-theme="dark"] .hi-table .form-control.ux-invalid{
+[data-bs-theme="dark"] .hi-table .form-control.ux-invalid {
   box-shadow: 0 0 0 .16rem rgba(255, 91, 91, .35);
 }
-[data-bs-theme="dark"] .hi-table tbody tr.hi-row-empty > td:first-child,
-[data-bs-theme="dark"] .hi-table tbody tr.hi-row-invalid > td:first-child,
-[data-bs-theme="dark"] .hi-table tbody tr.hi-row-zero > td:first-child{
-  border-left-color: #ff5b5b; /* neon red */
+
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-empty>td:first-child,
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-invalid>td:first-child,
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-zero>td:first-child {
+  border-left-color: #ff5b5b;
+  /* neon red */
   box-shadow: 0 0 6px 0 rgba(255, 91, 91, .55);
 }
-[data-bs-theme="dark"] .hi-table tbody tr.hi-row-edited > td:first-child{
-  border-left-color: #ffd24d; /* neon yellow */
+
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-edited>td:first-child {
+  border-left-color: #ffd24d;
+  /* neon yellow */
   box-shadow: 0 0 6px 0 rgba(255, 210, 77, .55);
 }
-[data-bs-theme="dark"] .hi-table tbody tr.hi-row-saved > td:first-child{
-  border-left-color: #4dff88; /* neon green */
+
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-saved>td:first-child {
+  border-left-color: #4dff88;
+  /* neon green */
   box-shadow: 0 0 6px 0 rgba(77, 255, 136, .55);
 }
 
 /* ===== MODAL KONVERSI SATUAN (SELARAS dengan Template AHSP) ===== */
-#hiConvModal{
+#hiConvModal {
   z-index: calc(var(--dp-z-modal) + 100) !important;
 }
 
-#hiConvModal ~ .modal-backdrop{
+#hiConvModal~.modal-backdrop {
   z-index: calc(var(--dp-z-backdrop) + 100) !important;
 }
 
-#hiConvModal .modal-content{
+#hiConvModal .modal-content {
   background: var(--dp-c-surface);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
@@ -319,45 +440,45 @@
   box-shadow: var(--dp-shadow-lg);
 }
 
-#hiConvModal .modal-header{
+#hiConvModal .modal-header {
   background: var(--dp-c-surface-2);
   border-bottom: 1px solid var(--dp-c-border);
   padding: 1rem;
 }
 
-#hiConvModal .modal-body{
+#hiConvModal .modal-body {
   padding: 1rem;
 }
 
-#hiConvModal .modal-footer{
+#hiConvModal .modal-footer {
   background: var(--dp-c-surface-1);
   border-top: 1px solid var(--dp-c-border);
   padding: 1rem;
 }
 
 /* Modal form controls */
-#hiConvModal .form-label{
+#hiConvModal .form-label {
   font-size: var(--ux-font-xs);
   font-weight: 600;
   margin-bottom: .25rem;
 }
 
-#hiConvModal .form-text{
+#hiConvModal .form-text {
   font-size: var(--ux-font-xs);
   color: var(--dp-c-muted);
 }
 
 #hiConvModal .form-control,
-#hiConvModal .form-select{
+#hiConvModal .form-select {
   font-size: var(--ux-font-xs);
   border-color: var(--dp-c-border);
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: border-color var(--ux-duration-200) var(--ux-ease);
 }
 
 #hiConvModal .form-control:focus,
-#hiConvModal .form-select:focus{
+#hiConvModal .form-select:focus {
   border-color: var(--dp-c-primary);
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   outline: 0;
@@ -365,50 +486,82 @@
 
 /* Input group dalam modal */
 #hiConvModal .input-group .form-control,
-#hiConvModal .input-group .input-group-text{
+#hiConvModal .input-group .input-group-text {
   font-size: var(--ux-font-xs);
   line-height: 1.5;
   padding-top: .375rem;
   padding-bottom: .375rem;
 }
 
-#hiConvModal .input-group .form-control{
+#hiConvModal .input-group .form-control {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
 }
 
-#hiConvModal .input-group .input-group-text{
+#hiConvModal .input-group .input-group-text {
   background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
   border-color: var(--dp-c-border);
 }
 
 /* Price preview uses dash for invalid */
-.hi-price-preview{
+.hi-price-preview {
   opacity: .9;
 }
 
 /* Result panel dalam modal */
-#hiConvModal #hi-conv-result{
+#hiConvModal #hi-conv-result {
   font-variant-numeric: tabular-nums;
   color: var(--dp-c-text);
 }
 
+/* Result box - light mode */
+.hi-conv-result-box {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  border: 1px solid #a5d6a7;
+}
+
+.hi-conv-result-value {
+  color: #2e7d32;
+}
+
+/* Result box - dark mode */
+[data-bs-theme="dark"] .hi-conv-result-box {
+  background: linear-gradient(135deg, rgba(46, 125, 50, 0.2) 0%, rgba(76, 175, 80, 0.15) 100%);
+  border: 1px solid rgba(129, 199, 132, 0.4);
+}
+
+[data-bs-theme="dark"] .hi-conv-result-value {
+  color: #81c784;
+}
+
+/* Item info box - light mode */
+.hi-conv-item-box {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+}
+
+/* Item info box - dark mode */
+[data-bs-theme="dark"] .hi-conv-item-box {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 /* Modal buttons */
-#hiConvModal .btn{
+#hiConvModal .btn {
   font-size: var(--ux-font-xs);
   padding: .375rem .75rem;
   border-radius: var(--dp-radius-md);
-  transition: all var(--ux-duration-200) var(--ux-ease);
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
 }
 
-#hiConvModal .btn:hover{
+#hiConvModal .btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--dp-shadow-sm);
 }
 
 /* ===== FOCUS MANAGEMENT (SELARAS dengan 4 page) ===== */
-.ux-focusable:focus{
+.ux-focusable:focus {
   outline: 0;
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   border-color: color-mix(in srgb, var(--dp-c-primary) 55%, transparent);
@@ -480,15 +633,16 @@
 
 /* ===== DARK MODE ENHANCEMENTS ===== */
 [data-bs-theme="dark"] #hi-toolbar .btn-primary {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.25), 0 0 18px rgba(56,189,248,.45);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .25), 0 0 18px rgba(56, 189, 248, .45);
 }
 
 [data-bs-theme="dark"] #hi-toolbar .btn-primary:hover {
-  box-shadow: 0 0 0 .2rem rgba(56,189,248,.35), 0 0 24px rgba(56,189,248,.55);
+  box-shadow: 0 0 0 .2rem rgba(56, 189, 248, .35), 0 0 24px rgba(56, 189, 248, .55);
 }
 
 /* ===== ACCESSIBILITY ===== */
 @media (forced-colors: active) {
+
   .hi-table thead th,
   .hi-table tbody td {
     border-color: CanvasText !important;
@@ -500,6 +654,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -508,21 +663,22 @@
     transition-duration: 0.01ms !important;
   }
 }
-#hi-app{
+
+#hi-app {
   position: relative;
 }
 
-#hi-sync-banner{
+#hi-sync-banner {
   border: 1px solid var(--dp-c-warning);
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-sm);
   margin: 1rem 0;
 }
 
-.hi-lock-overlay{
+.hi-lock-overlay {
   position: absolute;
   inset: 0;
-  background: color-mix(in srgb, var(--dp-c-bg) 85%, rgba(0,0,0,0.05));
+  background: color-mix(in srgb, var(--dp-c-bg) 85%, rgba(0, 0, 0, 0.05));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -530,10 +686,12 @@
   z-index: var(--dp-z-modal);
   backdrop-filter: blur(1px);
 }
-.hi-lock-overlay.d-none{
+
+.hi-lock-overlay.d-none {
   display: none;
 }
-.hi-lock-card{
+
+.hi-lock-card {
   background: var(--dp-c-surface);
   border: 1px solid var(--dp-c-border);
   border-radius: var(--dp-radius-lg);
@@ -542,7 +700,109 @@
   text-align: center;
   box-shadow: var(--dp-shadow-md);
 }
-.hi-lock-card h3{
+
+.hi-lock-card h3 {
   font-size: 1.1rem;
   margin-bottom: .5rem;
+}
+
+/* ===== Summary Cards ===== */
+.hi-summary-card {
+  transition: transform var(--ux-duration-200) var(--ux-ease), box-shadow var(--ux-duration-200) var(--ux-ease);
+}
+
+.hi-summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+/* ===== Category Badges ===== */
+.hi-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .25em .5em;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: var(--dp-radius-sm);
+  min-width: 40px;
+}
+
+.hi-cat-badge-TK {
+  background: rgba(13, 110, 253, 0.15);
+  color: #0d6efd;
+  border: 1px solid rgba(13, 110, 253, 0.3);
+}
+
+.hi-cat-badge-BHN {
+  background: rgba(25, 135, 84, 0.15);
+  color: #198754;
+  border: 1px solid rgba(25, 135, 84, 0.3);
+}
+
+.hi-cat-badge-ALT {
+  background: rgba(255, 193, 7, 0.2);
+  color: #997404;
+  border: 1px solid rgba(255, 193, 7, 0.4);
+}
+
+.hi-cat-badge-LAIN {
+  background: rgba(108, 117, 125, 0.15);
+  color: #6c757d;
+  border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+/* Dark mode badges */
+[data-bs-theme="dark"] .hi-cat-badge-TK {
+  background: rgba(13, 110, 253, 0.25);
+  color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .hi-cat-badge-BHN {
+  background: rgba(25, 135, 84, 0.25);
+  color: #75b798;
+}
+
+[data-bs-theme="dark"] .hi-cat-badge-ALT {
+  background: rgba(255, 193, 7, 0.25);
+  color: #ffda6a;
+}
+
+[data-bs-theme="dark"] .hi-cat-badge-LAIN {
+  background: rgba(108, 117, 125, 0.25);
+  color: #adb5bd;
+}
+
+/* ===== Filter Buttons ===== */
+.hi-filter-btn.active {
+  font-weight: 600;
+}
+
+/* ===== Progress Bar ===== */
+#hi-progress-section .progress {
+  background: var(--dp-c-surface-2);
+  border-radius: var(--dp-radius-md);
+  overflow: hidden;
+}
+
+#hi-progress-bar {
+  transition: width 0.5s ease-out;
+}
+
+/* ===== Empty Row Highlight Enhancement ===== */
+.hi-table tbody tr.hi-row-empty {
+  background: rgba(255, 193, 7, 0.08);
+}
+
+.hi-table tbody tr.hi-row-empty:hover {
+  background: rgba(255, 193, 7, 0.15);
+}
+
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-empty {
+  background: rgba(255, 193, 7, 0.12);
+}
+
+[data-bs-theme="dark"] .hi-table tbody tr.hi-row-empty:hover {
+  background: rgba(255, 193, 7, 0.2);
 }

@@ -1,0 +1,195 @@
+﻿﻿﻿Input Progress Planned - Halaman 1/3 (Minggu 1-1)
+﻿Proyek;Project  test 4
+﻿;ket project satu 8
+﻿;ket project dua 8
+﻿Pemilik Project;Client 8 (instansi client 8)
+﻿Tahun;-
+﻿Sumber Dana;Pemilik 8
+﻿Lokasi;-
+﻿Project Anggaran;Rp 1.000.000.008,00
+﻿
+﻿Uraian Pekerjaan;Volume;Satuan;Week 1 (08/01 - 11/01);Week 2 (15/01 - 18/01);Week 3 (22/01 - 25/01);Week 4 (29/01 - 01/02);Week 5 (05/02 - 08/02);Week 6 (12/02 - 15/02);Week 7 (19/02 - 22/02);Week 8 (26/02 - 01/03);Week 9 (05/03 - 08/03);Week 10 (12/03 - 15/03);Week 11 (19/03 - 22/03);Week 12 (26/03 - 29/03);Week 13 (02/04 - 05/04);Week 14 (09/04 - 12/04);Week 15 (16/04 - 19/04);Week 16 (23/04 - 26/04);Week 17 (30/04 - 03/05);Week 18 (07/05 - 10/05)
+﻿K1;;;;;;;;;;;;;;;;;;;;
+﻿  K1.1;;;;;;;;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2 Dinding Bata Merah Tebal 1 Batu dengan Mortar Tipe M,fc’ 17, 2 MPa (Setara Campuran 1SP : 2PP);100,000;;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  beton mutu sedang f'c 20 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;3.000,000;;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 kg Penulangan kolom, balok, ring balk, dan sloof untuk BjTS diameter < 12 mm, cara Manual (untuk bangunan gedung);9.000,000;;30,00%;30,00%;40,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 bekisting untuk balok (3 kali pakai);60,000;;30,00%;30,00%;40,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pengeboran 1 m' Lubang Bored Pile φ 50 cm pada tanah Sedang (Manual);10,000;;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  K1.2;;;;;;;;;;;;;;;;;;;;
+﻿    Pemasangan dan Pembongkaran Bekisting  Pemasangan 1 m2  bekisting untuk fondasi telapak (3 kali pakai);10,000;;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Mengangkut 1 m3  tanah lepas, jarak angkut > 600 m untuk setiap penambahan   jarak   angkut   100   m   (Lihat   Peraturan   Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.3.6.a.12 (a));20,000;;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Lampu Sorot RGB 30 Watt untuk Outdoor;30,000;;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit AC Wall Mounted Kap :  5 BTUH;40,000;;0,00%;0,00%;0,00%;30,00%;30,00%;40,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit PRV SET dia. 50 mm;50,000;;0,00%;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿Klasifikasi 2;;;;;;;;;;;;;;;;;;;;
+﻿  Sub-Klasifikasi 2.1;;;;;;;;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2  Lantai Teraso Cor di Tempat, Tebal 3cm;60,000;;0,00%;0,00%;0,00%;0,00%;30,00%;40,00%;30,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Atap Genteng Kodok Glazuur;70,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pelapisan 1 m2 Waterproofing Acrylic Base;80,000;;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%
+﻿    Pemasangan 1 Unit MDF 2 x 8 Pair;90,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  Sub-Klasifikasi 2.2;;;;;;;;;;;;;;;;;;;;
+﻿    Mengangkut/menaikkan 1 kg tulangan setiap kenaikan vertikal 4 m atau tambahan jarak horizontal 25 m ke tapak pemasangan secara mekanis (untuk Bangunan Gedung);100,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan 1 buah Cetakan Panel P1 RISHA (Asumsi 400 kali pakai);110,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Lembaran Insulasi Atap;120,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Kaca Cermin Tebal 5 mm;22,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1  buah   papan  nama   pekerjaan   ukuran   0,8x1,2  menggunakan multiflex  18  mm,  frame  besi  siku  dan  tiang  kayu  8/12  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.f.1 (a));11,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan s.d. Pengecoran Campuran Beton Secara Manual  1 m3  beton mutu rendah f'c 7,5 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;33,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿K3;;;;;;;;;;;;;;;;;;;;
+﻿  K3.1;;;;;;;;;;;;;;;;;;;;
+﻿    Bongkar  1  m2  rangka  atap/  reng/  kaso  struktur  kayu  dan ditempatkan   di   penyimpanan   sementara   (bongkaran   tidak dipakai kembali);44,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 15 cm  s.d. 30 cm  (termasuk  pembuangan  sisa  tunggul  tanpa  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.b (a));55,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Titik Kabel Power AC NYM 3 x 2,5 mm2;66,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  Urukan tanah biasa atau tanah liat berpasir tanpa pemadatan secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.d (a));77,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Penggalian  1  m3   tanah  biasa  sedalam  >  2  m  s.d.  3  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.7 (a));56,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Menggenangi 1 m² permukaan beton dengan air selama 4 hari (untuk Bangunan Gedung);65,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 Teralis Besi Strip;67,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿"    Pemasangan 1 buah butterfly valve, Dia. 10"" (250 mm)";76,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Safety Valve dia. 100 mm;80,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿
+﻿Input Progress Planned - Halaman 2/3 (Minggu 1-1)
+﻿Proyek;Project  test 4
+﻿;ket project satu 8
+﻿;ket project dua 8
+﻿Pemilik Project;Client 8 (instansi client 8)
+﻿Tahun;-
+﻿Sumber Dana;Pemilik 8
+﻿Lokasi;-
+﻿Project Anggaran;Rp 1.000.000.008,00
+﻿
+﻿Uraian Pekerjaan;Volume;Satuan;Week 19 (14/05 - 17/05);Week 20 (21/05 - 24/05);Week 21 (28/05 - 31/05);Week 22 (04/06 - 07/06);Week 23 (11/06 - 14/06);Week 24 (18/06 - 21/06);Week 25 (25/06 - 28/06);Week 26 (02/07 - 05/07);Week 27 (09/07 - 12/07);Week 28 (16/07 - 19/07);Week 29 (23/07 - 26/07);Week 30 (30/07 - 02/08);Week 31 (06/08 - 09/08);Week 32 (13/08 - 16/08);Week 33 (20/08 - 23/08);Week 34 (27/08 - 30/08);Week 35 (03/09 - 06/09);Week 36 (10/09 - 13/09)
+﻿K1;;;;;;;;;;;;;;;;;;;;
+﻿  K1.1;;;;;;;;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2 Dinding Bata Merah Tebal 1 Batu dengan Mortar Tipe M,fc’ 17, 2 MPa (Setara Campuran 1SP : 2PP);100,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  beton mutu sedang f'c 20 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;3.000,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 kg Penulangan kolom, balok, ring balk, dan sloof untuk BjTS diameter < 12 mm, cara Manual (untuk bangunan gedung);9.000,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 bekisting untuk balok (3 kali pakai);60,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pengeboran 1 m' Lubang Bored Pile φ 50 cm pada tanah Sedang (Manual);10,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  K1.2;;;;;;;;;;;;;;;;;;;;
+﻿    Pemasangan dan Pembongkaran Bekisting  Pemasangan 1 m2  bekisting untuk fondasi telapak (3 kali pakai);10,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Mengangkut 1 m3  tanah lepas, jarak angkut > 600 m untuk setiap penambahan   jarak   angkut   100   m   (Lihat   Peraturan   Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.3.6.a.12 (a));20,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Lampu Sorot RGB 30 Watt untuk Outdoor;30,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit AC Wall Mounted Kap :  5 BTUH;40,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit PRV SET dia. 50 mm;50,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿Klasifikasi 2;;;;;;;;;;;;;;;;;;;;
+﻿  Sub-Klasifikasi 2.1;;;;;;;;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2  Lantai Teraso Cor di Tempat, Tebal 3cm;60,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Atap Genteng Kodok Glazuur;70,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pelapisan 1 m2 Waterproofing Acrylic Base;80,000;;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%
+﻿    Pemasangan 1 Unit MDF 2 x 8 Pair;90,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  Sub-Klasifikasi 2.2;;;;;;;;;;;;;;;;;;;;
+﻿    Mengangkut/menaikkan 1 kg tulangan setiap kenaikan vertikal 4 m atau tambahan jarak horizontal 25 m ke tapak pemasangan secara mekanis (untuk Bangunan Gedung);100,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan 1 buah Cetakan Panel P1 RISHA (Asumsi 400 kali pakai);110,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Lembaran Insulasi Atap;120,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Kaca Cermin Tebal 5 mm;22,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1  buah   papan  nama   pekerjaan   ukuran   0,8x1,2  menggunakan multiflex  18  mm,  frame  besi  siku  dan  tiang  kayu  8/12  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.f.1 (a));11,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan s.d. Pengecoran Campuran Beton Secara Manual  1 m3  beton mutu rendah f'c 7,5 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;33,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿K3;;;;;;;;;;;;;;;;;;;;
+﻿  K3.1;;;;;;;;;;;;;;;;;;;;
+﻿    Bongkar  1  m2  rangka  atap/  reng/  kaso  struktur  kayu  dan ditempatkan   di   penyimpanan   sementara   (bongkaran   tidak dipakai kembali);44,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 15 cm  s.d. 30 cm  (termasuk  pembuangan  sisa  tunggul  tanpa  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.b (a));55,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Titik Kabel Power AC NYM 3 x 2,5 mm2;66,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  Urukan tanah biasa atau tanah liat berpasir tanpa pemadatan secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.d (a));77,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Penggalian  1  m3   tanah  biasa  sedalam  >  2  m  s.d.  3  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.7 (a));56,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Menggenangi 1 m² permukaan beton dengan air selama 4 hari (untuk Bangunan Gedung);65,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 Teralis Besi Strip;67,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿"    Pemasangan 1 buah butterfly valve, Dia. 10"" (250 mm)";76,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Safety Valve dia. 100 mm;80,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿
+﻿Input Progress Planned - Halaman 3/3 (Minggu 1-1)
+﻿Proyek;Project  test 4
+﻿;ket project satu 8
+﻿;ket project dua 8
+﻿Pemilik Project;Client 8 (instansi client 8)
+﻿Tahun;-
+﻿Sumber Dana;Pemilik 8
+﻿Lokasi;-
+﻿Project Anggaran;Rp 1.000.000.008,00
+﻿
+﻿Uraian Pekerjaan;Volume;Satuan;Week 37 (17/09 - 20/09);Week 38 (24/09 - 27/09);Week 39 (01/10 - 04/10);Week 40 (08/10 - 11/10);Week 41 (15/10 - 18/10);Week 42 (22/10 - 25/10);Week 43 (29/10 - 01/11);Week 44 (05/11 - 08/11);Week 45 (12/11 - 15/11);Week 46 (19/11 - 22/11);Week 47 (26/11 - 29/11)
+﻿K1;;;;;;;;;;;;;
+﻿  K1.1;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2 Dinding Bata Merah Tebal 1 Batu dengan Mortar Tipe M,fc’ 17, 2 MPa (Setara Campuran 1SP : 2PP);100,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  beton mutu sedang f'c 20 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;3.000,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 kg Penulangan kolom, balok, ring balk, dan sloof untuk BjTS diameter < 12 mm, cara Manual (untuk bangunan gedung);9.000,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 bekisting untuk balok (3 kali pakai);60,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pengeboran 1 m' Lubang Bored Pile φ 50 cm pada tanah Sedang (Manual);10,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  K1.2;;;;;;;;;;;;;
+﻿    Pemasangan dan Pembongkaran Bekisting  Pemasangan 1 m2  bekisting untuk fondasi telapak (3 kali pakai);10,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Mengangkut 1 m3  tanah lepas, jarak angkut > 600 m untuk setiap penambahan   jarak   angkut   100   m   (Lihat   Peraturan   Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.3.6.a.12 (a));20,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Lampu Sorot RGB 30 Watt untuk Outdoor;30,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit AC Wall Mounted Kap :  5 BTUH;40,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit PRV SET dia. 50 mm;50,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿Klasifikasi 2;;;;;;;;;;;;;
+﻿  Sub-Klasifikasi 2.1;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2  Lantai Teraso Cor di Tempat, Tebal 3cm;60,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Atap Genteng Kodok Glazuur;70,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pelapisan 1 m2 Waterproofing Acrylic Base;80,000;;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%;1,00%
+﻿    Pemasangan 1 Unit MDF 2 x 8 Pair;90,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  Sub-Klasifikasi 2.2;;;;;;;;;;;;;
+﻿    Mengangkut/menaikkan 1 kg tulangan setiap kenaikan vertikal 4 m atau tambahan jarak horizontal 25 m ke tapak pemasangan secara mekanis (untuk Bangunan Gedung);100,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan 1 buah Cetakan Panel P1 RISHA (Asumsi 400 kali pakai);110,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Lembaran Insulasi Atap;120,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Kaca Cermin Tebal 5 mm;22,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1  buah   papan  nama   pekerjaan   ukuran   0,8x1,2  menggunakan multiflex  18  mm,  frame  besi  siku  dan  tiang  kayu  8/12  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.f.1 (a));11,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan s.d. Pengecoran Campuran Beton Secara Manual  1 m3  beton mutu rendah f'c 7,5 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;33,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿K3;;;;;;;;;;;;;
+﻿  K3.1;;;;;;;;;;;;;
+﻿    Bongkar  1  m2  rangka  atap/  reng/  kaso  struktur  kayu  dan ditempatkan   di   penyimpanan   sementara   (bongkaran   tidak dipakai kembali);44,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 15 cm  s.d. 30 cm  (termasuk  pembuangan  sisa  tunggul  tanpa  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.b (a));55,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Titik Kabel Power AC NYM 3 x 2,5 mm2;66,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  Urukan tanah biasa atau tanah liat berpasir tanpa pemadatan secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.d (a));77,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Penggalian  1  m3   tanah  biasa  sedalam  >  2  m  s.d.  3  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.7 (a));56,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Menggenangi 1 m² permukaan beton dengan air selama 4 hari (untuk Bangunan Gedung);65,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 Teralis Besi Strip;67,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿"    Pemasangan 1 buah butterfly valve, Dia. 10"" (250 mm)";76,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Safety Valve dia. 100 mm;80,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿
+﻿Input Progress Planned (Minggu 1-1)
+﻿Proyek;Project  test 4
+﻿;ket project satu 8
+﻿;ket project dua 8
+﻿Pemilik Project;Client 8 (instansi client 8)
+﻿Tahun;-
+﻿Sumber Dana;Pemilik 8
+﻿Lokasi;-
+﻿Project Anggaran;Rp 1.000.000.008,00
+﻿
+﻿Uraian Pekerjaan;Volume;Satuan;Month 1 (Week 1-4);Month 2 (Week 5-8);Month 3 (Week 9-12);Month 4 (Week 13-16);Month 5 (Week 17-20);Month 6 (Week 21-24);Month 7 (Week 25-28);Month 8 (Week 29-32);Month 9 (Week 33-36);Month 10 (Week 37-40);Month 11 (Week 41-44);Month 12 (Week 45-47)
+﻿K1;;;;;;;;;;;;;;
+﻿  K1.1;;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2 Dinding Bata Merah Tebal 1 Batu dengan Mortar Tipe M,fc’ 17, 2 MPa (Setara Campuran 1SP : 2PP);100,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  beton mutu sedang f'c 20 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;3.000,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 kg Penulangan kolom, balok, ring balk, dan sloof untuk BjTS diameter < 12 mm, cara Manual (untuk bangunan gedung);9.000,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 bekisting untuk balok (3 kali pakai);60,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pengeboran 1 m' Lubang Bored Pile φ 50 cm pada tanah Sedang (Manual);10,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  K1.2;;;;;;;;;;;;;;
+﻿    Pemasangan dan Pembongkaran Bekisting  Pemasangan 1 m2  bekisting untuk fondasi telapak (3 kali pakai);10,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Mengangkut 1 m3  tanah lepas, jarak angkut > 600 m untuk setiap penambahan   jarak   angkut   100   m   (Lihat   Peraturan   Menteri Pekerjaan  Umum  dan  Perumahan  Rakyat  Nomor  8  Tahun  2023 Lampiran B U.3.6.a.12 (a));20,000;;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Lampu Sorot RGB 30 Watt untuk Outdoor;30,000;;50,00%;50,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit AC Wall Mounted Kap :  5 BTUH;40,000;;30,00%;70,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit PRV SET dia. 50 mm;50,000;;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿Klasifikasi 2;;;;;;;;;;;;;;
+﻿  Sub-Klasifikasi 2.1;;;;;;;;;;;;;;
+﻿    Pemasangan 1 m2  Lantai Teraso Cor di Tempat, Tebal 3cm;60,000;;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Atap Genteng Kodok Glazuur;70,000;;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pelapisan 1 m2 Waterproofing Acrylic Base;80,000;;4,00%;4,00%;4,00%;4,00%;4,00%;4,00%;4,00%;4,00%;4,00%;4,00%;4,00%;3,00%
+﻿    Pemasangan 1 Unit MDF 2 x 8 Pair;90,000;;0,00%;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿  Sub-Klasifikasi 2.2;;;;;;;;;;;;;;
+﻿    Mengangkut/menaikkan 1 kg tulangan setiap kenaikan vertikal 4 m atau tambahan jarak horizontal 25 m ke tapak pemasangan secara mekanis (untuk Bangunan Gedung);100,000;;0,00%;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan 1 buah Cetakan Panel P1 RISHA (Asumsi 400 kali pakai);110,000;;0,00%;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Lembaran Insulasi Atap;120,000;;0,00%;0,00%;100,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2  Kaca Cermin Tebal 5 mm;22,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1  buah   papan  nama   pekerjaan   ukuran   0,8x1,2  menggunakan multiflex  18  mm,  frame  besi  siku  dan  tiang  kayu  8/12  (Lihat Peraturan Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.1.3.f.1 (a));11,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pembuatan s.d. Pengecoran Campuran Beton Secara Manual  1 m3  beton mutu rendah f'c 7,5 MPa, Slump (100 ±  25) mm, agregat maks 19 mm secara manual;33,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿K3;;;;;;;;;;;;;;
+﻿  K3.1;;;;;;;;;;;;;;
+﻿    Bongkar  1  m2  rangka  atap/  reng/  kaso  struktur  kayu  dan ditempatkan   di   penyimpanan   sementara   (bongkaran   tidak dipakai kembali);44,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Gali dan cabut 1 tunggul pohon tanaman keras ∅  > 15 cm  s.d. 30 cm  (termasuk  pembuangan  sisa  tunggul  tanpa  menutup  kembali bekas  lubang)  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.2.b (a));55,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Titik Kabel Power AC NYM 3 x 2,5 mm2;66,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    1 m3  Urukan tanah biasa atau tanah liat berpasir tanpa pemadatan secara  manual  (Lihat  Peraturan  Menteri  Pekerjaan  Umum  dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.5.1.d (a));77,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Penggalian  1  m3   tanah  biasa  sedalam  >  2  m  s.d.  3  m  untuk volume   >   200   m3 cara   manual   (Lihat   Peraturan   Menteri Pekerjaan Umum dan Perumahan Rakyat Nomor 8 Tahun 2023 Lampiran B U.3.4.1.a.7 (a));56,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Menggenangi 1 m² permukaan beton dengan air selama 4 hari (untuk Bangunan Gedung);65,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 m2 Teralis Besi Strip;67,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿"    Pemasangan 1 buah butterfly valve, Dia. 10"" (250 mm)";76,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%
+﻿    Pemasangan 1 Unit Safety Valve dia. 100 mm;80,000;;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%;0,00%

@@ -8,183 +8,138 @@
 {% block body_attrs %}data-page="rekap_rab"{% endblock %}
 
 {% block extra_css %}
-  {{ block.super }}
-  <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_rab.css' %}">
-  
-  <!-- Print System (Hybrid) -->
-  <link rel="stylesheet" href="{% static 'detail_project/css/print/print-base.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/print/print-theme.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/print/print-components.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/print/rekap-rab-print.css' %}">
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/rekap_rab.css' %}">
+
+<!-- Print System (Hybrid) -->
+<link rel="stylesheet" href="{% static 'detail_project/css/print/print-base.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/print/print-theme.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/print/print-components.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/print/rekap-rab-print.css' %}">
 {% endblock %}
 
 {% block dp_content %}
 {% include 'detail_project/_alert.html' %}
 
-<div id="rekap-app" 
-     class="container-fluid ux-scrollbar" 
-     data-project-id="{{ project.id }}"
-     data-project-name="{{ project.nama_project|default:'Nama Proyek' }}"
-     data-project-code="{{ project.kode_project|default:'-' }}"
-     data-project-location="{{ project.lokasi|default:'-' }}"
-     data-project-year="{{ project.tahun_anggaran|default:'-' }}">
+<div id="rekap-app" class="container-fluid ux-scrollbar" data-project-id="{{ project.id }}"
+  data-project-name="{{ project.nama_project|default:'Nama Proyek' }}"
+  data-project-code="{{ project.kode_project|default:'-' }}" data-project-location="{{ project.lokasi|default:'-' }}"
+  data-project-year="{{ project.tahun_anggaran|default:'-' }}">
+
+  <!-- Page Title -->
+  <h1 class="h5 mb-3">Rekap RAB</h1>
 
   <!-- ============== TOOLBAR (ENHANCED) ============== -->
-  <div id="rab-toolbar" 
-       class="rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 ux-toolbar-inputs"
-       role="toolbar"
-       aria-label="Rekap RAB toolbar">
+  <div id="rab-toolbar"
+    class="dp-toolbar rekap-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 ux-toolbar-inputs" role="toolbar"
+    aria-label="Rekap RAB toolbar">
 
     <!-- Search -->
     <div class="input-group rab-toolbar-search">
       <span class="input-group-text">
         <i class="bi bi-search" aria-hidden="true"></i>
       </span>
-      <input id="rab-search" 
-             class="form-control" 
-             type="search"
-             placeholder="Cari klasifikasi / sub / pekerjaan / kode…"
-             aria-label="Cari dalam rekap RAB"
-             autocomplete="off"
-             role="searchbox">
+      <input id="rab-search" class="form-control" type="search" placeholder="Cari klasifikasi / sub / pekerjaan / kode…"
+        aria-label="Cari dalam rekap RAB" autocomplete="off" role="searchbox">
     </div>
 
     <!-- Expand/Collapse -->
     <div class="btn-group ms-1" role="group" aria-label="Expand dan Collapse">
-      <button id="btn-expand" 
-              class="btn btn-outline-secondary" 
-              type="button"
-              title="Expand semua baris"
-              aria-label="Expand semua">
-        <i class="bi bi-arrows-expand" aria-hidden="true"></i> 
+      <button id="btn-expand" class="btn btn-outline-secondary dp-btn" type="button" title="Expand semua baris"
+        aria-label="Expand semua">
+        <i class="bi bi-arrows-expand" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Expand All</span>
       </button>
-      <button id="btn-collapse" 
-              class="btn btn-outline-secondary" 
-              type="button"
-              title="Collapse semua baris"
-              aria-label="Collapse semua">
-        <i class="bi bi-arrows-collapse" aria-hidden="true"></i> 
+      <button id="btn-collapse" class="btn btn-outline-secondary dp-btn" type="button" title="Collapse semua baris"
+        aria-label="Collapse semua">
+        <i class="bi bi-arrows-collapse" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Collapse All</span>
       </button>
     </div>
 
     <!-- View modes -->
     <div class="btn-group ms-1" role="group" aria-label="Mode tampilan">
-      <button id="btn-subtotal" 
-              class="btn btn-outline-secondary" 
-              type="button" 
-              title="Tampilkan hanya subtotal (sembunyikan detail pekerjaan)"
-              aria-label="Toggle subtotal only">
-        <i class="bi bi-list-nested" aria-hidden="true"></i> 
+      <button id="btn-subtotal" class="btn btn-outline-secondary dp-btn" type="button"
+        title="Tampilkan hanya subtotal (sembunyikan detail pekerjaan)" aria-label="Toggle subtotal only">
+        <i class="bi bi-list-nested" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Subtotal</span>
       </button>
-      <button id="btn-density" 
-              class="btn btn-outline-secondary" 
-              type="button"
-              title="Toggle compact mode"
-              aria-label="Toggle density">
-        <i class="bi bi-layout-text-window-reverse" aria-hidden="true"></i> 
+      <button id="btn-density" class="btn btn-outline-secondary dp-btn" type="button" title="Toggle compact mode"
+        aria-label="Toggle density">
+        <i class="bi bi-layout-text-window-reverse" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Compact</span>
       </button>
     </div>
 
 
-   <!-- Actions (Right side) -->
+    <!-- Actions (Right side) -->
     <div class="ms-auto d-flex align-items-center gap-2">
-      <button id="btn-refresh" 
-              class="btn btn-outline-secondary" 
-              type="button"
-              title="Muat ulang data dari server"
-              aria-label="Refresh data">
-        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> 
+      <button id="btn-refresh" class="btn btn-outline-secondary dp-btn" type="button"
+        title="Muat ulang data dari server" aria-label="Refresh data">
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Refresh</span>
       </button>
-      
+
       <!-- Export Dropdown (CSV/PDF/Word) -->
       <div class="btn-group ux-dropdown" role="group">
-        <button type="button" 
-                class="btn btn-outline-primary dropdown-toggle" 
-                data-bs-toggle="dropdown" 
-                aria-expanded="false"
-                aria-label="Export options">
+        <button type="button" class="btn btn-outline-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
+          aria-expanded="false" aria-label="Export options">
           <i class="bi bi-download" aria-hidden="true"></i>
           <span class="d-none d-md-inline">Export</span>
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
           <li>
-            <button class="dropdown-item" 
-                    type="button" 
-                    id="btn-export-csv"
-                    title="Export ke CSV (Excel-friendly)">
-              <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
-              Export CSV
+            <button class="dropdown-item" type="button" id="btn-export-xlsx" title="Export ke Excel (XLSX)">
+              <i class="bi bi-file-earmark-excel text-success me-2"></i>
+              Export Excel
             </button>
           </li>
           <li>
-            <button class="dropdown-item" 
-                    type="button" 
-                    id="btn-export-pdf"
-                    title="Export ke PDF">
+            <button class="dropdown-item" type="button" id="btn-export-pdf" title="Export ke PDF">
               <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
               Export PDF
             </button>
           </li>
           <li>
-            <button class="dropdown-item" 
-                    type="button" 
-                    id="btn-export-word"
-                    title="Export ke Word (dapat diedit)">
+            <button class="dropdown-item" type="button" id="btn-export-word" title="Export ke Word (dapat diedit)">
               <i class="bi bi-file-earmark-word text-primary me-2"></i>
               Export Word
             </button>
           </li>
+          <li>
+            <hr class="dropdown-divider">
+          </li>
+          <li>
+            <button class="dropdown-item" type="button" id="btn-export-json" title="Export ke JSON">
+              <i class="bi bi-filetype-json text-warning me-2"></i>
+              Export JSON
+            </button>
+          </li>
         </ul>
       </div>
-      
-      <!-- Keep your existing Excel button (separate feature) -->
-      <button id="btn-export-excel" 
-              class="btn btn-success" 
-              type="button"
-              title="Export ke Excel dengan format khusus"
-              aria-label="Export Excel">
-        <i class="bi bi-file-earmark-excel" aria-hidden="true"></i> 
-        <span class="d-none d-lg-inline">Excel</span>
-      </button>
-      
+
       <!-- Print button -->
-      <button id="btn-print" 
-              class="btn btn-success" 
-              type="button"
-              title="Cetak atau simpan ke PDF"
-              aria-label="Print / Save PDF">
-        <i class="bi bi-printer-fill" aria-hidden="true"></i> 
+      <button id="btn-print" class="btn btn-success dp-btn" type="button" title="Cetak atau simpan ke PDF"
+        aria-label="Print / Save PDF">
+        <i class="bi bi-printer-fill" aria-hidden="true"></i>
         <span class="d-none d-md-inline">Print</span>
       </button>
-    </div>    
+    </div>
 
     <!-- Live region untuk announcements (accessibility) -->
-    <div id="rab-announce" 
-         class="visually-hidden" 
-         role="status" 
-         aria-live="polite" 
-         aria-atomic="true"></div>
+    <div id="rab-announce" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
 
   <!-- ============== TABLE (ENHANCED) ============== -->
-  <div id="rekap-table-wrap" 
-       class="table-responsive ux-scrollbar"
-       role="region"
-       aria-label="Tabel Rekap RAB"
-       tabindex="0">
-    <table class="table table-hover align-middle mb-0 ux-thead" 
-           id="rekap-table"
-           aria-describedby="rekap-table-desc">
-      
+  <div id="rekap-table-wrap" class="table-responsive ux-scrollbar" role="region" aria-label="Tabel Rekap RAB"
+    tabindex="0">
+    <table class="table table-hover align-middle mb-0 ux-thead" id="rekap-table" aria-describedby="rekap-table-desc">
+
       <!-- Screen reader description -->
       <caption id="rekap-table-desc" class="visually-hidden">
-        Rekap Rencana Anggaran Biaya (RAB) dengan struktur hierarki Klasifikasi, Sub-Klasifikasi, dan Pekerjaan. 
+        Rekap Rencana Anggaran Biaya (RAB) dengan struktur hierarki Klasifikasi, Sub-Klasifikasi, dan Pekerjaan.
         Gunakan tombol expand/collapse untuk menavigasi struktur tree.
       </caption>
 
@@ -202,25 +157,19 @@
           <th scope="col">Uraian (Klasifikasi / Sub / Pekerjaan)</th>
           <th scope="col" class="col-kode">Kode AHSP</th>
           <th scope="col" class="col-satuan">Satuan</th>
-          <th scope="col" class="text-end th-sortable" data-sort-key="volume" 
-              title="Klik untuk urutkan berdasarkan Volume"
-              role="button"
-              tabindex="0"
-              aria-label="Volume, dapat diurutkan">
+          <th scope="col" class="text-end th-sortable" data-sort-key="volume"
+            title="Klik untuk urutkan berdasarkan Volume" role="button" tabindex="0"
+            aria-label="Volume, dapat diurutkan">
             Volume
           </th>
-          <th scope="col" class="text-end th-sortable" data-sort-key="harga" 
-              title="Klik untuk urutkan berdasarkan Harga Satuan"
-              role="button"
-              tabindex="0"
-              aria-label="Harga Satuan, dapat diurutkan">
+          <th scope="col" class="text-end th-sortable" data-sort-key="harga"
+            title="Klik untuk urutkan berdasarkan Harga Satuan" role="button" tabindex="0"
+            aria-label="Harga Satuan, dapat diurutkan">
             Harga Satuan
           </th>
-          <th scope="col" class="text-end th-sortable" data-sort-key="total" 
-              title="Klik untuk urutkan berdasarkan Total Harga"
-              role="button"
-              tabindex="0"
-              aria-label="Total Harga, dapat diurutkan">
+          <th scope="col" class="text-end th-sortable" data-sort-key="total"
+            title="Klik untuk urutkan berdasarkan Total Harga" role="button" tabindex="0"
+            aria-label="Total Harga, dapat diurutkan">
             Total Harga
           </th>
         </tr>
@@ -242,49 +191,39 @@
       </tbody>
 
       <tfoot>
-        <!-- Total D (tanpa PPN) -->
+        <!-- Total D (sebelum pajak) -->
         <tr>
-          <th colspan="5" class="text-end">Total Biaya Langsung:</th>
+          <th colspan="5" class="text-end">Total Biaya Sebelum Pajak:</th>
           <th id="ft-total-d" class="text-end">-</th>
         </tr>
-        
+
         <!-- PPN Row dengan Input -->
         <tr>
           <th colspan="5" class="text-end">
             <div class="d-flex align-items-center justify-content-end gap-2">
               <label for="ppn-pct" class="mb-0">PPN:</label>
               <div class="input-group" style="max-width: 140px;">
-                <input id="ppn-pct" 
-                       type="number" 
-                       class="form-control text-end" 
-                       min="0" 
-                       max="100" 
-                       step="0.1"
-                       value="11"
-                       aria-label="Persentase PPN"
-                       title="Masukkan persentase PPN (0-100)">
+                <input id="ppn-pct" type="number" class="form-control text-end" min="0" max="100" step="0.1" value="11"
+                  aria-label="Persentase PPN" title="Masukkan persentase PPN (0-100)">
                 <span class="input-group-text">%</span>
               </div>
             </div>
           </th>
           <th id="ft-ppn" class="text-end">-</th>
         </tr>
-        
+
         <!-- Grand Total (Total Biaya Langsung + PPN) -->
         <tr class="table-primary">
-          <th colspan="5" class="text-end">Grand Total (Total Biaya Langsung + PPN):</th>
+          <th colspan="5" class="text-end">Total Biaya + PPN:</th>
           <th id="ft-grand" class="text-end">-</th>
         </tr>
-        
+
         <!-- Rounded Total dengan Selector -->
         <tr>
           <th colspan="5" class="text-end">
             <div class="d-flex align-items-center justify-content-end gap-2">
               <label for="round-base" class="mb-0">Pembulatan:</label>
-              <select id="round-base" 
-                      class="form-select" 
-                      style="max-width: 140px;"
-                      aria-label="Basis pembulatan">
+              <select id="round-base" class="form-select" style="max-width: 140px;" aria-label="Basis pembulatan">
                 <option value="1">Rp 1</option>
                 <option value="1000" selected>Rp 1.000</option>
                 <option value="10000">Rp 10.000</option>
@@ -303,41 +242,159 @@
     <i class="bi bi-inbox" aria-hidden="true"></i>
     <p>Belum ada data RAB untuk ditampilkan.</p>
     <p class="small text-muted">
-      Pastikan Anda sudah menambahkan pekerjaan dan mengisi volume di halaman 
-      <a href="{% url 'detail_project:list_pekerjaan' project.id %}">List Pekerjaan</a> dan 
+      Pastikan Anda sudah menambahkan pekerjaan dan mengisi volume di halaman
+      <a href="{% url 'detail_project:list_pekerjaan' project.id %}">List Pekerjaan</a> dan
       <a href="{% url 'detail_project:volume_pekerjaan' project.id %}">Volume Pekerjaan</a>.
     </p>
   </div>
+
+  <!-- Export Loading Modal -->
+  {% include 'detail_project/_export_loading_modal.html' with modal_id="rabExportLoadingModal" %}
 
 </div>
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
-  
-  <!-- SheetJS for Excel export (keep this - for your Excel feature) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  
-  <!-- Excel Exporter (keep this - your existing feature) -->
-  <script src="{% static 'detail_project/js/export/ExcelExporter.js' %}"></script>
-  
-  <!-- NEW: Unified Export Manager (MUST load BEFORE rekap_rab.js) -->
-  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
-  
-  <!-- Main Rekap RAB Script -->
-  <script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
-  
-  <!-- Print System (ES6 Module) -->
-  <script type="module">
-    import { initRekapRABPrint } from '{% static "detail_project/js/print/RekapRABPrint.js" %}';
-    
-    document.addEventListener('DOMContentLoaded', () => {
-      if (window.RABModule) {
-        initRekapRABPrint(window.RABModule);
-        console.log('[Print] Rekap RAB print system initialized');
-      } else {
-        console.error('[Print] RABModule not found. Check rekap_rab.js export.');
+{{ block.super }}
+
+<!-- SheetJS for Excel export (keep this - for your Excel feature) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- Excel Exporter (keep this - your existing feature) -->
+<script src="{% static 'detail_project/js/export/ExcelExporter.js' %}"></script>
+
+<!-- NEW: Unified Export Manager (MUST load BEFORE rekap_rab.js) -->
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
+<!-- Main Rekap RAB Script -->
+<script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
+
+<!-- Export Initialization with Modal Spinner -->
+<script>
+  // Initialize export buttons for Rekap RAB with modal spinner
+  (function () {
+    // Guard against running twice
+    if (window._rabExportInit) {
+      console.log('[RekapRAB] Export already initialized, skipping');
+      return;
+    }
+    window._rabExportInit = true;
+
+    const projectId = document.getElementById('rekap-app')?.dataset?.projectId;
+    if (!projectId || typeof ExportManager === 'undefined') {
+      console.warn('[RekapRAB] ExportManager not available');
+      return;
+    }
+
+    const exporter = new ExportManager(projectId, 'rekap-rab');
+
+    // Export lock to prevent double-clicking
+    let isExporting = false;
+
+    // Get loading modal
+    const loadingModalEl = document.getElementById('rabExportLoadingModal');
+    let loadingModal = null;
+    const loadingText = document.getElementById('rabExportLoadingText');
+
+    const showLoading = (formatName) => {
+      if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
+      if (loadingModalEl) {
+        loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
+        loadingModal.show();
       }
-    });
-  </script>
+    };
+
+    const hideLoading = () => {
+      if (loadingModal) {
+        try {
+          loadingModal.hide();
+        } catch (e) {
+          console.warn('[RAB] Modal hide error:', e);
+        }
+      }
+      // Force cleanup after short delay
+      setTimeout(() => {
+        if (loadingModalEl) {
+          loadingModalEl.classList.remove('show');
+          loadingModalEl.style.display = 'none';
+          loadingModalEl.setAttribute('aria-hidden', 'true');
+        }
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+      }, 150);
+    };
+
+    // Generic export handler with lock
+    const handleExport = async (format, formatName, e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      // Prevent double-click
+      if (isExporting) {
+        console.log('[RAB] Export already in progress, ignoring');
+        return;
+      }
+
+      isExporting = true;
+      showLoading(formatName);
+
+      try {
+        await exporter.exportAs(format);
+      } finally {
+        hideLoading();
+        isExporting = false;
+      }
+    };
+
+    const btnXLSX = document.getElementById('btn-export-xlsx');
+    const btnPDF = document.getElementById('btn-export-pdf');
+    const btnWord = document.getElementById('btn-export-word');
+    const btnJSON = document.getElementById('btn-export-json');
+
+    // Helper to remove all existing listeners by cloning and replacing
+    const cleanButton = (btn) => {
+      if (!btn) return null;
+      const newBtn = btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn, btn);
+      return newBtn;
+    };
+
+    // Clean buttons first to remove any existing listeners
+    const cleanXLSX = cleanButton(btnXLSX);
+    const cleanPDF = cleanButton(btnPDF);
+    const cleanWord = cleanButton(btnWord);
+    const cleanJSON = cleanButton(btnJSON);
+
+    if (cleanXLSX) {
+      cleanXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
+    }
+    if (cleanPDF) {
+      cleanPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e));
+    }
+    if (cleanWord) {
+      cleanWord.addEventListener('click', (e) => handleExport('word', 'Word', e));
+    }
+    if (cleanJSON) {
+      cleanJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
+    }
+
+    console.log('[RekapRAB] Export buttons initialized (cleaned)');
+  })();
+</script>
+
+<!-- Print System (ES6 Module) -->
+<script type="module">
+  import { initRekapRABPrint } from '{% static "detail_project/js/print/RekapRABPrint.js" %}';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.RABModule) {
+      initRekapRABPrint(window.RABModule);
+      console.log('[Print] Rekap RAB print system initialized');
+    } else {
+      console.error('[Print] RABModule not found. Check rekap_rab.js export.');
+    }
+  });
+</script>
 {% endblock %}

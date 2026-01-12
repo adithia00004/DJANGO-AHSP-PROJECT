@@ -121,6 +121,13 @@ class Pekerjaan(TimeStampedModel):
         help_text="Override % Profit/Margin khusus pekerjaan ini; null=pakai default project"
     )
     detail_last_modified = models.DateTimeField(null=True, blank=True)
+    budgeted_cost = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+        help_text="Budgeted cost (BAC) untuk pekerjaan ini"
+    )
 
     class Meta:
         ordering = ["ordering_index", "id"]
@@ -300,6 +307,80 @@ class HargaItemProject(TimeStampedModel):
 
     def __str__(self):
         return f"{self.kode_item} — {self.uraian}"
+
+
+class ItemConversionProfile(TimeStampedModel):
+    """
+    Stores market unit conversion data for HargaItemProject.
+    Allows converting base units (e.g., Kg) to market units (e.g., Batang).
+    
+    Example:
+    - Besi sold per Batang (1 batang = 10 kg)
+    - market_unit = "batang"
+    - market_price = 240000 (price per batang)
+    - factor_to_base = 10 (1 batang = 10 kg)
+    """
+    
+    METHOD_DIRECT = 'direct'
+    METHOD_CALC = 'calc'
+    METHOD_HYBRID = 'hybrid'
+    
+    METHOD_CHOICES = [
+        (METHOD_DIRECT, 'Direct Input'),
+        (METHOD_CALC, 'Calculated'),
+        (METHOD_HYBRID, 'Hybrid'),
+    ]
+    
+    harga_item = models.OneToOneField(
+        HargaItemProject,
+        on_delete=models.CASCADE,
+        related_name='conversion_profile'
+    )
+    
+    # Market unit info
+    market_unit = models.CharField(max_length=50, help_text="Satuan pembelian dari supplier (e.g., batang, zak, dump_truck)")
+    market_price = models.DecimalField(
+        max_digits=18, decimal_places=2,
+        help_text="Harga per satuan market"
+    )
+    factor_to_base = models.DecimalField(
+        max_digits=12, decimal_places=6,
+        help_text="1 market unit = X base units (e.g., 1 batang = 10 kg)"
+    )
+    
+    # Optional calculation parameters
+    density = models.DecimalField(
+        max_digits=12, decimal_places=6, blank=True, null=True,
+        help_text="Massa jenis (kg/m³) for volume-to-mass conversion"
+    )
+    capacity_m3 = models.DecimalField(
+        max_digits=12, decimal_places=6, blank=True, null=True,
+        help_text="Kapasitas per market unit dalam m³"
+    )
+    capacity_ton = models.DecimalField(
+        max_digits=12, decimal_places=6, blank=True, null=True,
+        help_text="Kapasitas per market unit dalam ton"
+    )
+    
+    method = models.CharField(max_length=10, choices=METHOD_CHOICES, default=METHOD_DIRECT)
+    
+    class Meta:
+        verbose_name = "Item Conversion Profile"
+        verbose_name_plural = "Item Conversion Profiles"
+    
+    def __str__(self):
+        return f"{self.harga_item.kode_item}: 1 {self.market_unit} = {self.factor_to_base} {self.harga_item.satuan}"
+    
+    def convert_qty_to_market(self, base_qty):
+        """Convert base quantity to market quantity."""
+        if self.factor_to_base and self.factor_to_base > 0:
+            return base_qty / self.factor_to_base
+        return base_qty
+    
+    def get_market_total(self, base_qty):
+        """Calculate total cost using market price."""
+        market_qty = self.convert_qty_to_market(base_qty)
+        return market_qty * self.market_price
 
 
 class DetailAHSPProject(TimeStampedModel):
@@ -676,18 +757,38 @@ class PekerjaanProgressWeekly(models.Model):
         help_text="End date of this week"
     )
 
-    # Progress data
-    proportion = models.DecimalField(
+    # Progress data - Dual fields for Planned vs Actual (Phase 2E.1)
+    # Phase 0: Legacy 'proportion' field removed (migration 0025)
+    planned_proportion = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        validators=[MinValueValidator(0.01), MaxValueValidator(100.00)],
-        help_text="Proportion of work (%) completed in this week. Range: 0.01 - 100.00"
+        validators=[MinValueValidator(0), MaxValueValidator(100.00)],
+        help_text="Planned proportion of work (%) for this week. Range: 0 - 100.00"
+    )
+    actual_proportion = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100.00)],
+        help_text="Actual proportion of work (%) completed in this week. Range: 0 - 100.00"
     )
 
     # Metadata
     notes = models.TextField(
         blank=True,
         help_text="Optional notes for this week's progress"
+    )
+    actual_updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp when actual_proportion was last updated"
+    )
+    actual_cost = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text="Actual cost incurred for this pekerjaan during this week"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -700,27 +801,47 @@ class PekerjaanProgressWeekly(models.Model):
         indexes = [
             models.Index(fields=['pekerjaan', 'week_number']),
             models.Index(fields=['project', 'week_number']),
+            models.Index(fields=['project', 'pekerjaan']),
             models.Index(fields=['week_start_date', 'week_end_date']),
         ]
 
     def __str__(self):
-        return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} ({self.proportion}%)"
+        return f"{self.pekerjaan.snapshot_uraian} - Week {self.week_number} (Planned: {self.planned_proportion}%, Actual: {self.actual_proportion}%)"
 
     def clean(self):
-        """Validation"""
-        if self.proportion < 0.01 or self.proportion > 100:
-            raise ValidationError({
-                'proportion': 'Proportion must be between 0.01% - 100%'
-            })
+        """Validation for planned and actual proportions"""
+        # Phase 0: Removed _normalize_proportion_fields() - no longer needed
+        errors = {}
+
+        planned = self.planned_proportion
+        actual = self.actual_proportion
+
+        # Validate planned_proportion
+        if planned is not None and (planned < 0 or planned > 100):
+            errors['planned_proportion'] = 'Planned proportion must be between 0% - 100%'
+
+        # Validate actual_proportion
+        if actual is not None and (actual < 0 or actual > 100):
+            errors['actual_proportion'] = 'Actual proportion must be between 0% - 100%'
 
         # Validate week dates
-        if self.week_end_date < self.week_start_date:
-            raise ValidationError({
-                'week_end_date': 'Week end date must be >= start date'
-            })
+        if (
+            self.week_end_date
+            and self.week_start_date
+            and self.week_end_date < self.week_start_date
+        ):
+            errors['week_end_date'] = 'Week end date must be >= start date'
+
+        if self.actual_cost is not None and self.actual_cost < 0:
+            errors['actual_cost'] = 'Actual cost must be >= 0'
+
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         """Auto-populate project field from pekerjaan"""
+        # Phase 0: Removed _normalize_proportion_fields() - no longer needed
+
         if not self.project_id:
             # Get project from pekerjaan's volume_pekerjaan
             try:
@@ -922,3 +1043,96 @@ class ProjectChangeStatus(TimeStampedModel):
 
     def __str__(self):
         return f"ChangeStatus[{self.project_id}]"
+
+
+class PekerjaanTemplate(TimeStampedModel):
+    """
+    Template Library - reusable work item templates.
+    
+    Stores complete hierarchy: Klasifikasi → SubKlasifikasi → Pekerjaan
+    in JSON format for easy import into any project's List Pekerjaan.
+    
+    Example categories:
+    - "Rumah Sederhana", "Ruko 2 Lantai", "Sumur Bor", "Jalan Paving"
+    """
+    
+    CATEGORY_CHOICES = [
+        ('rumah', 'Rumah'),
+        ('ruko', 'Ruko'),
+        ('infrastruktur', 'Infrastruktur'),
+        ('utilitas', 'Utilitas'),
+        ('lainnya', 'Lainnya'),
+    ]
+    
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+        help_text="Nama template (e.g., 'Template Rumah Sederhana Tipe 36')"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Deskripsi singkat template"
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='lainnya',
+        help_text="Kategori template untuk filtering"
+    )
+    
+    # JSON content - same format as export_list_pekerjaan_json
+    content = models.JSONField(
+        help_text="Hierarchical data: {klasifikasi: [{name, sub: [{name, pekerjaan: [...]}]}]}"
+    )
+    
+    # Metadata
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_templates'
+    )
+    is_public = models.BooleanField(
+        default=True,
+        help_text="If True, visible to all users. If False, only creator can see."
+    )
+    usage_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Track how many times this template has been imported"
+    )
+    
+    # Quick stats (denormalized for display)
+    total_klasifikasi = models.PositiveIntegerField(default=0)
+    total_sub = models.PositiveIntegerField(default=0)
+    total_pekerjaan = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ['-usage_count', '-created_at']
+        verbose_name = 'Template Pekerjaan'
+        verbose_name_plural = 'Template Pekerjaan'
+        indexes = [
+            models.Index(fields=['category', '-usage_count']),
+            models.Index(fields=['is_public', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.total_klasifikasi} klas, {self.total_pekerjaan} pkj)"
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate stats from content."""
+        if self.content and isinstance(self.content, dict):
+            klasifikasi = self.content.get('klasifikasi', [])
+            self.total_klasifikasi = len(klasifikasi)
+            self.total_sub = sum(len(k.get('sub', [])) for k in klasifikasi)
+            self.total_pekerjaan = sum(
+                len(s.get('pekerjaan', []))
+                for k in klasifikasi
+                for s in k.get('sub', [])
+            )
+        super().save(*args, **kwargs)
+    
+    def increment_usage(self):
+        """Increment usage counter."""
+        self.usage_count += 1
+        self.save(update_fields=['usage_count', 'updated_at'])

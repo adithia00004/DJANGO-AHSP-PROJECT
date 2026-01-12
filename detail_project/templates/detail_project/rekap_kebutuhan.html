@@ -1,86 +1,144 @@
 {% extends "detail_project/base_detail.html" %}
+
 {% load static %}
+
 {% block body_attrs %}data-page="rekap_kebutuhan"{% endblock %}
+
 {% block detail_css %}{% endblock %}
+
 {% block extra_css %}
-  {{ block.super }}
-  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/rekap_kebutuhan.css' %}">
+
+{{ block.super }}
+
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+
+<link rel="stylesheet" href="{% static 'detail_project/css/rekap_kebutuhan.css' %}">
+
+<link rel="stylesheet" href="{% static 'detail_project/css/rekap_kebutuhan_enhancements.css' %}">
+
 {% endblock %}
-{% block title %}Rekap Kebutuhan — {{ project.nama }}{% endblock %}
+
+{% block title %}Rekap Kebutuhan {{ project.nama }}{% endblock %}
+
+
 
 {% block dp_content %}
-<div id="rk-app"
-     class="dp-container"
-     data-project-id="{{ project.id }}"
-     data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_enhanced' project.id %}"
-     data-endpoint-export="{% url 'detail_project:api_export_rekap_kebutuhan_csv' project.id %}">
-  
+
+<div id="rk-app" class="dp-container" data-project-id="{{ project.id }}"
+  data-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_enhanced' project.id %}"
+  data-filter-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_filters' project.id %}"
+  data-export-xlsx="{% url 'detail_project:api_export_rekap_kebutuhan_xlsx' project.id %}"
+  data-export-pdf="{% url 'detail_project:api_export_rekap_kebutuhan_pdf' project.id %}"
+  data-export-word="{% url 'detail_project:api_export_rekap_kebutuhan_word' project.id %}"
+  data-timeline-endpoint="{% url 'detail_project:api_get_rekap_kebutuhan_timeline' project.id %}"
+  data-conversion-endpoint="{% url 'detail_project:api_get_conversion_profiles' project.id %}">
+
+
+
   <h1 class="h5 mb-3">Rekap Kebutuhan</h1>
 
-  <!-- Filter Panel (NEW) -->
-  <div class="dp-card dp-border dp-surface mb-3 rk-filter-card">
-    <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h6 class="mb-0">
-          <i class="bi bi-funnel"></i> Filter & Scope
-        </h6>
-        <a href="{% url 'detail_project:jadwal_pekerjaan' project.id %}"
-           class="btn btn-sm btn-outline-primary">
-          <i class="bi bi-calendar2-range"></i> Jadwal Pekerjaan
-        </a>
-      </div>
-      
-      <!-- Tahapan Scope Selector -->
-      <div class="rk-filter-section mb-3">
-        <label class="rk-filter-label">
-          <i class="bi bi-bookmark"></i> Scope Tahapan:
-        </label>
-        <div class="rk-tahapan-selector">
-          <button type="button" 
-                  class="rk-tahapan-btn active" 
-                  data-scope="all" 
-                  data-tahapan-id="">
-            <i class="bi bi-globe"></i> Keseluruhan Project
+
+
+  <!-- Active Filter Chips (shown when filters applied) -->
+  <div id="rk-active-filters" class="mb-2" style="display: none;">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <small class="text-body-secondary"><i class="bi bi-funnel-fill"></i> Filter:</small>
+      <div id="rk-filter-chips" class="d-flex gap-1 flex-wrap"></div>
+      <button type="button" class="btn btn-sm btn-link text-danger p-0" id="rk-btn-clear-all-filters">
+        <small>Hapus semua</small>
+      </button>
+    </div>
+  </div>
+
+  <!-- Warning Badge for Missing Progress (moved here for visibility) -->
+  <div id="rk-progress-warning-container" class="mb-2 d-none">
+    <span id="rk-progress-warning" class="badge bg-warning text-dark" title="Pekerjaan tanpa progress">
+      <i class="bi bi-exclamation-triangle"></i>
+      <span id="rk-progress-warning-count">0</span> tanpa progress
+    </span>
+  </div>
+
+  <!-- MINIMALIST: Filter Modal -->
+  <div class="modal fade dp-modal" id="rk-filter-modal" tabindex="-1" aria-labelledby="rkFilterModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title" id="rkFilterModalLabel">
+            <i class="bi bi-funnel"></i> Filter Kebutuhan
+          </h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Kategori (Most Used) -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Kategori Item</label>
+            <div class="d-flex flex-wrap gap-2">
+              <div class="form-check form-check-inline">
+                <input type="checkbox" class="form-check-input kategori-check" id="kat-tk" value="TK" checked>
+                <label class="form-check-label" for="kat-tk">
+                  <i class="bi bi-people-fill text-primary"></i> Tenaga Kerja
+                </label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input type="checkbox" class="form-check-input kategori-check" id="kat-bhn" value="BHN" checked>
+                <label class="form-check-label" for="kat-bhn">
+                  <i class="bi bi-box-seam-fill text-success"></i> Bahan
+                </label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input type="checkbox" class="form-check-input kategori-check" id="kat-alt" value="ALT" checked>
+                <label class="form-check-label" for="kat-alt">
+                  <i class="bi bi-tools text-warning"></i> Alat
+                </label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input type="checkbox" class="form-check-input kategori-check" id="kat-lain" value="LAIN" checked>
+                <label class="form-check-label" for="kat-lain">
+                  <i class="bi bi-grid-3x3-gap-fill text-secondary"></i> Lainnya
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Klasifikasi -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Klasifikasi</label>
+            <select id="rk-klasifikasi" class="form-select" multiple size="4" aria-label="Filter klasifikasi">
+              <option value="">Memuat...</option>
+            </select>
+            <small class="text-muted">Shift+klik untuk pilih multiple</small>
+          </div>
+
+          <!-- Hidden elements for backward compatibility -->
+          <div class="d-none">
+            <select id="rk-subklasifikasi" multiple></select>
+            <select id="rk-pekerjaan" multiple></select>
+            <select id="rk-period-mode">
+              <option value="all" selected></option>
+            </select>
+            <select id="rk-period-start"></select>
+            <select id="rk-period-end"></select>
+            <div id="rk-tahapan-menu"></div>
+            <span id="rk-tahapan-label"></span>
+            <div id="rk-klasifikasi-menu"></div>
+            <span id="rk-klasifikasi-label"></span>
+            <div id="rk-subklasifikasi-menu"></div>
+            <span id="rk-subklasifikasi-label"></span>
+            <div id="rk-pekerjaan-menu"></div>
+            <span id="rk-pekerjaan-label"></span>
+            <input id="rk-pekerjaan-search">
+            <div id="rk-period-details"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" id="rk-btn-reset-filter">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset
           </button>
-          <!-- Tahapan buttons loaded by JS -->
-          <div id="rk-tahapan-buttons"></div>
+          <button type="button" class="btn btn-primary" id="rk-btn-apply-filter" data-bs-dismiss="modal">
+            <i class="bi bi-check-circle"></i> Terapkan
+          </button>
         </div>
-      </div>
-
-      <!-- Kategori Filter -->
-      <div class="rk-filter-section mb-3">
-        <label class="rk-filter-label">
-          <i class="bi bi-tags"></i> Kategori Item:
-        </label>
-        <div class="rk-kategori-filter">
-          <label class="rk-kategori-checkbox">
-            <input type="checkbox" class="form-check-input kategori-check" value="TK" checked>
-            <span>Tenaga Kerja (TK)</span>
-          </label>
-          <label class="rk-kategori-checkbox">
-            <input type="checkbox" class="form-check-input kategori-check" value="BHN" checked>
-            <span>Bahan (BHN)</span>
-          </label>
-          <label class="rk-kategori-checkbox">
-            <input type="checkbox" class="form-check-input kategori-check" value="ALT" checked>
-            <span>Alat (ALT)</span>
-          </label>
-          <label class="rk-kategori-checkbox">
-            <input type="checkbox" class="form-check-input kategori-check" value="LAIN" checked>
-            <span>Lain-lain (LAIN)</span>
-          </label>
-        </div>
-      </div>
-
-      <!-- Apply/Reset Buttons -->
-      <div class="d-flex gap-2">
-        <button type="button" class="btn btn-primary btn-sm" id="rk-btn-apply-filter">
-          <i class="bi bi-check-circle"></i> Terapkan Filter
-        </button>
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-btn-reset-filter">
-          <i class="bi bi-arrow-counterclockwise"></i> Reset
-        </button>
       </div>
     </div>
   </div>
@@ -88,91 +146,507 @@
   <!-- Scope Indicator -->
   <div id="rk-scope-indicator" class="mb-2"></div>
 
-  <!-- Toolbar (EXISTING - Enhanced) -->
-  <div id="rk-toolbar" class="dp-toolbar" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
-    <!-- Unified Export Dropdown (CSV/PDF/Word) -->
-    <div class="btn-group" role="group">
-      <button type="button"
-              class="btn btn-outline-primary dp-btn dp-btn-sm dropdown-toggle"
-              data-bs-toggle="dropdown"
-              aria-expanded="false"
-              aria-label="Export options">
-        <i class="bi bi-download" aria-hidden="true"></i>
-        <span class="d-none d-md-inline">Export</span>
+  <div class="dp-card dp-border dp-surface mb-3 rk-analytics-card">
+    <div class="rk-card-header d-flex justify-content-between align-items-center">
+      <div>
+        <h6 class="mb-0">
+          <i class="bi bi-graph-up-arrow"></i> Insight Material Mix
+        </h6>
+        <small class="text-muted d-block">
+          Berlaku untuk <span id="rk-analytics-period">Seluruh waktu proyek</span>
+        </small>
+      </div>
+      <button class="btn btn-sm btn-light rk-card-toggle" type="button" data-bs-toggle="collapse"
+        data-bs-target="#rk-analytics-collapse" aria-expanded="true" aria-controls="rk-analytics-collapse">
+        <i class="bi bi-chevron-up"></i>
       </button>
-      <ul class="dropdown-menu">
-        <li>
-          <button class="dropdown-item" type="button" id="btn-export-csv">
-            <i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>
-            Export CSV
-          </button>
-        </li>
-        <li>
-          <button class="dropdown-item" type="button" id="btn-export-pdf">
-            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-            Export PDF
-          </button>
-        </li>
-        <li>
-          <button class="dropdown-item" type="button" id="btn-export-word">
-            <i class="bi bi-file-earmark-word text-primary me-2"></i>
-            Export Word
-          </button>
-        </li>
-      </ul>
     </div>
-    
-    <div class="ms-auto small text-muted rk-stats">
-      TK: <span id="rk-count-TK">0</span> •
-      BHN: <span id="rk-count-BHN">0</span> •
-      ALT: <span id="rk-count-ALT">0</span> •
-      LAIN: <span id="rk-count-LAIN">0</span>
-      <span class="ms-2">(<span id="rk-nrows">0</span> baris)</span>
-      <span class="ms-2" id="rk-generated" title="Generated at"></span>
-      <span id="rk-filter-indicator" class="ms-2"></span>
-    </div>
-  </div>
-
-  <!-- Table Card (EXISTING) -->
-  <div class="dp-card dp-border dp-surface mt-3">
-    <div class="card-body p-0">
-      <div class="table-responsive dp-scrollbar" id="rk-tablewrap">
-        <table class="rk-table table table-sm table-hover align-middle mb-0" id="rk-table">
-          <thead class="table-light dp-thead-sticky">
-            <tr>
-              <th style="width:90px" class="text-nowrap">Kat</th>
-              <th style="width:160px" class="text-nowrap">Kode</th>
-              <th>Uraian</th>
-              <th style="width:90px">Satuan</th>
-              <th style="width:120px" class="text-end text-nowrap">Kuantitas</th>
-            </tr>
-          </thead>
-          <tbody id="rk-tbody">
-            <tr class="rk-loading-row">
-              <td colspan="5" class="text-muted">Memuat…</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div id="rk-empty" class="text-center text-muted py-3 d-none">
-          <i class="bi bi-inbox" style="font-size: 2rem; opacity: 0.5;"></i>
-          <p class="mt-2 mb-0">Tidak ada data untuk filter yang dipilih.</p>
-        </div>
-        <div id="rk-loading" class="text-center text-muted py-3 d-none">
-          <div class="spinner-border spinner-border-sm" role="status">
-            <span class="visually-hidden">Loading...</span>
+    <div id="rk-analytics-collapse" class="collapse show">
+      <div class="card-body">
+        <div class="rk-analytics-grid">
+          <div class="rk-analytics-item">
+            <div class="rk-analytics-title">
+              <span class="fw-semibold">Distribusi Kategori</span>
+              <small class="text-muted d-block">
+                Proporsi biaya total · <span class="rk-period-note" data-period-note="mix">Seluruh waktu proyek</span>
+              </small>
+            </div>
+            <div id="rk-chart-mix" class="rk-chart" aria-label="Chart distribusi kategori"></div>
+            <ul id="rk-chart-mix-summary" class="rk-chart-summary"></ul>
           </div>
-          <span class="ms-2">Memuat data...</span>
+          <div class="rk-analytics-item">
+            <div class="rk-analytics-title d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div>
+                <span class="fw-semibold">Top Item berdasarkan biaya</span>
+                <small class="text-muted d-block">
+                  Analisis biaya terbesar · <span class="rk-period-note" data-period-note="cost">Seluruh waktu
+                    proyek</span>
+                </small>
+              </div>
+              <div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-cost-mode-toggle"
+                  data-mode="compact">
+                  Tampilkan lengkap
+                </button>
+              </div>
+            </div>
+            <div id="rk-chart-cost" class="rk-chart" aria-label="Chart konsentrasi biaya"></div>
+            <ul id="rk-chart-cost-summary" class="rk-chart-summary"></ul>
+          </div>
         </div>
       </div>
     </div>
   </div>
+
+
+
+  <!-- Toolbar (REDESIGNED - Phase 4) - Moved above analytics -->
+
+  <div id="rk-toolbar" class="rk-toolbar-v2 position-relative" role="toolbar" aria-label="Toolbar Rekap Kebutuhan">
+
+    <!-- Section 0: Search & Filter (NEW - Consolidated from compact-bar) -->
+    <div class="rk-toolbar-section rk-toolbar-search" role="search" aria-label="Search and filter">
+      <div class="input-group input-group-sm">
+        <span class="input-group-text bg-transparent border-end-0">
+          <i class="bi bi-search text-body-secondary"></i>
+        </span>
+        <input type="search" id="rk-search" class="form-control border-start-0 bg-transparent"
+          placeholder="Cari item..." autocomplete="off" aria-label="Cari item kebutuhan">
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-btn-open-filter" data-bs-toggle="modal"
+        data-bs-target="#rk-filter-modal" title="Filter">
+        <i class="bi bi-funnel"></i>
+        <span id="rk-filter-badge" class="badge bg-primary ms-1 d-none">0</span>
+      </button>
+    </div>
+
+    <!-- Section 1: Actions Group -->
+    <div class="rk-toolbar-section rk-toolbar-actions" role="group" aria-label="Actions">
+
+      <!-- Export Button - Opens Modal (Simplified - No Dropdown) -->
+      <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
+        data-bs-target="#rk-export-modal" title="Export data" id="btn-open-export-modal">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-md-inline ms-1">Export</span>
+      </button>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="rk-btn-refresh" aria-label="Refresh data"
+        title="Refresh data (Ctrl+R)">
+        <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+        <span class="d-none d-lg-inline ms-1">Refresh</span>
+      </button>
+
+    </div>
+
+
+    <!-- Section 2: View Group (Search moved to compact bar) -->
+    <div class="rk-toolbar-section rk-toolbar-search-view" role="group" aria-label="View toggle">
+
+      <div class="btn-group btn-group-sm rk-view-toggle" id="rk-view-toggle" role="group" aria-label="Mode tampilan">
+        <button type="button" class="btn btn-outline-secondary active" data-view="snapshot" aria-pressed="true"
+          title="Tampilkan semua kebutuhan">
+          <i class="bi bi-list-check"></i>
+          <span class="d-none d-lg-inline ms-1">Keseluruhan</span>
+        </button>
+        <button type="button" class="btn btn-outline-secondary" data-view="timeline" aria-pressed="false"
+          title="Tampilkan kebutuhan per periode waktu">
+          <i class="bi bi-calendar-range"></i>
+          <span class="d-none d-lg-inline ms-1">Per Periode</span>
+        </button>
+      </div>
+
+      <!-- Unit Mode Toggle (Base vs Market) -->
+      <div class="btn-group btn-group-sm ms-2" id="rk-unit-toggle" role="group" aria-label="Mode satuan">
+        <button type="button" class="btn btn-outline-secondary active" data-unit="base" aria-pressed="true"
+          title="Tampilkan dalam satuan dasar (dari Template AHSP)">
+          <i class="bi bi-rulers"></i>
+          <span class="d-none d-lg-inline ms-1">Satuan Dasar</span>
+        </button>
+        <button type="button" class="btn btn-outline-secondary" data-unit="market" aria-pressed="false"
+          title="Tampilkan dalam satuan beli (dari Supplier)">
+          <i class="bi bi-cart3"></i>
+          <span class="d-none d-lg-inline ms-1">Satuan Beli</span>
+        </button>
+      </div>
+
+      <!-- Timeline Range Picker (Compact - shown only in timeline view) -->
+      <div class="rk-timeline-range-compact d-none" id="rk-toolbar-range-picker">
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-secondary btn-sm active" data-range-type="week" title="Mingguan">
+            <i class="bi bi-calendar-week"></i>
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-range-type="month" title="Bulanan">
+            <i class="bi bi-calendar-month"></i>
+          </button>
+        </div>
+        <select id="rk-toolbar-range-start" class="form-select form-select-sm" style="width: auto; min-width: 100px;">
+          <option value="0">Minggu 1</option>
+        </select>
+        <span class="text-body-secondary">–</span>
+        <select id="rk-toolbar-range-end" class="form-select form-select-sm" style="width: auto; min-width: 100px;">
+          <option value="3">Minggu 4</option>
+        </select>
+      </div>
+
+    </div>
+
+    <!-- Section 3: Compact Stats (Single Row) -->
+    <div class="rk-toolbar-section rk-toolbar-stats-compact" role="group" aria-label="Statistics">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="rk-btn-toggle-stats" data-bs-toggle="collapse"
+        data-bs-target="#rk-stats-popover" aria-expanded="false" title="Tampilkan statistik">
+        <i class="bi bi-bar-chart-line"></i>
+        <span class="d-none d-md-inline ms-1">Stats</span>
+      </button>
+      <span class="text-body-secondary small ms-2">
+        <span id="rk-nrows">0</span> item ·
+        <span id="rk-total-cost" class="fw-semibold">Rp 0</span>
+      </span>
+    </div>
+
+    <!-- Stats Popover (Hidden by default) -->
+    <div class="collapse rk-stats-popover position-absolute bg-body shadow rounded p-2 mt-1" id="rk-stats-popover"
+      style="z-index: 1000; right: 0; top: 100%;">
+      <div class="d-flex gap-3 small">
+        <span><i class="bi bi-people-fill text-primary"></i> TK: <span id="rk-count-TK">0</span></span>
+        <span><i class="bi bi-box-seam-fill text-success"></i> BHN: <span id="rk-count-BHN">0</span></span>
+        <span><i class="bi bi-tools text-warning"></i> ALT: <span id="rk-count-ALT">0</span></span>
+        <span><i class="bi bi-three-dots text-secondary"></i> LAIN: <span id="rk-count-LAIN">0</span></span>
+      </div>
+    </div>
+
+    <!-- Column Visibility Dropdown -->
+    <div class="dropdown ms-2" id="rk-col-visibility">
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+        aria-expanded="false" title="Pilih kolom yang ditampilkan">
+        <i class="bi bi-layout-three-columns"></i>
+        <span class="d-none d-md-inline ms-1">Kolom</span>
+      </button>
+      <div class="dropdown-menu dropdown-menu-end p-2" style="min-width: 220px;">
+        <div class="small text-body-secondary mb-2 fw-semibold">Tampilkan Kolom:</div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-satuan-beli" data-col="satuan-beli">
+          <label class="form-check-label small" for="rk-col-satuan-beli">Satuan Beli (Supplier)</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-faktor" data-col="faktor">
+          <label class="form-check-label small" for="rk-col-faktor">Faktor Konversi</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-qty-beli" data-col="qty-beli">
+          <label class="form-check-label small" for="rk-col-qty-beli">Qty Satuan Beli</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input rk-col-toggle" type="checkbox" id="rk-col-harga-beli" data-col="harga-beli">
+          <label class="form-check-label small" for="rk-col-harga-beli">Harga per Satuan Beli</label>
+        </div>
+        <hr class="my-2">
+        <button class="btn btn-sm btn-link p-0 text-body-secondary" id="rk-col-reset">
+          <i class="bi bi-arrow-counterclockwise"></i> Reset ke default
+        </button>
+      </div>
+    </div>
+
+    <!-- Hidden elements for compatibility -->
+    <span id="rk-generated" class="d-none"></span>
+    <span id="rk-filter-indicator" class="d-none"></span>
+    <span id="rk-stats-summary" class="d-none">0</span>
+    <div id="rk-stats-collapse" class="d-none"></div>
+
+  </div>
+
+  <!-- Table Card (EXISTING) -->
+
+  <div class="dp-card dp-border dp-surface mt-3">
+
+    <div class="card-body p-0">
+
+      <div class="table-responsive dp-scrollbar" id="rk-tablewrap">
+
+        <table class="rk-table table table-sm table-hover align-middle mb-0" id="rk-table">
+
+          <colgroup>
+            <col class="col-kategori">
+            <col class="col-kode">
+            <col class="col-uraian">
+            <col class="col-satuan">
+            <col class="col-kuantitas">
+            <col class="col-harga-satuan">
+            <col class="col-total-harga">
+          </colgroup>
+
+          <thead class="table-light dp-thead-sticky">
+
+            <tr>
+
+              <th style="width:90px" class="text-nowrap">Kat</th>
+
+              <th style="width:160px" class="text-nowrap">Kode</th>
+
+              <th>Uraian</th>
+
+              <th style="width:90px">Satuan</th>
+
+              <th style="width:140px" class="text-end text-nowrap">Kuantitas</th>
+
+              <th style="width:140px" class="text-end text-nowrap">Harga Satuan</th>
+
+              <th style="width:160px" class="text-end text-nowrap">Total Harga</th>
+
+            </tr>
+
+          </thead>
+
+          <tbody id="rk-tbody">
+
+            <tr class="rk-loading-row">
+
+              <td colspan="7" class="text-muted">Memuat...</td>
+
+            </tr>
+
+          </tbody>
+
+          <tfoot id="rk-tfoot" class="d-none rk-tfoot">
+            <!-- Subtotal Terjadwal -->
+            <tr class="rk-tfoot-subtotal rk-tfoot-scheduled d-none">
+              <td colspan="6" class="text-end">Subtotal Terjadwal (<span id="rk-footer-scheduled-count">0</span> item)
+              </td>
+              <td class="text-end font-monospace rk-text-success" id="rk-footer-scheduled-total">Rp 0</td>
+            </tr>
+            <!-- Subtotal Belum Terjadwal -->
+            <tr class="rk-tfoot-subtotal rk-tfoot-unscheduled d-none">
+              <td colspan="6" class="text-end">Subtotal Belum Terjadwal (<span id="rk-footer-unscheduled-count">0</span>
+                item)</td>
+              <td class="text-end font-monospace rk-text-warning" id="rk-footer-unscheduled-total">Rp 0</td>
+            </tr>
+            <!-- Grand Total -->
+            <tr class="rk-tfoot-grand-total fw-bold">
+              <td colspan="6" class="text-end">GRAND TOTAL (<span id="rk-footer-count">0</span> item)</td>
+              <td class="text-end font-monospace rk-text-success" id="rk-footer-total">Rp 0</td>
+            </tr>
+          </tfoot>
+
+        </table>
+
+
+
+
+        <div id="rk-empty" class="text-center text-muted py-3 d-none">
+
+          <i class="bi bi-inbox" style="font-size: 2rem; opacity: 0.5;"></i>
+
+          <p class="mt-2 mb-0">Tidak ada data untuk filter yang dipilih.</p>
+
+        </div>
+
+        <div id="rk-loading" class="text-center text-muted py-3 d-none">
+
+          <div class="spinner-border spinner-border-sm" role="status">
+
+            <span class="visually-hidden">Loading...</span>
+
+          </div>
+
+          <span class="ms-2">Memuat data...</span>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Timeline View -->
+  <div id="rk-timeline" class="d-none mt-3">
+    <div class="dp-card dp-border dp-surface">
+      <div class="card-body">
+        <!-- Legacy Range Picker (HIDDEN - now in toolbar) -->
+        <div class="rk-timeline-range-picker d-none mb-3 p-3 bg-body-secondary rounded">
+          <div class="row align-items-end g-3">
+            <div class="col-auto">
+              <label class="form-label small text-body-secondary mb-1">Tampilkan</label>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Period type">
+                <input type="radio" class="btn-check" name="timelinePeriodType" id="timelineWeek" value="week" checked>
+                <label class="btn btn-outline-secondary" for="timelineWeek">Mingguan</label>
+                <input type="radio" class="btn-check" name="timelinePeriodType" id="timelineMonth" value="month">
+                <label class="btn btn-outline-secondary" for="timelineMonth">Bulanan</label>
+              </div>
+            </div>
+            <div class="col-auto">
+              <label for="rk-timeline-start" class="form-label small text-body-secondary mb-1">Dari</label>
+              <select id="rk-timeline-start" class="form-select form-select-sm" style="min-width: 150px;"></select>
+            </div>
+            <div class="col-auto">
+              <label for="rk-timeline-end" class="form-label small text-body-secondary mb-1">Sampai</label>
+              <select id="rk-timeline-end" class="form-select form-select-sm" style="min-width: 150px;"></select>
+            </div>
+            <div class="col-auto">
+              <button type="button" class="btn btn-primary btn-sm" id="rk-timeline-apply">
+                <i class="bi bi-check"></i> Terapkan
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="rk-timeline-loading" class="text-center text-muted py-4 d-none">
+          <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <span class="ms-2">Memuat timeline...</span>
+        </div>
+        <div id="rk-timeline-empty" class="text-center text-muted py-4 d-none">
+          <i class="bi bi-calendar-x" style="font-size: 2rem; opacity: 0.4;"></i>
+          <p class="mb-0 mt-2">Belum ada data timeline untuk filter saat ini.</p>
+        </div>
+        <div id="rk-timeline-content" class="rk-timeline-content"></div>
+      </div>
+    </div>
+  </div>
+
 </div>
+
+<!-- Export Modal (Phase 2) -->
+<div class="modal fade dp-modal" id="rk-export-modal" tabindex="-1" aria-labelledby="rkExportModalLabel"
+  aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="rkExportModalLabel">
+          <i class="bi bi-download"></i> Export Rekap Kebutuhan
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <!-- Period Selection -->
+        <div class="mb-4">
+          <label class="form-label fw-bold">
+            <i class="bi bi-calendar-range"></i> Periode Export
+          </label>
+          <div class="list-group">
+            <label class="list-group-item list-group-item-action d-flex align-items-start">
+              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="exportPeriod" value="all"
+                id="exportPeriodAll" checked>
+              <div class="flex-grow-1">
+                <h6 class="mb-1 fw-bold">Keseluruhan Proyek</h6>
+                <small class="text-muted">Export seluruh kebutuhan material tanpa filter waktu</small>
+              </div>
+            </label>
+            <label class="list-group-item list-group-item-action d-flex align-items-start">
+              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="exportPeriod" value="week"
+                id="exportPeriodWeek">
+              <div class="flex-grow-1">
+                <h6 class="mb-1 fw-bold">Minggu Tertentu</h6>
+                <small class="text-muted">Export kebutuhan per minggu yang dipilih</small>
+              </div>
+            </label>
+            <label class="list-group-item list-group-item-action d-flex align-items-start">
+              <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="exportPeriod" value="month"
+                id="exportPeriodMonth">
+              <div class="flex-grow-1">
+                <h6 class="mb-1 fw-bold">Bulan Tertentu</h6>
+                <small class="text-muted">Export kebutuhan per bulan yang dipilih</small>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Period Details (shown when week/month selected) -->
+        <div id="rk-export-period-details" class="mb-4" style="display: none;">
+          <label class="form-label fw-bold">
+            <i class="bi bi-calendar-week"></i> Pilih <span id="rk-export-period-label">Periode</span>
+          </label>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label for="rk-export-period-start" class="form-label small text-muted mb-1">Dari</label>
+              <select id="rk-export-period-start" class="form-select"></select>
+            </div>
+            <div class="col-md-6">
+              <label for="rk-export-period-end" class="form-label small text-muted mb-1">Sampai</label>
+              <select id="rk-export-period-end" class="form-select"></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Format Selection -->
+        <div class="mb-4">
+          <label class="form-label fw-bold">
+            <i class="bi bi-filetype-pdf"></i> Format Export
+          </label>
+          <div class="btn-group w-100 flex-wrap" role="group" aria-label="Export format selection">
+            <input type="radio" class="btn-check" name="rkExportFormat" id="rkFormatPdf" value="pdf" checked>
+            <label class="btn btn-outline-danger" for="rkFormatPdf">
+              <i class="bi bi-file-earmark-pdf"></i> PDF
+            </label>
+
+            <input type="radio" class="btn-check" name="rkExportFormat" id="rkFormatWord" value="word">
+            <label class="btn btn-outline-primary" for="rkFormatWord">
+              <i class="bi bi-file-earmark-word"></i> Word
+            </label>
+
+            <input type="radio" class="btn-check" name="rkExportFormat" id="rkFormatXlsx" value="xlsx">
+            <label class="btn btn-outline-success" for="rkFormatXlsx">
+              <i class="bi bi-file-earmark-excel"></i> Excel
+            </label>
+          </div>
+        </div>
+
+        <!-- Unit Mode Selection (for period-based exports) -->
+        <div class="mb-4" id="rk-export-unit-mode-section">
+          <label class="form-label fw-bold">
+            <i class="bi bi-rulers"></i> Mode Satuan
+          </label>
+          <div class="btn-group w-100" role="group" aria-label="Unit mode selection">
+            <input type="radio" class="btn-check" name="rkUnitMode" id="rkUnitBase" value="base" checked>
+            <label class="btn btn-outline-secondary" for="rkUnitBase">
+              <i class="bi bi-rulers"></i> Satuan Dasar
+            </label>
+
+            <input type="radio" class="btn-check" name="rkUnitMode" id="rkUnitMarket" value="market">
+            <label class="btn btn-outline-secondary" for="rkUnitMarket">
+              <i class="bi bi-cart3"></i> Satuan Beli
+            </label>
+          </div>
+          <small class="text-muted d-block mt-1">
+            Satuan Beli menggunakan konversi dari Harga Items (jika tersedia)
+          </small>
+        </div>
+
+
+        <!-- Status Message -->
+        <div id="rk-export-status" class="alert alert-info py-2 d-none">
+          <i class="bi bi-info-circle me-1"></i>
+          <span id="rk-export-status-text">Mempersiapkan export...</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary" id="rk-export-confirm">
+          <i class="bi bi-download"></i> Export
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Export Loading Modal -->
+{% include 'detail_project/_export_loading_modal.html' with modal_id="rkExportLoadingModal" %}
+
 {% endblock %}
 
+
+
 {% block extra_js %}
-  {{ block.super }}
-  <!-- Unified Export Manager -->
-  <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
-  <script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}" defer></script>
+
+{{ block.super }}
+
+<!-- Unified Export Manager -->
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+<script src="{% static 'detail_project/js/vendor/echarts.min.js' %}"></script>
+
+<script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}?v={{ now|date:'U' }}" defer></script>
+
+<!-- Toolbar V2 Enhancements (Phase 4) -->
+<script src="{% static 'detail_project/js/rekap_kebutuhan_toolbar.js' %}" defer></script>
+
 {% endblock %}

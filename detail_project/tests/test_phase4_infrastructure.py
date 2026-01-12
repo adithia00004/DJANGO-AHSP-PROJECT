@@ -44,10 +44,13 @@ class TestHealthCheckEndpoints:
         # Cache should be OK
         assert data['checks']['cache']['status'] == 'ok'
 
+    @override_settings(SILKY_INTERCEPT_FUNC=lambda request: False)
     def test_health_check_database_failure(self, client):
         """Test health check returns 503 when database fails."""
-        with patch('django.db.connection.cursor') as mock_cursor:
-            mock_cursor.side_effect = Exception('Database connection failed')
+        # Mock is applied after Silk, so we need to disable Silk to prevent it
+        # from intercepting the mock and failing before health check runs
+        with patch('detail_project.views_health.connection') as mock_conn:
+            mock_conn.cursor.side_effect = Exception('Database connection failed')
 
             response = client.get('/health/')
 

@@ -25,7 +25,7 @@ from django.db import models as djm, IntegrityError
 # Temporarily ignore UI tests (need browser/selenium)
 collect_ignore = [
     "test_list_pekerjaan_page_ui.py",  # UI test - needs browser
-    "test_jadwal_pekerjaan_page_ui.py",  # UI test - needs browser
+    # test_jadwal_pekerjaan_page_ui.py is now a smoke test (no browser needed)
 ]
 
 
@@ -88,9 +88,18 @@ def other_user(db):
 
 @pytest.fixture
 def client_logged(db, user):
+    """
+    Create authenticated client using actual login flow.
+    
+    Uses client.login() instead of force_login() to ensure proper
+    session handling with AllAuth middleware stack.
+    """
     c = Client()
-    c.force_login(user)
-    # Hindari DisallowedHost ketika pakai test client
+    # Use actual login instead of force_login to work with AllAuth
+    success = c.login(username=user.username, password='secret')
+    assert success, "Login failed - check user fixture password"
+    
+    # Set test server host
     c.defaults["HTTP_HOST"] = "testserver"
     return c
 
@@ -398,3 +407,272 @@ def ahsp_ref(db):
         nama_ahsp="Referensi A",
         satuan="OH",
     )
+
+
+# ================= Complete Referensi Mode Fixtures =================
+@pytest.fixture
+def ahsp_ref_with_rincian(db):
+    """
+    Create complete AHSPReferensi with RincianReferensi items.
+    This simulates real reference data for testing.
+    """
+    from referensi.models import AHSPReferensi, RincianReferensi
+    
+    # Create AHSP
+    ahsp = AHSPReferensi.objects.create(
+        kode_ahsp="A.1.001",
+        nama_ahsp="Galian Tanah Keras",
+        satuan="m3",
+        sumber="SNI 2024",
+        klasifikasi="Pekerjaan Tanah",
+        sub_klasifikasi="Galian",
+    )
+    
+    # Create Rincian items (TK, BHN, ALT)
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="TK",
+        kode_item="TK.01",
+        uraian_item="Pekerja",
+        satuan_item="OH",
+        koefisien=Decimal("0.75"),
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="TK",
+        kode_item="TK.02",
+        uraian_item="Mandor",
+        satuan_item="OH",
+        koefisien=Decimal("0.025"),
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="ALT",
+        kode_item="ALT.01",
+        uraian_item="Excavator",
+        satuan_item="jam",
+        koefisien=Decimal("0.05"),
+    )
+    
+    return ahsp
+
+
+@pytest.fixture
+def pekerjaan_referensi(db, project, sub_klas, ahsp_ref_with_rincian):
+    """
+    Create Pekerjaan with source_type='referensi' linked to AHSPReferensi.
+    This triggers signal to populate DetailAHSPProject from reference data.
+    """
+    from detail_project.models import Pekerjaan, VolumePekerjaan
+    
+    pekerjaan = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klas,
+        source_type="ref",  # Use 'ref' not 'referensi'
+        ref=ahsp_ref_with_rincian,  # FK field is 'ref' not 'ahsp_referensi'
+        snapshot_kode=ahsp_ref_with_rincian.kode_ahsp,
+        snapshot_uraian=ahsp_ref_with_rincian.nama_ahsp,
+        snapshot_satuan=ahsp_ref_with_rincian.satuan,
+        ordering_index=1,
+    )
+    
+    # Add volume
+    VolumePekerjaan.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        quantity=Decimal("100.00"),
+    )
+    
+    return pekerjaan
+
+
+@pytest.fixture
+def project_with_referensi_pekerjaan(db, user):
+    """
+    Create a complete project with referensi-mode pekerjaan.
+    Includes: Project → Klasifikasi → SubKlasifikasi → Pekerjaan(referensi) → DetailAHSPProject
+    """
+    from referensi.models import AHSPReferensi, RincianReferensi
+    from detail_project.models import (
+        Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan
+    )
+    
+    Project = _import_project_model()
+    
+    # Create project
+    project = Project.objects.create(
+        owner=user,
+        nama="Project With Referensi",
+        sumber_dana="APBN",
+        lokasi_project="Jakarta",
+        nama_client="Client Test",
+        anggaran_owner=Decimal("500000000.00"),
+        tanggal_mulai=date.today(),
+        tahun_project=date.today().year,
+    )
+    
+    # Create hierarchy
+    klas = Klasifikasi.objects.create(
+        project=project,
+        name="Pekerjaan Persiapan",
+        ordering_index=1
+    )
+    sub_klas = SubKlasifikasi.objects.create(
+        project=project,
+        klasifikasi=klas,
+        name="Pembersihan Lahan",
+        ordering_index=1
+    )
+    
+    # Create AHSPReferensi with rincian
+    ahsp = AHSPReferensi.objects.create(
+        kode_ahsp="A.1.1",
+        nama_ahsp="Pembersihan Lahan Semak",
+        satuan="m2",
+        sumber="SNI 2024",
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="TK",
+        kode_item="TK.001",
+        uraian_item="Pekerja Biasa",
+        satuan_item="OH",
+        koefisien=Decimal("0.10"),
+    )
+    RincianReferensi.objects.create(
+        ahsp=ahsp,
+        kategori="BHN",
+        kode_item="BHN.001",
+        uraian_item="Air Bersih",
+        satuan_item="liter",
+        koefisien=Decimal("5.00"),
+    )
+    
+    # Create Pekerjaan with referensi mode
+    pekerjaan = Pekerjaan.objects.create(
+        project=project,
+        sub_klasifikasi=sub_klas,
+        source_type="ref",  # Use 'ref' not 'referensi'
+        ref=ahsp,  # FK field is 'ref' not 'ahsp_referensi'
+        snapshot_kode=ahsp.kode_ahsp,
+        snapshot_uraian=ahsp.nama_ahsp,
+        snapshot_satuan=ahsp.satuan,
+        ordering_index=1,
+    )
+    
+    # Add volume
+    VolumePekerjaan.objects.create(
+        project=project,
+        pekerjaan=pekerjaan,
+        quantity=Decimal("500.00"),
+    )
+    
+    return project
+
+
+# ================= Jadwal Pekerjaan (Weekly Canonical Storage) =================
+@pytest.fixture
+def project_with_dates(db, user):
+    """Project dengan tanggal mulai dan selesai untuk testing jadwal pekerjaan."""
+    Project = _import_project_model()
+    fields = {f.name for f in Project._meta.fields}
+
+    kw = {
+        "nama": "Project Jadwal QA",
+        "tanggal_mulai": date(2025, 1, 1),
+        "tanggal_selesai": date(2025, 12, 31),
+    }
+
+    if "owner" in fields:
+        kw["owner"] = user
+    if "is_active" in fields:
+        kw["is_active"] = True
+    if "sumber_dana" in fields:
+        kw["sumber_dana"] = "APBD"
+    if "lokasi_project" in fields:
+        kw["lokasi_project"] = "Jakarta"
+    if "nama_client" in fields:
+        kw["nama_client"] = "Client Test"
+    if "week_start_day" in fields:
+        kw["week_start_day"] = 0  # Monday
+    if "week_end_day" in fields:
+        kw["week_end_day"] = 6  # Sunday
+    if "tahun_project" in fields:
+        kw["tahun_project"] = 2025
+    if "anggaran_owner" in fields:
+        kw["anggaran_owner"] = Decimal("1000000000.00")
+
+    return Project.objects.create(**kw)
+
+
+@pytest.fixture
+def pekerjaan_with_volume(db, project_with_dates):
+    """
+    Pekerjaan dengan hierarki lengkap (Klasifikasi → SubKlasifikasi → Pekerjaan)
+    dalam project yang sama untuk testing progress.
+    
+    IMPORTANT: Creates its own hierarchy to ensure all data belongs to project_with_dates.
+    This avoids cross-project mismatch issues.
+    """
+    from detail_project.models import Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan
+
+    # Create Klasifikasi in project_with_dates
+    klasifikasi = Klasifikasi.objects.create(
+        project=project_with_dates,
+        name="Klasifikasi Jadwal Test",
+        ordering_index=1
+    )
+
+    # Create SubKlasifikasi in project_with_dates
+    sub_klasifikasi = SubKlasifikasi.objects.create(
+        project=project_with_dates,
+        klasifikasi=klasifikasi,
+        name="Sub Jadwal Test",
+        ordering_index=1
+    )
+
+    # Create Pekerjaan in project_with_dates
+    pekerjaan = Pekerjaan.objects.create(
+        project=project_with_dates,
+        sub_klasifikasi=sub_klasifikasi,
+        source_type="custom",
+        snapshot_kode="PEK-001",
+        snapshot_uraian="Pekerjaan Test",
+        snapshot_satuan="m3",
+        ordering_index=1,
+    )
+
+    # Create volume record
+    VolumePekerjaan.objects.create(
+        project=project_with_dates,
+        pekerjaan=pekerjaan,
+        quantity=Decimal("100.00"),
+    )
+
+    return pekerjaan
+
+
+@pytest.fixture
+def weekly_progress(db, pekerjaan_with_volume):
+    """Sample weekly progress data."""
+    from detail_project.models import PekerjaanProgressWeekly
+
+    # Create 4 weeks of progress
+    progress_records = []
+    for week_num in range(1, 5):
+        start_date = date(2025, 1, 1 + (week_num - 1) * 7)
+        end_date = date(2025, 1, 7 + (week_num - 1) * 7)
+
+        record = PekerjaanProgressWeekly.objects.create(
+            pekerjaan=pekerjaan_with_volume,
+            project=pekerjaan_with_volume.project,
+            week_number=week_num,
+            week_start_date=start_date,
+            week_end_date=end_date,
+            planned_proportion=Decimal("25.00"),
+            actual_proportion=Decimal("20.00"),
+            notes=f"Week {week_num} progress",
+        )
+        progress_records.append(record)
+
+    return progress_records

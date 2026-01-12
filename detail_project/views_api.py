@@ -6,6 +6,7 @@ import csv
 import logging
 import math
 import re
+import base64
 from io import BytesIO
 from typing import Any, Dict, Optional, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
@@ -21,22 +22,27 @@ from django.views.decorators.http import require_POST, require_GET, require_http
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.db import transaction, IntegrityError
-from django.db.models import Max, F, DecimalField, ExpressionWrapper
+from django.db.models import Max, F, Sum, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.html import escape
 from django.utils.timezone import now
 from django.utils.dateparse import parse_datetime
+from django.core.cache import cache
 from .numeric import parse_any, to_dp_str, quantize_half_up, DECIMAL_SPEC
+from .api_helpers import parse_kebutuhan_query_params
 from referensi.models import AHSPReferensi
 from .models import (
+    Project,  # ADDED: Required for export_template_ahsp_json
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     DetailAHSPProject, DetailAHSPExpanded, DetailAHSPAudit,
-    HargaItemProject, VolumeFormulaState, ProjectPricing,  # NEW
-    ProjectChangeStatus,
+    HargaItemProject, ItemConversionProfile, VolumeFormulaState, ProjectPricing,  # Added ItemConversionProfile
+    ProjectChangeStatus, ProjectParameter,  # Added ProjectParameter for template import
+    PekerjaanProgressWeekly, TahapPelaksanaan,
 )
 from .services import (
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
+    compute_kebutuhan_items, summarize_kebutuhan_rows,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
     expand_bundle_to_components,  # NEW: Dual storage expansion (Pekerjaan)
     expand_ahsp_bundle_to_components,  # NEW: Dual storage expansion (AHSP)
@@ -166,6 +172,105 @@ def _src_to_str(val):
 def _err(path: str, message: str):
     return {"path": path, "message": message}
 
+
+def _parse_export_attachments(request: HttpRequest):
+    """
+    Parse optional base64 image attachments sent via POST for export endpoints.
+    
+    Supports two formats:
+    1. Old format (data_url): {"title": "Gantt Chart", "data_url": "data:image/png;base64,..."}
+    2. New format (bytes): {"title": "Kurva S", "bytes": "iVBORw0...", "format": "png"}
+    """
+    if request.method != "POST":
+        return []
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return []
+
+    attachments = []
+    for att in payload.get("attachments", []):
+        title = att.get("title") or "Lampiran"
+        
+        # Try new format first (direct bytes)
+        raw_bytes = att.get("bytes")
+        if raw_bytes and isinstance(raw_bytes, str):
+            try:
+                blob = base64.b64decode(raw_bytes)
+                attachments.append({"title": title, "bytes": blob})
+                continue
+            except Exception:
+                pass
+        
+        # Fallback to old format (data_url)
+        data_url = att.get("data_url") or att.get("dataUrl")
+        if not data_url or not isinstance(data_url, str):
+            continue
+        if "base64," not in data_url:
+            continue
+        try:
+            b64 = data_url.split("base64,", 1)[1]
+            blob = base64.b64decode(b64)
+            attachments.append({"title": title, "bytes": blob})
+        except Exception:
+            continue
+    return attachments
+
+
+def _parse_export_parameters(request: HttpRequest):
+    """
+    Parse export parameters from POST request.
+
+    Expected payload:
+    {
+        "report_type": "full" | "monthly" | "weekly",
+        "mode": "weekly" | "monthly",
+        "include_dates": true | false,
+        "weeks_per_month": 4,
+        "attachments": [...]
+    }
+
+    Returns:
+        dict: Parsed parameters with defaults
+    """
+    if request.method != "POST":
+        return {
+            'report_type': 'full',
+            'mode': 'weekly',
+            'include_dates': False,
+            'weeks_per_month': 4
+        }
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return {
+            'report_type': 'full',
+            'mode': 'weekly',
+            'include_dates': False,
+            'weeks_per_month': 4
+        }
+
+    # Parse with defaults
+    report_type = payload.get('report_type', 'full')
+    if report_type not in ['full', 'monthly', 'weekly']:
+        report_type = 'full'
+
+    mode = payload.get('mode', 'weekly')
+    if mode not in ['weekly', 'monthly']:
+        mode = 'weekly'
+
+    include_dates = payload.get('include_dates', False)
+    weeks_per_month = payload.get('weeks_per_month', 4)
+
+    return {
+        'report_type': report_type,
+        'mode': mode,
+        'include_dates': include_dates,
+        'weeks_per_month': weeks_per_month
+    }
+
+
 def _warn(path: str, message: str):
     err = _err(path, message)
     err["severity"] = "warning"
@@ -262,6 +367,7 @@ def api_search_ahsp(request: HttpRequest, project_id: int):
         "kode_ahsp": obj.kode_ahsp,
         "nama_ahsp": obj.nama_ahsp,
         "satuan": obj.satuan,
+        "sumber": obj.sumber,  # Include source for LAIN segment display
     } for obj in qs]
 
     return JsonResponse({"ok": True, "results": results, "total": len(results)})
@@ -458,9 +564,48 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
     search_query = request.GET.get('search') or request.GET.get('q') or ''
     search_query = search_query.strip()
 
-    k_qs = Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
-    s_qs = SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
-    p_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+    use_cache = not search_query
+    cache_key = None
+    signature = None
+    if use_cache:
+        def _fmt_ts(val):
+            return val.isoformat() if val else "0"
+
+        signature = (
+            _fmt_ts(Klasifikasi.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(SubKlasifikasi.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        cache_key = f"list_pekerjaan_tree:{project.id}:v1"
+        cached = cache.get(cache_key)
+        if cached and cached.get("sig") == signature:
+            return JsonResponse(cached.get("data", {"ok": True, "klasifikasi": []}))
+
+    k_qs = (
+        Klasifikasi.objects.filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values('id', 'name', 'ordering_index')
+    )
+    s_qs = (
+        SubKlasifikasi.objects.filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values('id', 'klasifikasi_id', 'name', 'ordering_index')
+    )
+    p_qs = (
+        Pekerjaan.objects.filter(project=project)
+        .order_by('ordering_index', 'id')
+        .values(
+            'id',
+            'sub_klasifikasi_id',
+            'source_type',
+            'ordering_index',
+            'snapshot_kode',
+            'snapshot_uraian',
+            'snapshot_satuan',
+            'ref_id',
+            'budgeted_cost',
+        )
+    )
 
     # Apply search filter if provided
     if search_query:
@@ -488,37 +633,38 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
 
     subs_by_klas = {}
     for s in s_qs:
-        subs_by_klas.setdefault(s.klasifikasi_id, []).append(s)
+        subs_by_klas.setdefault(s["klasifikasi_id"], []).append(s)
 
     pkj_by_sub = {}
     for p in p_qs:
-        pkj_by_sub.setdefault(p.sub_klasifikasi_id, []).append(p)
+        pkj_by_sub.setdefault(p["sub_klasifikasi_id"], []).append(p)
 
     data = []
     total_pekerjaan_count = 0
     for k in k_qs:
         k_obj = {
-            "id": k.id,
-            "name": _sanitize_text(k.name),
-            "ordering_index": k.ordering_index,
+            "id": k["id"],
+            "name": _sanitize_text(k.get("name")),
+            "ordering_index": k.get("ordering_index"),
             "sub": []
         }
-        for s in subs_by_klas.get(k.id, []):
+        for s in subs_by_klas.get(k["id"], []):
             s_obj = {
-                "id": s.id,
-                "name": _sanitize_text(s.name),
-                "ordering_index": s.ordering_index,
+                "id": s["id"],
+                "name": _sanitize_text(s.get("name")),
+                "ordering_index": s.get("ordering_index"),
                 "pekerjaan": []
             }
-            for p in pkj_by_sub.get(s.id, []):
+            for p in pkj_by_sub.get(s["id"], []):
                 s_obj["pekerjaan"].append({
-                    "id": p.id,
-                    "source_type": _src_to_str(p.source_type),
-                    "ordering_index": p.ordering_index,
-                    "snapshot_kode": _sanitize_text(getattr(p, "snapshot_kode", None)),
-                    "snapshot_uraian": _sanitize_text(p.snapshot_uraian),
-                    "snapshot_satuan": _sanitize_text(p.snapshot_satuan),
-                    "ref_id": getattr(p, "ref_id", None),
+                    "id": p["id"],
+                    "source_type": _src_to_str(p.get("source_type")),
+                    "ordering_index": p.get("ordering_index"),
+                    "snapshot_kode": _sanitize_text(p.get("snapshot_kode")),
+                    "snapshot_uraian": _sanitize_text(p.get("snapshot_uraian")),
+                    "snapshot_satuan": _sanitize_text(p.get("snapshot_satuan")),
+                    "ref_id": p.get("ref_id"),
+                    "budgeted_cost": float(p.get("budgeted_cost") or 0),
                 })
                 total_pekerjaan_count += 1
             k_obj["sub"].append(s_obj)
@@ -533,6 +679,9 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
     if search_query:
         response_data["search_active"] = True
         response_data["match_count"] = total_pekerjaan_count
+
+    if use_cache and cache_key:
+        cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
 
     return JsonResponse(response_data)
 
@@ -1325,17 +1474,21 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
 
     expanded_totals: dict[int, Decimal] = {}
     if detail_ids:
-        expanded_qs = (DetailAHSPExpanded.objects
-                       .filter(project=project, pekerjaan=pkj, source_detail_id__in=detail_ids)
-                       .select_related('harga_item'))
-        for exp in expanded_qs:
-            sd_id = exp.source_detail_id
+        value_expr = ExpressionWrapper(
+            F("koefisien") * F("harga_item__harga_satuan"),
+            output_field=DecimalField(max_digits=24, decimal_places=2),
+        )
+        expanded_rows = (
+            DetailAHSPExpanded.objects
+            .filter(project=project, pekerjaan=pkj, source_detail_id__in=detail_ids)
+            .values("source_detail_id")
+            .annotate(total=Sum(value_expr))
+        )
+        for row in expanded_rows:
+            sd_id = row.get("source_detail_id")
             if not sd_id:
                 continue
-            price = exp.harga_item.harga_satuan or Decimal("0")
-            koef = exp.koefisien or Decimal("0")
-            subtotal = price * koef
-            expanded_totals[sd_id] = expanded_totals.get(sd_id, Decimal("0")) + subtotal
+            expanded_totals[sd_id] = row.get("total") or Decimal("0")
 
     items = []
     for it in raw_details:
@@ -1343,10 +1496,18 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
         harga_item = it.get("harga_item__harga_satuan")
         bundle_total = expanded_totals.get(it.get("id"), Decimal("0"))
         effective_price = harga_item
-        if (
+        is_bundle = (
             it.get("kategori") == HargaItemProject.KATEGORI_LAIN
-            and bundle_total > Decimal("0")
-        ):
+            and (it.get("ref_pekerjaan_id") or it.get("ref_ahsp_id"))
+        )
+
+        # BUNDLE LOGIC (QUANTITY SEMANTIC - 2025-11-18):
+        # 1. services.py menyimpan koef komponen TANPA dikali koef bundle (per 1 unit bundle)
+        # 2. bundle_total = Σ(original_koef × harga komponen) → harga satuan bundle per unit
+        # 3. Frontend kembali menggunakan formula umum (jumlah = koef × harga)
+        # 4. Harga satuan yang dikirim API harus langsung bundle_total
+        # 5. Jumlah baris dihitung di layer presentasi (tidak perlu pembagian/multiplikasi tambahan di sini).
+        if is_bundle and bundle_total > Decimal("0"):
             effective_price = bundle_total
 
         items.append({
@@ -1410,6 +1571,7 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
             "satuan": pkj.snapshot_satuan,
             "source_type": source_str,
             "detail_ready": pkj.detail_ready,
+            "budgeted_cost": float(pkj.budgeted_cost or 0),
             "updated_at": pkj.updated_at.isoformat() if hasattr(pkj, 'updated_at') and pkj.updated_at else None,  # For optimistic locking
         },
         "items": items,
@@ -2262,10 +2424,164 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         status=status_code
     )
 
+
+# ---------- View: Item Conversion Profiles ----------
+@login_required
+@require_GET
+def api_get_conversion_profiles(request: HttpRequest, project_id: int):
+    """
+    GET conversion profiles for all items in this project.
+    Returns a dictionary keyed by item kode for easy frontend lookup.
+    
+    Response:
+    {
+        "ok": true,
+        "profiles": {
+            "BHN-001": {
+                "id": 1,
+                "market_unit": "batang",
+                "market_price": "240000.00",
+                "factor_to_base": "10.000000",
+                "base_unit": "kg",
+                "density": null,
+                "capacity_m3": null,
+                "capacity_ton": null,
+                "method": "direct"
+            },
+            ...
+        }
+    }
+    """
+    from .models import ItemConversionProfile
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    # Fetch all conversion profiles for this project
+    profiles_qs = (ItemConversionProfile.objects
+                   .filter(harga_item__project=project)
+                   .select_related('harga_item'))
+    
+    result = {}
+    for p in profiles_qs:
+        result[p.harga_item.kode_item] = {
+            "id": p.id,
+            "harga_item_id": p.harga_item.id,
+            "market_unit": p.market_unit,
+            "market_price": to_dp_str(p.market_price, 2),
+            "factor_to_base": to_dp_str(p.factor_to_base, 6),
+            "base_unit": p.harga_item.satuan or "",
+            "density": to_dp_str(p.density, 6) if p.density else None,
+            "capacity_m3": to_dp_str(p.capacity_m3, 6) if p.capacity_m3 else None,
+            "capacity_ton": to_dp_str(p.capacity_ton, 6) if p.capacity_ton else None,
+            "method": p.method,
+        }
+    
+    return JsonResponse({
+        "ok": True,
+        "profiles": result,
+        "count": len(result),
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+@transaction.atomic
+def api_save_conversion_profile(request: HttpRequest, project_id: int):
+    """
+    POST save/update a conversion profile for a harga item.
+    
+    Request body:
+    {
+        "harga_item_id": 123,
+        "market_unit": "batang",
+        "market_price": "240000.00",
+        "factor_to_base": "10.000000",
+        "density": null,
+        "capacity_m3": null,
+        "capacity_ton": null,
+        "method": "direct"
+    }
+    
+    Response:
+    {
+        "ok": true,
+        "profile_id": 1,
+        "message": "Conversion profile saved"
+    }
+    """
+    from .models import ItemConversionProfile, HargaItemProject
+    from decimal import Decimal, InvalidOperation
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+    
+    harga_item_id = data.get("harga_item_id")
+    if not harga_item_id:
+        return JsonResponse({"ok": False, "error": "harga_item_id required"}, status=400)
+    
+    # Verify harga item belongs to project
+    try:
+        harga_item = HargaItemProject.objects.get(id=harga_item_id, project=project)
+    except HargaItemProject.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "Harga item not found"}, status=404)
+    
+    # Parse decimal values
+    def parse_decimal(val, default=None):
+        if val is None or val == '' or val == 'null':
+            return default
+        try:
+            # Handle Indonesian format (dot as thousands, comma as decimal)
+            s = str(val).strip()
+            if ',' in s and '.' in s:
+                s = s.replace('.', '').replace(',', '.')
+            elif ',' in s:
+                s = s.replace(',', '.')
+            return Decimal(s)
+        except (InvalidOperation, ValueError):
+            return default
+    
+    market_unit = data.get("market_unit", "").strip()
+    market_price = parse_decimal(data.get("market_price"), Decimal("0"))
+    factor_to_base = parse_decimal(data.get("factor_to_base"), Decimal("1"))
+    density = parse_decimal(data.get("density"))
+    capacity_m3 = parse_decimal(data.get("capacity_m3"))
+    capacity_ton = parse_decimal(data.get("capacity_ton"))
+    method = data.get("method", "direct")
+    
+    if not market_unit:
+        return JsonResponse({"ok": False, "error": "market_unit required"}, status=400)
+    if factor_to_base <= 0:
+        return JsonResponse({"ok": False, "error": "factor_to_base must be positive"}, status=400)
+    
+    # Create or update conversion profile
+    profile, created = ItemConversionProfile.objects.update_or_create(
+        harga_item=harga_item,
+        defaults={
+            "market_unit": market_unit,
+            "market_price": market_price,
+            "factor_to_base": factor_to_base,
+            "density": density,
+            "capacity_m3": capacity_m3,
+            "capacity_ton": capacity_ton,
+            "method": method,
+        }
+    )
+    
+    return JsonResponse({
+        "ok": True,
+        "profile_id": profile.id,
+        "created": created,
+        "message": "Conversion profile saved",
+    })
+
+
 # ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
 @require_http_methods(["GET","POST"])
-@transaction.atomic
 def api_project_pricing(request: HttpRequest, project_id: int):
     """
     GET  -> { ok, markup_percent: "10.00", ppn_percent: "11.00", rounding_base: 10000 }
@@ -2276,12 +2592,15 @@ def api_project_pricing(request: HttpRequest, project_id: int):
     if request.method == "GET":
         # GET: cek kepemilikan di awal
         project = _owner_or_404(project_id, request.user)
-        obj = _get_or_create_pricing(project)
+        obj = ProjectPricing.objects.filter(project=project).first()
+        markup_default = Decimal("10.00")
+        ppn_default = Decimal("11.00")
+        rounding_default = 10000
         return JsonResponse({
             "ok": True,
-            "markup_percent": to_dp_str(getattr(obj, "markup_percent", Decimal("0.00")), 2),
-            "ppn_percent": to_dp_str(getattr(obj, "ppn_percent", Decimal("11.00")), 2),
-            "rounding_base": int(getattr(obj, "rounding_base", 10000) or 10000),
+            "markup_percent": to_dp_str(getattr(obj, "markup_percent", markup_default), 2),
+            "ppn_percent": to_dp_str(getattr(obj, "ppn_percent", ppn_default), 2),
+            "rounding_base": int(getattr(obj, "rounding_base", rounding_default) or rounding_default),
         })
 
     # === POST: VALIDASI BODY DULU (agar error → 400, bukan 404 dari cek owner) ===
@@ -2311,39 +2630,316 @@ def api_project_pricing(request: HttpRequest, project_id: int):
 
     # Lolos validasi → baru cek kepemilikan & simpan
     project = _owner_or_404(project_id, request.user)
-    obj = _get_or_create_pricing(project)
-    updated_fields = []
+    with transaction.atomic():
+        obj = _get_or_create_pricing(project)
+        updated_fields = []
 
-    # markup_percent (opsional)
-    if "markup_percent" in payload:
-        dec = parse_any(payload.get("markup_percent"))
-        obj.markup_percent = quantize_half_up(dec, 2)
-        updated_fields.append("markup_percent")
+        # markup_percent (opsional)
+        if "markup_percent" in payload:
+            dec = parse_any(payload.get("markup_percent"))
+            obj.markup_percent = quantize_half_up(dec, 2)
+            updated_fields.append("markup_percent")
 
-    # ppn_percent (opsional)
-    if "ppn_percent" in payload:
-        dec = parse_any(payload.get("ppn_percent"))
-        obj.ppn_percent = quantize_half_up(dec, 2)
-        updated_fields.append("ppn_percent")
+        # ppn_percent (opsional)
+        if "ppn_percent" in payload:
+            dec = parse_any(payload.get("ppn_percent"))
+            obj.ppn_percent = quantize_half_up(dec, 2)
+            updated_fields.append("ppn_percent")
 
-    # rounding_base (opsional)
-    if "rounding_base" in payload:
-        obj.rounding_base = int(payload.get("rounding_base"))
-        updated_fields.append("rounding_base")
+        # rounding_base (opsional)
+        if "rounding_base" in payload:
+            obj.rounding_base = int(payload.get("rounding_base"))
+            updated_fields.append("rounding_base")
 
-    if updated_fields:
-        updated_fields.append("updated_at")
-        obj.save(update_fields=updated_fields)
+        if updated_fields:
+            updated_fields.append("updated_at")
+            obj.save(update_fields=updated_fields)
 
-        # CACHE FIX: Invalidate cache AFTER transaction commits
-        # Pricing changes affect rekap calculations
-        transaction.on_commit(lambda: invalidate_rekap_cache(project))
+            # CACHE FIX: Invalidate cache AFTER transaction commits
+            # Pricing changes affect rekap calculations
+            transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
     return JsonResponse({
         "ok": True,
         "markup_percent": to_dp_str(obj.markup_percent, 2),
         "ppn_percent": to_dp_str(obj.ppn_percent, 2),
         "rounding_base": int(getattr(obj, "rounding_base", 10000) or 10000),
+    })
+
+
+# ========== API: Project Parameters (for volume formula calculations) ==========
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@transaction.atomic
+def api_project_parameters(request: HttpRequest, project_id: int):
+    """
+    GET  -> List all parameters for project
+           Returns: { ok: true, parameters: [...] }
+    
+    POST -> Create new parameter
+            Body: { name, value, label?, unit?, description? }
+            Returns: { ok: true, parameter: {...}, created: true }
+    """
+    from .models import ProjectParameter
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    if request.method == "GET":
+        params = ProjectParameter.objects.filter(project=project).order_by('name')
+        return JsonResponse({
+            "ok": True,
+            "parameters": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "value": str(p.value),
+                    "label": p.label or p.name,
+                    "unit": p.unit or "",
+                    "description": p.description or "",
+                }
+                for p in params
+            ]
+        })
+    
+    # POST: Create new parameter
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+    
+    name = str(payload.get("name", "")).strip().lower()
+    if not name:
+        return JsonResponse({"ok": False, "errors": [_err("name", "Nama parameter wajib diisi")]}, status=400)
+    
+    # Validate name format (no spaces, alphanumeric + underscore)
+    import re
+    if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+        return JsonResponse({
+            "ok": False, 
+            "errors": [_err("name", "Nama harus huruf kecil, angka, underscore saja (awali huruf/underscore)")]
+        }, status=400)
+    
+    # Check duplicate
+    if ProjectParameter.objects.filter(project=project, name=name).exists():
+        return JsonResponse({
+            "ok": False, 
+            "errors": [_err("name", f"Parameter '{name}' sudah ada")]
+        }, status=400)
+    
+    # Parse value
+    value = parse_any(payload.get("value", 0))
+    if value is None:
+        value = Decimal("0")
+    
+    param = ProjectParameter.objects.create(
+        project=project,
+        name=name,
+        value=value,
+        label=payload.get("label", "") or name,
+        unit=payload.get("unit", "") or "",
+        description=payload.get("description", "") or "",
+    )
+    
+    return JsonResponse({
+        "ok": True,
+        "created": True,
+        "parameter": {
+            "id": param.id,
+            "name": param.name,
+            "value": str(param.value),
+            "label": param.label,
+            "unit": param.unit,
+            "description": param.description,
+        }
+    }, status=201)
+
+
+@login_required
+@require_http_methods(["GET", "PUT", "DELETE"])
+@transaction.atomic
+def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id: int):
+    """
+    GET    -> Get single parameter
+    PUT    -> Update parameter (value, label, unit, description)
+    DELETE -> Delete parameter
+    """
+    from .models import ProjectParameter
+    
+    project = _owner_or_404(project_id, request.user)
+    param = get_object_or_404(ProjectParameter, id=param_id, project=project)
+    
+    if request.method == "GET":
+        return JsonResponse({
+            "ok": True,
+            "parameter": {
+                "id": param.id,
+                "name": param.name,
+                "value": str(param.value),
+                "label": param.label,
+                "unit": param.unit,
+                "description": param.description,
+            }
+        })
+    
+    if request.method == "DELETE":
+        name = param.name
+        param.delete()
+        return JsonResponse({"ok": True, "deleted": True, "name": name})
+    
+    # PUT: Update parameter
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+    
+    updated_fields = []
+    
+    if "value" in payload:
+        value = parse_any(payload.get("value"))
+        if value is not None:
+            param.value = value
+            updated_fields.append("value")
+    
+    if "label" in payload:
+        param.label = str(payload.get("label", "")).strip() or param.name
+        updated_fields.append("label")
+    
+    if "unit" in payload:
+        param.unit = str(payload.get("unit", "")).strip()
+        updated_fields.append("unit")
+    
+    if "description" in payload:
+        param.description = str(payload.get("description", "")).strip()
+        updated_fields.append("description")
+    
+    if updated_fields:
+        updated_fields.append("updated_at")
+        param.save(update_fields=updated_fields)
+    
+    return JsonResponse({
+        "ok": True,
+        "updated": True,
+        "parameter": {
+            "id": param.id,
+            "name": param.name,
+            "value": str(param.value),
+            "label": param.label,
+            "unit": param.unit,
+            "description": param.description,
+        }
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_project_parameters_sync(request: HttpRequest, project_id: int):
+    """
+    Bulk sync parameters from localStorage to database.
+    
+    POST body: {
+        "parameters": {
+            "code1": { "value": 10, "label": "Label 1" },
+            "code2": { "value": 20, "label": "Label 2" },
+            ...
+        },
+        "mode": "merge" | "replace"  // default: merge
+    }
+    
+    - merge: Update existing, create new, keep others
+    - replace: Delete all existing, create from payload
+    
+    Returns: { ok: true, created: N, updated: N, deleted: N }
+    """
+    from .models import ProjectParameter
+    
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+    
+    params_data = payload.get("parameters", {})
+    mode = payload.get("mode", "merge")
+    
+    if not isinstance(params_data, dict):
+        return JsonResponse({"ok": False, "errors": [_err("parameters", "Harus berupa object/dictionary")]}, status=400)
+    
+    created_count = 0
+    updated_count = 0
+    deleted_count = 0
+    
+    import re
+    
+    if mode == "replace":
+        # Delete all existing parameters
+        deleted_count = ProjectParameter.objects.filter(project=project).delete()[0]
+        
+        # Create all from payload
+        for code, data in params_data.items():
+            name = str(code).strip().lower()
+            if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+                continue  # Skip invalid names
+            
+            value = parse_any(data.get("value", 0)) if isinstance(data, dict) else parse_any(data)
+            if value is None:
+                value = Decimal("0")
+            
+            label = data.get("label", name) if isinstance(data, dict) else name
+            unit = data.get("unit", "") if isinstance(data, dict) else ""
+            
+            ProjectParameter.objects.create(
+                project=project,
+                name=name,
+                value=value,
+                label=label or name,
+                unit=unit,
+            )
+            created_count += 1
+    else:
+        # Merge mode: update existing, create new
+        existing = {p.name: p for p in ProjectParameter.objects.filter(project=project)}
+        
+        for code, data in params_data.items():
+            name = str(code).strip().lower()
+            if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+                continue  # Skip invalid names
+            
+            value = parse_any(data.get("value", 0)) if isinstance(data, dict) else parse_any(data)
+            if value is None:
+                value = Decimal("0")
+            
+            label = data.get("label", name) if isinstance(data, dict) else name
+            unit = data.get("unit", "") if isinstance(data, dict) else ""
+            
+            if name in existing:
+                # Update existing
+                param = existing[name]
+                param.value = value
+                param.label = label or name
+                if unit:
+                    param.unit = unit
+                param.save(update_fields=["value", "label", "unit", "updated_at"])
+                updated_count += 1
+            else:
+                # Create new
+                ProjectParameter.objects.create(
+                    project=project,
+                    name=name,
+                    value=value,
+                    label=label or name,
+                    unit=unit,
+                )
+                created_count += 1
+    
+    return JsonResponse({
+        "ok": True,
+        "created": created_count,
+        "updated": updated_count,
+        "deleted": deleted_count,
+        "mode": mode,
     })
 
 
@@ -2576,19 +3172,37 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
 @login_required
 def api_list_harga_items(request: HttpRequest, project_id: int):
     """
-    List all Harga Items used in this project.
+    List all Harga Items in this project.
 
-    DUAL STORAGE UPDATE:
-    - Reads from DetailAHSPExpanded (expanded components) instead of DetailAHSPProject (raw input)
-    - Shows only base components (TK/BHN/ALT) from bundle expansion
-    - Bundle items (LAIN) are NOT shown (they're expanded to components)
+    UPDATED (2026-01-09):
+    - Shows items that are USED in DetailAHSPExpanded (excludes bundle items)
+    - ALSO shows standalone items (no expanded refs AND no detail refs) for import support
+    - This ensures imported items appear while bundle items are excluded
 
     P0 FIX (2025-11-11):
     - Added project_updated_at for optimistic locking
     """
+    from django.db.models import Q, Exists, OuterRef
+    from .models import DetailAHSPExpanded, DetailAHSPProject
+    
     project = _owner_or_404(project_id, request.user)
+    
+    # Items used in DetailAHSPExpanded (expanded components)
+    used_in_expanded = Q(expanded_refs__project=project)
+    
+    # Standalone items: not referenced anywhere (for import support)
+    # These are items created by import that aren't yet linked to any AHSP
+    has_expanded_refs = Exists(
+        DetailAHSPExpanded.objects.filter(harga_item=OuterRef('pk'))
+    )
+    has_detail_refs = Exists(
+        DetailAHSPProject.objects.filter(harga_item=OuterRef('pk'))
+    )
+    standalone = ~has_expanded_refs & ~has_detail_refs
+    
     qs = (HargaItemProject.objects
-          .filter(project=project, expanded_refs__project=project)  # DUAL STORAGE: expanded_refs instead of detail_refs
+          .filter(project=project)
+          .filter(used_in_expanded | standalone)
           .distinct()
           .order_by('kode_item'))
     items = list(qs.values('id','kode_item','kategori','uraian','satuan','harga_satuan'))
@@ -2772,6 +3386,26 @@ def api_get_change_status(request: HttpRequest, project_id: int):
         tracker.last_harga_change.isoformat() if tracker and tracker.last_harga_change else None
     )
 
+    # Get latest pekerjaan change timestamp
+    pekerjaan_latest = Pekerjaan.objects.filter(
+        project=project,
+    ).order_by('-updated_at').values_list('updated_at', flat=True).first()
+    pekerjaan_changed_at = pekerjaan_latest.isoformat() if pekerjaan_latest else None
+
+    # Get latest volume change timestamp (VolumePekerjaan)
+    volume_changed_at = None
+    try:
+        from detail_project.models import VolumePekerjaan
+        volume_latest = VolumePekerjaan.objects.filter(
+            pekerjaan__project=project,
+        ).order_by('-updated_at').values_list('updated_at', flat=True).first()
+        volume_changed_at = volume_latest.isoformat() if volume_latest else None
+    except Exception:
+        pass
+
+    # Jadwal tracking - placeholder for future implementation
+    jadwal_changed_at = None
+
     pekerjaan_qs = Pekerjaan.objects.filter(
         project=project,
         detail_last_modified__isnull=False,
@@ -2795,6 +3429,9 @@ def api_get_change_status(request: HttpRequest, project_id: int):
             "ok": True,
             "ahsp_changed_at": ahsp_changed_at,
             "harga_changed_at": harga_changed_at,
+            "pekerjaan_changed_at": pekerjaan_changed_at,
+            "volume_changed_at": volume_changed_at,
+            "jadwal_changed_at": jadwal_changed_at,
             "affected_pekerjaan_count": affected_count,
             "recent_pekerjaan": recent,
         }
@@ -2808,10 +3445,61 @@ def api_get_audit_trail(request: HttpRequest, project_id: int):
     Return audit trail entries with filters + pagination.
     """
     project = _owner_or_404(project_id, request.user)
-    qs = (
-        DetailAHSPAudit.objects.filter(project=project)
-        .select_related("pekerjaan", "user")
-    )
+
+    def _parse_bool(value, default=True):
+        if value is None:
+            return default
+        return str(value).strip().lower() not in ("0", "false", "no", "off", "")
+
+    def _serialize_entry(entry, include_diff):
+        pekerjaan_data = {
+            "id": entry.pekerjaan_id,
+            "kode": entry.pekerjaan.snapshot_kode if entry.pekerjaan else None,
+            "uraian": entry.pekerjaan.snapshot_uraian if entry.pekerjaan else None,
+        }
+        user_data = None
+        if entry.user:
+            user_data = {"id": entry.user_id, "username": entry.user.get_username()}
+
+        payload = {
+            "id": entry.id,
+            "action": entry.action,
+            "triggered_by": entry.triggered_by,
+            "change_summary": entry.change_summary,
+            "created_at": entry.created_at.isoformat(),
+            "pekerjaan": pekerjaan_data,
+            "user": user_data,
+        }
+        if include_diff:
+            payload["old_data"] = entry.old_data
+            payload["new_data"] = entry.new_data
+        return payload
+
+    include_diff = _parse_bool(request.GET.get("include_diff"), default=True)
+    entry_id = request.GET.get("entry_id")
+
+    base_qs = DetailAHSPAudit.objects.filter(project=project)
+    if entry_id:
+        try:
+            entry_id = int(entry_id)
+        except ValueError:
+            return JsonResponse(
+                {"ok": False, "errors": [_err("entry_id", "Harus angka")]},
+                status=400,
+            )
+        entry = (
+            base_qs.select_related("pekerjaan", "user")
+            .filter(id=entry_id)
+            .first()
+        )
+        if not entry:
+            return JsonResponse(
+                {"ok": False, "errors": [_err("entry_id", "Tidak ditemukan")]},
+                status=404,
+            )
+        return JsonResponse({"ok": True, "result": _serialize_entry(entry, include_diff=True)})
+
+    qs = base_qs
 
     action = request.GET.get("action")
     if action:
@@ -2865,32 +3553,54 @@ def api_get_audit_trail(request: HttpRequest, project_id: int):
     page_size = max(1, min(100, int(request.GET.get("page_size", 20))))
     total = qs.count()
     start = (page - 1) * page_size
-    entries = list(qs[start:start + page_size])
-
     results = []
-    for entry in entries:
-        pekerjaan_data = {
-            "id": entry.pekerjaan_id,
-            "kode": entry.pekerjaan.snapshot_kode if entry.pekerjaan else None,
-            "uraian": entry.pekerjaan.snapshot_uraian if entry.pekerjaan else None,
-        }
-        user_data = None
-        if entry.user:
-            user_data = {"id": entry.user_id, "username": entry.user.get_username()}
 
-        results.append(
-            {
-                "id": entry.id,
-                "action": entry.action,
-                "triggered_by": entry.triggered_by,
-                "change_summary": entry.change_summary,
-                "created_at": entry.created_at.isoformat(),
-                "pekerjaan": pekerjaan_data,
-                "user": user_data,
-                "old_data": entry.old_data,
-                "new_data": entry.new_data,
-            }
+    if include_diff:
+        entries = list(
+            qs.select_related("pekerjaan", "user")[start:start + page_size]
         )
+        for entry in entries:
+            results.append(_serialize_entry(entry, include_diff=True))
+    else:
+        entries = list(
+            qs.values(
+                "id",
+                "action",
+                "triggered_by",
+                "change_summary",
+                "created_at",
+                "pekerjaan_id",
+                "pekerjaan__snapshot_kode",
+                "pekerjaan__snapshot_uraian",
+                "user_id",
+                "user__username",
+            )[start:start + page_size]
+        )
+        for entry in entries:
+            pekerjaan_data = {
+                "id": entry.get("pekerjaan_id"),
+                "kode": entry.get("pekerjaan__snapshot_kode"),
+                "uraian": entry.get("pekerjaan__snapshot_uraian"),
+            }
+            user_data = None
+            if entry.get("user_id"):
+                user_data = {
+                    "id": entry.get("user_id"),
+                    "username": entry.get("user__username"),
+                }
+            results.append(
+                {
+                    "id": entry.get("id"),
+                    "action": entry.get("action"),
+                    "triggered_by": entry.get("triggered_by"),
+                    "change_summary": entry.get("change_summary"),
+                    "created_at": entry.get("created_at").isoformat()
+                    if entry.get("created_at")
+                    else None,
+                    "pekerjaan": pekerjaan_data,
+                    "user": user_data,
+                }
+            )
 
     pagination = {
         "page": page,
@@ -2920,15 +3630,17 @@ def api_get_rekap_rab(request: HttpRequest, project_id: int):
 
     default_proj_mp = Decimal("10.00")  # default yang diharapkan test bila row pricing belum ada
 
-    # Peta override per pekerjaan
-    pids = [r.get("pekerjaan_id") for r in data if r.get("pekerjaan_id")]
+    # Peta override per pekerjaan (hanya jika diperlukan)
     ov_map = {}
-    if pids:
-        ov_map = dict(
-            Pekerjaan.objects
-            .filter(project=project, id__in=pids)
-            .values_list("id", "markup_override_percent")
-        )
+    needs_override = any(r.get("markup_eff") in (None, "", 0, 0.0) for r in data)
+    if needs_override:
+        pids = [r.get("pekerjaan_id") for r in data if r.get("pekerjaan_id")]
+        if pids:
+            ov_map = dict(
+                Pekerjaan.objects
+                .filter(project=project, id__in=pids)
+                .values_list("id", "markup_override_percent")
+            )
 
     # Suntik markup_eff bila kosong/0; lengkapi F/G/total hanya jika belum ada
     for r in data:
@@ -2988,71 +3700,112 @@ def api_get_rekap_kebutuhan(request: HttpRequest, project_id: int):
     Plus meta: counts_per_kategori, n_rows, generated_at.
     """
     project = _owner_or_404(project_id, request.user)
-    from .services import compute_kebutuhan_items
+    params = parse_kebutuhan_query_params(request.GET)
+    mode = params['mode']
+    tahapan_id = params['tahapan_id']
+    filters = params['filters']
+    search = params['search']
+    time_scope = params.get('time_scope')
 
-    rows = compute_kebutuhan_items(project)  # list of dicts: {kategori,kode,uraian,satuan,quantity}
+    try:
+        raw_rows = compute_kebutuhan_items(
+            project,
+            mode=mode,
+            tahapan_id=tahapan_id,
+            filters=filters,
+            time_scope=time_scope,
+        )
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
-    # --- meta (mundur-kompatibel) ---
-    counts = {"TK": 0, "BHN": 0, "ALT": 0, "LAIN": 0}
-    for r in rows:
-        k = r.get("kategori")
-        if k in counts:
-            counts[k] += 1
+    rows, summary = summarize_kebutuhan_rows(raw_rows, search=search)
+    scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
+    filters_applied = bool(
+        search
+        or filters['klasifikasi_ids']
+        or filters['sub_klasifikasi_ids']
+        or filters['kategori_items']
+        or filters['pekerjaan_ids']
+        or scope_active
+        or (mode == 'tahapan' and tahapan_id)
+    )
 
-    meta = {
-        "counts_per_kategori": counts,
-        "n_rows": len(rows),
-        "generated_at": now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
+    summary.update({
+        "mode": mode,
+        "tahapan_id": tahapan_id,
+        "filters": filters,
+        "filters_applied": filters_applied,
+        "search": search,
+        "time_scope": time_scope,
+        "time_scope_active": scope_active,
+    })
 
-    return JsonResponse({"ok": True, "rows": rows, "meta": meta})
+    return JsonResponse({"ok": True, "rows": rows, "meta": summary})
 
-# ============== FUNCTION 1: CSV EXPORT (REFACTORED) ==============
+
+
+
+# PHASE 5 TRACK 2.1: DATA VALIDATION ENDPOINT
+# ============================================================================
+
 @login_required
 @require_GET
-def api_export_rekap_kebutuhan_csv(request, project_id: int):
-    """Export Rekap Kebutuhan ke CSV (minimal header-first).
+def api_validate_rekap_kebutuhan(request, project_id: int):
+    """
+    Validate data consistency between snapshot and timeline views.
 
-    Catatan: Test mengharapkan baris pertama adalah header kolom
-    "kategori;kode;uraian;satuan;quantity" tanpa judul/identitas.
-    Implementasi di sini sengaja menulis CSV minimal untuk kompatibilitas
-    mundur dengan test suite.
+    GET /api/project/<project_id>/rekap-kebutuhan/validate/
+
+    Query params:
+    - mode: 'all', 'tahapan', etc.
+    - tahapan_id: Optional tahapan filter
+    - kategori: Comma-separated list
+    - klasifikasi, sub_klasifikasi, pekerjaan_ids: Optional filters
+    - period_mode, period_start, period_end: Time scope filters
+
+    Returns JSON:
+    {
+        "status": "success",
+        "validation": {
+            "valid": bool,
+            "snapshot_total": float,
+            "timeline_total": float,
+            "difference": float,
+            "tolerance": float,
+            "snapshot_count": int,
+            "timeline_count": int,
+            "kategori_breakdown": {...},
+            "warnings": [...],
+            "timestamp": "2025-12-03T..."
+        }
+    }
     """
     try:
         project = _owner_or_404(project_id, request.user)
-        from .services import compute_kebutuhan_items
+        params = parse_kebutuhan_query_params(request.GET)
 
-        rows = compute_kebutuhan_items(project)
+        from .services import validate_kebutuhan_data
 
-        # Build CSV minimal (semicolon-delimited)
-        import csv
-        from io import StringIO
+        validation_result = validate_kebutuhan_data(
+            project,
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            time_scope=params.get('time_scope'),
+        )
 
-        buf = StringIO()
-        writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
-        writer.writerow(["kategori", "kode", "uraian", "satuan", "quantity"])
-
-        for r in rows:
-            writer.writerow([
-                r.get("kategori", "") or "",
-                r.get("kode", "") or "",
-                r.get("uraian", "") or "",
-                r.get("satuan", "") or "",
-                str(r.get("quantity", "")) or "",
-            ])
-
-        content = buf.getvalue().encode('utf-8')
-        resp = HttpResponse(content, content_type='text/csv; charset=utf-8')
-        resp['Content-Disposition'] = 'attachment; filename="rekap_kebutuhan.csv"'
-        return resp
+        return JsonResponse({
+            'status': 'success',
+            'validation': validation_result,
+        })
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
+        logger.exception("[Rekap Kebutuhan] Validation failed for project %s", project_id)
         return JsonResponse({
             'status': 'error',
-            'message': f'Export CSV gagal: {str(e)}'
+            'message': f'Validation failed: {str(e)}'
         }, status=500)
+
 
 # ============== FUNCTION 2: PDF EXPORT (NEW!) ==============
 # TAMBAHKAN function baru ini (setelah CSV function di atas):
@@ -3071,7 +3824,17 @@ def export_rekap_kebutuhan_pdf(request: HttpRequest, project_id: int):
         
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_rekap_kebutuhan('pdf')
+        params = parse_kebutuhan_query_params(request.GET)
+        unit_mode = request.GET.get('unit_mode', 'base')  # 'base' or 'market'
+        return manager.export_rekap_kebutuhan(
+            'pdf',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+            unit_mode=unit_mode,
+        )
         
     except Exception as e:
         import traceback
@@ -3099,7 +3862,17 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_rekap_kebutuhan('word')
+        params = parse_kebutuhan_query_params(request.GET)
+        unit_mode = request.GET.get('unit_mode', 'base')  # 'base' or 'market'
+        return manager.export_rekap_kebutuhan(
+            'word',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+            unit_mode=unit_mode,
+        )
         
     except Exception as e:
         import traceback
@@ -3107,6 +3880,74 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         return JsonResponse({
             'status': 'error',
             'message': f'Export Word gagal: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_GET
+def export_rekap_kebutuhan_json(request: HttpRequest, project_id: int):
+    """
+    Export Rekap Kebutuhan ke format JSON.
+
+    Thin controller - delegasi ke ExportManager.
+    """
+    try:
+        # 1. Auth & get project
+        project = _owner_or_404(project_id, request.user)
+
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        params = parse_kebutuhan_query_params(request.GET)
+        return manager.export_rekap_kebutuhan(
+            'json',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+        )
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_GET
+def export_rekap_kebutuhan_xlsx(request: HttpRequest, project_id: int):
+    """
+    Export Rekap Kebutuhan ke format Excel (XLSX).
+    
+    Thin controller - delegasi ke ExportManager.
+    """
+    try:
+        # 1. Auth & get project
+        project = _owner_or_404(project_id, request.user)
+        
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        params = parse_kebutuhan_query_params(request.GET)
+        unit_mode = request.GET.get('unit_mode', 'base')  # 'base' or 'market'
+        return manager.export_rekap_kebutuhan(
+            'xlsx',
+            mode=params['mode'],
+            tahapan_id=params['tahapan_id'],
+            filters=params['filters'],
+            search=params['search'],
+            time_scope=params.get('time_scope'),
+            unit_mode=unit_mode,
+        )
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export Excel gagal: {str(e)}'
         }, status=500)
 
 
@@ -3384,25 +4225,65 @@ def export_rekap_rab_word(request: HttpRequest, project_id: int):
         }, status=500)
 
 
+@login_required
+@require_GET
+def export_rekap_rab_xlsx(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format XLSX (Excel).
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('xlsx')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export XLSX gagal: {str(e)}'
+        }, status=500)
+
+
+@login_required
+@require_GET
+def export_rekap_rab_json(request: HttpRequest, project_id: int):
+    """
+    Export Rekap RAB ke format JSON.
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_rekap_rab('json')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
 # ============================================================================
 # EXPORT: VOLUME PEKERJAAN (CSV / PDF / WORD)
 # ============================================================================
 
 @login_required
 @require_GET
-def export_volume_pekerjaan_csv(request: HttpRequest, project_id: int):
-    """Export Volume Pekerjaan to CSV"""
+def export_volume_pekerjaan_xlsx(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to Excel (xlsx) with formula references"""
     try:
         project = _owner_or_404(project_id, request.user)
         # Extract parameters from query string (optional: ?params={"panjang":100,"lebar":50})
         parameters = _extract_parameters_from_request(request)
         from .exports.export_manager import ExportManager
         manager = ExportManager(project, request.user)
-        return manager.export_volume_pekerjaan('csv', parameters=parameters)
+        return manager.export_volume_pekerjaan('xlsx', parameters=parameters)
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+        return JsonResponse({'status': 'error', 'message': f'Export Excel gagal: {str(e)}'}, status=500)
 
 
 @login_required
@@ -3437,6 +4318,23 @@ def export_volume_pekerjaan_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_volume_pekerjaan_json(request: HttpRequest, project_id: int):
+    """Export Volume Pekerjaan to JSON"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        # Extract parameters from query string
+        parameters = _extract_parameters_from_request(request)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_volume_pekerjaan('json', parameters=parameters)
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export JSON gagal: {str(e)}'}, status=500)
 
 
 # ============================================================================
@@ -3486,6 +4384,104 @@ def export_harga_items_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_harga_items_xlsx(request: HttpRequest, project_id: int):
+    """Export Harga Items to Excel XLSX"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        return manager.export_harga_items('xlsx')
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_harga_items_json(request: HttpRequest, project_id: int):
+    """Export Harga Items to JSON file"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .models import HargaItemProject, ItemConversionProfile
+        from decimal import Decimal
+        import json
+        from datetime import datetime
+        
+        # Fetch harga items with conversion profiles
+        items_qs = (
+            HargaItemProject.objects
+            .filter(project=project, expanded_refs__project=project)
+            .distinct()
+            .select_related('conversion_profile')
+            .order_by('kategori', 'kode_item')
+        )
+        
+        # Kategori labels
+        kategori_labels = {
+            'TK': 'Tenaga Kerja',
+            'BHN': 'Bahan',
+            'ALT': 'Alat',
+            'LAIN': 'Lainnya'
+        }
+        
+        items_data = []
+        for item in items_qs:
+            item_dict = {
+                'id': item.id,
+                'kode_item': item.kode_item,
+                'uraian': item.uraian,
+                'satuan': item.satuan,
+                'kategori': item.kategori,
+                'kategori_label': kategori_labels.get(item.kategori, item.kategori),
+                'harga_satuan': float(item.harga_satuan) if item.harga_satuan else None,
+            }
+            
+            # Add conversion profile if exists
+            try:
+                if hasattr(item, 'conversion_profile') and item.conversion_profile:
+                    conv = item.conversion_profile
+                    item_dict['conversion'] = {
+                        'market_unit': conv.market_unit,
+                        'market_price': float(conv.market_price) if conv.market_price else None,
+                        'factor_to_base': float(conv.factor_to_base) if conv.factor_to_base else None,
+                        'density': float(conv.density) if conv.density else None,
+                        'capacity_m3': float(conv.capacity_m3) if conv.capacity_m3 else None,
+                        'capacity_ton': float(conv.capacity_ton) if conv.capacity_ton else None,
+                        'method': conv.method,
+                    }
+            except Exception:
+                pass
+            
+            items_data.append(item_dict)
+        
+        # Build export data
+        export_data = {
+            'export_info': {
+                'type': 'harga_items',
+                'project_id': project.id,
+                'project_name': project.nama_proyek if hasattr(project, 'nama_proyek') else str(project),
+                'exported_at': datetime.now().isoformat(),
+                'total_items': len(items_data),
+            },
+            'items': items_data,
+        }
+        
+        # Create response
+        json_content = json.dumps(export_data, indent=2, ensure_ascii=False)
+        response = HttpResponse(json_content, content_type='application/json')
+        filename = f"harga_items_{project.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export JSON gagal: {str(e)}'}, status=500)
 
 
 # ============================================================================
@@ -3543,6 +4539,283 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
         import traceback
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_GET
+def export_rincian_ahsp_xlsx(request: HttpRequest, project_id: int):
+    """Export Rincian AHSP to Excel XLSX"""
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        orientation = request.GET.get('orientation')
+        return manager.export_rincian_ahsp('xlsx', orientation=orientation)
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+
+
+# ============================================================================
+# EXPORT: JADWAL PEKERJAAN (CSV / PDF / WORD / XLSX)
+# ============================================================================
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def export_jadwal_pekerjaan_csv(request: HttpRequest, project_id: int):
+    """
+    Export Jadwal Pekerjaan to CSV.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (all weeks)
+    - monthly: Laporan Bulanan (monthly aggregation)
+    - weekly: Laporan Mingguan (weekly with date ranges)
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('csv', attachments=attachments, parameters=parameters)
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def export_jadwal_pekerjaan_pdf(request: HttpRequest, project_id: int):
+    """
+    Export Jadwal Pekerjaan to PDF.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
+    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
+    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('pdf', attachments=attachments, parameters=parameters)
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def export_jadwal_pekerjaan_word(request: HttpRequest, project_id: int):
+    """
+    Export Jadwal Pekerjaan to Word.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
+    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
+    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('word', attachments=attachments, parameters=parameters)
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def export_jadwal_pekerjaan_xlsx(request: HttpRequest, project_id: int):
+    """
+    Export Jadwal Pekerjaan to XLSX.
+
+    Supports 3 report types:
+    - full: Rekap Laporan (Grid + Gantt + Kurva S, all weeks)
+    - monthly: Laporan Bulanan (Grid monthly + Kurva S monthly)
+    - weekly: Laporan Mingguan (Grid weekly + Kurva S weekly with date ranges)
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+        attachments = _parse_export_attachments(request)
+        parameters = _parse_export_parameters(request)
+        return manager.export_jadwal_pekerjaan('xlsx', attachments=attachments, parameters=parameters)
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+
+
+# ============================================================================
+# EXPORT: JADWAL PEKERJAAN PROFESSIONAL (Laporan Tertulis)
+# ============================================================================
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
+    """
+    Export Jadwal Pekerjaan sebagai Laporan Tertulis profesional.
+
+    Generates formal written reports with:
+    - Cover page
+    - Executive summary (for monthly/weekly)
+    - Comparison tables (this period vs previous)
+    - Separated Planned/Actual sections (for rekap)
+    - Kurva S and Gantt charts
+    - Signature section
+
+    Query/Body Parameters:
+    - report_type: 'rekap' | 'monthly' | 'weekly' (default: 'rekap')
+    - period: Month number (1-based) for monthly, Week number for weekly
+    - format: 'pdf' | 'word' (default: 'pdf')
+    - attachments: Chart attachments (POST only)
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        from .exports.export_manager import ExportManager
+        manager = ExportManager(project, request.user)
+
+        # Parse parameters
+        if request.method == 'POST':
+            try:
+                payload = json.loads(request.body.decode('utf-8'))
+            except json.JSONDecodeError:
+                payload = {}
+        else:
+            payload = {}
+
+        # Get parameters from query or payload
+        report_type = request.GET.get('report_type') or payload.get('report_type', 'rekap')
+        period_str = request.GET.get('period') or payload.get('period')
+        format_type = request.GET.get('format') or payload.get('format', 'pdf')
+        
+        # DEBUG: Trace period parameter from frontend
+        print(f"[views_api] DEBUG export_jadwal_pekerjaan_professional called:")
+        print(f"  - report_type: {report_type}")
+        print(f"  - period_str (raw): {period_str}")
+        print(f"  - format_type: {format_type}")
+        print(f"  - payload keys: {list(payload.keys()) if payload else 'empty'}")
+        
+        # Parse months parameter for multi-month export (NEW)
+        months_raw = request.GET.get('months') or payload.get('months')
+        months = None
+        if months_raw:
+            try:
+                if isinstance(months_raw, list):
+                    months = [int(m) for m in months_raw]
+                elif isinstance(months_raw, str):
+                    months = [int(m.strip()) for m in months_raw.split(',') if m.strip()]
+                # Validate months are positive integers
+                if months and any(m < 1 for m in months):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Invalid months: all values must be positive integers.'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid months format: {months_raw}. Must be comma-separated integers or list."
+                }, status=400)
+
+        # Validate report_type
+        if report_type not in ('rekap', 'monthly', 'weekly'):
+            return JsonResponse({
+                'status': 'error',
+                'message': f"Invalid report_type: {report_type}. Must be 'rekap', 'monthly', or 'weekly'."
+            }, status=400)
+
+        # Validate format
+        if format_type not in ('pdf', 'word', 'xlsx'):
+            return JsonResponse({
+                'status': 'error',
+                'message': f"Invalid format: {format_type}. Must be 'pdf', 'word', or 'xlsx'."
+            }, status=400)
+
+        # Parse period for monthly/weekly (backward compatibility for single month/week)
+        period = None
+        if period_str:
+            try:
+                period = int(period_str)
+            except ValueError:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid period: {period_str}. Must be an integer."
+                }, status=400)
+
+        # Parse weeks parameter for multi-week export (NEW)
+        weeks_raw = request.GET.get('weeks') or payload.get('weeks')
+        weeks = None
+        if weeks_raw:
+            try:
+                if isinstance(weeks_raw, list):
+                    weeks = [int(w) for w in weeks_raw]
+                elif isinstance(weeks_raw, str):
+                    weeks = [int(w.strip()) for w in weeks_raw.split(',') if w.strip()]
+                # Validate weeks are positive integers
+                if weeks and any(w < 1 for w in weeks):
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'Invalid weeks: all values must be positive integers.'
+                    }, status=400)
+            except (ValueError, TypeError):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f"Invalid weeks format: {weeks_raw}. Must be comma-separated integers or list."
+                }, status=400)
+
+        # Parse attachments (for POST)
+        attachments = _parse_export_attachments(request)
+        
+        # Parse gantt_data (structured data for backend Gantt rendering)
+        gantt_data = None
+        if request.method == 'POST' and request.body:
+            try:
+                # json module already imported at top of file
+                body = json.loads(request.body.decode('utf-8'))
+                gantt_data = body.get('gantt_data')
+            except (ValueError, KeyError, UnicodeDecodeError):
+                pass
+
+        return manager.export_jadwal_professional(
+            format_type=format_type,
+            report_type=report_type,
+            period=period,
+            months=months,  # NEW: pass months list
+            weeks=weeks,    # NEW: pass weeks list
+            attachments=attachments,
+            gantt_data=gantt_data
+        )
+    except Http404:
+        raise
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export Professional gagal: {str(e)}'
+        }, status=500)
 
 
 # ============================================================================
@@ -3976,3 +5249,2968 @@ def api_batch_copy_project(request: HttpRequest, project_id: int):
             "ok": False,
             "error": f"Batch copy failed: {str(e)}"
         }, status=500)
+
+
+# ===== CRITICAL FIX: Bundle Expansion Detail Visibility =====
+@login_required
+@require_GET
+def api_get_bundle_expansion(request: HttpRequest, project_id: int, pekerjaan_id: int, bundle_id: int):
+    """
+    Get expanded components for a bundle (LAIN item with ref_pekerjaan or ref_ahsp).
+
+    Returns DetailAHSPExpanded records for the specified bundle,
+    showing all base components (TK/BHN/ALT) with final koefisien (already multiplied).
+
+    Used by Rincian AHSP page to show bundle breakdown on click.
+
+    CRITICAL FIX for: "No Expansion Detail Visibility" issue
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    # Validate pekerjaan belongs to project
+    pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
+
+    # Validate bundle (DetailAHSPProject) belongs to pekerjaan
+    bundle = get_object_or_404(
+        DetailAHSPProject,
+        id=bundle_id,
+        project=project,
+        pekerjaan=pkj,
+        kategori=HargaItemProject.KATEGORI_LAIN
+    )
+
+    # Fetch expanded components from DetailAHSPExpanded
+    expanded_qs = (
+        DetailAHSPExpanded.objects
+        .filter(project=project, pekerjaan=pkj, source_detail=bundle)
+        .select_related('harga_item')
+        .order_by('kategori', 'kode')
+    )
+
+    dp_koef = DECIMAL_SPEC["KOEF"].dp
+    dp_harga = getattr(
+        HargaItemProject._meta.get_field('harga_satuan'),
+        'decimal_places',
+        DECIMAL_SPEC["HARGA"].dp
+    )
+
+    components = []
+    for exp in expanded_qs:
+        components.append({
+            "kategori": exp.kategori,
+            "kode": exp.kode,
+            "uraian": exp.uraian,
+            "satuan": exp.satuan or "",
+            "koefisien": to_dp_str(exp.koefisien or Decimal("0"), dp_koef),
+            "harga_satuan": to_dp_str(
+                exp.harga_item.harga_satuan or Decimal("0"),
+                dp_harga
+            ),
+            "source_bundle_kode": exp.source_bundle_kode,
+            "expansion_depth": exp.expansion_depth,
+        })
+
+    # Calculate total for verification
+    total = sum(
+        (exp.koefisien or Decimal("0")) * (exp.harga_item.harga_satuan or Decimal("0"))
+        for exp in expanded_qs
+    )
+
+    return JsonResponse({
+        "ok": True,
+        "bundle": {
+            "id": bundle.id,
+            "kode": bundle.kode,
+            "uraian": bundle.uraian,
+            "koefisien": to_dp_str(bundle.koefisien or Decimal("0"), dp_koef),
+            "ref_pekerjaan_id": bundle.ref_pekerjaan_id,
+            "ref_ahsp_id": bundle.ref_ahsp_id,
+        },
+        "components": components,
+        "total": to_dp_str(total, dp_harga),
+        "component_count": len(components),
+    })
+
+
+# ============================================================================
+# API: KURVA S DATA (Phase 2F.0)
+# ============================================================================
+
+@login_required
+@require_GET
+def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    API untuk data Kurva S - mengirim harga map dan total biaya project.
+
+    Phase 2F.0: Fix Kurva S calculation to use HARGA (cost) instead of VOLUME.
+
+    Response format:
+    {
+        "hargaMap": {
+            "123": 38500000.00,  // pekerjaan_id → total harga (G × volume)
+            "456": 120000000.00,
+            ...
+        },
+        "totalBiayaProject": 250000000.00,  // Sum of all totals (sebelum pajak)
+        "volumeMap": {  // Keep for backward compatibility
+            "123": 100.0,
+            "456": 200.0,
+            ...
+        },
+        "pekerjaanMeta": {  // Additional metadata for debugging/tooltips
+            "123": {
+                "kode": "A.1.1",
+                "uraian": "Pekerjaan Galian",
+                "satuan": "m³",
+                "harga_satuan": 385000.00,  // G (with markup)
+                "volume": 100.0,
+                "total": 38500000.00,
+                "komponen": {
+                    "TK": 100000.00,
+                    "BHN": 200000.00,
+                    "ALT": 50000.00,
+                    "LAIN": 0.00
+                }
+            },
+            ...
+        },
+        "cached": false
+    }
+
+    URL: /detail-project/api/v2/project/<project_id>/kurva-s-data/
+    Method: GET
+    Auth: login_required
+    """
+    try:
+        from dashboard.models import Project
+        project = get_object_or_404(Project, id=project_id)
+    except Exception as e:
+        logger.error(f"[Kurva S API] Project not found: {project_id}", exc_info=True)
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    # Check permission (reuse existing pattern from other APIs)
+    # TODO: Add proper permission check if needed
+    # For now, login_required is sufficient
+
+    from django.core.cache import cache
+    from django.db.models import Max
+    from .models import DetailAHSPExpanded, DetailAHSPProject, VolumePekerjaan, Pekerjaan, ProjectPricing
+
+    def _ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"kurva_s_data:{project.id}:v1"
+    signature = (
+        _ts(DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        _ts(ProjectPricing.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+    )
+    cached = cache.get(cache_key)
+    if cached and cached.get("sig") == signature:
+        return JsonResponse(cached.get("data", {}))
+
+    # Get rekap data (uses existing compute_rekap_for_project)
+    # This already has caching built-in (5 minutes)
+    try:
+        rekap_rows = compute_rekap_for_project(project)
+    except Exception as e:
+        logger.error(
+            f"[Kurva S API] Failed to compute rekap for project {project_id}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to compute rekap data',
+            'detail': str(e)
+        }, status=500)
+
+    # Build response data
+    harga_map = {}
+    volume_map = {}
+    pekerjaan_meta = {}
+    total_biaya = Decimal('0.00')
+
+    for row in rekap_rows:
+        pkj_id = str(row['pekerjaan_id'])
+
+        # Total harga = G × volume (already calculated in compute_rekap_for_project)
+        total_harga = Decimal(str(row.get('total', 0)))
+
+        # Store in maps
+        harga_map[pkj_id] = float(total_harga)
+        volume_map[pkj_id] = float(row.get('volume', 0))
+        total_biaya += total_harga
+
+        # Metadata for tooltips/debugging
+        pekerjaan_meta[pkj_id] = {
+            'kode': row.get('kode', ''),
+            'uraian': row.get('uraian', ''),
+            'satuan': row.get('satuan', ''),
+            'harga_satuan': float(row.get('G', 0)),  # Unit price with markup
+            'harga_satuan_base': float(row.get('E_base', 0)),  # Unit price before markup
+            'volume': float(row.get('volume', 0)),
+            'total': float(total_harga),
+            'markup_percent': float(row.get('markup_eff', 0)),
+            'komponen': {
+                'TK': float(row.get('A', 0)),
+                'BHN': float(row.get('B', 0)),
+                'ALT': float(row.get('C', 0)),
+                'LAIN': float(row.get('LAIN', 0)),
+            }
+        }
+
+    response_data = {
+        'hargaMap': harga_map,
+        'totalBiayaProject': float(total_biaya),
+        'volumeMap': volume_map,  # Backward compatibility
+        'pekerjaanMeta': pekerjaan_meta,
+        'cached': False,  # compute_rekap_for_project handles caching internally
+        'timestamp': datetime.now().isoformat(),
+        'count': len(rekap_rows),
+    }
+
+    logger.info(
+        f"[Kurva S API] Served data for project {project_id}: "
+        f"{len(harga_map)} pekerjaan, total biaya Rp {total_biaya:,.2f}"
+    )
+
+    return JsonResponse(response_data)
+
+
+@require_GET
+@login_required
+def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    API untuk data Kurva S Harga - cost-based S-curve dengan breakdown per minggu.
+
+    Phase 1: Kurva S Harga - Calculate weekly cost progression.
+
+    Formula:
+        Weekly Cost = (Total Harga Pekerjaan × Proportion %) / 100
+        Where Total Harga = Volume × G (unit price with markup)
+
+    Response format:
+    {
+        "weeklyData": {
+            "planned": [
+                {
+                    "week_number": 1,
+                    "week_start": "2024-01-01",
+                    "week_end": "2024-01-07",
+                    "cost": 15000000.00,
+                    "cumulative_cost": 15000000.00,
+                    "cumulative_percent": 6.0,
+                    "pekerjaan_breakdown": {
+                        "123": 10000000.00,
+                        "456": 5000000.00
+                    }
+                },
+                ...
+            ],
+            "actual": [
+                // Same structure as planned
+            ]
+        },
+        "summary": {
+            "total_project_cost": 250000000.00,
+            "total_weeks": 20,
+            "planned_cost": 250000000.00,
+            "actual_cost": 180000000.00,
+            "actual_vs_planned_percent": 72.0
+        },
+        "pekerjaanMeta": {
+            "123": {
+                "kode": "A.1.1",
+                "uraian": "Pekerjaan Galian",
+                "total_cost": 38500000.00,
+                "volume": 100.0,
+                "unit_price": 385000.00
+            }
+        }
+    }
+
+    URL: /detail-project/api/v2/project/<project_id>/kurva-s-harga/
+    Method: GET
+    Auth: login_required
+    """
+    try:
+        from dashboard.models import Project
+        project = get_object_or_404(Project, id=project_id)
+    except Exception as e:
+        logger.error(f"[Kurva S Harga API] Project not found: {project_id}", exc_info=True)
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    # Step 1: Get rekap data (total cost per pekerjaan) and existing pekerjaan list
+    try:
+        rekap_rows = compute_rekap_for_project(project)
+    except Exception as e:
+        logger.error(
+            f"[Kurva S Harga API] Failed to compute rekap for project {project_id}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to compute rekap data',
+            'detail': str(e)
+        }, status=500)
+
+    rekap_lookup = {row['pekerjaan_id']: row for row in rekap_rows}
+
+    pekerjaan_qs = (
+        Pekerjaan.objects
+        .filter(project=project)
+        .select_related('sub_klasifikasi')
+        .order_by('ordering_index')
+    )
+
+    # Build pekerjaan cost map: pekerjaan_id → budgeted_cost (fallback ke rekap)
+    pekerjaan_costs = {}
+    pekerjaan_meta = {}
+    total_project_cost = Decimal('0.00')
+
+    for pkj in pekerjaan_qs:
+        fallback_row = rekap_lookup.get(pkj.id)
+        fallback_data = fallback_row or {}
+        fallback_total = Decimal(str(fallback_data.get('total', 0)))
+        cost_value = pkj.budgeted_cost if pkj.budgeted_cost and pkj.budgeted_cost > 0 else fallback_total
+
+        pekerjaan_costs[pkj.id] = cost_value
+        total_project_cost += cost_value
+
+        pekerjaan_meta[str(pkj.id)] = {
+            'kode': fallback_data.get('kode', pkj.snapshot_kode or ''),
+            'uraian': fallback_data.get('uraian', pkj.snapshot_uraian or ''),
+            'total_cost': float(cost_value),
+            'budgeted_cost': float(cost_value),
+            'volume': float(fallback_data.get('volume', 0)) if fallback_row else None,
+            'unit_price': float(fallback_data.get('G', 0)) if fallback_row else None,
+            'satuan': fallback_data.get('satuan', pkj.snapshot_satuan or ''),
+        }
+
+    # Fallback: jika total proyek = 0 (belum ada data rekap/harga), gunakan biaya normalisasi
+    if total_project_cost <= Decimal('0.00') and pekerjaan_costs:
+        logger.warning(
+            "[Kurva S Harga API] total_project_cost=0 untuk project %s; "
+            "menggunakan biaya normalisasi agar kurva tidak kosong.",
+            project_id
+        )
+        normalized_value = Decimal('1.00')
+        total_project_cost = normalized_value * Decimal(len(pekerjaan_costs))
+        for pkj in pekerjaan_qs:
+            pekerjaan_costs[pkj.id] = normalized_value
+            meta = pekerjaan_meta.get(str(pkj.id))
+            if meta:
+                meta['total_cost'] = float(normalized_value)
+                meta['budgeted_cost'] = float(normalized_value)
+
+    # Step 2: Get weekly progress data
+    from .models import PekerjaanProgressWeekly
+
+    weekly_progress = PekerjaanProgressWeekly.objects.filter(
+        project=project
+    ).select_related('pekerjaan').order_by('week_number')
+
+    # Step 3: Aggregate cost per week
+    planned_weeks = {}
+    actual_weeks = {}
+    earned_weeks = {}
+
+    for progress in weekly_progress:
+        pkj_id = progress.pekerjaan_id
+        week_num = progress.week_number
+
+        if pkj_id not in pekerjaan_costs:
+            continue
+
+        total_cost = pekerjaan_costs[pkj_id] or Decimal('0.00')
+
+        planned_cost = total_cost * Decimal(str(progress.planned_proportion)) / Decimal('100')
+        earned_cost = total_cost * Decimal(str(progress.actual_proportion)) / Decimal('100')
+
+        if progress.actual_cost is not None:
+            actual_cost_value = Decimal(str(progress.actual_cost))
+        else:
+            actual_cost_value = earned_cost
+
+        if actual_cost_value < Decimal('0.00'):
+            actual_cost_value = Decimal('0.00')
+
+        for bucket in (planned_weeks, actual_weeks, earned_weeks):
+            if week_num not in bucket:
+                bucket[week_num] = {
+                    'week_number': week_num,
+                    'week_start': progress.week_start_date.isoformat() if progress.week_start_date else None,
+                    'week_end': progress.week_end_date.isoformat() if progress.week_end_date else None,
+                    'cost': Decimal('0.00'),
+                    'pekerjaan_breakdown': {}
+                }
+
+        planned_weeks[week_num]['cost'] += planned_cost
+        planned_weeks[week_num]['pekerjaan_breakdown'][str(pkj_id)] = float(planned_cost)
+
+        earned_weeks[week_num]['cost'] += earned_cost
+        earned_weeks[week_num]['pekerjaan_breakdown'][str(pkj_id)] = float(earned_cost)
+
+        actual_weeks[week_num]['cost'] += actual_cost_value
+        actual_weeks[week_num]['pekerjaan_breakdown'][str(pkj_id)] = float(actual_cost_value)
+
+    # Step 4: Calculate cumulative cost
+    # Step 4: Calculate cumulative cost
+    def calculate_cumulative(weeks_dict):
+        weeks_list = sorted(weeks_dict.values(), key=lambda x: x['week_number'])
+        cumulative_cost = Decimal('0.00')
+
+        for week in weeks_list:
+            cumulative_cost += week['cost']
+            week['cumulative_cost'] = float(cumulative_cost)
+            week['cumulative_percent'] = float(
+                (cumulative_cost / total_project_cost * Decimal('100'))
+                if total_project_cost > 0 else Decimal('0')
+            )
+            # Convert weekly cost to float
+            week['cost'] = float(week['cost'])
+
+        return weeks_list
+
+    def _build_evm_dataset(planned_weeks_list, earned_weeks_list, actual_weeks_list, bac_value):
+        week_numbers = sorted({
+            *(week['week_number'] for week in planned_weeks_list),
+            *(week['week_number'] for week in earned_weeks_list),
+            *(week['week_number'] for week in actual_weeks_list),
+        })
+
+        bac_decimal = bac_value or Decimal('0.00')
+        if not week_numbers:
+            return {
+                'labels': [],
+                'pv': [],
+                'ev': [],
+                'ac': [],
+                'pv_percent': [],
+                'ev_percent': [],
+                'ac_percent': [],
+                'spi': [],
+                'cpi': [],
+                'summary': {
+                    'bac': 0.0,
+                    'planned_cost': 0.0,
+                    'earned_value': 0.0,
+                    'actual_cost': 0.0,
+                    'eac': 0.0,
+                    'etc': 0.0,
+                    'vac': 0.0,
+                },
+            }
+
+        def build_map(weeks_list, key):
+            mapping = {}
+            last = Decimal('0.00')
+            for week in weeks_list:
+                value = Decimal(str(week.get(key, 0)))
+                last = value
+                mapping[week['week_number']] = value
+            return mapping, last
+
+        pv_map, _ = build_map(planned_weeks_list, 'cumulative_cost')
+        pv_percent_map, _ = build_map(planned_weeks_list, 'cumulative_percent')
+        ev_map, _ = build_map(earned_weeks_list, 'cumulative_cost')
+        ev_percent_map, _ = build_map(earned_weeks_list, 'cumulative_percent')
+        ac_map, _ = build_map(actual_weeks_list, 'cumulative_cost')
+        ac_percent_map, _ = build_map(actual_weeks_list, 'cumulative_percent')
+
+        labels = []
+        pv_series = []
+        ev_series = []
+        ac_series = []
+        pv_percent_series = []
+        ev_percent_series = []
+        ac_percent_series = []
+        spi_series = []
+        cpi_series = []
+
+        last_pv = Decimal('0.00')
+        last_ev = Decimal('0.00')
+        last_ac = Decimal('0.00')
+        last_pv_percent = Decimal('0.00')
+        last_ev_percent = Decimal('0.00')
+        last_ac_percent = Decimal('0.00')
+
+        for week in week_numbers:
+            labels.append(f"W{week}")
+
+            last_pv = pv_map.get(week, last_pv)
+            last_ev = ev_map.get(week, last_ev)
+            last_ac = ac_map.get(week, last_ac)
+            last_pv_percent = pv_percent_map.get(week, last_pv_percent)
+            last_ev_percent = ev_percent_map.get(week, last_ev_percent)
+            last_ac_percent = ac_percent_map.get(week, last_ac_percent)
+
+            pv_series.append(float(last_pv))
+            ev_series.append(float(last_ev))
+            ac_series.append(float(last_ac))
+            pv_percent_series.append(float(last_pv_percent))
+            ev_percent_series.append(float(last_ev_percent))
+            ac_percent_series.append(float(last_ac_percent))
+
+            spi = float(last_ev / last_pv) if last_pv > 0 else 0.0
+            cpi = float(last_ev / last_ac) if last_ac > 0 else 0.0
+
+            spi_series.append(spi)
+            cpi_series.append(cpi)
+
+        actual_total = ac_series[-1] if ac_series else 0.0
+        planned_total = pv_series[-1] if pv_series else 0.0
+        earned_total = ev_series[-1] if ev_series else 0.0
+
+        current_cpi = cpi_series[-1] if cpi_series else 0.0
+        if current_cpi > 0:
+            eac_decimal = bac_decimal / Decimal(str(current_cpi))
+        else:
+            eac_decimal = bac_decimal
+
+        actual_total_decimal = Decimal(str(actual_total))
+        etc_decimal = max(Decimal('0.00'), eac_decimal - actual_total_decimal)
+        vac_decimal = bac_decimal - eac_decimal
+
+        return {
+            'labels': labels,
+            'pv': pv_series,
+            'ev': ev_series,
+            'ac': ac_series,
+            'pv_percent': pv_percent_series,
+            'ev_percent': ev_percent_series,
+            'ac_percent': ac_percent_series,
+            'spi': spi_series,
+            'cpi': cpi_series,
+            'summary': {
+                'bac': float(bac_decimal),
+                'planned_cost': float(planned_total),
+                'earned_value': float(earned_total),
+                'actual_cost': float(actual_total),
+                'eac': float(eac_decimal),
+                'etc': float(etc_decimal),
+                'vac': float(vac_decimal),
+            }
+        }
+
+    planned_list = calculate_cumulative(planned_weeks)
+    actual_list = calculate_cumulative(actual_weeks)
+    earned_list = calculate_cumulative(earned_weeks)
+
+    # Step 5: Calculate summary
+    total_planned_cost = sum(w['cost'] for w in planned_list)
+    total_actual_cost = sum(w['cost'] for w in actual_list)
+
+    evm_data = _build_evm_dataset(planned_list, earned_list, actual_list, total_project_cost)
+
+    response_data = {
+        'weeklyData': {
+            'planned': planned_list,
+            'actual': actual_list,
+            'earned': earned_list,
+        },
+        'summary': {
+            'total_project_cost': float(total_project_cost),
+            'total_weeks': len(planned_weeks),
+            'planned_cost': total_planned_cost,
+            'actual_cost': total_actual_cost,
+            'actual_vs_planned_percent': (
+                (total_actual_cost / total_planned_cost * 100.0)
+                if total_planned_cost > 0 else 0.0
+            )
+        },
+        'pekerjaanMeta': pekerjaan_meta,
+        'timestamp': datetime.now().isoformat(),
+        'evm': evm_data,
+    }
+
+    logger.info(
+        f"[Kurva S Harga API] Served cost data for project {project_id}: "
+        f"{len(pekerjaan_costs)} pekerjaan, {len(planned_weeks)} weeks, "
+        f"total cost Rp {total_project_cost:,.2f}"
+    )
+
+    return JsonResponse(response_data)
+
+
+@require_GET
+@login_required
+def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    API untuk Rekap Kebutuhan per minggu - resource requirements breakdown by period.
+
+    Phase 1: Rekap Kebutuhan - Calculate weekly resource requirements for procurement planning.
+
+    Formula:
+        Weekly Requirement = Item Quantity × (Weekly Proportion / 100)
+
+    Response format:
+    {
+        "weeklyData": [
+            {
+                "week_number": 1,
+                "week_start": "2024-01-01",
+                "week_end": "2024-01-07",
+                "items": {
+                    "TK": [
+                        {
+                            "kode": "TK.001",
+                            "uraian": "Mandor",
+                            "satuan": "OH",
+                            "quantity": 5.0,
+                            "pekerjaan_breakdown": {"123": 3.0, "456": 2.0}
+                        }
+                    ],
+                    "BHN": [...],
+                    "ALT": [...],
+                    "LAIN": [...]
+                },
+                "summary": {
+                    "TK": 10,
+                    "BHN": 50,
+                    "ALT": 5,
+                    "LAIN": 2
+                }
+            }
+        ],
+        "summary": {
+            "total_weeks": 20,
+            "total_items": {"TK": 150, "BHN": 1200, "ALT": 80, "LAIN": 30},
+            "total_quantity_by_kategori": {
+                "TK": 250.5,
+                "BHN": 15000.0,
+                "ALT": 100.0,
+                "LAIN": 50.0
+            }
+        },
+        "metadata": {
+            "project_name": "Proyek ABC",
+            "generated_at": "2025-11-27T12:00:00"
+        }
+    }
+
+    URL: /detail-project/api/v2/project/<project_id>/rekap-kebutuhan-weekly/
+    Method: GET
+    Auth: login_required
+    """
+    try:
+        from dashboard.models import Project
+        project = get_object_or_404(Project, id=project_id)
+    except Exception as e:
+        logger.error(f"[Rekap Kebutuhan API] Project not found: {project_id}", exc_info=True)
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    from django.core.cache import cache
+    from django.db.models import Max
+    from .models import PekerjaanProgressWeekly, VolumePekerjaan
+    from .services import compute_kebutuhan_items, _kebutuhan_signature
+
+    cache_key = f"rekap_kebutuhan_weekly:{project.id}:v1"
+    signature = None
+    try:
+        base_sig = _kebutuhan_signature(project)
+        weekly_ts = PekerjaanProgressWeekly.objects.filter(
+            project=project
+        ).aggregate(last=Max("updated_at"))["last"]
+        signature = tuple(list(base_sig) + [weekly_ts.isoformat() if weekly_ts else "0"])
+        cached = cache.get(cache_key)
+        if cached and cached.get("sig") == signature:
+            return JsonResponse(cached.get("data", {}))
+    except Exception:
+        logger.warning(
+            f"[Rekap Kebutuhan API] Cache precheck failed for project {project_id}",
+            exc_info=True
+        )
+
+    # Step 1: Get all kebutuhan items (material/tenaga requirements)
+    try:
+        kebutuhan_items = compute_kebutuhan_items(project)
+    except Exception as e:
+        logger.error(
+            f"[Rekap Kebutuhan API] Failed to compute kebutuhan for project {project_id}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to compute resource requirements',
+            'detail': str(e)
+        }, status=500)
+
+    # Build item index: (kategori, kode) → item data
+    item_index = {}
+    for item in kebutuhan_items:
+        key = (item['kategori'], item['kode'])
+        item_index[key] = {
+            'uraian': item['uraian'],
+            'satuan': item['satuan'],
+            'total_quantity': Decimal(str(item.get('quantity', 0)))
+        }
+
+    # Step 2: Get weekly progress data
+
+    # PERFORMANCE OPTIMIZATION: Prefetch related data to avoid N+1 queries
+    # Before: 1000+ queries (N pekerjaan × M components × volume lookups)
+    # After: 3-5 queries total
+    weekly_progress = PekerjaanProgressWeekly.objects.filter(
+        project=project
+    ).select_related(
+        'pekerjaan'
+    ).prefetch_related(
+        'pekerjaan__detail_list__harga_item',  # Prefetch components and their items
+        'pekerjaan__volume'                     # Prefetch volumes
+    ).order_by('week_number')
+
+    # OPTIMIZATION: Build volume lookup dictionary (single query, fast access)
+    volume_lookup = {}
+    for vol in VolumePekerjaan.objects.filter(
+        pekerjaan__project=project
+    ).select_related('pekerjaan'):
+        volume_lookup[vol.pekerjaan_id] = vol.quantity
+
+    # Step 3: Build week-by-week requirements
+    weekly_data = {}
+
+    for progress in weekly_progress:
+        week_num = progress.week_number
+        pkj = progress.pekerjaan  # Already loaded via select_related
+        pkj_id = pkj.id
+        proportion = progress.planned_proportion  # Use planned proportion
+
+        # Initialize week data if not exists
+        if week_num not in weekly_data:
+            weekly_data[week_num] = {
+                'week_number': week_num,
+                'week_start': progress.week_start_date.isoformat(),
+                'week_end': progress.week_end_date.isoformat(),
+                'items_by_kategori': {
+                    'TK': {},
+                    'BHN': {},
+                    'ALT': {},
+                    'LAIN': {}
+                }
+            }
+
+        # OPTIMIZATION: Use prefetched components (NO additional query!)
+        components = pkj.detail_list.all()  # Already loaded via prefetch_related
+
+        # OPTIMIZATION: Get volume from lookup dict (NO query!)
+        volume = Decimal(str(volume_lookup.get(pkj_id, 1.0)))
+
+        for comp in components:
+            harga_item = comp.harga_item  # Already loaded via prefetch
+            kategori = harga_item.kategori
+            kode = harga_item.kode_item or harga_item.uraian
+            koefisien = Decimal(str(comp.koefisien))
+
+            # Calculate weekly requirement: volume × koefisien × proportion / 100
+            weekly_qty = volume * koefisien * Decimal(str(proportion)) / Decimal('100')
+
+            # Aggregate by item
+            items_dict = weekly_data[week_num]['items_by_kategori'][kategori]
+            key = kode
+
+            if key not in items_dict:
+                items_dict[key] = {
+                    'kode': kode,
+                    'uraian': harga_item.uraian,
+                    'satuan': harga_item.satuan,
+                    'quantity': Decimal('0'),
+                    'pekerjaan_breakdown': {}
+                }
+
+            items_dict[key]['quantity'] += weekly_qty
+            items_dict[key]['pekerjaan_breakdown'][str(pkj_id)] = float(weekly_qty)
+
+    # Step 4: Convert to list format and calculate summaries
+    weekly_list = []
+    total_items_count = {'TK': 0, 'BHN': 0, 'ALT': 0, 'LAIN': 0}
+    total_quantity = {'TK': Decimal('0'), 'BHN': Decimal('0'), 'ALT': Decimal('0'), 'LAIN': Decimal('0')}
+
+    for week_num in sorted(weekly_data.keys()):
+        week = weekly_data[week_num]
+
+        # Convert items dict to list
+        items_by_kategori = {}
+        week_summary = {'TK': 0, 'BHN': 0, 'ALT': 0, 'LAIN': 0}
+
+        for kategori in ['TK', 'BHN', 'ALT', 'LAIN']:
+            items_list = []
+            for item_data in week['items_by_kategori'][kategori].values():
+                items_list.append({
+                    'kode': item_data['kode'],
+                    'uraian': item_data['uraian'],
+                    'satuan': item_data['satuan'],
+                    'quantity': float(item_data['quantity']),
+                    'pekerjaan_breakdown': item_data['pekerjaan_breakdown']
+                })
+
+                # Update totals
+                total_quantity[kategori] += item_data['quantity']
+
+            items_by_kategori[kategori] = sorted(items_list, key=lambda x: x['kode'])
+            week_summary[kategori] = len(items_list)
+            total_items_count[kategori] += len(items_list)
+
+        weekly_list.append({
+            'week_number': week['week_number'],
+            'week_start': week['week_start'],
+            'week_end': week['week_end'],
+            'items': items_by_kategori,
+            'summary': week_summary
+        })
+
+    # Step 5: Build response
+    response_data = {
+        'weeklyData': weekly_list,
+        'summary': {
+            'total_weeks': len(weekly_list),
+            'total_items': total_items_count,
+            'total_quantity_by_kategori': {
+                'TK': float(total_quantity['TK']),
+                'BHN': float(total_quantity['BHN']),
+                'ALT': float(total_quantity['ALT']),
+                'LAIN': float(total_quantity['LAIN'])
+            }
+        },
+        'metadata': {
+            'project_name': project.nama,
+            'generated_at': datetime.now().isoformat()
+        }
+    }
+
+    logger.info(
+        f"[Rekap Kebutuhan API] Served data for project {project_id}: "
+        f"{len(weekly_list)} weeks, "
+        f"TK: {total_items_count['TK']}, BHN: {total_items_count['BHN']}, "
+        f"ALT: {total_items_count['ALT']}, LAIN: {total_items_count['LAIN']}"
+    )
+
+    if signature is not None:
+        cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
+
+    cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
+    return JsonResponse(response_data)
+
+
+# ============================================================================
+# API: CHART DATA (Single Source of Truth for Grid, Gantt, Kurva S)
+# ============================================================================
+
+@require_GET
+@login_required
+def api_chart_data(request: HttpRequest, project_id: int) -> JsonResponse:
+    """
+    Unified Chart Data API - Single Source of Truth for all chart views.
+    
+    This endpoint provides consistent data for:
+    - Grid View (columns + rows)
+    - Gantt Chart (bar data with progress values)
+    - Kurva S (weighted curve data)
+    
+    Uses JadwalPekerjaanExportAdapter for consistency with PDF/Word export.
+    
+    Query Parameters:
+        timescale: 'weekly' (default) | 'monthly'
+        mode: 'planned' | 'actual' | 'both' (default)
+    
+    Response:
+    {
+        "timescale": "weekly",
+        "columns": [
+            {"id": "week_1", "label": "W1", "weekNumber": 1, "startDate": "...", "endDate": "..."}
+        ],
+        "rows": [
+            {"pekerjaanId": 123, "name": "Task A", "type": "pekerjaan", "bobot": 30.5,
+             "cells": {"week_1": {"planned": 10, "actual": 8}}}
+        ],
+        "curveData": {
+            "planned": [{"weekNumber": 1, "cumulative": 4.5, "weekly": 4.5, "label": "W1"}],
+            "actual": [{"weekNumber": 1, "cumulative": 3.2, "weekly": 3.2, "label": "W1"}]
+        },
+        "summary": {
+            "totalPlanned": 45.5,
+            "totalActual": 38.2,
+            "variance": -7.3,
+            "totalPekerjaan": 88,
+            "totalWeeks": 20
+        }
+    }
+    
+    URL: /detail-project/api/v2/project/<project_id>/chart-data/
+    Method: GET
+    Auth: login_required
+    """
+    from dashboard.models import Project
+    from .exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
+    from decimal import Decimal
+    
+    # Get project
+    try:
+        project = get_object_or_404(Project, id=project_id)
+    except Exception:
+        return JsonResponse({'error': 'Project not found'}, status=404)
+    
+    # Parse query parameters
+    timescale = request.GET.get('timescale', 'weekly').lower()
+    if timescale not in ('weekly', 'monthly'):
+        timescale = 'weekly'
+    
+    mode = request.GET.get('mode', 'both').lower()
+    if mode not in ('planned', 'actual', 'both'):
+        mode = 'both'
+    
+    try:
+        def _ts(val):
+            return val.isoformat() if val else "0"
+
+        cache_key = f"chart_data:{project.id}:{timescale}:{mode}:v2"
+        signature = (
+            _ts(DetailAHSPProject.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+            _ts(DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+            _ts(VolumePekerjaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+            _ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+            _ts(ProjectPricing.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+            _ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+            _ts(TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+        )
+        cached = cache.get(cache_key)
+        if cached and cached.get("sig") == signature:
+            return JsonResponse(cached.get("data", {}))
+
+        # Use the export adapter for consistency with PDF/Word export.
+        # Avoid full report generation; build only what this API needs.
+        adapter = JadwalPekerjaanExportAdapter(project)
+        weekly_tahapan = adapter._fetch_weekly_tahapan()
+        progress_map, progress_meta = adapter._build_progress_map()
+        actual_map = adapter._build_actual_progress_map()
+
+        adapter.project_start, adapter.project_end = adapter._resolve_project_dates(
+            weekly_tahapan,
+            progress_meta.get("earliest_start"),
+            progress_meta.get("latest_end"),
+        )
+
+        weekly_columns = adapter._build_weekly_columns(
+            weekly_tahapan, progress_meta.get("max_week_number", 0)
+        )
+        monthly_columns = adapter._build_monthly_columns(weekly_columns)
+
+        # Get base rows with hierarchy info
+        base_rows, hierarchy = adapter._build_base_rows()
+
+        kurva_s_raw = adapter._calculate_kurva_s_data(
+            progress_map, actual_map, base_rows, weekly_columns
+        )
+        summary_raw = adapter._calculate_project_summary(
+            progress_map, actual_map, base_rows, weekly_columns
+        )
+        meta = {
+            "total_weeks": len(weekly_columns),
+            "total_months": len(monthly_columns),
+            "total_pekerjaan": len([r for r in base_rows if r.get("type") == "pekerjaan"]),
+        }
+        
+        # Build columns based on timescale
+        if timescale == 'monthly':
+            columns_raw = monthly_columns
+        else:
+            columns_raw = weekly_columns
+        
+        # Transform columns to API format
+        columns = []
+        for col in columns_raw:
+            col_data = {
+                'id': f"week_{col.get('week_number', 0)}" if timescale == 'weekly' else f"month_{col.get('month_number', 0)}",
+                'label': col.get('label', ''),
+                'startDate': col.get('range', '').split(' - ')[0] if col.get('range') else None,
+                'endDate': col.get('range', '').split(' - ')[-1] if col.get('range') else None,
+            }
+            if timescale == 'weekly':
+                col_data['weekNumber'] = col.get('week_number', 0)
+            else:
+                col_data['monthNumber'] = col.get('month_number', 0)
+                col_data['childWeeks'] = col.get('child_weeks', [])
+            columns.append(col_data)
+        
+        # Build rows with cell values
+        # Cache harga once for bobot calculation
+        rekap_cache = adapter._rekap_harga_cache
+        if rekap_cache is None:
+            rekap_cache = adapter._build_rekap_harga_cache()
+            adapter._rekap_harga_cache = rekap_cache
+        total_harga = sum(rekap_cache.values()) if rekap_cache else Decimal('1')
+
+        rows = []
+        for row in base_rows:
+            row_type = row.get('type', 'unknown')
+            pekerjaan_id = row.get('pekerjaan_id')
+            
+            row_data = {
+                'id': pekerjaan_id or row.get('id'),
+                'name': row.get('uraian', ''),
+                'type': row_type,
+                'level': hierarchy.get(pekerjaan_id, 0) if pekerjaan_id else 0,
+                'volume': row.get('volume_display', ''),
+                'unit': row.get('unit', ''),
+            }
+            
+            # Add bobot for pekerjaan rows
+            if row_type == 'pekerjaan' and pekerjaan_id:
+                harga = rekap_cache.get(int(pekerjaan_id), Decimal("0"))
+                bobot = float((harga / total_harga * 100) if total_harga > 0 else 0)
+                row_data['bobot'] = round(bobot, 2)
+                row_data['pekerjaanId'] = pekerjaan_id
+            
+            # Build cells with progress values
+            cells = {}
+            if row_type == 'pekerjaan' and pekerjaan_id:
+                for col in columns_raw:
+                    if timescale == 'weekly':
+                        week_num = col.get('week_number', 0)
+                        planned_val = float(progress_map.get((pekerjaan_id, week_num), Decimal('0')))
+                        actual_val = float(actual_map.get((pekerjaan_id, week_num), Decimal('0')))
+                        col_id = f"week_{week_num}"
+                    else:
+                        # Monthly: aggregate child weeks
+                        child_weeks = col.get('child_weeks', [])
+                        planned_val = sum(
+                            float(progress_map.get((pekerjaan_id, wk), Decimal('0')))
+                            for wk in child_weeks
+                        )
+                        actual_val = sum(
+                            float(actual_map.get((pekerjaan_id, wk), Decimal('0')))
+                            for wk in child_weeks
+                        )
+                        col_id = f"month_{col.get('month_number', 0)}"
+                    
+                    if mode == 'planned':
+                        cells[col_id] = {'planned': planned_val}
+                    elif mode == 'actual':
+                        cells[col_id] = {'actual': actual_val}
+                    else:
+                        cells[col_id] = {'planned': planned_val, 'actual': actual_val}
+            
+            row_data['cells'] = cells
+            rows.append(row_data)
+        
+        # Transform curve data
+        curve_data = {'planned': [], 'actual': []}
+        
+        if timescale == 'weekly':
+            # Weekly curve points from adapter
+            for point in kurva_s_raw:
+                curve_data['planned'].append({
+                    'weekNumber': point.get('week', 0),
+                    'cumulative': point.get('planned', 0),
+                    'label': point.get('label', f"W{point.get('week', 0)}"),
+                })
+                curve_data['actual'].append({
+                    'weekNumber': point.get('week', 0),
+                    'cumulative': point.get('actual', 0),
+                    'label': point.get('label', f"W{point.get('week', 0)}"),
+                })
+        else:
+            # Monthly: aggregate curve data by month
+            month_cols = monthly_columns
+            from collections import defaultdict
+            monthly_planned = defaultdict(float)
+            monthly_actual = defaultdict(float)
+            
+            for point in kurva_s_raw:
+                week_num = point.get('week', 0)
+                # Find which month this week belongs to
+                for mcol in month_cols:
+                    if week_num in mcol.get('child_weeks', []):
+                        month_num = mcol.get('month_number', 0)
+                        # For cumulative, take the max week's cumulative value
+                        if week_num == max(mcol.get('child_weeks', [week_num])):
+                            monthly_planned[month_num] = point.get('planned', 0)
+                            monthly_actual[month_num] = point.get('actual', 0)
+                        break
+            
+            for mcol in month_cols:
+                month_num = mcol.get('month_number', 0)
+                curve_data['planned'].append({
+                    'monthNumber': month_num,
+                    'cumulative': monthly_planned.get(month_num, 0),
+                    'label': mcol.get('label', f"M{month_num}"),
+                })
+                curve_data['actual'].append({
+                    'monthNumber': month_num,
+                    'cumulative': monthly_actual.get(month_num, 0),
+                    'label': mcol.get('label', f"M{month_num}"),
+                })
+        
+        # Build summary
+        summary = {
+            'totalPlanned': summary_raw.get('total_planned', 0),
+            'totalActual': summary_raw.get('total_actual', 0),
+            'variance': summary_raw.get('variance', 0),
+            'totalPekerjaan': meta.get('total_pekerjaan', len([r for r in base_rows if r.get('type') == 'pekerjaan'])),
+            'totalWeeks': meta.get('total_weeks', len(weekly_columns)),
+            'totalMonths': meta.get('total_months', len(monthly_columns)),
+        }
+        
+        response_data = {
+            'timescale': timescale,
+            'columns': columns,
+            'rows': rows,
+            'curveData': curve_data,
+            'summary': summary,
+            'timestamp': datetime.now().isoformat(),
+        }
+
+        cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
+        
+        logger.info(
+            f"[Chart Data API] Served {timescale} data for project {project_id}: "
+            f"{len(columns)} columns, {len(rows)} rows"
+        )
+        
+        return JsonResponse(response_data)
+        
+    except Exception as e:
+        logger.error(
+            f"[Chart Data API] Error for project {project_id}: {str(e)}",
+            exc_info=True
+        )
+        return JsonResponse({
+            'error': 'Failed to generate chart data',
+            'detail': str(e)
+        }, status=500)
+
+
+# ============================================================================
+# EXPORT: LIST PEKERJAAN JSON (for backup/import)
+# ============================================================================
+
+@login_required
+@require_GET
+def export_list_pekerjaan_json(request: HttpRequest, project_id: int):
+    """
+    Export List Pekerjaan to JSON format for backup/import.
+    
+    Returns hierarchical structure: Klasifikasi → Sub → Pekerjaan
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        
+        # Get all data
+        k_qs = Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
+        s_qs = SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
+        p_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+        
+        # Build maps
+        subs_by_klas = {}
+        for s in s_qs:
+            subs_by_klas.setdefault(s.klasifikasi_id, []).append(s)
+        
+        pkj_by_sub = {}
+        for p in p_qs:
+            pkj_by_sub.setdefault(p.sub_klasifikasi_id, []).append(p)
+        
+        # Build hierarchical structure
+        klasifikasi_data = []
+        for k in k_qs:
+            k_obj = {
+                "name": k.name,
+                "ordering_index": k.ordering_index,
+                "sub": []
+            }
+            for s in subs_by_klas.get(k.id, []):
+                s_obj = {
+                    "name": s.name,
+                    "ordering_index": s.ordering_index,
+                    "pekerjaan": []
+                }
+                for p in pkj_by_sub.get(s.id, []):
+                    s_obj["pekerjaan"].append({
+                        "source_type": _src_to_str(p.source_type),
+                        "snapshot_kode": getattr(p, "snapshot_kode", None) or "",
+                        "snapshot_uraian": p.snapshot_uraian or "",
+                        "snapshot_satuan": p.snapshot_satuan or "",
+                        "ordering_index": p.ordering_index,
+                        "budgeted_cost": str(p.budgeted_cost or 0),
+                        "ref_ahsp_id": p.ref_id if p.source_type == Pekerjaan.SOURCE_REF else None,
+                    })
+                k_obj["sub"].append(s_obj)
+            klasifikasi_data.append(k_obj)
+        
+        export_data = {
+            "export_type": "list_pekerjaan",
+            "export_version": "1.0",
+            "project_id": project_id,
+            "project_name": project.nama,
+            "export_date": timezone.now().isoformat(),
+            "klasifikasi": klasifikasi_data,
+            "stats": {
+                "total_klasifikasi": len(klasifikasi_data),
+                "total_sub": sum(len(k["sub"]) for k in klasifikasi_data),
+                "total_pekerjaan": sum(len(s["pekerjaan"]) for k in klasifikasi_data for s in k["sub"]),
+            }
+        }
+        
+        response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
+        filename = f"list_pekerjaan_{project.nama.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Export List Pekerjaan JSON error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
+# ============================================================================
+# EXPORT: TEMPLATE AHSP JSON (for backup/import)
+# ============================================================================
+
+@login_required
+@require_GET
+def export_template_ahsp_json(request: HttpRequest, project_id: int):
+    """
+    Export Template AHSP (all pekerjaan with their AHSP items) to JSON format.
+
+    Returns all pekerjaan with their DetailAHSPProject items for backup/import.
+    """
+    def sanitize_str(s):
+        """Remove unicode replacement characters and ensure valid string"""
+        if s is None:
+            return ""
+        # Replace unicode replacement character (U+FFFD) with empty string
+        # Also handle potential encoding issues
+        try:
+            result = str(s).replace('\ufffd', '').replace('�', '')
+            # Ensure the string can be JSON serialized
+            result.encode('utf-8')
+            return result
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            # If encoding fails, return ASCII-safe version
+            return str(s).encode('ascii', 'ignore').decode('ascii')
+
+    try:
+        # Get project with permission check
+        project = get_object_or_404(Project, id=project_id, owner=request.user)
+
+        # PERFORMANCE OPTIMIZATION: Use prefetch_related to avoid N+1 queries
+        # This loads all pekerjaan and their detail_list in 2 queries instead of N+1
+        from django.db.models import Prefetch
+
+        # Prefetch detail AHSP items with ordering
+        detail_prefetch = Prefetch(
+            'detail_list',
+            queryset=DetailAHSPProject.objects.order_by('id')
+        )
+
+        # OPTIMIZATION: Add only() to load only required fields, reducing memory
+        # Get all pekerjaan with prefetched details
+        p_qs = Pekerjaan.objects.filter(
+            project=project
+        ).only(
+            'id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan',
+            'source_type', 'ordering_index'
+        ).prefetch_related(
+            detail_prefetch
+        ).order_by('ordering_index', 'id')[:1000]  # LIMIT to first 1000 pekerjaan for safety
+
+        # Build pekerjaan list with items
+        pekerjaan_list = []
+        for p in p_qs:
+            items = []
+            # OPTIMIZATION: Use prefetched detail_list instead of dict lookup
+            for d in p.detail_list.all():
+                try:
+                    # Safely convert koefisien to float to ensure JSON serialization
+                    koefisien_val = float(d.koefisien) if d.koefisien is not None else 0.0
+                except (ValueError, TypeError):
+                    koefisien_val = 0.0
+
+                items.append({
+                    "kategori": sanitize_str(d.kategori),
+                    "kode": sanitize_str(d.kode),
+                    "uraian": sanitize_str(d.uraian),
+                    "satuan": sanitize_str(d.satuan),
+                    "koefisien": koefisien_val,
+                })
+
+            pekerjaan_list.append({
+                "kode": sanitize_str(getattr(p, "snapshot_kode", None)),
+                "uraian": sanitize_str(p.snapshot_uraian),
+                "satuan": sanitize_str(p.snapshot_satuan),
+                "source_type": _src_to_str(p.source_type),
+                "ordering_index": p.ordering_index,
+                "items": items,
+            })
+
+        # Check total count for limit warning
+        total_pekerjaan_count = Pekerjaan.objects.filter(project=project).count()
+        is_limited = total_pekerjaan_count > 1000
+
+        export_data = {
+            "export_type": "template_ahsp",
+            "export_version": "1.0",
+            "project_id": project_id,
+            "project_name": sanitize_str(project.nama),
+            "export_date": timezone.now().isoformat(),
+            "pekerjaan_list": pekerjaan_list,
+            "stats": {
+                "total_pekerjaan": len(pekerjaan_list),
+                "total_items": sum(len(p["items"]) for p in pekerjaan_list),
+                "is_limited": is_limited,
+                "limit": 1000 if is_limited else None,
+                "total_in_project": total_pekerjaan_count,
+            }
+        }
+
+        if is_limited:
+            export_data["warning"] = f"Export limited to first 1000 pekerjaan (total: {total_pekerjaan_count})"
+
+        response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
+        # Sanitize filename: remove special characters, keep only alphanumeric, underscore, dash
+        import re
+        safe_project_name = re.sub(r'[^\w\-]', '_', sanitize_str(project.nama))
+        filename = f"template_ahsp_{safe_project_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+        # Use ASCII-only filename in header to avoid encoding issues
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Export Template AHSP JSON error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
+# ============================================================================
+# EXPORT: FULL PROJECT BACKUP (for migration/restore)
+# ============================================================================
+
+def _build_export_data(project, mode='full', template_meta=None, include_progress=False):
+    """
+    Build export data structure based on mode.
+    
+    Args:
+        project: Project instance
+        mode: 'full' or 'template'
+            - full: Export everything (project metadata, harga, volume, jadwal)
+            - template: Export hierarchy + DetailAHSP only (no prices/volume)
+        template_meta: dict with name, description, category for template mode
+        include_progress: Include jadwal/progress data (full mode only)
+    
+    Returns:
+        dict: Complete export data structure
+    """
+    from .models import (
+        VolumeFormulaState, ProjectParameter, ProjectPricing,
+        TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+    )
+    
+    is_full = mode == 'full'
+    
+    # ========== Export Klasifikasi ==========
+    klasifikasi_list = []
+    klas_map = {}  # old_id -> export_id
+    for idx, k in enumerate(Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')):
+        klas_map[k.id] = idx + 1
+        klasifikasi_list.append({
+            "_export_id": idx + 1,
+            "name": k.name,
+            "ordering_index": k.ordering_index,
+        })
+    
+    # ========== Export SubKlasifikasi ==========
+    sub_list = []
+    sub_map = {}  # old_id -> export_id
+    for idx, s in enumerate(SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')):
+        sub_map[s.id] = idx + 1
+        sub_list.append({
+            "_export_id": idx + 1,
+            "_klasifikasi_ref": klas_map.get(s.klasifikasi_id),
+            "name": s.name,
+            "ordering_index": s.ordering_index,
+        })
+    
+    # ========== Export HargaItemProject (FULL mode only) ==========
+    harga_list = []
+    harga_map = {}  # old_id -> export_id
+    if is_full:
+        harga_items = HargaItemProject.objects.filter(project=project).order_by('id')
+        for idx, h in enumerate(harga_items):
+            harga_map[h.id] = idx + 1
+            harga_list.append({
+                "_export_id": idx + 1,
+                "kode_item": h.kode_item,
+                "uraian": h.uraian or "",
+                "satuan": h.satuan or "",
+                "kategori": h.kategori,
+                "harga_satuan": str(h.harga_satuan or 0),
+            })
+    else:
+        # Template mode: build harga_map for DetailAHSP ref but don't export prices
+        for h in HargaItemProject.objects.filter(project=project):
+            harga_map[h.id] = h.kode_item  # Use kode as reference instead of export_id
+    
+    # ========== Export ItemConversionProfile (FULL mode only) ==========
+    conversion_list = []
+    if is_full:
+        for cp in ItemConversionProfile.objects.filter(harga_item__project=project).select_related('harga_item'):
+            conversion_list.append({
+                "_harga_item_ref": harga_map.get(cp.harga_item_id),
+                "market_unit": cp.market_unit,
+                "market_price": str(cp.market_price or 0),
+                "factor_to_base": str(cp.factor_to_base or 1),
+                "density": str(cp.density) if cp.density else None,
+                "capacity_m3": str(cp.capacity_m3) if cp.capacity_m3 else None,
+                "capacity_ton": str(cp.capacity_ton) if cp.capacity_ton else None,
+                "method": cp.method,
+            })
+    
+    # ========== Export Pekerjaan ==========
+    pekerjaan_list = []
+    pekerjaan_map = {}  # old_id -> export_id
+    pekerjaan_snapshot_map = {}  # old_id -> snapshot_kode (for template mode bundle refs)
+    pekerjaan_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+    for idx, p in enumerate(pekerjaan_qs):
+        pekerjaan_map[p.id] = idx + 1
+        pekerjaan_snapshot_map[p.id] = p.snapshot_kode or f"PKJ-{idx+1}"
+        
+        pekerjaan_data = {
+            "_export_id": idx + 1,
+            "_sub_klasifikasi_ref": sub_map.get(p.sub_klasifikasi_id),
+            "source_type": _src_to_str(p.source_type),
+            "snapshot_kode": getattr(p, "snapshot_kode", None) or "",
+            "snapshot_uraian": p.snapshot_uraian or "",
+            "snapshot_satuan": p.snapshot_satuan or "",
+            "ordering_index": p.ordering_index,
+            "ref_id": p.ref_id,  # Direct reference to AHSPReferensi
+        }
+        
+        # Full mode includes budgeted_cost
+        if is_full:
+            pekerjaan_data["budgeted_cost"] = str(p.budgeted_cost or 0)
+        
+        pekerjaan_list.append(pekerjaan_data)
+    
+    # ========== Export VolumePekerjaan (FULL mode only) ==========
+    volume_list = []
+    if is_full:
+        for v in VolumePekerjaan.objects.filter(project=project).select_related('pekerjaan'):
+            volume_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(v.pekerjaan_id),
+                "quantity": str(v.quantity or 0),
+            })
+    
+    # ========== Export DetailAHSPProject ==========
+    detail_list = []
+    detail_map = {}
+    details = DetailAHSPProject.objects.filter(project=project).select_related(
+        'harga_item', 'ref_pekerjaan'
+    ).order_by('pekerjaan_id', 'id')
+    
+    for idx, d in enumerate(details):
+        detail_map[d.id] = idx + 1
+        
+        detail_data = {
+            "_export_id": idx + 1,
+            "_pekerjaan_ref": pekerjaan_map.get(d.pekerjaan_id),
+            "kategori": d.kategori,
+            "kode": d.kode,
+            "uraian": d.uraian or "",
+            "satuan": d.satuan or "",
+            "koefisien": str(d.koefisien or 0),
+        }
+        
+        if is_full:
+            # Full mode: use export_id reference
+            detail_data["_harga_item_ref"] = harga_map.get(d.harga_item_id)
+            detail_data["ref_ahsp_id"] = d.ref_ahsp_id
+            detail_data["_ref_pekerjaan_ref"] = pekerjaan_map.get(d.ref_pekerjaan_id) if d.ref_pekerjaan_id else None
+        else:
+            # Template mode: use kode as harga reference, snapshot_kode for bundle
+            detail_data["harga_item_kode"] = harga_map.get(d.harga_item_id)  # This is the kode string
+            
+            # Bundle reference for LAIN category
+            if d.kategori == 'LAIN':
+                if d.ref_pekerjaan_id:
+                    detail_data["bundle_type"] = "pekerjaan"
+                    detail_data["bundle_ref_snapshot_kode"] = pekerjaan_snapshot_map.get(d.ref_pekerjaan_id)
+                elif d.ref_ahsp_id:
+                    detail_data["bundle_type"] = "ahsp"
+                    detail_data["bundle_ref_ahsp_id"] = d.ref_ahsp_id
+    
+        detail_list.append(detail_data)
+    
+    # ========== Build Export Data ==========
+    if is_full:
+        # Full mode - complete project backup
+        
+        # Export VolumeFormulaState
+        formula_list = []
+        for vf in VolumeFormulaState.objects.filter(project=project):
+            formula_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(vf.pekerjaan_id),
+                "raw": vf.raw,
+                "is_fx": vf.is_fx,
+            })
+        
+        # Export ProjectParameter
+        parameter_list = []
+        for pp in ProjectParameter.objects.filter(project=project):
+            parameter_list.append({
+                "name": pp.name,
+                "value": str(pp.value),
+                "label": pp.label or "",
+                "unit": pp.unit or "",
+                "description": pp.description or "",
+            })
+        
+        # Export ProjectPricing
+        pricing_data = None
+        try:
+            pricing = project.pricing
+            pricing_data = {
+                "markup_percent": str(pricing.markup_percent),
+                "ppn_percent": str(pricing.ppn_percent),
+                "rounding_base": pricing.rounding_base,
+            }
+        except ProjectPricing.DoesNotExist:
+            pass
+        
+        # Project metadata
+        project_data = {
+            "nama": project.nama,
+            "sumber_dana": project.sumber_dana,
+            "lokasi_project": project.lokasi_project,
+            "nama_client": project.nama_client,
+            "anggaran_owner": str(project.anggaran_owner or 0),
+            "tanggal_mulai": project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
+            "tanggal_selesai": project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+            "durasi_hari": project.durasi_hari,
+            "ket_project1": project.ket_project1 or "",
+            "ket_project2": project.ket_project2 or "",
+            "jabatan_client": project.jabatan_client or "",
+            "instansi_client": project.instansi_client or "",
+            "nama_kontraktor": project.nama_kontraktor or "",
+            "instansi_kontraktor": project.instansi_kontraktor or "",
+            "nama_konsultan_perencana": project.nama_konsultan_perencana or "",
+            "instansi_konsultan_perencana": project.instansi_konsultan_perencana or "",
+            "nama_konsultan_pengawas": project.nama_konsultan_pengawas or "",
+            "instansi_konsultan_pengawas": project.instansi_konsultan_pengawas or "",
+            "deskripsi": project.deskripsi or "",
+            "kategori": project.kategori or "",
+            "week_start_day": project.week_start_day,
+            "week_end_day": project.week_end_day,
+        }
+        
+        export_data = {
+            "export_type": "project_full_backup",
+            "export_version": "2.0",
+            "export_date": timezone.now().isoformat(),
+            "include_progress": include_progress,
+            "project": project_data,
+            "klasifikasi": klasifikasi_list,
+            "sub_klasifikasi": sub_list,
+            "harga_items": harga_list,
+            "conversion_profiles": conversion_list,
+            "pekerjaan": pekerjaan_list,
+            "volume": volume_list,
+            "detail_ahsp": detail_list,
+            "volume_formulas": formula_list,
+            "parameters": parameter_list,
+            "pricing": pricing_data,
+        }
+        
+        # Optional: Include progress/jadwal data
+        if include_progress:
+            tahapan_list = []
+            tahapan_map = {}
+            for idx, t in enumerate(TahapPelaksanaan.objects.filter(project=project).order_by('urutan', 'id')):
+                tahapan_map[t.id] = idx + 1
+                tahapan_list.append({
+                    "_export_id": idx + 1,
+                    "nama": t.nama,
+                    "urutan": t.urutan,
+                })
+            
+            pekerjaan_tahapan_list = []
+            for pt in PekerjaanTahapan.objects.filter(tahap__project=project).select_related('tahap', 'pekerjaan'):
+                pekerjaan_tahapan_list.append({
+                    "_tahap_ref": tahapan_map.get(pt.tahap_id),
+                    "_pekerjaan_ref": pekerjaan_map.get(pt.pekerjaan_id),
+                    "bobot": str(pt.bobot or 0),
+                })
+            
+            progress_list = []
+            for pw in PekerjaanProgressWeekly.objects.filter(project=project):
+                progress_list.append({
+                    "_pekerjaan_ref": pekerjaan_map.get(pw.pekerjaan_id),
+                    "week_number": pw.week_number,
+                    "week_start_date": pw.week_start_date.isoformat() if pw.week_start_date else None,
+                    "week_end_date": pw.week_end_date.isoformat() if pw.week_end_date else None,
+                    "planned_proportion": str(pw.planned_proportion or 0),
+                    "actual_proportion": str(pw.actual_proportion or 0),
+                })
+            
+            export_data["jadwal"] = {
+                "tahapan": tahapan_list,
+                "pekerjaan_tahapan": pekerjaan_tahapan_list,
+                "progress_weekly": progress_list,
+            }
+    
+    else:
+        # Template mode - hierarchy + DetailAHSP + Parameters
+        
+        # Export ProjectParameter for template (reusable across projects)
+        parameter_list = []
+        for pp in ProjectParameter.objects.filter(project=project):
+            parameter_list.append({
+                "name": pp.name,
+                "value": str(pp.value),
+                "label": pp.label or "",
+                "unit": pp.unit or "",
+                "description": pp.description or "",
+            })
+        
+        # Export VolumeFormulaState for template (reusable formulas)
+        formula_list = []
+        for vf in VolumeFormulaState.objects.filter(project=project):
+            # Only export if pekerjaan was exported
+            pkj_ref = pekerjaan_map.get(vf.pekerjaan_id)
+            if pkj_ref:
+                formula_list.append({
+                    "_pekerjaan_ref": pkj_ref,
+                    "raw": vf.raw,
+                    "is_fx": vf.is_fx,
+                })
+        
+        export_data = {
+            "export_type": "project_template",
+            "export_version": "2.2",  # Bumped version for formulas
+            "export_date": timezone.now().isoformat(),
+            "template_meta": template_meta or {
+                "name": f"Template dari {project.nama}",
+                "description": "",
+                "category": "lainnya",
+                "source_project": project.nama,
+            },
+            "klasifikasi": klasifikasi_list,
+            "sub_klasifikasi": sub_list,
+            "pekerjaan": pekerjaan_list,
+            "detail_ahsp": detail_list,
+            "parameters": parameter_list,
+            "volume_formulas": formula_list,  # NEW v2.2: Volume formulas
+            "stats": {
+                "total_klasifikasi": len(klasifikasi_list),
+                "total_sub": len(sub_list),
+                "total_pekerjaan": len(pekerjaan_list),
+                "total_detail": len(detail_list),
+                "total_parameters": len(parameter_list),
+                "total_formulas": len(formula_list),
+            }
+        }
+    
+    return export_data
+
+
+@login_required
+@require_GET
+def export_project_full_json(request: HttpRequest, project_id: int):
+    """
+    Export complete project data to JSON format for backup/migration.
+    
+    Query params:
+    - include_progress: 1/0 - Include TahapPelaksanaan and progress data (default: 0)
+    
+    Returns all project data:
+    - Project metadata
+    - Klasifikasi → SubKlasifikasi → Pekerjaan
+    - HargaItemProject + ItemConversionProfile
+    - VolumePekerjaan
+    - DetailAHSPProject
+    - (Optional) TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+    """
+    try:
+        project = _owner_or_404(project_id, request.user)
+        include_progress = request.GET.get('include_progress', '0') == '1'
+        
+        # ========== Export Project Metadata ==========
+        project_data = {
+            "nama": project.nama,
+            "sumber_dana": project.sumber_dana,
+            "lokasi_project": project.lokasi_project,
+            "nama_client": project.nama_client,
+            "anggaran_owner": str(project.anggaran_owner or 0),
+            "tanggal_mulai": project.tanggal_mulai.isoformat() if project.tanggal_mulai else None,
+            "tanggal_selesai": project.tanggal_selesai.isoformat() if project.tanggal_selesai else None,
+            "durasi_hari": project.durasi_hari,
+            "ket_project1": project.ket_project1 or "",
+            "ket_project2": project.ket_project2 or "",
+            "jabatan_client": project.jabatan_client or "",
+            "instansi_client": project.instansi_client or "",
+            "nama_kontraktor": project.nama_kontraktor or "",
+            "instansi_kontraktor": project.instansi_kontraktor or "",
+            "nama_konsultan_perencana": project.nama_konsultan_perencana or "",
+            "instansi_konsultan_perencana": project.instansi_konsultan_perencana or "",
+            "nama_konsultan_pengawas": project.nama_konsultan_pengawas or "",
+            "instansi_konsultan_pengawas": project.instansi_konsultan_pengawas or "",
+            "deskripsi": project.deskripsi or "",
+            "kategori": project.kategori or "",
+            "week_start_day": project.week_start_day,
+            "week_end_day": project.week_end_day,
+        }
+        
+        # ========== Export Klasifikasi ==========
+        klasifikasi_list = []
+        klas_map = {}  # old_id -> export_id
+        for idx, k in enumerate(Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')):
+            klas_map[k.id] = idx + 1
+            klasifikasi_list.append({
+                "_export_id": idx + 1,
+                "name": k.name,
+                "ordering_index": k.ordering_index,
+            })
+        
+        # ========== Export SubKlasifikasi ==========
+        sub_list = []
+        sub_map = {}  # old_id -> export_id
+        for idx, s in enumerate(SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')):
+            sub_map[s.id] = idx + 1
+            sub_list.append({
+                "_export_id": idx + 1,
+                "_klasifikasi_ref": klas_map.get(s.klasifikasi_id),
+                "name": s.name,
+                "ordering_index": s.ordering_index,
+            })
+        
+        # ========== Export HargaItemProject ==========
+        harga_list = []
+        harga_map = {}  # old_id -> export_id
+        harga_items = HargaItemProject.objects.filter(project=project).order_by('id')
+        for idx, h in enumerate(harga_items):
+            harga_map[h.id] = idx + 1
+            harga_list.append({
+                "_export_id": idx + 1,
+                "kode_item": h.kode_item,
+                "uraian": h.uraian or "",
+                "satuan": h.satuan or "",
+                "kategori": h.kategori,
+                "harga_satuan": str(h.harga_satuan or 0),
+            })
+        
+        # ========== Export ItemConversionProfile ==========
+        conversion_list = []
+        for cp in ItemConversionProfile.objects.filter(harga_item__project=project).select_related('harga_item'):
+            conversion_list.append({
+                "_harga_item_ref": harga_map.get(cp.harga_item_id),
+                "market_unit": cp.market_unit,
+                "market_price": str(cp.market_price or 0),
+                "factor_to_base": str(cp.factor_to_base or 1),
+                "density": str(cp.density) if cp.density else None,
+                "capacity_m3": str(cp.capacity_m3) if cp.capacity_m3 else None,
+                "capacity_ton": str(cp.capacity_ton) if cp.capacity_ton else None,
+                "method": cp.method,
+            })
+        
+        # ========== Export Pekerjaan ==========
+        pekerjaan_list = []
+        pekerjaan_map = {}  # old_id -> export_id
+        pekerjaan_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+        for idx, p in enumerate(pekerjaan_qs):
+            pekerjaan_map[p.id] = idx + 1
+            pekerjaan_list.append({
+                "_export_id": idx + 1,
+                "_sub_klasifikasi_ref": sub_map.get(p.sub_klasifikasi_id),
+                "source_type": _src_to_str(p.source_type),
+                "snapshot_kode": getattr(p, "snapshot_kode", None) or "",
+                "snapshot_uraian": p.snapshot_uraian or "",
+                "snapshot_satuan": p.snapshot_satuan or "",
+                "ordering_index": p.ordering_index,
+                "budgeted_cost": str(p.budgeted_cost or 0),
+                "ref_id": p.ref_id,  # Direct reference to AHSPReferensi
+            })
+        
+        # ========== Export VolumePekerjaan ==========
+        volume_list = []
+        for v in VolumePekerjaan.objects.filter(project=project).select_related('pekerjaan'):
+            volume_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(v.pekerjaan_id),
+                "quantity": str(v.quantity or 0),
+            })
+        
+        # ========== Export DetailAHSPProject ==========
+        detail_list = []
+        detail_map = {}
+        details = DetailAHSPProject.objects.filter(project=project).order_by('pekerjaan_id', 'id')
+        for idx, d in enumerate(details):
+            detail_map[d.id] = idx + 1
+            detail_list.append({
+                "_export_id": idx + 1,
+                "_pekerjaan_ref": pekerjaan_map.get(d.pekerjaan_id),
+                "_harga_item_ref": harga_map.get(d.harga_item_id),
+                "kategori": d.kategori,
+                "kode": d.kode,
+                "uraian": d.uraian or "",
+                "satuan": d.satuan or "",
+                "koefisien": str(d.koefisien or 0),
+                "ref_ahsp_id": d.ref_ahsp_id,  # Direct reference
+                "_ref_pekerjaan_ref": pekerjaan_map.get(d.ref_pekerjaan_id) if d.ref_pekerjaan_id else None,
+            })
+        
+        # ========== Export VolumeFormulaState ==========
+        from .models import VolumeFormulaState, ProjectParameter, ProjectPricing
+        formula_list = []
+        for vf in VolumeFormulaState.objects.filter(project=project):
+            formula_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(vf.pekerjaan_id),
+                "raw": vf.raw,
+                "is_fx": vf.is_fx,
+            })
+        
+        # ========== Export ProjectParameter ==========
+        parameter_list = []
+        for pp in ProjectParameter.objects.filter(project=project):
+            parameter_list.append({
+                "name": pp.name,
+                "value": str(pp.value),
+                "label": pp.label or "",
+                "unit": pp.unit or "",
+                "description": pp.description or "",
+            })
+        
+        # ========== Export ProjectPricing ==========
+        pricing_data = None
+        try:
+            pricing = project.pricing
+            pricing_data = {
+                "markup_percent": str(pricing.markup_percent),
+                "ppn_percent": str(pricing.ppn_percent),
+                "rounding_base": pricing.rounding_base,
+            }
+        except ProjectPricing.DoesNotExist:
+            pass
+        
+        # Build export data
+        export_data = {
+            "export_type": "project_full_backup",
+            "export_version": "1.1",  # Bumped version for new fields
+            "source_project_id": project_id,
+            "export_date": timezone.now().isoformat(),
+            "include_progress": include_progress,
+            "project": project_data,
+            "klasifikasi": klasifikasi_list,
+            "sub_klasifikasi": sub_list,
+            "harga_items": harga_list,
+            "conversion_profiles": conversion_list,
+            "pekerjaan": pekerjaan_list,
+            "volume_pekerjaan": volume_list,
+            "detail_ahsp": detail_list,
+            # NEW in v1.1
+            "volume_formula_states": formula_list,
+            "project_parameters": parameter_list,
+            "project_pricing": pricing_data,
+        }
+        
+        # ========== Optional: Export Progress Data ==========
+        if include_progress:
+            from .models import TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+            
+            # TahapPelaksanaan
+            tahap_list = []
+            tahap_map = {}
+            for idx, t in enumerate(TahapPelaksanaan.objects.filter(project=project).order_by('urutan', 'id')):
+                tahap_map[t.id] = idx + 1
+                tahap_list.append({
+                    "_export_id": idx + 1,
+                    "nama": t.nama,
+                    "urutan": t.urutan,
+                    "warna": getattr(t, 'warna', None) or "",
+                })
+            
+            # PekerjaanTahapan
+            assignment_list = []
+            for a in PekerjaanTahapan.objects.filter(tahapan__project=project):
+                assignment_list.append({
+                    "_tahap_ref": tahap_map.get(a.tahapan_id),
+                    "_pekerjaan_ref": pekerjaan_map.get(a.pekerjaan_id),
+                    "proporsi_volume": str(getattr(a, 'proporsi_volume', 0) or 0),
+                })
+            
+            # PekerjaanProgressWeekly
+            progress_list = []
+            for pw in PekerjaanProgressWeekly.objects.filter(project=project):
+                progress_list.append({
+                    "_pekerjaan_ref": pekerjaan_map.get(pw.pekerjaan_id),
+                    "week_number": pw.week_number,
+                    "week_start_date": pw.week_start_date.isoformat() if pw.week_start_date else None,
+                    "week_end_date": pw.week_end_date.isoformat() if pw.week_end_date else None,
+                    "planned_proportion": str(getattr(pw, 'planned_proportion', 0) or 0),
+                    "actual_proportion": str(getattr(pw, 'actual_proportion', 0) or 0),
+                })
+            
+            export_data["tahap_pelaksanaan"] = tahap_list
+            export_data["pekerjaan_tahapan"] = assignment_list
+            export_data["progress_weekly"] = progress_list
+        
+        # Stats
+        export_data["stats"] = {
+            "total_klasifikasi": len(klasifikasi_list),
+            "total_sub": len(sub_list),
+            "total_pekerjaan": len(pekerjaan_list),
+            "total_harga_items": len(harga_list),
+            "total_detail_ahsp": len(detail_list),
+            "total_volume": len(volume_list),
+        }
+        if include_progress:
+            export_data["stats"]["total_tahap"] = len(tahap_list)
+            export_data["stats"]["total_progress"] = len(progress_list)
+            # Calculate total project weeks for import comparison
+            if project.tanggal_mulai and project.tanggal_selesai:
+                from math import ceil
+                days = (project.tanggal_selesai - project.tanggal_mulai).days
+                export_data["stats"]["total_project_weeks"] = ceil(days / 7) if days > 0 else 0
+            else:
+                export_data["stats"]["total_project_weeks"] = 0
+            # Max week number in progress data
+            if progress_list:
+                export_data["stats"]["max_week_exported"] = max(p["week_number"] for p in progress_list)
+        
+        response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
+        safe_name = project.nama.replace(' ', '_').replace('/', '-')[:50]
+        filename = f"project_backup_v1.1_{safe_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Export Project Full JSON error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Export JSON gagal: {str(e)}'
+        }, status=500)
+
+
+# ============================================================================
+# IMPORT: PROJECT FROM JSON BACKUP
+# ============================================================================
+
+@login_required
+@require_POST
+@transaction.atomic
+def import_project_from_json(request: HttpRequest):
+    """
+    Import complete project from JSON backup file.
+    
+    Creates a new project with all related data.
+    Uses _export_id references for ID remapping.
+    """
+    from dashboard.models import Project
+    from .models import (
+        TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+    )
+    from decimal import Decimal
+    from datetime import date
+    
+    try:
+        # Parse JSON from request body or file upload
+        content_type = request.content_type or ''
+        
+        if 'multipart' in content_type:
+            # Multipart form data - expect file upload
+            if not request.FILES.get('file'):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'No file uploaded'
+                }, status=400)
+            import_file = request.FILES['file']
+            try:
+                data = json.load(import_file)
+            except json.JSONDecodeError as e:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Invalid JSON file: {str(e)}'
+                }, status=400)
+        else:
+            # Direct JSON body
+            try:
+                body = request.body
+                if not body:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': 'No file or JSON body provided'
+                    }, status=400)
+                data = json.loads(body)
+            except json.JSONDecodeError as e:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Invalid JSON: {str(e)}'
+                }, status=400)
+        
+        # Validate export type
+        if data.get('export_type') != 'project_full_backup':
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Invalid export type. Expected "project_full_backup".'
+            }, status=400)
+        
+        import_progress = request.POST.get('import_progress', '0') == '1' or data.get('include_progress', False)
+        
+        # ========== Create Project ==========
+        proj_data = data.get('project', {})
+        
+        new_project = Project(
+            owner=request.user,
+            nama=f"{proj_data.get('nama', 'Imported Project')} (Import)",
+            sumber_dana=proj_data.get('sumber_dana', 'N/A'),
+            lokasi_project=proj_data.get('lokasi_project', 'N/A'),
+            nama_client=proj_data.get('nama_client', 'N/A'),
+            anggaran_owner=Decimal(proj_data.get('anggaran_owner', '0')),
+            ket_project1=proj_data.get('ket_project1', ''),
+            ket_project2=proj_data.get('ket_project2', ''),
+            jabatan_client=proj_data.get('jabatan_client', ''),
+            instansi_client=proj_data.get('instansi_client', ''),
+            nama_kontraktor=proj_data.get('nama_kontraktor', ''),
+            instansi_kontraktor=proj_data.get('instansi_kontraktor', ''),
+            nama_konsultan_perencana=proj_data.get('nama_konsultan_perencana', ''),
+            instansi_konsultan_perencana=proj_data.get('instansi_konsultan_perencana', ''),
+            nama_konsultan_pengawas=proj_data.get('nama_konsultan_pengawas', ''),
+            instansi_konsultan_pengawas=proj_data.get('instansi_konsultan_pengawas', ''),
+            deskripsi=proj_data.get('deskripsi', ''),
+            kategori=proj_data.get('kategori', ''),
+            week_start_day=proj_data.get('week_start_day', 0),
+            week_end_day=proj_data.get('week_end_day', 6),
+        )
+        
+        if proj_data.get('tanggal_mulai'):
+            new_project.tanggal_mulai = date.fromisoformat(proj_data['tanggal_mulai'])
+        if proj_data.get('tanggal_selesai'):
+            new_project.tanggal_selesai = date.fromisoformat(proj_data['tanggal_selesai'])
+        if proj_data.get('durasi_hari'):
+            new_project.durasi_hari = proj_data['durasi_hari']
+        
+        new_project.save()
+        
+        # ========== Import Klasifikasi ==========
+        klas_map = {}  # export_id -> new_id
+        for k in data.get('klasifikasi', []):
+            new_k = Klasifikasi.objects.create(
+                project=new_project,
+                name=k['name'],
+                ordering_index=k['ordering_index'],
+            )
+            klas_map[k['_export_id']] = new_k.id
+        
+        # ========== Import SubKlasifikasi ==========
+        sub_map = {}  # export_id -> new_id
+        for s in data.get('sub_klasifikasi', []):
+            new_s = SubKlasifikasi.objects.create(
+                project=new_project,
+                klasifikasi_id=klas_map.get(s['_klasifikasi_ref']),
+                name=s['name'],
+                ordering_index=s['ordering_index'],
+            )
+            sub_map[s['_export_id']] = new_s.id
+        
+        # ========== Import HargaItemProject ==========
+        harga_map = {}  # export_id -> new_id
+        harga_items_data = data.get('harga_items', [])
+        logger.info(f"[IMPORT] Starting harga_items import: {len(harga_items_data)} items in JSON")
+        
+        for h in harga_items_data:
+            try:
+                new_h = HargaItemProject.objects.create(
+                    project=new_project,
+                    kode_item=h['kode_item'],
+                    uraian=h['uraian'],
+                    satuan=h.get('satuan', ''),
+                    kategori=h['kategori'],
+                    harga_satuan=Decimal(h.get('harga_satuan', '0')),
+                )
+                harga_map[h['_export_id']] = new_h.id
+            except Exception as e:
+                logger.error(f"[IMPORT] Failed to import harga_item {h.get('kode_item')}: {e}")
+        
+        logger.info(f"[IMPORT] Completed harga_items import: {len(harga_map)} items created")
+        
+        # ========== Import ItemConversionProfile ==========
+        for cp in data.get('conversion_profiles', []):
+            harga_id = harga_map.get(cp['_harga_item_ref'])
+            if harga_id:
+                ItemConversionProfile.objects.create(
+                    harga_item_id=harga_id,
+                    market_unit=cp['market_unit'],
+                    market_price=Decimal(cp.get('market_price', '0')),
+                    factor_to_base=Decimal(cp.get('factor_to_base', '1')),
+                    density=Decimal(cp['density']) if cp.get('density') else None,
+                    capacity_m3=Decimal(cp['capacity_m3']) if cp.get('capacity_m3') else None,
+                    capacity_ton=Decimal(cp['capacity_ton']) if cp.get('capacity_ton') else None,
+                    method=cp.get('method', 'direct'),
+                )
+        
+        # ========== Import Pekerjaan ==========
+        pekerjaan_map = {}  # export_id -> new_id
+        for p in data.get('pekerjaan', []):
+            sub_id = sub_map.get(p['_sub_klasifikasi_ref'])
+            if not sub_id:
+                continue  # Skip if sub not found
+            
+            source_type = p.get('source_type', 'custom')
+            if source_type == 'ref':
+                src = Pekerjaan.SOURCE_REF
+            elif source_type == 'ref_modified':
+                src = Pekerjaan.SOURCE_REF_MOD
+            else:
+                src = Pekerjaan.SOURCE_CUSTOM
+            
+            new_p = Pekerjaan.objects.create(
+                project=new_project,
+                sub_klasifikasi_id=sub_id,
+                source_type=src,
+                snapshot_kode=p.get('snapshot_kode', ''),
+                snapshot_uraian=p.get('snapshot_uraian', ''),
+                snapshot_satuan=p.get('snapshot_satuan', ''),
+                ordering_index=p['ordering_index'],
+                budgeted_cost=Decimal(p.get('budgeted_cost', '0')),
+                ref_id=p.get('ref_id'),  # Direct FK to AHSPReferensi
+            )
+            pekerjaan_map[p['_export_id']] = new_p.id
+        
+        # ========== Import VolumePekerjaan ==========
+        for v in data.get('volume_pekerjaan', []):
+            pkj_id = pekerjaan_map.get(v['_pekerjaan_ref'])
+            if pkj_id:
+                VolumePekerjaan.objects.create(
+                    project=new_project,
+                    pekerjaan_id=pkj_id,
+                    quantity=Decimal(v.get('quantity', '0')),
+                )
+        
+        # ========== Import DetailAHSPProject ==========
+        for d in data.get('detail_ahsp', []):
+            pkj_id = pekerjaan_map.get(d['_pekerjaan_ref'])
+            harga_id = harga_map.get(d['_harga_item_ref'])
+            if not pkj_id or not harga_id:
+                continue
+            
+            ref_pkj_id = pekerjaan_map.get(d.get('_ref_pekerjaan_ref')) if d.get('_ref_pekerjaan_ref') else None
+            
+            DetailAHSPProject.objects.create(
+                project=new_project,
+                pekerjaan_id=pkj_id,
+                harga_item_id=harga_id,
+                kategori=d['kategori'],
+                kode=d['kode'],
+                uraian=d.get('uraian', ''),
+                satuan=d.get('satuan', ''),
+                koefisien=Decimal(d.get('koefisien', '0')),
+                ref_ahsp_id=d.get('ref_ahsp_id'),  # Direct FK
+                ref_pekerjaan_id=ref_pkj_id,
+            )
+        
+        # ========== Import VolumeFormulaState (NEW in v1.1) ==========
+        from .models import VolumeFormulaState, ProjectParameter, ProjectPricing
+        for vf in data.get('volume_formula_states', []):
+            pkj_id = pekerjaan_map.get(vf.get('_pekerjaan_ref'))
+            if pkj_id:
+                VolumeFormulaState.objects.create(
+                    project=new_project,
+                    pekerjaan_id=pkj_id,
+                    raw=vf.get('raw', ''),
+                    is_fx=vf.get('is_fx', True),
+                )
+        
+        # ========== Import ProjectParameter (NEW in v1.1) ==========
+        for pp in data.get('project_parameters', []):
+            ProjectParameter.objects.create(
+                project=new_project,
+                name=pp['name'],
+                value=Decimal(pp.get('value', '0')),
+                label=pp.get('label', ''),
+                unit=pp.get('unit', ''),
+                description=pp.get('description', ''),
+            )
+        
+        # ========== Import ProjectPricing (NEW in v1.1) ==========
+        if data.get('project_pricing'):
+            pp = data['project_pricing']
+            ProjectPricing.objects.create(
+                project=new_project,
+                markup_percent=Decimal(pp.get('markup_percent', '10')),
+                ppn_percent=Decimal(pp.get('ppn_percent', '11')),
+                rounding_base=int(pp.get('rounding_base', 10000)),
+            )
+        
+        # ========== Optional: Import Progress Data ==========
+        # NOTE: We SKIP importing TahapPelaksanaan and PekerjaanTahapan
+        # because they are DERIVED DATA that will be auto-regenerated from
+        # PekerjaanProgressWeekly (canonical storage) when user opens the
+        # Jadwal Pekerjaan page. This avoids duplicate key conflicts.
+        # The exported data still contains these for reference/debugging.
+        
+        if import_progress and data.get('progress_weekly'):
+            # ========== Smart Week Adjustment ==========
+            # Calculate actual project weeks from new project dates
+            from math import ceil
+            actual_project_weeks = 0
+            if new_project.tanggal_mulai and new_project.tanggal_selesai:
+                days = (new_project.tanggal_selesai - new_project.tanggal_mulai).days
+                actual_project_weeks = ceil(days / 7) if days > 0 else 0
+            
+            # Track stats for response
+            imported_weeks = 0
+            skipped_weeks = 0
+            
+            for pw in data.get('progress_weekly', []):
+                pkj_id = pekerjaan_map.get(pw['_pekerjaan_ref'])
+                week_num = pw['week_number']
+                
+                if pkj_id:
+                    # Skip weeks that don't fit in the new project duration
+                    if actual_project_weeks > 0 and week_num > actual_project_weeks:
+                        skipped_weeks += 1
+                        continue  # Skip this week - it's beyond project scope
+                    
+                    # Get or calculate week dates
+                    if pw.get('week_start_date') and pw.get('week_end_date'):
+                        # Use dates from export
+                        week_start = date.fromisoformat(pw['week_start_date'])
+                        week_end = date.fromisoformat(pw['week_end_date'])
+                    else:
+                        # Calculate from project start date + week_number
+                        from datetime import timedelta
+                        if new_project.tanggal_mulai:
+                            week_start = new_project.tanggal_mulai + timedelta(days=(week_num - 1) * 7)
+                            week_end = week_start + timedelta(days=6)
+                        else:
+                            # Fallback: use today as base
+                            from datetime import date as date_today
+                            base = date_today.today()
+                            week_start = base + timedelta(days=(week_num - 1) * 7)
+                            week_end = week_start + timedelta(days=6)
+                    
+                    PekerjaanProgressWeekly.objects.create(
+                        project=new_project,
+                        pekerjaan_id=pkj_id,
+                        week_number=week_num,
+                        week_start_date=week_start,
+                        week_end_date=week_end,
+                        planned_proportion=Decimal(pw.get('planned_proportion', '0')),
+                        actual_proportion=Decimal(pw.get('actual_proportion', '0')),
+                    )
+                    imported_weeks += 1
+            
+            # Log adjustment info
+            if skipped_weeks > 0:
+                logger.info(f"Import jadwal: {imported_weeks} progress records imported, {skipped_weeks} skipped (beyond week {actual_project_weeks})")
+        
+        # Trigger bundle expansion for imported project
+        for pkj_id in pekerjaan_map.values():
+            try:
+                pekerjaan = Pekerjaan.objects.get(id=pkj_id)
+                expand_bundle_to_components(pekerjaan)
+            except Exception:
+                pass  # Non-critical
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Project berhasil diimport: {new_project.nama}',
+            'project_id': new_project.id,
+            'project_index': new_project.index_project,
+            'stats': {
+                'klasifikasi': len(klas_map),
+                'sub_klasifikasi': len(sub_map),
+                'pekerjaan': len(pekerjaan_map),
+                'harga_items': len(harga_map),
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Import Project JSON error: {e}", exc_info=True)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Import gagal: {str(e)}'
+        }, status=500)
+
+
+# =====================================================
+# TEMPLATE LIBRARY API ENDPOINTS
+# Lightweight import/export for Klasifikasi/Sub/Pekerjaan
+# =====================================================
+
+from .models import PekerjaanTemplate
+
+
+@login_required
+@require_GET
+def api_list_templates(request: HttpRequest):
+    """
+    List all available templates.
+    
+    Query params:
+    - category: filter by category (rumah, ruko, infrastruktur, utilitas, lainnya)
+    - q: search by name
+    
+    Returns list of templates with basic info (no content).
+    """
+    qs = PekerjaanTemplate.objects.filter(is_public=True)
+    
+    # Filter by category
+    category = request.GET.get('category', '').strip()
+    if category:
+        qs = qs.filter(category=category)
+    
+    # Search by name
+    q = request.GET.get('q', '').strip()
+    if q:
+        qs = qs.filter(name__icontains=q)
+    
+    templates = []
+    for t in qs[:50]:  # Limit to 50
+        templates.append({
+            'id': t.id,
+            'name': t.name,
+            'description': t.description,
+            'category': t.category,
+            'category_display': t.get_category_display(),
+            'total_klasifikasi': t.total_klasifikasi,
+            'total_sub': t.total_sub,
+            'total_pekerjaan': t.total_pekerjaan,
+            'usage_count': t.usage_count,
+            'created_at': t.created_at.isoformat() if t.created_at else None,
+        })
+    
+    return JsonResponse({
+        'ok': True,
+        'templates': templates,
+        'total': len(templates)
+    })
+
+
+@login_required
+@require_GET
+def api_get_template_detail(request: HttpRequest, template_id: int):
+    """
+    Get full template detail including content.
+    
+    Returns hierarchical structure for preview/import.
+    """
+    try:
+        template = PekerjaanTemplate.objects.get(id=template_id)
+    except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+    
+    return JsonResponse({
+        'ok': True,
+        'template': {
+            'id': template.id,
+            'name': template.name,
+            'description': template.description,
+            'category': template.category,
+            'category_display': template.get_category_display(),
+            'total_klasifikasi': template.total_klasifikasi,
+            'total_sub': template.total_sub,
+            'total_pekerjaan': template.total_pekerjaan,
+            'usage_count': template.usage_count,
+            'content': template.content,  # Full hierarchical data
+            'created_at': template.created_at.isoformat() if template.created_at else None,
+        }
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_create_template(request: HttpRequest, project_id: int):
+    """
+    Create a new template from current project's List Pekerjaan.
+    
+    Payload:
+    {
+        "name": "Template Rumah Sederhana",
+        "description": "Template RAB untuk rumah tipe 36",
+        "category": "rumah"  // optional, default "lainnya"
+    }
+    
+    Exports current Klasifikasi → Sub → Pekerjaan → DetailAHSP structure to template.
+    Uses unified _build_export_data helper with 'template' mode.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Payload JSON tidak valid'
+        }, status=400)
+    
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Nama template wajib diisi'
+        }, status=400)
+    
+    # Check duplicate name
+    if PekerjaanTemplate.objects.filter(name=name).exists():
+        return JsonResponse({
+            'ok': False,
+            'message': f'Template dengan nama "{name}" sudah ada'
+        }, status=400)
+    
+    description = (payload.get('description') or '').strip()
+    category = payload.get('category', 'lainnya')
+    if category not in dict(PekerjaanTemplate.CATEGORY_CHOICES):
+        category = 'lainnya'
+    
+    # Build content using unified helper with template mode
+    template_meta = {
+        "name": name,
+        "description": description,
+        "category": category,
+        "source_project": project.nama,
+    }
+    content = _build_export_data(project, mode='template', template_meta=template_meta)
+    
+    # Check if there's data to export
+    if not content.get('pekerjaan'):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Project tidak memiliki data Pekerjaan untuk di-export'
+        }, status=400)
+    
+    # Create template - store the full export data as content
+    template = PekerjaanTemplate.objects.create(
+        name=name,
+        description=description,
+        category=category,
+        content=content,  # Now includes klasifikasi, sub, pekerjaan, detail_ahsp
+        created_by=request.user,
+        is_public=True,
+    )
+    
+    return JsonResponse({
+        'ok': True,
+        'message': f'Template "{name}" berhasil dibuat',
+        'template_id': template.id,
+        'stats': content.get('stats', {})
+    })
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_delete_template(request: HttpRequest, template_id: int):
+    """Delete a template (only creator or superuser can delete)."""
+    try:
+        template = PekerjaanTemplate.objects.get(id=template_id)
+    except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+    
+    # Check permission
+    if template.created_by != request.user and not request.user.is_superuser:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Anda tidak memiliki izin untuk menghapus template ini'
+        }, status=403)
+    
+    name = template.name
+    template.delete()
+    
+    return JsonResponse({
+        'ok': True,
+        'message': f'Template "{name}" berhasil dihapus'
+    })
+
+
+def _import_template_data(project, data, user=None):
+    """
+    Import template data into existing project.
+    
+    Supports both new flat format (from _build_export_data) and legacy nested format.
+    
+    Args:
+        project: Target project (must exist)
+        data: Template content dict
+        user: Request user (optional, for logging)
+    
+    Returns:
+        tuple: (stats dict, errors list)
+    """
+    from decimal import Decimal
+    
+    stats = {'klasifikasi': 0, 'sub': 0, 'pekerjaan': 0, 'detail': 0}
+    errors = []
+    
+    # Get next ordering indices
+    max_k = Klasifikasi.objects.filter(project=project).aggregate(Max('ordering_index'))['ordering_index__max'] or 0
+    max_p = Pekerjaan.objects.filter(project=project).aggregate(Max('ordering_index'))['ordering_index__max'] or 0
+    
+    # Detect format: new (flat arrays) or legacy (nested)
+    is_new_format = 'sub_klasifikasi' in data and isinstance(data.get('sub_klasifikasi'), list)
+    
+    # Maps for ID remapping
+    klas_map = {}   # export_id -> new_id
+    sub_map = {}    # export_id -> new_id
+    pkj_map = {}    # export_id -> new_id
+    pkj_snapshot_map = {}  # snapshot_kode -> new_id
+    
+    if is_new_format:
+        # ========== New Format (flat arrays) ==========
+        
+        # Pass 1: Import Klasifikasi
+        for k_data in data.get('klasifikasi', []):
+            max_k += 1
+            try:
+                k_obj = Klasifikasi.objects.create(
+                    project=project,
+                    name=k_data.get('name', f'Klasifikasi {max_k}'),
+                    ordering_index=max_k
+                )
+                klas_map[k_data.get('_export_id')] = k_obj.id
+                stats['klasifikasi'] += 1
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat klasifikasi: {e}")
+        
+        # Pass 2: Import SubKlasifikasi
+        for s_data in data.get('sub_klasifikasi', []):
+            klas_id = klas_map.get(s_data.get('_klasifikasi_ref'))
+            if not klas_id:
+                errors.append(f"Sub '{s_data.get('name')}' skip: klasifikasi tidak ditemukan")
+                continue
+            try:
+                s_obj = SubKlasifikasi.objects.create(
+                    project=project,
+                    klasifikasi_id=klas_id,
+                    name=s_data.get('name', 'Sub'),
+                    ordering_index=s_data.get('ordering_index', 1)
+                )
+                sub_map[s_data.get('_export_id')] = s_obj.id
+                stats['sub'] += 1
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat sub: {e}")
+        
+        # Pass 3: Import Pekerjaan
+        for p_data in data.get('pekerjaan', []):
+            max_p += 1
+            sub_id = sub_map.get(p_data.get('_sub_klasifikasi_ref'))
+            if not sub_id:
+                errors.append(f"Pekerjaan skip: sub tidak ditemukan")
+                continue
+            
+            src_str = p_data.get('source_type', 'custom')
+            src = {
+                'ref': Pekerjaan.SOURCE_REF,
+                'ref_modified': Pekerjaan.SOURCE_REF_MOD,
+                'custom': Pekerjaan.SOURCE_CUSTOM,
+            }.get(src_str, Pekerjaan.SOURCE_CUSTOM)
+            
+            ref_obj = None
+            ref_id = p_data.get('ref_id')
+            if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and ref_id:
+                try:
+                    ref_obj = AHSPReferensi.objects.get(id=ref_id)
+                except AHSPReferensi.DoesNotExist:
+                    src = Pekerjaan.SOURCE_CUSTOM
+            
+            kode = p_data.get('snapshot_kode') or ''
+            if src == Pekerjaan.SOURCE_CUSTOM and not kode:
+                kode = generate_custom_code(project)
+            
+            try:
+                pkj = Pekerjaan.objects.create(
+                    project=project,
+                    sub_klasifikasi_id=sub_id,
+                    source_type=src,
+                    ref=ref_obj,
+                    snapshot_kode=kode,
+                    snapshot_uraian=p_data.get('snapshot_uraian', ''),
+                    snapshot_satuan=p_data.get('snapshot_satuan', ''),
+                    ordering_index=max_p
+                )
+                pkj_map[p_data.get('_export_id')] = pkj.id
+                pkj_snapshot_map[kode] = pkj.id
+                stats['pekerjaan'] += 1
+                
+                # Auto-expand bundle for REF types (if no custom detail_ahsp provided)
+                if ref_obj and src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
+                    try:
+                        expand_bundle_to_components(pkj)
+                    except Exception:
+                        pass
+                        
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat pekerjaan: {e}")
+        
+        # Pass 4: Import DetailAHSPProject (for custom/ref_modified)
+        for d_data in data.get('detail_ahsp', []):
+            pkj_id = pkj_map.get(d_data.get('_pekerjaan_ref'))
+            if not pkj_id:
+                continue  # Skip if pekerjaan wasn't created
+            
+            # Get or create HargaItem
+            harga_kode = d_data.get('harga_item_kode') or d_data.get('kode')
+            if not harga_kode:
+                continue
+            
+            try:
+                harga_item, _ = HargaItemProject.objects.get_or_create(
+                    project=project,
+                    kode_item=harga_kode,
+                    defaults={
+                        'uraian': d_data.get('uraian', ''),
+                        'satuan': d_data.get('satuan', ''),
+                        'kategori': d_data.get('kategori', 'LAIN'),
+                        'harga_satuan': Decimal('0'),  # Price not imported in template mode
+                    }
+                )
+                
+                # Handle bundle references for LAIN category
+                ref_pekerjaan = None
+                ref_ahsp = None
+                
+                if d_data.get('kategori') == 'LAIN':
+                    bundle_type = d_data.get('bundle_type')
+                    if bundle_type == 'pekerjaan':
+                        ref_kode = d_data.get('bundle_ref_snapshot_kode')
+                        if ref_kode and ref_kode in pkj_snapshot_map:
+                            ref_pekerjaan = Pekerjaan.objects.filter(id=pkj_snapshot_map[ref_kode]).first()
+                    elif bundle_type == 'ahsp':
+                        ref_ahsp_id = d_data.get('bundle_ref_ahsp_id')
+                        if ref_ahsp_id:
+                            try:
+                                ref_ahsp = AHSPReferensi.objects.get(id=ref_ahsp_id)
+                            except AHSPReferensi.DoesNotExist:
+                                pass
+                
+                # Create DetailAHSP
+                DetailAHSPProject.objects.create(
+                    project=project,
+                    pekerjaan_id=pkj_id,
+                    harga_item=harga_item,
+                    kategori=d_data.get('kategori', 'LAIN'),
+                    kode=d_data.get('kode', ''),
+                    uraian=d_data.get('uraian', ''),
+                    satuan=d_data.get('satuan', ''),
+                    koefisien=Decimal(d_data.get('koefisien', '0')),
+                    ref_ahsp=ref_ahsp,
+                    ref_pekerjaan=ref_pekerjaan,
+                )
+                stats['detail'] += 1
+                
+            except Exception as e:
+                errors.append(f"Gagal import detail: {e}")
+    
+    else:
+        # ========== Legacy Format (nested) ==========
+        # For backward compatibility with old templates
+        
+        klasifikasi_list = data.get('klasifikasi', [])
+        k_counter = max_k
+        p_counter = max_p
+        
+        for k_data in klasifikasi_list:
+            k_counter += 1
+            k_name = (k_data.get('name') or f"Klasifikasi {k_counter}").strip()
+            
+            try:
+                k_obj = Klasifikasi.objects.create(
+                    project=project,
+                    name=k_name,
+                    ordering_index=k_counter
+                )
+                stats['klasifikasi'] += 1
+            except IntegrityError as e:
+                errors.append(f"Gagal membuat klasifikasi '{k_name}': {e}")
+                continue
+            
+            for si, s_data in enumerate(k_data.get('sub', [])):
+                s_name = (s_data.get('name') or f"{k_counter}.{si+1}").strip()
+                
+                try:
+                    s_obj = SubKlasifikasi.objects.create(
+                        project=project,
+                        klasifikasi=k_obj,
+                        name=s_name,
+                        ordering_index=s_data.get('ordering_index', si + 1)
+                    )
+                    stats['sub'] += 1
+                except IntegrityError as e:
+                    errors.append(f"Gagal membuat sub '{s_name}': {e}")
+                    continue
+                
+                for p_data in s_data.get('pekerjaan', []):
+                    p_counter += 1
+                    src_str = p_data.get('source_type', 'custom')
+                    src = {
+                        'ref': Pekerjaan.SOURCE_REF,
+                        'ref_modified': Pekerjaan.SOURCE_REF_MOD,
+                        'custom': Pekerjaan.SOURCE_CUSTOM,
+                    }.get(src_str, Pekerjaan.SOURCE_CUSTOM)
+                    
+                    ref_obj = None
+                    ref_id = p_data.get('ref_ahsp_id') or p_data.get('ref_id')
+                    if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and ref_id:
+                        try:
+                            ref_obj = AHSPReferensi.objects.get(id=ref_id)
+                        except AHSPReferensi.DoesNotExist:
+                            src = Pekerjaan.SOURCE_CUSTOM
+                    
+                    kode = p_data.get('snapshot_kode') or ''
+                    if src == Pekerjaan.SOURCE_CUSTOM and not kode:
+                        kode = generate_custom_code(project)
+                    
+                    try:
+                        pkj = Pekerjaan.objects.create(
+                            project=project,
+                            sub_klasifikasi=s_obj,
+                            source_type=src,
+                            ref=ref_obj,
+                            snapshot_kode=kode,
+                            snapshot_uraian=p_data.get('snapshot_uraian', ''),
+                            snapshot_satuan=p_data.get('snapshot_satuan', ''),
+                            ordering_index=p_counter
+                        )
+                        stats['pekerjaan'] += 1
+                        
+                        if ref_obj and src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
+                            try:
+                                expand_bundle_to_components(pkj)
+                            except Exception:
+                                pass
+                                
+                    except IntegrityError as e:
+                        errors.append(f"Gagal membuat pekerjaan: {e}")
+    
+    # ========== Import Parameters (v2.1+) ==========
+    stats['parameters'] = 0
+    for param_data in data.get('parameters', []):
+        param_name = param_data.get('name', '').strip()
+        if not param_name:
+            continue
+        
+        try:
+            param, created = ProjectParameter.objects.update_or_create(
+                project=project,
+                name=param_name,
+                defaults={
+                    'value': Decimal(param_data.get('value', '0')),
+                    'label': param_data.get('label', ''),
+                    'unit': param_data.get('unit', ''),
+                    'description': param_data.get('description', ''),
+                }
+            )
+            if created:
+                stats['parameters'] += 1
+        except Exception as e:
+            errors.append(f"Gagal import parameter '{param_name}': {e}")
+    
+    # ========== Import Volume Formulas (v2.2+) ==========
+    stats['formulas'] = 0
+    for formula_data in data.get('volume_formulas', []):
+        pkj_ref = formula_data.get('_pekerjaan_ref')
+        pkj_id = pkj_map.get(pkj_ref)
+        if not pkj_id:
+            continue  # Skip if pekerjaan wasn't imported
+        
+        raw_formula = formula_data.get('raw', '')
+        if not raw_formula:
+            continue
+        
+        try:
+            formula, created = VolumeFormulaState.objects.update_or_create(
+                project=project,
+                pekerjaan_id=pkj_id,
+                defaults={
+                    'raw': raw_formula,
+                    'is_fx': formula_data.get('is_fx', False),
+                }
+            )
+            if created:
+                stats['formulas'] += 1
+        except Exception as e:
+            errors.append(f"Gagal import formula: {e}")
+    
+    return stats, errors
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_import_template(request: HttpRequest, project_id: int, template_id: int):
+    """
+    Import template into project's List Pekerjaan.
+    
+    Uses unified _import_template_data helper.
+    Adds Klasifikasi/Sub/Pekerjaan/DetailAHSP from template to existing data (no overwrite).
+    Increments template's usage count.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        template = PekerjaanTemplate.objects.get(id=template_id)
+    except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+    
+    content = template.content
+    if not content or not isinstance(content, dict):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak memiliki konten yang valid'
+        }, status=400)
+    
+    # Check for pekerjaan data (new format) or klasifikasi (legacy format)
+    has_pekerjaan = content.get('pekerjaan') or content.get('klasifikasi')
+    if not has_pekerjaan:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak memiliki data pekerjaan'
+        }, status=400)
+    
+    # Use unified import helper
+    stats, errors = _import_template_data(project, content, user=request.user)
+    
+    # Increment usage count
+    template.increment_usage()
+    
+    # Invalidate cache
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+    
+    response_data = {
+        'ok': True,
+        'message': f'Template "{template.name}" berhasil diimport',
+        'stats': stats
+    }
+    
+    if errors:
+        response_data['warnings'] = errors
+    
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_import_template_from_file(request: HttpRequest, project_id: int):
+    """
+    Import template content directly from JSON file upload.
+    
+    Payload:
+    {
+        "content": { ... template JSON content ... }
+    }
+    
+    Uses unified _import_template_data helper.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        print(f"[IMPORT DEBUG] Received payload, content keys: {list(payload.keys())}")
+    except Exception as e:
+        print(f"[IMPORT ERROR] Failed to parse JSON: {e}")
+        return JsonResponse({
+            'ok': False,
+            'message': 'Payload JSON tidak valid'
+        }, status=400)
+    
+    content = payload.get('content')
+    if not content or not isinstance(content, dict):
+        print(f"[IMPORT ERROR] Invalid content: {type(content)}")
+        return JsonResponse({
+            'ok': False,
+            'message': 'Content template tidak valid'
+        }, status=400)
+    
+    print(f"[IMPORT DEBUG] Content keys: {list(content.keys())}")
+    print(f"[IMPORT DEBUG] export_type: {content.get('export_type')}, version: {content.get('export_version')}")
+    print(f"[IMPORT DEBUG] klasifikasi: {len(content.get('klasifikasi', []))}, sub: {len(content.get('sub_klasifikasi', []))}")
+    print(f"[IMPORT DEBUG] pekerjaan: {len(content.get('pekerjaan', []))}, detail: {len(content.get('detail_ahsp', []))}")
+    print(f"[IMPORT DEBUG] parameters: {len(content.get('parameters', []))}")
+    
+    # Check for data
+    has_data = content.get('pekerjaan') or content.get('klasifikasi')
+    if not has_data:
+        print(f"[IMPORT ERROR] No pekerjaan or klasifikasi found")
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak memiliki data pekerjaan'
+        }, status=400)
+    
+    print(f"[IMPORT DEBUG] Starting import to project {project.id} ({project.nama})")
+    
+    # Use unified import helper
+    try:
+        stats, errors = _import_template_data(project, content, user=request.user)
+        print(f"[IMPORT DEBUG] Import completed. Stats: {stats}")
+        if errors:
+            print(f"[IMPORT WARN] Errors during import: {errors}")
+    except Exception as e:
+        print(f"[IMPORT ERROR] Exception during _import_template_data: {e}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'ok': False,
+            'message': f'Error saat import: {str(e)}'
+        }, status=500)
+    
+    # Invalidate cache
+    transaction.on_commit(lambda: invalidate_rekap_cache(project))
+    
+    response_data = {
+        'ok': True,
+        'message': f'Import dari file berhasil!',
+        'stats': stats
+    }
+    
+    if errors:
+        response_data['warnings'] = errors
+    
+    print(f"[IMPORT DEBUG] Returning success response: {response_data}")
+    return JsonResponse(response_data)
+
+
+@login_required
+@require_GET
+def export_template_json(request: HttpRequest, project_id: int):
+    """
+    Export current project's List Pekerjaan as template JSON file.
+    
+    Uses unified _build_export_data helper with 'template' mode.
+    Returns downloadable JSON file.
+    """
+    project = _owner_or_404(project_id, request.user)
+    
+    template_name = request.GET.get('name', f'Template dari {project.nama}')
+    template_desc = request.GET.get('description', '')
+    template_cat = request.GET.get('category', 'lainnya')
+    
+    template_meta = {
+        "name": template_name,
+        "description": template_desc,
+        "category": template_cat,
+        "source_project": project.nama,
+    }
+    
+    export_data = _build_export_data(project, mode='template', template_meta=template_meta)
+    
+    if not export_data.get('pekerjaan'):
+        return JsonResponse({
+            'ok': False,
+            'message': 'Project tidak memiliki data pekerjaan untuk di-export'
+        }, status=400)
+    
+    response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
+    filename = f"template_{project.nama.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+

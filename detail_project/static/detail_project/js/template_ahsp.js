@@ -4,8 +4,8 @@
 // - “+ Baris kosong” per-segmen tetap aktif dengan guard mode read-only & Select2 di LAIN
 
 (function () {
-  const $ = (sel, ctx=document) => ctx.querySelector(sel);
-  const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
+  const $ = (sel, ctx = document) => ctx.querySelector(sel);
+  const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
 
   // ---------- STATE ----------
   const app = $('#ta-app');
@@ -54,17 +54,17 @@
   // === Koefisien numeric helpers (dp=6)
   const __NUM = window.Numeric || null;
   const __KOEF_DP = 6;
-  function __koefToCanon(v){
+  function __koefToCanon(v) {
     if (!__NUM) return (v ?? '').toString().trim();
     const s = __NUM.canonicalizeForAPI(v ?? '');
     return s ? __NUM.enforceDp(s, __KOEF_DP) : '';
   }
-  function __koefToUI(canon){
+  function __koefToUI(canon) {
     if (!__NUM) return canon ?? '';
     return __NUM.formatForUI(__NUM.enforceDp(canon ?? '', __KOEF_DP));
   }
   // P2.1 FIX: Auto-format + constraint validation on blur
-  document.addEventListener('blur', (e)=>{
+  document.addEventListener('blur', (e) => {
     const el = e.target;
     if (!(el instanceof HTMLInputElement)) return;
     if (!el.classList.contains('num')) return;
@@ -91,8 +91,8 @@
   }, true);
 
   // --- CSRF helper ---
-  function getCookie(name){
-    return document.cookie.split('; ').find(r => r.startsWith(name+'='))?.split('=')[1] || '';
+  function getCookie(name) {
+    return document.cookie.split('; ').find(r => r.startsWith(name + '='))?.split('=')[1] || '';
   }
   const CSRF = getCookie('csrftoken');
 
@@ -111,7 +111,7 @@
     return String(s).trim();
   }
   function formatIndex() {
-    $$('.ta-row').forEach((tr, i) => $('.row-index', tr).textContent = (i+1));
+    $$('.ta-row').forEach((tr, i) => $('.row-index', tr).textContent = (i + 1));
   }
   function clearTable(seg) {
     const body = $(`#seg-${seg}-body`);
@@ -150,7 +150,7 @@
 
       tr.dataset.kategori = r.kategori;
       // tambahkan checkbox seleksi di kolom nomor
-      try { ensureSelectAffordance(tr); } catch(_){}
+      try { ensureSelectAffordance(tr); } catch (_) { }
       body.appendChild(tr);
     });
 
@@ -163,7 +163,7 @@
   }
 
   // Tambah checkbox seleksi di kolom nomor jika belum ada
-  function ensureSelectAffordance(tr){
+  function ensureSelectAffordance(tr) {
     const noCell = tr.querySelector('td.col-no');
     if (!noCell) return;
     if (noCell.querySelector('.ta-row-check')) return;
@@ -174,7 +174,7 @@
   }
 
   // Hitung & tampilkan jumlah baris terseleksi per segmen
-  function updateDelState(seg){
+  function updateDelState(seg) {
     const body = $(`#seg-${seg}-body`);
     if (!body) return;
     const selected = body.querySelectorAll('.ta-row-check:checked').length;
@@ -185,7 +185,7 @@
   }
 
   function gatherRows() {
-    const segs = ['TK','BHN','ALT','LAIN'];
+    const segs = ['TK', 'BHN', 'ALT', 'LAIN'];
     const out = [];
     segs.forEach(seg => {
       $(`#seg-${seg}-body`)?.querySelectorAll('tr.ta-row')?.forEach(tr => {
@@ -224,52 +224,52 @@
     rows.forEach((r, i) => {
       // Uraian validation
       if (!r.uraian || !r.uraian.trim()) {
-        errors.push({path:`rows[${i}].uraian`, message:'Uraian wajib diisi'});
+        errors.push({ path: `rows[${i}].uraian`, message: 'Uraian wajib diisi' });
       } else if (r.uraian.length > MAX_URAIAN_LEN) {
-        errors.push({path:`rows[${i}].uraian`, message:`Maksimal ${MAX_URAIAN_LEN} karakter`});
+        errors.push({ path: `rows[${i}].uraian`, message: `Maksimal ${MAX_URAIAN_LEN} karakter` });
       }
 
       // Kode validation
       if (!r.kode || !r.kode.trim()) {
-        errors.push({path:`rows[${i}].kode`, message:'Kode wajib diisi'});
+        errors.push({ path: `rows[${i}].kode`, message: 'Kode wajib diisi' });
       } else {
         if (r.kode.length > MAX_KODE_LEN) {
-          errors.push({path:`rows[${i}].kode`, message:`Maksimal ${MAX_KODE_LEN} karakter`});
+          errors.push({ path: `rows[${i}].kode`, message: `Maksimal ${MAX_KODE_LEN} karakter` });
         }
         // Check duplicate
         const key = r.kode.trim();
         if (seen.has(key)) {
-          errors.push({path:`rows[${i}].kode`, message:'Kode duplikat'});
+          errors.push({ path: `rows[${i}].kode`, message: 'Kode duplikat' });
         }
         seen.add(key);
       }
 
       // Satuan validation
       if (!r.satuan || !r.satuan.trim()) {
-        errors.push({path:`rows[${i}].satuan`, message:'Satuan wajib diisi'});
+        errors.push({ path: `rows[${i}].satuan`, message: 'Satuan wajib diisi' });
       } else if (r.satuan.length > MAX_SATUAN_LEN) {
-        errors.push({path:`rows[${i}].satuan`, message:`Maksimal ${MAX_SATUAN_LEN} karakter`});
+        errors.push({ path: `rows[${i}].satuan`, message: `Maksimal ${MAX_SATUAN_LEN} karakter` });
       }
 
       // Koefisien validation - enhanced numeric check
       if (r.koefisien === '' || r.koefisien == null) {
-        errors.push({path:`rows[${i}].koefisien`, message:'Koefisien wajib diisi'});
+        errors.push({ path: `rows[${i}].koefisien`, message: 'Koefisien wajib diisi' });
       } else {
         const koefStr = String(r.koefisien).trim();
         const koefNum = parseFloat(__koefToCanon(koefStr));
 
         if (isNaN(koefNum)) {
-          errors.push({path:`rows[${i}].koefisien`, message:'Koefisien harus berupa angka'});
+          errors.push({ path: `rows[${i}].koefisien`, message: 'Koefisien harus berupa angka' });
         } else if (koefNum < MIN_KOEF) {
-          errors.push({path:`rows[${i}].koefisien`, message:`Koefisien minimal ${MIN_KOEF} (harus positif)`});
+          errors.push({ path: `rows[${i}].koefisien`, message: `Koefisien minimal ${MIN_KOEF} (harus positif)` });
         } else if (koefNum > MAX_KOEF) {
-          errors.push({path:`rows[${i}].koefisien`, message:`Koefisien maksimal ${MAX_KOEF}`});
+          errors.push({ path: `rows[${i}].koefisien`, message: `Koefisien maksimal ${MAX_KOEF}` });
         }
       }
 
       // Kategori validation
       if (!r.kategori || !['TK', 'BHN', 'ALT', 'LAIN'].includes(r.kategori)) {
-        errors.push({path:`rows[${i}].kategori`, message:'Kategori tidak valid'});
+        errors.push({ path: `rows[${i}].kategori`, message: 'Kategori tidak valid' });
       }
     });
 
@@ -278,10 +278,10 @@
 
   // Mode editor berdasarkan sumber row (lock/unlock)
   function setEditorModeBySource() {
-    const canSave  = (activeSource === 'ref_modified' || activeSource === 'custom') && !readOnly;
+    const canSave = (activeSource === 'ref_modified' || activeSource === 'custom') && !readOnly;
     const canReset = (activeSource === 'ref_modified') && !readOnly;
 
-    $('#ta-btn-save').hidden   = !canSave;
+    $('#ta-btn-save').hidden = !canSave;
     $('#ta-btn-save').disabled = !canSave || !dirty;
 
     const resetBtnEl = $('#ta-btn-reset');
@@ -329,7 +329,7 @@
 
   function enhanceLAINAutocomplete(scopeEl) {
     if (!window.jQuery || !jQuery.fn.select2 || !endpoints.searchAhsp) return;
-    const scope   = scopeEl || document;
+    const scope = scopeEl || document;
     const selector = scopeEl
       ? '.ta-row input[data-field="kode"]'
       : '#seg-LAIN-body .ta-row input[data-field="kode"]';
@@ -343,17 +343,17 @@
         const q = String(term || '').toLowerCase();
         const items = [];
         document.querySelectorAll('#ta-job-list .ta-job-item').forEach(li => {
-          const id = parseInt(li.getAttribute('data-pekerjaan-id')||'0',10);
+          const id = parseInt(li.getAttribute('data-pekerjaan-id') || '0', 10);
           const kode = (li.querySelector('.kode')?.textContent || '').trim();
           const uraian = (li.querySelector('.uraian')?.textContent || '').trim();
           const satuan = (li.querySelector('.satuan')?.textContent || '').trim();
           if (!id) return;
           const hay = `${kode} ${uraian}`.toLowerCase();
           if (q && !hay.includes(q)) return;
-          const badge = (li.getAttribute('data-source-type')||'').toUpperCase();
+          const badge = (li.getAttribute('data-source-type') || '').toUpperCase();
           items.push({
             id: `job:${id}`,
-            text: `[${badge||'JOB'}] ${kode} — ${uraian}`,
+            text: `[${badge || 'JOB'}] ${kode} — ${uraian}`,
             kode_job: kode,
             nama_job: uraian,
             satuan: satuan || ''
@@ -368,13 +368,18 @@
           delay: 250,
           data: params => ({ q: params.term }),
           processResults: (data, params) => {
-            const remote = (data.results || []).map(x => ({
-              id: `ahsp:${x.id}`,
-              text: `${x.kode_ahsp} — ${x.nama_ahsp}`,
-              kode_ahsp: x.kode_ahsp,
-              nama_ahsp: x.nama_ahsp,
-              satuan: x.satuan || ''
-            }));
+            const remote = (data.results || []).map(x => {
+              // Extract year/version from sumber (e.g., "AHSP SNI 2025" -> "SNI 2025")
+              const sumberLabel = x.sumber ? ` (${x.sumber.replace(/^AHSP\s*/i, '')})` : '';
+              return {
+                id: `ahsp:${x.id}`,
+                text: `${x.kode_ahsp} — ${x.nama_ahsp}${sumberLabel}`,
+                kode_ahsp: x.kode_ahsp,
+                nama_ahsp: x.nama_ahsp,
+                satuan: x.satuan || '',
+                sumber: x.sumber || ''
+              };
+            });
             const local = localProjectOptions(params?.term);
             const groups = [];
             if (local.length) groups.push({ text: 'Pekerjaan Proyek', children: local });
@@ -394,8 +399,8 @@
         let refId = '';
         let kode = '';
         let nama = '';
-        let sat  = d.satuan || '';
-        const sid = String(d.id||'');
+        let sat = d.satuan || '';
+        const sid = String(d.id || '');
         if (sid.startsWith('job:')) {
           kind = 'job';
           refId = sid.split(':')[1] || '';
@@ -421,7 +426,7 @@
             const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 sec timeout
 
             const resp = await fetch(validateUrl, {
-              credentials:'same-origin',
+              credentials: 'same-origin',
               signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -460,7 +465,7 @@
         $('input[data-field="satuan"]', tr).value = sat;
         $('input[data-field="ref_kind"]', tr).value = kind;
         $('input[data-field="ref_id"]', tr).value = String(refId || '');
-        $('input[data-field="ref_ahsp_id"]', tr).value = (kind === 'ahsp' ? String(refId||'') : '');
+        $('input[data-field="ref_ahsp_id"]', tr).value = (kind === 'ahsp' ? String(refId || '') : '');
         // FIX: Set default koefisien = 1 jika kosong (prevent validation error)
         const koefInput = $('input[data-field="koefisien"]', tr);
         if (!koefInput.value.trim()) {
@@ -578,7 +583,7 @@
 
     // fetch
     const url = urlFor(endpoints.get, id);
-    return fetch(url, {credentials:'same-origin'}).then(r => r.json()).then(js => {
+    return fetch(url, { credentials: 'same-origin' }).then(r => r.json()).then(js => {
       if (!js.ok) throw new Error('Gagal memuat');
       const items = js.items || [];
       kategoriMeta = js.meta?.kategori_opts || kategoriMeta;
@@ -614,17 +619,17 @@
   }
 
   function paint(items) {
-    const by = {TK:[], BHN:[], ALT:[], LAIN:[]};
-    (items||[]).forEach(r => {
+    const by = { TK: [], BHN: [], ALT: [], LAIN: [] };
+    (items || []).forEach(r => {
       const seg = by[r.kategori] ? r.kategori : 'LAIN';
       by[seg].push(r);
     });
-    ['TK','BHN','ALT','LAIN'].forEach(seg => renderRows(seg, by[seg]));
+    ['TK', 'BHN', 'ALT', 'LAIN'].forEach(seg => renderRows(seg, by[seg]));
     updateStats();
   }
 
   function showLoadingPlaceholder() {
-    ['TK','BHN','ALT','LAIN'].forEach((seg) => {
+    ['TK', 'BHN', 'ALT', 'LAIN'].forEach((seg) => {
       const body = $(`#seg-${seg}-body`);
       if (!body) return;
       body.innerHTML = `<tr class="ta-empty"><td colspan="5">Memuat data...</td></tr>`;
@@ -796,8 +801,8 @@
     };
 
     if (queueMode) {
-      const nextTask = reloadQueue.catch(() => {}).then(() => run());
-      reloadQueue = nextTask.catch(() => {});
+      const nextTask = reloadQueue.catch(() => { }).then(() => run());
+      reloadQueue = nextTask.catch(() => { });
       return nextTask;
     }
     return run();
@@ -859,7 +864,7 @@
   // pilih pekerjaan
   $$('#ta-job-list .ta-job-item').forEach(li => {
     li.addEventListener('click', () => selectJob(li));
-    li.addEventListener('keydown', (e) => { if (e.key==='Enter' || e.key===' ') { e.preventDefault(); selectJob(li);} });
+    li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectJob(li); } });
   });
 
   if (projectId && sourceChange) {
@@ -891,23 +896,59 @@
       toast('Semua pekerjaan sudah terbaru.', 'info');
       return;
     }
-    reloadJobs(Array.from(pendingReloadJobs), { preserveSelection: !!activeJobId }).catch(() => {});
+    reloadJobs(Array.from(pendingReloadJobs), { preserveSelection: !!activeJobId }).catch(() => { });
   });
   editorReloadBtn?.addEventListener('click', (event) => {
     event.preventDefault();
-    forceReloadActiveJob().catch(() => {});
+    forceReloadActiveJob().catch(() => { });
   });
 
-  // filter
+  // ===== Checkbox Filter (REF/MOD/CUS) =====
+  const filterChecks = $$('.ta-filter-check');
+  const countVisibleEl = $('#ta-count-visible');
+
+  function getActiveSourceTypes() {
+    const checked = $$('.ta-filter-check:checked');
+    return checked.map(cb => cb.value);
+  }
+
+  function applyJobFilters() {
+    const q = jobFilterEl?.value?.toLowerCase() || '';
+    const activeTypes = getActiveSourceTypes();
+    let visibleCount = 0;
+
+    $$('#ta-job-list .ta-job-item').forEach(li => {
+      const matchesText = li.textContent.toLowerCase().includes(q);
+      const sourceType = li.dataset.sourceType || '';
+      const matchesSource = activeTypes.length === 0 || activeTypes.includes(sourceType);
+      const isVisible = matchesText && matchesSource;
+      li.hidden = !isVisible;
+      if (isVisible) visibleCount++;
+    });
+
+    // Update visible count badge
+    if (countVisibleEl) countVisibleEl.textContent = visibleCount;
+  }
+
+  // Checkbox change event
+  filterChecks.forEach(cb => {
+    cb.addEventListener('change', applyJobFilters);
+  });
+
+  // Reset filter button
+  const filterResetBtn = $('#ta-filter-reset');
+  if (filterResetBtn) {
+    filterResetBtn.addEventListener('click', () => {
+      filterChecks.forEach(cb => cb.checked = true);
+      if (jobFilterEl) jobFilterEl.value = '';
+      applyJobFilters();
+    });
+  }
+
+  // Text filter
   const jobFilterEl = $('#ta-job-search');
   if (jobFilterEl) {
-    jobFilterEl.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase();
-      $$('#ta-job-list .ta-job-item').forEach(li => {
-        const t = li.textContent.toLowerCase();
-        li.hidden = !(t.includes(q));
-      });
-    });
+    jobFilterEl.addEventListener('input', () => applyJobFilters());
   }
 
   // add empty row (per-segmen)
@@ -920,7 +961,7 @@
       const tr = tpl.content.firstElementChild.cloneNode(true);
       tr.dataset.kategori = seg;
       if ($('.ta-empty', body)) body.innerHTML = '';
-      try { ensureSelectAffordance(tr); } catch(_){}
+      try { ensureSelectAffordance(tr); } catch (_) { }
       // FIX: Set default koefisien = 1 untuk row baru (prevent validation error)
       const koefInput = $('input[data-field="koefisien"]', tr);
       if (koefInput) koefInput.value = __koefToUI('1.000000');
@@ -931,7 +972,7 @@
       if (seg === 'LAIN' && activeSource === 'custom') {
         enhanceLAINAutocomplete(body);
       }
-      try { updateDelState(seg); } catch(_){}
+      try { updateDelState(seg); } catch (_) { }
     });
   });
 
@@ -971,7 +1012,7 @@
       console.log('[SAVE] Checking cache freshness before save...');
       try {
         const freshCheckUrl = urlFor(endpoints.get, jobId);
-        const freshResp = await fetch(freshCheckUrl, {credentials:'same-origin', timeout: 5000});
+        const freshResp = await fetch(freshCheckUrl, { credentials: 'same-origin', timeout: 5000 });
         const freshData = await freshResp.json();
 
         if (freshData.ok && freshData.pekerjaan?.updated_at) {
@@ -1011,9 +1052,9 @@
     if (btnSave) btnSave.disabled = true;
 
     return fetch(url, {
-      method:'POST',
-      credentials:'same-origin',
-      headers:{ 'Content-Type':'application/json', 'X-CSRFToken': CSRF },
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
       body: JSON.stringify(payload)
     }).then(r => {
       // DEBUG: Log response status
@@ -1121,7 +1162,7 @@
         // Bundle expansion occurred - reload to get expanded components
         console.log('[SAVE] Bundle expansion detected - reloading to fetch expanded components');
         delete rowsByJob[activeJobId];
-        reloadJobs([activeJobId], { preserveSelection: true, silent: true, queue: true }).catch(() => {});
+        reloadJobs([activeJobId], { preserveSelection: true, silent: true, queue: true }).catch(() => { });
       } else {
         // Simple save without expansion - update cache directly from response
         console.log('[SAVE] Updating cache directly from response (no expansion)');
@@ -1234,9 +1275,9 @@
       try {
         // Fetch with HTTP error checking
         const response = await fetch(url, {
-          method:'POST',
-          credentials:'same-origin',
-          headers:{ 'X-CSRFToken': CSRF }
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-CSRFToken': CSRF }
         });
 
         // Check HTTP status first
@@ -1269,7 +1310,7 @@
         }
 
         // Success: reload data
-        const getResponse = await fetch(urlFor(endpoints.get, activeJobId), {credentials:'same-origin'});
+        const getResponse = await fetch(urlFor(endpoints.get, activeJobId), { credentials: 'same-origin' });
         const getData = await getResponse.json();
 
         // P1 FIX: Add cache timestamp
@@ -1289,7 +1330,7 @@
         const count = getData.items?.length || 0;
         toast(`✅ Berhasil reset ${count} item dari referensi`, 'success');
 
-      } catch(err) {
+      } catch (err) {
         // Comprehensive error handling
         console.error('[RESET ERROR]', err);
 
@@ -1382,12 +1423,12 @@
     });
 
     const csv = BOM + [header, ...csvRows].join('\n');
-    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
 
     // Better filename with timestamp
-    const timestamp = new Date().toISOString().slice(0,19).replace(/[: ]/g, '-');
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[: ]/g, '-');
     const jobKode = $('#ta-active-kode').textContent.trim() || activeJobId;
     a.download = `template_ahsp_${jobKode}_${timestamp}.csv`;
     a.click();
@@ -1395,19 +1436,27 @@
     toast('✅ CSV berhasil di-export', 'success');
   });
 
-  // toast notification - use global DP.core.toast if available
+  // toast notification - delegate to global DP.toast
   /**
    * Show toast notification with auto-dismiss
    * @param {string} msg - Message to display
-   * @param {string} type - Type: 'success', 'error', 'warning', 'info'
+   * @param {string} type - Type: 'success', 'error', 'warning', 'info', 'warn'
    * @param {number} delay - Auto-dismiss delay in ms (default: 3000)
    */
-  function toast(msg, type='info', delay=3000) {
+  function toast(msg, type = 'info', delay = 3000) {
     console.log(`[TOAST ${type.toUpperCase()}] ${msg}`);
 
-    // Use global DP.core.toast if available (with correct z-index)
+    // Normalize type (warn -> warning)
+    const normalizedType = type === 'warn' ? 'warning' : type;
+
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[normalizedType]) {
+      return window.DP.toast[normalizedType](msg, delay);
+    }
+
+    // Fallback to legacy API
     if (window.DP && window.DP.core && window.DP.core.toast) {
-      window.DP.core.toast.show(msg, type, delay);
+      window.DP.core.toast.show(msg, normalizedType, delay);
       return;
     }
 
@@ -1544,7 +1593,7 @@
   // =========================
   // Sidebar Resizer (vertical)
   // =========================
-  (function installResizer(){
+  (function installResizer() {
     const res = document.getElementById('ta-resizer');
     const side = document.querySelector('.ta-sidebar');
     if (!res || !side) return;
@@ -1555,14 +1604,14 @@
 
     // restore saved width
     try {
-      const saved = parseInt(localStorage.getItem(KEY)||'', 10);
+      const saved = parseInt(localStorage.getItem(KEY) || '', 10);
       if (Number.isFinite(saved)) {
         const w = Math.min(MAX_W, Math.max(MIN_W, saved));
         // set both legacy and new tokens for compatibility
         document.body.style.setProperty('--ta-sidebar-w', `${w}px`);
         document.body.style.setProperty('--ta-left-w', `${w}px`);
       }
-    } catch {}
+    } catch { }
 
     let dragging = false, startX = 0, startW = 0;
     const clamp = (w) => Math.min(MAX_W, Math.max(MIN_W, w));
@@ -1574,8 +1623,8 @@
       const wpx = `${Math.round(w)}px`;
       // update both tokens so whichever CSS wins will reflect change
       document.body.style.setProperty('--ta-sidebar-w', wpx);
-      document.body.style.setProperty('--ta-left-w',   wpx);
-      try { localStorage.setItem(KEY, String(Math.round(w))); } catch {}
+      document.body.style.setProperty('--ta-left-w', wpx);
+      try { localStorage.setItem(KEY, String(Math.round(w))); } catch { }
       ev.preventDefault();
     };
     const onUp = () => {
@@ -1604,23 +1653,23 @@
     res.addEventListener('keydown', (e) => {
       const step = (e.shiftKey ? 20 : 10);
       // prefer legacy token if present
-      let cur = parseInt(getComputedStyle(document.body).getPropertyValue('--ta-left-w')||'0',10);
+      let cur = parseInt(getComputedStyle(document.body).getPropertyValue('--ta-left-w') || '0', 10);
       if (!Number.isFinite(cur) || cur <= 0) {
-        cur = parseInt(getComputedStyle(document.body).getPropertyValue('--ta-sidebar-w')||'360',10) || 360;
+        cur = parseInt(getComputedStyle(document.body).getPropertyValue('--ta-sidebar-w') || '360', 10) || 360;
       }
       if (e.key === 'ArrowLeft' || e.key === 'Left') {
         const w = clamp(cur - step);
         const wpx = `${w}px`;
         document.body.style.setProperty('--ta-sidebar-w', wpx);
-        document.body.style.setProperty('--ta-left-w',   wpx);
-        try{localStorage.setItem(KEY,String(w));}catch{}
+        document.body.style.setProperty('--ta-left-w', wpx);
+        try { localStorage.setItem(KEY, String(w)); } catch { }
         e.preventDefault();
       } else if (e.key === 'ArrowRight' || e.key === 'Right') {
         const w = clamp(cur + step);
         const wpx = `${w}px`;
         document.body.style.setProperty('--ta-sidebar-w', wpx);
-        document.body.style.setProperty('--ta-left-w',   wpx);
-        try{localStorage.setItem(KEY,String(w));}catch{}
+        document.body.style.setProperty('--ta-left-w', wpx);
+        try { localStorage.setItem(KEY, String(w)); } catch { }
         e.preventDefault();
       }
     });

@@ -1,0 +1,20 @@
+Method,Name,Error,Occurrences
+GET,/detail_project/[id]/volume-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/volume-pekerjaan/'),1
+GET,/api/v2/project/[id]/pekerjaan/[id]/weekly-progress/,CatchResponseError('HTTP 500'),1
+GET,/detail_project/[id]/export-test/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/export-test/'),1
+GET,/detail_project/[id]/rekap-rab/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rekap-rab/'),1
+GET,/api/project/[id]/detail-ahsp/[pekerjaan_id]/,CatchResponseError('HTTP 500'),1
+GET,/api/project/[id]/rekap-kebutuhan/validate/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan/validate/'),1
+POST,[AUTH] Login POST,HTTPError('500 Server Error: Internal Server Error for url: [AUTH] Login POST'),20
+GET,/detail_project/[id]/rincian-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-ahsp/'),1
+GET,/api/project/[id]/pekerjaan/[pekerjaan_id]/pricing/,CatchResponseError('HTTP 500'),1
+GET,/api/project/[id]/conversion-profiles/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/conversion-profiles/'),1
+GET,/dashboard/,HTTPError('500 Server Error: Internal Server Error for url: /dashboard/'),3
+GET,/detail_project/[id]/template-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/template-ahsp/'),1
+GET,/detail_project/[id]/rincian-rab/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-rab/'),1
+GET,/api/project/[id]/export/template-ahsp/json/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/export/template-ahsp/json/'),15
+GET,/detail_project/[id]/list-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/list-pekerjaan/'),6
+GET,/api/project/[id]/search-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/search-ahsp/'),1
+GET,/api/project/[id]/tahapan/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/tahapan/'),2
+GET,/api/v2/project/[id]/chart-data/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/chart-data/'),1
+POST,/api/monitoring/report-client-metric/,HTTPError('403 Client Error: Forbidden for url: /api/monitoring/report-client-metric/'),6

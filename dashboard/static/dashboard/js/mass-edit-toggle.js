@@ -27,6 +27,23 @@
   // HELPER FUNCTIONS
   // ============================================================================
 
+  function toast(message, type = 'info', duration) {
+    if (window.DP?.toast?.show) {
+      window.DP.toast.show({ message, type, duration });
+      return;
+    }
+    if (window.showToast) {
+      window.showToast(message, type, duration || 3000);
+    }
+  }
+
+  function confirmAction(options) {
+    if (window.DPConfirm) {
+      return window.DPConfirm(options);
+    }
+    return Promise.resolve(false);
+  }
+
   /**
    * Convert snake_case to camelCase for dataset access
    * Example: sumber_dana -> sumberDana
@@ -91,14 +108,6 @@
     // Toggle Edit Mode
     toggleBtn.addEventListener('click', function() {
       if (!isEditMode) {
-        // Check if any checkboxes are selected
-        const selectedCheckboxes = document.querySelectorAll('.project-checkbox:checked');
-
-        if (selectedCheckboxes.length === 0) {
-          alert('Pilih minimal satu project dengan mencentang checkbox untuk memulai mass edit.');
-          return;
-        }
-
         enterEditMode();
       } else {
         exitEditMode(false); // false = don't save changes
@@ -114,25 +123,21 @@
 
     // Cancel Edit Mode
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', function() {
-        if (confirm('Yakin ingin membatalkan semua perubahan?')) {
+      cancelBtn.addEventListener('click', async function() {
+        const confirmed = await confirmAction({
+          title: 'Batalkan Perubahan',
+          message: 'Yakin ingin membatalkan semua perubahan?',
+          confirmText: 'Batalkan',
+          confirmClass: 'btn-danger'
+        });
+        if (confirmed) {
           exitEditMode(false);
         }
       });
     }
 
-    // Auto-cancel mass edit when navigating away
-    window.addEventListener('beforeunload', function(e) {
-      if (isEditMode && editedCells.size > 0) {
-        // Show browser's default confirmation dialog
-        e.preventDefault();
-        e.returnValue = 'Ada perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?';
-        return e.returnValue;
-      }
-    });
-
     // Auto-cancel when clicking any link that navigates away
-    document.addEventListener('click', function(e) {
+    document.addEventListener('click', async function(e) {
       if (isEditMode) {
         const target = e.target.closest('a');
         if (target && target.href && !target.href.includes('#')) {
@@ -142,14 +147,21 @@
 
           if (targetUrl !== currentUrl) {
             if (editedCells.size > 0) {
-              if (!confirm('Ada perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?')) {
-                e.preventDefault();
+              e.preventDefault();
+              const confirmed = await confirmAction({
+                title: 'Perubahan Belum Disimpan',
+                message: 'Ada perubahan yang belum disimpan. Yakin ingin meninggalkan halaman?',
+                confirmText: 'Tinggalkan',
+                confirmClass: 'btn-warning'
+              });
+              if (!confirmed) {
                 return;
               }
             }
             // Auto-cancel mass edit mode before navigation
             isEditMode = false;
             enableUIInteractions();
+            window.location.href = target.href;
           }
         }
       }
@@ -587,7 +599,7 @@
   // SAVE ALL CHANGES
   // ============================================================================
 
-  function saveAllChanges() {
+  async function saveAllChanges() {
     console.log('💾 Saving all changes...');
 
     // Validate all fields first
@@ -604,18 +616,24 @@
     });
 
     if (hasErrors) {
-      alert('Ada field wajib yang kosong atau tidak valid (ditandai merah). Mohon perbaiki terlebih dahulu.');
+      toast('Ada field wajib yang kosong atau tidak valid (ditandai merah).', 'warning', 4000);
       return;
     }
 
     if (editedCells.size === 0) {
-      alert('Tidak ada perubahan yang perlu disimpan.');
+      toast('Tidak ada perubahan yang perlu disimpan.', 'info', 3000);
       return;
     }
 
     // Confirm save
     const editedCount = new Set(Array.from(editedCells).map(key => key.split('-')[0])).size;
-    if (!confirm(`Simpan perubahan pada ${editedCount} project?`)) {
+    const confirmed = await confirmAction({
+      title: 'Simpan Perubahan',
+      message: `Simpan perubahan pada ${editedCount} project?`,
+      confirmText: 'Simpan',
+      confirmClass: 'btn-success'
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -736,7 +754,7 @@
         }, 1500);
       } else {
         console.error('❌ Failed:', data.message);
-        alert('Error: ' + (data.message || 'Terjadi kesalahan saat menyimpan'));
+        toast(data.message || 'Terjadi kesalahan saat menyimpan.', 'error', 5000);
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Semua';
@@ -746,7 +764,7 @@
     .catch(error => {
       console.error('❌ Error saving changes:', error);
       console.error('Error stack:', error.stack);
-      alert('Terjadi kesalahan saat menyimpan perubahan: ' + error.message);
+      toast(`Terjadi kesalahan saat menyimpan perubahan: ${error.message}`, 'error', 5000);
       if (saveBtn) {
         saveBtn.disabled = false;
         saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Semua';
@@ -758,9 +776,15 @@
   // EXIT EDIT MODE
   // ============================================================================
 
-  function exitEditMode(save = false) {
+  async function exitEditMode(save = false) {
     if (!save && editedCells.size > 0) {
-      if (!confirm('Ada perubahan yang belum disimpan. Yakin ingin keluar dari mode edit?')) {
+      const confirmed = await confirmAction({
+        title: 'Keluar Mode Edit',
+        message: 'Ada perubahan yang belum disimpan. Yakin ingin keluar dari mode edit?',
+        confirmText: 'Keluar',
+        confirmClass: 'btn-warning'
+      });
+      if (!confirmed) {
         return;
       }
     }

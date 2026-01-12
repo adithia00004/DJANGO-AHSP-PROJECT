@@ -21,8 +21,73 @@
    =========================================================== */
 /* PERBAIKAN #1: Container width mengikuti list_pekerjaan untuk konsistensi */
 #vol-app {
-  max-width: 1800px; /* Selaras dengan list_pekerjaan.css #lp-app */
+  max-width: 1800px;
+  /* Selaras dengan list_pekerjaan.css #lp-app */
   margin: 0 auto;
+}
+
+/* ===========================================================
+   I-B) SUMMARY BAR & FILTER BAR (NEW - matches Harga Items)
+   =========================================================== */
+/* Summary Statistics Bar */
+.dp-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem 1rem;
+  background: var(--dp-c-surface, #f8f9fa);
+  border: 1px solid var(--dp-c-border, #dee2e6);
+  border-radius: var(--dp-radius-md, 6px);
+  margin: .5rem 0;
+}
+
+.dp-summary-bar .badge {
+  font-size: var(--ux-font-xs, 0.75rem);
+  padding: .35rem .6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+}
+
+.dp-summary-bar .badge .stat-value {
+  font-weight: 700;
+}
+
+/* Filter Bar */
+.dp-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem 1rem;
+  background: var(--dp-c-surface, #f8f9fa);
+  border: 1px solid var(--dp-c-border, #dee2e6);
+  border-radius: var(--dp-radius-md, 6px);
+  margin: 0 0 .5rem 0;
+}
+
+/* Filter button group styling */
+.dp-filter-bar .btn-group .btn {
+  font-size: var(--ux-font-xs, 0.75rem);
+  padding: .25rem .5rem;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+}
+
+.dp-filter-bar .btn-group .btn:hover {
+  transform: translateY(-1px);
+}
+
+.dp-filter-bar .btn-group .btn.active {
+  font-weight: 600;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode support */
+[data-bs-theme="dark"] .dp-summary-bar,
+[data-bs-theme="dark"] .dp-filter-bar {
+  background: var(--dp-c-surface, #2b2b2b);
+  border-color: var(--dp-c-border, #495057);
 }
 
 #vp-page {
@@ -32,7 +97,8 @@
 
 /* Outer table container - hanya override border thickness */
 #vp-page.dp-card {
-  border-width: 1px; /* Ikuti component library standard */
+  border-width: 1px;
+  /* Ikuti component library standard */
 }
 
 #vp-page .table {
@@ -41,14 +107,78 @@
 
 
 /* ===========================================================
-   II) TOOLBAR - Page-specific overrides saja
+   II) TOOLBAR - Harmonized with Harga Items
    =========================================================== */
-/* Component library sudah handle sticky, background, border */
-/* Hanya tambahkan shadow untuk elevasi visual */
 #vp-toolbar {
+  position: sticky;
+  top: var(--dp-topbar-h, 56px);
+  z-index: 1020;
+  min-height: var(--dp-toolbar-h, 48px);
+  background: var(--bs-body-bg, #fff);
+  border-bottom: 1px solid var(--dp-c-border, #dee2e6);
+  padding: .5rem 1rem;
+  gap: .5rem;
+  flex-wrap: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Dark mode toolbar */
+[data-bs-theme="dark"] #vp-toolbar {
+  background: var(--bs-body-bg, #212529);
+  border-bottom-color: var(--dp-c-border, #495057);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Button styling (matches Harga Items) */
+#vp-toolbar .btn {
+  font-size: var(--ux-font-xs, 0.75rem);
+  line-height: 1.5;
+  padding: .375rem .75rem;
+  border-radius: var(--dp-radius-md, 6px);
   box-shadow: var(--dp-shadow-sm);
-  flex-wrap: nowrap;              /* satu baris seperti list_pekerjaan */
-  border-bottom: 0 !important;    /* hapus garis/border bawah toolbar */
+  white-space: nowrap;
+  transition: all var(--ux-duration-200) var(--ux-ease);
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+}
+
+#vp-toolbar .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-md);
+}
+
+#vp-toolbar .btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Dropdown animation (matches Harga Items) */
+#vp-toolbar .dropdown-menu {
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  box-shadow: var(--dp-shadow-lg);
+  border-radius: var(--dp-radius-md);
+  padding: .75rem;
+  min-width: 200px;
+  animation: vpDropdownSlideIn var(--ux-duration-200) var(--ux-ease);
+}
+
+@keyframes vpDropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Searchbar - lebar khusus untuk volume page */
@@ -74,25 +204,28 @@
   /* .dp-autocomplete sudah handle styling */
   /* Hanya tambahkan z-index jika perlu override */
   z-index: var(--vp-z-search, calc(var(--dp-z-toolbar) + 1));
-  position: absolute;             /* pastikan tidak menutupi input */
-  left: 0; right: 0;
+  position: absolute;
+  /* pastikan tidak menutupi input */
+  left: 0;
+  right: 0;
   top: calc(100% + .25rem);
   max-height: min(50vh, 360px);
   overflow: auto;
 }
 
 /* Search results item: kecilkan font */
-#vp-search-results .vp-search-item{
+#vp-search-results .vp-search-item {
   font-size: var(--ux-font-sm);
   padding: .25rem .5rem;
   display: flex;
   align-items: center;
   gap: .5rem;
 }
+
 /* Select2 dropdown assurance: ensure above toolbar/thead/sidebar */
 body[data-page="volume_pekerjaan"] .select2-container,
 body[data-page="volume_pekerjaan"] .select2-container .select2-dropdown,
-body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
+body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown {
   z-index: var(--vp-z-select2) !important;
 }
 
@@ -104,12 +237,7 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 
 /* Scroll margin untuk "jump to row" feature */
 #vp-table tbody tr {
-  scroll-margin-top: calc(
-    var(--dp-topbar-h) +
-    var(--dp-toolbar-h, 40px) +
-    var(--dp-gap, 8px) +
-    var(--vp-thead-h, 36px)
-  );
+  scroll-margin-top: calc(var(--dp-topbar-h) + var(--dp-toolbar-h, 40px) + var(--dp-gap, 8px) + var(--vp-thead-h, 36px));
 }
 
 /* Dropdown/suggest di cell qty tidak boleh terpotong */
@@ -124,21 +252,22 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 
 /* Pastikan tabel tempat input quantity tidak memotong dropdown suggest */
 .vp-table {
-  overflow: visible; /* override .dp-table { overflow: hidden } */
+  overflow: visible;
+  /* override .dp-table { overflow: hidden } */
 }
 
 /* ===== Row Notification Indicators (border-only) ===== */
 /* Red: empty/invalid/zero */
-#vp-page .table tbody tr.vp-row-empty > td:first-child,
-#vp-page .table tbody tr.vp-row-invalid > td:first-child,
-#vp-page .table tbody tr.vp-row-zero > td:first-child{
+#vp-page .table tbody tr.vp-row-empty>td:first-child,
+#vp-page .table tbody tr.vp-row-invalid>td:first-child,
+#vp-page .table tbody tr.vp-row-zero>td:first-child {
   border-left-width: 4px;
   border-left-style: solid;
   border-left-color: var(--dp-c-danger);
 }
 
 /* Yellow: edited/unsaved */
-#vp-page .table tbody tr.vp-row-edited > td:first-child{
+#vp-page .table tbody tr.vp-row-edited>td:first-child {
   border-left-width: 4px;
   border-left-style: solid;
   border-left-color: var(--dp-c-warning);
@@ -146,11 +275,20 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 
 /* Green: saved pulse */
 @keyframes vpSavedBorderPulse {
-  0%   { border-left-color: color-mix(in srgb, var(--dp-c-success) 65%, transparent); }
-  60%  { border-left-color: color-mix(in srgb, var(--dp-c-success) 35%, transparent); }
-  100% { border-left-color: var(--dp-c-success); }
+  0% {
+    border-left-color: color-mix(in srgb, var(--dp-c-success) 65%, transparent);
+  }
+
+  60% {
+    border-left-color: color-mix(in srgb, var(--dp-c-success) 35%, transparent);
+  }
+
+  100% {
+    border-left-color: var(--dp-c-success);
+  }
 }
-#vp-page .table tbody tr.vp-row-saved > td:first-child{
+
+#vp-page .table tbody tr.vp-row-saved>td:first-child {
   border-left-width: 4px;
   border-left-style: solid;
   border-left-color: var(--dp-c-success);
@@ -158,18 +296,23 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 }
 
 /* Dark mode neon accents */
-[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-empty > td:first-child,
-[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-invalid > td:first-child,
-[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-zero > td:first-child{
-  border-left-color: #ff5b5b; /* neon red */
+[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-empty>td:first-child,
+[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-invalid>td:first-child,
+[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-zero>td:first-child {
+  border-left-color: #ff5b5b;
+  /* neon red */
   box-shadow: 0 0 6px 0 rgba(255, 91, 91, .55);
 }
-[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-edited > td:first-child{
-  border-left-color: #ffd24d; /* neon yellow */
+
+[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-edited>td:first-child {
+  border-left-color: #ffd24d;
+  /* neon yellow */
   box-shadow: 0 0 6px 0 rgba(255, 210, 77, .5);
 }
-[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-saved > td:first-child{
-  border-left-color: #4dff88; /* neon green */
+
+[data-bs-theme="dark"] #vp-page .table tbody tr.vp-row-saved>td:first-child {
+  border-left-color: #4dff88;
+  /* neon green */
   box-shadow: 0 0 6px 0 rgba(77, 255, 136, .5);
 }
 
@@ -187,8 +330,8 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 /* Component library sudah handle .dp-card-primary & .dp-card-secondary */
 
 /* Collapse behavior (page logic) */
-.vp-klas-card.is-collapsed > .card-body,
-.vp-sub-card.is-collapsed > .vp-sub-body {
+.vp-klas-card.is-collapsed>.card-body,
+.vp-sub-card.is-collapsed>.vp-sub-body {
   display: none;
 }
 
@@ -208,7 +351,7 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 
 /* Sub-card custom body class */
 .vp-sub-body {
-  /* Wrapper untuk table di dalam sub-card */
+  display: block;
 }
 
 
@@ -227,7 +370,8 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 /* Autocomplete kode parameter (vp-suggest) */
 .vp-suggest {
   position: absolute;
-  left: 0; right: 0;
+  left: 0;
+  right: 0;
   top: calc(100% + 4px);
   z-index: var(--vp-z-select2, var(--dp-z-dropdown));
   background: var(--dp-c-bg);
@@ -239,13 +383,16 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 
 .vp-suggest ul {
   list-style: none;
-  margin: 0; padding: .25rem 0;
+  margin: 0;
+  padding: .25rem 0;
   max-height: 40vh;
   overflow: auto;
 }
 
 .vp-suggest li {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: .75rem;
   padding: .375rem .5rem;
   cursor: pointer;
@@ -295,157 +442,297 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown{
 
 
 /* ===========================================================
-   VI) SIDEBAR PARAMETER - Page-specific
+   VI) SIDEBAR PARAMETER - Enhanced UI/UX
    =========================================================== */
-/* Component library sudah handle .dp-sidebar-overlay & .dp-sidebar-inner */
 
-/* RESTORE: Kembali ke styling original yang lebih nyaman */
 /* Sidebar width custom untuk volume page */
 body[data-page="volume_pekerjaan"] {
-  --vp-rightbar-w: 616px;   /* +10% dari 560px */
-  /* SSOT: komponen overlay membaca --lp-sidebar-w; referensikan ke --vp-rightbar-w */
-  --lp-sidebar-w: var(--vp-rightbar-w, 560px);
-  /* Layering: di atas toolbar/thead, di bawah topbar */
+  --vp-rightbar-w: 520px;
+  --lp-sidebar-w: var(--vp-rightbar-w, 520px);
   --vp-z-select2: calc(var(--dp-z-toolbar) + 1);
+  --vp-sidebar-head-h: 56px;
 }
 
-/* Simplify: treat #vp-sidebar as the panel (flattened),
-   keep inner as a neutral wrapper only (no positioning). */
-#vp-sidebar.dp-sidebar-overlay{
+/* Main sidebar panel */
+#vp-sidebar.dp-sidebar-overlay {
   position: fixed;
-  right: 10px;
-  top: var(--dp-topbar-h);
-  bottom: 16px;
+  right: 12px;
+  top: calc(var(--dp-topbar-h) + 8px);
+  bottom: 12px;
   left: auto;
-  width: clamp(320px, var(--lp-sidebar-w, var(--dp-overlay-w, 486px)), 760px);
-  display: none; /* closed by default */
+  width: clamp(360px, var(--lp-sidebar-w), 640px);
+  display: none;
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
-  border-radius: var(--dp-radius-lg);
-  box-shadow: var(--dp-shadow-lg);
-  transform: translateX(16px);
+  border-radius: var(--dp-radius-lg, 12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateX(20px);
   opacity: 0;
-  overflow: auto;
+  overflow: hidden;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  z-index: calc(var(--dp-z-overlay) + 1);
 }
 
 #vp-sidebar.dp-sidebar-overlay.is-open,
-#vp-sidebar.dp-sidebar-overlay.show{
-  display: block;
+#vp-sidebar.dp-sidebar-overlay.show {
+  display: flex;
+  flex-direction: column;
   transform: translateX(0);
   opacity: 1;
 }
 
-/* Inner becomes neutral wrapper: no absolute positioning, no own chrome */
-#vp-sidebar.dp-sidebar-overlay .dp-sidebar-inner{
-  position: static;
-  padding: 0;  /* keep content snug; header/body define their own spacing */
-  right: auto; left: auto; top: auto; bottom: auto; height: auto;
-  transform: none; opacity: 1;
-  background: transparent; border: 0; box-shadow: none;
+/* Inner wrapper - must fill parent completely */
+#vp-sidebar.dp-sidebar-overlay .dp-sidebar-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0 !important;
+  /* Override component library */
+  margin: 0 !important;
+  overflow: hidden;
 }
 
-/* Sidebar header - spacing ringan, tidak tempel, tidak sticky */
-#vp-sidebar .dp-sidebar-header,
-#vp-sidebar .lp-sidebar-header {
+/* ===== HEADER (Compact, no top spacing) ===== */
+#vp-sidebar .dp-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .4rem .6rem;
+  margin: 0 !important;
+  /* Remove any margin from component library */
   background: var(--dp-c-surface-2);
-  padding: .5rem .75rem;
   border-bottom: 1px solid var(--dp-c-border);
-  margin: 0;  /* Remove default margin */
-  position: absolute; top: 0; left: 0; right: 0; z-index: 2; /* absolut sesuai permintaan */
+  flex-shrink: 0;
 }
 
 #vp-sidebar .dp-sidebar-header h5,
-#vp-sidebar .dp-sidebar-header h6,
-#vp-sidebar .lp-sidebar-header h5,
-#vp-sidebar .lp-sidebar-header h6 {
-  font-size: var(--ux-font-lg);
-  line-height: 1.35;
+#vp-sidebar .dp-sidebar-header h6 {
+  font-size: .8rem;
+  font-weight: 600;
   margin: 0;
-  white-space: normal;            /* prevent mid-word clipping */
-  overflow: visible;
-  text-overflow: clip;
-  word-break: break-word;
+  color: var(--dp-c-text);
+  display: flex;
+  align-items: center;
+  gap: .35rem;
 }
 
-/* Sidebar body - padding lebih kecil, tidak terlalu luas */
-#vp-sidebar .dp-sidebar-body,
-#vp-sidebar .dp-sidebar-body,
-#vp-sidebar .lp-sidebar-body {
+#vp-sidebar .dp-sidebar-header h6::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background: var(--dp-c-primary, #0d6efd);
+  border-radius: 2px;
+}
+
+/* Close button */
+#vp-sidebar .dp-sidebar-header .btn {
+  padding: .25rem .4rem;
+  font-size: .7rem;
+  border-radius: var(--dp-radius-sm);
+}
+
+#vp-sidebar .dp-sidebar-header .btn:hover {
   background: var(--dp-c-surface);
-  color: var(--dp-c-text);
-  padding: .75rem;  /* Original: .75rem, bukan 1rem */
-  padding-top: calc(var(--vp-sidebar-head-h, 48px) + .5rem); /* ruang di bawah header absolut */
+}
+
+/* ===== BODY (Fill remaining space) ===== */
+#vp-sidebar .dp-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  /* Critical for flex child overflow */
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-/* Form controls di sidebar */
-#vp-sidebar .form-control,
-#vp-sidebar .form-select,
-#vp-sidebar .input-group-text {
-  font-size: var(--ux-font-xs);
-}
-
-/* Dropdown menu di sidebar */
-#vp-sidebar .dropdown-menu {
+  padding: .4rem .6rem;
   background: var(--dp-c-surface);
-  color: var(--dp-c-text);
-  border: 1px solid var(--dp-c-border);
-  box-shadow: var(--dp-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
 }
 
-/* Button sizing - compact but accessible */
-#vp-sidebar .btn {
+/* Hint text - compact */
+#vp-sidebar .dp-sidebar-body>.d-flex:first-child small {
+  font-size: .65rem;
+  color: var(--dp-c-muted);
+  background: var(--dp-c-surface-2);
+  padding: .2rem .4rem;
+  border-radius: 3px;
+  border-left: 2px solid var(--dp-c-info, #0dcaf0);
+  line-height: 1.3;
+}
+
+#vp-sidebar .dp-sidebar-body>.d-flex:first-child code {
+  font-size: .6rem;
+  background: var(--dp-c-bg);
+  padding: .1rem .25rem;
+  border-radius: 2px;
+}
+
+/* Add Parameter button - compact */
+#vp-var-add {
+  font-size: .7rem;
+  padding: .2rem .4rem;
+  border-radius: var(--dp-radius-sm);
+}
+
+#vp-var-add:hover {
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* ===== PARAMETER TABLE (Compact) ===== */
+/* Table wrapper - fill available space */
+#vp-sidebar .table-responsive {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: .25rem !important;
+}
+
+#vp-var-table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-sm);
+  overflow: hidden;
+  margin: 0;
+}
+
+#vp-var-table thead th {
+  font-size: .65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--dp-c-surface-2);
+  color: var(--dp-c-text);
+  padding: .25rem .4rem;
+  border-bottom: 1px solid var(--dp-c-border);
   white-space: nowrap;
 }
 
-/* FIX: Ensure Export/Import/Template buttons are accessible */
-/* Remove excessive spacing, make buttons visible */
-#vp-sidebar .dp-sidebar-body > div,
-#vp-sidebar .dp-sidebar-body > div,
-#vp-sidebar .lp-sidebar-body > div {
-  margin-bottom: .5rem;  /* Consistent spacing */
+#vp-var-table tbody td {
+  padding: .25rem .4rem;
+  border-top: 1px solid var(--dp-c-border);
+  vertical-align: middle;
 }
 
-/* Button group container - proper spacing */
-#vp-sidebar .dp-sidebar-body .d-flex.gap-2,
-#vp-sidebar .dp-sidebar-body .d-flex.gap-2,
-#vp-sidebar .lp-sidebar-body .d-flex.gap-2 {
-  gap: .5rem;
-  flex-wrap: wrap;
+#vp-var-table tbody tr:hover {
+  background: color-mix(in srgb, var(--dp-c-primary) 5%, var(--dp-c-bg));
 }
 
-/* Import/Export/Template button area - clear visibility */
-#vp-sidebar .dp-sidebar-body > div:last-of-type,
-#vp-sidebar .dp-sidebar-body > div:last-of-type,
-#vp-sidebar .lp-sidebar-body > div:last-of-type {
+#vp-var-table tbody td .form-control {
+  font-size: .7rem;
+  padding: .2rem .35rem;
+  border-radius: 3px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+#vp-var-table tbody td .form-control:focus {
+  border-color: var(--dp-c-primary);
+  box-shadow: 0 0 0 1px var(--dp-c-focus);
+}
+
+/* Kode hint styling */
+#vp-var-table .vp-hint {
+  font-size: var(--ux-font-2xs, 0.7rem);
+  color: var(--dp-c-muted);
+  margin-top: .25rem;
+  font-family: var(--bs-font-monospace);
+}
+
+/* Action buttons in table */
+#vp-var-table .btn-sm {
+  padding: .25rem .4rem;
+  font-size: var(--ux-font-2xs, 0.7rem);
+  border-radius: var(--dp-radius-sm);
+}
+
+/* ===== ACTION BAR (Import/Export/Template) ===== */
+#vp-sidebar .dp-sidebar-body>div:last-of-type {
   margin-top: .5rem;
   padding-top: .5rem;
   border-top: 1px solid var(--dp-c-border);
 }
 
-/* Resizer handle (visible target area on left edge) */
-#vp-sidebar .dp-resizer,
-#vp-sidebar .lp-resizer{
+#vp-sidebar .dp-sidebar-body .btn-outline-secondary {
+  font-size: var(--ux-font-2xs, 0.7rem);
+  padding: .25rem .4rem;
+  border-radius: var(--dp-radius-sm);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+}
+
+#vp-sidebar .dp-sidebar-body .btn-outline-secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--dp-shadow-sm);
+}
+
+/* Dropdown menus */
+#vp-sidebar .dropdown-menu {
+  background: var(--dp-c-bg);
+  color: var(--dp-c-text);
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  box-shadow: var(--dp-shadow-lg);
+  padding: .5rem;
+  animation: vpDropdownSlideIn 0.2s ease;
+}
+
+#vp-sidebar .dropdown-item {
+  font-size: var(--ux-font-xs, 0.75rem);
+  padding: .4rem .75rem;
+  border-radius: var(--dp-radius-sm);
+  transition: background 0.15s ease;
+}
+
+#vp-sidebar .dropdown-item:hover {
+  background: var(--dp-c-surface-2);
+}
+
+/* ===== RESIZER HANDLE ===== */
+#vp-sidebar .dp-resizer {
   position: absolute;
-  left: -4px; top: 0; bottom: 0;
-  width: 8px; cursor: ew-resize;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
   background: transparent;
+  transition: background 0.15s ease;
 }
 
-#vp-sidebar .dp-resizer:hover,
-#vp-sidebar .lp-resizer:hover{
-  background: color-mix(in srgb, var(--dp-c-text) 10%, transparent);
+#vp-sidebar .dp-resizer:hover {
+  background: linear-gradient(to right, var(--dp-c-primary) 0%, transparent 100%);
+  opacity: 0.3;
 }
 
-/* Dropup positioning fix */
-#vp-sidebar .dropup {
-  position: relative;
+/* ===== DARK MODE ENHANCEMENTS ===== */
+[data-bs-theme="dark"] #vp-sidebar.dp-sidebar-overlay {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-color: var(--dp-c-border);
 }
 
-#vp-sidebar .dropup .dropdown-menu {
-  margin-bottom: .25rem;
+[data-bs-theme="dark"] #vp-sidebar .dp-sidebar-header {
+  background: linear-gradient(135deg, var(--dp-c-surface-2) 0%, var(--dp-c-bg) 100%);
+}
+
+[data-bs-theme="dark"] #vp-var-table thead th {
+  background: color-mix(in srgb, var(--dp-c-surface-2) 80%, var(--dp-c-bg));
+}
+
+[data-bs-theme="dark"] #vp-var-table tbody tr:hover {
+  background: color-mix(in srgb, var(--dp-c-primary) 8%, var(--dp-c-bg));
 }
 
 /* Table responsive - don't add extra padding */
@@ -463,17 +750,18 @@ body[data-page="volume_pekerjaan"] {
 
 #vp-var-table thead th:nth-child(1),
 #vp-var-table tbody td:nth-child(1) {
-  width: 45%;
+  width: 40%;
 }
 
 #vp-var-table thead th:nth-child(2),
 #vp-var-table tbody td:nth-child(2) {
-  width: 35%;
+  width: 30%;
 }
 
 #vp-var-table thead th:nth-child(3),
 #vp-var-table tbody td:nth-child(3) {
-  width: 20%;
+  width: 30%;
+  overflow: visible;
 }
 
 /* Input full width dalam cell */
@@ -488,7 +776,7 @@ body[data-page="volume_pekerjaan"] {
   white-space: nowrap;
 }
 
-#vp-var-table tbody tr > * {
+#vp-var-table tbody tr>* {
   border-top: 1px solid var(--dp-c-border);
 }
 
@@ -498,6 +786,34 @@ body[data-page="volume_pekerjaan"] {
 
 #vp-var-table .btn {
   white-space: nowrap;
+}
+
+/* ===== ADD PARAMETER ROW STYLING ===== */
+/* Container untuk btn-group Simpan/Batal */
+#vp-var-table .btn-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* Tombol Simpan/Batal styling */
+#vp-var-table .var-save,
+#vp-var-table .var-cancel {
+  font-size: 0.65rem;
+  padding: 0.2rem 0.4rem;
+  white-space: nowrap;
+}
+
+/* Versi stacked untuk layar sempit */
+@media (max-width: 576px) {
+  #vp-var-table .btn-group {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  #vp-var-table .btn-group .btn {
+    border-radius: var(--dp-radius-sm) !important;
+  }
 }
 
 /* Hint text (Kode dibuat otomatis) */
@@ -535,7 +851,7 @@ body[data-page="volume_pekerjaan"] {
   background: var(--dp-c-surface-2);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
-  box-shadow: inset 0 -1px 0 rgba(0,0,0,.06);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .06);
 }
 
 
@@ -548,7 +864,8 @@ body[data-page="volume_pekerjaan"] {
   top: calc(var(--dp-topbar-h) + var(--dp-toolbar-h, 40px));
   z-index: calc(var(--dp-z-thead) - 1);
   background: var(--dp-c-surface-2);
-  display: none; /* Hidden by default, shown via JS if needed */
+  display: none;
+  /* Hidden by default, shown via JS if needed */
 }
 
 .vp-thead-sticky {
@@ -563,6 +880,7 @@ body[data-page="volume_pekerjaan"] {
 /* Component library sudah handle responsive untuk toolbar & buttons */
 
 @media (max-width: 768px) {
+
   /* Table font size sedikit mengecil di mobile */
   #vp-page table {
     font-size: var(--ux-font-xs, .75rem);
@@ -580,6 +898,7 @@ body[data-page="volume_pekerjaan"] {
 }
 
 @media (max-width: 576px) {
+
   /* Quantity cell input stack vertikal */
   .vp-cell {
     flex-direction: column;
@@ -597,6 +916,7 @@ body[data-page="volume_pekerjaan"] {
    X) PRINT & ACCESSIBILITY
    =========================================================== */
 @media print {
+
   /* Component library sudah handle global print, tambahkan page-specific */
   #vp-toolbar,
   #vp-sidebar,
@@ -606,13 +926,14 @@ body[data-page="volume_pekerjaan"] {
   }
 
   /* Expand semua cards saat print */
-  .vp-klas-card.is-collapsed > .card-body,
-  .vp-sub-card.is-collapsed > .vp-sub-body {
+  .vp-klas-card.is-collapsed>.card-body,
+  .vp-sub-card.is-collapsed>.vp-sub-body {
     display: block !important;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   /* Component library sudah handle global, tambahkan page-specific */
   .vp-card-toggle i,
   .vp-cell * {
@@ -623,6 +944,7 @@ body[data-page="volume_pekerjaan"] {
 
 /* Forced colors mode */
 @media (forced-colors: active) {
+
   .vp-card-toggle,
   .fx-toggle {
     border-color: CanvasText !important;
@@ -724,19 +1046,19 @@ td.text-wrap.text-start {
    MAINTENANCE: Easier - design changes update via component library
    CONSISTENCY: 100% - otomatis match dengan list_pekerjaan & rekap_rab
    =========================================================== */
-#vp-sync-banner{
+#vp-sync-banner {
   border: 1px solid var(--dp-c-warning);
   border-radius: var(--dp-radius-md);
   box-shadow: var(--dp-shadow-sm);
   margin: 1rem 0;
 }
 
-.vp-row-needs-volume{
+.vp-row-needs-volume {
   background: color-mix(in srgb, var(--dp-c-warning) 12%, transparent);
   border-left: 4px solid color-mix(in srgb, var(--dp-c-warning) 60%, transparent);
 }
 
-.vp-row-pill{
+.vp-row-pill {
   display: inline-flex;
   align-items: center;
   gap: .25rem;
@@ -750,11 +1072,80 @@ td.text-wrap.text-start {
   margin-left: .5rem;
 }
 
-.vp-row-highlight{
+.vp-row-highlight {
   animation: vpRowPulse 1s ease;
 }
 
-@keyframes vpRowPulse{
-  0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5); }
-  100% { box-shadow: 0 0 0 12px transparent; }
+@keyframes vpRowPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5);
+  }
+
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+
+
+/* ===========================================================
+   XI) SYNC STATUS INDICATOR (for parameter server sync)
+   =========================================================== */
+.vp-sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  transition: all 0.3s ease;
+}
+
+.vp-sync-indicator.sync-pending {
+  color: var(--dp-c-info, #0dcaf0);
+  animation: vpSyncPulse 1s ease-in-out infinite;
+}
+
+.vp-sync-indicator.sync-synced {
+  color: var(--dp-c-success, #198754);
+  animation: vpSyncFadeIn 0.3s ease;
+}
+
+.vp-sync-indicator.sync-error {
+  color: var(--dp-c-danger, #dc3545);
+}
+
+@keyframes vpSyncPulse {
+
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes vpSyncFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Dark mode adjustments */
+[data-bs-theme="dark"] .vp-sync-indicator.sync-synced {
+  color: #4dff88;
+}
+
+[data-bs-theme="dark"] .vp-sync-indicator.sync-error {
+  color: #ff6b6b;
 }

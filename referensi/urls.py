@@ -1,14 +1,23 @@
 # referensi/urls.py
+from django.shortcuts import redirect
 from django.urls import path
 
 from .views import (
     admin_portal,
     ahsp_database,
+    ahsp_database_api,
     commit_import,
     preview_import,
 )
 from .views.preview import debug_clear_data
-from .views.api import api_bulk_delete, api_delete_preview, api_search_ahsp
+from .views.api import api_bulk_delete, api_delete_preview, api_list_sources, api_search_ahsp
+from .views.api.crud import (
+    api_list_jobs,
+    api_update_job,
+    api_list_items,
+    api_update_item,
+    api_get_stats,
+)
 from .views.audit_dashboard import (
     audit_dashboard,
     audit_log_detail,
@@ -27,7 +36,8 @@ from .views.export_views import (
 
 urlpatterns = [
     path("admin-portal/", admin_portal, name="admin_portal"),
-    path("admin/database/", ahsp_database, name="ahsp_database"),
+    path("admin/database/", lambda request: redirect('referensi:ahsp_database_api'), name="ahsp_database_legacy"),  # Redirect to new
+    path("admin/database-v2/", ahsp_database_api, name="ahsp_database_api"),
     path("import/preview/", preview_import, name="preview_import"),
     path("import/commit/", commit_import, name="commit_import"),
     path("debug/clear-data/", debug_clear_data, name="debug_clear_data"),
@@ -40,10 +50,18 @@ urlpatterns = [
     path("audit/statistics/", audit_statistics, name="audit_statistics"),
     path("audit/export/", export_audit_logs, name="export_audit_logs"),
 
-    # API Endpoints
+    # Legacy API Endpoints
     path("api/search", api_search_ahsp, name="api_search_ahsp"),
+    path("api/sources", api_list_sources, name="api_list_sources"),
     path("api/delete/preview", api_delete_preview, name="api_delete_preview"),
     path("api/delete/execute", api_bulk_delete, name="api_bulk_delete"),
+
+    # CRUD API Endpoints (Performance optimized)
+    path("api/jobs/", api_list_jobs, name="api_list_jobs"),
+    path("api/jobs/<int:pk>/", api_update_job, name="api_update_job"),
+    path("api/items/", api_list_items, name="api_list_items"),
+    path("api/items/<int:pk>/", api_update_item, name="api_update_item"),
+    path("api/stats/", api_get_stats, name="api_get_stats"),
 
     # Export Endpoints (Phase 6)
     path("export/single/<int:pk>/<str:format>/", ExportSingleJobView.as_view(), name="export_single_job"),
@@ -52,3 +70,4 @@ urlpatterns = [
     path("export/async/", ExportAsyncView.as_view(), name="export_async"),
     path("export/task-status/<str:task_id>/", export_task_status, name="export_task_status"),
 ]
+

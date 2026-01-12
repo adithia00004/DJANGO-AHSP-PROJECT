@@ -1,0 +1,18 @@
+{% load static %}
+{% with initial_ahsp=change_status.last_ahsp_change|date:"c" initial_harga=change_status.last_harga_change|date:"c" %}
+<div class="dp-sync-led" data-endpoint="{% url 'detail_project:api_get_change_status' project.id %}"
+    data-scope="{{ scope }}" data-watch="{{ watch }}" data-project-id="{{ project.id }}"
+    data-initial-ahsp="{{ initial_ahsp }}" data-initial-harga="{{ initial_harga }}"
+    data-initial-pekerjaan="{% now 'c' %}" data-initial-volume="{% now 'c' %}" data-initial-jadwal="{% now 'c' %}"
+    data-page-loaded="{% now 'c' %}" data-auto-option="{% if auto_option %}true{% else %}false{% endif %}"
+    data-auto-enabled="false" tabindex="0" role="status" aria-label="Status sinkronisasi">
+    <span class="dp-sync-led__dot dp-sync-led__dot--checking" aria-hidden="true"></span>
+    <div class="dp-sync-led__tooltip">
+        <div class="dp-sync-led__status">Memeriksa...</div>
+        <div class="dp-sync-led__message small text-body-secondary">Menunggu respon server</div>
+        <button type="button" class="btn btn-sm btn-link dp-sync-led__reload d-none">
+            <i class="bi bi-arrow-clockwise"></i> Reload
+        </button>
+    </div>
+</div>
+{% endwith %}

@@ -2,90 +2,66 @@
 {% extends "base.html" %}
 {% load static %}
 
-{# ===================== HEAD ===================== #}
 {% block extra_head %}
-  {{ block.super }}
-  {# Sidebar global (hover/klik) & kartu identitas proyek #}
-  <link rel="stylesheet" href="{% static 'detail_project/css/sidebar_global.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/_project_identity.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/loading.css' %}">{# Loading overlay styles #}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'detail_project/css/sidebar_global.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/_project_identity.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/loading.css' %}">
 
-  {# CSS Detail AHSP dibuat opsional: halaman lain boleh override block ini menjadi kosong #}
-  {% block detail_css %}
-    <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
-  {% endblock %}
-  <link rel="stylesheet" href="{% static 'detail_project/css/sync_indicator.css' %}">
+{% block detail_css %}
+<link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
+{% endblock %}
+<link rel="stylesheet" href="{% static 'detail_project/css/sync_indicator.css' %}">
 
-  {# Slot CSS tambahan dari child page (Select2, list_pekerjaan.css, dll.) #}
-  {% block extra_css %}{% endblock %}
+{% block extra_css %}{% endblock %}
 
-  {# Slot JS di HEAD (dipakai halaman Volume untuk memuat engine lebih awal) #}
-  {% block extra_js_head %}{% endblock %}
+{% block extra_js_head %}{% endblock %}
 {% endblock %}
 
-
-{# ===================== BODY ===================== #}
 {% block content %}
 
-  {# Topbar proyek + tombol pemicu sidebar global #}
+<nav id="dp-topbar" class="navbar navbar-expand bg-body shadow-sm sticky-top dp-z-topbar " role="navigation"
+  aria-label="Toolbar proyek">
+  <div class="container py-2 d-flex align-items-center gap-2">
+    <button id="dp-sidebar-toggle" class="btn btn-outline-secondary btn-sm me-2" type="button" data-lp-toggle="sidebar"
+      data-lp-target="#dp-sidebar" aria-controls="dp-sidebar" aria-expanded="false" title="Menu proyek">
+      <i class="bi bi-layout-sidebar"></i> <span class="d-none d-sm-inline">Menu</span>
+    </button>
 
-  <nav id="dp-topbar"
-       class="navbar navbar-expand bg-body shadow-sm sticky-top dp-z-topbar "
-       role="navigation"
-       aria-label="Toolbar proyek">
-    <div class="container py-2 d-flex align-items-center gap-2">
-      <button id="dp-sidebar-toggle"
-              class="btn btn-outline-secondary btn-sm me-2"
-              type="button"
-              data-lp-toggle="sidebar"
-              data-lp-target="#dp-sidebar"
-              aria-controls="dp-sidebar"
-              aria-expanded="false"
-              title="Menu proyek">
-        <i class="bi bi-layout-sidebar"></i> <span class="d-none d-sm-inline">Menu</span>
-      </button>
+    <!-- Brand/identitas project -->
+    <span class="navbar-text fw-semibold me-2">
+      {{ project.nama|default:"Project" }}
+    </span>
+    <span class="text-muted small">ID: {{ project.id }}</span>
 
-      <!-- Brand/identitas project -->
-      <span class="navbar-text fw-semibold me-2">
-        {{ project.nama|default:"Project" }}
-      </span>
-      <span class="text-muted small">ID: {{ project.id }}</span>
-
-      <!-- Aksi halaman (kanan) -->
-      <div class="ms-auto d-flex align-items-center gap-2">
-        {% block dp_topbar_extra %}{% endblock %}
-      </div>
-
+    <!-- Aksi halaman (kanan) -->
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {% block dp_topbar_extra %}{% endblock %}
     </div>
-  </nav>
 
-  {# Hover-edge di tepi kanan untuk membuka Sidebar Parameter #}
-  <div class="dp-hover-edge" aria-hidden="true"></div>
-
-  {# Identity Proyek (rapi & konsisten dengan _project_identity.css) #}
-  <div class="container-fluid mt-2">
-    {% include 'detail_project/_project_identity.html' %}
   </div>
+</nav>
 
-  {# Konten utama halaman anak #}
-  <div id="vp-app" class="container-fluid my-3 dp-scope">
-    {% block dp_content %}{% endblock %}
-  </div>
+<div class="dp-hover-edge" aria-hidden="true"></div>
+<div class="container-fluid mt-2">
+  {% include 'detail_project/_project_identity.html' %}
+</div>
 
-  {# Sidebar Global (disertakan sekali) #}
-  {% include 'detail_project/_sidebar_global.html' %}
+<div id="vp-app" class="container-fluid my-3 dp-scope">
+  {% block dp_content %}{% endblock %}
+</div>
 
-  {# ===================== JS GLOBAL (NON-OVERRIDE ZONE) ===================== #}
-  <script defer src="{% static 'detail_project/js/sidebar_global.js' %}"></script>
+{% include 'detail_project/_sidebar_global.html' %}
+
+<script defer src="{% static 'detail_project/js/sidebar_global.js' %}"></script>
 
 {% endblock %}
 
-{# ===================== JS (SLOT CHILD) ===================== #}
 {% block extra_js %}
-  {# hanya JS umum yang benar-benar dipakai semua halaman detail_project #}
-  <script src="{% static 'detail_project/js/numeric.umd.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/source_change_state.js' %}" defer></script>
-  <script src="{% static 'detail_project/js/sync_indicator.js' %}" defer></script>
-  {# sediakan hook kosong untuk child #}
-  {% block page_js %}{% endblock %}
+<script src="{% static 'detail_project/js/numeric.umd.js' %}" defer></script>
+<script src="{% static 'detail_project/js/source_change_state.js' %}" defer></script>
+<script src="{% static 'detail_project/js/sync_indicator.js' %}" defer></script>
+<script src="{% static 'detail_project/js/sync_led.js' %}" defer></script>
+<script src="{% static 'detail_project/js/core/messages.js' %}" defer></script>
+{% block page_js %}{% endblock %}
 {% endblock %}

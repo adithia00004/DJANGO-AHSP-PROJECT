@@ -19,21 +19,22 @@
 /* ===========================================================
    PROFESSIONAL CORPORATE COLOR PALETTE
    =========================================================== */
-:root{
+:root {
   /* Primary Corporate Blue - Professional, trustworthy */
-  --corp-blue-50:  #f0f7ff;
+  --corp-blue-50: #f0f7ff;
   --corp-blue-100: #e0efff;
   --corp-blue-200: #b9dcff;
   --corp-blue-300: #7db9ff;
   --corp-blue-400: #3d93ff;
-  --corp-blue-500: #1a75ff;  /* Main brand color */
+  --corp-blue-500: #1a75ff;
+  /* Main brand color */
   --corp-blue-600: #0056d6;
   --corp-blue-700: #0043a8;
   --corp-blue-800: #003680;
   --corp-blue-900: #002a5c;
 
   /* Neutral Grays - Professional, structured */
-  --corp-gray-50:  #f9fafb;
+  --corp-gray-50: #f9fafb;
   --corp-gray-100: #f3f4f6;
   --corp-gray-200: #e5e7eb;
   --corp-gray-300: #d1d5db;
@@ -46,20 +47,20 @@
 
   /* Semantic Colors - Conservative */
   --corp-success-light: #d1fae5;
-  --corp-success:       #10b981;
-  --corp-success-dark:  #047857;
+  --corp-success: #10b981;
+  --corp-success-dark: #047857;
 
   --corp-warning-light: #fef3c7;
-  --corp-warning:       #f59e0b;
-  --corp-warning-dark:  #d97706;
+  --corp-warning: #f59e0b;
+  --corp-warning-dark: #d97706;
 
-  --corp-danger-light:  #fee2e2;
-  --corp-danger:        #ef4444;
-  --corp-danger-dark:   #dc2626;
+  --corp-danger-light: #fee2e2;
+  --corp-danger: #ef4444;
+  --corp-danger-dark: #dc2626;
 
-  --corp-info-light:    #dbeafe;
-  --corp-info:          #3b82f6;
-  --corp-info-dark:     #1d4ed8;
+  --corp-info-light: #dbeafe;
+  --corp-info: #3b82f6;
+  --corp-info-dark: #1d4ed8;
 }
 
 /* Light Theme - Professional Corporate */
@@ -91,9 +92,9 @@
   --dp-c-primary: var(--corp-blue-400);
   --dp-c-primary-subtle: rgba(61, 147, 255, 0.15);
 
-  --dp-c-bg: #0a0e14;
-  --dp-c-surface: #111827;
-  --dp-c-surface-2: #1f2937;
+  --dp-c-bg: #1a1d21;
+  --dp-c-surface: #212529;
+  --dp-c-surface-2: #2b3035;
   --dp-c-border: rgba(209, 213, 219, 0.2);
   --dp-c-text: #f3f4f6;
   --dp-c-muted: #9ca3af;
@@ -107,15 +108,24 @@
    =========================================================== */
 :root {
   /* Corporate font sizes - Larger for readability */
-  --corp-font-2xs: 0.6875rem;  /* 11px - micro text */
-  --corp-font-xs:  0.75rem;    /* 12px - captions, labels */
-  --corp-font-sm:  0.875rem;   /* 14px - body text, inputs */
-  --corp-font-base: 1rem;      /* 16px - standard body */
-  --corp-font-md:  1.125rem;   /* 18px - emphasized text */
-  --corp-font-lg:  1.25rem;    /* 20px - section headers */
-  --corp-font-xl:  1.5rem;     /* 24px - page headers */
-  --corp-font-2xl: 1.875rem;   /* 30px - major headings */
-  --corp-font-3xl: 2.25rem;    /* 36px - hero text */
+  --corp-font-2xs: 0.6875rem;
+  /* 11px - micro text */
+  --corp-font-xs: 0.75rem;
+  /* 12px - captions, labels */
+  --corp-font-sm: 0.875rem;
+  /* 14px - body text, inputs */
+  --corp-font-base: 1rem;
+  /* 16px - standard body */
+  --corp-font-md: 1.125rem;
+  /* 18px - emphasized text */
+  --corp-font-lg: 1.25rem;
+  /* 20px - section headers */
+  --corp-font-xl: 1.5rem;
+  /* 24px - page headers */
+  --corp-font-2xl: 1.875rem;
+  /* 30px - major headings */
+  --corp-font-3xl: 2.25rem;
+  /* 36px - hero text */
 
   /* Line heights - Professional spacing */
   --corp-leading-tight: 1.25;
@@ -141,18 +151,30 @@
 :root {
   /* Spacing scale - 4px base (more generous for corporate) */
   --corp-space-0: 0;
-  --corp-space-1: 0.25rem;   /* 4px */
-  --corp-space-2: 0.5rem;    /* 8px */
-  --corp-space-3: 0.75rem;   /* 12px */
-  --corp-space-4: 1rem;      /* 16px */
-  --corp-space-5: 1.25rem;   /* 20px */
-  --corp-space-6: 1.5rem;    /* 24px */
-  --corp-space-8: 2rem;      /* 32px */
-  --corp-space-10: 2.5rem;   /* 40px */
-  --corp-space-12: 3rem;     /* 48px */
-  --corp-space-16: 4rem;     /* 64px */
-  --corp-space-20: 5rem;     /* 80px */
-  --corp-space-24: 6rem;     /* 96px */
+  --corp-space-1: 0.25rem;
+  /* 4px */
+  --corp-space-2: 0.5rem;
+  /* 8px */
+  --corp-space-3: 0.75rem;
+  /* 12px */
+  --corp-space-4: 1rem;
+  /* 16px */
+  --corp-space-5: 1.25rem;
+  /* 20px */
+  --corp-space-6: 1.5rem;
+  /* 24px */
+  --corp-space-8: 2rem;
+  /* 32px */
+  --corp-space-10: 2.5rem;
+  /* 40px */
+  --corp-space-12: 3rem;
+  /* 48px */
+  --corp-space-16: 4rem;
+  /* 64px */
+  --corp-space-20: 5rem;
+  /* 80px */
+  --corp-space-24: 6rem;
+  /* 96px */
 }
 
 /* ===========================================================
@@ -160,11 +182,11 @@
    =========================================================== */
 :root {
   /* Subtle shadows - Corporate professionalism */
-  --corp-shadow-xs:  0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --corp-shadow-sm:  0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --corp-shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --corp-shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --corp-shadow-xl:  0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --corp-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --corp-shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --corp-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --corp-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --corp-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   --corp-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   --corp-shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
 
@@ -186,12 +208,18 @@
    =========================================================== */
 :root {
   --corp-radius-none: 0;
-  --corp-radius-sm: 0.25rem;   /* 4px */
-  --corp-radius-md: 0.375rem;  /* 6px */
-  --corp-radius-lg: 0.5rem;    /* 8px */
-  --corp-radius-xl: 0.75rem;   /* 12px */
-  --corp-radius-2xl: 1rem;     /* 16px */
-  --corp-radius-full: 9999px;  /* Circle */
+  --corp-radius-sm: 0.25rem;
+  /* 4px */
+  --corp-radius-md: 0.375rem;
+  /* 6px */
+  --corp-radius-lg: 0.5rem;
+  /* 8px */
+  --corp-radius-xl: 0.75rem;
+  /* 12px */
+  --corp-radius-2xl: 1rem;
+  /* 16px */
+  --corp-radius-full: 9999px;
+  /* Circle */
 
   /* Override core radius */
   --dp-radius-sm: var(--corp-radius-sm);
@@ -239,7 +267,8 @@ body {
 }
 
 /* Headings - Professional hierarchy */
-h1, .h1 {
+h1,
+.h1 {
   font-size: var(--corp-font-2xl);
   font-weight: var(--corp-font-bold);
   line-height: var(--corp-leading-tight);
@@ -248,7 +277,8 @@ h1, .h1 {
   margin-bottom: var(--corp-space-4);
 }
 
-h2, .h2 {
+h2,
+.h2 {
   font-size: var(--corp-font-xl);
   font-weight: var(--corp-font-semibold);
   line-height: var(--corp-leading-tight);
@@ -256,7 +286,8 @@ h2, .h2 {
   margin-bottom: var(--corp-space-3);
 }
 
-h3, .h3 {
+h3,
+.h3 {
   font-size: var(--corp-font-lg);
   font-weight: var(--corp-font-semibold);
   line-height: var(--corp-leading-normal);
@@ -264,7 +295,8 @@ h3, .h3 {
   margin-bottom: var(--corp-space-3);
 }
 
-h4, .h4 {
+h4,
+.h4 {
   font-size: var(--corp-font-md);
   font-weight: var(--corp-font-medium);
   line-height: var(--corp-leading-normal);
@@ -272,7 +304,8 @@ h4, .h4 {
   margin-bottom: var(--corp-space-2);
 }
 
-h5, .h5 {
+h5,
+.h5 {
   font-size: var(--corp-font-base);
   font-weight: var(--corp-font-medium);
   line-height: var(--corp-leading-normal);
@@ -280,7 +313,8 @@ h5, .h5 {
   margin-bottom: var(--corp-space-2);
 }
 
-h6, .h6 {
+h6,
+.h6 {
   font-size: var(--corp-font-sm);
   font-weight: var(--corp-font-medium);
   line-height: var(--corp-leading-normal);
@@ -297,7 +331,8 @@ p {
 }
 
 /* Small text */
-small, .small {
+small,
+.small {
   font-size: var(--corp-font-xs);
   line-height: var(--corp-leading-normal);
 }
@@ -606,35 +641,103 @@ small, .small {
    =========================================================== */
 
 /* Spacing utilities */
-.corp-p-0 { padding: var(--corp-space-0) !important; }
-.corp-p-1 { padding: var(--corp-space-1) !important; }
-.corp-p-2 { padding: var(--corp-space-2) !important; }
-.corp-p-3 { padding: var(--corp-space-3) !important; }
-.corp-p-4 { padding: var(--corp-space-4) !important; }
-.corp-p-5 { padding: var(--corp-space-5) !important; }
-.corp-p-6 { padding: var(--corp-space-6) !important; }
+.corp-p-0 {
+  padding: var(--corp-space-0) !important;
+}
 
-.corp-m-0 { margin: var(--corp-space-0) !important; }
-.corp-m-1 { margin: var(--corp-space-1) !important; }
-.corp-m-2 { margin: var(--corp-space-2) !important; }
-.corp-m-3 { margin: var(--corp-space-3) !important; }
-.corp-m-4 { margin: var(--corp-space-4) !important; }
-.corp-m-5 { margin: var(--corp-space-5) !important; }
-.corp-m-6 { margin: var(--corp-space-6) !important; }
+.corp-p-1 {
+  padding: var(--corp-space-1) !important;
+}
+
+.corp-p-2 {
+  padding: var(--corp-space-2) !important;
+}
+
+.corp-p-3 {
+  padding: var(--corp-space-3) !important;
+}
+
+.corp-p-4 {
+  padding: var(--corp-space-4) !important;
+}
+
+.corp-p-5 {
+  padding: var(--corp-space-5) !important;
+}
+
+.corp-p-6 {
+  padding: var(--corp-space-6) !important;
+}
+
+.corp-m-0 {
+  margin: var(--corp-space-0) !important;
+}
+
+.corp-m-1 {
+  margin: var(--corp-space-1) !important;
+}
+
+.corp-m-2 {
+  margin: var(--corp-space-2) !important;
+}
+
+.corp-m-3 {
+  margin: var(--corp-space-3) !important;
+}
+
+.corp-m-4 {
+  margin: var(--corp-space-4) !important;
+}
+
+.corp-m-5 {
+  margin: var(--corp-space-5) !important;
+}
+
+.corp-m-6 {
+  margin: var(--corp-space-6) !important;
+}
 
 /* Elevation utilities */
-.corp-elevation-0 { box-shadow: var(--corp-elevation-0) !important; }
-.corp-elevation-1 { box-shadow: var(--corp-elevation-1) !important; }
-.corp-elevation-2 { box-shadow: var(--corp-elevation-2) !important; }
-.corp-elevation-3 { box-shadow: var(--corp-elevation-3) !important; }
-.corp-elevation-4 { box-shadow: var(--corp-elevation-4) !important; }
+.corp-elevation-0 {
+  box-shadow: var(--corp-elevation-0) !important;
+}
+
+.corp-elevation-1 {
+  box-shadow: var(--corp-elevation-1) !important;
+}
+
+.corp-elevation-2 {
+  box-shadow: var(--corp-elevation-2) !important;
+}
+
+.corp-elevation-3 {
+  box-shadow: var(--corp-elevation-3) !important;
+}
+
+.corp-elevation-4 {
+  box-shadow: var(--corp-elevation-4) !important;
+}
 
 /* Border radius utilities */
-.corp-rounded-sm { border-radius: var(--corp-radius-sm) !important; }
-.corp-rounded-md { border-radius: var(--corp-radius-md) !important; }
-.corp-rounded-lg { border-radius: var(--corp-radius-lg) !important; }
-.corp-rounded-xl { border-radius: var(--corp-radius-xl) !important; }
-.corp-rounded-full { border-radius: var(--corp-radius-full) !important; }
+.corp-rounded-sm {
+  border-radius: var(--corp-radius-sm) !important;
+}
+
+.corp-rounded-md {
+  border-radius: var(--corp-radius-md) !important;
+}
+
+.corp-rounded-lg {
+  border-radius: var(--corp-radius-lg) !important;
+}
+
+.corp-rounded-xl {
+  border-radius: var(--corp-radius-xl) !important;
+}
+
+.corp-rounded-full {
+  border-radius: var(--corp-radius-full) !important;
+}
 
 /* ===========================================================
    RESPONSIVE ADJUSTMENTS

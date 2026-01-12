@@ -1,13 +1,13 @@
 // static/detail_project/js/rekap_kebutuhan_enhanced.js
 // Enhanced Rekap Kebutuhan dengan support filter tahapan
 
-(function() {
+(function () {
   'use strict';
 
   // =========================================================================
   // CONFIGURATION & STATE
   // =========================================================================
-  
+
   const app = document.getElementById('rk-app');
   if (!app) return;
 
@@ -44,7 +44,6 @@
   const $generated = document.getElementById('rk-generated');
 
   // Export buttons
-  const $btnCsv = document.getElementById('btn-export-csv');
   const $btnPdf = document.getElementById('btn-export-pdf');
   const $btnWord = document.getElementById('btn-export-word');
 
@@ -63,11 +62,17 @@
   }
 
   function showToast(message, type = 'info') {
+    // Use new global toast API
+    if (window.DP && window.DP.toast && window.DP.toast[type]) {
+      return window.DP.toast[type](message);
+    }
+    // Fallback to legacy API
     if (window.DP && window.DP.core && window.DP.core.toast) {
       window.DP.core.toast.show(message, type);
-    } else {
-      console.log(`[${type}] ${message}`);
+      return;
     }
+    // Console fallback
+    console.log(`[${type}] ${message}`);
   }
 
   async function apiCall(url, options = {}) {
@@ -105,25 +110,25 @@
 
   async function loadRekapKebutuhan() {
     showLoading(true);
-    
+
     try {
       // Build query params
       const params = new URLSearchParams();
       params.append('mode', currentFilter.mode);
-      
+
       if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
         params.append('tahapan_id', currentFilter.tahapan_id);
       }
-      
+
       if (currentFilter.kategori.length < 4) {
         params.append('kategori', currentFilter.kategori.join(','));
       }
 
       const url = `${endpoint}?${params.toString()}`;
       const data = await apiCall(url);
-      
+
       currentData = data;
-      
+
       if (!data.rows || data.rows.length === 0) {
         showEmpty(true);
         $tbody.innerHTML = '';
@@ -131,11 +136,11 @@
         showEmpty(false);
         renderTable(data.rows);
       }
-      
+
       renderMeta(data.meta, data.rows);
       updateScopeIndicator();
       updateFilterIndicator();
-      
+
     } catch (error) {
       console.error('Failed to load rekap kebutuhan:', error);
       showToast('Gagal memuat data: ' + error.message, 'error');
@@ -219,10 +224,10 @@
     });
 
     const fragment = document.createDocumentFragment();
-    
+
     sorted.forEach(row => {
       const tr = document.createElement('tr');
-      
+
       // Kategori badge
       let katClass = 'bg-secondary';
       if (row.kategori === 'TK') katClass = 'bg-primary';
@@ -239,7 +244,7 @@
         <td>${escapeHtml(row.satuan)}</td>
         <td class="text-end mono">${escapeHtml(row.quantity || '0')}</td>
       `;
-      
+
       fragment.appendChild(tr);
     });
 
@@ -250,7 +255,7 @@
   function renderMeta(meta, rows) {
     // Count per kategori
     const counts = { TK: 0, BHN: 0, ALT: 0, LAIN: 0 };
-    
+
     if (meta && meta.counts_per_kategori) {
       Object.assign(counts, meta.counts_per_kategori);
     } else if (rows) {
@@ -266,9 +271,9 @@
     if ($countBHN) $countBHN.textContent = counts.BHN;
     if ($countALT) $countALT.textContent = counts.ALT;
     if ($countLAIN) $countLAIN.textContent = counts.LAIN;
-    
+
     if ($nrows) $nrows.textContent = rows ? rows.length : 0;
-    
+
     if ($generated && meta && meta.generated_at) {
       $generated.textContent = `· ${meta.generated_at}`;
     }
@@ -299,7 +304,7 @@
     if (!$filterIndicator) return;
 
     const filters = [];
-    
+
     // Check kategori filter
     if (currentFilter.kategori.length < 4) {
       filters.push(`Kategori: ${currentFilter.kategori.join(', ')}`);
@@ -367,45 +372,48 @@
     // Build query params for export
     function getExportParams() {
       const params = new URLSearchParams();
-      
+
       if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
         params.append('tahapan_id', currentFilter.tahapan_id);
       }
-      
+
       if (currentFilter.kategori.length < 4) {
         params.append('kategori', currentFilter.kategori.join(','));
       }
-      
+
       return params.toString();
     }
 
-    // Override export methods to include current filter
-    if ($btnCsv) {
-      $btnCsv.addEventListener('click', () => {
-        const params = getExportParams();
-        const url = params 
-          ? `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/csv/?${params}`
-          : `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/csv/`;
-        window.open(url, '_blank');
-      });
-    }
-
+    // PDF Export
     if ($btnPdf) {
       $btnPdf.addEventListener('click', () => {
         const params = getExportParams();
-        const url = params 
+        const url = params
           ? `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/pdf/?${params}`
           : `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/pdf/`;
         window.open(url, '_blank');
       });
     }
 
+    // Word Export
     if ($btnWord) {
       $btnWord.addEventListener('click', () => {
         const params = getExportParams();
-        const url = params 
+        const url = params
           ? `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/word/?${params}`
           : `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/word/`;
+        window.open(url, '_blank');
+      });
+    }
+
+    // XLSX Export (replaced CSV)
+    const $btnXlsx = document.getElementById('btn-export-xlsx');
+    if ($btnXlsx) {
+      $btnXlsx.addEventListener('click', () => {
+        const params = getExportParams();
+        const url = params
+          ? `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/xlsx/?${params}`
+          : `/detail_project/api/project/${projectId}/export/rekap-kebutuhan/xlsx/`;
         window.open(url, '_blank');
       });
     }
@@ -432,13 +440,13 @@
 
   function parseUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
-    
+
     // Check for tahapan param
     const tahapanParam = urlParams.get('tahapan');
     if (tahapanParam) {
       currentFilter.mode = 'tahapan';
       currentFilter.tahapan_id = parseInt(tahapanParam);
-      
+
       // Activate button after tahapan loaded
       setTimeout(() => {
         const btn = document.querySelector(`.tahapan-btn[data-tahapan-id="${tahapanParam}"]`);
@@ -454,7 +462,7 @@
     if (kategoriParam) {
       const selected = kategoriParam.split(',').map(k => k.trim().toUpperCase());
       currentFilter.kategori = selected;
-      
+
       // Update checkboxes
       document.querySelectorAll('.kategori-check').forEach(cb => {
         cb.checked = selected.includes(cb.value);

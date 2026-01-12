@@ -4,10 +4,9 @@
 # =====================================================================
 
 import csv
-from io import StringIO
-from typing import Dict, Any
+from typing import Dict, Any, Iterable
 from .base import ConfigExporterBase
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 
 
 class CSVExporter(ConfigExporterBase):
@@ -27,18 +26,21 @@ class CSVExporter(ConfigExporterBase):
             'footer_rows': [['label', 'value'], ...] (optional)
         }
         """
-        output = StringIO()
-        writer = csv.writer(output, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+        class _Echo:
+            def write(self, value):
+                return value
+
+        writer = csv.writer(_Echo(), delimiter=';', quoting=csv.QUOTE_MINIMAL)
         
-        def write_section(section: Dict[str, Any]):
+        def iter_section(section: Dict[str, Any]) -> Iterable[str]:
             # Header per section
             title = section.get('title') or self.config.title
-            writer.writerow([title])
+            yield writer.writerow([title])
             # Identity block aligned with page
             from ..export_config import build_identity_rows
             for label, _colon, value in build_identity_rows(self.config):
-                writer.writerow([label, value])
-            writer.writerow([])
+                yield writer.writerow([label, value])
+            yield writer.writerow([])
 
             # Check if this section has subsections (appendix with multiple tables OR pekerjaan sections)
             if 'sections' in section:
@@ -46,30 +48,30 @@ class CSVExporter(ConfigExporterBase):
                 if section['sections'] and isinstance(section['sections'][0], dict) and 'pekerjaan' in section['sections'][0]:
                     # Rincian AHSP sections (each pekerjaan with its detail table)
                     for pek_section in section['sections']:
-                        write_pekerjaan_section(pek_section)
-                        writer.writerow([])  # Separator between pekerjaan
+                        yield from iter_pekerjaan_section(pek_section)
+                        yield writer.writerow([])  # Separator between pekerjaan
                 else:
                     # Multi-section page (e.g., Parameter + Formula appendix)
                     for subsection in section['sections']:
                         # Subsection title
                         subsection_title = subsection.get('section_title')
                         if subsection_title:
-                            writer.writerow([subsection_title])
-                            writer.writerow([])
+                            yield writer.writerow([subsection_title])
+                            yield writer.writerow([])
 
                         # Subsection table
-                        write_table(subsection)
-                        writer.writerow([])  # Separator between sections
+                        yield from iter_table(subsection)
+                        yield writer.writerow([])  # Separator between sections
             else:
                 # Single table section
-                write_table(section)
+                yield from iter_table(section)
 
             if 'footer_rows' in section:
-                writer.writerow([])
+                yield writer.writerow([])
                 for footer_row in section['footer_rows']:
-                    writer.writerow(footer_row)
+                    yield writer.writerow(footer_row)
 
-        def write_table(section: Dict[str, Any]):
+        def iter_table(section: Dict[str, Any]) -> Iterable[str]:
             """Write a single table"""
             table_data = section.get('table_data', {})
             headers = table_data.get('headers', [])
@@ -77,7 +79,7 @@ class CSVExporter(ConfigExporterBase):
             hierarchy = section.get('hierarchy_levels', {})
 
             if headers:
-                writer.writerow(headers)
+                yield writer.writerow(headers)
 
             for idx, row in enumerate(rows):
                 level = hierarchy.get(idx, 3)
@@ -86,20 +88,20 @@ class CSVExporter(ConfigExporterBase):
                     row_with_indent = [indent + str(row[0])] + list(row[1:])
                 else:
                     row_with_indent = row
-                writer.writerow(row_with_indent)
+                yield writer.writerow(row_with_indent)
 
-        def write_pekerjaan_section(pek_section: Dict[str, Any]):
+        def iter_pekerjaan_section(pek_section: Dict[str, Any]) -> Iterable[str]:
             """Write a pekerjaan section (Rincian AHSP style)"""
             pekerjaan = pek_section.get('pekerjaan', {})
             detail_table = pek_section.get('detail_table', {})
 
             # Pekerjaan header section
-            writer.writerow(['=== PEKERJAAN ==='])
-            writer.writerow(['Kode', pekerjaan.get('kode', '-')])
-            writer.writerow(['Uraian', pekerjaan.get('uraian', '-')])
-            writer.writerow(['Satuan', pekerjaan.get('satuan', '-')])
-            writer.writerow(['Total', f"Rp {pekerjaan.get('total', '0')}"])
-            writer.writerow([])
+            yield writer.writerow(['=== PEKERJAAN ==='])
+            yield writer.writerow(['Kode', pekerjaan.get('kode', '-')])
+            yield writer.writerow(['Uraian', pekerjaan.get('uraian', '-')])
+            yield writer.writerow(['Satuan', pekerjaan.get('satuan', '-')])
+            yield writer.writerow(['Total', f"Rp {pekerjaan.get('total', '0')}"])
+            yield writer.writerow([])
 
             # Detail items table
             if pek_section.get('has_details'):
@@ -108,43 +110,37 @@ class CSVExporter(ConfigExporterBase):
 
                 # Write headers
                 if headers:
-                    writer.writerow(headers)
+                    yield writer.writerow(headers)
 
                 # Write data rows
                 for row in rows:
-                    writer.writerow(row)
+                    yield writer.writerow(row)
             else:
-                writer.writerow(['Tidak ada detail item untuk pekerjaan ini'])
+                yield writer.writerow(['Tidak ada detail item untuk pekerjaan ini'])
 
-        # Multi-page support
-        if 'pages' in data:
-            pages = data['pages']
-            for i, section in enumerate(pages):
-                write_section(section)
-                if i < len(pages) - 1:
-                    writer.writerow([])
-        # Sections at root level (Rincian AHSP style)
-        elif 'sections' in data and data['sections'] and isinstance(data['sections'][0], dict) and 'pekerjaan' in data['sections'][0]:
-            # Rincian AHSP: sections with pekerjaan data
-            write_section(data)
+        def row_generator() -> Iterable[str]:
+            # BOM for Excel
+            yield '\ufeff'
 
-            # Add summary at the end
-            if 'summary' in data:
-                writer.writerow([])
-                writer.writerow(['=== RINGKASAN ==='])
-                summary = data['summary']
-                writer.writerow(['Total Pekerjaan', summary.get('total_pekerjaan', 0)])
-                writer.writerow(['Total Items', summary.get('total_items', 0)])
-                writer.writerow(['Grand Total', f"Rp {summary.get('grand_total', '0')}"])
-        else:
-            write_section(data)
-        
-        # Create response
-        content = output.getvalue().encode('utf-8-sig')  # BOM for Excel
+            if 'pages' in data:
+                pages = data['pages']
+                for i, section in enumerate(pages):
+                    yield from iter_section(section)
+                    if i < len(pages) - 1:
+                        yield writer.writerow([])
+            elif 'sections' in data and data['sections'] and isinstance(data['sections'][0], dict) and 'pekerjaan' in data['sections'][0]:
+                yield from iter_section(data)
+                if 'summary' in data:
+                    yield writer.writerow([])
+                    yield writer.writerow(['=== RINGKASAN ==='])
+                    summary = data['summary']
+                    yield writer.writerow(['Total Pekerjaan', summary.get('total_pekerjaan', 0)])
+                    yield writer.writerow(['Total Items', summary.get('total_items', 0)])
+                    yield writer.writerow(['Grand Total', f"Rp {summary.get('grand_total', '0')}"])
+            else:
+                yield from iter_section(data)
+
         filename = f"{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.csv"
-        
-        return self._create_response(
-            content, 
-            filename, 
-            'text/csv; charset=utf-8-sig'
-        )
+        response = StreamingHttpResponse(row_generator(), content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = f'attachment; filename=\"{filename}\"'
+        return response

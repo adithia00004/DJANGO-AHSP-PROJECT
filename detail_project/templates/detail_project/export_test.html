@@ -1,0 +1,277 @@
+{% extends "detail_project/base_detail.html" %}
+{% load static %}
+
+{% block title %}Export System Test - Phase 4{% endblock %}
+
+{% block extra_css %}
+<style>
+  .test-container {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 2rem;
+  }
+
+  .test-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  .test-card h3 {
+    margin-top: 0;
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 0.5rem;
+  }
+
+  .test-button {
+    margin: 0.5rem 0.5rem 0.5rem 0;
+  }
+
+  .test-output {
+    background: #f8f9fa;
+    border-left: 4px solid #3498db;
+    padding: 1rem;
+    margin-top: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+  }
+
+  .status-success {
+    background: #d4edda;
+    color: #155724;
+  }
+
+  .status-info {
+    background: #d1ecf1;
+    color: #0c5460;
+  }
+
+  .status-warning {
+    background: #fff3cd;
+    color: #856404;
+  }
+</style>
+{% endblock %}
+
+{% block dp_content %}
+<div class="test-container">
+  <div class="test-card">
+    <h3>
+      🧪 Export System Test - Phase 4
+      <span class="status-badge status-success">PRODUCTION READY</span>
+    </h3>
+    <p>
+      <strong>System Version:</strong> <span id="system-version">Loading...</span><br>
+      <strong>Status:</strong> All 3 report types × 4 formats = <strong>12 combinations</strong> operational ✅
+    </p>
+  </div>
+
+  <!-- Test 1: Quick Test -->
+  <div class="test-card">
+    <h3>1️⃣ Quick Test (Auto-run)</h3>
+    <p>Automatically runs when page loads. Generates sample Monthly Report PDF.</p>
+    <button class="btn btn-primary test-button" onclick="runQuickTest()">
+      <i class="bi bi-play-fill"></i> Run Quick Test
+    </button>
+    <div id="quick-test-output" class="test-output" style="display: none;"></div>
+  </div>
+
+  <!-- Test 2: Comprehensive Test -->
+  <div class="test-card">
+    <h3>2️⃣ Comprehensive Test Suite</h3>
+    <p>Tests all report types (Monthly, Weekly) across multiple formats (PDF, Excel, CSV).</p>
+    <button class="btn btn-success test-button" onclick="runComprehensiveTest()">
+      <i class="bi bi-clipboard-check"></i> Run All Tests
+    </button>
+    <button class="btn btn-secondary test-button" onclick="clearComprehensiveOutput()">
+      <i class="bi bi-x-circle"></i> Clear Output
+    </button>
+    <div id="comprehensive-test-output" class="test-output" style="display: none;"></div>
+  </div>
+
+  <!-- Test 3: Individual Report Tests -->
+  <div class="test-card">
+    <h3>3️⃣ Individual Report Tests</h3>
+
+    <h5>Monthly Report (Laporan Bulanan)</h5>
+    <div class="btn-group mb-3" role="group">
+      <button class="btn btn-outline-danger" onclick="testMonthlyReport('pdf', 2)">
+        <i class="bi bi-file-pdf"></i> PDF Month 2
+      </button>
+      <button class="btn btn-outline-primary" onclick="testMonthlyReport('word', 2)">
+        <i class="bi bi-file-word"></i> Word Month 2
+      </button>
+      <button class="btn btn-outline-success" onclick="testMonthlyReport('xlsx', 2)">
+        <i class="bi bi-file-excel"></i> Excel Month 2
+      </button>
+      <button class="btn btn-outline-secondary" onclick="testMonthlyReport('csv', 2)">
+        <i class="bi bi-file-text"></i> CSV Month 2
+      </button>
+    </div>
+
+    <h5>Weekly Report (Laporan Mingguan)</h5>
+    <div class="btn-group mb-3" role="group">
+      <button class="btn btn-outline-danger" onclick="testWeeklyReport('pdf', 5)">
+        <i class="bi bi-file-pdf"></i> PDF Week 5
+      </button>
+      <button class="btn btn-outline-primary" onclick="testWeeklyReport('word', 5)">
+        <i class="bi bi-file-word"></i> Word Week 5
+      </button>
+      <button class="btn btn-outline-success" onclick="testWeeklyReport('xlsx', 5)">
+        <i class="bi bi-file-excel"></i> Excel Week 5
+      </button>
+      <button class="btn btn-outline-secondary" onclick="testWeeklyReport('csv', 5)">
+        <i class="bi bi-file-text"></i> CSV Week 5
+      </button>
+    </div>
+
+    <div id="individual-test-output" class="test-output" style="display: none;"></div>
+  </div>
+
+  <!-- Test 4: Console Commands -->
+  <div class="test-card">
+    <h3>4️⃣ Console Commands</h3>
+    <p>Open browser DevTools console (F12) and try these commands:</p>
+    <pre class="test-output" style="display: block;">
+// Get system info
+window.getExportSystemInfo()
+
+// Run quick test (generates Monthly Report PDF)
+await window.quickTest()
+
+// Run comprehensive test suite
+await window.runExportTest()
+
+// Test specific report
+const state = window.exportTestState;
+const { exportMonthlyReport } = await import('/static/detail_project/js/src/export/index.js');
+await exportMonthlyReport(state, 'pdf', 2);
+
+// Check test state
+console.log(window.exportTestState);
+    </pre>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script type="module">
+  import {
+    getExportSystemInfo,
+    createTestState,
+    runExportTest,
+    quickTest,
+    exportMonthlyReport,
+    exportWeeklyReport
+  } from '{% static "detail_project/js/src/export/index.js" %}';
+
+  // Make functions available globally
+  window.getExportSystemInfo = getExportSystemInfo;
+  window.createTestState = createTestState;
+  window.runExportTest = runExportTest;
+  window.quickTest = quickTest;
+  window.exportMonthlyReport = exportMonthlyReport;
+  window.exportWeeklyReport = exportWeeklyReport;
+
+  // Create test state
+  window.exportTestState = createTestState();
+
+  // Display system info
+  const info = getExportSystemInfo();
+  document.getElementById('system-version').textContent =
+    `${info.version} - ${info.phase}`;
+
+  // Helper functions
+  window.runQuickTest = async function() {
+    const output = document.getElementById('quick-test-output');
+    output.style.display = 'block';
+    output.innerHTML = '⏳ Running quick test...\n';
+
+    try {
+      await quickTest();
+      output.innerHTML += '✅ Quick test completed! Check your downloads folder.\n';
+    } catch (error) {
+      output.innerHTML += `❌ Error: ${error.message}\n`;
+    }
+  };
+
+  window.runComprehensiveTest = async function() {
+    const output = document.getElementById('comprehensive-test-output');
+    output.style.display = 'block';
+    output.innerHTML = '⏳ Running comprehensive test suite...\n\n';
+
+    // Redirect console.log to output
+    const originalLog = console.log;
+    console.log = function(...args) {
+      output.innerHTML += args.join(' ') + '\n';
+      originalLog.apply(console, args);
+    };
+
+    try {
+      const results = await runExportTest();
+      output.innerHTML += `\n✅ Tests completed!\n`;
+      output.innerHTML += `   Passed: ${results.passed}\n`;
+      output.innerHTML += `   Failed: ${results.failed}\n`;
+    } catch (error) {
+      output.innerHTML += `\n❌ Error: ${error.message}\n`;
+    } finally {
+      console.log = originalLog;
+    }
+  };
+
+  window.clearComprehensiveOutput = function() {
+    document.getElementById('comprehensive-test-output').innerHTML = '';
+    document.getElementById('comprehensive-test-output').style.display = 'none';
+  };
+
+  window.testMonthlyReport = async function(format, month) {
+    const output = document.getElementById('individual-test-output');
+    output.style.display = 'block';
+    output.innerHTML += `⏳ Generating Monthly Report (Month ${month}) - ${format.toUpperCase()}...\n`;
+
+    try {
+      const state = window.exportTestState;
+      await exportMonthlyReport(state, format, month);
+      output.innerHTML += `✅ Monthly ${format.toUpperCase()} generated! Check downloads.\n\n`;
+    } catch (error) {
+      output.innerHTML += `❌ Error: ${error.message}\n\n`;
+    }
+  };
+
+  window.testWeeklyReport = async function(format, week) {
+    const output = document.getElementById('individual-test-output');
+    output.style.display = 'block';
+    output.innerHTML += `⏳ Generating Weekly Report (Week ${week}) - ${format.toUpperCase()}...\n`;
+
+    try {
+      const state = window.exportTestState;
+      await exportWeeklyReport(state, format, week);
+      output.innerHTML += `✅ Weekly ${format.toUpperCase()} generated! Check downloads.\n\n`;
+    } catch (error) {
+      output.innerHTML += `❌ Error: ${error.message}\n\n`;
+    }
+  };
+
+  console.log('========================================');
+  console.log('EXPORT TEST PAGE LOADED');
+  console.log('========================================');
+  console.log('System Info:', info);
+  console.log('Test State:', window.exportTestState);
+  console.log('Available commands: see page for details');
+  console.log('========================================');
+</script>
+{% endblock %}

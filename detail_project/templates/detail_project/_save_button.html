@@ -1,0 +1,9 @@
+{# templates/detail_project/_save_button.html #}
+{# Usage: {% include '_save_button.html' with id="btn-save" disabled=True text="Simpan" %} #}
+<button id="{{ id|default:'btn-save' }}" class="btn btn-success dp-btn d-inline-flex align-items-center gap-2"
+    type="button" {% if disabled %}disabled{% endif %}>
+    <span class="spinner-border spinner-border-sm" id="{{ id|default:'btn-save' }}-spin" role="status"
+        aria-hidden="true" hidden></span>
+    <i class="bi bi-save" aria-hidden="true"></i>
+    <span class="d-none d-sm-inline">{{ text|default:"Simpan" }}</span>
+</button>

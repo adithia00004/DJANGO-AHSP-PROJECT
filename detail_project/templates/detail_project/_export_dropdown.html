@@ -1,0 +1,43 @@
+{# templates/detail_project/_export_dropdown.html #}
+{# Usage: {% include '_export_dropdown.html' with prefix="rab" show_xlsx=True show_pdf=True show_word=True
+show_json=False %} #}
+<div class="btn-group ux-dropdown" role="group">
+    <button type="button" class="btn btn-outline-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
+        aria-expanded="false" aria-label="Export">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="d-none d-md-inline">Export</span>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        {% if show_xlsx|default:True %}
+        <li>
+            <button class="dropdown-item" type="button" id="{{ prefix }}-export-xlsx">
+                <i class="bi bi-file-earmark-excel text-success me-2"></i>Export Excel
+            </button>
+        </li>
+        {% endif %}
+        {% if show_pdf|default:True %}
+        <li>
+            <button class="dropdown-item" type="button" id="{{ prefix }}-export-pdf">
+                <i class="bi bi-file-earmark-pdf text-danger me-2"></i>Export PDF
+            </button>
+        </li>
+        {% endif %}
+        {% if show_word|default:True %}
+        <li>
+            <button class="dropdown-item" type="button" id="{{ prefix }}-export-word">
+                <i class="bi bi-file-earmark-word text-primary me-2"></i>Export Word
+            </button>
+        </li>
+        {% endif %}
+        {% if show_json %}
+        <li>
+            <hr class="dropdown-divider">
+        </li>
+        <li>
+            <button class="dropdown-item" type="button" id="{{ prefix }}-export-json">
+                <i class="bi bi-filetype-json text-warning me-2"></i>Export JSON
+            </button>
+        </li>
+        {% endif %}
+    </ul>
+</div>

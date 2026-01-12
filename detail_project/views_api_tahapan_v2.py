@@ -12,7 +12,7 @@ Key differences from v1:
 """
 
 import json
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import datetime, timedelta, date
 
 from django.contrib.auth.decorators import login_required
@@ -20,19 +20,20 @@ from django.views.decorators.http import require_http_methods, require_GET, requ
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Max
+from django.core.cache import cache
 
 from detail_project.models import (
     TahapPelaksanaan,
     PekerjaanTahapan,
     PekerjaanProgressWeekly,
-    Pekerjaan
+    Pekerjaan,
+    VolumePekerjaan
 )
 from detail_project.progress_utils import (
+    calculate_week_number,
     get_week_date_range,
     sync_weekly_to_tahapan,
-    get_weekly_progress_for_daily_view,
-    get_weekly_progress_for_monthly_view
 )
 
 # Import helper from original views
@@ -51,17 +52,29 @@ def api_assign_pekerjaan_weekly(request, project_id):
 
     POST Body:
         {
+            "mode": "planned",  # or "actual" - determines which field to update
             "assignments": [
                 {
                     "pekerjaan_id": 322,
                     "week_number": 1,
-                    "proportion": 25.50,
+                    "proportion": 25.50,  # Will update planned_proportion or actual_proportion based on mode
                     "notes": "Optional notes"
                 },
                 {
                     "pekerjaan_id": 322,
                     "week_number": 2,
                     "proportion": 50.00
+                }
+            ]
+        }
+
+        # Legacy format (backward compatible - assumes planned):
+        {
+            "assignments": [
+                {
+                    "pekerjaan_id": 322,
+                    "week_number": 1,
+                    "proportion": 25.50
                 }
             ]
         }
@@ -84,9 +97,11 @@ def api_assign_pekerjaan_weekly(request, project_id):
     try:
         data = json.loads(request.body)
         assignments = data.get('assignments', [])
-        mode = (data.get('mode') or 'weekly').lower()
-        if mode not in {'daily', 'weekly', 'monthly', 'custom'}:
-            mode = 'weekly'
+
+        # Determine which field to update: planned_proportion or actual_proportion
+        progress_mode = (data.get('mode') or 'planned').lower()
+        if progress_mode not in {'planned', 'actual'}:
+            progress_mode = 'planned'  # Default to planned for backward compatibility
 
         week_end_day = data.get('week_end_day', 6)
         try:
@@ -105,11 +120,20 @@ def api_assign_pekerjaan_weekly(request, project_id):
         saved_assignments = []
         errors = []
 
+        payload_field = 'actual_proportion' if progress_mode == 'actual' else 'planned_proportion'
+
         for item in assignments:
             pekerjaan_id = item.get('pekerjaan_id')
             week_number = item.get('week_number')
-            proportion = item.get('proportion')
             notes = item.get('notes', '')
+
+            proportion = item.get(payload_field)
+            if proportion is None:
+                # Backward compatibility with legacy payload
+                proportion = item.get('proportion')
+
+            actual_cost_value = item.get('actual_cost')
+            actual_cost_decimal = None
 
             # Validation
             if not pekerjaan_id:
@@ -121,14 +145,14 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 continue
 
             if proportion is None:
-                errors.append({'error': 'proportion required', 'item': item})
+                errors.append({'error': f'{payload_field} required', 'item': item})
                 continue
 
             try:
                 proportion_decimal = Decimal(str(proportion))
-                if proportion_decimal < Decimal('0.01') or proportion_decimal > Decimal('100'):
+                if proportion_decimal < Decimal('0') or proportion_decimal > Decimal('100'):
                     errors.append({
-                        'error': f'Proportion must be 0.01-100, got {proportion}',
+                        'error': f'Proportion must be 0-100, got {proportion}',
                         'pekerjaan_id': pekerjaan_id
                     })
                     continue
@@ -138,6 +162,22 @@ def api_assign_pekerjaan_weekly(request, project_id):
                     'pekerjaan_id': pekerjaan_id
                 })
                 continue
+
+            if actual_cost_value is not None:
+                try:
+                    actual_cost_decimal = Decimal(str(actual_cost_value))
+                    if actual_cost_decimal < Decimal('0'):
+                        errors.append({
+                            'error': f'Actual cost must be >= 0, got {actual_cost_value}',
+                            'pekerjaan_id': pekerjaan_id
+                        })
+                        actual_cost_decimal = None
+                except (InvalidOperation, ValueError):
+                    errors.append({
+                        'error': f'Invalid actual_cost: {actual_cost_value}',
+                        'pekerjaan_id': pekerjaan_id
+                    })
+                    actual_cost_decimal = None
 
             # Get pekerjaan
             try:
@@ -185,31 +225,61 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 )
 
             # Create or update weekly progress (CANONICAL STORAGE)
-            wp, created = PekerjaanProgressWeekly.objects.update_or_create(
+            # Use get_or_create + manual update to preserve unrelated fields
+            wp, created = PekerjaanProgressWeekly.objects.get_or_create(
                 pekerjaan=pekerjaan,
                 week_number=week_number,
                 defaults={
                     'project': project,
                     'week_start_date': week_start,
                     'week_end_date': week_end,
-                    'proportion': proportion_decimal,
+                    'planned_proportion': proportion_decimal if progress_mode == 'planned' else Decimal('0'),
+                    'actual_proportion': proportion_decimal if progress_mode == 'actual' else Decimal('0'),
+                    # Phase 2E.1: No more legacy 'proportion' field - use planned/actual explicitly
+                    'actual_cost': actual_cost_decimal if (progress_mode == 'actual' and actual_cost_decimal is not None) else None,
                     'notes': notes
                 }
             )
+
+            # If record exists, update only the relevant fields
+            if not created:
+                wp.project = project
+                wp.week_start_date = week_start
+                wp.week_end_date = week_end
+                wp.notes = notes
+
+                # Phase 2E.1: Update the appropriate proportion field based on mode
+                if progress_mode == 'actual':
+                    wp.actual_proportion = proportion_decimal
+                    if actual_cost_decimal is not None:
+                        wp.actual_cost = actual_cost_decimal
+                else:  # 'planned' or default
+                    wp.planned_proportion = proportion_decimal
+
+                wp.save()
 
             if created:
                 created_count += 1
             else:
                 updated_count += 1
 
-            saved_assignments.append({
+            # Phase 2E.1: Return mode-specific proportion in response
+            response_item = {
                 'pekerjaan_id': pekerjaan_id,
                 'week_number': week_number,
                 'week_start_date': week_start.isoformat(),
                 'week_end_date': week_end.isoformat(),
-                'proportion': float(proportion_decimal),
-                'notes': notes
-            })
+                'proportion': float(proportion_decimal),  # Generic field for frontend compatibility
+                'notes': notes,
+                'actual_cost': float(wp.actual_cost or 0),
+            }
+            # Also include mode-specific field for clarity
+            if progress_mode == 'actual':
+                response_item['actual_proportion'] = float(proportion_decimal)
+            else:
+                response_item['planned_proportion'] = float(proportion_decimal)
+
+            saved_assignments.append(response_item)
 
         # STEP 2: Validate total progress per pekerjaan ≤ 100%
         # Group new assignments by pekerjaan_id
@@ -218,7 +288,9 @@ def api_assign_pekerjaan_weekly(request, project_id):
 
         for item in assignments:
             pekerjaan_id = item.get('pekerjaan_id')
-            proportion = item.get('proportion')
+            proportion = item.get(payload_field)
+            if proportion is None:
+                proportion = item.get('proportion')
 
             if pekerjaan_id and proportion is not None:
                 try:
@@ -237,7 +309,60 @@ def api_assign_pekerjaan_weekly(request, project_id):
                     'max_allowed': 100.0
                 })
 
+        touched_pekerjaan_ids = {item.get('pekerjaan_id') for item in assignments if item.get('pekerjaan_id')}
+        if touched_pekerjaan_ids:
+            # Phase 2E.1: Sum the appropriate proportion field based on mode
+            proportion_field = 'actual_proportion' if progress_mode == 'actual' else 'planned_proportion'
+            weekly_totals = (
+                PekerjaanProgressWeekly.objects.filter(pekerjaan_id__in=touched_pekerjaan_ids)
+                .values('pekerjaan_id')
+                .annotate(total=Sum(proportion_field))
+            )
+            volume_map = {
+                vp.pekerjaan_id: vp.quantity
+                for vp in VolumePekerjaan.objects.filter(pekerjaan_id__in=touched_pekerjaan_ids)
+            }
+            percent_tolerance = Decimal('0.01')
+            base_volume_tolerance = Decimal('0.001')
+
+            for entry in weekly_totals:
+                pekerjaan_id = entry['pekerjaan_id']
+                total_percent = entry['total'] or Decimal('0')
+                if total_percent > Decimal('100.00') + percent_tolerance:
+                    validation_errors.append({
+                        'error': f'Total progress {float(total_percent):.2f}% exceeds 100% (existing + baru)',
+                        'pekerjaan_id': pekerjaan_id,
+                        'total': float(total_percent),
+                        'max_allowed': 100.0,
+                        'type': 'percent_total'
+                    })
+                    continue
+
+                raw_capacity = volume_map.get(pekerjaan_id)
+                capacity = Decimal(str(raw_capacity)) if raw_capacity is not None else Decimal('0')
+                if capacity <= 0 and total_percent > percent_tolerance:
+                    validation_errors.append({
+                        'error': 'Volume master belum diisi tetapi progres > 0%',
+                        'pekerjaan_id': pekerjaan_id,
+                        'total': float(total_percent),
+                        'type': 'missing_capacity'
+                    })
+                    continue
+
+                if capacity > 0:
+                    total_volume = (capacity * total_percent) / Decimal('100')
+                    volume_tolerance = max(capacity * Decimal('0.001'), base_volume_tolerance)
+                    if total_volume > capacity + volume_tolerance:
+                        validation_errors.append({
+                            'error': f'Total volume {float(total_volume):.3f} melampaui kapasitas {float(capacity):.3f}',
+                            'pekerjaan_id': pekerjaan_id,
+                            'total': float(total_volume),
+                            'capacity': float(capacity),
+                            'type': 'volume'
+                        })
+
         if validation_errors:
+            transaction.set_rollback(True)
             return JsonResponse({
                 'ok': False,
                 'error': 'Validation failed: Total progress exceeds 100%',
@@ -250,12 +375,14 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'ok': False,
                 'error': 'Some assignments failed',
                 'errors': errors,
-                'saved': saved_assignments
+                'saved': saved_assignments,
+                'saved_assignments': saved_assignments
             }, status=400)
 
         # Success: keep PekerjaanTahapan (view layer) in sync so legacy reads stay accurate.
+        # Note: mode here refers to time scale mode ('weekly'), not progress mode ('planned'/'actual')
         try:
-            synced_count = sync_weekly_to_tahapan(project.id, mode=mode, week_end_day=week_end_day)
+            synced_count = sync_weekly_to_tahapan(project.id, mode='weekly', week_end_day=week_end_day)
         except Exception as sync_error:
             import traceback
             traceback.print_exc()
@@ -264,7 +391,8 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'error': f'Assignments saved, but failed to sync view layer: {sync_error}',
                 'created_count': created_count,
                 'updated_count': updated_count,
-                'assignments': saved_assignments
+                'assignments': saved_assignments,
+                'saved_assignments': saved_assignments
             }, status=500)
 
         return JsonResponse({
@@ -273,8 +401,10 @@ def api_assign_pekerjaan_weekly(request, project_id):
             'created_count': created_count,
             'updated_count': updated_count,
             'assignments': saved_assignments,
+            'saved_assignments': saved_assignments,
             'synced_assignments': synced_count,
-            'synced_mode': mode
+            'synced_mode': 'weekly',  # Time scale mode used for sync
+            'progress_mode': progress_mode  # Progress mode (planned/actual) used for save
         })
 
     except json.JSONDecodeError:
@@ -283,6 +413,50 @@ def api_assign_pekerjaan_weekly(request, project_id):
         import traceback
         traceback.print_exc()
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@require_POST
+def api_update_week_boundaries(request, project_id):
+    """
+    Persist user preference for week start/end day per project.
+    Accepts Python weekday numbers (0=Monday .. 6=Sunday). Week end day will be
+    normalized untuk memastikan selisih 6 hari dari week start.
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    def _normalize(value, fallback):
+        try:
+            return int(value) % 7
+        except (TypeError, ValueError):
+            return fallback % 7
+
+    current_start = project.week_start_day if project.week_start_day is not None else 0
+    week_start_day = _normalize(data.get('week_start_day', current_start), current_start)
+
+    provided_end = data.get('week_end_day')
+    if provided_end is None:
+        week_end_day = (week_start_day + 6) % 7
+    else:
+        normalized_end = _normalize(provided_end, (week_start_day + 6) % 7)
+        if (normalized_end - week_start_day) % 7 != 6:
+            normalized_end = (week_start_day + 6) % 7
+        week_end_day = normalized_end
+
+    project.week_start_day = week_start_day
+    project.week_end_day = week_end_day
+    project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
+
+    return JsonResponse({
+        'ok': True,
+        'week_start_day': week_start_day,
+        'week_end_day': week_end_day,
+    })
 
 
 @login_required
@@ -317,8 +491,13 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
         pekerjaan=pekerjaan
     ).order_by('week_number')
 
-    total_proportion = weekly_progress.aggregate(
-        total=Sum('proportion')
+    # Phase 2E.1: Calculate totals for both planned and actual
+    total_planned = weekly_progress.aggregate(
+        total=Sum('planned_proportion')
+    )['total'] or Decimal('0.00')
+
+    total_actual = weekly_progress.aggregate(
+        total=Sum('actual_proportion')
     )['total'] or Decimal('0.00')
 
     return JsonResponse({
@@ -329,15 +508,18 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
                 'week_number': wp.week_number,
                 'week_start_date': wp.week_start_date.isoformat(),
                 'week_end_date': wp.week_end_date.isoformat(),
-                'proportion': float(wp.proportion),
+                'planned_proportion': float(wp.planned_proportion),
+                'actual_proportion': float(wp.actual_proportion),
                 'notes': wp.notes,
                 'created_at': wp.created_at.isoformat(),
                 'updated_at': wp.updated_at.isoformat()
             }
             for wp in weekly_progress
         ],
-        'total_proportion': float(total_proportion),
-        'is_complete': abs(float(total_proportion) - 100.0) < 0.01
+        'total_planned_proportion': float(total_planned),
+        'total_actual_proportion': float(total_actual),
+        # Phase 2E.1: Check completion based on planned proportion
+        'is_complete': abs(float(total_planned) - 100.0) < 0.01
     })
 
 
@@ -396,6 +578,9 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
     weekly_progress = list(PekerjaanProgressWeekly.objects.filter(
         pekerjaan=pekerjaan
     ).order_by('week_number'))
+    weekly_by_num = {wp.week_number: wp for wp in weekly_progress}
+    project_start = project.tanggal_mulai or date.today()
+    week_end_day = getattr(project, "week_end_day", 6)
 
     # Convert to assignments based on mode
     assignments = []
@@ -406,29 +591,37 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
             continue
 
         if mode == 'daily':
-            # Daily: Get proportion for this day
-            proporsi = get_weekly_progress_for_daily_view(
-                pekerjaan.id,
-                tahap.tanggal_mulai,
-                project.tanggal_mulai
-            )
+            # Daily: derive from weekly canonical data without extra queries
+            week_num = calculate_week_number(tahap.tanggal_mulai, project_start, week_end_day)
+            weekly_record = weekly_by_num.get(week_num)
+            if weekly_record and weekly_record.week_start_date and weekly_record.week_end_date:
+                days_in_week = (weekly_record.week_end_date - weekly_record.week_start_date).days + 1
+                weekly_value = weekly_record.planned_proportion
+                proporsi = (weekly_value / Decimal(days_in_week)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            else:
+                proporsi = Decimal('0.00')
         elif mode == 'weekly':
             # Weekly: Direct from canonical
             urutan_index = tahap.urutan if tahap.urutan is not None else 0
             week_num = urutan_index + 1
-            try:
-                wp = next(w for w in weekly_progress if w.week_number == week_num)
-                proporsi = wp.proportion
-            except StopIteration:
-                proporsi = Decimal('0.00')
+            weekly_record = weekly_by_num.get(week_num)
+            # Phase 2E.1: Default to planned_proportion (TODO: support mode parameter)
+            proporsi = weekly_record.planned_proportion if weekly_record else Decimal('0.00')
         else:
             # Monthly / Custom: Sum weeks in range
-            proporsi = get_weekly_progress_for_monthly_view(
-                pekerjaan.id,
-                tahap.tanggal_mulai,
-                tahap.tanggal_selesai,
-                project.tanggal_mulai
-            )
+            month_start = tahap.tanggal_mulai
+            month_end = tahap.tanggal_selesai
+            total_prop = Decimal('0.00')
+            for weekly_record in weekly_progress:
+                if not weekly_record.week_start_date or not weekly_record.week_end_date:
+                    continue
+                if weekly_record.week_start_date <= month_end and weekly_record.week_end_date >= month_start:
+                    overlap_start = max(weekly_record.week_start_date, month_start)
+                    overlap_end = min(weekly_record.week_end_date, month_end)
+                    overlap_days = (overlap_end - overlap_start).days + 1
+                    week_days = (weekly_record.week_end_date - weekly_record.week_start_date).days + 1
+                    total_prop += (weekly_record.planned_proportion * Decimal(overlap_days)) / Decimal(week_days)
+            proporsi = total_prop.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
         if proporsi > Decimal('0.00'):
             assignments.append({
@@ -446,6 +639,107 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
         'assignments': assignments,
         'total_proporsi': float(total_proporsi)
     })
+
+
+@login_required
+@require_GET
+def api_get_project_assignments_v2(request, project_id):
+    """
+    Get weekly canonical assignments for all pekerjaan in a single payload.
+
+    Returns:
+        {
+            "ok": true,
+            "count": 120,
+            "assignments": [
+                {
+                    "pekerjaan_id": 1101,
+                    "week_number": 1,
+                    "planned_proportion": 25.5,      # NEW: Planned progress
+                    "actual_proportion": 20.0,        # NEW: Actual progress
+                    "proportion": 25.5,               # Legacy field (=planned for compatibility)
+                    "week_start_date": "2026-01-01",
+                    "week_end_date": "2026-01-07",
+                    "updated_at": "2026-01-08T12:00:00Z",
+                    "actual_updated_at": "2026-01-10T09:30:00Z",  # NEW: When actual was last updated
+                    "notes": ""
+                },
+                ...
+            ]
+        }
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"v2_assignments:{project.id}:v1"
+    cached = cache.get(cache_key)
+    signature = None
+    if cached:
+        signature = (
+            _fmt_ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        if cached.get("sig") == signature:
+            return JsonResponse(cached.get("data", {"ok": True, "count": 0, "assignments": []}))
+
+    weekly_rows = (
+        PekerjaanProgressWeekly.objects
+        .filter(project=project)
+        .order_by('pekerjaan_id', 'week_number')
+        .values(
+            'pekerjaan_id',
+            'week_number',
+            'planned_proportion',
+            'actual_proportion',
+            'actual_cost',
+            'week_start_date',
+            'week_end_date',
+            'updated_at',
+            'actual_updated_at',
+            'notes',
+            'pekerjaan__budgeted_cost',
+        )
+    )
+
+    assignments = []
+    for row in weekly_rows:
+        planned = row.get('planned_proportion') or 0
+        actual = row.get('actual_proportion') or 0
+        assignments.append({
+            'pekerjaan_id': row.get('pekerjaan_id'),
+            'week_number': row.get('week_number'),
+            # Phase 2E.1: Dual mode fields
+            'planned_proportion': float(planned),
+            'actual_proportion': float(actual),
+            'proportion': float(planned),  # Legacy field for compatibility
+            'actual_cost': float(row.get('actual_cost') or 0),
+            'budgeted_cost': float(row.get('pekerjaan__budgeted_cost') or 0),
+            'week_start_date': row.get('week_start_date').isoformat() if row.get('week_start_date') else None,
+            'week_end_date': row.get('week_end_date').isoformat() if row.get('week_end_date') else None,
+            'updated_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
+            'actual_updated_at': row.get('actual_updated_at').isoformat() if row.get('actual_updated_at') else None,
+            'notes': row.get('notes'),
+        })
+
+    response_data = {
+        'ok': True,
+        'count': len(assignments),
+        'assignments': assignments,
+    }
+
+    new_bucket = cached or {}
+    if signature is None:
+        signature = (
+            _fmt_ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+    new_bucket["sig"] = signature
+    new_bucket["data"] = response_data
+    cache.set(cache_key, new_bucket, 300)
+
+    return JsonResponse(response_data)
 
 
 @login_required
@@ -516,6 +810,10 @@ def api_regenerate_tahapan_v2(request, project_id):
                 'ok': False,
                 'error': 'Invalid mode. Must be: daily, weekly, monthly, or custom'
             }, status=400)
+
+        project.week_start_day = week_start_day
+        project.week_end_day = week_end_day
+        project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
 
         # Validate project timeline
         if not project.tanggal_mulai or not project.tanggal_selesai:
@@ -599,26 +897,32 @@ def api_regenerate_tahapan_v2(request, project_id):
 @transaction.atomic
 def api_reset_progress(request, project_id):
     """
-    Reset all pekerjaan progress to 0 by deleting all weekly canonical storage.
+    Reset pekerjaan progress to 0 for a specific mode (planned or actual).
+
+    Phase 2E.1: Now supports mode-specific reset to preserve independence.
 
     This operation:
-    1. Deletes all PekerjaanProgressWeekly records for this project
-    2. Deletes all PekerjaanTahapan assignments for this project
-    3. Cannot be undone!
+    1. Sets planned_proportion OR actual_proportion to 0 (based on mode)
+    2. Keeps the other field intact
+    3. Can be undone by re-entering data
 
-    POST Body: {} (empty)
+    POST Body:
+        {
+            "mode": "planned"  // or "actual" - determines which field to reset
+        }
 
     Returns:
         {
             "ok": true,
-            "deleted_count": 30,
-            "assignments_deleted": 42,
-            "message": "Progress reset successful"
+            "updated_count": 30,
+            "mode": "planned",
+            "message": "Planned progress reset to 0"
         }
     """
     try:
-        from detail_project.models import PekerjaanProgressWeekly, PekerjaanTahapan
+        from detail_project.models import PekerjaanProgressWeekly
         from dashboard.models import Project
+        import json
 
         # Get project
         try:
@@ -626,17 +930,37 @@ def api_reset_progress(request, project_id):
         except Project.DoesNotExist:
             return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
 
-        # Delete all weekly canonical storage for this project
-        weekly_deleted, _ = PekerjaanProgressWeekly.objects.filter(project=project).delete()
+        # Parse request body for mode
+        try:
+            data = json.loads(request.body) if request.body else {}
+        except json.JSONDecodeError:
+            data = {}
 
-        # Delete all pekerjaan tahapan assignments for this project
-        assignments_deleted, _ = PekerjaanTahapan.objects.filter(tahapan__project=project).delete()
+        progress_mode = (data.get('mode') or 'planned').lower()
+        if progress_mode not in {'planned', 'actual'}:
+            progress_mode = 'planned'
+
+        # Reset only the relevant field
+        records = PekerjaanProgressWeekly.objects.filter(project=project)
+        updated_count = 0
+
+        for record in records:
+            if progress_mode == 'actual':
+                record.actual_proportion = Decimal('0')
+                record.save(update_fields=['actual_proportion', 'updated_at'])
+            else:  # planned
+                record.planned_proportion = Decimal('0')
+                record.save(update_fields=['planned_proportion', 'updated_at'])
+
+            updated_count += 1
+
+        mode_label = 'Planned' if progress_mode == 'planned' else 'Actual'
 
         return JsonResponse({
             'ok': True,
-            'deleted_count': weekly_deleted,
-            'assignments_deleted': assignments_deleted,
-            'message': f'Progress reset successful: {weekly_deleted} weekly records and {assignments_deleted} assignments deleted'
+            'updated_count': updated_count,
+            'mode': progress_mode,
+            'message': f'{mode_label} progress reset to 0 for {updated_count} records'
         })
 
     except Exception as e:

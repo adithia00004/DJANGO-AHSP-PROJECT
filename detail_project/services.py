@@ -10,17 +10,39 @@ from django.db.models import (
     Q,
     Exists,
     OuterRef,
+    Case,
+    When,
+    Value,
 )
+from django.db.models.functions import Coalesce
 from django.utils import timezone
-from decimal import Decimal
-from datetime import timedelta
+from decimal import Decimal, InvalidOperation
+from datetime import date, timedelta
 from collections import defaultdict
 from .numeric import to_dp_str, DECIMAL_SPEC
 from django.core.cache import cache
 import logging
 import time
+import hashlib
+import json
+import calendar
 
 logger = logging.getLogger(__name__)
+
+MONTH_NAMES_ID = {
+    1: "Januari",
+    2: "Februari",
+    3: "Maret",
+    4: "April",
+    5: "Mei",
+    6: "Juni",
+    7: "Juli",
+    8: "Agustus",
+    9: "September",
+    10: "Oktober",
+    11: "November",
+    12: "Desember",
+}
 
 # FASE 0.3: Monitoring Setup
 from .monitoring_helpers import (
@@ -57,6 +79,379 @@ def invalidate_rekap_cache(project_or_id) -> None:
         return
     cache.delete(f"rekap:{pid}:v1")
     cache.delete(f"rekap:{pid}:v2")
+
+
+KEBUTUHAN_CACHE_TIMEOUT = 300  # seconds
+KEBUTUHAN_KATEGORI_ORDER = ('TK', 'BHN', 'ALT', 'LAIN')
+
+
+def _fmt_ts(val):
+    return val.isoformat() if val else "0"
+
+
+def _kebutuhan_signature(project):
+    """Build signature tuple untuk cache Rekap Kebutuhan."""
+    raw_ts = DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
+    expanded_ts = DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
+    volume_ts = VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
+    pekerjaan_ts = Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
+    tahapan_ts = TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
+    assignment_ts = PekerjaanTahapan.objects.filter(
+        Q(tahapan__project=project) | Q(pekerjaan__project=project)
+    ).aggregate(last=Max('updated_at'))['last']
+    return (
+        _fmt_ts(raw_ts),
+        _fmt_ts(expanded_ts),
+        _fmt_ts(volume_ts),
+        _fmt_ts(pekerjaan_ts),
+        _fmt_ts(tahapan_ts),
+        _fmt_ts(assignment_ts),
+    )
+
+
+def _normalize_int_list(values):
+    if not values:
+        return tuple()
+    cleaned = []
+    for val in values:
+        if val in (None, ''):
+            continue
+        try:
+            cleaned.append(int(val))
+        except (TypeError, ValueError):
+            continue
+    return tuple(sorted(set(cleaned)))
+
+
+def _normalize_kebutuhan_filters(filters):
+    """Canonicalize filter dict for consistent caching."""
+    filters = filters or {}
+    kategori_values = filters.get('kategori_items') or []
+    normalized_kategori = []
+    for item in kategori_values:
+        if not item:
+            continue
+        key = str(item).strip().upper()
+        if key in KEBUTUHAN_KATEGORI_ORDER:
+            normalized_kategori.append(key)
+    return {
+        'klasifikasi_ids': _normalize_int_list(filters.get('klasifikasi_ids')),
+        'sub_klasifikasi_ids': _normalize_int_list(filters.get('sub_klasifikasi_ids')),
+        'kategori_items': tuple(normalized_kategori),
+        'pekerjaan_ids': _normalize_int_list(filters.get('pekerjaan_ids')),
+    }
+
+
+def _ensure_date(value):
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+    if hasattr(value, "date"):
+        try:
+            return value.date()
+        except Exception:
+            return None
+    return None
+
+
+def get_project_period_options(project):
+    tahapan_dates = TahapPelaksanaan.objects.filter(project=project).values('tanggal_mulai', 'tanggal_selesai')
+    week_map = {}
+    month_map = {}
+    
+    # Phase 4.1: Track project start date for relative week numbering
+    project_start = None
+    all_dates = []
+
+    for item in tahapan_dates:
+        start = _ensure_date(item.get('tanggal_mulai'))
+        end = _ensure_date(item.get('tanggal_selesai')) or start
+        if not start:
+            continue
+        if end and end < start:
+            start, end = end, start
+        if not end:
+            end = start
+        all_dates.append((start, end))
+    
+    # Find earliest date for project-relative week numbering
+    if all_dates:
+        project_start = min(d[0] for d in all_dates)
+        # Align to week start (Monday)
+        project_start = project_start - timedelta(days=project_start.weekday())
+    
+    for start, end in all_dates:
+        if end < start:
+            start, end = end, start
+
+        # Weeks (Project-relative numbering)
+        cursor = start - timedelta(days=start.weekday())
+        while cursor <= end:
+            iso_year, iso_week, _ = cursor.isocalendar()
+            key = f"{iso_year}-W{iso_week:02d}"
+            if key not in week_map:
+                week_end = cursor + timedelta(days=6)
+                
+                # Phase 4.1: Calculate project-relative week number (1-based)
+                if project_start:
+                    week_num = ((cursor - project_start).days // 7) + 1
+                else:
+                    week_num = iso_week
+                
+                label = f"Minggu {week_num} ({cursor.strftime('%d %b')} - {week_end.strftime('%d %b %Y')})"
+                week_map[key] = {
+                    'value': key,
+                    'label': label,
+                    'start_date': cursor.isoformat(),
+                    'end_date': week_end.isoformat(),
+                }
+            cursor += timedelta(days=7)
+
+        # Months
+        month_cursor = date(start.year, start.month, 1)
+        while month_cursor <= end:
+            _, last_day = calendar.monthrange(month_cursor.year, month_cursor.month)
+            month_end = date(month_cursor.year, month_cursor.month, last_day)
+            key = f"{month_cursor.year}-{month_cursor.month:02d}"
+            if key not in month_map:
+                label = f"{MONTH_NAMES_ID.get(month_cursor.month, 'Bulan')} {month_cursor.year}"
+                month_map[key] = {
+                    'value': key,
+                    'label': label,
+                    'start_date': month_cursor.isoformat(),
+                    'end_date': month_end.isoformat(),
+                }
+            month_cursor = month_end + timedelta(days=1)
+
+    weeks = sorted(week_map.values(), key=lambda item: item['start_date'])
+    months = sorted(month_map.values(), key=lambda item: item['start_date'])
+    return {'weeks': weeks, 'months': months}
+
+
+def _select_period_buckets(period_options, mode='week', start_value=None, end_value=None):
+    source = period_options['weeks'] if mode == 'week' else period_options['months']
+    if not source:
+        return []
+    index_map = {item['value']: idx for idx, item in enumerate(source)}
+    if start_value in index_map:
+        start_idx = index_map[start_value]
+    else:
+        start_idx = 0
+    if end_value in index_map:
+        end_idx = index_map[end_value]
+    else:
+        end_idx = len(source) - 1
+    if end_idx < start_idx:
+        start_idx, end_idx = end_idx, start_idx
+    return source[start_idx:end_idx + 1]
+
+
+def _parse_week_code(value: str):
+    if not value or "-W" not in value:
+        return None
+    try:
+        year_str, week_str = value.split("-W", 1)
+        year = int(year_str)
+        week = int(week_str)
+        start = date.fromisocalendar(year, week, 1)
+        end = date.fromisocalendar(year, week, 7)
+        return start, end
+    except Exception:
+        return None
+
+
+def _parse_month_code(value: str):
+    if not value or "-" not in value:
+        return None
+    try:
+        year_str, month_str = value.split("-", 1)
+        year = int(year_str)
+        month = int(month_str)
+        if month < 1 or month > 12:
+            return None
+        start_day = date(year, month, 1)
+        end_day = date(year, month, calendar.monthrange(year, month)[1])
+        return start_day, end_day
+    except Exception:
+        return None
+
+
+def _normalize_time_scope(scope):
+    default = {
+        'mode': 'all',
+        'start_value': None,
+        'end_value': None,
+        'start_date': None,
+        'end_date': None,
+    }
+    scope = scope or {}
+    mode_raw = (scope.get('mode') or 'all').strip().lower()
+    if mode_raw not in {'week', 'week_range', 'month', 'month_range'}:
+        return default
+    start_raw = (scope.get('start') or '').strip()
+    if not start_raw:
+        return default
+    parser = _parse_week_code if mode_raw.startswith('week') else _parse_month_code
+    start_range = parser(start_raw)
+    if not start_range:
+        return default
+    end_raw = (scope.get('end') or '').strip()
+    if mode_raw.endswith('range') and end_raw:
+        end_range = parser(end_raw) or start_range
+    else:
+        end_range = start_range
+        end_raw = start_raw
+    start_begin, start_finish = start_range
+    end_begin, end_finish = end_range
+    start_date = min(start_begin, end_begin)
+    end_date = max(start_finish, end_finish)
+    return {
+        'mode': mode_raw,
+        'start_value': start_raw,
+        'end_value': end_raw,
+        'start_date': start_date,
+        'end_date': end_date,
+    }
+
+
+def _build_time_scope_multiplier(project, pekerjaan_ids, scope):
+    """
+    Return map pekerjaan_id -> Decimal fraction (0-1) representing
+    how much of pekerjaan volume falls inside requested time scope.
+    """
+    if not pekerjaan_ids or not scope or scope.get('mode') == 'all':
+        return {}
+    start_date = _ensure_date(scope.get('start_date'))
+    end_date = _ensure_date(scope.get('end_date'))
+    if not start_date or not end_date or end_date < start_date:
+        return {}
+
+    assignments = (
+        PekerjaanTahapan.objects
+        .filter(
+            pekerjaan_id__in=pekerjaan_ids,
+            tahapan__project=project
+        )
+        .select_related('tahapan')
+    )
+    totals = {pk: Decimal('0') for pk in pekerjaan_ids}
+    selected = {pk: Decimal('0') for pk in pekerjaan_ids}
+
+    for assignment in assignments:
+        tahap = assignment.tahapan
+        tahap_start = _ensure_date(getattr(tahap, 'tanggal_mulai', None))
+        tahap_end = _ensure_date(getattr(tahap, 'tanggal_selesai', None)) or tahap_start
+        if not tahap_start or not tahap_end:
+            continue
+        if tahap_end < tahap_start:
+            tahap_start, tahap_end = tahap_end, tahap_start
+        duration_days = (tahap_end - tahap_start).days + 1
+        if duration_days <= 0:
+            continue
+        prop_fraction = Decimal(str(assignment.proporsi_volume or 0)) / Decimal('100')
+        pekerjaan_id = assignment.pekerjaan_id
+        totals[pekerjaan_id] = totals.get(pekerjaan_id, Decimal('0')) + prop_fraction
+
+        overlap_start = max(tahap_start, start_date)
+        overlap_end = min(tahap_end, end_date)
+        if overlap_start > overlap_end:
+            continue
+        overlap_days = (overlap_end - overlap_start).days + 1
+        overlap_fraction = prop_fraction * Decimal(overlap_days) / Decimal(duration_days)
+        selected[pekerjaan_id] = selected.get(pekerjaan_id, Decimal('0')) + overlap_fraction
+
+    result = {}
+    for pk in pekerjaan_ids:
+        if pk not in totals or totals[pk] == 0:
+            result[pk] = Decimal('1.0')
+            continue
+        ratio = selected.get(pk, Decimal('0'))
+        if ratio > Decimal('1.0'):
+            ratio = Decimal('1.0')
+        result[pk] = ratio
+    return result
+
+
+def _kebutuhan_entry_key(mode, tahapan_id, filters, time_scope=None):
+    payload = {
+        'mode': mode or 'all',
+        'tahapan_id': int(tahapan_id) if tahapan_id is not None else None,
+        'klasifikasi_ids': filters['klasifikasi_ids'],
+        'sub_klasifikasi_ids': filters['sub_klasifikasi_ids'],
+        'kategori_items': filters['kategori_items'],
+        'pekerjaan_ids': filters.get('pekerjaan_ids') or (),
+    }
+    if time_scope and time_scope.get('mode') != 'all':
+        payload['time_scope'] = {
+            'mode': time_scope.get('mode'),
+            'start': time_scope.get('start_value'),
+            'end': time_scope.get('end_value'),
+        }
+    raw = json.dumps(payload, sort_keys=True, default=list)
+    return hashlib.sha1(raw.encode('utf-8')).hexdigest()
+
+
+def _format_decimal(value: Decimal) -> str:
+    if value is None:
+        return "0"
+    quant = value.normalize()
+    text = format(quant, 'f')
+    if '.' in text:
+        text = text.rstrip('0').rstrip('.')
+    return text or "0"
+
+
+def summarize_kebutuhan_rows(rows, search: str = ""):
+    """
+    Apply optional search filter and produce counts/totals metadata.
+
+    Returns tuple: (filtered_rows, meta_dict)
+    """
+    search_term = (search or '').strip().lower()
+    if search_term:
+        filtered = [
+            row for row in rows
+            if search_term in (row.get('kode') or '').lower()
+            or search_term in (row.get('uraian') or '').lower()
+        ]
+    else:
+        filtered = list(rows)
+
+    counts = {k: 0 for k in KEBUTUHAN_KATEGORI_ORDER}
+    qty_totals = {k: Decimal('0') for k in KEBUTUHAN_KATEGORI_ORDER}
+    cost_totals = {k: Decimal('0') for k in KEBUTUHAN_KATEGORI_ORDER}
+
+    for row in filtered:
+        kategori = row.get('kategori')
+        qty = row.get('quantity_decimal')
+        cost_val = row.get('harga_total_decimal')
+        if kategori in counts:
+            counts[kategori] += 1
+            try:
+                qty_totals[kategori] += Decimal(str(qty or 0))
+            except (InvalidOperation, TypeError):
+                qty_totals[kategori] += Decimal('0')
+            try:
+                cost_totals[kategori] += Decimal(str(cost_val or 0))
+            except (InvalidOperation, TypeError):
+                cost_totals[kategori] += Decimal('0')
+
+    meta = {
+        "counts_per_kategori": counts,
+        "n_rows": len(filtered),
+        "generated_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "quantity_totals": {k: _format_decimal(v) for k, v in qty_totals.items()},
+        "cost_totals": {k: _format_decimal(v) for k, v in cost_totals.items()},
+        "grand_total_cost": _format_decimal(sum(cost_totals.values())),
+    }
+
+    return filtered, meta
 
 
 # Import model referensi untuk cloning (aman bila app referensi belum siap saat makemigrations)
@@ -777,8 +1172,12 @@ def expand_bundle_to_components(
     # Add to visited
     visited.add(ref_pekerjaan_id)
 
-    # Get bundle koefisien
-    bundle_koef = Decimal(str(detail_data.get('koefisien', '1.0')))
+    # Get bundle koefisien (treated as quantity, not multiplier)
+    detail_koef = detail_data.get('koefisien')
+    if isinstance(detail_koef, Decimal):
+        bundle_koef = detail_koef
+    else:
+        bundle_koef = Decimal(str(detail_koef or '1.0'))
 
     # Fetch components dari ref_pekerjaan
     try:
@@ -814,10 +1213,12 @@ def expand_bundle_to_components(
                 'ref_pekerjaan_id': comp.ref_pekerjaan_id,
             }
 
+            # Multiply base_koef ONLY with nested bundle koef (per-unit composition)
+            nested_multiplier = Decimal(str(comp.koefisien or '1.0'))
             nested_components = expand_bundle_to_components(
                 detail_data=nested_data,
                 project=project,
-                base_koef=base_koef * bundle_koef,
+                base_koef=base_koef * nested_multiplier,
                 depth=depth + 1,
                 visited=visited.copy()  # Copy to avoid mutation in sibling branches
             )
@@ -825,8 +1226,8 @@ def expand_bundle_to_components(
             result.extend(nested_components)
 
         else:
-            # Base component (TK/BHN/ALT) - add with multiplied koefisien
-            final_koef = comp.koefisien * bundle_koef * base_koef
+            # Base component (TK/BHN/ALT) - store ORIGINAL koefisien (per 1 unit bundle)
+            final_koef = comp.koefisien * base_koef
 
             result.append({
                 'kategori': comp.kategori,
@@ -834,6 +1235,7 @@ def expand_bundle_to_components(
                 'uraian': comp.uraian,
                 'satuan': comp.satuan,
                 'koefisien': final_koef,
+                'bundle_multiplier': bundle_koef,
                 'harga_item': comp.harga_item,
                 'depth': depth
             })
@@ -1653,22 +2055,50 @@ def compute_rekap_for_project(project):
 
     kategori_keys = ['TK', 'BHN', 'ALT', 'LAIN']
 
-    def _aggregate_components(model):
+    def _aggregate_components(model, apply_bundle_multiplier=False):
         data: Dict[int, Dict[str, float]] = {}
-        qs = (model.objects
-              .filter(project=project)
-              .values('pekerjaan_id', 'kategori')
-              .annotate(jumlah=Sum(nilai_expr)))
+        qs = model.objects.filter(project=project)
+
+        effective_coef = DJF('koefisien')
+        if apply_bundle_multiplier:
+            # DetailAHSPExpanded stores component coef per 1 bundle unit.
+            # Multiply by source_detail koef to reflect actual bundle quantity.
+            bundle_multiplier = Case(
+                When(
+                    Q(source_detail__kategori='LAIN')
+                    & (Q(source_detail__ref_pekerjaan__isnull=False) | Q(source_detail__ref_ahsp__isnull=False)),
+                    then=DJF('source_detail__koefisien'),
+                ),
+                default=Value(Decimal('1.0')),
+                output_field=DecimalField(max_digits=18, decimal_places=6),
+            )
+            effective_coef = ExpressionWrapper(
+                effective_coef * bundle_multiplier,
+                output_field=DecimalField(max_digits=24, decimal_places=6),
+            )
+
+        value_expr = ExpressionWrapper(
+            effective_coef * price,
+            output_field=DecimalField(max_digits=24, decimal_places=2),
+        )
+
+        qs = qs.values('pekerjaan_id').annotate(
+            tk=Coalesce(Sum(value_expr, filter=Q(kategori='TK')), Value(Decimal('0.00'))),
+            bhn=Coalesce(Sum(value_expr, filter=Q(kategori='BHN')), Value(Decimal('0.00'))),
+            alt=Coalesce(Sum(value_expr, filter=Q(kategori='ALT')), Value(Decimal('0.00'))),
+            lain=Coalesce(Sum(value_expr, filter=Q(kategori='LAIN')), Value(Decimal('0.00'))),
+        )
         for row in qs:
             pkj_id = row['pekerjaan_id']
-            kat = row['kategori']
-            if kat not in kategori_keys:
-                continue
-            data.setdefault(pkj_id, {k: 0.0 for k in kategori_keys})
-            data[pkj_id][kat] = float(row['jumlah'] or 0.0)
+            data[pkj_id] = {
+                'TK': float(row['tk'] or 0.0),
+                'BHN': float(row['bhn'] or 0.0),
+                'ALT': float(row['alt'] or 0.0),
+                'LAIN': float(row['lain'] or 0.0),
+            }
         return data
 
-    agg = _aggregate_components(DetailAHSPExpanded)
+    agg = _aggregate_components(DetailAHSPExpanded, apply_bundle_multiplier=True)
     if not agg:
         agg = _aggregate_components(DetailAHSPProject)
 
@@ -1682,7 +2112,7 @@ def compute_rekap_for_project(project):
     for p in (Pekerjaan.objects
               .filter(project=project)
               .order_by('ordering_index', 'id')
-              .values('id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan', 'markup_override_percent')):
+              .values('id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan', 'markup_override_percent', 'source_type')):
         pkj_id   = p['id']
         A        = agg.get(pkj_id, {}).get('TK', 0.0)  or 0.0
         B        = agg.get(pkj_id, {}).get('BHN', 0.0) or 0.0
@@ -1707,6 +2137,7 @@ def compute_rekap_for_project(project):
             kode         = p['snapshot_kode'],
             uraian       = p['snapshot_uraian'],
             satuan       = p['snapshot_satuan'],
+            source_type  = p.get('source_type', ''),  # Added for UI filtering
 
             A=A, B=B, C=C, D=D,
             LAIN=LAIN,
@@ -1728,118 +2159,611 @@ def compute_rekap_for_project(project):
 
 
 def compute_kebutuhan_items(
-    project, 
-    mode='all', 
-    tahapan_id=None, 
-    filters=None
+    project,
+    mode='all',
+    tahapan_id=None,
+    filters=None,
+    time_scope=None,
 ):
     """
     Compute rekap kebutuhan dengan support split volume dan filtering.
-    
+    Menggunakan caching berdasarkan kombinasi filter untuk respon lebih cepat.
+
     Args:
         project: Project instance
-        mode: str - 'all' | 'tahapan'
-            - 'all': Semua pekerjaan (default)
-            - 'tahapan': Filter berdasarkan tahapan tertentu
-        tahapan_id: int - ID tahapan (required jika mode='tahapan')
-        filters: dict - Additional filters:
-            - klasifikasi_ids: list[int] - Filter by klasifikasi
-            - sub_klasifikasi_ids: list[int] - Filter by sub-klasifikasi
-            - kategori_items: list[str] - Filter by kategori item (TK/BHN/ALT/LAIN)
-    
-    Returns:
-        list of dict: [{kategori, kode, uraian, satuan, quantity, metadata}, ...]
-        
-    Examples:
-        # Semua pekerjaan
-        >>> rows = compute_kebutuhan_items(project)
-        
-        # Tahapan tertentu
-        >>> rows = compute_kebutuhan_items(project, mode='tahapan', tahapan_id=1)
-        
-        # Dengan filter klasifikasi
-        >>> rows = compute_kebutuhan_items(
-        ...     project, 
-        ...     filters={'klasifikasi_ids': [1, 2]}
-        ... )
-        
-        # Tahapan + filter kategori
-        >>> rows = compute_kebutuhan_items(
-        ...     project,
-        ...     mode='tahapan',
-        ...     tahapan_id=1,
-        ...     filters={'kategori_items': ['TK', 'BHN']}
-        ... )
+        mode: 'all' atau 'tahapan'
+        tahapan_id: ID tahapan saat mode='tahapan'
+        filters: dict filter klasifikasi/sub/kategori/pekerjaan
+        time_scope: dict rentang waktu {'mode','start','end'} untuk scope mingguan/bulanan
     """
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+    start_time = time.perf_counter()
+
+    mode_flag = 'tahapan' if (mode == 'tahapan' and tahapan_id) else 'all'
+    normalized_filters = _normalize_kebutuhan_filters(filters)
+    normalized_time_scope = _normalize_time_scope(time_scope)
+    cache_namespace = f"rekap_kebutuhan:{project.id}"
+    entry_key = _kebutuhan_entry_key(
+        mode_flag,
+        tahapan_id if mode_flag == 'tahapan' else None,
+        normalized_filters,
+        normalized_time_scope,
+    )
+    signature = None
+
+    bucket = cache.get(cache_namespace)
+    if bucket:
+        cached_entry = bucket.get(entry_key)
+        if cached_entry:
+            signature = _kebutuhan_signature(project)
+            if cached_entry.get('sig') == signature:
+                elapsed = (time.perf_counter() - start_time) * 1000
+                logger.info(f"Rekap Kebutuhan CACHE HIT - project={project.id}, elapsed={elapsed:.2f}ms, rows={len(cached_entry.get('data', []))}")
+                return cached_entry.get('data', [])
+
     # ========================================================================
     # STEP 1: Determine scope - pekerjaan mana yang akan di-aggregate
     # ========================================================================
-    
-    if mode == 'tahapan' and tahapan_id:
-        # Mode tahapan: ambil pekerjaan dari tahapan tertentu dengan proporsi
+    if mode_flag == 'tahapan':
         pt_qs = PekerjaanTahapan.objects.filter(
             tahapan_id=tahapan_id
         ).select_related('pekerjaan', 'tahapan')
-        
-        # Build dict: pekerjaan_id -> proporsi (dalam bentuk Decimal 0-1)
         pekerjaan_proporsi = {
             pt.pekerjaan_id: pt.proporsi_volume / Decimal('100')
-            for pt in pt_qs
+        for pt in pt_qs
         }
         pekerjaan_ids = list(pekerjaan_proporsi.keys())
-        
     else:
-        # Mode 'all': semua pekerjaan dengan proporsi 100%
         pekerjaan_ids = list(
             Pekerjaan.objects.filter(project=project).values_list('id', flat=True)
         )
         pekerjaan_proporsi = {pk: Decimal('1.0') for pk in pekerjaan_ids}
-    
+
     # ========================================================================
     # STEP 2: Apply additional filters (klasifikasi, sub-klasifikasi)
     # ========================================================================
-    
-    if filters:
+    if normalized_filters['klasifikasi_ids'] or normalized_filters['sub_klasifikasi_ids']:
         queryset = Pekerjaan.objects.filter(id__in=pekerjaan_ids)
-        
-        # Filter by klasifikasi
-        if filters.get('klasifikasi_ids'):
+        if normalized_filters['klasifikasi_ids']:
             queryset = queryset.filter(
-                sub_klasifikasi__klasifikasi_id__in=filters['klasifikasi_ids']
-            )
-        
-        # Filter by sub-klasifikasi
-        if filters.get('sub_klasifikasi_ids'):
+                sub_klasifikasi__klasifikasi_id__in=normalized_filters['klasifikasi_ids']
+        )
+        if normalized_filters['sub_klasifikasi_ids']:
             queryset = queryset.filter(
-                sub_klasifikasi_id__in=filters['sub_klasifikasi_ids']
+                sub_klasifikasi_id__in=normalized_filters['sub_klasifikasi_ids']
             )
-        
-        # Update pekerjaan_ids setelah filter
         pekerjaan_ids = list(queryset.values_list('id', flat=True))
-    
-    # Jika tidak ada pekerjaan dalam scope, return empty
+        pekerjaan_proporsi = {
+            pk: pekerjaan_proporsi.get(pk, Decimal('1.0'))
+            for pk in pekerjaan_ids
+        }
+
+    if normalized_filters['pekerjaan_ids']:
+        allowed = set(normalized_filters['pekerjaan_ids'])
+        pekerjaan_ids = [pk for pk in pekerjaan_ids if pk in allowed]
+        pekerjaan_proporsi = {
+            pk: pekerjaan_proporsi.get(pk, Decimal('1.0')) for pk in pekerjaan_ids
+        }
+
     if not pekerjaan_ids:
-        return []
-    
+        rows = []
+        # Cache empty result
+        new_bucket = bucket or {}
+        if signature is None:
+            signature = _kebutuhan_signature(project)
+        new_bucket[entry_key] = {"sig": signature, "data": rows}
+        cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+        return rows
+
+    apply_time_scope = (
+        mode_flag == 'all' and normalized_time_scope.get('mode') != 'all'
+    )
+    time_scope_multiplier = {}
+    if apply_time_scope:
+        time_scope_multiplier = _build_time_scope_multiplier(
+            project,
+            pekerjaan_ids,
+            normalized_time_scope
+        )
+
     # ========================================================================
     # STEP 3: Get volume map untuk semua pekerjaan dalam scope
     # ========================================================================
-    
     vol_map = dict(
         VolumePekerjaan.objects
         .filter(project=project, pekerjaan_id__in=pekerjaan_ids)
         .values_list('pekerjaan_id', 'quantity')
     )
-    
+
     # ========================================================================
     # STEP 4: Aggregate items dengan proporsi volume
     # ========================================================================
-    
-    # Dictionary untuk agregasi: key = (kategori, kode, uraian, satuan)
     aggregated = defaultdict(Decimal)
-    
-    # Get all detail items untuk pekerjaan dalam scope
-    # NEW: Read from DetailAHSPExpanded (dual storage - already expanded!)
+    cost_map = defaultdict(Decimal)
+    price_seed = {}
+
+    # Batch processing untuk large pekerjaan lists (optimization)
+    BATCH_SIZE = 500
+    all_details = []
+
+    if len(pekerjaan_ids) > BATCH_SIZE:
+        # Process in batches to prevent query timeout
+        for i in range(0, len(pekerjaan_ids), BATCH_SIZE):
+            batch = pekerjaan_ids[i:i+BATCH_SIZE]
+            batch_details = list(
+                DetailAHSPExpanded.objects.filter(
+                    project=project,
+                    pekerjaan_id__in=batch
+                ).select_related('harga_item', 'source_detail').values(
+                    'pekerjaan_id',
+                    'kategori',
+                    'kode',
+                    'uraian',
+                    'satuan',
+                    'koefisien',
+                    'source_detail__kategori',
+                    'source_detail__ref_pekerjaan_id',
+                    'source_detail__ref_ahsp_id',
+                    'source_detail__koefisien',
+                    'harga_item__harga_satuan',
+                )
+            )
+            all_details.extend(batch_details)
+        details = all_details
+    else:
+        # Standard query with select_related optimization
+        details = list(
+            DetailAHSPExpanded.objects.filter(
+                project=project,
+                pekerjaan_id__in=pekerjaan_ids
+            ).select_related('harga_item', 'source_detail').values(
+                'pekerjaan_id',
+                'kategori',
+                'kode',
+                'uraian',
+                'satuan',
+                'koefisien',
+                'source_detail__kategori',
+                'source_detail__ref_pekerjaan_id',
+                'source_detail__ref_ahsp_id',
+                'source_detail__koefisien',
+                'harga_item__harga_satuan',
+            )
+        )
+
+    if not details:
+        details = list(
+            DetailAHSPProject.objects.filter(
+                project=project,
+                pekerjaan_id__in=pekerjaan_ids
+            ).values(
+                'pekerjaan_id',
+                'kategori',
+                'kode',
+                'uraian',
+                'satuan',
+                'koefisien',
+                'harga_item__harga_satuan',
+            )
+        )
+
+    for detail in details:
+        pekerjaan_id = detail['pekerjaan_id']
+        volume_total = Decimal(str(vol_map.get(pekerjaan_id, 0) or 0))
+        proporsi = pekerjaan_proporsi.get(pekerjaan_id, Decimal('1.0'))
+        if apply_time_scope:
+            ratio = time_scope_multiplier.get(pekerjaan_id, Decimal('0'))
+            if ratio <= 0:
+                continue
+            if ratio > Decimal('1.0'):
+                ratio = Decimal('1.0')
+            volume_efektif = volume_total * proporsi * ratio
+        else:
+            volume_efektif = volume_total * proporsi
+        if volume_efektif == 0:
+            continue
+
+        kategori = detail['kategori']
+        koefisien = Decimal(str(detail['koefisien'] or 0))
+
+        is_bundle_detail = (
+            detail.get('source_detail__kategori') == 'LAIN'
+            and (
+                detail.get('source_detail__ref_pekerjaan_id')
+                or detail.get('source_detail__ref_ahsp_id')
+            )
+        )
+        if is_bundle_detail:
+            multiplier = Decimal(str(detail.get('source_detail__koefisien') or 0))
+            koefisien *= multiplier
+
+        key = (
+            kategori,
+            detail['kode'],
+            detail['uraian'],
+            detail['satuan']
+        )
+        qty = koefisien * volume_efektif
+        aggregated[key] += qty
+        price_raw = detail.get('harga_item__harga_satuan')
+        price_val = Decimal(str(price_raw or 0))
+        if price_val:
+            cost_map[key] += price_val * qty
+            price_seed.setdefault(key, price_val)
+
+    # ========================================================================
+    # STEP 5: Apply kategori filter (jika ada)
+    # ========================================================================
+    if normalized_filters['kategori_items']:
+        allowed_kat = set(normalized_filters['kategori_items'])
+        aggregated = {
+            k: v for k, v in aggregated.items()
+            if k[0] in allowed_kat
+        }
+
+    # ========================================================================
+    # STEP 6: Format output
+    # ========================================================================
+    rows = []
+    for (kategori, kode, uraian, satuan), quantity in aggregated.items():
+        qty_str = f"{quantity:.6f}".rstrip('0').rstrip('.')
+        total_cost = cost_map.get((kategori, kode, uraian, satuan), Decimal('0'))
+        if quantity and quantity != 0:
+            unit_price = total_cost / quantity
+        else:
+            unit_price = price_seed.get((kategori, kode, uraian, satuan), Decimal('0'))
+        rows.append({
+            'kategori': kategori,
+            'kode': kode or '-',
+            'uraian': uraian or '-',
+            'satuan': satuan or '-',
+            'quantity': qty_str,
+            'quantity_decimal': quantity,
+            'harga_satuan': _format_decimal(unit_price),
+            'harga_satuan_decimal': unit_price,
+            'harga_total': _format_decimal(total_cost),
+            'harga_total_decimal': total_cost,
+        })
+
+    kategori_order = {k: i for i, k in enumerate(KEBUTUHAN_KATEGORI_ORDER, start=1)}
+    rows.sort(key=lambda x: (
+        kategori_order.get(x['kategori'], 99),
+        x['kode'] or '',
+        x['uraian'] or ''
+    ))
+
+    new_bucket = bucket or {}
+    new_bucket[entry_key] = {"sig": signature, "data": rows}
+    if signature is None:
+        signature = _kebutuhan_signature(project)
+    cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+
+    # Performance logging
+    elapsed = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        f"Rekap Kebutuhan COMPUTED - project={project.id}, "
+        f"elapsed={elapsed:.2f}ms, rows={len(rows)}, "
+        f"pekerjaan={len(pekerjaan_ids)}, details={len(details)}"
+    )
+
+    return rows
+
+
+# ============================================================================
+# PHASE 5 TRACK 2.1: DATA VALIDATION
+# ============================================================================
+
+def validate_kebutuhan_data(project, mode='all', tahapan_id=None, filters=None, time_scope=None):
+    """
+    Validate that snapshot and timeline data are consistent.
+
+    Returns dict with validation results comparing:
+    - Total costs between snapshot and timeline
+    - Item counts per kategori
+    - Potential data integrity issues
+
+    Args:
+        project: Project instance
+        mode: 'all', 'tahapan', etc.
+        tahapan_id: Optional tahapan filter
+        filters: Dict with kategori, klasifikasi, etc.
+        time_scope: Optional time scope filter
+
+    Returns:
+        {
+            'valid': bool,
+            'snapshot_total': Decimal,
+            'timeline_total': Decimal,
+            'difference': Decimal,
+            'tolerance': Decimal,
+            'snapshot_count': int,
+            'timeline_count': int,
+            'kategori_breakdown': dict,
+            'warnings': list,
+            'timestamp': str,
+        }
+    """
+    from decimal import Decimal
+    from datetime import datetime
+
+    warnings = []
+
+    # Get snapshot data
+    snapshot_data = compute_kebutuhan_items(
+        project,
+        mode=mode,
+        tahapan_id=tahapan_id,
+        filters=filters or {},
+        time_scope=time_scope,
+    )
+
+    # Get timeline data
+    timeline_data = compute_kebutuhan_timeline(
+        project,
+        mode=mode,
+        tahapan_id=tahapan_id,
+        filters=filters or {},
+        time_scope=time_scope,
+    )
+
+    # Calculate snapshot totals
+    snapshot_total = Decimal('0')
+    snapshot_count = len(snapshot_data)
+    snapshot_by_kategori = {}
+
+    for item in snapshot_data:
+        cost = Decimal(str(item.get('harga_total') or 0))
+        snapshot_total += cost
+
+        kategori = item.get('kategori', 'UNKNOWN')
+        if kategori not in snapshot_by_kategori:
+            snapshot_by_kategori[kategori] = {'count': 0, 'total': Decimal('0')}
+        snapshot_by_kategori[kategori]['count'] += 1
+        snapshot_by_kategori[kategori]['total'] += cost
+
+    # Calculate timeline totals
+    timeline_total = Decimal('0')
+    timeline_items_seen = set()
+    timeline_by_kategori = {}
+    timeline_kategori_seen = defaultdict(set)
+
+    for period in timeline_data.get('periods', []):
+        for item in period.get('items', []):
+            item_key = f"{item.get('kategori')}_{item.get('kode')}"
+            kategori = item.get('kategori', 'UNKNOWN')
+
+            timeline_items_seen.add(item_key)
+            cost = Decimal(str(item.get('harga_total') or 0))
+            timeline_total += cost
+
+            if kategori not in timeline_by_kategori:
+                timeline_by_kategori[kategori] = {'count': 0, 'total': Decimal('0')}
+            if item_key not in timeline_kategori_seen[kategori]:
+                timeline_by_kategori[kategori]['count'] += 1
+                timeline_kategori_seen[kategori].add(item_key)
+            timeline_by_kategori[kategori]['total'] += cost
+
+    timeline_count = len(timeline_items_seen)
+
+    # Calculate difference
+    diff = abs(snapshot_total - timeline_total)
+    tolerance = Decimal('0.01')  # 1 cent tolerance for rounding
+
+    is_valid = diff <= tolerance
+
+    # Check for warnings
+    if snapshot_count != timeline_count:
+        warnings.append(
+            f"Item count mismatch: {snapshot_count} in snapshot vs {timeline_count} unique in timeline"
+        )
+
+    # Compare kategori breakdowns
+    kategori_breakdown = {}
+    all_kategori = set(snapshot_by_kategori.keys()) | set(timeline_by_kategori.keys())
+
+    for kategori in all_kategori:
+        snap = snapshot_by_kategori.get(kategori, {'count': 0, 'total': Decimal('0')})
+        time = timeline_by_kategori.get(kategori, {'count': 0, 'total': Decimal('0')})
+
+        kategori_diff = abs(snap['total'] - time['total'])
+        kategori_breakdown[kategori] = {
+            'snapshot': {
+                'count': snap['count'],
+                'total': float(snap['total']),
+            },
+            'timeline': {
+                'count': time['count'],
+                'total': float(time['total']),
+            },
+            'difference': float(kategori_diff),
+            'match': kategori_diff <= tolerance,
+        }
+
+        if kategori_diff > tolerance:
+            warnings.append(
+                f"{kategori}: Rp {kategori_diff:,.2f} difference between snapshot and timeline"
+            )
+
+    # If total doesn't match but no kategori warnings, it's likely timing/period issue
+    if not is_valid and not any('difference between' in w for w in warnings):
+        warnings.append(
+            "Total mismatch may be due to items not assigned to tahapan/jadwal"
+        )
+
+    return {
+        'valid': is_valid,
+        'snapshot_total': float(snapshot_total),
+        'timeline_total': float(timeline_total),
+        'difference': float(diff),
+        'tolerance': float(tolerance),
+        'snapshot_count': snapshot_count,
+        'timeline_count': timeline_count,
+        'kategori_breakdown': kategori_breakdown,
+        'warnings': warnings,
+        'timestamp': datetime.now().isoformat(),
+    }
+
+
+def _calculate_overlap_days(start_a, end_a, start_b, end_b):
+    start = max(start_a, start_b)
+    end = min(end_a, end_b)
+    if start > end:
+        return 0
+    return (end - start).days + 1
+
+
+def compute_kebutuhan_timeline(
+    project,
+    mode='all',
+    tahapan_id=None,
+    filters=None,
+    time_scope=None,
+):
+    """
+    Compute kebutuhan items dan distribusi per periode (mingguan/bulanan).
+    """
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+    start_time = time.perf_counter()
+
+    period_options = get_project_period_options(project)
+    normalized_scope = _normalize_time_scope(time_scope)
+    scope_mode = normalized_scope.get('mode', 'all')
+
+    mode_flag = 'tahapan' if (mode == 'tahapan' and tahapan_id) else 'all'
+    normalized_filters = _normalize_kebutuhan_filters(filters)
+    cache_namespace = f"rekap_kebutuhan_timeline:{project.id}"
+    entry_key = _kebutuhan_entry_key(
+        mode_flag,
+        tahapan_id if mode_flag == 'tahapan' else None,
+        normalized_filters,
+        normalized_scope,
+    )
+    signature = None
+
+    bucket = cache.get(cache_namespace)
+    if bucket:
+        cached_entry = bucket.get(entry_key)
+        if cached_entry:
+            signature = _kebutuhan_signature(project)
+            if cached_entry.get('sig') == signature:
+                elapsed = (time.perf_counter() - start_time) * 1000
+                logger.info(
+                    f"Rekap Kebutuhan TIMELINE CACHE HIT - project={project.id}, "
+                    f"elapsed={elapsed:.2f}ms, periods={len(cached_entry.get('data', {}).get('periods', []))}"
+                )
+                return cached_entry.get('data', {})
+
+    if scope_mode.startswith('month'):
+        bucket_mode = 'month'
+    else:
+        bucket_mode = 'week'
+
+    start_value = normalized_scope.get('start_value') or None
+    end_value = normalized_scope.get('end_value') or start_value
+
+    buckets = _select_period_buckets(period_options, bucket_mode, start_value, end_value)
+    if not buckets:
+        buckets = period_options['weeks' if bucket_mode == 'week' else 'months']
+
+    if not buckets:
+        result = {
+            'periods': [],
+            'meta': {
+                'reason': 'no_schedule',
+                'bucket_mode': bucket_mode,
+                'quantity_totals': {},
+                'grand_total_cost': '0',
+            }
+        }
+        new_bucket = bucket or {}
+        if signature is None:
+            signature = _kebutuhan_signature(project)
+        new_bucket[entry_key] = {"sig": signature, "data": result}
+        cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+        return result
+
+    bucket_map = {}
+    for bucket in buckets:
+        start_date = _ensure_date(bucket['start_date'])
+        end_date = _ensure_date(bucket['end_date']) or start_date
+        bucket_map[bucket['value']] = {
+            'start': start_date,
+            'end': end_date,
+            'meta': bucket,
+            'rows': {},
+            'qty_totals': defaultdict(Decimal),
+            'cost_totals': defaultdict(Decimal),
+        }
+
+    normalized_time_scope = normalized_scope
+
+    if mode_flag == 'tahapan':
+        pt_qs = PekerjaanTahapan.objects.filter(
+            tahapan_id=tahapan_id
+        ).select_related('pekerjaan', 'tahapan')
+        pekerjaan_proporsi = {
+            pt.pekerjaan_id: pt.proporsi_volume / Decimal('100')
+            for pt in pt_qs
+        }
+        pekerjaan_ids = list(pekerjaan_proporsi.keys())
+    else:
+        pekerjaan_ids = list(
+            Pekerjaan.objects.filter(project=project).values_list('id', flat=True)
+        )
+        pekerjaan_proporsi = {pk: Decimal('1.0') for pk in pekerjaan_ids}
+
+    if normalized_filters['klasifikasi_ids'] or normalized_filters['sub_klasifikasi_ids']:
+        queryset = Pekerjaan.objects.filter(id__in=pekerjaan_ids)
+        if normalized_filters['klasifikasi_ids']:
+            queryset = queryset.filter(
+                sub_klasifikasi__klasifikasi_id__in=normalized_filters['klasifikasi_ids']
+            )
+        if normalized_filters['sub_klasifikasi_ids']:
+            queryset = queryset.filter(
+                sub_klasifikasi_id__in=normalized_filters['sub_klasifikasi_ids']
+            )
+        pekerjaan_ids = list(queryset.values_list('id', flat=True))
+        pekerjaan_proporsi = {
+            pk: pekerjaan_proporsi.get(pk, Decimal('1.0'))
+            for pk in pekerjaan_ids
+        }
+
+    if normalized_filters['pekerjaan_ids']:
+        allowed = set(normalized_filters['pekerjaan_ids'])
+        pekerjaan_ids = [pk for pk in pekerjaan_ids if pk in allowed]
+        pekerjaan_proporsi = {
+            pk: pekerjaan_proporsi.get(pk, Decimal('1.0')) for pk in pekerjaan_ids
+        }
+
+    if not pekerjaan_ids:
+        result = {
+            'periods': [],
+            'meta': {
+                'reason': 'no_scope',
+                'bucket_mode': bucket_mode,
+                'quantity_totals': {},
+                'grand_total_cost': '0',
+            }
+        }
+        new_bucket = bucket or {}
+        if signature is None:
+            signature = _kebutuhan_signature(project)
+        new_bucket[entry_key] = {"sig": signature, "data": result}
+        cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+        return result
+
+    vol_map = dict(
+        VolumePekerjaan.objects
+        .filter(project=project, pekerjaan_id__in=pekerjaan_ids)
+        .values_list('pekerjaan_id', 'quantity')
+    )
+
     details = list(
         DetailAHSPExpanded.objects.filter(
             project=project,
@@ -1851,6 +2775,11 @@ def compute_kebutuhan_items(
             'uraian',
             'satuan',
             'koefisien',
+            'source_detail__kategori',
+            'source_detail__ref_pekerjaan_id',
+            'source_detail__ref_ahsp_id',
+            'source_detail__koefisien',
+            'harga_item__harga_satuan',
         )
     )
 
@@ -1866,79 +2795,218 @@ def compute_kebutuhan_items(
                 'uraian',
                 'satuan',
                 'koefisien',
+                'harga_item__harga_satuan',
             )
         )
 
-    # Process each detail item
+    assignment_qs = PekerjaanTahapan.objects.filter(
+        pekerjaan_id__in=pekerjaan_ids
+    ).select_related('tahapan')
+    if mode_flag == 'tahapan' and tahapan_id:
+        assignment_qs = assignment_qs.filter(tahapan_id=tahapan_id)
+
+    assignment_map = defaultdict(list)
+    for assignment in assignment_qs:
+        start_date = _ensure_date(getattr(assignment.tahapan, 'tanggal_mulai', None))
+        end_date = _ensure_date(getattr(assignment.tahapan, 'tanggal_selesai', None)) or start_date
+        if not start_date or not end_date:
+            continue
+        if end_date < start_date:
+            start_date, end_date = end_date, start_date
+        duration = (end_date - start_date).days + 1
+        if duration <= 0:
+            continue
+        assignment_map[assignment.pekerjaan_id].append({
+            'start': start_date,
+            'end': end_date,
+            'duration': duration,
+            'proporsi': Decimal(str(assignment.proporsi_volume or 0)),
+        })
+
+    def accumulate(target_rows, kategori, kode, uraian, satuan, qty_val, price_val):
+        key = (kategori, kode, uraian, satuan)
+        row = target_rows.get(key)
+        if not row:
+            row = {
+                'kategori': kategori,
+                'kode': kode or '-',
+                'uraian': uraian or '-',
+                'satuan': satuan or '-',
+                'quantity': Decimal('0'),
+                'harga_satuan': price_val,
+                'total_cost': Decimal('0'),
+            }
+            target_rows[key] = row
+        row['quantity'] += qty_val
+        if price_val:
+            row['total_cost'] += price_val * qty_val
+
+    unscheduled_rows = {}
+    bucket_totals = {key: Decimal('0') for key in KEBUTUHAN_KATEGORI_ORDER}
+    grand_total_cost = Decimal('0')
+
     for detail in details:
         pekerjaan_id = detail['pekerjaan_id']
-
-        # Get volume dan proporsi
+        if pekerjaan_id not in pekerjaan_ids:
+            continue
         volume_total = Decimal(str(vol_map.get(pekerjaan_id, 0) or 0))
-        proporsi = pekerjaan_proporsi.get(pekerjaan_id, Decimal('1.0'))
+        proporsi_multiplier = pekerjaan_proporsi.get(pekerjaan_id, Decimal('1.0'))
+        koefisien = Decimal(str(detail['koefisien'] or 0))
+        if koefisien == 0 or volume_total == 0:
+            continue
+        is_bundle_detail = (
+            detail.get('source_detail__kategori') == 'LAIN'
+            and (
+                detail.get('source_detail__ref_pekerjaan_id')
+                or detail.get('source_detail__ref_ahsp_id')
+            )
+        )
+        if is_bundle_detail:
+            multiplier = Decimal(str(detail.get('source_detail__koefisien') or 0))
+            koefisien *= multiplier
+        base_quantity = koefisien * volume_total * proporsi_multiplier
+        if base_quantity == 0:
+            continue
+        price_val = Decimal(str(detail.get('harga_item__harga_satuan') or 0))
+        kategori = detail['kategori']
+        kode = detail['kode']
+        uraian = detail['uraian']
+        satuan = detail['satuan']
 
-        # Volume efektif dengan proporsi
-        volume_efektif = volume_total * proporsi
-
-        if volume_efektif == 0:
+        assignments = assignment_map.get(pekerjaan_id)
+        if not assignments:
+            accumulate(unscheduled_rows, kategori, kode, uraian, satuan, base_quantity, price_val)
             continue
 
-        kategori = detail['kategori']
-        koefisien = Decimal(str(detail['koefisien'] or 0))  # Already expanded koef!
+        for assignment in assignments:
+            if assignment['proporsi'] <= 0:
+                continue
+            assignment_fraction = assignment['proporsi'] / Decimal('100')
+            assignment_quantity = base_quantity * assignment_fraction
+            if assignment_quantity == 0:
+                continue
+            duration_days = assignment['duration']
+            for bucket_key, bucket in bucket_map.items():
+                start = bucket['start']
+                end = bucket['end']
+                if not start or not end:
+                    continue
+                overlap_days = _calculate_overlap_days(start, end, assignment['start'], assignment['end'])
+                if overlap_days <= 0:
+                    continue
+                ratio = Decimal(overlap_days) / Decimal(duration_days)
+                qty_val = assignment_quantity * ratio
+                if qty_val == 0:
+                    continue
+                accumulate(bucket['rows'], kategori, kode, uraian, satuan, qty_val, price_val)
+                bucket['qty_totals'][kategori] += qty_val
+                if price_val:
+                    bucket['cost_totals'][kategori] += price_val * qty_val
 
-        # No expansion needed - DetailAHSPExpanded already has expanded components!
-        # Just aggregate directly
-        key = (
-            kategori,
-            detail['kode'],
-            detail['uraian'],
-            detail['satuan']
-        )
-        qty = koefisien * volume_efektif
-        aggregated[key] += qty
-    
-    # ========================================================================
-    # STEP 5: Apply kategori filter (jika ada)
-    # ========================================================================
-    
-    if filters and filters.get('kategori_items'):
-        allowed_kat = set(filters['kategori_items'])
-        aggregated = {
-            k: v for k, v in aggregated.items() 
-            if k[0] in allowed_kat
-        }
-    
-    # ========================================================================
-    # STEP 6: Format output
-    # ========================================================================
-    
-    rows = []
-    for (kategori, kode, uraian, satuan), quantity in aggregated.items():
-        # Format quantity dengan 6 decimal places, remove trailing zeros
-        qty_str = f"{quantity:.6f}".rstrip('0').rstrip('.')
-        
-        rows.append({
-            'kategori': kategori,
-            'kode': kode or '-',
-            'uraian': uraian or '-',
-            'satuan': satuan or '-',
-            'quantity': qty_str,  # String untuk display
-            'quantity_decimal': quantity,  # Decimal untuk calculation
+    periods_payload = []
+    for bucket_key, bucket in bucket_map.items():
+        rows = bucket['rows']
+        if not rows:
+            continue
+        items = []
+        for (kategori, kode, uraian, satuan), info in rows.items():
+            quantity = info['quantity']
+            items.append({
+                'kategori': kategori,
+                'kode': kode,
+                'uraian': uraian,
+                'satuan': satuan,
+                'quantity': _format_decimal(quantity),
+                'quantity_decimal': quantity,
+                'harga_satuan': _format_decimal(info['harga_satuan']),
+                'harga_satuan_decimal': info['harga_satuan'],
+                'harga_total': _format_decimal(info['total_cost']),
+                'harga_total_decimal': info['total_cost'],
+            })
+        items.sort(key=lambda x: (x['kategori'], x['kode'], x['uraian']))
+        totals = {k: _format_decimal(v) for k, v in bucket['qty_totals'].items()}
+        bucket_cost = sum(bucket['cost_totals'].values())
+        grand_total_cost += bucket_cost
+        for cat in KEBUTUHAN_KATEGORI_ORDER:
+            bucket_totals[cat] += bucket['qty_totals'].get(cat, Decimal('0'))
+        periods_payload.append({
+            'value': bucket['meta']['value'],
+            'label': bucket['meta']['label'],
+            'start_date': bucket['meta']['start_date'],
+            'end_date': bucket['meta']['end_date'],
+            'items': items,
+            'quantity_totals': totals,
+            'total_cost': _format_decimal(bucket_cost),
+            'total_cost_decimal': bucket_cost,
         })
-    
-    # ========================================================================
-    # STEP 7: Sort output
-    # ========================================================================
-    
-    # Sort by kategori (TK -> BHN -> ALT -> LAIN), then by kode
-    kategori_order = {'TK': 1, 'BHN': 2, 'ALT': 3, 'LAIN': 4}
-    rows.sort(key=lambda x: (
-        kategori_order.get(x['kategori'], 99), 
-        x['kode'] or '', 
-        x['uraian'] or ''
+
+    if unscheduled_rows:
+        items = []
+        cost_totals = Decimal('0')
+        qty_totals_unscheduled = {k: Decimal('0') for k in KEBUTUHAN_KATEGORI_ORDER}
+        for (kategori, kode, uraian, satuan), info in unscheduled_rows.items():
+            items.append({
+                'kategori': kategori,
+                'kode': kode,
+                'uraian': uraian,
+                'satuan': satuan,
+                'quantity': _format_decimal(info['quantity']),
+                'quantity_decimal': info['quantity'],
+                'harga_satuan': _format_decimal(info['harga_satuan']),
+                'harga_satuan_decimal': info['harga_satuan'],
+                'harga_total': _format_decimal(info['total_cost']),
+                'harga_total_decimal': info['total_cost'],
+            })
+            qty_totals_unscheduled[kategori] += info['quantity']
+            cost_totals += info['total_cost']
+        items.sort(key=lambda x: (x['kategori'], x['kode'], x['uraian']))
+        grand_total_cost += cost_totals
+        for cat in KEBUTUHAN_KATEGORI_ORDER:
+            bucket_totals[cat] += qty_totals_unscheduled.get(cat, Decimal('0'))
+        periods_payload.append({
+            'value': 'unscheduled',
+            'label': 'Di luar jadwal',
+            'start_date': None,
+            'end_date': None,
+            'items': items,
+            'quantity_totals': {k: _format_decimal(v) for k, v in qty_totals_unscheduled.items()},
+            'total_cost': _format_decimal(cost_totals),
+            'total_cost_decimal': cost_totals,
+        })
+
+    periods_payload.sort(key=lambda item: (
+        item['start_date'] or '9999-99-99',
+        item['value']
     ))
-    
-    return rows
+
+    meta = {
+        'mode': mode_flag,
+        'tahapan_id': tahapan_id,
+        'bucket_mode': bucket_mode,
+        'time_scope': normalized_time_scope,
+        'period_count': len(periods_payload),
+        'quantity_totals': {k: _format_decimal(v) for k, v in bucket_totals.items()},
+        'grand_total_cost': _format_decimal(grand_total_cost),
+    }
+
+    result = {
+        'periods': periods_payload,
+        'meta': meta,
+    }
+
+    new_bucket = bucket or {}
+    if signature is None:
+        signature = _kebutuhan_signature(project)
+    new_bucket[entry_key] = {"sig": signature, "data": result}
+    cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
+
+    elapsed = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        f"Rekap Kebutuhan TIMELINE COMPUTED - project={project.id}, "
+        f"elapsed={elapsed:.2f}ms, periods={len(periods_payload)}, details={len(details)}"
+    )
+
+    return result
 
 
 
@@ -1966,16 +3034,36 @@ def get_tahapan_summary(project):
             ...
         ]
     """
-    tahapan_list = TahapPelaksanaan.objects.filter(
-        project=project
-    ).prefetch_related('pekerjaan_items').order_by('urutan', 'id')
+    from django.db.models import Max, Count, Sum
+
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"tahapan_summary:{project.id}:v1"
+    cached = cache.get(cache_key)
+    signature = None
+    if cached:
+        signature = (
+            _fmt_ts(TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(tahapan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        if cached.get("sig") == signature:
+            return cached.get("data", [])
+
+    tahapan_list = (
+        TahapPelaksanaan.objects.filter(project=project)
+        .annotate(
+            jumlah_pekerjaan=Count('pekerjaan_items__pekerjaan', distinct=True),
+            total_assigned=Sum('pekerjaan_items__proporsi_volume'),
+        )
+        .order_by('urutan', 'id')
+    )
     
     result = []
     for tahap in tahapan_list:
         # Count pekerjaan dan total proporsi
-        assignments = tahap.pekerjaan_items.all()
-        jumlah_pekerjaan = assignments.values('pekerjaan').distinct().count()
-        total_proporsi = sum(a.proporsi_volume for a in assignments)
+        jumlah_pekerjaan = int(getattr(tahap, 'jumlah_pekerjaan', 0) or 0)
+        total_proporsi = float(getattr(tahap, 'total_assigned', 0) or 0)
         
         result.append({
             'tahapan_id': tahap.id,
@@ -1983,7 +3071,7 @@ def get_tahapan_summary(project):
             'urutan': tahap.urutan,
             'deskripsi': tahap.deskripsi,
             'jumlah_pekerjaan': jumlah_pekerjaan,
-            'total_assigned_proportion': float(total_proporsi),
+            'total_assigned_proportion': total_proporsi,
             'tanggal_mulai': tahap.tanggal_mulai.isoformat() if tahap.tanggal_mulai else None,
             'tanggal_selesai': tahap.tanggal_selesai.isoformat() if tahap.tanggal_selesai else None,
             'created_at': tahap.created_at.isoformat() if tahap.created_at else None,
@@ -1991,6 +3079,16 @@ def get_tahapan_summary(project):
             'generation_mode': tahap.generation_mode,
         })
     
+    new_bucket = cached or {}
+    if signature is None:
+        signature = (
+            _fmt_ts(TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(tahapan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+    new_bucket["sig"] = signature
+    new_bucket["data"] = result
+    cache.set(cache_key, new_bucket, 300)
+
     return result
 
 
@@ -2017,44 +3115,65 @@ def get_unassigned_pekerjaan(project):
             ...
         ]
     """
-    from django.db.models import Sum, F
-    
-    # Get all pekerjaan dengan total assigned proportion
-    pekerjaan_qs = Pekerjaan.objects.filter(
-        project=project
-    ).annotate(
-        total_assigned=Sum('tahapan_assignments__proporsi_volume')
-    ).order_by('ordering_index', 'id')
-    
+    from django.db.models import Sum, Max
+
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    cache_key = f"tahapan_unassigned:{project.id}:v1"
+    cached = cache.get(cache_key)
+    signature = None
+    if cached:
+        signature = (
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(pekerjaan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+        if cached.get("sig") == signature:
+            return cached.get("data", [])
+
+    pekerjaan_qs = (
+        Pekerjaan.objects
+        .filter(project=project)
+        .select_related('sub_klasifikasi__klasifikasi')
+        .annotate(total_assigned=Sum('tahapan_assignments__proporsi_volume'))
+        .order_by('ordering_index', 'id')
+        .values(
+            'id',
+            'snapshot_kode',
+            'snapshot_uraian',
+            'total_assigned',
+            'sub_klasifikasi__name',
+            'sub_klasifikasi__klasifikasi__name',
+        )
+    )
+
     result = []
-    for pkj in pekerjaan_qs:
-        assigned = float(pkj.total_assigned or 0)
+    for row in pekerjaan_qs:
+        assigned = float(row.get("total_assigned") or 0)
         unassigned = 100.0 - assigned
-        
-        # Skip jika fully assigned
         if abs(unassigned) < 0.01:
             continue
-        
-        # Determine status
-        if assigned < 0.01:
-            status = 'unassigned'
-        else:
-            status = 'partial'
-        
+        status = 'unassigned' if assigned < 0.01 else 'partial'
         result.append({
-            'pekerjaan_id': pkj.id,
-            'kode': pkj.snapshot_kode,
-            'uraian': pkj.snapshot_uraian,
+            'pekerjaan_id': row.get("id"),
+            'kode': row.get("snapshot_kode"),
+            'uraian': row.get("snapshot_uraian"),
             'assigned_proportion': assigned,
             'unassigned_proportion': unassigned,
             'status': status,
-            'klasifikasi': (pkj.sub_klasifikasi.klasifikasi.name 
-                        if pkj.sub_klasifikasi and pkj.sub_klasifikasi.klasifikasi 
-                        else None),
-            'sub_klasifikasi': (pkj.sub_klasifikasi.name
-                            if pkj.sub_klasifikasi
-                            else None),
+            'klasifikasi': row.get("sub_klasifikasi__klasifikasi__name"),
+            'sub_klasifikasi': row.get("sub_klasifikasi__name"),
         })
+
+    new_bucket = cached or {}
+    if signature is None:
+        signature = (
+            _fmt_ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(PekerjaanTahapan.objects.filter(pekerjaan__project=project).aggregate(last=Max('updated_at'))['last']),
+        )
+    new_bucket["sig"] = signature
+    new_bucket["data"] = result
+    cache.set(cache_key, new_bucket, 300)
 
     return result
 

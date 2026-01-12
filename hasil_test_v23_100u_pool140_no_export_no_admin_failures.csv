@@ -1,0 +1,41 @@
+Method,Name,Error,Occurrences
+GET,/detail_project/[id]/volume-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/volume-pekerjaan/'),5
+GET,/api/v2/project/[id]/pekerjaan/[id]/weekly-progress/,CatchResponseError('HTTP 500'),3
+GET,/detail_project/[id]/export-test/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/export-test/'),2
+GET,/detail_project/[id]/rekap-rab/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rekap-rab/'),11
+GET,/api/project/[id]/rekap-kebutuhan/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan/'),1
+GET,/api/v2/project/[id]/kurva-s-harga/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/kurva-s-harga/'),2
+GET,/api/project/[id]/harga-items/list/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/harga-items/list/'),7
+GET,/detail_project/[id]/rekap-kebutuhan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rekap-kebutuhan/'),9
+GET,/detail_project/[id]/jadwal-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/jadwal-pekerjaan/'),11
+GET,/api/project/[id]/detail-ahsp/[pekerjaan_id]/,CatchResponseError('HTTP 500'),1
+GET,/api/project/[id]/rekap-kebutuhan/validate/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan/validate/'),1
+GET,/detail_project/[id]/harga-items/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/harga-items/'),6
+GET,/detail_project/[id]/rincian-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-ahsp/'),7
+GET,/api/v2/project/[id]/assignments/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/assignments/'),1
+GET,/api/project/[id]/tahapan/unassigned/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/tahapan/unassigned/'),2
+GET,/api/project/[id]/pekerjaan/[pekerjaan_id]/pricing/,CatchResponseError('HTTP 500'),1
+GET,/dashboard/,HTTPError('500 Server Error: Internal Server Error for url: /dashboard/'),22
+GET,/api/project/[id]/parameters/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/parameters/'),2
+GET,/api/project/[id]/rekap-kebutuhan-enhanced/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan-enhanced/'),1
+GET,/detail_project/[id]/template-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/template-ahsp/'),4
+GET,/api/project/[id]/rincian-rab/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rincian-rab/'),2
+GET,/api/project/[id]/pricing/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/pricing/'),3
+GET,/api/v2/project/[id]/kurva-s-data/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/kurva-s-data/'),1
+POST,[AUTH] Login POST,CatchResponseError('login server error: 500'),73
+GET,/api/project/[id]/rekap/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap/'),4
+GET,/api/project/[id]/volume/formula/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/volume/formula/'),1
+GET,/api/project/[id]/rekap-kebutuhan-timeline/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan-timeline/'),1
+GET,/detail_project/[id]/rincian-rab/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-rab/'),7
+GET,/api/project/[id]/export/template-ahsp/json/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/export/template-ahsp/json/'),1
+GET,/detail_project/[id]/list-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/list-pekerjaan/'),6
+GET,/api/project/[id]/search-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/search-ahsp/'),2
+GET,/api/project/[id]/parameters/[param_id]/,CatchResponseError('HTTP 500'),2
+GET,/api/v2/project/[id]/chart-data/,HTTPError('500 Server Error: Internal Server Error for url: /api/v2/project/[id]/chart-data/'),1
+GET,/api/project/[id]/pekerjaan/[id]/bundle/[id]/expansion/,CatchResponseError('HTTP 500'),1
+GET,/api/project/[id]/tahapan/[tahapan_id]/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/tahapan/[tahapan_id]/'),1
+GET,/api/project/[id]/rekap-kebutuhan/filters/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap-kebutuhan/filters/'),1
+GET,/detail_project/[id]/audit-trail/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/audit-trail/'),2
+GET,/api/project/[id]/list-pekerjaan/tree/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/list-pekerjaan/tree/'),6
+GET,/api/export/harga-items/csv/,HTTPError('500 Server Error: Internal Server Error for url: /api/export/harga-items/csv/'),1
+GET,/api/project/[id]/volume-pekerjaan/list/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/volume-pekerjaan/list/'),1

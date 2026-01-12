@@ -18,7 +18,11 @@ class RincianAHSPAdapter:
         Structure: Each pekerjaan becomes a separate section with header and detail table.
         Similar to the web page .rk-right .ra-editor structure.
         """
-        from detail_project.models import Klasifikasi, DetailAHSPProject, ProjectPricing
+        from detail_project.models import (
+            Klasifikasi,
+            DetailAHSPProject,
+            DetailAHSPExpanded,
+        )
 
         sections = []  # List of pekerjaan sections
         recap_rows = []  # Lampiran Rekap AHSP rows
@@ -46,9 +50,32 @@ class RincianAHSPAdapter:
         )
 
         # Fetch all details at once for efficiency
-        all_details = DetailAHSPProject.objects.filter(
-            project=self.project
-        ).select_related('harga_item').order_by('pekerjaan_id', 'kategori', 'id')
+        all_details = (
+            DetailAHSPProject.objects
+            .filter(project=self.project)
+            .select_related('harga_item')
+            .order_by('pekerjaan_id', 'kategori', 'id')
+        )
+
+        detail_ids = [d.id for d in all_details if d.id]
+        bundle_totals: dict[int, Decimal] = {}
+        if detail_ids:
+            expanded_qs = (
+                DetailAHSPExpanded.objects
+                .filter(project=self.project, source_detail_id__in=detail_ids)
+                .select_related('harga_item')
+            )
+            for expanded in expanded_qs:
+                if not expanded.source_detail_id:
+                    continue
+                price = self._to_decimal(
+                    expanded.harga_item.harga_satuan if expanded.harga_item else 0
+                )
+                koef = self._to_decimal(expanded.koefisien)
+                bundle_totals[expanded.source_detail_id] = (
+                    bundle_totals.get(expanded.source_detail_id, Decimal('0'))
+                    + (price * koef)
+                )
 
         # Group details by pekerjaan_id
         details_by_pekerjaan = {}
@@ -102,9 +129,19 @@ class RincianAHSPAdapter:
                         subtotal = Decimal('0')
                         for detail in (d for d in details if (d.kategori or '').upper() == key):
                             koefisien = self._to_decimal(detail.koefisien)
-                            harga_satuan = self._to_decimal(
-                                detail.harga_item.harga_satuan if detail.harga_item else 0
+                            is_bundle = (
+                                key == 'LAIN'
+                                and (getattr(detail, 'ref_pekerjaan_id', None) or getattr(detail, 'ref_ahsp_id', None))
                             )
+                            if is_bundle:
+                                # Koefisien komponen disimpan per-unit bundle;
+                                # bundle_total sudah merupakan harga per unit.
+                                bundle_total = bundle_totals.get(detail.id, Decimal('0'))
+                                harga_satuan = bundle_total
+                            else:
+                                harga_satuan = self._to_decimal(
+                                    detail.harga_item.harga_satuan if detail.harga_item else 0
+                                )
                             jumlah = koefisien * harga_satuan
                             subtotal += jumlah
                             pekerjaan_total += jumlah

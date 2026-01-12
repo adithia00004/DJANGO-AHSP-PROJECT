@@ -1,253 +1,257 @@
+<!-- prettier-ignore-start -->
 {% extends 'base.html' %}
 {% load static %}
 {% load humanize %}
+{% load l10n %}
 
 {% block title %}Dashboard - My Projects{% endblock %}
 
 {% block extra_css %}
-  <link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
-  <link rel="stylesheet" href="{% static 'dashboard/css/ux-enhancements.css' %}">
+<link rel="stylesheet" href="{% static 'dashboard/css/dashboard.css' %}">
+<link rel="stylesheet" href="{% static 'dashboard/css/ux-enhancements.css' %}">
 {% endblock %}
 
 {% block content %}
 <section class="dashboard-section">
 
-  <!-- ========== FASE 2.1: ANALYTICS & STATISTICS (Collapsible) ========== -->
-  <div class="mb-4">
-    <!-- Toggle Button for Analytics -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h5 class="mb-0">
-        <i class="fas fa-chart-line"></i> Analytics & Statistics
-      </h5>
-      <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#analyticsSection" aria-expanded="false" aria-controls="analyticsSection">
-        <i class="fas fa-chevron-down" id="analyticsChevron"></i> <span id="analyticsToggleText">Tampilkan</span>
-      </button>
-    </div>
-
-    <!-- Collapsible Analytics Content (Default Hidden) -->
-    <div class="collapse" id="analyticsSection">
-      <!-- Summary Cards -->
-      <div class="row g-3 mb-4">
-      <!-- Total Projects -->
-      <div class="col-md-3">
-        <div class="card border-primary shadow-sm h-100">
-          <div class="card-body text-center">
-            <div class="d-flex align-items-center justify-content-center mb-2">
-              <i class="fas fa-project-diagram fa-2x text-primary me-2"></i>
-              <h3 class="mb-0 text-primary">{{ analytics.total_projects }}</h3>
-            </div>
-            <p class="text-muted mb-0 small">Total Projects</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Total Budget -->
-      <div class="col-md-3">
-        <div class="card border-success shadow-sm h-100">
-          <div class="card-body text-center">
-            <div class="d-flex align-items-center justify-content-center mb-2">
-              <i class="fas fa-money-bill-wave fa-2x text-success me-2"></i>
-              <h3 class="mb-0 text-success">Rp {{ analytics.total_anggaran|floatformat:0|intcomma }}</h3>
-            </div>
-            <p class="text-muted mb-0 small">Total Anggaran</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Projects This Year -->
-      <div class="col-md-3">
-        <div class="card border-info shadow-sm h-100">
-          <div class="card-body text-center">
-            <div class="d-flex align-items-center justify-content-center mb-2">
-              <i class="fas fa-calendar-alt fa-2x text-info me-2"></i>
-              <h3 class="mb-0 text-info">{{ analytics.projects_this_year }}</h3>
-            </div>
-            <p class="text-muted mb-0 small">Projects Tahun Ini</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Active Projects -->
-      <div class="col-md-3">
-        <div class="card border-warning shadow-sm h-100">
-          <div class="card-body text-center">
-            <div class="d-flex align-items-center justify-content-center mb-2">
-              <i class="fas fa-tasks fa-2x text-warning me-2"></i>
-              <h3 class="mb-0 text-warning">{{ analytics.active_projects_count }}</h3>
-            </div>
-            <p class="text-muted mb-0 small">Projects Aktif</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Charts Row -->
-    <div class="row g-3 mb-4">
-      <!-- Projects by Year Chart -->
-      <div class="col-lg-6">
-        <div class="card shadow-sm">
-          <div class="card-header bg-light">
-            <h6 class="mb-0"><i class="fas fa-chart-bar"></i> Projects per Tahun</h6>
-          </div>
-          <div class="card-body">
-            <canvas id="projectsByYearChart" height="200"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <!-- Projects by Sumber Dana Chart -->
-      <div class="col-lg-6">
-        <div class="card shadow-sm">
-          <div class="card-header bg-light">
-            <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Projects per Sumber Dana</h6>
-          </div>
-          <div class="card-body">
-            <canvas id="projectsBySumberChart" height="200"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Alerts Row -->
-    <div class="row g-3 mb-4">
-      <!-- Upcoming Deadlines -->
-      {% if analytics.upcoming_deadlines %}
-      <div class="col-lg-6">
-        <div class="card border-warning shadow-sm">
-          <div class="card-header bg-warning text-dark">
-            <h6 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Deadline Terdekat (7 Hari)</h6>
-          </div>
-          <div class="card-body">
-            <div class="list-group list-group-flush">
-              {% for project in analytics.upcoming_deadlines %}
-              <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-                <div>
-                  <a href="{% url 'dashboard:project_detail' project.pk %}" class="text-decoration-none">
-                    <strong>{{ project.nama|truncatewords:5 }}</strong>
-                  </a>
-                  <br>
-                  <small class="text-muted">{{ project.tanggal_selesai|date:"d M Y" }}</small>
-                </div>
-                <span class="badge bg-warning text-dark">{{ project.tanggal_selesai|timeuntil }}</span>
-              </div>
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-      </div>
-      {% endif %}
-
-      <!-- Overdue Projects -->
+  <!-- ========== FASE 2.1: ANALYTICS & STATISTICS (Compact Version) ========== -->
+  <div class="analytics-compact-bar mb-3">
+    <!-- Stats Pills Row -->
+    <div class="analytics-stats-inline">
+      <span class="stat-pill stat-primary" title="Total semua project">
+        <i class="fas fa-project-diagram"></i>
+        <strong>{{ analytics.total_projects }}</strong> Projects
+      </span>
+      <span class="stat-pill stat-success" title="Total anggaran semua project">
+        <i class="fas fa-money-bill-wave"></i>
+        Rp {{ analytics.total_anggaran|floatformat:0|intcomma }}
+      </span>
+      <span class="stat-pill stat-info" title="Projects dimulai tahun ini">
+        <i class="fas fa-calendar-alt"></i>
+        <strong>{{ analytics.projects_this_year }}</strong> Tahun Ini
+      </span>
+      <span class="stat-pill stat-warning-fill" title="Projects dalam status aktif">
+        <i class="fas fa-tasks"></i>
+        <strong>{{ analytics.active_projects_count }}</strong> Aktif
+      </span>
       {% if analytics.overdue_projects %}
-      <div class="col-lg-6">
-        <div class="card border-danger shadow-sm">
-          <div class="card-header bg-danger text-white">
-            <h6 class="mb-0"><i class="fas fa-clock"></i> Projects Terlambat</h6>
-          </div>
-          <div class="card-body">
-            <div class="list-group list-group-flush">
-              {% for project in analytics.overdue_projects %}
-              <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-                <div>
-                  <a href="{% url 'dashboard:project_detail' project.pk %}" class="text-decoration-none">
-                    <strong>{{ project.nama|truncatewords:5 }}</strong>
-                  </a>
-                  <br>
-                  <small class="text-muted">Deadline: {{ project.tanggal_selesai|date:"d M Y" }}</small>
-                </div>
-                <span class="badge bg-danger">{{ project.tanggal_selesai|timesince }} lalu</span>
+      <span class="stat-pill stat-danger" title="Projects yang melewati deadline" data-bs-toggle="popover"
+        data-bs-placement="bottom" data-bs-html="true"
+        data-bs-content="<ul class='mb-0 ps-3'>{% for p in analytics.overdue_projects %}<li>{{ p.nama|truncatewords:4 }}</li>{% endfor %}</ul>">
+        <i class="fas fa-clock"></i>
+        <strong>{{ analytics.overdue_projects|length }}</strong> Terlambat
+      </span>
+      {% endif %}
+      {% if analytics.upcoming_deadlines %}
+      <span class="stat-pill stat-warning-outline" title="Deadline dalam 7 hari" data-bs-toggle="popover"
+        data-bs-placement="bottom" data-bs-html="true"
+        data-bs-content="<ul class='mb-0 ps-3'>{% for p in analytics.upcoming_deadlines %}<li>{{ p.nama|truncatewords:4 }} - {{ p.tanggal_selesai|date:'d M' }}</li>{% endfor %}</ul>">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>{{ analytics.upcoming_deadlines|length }}</strong> Deadline
+      </span>
+      {% endif %}
+    </div>
+
+    <!-- Charts Toggle Button -->
+    <button class="btn btn-sm btn-outline-secondary charts-toggle-btn" type="button" data-bs-toggle="collapse"
+      data-bs-target="#miniChartsPanel" aria-expanded="false" aria-controls="miniChartsPanel">
+      <i class="fas fa-chart-bar"></i> <span class="d-none d-sm-inline">Charts</span>
+    </button>
+  </div>
+
+  <!-- Enhanced Charts Panel (Collapsed by default) -->
+  <div class="collapse" id="miniChartsPanel">
+    <div class="enhanced-charts-panel mb-3">
+      <!-- Chart Grid -->
+      <div class="row g-3">
+        <!-- Chart 1: Projects per Tahun -->
+        <div class="col-12 col-lg-6">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-title">
+                <i class="fas fa-chart-bar text-primary"></i>
+                <span>Projects per Tahun</span>
               </div>
-              {% endfor %}
+              <div class="chart-summary" id="yearChartSummary">
+                <small class="text-muted">Loading...</small>
+              </div>
+            </div>
+            <div class="chart-card-body">
+              <canvas id="projectsByYearChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 2: Anggaran per Tahun -->
+        <div class="col-12 col-lg-6">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-title">
+                <i class="fas fa-chart-line text-success"></i>
+                <span>Total Anggaran per Tahun</span>
+              </div>
+              <div class="chart-summary" id="budgetChartSummary">
+                <small class="text-muted">Loading...</small>
+              </div>
+            </div>
+            <div class="chart-card-body">
+              <canvas id="budgetByYearChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 3: Projects per Sumber Dana -->
+        <div class="col-12 col-md-6">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-title">
+                <i class="fas fa-chart-pie text-info"></i>
+                <span>Distribusi Sumber Dana</span>
+              </div>
+              <div class="chart-summary" id="sumberChartSummary">
+                <small class="text-muted">Loading...</small>
+              </div>
+            </div>
+            <div class="chart-card-body">
+              <canvas id="projectsBySumberChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 4: Status Timeline -->
+        <div class="col-12 col-md-6">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-title">
+                <i class="fas fa-chart-donut text-warning"></i>
+                <span>Status Timeline Projects</span>
+              </div>
+              <div class="chart-summary" id="statusChartSummary">
+                <small class="text-muted">Loading...</small>
+              </div>
+            </div>
+            <div class="chart-card-body">
+              <canvas id="projectsStatusChart"></canvas>
             </div>
           </div>
         </div>
       </div>
-      {% endif %}
+
+      <!-- Quick Insights -->
+      <div class="chart-insights mt-3">
+        <div class="row g-2">
+          <div class="col-6 col-md-3">
+            <div class="insight-box insight-primary">
+              <div class="insight-icon"><i class="fas fa-trophy"></i></div>
+              <div class="insight-content">
+                <div class="insight-label">Tahun Terproduktif</div>
+                <div class="insight-value" id="mostProductiveYear">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="insight-box insight-success">
+              <div class="insight-icon"><i class="fas fa-money-bill-wave"></i></div>
+              <div class="insight-content">
+                <div class="insight-label">Rata-rata Anggaran</div>
+                <div class="insight-value" id="avgBudget">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="insight-box insight-info">
+              <div class="insight-icon"><i class="fas fa-hand-holding-usd"></i></div>
+              <div class="insight-content">
+                <div class="insight-label">Sumber Dana Terbesar</div>
+                <div class="insight-value" id="topSumberDana">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="insight-box insight-warning">
+              <div class="insight-icon"><i class="fas fa-tasks"></i></div>
+              <div class="insight-content">
+                <div class="insight-label">Cakupan Jadwal</div>
+                <div class="insight-value" id="completionRate">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    </div><!-- End collapse -->
   </div>
   <!-- ========== END ANALYTICS & STATISTICS ========== -->
 
-  <!-- JavaScript for Analytics Toggle -->
+  <!-- JavaScript for Popovers -->
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const analyticsSection = document.getElementById('analyticsSection');
-      const analyticsChevron = document.getElementById('analyticsChevron');
-      const analyticsToggleText = document.getElementById('analyticsToggleText');
-
-      analyticsSection.addEventListener('show.bs.collapse', function () {
-        analyticsChevron.classList.remove('fa-chevron-down');
-        analyticsChevron.classList.add('fa-chevron-up');
-        analyticsToggleText.textContent = 'Sembunyikan';
-      });
-
-      analyticsSection.addEventListener('hide.bs.collapse', function () {
-        analyticsChevron.classList.remove('fa-chevron-up');
-        analyticsChevron.classList.add('fa-chevron-down');
-        analyticsToggleText.textContent = 'Tampilkan';
-      });
+    document.addEventListener('DOMContentLoaded', function () {
+      // Initialize Bootstrap popovers for stat pills
+      const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
+      if (popoverTriggerList.length > 0) {
+        popoverTriggerList.forEach(el => {
+          new bootstrap.Popover(el, { trigger: 'hover focus' });
+        });
+      }
     });
   </script>
 
-  <!-- FORMSET INPUT PROJECT -->
-  <div class="mb-5">
-    <div class="card">
-      <div class="card-header bg-light">
-        <div class="d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="fas fa-plus"></i> Tambah Project Langsung</h5>
-          <div class="btn-group btn-group-sm" role="group">
-            <button type="button" class="btn btn-outline-primary active" id="formModeSimple">
-              <i class="fas fa-list"></i> Mode Sederhana
+
+  <!-- ========== ADD PROJECT MODAL ========== -->
+  <div class="modal fade" id="addProjectModal" tabindex="-1" aria-labelledby="addProjectModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="addProjectModalLabel">
+            <i class="fas fa-plus"></i> Tambah Project Baru
+          </h5>
+          <div class="btn-group btn-group-sm ms-3" role="group">
+            <button type="button" class="btn btn-light btn-sm active" id="formModeSimple">
+              <i class="fas fa-list"></i> Sederhana
             </button>
-            <button type="button" class="btn btn-outline-primary" id="formModeFull">
-              <i class="fas fa-th"></i> Mode Lengkap
+            <button type="button" class="btn btn-outline-light btn-sm" id="formModeFull">
+              <i class="fas fa-th"></i> Lengkap
             </button>
           </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-      </div>
-      <div class="card-body">
+        <div class="modal-body">
+          <form id="project-formset-form" method="post" class="dashboard-form" novalidate autocomplete="off">
+            {% csrf_token %}
+            {{ formset.management_form }}
+            <input type="hidden" name="save_formset" value="1">
 
-        <form id="project-formset-form" method="post" class="dashboard-form" novalidate autocomplete="off">
-          {% csrf_token %}
-          {{ formset.management_form }}
-
-          <!-- Pastikan cabang POST di view selalu dieksekusi -->
-          <input type="hidden" name="save_formset" value="1">
-
-          {% if formset.non_form_errors %}
+            {% if formset.non_form_errors %}
             <div class="alert alert-danger mb-3">
               {% for e in formset.non_form_errors %}• {{ e }}<br>{% endfor %}
             </div>
-          {% endif %}
+            {% endif %}
 
-          <div class="dashboard-form-table-wrapper ux-scrollbar">
-            <table class="table table-bordered align-middle text-nowrap" id="formset-table">
-              <thead class="table-light dp-thead-sticky">
-                <tr>
-                  <th class="field-required">Nama Project <span class="text-danger">*</span></th>
-                  <th class="field-required">Sumber Dana <span class="text-danger">*</span></th>
-                  <th class="field-required">Lokasi Project <span class="text-danger">*</span></th>
-                  <th class="field-required">Nama Client <span class="text-danger">*</span></th>
-                  <th class="field-required">Anggaran Owner <span class="text-danger">*</span></th>
-                  <th class="field-required">Tanggal Mulai <span class="text-danger">*</span></th>
-                  <th class="field-optional">Tanggal Selesai</th>
-                  <th class="field-optional">Durasi (hari)</th>
-                  <th class="field-optional">Ket 1</th>
-                  <th class="field-optional">Ket 2</th>
-                  <th class="field-optional">Jabatan Client</th>
-                  <th class="field-optional">Instansi Client</th>
-                  <th class="field-optional">Nama Kontraktor</th>
-                  <th class="field-optional">Instansi Kontraktor</th>
-                  <th class="field-optional">Nama Konsultan Perencana</th>
-                  <th class="field-optional">Instansi Konsultan Perencana</th>
-                  <th class="field-optional">Nama Konsultan Pengawas</th>
-                  <th class="field-optional">Instansi Konsultan Pengawas</th>
-                </tr>
-              </thead>
-
-              <!-- rows yang dirender dari server -->
-              <tbody id="formset-body">
-                {% for form in formset %}
+            <div class="dashboard-form-table-wrapper ux-scrollbar" style="max-height: 60vh;">
+              <table class="table table-bordered align-middle text-nowrap" id="formset-table">
+                <thead class="table-light dp-thead-sticky">
+                  <tr>
+                    <th class="field-required">Nama Project <span class="text-danger">*</span></th>
+                    <th class="field-required">Sumber Dana <span class="text-danger">*</span></th>
+                    <th class="field-required">Lokasi <span class="text-danger">*</span></th>
+                    <th class="field-required">Client <span class="text-danger">*</span></th>
+                    <th class="field-required">Anggaran <span class="text-danger">*</span></th>
+                    <th class="field-required">Tgl Mulai <span class="text-danger">*</span></th>
+                    <th class="field-optional">Tgl Selesai</th>
+                    <th class="field-optional">Durasi</th>
+                    <th class="field-optional">Ket 1</th>
+                    <th class="field-optional">Ket 2</th>
+                    <th class="field-optional">Jabatan Client</th>
+                    <th class="field-optional">Instansi Client</th>
+                    <th class="field-optional">Kontraktor</th>
+                    <th class="field-optional">Inst. Kontraktor</th>
+                    <th class="field-optional">Konsultan Perencana</th>
+                    <th class="field-optional">Inst. Konsultan Perencana</th>
+                    <th class="field-optional">Konsultan Pengawas</th>
+                    <th class="field-optional">Inst. Konsultan Pengawas</th>
+                  </tr>
+                </thead>
+                <tbody id="formset-body">
+                  {% for form in formset %}
                   <tr class="formset-row">
                     <td class="field-required {% if form.nama.errors %}table-danger{% endif %}">
                       {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
@@ -293,89 +297,213 @@
                     <td class="field-optional">{{ form.nama_konsultan_pengawas }}</td>
                     <td class="field-optional">{{ form.instansi_konsultan_pengawas }}</td>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </form>
 
-          <div class="text-end mt-3 d-flex justify-content-end gap-2">
-            <button type="button" class="btn btn-outline-danger btn-sm" id="remove-row-btn">
-              <i class="fas fa-trash"></i> Hapus Baris Terakhir
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" id="add-row-btn">
-              <i class="fas fa-plus-circle"></i> Tambah Baris
-            </button>
-            <button type="submit" class="btn btn-success">
-              <i class="fas fa-save"></i> Simpan Project
-            </button>
-          </div>
-        </form>
-
-        <!-- Template kosong aman (di luar <form>) -->
-        <template id="empty-form-template" data-prefix="{{ formset.prefix }}">
-          <tr class="formset-row">
-            <td class="field-required">
-              {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-              {{ formset.empty_form.nama }}
-            </td>
-            <td class="field-required">{{ formset.empty_form.sumber_dana }}</td>
-            <td class="field-required">{{ formset.empty_form.lokasi_project }}</td>
-            <td class="field-required">{{ formset.empty_form.nama_client }}</td>
-            <td class="field-required">{{ formset.empty_form.anggaran_owner }}</td>
-            <td class="field-required">{{ formset.empty_form.tanggal_mulai }}</td>
-            <td class="field-optional">{{ formset.empty_form.tanggal_selesai }}</td>
-            <td class="field-optional">{{ formset.empty_form.durasi_hari }}</td>
-            <td class="field-optional">{{ formset.empty_form.ket_project1 }}</td>
-            <td class="field-optional">{{ formset.empty_form.ket_project2 }}</td>
-            <td class="field-optional">{{ formset.empty_form.jabatan_client }}</td>
-            <td class="field-optional">{{ formset.empty_form.instansi_client }}</td>
-            <td class="field-optional">{{ formset.empty_form.nama_kontraktor }}</td>
-            <td class="field-optional">{{ formset.empty_form.instansi_kontraktor }}</td>
-            <td class="field-optional">{{ formset.empty_form.nama_konsultan_perencana }}</td>
-            <td class="field-optional">{{ formset.empty_form.instansi_konsultan_perencana }}</td>
-            <td class="field-optional">{{ formset.empty_form.nama_konsultan_pengawas }}</td>
-            <td class="field-optional">{{ formset.empty_form.instansi_konsultan_pengawas }}</td>
-          </tr>
-        </template>
-
+          <!-- Template kosong (di luar form) -->
+          <template id="empty-form-template" data-prefix="{{ formset.prefix }}">
+            <tr class="formset-row">
+              <td class="field-required">
+                {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                {{ formset.empty_form.nama }}
+              </td>
+              <td class="field-required">{{ formset.empty_form.sumber_dana }}</td>
+              <td class="field-required">{{ formset.empty_form.lokasi_project }}</td>
+              <td class="field-required">{{ formset.empty_form.nama_client }}</td>
+              <td class="field-required">{{ formset.empty_form.anggaran_owner }}</td>
+              <td class="field-required">{{ formset.empty_form.tanggal_mulai }}</td>
+              <td class="field-optional">{{ formset.empty_form.tanggal_selesai }}</td>
+              <td class="field-optional">{{ formset.empty_form.durasi_hari }}</td>
+              <td class="field-optional">{{ formset.empty_form.ket_project1 }}</td>
+              <td class="field-optional">{{ formset.empty_form.ket_project2 }}</td>
+              <td class="field-optional">{{ formset.empty_form.jabatan_client }}</td>
+              <td class="field-optional">{{ formset.empty_form.instansi_client }}</td>
+              <td class="field-optional">{{ formset.empty_form.nama_kontraktor }}</td>
+              <td class="field-optional">{{ formset.empty_form.instansi_kontraktor }}</td>
+              <td class="field-optional">{{ formset.empty_form.nama_konsultan_perencana }}</td>
+              <td class="field-optional">{{ formset.empty_form.instansi_konsultan_perencana }}</td>
+              <td class="field-optional">{{ formset.empty_form.nama_konsultan_pengawas }}</td>
+              <td class="field-optional">{{ formset.empty_form.instansi_konsultan_pengawas }}</td>
+            </tr>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-danger btn-sm" id="remove-row-btn">
+            <i class="fas fa-trash"></i> Hapus Baris
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="add-row-btn">
+            <i class="fas fa-plus-circle"></i> Tambah Baris
+          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" form="project-formset-form" class="btn btn-success">
+            <i class="fas fa-save"></i> Simpan Project
+          </button>
+        </div>
       </div>
     </div>
   </div>
+  <!-- ========== END ADD PROJECT MODAL ========== -->
 
   <!-- TABEL & REKAP PROJECT -->
   <div class="dashboard-section-summary-table">
     {% include 'dashboard/_project_stats_and_table.html' %}
   </div>
 
-  <!-- ========== FASE 2.4: EXPORT & UPLOAD ACTIONS ========== -->
-  <div class="mb-3 d-flex justify-content-between align-items-center">
-    <!-- Export Dropdown (Left side) -->
-    <div class="btn-group">
-      <button type="button" class="btn btn-success btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-        <i class="fas fa-download"></i> Export Data
-      </button>
-      <ul class="dropdown-menu">
-        <li>
-          <a class="dropdown-item" href="{% url 'dashboard:export_excel' %}?{{ request.GET.urlencode }}">
-            <i class="fas fa-file-excel text-success"></i> Export ke Excel (.xlsx)
-          </a>
-        </li>
-        <li>
-          <a class="dropdown-item" href="{% url 'dashboard:export_csv' %}?{{ request.GET.urlencode }}">
-            <i class="fas fa-file-csv text-info"></i> Export ke CSV (.csv)
-          </a>
-        </li>
-      </ul>
-    </div>
+  <!-- Export/Upload buttons moved to unified toolbar -->
 
-    <!-- Upload Button (Right side) -->
-    <div>
-      <a href="{% url 'dashboard:project_upload' %}" class="btn btn-outline-primary btn-sm">
-        <i class="fas fa-file-upload"></i> Upload dari Excel
-      </a>
+  <!-- ========== IMPORT PROJECT MODAL ========== -->
+  <div class="modal fade" id="importProjectModal" tabindex="-1" aria-labelledby="importProjectModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="importProjectModalLabel">
+            <i class="fas fa-file-import"></i> Import Project dari JSON
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="importProjectForm" enctype="multipart/form-data">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="importFile" class="form-label">Pilih File JSON</label>
+              <input type="file" class="form-control" id="importFile" name="file" accept=".json" required>
+              <div class="form-text">
+                File JSON harus berasal dari Export Project (format: project_backup_*.json)
+              </div>
+            </div>
+            <div class="alert alert-info small mb-3">
+              <strong>Yang akan terjadi saat Import:</strong>
+              <ul class="mb-0 ps-3">
+                <li>Project baru akan dibuat berdasarkan data di file JSON.</li>
+                <li>Struktur detail project (klasifikasi, sub‑klasifikasi, pekerjaan, harga item) ikut diimpor.</li>
+                <li>Progress/jadwal hanya diimpor jika opsi "Import jadwal/progress" dicentang.</li>
+                <li>Project hasil import akan muncul di dashboard setelah proses selesai.</li>
+              </ul>
+            </div>
+            <div class="mb-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="importProgress" name="import_progress" value="1">
+                <label class="form-check-label" for="importProgress">
+                  Import jadwal/progress (jika ada)
+                </label>
+              </div>
+            </div>
+            <div id="importResult" class="alert d-none"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+            <button type="submit" class="btn btn-primary" id="importSubmitBtn">
+              <span class="spinner-border spinner-border-sm d-none" id="importSpinner"></span>
+              <i class="fas fa-upload"></i> Import
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
-  <!-- ========== END EXPORT & UPLOAD ACTIONS ========== -->
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const form = document.getElementById('importProjectForm');
+      const resultDiv = document.getElementById('importResult');
+      const submitBtn = document.getElementById('importSubmitBtn');
+      const spinner = document.getElementById('importSpinner');
+      const modal = document.getElementById('importProjectModal');
+      const fileInput = document.getElementById('importFile');
+      const progressCheckbox = document.getElementById('importProgress');
+
+      // Reset modal state when it's closed
+      modal.addEventListener('hidden.bs.modal', function () {
+        // Only reset if import was successful (button is hidden)
+        if (submitBtn.classList.contains('d-none')) {
+          form.reset();
+          resultDiv.classList.add('d-none');
+          submitBtn.classList.remove('d-none');
+          submitBtn.disabled = false;
+          fileInput.disabled = false;
+          progressCheckbox.disabled = false;
+        }
+      });
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        if (!fileInput.files.length) {
+          resultDiv.className = 'alert alert-warning';
+          resultDiv.textContent = 'Pilih file JSON terlebih dahulu.';
+          resultDiv.classList.remove('d-none');
+          return;
+        }
+
+        // Show loading
+        submitBtn.disabled = true;
+        spinner.classList.remove('d-none');
+        resultDiv.classList.add('d-none');
+
+        const formData = new FormData(form);
+
+        try {
+          const response = await fetch('/detail_project/api/project/import/json/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                document.querySelector('meta[name="csrf-token"]')?.content
+            }
+          });
+
+          const data = await response.json();
+
+          if (data.status === 'success') {
+            resultDiv.className = 'alert alert-success';
+            resultDiv.innerHTML = `
+            <div class="text-center">
+              <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+              <h5 class="mb-2">✅ Import Berhasil!</h5>
+              <p class="mb-2">${data.message}</p>
+              <div class="small text-muted mb-3">
+                Klasifikasi: ${data.stats?.klasifikasi || 0} | 
+                Sub: ${data.stats?.sub_klasifikasi || 0} | 
+                Pekerjaan: ${data.stats?.pekerjaan || 0} | 
+                Harga Items: ${data.stats?.harga_items || 0}
+              </div>
+              <div class="d-flex gap-2 justify-content-center">
+                <a href="/detail_project/${data.project_id}/list-pekerjaan/" class="btn btn-primary">
+                  <i class="fas fa-folder-open"></i> Buka Project
+                </a>
+                <button type="button" class="btn btn-outline-secondary" onclick="location.reload()">
+                  <i class="fas fa-sync"></i> Refresh Dashboard
+                </button>
+              </div>
+            </div>
+          `;
+
+            // Disable form elements to prevent double import
+            submitBtn.classList.add('d-none');
+            fileInput.disabled = true;
+            progressCheckbox.disabled = true;
+
+          } else {
+            resultDiv.className = 'alert alert-danger';
+            resultDiv.textContent = data.message || 'Import gagal.';
+            submitBtn.disabled = false;
+          }
+          resultDiv.classList.remove('d-none');
+
+        } catch (err) {
+          resultDiv.className = 'alert alert-danger';
+          resultDiv.textContent = 'Error: ' + err.message;
+          resultDiv.classList.remove('d-none');
+          submitBtn.disabled = false;
+        } finally {
+          spinner.classList.add('d-none');
+        }
+      });
+    });
+  </script>
 
   <!-- ========== FLOATING ACTION BUTTON (FAB) ========== -->
   <div class="quick-actions-fab">
@@ -385,9 +513,10 @@
 
     <!-- FAB Menu -->
     <div class="fab-menu" id="fabMenu">
-      <a href="#" class="fab-action" id="fabScrollToForm" title="Tambah Project via Form">
+      <a href="#" class="fab-action" id="fabScrollToForm" title="Tambah Project" data-bs-toggle="modal"
+        data-bs-target="#addProjectModal">
         <i class="bi bi-file-earmark-plus"></i>
-        <span class="fab-label">Tambah via Form</span>
+        <span class="fab-label">Tambah Project</span>
       </a>
       <a href="{% url 'dashboard:project_upload' %}" class="fab-action" title="Upload dari Excel">
         <i class="bi bi-file-earmark-arrow-up"></i>
@@ -409,164 +538,570 @@
 {% endblock %}
 
 {% block extra_js %}
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-  <!-- FASE 2.1: Charts -->
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // Projects by Year Chart
-      const projectsByYearData = {{ chart_data.projects_by_year|safe }};
-      if (projectsByYearData && projectsByYearData.length > 0) {
-        const ctx1 = document.getElementById('projectsByYearChart');
-        if (ctx1) {
-          new Chart(ctx1, {
-            type: 'bar',
-            data: {
-              labels: projectsByYearData.map(item => item.tahun_project || 'N/A'),
-              datasets: [{
-                label: 'Jumlah Projects',
-                data: projectsByYearData.map(item => item.count),
-                backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: true,
-              plugins: {
-                legend: {
-                  display: false
+<!-- Enhanced Charts with Better Visualization -->
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // Flag to track if charts have been initialized
+    let chartsInitialized = false;
+
+    const chartInstances = [];
+    const root = document.documentElement;
+
+    const getCssVar = (name, fallback) => {
+      const value = getComputedStyle(root).getPropertyValue(name).trim();
+      return value || fallback;
+    };
+
+    const isDarkMode = () => {
+      const explicitTheme = root.getAttribute('data-bs-theme');
+      if (explicitTheme) {
+        return explicitTheme === 'dark';
+      }
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    };
+
+    const getChartTheme = () => {
+      const dark = isDarkMode();
+      return {
+        text: getCssVar('--dp-c-text', dark ? '#e2e8f0' : '#1f2937'),
+        textMuted: getCssVar('--dp-c-muted', dark ? '#94a3b8' : '#6b7280'),
+        grid: dark ? 'rgba(148, 163, 184, 0.2)' : 'rgba(15, 23, 42, 0.08)',
+        tooltipBg: dark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(15, 23, 42, 0.85)',
+        tooltipText: '#f8fafc',
+        tooltipBorder: dark ? 'rgba(148, 163, 184, 0.3)' : 'rgba(15, 23, 42, 0.12)'
+      };
+    };
+
+    const applyChartDefaults = (theme) => {
+      if (!window.Chart) return;
+      Chart.defaults.color = theme.text;
+      Chart.defaults.borderColor = theme.grid;
+    };
+
+    const buildCommonOptions = (theme) => ({
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 2,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            boxWidth: 12,
+            font: { size: 11 },
+            padding: 10,
+            color: theme.text
+          }
+        },
+        tooltip: {
+          backgroundColor: theme.tooltipBg,
+          borderColor: theme.tooltipBorder,
+          borderWidth: 1,
+          titleColor: theme.tooltipText,
+          bodyColor: theme.tooltipText,
+          padding: 12,
+          titleFont: { size: 13, weight: 'bold' },
+          bodyFont: { size: 12 },
+          callbacks: {
+            label: function (context) {
+              const getParsedValue = (ctx) => {
+                if (ctx.parsed && typeof ctx.parsed === 'object') {
+                  if (typeof ctx.parsed.y === 'number') return ctx.parsed.y;
+                  if (typeof ctx.parsed.x === 'number') return ctx.parsed.x;
+                }
+                if (typeof ctx.parsed === 'number') return ctx.parsed;
+                if (typeof ctx.raw === 'number') return ctx.raw;
+                const numeric = Number(ctx.raw);
+                return Number.isFinite(numeric) ? numeric : null;
+              };
+
+              let label = context.dataset.label || '';
+              if (label) {
+                label += ': ';
+              }
+              const value = getParsedValue(context);
+              if (value !== null) {
+                if (context.dataset.label && context.dataset.label.includes('Anggaran')) {
+                  label += 'Rp ' + new Intl.NumberFormat('id-ID').format(value);
+                } else {
+                  label += value;
+                }
+              } else {
+                label += '-';
+              }
+              return label;
+            }
+          }
+        }
+      }
+    });
+
+    const applyThemeToChart = (chart, theme) => {
+      if (!chart) return;
+
+      const plugins = chart.options.plugins || {};
+      if (plugins.legend && plugins.legend.labels) {
+        plugins.legend.labels.color = theme.text;
+      }
+      if (plugins.tooltip) {
+        plugins.tooltip.backgroundColor = theme.tooltipBg;
+        plugins.tooltip.borderColor = theme.tooltipBorder;
+        plugins.tooltip.borderWidth = 1;
+        plugins.tooltip.titleColor = theme.tooltipText;
+        plugins.tooltip.bodyColor = theme.tooltipText;
+      }
+
+      const scales = chart.options.scales || {};
+      Object.values(scales).forEach((scale) => {
+        if (scale.ticks) {
+          scale.ticks.color = theme.textMuted;
+        } else {
+          scale.ticks = { color: theme.textMuted };
+        }
+        if (scale.grid) {
+          scale.grid.color = theme.grid;
+        } else {
+          scale.grid = { color: theme.grid };
+        }
+        if (scale.border) {
+          scale.border.color = theme.grid;
+        }
+      });
+
+      chart.update();
+    };
+
+    const registerChart = (chart, theme) => {
+      if (!chart) return;
+      chartInstances.push(chart);
+      applyThemeToChart(chart, theme);
+    };
+
+    let chartTheme = getChartTheme();
+    let commonOptions = buildCommonOptions(chartTheme);
+    applyChartDefaults(chartTheme);
+
+    const updateChartTheme = () => {
+      chartTheme = getChartTheme();
+      commonOptions = buildCommonOptions(chartTheme);
+      applyChartDefaults(chartTheme);
+      chartInstances.forEach((chart) => applyThemeToChart(chart, chartTheme));
+    };
+
+    const themeObserver = new MutationObserver(updateChartTheme);
+    themeObserver.observe(root, { attributes: true, attributeFilter: ['data-bs-theme'] });
+
+    // Get data from Django with safe parsing
+    let projectsByYearData = [];
+    let projectsBySumberData = [];
+    let budgetByYearData = [];
+    let analytics = {
+      total: 0,
+      totalBudget: 0,
+      thisYear: 0,
+      active: 0
+    };
+
+    try {
+      const yearDataRaw = {{ chart_data.projects_by_year|default:"[]"|safe }};
+      const sumberDataRaw = {{ chart_data.projects_by_sumber|default:"[]"|safe }};
+      const budgetDataRaw = {{ chart_data.budget_by_year|default:"[]"|safe }};
+
+  projectsByYearData = Array.isArray(yearDataRaw) ? yearDataRaw : [];
+  projectsBySumberData = Array.isArray(sumberDataRaw) ? sumberDataRaw : [];
+  budgetByYearData = Array.isArray(budgetDataRaw) ? budgetDataRaw : [];
+
+    analytics = {
+      total: {% localize off %}{{ analytics.total_projects|default:0 }}{% endlocalize %},
+      totalBudget: {% localize off %}{{ analytics.total_anggaran|default:0 }}{% endlocalize %},
+      thisYear: {% localize off %}{{ analytics.projects_this_year|default:0 }}{% endlocalize %},
+      active: {% localize off %}{{ analytics.active_projects_count|default:0 }}{% endlocalize %}
+    };
+    } catch (e) {
+    console.error('Error parsing chart data:', e);
+    projectsByYearData = [];
+    projectsBySumberData = [];
+  }
+
+  // Debug logging
+  console.log('Chart Data Loaded:', {
+    yearData: projectsByYearData,
+    sumberData: projectsBySumberData,
+    analytics: analytics
+  });
+
+  // Function to initialize all charts - called when panel is shown
+  function initializeCharts() {
+    if (chartsInitialized) {
+      console.log('Charts already initialized, skipping...');
+      return;
+    }
+    chartsInitialized = true;
+    console.log('Initializing charts...');
+
+    // Chart 1: Projects per Tahun
+    if (projectsByYearData && projectsByYearData.length > 0) {
+      const ctx = document.getElementById('projectsByYearChart');
+      if (ctx) {
+        const years = projectsByYearData.map(item => item.tahun_project || 'N/A');
+        const counts = projectsByYearData.map(item => item.count);
+        const maxCount = Math.max(...counts);
+        const maxYear = years[counts.indexOf(maxCount)];
+
+        const chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: years,
+            datasets: [{
+              label: 'Jumlah Projects',
+              data: counts,
+              backgroundColor: counts.map(count =>
+                count === maxCount ? 'rgba(54, 162, 235, 0.8)' : 'rgba(54, 162, 235, 0.5)'
+              ),
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 2,
+              borderRadius: 4
+            }]
+          },
+          options: {
+            ...commonOptions,
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  precision: 0,
+                  font: { size: 11 }
                 },
-                title: {
-                  display: false
-                }
+                grid: { color: 'rgba(0,0,0,0.05)' }
               },
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  ticks: {
-                    precision: 0
-                  }
-                }
+              x: {
+                ticks: { font: { size: 11 }, color: chartTheme.textMuted },
+                grid: { display: false }
               }
             }
-          });
-        }
+          }
+        });
+        registerChart(chart, chartTheme);
+
+        // Update summary
+        document.getElementById('yearChartSummary').innerHTML =
+          `<small class="text-primary"><strong>${years.length}</strong> tahun | Tertinggi: <strong>${maxYear}</strong> (${maxCount} projects)</small>`;
+        document.getElementById('mostProductiveYear').textContent = `${maxYear} (${maxCount})`;
       }
+    } else {
+      // Show empty state
+      document.getElementById('yearChartSummary').innerHTML =
+        `<small class="text-muted">Tidak ada data projects</small>`;
+      const ctx = document.getElementById('projectsByYearChart');
+      if (ctx) {
+        const parent = ctx.parentElement;
+        parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-chart-bar fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p><small>Silakan tambahkan project terlebih dahulu</small></div>';
+      }
+    }
 
-      // Projects by Sumber Dana Chart
-      const projectsBySumberData = {{ chart_data.projects_by_sumber|safe }};
-      if (projectsBySumberData && projectsBySumberData.length > 0) {
-        const ctx2 = document.getElementById('projectsBySumberChart');
-        if (ctx2) {
-          // Generate random colors for each sumber dana
-          const colors = projectsBySumberData.map((item, index) => {
-            const hue = (index * 137.5) % 360; // Golden angle for color distribution
-            return `hsla(${hue}, 70%, 60%, 0.7)`;
-          });
+    // Chart 2: Budget per Tahun
+    if (budgetByYearData && budgetByYearData.length > 0) {
+      const ctx = document.getElementById('budgetByYearChart');
+      if (ctx) {
+        const years = budgetByYearData.map(item => item.tahun_project || 'N/A');
+        const budgets = budgetByYearData.map(item => item.total_budget || 0);
 
-          new Chart(ctx2, {
-            type: 'pie',
-            data: {
-              labels: projectsBySumberData.map(item => item.sumber_dana || 'N/A'),
-              datasets: [{
-                data: projectsBySumberData.map(item => item.count),
-                backgroundColor: colors,
-                borderWidth: 1,
-                borderColor: '#fff'
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: true,
-              plugins: {
-                legend: {
-                  position: 'right',
-                  labels: {
-                    boxWidth: 15,
-                    font: {
-                      size: 11
+        const chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: years,
+            datasets: [{
+              label: 'Total Anggaran (Rp)',
+              data: budgets,
+              backgroundColor: 'rgba(40, 167, 69, 0.1)',
+              borderColor: 'rgba(40, 167, 69, 1)',
+              borderWidth: 3,
+              fill: true,
+              tension: 0.4,
+              pointBackgroundColor: 'rgba(40, 167, 69, 1)',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2,
+              pointRadius: 5,
+              pointHoverRadius: 7
+            }]
+          },
+          options: {
+            ...commonOptions,
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: function (value) {
+                    if (value >= 1000000000) {
+                      return 'Rp ' + (value / 1000000000).toFixed(1) + 'M';
+                    } else if (value >= 1000000) {
+                      return 'Rp ' + (value / 1000000).toFixed(0) + 'jt';
                     }
+                    return 'Rp ' + value.toLocaleString('id-ID');
+                  },
+                  font: { size: 11 }
+                },
+                grid: { color: 'rgba(0,0,0,0.05)' }
+              },
+              x: {
+                ticks: { font: { size: 11 }, color: chartTheme.textMuted },
+                grid: { display: false }
+              }
+            }
+          }
+        });
+        registerChart(chart, chartTheme);
+
+        // Update summary
+        if (budgets.length > 0) {
+          const avgBudget = budgets.reduce((a, b) => a + b, 0) / budgets.length;
+          const maxBudget = Math.max(...budgets);
+          document.getElementById('budgetChartSummary').innerHTML =
+            `<small class="text-success">Tertinggi: <strong>Rp ${(maxBudget / 1000000000).toFixed(1)}M</strong></small>`;
+          document.getElementById('avgBudget').textContent =
+            'Rp ' + (avgBudget / 1000000000).toFixed(1) + 'M';
+        }
+      }
+    } else {
+      // Show empty state
+      document.getElementById('budgetChartSummary').innerHTML =
+        `<small class="text-muted">Tidak ada data anggaran</small>`;
+      const ctx = document.getElementById('budgetByYearChart');
+      if (ctx) {
+        const parent = ctx.parentElement;
+        parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-chart-line fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p></div>';
+      }
+    }
+
+    // Chart 3: Projects by Sumber Dana (Doughnut)
+    if (projectsBySumberData && projectsBySumberData.length > 0) {
+      const ctx = document.getElementById('projectsBySumberChart');
+      if (ctx) {
+        const colors = [
+          'rgba(255, 99, 132, 0.8)',
+          'rgba(54, 162, 235, 0.8)',
+          'rgba(255, 206, 86, 0.8)',
+          'rgba(75, 192, 192, 0.8)',
+          'rgba(153, 102, 255, 0.8)',
+          'rgba(255, 159, 64, 0.8)',
+          'rgba(199, 199, 199, 0.8)'
+        ];
+
+        const labels = projectsBySumberData.map(item => item.sumber_dana || 'N/A');
+        const data = projectsBySumberData.map(item => item.count);
+        const maxCount = Math.max(...data);
+        const topSumber = labels[data.indexOf(maxCount)];
+
+        const chart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: labels,
+            datasets: [{
+              data: data,
+              backgroundColor: colors.slice(0, labels.length),
+              borderColor: '#fff',
+              borderWidth: 2
+            }]
+          },
+          options: {
+            ...commonOptions,
+            cutout: '60%',
+            plugins: {
+              ...commonOptions.plugins,
+              legend: {
+                position: 'bottom',
+                labels: {
+                  boxWidth: 12,
+                  font: { size: 10 },
+                  padding: 8,
+                  generateLabels: function (chart) {
+                    const data = chart.data;
+                    return data.labels.map((label, i) => ({
+                      text: `${label}: ${data.datasets[0].data[i]}`,
+                      fillStyle: data.datasets[0].backgroundColor[i],
+                      hidden: false,
+                      index: i
+                    }));
                   }
                 }
               }
             }
-          });
-        }
+          }
+        });
+        registerChart(chart, chartTheme);
+
+        // Update summary
+        document.getElementById('sumberChartSummary').innerHTML =
+          `<small class="text-info"><strong>${labels.length}</strong> sumber dana berbeda</small>`;
+        document.getElementById('topSumberDana').textContent = topSumber;
       }
-    });
-  </script>
-
-  <!-- FASE 2.2: Advanced Filter JavaScript -->
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // Auto-expand filter panel if any filter is active
-      const filterForm = document.getElementById('filterForm');
-      const filterPanel = document.getElementById('filterPanel');
-
-      if (filterForm && filterPanel) {
-        // Check if URL has any query parameters (excluding page)
-        const urlParams = new URLSearchParams(window.location.search);
-        const hasActiveFilters = Array.from(urlParams.keys()).some(key =>
-          key !== 'page' && urlParams.get(key) !== ''
-        );
-
-        // Auto-expand if filters are active
-        if (hasActiveFilters) {
-          const collapseInstance = new bootstrap.Collapse(filterPanel, {
-            toggle: false
-          });
-          collapseInstance.show();
-        }
-
-        // Update toggle button icon
-        const toggleBtn = document.querySelector('[data-bs-target="#filterPanel"]');
-        if (toggleBtn) {
-          filterPanel.addEventListener('show.bs.collapse', function () {
-            toggleBtn.querySelector('i').classList.replace('fa-chevron-down', 'fa-chevron-up');
-          });
-
-          filterPanel.addEventListener('hide.bs.collapse', function () {
-            toggleBtn.querySelector('i').classList.replace('fa-chevron-up', 'fa-chevron-down');
-          });
-        }
+    } else {
+      // Show empty state
+      document.getElementById('sumberChartSummary').innerHTML =
+        `<small class="text-muted">Tidak ada data sumber dana</small>`;
+      document.getElementById('topSumberDana').textContent = '-';
+      const ctx = document.getElementById('projectsBySumberChart');
+      if (ctx) {
+        const parent = ctx.parentElement;
+        parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-chart-pie fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p></div>';
       }
+    }
 
-      // Optional: Save filter preferences to localStorage
-      // (Can be implemented later if needed)
+    // Chart 4: Status Timeline (Doughnut)
+    const ctx4 = document.getElementById('projectsStatusChart');
+    if (ctx4 && analytics.total > 0) {
+      const statusCounts = {
+        selesai: {% localize off %}{{ analytics.status_counts.selesai|default:0 }}{% endlocalize %},
+        deadline: {% localize off %}{{ analytics.status_counts.deadline|default:0 }}{% endlocalize %},
+        belumMulai: {% localize off %}{{ analytics.status_counts.belum_mulai|default:0 }}{% endlocalize %},
+        berjalan: {% localize off %}{{ analytics.status_counts.berjalan|default:0 }}{% endlocalize %}
+      };
 
-      // Highlight active filter count
-      if (filterForm) {
-        const formData = new FormData(filterForm);
-        let activeFilterCount = 0;
+  // Calculate status distribution
+  const statusData = {
+    'Selesai': statusCounts.selesai,
+    'Deadline': statusCounts.deadline,
+    'Belum Mulai': statusCounts.belumMulai,
+    'Berjalan': statusCounts.berjalan
+  };
 
-        for (let [key, value] of formData.entries()) {
-          if (value && value.trim() !== '' && key !== 'csrfmiddlewaretoken') {
-            activeFilterCount++;
+  const statusBadgeColors = [
+    getCssVar('--bs-danger', '#dc3545'),    // Selesai (match table: bg-danger)
+    getCssVar('--bs-warning', '#ffc107'),   // Deadline (match table: bg-warning)
+    getCssVar('--bs-secondary', '#6c757d'), // Belum Mulai (match table: bg-secondary)
+    getCssVar('--bs-success', '#198754')    // Berjalan (match table: bg-success)
+  ];
+
+  const chart = new Chart(ctx4, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(statusData),
+      datasets: [{
+        data: Object.values(statusData),
+        backgroundColor: statusBadgeColors,
+        borderColor: '#fff',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      ...commonOptions,
+      cutout: '60%',
+      plugins: {
+        ...commonOptions.plugins,
+        legend: {
+          position: 'bottom',
+          labels: {
+            boxWidth: 12,
+            font: { size: 10 },
+            padding: 8
           }
         }
+      }
+    }
+  });
+  registerChart(chart, chartTheme);
 
-        if (activeFilterCount > 0) {
-          const filterHeader = document.querySelector('.card-header h6');
-          if (filterHeader && !filterHeader.querySelector('.badge')) {
-            const badge = document.createElement('span');
-            badge.className = 'badge bg-primary ms-2';
-            badge.textContent = activeFilterCount;
-            filterHeader.appendChild(badge);
-          }
+  // Update summary
+  const timelineCount = statusCounts.selesai + statusCounts.deadline + statusCounts.belumMulai + statusCounts.berjalan;
+  const completionRate = analytics.total > 0
+    ? Math.round((timelineCount / analytics.total) * 100)
+    : 0;
+  document.getElementById('statusChartSummary').innerHTML =
+    `<small class="text-warning">Jadwal: <strong>${completionRate}%</strong></small>`;
+  document.getElementById('completionRate').textContent = completionRate + '%';
+    } else if (ctx4) {
+    // Empty state for Chart 4
+    const parent = ctx4.parentElement;
+    parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-tasks fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p></div>';
+  }
+
+  console.log('Charts initialized successfully!');
+  }
+
+  // Listen for the Bootstrap collapse panel to be shown
+  const chartsPanel = document.getElementById('miniChartsPanel');
+  if (chartsPanel) {
+    chartsPanel.addEventListener('shown.bs.collapse', function () {
+      console.log('Charts panel shown, initializing charts...');
+      // Small delay to ensure DOM is fully rendered
+      setTimeout(initializeCharts, 100);
+    });
+  }
+  });
+</script>
+
+<!-- FASE 2.2: Advanced Filter JavaScript -->
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // Auto-expand filter panel if any filter is active
+    const filterForm = document.getElementById('filterForm');
+    const filterPanel = document.getElementById('filterPanel');
+
+    if (filterForm && filterPanel) {
+      // Check if URL has any query parameters (excluding page)
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasActiveFilters = Array.from(urlParams.keys()).some(key =>
+        key !== 'page' && urlParams.get(key) !== ''
+      );
+
+      // Auto-expand if filters are active
+      if (hasActiveFilters) {
+        const collapseInstance = new bootstrap.Collapse(filterPanel, {
+          toggle: false
+        });
+        collapseInstance.show();
+      }
+
+      // Update toggle button icon
+      const toggleBtn = document.querySelector('[data-bs-target="#filterPanel"]');
+      if (toggleBtn) {
+        filterPanel.addEventListener('show.bs.collapse', function () {
+          toggleBtn.querySelector('i').classList.replace('fa-chevron-down', 'fa-chevron-up');
+        });
+
+        filterPanel.addEventListener('hide.bs.collapse', function () {
+          toggleBtn.querySelector('i').classList.replace('fa-chevron-up', 'fa-chevron-down');
+        });
+      }
+    }
+
+    // Optional: Save filter preferences to localStorage
+    // (Can be implemented later if needed)
+
+    // Highlight active filter count
+    if (filterForm) {
+      const formData = new FormData(filterForm);
+      let activeFilterCount = 0;
+
+      for (let [key, value] of formData.entries()) {
+        if (value && value.trim() !== '' && key !== 'csrfmiddlewaretoken') {
+          activeFilterCount++;
         }
       }
-    });
-  </script>
 
-  <script src="{% static 'dashboard/js/formset.js' %}" defer></script>
-  <script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
-  <!-- UX Enhancements JavaScript -->
-  <script src="{% static 'dashboard/js/ux-enhancements.js' %}" defer></script>
-  <!-- Resizable Columns JavaScript -->
-  <script src="{% static 'dashboard/js/resizable-columns.js' %}" defer></script>
-  <!-- Mass Edit Toggle JavaScript -->
-  <script src="{% static 'dashboard/js/mass-edit-toggle.js' %}" defer></script>
+      if (activeFilterCount > 0) {
+        const filterHeader = document.querySelector('.card-header h6');
+        if (filterHeader && !filterHeader.querySelector('.badge')) {
+          const badge = document.createElement('span');
+          badge.className = 'badge bg-primary ms-2';
+          badge.textContent = activeFilterCount;
+          filterHeader.appendChild(badge);
+        }
+      }
+    }
+  });
+</script>
+
+<script src="{% static 'dashboard/js/formset.js' %}" defer></script>
+<script src="{% static 'dashboard/js/dashboard.js' %}" defer></script>
+<!-- UX Enhancements JavaScript -->
+<script src="{% static 'dashboard/js/ux-enhancements.js' %}" defer></script>
+<!-- Resizable Columns JavaScript -->
+<script src="{% static 'dashboard/js/resizable-columns.js' %}" defer></script>
+<!-- Mass Edit Toggle JavaScript -->
+<script src="{% static 'dashboard/js/mass-edit-toggle.js' %}" defer></script>
 {% endblock %}
+<!-- prettier-ignore-end -->

@@ -1,0 +1,16 @@
+Method,Name,Error,Occurrences
+GET,/detail_project/[id]/volume-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/volume-pekerjaan/'),1
+GET,/detail_project/[id]/export-test/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/export-test/'),1
+GET,/detail_project/[id]/jadwal-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/jadwal-pekerjaan/'),3
+GET,/detail_project/[id]/harga-items/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/harga-items/'),1
+GET,/detail_project/[id]/rincian-ahsp/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-ahsp/'),5
+GET,/api/project/[id]/conversion-profiles/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/conversion-profiles/'),1
+GET,/dashboard/,HTTPError('500 Server Error: Internal Server Error for url: /dashboard/'),2
+POST,[AUTH] Login POST,CatchResponseError('login server error: 500'),72
+GET,/api/project/[id]/rekap/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/rekap/'),1
+GET,/api/project/[id]/volume/formula/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/volume/formula/'),2
+GET,/api/project/[id]/audit-trail/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/audit-trail/'),1
+GET,/detail_project/[id]/rincian-rab/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/rincian-rab/'),3
+GET,/detail_project/[id]/list-pekerjaan/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/list-pekerjaan/'),1
+GET,/api/project/[id]/tahapan/,HTTPError('500 Server Error: Internal Server Error for url: /api/project/[id]/tahapan/'),3
+GET,/detail_project/[id]/audit-trail/,HTTPError('500 Server Error: Internal Server Error for url: /detail_project/[id]/audit-trail/'),1

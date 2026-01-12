@@ -71,6 +71,7 @@ def test_rekap_includes_lain_and_buk(client, django_user_model):
         ("detail_project:export_rekap_rab_csv", ".csv"),
         ("detail_project:export_rekap_rab_pdf", ".pdf"),
         ("detail_project:export_rekap_rab_word", ".docx"),
+        ("detail_project:export_rekap_rab_xlsx", ".xlsx"),
     ]
     for view_name, ext in export_targets:
         export_url = reverse(view_name, args=[p.id])

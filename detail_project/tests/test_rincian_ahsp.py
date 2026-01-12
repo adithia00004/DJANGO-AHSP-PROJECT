@@ -25,6 +25,8 @@ from detail_project.models import (
     ProjectPricing, ProjectChangeStatus,
 )
 from referensi.models import AHSPReferensi
+from detail_project.exports.rincian_ahsp_adapter import RincianAHSPAdapter
+from detail_project.services import _populate_expanded_from_raw, expand_bundle_to_components
 
 User = get_user_model()
 
@@ -241,7 +243,7 @@ def detail_ref_job(project, pekerjaan_ref, harga_items):
 
 
 @pytest.fixture
-def bundle_ref_pekerjaan_setup(project, sub_klasifikasi, pekerjaan_custom, harga_items):
+def bundle_ref_pekerjaan_setup(project, sub_klasifikasi, pekerjaan_custom, harga_items, detail_ahsp):
     """Bundle job yang merujuk pekerjaan lain dalam project (ref_pekerjaan)."""
     bundle_job = Pekerjaan.objects.create(
         project=project,
@@ -272,19 +274,12 @@ def bundle_ref_pekerjaan_setup(project, sub_klasifikasi, pekerjaan_custom, harga
         koefisien=Decimal('1.000000'),
         ref_pekerjaan=pekerjaan_custom
     )
-    expansion = DetailAHSPExpanded.objects.create(
+    _populate_expanded_from_raw(project, bundle_job)
+    expansion = DetailAHSPExpanded.objects.filter(
         project=project,
         pekerjaan=bundle_job,
-        source_detail=detail,
-        harga_item=harga_items[0],
-        kategori=harga_items[0].kategori,
-        kode=harga_items[0].kode_item,
-        uraian=harga_items[0].uraian,
-        satuan=harga_items[0].satuan,
-        koefisien=Decimal('1.000000'),
-        source_bundle_kode=detail.kode,
-        expansion_depth=1
-    )
+        source_detail=detail
+    ).first()
     return {
         "bundle_job": bundle_job,
         "detail": detail,
@@ -419,7 +414,7 @@ class TestAPIGetDetailAHSP:
         assert Decimal(tk_item['harga_satuan'].replace(',', '.')) == Decimal('150000.00')
 
     def test_get_detail_ahsp_bundle_includes_expanded_price(
-        self, client, user, project, sub_klasifikasi, pekerjaan_custom, harga_items
+        self, client, user, project, sub_klasifikasi, pekerjaan_custom, harga_items, detail_ahsp
     ):
         """Bundle (LAIN) rows should surface harga_satuan derived from expanded components"""
         bundle_job = Pekerjaan.objects.create(
@@ -454,19 +449,34 @@ class TestAPIGetDetailAHSP:
             ref_pekerjaan=pekerjaan_custom
         )
 
-        DetailAHSPExpanded.objects.create(
-            project=project,
-            pekerjaan=bundle_job,
-            source_detail=bundle_detail,
-            harga_item=harga_items[0],
-            kategori=harga_items[0].kategori,
-            kode=harga_items[0].kode_item,
-            uraian=harga_items[0].uraian,
-            satuan=harga_items[0].satuan,
-            koefisien=Decimal('1.000000'),
-            source_bundle_kode=bundle_detail.kode,
-            expansion_depth=1
+        _populate_expanded_from_raw(project, bundle_job)
+        detail_data = {
+            'kategori': bundle_detail.kategori,
+            'kode': bundle_detail.kode,
+            'koefisien': bundle_detail.koefisien,
+            'ref_pekerjaan_id': pekerjaan_custom.id,
+        }
+        comps = expand_bundle_to_components(detail_data, project)
+        assert len(comps) == 2, f"Components: {[(c['kategori'], c['koefisien']) for c in comps]}"
+        assert all(c.get('bundle_multiplier') == bundle_detail.koefisien for c in comps)
+        detail_rows = list(
+            DetailAHSPProject.objects.filter(
+                project=project,
+                pekerjaan=pekerjaan_custom
+            ).values_list('kategori', 'koefisien')
         )
+        assert len(detail_rows) == 2, f"Detail rows: {detail_rows}"
+        assert sorted((c['kategori'], c['koefisien']) for c in comps) == sorted(detail_rows)
+
+        expanded_rows = list(
+            DetailAHSPExpanded.objects.filter(
+                project=project,
+                pekerjaan=bundle_job,
+                source_detail=bundle_detail
+            ).values_list('kategori', 'koefisien', 'harga_item__harga_satuan')
+        )
+        assert len(expanded_rows) == 2, f"Expanded rows: {expanded_rows}"
+        assert sorted((row[0], row[1]) for row in expanded_rows) == sorted(detail_rows)
 
         client.force_login(user)
         url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
@@ -475,7 +485,11 @@ class TestAPIGetDetailAHSP:
         assert response.status_code == 200
         data = response.json()
         lain_item = next(item for item in data['items'] if item['kategori'] == 'LAIN')
-        assert Decimal(lain_item['harga_satuan'].replace(',', '.')) == Decimal('150000.00')
+        expected_total = sum(
+            det.koefisien * (det.harga_item.harga_satuan or Decimal('0'))
+            for det in DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan_custom)
+        )
+        assert Decimal(lain_item['harga_satuan'].replace(',', '.')) == expected_total
 
     def test_bundle_ref_ahsp_price_matches_reference(
         self, client, user, project, sub_klasifikasi,
@@ -556,15 +570,17 @@ class TestAPIGetDetailAHSP:
         tar_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, pekerjaan_custom.id])
         tar_response = client.get(tar_url)
         assert tar_response.status_code == 200
-        target_item = next(item for item in tar_response.json()['items'] if item['kategori'] == 'TK')
-        target_price = Decimal(target_item['harga_satuan'].replace(',', '.'))
+        target_total = sum(
+            det.koefisien * (det.harga_item.harga_satuan or Decimal('0'))
+            for det in DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan_custom)
+        )
 
         bundle_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
         bundle_response = client.get(bundle_url)
         bundle_price = Decimal(
             next(item for item in bundle_response.json()['items'] if item['kategori'] == 'LAIN')['harga_satuan'].replace(',', '.')
         )
-        assert bundle_price == target_price
+        assert bundle_price == target_total
 
     def test_bundle_price_remains_constant_when_koef_changes(
         self, client, user, project, pekerjaan_custom,
@@ -578,11 +594,13 @@ class TestAPIGetDetailAHSP:
         # Naikkan koefisien bundle untuk mensimulasikan kasus user
         detail.koefisien = Decimal('10.000000')
         detail.save(update_fields=['koefisien'])
+        _populate_expanded_from_raw(project, bundle_job)
 
         client.force_login(user)
         tar_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, pekerjaan_custom.id])
-        target_price = Decimal(
-            next(item for item in client.get(tar_url).json()['items'] if item['kategori'] == 'TK')['harga_satuan'].replace(',', '.')
+        target_total = sum(
+            det.koefisien * (det.harga_item.harga_satuan or Decimal('0'))
+            for det in DetailAHSPProject.objects.filter(project=project, pekerjaan=pekerjaan_custom)
         )
 
         bundle_url = reverse('detail_project:api_get_detail_ahsp', args=[project.id, bundle_job.id])
@@ -591,7 +609,7 @@ class TestAPIGetDetailAHSP:
         bundle_item = next(item for item in bundle_response.json()['items'] if item['kategori'] == 'LAIN')
         bundle_price = Decimal(bundle_item['harga_satuan'].replace(',', '.'))
 
-        assert bundle_price == target_price
+        assert bundle_price == target_total
 
     def test_bundle_ref_pekerjaan_without_expanded_returns_zero(
         self, client, user, project, bundle_ref_pekerjaan_no_expanded
@@ -889,6 +907,48 @@ class TestRincianAHSPExport:
 
         assert response.status_code == 302
         assert '/login/' in response.url
+
+    def test_export_bundle_rows_use_expanded_totals(
+        self,
+        project,
+        bundle_ref_pekerjaan_setup,
+        detail_ahsp,
+    ):
+        """Bundle pekerjaan should render harga/jumlah using expanded totals."""
+        adapter = RincianAHSPAdapter(project)
+        data = adapter.get_export_data()
+
+        bundle_job = bundle_ref_pekerjaan_setup["bundle_job"]
+        bundle_code = bundle_job.snapshot_kode or bundle_job.snapshot_uraian
+
+        section = next(
+            (sec for sec in data['sections'] if sec['pekerjaan']['kode'] == bundle_code),
+            None,
+        )
+        assert section is not None, "Bundle pekerjaan missing from export sections"
+
+        lain_group = next(
+            (grp for grp in section['groups'] if grp['key'] == 'LAIN'),
+            None,
+        )
+        assert lain_group is not None, "LAIN group missing in bundle export section"
+        assert len(lain_group['rows']) == 1
+
+        row = lain_group['rows'][0]
+        target_job = bundle_ref_pekerjaan_setup["detail"].ref_pekerjaan
+        expected_total = sum(
+            det.koefisien * (det.harga_item.harga_satuan or Decimal('0'))
+            for det in DetailAHSPProject.objects.filter(project=project, pekerjaan=target_job)
+        )
+        expected_price_str = adapter._format_number(expected_total, 0)
+        expected_jumlah_str = adapter._format_number(
+            expected_total * bundle_ref_pekerjaan_setup["detail"].koefisien,
+            0
+        )
+        assert row[5] == expected_price_str
+        assert row[6] == expected_jumlah_str
+        assert section['totals']['E'] == expected_jumlah_str
+        assert section['totals']['G'] != '0'
 
 
 # ============================================================================

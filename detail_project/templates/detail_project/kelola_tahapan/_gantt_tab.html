@@ -1,17 +1,31 @@
-{# Gantt View Tab Content #}
-<div class="tab-pane fade" id="gantt-view" role="tabpanel">
-  <div class="gantt-container">
-    <div class="gantt-chart-panel">
-      <div class="gantt-toolbar mb-3">
-        <div class="btn-group btn-group-sm" role="group">
-          <button type="button" class="btn btn-outline-secondary" data-gantt-view="Day">Day</button>
-          <button type="button" class="btn btn-outline-secondary active" data-gantt-view="Week">Week</button>
-          <button type="button" class="btn btn-outline-secondary" data-gantt-view="Month">Month</button>
-        </div>
+{# Gantt View Tab Content - COMPLETELY REDESIGNED #}
+<div class="tab-pane fade" id="gantt-view" role="tabpanel" aria-labelledby="gantt-tab">
+  {#
+    NEW DESIGN CONCEPT:
+    - Modern split-view layout (tree + timeline)
+    - Canvas-based rendering for performance
+    - Hierarchical tree with expand/collapse
+    - Dual-bar visualization (planned vs actual)
+    - NO resemblance to old Frappe Gantt design
+  #}
+
+  {# Main Gantt Container - Always rendered, styled by CSS #}
+  <div id="gantt-redesign-container" class="gantt-redesign-wrapper">
+    {# Container will be populated by JavaScript #}
+    {# Initial loading state #}
+    <div class="gantt-initial-loader">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading Gantt Chart...</span>
       </div>
-      <div class="gantt-chart-wrapper">
-        <div id="gantt-chart" class="gantt-chart-canvas"></div>
-      </div>
+      <p class="mt-3 text-muted">Initializing Gantt Chart...</p>
     </div>
+  </div>
+
+  {#
+    OLD Frappe Gantt - COMPLETELY HIDDEN
+    Kept for fallback only, never shown to user
+  #}
+  <div style="display: none !important; visibility: hidden !important;">
+    <div id="gantt-chart" class="gantt-chart-canvas"></div>
   </div>
 </div>

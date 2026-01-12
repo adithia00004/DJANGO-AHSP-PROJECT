@@ -3,7 +3,8 @@ from django.contrib import admin
 from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     HargaItemProject, DetailAHSPProject, DetailAHSPExpanded,
-    TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
+    TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly,
+    ItemConversionProfile
 )
 
 @admin.register(Klasifikasi)
@@ -27,7 +28,7 @@ class PekerjaanAdmin(admin.ModelAdmin):
     list_display = (
         "id", "project", "sub_klasifikasi", "source_type",
         "snapshot_kode", "snapshot_uraian", "snapshot_satuan",
-        "auto_load_rincian", "detail_ready", "ordering_index",
+        "budgeted_cost", "auto_load_rincian", "detail_ready", "ordering_index",
     )
     list_filter = ("project", "source_type", "auto_load_rincian", "detail_ready")
     search_fields = ("snapshot_kode", "snapshot_uraian", "ref__kode_ahsp", "ref__nama_ahsp")
@@ -49,6 +50,15 @@ class HargaItemProjectAdmin(admin.ModelAdmin):
     search_fields = ("kode_item", "uraian", "project__nama")
     ordering = ("project", "kode_item")
     raw_id_fields = ("project",)
+
+
+@admin.register(ItemConversionProfile)
+class ItemConversionProfileAdmin(admin.ModelAdmin):
+    list_display = ("id", "harga_item", "market_unit", "market_price", "factor_to_base", "method")
+    list_filter = ("harga_item__project", "method")
+    search_fields = ("harga_item__kode_item", "harga_item__uraian", "market_unit")
+    ordering = ("harga_item__project", "harga_item__kode_item")
+    raw_id_fields = ("harga_item",)
 
 @admin.register(DetailAHSPProject)
 class DetailAHSPProjectAdmin(admin.ModelAdmin):
@@ -96,13 +106,13 @@ class PekerjaanTahapanAdmin(admin.ModelAdmin):
 @admin.register(PekerjaanProgressWeekly)
 class PekerjaanProgressWeeklyAdmin(admin.ModelAdmin):
     list_display = ("id", "pekerjaan", "project", "week_number", "week_start_date",
-                    "week_end_date", "proportion", "created_at", "updated_at")
+                    "week_end_date", "planned_proportion", "actual_proportion", "actual_cost", "created_at", "updated_at")
     list_filter = ("project", "week_number")
     search_fields = ("pekerjaan__snapshot_kode", "pekerjaan__snapshot_uraian",
                      "project__nama", "notes")
     ordering = ("project", "pekerjaan__ordering_index", "week_number")
     raw_id_fields = ("pekerjaan", "project")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "actual_updated_at")
     date_hierarchy = "week_start_date"
 
     fieldsets = (
@@ -112,11 +122,12 @@ class PekerjaanProgressWeeklyAdmin(admin.ModelAdmin):
         ("Week Info", {
             "fields": ("week_number", "week_start_date", "week_end_date")
         }),
-        ("Progress Data", {
-            "fields": ("proportion", "notes")
+        ("Progress Data (Phase 2E.1)", {
+            "fields": ("planned_proportion", "actual_proportion", "actual_cost", "notes"),
+            "description": "Dual fields: planned_proportion (plan) dan actual_proportion (realisasi)."
         }),
         ("Metadata", {
-            "fields": ("created_at", "updated_at"),
+            "fields": ("created_at", "updated_at", "actual_updated_at"),
             "classes": ("collapse",)
         }),
     )

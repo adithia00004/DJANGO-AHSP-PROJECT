@@ -9,6 +9,7 @@ Tests cover:
 5. Visual feedback scenarios
 """
 
+import json
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -193,7 +194,7 @@ class TestProgressValidation:
         # Verify saved to canonical storage
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert weekly_progress.count() == 2
-        total = sum(float(wp.proportion) for wp in weekly_progress)
+        total = sum(float(wp.planned_proportion) for wp in weekly_progress)
         assert total == 100.0
 
     def test_invalid_progress_over_100_percent(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
@@ -244,7 +245,7 @@ class TestProgressValidation:
         # Verify saved to canonical storage
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan)
         assert weekly_progress.count() == 2
-        total = sum(float(wp.proportion) for wp in weekly_progress)
+        total = sum(float(wp.planned_proportion) for wp in weekly_progress)
         assert total == 70.0
 
 
@@ -457,7 +458,7 @@ class TestAPIV2Endpoints:
             week_number=1,
             week_start_date=date(2025, 10, 26),
             week_end_date=date(2025, 10, 26),
-            proportion=Decimal('50.00')
+            planned_proportion=Decimal('50.00')
         )
         PekerjaanProgressWeekly.objects.create(
             pekerjaan=test_pekerjaan,
@@ -465,7 +466,7 @@ class TestAPIV2Endpoints:
             week_number=2,
             week_start_date=date(2025, 10, 27),
             week_end_date=date(2025, 11, 2),
-            proportion=Decimal('50.00')
+            planned_proportion=Decimal('50.00')
         )
 
         assert PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).count() == 2
@@ -476,9 +477,15 @@ class TestAPIV2Endpoints:
         assert response.status_code == 200
         data = response.json()
         assert data['ok'] is True
-        assert data['deleted_count'] == 2
+        assert data.get('mode') == 'planned'
+        assert data.get('updated_count') == 2
 
-        assert PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).count() == 0
+        weekly_after = list(
+            PekerjaanProgressWeekly.objects.filter(project=project_sunday_start).order_by('week_number')
+        )
+        assert len(weekly_after) == 2
+        assert all(wp.planned_proportion == Decimal('0.00') for wp in weekly_after)
+        assert all(wp.planned_proportion == Decimal('0.00') for wp in weekly_after)
 
     def test_assign_weekly_persists_distinct_weeks(self, client, project_sunday_start, test_pekerjaan):
         """
@@ -519,7 +526,7 @@ class TestAPIV2Endpoints:
             ).order_by('week_number')
         )
         assert len(weekly) == 2
-        assert [float(w.proportion) for w in weekly] == [20.0, 35.0]
+        assert [float(w.planned_proportion) for w in weekly] == [20.0, 35.0]
 
         # Legacy view layer must mirror the same separation
         tahapan_weekly = list(
@@ -584,8 +591,8 @@ class TestIntegrationE2E:
         # Verify canonical storage
         weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert weekly_progress.count() == 2
-        assert float(weekly_progress[0].proportion) == 25.0
-        assert float(weekly_progress[1].proportion) == 75.0
+        assert float(weekly_progress[0].planned_proportion) == 25.0
+        assert float(weekly_progress[1].planned_proportion) == 75.0
 
         # Step 3: Switch to daily mode
         response = client.post(
@@ -606,10 +613,10 @@ class TestIntegrationE2E:
         # Step 5: Verify data preserved (lossless)
         weekly_progress_after = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
         assert weekly_progress_after.count() == 2
-        assert float(weekly_progress_after[0].proportion) == 25.0
-        assert float(weekly_progress_after[1].proportion) == 75.0
+        assert float(weekly_progress_after[0].planned_proportion) == 25.0
+        assert float(weekly_progress_after[1].planned_proportion) == 75.0
 
-        total = sum(float(wp.proportion) for wp in weekly_progress_after)
+        total = sum(float(wp.planned_proportion) for wp in weekly_progress_after)
         assert total == 100.0
 
     def test_validation_error_does_not_save(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
@@ -631,5 +638,121 @@ class TestIntegrationE2E:
         assert data['ok'] is False
         assert 'validation_errors' in data
 
+    def test_validation_includes_existing_progress(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
+        """
+        Existing weekly progress + new payload > 100% must be rejected even if payload total <= 100%.
+        Ensures backend re-checks canonical totals instead of hanya melihat delta baru.
+        """
+        client.force_login(project_sunday_start.owner)
+
+        # Seed existing week with 70%
+        week_start = project_sunday_start.tanggal_mulai
+        week_end = week_start + timedelta(days=6)
+        PekerjaanProgressWeekly.objects.create(
+            pekerjaan=test_pekerjaan,
+            project=project_sunday_start,
+            week_number=1,
+            week_start_date=week_start,
+            week_end_date=week_end,
+            planned_proportion=Decimal('70.00')
+        )
+
+        url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 40.0},
+            ]
+        }
+        response = client.post(url, payload, content_type='application/json')
+        assert response.status_code == 400
+        data = response.json()
+        assert data['ok'] is False
+        assert 'validation_errors' in data
+        assert any(err.get('pekerjaan_id') == test_pekerjaan.id for err in data['validation_errors'])
+
+        # Ensure DB rolled back (only original row exists)
+        remaining = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).order_by('week_number')
+        assert remaining.count() == 1
+        assert float(remaining[0].planned_proportion) == 70.0
+
+    def test_zero_progress_allowed(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
+        """Nilai 0% diperbolehkan untuk minggu tertentu selama total <= 100%."""
+        client.force_login(project_sunday_start.owner)
+
+        url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 1, 'proportion': 0},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 75},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 3, 'proportion': 25},
+            ]
+        }
+
+        response = client.post(url, payload, content_type='application/json')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['ok'] is True
+        assert data['created_count'] == 3
+
+        weekly_progress = PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan)
+        assert weekly_progress.count() == 3
+        totals = {wp.week_number: float(wp.planned_proportion) for wp in weekly_progress}
+        assert totals[1] == 0.0
+        assert totals[2] == 75.0
+        assert totals[3] == 25.0
+
+    def test_assignments_endpoint_returns_saved_progress(self, client, project_sunday_start, test_pekerjaan, weekly_tahapan):
+        """
+        Round-trip guard: setelah menyimpan progress via API v2,
+        endpoint GET assignments harus mengembalikan nilai yang sama
+        agar frontend bisa memuat ulang progress.
+        """
+        client.force_login(project_sunday_start.owner)
+
+        save_url = reverse('detail_project:api_v2_assign_weekly', kwargs={'project_id': project_sunday_start.id})
+        payload = {
+            'assignments': [
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 1, 'proportion': 20.0},
+                {'pekerjaan_id': test_pekerjaan.id, 'week_number': 2, 'proportion': 30.0},
+            ]
+        }
+
+        save_response = client.post(save_url, payload, content_type='application/json')
+        assert save_response.status_code == 200
+        save_data = save_response.json()
+        assert save_data['ok'] is True
+        assert save_data['created_count'] == 2
+
+        list_url = reverse('detail_project:api_v2_get_project_assignments', kwargs={'project_id': project_sunday_start.id})
+        list_response = client.get(list_url)
+        assert list_response.status_code == 200
+
+        list_data = list_response.json()
+        assert list_data['ok'] is True
+        assert list_data['count'] == 2
+        assert len(list_data['assignments']) == 2
+
+        weeks = {(item['pekerjaan_id'], item['week_number']): item['proportion'] for item in list_data['assignments']}
+        assert weeks[(test_pekerjaan.id, 1)] == 20.0
+        assert weeks[(test_pekerjaan.id, 2)] == 30.0
+
         # Clean up if implementation inserted rows before returning 400
         PekerjaanProgressWeekly.objects.filter(pekerjaan=test_pekerjaan).delete()
+
+    def test_update_week_boundary_endpoint(self, client, project_sunday_start):
+        """Persist week start/end day per project dan normalisasi agar selalu 7 hari."""
+        client.force_login(project_sunday_start.owner)
+
+        url = reverse('detail_project:api_update_week_boundaries', kwargs={'project_id': project_sunday_start.id})
+        payload = {'week_start_day': 5, 'week_end_day': 3}  # sengaja tidak selisih 6 hari
+        response = client.post(url, data=json.dumps(payload), content_type='application/json')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['ok'] is True
+        assert data['week_start_day'] == 5
+        assert data['week_end_day'] == (5 + 6) % 7
+
+        project_sunday_start.refresh_from_db()
+        assert project_sunday_start.week_start_day == 5
+        assert project_sunday_start.week_end_day == (5 + 6) % 7

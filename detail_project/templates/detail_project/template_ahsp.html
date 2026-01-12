@@ -1,114 +1,85 @@
 ﻿{% extends "detail_project/base_detail.html" %}
 {% load static i18n %}
 {% block dp_topbar_extra %}
-  {% include "detail_project/_sync_indicator.html" with scope="template" watch="harga" change_status=change_status %}
+{% include "detail_project/_sync_led.html" with scope="template" watch="pekerjaan" change_status=change_status %}
 {% endblock %}
 {% block title %}Template AHSP - {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="template_ahsp"{% endblock %}
 
 {% block detail_css %}
-  <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp.css' %}">
 {% endblock %}
 
 {% block extra_css %}
-  {{ block.super }}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
-  <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
-  <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
+{{ block.super }}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+<link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
 {% endblock %}
 
 {% block extra_js_head %}
-  {{ block.super }}
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.full.min.js"></script>
+{{ block.super }}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.full.min.js"></script>
 {% endblock %}
 
 {% block dp_content %}
-<div id="ta-app"
-     class="ta-app"
-     data-project-id="{{ project.id }}"
-     data-locale="id-ID"
-     data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
-     data-endpoint-save-pattern="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"
-     data-endpoint-reset-pattern="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
-     data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
-     data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
-     data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
+<div id="ta-app" class="ta-app" data-project-id="{{ project.id }}" data-locale="id-ID"
+  data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
+  data-endpoint-save-pattern="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"
+  data-endpoint-reset-pattern="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
+  data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
+  data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
+  data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
 
-  <!-- Header -->
-  <header class="ta-page-header">
-    <h1 class="ta-title">Template AHSP</h1>
-    <p class="ta-subtitle">Kelola komponen AHSP per pekerjaan. (Tanpa kolom harga)</p>
-  </header>
 
-  <!-- Toolbar (sticky, konsisten SSOT) -->
-  <div id="ta-toolbar" class="ta-toolbar dp-toolbar d-flex align-items-center gap-2 flex-wrap mb-3 dp-sticky-topbar dp-layer-toolbar ux-toolbar-inputs" role="toolbar" aria-label="Toolbar Template AHSP">
-    <!-- Searchbar (adapt lp-toolbar-search) -->
-    <div class="ta-combobox ta-searchbar flex-grow-1" role="search">
-      <div class="input-group dp-toolbar-search ta-toolbar-search">
-        <span class="input-group-text" id="ta-search-addon">
-          <i class="bi bi-search" aria-hidden="true"></i>
-        </span>
-        <input id="ta-job-search"
-               type="search"
-               class="form-control ux-focusable"
-               placeholder="{% trans 'Cari pekerjaan…' %}"
-               autocomplete="off"
-               aria-label="{% trans 'Cari pekerjaan' %}"
-               aria-describedby="ta-search-addon">
-        <button id="ta-toolbar-find"
-                class="btn btn-primary dp-btn dp-btn-sm btn-neon ms-1"
-                type="button"
-                title="{% trans 'Cari' %}">
-          <i class="bi bi-search"></i> {% trans "Cari" %}
-        </button>
-      </div>
+
+  <!-- Toolbar (simplified, compact) -->
+  <div id="ta-toolbar"
+    class="ta-toolbar dp-toolbar d-flex align-items-center gap-2 mb-2 dp-sticky-topbar dp-layer-toolbar" role="toolbar"
+    aria-label="Toolbar Template AHSP">
+    <!-- Search -->
+    <div class="input-group input-group-sm flex-grow-1" style="max-width: 320px;">
+      <span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input id="ta-job-search" type="search" class="form-control" placeholder="Cari pekerjaan..." autocomplete="off">
     </div>
-
-
-    {# Hint keyboard dihapus sesuai permintaan #}
-
-    <!-- Export CSV only (PDF/Word handled in Volume page) -->
-    <button type="button" class="btn btn-outline-primary dp-btn dp-btn-sm" id="ta-btn-export" aria-label="Export CSV">
-      <i class="bi bi-download" aria-hidden="true"></i>
-      <span class="d-none d-sm-inline">Export CSV</span>
-    </button>
 
     <!-- Dirty indicator -->
-    <div class="ta-dirty-indicator d-inline-flex align-items-center small text-muted" aria-live="polite">
-      <span id="ta-dirty-dot" class="dot me-1" hidden>�</span>
-      <span id="ta-dirty-text" hidden>Belum disimpan</span>
+    <div class="ta-dirty-indicator d-inline-flex align-items-center small" aria-live="polite">
+      <span id="ta-dirty-dot" class="text-warning me-1" hidden>●</span>
+      <span id="ta-dirty-text" class="text-warning small" hidden>Belum disimpan</span>
     </div>
 
-    <button type="button" class="btn btn-outline-secondary dp-btn dp-btn-sm" data-bs-toggle="modal" data-bs-target="#taHelpModal" aria-label="Buka bantuan">
-      <i class="bi bi-question-circle"></i>
-      <span class="d-none d-sm-inline">Bantuan</span>
-    </button>
+    <div class="ms-auto d-flex align-items-center gap-1">
+      <!-- Export CSV -->
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="ta-btn-export" title="Export CSV">
+        <i class="bi bi-filetype-csv"></i>
+      </button>
 
-    <!-- Reload (force refresh dari server) -->
-    <button id="ta-btn-reload" class="btn btn-outline-primary dp-btn dp-btn-sm d-inline-flex align-items-center gap-2" type="button" title="Muat ulang data terbaru dari server" disabled>
-      <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
-      <span class="d-none d-sm-inline">Reload</span>
-    </button>
+      <!-- Export JSON -->
+      <a class="btn btn-outline-primary btn-sm" id="ta-btn-export-json"
+        href="{% url 'detail_project:export_template_ahsp_json' project.id %}" title="Export JSON (semua pekerjaan)"
+        download>
+        <i class="bi bi-filetype-json"></i>
+      </a>
 
-    <!-- Simpan -->
-    <button id="ta-btn-save" class="btn btn-success dp-btn dp-btn-sm d-inline-flex align-items-center gap-2" type="button" disabled>
-      <span class="spinner-border spinner-border-sm" id="ta-btn-save-spin" role="status" aria-hidden="true" hidden></span>
-      <i class="bi bi-save" aria-hidden="true"></i>
-      <span class="d-none d-sm-inline">Simpan</span>
-    </button>
-  </div>
+      <!-- Help -->
+      <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
+        data-bs-target="#taHelpModal" title="Bantuan">
+        <i class="bi bi-question-circle"></i>
+      </button>
 
-  <!-- P2 FIX: Passive warning banner - no invasive blocker -->
-  <div id="ta-sync-banner" class="ta-sync-banner alert alert-info d-flex align-items-center gap-3 d-none" role="status" aria-live="polite">
-    <div class="ta-sync-banner__icon"><i class="bi bi-info-circle"></i></div>
-    <div class="ta-sync-banner__content">
-      <div class="fw-semibold">Ada pembaruan terbaru</div>
-      <div id="ta-sync-banner-text" class="small text-muted">Beberapa pekerjaan memiliki data terbaru. Data akan dimuat otomatis saat Anda membukanya.</div>
-    </div>
-    <div class="ms-auto">
-      <button type="button" class="btn btn-sm btn-primary" id="ta-banner-reload">
-        <i class="bi bi-arrow-clockwise me-1"></i>Muat semua sekarang
+      <!-- Reload -->
+      <button id="ta-btn-reload" class="btn btn-outline-primary btn-sm" type="button" title="Reload data" disabled>
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+
+      <!-- Save -->
+      <button id="ta-btn-save" class="btn btn-success btn-sm d-inline-flex align-items-center gap-1" type="button"
+        disabled>
+        <span class="spinner-border spinner-border-sm" id="ta-btn-save-spin" role="status" hidden></span>
+        <i class="bi bi-save"></i>
+        <span class="d-none d-sm-inline">Simpan</span>
       </button>
     </div>
   </div>
@@ -116,44 +87,83 @@
   <div class="ta-body">
     <!-- Sidebar pekerjaan -->
     <aside class="ta-sidebar" aria-label="Daftar pekerjaan">
+      <!-- Filter Dropdown -->
+      <div class="ta-filter-header d-flex align-items-center gap-2 mb-2 pb-2 border-bottom">
+        <span class="small fw-semibold text-body-secondary">Pekerjaan</span>
+        <span class="badge bg-secondary" id="ta-count-visible">{{ pekerjaan|length }}</span>
+
+        <!-- Dropdown Filter -->
+        <div class="dropdown ms-auto">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+            data-bs-auto-close="outside" aria-expanded="false">
+            <i class="bi bi-funnel"></i> Filter
+          </button>
+          <div class="dropdown-menu dropdown-menu-end p-2" style="min-width: 160px;">
+            <div class="form-check">
+              <input class="form-check-input ta-filter-check" type="checkbox" value="ref" id="ta-check-ref" checked>
+              <label class="form-check-label small" for="ta-check-ref">
+                <span class="badge bg-info me-1">REF</span> Referensi <span class="text-muted">({{ count_ref|default:0
+                  }})</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input ta-filter-check" type="checkbox" value="ref_modified" id="ta-check-mod"
+                checked>
+              <label class="form-check-label small" for="ta-check-mod">
+                <span class="badge bg-warning text-dark me-1">MOD</span> Modified <span class="text-muted">({{
+                  count_mod|default:0 }})</span>
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input ta-filter-check" type="checkbox" value="custom" id="ta-check-cus" checked>
+              <label class="form-check-label small" for="ta-check-cus">
+                <span class="badge bg-success me-1">CUS</span> Custom <span class="text-muted">({{
+                  count_custom|default:0 }})</span>
+              </label>
+            </div>
+            <hr class="my-2">
+            <button type="button" class="btn btn-sm btn-link p-0" id="ta-filter-reset">Reset filter</button>
+          </div>
+        </div>
+      </div>
       <ul id="ta-job-list" class="ta-job-list">
         {% for p in pekerjaan %}
-          <li class="ta-job-item"
-              tabindex="0"
-              role="button"
-              data-pekerjaan-id="{{ p.id }}"
-              data-source-type="{{ p.source_type }}">
-            <div class="primary">
-              <span class="kode">{{ p.snapshot_kode|default:"-" }}</span>
-              <span class="uraian">{{ p.snapshot_uraian }}</span>
-            </div>
-            <div class="meta">
-              <span class="satuan">{{ p.snapshot_satuan }}</span>
-              {% if p.source_type == 'ref' %}
-                <span class="ux-badge-ref mono">REF</span>
-              {% elif p.source_type == 'ref_modified' %}
-                <span class="ux-badge-mod mono">MOD</span>
-              {% elif p.source_type == 'custom' %}
-                <span class="ux-badge-cus mono">CUS</span>
-              {% endif %}
-            </div>
-          </li>
+        <li class="ta-job-item" tabindex="0" role="button" data-pekerjaan-id="{{ p.id }}"
+          data-source-type="{{ p.source_type }}">
+          <div class="primary">
+            <span class="kode">{{ p.snapshot_kode|default:"-" }}</span>
+            <span class="uraian">{{ p.snapshot_uraian }}</span>
+          </div>
+          <div class="meta">
+            <span class="satuan">{{ p.snapshot_satuan }}</span>
+            {% if p.source_type == 'ref' %}
+            <span class="ux-badge-ref mono">REF</span>
+            {% elif p.source_type == 'ref_modified' %}
+            <span class="ux-badge-mod mono">MOD</span>
+            {% elif p.source_type == 'custom' %}
+            <span class="ux-badge-cus mono">CUS</span>
+            {% endif %}
+          </div>
+        </li>
         {% empty %}
-          <li class="ta-empty">Belum ada pekerjaan yang bisa ditampilkan.</li>
+        <li class="ta-empty">Belum ada pekerjaan yang bisa ditampilkan.</li>
         {% endfor %}
       </ul>
     </aside>
 
     <!-- Resizer -->
-    <div id="ta-resizer" class="ux-resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize panel"></div>
+    <div id="ta-resizer" class="ux-resizer" role="separator" aria-orientation="vertical" tabindex="0"
+      aria-label="Resize panel"></div>
 
     <!-- Panel editor -->
     <main class="ta-editor" aria-label="Editor Template AHSP">
       <!-- P2 FIX: Blocker hidden by default - auto-reload handles stale data seamlessly -->
-      <div id="ta-editor-blocker" class="ta-editor-blocker d-none" role="alert" aria-live="assertive" style="display: none !important;">
+      <div id="ta-editor-blocker" class="ta-editor-blocker d-none" role="alert" aria-live="assertive"
+        style="display: none !important;">
         <div class="ta-editor-blocker__card">
           <h3>Data perlu dimuat ulang</h3>
-          <p class="small text-muted mb-3">Sumber pekerjaan ini baru saja berubah. Muat ulang untuk mengambil data terbaru sebelum melanjutkan pengeditan.</p>
+          <p class="small text-muted mb-3">Sumber pekerjaan ini baru saja berubah. Muat ulang untuk mengambil data
+            terbaru sebelum melanjutkan pengeditan.</p>
           <button type="button" class="btn btn-primary btn-sm" id="ta-editor-reload">
             <i class="bi bi-arrow-clockwise me-1"></i>Muat ulang data
           </button>
@@ -185,11 +195,14 @@
         <header class="ta-seg-header">
           <h2>Tenaga Kerja</h2>
           <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen TK">
-            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK">
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button"
+              data-target-seg="TK">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="TK" disabled aria-label="Hapus baris terpilih">
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="TK">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
+              type="button" data-target-seg="TK" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count"
+                  data-for="TK">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -212,7 +225,9 @@
               </tr>
             </thead>
             <tbody id="seg-TK-body">
-              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty">
+                <td colspan="5">Belum ada item.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -223,11 +238,14 @@
         <header class="ta-seg-header">
           <h2>Bahan</h2>
           <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen BHN">
-            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN">
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button"
+              data-target-seg="BHN">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="BHN" disabled aria-label="Hapus baris terpilih">
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="BHN">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
+              type="button" data-target-seg="BHN" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count"
+                  data-for="BHN">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -250,7 +268,9 @@
               </tr>
             </thead>
             <tbody id="seg-BHN-body">
-              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty">
+                <td colspan="5">Belum ada item.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -261,11 +281,14 @@
         <header class="ta-seg-header">
           <h2>Peralatan</h2>
           <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen ALT">
-            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT">
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button"
+              data-target-seg="ALT">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="ALT" disabled aria-label="Hapus baris terpilih">
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="ALT">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
+              type="button" data-target-seg="ALT" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count"
+                  data-for="ALT">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -288,7 +311,9 @@
               </tr>
             </thead>
             <tbody id="seg-ALT-body">
-              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty">
+                <td colspan="5">Belum ada item.</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -299,11 +324,14 @@
         <header class="ta-seg-header">
           <h2>Pekerjaan Gabungan</h2>
           <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen LAIN">
-            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN">
+            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button"
+              data-target-seg="LAIN">
               <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
             </button>
-            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1" type="button" data-target-seg="LAIN" disabled aria-label="Hapus baris terpilih">
-              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count" data-for="LAIN">0</span> baris</span>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
+              type="button" data-target-seg="LAIN" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count"
+                  data-for="LAIN">0</span> baris</span>
             </button>
           </div>
         </header>
@@ -326,25 +354,37 @@
               </tr>
             </thead>
             <tbody id="seg-LAIN-body">
-              <tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>
+              <tr class="ta-empty">
+                <td colspan="5">Belum ada item.</td>
+              </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <!-- RESET pindah ke bawah (dekat footer) -->
+      <!-- RESET & Info area -->
       <div class="ta-reset-area">
-        <button id="ta-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>
-          Reset ke Referensi
-        </button>
-        <div class="hint small text-muted mt-1">
-          Hanya muncul untuk pekerjaan sumber <strong>MOD</strong> (ref_modified).
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-info-circle text-info"></i>
+          <span class="small text-body-secondary">Pekerjaan Gabungan: Komponen LAIN dapat mereferensi pekerjaan lain
+            (bundle).</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button id="ta-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>
+            <i class="bi bi-arrow-counterclockwise me-1"></i>Reset ke Referensi
+          </button>
+          <span class="hint small text-muted" id="ta-reset-hint" hidden>
+            <i class="bi bi-exclamation-triangle text-warning me-1"></i>Hanya tersedia untuk pekerjaan
+            <strong>MOD</strong>.
+          </span>
         </div>
       </div>
 
       <footer class="ta-editor-footer">
         <div id="ta-row-stats">0 baris</div>
-        <div class="hint">Tip: <kbd>Ctrl/⌘+S</kbd> Simpan; <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> pindah sel; <kbd>Del</kbd> hapus baris.</div>
+        <div class="hint">Tip: <kbd>Ctrl/⌘+S</kbd> Simpan; <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> pindah sel;
+          <kbd>Del</kbd> hapus baris.
+        </div>
       </footer>
     </main>
   </div>
@@ -374,55 +414,76 @@
       </td>
     </tr>
   </template>
-<!-- Modal: Konflik penyimpanan -->
-<div class="modal fade" id="taConflictModal" tabindex="-1" aria-labelledby="taConflictLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="taConflictLabel">Data template berubah</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+  <!-- Modal: Konflik penyimpanan -->
+  <div class="modal fade" id="taConflictModal" tabindex="-1" aria-labelledby="taConflictLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="taConflictLabel">Data template berubah</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">Pekerjaan ini telah diperbarui oleh pengguna lain sejak Anda membukanya.</p>
+          <ul class="mb-0">
+            <li><strong>Muat ulang data terbaru</strong> untuk melihat perubahan terakhir (perubahan Anda akan dibuang).
+            </li>
+            <li><strong>Timpa perubahan terbaru</strong> jika Anda ingin mempertahankan versi yang sedang diedit.</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-choice="reload">Muat ulang data terbaru</button>
+          <button type="button" class="btn btn-danger" data-choice="overwrite">Timpa dengan versiku</button>
+        </div>
       </div>
-      <div class="modal-body">
-        <p class="mb-2">Pekerjaan ini telah diperbarui oleh pengguna lain sejak Anda membukanya.</p>
-        <ul class="mb-0">
-          <li><strong>Muat ulang data terbaru</strong> untuk melihat perubahan terakhir (perubahan Anda akan dibuang).</li>
-          <li><strong>Timpa perubahan terbaru</strong> jika Anda ingin mempertahankan versi yang sedang diedit.</li>
-        </ul>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-choice="reload">Muat ulang data terbaru</button>
-        <button type="button" class="btn btn-danger" data-choice="overwrite">Timpa dengan versiku</button>
+    </div>
+  </div>
+
+  <!-- Modal: Bantuan Template AHSP -->
+  <div class="modal fade" id="taHelpModal" tabindex="-1" aria-labelledby="taHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-md">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="taHelpLabel">Bantuan Template AHSP</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3">Kelola komponen AHSP per pekerjaan tanpa kolom harga.</p>
+
+          <h6 class="fw-semibold"><i class="bi bi-tags me-1"></i>Mode Pekerjaan</h6>
+          <div class="mb-3">
+            <div class="d-flex align-items-start gap-2 mb-2">
+              <span class="badge bg-info">REF</span>
+              <div class="small"><strong>Referensi</strong> — Pekerjaan dari database AHSP. Tidak dapat diedit
+                (read-only).</div>
+            </div>
+            <div class="d-flex align-items-start gap-2 mb-2">
+              <span class="badge bg-warning text-dark">MOD</span>
+              <div class="small"><strong>Modified</strong> — Salinan dari referensi yang sudah dimodifikasi. Dapat
+                diedit dan di-reset.</div>
+            </div>
+            <div class="d-flex align-items-start gap-2">
+              <span class="badge bg-success">CUS</span>
+              <div class="small"><strong>Custom</strong> — Pekerjaan dibuat sendiri. Dapat diedit sepenuhnya.</div>
+            </div>
+          </div>
+
+          <h6 class="fw-semibold"><i class="bi bi-keyboard me-1"></i>Shortcuts</h6>
+          <ul class="small mb-0">
+            <li><kbd>Ctrl/⌘+S</kbd> — Simpan perubahan</li>
+            <li><kbd>Enter</kbd> / <kbd>Shift+Enter</kbd> — Pindah sel</li>
+            <li><kbd>Del</kbd> — Hapus baris terpilih</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+        </div>
       </div>
     </div>
   </div>
 </div>
-
-<!-- Modal: Bantuan Template AHSP -->
-<div class="modal fade" id="taHelpModal" tabindex="-1" aria-labelledby="taHelpLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable modal-md">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="taHelpLabel">Bantuan Template AHSP</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p class="mb-2">Kelola komponen AHSP per pekerjaan tanpa kolom harga.</p>
-        <ul>
-          <li>Pilih pekerjaan dari sidebar kiri.</li>
-          <li>Tambah baris pada segmen TK/BHN/ALT/LAIN melalui tombol <em>Baris</em>.</li>
-          <li>Gunakan <kbd>Enter</kbd>/<kbd>Shift+Enter</kbd> berpindah sel, <kbd>Del</kbd> hapus baris.</li>
-          <li>Tekan <strong>Simpan</strong> untuk menyimpan perubahan.</li>
-        </ul>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
-      </div>
-    </div>
-  </div>
-</div></div>
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
-  <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
+{{ block.super }}
+<script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}
