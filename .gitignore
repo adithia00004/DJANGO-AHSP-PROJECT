@@ -48,4 +48,24 @@ __pycache__/
 *.pyc
 dump.rdb
 test_db.sqlite3
+
+# Docker
+*.dockerfile
+.dockerignore
+docker-compose.override.yml
+.docker/
+docker-entrypoint.sh.bak
+
+# Docker volumes (local development)
+postgres_data/
+redis_data/
+static_volume/
+media_volume/
+logs_volume/
+
+# Environment files for Docker
+.env.docker
+.env.production
+.env.staging
 test_pytest_db.sqlite3
+node_modules

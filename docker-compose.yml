@@ -1,0 +1,231 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: ahsp_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ahsp_sni_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ahsp_network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ahsp_redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ahsp_network
+    restart: unless-stopped
+
+  # PgBouncer - Connection Pool (Optional but recommended for production)
+  pgbouncer:
+    image: pgbouncer:latest
+    container_name: ahsp_pgbouncer
+    environment:
+      DATABASES_HOST: db
+      DATABASES_PORT: 5432
+      DATABASES_USER: ${POSTGRES_USER:-postgres}
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      DATABASES_DBNAME: ${POSTGRES_DB:-ahsp_sni_db}
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: 1000
+      PGBOUNCER_DEFAULT_POOL_SIZE: 25
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    ports:
+      - "${PGBOUNCER_PORT:-6432}:6432"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ahsp_network
+    restart: unless-stopped
+    profiles:
+      - pgbouncer
+
+  # Django Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ahsp_web
+    environment:
+      # Django Configuration
+      DJANGO_ENV: ${DJANGO_ENV:-development}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,web}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      
+      # Database Configuration
+      POSTGRES_ENGINE: django.db.backends.postgresql
+      POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      REDIS_DB: ${REDIS_DB:-0}
+      
+      # Application Configuration
+      APP_VERSION: ${APP_VERSION:-1.0.0-docker}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    
+    volumes:
+      - ./:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - logs_volume:/app/logs
+    
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    networks:
+      - ahsp_network
+    
+    restart: unless-stopped
+    
+    # Override default command for development
+    # Uncomment untuk development dengan auto-reload
+    # command: python manage.py runserver 0.0.0.0:8000
+    
+    stdin_open: true
+    tty: true
+
+  # Celery Worker (for async tasks)
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ahsp_celery
+    command: celery -A config worker -l info --concurrency=4
+    environment:
+      # Reuse web service environment
+      DJANGO_ENV: ${DJANGO_ENV:-development}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+    volumes:
+      - ./:/app
+    depends_on:
+      - db
+      - redis
+      - web
+    networks:
+      - ahsp_network
+    restart: unless-stopped
+    profiles:
+      - celery
+
+  # Celery Beat (for scheduled tasks)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ahsp_celery_beat
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_ENV: ${DJANGO_ENV:-development}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+    volumes:
+      - ./:/app
+    depends_on:
+      - db
+      - redis
+      - web
+    networks:
+      - ahsp_network
+    restart: unless-stopped
+    profiles:
+      - celery
+
+  # Flower - Celery Monitoring (Optional)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ahsp_flower
+    command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+    environment:
+      DJANGO_ENV: ${DJANGO_ENV:-development}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    depends_on:
+      - celery
+    networks:
+      - ahsp_network
+    restart: unless-stopped
+    profiles:
+      - celery
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+  logs_volume:
+    driver: local
+
+networks:
+  ahsp_network:
+    driver: bridge
