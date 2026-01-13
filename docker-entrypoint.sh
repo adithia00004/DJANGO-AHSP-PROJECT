@@ -13,7 +13,16 @@ echo "PostgreSQL started"
 # Wait for Redis to be ready
 echo "Waiting for Redis at $REDIS_HOST:$REDIS_PORT..."
 for i in {1..30}; do
-  if python -c "import redis; redis.Redis(host='$REDIS_HOST', port=$REDIS_PORT, socket_connect_timeout=2).ping()" > /dev/null 2>&1; then
+  # Try to connect without password first (for local dev), then with password
+  if python -c "
+import redis
+try:
+  r = redis.Redis(host='$REDIS_HOST', port=$REDIS_PORT, db=0, socket_connect_timeout=2)
+  r.ping()
+except redis.AuthenticationError:
+  r = redis.Redis(host='$REDIS_HOST', port=$REDIS_PORT, db=0, password='$REDIS_PASSWORD', socket_connect_timeout=2)
+  r.ping()
+" > /dev/null 2>&1; then
     echo "Redis started"
     break
   fi
