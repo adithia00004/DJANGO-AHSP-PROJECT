@@ -63,7 +63,9 @@ static_volume/
 media_volume/
 logs_volume/
 
-# Environment files for Docker
+# Environment files (NEVER commit - contains secrets!)
+.env
+.env.local
 .env.docker
 .env.production
 .env.staging
