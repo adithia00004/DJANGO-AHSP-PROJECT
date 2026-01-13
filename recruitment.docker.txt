@@ -1,0 +1,622 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                     RECRUITMENT DOCKER - ANTI GAGAL CLONE                   ║
+║                                                                              ║
+║  Panduan lengkap untuk memastikan Docker setup tidak gagal saat clone       ║
+║  Date: January 13, 2026                                                    ║
+║  Status: ✅ PRODUCTION READY                                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 DAFTAR ISI
+═══════════════════════════════════════════════════════════════════════════════
+
+1. PRE-CLONE CHECKLIST
+2. CLONE PROCESS (Step-by-step)
+3. POST-CLONE VERIFICATION
+4. BUILD & RUN CHECKLIST
+5. VERIFICATION CHECKLIST
+6. TROUBLESHOOTING GUIDE
+7. FINAL VERIFICATION
+
+═══════════════════════════════════════════════════════════════════════════════
+🔍 1. PRE-CLONE CHECKLIST (Sebelum Clone)
+═══════════════════════════════════════════════════════════════════════════════
+
+SYSTEM REQUIREMENTS:
+  ☐ OS: Windows 10/11 OR macOS 11+ OR Linux (Ubuntu 20.04+)
+  ☐ RAM: 8GB minimum (16GB recommended)
+  ☐ Disk space: 20GB minimum
+  ☐ Internet: Stable connection
+  ☐ Admin/sudo access: Required for Docker install
+
+SOFTWARE REQUIREMENTS:
+  ☐ Git installed (https://git-scm.com/download)
+  ☐ Docker Desktop installed:
+      - Windows/macOS: https://www.docker.com/products/docker-desktop
+      - Linux: curl -fsSL https://get.docker.com | sudo sh
+  ☐ docker --version (verify installation)
+  ☐ docker-compose --version (verify installation)
+
+VERIFICATION COMMANDS:
+  ```
+  git --version
+  docker --version
+  docker-compose --version
+  docker ps
+  ```
+  
+  Expected output: No errors, versions displayed
+
+═══════════════════════════════════════════════════════════════════════════════
+📥 2. CLONE PROCESS (Step-by-step)
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 2.1: Choose Directory
+─────────────────────────────
+  Windows:
+    cd C:\Users\[YourUsername]\Projects
+    mkdir DJANGO-AHSP-PROJECT
+    cd DJANGO-AHSP-PROJECT
+
+  macOS/Linux:
+    cd ~/Projects
+    mkdir DJANGO-AHSP-PROJECT
+    cd DJANGO-AHSP-PROJECT
+
+STEP 2.2: Clone Repository
+─────────────────────────────
+  Command:
+    git clone https://github.com/[ORG]/DJANGO-AHSP-PROJECT.git .
+  
+  Expected output:
+    ✅ Cloning into '.'...
+    ✅ Receiving objects: 100%
+    ✅ Done
+
+  Verify:
+    ls -la (or dir on Windows)
+    Check that these files exist:
+      ☐ Dockerfile
+      ☐ docker-compose.yml
+      ☐ docker-entrypoint.sh
+      ☐ .env.example
+      ☐ requirements.txt
+      ☐ package.json
+      ☐ .gitignore
+
+STEP 2.3: Verify Git Status
+─────────────────────────────
+  Command:
+    git status
+  
+  Expected output:
+    On branch main
+    nothing to commit, working tree clean
+  
+  Verify:
+    ☐ No uncommitted changes
+    ☐ On main branch
+
+STEP 2.4: Check Git Log
+─────────────────────────
+  Command:
+    git log --oneline -5
+  
+  Expected output:
+    Shows recent commits with Docker setup
+  
+  Verify:
+    ☐ Latest commits include "Docker"
+    ☐ Commits are from recent date
+
+═══════════════════════════════════════════════════════════════════════════════
+🔎 3. POST-CLONE VERIFICATION (Segera Setelah Clone)
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 3.1: Verify Docker Files Exist
+──────────────────────────────────────
+  ```
+  ☐ Dockerfile (exists, not empty)
+  ☐ docker-compose.yml (exists, valid YAML)
+  ☐ docker-entrypoint.sh (executable)
+  ☐ .dockerignore (exists)
+  ☐ requirements.txt (exists, has packages)
+  ☐ package.json (exists, has dependencies)
+  ```
+  
+  Verification command (Linux/Mac):
+    ls -lh Dockerfile docker-compose.yml requirements.txt package.json
+
+  Verification command (Windows):
+    dir Dockerfile, docker-compose.yml, requirements.txt, package.json
+
+STEP 3.2: Check .env Configuration
+───────────────────────────────────
+  Verify:
+    ☐ .env file NOT exist yet (will be created from template)
+    ☐ .env.example EXISTS (template)
+    ☐ .gitignore contains ".env" (so .env won't be committed)
+  
+  Command to verify:
+    cat .gitignore | grep "\.env"
+    
+  Expected output:
+    .env
+    .env.local
+    .env.docker
+
+STEP 3.3: Check Requirements File
+──────────────────────────────────
+  Command:
+    wc -l requirements.txt (Mac/Linux) or find /c /v "" requirements.txt (Windows)
+  
+  Expected output:
+    Should have 100+ lines (119 packages)
+  
+  Verify:
+    ☐ 119 Python packages listed
+    ☐ All with version numbers
+    ☐ No empty lines between package and next line
+
+STEP 3.4: Check Package.json
+──────────────────────────────
+  Command:
+    cat package.json (or type package.json on Windows)
+  
+  Verify:
+    ☐ Contains "dependencies"
+    ☐ Contains "@tanstack/table-core"
+    ☐ Contains "@tanstack/virtual-core"
+    ☐ Contains "vite"
+    ☐ Contains "vitest"
+    ☐ 15+ packages total
+
+═══════════════════════════════════════════════════════════════════════════════
+⚙️ 4. BUILD & RUN CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 4.1: Create .env File
+────────────────────────────
+  Command:
+    cp .env.example .env   (macOS/Linux)
+    copy .env.example .env (Windows)
+  
+  Verify:
+    ☐ .env file created
+    ☐ File size similar to .env.example
+    ☐ Contains DJANGO_SECRET_KEY
+    ☐ Contains POSTGRES_PASSWORD
+    ☐ Contains REDIS_PASSWORD
+  
+  Check content:
+    cat .env | head -10
+
+STEP 4.2: Verify Docker Daemon Running
+────────────────────────────────────────
+  Command:
+    docker ps
+  
+  Expected output:
+    CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+    (empty list is OK if no containers running)
+  
+  If error "Cannot connect to Docker daemon":
+    ❌ FAILED - Start Docker Desktop and try again
+    Windows: Open "Docker Desktop" from Start menu
+    macOS: Open Docker from Applications
+    Linux: sudo systemctl start docker
+
+STEP 4.3: Check Available Disk Space
+──────────────────────────────────────
+  Command:
+    df -h (macOS/Linux) or disk usage (Windows)
+  
+  Verify:
+    ☐ At least 20GB free space available
+    ☐ If less, delete unnecessary files first
+  
+  If low on space:
+    ❌ FAILED - Free up space before building
+    Docker image will be ~2GB
+
+STEP 4.4: Build Docker Image
+──────────────────────────────
+  Command:
+    docker-compose build
+  
+  Progress:
+    [1/2] Building base image... (5 minutes)
+    [2/2] Installing dependencies... (10 minutes)
+  
+  Expected output:
+    ✅ Successfully built [hash]
+    ✅ Successfully tagged django_ahsp_project:latest
+  
+  Timeline:
+    ☐ Step 1 (base image): 5 minutes
+    ☐ Step 2 (dependencies): 10 minutes
+    ☐ Total: ~15 minutes first time
+  
+  If error during build:
+    See TROUBLESHOOTING section below
+
+STEP 4.5: Verify Image Built Successfully
+───────────────────────────────────────────
+  Command:
+    docker images
+  
+  Expected output:
+    REPOSITORY                  TAG       IMAGE ID
+    django_ahsp_project:latest  latest    [hash]
+  
+  Verify:
+    ☐ Image listed
+    ☐ Size ~500MB (final size)
+
+STEP 4.6: Start Services
+─────────────────────────
+  Command:
+    docker-compose up -d
+  
+  Expected output:
+    ✅ Creating ahsp_db ... done
+    ✅ Creating ahsp_redis ... done
+    ✅ Creating ahsp_web ... done
+  
+  Timeline:
+    ☐ Services start: ~30 seconds
+
+STEP 4.7: Wait for Services Ready
+──────────────────────────────────
+  Command:
+    sleep 30
+    docker-compose ps
+  
+  Expected output:
+    NAME            STATUS           PORTS
+    ahsp_db         Up (healthy)     5432/tcp
+    ahsp_redis      Up (healthy)     6379/tcp
+    ahsp_web        Up (healthy)     0.0.0.0:8000->8000/tcp
+  
+  Verify:
+    ☐ All services UP
+    ☐ All services (healthy) or Up
+    ☐ No errors in status
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ 5. VERIFICATION CHECKLIST (Pastikan Semua Work)
+═══════════════════════════════════════════════════════════════════════════════
+
+VERIFICATION 5.1: Check All Services Running
+──────────────────────────────────────────────
+  Command:
+    docker-compose ps
+  
+  Verify:
+    ☐ ahsp_db status: Up (healthy)
+    ☐ ahsp_redis status: Up (healthy)
+    ☐ ahsp_web status: Up (healthy)
+  
+  If any status NOT "Up (healthy)":
+    ❌ FAILED - See TROUBLESHOOTING section
+
+VERIFICATION 5.2: Test PostgreSQL Connection
+──────────────────────────────────────────────
+  Command:
+    docker-compose exec db psql -U postgres -d ahsp_sni_db -c "SELECT version();"
+  
+  Expected output:
+    PostgreSQL 15.x on x86_64-pc-linux-gnu...
+  
+  Verify:
+    ☐ PostgreSQL version displayed
+    ☐ No connection error
+
+VERIFICATION 5.3: Test Redis Connection
+─────────────────────────────────────────
+  Command:
+    docker-compose exec redis redis-cli -a password ping
+    (Note: password from .env REDIS_PASSWORD)
+  
+  Expected output:
+    PONG
+  
+  Verify:
+    ☐ PONG response received
+    ☐ No authentication error
+
+VERIFICATION 5.4: Test Django Application
+──────────────────────────────────────────
+  Command:
+    docker-compose exec web python manage.py migrate --check
+  
+  Expected output:
+    All migrations applied successfully
+  
+  Verify:
+    ☐ No migration errors
+    ☐ Database schema ready
+
+VERIFICATION 5.5: Test Web Server
+──────────────────────────────────
+  Command:
+    curl http://localhost:8000
+    (or open browser: http://localhost:8000)
+  
+  Expected output:
+    HTTP 200 with HTML content
+  
+  Verify:
+    ☐ Web server responding
+    ☐ Page loaded successfully
+    ☐ No 502/503 errors
+
+VERIFICATION 5.6: Test Admin Interface
+────────────────────────────────────────
+  Command:
+    Open browser: http://localhost:8000/admin
+  
+  Expected output:
+    Django admin login page
+  
+  Verify:
+    ☐ Login page loaded
+    ☐ CSS/static files loaded (properly styled)
+    ☐ No 404 errors
+
+VERIFICATION 5.7: Check Django Logs
+─────────────────────────────────────
+  Command:
+    docker-compose logs web | tail -20
+  
+  Expected output:
+    "Listening on [::]:8000"
+    No ERROR or CRITICAL messages
+  
+  Verify:
+    ☐ No error messages
+    ☐ Server started successfully
+
+VERIFICATION 5.8: View All Logs
+─────────────────────────────────
+  Command:
+    docker-compose logs
+  
+  Verify:
+    ☐ No ERROR in db logs
+    ☐ No ERROR in redis logs
+    ☐ No ERROR in web logs
+
+═══════════════════════════════════════════════════════════════════════════════
+🚨 6. TROUBLESHOOTING GUIDE
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEM 6.1: "docker: command not found"
+──────────────────────────────────────────
+  Cause: Docker not installed or not in PATH
+  
+  Solution:
+    1. Install Docker Desktop from https://www.docker.com/products/docker-desktop
+    2. Restart your computer
+    3. Try: docker --version
+  
+  Alternative (Linux):
+    curl -fsSL https://get.docker.com | sudo sh
+
+PROBLEM 6.2: "Cannot connect to Docker daemon"
+────────────────────────────────────────────────
+  Cause: Docker service not running
+  
+  Solution:
+    Windows: Open Docker Desktop from Start menu
+    macOS: Open Docker from Applications
+    Linux: sudo systemctl start docker
+  
+  Verify: docker ps (should not error)
+
+PROBLEM 6.3: "Port 8000 already in use"
+─────────────────────────────────────────
+  Cause: Another service using port 8000
+  
+  Solution Option 1: Stop other service
+    Windows: netstat -ano | findstr :8000
+    macOS/Linux: lsof -i :8000
+    Kill process ID with highest number
+  
+  Solution Option 2: Change port in docker-compose.yml
+    Find line: "8000:8000"
+    Change to: "9000:8000"
+    Then: docker-compose up -d
+  
+  Verify: curl http://localhost:8000 or http://localhost:9000
+
+PROBLEM 6.4: "Out of disk space" during build
+───────────────────────────────────────────────
+  Cause: Not enough disk space for Docker images
+  
+  Solution:
+    1. Check space: df -h (Mac/Linux) or disk usage (Windows)
+    2. Free up at least 20GB
+    3. Clean Docker: docker system prune -a
+    4. Rebuild: docker-compose build --no-cache
+  
+  If still failing:
+    Delete other large files and try again
+
+PROBLEM 6.5: "Failed to build image"
+──────────────────────────────────────
+  Cause: Various build errors
+  
+  Solution:
+    1. Check logs: docker-compose build 2>&1 | tail -50
+    2. Common issues:
+       - Network error: Check internet connection
+       - Package error: docker-compose build --no-cache
+       - Disk space: Clean up and retry
+    3. Reset Docker: docker system prune -a
+    4. Rebuild: docker-compose build --no-cache
+
+PROBLEM 6.6: "Web service failing to start"
+──────────────────────────────────────────────
+  Cause: Application initialization error
+  
+  Solution:
+    1. Check logs: docker-compose logs web
+    2. Common issues:
+       - Database not ready: Wait 30 seconds
+       - Migration error: docker-compose exec web python manage.py migrate
+       - Permission error: Check file permissions
+    3. Restart: docker-compose restart web
+    4. Full restart: docker-compose down && docker-compose up -d
+
+PROBLEM 6.7: "Database connection refused"
+────────────────────────────────────────────
+  Cause: PostgreSQL not ready or not running
+  
+  Solution:
+    1. Check status: docker-compose ps db
+    2. Should show: Up (healthy)
+    3. If not healthy: docker-compose restart db
+    4. Wait 30 seconds: sleep 30
+    5. Test: docker-compose exec db psql -U postgres -c "SELECT 1;"
+
+PROBLEM 6.8: "Redis connection error"
+────────────────────────────────────────
+  Cause: Redis service not running or auth failed
+  
+  Solution:
+    1. Check status: docker-compose ps redis
+    2. Should show: Up (healthy)
+    3. If not: docker-compose restart redis
+    4. Test: docker-compose exec redis redis-cli ping
+    5. Test with password: docker-compose exec redis redis-cli -a PASSWORD ping
+
+PROBLEM 6.9: "Static files not loading (CSS/JS missing)"
+──────────────────────────────────────────────────────────
+  Cause: Static files not collected
+  
+  Solution:
+    1. Collect static: docker-compose exec web python manage.py collectstatic --noinput
+    2. Clear cache: docker volume rm ahsp_static_volume
+    3. Rebuild: docker-compose build --no-cache
+    4. Restart: docker-compose up -d
+
+PROBLEM 6.10: "Migrations not applied"
+─────────────────────────────────────────
+  Cause: Migrations not ran automatically
+  
+  Solution:
+    1. Check status: docker-compose exec web python manage.py migrate --check
+    2. Run migrations: docker-compose exec web python manage.py migrate
+    3. If error, check logs: docker-compose logs web
+    4. Reset DB (WARNING - DELETES DATA):
+       docker-compose down -v
+       docker-compose up -d
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 7. FINAL VERIFICATION (Semua OK?)
+═══════════════════════════════════════════════════════════════════════════════
+
+CHECKLIST FINAL:
+  ☐ All Docker files exist and not corrupted
+  ☐ Git status clean (no uncommitted changes)
+  ☐ .env file created from template
+  ☐ Docker image built successfully
+  ☐ All services running and healthy
+  ☐ PostgreSQL connection working
+  ☐ Redis connection working
+  ☐ Django application responsive
+  ☐ Web interface accessible at http://localhost:8000
+  ☐ Admin interface accessible at http://localhost:8000/admin
+  ☐ Static files loading (CSS/JS styled correctly)
+  ☐ No error messages in logs
+  ☐ All migrations applied
+
+SUMMARY COMMANDS:
+  docker-compose ps                    # Check status
+  docker-compose logs                  # View logs
+  curl http://localhost:8000           # Test web
+  docker-compose exec db psql ...      # Test database
+  docker-compose exec redis redis-cli  # Test redis
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ SUCCESS - SETUP COMPLETE!
+═══════════════════════════════════════════════════════════════════════════════
+
+If all items in Section 7 are checked:
+  ✅ Docker setup is COMPLETE & WORKING
+  ✅ Application is READY TO USE
+  ✅ All dependencies are INSTALLED
+  ✅ All services are HEALTHY
+
+Access points:
+  🌐 Application:  http://localhost:8000
+  🔐 Admin:        http://localhost:8000/admin
+  📊 Database:     localhost:5432
+  💾 Redis:        localhost:6379
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 IF STILL HAVING ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Check troubleshooting section above
+2. Review Docker logs: docker-compose logs -f
+3. Reset Docker (WARNING: DELETES DATA):
+   docker-compose down -v
+   docker system prune -a
+   docker-compose build --no-cache
+   docker-compose up -d
+
+4. Contact support with:
+   - Output of: docker-compose ps
+   - Output of: docker-compose logs
+   - Output of: docker --version
+   - Output of: docker-compose --version
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 DOCKER SETUP COMPONENTS CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+CORE FILES (MUST EXIST):
+  ☐ Dockerfile (80 lines)
+  ☐ docker-compose.yml (232 lines)
+  ☐ docker-entrypoint.sh (61 lines)
+  ☐ .dockerignore
+  ☐ .env.example
+  ☐ requirements.txt (119 packages)
+  ☐ package.json (15+ packages)
+
+OPTIONAL FILES:
+  ☐ docker-helper.ps1 (PowerShell)
+  ☐ docker-helper.sh (Bash)
+  ☐ docker-helper.bat (Windows)
+  ☐ docker-compose-pgbouncer.yml
+  ☐ docker-compose-redis.yml
+
+CONFIGURATION FILES:
+  ☐ .env (auto-created from .env.example)
+  ☐ .gitignore (contains .env entry)
+
+DOCUMENTATION FILES:
+  ☐ DOCKER_QUICK_START.md
+  ☐ PC_ALIN_DOCKER_SETUP.md
+  ☐ DOCKER_SETUP_FOR_PC_ALIN.md
+  ☐ BEST_WAY_FOR_PC_ALIN.md
+  ☐ README_FOR_PC_ALIN.md
+
+═══════════════════════════════════════════════════════════════════════════════
+🎉 RECRUITMENT DOCKER - ANTI GAGAL COMPLETE
+═══════════════════════════════════════════════════════════════════════════════
+
+Document version: 1.0
+Date created: January 13, 2026
+Last updated: January 13, 2026
+Status: ✅ PRODUCTION READY
+
+Use this checklist every time someone clones the project to ensure:
+  ✅ No failed clones
+  ✅ No missed setup steps
+  ✅ No broken Docker configurations
+  ✅ Smooth onboarding for new team members
+
+═══════════════════════════════════════════════════════════════════════════════
