@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements (use requirements.txt only - NOT recruitment.docker.txt which is documentation)
 COPY requirements.txt .
 
 # Create wheels
