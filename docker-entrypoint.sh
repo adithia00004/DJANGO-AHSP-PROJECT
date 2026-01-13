@@ -11,11 +11,18 @@ done
 echo "PostgreSQL started"
 
 # Wait for Redis to be ready
-echo "Waiting for Redis..."
-while ! redis-cli -h $REDIS_HOST -p $REDIS_PORT ping > /dev/null 2>&1; do
+echo "Waiting for Redis at $REDIS_HOST:$REDIS_PORT..."
+for i in {1..30}; do
+  if python -c "import redis; redis.Redis(host='$REDIS_HOST', port=$REDIS_PORT, socket_connect_timeout=2).ping()" > /dev/null 2>&1; then
+    echo "Redis started"
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "WARNING: Redis not responding after 30 attempts, but continuing anyway..."
+    break
+  fi
   sleep 1
 done
-echo "Redis started"
 
 # Run migrations
 echo "Running database migrations..."
