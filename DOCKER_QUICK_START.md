@@ -1,13 +1,123 @@
-# 🐳 Docker Deployment Guide - AHSP Project
+# ⚡ DOCKER QUICK START - PC ALIN (2 MENIT SUMMARY)
 
-## Quick Reference
+**Setup time**: ~30 menit first time, ~5 menit selanjutnya
 
-| Command | Description |
-|---------|-------------|
-| `docker-compose up -d` | Start all services |
-| `docker-compose down` | Stop all services |
-| `docker-compose exec web python manage.py migrate` | Run migrations |
-| `docker-compose logs -f web` | View logs |
+---
+
+## 🎯 LANGKAH SUPER SINGKAT
+
+### 1️⃣ Install Docker (10 menit)
+```
+Windows/macOS: Download Docker Desktop → Install → Restart
+Linux: curl -fsSL https://get.docker.com | sudo sh
+```
+
+### 2️⃣ Clone Repo (1 menit)
+```bash
+git clone https://github.com/[ORG]/DJANGO-AHSP-PROJECT.git
+cd DJANGO-AHSP-PROJECT
+```
+
+### 3️⃣ Setup .env (1 menit)
+```bash
+cp .env.example .env
+# Sudah cukup! Default values untuk development sudah oke
+```
+
+### 4️⃣ BUILD & RUN (15 menit)
+```bash
+# Build image
+docker-compose build
+
+# Start services
+docker-compose up -d
+
+# Wait ~30 seconds...
+```
+
+### 5️⃣ ACCESS APPLICATION ✅
+```
+http://localhost:8000           ← Main app
+http://localhost:8000/admin     ← Admin (user: admin, pw: admin123)
+```
+
+---
+
+## 📊 WHAT'S INCLUDED
+
+```
+✅ PostgreSQL 15          → localhost:5432
+✅ Redis 7                → localhost:6379
+✅ Django + Gunicorn      → localhost:8000
+✅ Vite + TanStack        → Auto-bundled
+✅ Node.js + npm          → Auto-installed
+✅ 119 Python packages    → Auto-installed
+✅ 15+ npm packages       → Auto-installed
+✅ PgBouncer (optional)   → docker-compose --profile pgbouncer up
+✅ Celery (optional)      → docker-compose --profile celery up
+✅ Flower monitor         → localhost:5555 (with Celery)
+```
+
+---
+
+## 🔧 COMMON COMMANDS
+
+```bash
+# View status
+docker-compose ps
+
+# View logs
+docker-compose logs -f web
+
+# Enter Django shell
+docker-compose exec web python manage.py shell
+
+# Run tests
+docker-compose exec web pytest
+
+# Stop services
+docker-compose down
+
+# Restart services
+docker-compose restart
+```
+
+---
+
+## 🚨 IF SOMETHING GOES WRONG
+
+```bash
+# Check logs
+docker-compose logs -f web
+
+# Rebuild
+docker-compose build --no-cache
+docker-compose down
+docker-compose up -d
+
+# Full reset (WARNING: DELETES DATA)
+docker-compose down -v
+docker system prune -a
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+---
+
+## ✅ VERIFY ALL WORKING
+
+```bash
+# Database
+docker-compose exec db psql -U postgres -d ahsp_sni_db -c "SELECT version();"
+
+# Redis
+docker-compose exec redis redis-cli -a password_dari_.env ping
+
+# Django
+docker-compose exec web python manage.py migrate --check
+
+# Browser: http://localhost:8000 ← Should load
+```
 
 ---
 
