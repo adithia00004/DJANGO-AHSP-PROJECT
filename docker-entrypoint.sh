@@ -5,14 +5,14 @@ echo "Starting Django AHSP Application..."
 
 # Wait for database to be ready
 echo "Waiting for PostgreSQL..."
-while ! nc -z $POSTGRES_HOST $POSTGRES_PORT; do
+while ! pg_isready -h $POSTGRES_HOST -p $POSTGRES_PORT -U postgres; do
   sleep 1
 done
 echo "PostgreSQL started"
 
 # Wait for Redis to be ready
 echo "Waiting for Redis..."
-while ! redis-cli -h $REDIS_HOST -p $REDIS_PORT -a "$REDIS_PASSWORD" ping > /dev/null 2>&1; do
+while ! redis-cli -h $REDIS_HOST -p $REDIS_PORT ping > /dev/null 2>&1; do
   sleep 1
 done
 echo "Redis started"
