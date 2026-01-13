@@ -29,8 +29,19 @@ cp .env.example .env
 # Build image
 docker-compose build
 
+# Expected output (first time: ~15 menit):
+# [1/2] Building base...
+# [2/2] Building runtime...
+# Successfully built [hash]
+# Successfully tagged django_ahsp_project:latest
+
 # Start services
 docker-compose up -d
+
+# Expected output:
+# Creating ahsp_postgres ... done
+# Creating ahsp_redis ... done
+# Creating ahsp_web ... done
 
 # Wait ~30 seconds...
 ```
@@ -62,24 +73,74 @@ http://localhost:8000/admin     ← Admin (user: admin, pw: admin123)
 
 ## 🔧 COMMON COMMANDS
 
+### View Status
 ```bash
-# View status
 docker-compose ps
 
-# View logs
+# Expected output:
+# NAME            IMAGE               STATUS           PORTS
+# ahsp_postgres   postgres:15-alpine  Up (healthy)     5432/tcp
+# ahsp_redis      redis:7-alpine      Up (healthy)     6379/tcp
+# ahsp_web        django_ahsp...      Up (healthy)     0.0.0.0:8000->8000/tcp
+```
+
+### View Logs
+```bash
 docker-compose logs -f web
 
-# Enter Django shell
+# Expected output:
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Starting gunicorn 21.0.0
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Listening at: http://0.0.0.0:8000
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Using worker: sync
+# [2026-01-13 12:00:01 +0000] [10] [INFO] Booting worker with pid: 10
+# (Ctrl+C to stop)
+```
+
+### Enter Django Shell
+```bash
 docker-compose exec web python manage.py shell
 
-# Run tests
+# Expected output:
+# Python 3.11.x (main, ...)
+# Type "help", "copyright", "credits" or "license" for more information.
+# (InteractiveConsole)
+# >>>
+# (Type exit() to quit)
+```
+
+### Run Tests
+```bash
 docker-compose exec web pytest
 
-# Stop services
+# Expected output:
+# ======================== test session starts =========================
+# collected X items
+# tests/test_models.py ..................                        [100%]
+# ======================== X passed in 1.23s ==========================
+```
+
+### Stop Services
+```bash
 docker-compose down
 
-# Restart services
+# Expected output:
+# Stopping ahsp_web ... done
+# Stopping ahsp_redis ... done
+# Stopping ahsp_postgres ... done
+# Removing ahsp_web ... done
+# Removing ahsp_redis ... done
+# Removing ahsp_postgres ... done
+# Removing network ahsp_network
+```
+
+### Restart Services
+```bash
 docker-compose restart
+
+# Expected output:
+# Restarting ahsp_postgres ... done
+# Restarting ahsp_redis ... done
+# Restarting ahsp_web ... done
 ```
 
 ---
@@ -106,17 +167,43 @@ docker-compose up -d
 
 ## ✅ VERIFY ALL WORKING
 
+### Test Database
 ```bash
-# Database
 docker-compose exec db psql -U postgres -d ahsp_sni_db -c "SELECT version();"
 
-# Redis
+# Expected output:
+#  version
+# ─────────────────────────────────────────────────────────────────────
+#  PostgreSQL 15.x on x86_64-pc-linux-gnu, compiled by gcc (GCC) 12.2.0
+# (1 row)
+```
+
+### Test Redis
+```bash
 docker-compose exec redis redis-cli -a password_dari_.env ping
 
-# Django
+# Expected output:
+# PONG
+```
+
+### Test Django Migrations
+```bash
 docker-compose exec web python manage.py migrate --check
 
-# Browser: http://localhost:8000 ← Should load
+# Expected output:
+# Migrations OK
+# (or if need migration: [M] django.contrib.auth.0001_initial)
+```
+
+### Test Web Browser
+```bash
+# Browser: http://localhost:8000
+
+# Expected:
+# ✅ Django application page loads
+# ✅ CSS/static files loaded properly
+# ✅ No 502/503 errors
+# ✅ Admin link visible
 ```
 
 ---
@@ -151,21 +238,48 @@ Sebelum menjalankan project di PC baru, pastikan:
 git clone <repository-url>
 cd django-ahsp-project
 
+# Expected output:
+# Cloning into 'django-ahsp-project'...
+# Receiving objects: 100% (XXX/XXX), XX.XX MiB | X.XX MiB/s
+# Resolving deltas: 100% (XXX/XXX), done.
+
 # 2. Load helper module
 . .\docker-helper.ps1
+
+# Expected output:
+# (No output if successful)
 
 # 3. Initialize project (first time only)
 Initialize-Project
 
+# Expected output:
+# [INFO] Creating .env file...
+# [INFO] Building Docker images...
+# Successfully tagged django_ahsp_project:latest
+# [INFO] Starting services...
+# Creating ahsp_postgres ... done
+# Creating ahsp_redis ... done
+# Creating ahsp_web ... done
+# [INFO] Project initialized successfully!
+
 # 4. Access application
-# Browser: http://localhost:8000
+# Browser: http://localhost:8000 → Application loads ✅
 # Admin: http://localhost:8000/admin (credentials: admin/admin)
 
 # 5. View logs anytime
 View-Logs web
 
+# Expected output:
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Starting gunicorn 21.0.0
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Listening at: http://0.0.0.0:8000
+
 # 6. Stop services
 Stop-Services
+
+# Expected output:
+# Stopping ahsp_web ... done
+# Stopping ahsp_redis ... done
+# Stopping ahsp_postgres ... done
 ```
 
 ### Linux/macOS Users
@@ -175,19 +289,46 @@ Stop-Services
 git clone <repository-url>
 cd django-ahsp-project
 
+# Expected output:
+# Cloning into 'django-ahsp-project'...
+# Receiving objects: 100% (XXX/XXX), XX.XX MiB | X.XX MiB/s
+
 # 2. Make helper script executable
 chmod +x docker-helper.sh
+
+# Expected output:
+# (No output if successful)
 
 # 3. Initialize project (first time only)
 ./docker-helper.sh setup
 
+# Expected output:
+# ✅ Creating .env file...
+# ✅ Building Docker images...
+# Successfully tagged django_ahsp_project:latest
+# ✅ Starting services...
+# Creating ahsp_postgres ... done
+# Creating ahsp_redis ... done
+# Creating ahsp_web ... done
+# ✅ Running migrations...
+# Operations to perform:
+#   Apply all migrations: admin, auth, contenttypes, ...
+# Running migrations:
+#   Applying contenttypes.0001_initial... OK
+# ✅ Project ready! Access: http://localhost:8000
+
 # 4. Access application
-# Browser: http://localhost:8000
+# Browser: http://localhost:8000 → Application loads ✅
 
 # 5. Other commands
 ./docker-helper.sh logs web
+# Expected: Shows Gunicorn logs
+
 ./docker-helper.sh migrate
+# Expected: Running migrations... Operations to perform...
+
 ./docker-helper.sh down
+# Expected: Stopping services... done
 ```
 
 ### Manual Setup (Any OS)
@@ -195,25 +336,65 @@ chmod +x docker-helper.sh
 ```bash
 # 1. Copy env file
 cp .env.example .env
+# Expected output: (no output if successful)
+
 # Edit .env dengan text editor
+# nano .env  (or use your preferred editor)
 
 # 2. Build images
 docker-compose build
 
+# Expected output:
+# Building web
+# [1/2] FROM python:3.11-slim as builder
+# [2/2] FROM python:3.11-slim
+# Successfully built abc123def456
+# Successfully tagged django_ahsp_project:latest
+
 # 3. Start services
 docker-compose up -d
+
+# Expected output:
+# Creating ahsp_postgres ... done
+# Creating ahsp_redis ... done
+# Creating ahsp_web ... done
 
 # 4. Verify services running
 docker-compose ps
 
+# Expected output:
+# NAME            IMAGE               STATUS           PORTS
+# ahsp_postgres   postgres:15-alpine  Up (healthy)     5432/tcp
+# ahsp_redis      redis:7-alpine      Up (healthy)     6379/tcp
+# ahsp_web        django_ahsp:latest  Up (healthy)     0.0.0.0:8000->8000/tcp
+
 # 5. Run migrations
 docker-compose exec web python manage.py migrate
+
+# Expected output:
+# Operations to perform:
+#   Apply all migrations: admin, auth, contenttypes, sessions, ...
+# Running migrations:
+#   Applying contenttypes.0001_initial... OK
+#   Applying auth.0001_initial... OK
+# (multiple migrations)
+# 18 migrations applied successfully
 
 # 6. Create superuser
 docker-compose exec web python manage.py createsuperuser
 
+# Expected output:
+# Username: admin
+# Email address: admin@example.com
+# Password:
+# Password (again):
+# Superuser created successfully.
+
 # 7. Collect static
 docker-compose exec web python manage.py collectstatic --noinput
+
+# Expected output:
+# 127 static files copied to '/app/staticfiles', 128 post-processed.
 ```
 
 ---
@@ -241,18 +422,33 @@ DOCKER_SETUP_GUIDE.md     # Documentation lengkap
 # Port: 8000
 # Access: http://localhost:8000
 docker-compose logs -f web
+
+# Expected output:
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Starting gunicorn 21.0.0
+# [2026-01-13 12:00:01 +0000] [1] [INFO] Listening at: http://0.0.0.0:8000 (1)
+# [2026-01-13 12:00:01 +0000] [1] [INFO] Using worker: sync
+# [2026-01-13 12:00:02 +0000] [10] [INFO] Booting worker with pid: 10
 ```
 
 ### PostgreSQL Database
 ```bash
 # Port: 5432 (internal), jangan expose ke internet
 docker-compose exec db psql -U postgres -d ahsp_sni_db
+
+# Expected output:
+# psql (15.2)
+# Type "help" for help.
+# ahsp_sni_db=#
+# (Type \q to quit)
 ```
 
 ### Redis Cache
 ```bash
 # Port: 6379 (internal)
 docker-compose exec redis redis-cli ping
+
+# Expected output:
+# PONG
 ```
 
 ### Optional: PgBouncer (Connection Pooling)
@@ -301,15 +497,38 @@ python -c "from django.core.management.utils import get_random_secret_key; print
 # Connect to database
 docker-compose exec db psql -U postgres -d ahsp_sni_db
 
+# Expected output:
+# psql (15.2)
+# Type "help" for help.
+# ahsp_sni_db=#
+
 # Backup database
 docker-compose exec db pg_dump -U postgres ahsp_sni_db | gzip > backup.sql.gz
+
+# Expected output:
+# (no output, creates backup.sql.gz file)
+# You should see: -rw-r--r-- ... backup.sql.gz (with your date)
 
 # Restore database
 gunzip -c backup.sql.gz | docker-compose exec -T db psql -U postgres ahsp_sni_db
 
+# Expected output:
+# SET
+# SET
+# SET
+# (multiple restore messages)
+# COMMIT
+
 # View connections
 docker-compose exec db psql -U postgres -d ahsp_sni_db \
   -c "SELECT datname, count(*) FROM pg_stat_activity GROUP BY datname;"
+
+# Expected output:
+#   datname   | count
+# ────────────┼───────
+#  ahsp_sni_db|     5
+#  postgres   |     1
+# (2 rows)
 ```
 
 ### Django Management
@@ -317,23 +536,67 @@ docker-compose exec db psql -U postgres -d ahsp_sni_db \
 # Create migrations
 docker-compose exec web python manage.py makemigrations
 
+# Expected output:
+# Migrations for 'app_name':
+#   0002_model_field.py
+#     - Add field 'field_name' to 'model_name'
+# (or "No changes detected in models" if no changes)
+
 # Run migrations
 docker-compose exec web python manage.py migrate
+
+# Expected output:
+# Operations to perform:
+#   Apply all migrations: admin, auth, ...
+# Running migrations:
+#   Applying app.0001_initial... OK
 
 # Create superuser
 docker-compose exec web python manage.py createsuperuser
 
+# Expected output:
+# Username: admin
+# Email: admin@test.com
+# Password:
+# Superuser created successfully.
+
 # Collect static files
 docker-compose exec web python manage.py collectstatic --noinput
+
+# Expected output:
+# 127 static files copied to '/app/staticfiles'.
 
 # Django shell
 docker-compose exec web python manage.py shell
 
+# Expected output:
+# Python 3.11.x (main, ...)
+# Type "help", "copyright", "credits" or "license" for more information.
+# (InteractiveConsole)
+# >>>
+
 # Run tests
 docker-compose exec web pytest
 
+# Expected output:
+# ======================== test session starts =========================
+# collected 15 items
+# tests/test_models.py ....................                     [100%]
+# ======================== 15 passed in 2.45s ==========================
+
 # Run with coverage
 docker-compose exec web pytest --cov=.
+
+# Expected output:
+# ======================== test session starts =========================
+# collected 15 items
+# tests/test_models.py ....................                     [100%]
+# ---------- coverage: platform linux, python 3.11.x ----------
+# Name                    Stmts   Miss  Cover
+# ─────────────────────────────────────────
+# app/models.py               15      2    87%
+# TOTAL                      150     15    90%
+# ======================== 15 passed in 2.45s ==========================
 ```
 
 ### Container Management
@@ -341,25 +604,72 @@ docker-compose exec web pytest --cov=.
 # View all containers
 docker-compose ps
 
+# Expected output:
+# NAME            IMAGE               STATUS           PORTS
+# ahsp_postgres   postgres:15-alpine  Up (healthy)     5432/tcp
+# ahsp_redis      redis:7-alpine      Up (healthy)     6379/tcp
+# ahsp_web        django_ahsp:latest  Up (healthy)     0.0.0.0:8000->8000/tcp
+
 # View logs
 docker-compose logs web
-docker-compose logs -f web         # Follow logs
-docker-compose logs --tail 50 web  # Last 50 lines
+
+# Expected output:
+# [2026-01-13 12:00:00 +0000] [1] [INFO] Starting gunicorn...
+# [2026-01-13 12:00:01 +0000] [1] [INFO] Listening at...
+
+# Follow logs (live)
+docker-compose logs -f web
+
+# Expected output: (same as above, updates in real-time)
+# (Press Ctrl+C to stop following)
+
+# Last 50 lines
+docker-compose logs --tail 50 web
+
+# Expected output: (last 50 lines of logs)
 
 # Execute command in container
 docker-compose exec web bash
 
+# Expected output:
+# root@container_id:/app#
+# (Type 'exit' to quit)
+
 # Restart service
 docker-compose restart web
+
+# Expected output:
+# Restarting ahsp_web ... done
 
 # Stop services
 docker-compose stop
 
+# Expected output:
+# Stopping ahsp_web ... done
+# Stopping ahsp_redis ... done
+# Stopping ahsp_postgres ... done
+
 # Start services
 docker-compose start
 
-# Remove everything
+# Expected output:
+# Starting ahsp_postgres ... done
+# Starting ahsp_redis ... done
+# Starting ahsp_web ... done
+
+# Remove everything (WARNING: DELETES DATA)
 docker-compose down -v  # -v = remove volumes
+
+# Expected output:
+# Stopping ahsp_web ... done
+# Stopping ahsp_redis ... done
+# Stopping ahsp_postgres ... done
+# Removing ahsp_web ... done
+# Removing ahsp_redis ... done
+# Removing ahsp_postgres ... done
+# Removing network ahsp_network
+# Removing volume ahsp_postgres_data
+# Removing volume ahsp_redis_data
 ```
 
 ---
@@ -371,6 +681,13 @@ docker-compose down -v  # -v = remove volumes
 - Windows/Mac: Start Docker Desktop
 - Linux: `sudo systemctl start docker`
 
+**Verify**:
+```bash
+docker ps
+# Expected output: (list of containers or empty list)
+# NOT: "Cannot connect to Docker daemon"
+```
+
 ### Issue: "Port 8000 already in use"
 **Solution**: 
 ```bash
@@ -379,7 +696,12 @@ WEB_PORT=8001
 
 # Or find and stop other service
 lsof -i :8000  # macOS/Linux
+# Expected: Shows what's using port 8000
+
 netstat -ano | findstr :8000  # Windows
+# Expected: Shows process ID using port 8000
+
+# Kill the process or restart Docker
 ```
 
 ### Issue: "Database connection refused"
@@ -388,11 +710,23 @@ netstat -ano | findstr :8000  # Windows
 # Check if db is running
 docker-compose ps db
 
+# Expected output:
+# NAME          IMAGE               STATUS           PORTS
+# ahsp_postgres postgres:15-alpine  Up (healthy)     5432/tcp
+
 # Check db logs
 docker-compose logs db
 
+# Expected output:
+# [INFO] PostgreSQL Database directory appears to contain a database
+# [INFO] Starting PostgreSQL
+# [INFO] PostgreSQL started
+
 # Restart db
 docker-compose restart db
+
+# Expected output:
+# Restarting ahsp_postgres ... done
 ```
 
 ### Issue: "Redis connection refused"
@@ -401,25 +735,54 @@ docker-compose restart db
 # Check Redis
 docker-compose exec redis redis-cli ping
 
+# Expected output:
+# PONG
+
 # Verify password in .env
 docker-compose exec redis redis-cli -a your-password PING
 
+# Expected output:
+# PONG
+
 # Restart Redis
 docker-compose restart redis
+
+# Expected output:
+# Restarting ahsp_redis ... done
 ```
 
 ### Issue: "Static files not loading"
 **Solution**:
 ```bash
 docker-compose exec web python manage.py collectstatic --noinput --clear
+
+# Expected output:
+# 127 static files copied to '/app/staticfiles', 128 post-processed.
+
 docker-compose restart web
+
+# Expected output:
+# Restarting ahsp_web ... done
+
+# Verify in browser:
+# http://localhost:8000 (should now have styled CSS) ✅
 ```
 
 ### Issue: "Out of memory"
 **Solution**:
 - Increase Docker memory limit (Settings)
 - Reduce Gunicorn workers (change --workers 4 ke 2)
-- Clear unused Docker resources: `docker system prune -a`
+- Clear unused Docker resources:
+```bash
+docker system prune -a
+
+# Expected output:
+# WARNING! This will remove:
+#  - all stopped containers
+#  - all networks not used by at least one container
+#  - all unused images
+# Total reclaimed space: XXX.XX GB
+```
 
 ---
 
