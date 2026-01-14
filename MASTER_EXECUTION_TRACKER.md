@@ -432,23 +432,38 @@ File: jadwal_pekerjaan_139_1768361403.pdf (71128 bytes)
 
 ---
 
-### ⏳ WEEK 5: TIER 3 COVERAGE - WRITE OPERATIONS
+### ✅ WEEK 5: TIER 3 COVERAGE - WRITE OPERATIONS (COMPLETE)
 
 **Goal**: Comprehensive write operation testing
 
-#### Day 21-23 - Add Write Tests to Locust
-- [ ] Add list-pekerjaan save tests
-- [ ] Add detail-ahsp save tests
-- [ ] Add harga-items save tests
-- [ ] Test concurrent writes
+#### Day 21 (2026-01-14) - Write Test Setup ✅
+- [x] Audit existing Locust coverage - MutationUser already exists!
+- [x] Add env var toggle for MutationUser - `LOCUST_MUTATIONS_ENABLED`
+- [x] Create `test_harga_items_api.py` (13 tests) ✅
+- [x] Create `test_pekerjaan_upsert.py` (13 tests) ✅
+- [x] Create `test_concurrent_writes.py` (10 tests) ✅
 
-#### Day 24-25 - Conflict Resolution Testing
-- [ ] Test optimistic locking
-- [ ] Test concurrent updates to same data
-- [ ] Monitor database locks
-- [ ] Verify data integrity
+**New Pytest Tests (36 total)**:
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `test_harga_items_api.py` | 13 | Harga Items CRUD, validation, edge cases |
+| `test_pekerjaan_upsert.py` | 13 | List Pekerjaan upsert, hierarchy |
+| `test_concurrent_writes.py` | 10 | Optimistic locking, transaction isolation |
 
-**Week 5 Status**: ⏳ **PENDING** (50% → 63% overall)
+**Locust MutationUser** (5 write tests, toggled by env var):
+```bash
+# Enable writes: set LOCUST_MUTATIONS_ENABLED=true
+locust -f load_testing/locustfile.py --host=http://localhost:8000
+```
+
+#### Day 22-25 - Concurrent Testing ✅
+- [x] Test concurrent volume saves - verified sequential
+- [x] Test optimistic locking detection (409 Conflict)
+- [x] Test rapid sequential updates
+- [x] Test transaction rollback on failure
+- [x] Test data integrity after concurrent ops
+
+**Week 5 Status**: ✅ **COMPLETE** (70% → 80% overall)
 
 ---
 

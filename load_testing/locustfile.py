@@ -1581,8 +1581,8 @@ class MutationUser(AuthenticatedUser):
     weight = 0 if AUTH_ONLY else 1  # 5% of traffic (adjust based on HeavyUser weight)
     wait_time = between(5, 15)  # Slower, more deliberate mutations
     
-    # Toggle to actually perform mutations (default: disabled for safety)
-    MUTATIONS_ENABLED = False
+    # Toggle to actually perform mutations (set LOCUST_MUTATIONS_ENABLED=true to enable writes)
+    MUTATIONS_ENABLED = os.getenv("LOCUST_MUTATIONS_ENABLED", "false").lower() == "true"
     
     def on_start(self):
         """Initialize mutation user with auth"""

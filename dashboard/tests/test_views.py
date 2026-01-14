@@ -278,7 +278,7 @@ class TestProjectEditView:
             week_number=1,
             week_start_date=week_start,
             week_end_date=week_end,
-            proportion=Decimal('50.0'),
+            planned_proportion=Decimal('50.0'),  # Correct field name
         )
 
         client.force_login(user)

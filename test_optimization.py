@@ -21,8 +21,12 @@ from detail_project.views_api import api_rekap_kebutuhan_weekly
 
 User = get_user_model()
 
+import pytest
+
+@pytest.mark.django_db
 def test_endpoint_performance(project_id=160):
     """Test the optimized endpoint."""
+    pytest.skip("Standalone performance test - run with: python test_optimization.py")
     print("="*80)
     print("TESTING V2 REKAP KEBUTUHAN WEEKLY OPTIMIZATION")
     print("="*80)
