@@ -344,6 +344,13 @@ Sebelum menggunakan bundle, pahami dulu 3 jenis pekerjaan dalam sistem:
 | **CUSTOM** | Custom | Dibuat user dari nol | ✓ Full edit (A/B/C/D) | ✓ Bisa |
 | **REF_MODIFIED** | Ref Modified | Clone dari REF + modifikasi | ✓ Edit segment A/B/C | ❌ TIDAK bisa (hanya CUSTOM) |
 
+> **Guardrail — Source Types & Segment D (LAIN) Access**
+> - **REFERENSI (REF)** — read-only di Template AHSP. Tab/Segment D (LAIN) disembunyikan; tidak bisa menambah bundle. Semua perubahan hanya boleh lewat import referensi atau workflow Rincian Gabungan.
+> - **CUSTOM** — satu-satunya source_type yang fully editable di Template AHSP. Segment D (LAIN) selalu aktif, boleh referensi pekerjaan proyek (job) atau AHSP master, dan tunduk pada validasi empty-target + circular check.
+> - **REFERENSI_MODIFIED (REF_MODIFIED)** — clone dari REF yang diedit di halaman "Rincian AHSP Gabungan". Di Template AHSP tampil sebagai read-only mirip REF dan Segment D tetap terkunci.
+> - **Segment D Loop Limit** — Bundle hanya boleh nested maksimal 3 level (A→B→C). Level ke-4 otomatis di-block dengan error "Maksimum kedalaman bundle terlampaui".
+> - **Cascade Enforcement** — Saat pekerjaan target diubah, sistem wajib menjalankan cascade re-expansion untuk semua pekerjaan yang mereferensikannya. User tidak bisa bypass guardrail ini karena edit manual di expanded rows memang tidak tersedia.
+
 **Penjelasan Detail:**
 
 1. **SOURCE_REF (Referensi)**
