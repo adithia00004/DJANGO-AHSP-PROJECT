@@ -1,6 +1,7 @@
-# ⚡ DOCKER QUICK START - PC ALIN (2 MENIT SUMMARY)
+# ⚡ DOCKER QUICK START - Fresh PC Setup (5 Minutes)
 
-**Setup time**: ~30 menit first time, ~5 menit selanjutnya
+**Last Updated**: 2026-01-14  
+**Setup time**: ~15 menit first time, ~2 menit selanjutnya
 
 ---
 
@@ -14,59 +15,50 @@ Linux: curl -fsSL https://get.docker.com | sudo sh
 
 ### 2️⃣ Clone Repo (1 menit)
 ```bash
-git clone https://github.com/[ORG]/DJANGO-AHSP-PROJECT.git
+git clone https://github.com/[YOUR_ORG]/DJANGO-AHSP-PROJECT.git
 cd DJANGO-AHSP-PROJECT
 ```
 
-### 3️⃣ Setup .env (1 menit)
+### 3️⃣ Setup .env (30 detik)
 ```bash
 cp .env.example .env
-# Sudah cukup! Default values untuk development sudah oke
+# Edit jika perlu, tapi default sudah cukup untuk development
 ```
 
-### 4️⃣ BUILD & RUN (15 menit)
+### 4️⃣ BUILD & RUN (15 menit first time)
 ```bash
-# Build image
 docker-compose build
-
-# Expected output (first time: ~15 menit):
-# [1/2] Building base...
-# [2/2] Building runtime...
-# Successfully built [hash]
-# Successfully tagged django_ahsp_project:latest
-
-# Start services
 docker-compose up -d
 
-# Expected output:
-# Creating ahsp_postgres ... done
-# Creating ahsp_redis ... done
-# Creating ahsp_web ... done
-
-# Wait ~30 seconds...
+# Wait ~60 seconds for initialization...
+docker-compose logs -f web
 ```
 
 ### 5️⃣ ACCESS APPLICATION ✅
 ```
 http://localhost:8000           ← Main app
-http://localhost:8000/admin     ← Admin (user: admin, pw: admin123)
+http://localhost:8000/admin     ← Admin (user: admin, pw: admin)
 ```
 
 ---
 
-## 📊 WHAT'S INCLUDED
+## 📊 WHAT'S INCLUDED (Auto-Setup)
 
 ```
-✅ PostgreSQL 15          → localhost:5432
-✅ Redis 7                → localhost:6379
-✅ Django + Gunicorn      → localhost:8000
-✅ Vite + TanStack        → Auto-bundled
+✅ PostgreSQL 15          → Database (auto-migrated)
+✅ Redis 7                → Cache & Sessions
+✅ PgBouncer              → Connection pooling (optional)
+✅ Django + Gunicorn      → Web server on port 8000
+✅ Vite + TanStack        → Frontend bundled
 ✅ Node.js + npm          → Auto-installed
 ✅ 119 Python packages    → Auto-installed
 ✅ 15+ npm packages       → Auto-installed
-✅ PgBouncer (optional)   → docker-compose --profile pgbouncer up
-✅ Celery (optional)      → docker-compose --profile celery up
-✅ Flower monitor         → localhost:5555 (with Celery)
+
+🆕 AUTO SETUP ON FIRST RUN:
+✅ Migrations applied     → Database schema created
+✅ Superuser created      → admin/admin (development mode)
+✅ AHSP Referensi loaded  → ~22,000 items from fixtures
+✅ Static files collected → CSS/JS ready
 ```
 
 ---
@@ -208,24 +200,30 @@ docker-compose exec web python manage.py migrate --check
 
 ---
 
-## 📋 Checklist untuk PC Alin (atau PC lain)
+## 📋 Checklist untuk PC Baru
 
 Sebelum menjalankan project di PC baru, pastikan:
 
 ### Prerequisites
 - [ ] Install Docker Desktop (Windows/Mac) atau Docker Engine (Linux)
-- [ ] Install Docker Compose (sudah included di Docker Desktop)
 - [ ] Install Git
 - [ ] Minimal 8GB RAM, 10GB disk space
 - [ ] Internet connection untuk pull Docker images
 
-### Setup Steps
-1. [ ] Clone repository: `git clone <repo-url>`
-2. [ ] Copy `.env.example` ke `.env`: `cp .env.example .env`
-3. [ ] Edit `.env` sesuai kebutuhan lokal
-4. [ ] Run: `docker-compose up -d --build`
-5. [ ] Check: `docker-compose ps` (semua harus "Up")
-6. [ ] Access: http://localhost:8000
+### Setup Steps (Semua Otomatis!)
+1. [ ] Clone repository: `git clone <repo-url> && cd DJANGO-AHSP-PROJECT`
+2. [ ] Copy environment: `cp .env.example .env`
+3. [ ] Build & Start: `docker-compose up -d --build`
+4. [ ] Wait 60 seconds for auto-initialization
+5. [ ] Access: http://localhost:8000 (Login: admin/admin)
+
+### What Happens Automatically:
+✅ PostgreSQL database created  
+✅ Database migrations applied  
+✅ Superuser `admin/admin` created  
+✅ AHSP Referensi fixtures loaded (~22,000 items)  
+✅ Static files collected  
+✅ Gunicorn web server started
 
 ---
 

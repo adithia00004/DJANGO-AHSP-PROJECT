@@ -629,8 +629,7 @@
   </div>
 </div>
 
-<!-- Export Loading Modal -->
-{% include 'detail_project/_export_loading_modal.html' with modal_id="rkExportLoadingModal" %}
+
 
 {% endblock %}
 
@@ -640,8 +639,7 @@
 
 {{ block.super }}
 
-<!-- Unified Export Manager -->
-<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
 <script src="{% static 'detail_project/js/vendor/echarts.min.js' %}"></script>
 
 <script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}?v={{ now|date:'U' }}" defer></script>

@@ -288,8 +288,7 @@
     </div>
   </div>
 
-  <!-- Export Loading Modal -->
-  {% include 'detail_project/_export_loading_modal.html' with modal_id="hiExportLoadingModal" %}
+
 
 </div>
 <!-- End #hi-app -->
@@ -300,13 +299,12 @@
 {{ block.super }}
 <script src="{% static 'detail_project/js/numeric.umd.js' %}"></script>
 
-<!-- Export Manager (MUST load BEFORE harga_items.js) -->
-<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
 
 <script src="{% static 'detail_project/js/harga_items.js' %}"></script>
 
 <script>
-  // Initialize export buttons for Harga Items
+  // Initialize export buttons for Harga Items (using global SSOT modal)
   (function () {
     const projectId = document.getElementById('hi-app')?.dataset?.projectId;
     if (!projectId || typeof ExportManager === 'undefined') {
@@ -314,83 +312,38 @@
       return;
     }
 
+    // Uses global modal from base_detail.html automatically
     const exporter = new ExportManager(projectId, 'harga-items');
 
-    // Get loading modal
-    const loadingModalEl = document.getElementById('hiExportLoadingModal');
-    let loadingModal = null;
-    const loadingText = document.getElementById('hiExportLoadingText');
+    // Export lock to prevent double-clicking
+    let isExporting = false;
 
-    const showLoading = (formatName) => {
-      if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
-      if (loadingModalEl) {
-        // Get fresh instance each time
-        loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
-        loadingModal.show();
-      }
-    };
-    const hideLoading = () => {
-      // Use Bootstrap's hide method if modal exists
-      if (loadingModal) {
-        try {
-          loadingModal.hide();
-        } catch (e) {
-          console.warn('[HI] Modal hide error:', e);
+    const handleExport = async (format, formatName, e, useAsync = false) => {
+      e.preventDefault();
+      if (isExporting) return;
+      isExporting = true;
+      try {
+        if (useAsync || format === 'pdf' || format === 'word') {
+          await exporter.exportAsAsync(format);
+        } else {
+          await exporter.exportAs(format);
         }
+      } finally {
+        isExporting = false;
       }
-      // Force cleanup after short delay
-      setTimeout(() => {
-        // Force remove modal show state
-        if (loadingModalEl) {
-          loadingModalEl.classList.remove('show');
-          loadingModalEl.style.display = 'none';
-          loadingModalEl.setAttribute('aria-hidden', 'true');
-        }
-        // Remove all backdrops
-        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-        // Reset body
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-      }, 150);
     };
 
     const btnXLSX = document.getElementById('btn-export-xlsx');
     const btnPDF = document.getElementById('btn-export-pdf');
     const btnWord = document.getElementById('btn-export-word');
-
-    if (btnXLSX) {
-      btnXLSX.addEventListener('click', async (e) => {
-        e.preventDefault();
-        showLoading('Excel');
-        try { await exporter.exportAs('xlsx'); } finally { hideLoading(); }
-      });
-    }
-    if (btnPDF) {
-      btnPDF.addEventListener('click', async (e) => {
-        e.preventDefault();
-        showLoading('PDF');
-        try { await exporter.exportAs('pdf'); } finally { hideLoading(); }
-      });
-    }
-    if (btnWord) {
-      btnWord.addEventListener('click', async (e) => {
-        e.preventDefault();
-        showLoading('Word');
-        try { await exporter.exportAs('word'); } finally { hideLoading(); }
-      });
-    }
-
     const btnJSON = document.getElementById('btn-export-json');
-    if (btnJSON) {
-      btnJSON.addEventListener('click', async (e) => {
-        e.preventDefault();
-        showLoading('JSON');
-        try { await exporter.exportAs('json'); } finally { hideLoading(); }
-      });
-    }
 
-    console.log('[HargaItems] Export buttons initialized');
+    if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
+    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
+    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
+    if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
+
+    console.log('[HargaItems] Export buttons initialized with SSOT modal');
   })();
 </script>
 {% endblock %}

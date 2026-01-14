@@ -248,8 +248,7 @@
     </p>
   </div>
 
-  <!-- Export Loading Modal -->
-  {% include 'detail_project/_export_loading_modal.html' with modal_id="rabExportLoadingModal" show_progress=True %}
+
 
 </div>
 {% endblock %}
@@ -263,8 +262,7 @@
 <!-- Excel Exporter (keep this - your existing feature) -->
 <script src="{% static 'detail_project/js/export/ExcelExporter.js' %}"></script>
 
-<!-- NEW: Unified Export Manager (MUST load BEFORE rekap_rab.js) -->
-<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
 
 <!-- Main Rekap RAB Script -->
 <script src="{% static 'detail_project/js/rekap_rab.js' %}"></script>
@@ -286,10 +284,8 @@
       return;
     }
 
-    // Create exporter with modal support
-    const exporter = new ExportManager(projectId, 'rekap-rab', {
-      modalId: 'rabExportLoadingModal'
-    });
+    // Create exporter (uses global modal from base_detail.html by default)
+    const exporter = new ExportManager(projectId, 'rekap-rab');
 
     // Export lock to prevent double-clicking
     let isExporting = false;

@@ -436,8 +436,7 @@
 <!-- Hover hotspot kanan -->
 <div class="vp-overlay-hotspot" aria-hidden="true"></div>
 
-<!-- Export Loading Modal -->
-{% include 'detail_project/_export_loading_modal.html' with modal_id="vpExportLoadingModal" %}
+
 
 {% endblock %}
 
@@ -453,13 +452,12 @@
 <script src="{% static 'detail_project/js/volume_numeric_patch.js' %}"></script>
 <script src="{% static 'detail_project/js/volume_runtime.js' %}"></script>
 
-<!-- Export Manager (MUST load BEFORE volume_pekerjaan.js) -->
-<script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
 
 <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
 
 <script>
-  // Initialize export buttons for Volume Pekerjaan with modal spinner
+  // Initialize export buttons for Volume Pekerjaan (using global SSOT modal)
   (function () {
     const projectId = document.getElementById('vol-app')?.dataset?.projectId;
     if (!projectId || typeof ExportManager === 'undefined') {
@@ -467,75 +465,33 @@
       return;
     }
 
+    // Uses global modal from base_detail.html automatically
     const exporter = new ExportManager(projectId, 'volume-pekerjaan');
 
     // Export lock to prevent double-clicking
     let isExporting = false;
 
-    // Get loading modal
-    const loadingModalEl = document.getElementById('vpExportLoadingModal');
-    let loadingModal = null;
-    const loadingText = document.getElementById('vpExportLoadingText');
-
-    const showLoading = (formatName) => {
-      if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
-      if (loadingModalEl) {
-        loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
-        loadingModal.show();
-      }
-    };
-
-    const hideLoading = () => {
-      if (loadingModal) {
-        try {
-          loadingModal.hide();
-        } catch (e) {
-          console.warn('[VP] Modal hide error:', e);
-        }
-      }
-      // Force cleanup after short delay
-      setTimeout(() => {
-        if (loadingModalEl) {
-          loadingModalEl.classList.remove('show');
-          loadingModalEl.style.display = 'none';
-          loadingModalEl.setAttribute('aria-hidden', 'true');
-        }
-        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-      }, 150);
-    };
-
     // Collect parameters from volume_pekerjaan.js variables
     const getParameters = () => {
-      // Use exposed function from volume_pekerjaan.js
       if (typeof window.vpGetVariables === 'function') {
         return window.vpGetVariables();
       }
-      // Fallback: return empty if not available
-      console.warn('[VP Export] vpGetVariables not available');
       return {};
     };
 
-    // Generic export handler with lock
-    const handleExport = async (format, formatName, e) => {
+    const handleExport = async (format, formatName, e, useAsync = false) => {
       e.preventDefault();
       e.stopImmediatePropagation();
-
-      // Prevent double-click
-      if (isExporting) {
-        console.log('[VP] Export already in progress, ignoring');
-        return;
-      }
-
+      if (isExporting) return;
       isExporting = true;
-      showLoading(formatName);
-
       try {
-        await exporter.exportAs(format, { parameters: getParameters() });
+        const options = { parameters: getParameters() };
+        if (useAsync || format === 'pdf' || format === 'word') {
+          await exporter.exportAsAsync(format, options);
+        } else {
+          await exporter.exportAs(format, options);
+        }
       } finally {
-        hideLoading();
         isExporting = false;
       }
     };
@@ -545,20 +501,12 @@
     const btnWord = document.getElementById('btn-export-word');
     const btnJSON = document.getElementById('btn-export-json');
 
-    if (btnXLSX) {
-      btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e), { once: false });
-    }
-    if (btnPDF) {
-      btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e), { once: false });
-    }
-    if (btnWord) {
-      btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e), { once: false });
-    }
-    if (btnJSON) {
-      btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e), { once: false });
-    }
+    if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
+    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
+    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
+    if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
 
-    console.log('[VolumePekerjaan] Export buttons initialized with lock');
+    console.log('[VolumePekerjaan] Export buttons initialized with SSOT modal');
   })();
 </script>
 {% endblock %}

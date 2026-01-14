@@ -55,6 +55,29 @@ else:
 END
 fi
 
+# Load initial fixtures if database is empty (for fresh installations)
+echo "Checking for initial fixtures to load..."
+python manage.py shell << END
+from referensi.models import AHSPReferensi
+import os
+
+# Only load fixtures if referensi table is empty
+if AHSPReferensi.objects.count() == 0:
+    fixture_path = '/app/referensi/fixtures/initial_referensi.json'
+    if os.path.exists(fixture_path):
+        print('Loading referensi fixtures (database is empty)...')
+        import subprocess
+        result = subprocess.run(['python', 'manage.py', 'loaddata', fixture_path], capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f'Fixtures loaded successfully! Count: {AHSPReferensi.objects.count()} AHSP items')
+        else:
+            print(f'Fixture loading failed: {result.stderr}')
+    else:
+        print('No fixtures found at ' + fixture_path)
+else:
+    print(f'Referensi data already exists ({AHSPReferensi.objects.count()} items), skipping fixtures')
+END
+
 # Health check endpoint - optional, doesn't block startup
 echo "Setting up health check..."
 python manage.py shell << END 2>/dev/null || true

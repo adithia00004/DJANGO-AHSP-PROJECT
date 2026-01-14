@@ -20,13 +20,16 @@
  *   await exporter.exportAs('csv');
  */
 class ExportManager {
+  // SSOT: Default global modal ID (defined in base_detail.html)
+  static GLOBAL_MODAL_ID = 'globalExportModal';
+
   constructor(projectId, pageType, options = {}) {
     this.projectId = projectId;
     this.pageType = pageType;
     this.baseUrl = `/detail_project/api/project/${projectId}/export/${pageType}/`;
 
-    // Modal loading support
-    this.modalId = options.modalId || null;
+    // Modal loading support - use global modal by default (SSOT)
+    this.modalId = options.modalId || ExportManager.GLOBAL_MODAL_ID;
     this.modalInstance = null;
     this.modalLabelEl = null;
     this.modalTextEl = null;
@@ -34,9 +37,8 @@ class ExportManager {
 
     console.log(`[ExportManager] Initialized for project ${projectId}, page: ${pageType}`);
 
-    if (this.modalId) {
-      this._initModal();
-    }
+    // Auto-initialize modal (always, since we have global modal)
+    this._initModal();
   }
 
   /**
