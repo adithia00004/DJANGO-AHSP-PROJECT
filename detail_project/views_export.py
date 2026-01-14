@@ -668,3 +668,209 @@ def export_status(request, export_id):
     except Exception as e:
         logger.error(f"Error in export_status: {str(e)}", exc_info=True)
         return JsonResponse({'error': 'Internal server error'}, status=500)
+
+
+# ============================================================================
+# Async Export API Endpoints (Celery-based)
+# ============================================================================
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_start_export_async(request, project_id):
+    """
+    Start async export task for PDF/Word generation.
+    
+    POST /api/project/{project_id}/export-async/
+    Body:
+    {
+        "export_type": "rekap-rab" | "jadwal-pekerjaan" | "harga-items" | 
+                       "rincian-ahsp" | "rekap-kebutuhan" | "volume-pekerjaan",
+        "format": "pdf" | "word",
+        "options": {...}  // Optional export configuration
+    }
+    
+    Returns:
+    {
+        "task_id": "abc-123-def",
+        "status_url": "/api/export-status/async/abc-123-def/"
+    }
+    """
+    from detail_project.tasks import generate_export_async
+    from detail_project.models import Project
+    
+    try:
+        # Validate project access
+        project = get_object_or_404(Project, id=project_id)
+        if project.owner != request.user:
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        # Parse request
+        data = json.loads(request.body)
+        export_type = data.get('export_type')
+        format_type = data.get('format', 'pdf')
+        options = data.get('options', {})
+        
+        # Validate export_type
+        valid_types = [
+            'rekap-rab', 'jadwal-pekerjaan', 'harga-items',
+            'rincian-ahsp', 'rekap-kebutuhan', 'volume-pekerjaan'
+        ]
+        if export_type not in valid_types:
+            return JsonResponse({
+                'error': f'Invalid export_type. Must be one of: {", ".join(valid_types)}'
+            }, status=400)
+        
+        # Validate format
+        if format_type not in ['pdf', 'word']:
+            return JsonResponse({'error': 'Invalid format. Must be pdf or word'}, status=400)
+        
+        # Start Celery task
+        logger.info(
+            f"Starting async export: project={project_id}, type={export_type}, "
+            f"format={format_type}, user={request.user.id}"
+        )
+        
+        task = generate_export_async.delay(
+            project_id=project_id,
+            export_type=export_type,
+            format_type=format_type,
+            user_id=request.user.id,
+            options=options
+        )
+        
+        return JsonResponse({
+            'task_id': task.id,
+            'status_url': f'/api/export-status/async/{task.id}/'
+        }, status=202)  # 202 Accepted
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    
+    except Exception as e:
+        logger.error(f"Error starting async export: {str(e)}", exc_info=True)
+        return JsonResponse({'error': 'Internal server error'}, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_export_status_async(request, task_id):
+    """
+    Check status of async export task.
+    
+    GET /api/export-status/async/{task_id}/
+    
+    Returns:
+    {
+        "task_id": "abc-123-def",
+        "status": "PENDING" | "PROCESSING" | "SUCCESS" | "FAILURE",
+        "progress": {
+            "status": "Generating rekap-rab PDF...",
+            "progress": 45,
+            "total": 100
+        },  // Only if PROCESSING
+        "result": {
+            "file_path": "/path/to/export.pdf",
+            "file_size": 1024000,
+            "download_url": "/api/export-download/async/abc-123-def/"
+        },  // Only if SUCCESS
+        "error": "Error message"  // Only if FAILURE
+    }
+    """
+    from celery.result import AsyncResult
+    
+    try:
+        # Get task result
+        task = AsyncResult(task_id)
+        
+        response_data = {
+            'task_id': task_id,
+            'status': task.state
+        }
+        
+        # Add state-specific data
+        if task.state == 'PENDING':
+            response_data['message'] = 'Task is waiting to start...'
+        
+        elif task.state == 'PROCESSING':
+            # Get progress info from task meta
+            if task.info:
+                response_data['progress'] = task.info
+        
+        elif task.state == 'SUCCESS':
+            # Get result data
+            result = task.result or {}
+            response_data['result'] = {
+                'export_type': result.get('export_type'),
+                'format': result.get('format'),
+                'file_size': result.get('file_size'),
+                'download_url': f'/api/export-download/async/{task_id}/'
+            }
+        
+        elif task.state == 'FAILURE':
+            # Get error message
+            error_info = task.info or {}
+            if isinstance(error_info, dict):
+                response_data['error'] = error_info.get('error', str(error_info))
+            else:
+                response_data['error'] = str(error_info)
+        
+        return JsonResponse(response_data)
+    
+    except Exception as e:
+        logger.error(f"Error checking async export status: {str(e)}", exc_info=True)
+        return JsonResponse({'error': 'Internal server error'}, status=500)
+
+
+@login_required
+@require_http_methods(["GET"])
+def api_export_download_async(request, task_id):
+    """
+    Download completed async export file.
+    
+    GET /api/export-download/async/{task_id}/
+    
+    Returns: File download (PDF or Word)
+    """
+    from celery.result import AsyncResult
+    import os
+    
+    try:
+        # Get task result
+        task = AsyncResult(task_id)
+        
+        # Check if task completed
+        if task.state != 'SUCCESS':
+            return JsonResponse({
+                'error': f'Export not ready. Status: {task.state}'
+            }, status=400)
+        
+        # Get file path from result
+        result = task.result or {}
+        file_path = result.get('file_path')
+        
+        if not file_path or not os.path.exists(file_path):
+            raise Http404("Export file not found")
+        
+        # Determine content type
+        format_type = result.get('format', 'pdf')
+        content_type = 'application/pdf' if format_type == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        
+        # Return file
+        response = FileResponse(
+            open(file_path, 'rb'),
+            content_type=content_type
+        )
+        
+        # Set filename
+        export_type = result.get('export_type', 'export')
+        filename = f"{export_type}.{format_type}"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        logger.info(f"Async export downloaded: task_id={task_id}, file={filename}")
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error downloading async export: {str(e)}", exc_info=True)
+        raise Http404("Export file not found")

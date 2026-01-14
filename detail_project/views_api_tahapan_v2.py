@@ -395,6 +395,17 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'saved_assignments': saved_assignments
             }, status=500)
 
+        # Invalidate caches for affected pekerjaan
+        affected_pekerjaan_ids = {item.get('pekerjaan_id') for item in assignments if item.get('pekerjaan_id')}
+        for pekerjaan_id in affected_pekerjaan_ids:
+            # Invalidate weekly progress cache
+            cache.delete(f"v2_weekly_progress:{project.id}:{pekerjaan_id}:v1")
+            # Invalidate all mode-specific assignment caches
+            for mode_key in ['daily', 'weekly', 'monthly', 'custom']:
+                cache.delete(f"v2_pekerjaan_assignments:{project.id}:{pekerjaan_id}:{mode_key}:v1")
+        # Invalidate project-wide assignments cache
+        cache.delete(f"v2_assignments:{project.id}:v1")
+
         return JsonResponse({
             'ok': True,
             'message': f'{created_count} created, {updated_count} updated',
@@ -466,6 +477,8 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
     Get weekly progress for a pekerjaan (canonical storage).
 
     Returns the raw weekly progress data without conversion.
+    
+    OPTIMIZED: Redis caching with signature validation (5 min TTL).
 
     Returns:
         {
@@ -487,6 +500,25 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
     project = _owner_or_404(project_id, request.user)
     pekerjaan = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
 
+    # Helper for timestamp formatting
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    # Cache key
+    cache_key = f"v2_weekly_progress:{project.id}:{pekerjaan.id}:v1"
+    cached = cache.get(cache_key)
+    
+    # Check cache with signature validation
+    if cached:
+        current_signature = (
+            _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
+                .aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(pekerjaan.updated_at)
+        )
+        if cached.get("sig") == current_signature:
+            return JsonResponse(cached.get("data"))
+
+    # Cache miss or stale - fetch fresh data
     weekly_progress = PekerjaanProgressWeekly.objects.filter(
         pekerjaan=pekerjaan
     ).order_by('week_number')
@@ -500,7 +532,7 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
         total=Sum('actual_proportion')
     )['total'] or Decimal('0.00')
 
-    return JsonResponse({
+    response_data = {
         'ok': True,
         'pekerjaan_id': pekerjaan.id,
         'weekly_progress': [
@@ -520,7 +552,17 @@ def api_get_pekerjaan_weekly_progress(request, project_id, pekerjaan_id):
         'total_actual_proportion': float(total_actual),
         # Phase 2E.1: Check completion based on planned proportion
         'is_complete': abs(float(total_planned) - 100.0) < 0.01
-    })
+    }
+    
+    # Update cache with new signature
+    new_signature = (
+        _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
+            .aggregate(last=Max('updated_at'))['last']),
+        _fmt_ts(pekerjaan.updated_at)
+    )
+    cache.set(cache_key, {"sig": new_signature, "data": response_data}, 300)  # 5 min TTL
+
+    return JsonResponse(response_data)
 
 
 @login_required
@@ -530,6 +572,8 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
     Get pekerjaan assignments in current time scale mode (daily/weekly/monthly).
 
     This endpoint converts weekly canonical storage to the requested view mode.
+    
+    OPTIMIZED: Redis caching with mode-specific keys (5 min TTL).
 
     Query params:
         ?mode=daily|weekly|monthly|custom (optional, defaults to weekly)
@@ -561,6 +605,29 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
             'ok': False,
             'error': 'Invalid mode. Must be: daily, weekly, monthly, or custom'
         }, status=400)
+
+    # Helper for timestamp formatting
+    def _fmt_ts(val):
+        return val.isoformat() if val else "0"
+
+    # Cache key (mode-specific)
+    cache_key = f"v2_pekerjaan_assignments:{project.id}:{pekerjaan.id}:{mode}:v1"
+    cached = cache.get(cache_key)
+    
+    # Check cache with signature validation
+    if cached:
+        current_signature = (
+            mode,
+            _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
+                .aggregate(last=Max('updated_at'))['last']),
+            _fmt_ts(pekerjaan.updated_at),
+            project.week_start_day,
+            project.week_end_day
+        )
+        if cached.get("sig") == current_signature:
+            return JsonResponse(cached.get("data"))
+
+    # Cache miss or stale - compute fresh data
 
     # Get tahapan list for this project in the requested mode
     tahapan_list = TahapPelaksanaan.objects.filter(
@@ -632,13 +699,26 @@ def api_get_pekerjaan_assignments_v2(request, project_id, pekerjaan_id):
             })
             total_proporsi += proporsi
 
-    return JsonResponse({
+    response_data = {
         'ok': True,
         'pekerjaan_id': pekerjaan.id,
         'mode': mode,
         'assignments': assignments,
         'total_proporsi': float(total_proporsi)
-    })
+    }
+    
+    # Update cache with new signature
+    new_signature = (
+        mode,
+        _fmt_ts(PekerjaanProgressWeekly.objects.filter(pekerjaan=pekerjaan)
+            .aggregate(last=Max('updated_at'))['last']),
+        _fmt_ts(pekerjaan.updated_at),
+        project.week_start_day,
+        project.week_end_day
+    )
+    cache.set(cache_key, {"sig": new_signature, "data": response_data}, 300)  # 5 min TTL
+
+    return JsonResponse(response_data)
 
 
 @login_required

@@ -53,9 +53,9 @@ class ExportManager {
     // Try to find label and text elements (common patterns)
     const modalIdPrefix = this.modalId.replace(/Modal$/, '');
     this.modalLabelEl = document.getElementById(`${modalIdPrefix}Label`) ||
-                        document.getElementById(`${modalIdPrefix}LoadingLabel`);
+      document.getElementById(`${modalIdPrefix}LoadingLabel`);
     this.modalTextEl = document.getElementById(`${modalIdPrefix}Text`) ||
-                       document.getElementById(`${modalIdPrefix}LoadingText`);
+      document.getElementById(`${modalIdPrefix}LoadingText`);
 
     console.log(`[ExportManager] Modal initialized: #${this.modalId}`);
   }
@@ -169,6 +169,159 @@ class ExportManager {
       this._hideLoading(format);
       console.log(`[ExportManager] Export process finished`);
     }
+  }
+
+  /**
+   * Export data asynchronously via Celery background task
+   * Use this for large exports that may take long time
+   * 
+   * @param {string} format - 'pdf' or 'word'
+   * @param {object} options - Optional export options
+   * @returns {Promise<void>}
+   */
+  async exportAsAsync(format, options = {}) {
+    const asyncUrl = `/detail_project/api/project/${this.projectId}/export-async/`;
+
+    console.log(`[ExportManager] Starting ASYNC ${format.toUpperCase()} export...`);
+    console.log(`[ExportManager] Export type: ${this.pageType}`);
+
+    try {
+      this._showLoading(format);
+      this._updateModalProgress('Memulai proses export...', 0);
+
+      // 1. Start async export task
+      const startResponse = await fetch(asyncUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': this._getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          export_type: this.pageType,
+          format: format,
+          options: options
+        })
+      });
+
+      if (!startResponse.ok) {
+        const error = await startResponse.json();
+        throw new Error(error.error || `HTTP ${startResponse.status}`);
+      }
+
+      const { task_id, status_url } = await startResponse.json();
+      console.log(`[ExportManager] Task started: ${task_id}`);
+      this._updateModalProgress('Task dimulai, memproses data...', 10);
+
+      // 2. Poll for status
+      const result = await this._pollTaskStatus(task_id, format);
+
+      // 3. Download file
+      if (result.status === 'SUCCESS') {
+        this._updateModalProgress('Download file...', 95);
+        await this._downloadAsyncResult(task_id, format);
+        this._showSuccess(format);
+      } else {
+        throw new Error(result.error || 'Export failed');
+      }
+
+    } catch (error) {
+      console.error(`[ExportManager] ASYNC ${format.toUpperCase()} export failed:`, error);
+      this._showError(format, error.message);
+    } finally {
+      this._hideLoading(format);
+    }
+  }
+
+  /**
+   * Poll task status until complete
+   * @private
+   */
+  async _pollTaskStatus(taskId, format, maxAttempts = 60, intervalMs = 2000) {
+    const statusUrl = `/detail_project/api/export-status/async/${taskId}/`;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await fetch(statusUrl, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Status check failed: HTTP ${response.status}`);
+        }
+
+        const status = await response.json();
+        console.log(`[ExportManager] Task ${taskId} status: ${status.status}`);
+
+        // Update progress if available
+        if (status.progress) {
+          const progress = status.progress.progress || 0;
+          const message = status.progress.status || 'Memproses...';
+          this._updateModalProgress(message, Math.min(progress, 90));
+        }
+
+        // Check terminal states
+        if (status.status === 'SUCCESS') {
+          return { status: 'SUCCESS', result: status.result };
+        } else if (status.status === 'FAILURE') {
+          return { status: 'FAILURE', error: status.error || 'Task failed' };
+        }
+
+        // Continue polling
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+
+      } catch (error) {
+        console.error(`[ExportManager] Poll error (attempt ${attempt + 1}):`, error);
+        if (attempt >= maxAttempts - 1) {
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
+
+    throw new Error('Export timeout - task took too long');
+  }
+
+  /**
+   * Download completed async export
+   * @private
+   */
+  async _downloadAsyncResult(taskId, format) {
+    const downloadUrl = `/detail_project/api/export-download/async/${taskId}/`;
+
+    const response = await fetch(downloadUrl, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin'
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Download failed');
+    }
+
+    const blob = await response.blob();
+    this._downloadBlob(blob, format, response);
+  }
+
+  /**
+   * Update modal progress display
+   * @private
+   */
+  _updateModalProgress(message, progress) {
+    if (this.modalTextEl) {
+      this.modalTextEl.textContent = message;
+    }
+
+    // Update progress bar if exists
+    const progressBar = document.querySelector(`#${this.modalId} .progress-bar`);
+    if (progressBar) {
+      progressBar.style.width = `${progress}%`;
+      progressBar.setAttribute('aria-valuenow', progress);
+    }
+
+    console.log(`[ExportManager] Progress: ${progress}% - ${message}`);
   }
 
   /**

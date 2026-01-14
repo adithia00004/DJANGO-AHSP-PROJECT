@@ -1,5 +1,6 @@
 {# templates/detail_project/_export_loading_modal.html #}
 {# Usage: {% include '_export_loading_modal.html' with modal_id="rabExportLoadingModal" %} #}
+{# For async export with progress: {% include '...' with modal_id="..." show_progress=True %} #}
 <div class="modal fade dp-modal" id="{{ modal_id }}" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1"
     aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -9,7 +10,13 @@
                     <span class="visually-hidden">Loading...</span>
                 </div>
                 <h6 class="mb-1" id="{{ modal_id }}Label">{{ title|default:"Memproses Export" }}</h6>
-                <p class="text-muted small mb-0" id="{{ modal_id }}Text">{{ message|default:"Mohon tunggu..." }}</p>
+                <p class="text-muted small mb-2" id="{{ modal_id }}Text">{{ message|default:"Mohon tunggu..." }}</p>
+                {% if show_progress %}
+                <div class="progress mt-3" style="height: 6px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                        style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

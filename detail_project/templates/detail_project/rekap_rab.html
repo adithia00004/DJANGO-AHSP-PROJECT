@@ -249,7 +249,7 @@
   </div>
 
   <!-- Export Loading Modal -->
-  {% include 'detail_project/_export_loading_modal.html' with modal_id="rabExportLoadingModal" %}
+  {% include 'detail_project/_export_loading_modal.html' with modal_id="rabExportLoadingModal" show_progress=True %}
 
 </div>
 {% endblock %}
@@ -286,48 +286,16 @@
       return;
     }
 
-    const exporter = new ExportManager(projectId, 'rekap-rab');
+    // Create exporter with modal support
+    const exporter = new ExportManager(projectId, 'rekap-rab', {
+      modalId: 'rabExportLoadingModal'
+    });
 
     // Export lock to prevent double-clicking
     let isExporting = false;
 
-    // Get loading modal
-    const loadingModalEl = document.getElementById('rabExportLoadingModal');
-    let loadingModal = null;
-    const loadingText = document.getElementById('rabExportLoadingText');
-
-    const showLoading = (formatName) => {
-      if (loadingText) loadingText.textContent = `Membuat file ${formatName}...`;
-      if (loadingModalEl) {
-        loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalEl);
-        loadingModal.show();
-      }
-    };
-
-    const hideLoading = () => {
-      if (loadingModal) {
-        try {
-          loadingModal.hide();
-        } catch (e) {
-          console.warn('[RAB] Modal hide error:', e);
-        }
-      }
-      // Force cleanup after short delay
-      setTimeout(() => {
-        if (loadingModalEl) {
-          loadingModalEl.classList.remove('show');
-          loadingModalEl.style.display = 'none';
-          loadingModalEl.setAttribute('aria-hidden', 'true');
-        }
-        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-        document.body.classList.remove('modal-open');
-        document.body.style.overflow = '';
-        document.body.style.paddingRight = '';
-      }, 150);
-    };
-
     // Generic export handler with lock
-    const handleExport = async (format, formatName, e) => {
+    const handleExport = async (format, formatName, e, useAsync = false) => {
       e.preventDefault();
       e.stopImmediatePropagation();
 
@@ -338,12 +306,17 @@
       }
 
       isExporting = true;
-      showLoading(formatName);
 
       try {
-        await exporter.exportAs(format);
+        // Use async for PDF and Word (heavy exports)
+        if (useAsync || format === 'pdf' || format === 'word') {
+          console.log(`[RAB] Using ASYNC export for ${formatName}`);
+          await exporter.exportAsAsync(format);
+        } else {
+          // Sync for Excel/JSON (fast exports)
+          await exporter.exportAs(format);
+        }
       } finally {
-        hideLoading();
         isExporting = false;
       }
     };
@@ -368,19 +341,21 @@
     const cleanJSON = cleanButton(btnJSON);
 
     if (cleanXLSX) {
-      cleanXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
+      cleanXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e, false));
     }
     if (cleanPDF) {
-      cleanPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e));
+      // PDF uses async export via Celery
+      cleanPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
     }
     if (cleanWord) {
-      cleanWord.addEventListener('click', (e) => handleExport('word', 'Word', e));
+      // Word uses async export via Celery
+      cleanWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
     }
     if (cleanJSON) {
-      cleanJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
+      cleanJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e, false));
     }
 
-    console.log('[RekapRAB] Export buttons initialized (cleaned)');
+    console.log('[RekapRAB] Export buttons initialized with async support');
   })();
 </script>
 

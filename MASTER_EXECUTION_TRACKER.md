@@ -10,14 +10,15 @@
 ## OVERALL PROGRESS
 
 ```
-[##########..........] 50% Complete (Week 3 in progress)
+[############........] 60% Complete (Week 4 starting)
 
 Timeline:
 - Planning Complete
 - Week 1: Tier 1 Stabilization (COMPLETE)
 - Week 2: Tier 1 Completion + V2 Start (COMPLETE)
-- Week 3: Tier 2 Performance - Phase 1 (IN PROGRESS)
-- Week 4: Tier 2 Performance - Phase 2
+- Week 3: Tier 2 Performance - Phase 1 (COMPLETE)
+  - Scale Testing 150-200 Users: ✅ COMPLETE
+- Week 4: Tier 2 Performance - Phase 2 (IN PROGRESS)
 - Week 5-6: Tier 3 Coverage
 - Week 7: Integration Testing
 - Week 8: Production Readiness
@@ -329,7 +330,31 @@ Timeline:
 - [x] Measure memory usage improvements (python ~170MB, postgres ~24MB, PgBouncer ~1.9MB, Redis ~6MB)
 - [x] Run v36 validation (core-only)
 
-**Week 3 Status**: IN PROGRESS (80% complete)
+#### Day 13 (2026-01-13) - Scale Testing 150-200 Users ✅ COMPLETE
+- [x] Scale test 150 users (v41 baseline) - 10.90% failures (capacity exceeded)
+- [x] Investigate root cause - Django bypassing PgBouncer (Docker network isolation)
+- [x] Fix Docker network - Added PgBouncer to same network as web service
+- [x] Fix ACCOUNT_RATE_LIMITS_DISABLED env var - Added to docker-compose.yml
+- [x] Re-test 150 users (v44) - **1.18% failures** ✅
+- [x] Scale test 200 users (v45) - **1.19% failures** ✅ STABLE
+
+**v44 Scale Test Results (150 Users)**:
+- Aggregated: 12,744 requests, 151 failures (1.18%), P95 100ms, Avg 39ms
+- Root cause fixed: `PGBOUNCER_HOST=pgbouncer` + `PGBOUNCER_PORT=6432` in Docker network
+
+**v45 Scale Test Results (200 Users)**:
+- Aggregated: 16,774 requests, 200 failures (1.19%), P95 140ms, Avg 48ms
+- Failure rate stable between 150-200 users (pool 140/20 sufficient)
+- Remaining failures: 164 login HTTP 500, 36 rate limiting residual
+
+> ⚠️ **BACKLOG: Login HTTP 500 Investigation**
+> - ~1.2% of all requests fail at login (HTTP 500)
+> - Not database-related (PgBouncer now working properly)
+> - Suspected: Django auth thread contention, session write race, or allauth internal
+> - Priority: LOW (production-ready, acceptable failure rate)
+> - Target: Week 4 or separate optimization sprint
+
+**Week 3 Status**: ✅ **COMPLETE** (60% overall)
 
 ---
 
@@ -343,13 +368,39 @@ Timeline:
 - [ ] Test cache hit ratios (target >80%)
 - [ ] Measure 99% improvement on cache hits
 
+#### Day 18 (2026-01-14) - Celery Infrastructure Setup ✅
+- [x] Audit Celery configuration - config/celery.py fully configured
+- [x] Add Celery broker/backend URLs to docker-compose.yml
+- [x] Fix Celery DB connection - Added PGBOUNCER_HOST env vars
+- [x] Start Celery containers - `docker-compose --profile celery up -d`
+- [x] Verify workers ready - "Application is ready!"
+- [ ] Create async PDF/Word export tasks
+- [ ] Implement status tracking API
+- [ ] Frontend integration for async exports
+
+**Celery Status**: ahsp_celery (worker, 4 concurrency), ahsp_celery_beat (scheduler), ahsp_flower (monitoring)
+
+#### Day 18-19 (2026-01-14) - V2 Redis Caching ✅ COMPLETE
+- [x] Audit V2 endpoint cache coverage - 1/6 endpoints cached
+- [x] Implement caching for `api_get_pekerjaan_weekly_progress` - Signature-based, 5min TTL
+- [x] Implement caching for `api_get_pekerjaan_assignments_v2` - Mode-specific keys (daily/weekly/monthly)
+- [x] Add cache invalidation on `api_assign_pekerjaan_weekly` - Clears per-pekerjaan + project-wide
+- [x] Test cache functionality - Redis verified, signature validation working
+
+**V2 Caching Coverage**:
+- ✅ 3/6 endpoints now cached (50% → 100% of read endpoints)
+- Cache keys: `v2_weekly_progress`, `v2_pekerjaan_assignments:{mode}`, `v2_assignments`
+- Invalidation: Automatic on WRITE operations
+- Expected: >80% cache hit ratio, ~70% DB query reduction
+
+#### Day 18-20 - Async Export (Celery) - CONTINUATION
 #### Day 18-20 - Async Export (Celery)
 - [ ] Setup Celery if not configured
 - [ ] Implement async PDF/Word generation
 - [ ] Add status tracking endpoints
 - [ ] Test with concurrent exports
 
-**Week 4 Status**: ⏳ **PENDING** (38% → 50% overall)
+**Week 4 Status**: 🔄 **IN PROGRESS - Day 18** (60% → 65% overall)
 
 ---
 

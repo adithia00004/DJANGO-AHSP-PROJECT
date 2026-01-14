@@ -13,6 +13,11 @@ venv/
 *.sqlite3
 local_settings.py
 
+# local DB backups / dumps
+local_full_backup.sql
+local_full_backup.dump
+*.dump
+
 # Test & tooling caches
 .pytest_cache/
 .coverage
@@ -72,3 +77,8 @@ logs_volume/
 test_pytest_db.sqlite3
 node_modules
 node_modules
+
+
+# load test artifacts
+hasil_test_*.csv
+backup_full_data.json

@@ -263,13 +263,25 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/harga-items/xlsx/',
           views_api.export_harga_items_xlsx,
           name='export_harga_items_xlsx'),
-
-     path('api/project/<int:project_id>/export/harga-items/json/',
+    path('api/project/<int:project_id>/export/harga-items/json/',
           views_api.export_harga_items_json,
           name='export_harga_items_json'),
 
-
+    # ========================================================================
+    # Async Export API Endpoints (Celery-based)
+    # ========================================================================
+    path('api/project/<int:project_id>/export-async/',
+         views_export.api_start_export_async,
+         name='api_start_export_async'),
     
+    path('api/export-status/async/<str:task_id>/',
+         views_export.api_export_status_async,
+         name='api_export_status_async'),
+    
+    path('api/export-download/async/<str:task_id>/',
+         views_export.api_export_download_async,
+         name='api_export_download_async'),
+
     # ===== TAHAPAN PELAKSANAAN API (NEW) =====
       
     # Tahapan CRUD
