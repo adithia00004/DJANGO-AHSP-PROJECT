@@ -60,8 +60,11 @@ urlpatterns = [
     # Referensi AHSP (aktifkan kalau UI referensi sudah siap)
     path('referensi/', include(('referensi.urls', 'referensi'), namespace='referensi')),
 
-    # Root redirect
-    path('', home_redirect, name='home'),
+    # Subscription & Payment
+    path('subscriptions/', include(('subscriptions.urls', 'subscriptions'), namespace='subscriptions')),
+
+    # Landing Page (root URL - redirects to dashboard if logged in)
+    path('', include(('pages.urls', 'pages'), namespace='pages')),
 ]
 
 # Serve media files in development

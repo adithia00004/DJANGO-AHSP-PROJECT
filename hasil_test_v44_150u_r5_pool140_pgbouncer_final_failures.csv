@@ -1,4 +1,0 @@
-Method,Name,Error,Occurrences
-POST,/api/v2/project/[id]/week-boundary/,"ConnectionAbortedError(10053, 'An established connection was aborted by the software in your host machine', None, 10053, None)",1
-POST,[AUTH] Login POST,CatchResponseError('login failed (login page returned)'),36
-POST,[AUTH] Login POST,CatchResponseError('login server error: 500'),114

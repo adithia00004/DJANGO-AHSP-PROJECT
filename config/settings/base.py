@@ -57,6 +57,8 @@ INSTALLED_APPS = [
     "dashboard",
     "detail_project",
     "referensi",
+    "pages",  # Landing page & marketing pages
+    "subscriptions",  # Payment & subscription management
 ]
 
 # ---------------------------------------------------------------------------
@@ -74,6 +76,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.SubscriptionMiddleware",  # Subscription access control
     "simple_history.middleware.HistoryRequestMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -109,6 +112,7 @@ TEMPLATES = [
                 "django.template.context_processors.i18n",
                 "django.template.context_processors.media",
                 "django.template.context_processors.tz",
+                "accounts.context_processors.subscription_context",  # Subscription info
             ],
         },
     },
@@ -181,15 +185,20 @@ AUTHENTICATION_BACKENDS = [
 
 SITE_ID = 1
 ACCOUNT_ADAPTER = "config.adapters.AccountAdapter"
-ACCOUNT_LOGIN_METHODS = {"email", "username"}
-ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
-ACCOUNT_EMAIL_VERIFICATION = os.getenv("ACCOUNT_EMAIL_VERIFICATION", "optional")
+
+# Email-First Authentication Configuration (allauth 0.63+)
+ACCOUNT_LOGIN_METHODS = {"email"}  # Login using email only
+ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]  # email required
+ACCOUNT_UNIQUE_EMAIL = True              # Each email can only be used once
+ACCOUNT_EMAIL_VERIFICATION = os.getenv("ACCOUNT_EMAIL_VERIFICATION", "optional")  # 'optional' for dev, set 'mandatory' in prod env
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True  # Auto-login after email confirmation
 ACCOUNT_SESSION_REMEMBER = True
+ACCOUNT_SIGNUP_REDIRECT_URL = "/dashboard/"  # Where to go after signup
 
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGIN_URL = "/accounts/login/"
 LOGOUT_REDIRECT_URL = "/"
-ACCOUNT_LOGOUT_REDIRECT_URL = "/accounts/login/"
+ACCOUNT_LOGOUT_REDIRECT_URL = "/"
 
 # ---------------------------------------------------------------------------
 # Internationalisation
@@ -446,3 +455,14 @@ REFERENSI_CONFIG = {
         "timeout": 3600,
     },
 }
+
+# ---------------------------------------------------------------------------
+# Midtrans Payment Gateway
+# ---------------------------------------------------------------------------
+
+MIDTRANS_SERVER_KEY = os.getenv("MIDTRANS_SERVER_KEY", "")
+MIDTRANS_CLIENT_KEY = os.getenv("MIDTRANS_CLIENT_KEY", "")
+MIDTRANS_IS_PRODUCTION = os.getenv("MIDTRANS_IS_PRODUCTION", "False").lower() == "true"
+
+# Site URL for callbacks (set in production)
+SITE_URL = os.getenv("SITE_URL", "http://localhost:8000")

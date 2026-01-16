@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Checkout - Dashboard-RAB{% endblock %}
+
+{% block extra_css %}
+<style>
+    .checkout-container {
+        max-width: 600px;
+        margin: 2rem auto;
+    }
+
+    .plan-summary {
+        background: var(--dp-c-surface-2, #f8f9fa);
+        border: 1px solid var(--dp-c-border, #e5e7eb);
+        border-radius: var(--corp-radius-xl, 0.75rem);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .plan-price {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--dp-c-primary, #0d6efd);
+    }
+
+    .plan-features li {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--dp-c-border, #e5e7eb);
+    }
+
+    .plan-features li:last-child {
+        border-bottom: none;
+    }
+
+    .plan-features i {
+        color: var(--dp-c-success, #198754);
+        margin-right: 0.5rem;
+    }
+
+    .secure-badge {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        color: var(--dp-c-muted, #6c757d);
+        font-size: 0.875rem;
+    }
+
+    .secure-badge i {
+        color: var(--dp-c-success, #198754);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="checkout-container">
+    <div class="text-center mb-4">
+        <h1 class="h3 fw-bold">Checkout</h1>
+        <p class="text-muted">Selesaikan pembayaran untuk mengaktifkan langganan</p>
+    </div>
+
+    <!-- Plan Summary -->
+    <div class="plan-summary">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <div>
+                <h4 class="mb-1">{{ plan.name }}</h4>
+                <p class="text-muted mb-0">{{ plan.duration_months }} bulan akses penuh</p>
+            </div>
+            <div class="text-end">
+                <div class="plan-price">Rp {{ plan.price|floatformat:0 }}</div>
+                {% if plan.discount_percentage > 0 %}
+                <span class="badge bg-success">Hemat {{ plan.discount_percentage }}%</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <hr>
+
+        <ul class="plan-features list-unstyled mb-0">
+            <li><i class="bi bi-check-circle-fill"></i> Akses penuh semua fitur</li>
+            <li><i class="bi bi-check-circle-fill"></i> Export PDF/Excel/Word tanpa watermark</li>
+            <li><i class="bi bi-check-circle-fill"></i> Gantt Chart & Kurva S</li>
+            <li><i class="bi bi-check-circle-fill"></i> Unlimited proyek</li>
+            <li><i class="bi bi-check-circle-fill"></i> Support prioritas</li>
+        </ul>
+    </div>
+
+    <!-- Payment Button -->
+    <button id="pay-button" class="btn btn-primary btn-lg w-100 py-3">
+        <i class="bi bi-credit-card me-2"></i>
+        Bayar Sekarang
+    </button>
+
+    <div class="secure-badge">
+        <i class="bi bi-shield-check"></i>
+        <span>Pembayaran aman via Midtrans</span>
+    </div>
+
+    <!-- Back Link -->
+    <div class="text-center mt-4">
+        <a href="{% url 'pages:pricing' %}" class="text-muted">
+            <i class="bi bi-arrow-left me-1"></i>Kembali ke halaman harga
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Midtrans Snap.js -->
+<script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key="{{ midtrans_client_key }}"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const payButton = document.getElementById('pay-button');
+        const planId = '{{ plan.id }}';
+
+        payButton.addEventListener('click', async function () {
+            payButton.disabled = true;
+            payButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Memproses...';
+
+            try {
+                // Request Snap Token from backend
+                const response = await fetch('{% url "subscriptions:create_payment" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({ plan_id: planId })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Gagal membuat transaksi');
+                }
+
+                // Open Midtrans Snap popup
+                window.snap.pay(data.snap_token, {
+                    onSuccess: function (result) {
+                        // Redirect to success page
+                        window.location.href = '{% url "subscriptions:payment_finish" %}?order_id=' + data.order_id + '&status=success';
+                    },
+                    onPending: function (result) {
+                        // Redirect to pending page
+                        window.location.href = '{% url "subscriptions:payment_finish" %}?order_id=' + data.order_id + '&status=pending';
+                    },
+                    onError: function (result) {
+                        alert('Pembayaran gagal. Silakan coba lagi.');
+                        payButton.disabled = false;
+                        payButton.innerHTML = '<i class="bi bi-credit-card me-2"></i>Bayar Sekarang';
+                    },
+                    onClose: function () {
+                        // User closed the popup without completing payment
+                        payButton.disabled = false;
+                        payButton.innerHTML = '<i class="bi bi-credit-card me-2"></i>Bayar Sekarang';
+                    }
+                });
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+                payButton.disabled = false;
+                payButton.innerHTML = '<i class="bi bi-credit-card me-2"></i>Bayar Sekarang';
+            }
+        });
+    });
+</script>
+{% endblock %}

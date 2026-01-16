@@ -1,470 +1,250 @@
-"""
-Export views for dashboard app.
-
-Provides export functionality in multiple formats:
-- Excel (.xlsx)
-- CSV (.csv)
-- PDF (project detail report)
-"""
-
-from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
-from django.db.models import Q
-from datetime import date
+from django.contrib.auth.decorators import login_required
+from django.db.models import Sum, Value, DecimalField, Q
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-import csv
-from io import BytesIO
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from openpyxl.styles import Font, Alignment, Border, Side
+from datetime import date
 
 from .models import Project
 from .forms import ProjectFilterForm
+from detail_project.services import compute_rekap_for_project
+from detail_project.models import PekerjaanProgressWeekly
 
-
-def apply_filters(queryset, request):
+@login_required
+def export_dashboard_xlsx(request):
     """
-    Apply the same filters as dashboard view.
-    Reusable function for export views.
+    Export list of projects to Excel, respecting current filters.
+    Includes full columns and weighted progress calculation.
     """
-    filter_form = ProjectFilterForm(request.GET, user=request.user)
+    # 1. Base QuerySet
+    queryset = Project.objects.filter(owner=request.user)
 
-    if filter_form.is_valid():
-        # Basic search
-        search = filter_form.cleaned_data.get('search')
-        if search:
+    # 2. Apply Filters (Replicating dashboard_view logic)
+    filter_form = ProjectFilterForm(request.GET or None)
+
+    if request.GET and filter_form.is_valid():
+        search_query = filter_form.cleaned_data.get('q')
+        if search_query:
             queryset = queryset.filter(
-                Q(nama__icontains=search) |
-                Q(deskripsi__icontains=search) |
-                Q(sumber_dana__icontains=search) |
-                Q(lokasi_project__icontains=search) |
-                Q(nama_client__icontains=search) |
-                Q(kategori__icontains=search)
+                Q(nama__icontains=search_query) |
+                Q(lokasi_project__icontains=search_query) |
+                Q(tahun_project__icontains=search_query) |
+                Q(nama_client__icontains=search_query)
             )
 
-        # Filter by year
-        tahun = filter_form.cleaned_data.get('tahun_project')
+        tahun = filter_form.cleaned_data.get('tahun')
         if tahun:
             queryset = queryset.filter(tahun_project=tahun)
 
-        # Filter by sumber dana
-        sumber = filter_form.cleaned_data.get('sumber_dana')
-        if sumber:
-            queryset = queryset.filter(sumber_dana=sumber)
-
-        # Filter by timeline status
-        status = filter_form.cleaned_data.get('status_timeline')
-        if status:
-            today = date.today()
-            if status == 'belum_mulai':
-                queryset = queryset.filter(tanggal_mulai__gt=today)
-            elif status == 'berjalan':
+        # Date range filters
+        tanggal_from = filter_form.cleaned_data.get('tanggal_from')
+        tanggal_to = filter_form.cleaned_data.get('tanggal_to')
+        
+        if tanggal_from or tanggal_to:
+            if tanggal_from and tanggal_to:
                 queryset = queryset.filter(
-                    tanggal_mulai__lte=today,
-                    tanggal_selesai__gte=today
+                    tanggal_mulai__lte=tanggal_to,
+                    tanggal_selesai__gte=tanggal_from
                 )
-            elif status == 'terlambat':
-                queryset = queryset.filter(tanggal_selesai__lt=today)
-            elif status == 'selesai':
-                queryset = queryset.filter(
-                    tanggal_selesai__lt=today,
-                    tanggal_mulai__lte=today
-                )
+            elif tanggal_from:
+                queryset = queryset.filter(tanggal_selesai__gte=tanggal_from)
+            elif tanggal_to:
+                queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
 
-        # Filter by budget range
-        anggaran_min = filter_form.cleaned_data.get('anggaran_min')
-        anggaran_max = filter_form.cleaned_data.get('anggaran_max')
-        if anggaran_min is not None:
-            queryset = queryset.filter(anggaran_owner__gte=anggaran_min)
-        if anggaran_max is not None:
-            queryset = queryset.filter(anggaran_owner__lte=anggaran_max)
-
-        # Filter by date range
-        tanggal_from = filter_form.cleaned_data.get('tanggal_mulai_from')
-        tanggal_to = filter_form.cleaned_data.get('tanggal_mulai_to')
-        if tanggal_from:
-            queryset = queryset.filter(tanggal_mulai__gte=tanggal_from)
-        if tanggal_to:
-            queryset = queryset.filter(tanggal_mulai__lte=tanggal_to)
-
-        # Filter by active status
         is_active_filter = filter_form.cleaned_data.get('is_active')
         if is_active_filter == 'true':
             queryset = queryset.filter(is_active=True)
         elif is_active_filter == 'false':
             queryset = queryset.filter(is_active=False)
+        elif 'is_active' not in request.GET:
+            queryset = queryset.filter(is_active=True)
 
-        # Sorting
         sort_by = filter_form.cleaned_data.get('sort_by') or '-updated_at'
         queryset = queryset.order_by(sort_by)
     else:
-        # Default: only active projects
-        queryset = queryset.filter(is_active=True).order_by('-updated_at')
+        # Default view logic
+        if 'is_active' not in request.GET:
+             queryset = queryset.filter(is_active=True)
+        queryset = queryset.order_by('-updated_at')
 
-    return queryset
+    # 3. Calculate Progress for all filtered projects (Batch optimization)
+    # We do this logic manually to match dashboard_view's new weighted logic
+    
+    # Pre-fetch actual sums
+    project_ids = list(queryset.values_list('id', flat=True))
+    pekerjaan_actual_aggregates = {}
+    
+    weekly_aggregates = PekerjaanProgressWeekly.objects.filter(
+        project_id__in=project_ids
+    ).values('pekerjaan_id').annotate(
+        total_actual=Coalesce(
+            Sum('actual_proportion'),
+            Value(Decimal('0')),
+            output_field=DecimalField()
+        )
+    )
+    
+    for agg in weekly_aggregates:
+        pekerjaan_actual_aggregates[agg['pekerjaan_id']] = float(agg['total_actual'])
 
-
-@login_required
-def export_excel(request):
-    """
-    Export filtered projects to Excel (.xlsx) format.
-    """
-    # Get filtered queryset
-    queryset = Project.objects.filter(owner=request.user)
-    queryset = apply_filters(queryset, request)
-
-    # Create workbook and worksheet
+    # 4. Prepare Excel
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Projects"
+    ws.title = "Daftar Project"
 
-    # Define headers
+    # Headers
     headers = [
-        'No',
-        'Index Project',
-        'Nama Project',
-        'Tahun',
-        'Sumber Dana',
-        'Lokasi',
-        'Client',
-        'Anggaran (Rp)',
-        'Tanggal Mulai',
-        'Tanggal Selesai',
-        'Durasi (hari)',
-        'Status',
-        'Kategori',
-        'Created',
+        "Index", "Nama Project", "Tahun", "Sumber Dana", "Lokasi", 
+        "Nilai Anggaran (Rp)", "Progress (%)", "Status",
+        # Client Info
+        "Nama Client", "Jabatan Client", "Instansi Client",
+        # Kontraktor Info
+        "Nama Kontraktor", "Instansi Kontraktor",
+        # Konsultan Info
+        "Konsultan Perencana", "Instansi Perencana",
+        "Konsultan Pengawas", "Instansi Pengawas",
+        # Dates
+        "Tanggal Mulai", "Tanggal Selesai", "Durasi (Hari)",
+        "Ket 1", "Ket 2", "Kategori"
     ]
+    
+    # Styling headers
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = openpyxl.styles.PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    # Style for header
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    header_alignment = Alignment(horizontal="center", vertical="center")
-    border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-
-    # Write headers
     for col_num, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col_num)
-        cell.value = header
+        cell = ws.cell(row=1, column=col_num, value=header)
         cell.font = header_font
         cell.fill = header_fill
-        cell.alignment = header_alignment
-        cell.border = border
+        cell.alignment = center_align
 
-    # Write data
-    today = date.today()
+    # Rows
     for row_num, project in enumerate(queryset, 2):
-        # Determine status
-        if not project.is_active:
-            status = "Archived"
-        elif not project.tanggal_mulai or not project.tanggal_selesai:
-            status = "No Timeline"
-        elif project.tanggal_selesai < today:
-            status = "Terlambat"
-        elif project.tanggal_mulai > today:
-            status = "Belum Mulai"
-        else:
-            status = "Berjalan"
+        # Calculate Weighted Progress per project
+        weighted_progress = 0.0
+        try:
+            from detail_project.models import Pekerjaan as PekerjaanModel
+            
+            rekap_rows = compute_rekap_for_project(project)
+            rekap_lookup = {row['pekerjaan_id']: row for row in rekap_rows}
+            
+            # Get all Pekerjaan for this project to access budgeted_cost
+            pekerjaan_qs = PekerjaanModel.objects.filter(project=project)
+            
+            total_project_cost = Decimal('0.00')
+            total_realization_cost = Decimal('0.00')
+            
+            for pkj in pekerjaan_qs:
+                pekerjaan_id = pkj.id
+                
+                # Get rekap fallback
+                fallback_row = rekap_lookup.get(pekerjaan_id)
+                fallback_total = Decimal(str(fallback_row.get('total', 0))) if fallback_row else Decimal('0')
+                
+                # Prioritize budgeted_cost (like S-Curve logic), fallback to rekap total
+                if pkj.budgeted_cost and pkj.budgeted_cost > 0:
+                    item_cost = pkj.budgeted_cost
+                else:
+                    item_cost = fallback_total
+                
+                if item_cost > 0:
+                    total_project_cost += item_cost
+                    actual_percent = pekerjaan_actual_aggregates.get(pekerjaan_id, 0.0)
+                    actual_percent = min(actual_percent, 100.0)
+                    realization = item_cost * Decimal(str(actual_percent / 100.0))
+                    total_realization_cost += realization
+            
+            if total_project_cost > 0:
+                weighted_progress = float((total_realization_cost / total_project_cost) * 100)
+            else:
+                # Fallback unweighted
+                pekerjaan_ids = list(pekerjaan_qs.values_list('id', flat=True))
+                if pekerjaan_ids:
+                    sum_progress = sum(pekerjaan_actual_aggregates.get(pid, 0.0) for pid in pekerjaan_ids)
+                    weighted_progress = sum_progress / len(pekerjaan_ids)
+                else:
+                    weighted_progress = 0.0
+        except Exception:
+            weighted_progress = 0.0
 
+        # Status text
+        status_text = "Aktif" if project.is_active else "Non-Aktif"
+
+        # Populate row
         row_data = [
-            row_num - 1,  # No
-            project.index_project or 'N/A',
+            project.index_project,
             project.nama,
             project.tahun_project,
             project.sumber_dana,
             project.lokasi_project,
+            float(project.anggaran_owner), # Nilai Anggaran
+            weighted_progress,             # Progress
+            status_text,
+            # Client
             project.nama_client,
-            float(project.anggaran_owner) if project.anggaran_owner else 0,
-            project.tanggal_mulai.strftime('%Y-%m-%d') if project.tanggal_mulai else '',
-            project.tanggal_selesai.strftime('%Y-%m-%d') if project.tanggal_selesai else '',
-            project.durasi_hari or '',
-            status,
-            project.kategori or '',
-            project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else '',
+            project.jabatan_client,
+            project.instansi_client,
+            # Kontraktor
+            project.nama_kontraktor,
+            project.instansi_kontraktor,
+            # Konsultan
+            project.nama_konsultan_perencana,
+            project.instansi_konsultan_perencana,
+            project.nama_konsultan_pengawas,
+            project.instansi_konsultan_pengawas,
+            # Dates
+            project.tanggal_mulai,
+            project.tanggal_selesai,
+            project.durasi_hari,
+            project.ket_project1,
+            project.ket_project2,
+            project.kategori
         ]
+        
+        for col_num, cell_value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_num, column=col_num, value=cell_value)
+            
+            # Formatting
+            if col_num == 6: # Anggaran
+                cell.number_format = '#,##0.00'
+            elif col_num == 7: # Progress
+                cell.number_format = '0.00'
+            elif isinstance(cell_value, date):
+                cell.number_format = 'DD/MM/YYYY'
 
-        for col_num, value in enumerate(row_data, 1):
-            cell = ws.cell(row=row_num, column=col_num)
-            cell.value = value
-            cell.border = border
-
-            # Align numbers to right
-            if col_num in [1, 4, 8, 11]:  # No, Tahun, Anggaran, Durasi
-                cell.alignment = Alignment(horizontal="right")
-            else:
-                cell.alignment = Alignment(horizontal="left", vertical="center")
-
-    # Auto-adjust column widths
-    for col_num in range(1, len(headers) + 1):
-        column_letter = get_column_letter(col_num)
+    # Auto-adjust column width (simple adj)
+    for col in ws.columns:
         max_length = 0
-        for cell in ws[column_letter]:
+        column = col[0].column_letter # Get the column name
+        for cell in col:
             try:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
             except:
                 pass
-        adjusted_width = min(max_length + 2, 50)  # Max 50
-        ws.column_dimensions[column_letter].width = adjusted_width
+        adjusted_width = (max_length + 2)
+        ws.column_dimensions[column].width = min(adjusted_width, 50) # Cap at 50
 
-    # Freeze first row
-    ws.freeze_panes = "A2"
-
-    # Create response
     response = HttpResponse(
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
-    response['Content-Disposition'] = f'attachment; filename="projects_export_{date.today()}.xlsx"'
-
-    # Save workbook to response
+    response['Content-Disposition'] = f'attachment; filename=Project_Export_{date.today().isoformat()}.xlsx'
+    
     wb.save(response)
-
     return response
 
+# === Aliases & Stubs for Compatibility with dashboard/urls.py ===
 
-@login_required
+# 1. Excel Export (Upgraded to new logic)
+export_excel = export_dashboard_xlsx
+
+# 2. CSV Export (Stub - Deprecated in favor of Excel)
 def export_csv(request):
-    """
-    Export filtered projects to CSV format.
-    """
-    # Get filtered queryset
-    queryset = Project.objects.filter(owner=request.user)
-    queryset = apply_filters(queryset, request)
+    return HttpResponse("Fitur Export CSV telah digantikan oleh Export Excel (Full Columns). Silakan gunakan tombol Export Excel.", content_type="text/plain")
 
-    # Create response
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = f'attachment; filename="projects_export_{date.today()}.csv"'
-
-    # Write UTF-8 BOM for Excel compatibility
-    response.write('\ufeff')
-
-    writer = csv.writer(response)
-
-    # Write headers
-    writer.writerow([
-        'No',
-        'Index Project',
-        'Nama Project',
-        'Tahun',
-        'Sumber Dana',
-        'Lokasi',
-        'Client',
-        'Anggaran (Rp)',
-        'Tanggal Mulai',
-        'Tanggal Selesai',
-        'Durasi (hari)',
-        'Status',
-        'Kategori',
-        'Created',
-    ])
-
-    # Write data
-    today = date.today()
-    for idx, project in enumerate(queryset, 1):
-        # Determine status
-        if not project.is_active:
-            status = "Archived"
-        elif not project.tanggal_mulai or not project.tanggal_selesai:
-            status = "No Timeline"
-        elif project.tanggal_selesai < today:
-            status = "Terlambat"
-        elif project.tanggal_mulai > today:
-            status = "Belum Mulai"
-        else:
-            status = "Berjalan"
-
-        writer.writerow([
-            idx,
-            project.index_project or 'N/A',
-            project.nama,
-            project.tahun_project,
-            project.sumber_dana,
-            project.lokasi_project,
-            project.nama_client,
-            float(project.anggaran_owner) if project.anggaran_owner else 0,
-            project.tanggal_mulai.strftime('%Y-%m-%d') if project.tanggal_mulai else '',
-            project.tanggal_selesai.strftime('%Y-%m-%d') if project.tanggal_selesai else '',
-            project.durasi_hari or '',
-            status,
-            project.kategori or '',
-            project.created_at.strftime('%Y-%m-%d %H:%M') if project.created_at else '',
-        ])
-
-    return response
-
-
-@login_required
+# 3. Project PDF Export (Stub - Placeholder)
 def export_project_pdf(request, pk):
-    """
-    Export single project detail to PDF format.
-    """
-    project = get_object_or_404(Project, pk=pk, owner=request.user)
-
-    # Create response
-    response = HttpResponse(content_type='application/pdf')
-    filename = f"project_{project.index_project or pk}_{date.today()}.pdf"
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
-    # Create PDF document
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=2*cm,
-        leftMargin=2*cm,
-        topMargin=2*cm,
-        bottomMargin=2*cm
-    )
-
-    # Container for PDF elements
-    elements = []
-
-    # Styles
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor=colors.HexColor('#1f4788'),
-        spaceAfter=20,
-        alignment=1  # Center
-    )
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontSize=12,
-        textColor=colors.HexColor('#2c5f9e'),
-        spaceAfter=10,
-    )
-
-    # Title
-    title = Paragraph(f"<b>Project Detail Report</b>", title_style)
-    elements.append(title)
-    elements.append(Spacer(1, 0.3*cm))
-
-    # Project Index & Name
-    index_para = Paragraph(f"<b>{project.index_project or 'N/A'}</b>", styles['Heading2'])
-    elements.append(index_para)
-    name_para = Paragraph(project.nama, styles['Normal'])
-    elements.append(name_para)
-    elements.append(Spacer(1, 0.5*cm))
-
-    # Basic Information Table
-    basic_data = [
-        ['Tahun Project', str(project.tahun_project)],
-        ['Sumber Dana', project.sumber_dana],
-        ['Lokasi', project.lokasi_project],
-        ['Client', project.nama_client],
-        ['Anggaran', f"Rp {project.anggaran_owner:,.0f}".replace(',', '.')],
-    ]
-
-    basic_table = Table(basic_data, colWidths=[5*cm, 11*cm])
-    basic_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e7f0f7')),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-
-    elements.append(Paragraph("<b>Informasi Dasar</b>", heading_style))
-    elements.append(basic_table)
-    elements.append(Spacer(1, 0.5*cm))
-
-    # Timeline Information
-    if project.tanggal_mulai or project.tanggal_selesai:
-        timeline_data = [
-            ['Tanggal Mulai', project.tanggal_mulai.strftime('%d %B %Y') if project.tanggal_mulai else '-'],
-            ['Tanggal Selesai', project.tanggal_selesai.strftime('%d %B %Y') if project.tanggal_selesai else '-'],
-            ['Durasi', f"{project.durasi_hari} hari" if project.durasi_hari else '-'],
-        ]
-
-        # Determine status
-        today = date.today()
-        if not project.is_active:
-            status = "Archived"
-            status_color = colors.grey
-        elif not project.tanggal_mulai or not project.tanggal_selesai:
-            status = "No Timeline"
-            status_color = colors.grey
-        elif project.tanggal_selesai < today:
-            status = "Terlambat"
-            status_color = colors.red
-        elif project.tanggal_mulai > today:
-            status = "Belum Mulai"
-            status_color = colors.blue
-        else:
-            status = "Sedang Berjalan"
-            status_color = colors.green
-
-        timeline_data.append(['Status', status])
-
-        timeline_table = Table(timeline_data, colWidths=[5*cm, 11*cm])
-        timeline_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e7f0f7')),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TEXTCOLOR', (1, 3), (1, 3), status_color),  # Status color
-            ('FONTNAME', (1, 3), (1, 3), 'Helvetica-Bold'),  # Status bold
-        ]))
-
-        elements.append(Paragraph("<b>Timeline Pelaksanaan</b>", heading_style))
-        elements.append(timeline_table)
-        elements.append(Spacer(1, 0.5*cm))
-
-    # Additional Information
-    additional_info = []
-    if project.kategori:
-        additional_info.append(['Kategori', project.kategori])
-    if project.deskripsi:
-        additional_info.append(['Deskripsi', project.deskripsi[:200] + '...' if len(project.deskripsi) > 200 else project.deskripsi])
-
-    if additional_info:
-        add_table = Table(additional_info, colWidths=[5*cm, 11*cm])
-        add_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e7f0f7')),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-
-        elements.append(Paragraph("<b>Informasi Tambahan</b>", heading_style))
-        elements.append(add_table)
-        elements.append(Spacer(1, 0.5*cm))
-
-    # Footer
-    elements.append(Spacer(1, 1*cm))
-    footer_text = f"Generated on {date.today().strftime('%d %B %Y')}"
-    footer = Paragraph(footer_text, styles['Normal'])
-    elements.append(footer)
-
-    # Build PDF
-    doc.build(elements)
-
-    # Get PDF from buffer
-    pdf = buffer.getvalue()
-    buffer.close()
-    response.write(pdf)
-
-    return response
+    return HttpResponse("Fitur Export PDF Project sedang dalam maintenance. Silakan gunakan Export PDF di halaman Detail Project.", content_type="text/plain")

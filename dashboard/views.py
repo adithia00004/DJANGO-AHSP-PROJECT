@@ -17,6 +17,7 @@ import decimal
 from .forms import ProjectForm, ProjectFilterForm, UploadProjectForm
 from .models import Project
 from detail_project.progress_utils import reset_project_progress
+from detail_project.models import PekerjaanProgressWeekly, Pekerjaan
 
 import openpyxl
 
@@ -230,6 +231,95 @@ def dashboard_view(request):
     paginator = Paginator(queryset, 20)  # 20 projects per page
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
+
+    # === Calculate progress realization (Weighted by Cost - S-Curve Logic) ===
+    # Progress = Sum(Worker Item Cost * Actual %) / Total Project Cost
+    from detail_project.services import compute_rekap_for_project
+    from detail_project.models import PekerjaanProgressWeekly, Pekerjaan as PekerjaanModel
+    from django.db.models import Sum, Value, DecimalField
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+
+    # Cache progress calculation to avoid recomputing rekap for every page load if possible
+    # But for now, we'll do it per-project on the current page to ensure accuracy
+    
+    project_ids = [p.id for p in page_obj.object_list]
+    project_progress_map = {}
+
+    # Get actual progress sums per pekerjaan once for all projects in this page
+    # Output: {pekerjaan_id: total_actual_proportion}
+    pekerjaan_actual_aggregates = {}
+    
+    weekly_aggregates = PekerjaanProgressWeekly.objects.filter(
+        project_id__in=project_ids
+    ).values('pekerjaan_id').annotate(
+        total_actual=Coalesce(
+            Sum('actual_proportion'),
+            Value(Decimal('0')),
+            output_field=DecimalField()
+        )
+    )
+    
+    for agg in weekly_aggregates:
+        pekerjaan_actual_aggregates[agg['pekerjaan_id']] = float(agg['total_actual'])
+
+    for project in page_obj.object_list:
+        try:
+            # 1. Get cost data per pekerjaan (RAB)
+            rekap_rows = compute_rekap_for_project(project)
+            rekap_lookup = {row['pekerjaan_id']: row for row in rekap_rows}
+            
+            # Get all Pekerjaan for this project to access budgeted_cost
+            pekerjaan_qs = PekerjaanModel.objects.filter(project=project)
+            
+            total_project_cost = Decimal('0.00')
+            total_realization_cost = Decimal('0.00')
+            
+            for pkj in pekerjaan_qs:
+                pekerjaan_id = pkj.id
+                
+                # Get rekap fallback
+                fallback_row = rekap_lookup.get(pekerjaan_id)
+                fallback_total = Decimal(str(fallback_row.get('total', 0))) if fallback_row else Decimal('0')
+                
+                # Prioritize budgeted_cost (like S-Curve logic), fallback to rekap total
+                if pkj.budgeted_cost and pkj.budgeted_cost > 0:
+                    item_cost = pkj.budgeted_cost
+                else:
+                    item_cost = fallback_total
+                
+                if item_cost > 0:
+                    total_project_cost += item_cost
+                    
+                    # Get actual progress % for this item
+                    # Actual is 0-100 scale, so divide by 100
+                    actual_percent = pekerjaan_actual_aggregates.get(pekerjaan_id, 0.0)
+                    # Cap at 100% just in case
+                    actual_percent = min(actual_percent, 100.0)
+                    
+                    realization = item_cost * Decimal(str(actual_percent / 100.0))
+                    total_realization_cost += realization
+            
+            # 2. Calculate Weighted Progress
+            if total_project_cost > 0:
+                weighted_progress = float((total_realization_cost / total_project_cost) * 100)
+            else:
+                # Fallback to unweighted average if no cost data available (e.g. awal project)
+                # or 0 if no progress
+                pekerjaan_ids = list(pekerjaan_qs.values_list('id', flat=True))
+                if pekerjaan_ids:
+                    sum_progress = sum(pekerjaan_actual_aggregates.get(pid, 0.0) for pid in pekerjaan_ids)
+                    weighted_progress = sum_progress / len(pekerjaan_ids)
+                else:
+                    weighted_progress = 0.0
+                    
+            project.progress_realisasi = weighted_progress
+            
+        except Exception as e:
+            # Fallback gracefully on error
+            project.progress_realisasi = 0.0
+            # Log error ideally
+            pass
 
     # === FASE 2.1: Analytics & Statistics ===
     all_active_projects = Project.objects.filter(owner=request.user, is_active=True)

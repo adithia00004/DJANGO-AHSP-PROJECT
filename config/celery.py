@@ -61,6 +61,20 @@ app.conf.beat_schedule = {
         'task': 'referensi.tasks.cleanup_stale_cache_task',
         'schedule': crontab(hour=2, minute=0),
     },
+
+    # ========== SUBSCRIPTION TASKS ==========
+    
+    # Check and expire subscriptions daily at midnight
+    'check-subscription-expiry-daily': {
+        'task': 'accounts.check_subscription_expiry',
+        'schedule': crontab(hour=0, minute=5),  # 00:05 daily
+    },
+
+    # Send expiry reminders daily at 9 AM
+    'send-expiry-reminder-daily': {
+        'task': 'accounts.send_expiry_reminder',
+        'schedule': crontab(hour=9, minute=0),  # 09:00 daily
+    },
 }
 
 # Configure timezone

@@ -1,4 +1,0 @@
-Method,Name,Error,Occurrences
-POST,[AUTH] Login POST,CatchResponseError('login failed (login page returned)'),37
-POST,/api/project/[id]/parameters/sync/,CatchResponseError('HTTP 0'),1
-POST,[AUTH] Login POST,CatchResponseError('login server error: 500'),113

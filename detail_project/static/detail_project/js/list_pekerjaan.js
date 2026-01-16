@@ -943,6 +943,10 @@
 
     div.innerHTML = `
       <div class="card-header d-flex gap-2 align-items-center">
+        <button class="btn btn-sm btn-outline-secondary lp-collapse-toggle" type="button"
+          data-target="sub-wrap" aria-expanded="true" title="Collapse/Expand">
+          <i class="bi bi-caret-down-fill"></i>
+        </button>
         <input class="form-control klas-name" placeholder="Nama Klasifikasi (auto: Klasifikasi ${kCounter})" value="${prefillName ? escapeHtml(prefillName) : ''}">
         <button class="btn btn-primary btn-add-sub lp-btn lp-btn-wide" type="button">
           <i class="bi bi-plus-circle"></i> Sub-Klasifikasi
@@ -956,6 +960,15 @@
     div.querySelector('.btn-add-sub').onclick = () => { addSub(subWrap); scheduleSidebarRebuild(); };
     div.querySelector('.btn-del').onclick = () => { div.remove(); scheduleSidebarRebuild(); setDirty(true); };
     div.querySelector('.klas-name').addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
+
+    // Collapse toggle for Klasifikasi
+    const toggleBtn = div.querySelector('.lp-collapse-toggle');
+    toggleBtn?.addEventListener('click', () => {
+      const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+      toggleBtn.setAttribute('aria-expanded', !isExpanded);
+      toggleBtn.querySelector('i').className = isExpanded ? 'bi bi-caret-right-fill' : 'bi bi-caret-down-fill';
+      subWrap.style.display = isExpanded ? 'none' : '';
+    });
 
     klasWrap.appendChild(div);
     requestAnimationFrame(() => {
@@ -978,7 +991,11 @@
     block.dataset.anchorId = id;
 
     block.innerHTML = `
-    <div class="d-flex gap-2 align-items-center mb-2">
+    <div class="d-flex gap-2 align-items-center mb-2 lp-sub-header">
+      <button class="btn btn-sm btn-outline-secondary lp-collapse-toggle" type="button"
+        data-target="lp-sub-body" aria-expanded="true" title="Collapse/Expand">
+        <i class="bi bi-caret-down-fill"></i>
+      </button>
       <input class="form-control sub-name" placeholder="Nama Sub-Klasifikasi (mis. 1.1)" value="${name ? escapeHtml(name) : ''}">
       <button class="btn btn-primary btn-add-pekerjaan lp-btn lp-btn-wide" type="button">
         <i class="bi bi-plus-circle"></i> Pekerjaan
@@ -1017,6 +1034,16 @@
     block.querySelector('.btn-add-pekerjaan').onclick = () => { addPekerjaan(tbody); scheduleSidebarRebuild(); };
     block.querySelector('.btn-del').onclick = () => { block.remove(); scheduleSidebarRebuild(); setDirty(true); };
     block.querySelector('.sub-name').addEventListener('input', () => { scheduleSidebarRebuild(); setDirty(true); });
+
+    // Collapse toggle for Sub-klasifikasi
+    const subToggleBtn = block.querySelector('.lp-collapse-toggle');
+    const tableWrap = block.querySelector('table');
+    subToggleBtn?.addEventListener('click', () => {
+      const isExpanded = subToggleBtn.getAttribute('aria-expanded') === 'true';
+      subToggleBtn.setAttribute('aria-expanded', !isExpanded);
+      subToggleBtn.querySelector('i').className = isExpanded ? 'bi bi-caret-right-fill' : 'bi bi-caret-down-fill';
+      tableWrap.style.display = isExpanded ? 'none' : '';
+    });
 
     container.appendChild(block);
     requestAnimationFrame(() => {
@@ -2548,4 +2575,369 @@
     log('[TEMPLATE] Template Library initialized');
   })();
 
+  // ========= [FILTER DROPDOWNS] Klasifikasi & Sub-klasifikasi ================
+  (function initFilterDropdowns() {
+    const filterToggleBtn = document.getElementById('btn-filter-toggle');
+    const filterDropdownsWrap = document.getElementById('lp-filter-dropdowns');
+    const filterKlas = document.getElementById('lp-filter-klas');
+    const filterSub = document.getElementById('lp-filter-sub');
+
+    if (!filterKlas || !filterSub) {
+      log('[FILTER] Filter dropdowns not found, skipping init');
+      return;
+    }
+
+    // Toggle filter dropdowns visibility
+    function toggleFilterDropdowns() {
+      const isVisible = !filterDropdownsWrap.classList.contains('d-none');
+
+      if (isVisible) {
+        // Hide dropdowns
+        filterDropdownsWrap.classList.add('d-none');
+        filterDropdownsWrap.classList.remove('d-flex');
+        filterToggleBtn.classList.remove('active', 'btn-primary');
+        filterToggleBtn.classList.add('btn-outline-secondary');
+        filterToggleBtn.setAttribute('aria-expanded', 'false');
+      } else {
+        // Show dropdowns
+        filterDropdownsWrap.classList.remove('d-none');
+        filterDropdownsWrap.classList.add('d-flex');
+        filterToggleBtn.classList.add('active', 'btn-primary');
+        filterToggleBtn.classList.remove('btn-outline-secondary');
+        filterToggleBtn.setAttribute('aria-expanded', 'true');
+      }
+
+      log('[FILTER] Toggle visibility:', !isVisible);
+    }
+
+    // Attach toggle event
+    if (filterToggleBtn && filterDropdownsWrap) {
+      filterToggleBtn.addEventListener('click', toggleFilterDropdowns);
+      log('[FILTER] Toggle button initialized');
+    }
+
+    // Populate dropdowns from existing cards
+    function populateFilterDropdowns() {
+      // Clear existing options (keep first "All" option)
+      filterKlas.innerHTML = '<option value="">Semua Klasifikasi</option>';
+      filterSub.innerHTML = '<option value="">Semua Sub</option>';
+
+      const klasCards = klasWrap.querySelectorAll('.card');
+      klasCards.forEach((card, idx) => {
+        const nameInput = card.querySelector('.klas-name');
+        const name = nameInput?.value || `Klasifikasi ${idx + 1}`;
+        const id = card.id || card.dataset.klasId || `klas_${idx}`;
+
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        filterKlas.appendChild(opt);
+      });
+
+      log('[FILTER] Dropdowns populated with', klasCards.length, 'klasifikasi');
+    }
+
+    // Populate sub-klasifikasi based on selected klasifikasi
+    function populateSubDropdown(klasId) {
+      filterSub.innerHTML = '<option value="">Semua Sub</option>';
+
+      if (!klasId) {
+        // Show all subs from all klas
+        const allSubs = klasWrap.querySelectorAll('.card .sub-wrap > div');
+        allSubs.forEach((sub, idx) => {
+          const nameInput = sub.querySelector('.sub-name');
+          const name = nameInput?.value || `Sub ${idx + 1}`;
+          const id = sub.id || sub.dataset.subId || `sub_${idx}`;
+
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = name;
+          filterSub.appendChild(opt);
+        });
+      } else {
+        // Show only subs from selected klas
+        const klasCard = klasWrap.querySelector(`#${CSS.escape(klasId)}`);
+        if (klasCard) {
+          const subs = klasCard.querySelectorAll('.sub-wrap > div');
+          subs.forEach((sub, idx) => {
+            const nameInput = sub.querySelector('.sub-name');
+            const name = nameInput?.value || `Sub ${idx + 1}`;
+            const id = sub.id || sub.dataset.subId || `sub_${idx}`;
+
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = name;
+            filterSub.appendChild(opt);
+          });
+        }
+      }
+    }
+
+    // Apply filter to show/hide cards
+    function applyFilter() {
+      const klasId = filterKlas.value;
+      const subId = filterSub.value;
+
+      const klasCards = klasWrap.querySelectorAll('.card');
+
+      klasCards.forEach(card => {
+        const cardId = card.id || card.dataset.klasId;
+
+        if (klasId && cardId !== klasId) {
+          card.classList.add('lp-filtered-out');
+        } else {
+          card.classList.remove('lp-filtered-out');
+
+          // Filter subs within this klas
+          const subs = card.querySelectorAll('.sub-wrap > div');
+          subs.forEach(sub => {
+            const sId = sub.id || sub.dataset.subId;
+
+            if (subId && sId !== subId) {
+              sub.classList.add('lp-filtered-out');
+            } else {
+              sub.classList.remove('lp-filtered-out');
+            }
+          });
+        }
+      });
+
+      // Announce filter change
+      const msg = klasId
+        ? (subId ? 'Filter diterapkan' : `Filter: ${filterKlas.options[filterKlas.selectedIndex]?.text}`)
+        : 'Filter dihapus - Semua item ditampilkan';
+      say(msg);
+      log('[FILTER] Applied:', { klasId, subId });
+    }
+
+    // Event listeners
+    filterKlas.addEventListener('change', () => {
+      populateSubDropdown(filterKlas.value);
+      filterSub.value = ''; // Reset sub filter
+      applyFilter();
+    });
+
+    filterSub.addEventListener('change', applyFilter);
+
+    // Initial population
+    populateFilterDropdowns();
+    populateSubDropdown('');
+
+    // Re-populate when cards change (debounced via MutationObserver)
+    let repopulateTimer = null;
+    const observer = new MutationObserver(() => {
+      if (repopulateTimer) clearTimeout(repopulateTimer);
+      repopulateTimer = setTimeout(() => {
+        const currentKlas = filterKlas.value;
+        populateFilterDropdowns();
+        if (currentKlas && filterKlas.querySelector(`option[value="${CSS.escape(currentKlas)}"]`)) {
+          filterKlas.value = currentKlas;
+        }
+        populateSubDropdown(filterKlas.value);
+      }, 300);
+    });
+
+    observer.observe(klasWrap, { childList: true, subtree: true });
+
+    log('[FILTER] Filter dropdowns initialized');
+  })();
+
+  // ========= [DROP INDICATOR] Enhanced Drag-Drop Position Feedback ===========
+  (function initDropIndicator() {
+    // Create singleton drop indicator element
+    let dropIndicator = document.getElementById('lp-drop-indicator');
+    if (!dropIndicator) {
+      dropIndicator = document.createElement('div');
+      dropIndicator.id = 'lp-drop-indicator';
+      dropIndicator.className = 'lp-drop-indicator';
+      document.body.appendChild(dropIndicator);
+      log('[DND-INDICATOR] Created drop indicator element');
+    }
+
+    let currentInsertBefore = null;
+
+    // Position the drop indicator based on cursor position
+    function positionDropIndicator(tbody, clientY) {
+      if (!tbody || !dragState.draggingRow) {
+        hideDropIndicator();
+        return null;
+      }
+
+      const rows = Array.from(tbody.querySelectorAll('tr:not(.lp-row-dragging)'));
+      let insertBeforeRow = null;
+
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        const rowMiddle = rect.top + rect.height / 2;
+
+        if (clientY < rowMiddle) {
+          insertBeforeRow = row;
+          break;
+        }
+      }
+
+      // Position indicator
+      const tbodyRect = tbody.getBoundingClientRect();
+
+      if (!insertBeforeRow) {
+        // Insert at end - position below last row
+        const lastRow = rows[rows.length - 1];
+        if (lastRow) {
+          const rect = lastRow.getBoundingClientRect();
+          dropIndicator.style.top = `${rect.bottom + window.scrollY}px`;
+          dropIndicator.style.left = `${tbodyRect.left + 10}px`;
+          dropIndicator.style.width = `${tbodyRect.width - 20}px`;
+        } else {
+          // Empty tbody
+          dropIndicator.style.top = `${tbodyRect.top + window.scrollY + 5}px`;
+          dropIndicator.style.left = `${tbodyRect.left + 10}px`;
+          dropIndicator.style.width = `${tbodyRect.width - 20}px`;
+        }
+      } else {
+        const rect = insertBeforeRow.getBoundingClientRect();
+        dropIndicator.style.top = `${rect.top + window.scrollY - 2}px`;
+        dropIndicator.style.left = `${tbodyRect.left + 10}px`;
+        dropIndicator.style.width = `${tbodyRect.width - 20}px`;
+      }
+
+      dropIndicator.classList.add('is-visible');
+      currentInsertBefore = insertBeforeRow;
+
+      return insertBeforeRow;
+    }
+
+    function hideDropIndicator() {
+      dropIndicator.classList.remove('is-visible');
+      currentInsertBefore = null;
+    }
+
+    // Override the original handleDragOver to add indicator positioning
+    const originalHandleDragOver = handleDragOver;
+    handleDragOver = function (e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      const tbody = e.currentTarget;
+      if (!tbody || tbody.tagName !== 'TBODY') return;
+
+      // Highlight valid drop zone
+      if (dragState.dragOverTarget !== tbody) {
+        document.querySelectorAll('.lp-drag-over').forEach(el => el.classList.remove('lp-drag-over'));
+        tbody.classList.add('lp-drag-over');
+        dragState.dragOverTarget = tbody;
+      }
+
+      // Position drop indicator
+      positionDropIndicator(tbody, e.clientY);
+    };
+
+    // Override handleDragLeave to hide indicator
+    const originalHandleDragLeave = handleDragLeave;
+    handleDragLeave = function (e) {
+      const tbody = e.currentTarget;
+      if (!tbody || tbody.tagName !== 'TBODY') return;
+
+      const rect = tbody.getBoundingClientRect();
+      const x = e.clientX;
+      const y = e.clientY;
+
+      if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+        tbody.classList.remove('lp-drag-over');
+        if (dragState.dragOverTarget === tbody) {
+          dragState.dragOverTarget = null;
+        }
+        hideDropIndicator();
+      }
+    };
+
+    // Override handleDrop to use indicator position and hide indicator
+    const originalHandleDrop = handleDrop;
+    handleDrop = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const targetTbody = e.currentTarget;
+      if (!targetTbody || targetTbody.tagName !== 'TBODY') {
+        resetDragState();
+        hideDropIndicator();
+        return;
+      }
+
+      const { draggingRow, sourceTbody } = dragState;
+      if (!draggingRow) {
+        resetDragState();
+        hideDropIndicator();
+        return;
+      }
+
+      // Find target klas/sub
+      const targetSubCard = targetTbody.closest('.lp-sub-card, .sub-wrap > div, .border.rounded');
+      const targetKlasCard = targetTbody.closest('.lp-klas-card, .card');
+      const targetSubId = targetSubCard?.dataset.subId || targetSubCard?.id || null;
+      const targetKlasId = targetKlasCard?.dataset.klasId || targetKlasCard?.id || null;
+
+      log('[DROP] Target:', {
+        targetKlasId,
+        targetSubId,
+        sourceKlasId: dragState.sourceKlasId,
+        sourceSubId: dragState.sourceSubId
+      });
+
+      // Use the tracked insert position from indicator
+      const insertBeforeRow = currentInsertBefore;
+
+      // Perform the move
+      if (insertBeforeRow) {
+        targetTbody.insertBefore(draggingRow, insertBeforeRow);
+      } else {
+        targetTbody.appendChild(draggingRow);
+      }
+
+      // Renumber both source and target tbody
+      renum(sourceTbody);
+      if (targetTbody !== sourceTbody) {
+        renum(targetTbody);
+      }
+
+      // Update ordering indices
+      updateOrderingIndices(targetTbody);
+      if (targetTbody !== sourceTbody) {
+        updateOrderingIndices(sourceTbody);
+      }
+
+      // Mark as dirty
+      setDirty(true);
+
+      // Rebuild sidebar to reflect changes
+      scheduleSidebarRebuild();
+
+      // Broadcast to other tabs
+      broadcastOrderingChange();
+
+      // Show feedback
+      const movedWithinSameSub = (targetSubId === dragState.sourceSubId);
+      const msg = movedWithinSameSub
+        ? 'Urutan pekerjaan diubah'
+        : 'Pekerjaan dipindahkan ke sub/klasifikasi lain';
+
+      tShow(msg, 'success');
+      say(msg);
+
+      log('[DROP] Complete - moved pekerjaan');
+      resetDragState();
+      hideDropIndicator();
+    };
+
+    // Override handleDragEnd to ensure indicator is hidden
+    const originalHandleDragEnd = handleDragEnd;
+    handleDragEnd = function (e) {
+      log('[DRAG] End');
+      resetDragState();
+      hideDropIndicator();
+    };
+
+    log('[DND-INDICATOR] Drop indicator initialized');
+  })();
+
 })();
+

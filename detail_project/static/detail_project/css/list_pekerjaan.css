@@ -1539,3 +1539,184 @@ body.lp-overlay-open {
     transform: rotate(360deg);
   }
 }
+
+/* =====================================================================
+   FILTER DROPDOWNS - Klasifikasi & Sub-klasifikasi
+   ===================================================================== */
+
+.lp-filter-section {
+  flex-shrink: 0;
+}
+
+.lp-filter-dropdown {
+  font-size: var(--ux-font-xs, 0.75rem);
+  padding: 0.25rem 2rem 0.25rem 0.5rem;
+  min-width: 140px;
+  max-width: 180px;
+  border-radius: var(--dp-radius-md, 0.5rem);
+  border: 2px solid var(--dp-c-border, #dee2e6);
+  background: var(--dp-c-bg, #fff);
+  color: var(--dp-c-text, #212529);
+  cursor: pointer;
+  transition: border-color var(--ux-duration-200, 0.2s) var(--ux-ease, ease),
+    box-shadow var(--ux-duration-200, 0.2s) var(--ux-ease, ease);
+}
+
+.lp-filter-dropdown:hover:not(:disabled) {
+  border-color: var(--dp-c-primary, #0d6efd);
+}
+
+.lp-filter-dropdown:focus {
+  border-color: var(--dp-c-primary, #0d6efd);
+  box-shadow: 0 0 0 0.2rem var(--dp-c-focus, rgba(13, 110, 253, 0.25));
+  outline: 0;
+}
+
+.lp-filter-dropdown:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dark mode filter dropdowns */
+[data-bs-theme="dark"] .lp-filter-dropdown {
+  background: var(--dp-c-surface-1, #2d3238);
+  color: var(--dp-c-text, #e9ecef);
+  border-color: var(--dp-c-border, #495057);
+}
+
+/* Responsive filter section */
+@media (max-width: 991.98px) {
+  .lp-filter-section {
+    flex-wrap: wrap;
+  }
+
+  .lp-filter-dropdown {
+    min-width: 120px;
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .lp-filter-section {
+    width: 100%;
+    order: 10;
+  }
+
+  .lp-filter-dropdown {
+    flex: 1 1 45%;
+    max-width: none;
+  }
+}
+
+/* =====================================================================
+   DRAG-DROP POSITION INDICATOR - Visual Row Placement Feedback
+   ===================================================================== */
+
+.lp-drop-indicator {
+  position: absolute;
+  height: 3px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      var(--bs-primary, #0d6efd) 10%,
+      var(--bs-primary, #0d6efd) 90%,
+      transparent 100%);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1100;
+  box-shadow: 0 0 8px rgba(13, 110, 253, 0.6),
+    0 0 4px rgba(13, 110, 253, 0.4);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.lp-drop-indicator.is-visible {
+  opacity: 1;
+}
+
+/* Indicator circle ends */
+.lp-drop-indicator::before,
+.lp-drop-indicator::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--bs-primary, #0d6efd);
+  border-radius: 50%;
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: 0 0 6px rgba(13, 110, 253, 0.8);
+}
+
+.lp-drop-indicator::before {
+  left: -3px;
+}
+
+.lp-drop-indicator::after {
+  right: -3px;
+}
+
+/* Dark mode indicator */
+[data-bs-theme="dark"] .lp-drop-indicator {
+  background: linear-gradient(90deg,
+      transparent 0%,
+      #38bdf8 10%,
+      #38bdf8 90%,
+      transparent 100%);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.8),
+    0 0 6px rgba(56, 189, 248, 0.5);
+}
+
+[data-bs-theme="dark"] .lp-drop-indicator::before,
+[data-bs-theme="dark"] .lp-drop-indicator::after {
+  background: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.9);
+}
+
+/* Filtered/hidden cards styling */
+#klas-list .card.lp-filtered-out,
+#klas-list .sub-wrap>div.lp-filtered-out {
+  display: none !important;
+}
+
+/* =====================================================================
+   COLLAPSE TOGGLE BUTTONS - Klas & Sub Card Headers
+   ===================================================================== */
+
+.lp-collapse-toggle {
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--dp-radius-sm, 0.35rem);
+  flex-shrink: 0;
+  transition: transform var(--ux-duration-200, 0.2s) var(--ux-ease, ease),
+    background-color var(--ux-duration-200, 0.2s) var(--ux-ease, ease);
+}
+
+.lp-collapse-toggle:hover {
+  background-color: var(--dp-c-surface-2, #e9ecef);
+  transform: scale(1.05);
+}
+
+.lp-collapse-toggle i {
+  font-size: 0.85rem;
+  transition: transform var(--ux-duration-200, 0.2s) var(--ux-ease, ease);
+}
+
+/* Icon rotation animation when collapsed */
+.lp-collapse-toggle[aria-expanded="false"] i {
+  transform: rotate(-90deg);
+}
+
+/* Dark mode toggle */
+[data-bs-theme="dark"] .lp-collapse-toggle:hover {
+  background-color: var(--dp-c-surface-1, #3d4349);
+}
+
+/* Smooth transition for collapsible content */
+#klas-list .card-body.sub-wrap,
+#klas-list table.list-pekerjaan {
+  transition: opacity var(--ux-duration-200, 0.2s) var(--ux-ease, ease);
+}
+
+/* Sub header styling */
+.lp-sub-header {
+  background: transparent;
+}

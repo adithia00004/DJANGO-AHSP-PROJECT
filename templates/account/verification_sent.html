@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Verify Your E-mail Address" %}{% endblock %}
+
+{% block content %}
+<!-- Overlay "Fake Modal" Style -->
+<div class="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+    style="background-color: rgba(0,0,0,0.5); z-index: 1050; backdrop-filter: blur(4px);">
+
+    <div class="card shadow-lg border-0 rounded-4" style="max-width: 500px; width: 90%;">
+        <div class="card-body p-5 text-center">
+
+            <div class="mb-4">
+                <div class="d-inline-flex align-items-center justify-content-center bg-primary-subtle text-primary rounded-circle"
+                    style="width: 80px; height: 80px;">
+                    <i class="bi bi-envelope-check fs-1"></i>
+                </div>
+            </div>
+
+            <h2 class="h3 fw-bold mb-3">{% trans "Verify Your E-mail Address" %}</h2>
+
+            <p class="text-muted mb-4">
+                {% blocktrans %}We have sent an e-mail to you for verification. Follow the link provided to finalize the
+                signup process. Please contact us if you do not receive it within a few minutes.{% endblocktrans %}
+            </p>
+
+            <a href="/" class="btn btn-primary w-100 py-2 rounded-3">
+                {% trans "Back to Home" %}
+            </a>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,3 +1,0 @@
-Method,Name,Error,Occurrences
-POST,[AUTH] Login POST,CatchResponseError('login failed (login page returned)'),36
-POST,[AUTH] Login POST,CatchResponseError('login server error: 500'),164

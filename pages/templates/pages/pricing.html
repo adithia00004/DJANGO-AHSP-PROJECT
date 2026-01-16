@@ -1,0 +1,71 @@
+{% extends "pages/landing.html" %}
+
+{% block title %}Harga - Dashboard-RAB{% endblock %}
+
+{% block content %}
+<!-- Pricing Section Only -->
+<section id="pricing" class="py-5">
+    <div class="container">
+        <div class="section-header">
+            <h2>Pilih Paket yang Tepat</h2>
+            <p>Harga transparan, tanpa biaya tersembunyi</p>
+        </div>
+
+        <div class="row g-4 justify-content-center">
+            {% for plan in pricing_plans %}
+            <div class="col-md-6 col-lg-4">
+                <div class="pricing-card {% if plan.popular %}popular{% endif %}">
+                    {% if plan.popular %}
+                    <span class="badge-popular">Paling Populer</span>
+                    {% endif %}
+
+                    <div class="text-center mb-3">
+                        <h4 class="mb-1">{{ plan.duration }}</h4>
+                        {% if plan.discount %}
+                        <span class="badge bg-success">Hemat {{ plan.discount }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="text-center mb-3">
+                        <span class="price">{{ plan.price_display }}</span>
+                        <div class="per-month">{{ plan.per_month }}</div>
+                    </div>
+
+                    <ul class="features-list">
+                        {% for feature in plan.features %}
+                        <li>
+                            <i class="bi bi-check-circle-fill"></i>
+                            {{ feature }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+
+                    <a href="{% url 'account_signup' %}"
+                        class="btn {% if plan.popular %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+                        Pilih Paket
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="text-center mt-4">
+            <p class="text-muted">
+                <i class="bi bi-info-circle me-1"></i>
+                Semua paket termasuk trial gratis 14 hari. Tidak perlu kartu kredit.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="py-5 bg-primary text-white text-center">
+    <div class="container">
+        <h2 class="mb-3">Siap Mengelola Proyek Lebih Profesional?</h2>
+        <p class="lead mb-4">Bergabung dengan ribuan profesional konstruksi yang sudah menggunakan Dashboard-RAB</p>
+        <a href="{% url 'account_signup' %}" class="btn btn-light btn-lg px-5">
+            <i class="bi bi-rocket-takeoff me-2"></i>Mulai Sekarang - Gratis 14 Hari
+        </a>
+    </div>
+</section>
+{% endblock %}

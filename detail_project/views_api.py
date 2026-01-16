@@ -279,7 +279,9 @@ def _warn(path: str, message: str):
 def _sanitize_text(val: Optional[str]) -> Optional[str]:
     if val is None:
         return None
-    return escape(str(val))
+    # FIX: Jangan escape HTML di API level. Biarkan frontend menerima raw string.
+    # JSON encoder sudah menangani escaping quote.
+    return str(val)
 
 def _owner_or_404(project_id, user):
     from dashboard.models import Project

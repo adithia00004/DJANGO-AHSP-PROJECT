@@ -212,9 +212,9 @@
             <!-- Brand -->
             <a class="navbar-brand d-flex align-items-center gap-2" href="/">
                 <span class="d-inline-flex align-items-center justify-content-center rounded-2 p-1 border">
-                    <i class="bi bi-app"></i>
+                    <i class="bi bi-grid-1x2-fill"></i>
                 </span>
-                <span class="fw-semibold">WELCOME TO SIMPAN</span>
+                <span class="fw-semibold">Dashboard-RAB</span>
             </a>
 
             <!-- Toggler (mobile) -->
@@ -234,6 +234,27 @@
                     </button>
 
                     {% if user.is_authenticated %}
+                    <!-- Subscription Status Badge -->
+                    {% if subscription_status == 'TRIAL' %}
+                    <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1"
+                        title="Trial berakhir dalam {{ subscription_days_left }} hari">
+                        <i class="bi bi-clock-history me-1"></i>
+                        Trial {{ subscription_days_left }}d
+                    </span>
+                    {% elif subscription_status == 'PRO' %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                        <i class="bi bi-star-fill me-1"></i>
+                        PRO
+                    </span>
+                    {% elif subscription_status == 'EXPIRED' %}
+                    <a href="{% url 'subscriptions:pricing' %}"
+                        class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1 text-decoration-none"
+                        title="Klik untuk upgrade">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        Expired
+                    </a>
+                    {% endif %}
+
                     <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-info btn-sm">Dashboard</a>
                     <form action="{% url 'account_logout' %}" method="post" class="d-inline">
                         {% csrf_token %}

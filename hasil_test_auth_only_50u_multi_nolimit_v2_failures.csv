@@ -1,2 +1,0 @@
-Method,Name,Error,Occurrences
-POST,[AUTH] Login POST,CatchResponseError('login server error: 500'),20

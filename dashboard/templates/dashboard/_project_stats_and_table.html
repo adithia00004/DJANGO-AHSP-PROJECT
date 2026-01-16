@@ -121,6 +121,12 @@
         <i class="fas fa-file-excel"></i> <span class="d-none d-md-inline">Upload Excel</span>
       </a>
 
+      <!-- Export Filtered (New) -->
+      <a href="{% url 'dashboard:export_excel' %}?{{ request.GET.urlencode }}" class="btn btn-success btn-sm ms-1"
+        title="Export data yang tampil saat ini dengan kolom lengkap">
+        <i class="fas fa-file-export"></i> <span class="d-none d-md-inline">Export Full</span>
+      </a>
+
       <div class="vr d-none d-sm-block"></div>
 
       <!-- Bulk Edit Toggle -->
@@ -206,7 +212,8 @@
         <th style="width: 250px; min-width: 200px;">Nama Project</th>
         <th class="text-center" style="width: 160px;">Aksi</th>
         <th class="text-center" style="width: 100px;">Status</th>
-        <th>Nama Client</th>
+        <th class="text-center" style="width: 130px;">Progress</th>
+        <th>Nama Owner</th>
         <th>Anggaran</th>
         <th>Tanggal Mulai</th>
         <th>Tanggal Selesai</th>
@@ -312,6 +319,22 @@
               {% endif %}
         </td>
 
+        <!-- Progress Realisasi -->
+        <td class="text-center">
+          <div class="progress position-relative" style="height: 22px; min-width: 90px;"
+            title="Progress Realisasi: {{ project.progress_realisasi|floatformat:1 }}%">
+            <div
+              class="progress-bar {% if project.progress_realisasi >= 100 %}bg-success{% elif project.progress_realisasi >= 50 %}bg-info{% elif project.progress_realisasi > 0 %}bg-warning{% else %}bg-secondary{% endif %}"
+              role="progressbar" style="width: {{ project.progress_realisasi|floatformat:0 }}%"
+              aria-valuenow="{{ project.progress_realisasi|floatformat:0 }}" aria-valuemin="0" aria-valuemax="100">
+            </div>
+            <span class="position-absolute w-100 text-center fw-bold progress-text"
+              style="top: 50%; left: 0; transform: translateY(-50%); font-size: 11px; z-index: 2; mix-blend-mode: difference; color: #fff;">
+              {{ project.progress_realisasi|floatformat:1 }}%
+            </span>
+          </div>
+        </td>
+
         <!-- Nama Client -->
         <td>{{ project.nama_client|default:"—" }}</td>
 
@@ -326,7 +349,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="8" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
+        <td colspan="9" class="text-center text-muted">Belum ada proyek yang ditambahkan.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -369,6 +392,18 @@
           <span class="badge bg-light text-dark">—</span>
           {% endif %}
           </span>
+      </div>
+      <div class="info-row-mobile">
+        <span class="label"><i class="fas fa-tasks"></i> Progress:</span>
+        <span class="value">
+          <div class="progress" style="height: 16px; width: 100px; display: inline-block;">
+            <div
+              class="progress-bar {% if project.progress_realisasi >= 100 %}bg-success{% elif project.progress_realisasi >= 50 %}bg-info{% elif project.progress_realisasi > 0 %}bg-warning{% else %}bg-secondary{% endif %}"
+              style="width: {{ project.progress_realisasi|floatformat:0 }}%">
+              <small>{{ project.progress_realisasi|floatformat:1 }}%</small>
+            </div>
+          </div>
+        </span>
       </div>
       <div class="info-row-mobile">
         <span class="label"><i class="fas fa-user"></i> Client:</span>
@@ -451,13 +486,17 @@
     <!-- First Page -->
     {% if page_obj.has_previous %}
     <li class="page-item">
-      <a class="page-link" href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="First">
+      <a class="page-link"
+        href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+        aria-label="First">
         <span aria-hidden="true">&laquo;&laquo;</span>
       </a>
     </li>
     <!-- Previous Page -->
     <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Previous">
+      <a class="page-link"
+        href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+        aria-label="Previous">
         <span aria-hidden="true">&laquo;</span>
       </a>
     </li>
@@ -472,34 +511,40 @@
 
     <!-- Page Numbers -->
     {% for num in page_obj.paginator.page_range %}
-      {% if page_obj.number == num %}
-      <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-      {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-      <li class="page-item"><a class="page-link" href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a></li>
+    {% if page_obj.number == num %}
+    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %} <li class="page-item"><a
+        class="page-link"
+        href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{
+        num }}</a></li>
       {% endif %}
-    {% endfor %}
+      {% endfor %}
 
-    <!-- Next Page -->
-    {% if page_obj.has_next %}
-    <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Next">
-        <span aria-hidden="true">&raquo;</span>
-      </a>
-    </li>
-    <!-- Last Page -->
-    <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Last">
-        <span aria-hidden="true">&raquo;&raquo;</span>
-      </a>
-    </li>
-    {% else %}
-    <li class="page-item disabled">
-      <span class="page-link">&raquo;</span>
-    </li>
-    <li class="page-item disabled">
-      <span class="page-link">&raquo;&raquo;</span>
-    </li>
-    {% endif %}
+      <!-- Next Page -->
+      {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link"
+          href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+          aria-label="Next">
+          <span aria-hidden="true">&raquo;</span>
+        </a>
+      </li>
+      <!-- Last Page -->
+      <li class="page-item">
+        <a class="page-link"
+          href="?page={{ page_obj.paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+          aria-label="Last">
+          <span aria-hidden="true">&raquo;&raquo;</span>
+        </a>
+      </li>
+      {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">&raquo;</span>
+      </li>
+      <li class="page-item disabled">
+        <span class="page-link">&raquo;&raquo;</span>
+      </li>
+      {% endif %}
   </ul>
 
   <!-- Pagination Info -->

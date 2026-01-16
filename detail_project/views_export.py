@@ -83,6 +83,43 @@ def export_init(request):
                 'error': f'Invalid format. Must be one of: {", ".join(valid_formats)}'
             }, status=400)
 
+        # ============================================================
+        # SUBSCRIPTION CHECK - Export Restrictions
+        # ============================================================
+        # Feature Matrix:
+        # - TRIAL: ❌ (cannot export at all)
+        # - PRO: ✅ (clean exports)
+        # - EXPIRED: PDF with watermark only, no Word/Excel
+        
+        user = request.user
+        add_watermark = False
+        
+        if user.subscription_status == 'TRIAL':
+            return JsonResponse({
+                'success': False,
+                'error': 'Fitur export tersedia setelah Anda upgrade ke Pro. Trial tidak termasuk fitur export.',
+                'code': 'TRIAL_NO_EXPORT',
+                'upgrade_url': '/subscriptions/pricing/'
+            }, status=403)
+        
+        if not user.is_pro_active:
+            # EXPIRED user
+            if format_type in ['word', 'xlsx']:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Export Word dan Excel hanya tersedia untuk pengguna Pro. Silakan upgrade langganan Anda.',
+                    'code': 'PRO_REQUIRED',
+                    'subscription_status': user.subscription_status,
+                    'upgrade_url': '/subscriptions/pricing/'
+                }, status=403)
+            # PDF allowed but with watermark
+            add_watermark = True
+
+        # Add watermark flag to metadata for PDF generation
+        if add_watermark:
+            metadata['add_watermark'] = True
+            metadata['watermark_text'] = 'DEMO - Dashboard-RAB'
+
         # Create export session
         session = ExportSession.objects.create(
             user=request.user,
@@ -344,6 +381,14 @@ def generate_pdf_from_pages(session, pages):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.pdfgen import canvas
     from reportlab.lib.utils import ImageReader
+    from reportlab.lib.colors import Color
+
+    # Check if watermark should be added (for non-PRO users)
+    add_watermark = False
+    watermark_text = 'DEMO - Dashboard-RAB'
+    if session.metadata:
+        add_watermark = session.metadata.get('add_watermark', False)
+        watermark_text = session.metadata.get('watermark_text', watermark_text)
 
     # Create PDF buffer
     buffer = BytesIO()
@@ -366,6 +411,20 @@ def generate_pdf_from_pages(session, pages):
         try:
             img = ImageReader(image_buffer)
             pdf.drawImage(img, 0, 0, width=page_width, height=page_height, preserveAspectRatio=True, anchor='c')
+            
+            # Add watermark overlay if required
+            if add_watermark:
+                pdf.saveState()
+                # Set watermark style - semi-transparent gray
+                pdf.setFillColor(Color(0.5, 0.5, 0.5, alpha=0.3))
+                pdf.setFont("Helvetica-Bold", 60)
+                # Rotate and center the watermark diagonally
+                pdf.translate(page_width / 2, page_height / 2)
+                pdf.rotate(45)
+                # Draw watermark text centered
+                pdf.drawCentredString(0, 0, watermark_text)
+                pdf.restoreState()
+            
             pdf.showPage()  # Next page
         except Exception as e:
             logger.error(f"Error adding page {page.page_number} to PDF: {str(e)}")
@@ -724,6 +783,34 @@ def api_start_export_async(request, project_id):
         # Validate format
         if format_type not in ['pdf', 'word']:
             return JsonResponse({'error': 'Invalid format. Must be pdf or word'}, status=400)
+        
+        # ============================================================
+        # SUBSCRIPTION CHECK - Export Restrictions
+        # ============================================================
+        user = request.user
+        add_watermark = False
+        
+        if user.subscription_status == 'TRIAL':
+            return JsonResponse({
+                'success': False,
+                'error': 'Fitur export tersedia setelah Anda upgrade ke Pro. Trial tidak termasuk fitur export.',
+                'code': 'TRIAL_NO_EXPORT',
+                'upgrade_url': '/subscriptions/pricing/'
+            }, status=403)
+        
+        if not user.is_pro_active:
+            # EXPIRED user
+            if format_type == 'word':
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Export Word hanya tersedia untuk pengguna Pro. Silakan upgrade langganan Anda.',
+                    'code': 'PRO_REQUIRED',
+                    'upgrade_url': '/subscriptions/pricing/'
+                }, status=403)
+            # PDF allowed but with watermark
+            add_watermark = True
+            options['add_watermark'] = True
+            options['watermark_text'] = 'DEMO - Dashboard-RAB'
         
         # Start Celery task
         logger.info(
