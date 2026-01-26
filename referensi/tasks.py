@@ -558,4 +558,138 @@ def health_check_task() -> Dict[str, Any]:
 
     logger.info(f"Health check completed: {health['status']}")
 
-    return health
+
+# =============================================================================
+# PDF IMPORT TASKS
+# =============================================================================
+
+@shared_task(bind=True, name='referensi.tasks.process_ahsp_pdf_task')
+def process_ahsp_pdf_task(self, file_path: str, user_id: int, file_name: str) -> Dict[str, Any]:
+    """
+    Async task to parse AHSP PDF.
+    
+    PDF Structure (from AHSP SNI 2025):
+    - Column 0: No/Segment marker (A, B, C)
+    - Column 1: Uraian (item name)
+    - Column 2: Kode (L.01, L.02, etc)
+    - Column 3: Satuan (OH, kg, m3, etc)
+    - Column 4: Koefisien (0,734 - comma as decimal)
+    """
+    import pdfplumber
+    import re
+    from referensi.models_staging import AHSPImportStaging
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        logger.error(f"User ID {user_id} not found for PDF Import")
+        return {'status': 'error', 'message': 'User not found'}
+
+    # Only update state if running as Async Task
+    if self.request.id:
+        self.update_state(state='PROGRESS', meta={'status': 'Opening PDF...'})
+
+    saved_count = 0
+    current_segment = None  # A=Tenaga, B=Bahan, C=Peralatan
+    table_counter = 0  # For generating pseudo AHSP code
+    
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            total_pages = len(pdf.pages)
+            
+            # Limit pages for synchronous mode
+            process_limit = 50
+            
+            for page_idx, page in enumerate(pdf.pages):
+                if page_idx >= process_limit:
+                    logger.warning(f"Stopping PDF import at page {process_limit}")
+                    break
+
+                if self.request.id:
+                    self.update_state(state='PROGRESS', meta={
+                        'status': f'Processing page {page_idx+1}/{total_pages} ({saved_count} items)'
+                    })
+                
+                tables = page.extract_tables()
+                
+                for table in tables:
+                    table_counter += 1
+                    parent_ahsp_code = f"PDF.{page_idx+1}.{table_counter}"  # Pseudo code
+                    
+                    # Save table as HEADING
+                    AHSPImportStaging.objects.create(
+                        user=user,
+                        file_name=file_name,
+                        kode_item=parent_ahsp_code,
+                        uraian_item=f"Tabel Halaman {page_idx+1} #{table_counter}",
+                        segment_type='HEADING',
+                        is_valid=True
+                    )
+                    
+                    for row in table:
+                        if not row or len(row) < 5:
+                            continue
+                        
+                        # Clean cells
+                        cells = [str(c).strip() if c else "" for c in row]
+                        col0 = cells[0]  # No / Segment marker
+                        col1 = cells[1]  # Uraian
+                        col2 = cells[2] if len(cells) > 2 else ""  # Kode
+                        col3 = cells[3] if len(cells) > 3 else ""  # Satuan
+                        col4 = cells[4] if len(cells) > 4 else ""  # Koefisien
+                        
+                        # Skip header row
+                        if col0.upper() in ['NO', 'NO.'] or 'URAIAN' in col1.upper():
+                            continue
+                        
+                        # Skip subtotal rows
+                        if 'JUMLAH' in col0.upper() or 'JUMLAH' in col1.upper():
+                            continue
+                        
+                        # Detect segment marker (A, B, C)
+                        if col0.upper() in ['A', 'B', 'C']:
+                            current_segment = col0.upper()
+                            continue
+                        
+                        # Skip D, E, F segments (calculated totals)
+                        if col0.upper() in ['D', 'E', 'F']:
+                            current_segment = 'IGNORE'
+                            continue
+                        
+                        if current_segment == 'IGNORE':
+                            continue
+                        
+                        # Extract item data
+                        uraian = col1.replace('\n', ' ').strip()
+                        kode = col2.strip()
+                        satuan = col3.strip()
+                        
+                        # Parse koefisien (handle comma as decimal)
+                        koef_str = col4.replace(',', '.').strip()
+                        try:
+                            koefisien = float(koef_str)
+                        except (ValueError, TypeError):
+                            koefisien = 0.0
+                        
+                        # Only save if we have meaningful data
+                        if uraian and (kode or koefisien > 0):
+                            AHSPImportStaging.objects.create(
+                                user=user,
+                                file_name=file_name,
+                                parent_ahsp_code=parent_ahsp_code,
+                                segment_type=current_segment or 'A',
+                                kode_item=kode or f"ITEM.{saved_count+1}",
+                                uraian_item=uraian,
+                                satuan_item=satuan,
+                                koefisien=koefisien
+                            )
+                            saved_count += 1
+    
+    except Exception as e:
+        logger.error(f"PDF Import Error: {e}")
+        return {'status': 'error', 'message': str(e)}
+
+    return {'status': 'success', 'count': saved_count}
+

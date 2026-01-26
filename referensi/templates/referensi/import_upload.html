@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Import AHSP dari PDF{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-file-earmark-pdf me-2"></i>
+                        Import AHSP dari PDF
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Panduan:</strong>
+                        <ol class="mb-0 mt-2">
+                            <li>Pilih file PDF berisi data AHSP (Format SNI/Perbup).</li>
+                            <li>Sistem akan mengekstrak data secara otomatis di background.</li>
+                            <li>Setelah selesai, Anda bisa melihat hasilnya di halaman <strong>Verifikasi</strong>.</li>
+                            <li>Edit jika diperlukan, lalu klik <strong>Commit ke Database</strong>.</li>
+                        </ol>
+                    </div>
+
+                    <form method="post" enctype="multipart/form-data" id="uploadForm">
+                        {% csrf_token %}
+
+                        <div class="mb-4">
+                            <label for="pdf_file" class="form-label fw-semibold">Pilih File PDF</label>
+                            <input type="file" class="form-control form-control-lg" id="pdf_file" name="pdf_file"
+                                accept=".pdf" required>
+                            <div class="form-text">Maksimal ukuran file: 50 MB</div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'referensi:import_pdf_verification' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-table me-1"></i>
+                                Lihat Data Staging
+                            </a>
+                            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                                <i class="bi bi-upload me-2"></i>
+                                Upload & Proses
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mt-4 border-warning">
+                <div class="card-header bg-warning-subtle">
+                    <h6 class="mb-0 text-warning-emphasis">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Catatan Penting
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li>File PDF harus berisi tabel AHSP dengan format Segment A (Tenaga), B (Bahan), C (Alat).</li>
+                        <li>Sistem akan mengabaikan Segment D, E, F (Total Harga).</li>
+                        <li>Proses ekstraksi besar (~20MB) bisa memakan waktu 1-5 menit.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', function () {
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
+    });
+</script>
+{% endblock %}

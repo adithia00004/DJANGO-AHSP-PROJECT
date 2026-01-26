@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Verifikasi Import PDF{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0">
+            <i class="bi bi-table me-2"></i>
+            Verifikasi Data Import
+        </h4>
+        <div>
+            <a href="{% url 'referensi:import_pdf_convert' %}" class="btn btn-outline-primary">
+                <i class="bi bi-plus-circle me-1"></i>
+                Upload Baru
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary-subtle border-primary">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ total_items }}</h3>
+                    <small class="text-muted">Total Item (A/B/C)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info-subtle border-info">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ total_headings }}</h3>
+                    <small class="text-muted">Judul/Heading</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success-subtle border-success">
+                <div class="card-body text-center">
+                    <h3 class="mb-0">{{ files|length }}</h3>
+                    <small class="text-muted">File Diproses</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <form method="post" action="{% url 'referensi:import_pdf_commit' %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success w-100" {% if total_items==0 %}disabled{% endif %}>
+                            <i class="bi bi-database-add me-1"></i>
+                            Commit ke Database
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if staging_data %}
+    <!-- Data Table -->
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Data Staging</span>
+            <form method="post" action="{% url 'referensi:import_pdf_clear' %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Hapus semua data staging?')">
+                    <i class="bi bi-trash me-1"></i>
+                    Hapus Semua
+                </button>
+            </form>
+        </div>
+        <div class="card-body">
+            <table id="stagingTable" class="table table-striped table-hover" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Parent AHSP</th>
+                        <th>Segment</th>
+                        <th>Kode Item</th>
+                        <th>Uraian</th>
+                        <th>Satuan</th>
+                        <th>Koefisien</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in staging_data %}
+                    <tr class="{% if item.segment_type == 'HEADING' %}table-secondary{% endif %}">
+                        <td>{{ item.parent_ahsp_code|default:"-" }}</td>
+                        <td>
+                            {% if item.segment_type == 'A' %}
+                            <span class="badge bg-primary">Tenaga</span>
+                            {% elif item.segment_type == 'B' %}
+                            <span class="badge bg-success">Bahan</span>
+                            {% elif item.segment_type == 'C' %}
+                            <span class="badge bg-warning text-dark">Alat</span>
+                            {% elif item.segment_type == 'HEADING' %}
+                            <span class="badge bg-secondary">Heading</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">{{ item.segment_type }}</span>
+                            {% endif %}
+                        </td>
+                        <td><code>{{ item.kode_item }}</code></td>
+                        <td>{{ item.uraian_item|truncatechars:60 }}</td>
+                        <td>{{ item.satuan_item|default:"-" }}</td>
+                        <td>{{ item.koefisien }}</td>
+                        <td>
+                            {% if item.is_valid %}
+                            <span class="badge bg-success-subtle text-success">Valid</span>
+                            {% else %}
+                            <span class="badge bg-danger-subtle text-danger">Error</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        Belum ada data di staging. Silakan <a href="{% url 'referensi:import_pdf_convert' %}">upload file PDF</a>
+        terlebih dahulu.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+    $(document).ready(function () {
+        $('#stagingTable').DataTable({
+            pageLength: 50,
+            order: [[0, 'asc'], [1, 'asc']],
+            language: {
+                search: "Cari:",
+                lengthMenu: "Tampilkan _MENU_ baris",
+                info: "Menampilkan _START_ - _END_ dari _TOTAL_ item",
+                paginate: {
+                    first: "Awal",
+                    last: "Akhir",
+                    next: "→",
+                    previous: "←"
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

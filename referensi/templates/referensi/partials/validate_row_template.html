@@ -1,0 +1,33 @@
+<tr class="data-row" data-row-id="{{ row.row }}">
+    <td class="text-center editable-cell" data-col="2">{{ row.original_row.col_2 }}</td>
+    <td class="editable-cell" data-col="3">{{ row.original_row.col_3 }}</td>
+    <td class="editable-cell" data-col="4"><span class="font-monospace small">{{ row.original_row.col_4 }}</span></td>
+    <td class="editable-cell" data-col="5">{{ row.original_row.col_5 }}</td>
+    <td class="text-end editable-cell" data-col="6">{{ row.original_row.col_6 }}</td>
+    <td>
+        <div class="d-flex align-items-center gap-1">
+            {% if row.severity == 'valid' %}
+            <span class="badge bg-success">Valid</span>
+            {% elif row.severity == 'warning' %}
+            <span class="badge bg-warning text-dark">Warning</span>
+            {% elif row.severity == 'danger' %}
+            <span class="badge bg-danger">Critical</span>
+            {% else %}
+            <span class="badge bg-info">Info</span>
+            {% endif %}
+
+            <!-- Delete Button (Hidden by default, shown in Edit Mode) -->
+            <button class="btn btn-outline-danger btn-sm py-0 px-1 delete-row-btn d-none" title="Hapus Baris">
+                <i class="fas fa-trash-alt" style="font-size: 0.7rem;"></i>
+            </button>
+        </div>
+
+        {% if row.issues %}
+        <div class="mt-1">
+            {% for issue in row.issues %}
+            <small class="d-block text-danger" style="font-size: 0.7em;">{{ issue }}</small>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </td>
+</tr>

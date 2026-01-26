@@ -16,20 +16,21 @@ from .constants import ITEM_DISPLAY_LIMIT, JOB_DISPLAY_LIMIT, TAB_ITEMS, TAB_JOB
 
 
 @login_required
-@permission_required(
-    ("referensi.view_ahspreferensi", "referensi.change_ahspreferensi"),
-    raise_exception=True,
-)
+@login_required
 def admin_portal(request):
+    if not request.user.has_perms(["referensi.view_ahspreferensi", "referensi.change_ahspreferensi"]):
+        messages.warning(request, "Anda tidak memiliki izin untuk mengakses Admin Portal.")
+        return redirect("/")
+        
     return render(request, "referensi/admin_portal.html")
 
 
 @login_required
-@permission_required(
-    ("referensi.view_ahspreferensi", "referensi.change_ahspreferensi"),
-    raise_exception=True,
-)
+@login_required
 def ahsp_database(request):
+    if not request.user.has_perms(["referensi.view_ahspreferensi", "referensi.change_ahspreferensi"]):
+        messages.warning(request, "Anda tidak memiliki izin untuk mengakses Database AHSP.")
+        return redirect("/")
     service = AdminPortalService(
         job_limit=JOB_DISPLAY_LIMIT,
         item_limit=ITEM_DISPLAY_LIMIT,
@@ -198,11 +199,10 @@ def ahsp_database(request):
 
 
 @login_required
-@permission_required(
-    ("referensi.view_ahspreferensi", "referensi.change_ahspreferensi"),
-    raise_exception=True,
-)
+@login_required
 def ahsp_database_api(request):
+    if not request.user.has_perms(["referensi.view_ahspreferensi", "referensi.change_ahspreferensi"]):
+        return redirect("/")
     """
     Lightweight view for API-based AHSP Database.
     

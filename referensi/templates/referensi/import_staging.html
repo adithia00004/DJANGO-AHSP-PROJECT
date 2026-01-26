@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Staging Data{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:import_options' %}">Import AHSP</a></li>
+                    <li class="breadcrumb-item active">Staging</li>
+                </ol>
+            </nav>
+            <h2 class="mb-1">
+                <i class="fas fa-layer-group text-primary me-2"></i>
+                Staging Data
+            </h2>
+            <p class="text-muted">Review data sebelum commit ke database</p>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h3 class="mb-0 text-primary">{{ total_items|default:0 }}</h3>
+                    <small class="text-muted">Total Items</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h3 class="mb-0 text-info">{{ total_headings|default:0 }}</h3>
+                    <small class="text-muted">AHSP Headings</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <h3 class="mb-0 text-secondary">{{ files|length }}</h3>
+                    <small class="text-muted">Files</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center py-2">
+                    <form method="post" action="{% url 'referensi:import_staging_commit' %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-sm" {% if not staging_data %}disabled{% endif
+                            %}>
+                            <i class="fas fa-check me-1"></i>Commit
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'referensi:import_staging_clear' %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger btn-sm" {% if not staging_data %}disabled{%
+                            endif %}>
+                            <i class="fas fa-trash me-1"></i>Clear
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="stagingTable">
+                    <thead class="table-light sticky-top" style="z-index: 10;">
+                        <tr>
+                            <th style="width: 350px;">Kode / Hierarchy</th>
+                            <th>Uraian</th>
+                            <th style="width: 100px;">Satuan</th>
+                            <th style="width: 100px;">Koef</th>
+                            <th style="width: 100px;">Segmen</th>
+                            <th>File</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in staging_data %}
+                        <tr class="tree-node {% if item.is_folder %}folder-row bg-body-tertiary fw-bold{% endif %}"
+                            data-tree-level="{{ item.ui_level }}" data-node-id="{{ item.id }}"
+                            style="cursor: {% if item.is_folder %}pointer{% else %}default{% endif %};">
+
+                            <!-- Col 1: Hierarchy Tree -->
+                            <td style="padding-left: {{ item.ui_level }}px; white-space: nowrap;">
+                                {% if item.is_folder %}
+                                <span class="tree-toggle me-2"><i class="fas fa-chevron-down text-muted"></i></span>
+                                <i class="fas fa-folder text-warning me-2"></i>{{ item.kode_item }}
+                                {% else %}
+                                <span class="me-4"></span> <!-- Indent spacer for leaves -->
+                                <i class="fas fa-file-alt text-muted me-2 opacity-25"></i>{{ item.kode_item }}
+                                {% endif %}
+                            </td>
+
+                            <!-- Col 2: Uraian -->
+                            <td>
+                                {{ item.uraian_item }}
+                                {% if not item.is_folder and item.parent_ahsp_code %}
+                                <div class="small text-muted" style="font-size: 0.75em;">
+                                    <i class="fas fa-level-up-alt me-1"></i>Parent: {{ item.parent_ahsp_code }}
+                                </div>
+                                {% endif %}
+                            </td>
+
+                            <!-- Col 3: Satuan -->
+                            <td>{{ item.satuan_item|default:"-" }}</td>
+
+                            <!-- Col 4: Koef -->
+                            <td>
+                                {% if not item.is_folder %}
+                                {{ item.koefisien|floatformat:4 }}
+                                {% endif %}
+                            </td>
+
+                            <!-- Col 5: Segmen -->
+                            <td>
+                                {% if item.segment_type == 'A' %}
+                                <span class="badge bg-info">Tenaga</span>
+                                {% elif item.segment_type == 'B' %}
+                                <span class="badge bg-warning text-dark">Bahan</span>
+                                {% elif item.segment_type == 'C' %}
+                                <span class="badge bg-secondary">Alat</span>
+                                {% elif item.segment_type == 'UK' %}
+                                <span class="badge bg-purple text-white" style="background-color: #6f42c1;">Unit
+                                    Kerja</span>
+                                {% elif item.segment_type == 'LL' %}
+                                <span class="badge bg-dark">Lain-lain</span>
+                                {% elif item.segment_type == 'HEADING' %}
+                                <span class="badge bg-secondary bg-opacity-50 text-dark">Folder</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Col 6: File Source -->
+                            <td><small class="text-muted">{{ item.file_name|truncatechars:15 }}</small></td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-5">
+                                <i class="fas fa-inbox fa-3x mb-3 d-block opacity-50"></i>
+                                Tidak ada data di staging.<br>
+                                <a href="{% url 'referensi:import_options' %}" class="btn btn-primary btn-sm mt-3">
+                                    <i class="fas fa-plus me-1"></i>Import Data
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back Button -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <a href="{% url 'referensi:import_options' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Kembali ke Menu Import
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .folder-row:hover {
+        background-color: rgba(0, 0, 0, 0.05) !important;
+    }
+
+    .tree-toggle {
+        display: inline-block;
+        transition: transform 0.2s;
+    }
+
+    .tree-toggle.collapsed {
+        transform: rotate(-90deg);
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Tree Logic
+        const rows = document.querySelectorAll('tr.tree-node');
+
+        rows.forEach((row, index) => {
+            if (row.classList.contains('folder-row')) {
+                row.addEventListener('click', function (e) {
+                    // Ignore clicks on buttons/links inside the row
+                    if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+
+                    e.preventDefault();
+
+                    const currentLevel = parseInt(this.getAttribute('data-tree-level'));
+                    const icon = this.querySelector('.tree-toggle');
+                    const isCollapsed = icon.classList.contains('collapsed');
+
+                    // Toggle Icon
+                    if (isCollapsed) {
+                        icon.classList.remove('collapsed');
+                    } else {
+                        icon.classList.add('collapsed');
+                    }
+
+                    // Toggle Children
+                    // Iterate through subsequent rows until we hit a row with level <= currentLevel
+                    for (let i = index + 1; i < rows.length; i++) {
+                        const nextRow = rows[i];
+                        const nextLevel = parseInt(nextRow.getAttribute('data-tree-level'));
+
+                        if (nextLevel <= currentLevel) {
+                            break; // End of this subtree
+                        }
+
+                        if (isCollapsed) {
+                            // Expanding
+                            // Only show direct children or previously visible nodes?
+                            // For simplicity: Show all children. 
+                            // To allow nested memory, we'd need complex logic.
+                            // Simple Expand:
+                            nextRow.style.display = '';
+                            // Reset nested folding? No, let's just open all for now or keep it simple.
+                            if (nextRow.classList.contains('folder-row')) {
+                                nextRow.querySelector('.tree-toggle').classList.remove('collapsed');
+                            }
+                        } else {
+                            // Collapsing
+                            nextRow.style.display = 'none';
+                        }
+                    }
+                });
+            }
+        });
+    });
+</script>
+{% endblock %}

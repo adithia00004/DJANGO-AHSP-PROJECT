@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Import Excel{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:import_options' %}">Import AHSP</a></li>
+                    <li class="breadcrumb-item active">Import Excel</li>
+                </ol>
+            </nav>
+            <h2 class="mb-1">
+                <i class="fas fa-file-excel text-success me-2"></i>
+                Import Excel Clean
+            </h2>
+            <p class="text-muted">Upload Excel yang sudah bersih dan sesuai format</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+
+                        <div class="mb-4">
+                            <label for="excel_file" class="form-label">Pilih File Excel</label>
+                            <input type="file" class="form-control form-control-lg" id="excel_file" name="excel_file"
+                                accept=".xlsx,.xls" required>
+                            <div class="form-text">
+                                Format: .xlsx atau .xls dengan kolom yang sesuai
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-database me-2"></i>Import ke Staging
+                            </button>
+                            <a href="{% url 'referensi:import_options' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Kembali
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card bg-light border-0">
+                <div class="card-body">
+                    <h6><i class="fas fa-table me-2"></i>Format Kolom</h6>
+                    <table class="table table-sm small mb-0">
+                        <tr>
+                            <td>kode_AHSP</td>
+                            <td>1.1.1.1</td>
+                        </tr>
+                        <tr>
+                            <td>Nama AHSP</td>
+                            <td>Pembuatan...</td>
+                        </tr>
+                        <tr>
+                            <td>Kategori</td>
+                            <td>Tenaga/Bahan/Alat</td>
+                        </tr>
+                        <tr>
+                            <td>Item</td>
+                            <td>Pekerja</td>
+                        </tr>
+                        <tr>
+                            <td>kode</td>
+                            <td>L.01</td>
+                        </tr>
+                        <tr>
+                            <td>satuan</td>
+                            <td>OH</td>
+                        </tr>
+                        <tr>
+                            <td>koefisien</td>
+                            <td>0.6</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

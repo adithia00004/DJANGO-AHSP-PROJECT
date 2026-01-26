@@ -21,7 +21,7 @@ def subscription_context(request):
     user = request.user
     
     return {
-        'subscription_status': user.subscription_status,
+        'subscription_status': 'ADMIN' if user.has_full_access else user.subscription_status,
         'is_subscription_active': user.is_subscription_active,
         'is_trial_active': user.is_trial_active,
         'is_pro_active': user.is_pro_active,

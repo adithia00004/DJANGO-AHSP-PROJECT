@@ -65,6 +65,9 @@ RUN python manage.py collectstatic --noinput --clear 2>/dev/null || true
 # Create app user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 
+# Ensure entrypoint is executable
+RUN chmod +x /app/docker-entrypoint.sh
+
 USER appuser
 
 # Health check

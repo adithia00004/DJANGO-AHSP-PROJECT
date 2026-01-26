@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-5 g-xl-8">
+    <div class="col-xl-12">
+        <div class="card card-xl-stretch mb-5 mb-xl-8">
+            <div class="card-header border-0 pt-5">
+                <h3 class="card-title align-items-start flex-column">
+                    <span class="card-label fw-bolder fs-3 mb-1">Pilih Bagian Download</span>
+                    <span class="text-muted mt-1 fw-bold fs-7">
+                        File: {{ file_name }} ({{ total_pages }} Halaman)
+                    </span>
+                </h3>
+            </div>
+
+            <div class="card-body py-3">
+                <div class="alert alert-info d-flex align-items-center mb-5">
+                    <i class="fas fa-info-circle fs-2 me-3 text-info"></i>
+                    <div class="d-flex flex-column">
+                        <h5 class="mb-1 text-info">File Terlalu Besar</h5>
+                        <span>
+                            File PDF ini memiliki lebih dari 200 halaman. Untuk mencegah kegagalan download (timeout),
+                            silakan download Excel per bagian (200 halaman per file).
+                        </span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    {% for part in parts %}
+                    <div class="col-md-4 mb-4">
+                        <div class="card border border-dashed border-gray-300 hover-elevate-up shadow-sm">
+                            <div class="card-body p-5 d-flex flex-column align-items-center">
+                                <i class="fas fa-file-excel fs-1 text-success mb-3"></i>
+                                <h4 class="fs-4 fw-bolder mb-2">Bagian {{ part.number }}</h4>
+                                <div class="text-gray-600 mb-4">Halaman {{ part.range }}</div>
+
+                                <a href="{% url 'referensi:import_pdf_download_part' file_id part.number %}"
+                                    class="btn btn-sm btn-light-success border border-success download-part-btn"
+                                    data-part="{{ part.number }}">
+                                    <i class="fas fa-download"></i> Download Excel
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="separator my-5"></div>
+
+                <div class="d-flex justify-content-end">
+                    <a href="{% url 'referensi:import_options' %}" class="btn btn-secondary me-3">Kembali</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="position-fixed top-0 start-0 w-100 h-100 d-none"
+    style="background: rgba(0,0,0,0.6); z-index: 9999; backdrop-filter: blur(2px);">
+    <div class="d-flex flex-column justify-content-center align-items-center h-100 text-white">
+        <div class="spinner-border text-light" style="width: 3rem; height: 3rem;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h4 class="mt-3 fw-light">Sedang Mengkonversi PDF...</h4>
+        <p class="small text-white-50">Mohon jangan tutup halaman ini sampai download dimulai.</p>
+    </div>
+</div>
+
+<!-- Toast Container (if not already in base) -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="downloadToast" class="toast align-items-center text-bg-primary border-0" role="alert" aria-live="assertive"
+        aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                <span id="toastMessage">Memproses download...</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const downloadBtns = document.querySelectorAll('.download-part-btn');
+        const overlay = document.getElementById('loadingOverlay');
+
+        downloadBtns.forEach(btn => {
+            btn.addEventListener('click', async function (e) {
+                e.preventDefault();
+
+                // Show blocking overlay
+                overlay.classList.remove('d-none');
+
+                const url = this.getAttribute('href');
+                const part = this.getAttribute('data-part');
+                const filename = `AHSP_Part_${part}.xlsx`; // Idealnya dari header content-disposition
+
+                try {
+                    const response = await fetch(url);
+
+                    if (!response.ok) throw new Error('Network response was not ok');
+
+                    const blob = await response.blob();
+                    const downloadUrl = window.URL.createObjectURL(blob);
+
+                    // Trigger download
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = downloadUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+
+                    window.URL.revokeObjectURL(downloadUrl);
+
+                    // Show success feedback
+                    // (Optional: use toast if desired, but file download is obvious enough)
+
+                } catch (error) {
+                    alert('Gagal mendownload file: ' + error.message);
+                } finally {
+                    // Hide overlay
+                    overlay.classList.add('d-none');
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -5,24 +5,27 @@
 {% block title %}Preview Import AHSP Referensi{% endblock %}
 
 {% block extra_css %}
-    <link rel="stylesheet" href="{% static 'referensi/css/preview_import.css' %}">
-    <link rel="stylesheet" href="{% static 'referensi/css/import_progress.css' %}">
+<link rel="stylesheet" href="{% static 'referensi/css/preview_import.css' %}">
+<link rel="stylesheet" href="{% static 'referensi/css/import_progress.css' %}">
 {% endblock %}
 
 {% block extra_js %}
-    {{ block.super }}
-    <script src="{% static 'referensi/js/preview_import.js' %}" defer></script>
-    <script src="{% static 'referensi/js/preview_import_v2.js' %}" defer></script>
-    <script src="{% static 'referensi/js/import_progress.js' %}" defer></script>
+{{ block.super }}
+<script src="{% static 'referensi/js/preview_import.js' %}" defer></script>
+<script src="{% static 'referensi/js/preview_import_v2.js' %}" defer></script>
+<script src="{% static 'referensi/js/import_progress.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
 <div id="preview-root" class="d-flex flex-column gap-4">
+
+
     <div class="card shadow-sm border-0">
         <div class="card-body d-flex flex-column flex-xl-row gap-3 align-items-xl-center justify-content-between">
             <div class="btn-toolbar gap-2" id="preview-toolbar" role="toolbar" aria-label="Toolbar preview import">
                 <div class="btn-group btn-group-sm" role="group" aria-label="Aksi utama">
-                    <button type="button" class="btn btn-outline-secondary" data-action="toggle-info" aria-pressed="false">
+                    <button type="button" class="btn btn-outline-secondary" data-action="toggle-info"
+                        aria-pressed="false">
                         <i class="bi bi-info-circle"></i> Info
                     </button>
                     <button type="button" class="btn btn-outline-secondary" data-action="refresh-preview">
@@ -33,18 +36,20 @@
                     </button>
                 </div>
             </div>
-            <form method="post" enctype="multipart/form-data" class="w-100 d-flex flex-column flex-lg-row gap-2 align-items-lg-center" novalidate>
+            <form method="post" enctype="multipart/form-data"
+                class="w-100 d-flex flex-column flex-lg-row gap-2 align-items-lg-center" novalidate>
                 {% csrf_token %}
                 <div class="flex-grow-1 w-100">
-                    <label for="{{ form.excel_file.id_for_label }}" class="form-label small text-muted mb-1">Unggah Excel AHSP</label>
+                    <label for="{{ form.excel_file.id_for_label }}" class="form-label small text-muted mb-1">Unggah
+                        Excel AHSP</label>
                     {{ form.excel_file }}
                     {% if form.excel_file.errors %}
-                        <div class="text-danger small mt-1">{{ form.excel_file.errors|join:", " }}</div>
+                    <div class="text-danger small mt-1">{{ form.excel_file.errors|join:", " }}</div>
                     {% elif form.excel_file.help_text %}
-                        <div class="form-text small">{{ form.excel_file.help_text }}</div>
+                    <div class="form-text small">{{ form.excel_file.help_text }}</div>
                     {% endif %}
                     {% if form.non_field_errors %}
-                        <div class="text-danger small mt-2">{{ form.non_field_errors|join:" " }}</div>
+                    <div class="text-danger small mt-2">{{ form.non_field_errors|join:" " }}</div>
                     {% endif %}
                 </div>
                 <div class="d-flex gap-2">
@@ -52,7 +57,7 @@
                         <i class="bi bi-search"></i> Preview Data
                     </button>
                     <a href="{% url 'referensi:preview_import' %}?reset=1" class="btn btn-outline-secondary btn-sm"
-                       onclick="return confirm('Apakah Anda yakin ingin membersihkan preview data?')">
+                        onclick="return confirm('Apakah Anda yakin ingin membersihkan preview data?')">
                         <i class="bi bi-x-circle"></i> Reset
                     </a>
                 </div>
@@ -61,78 +66,78 @@
     </div>
 
     {% if column_schema %}
-        <div id="excel-schema-card" class="card shadow-sm d-none">
-            <div class="card-header bg-body-tertiary">
-                <h6 class="mb-0">Standar Kolom Excel</h6>
+    <div id="excel-schema-card" class="card shadow-sm d-none">
+        <div class="card-header bg-body-tertiary">
+            <h6 class="mb-0">Standar Kolom Excel</h6>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                File harus memuat dua tabel pada lembar kerja yang sama: metadata pekerjaan
+                AHSP dan rincian item. Gunakan nama kolom baku berikut agar parser dapat
+                memetakan data dengan benar.
+            </p>
+            <h6 class="small text-uppercase text-muted">Pekerjaan AHSP</h6>
+            <div class="table-responsive small">
+                <table class="table table-sm table-bordered align-middle mb-3">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Kolom</th>
+                            <th>Alias Header</th>
+                            <th>Tipe Data</th>
+                            <th>Keterangan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for spec in column_schema.jobs %}
+                        <tr>
+                            <td>
+                                <span class="fw-semibold">{{ spec.canonical }}</span>
+                                {% if spec.required %}
+                                <span class="badge text-bg-primary ms-1">wajib</span>
+                                {% else %}
+                                <span class="badge text-bg-secondary ms-1">opsional</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ spec.aliases|join:", " }}</td>
+                            <td>{{ spec.data_type }}</td>
+                            <td>{{ spec.description }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <div class="card-body">
-                <p class="text-muted small">
-                    File harus memuat dua tabel pada lembar kerja yang sama: metadata pekerjaan
-                    AHSP dan rincian item. Gunakan nama kolom baku berikut agar parser dapat
-                    memetakan data dengan benar.
-                </p>
-                <h6 class="small text-uppercase text-muted">Pekerjaan AHSP</h6>
-                <div class="table-responsive small">
-                    <table class="table table-sm table-bordered align-middle mb-3">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Kolom</th>
-                                <th>Alias Header</th>
-                                <th>Tipe Data</th>
-                                <th>Keterangan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for spec in column_schema.jobs %}
-                                <tr>
-                                    <td>
-                                        <span class="fw-semibold">{{ spec.canonical }}</span>
-                                        {% if spec.required %}
-                                            <span class="badge text-bg-primary ms-1">wajib</span>
-                                        {% else %}
-                                            <span class="badge text-bg-secondary ms-1">opsional</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ spec.aliases|join:", " }}</td>
-                                    <td>{{ spec.data_type }}</td>
-                                    <td>{{ spec.description }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <h6 class="small text-uppercase text-muted">Rincian Item</h6>
-                <div class="table-responsive small">
-                    <table class="table table-sm table-bordered align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Kolom</th>
-                                <th>Alias Header</th>
-                                <th>Tipe Data</th>
-                                <th>Keterangan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for spec in column_schema.details %}
-                                <tr>
-                                    <td>
-                                        <span class="fw-semibold">{{ spec.canonical }}</span>
-                                        {% if spec.required %}
-                                            <span class="badge text-bg-primary ms-1">wajib</span>
-                                        {% else %}
-                                            <span class="badge text-bg-secondary ms-1">opsional</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ spec.aliases|join:", " }}</td>
-                                    <td>{{ spec.data_type }}</td>
-                                    <td>{{ spec.description }}</td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+            <h6 class="small text-uppercase text-muted">Rincian Item</h6>
+            <div class="table-responsive small">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Kolom</th>
+                            <th>Alias Header</th>
+                            <th>Tipe Data</th>
+                            <th>Keterangan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for spec in column_schema.details %}
+                        <tr>
+                            <td>
+                                <span class="fw-semibold">{{ spec.canonical }}</span>
+                                {% if spec.required %}
+                                <span class="badge text-bg-primary ms-1">wajib</span>
+                                {% else %}
+                                <span class="badge text-bg-secondary ms-1">opsional</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ spec.aliases|join:", " }}</td>
+                            <td>{{ spec.data_type }}</td>
+                            <td>{{ spec.description }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
+    </div>
     {% endif %}
 
     {# Debugging Stats Panel #}
@@ -180,7 +185,8 @@
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Rincian Item:</span>
-                                <span class="badge bg-success fs-6">{{ debug_stats.file_rincian_count|default:0 }}</span>
+                                <span class="badge bg-success fs-6">{{ debug_stats.file_rincian_count|default:0
+                                    }}</span>
                             </div>
                         </div>
                     </div>
@@ -192,9 +198,12 @@
                     <i class="bi bi-lightbulb"></i> Tips Debugging:
                 </h6>
                 <ul class="mb-0 small">
-                    <li><strong>Duplicate Error:</strong> Jika ada error duplikat, kemungkinan data di file sudah ada di database. Hapus data lama atau gunakan file dengan data baru.</li>
-                    <li><strong>Database Kosong:</strong> Jika database kosong (0 records) tapi import gagal, ada masalah dengan format file atau validasi data.</li>
-                    <li><strong>Test dengan File Kecil:</strong> Coba test dengan 100-500 baris terlebih dahulu sebelum import file besar.</li>
+                    <li><strong>Duplicate Error:</strong> Jika ada error duplikat, kemungkinan data di file sudah ada di
+                        database. Hapus data lama atau gunakan file dengan data baru.</li>
+                    <li><strong>Database Kosong:</strong> Jika database kosong (0 records) tapi import gagal, ada
+                        masalah dengan format file atau validasi data.</li>
+                    <li><strong>Test dengan File Kecil:</strong> Coba test dengan 100-500 baris terlebih dahulu sebelum
+                        import file besar.</li>
                     <li><strong>Periksa Logs:</strong> Lihat console Django untuk error details lengkap.</li>
                 </ul>
             </div>
@@ -204,7 +213,8 @@
                 <strong><i class="bi bi-exclamation-triangle"></i> Perhatian:</strong>
                 Database sudah berisi {{ debug_stats.db_rincian_count }} rincian.
                 Jika Anda ingin test import dari awal, gunakan tombol di bawah untuk menghapus semua data.
-                <form method="post" action="{% url 'referensi:debug_clear_data' %}" class="mt-2" onsubmit="return confirm('⚠️ PERINGATAN: Ini akan menghapus SEMUA data AHSP dan Rincian dari database!\n\nApakah Anda yakin? Tindakan ini tidak dapat dibatalkan!');">
+                <form method="post" action="{% url 'referensi:debug_clear_data' %}" class="mt-2"
+                    onsubmit="return confirm('⚠️ PERINGATAN: Ini akan menghapus SEMUA data AHSP dan Rincian dari database!\n\nApakah Anda yakin? Tindakan ini tidak dapat dibatalkan!');">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-danger">
                         <i class="bi bi-trash"></i> Hapus Semua Data untuk Testing
@@ -218,106 +228,113 @@
 
     <div class="card shadow-sm" id="preview-summary-card">
         {% if parse_result or import_token %}
-            <div class="card-header bg-body-tertiary d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-center">
-                <div>
-                    <h5 class="mb-0">Ringkasan Hasil Preview</h5>
-                    {% if uploaded_name %}
-                        <small class="text-muted">File: {{ uploaded_name }}</small>
-                    {% endif %}
-                </div>
-                <div class="d-flex flex-wrap gap-2 align-items-center">
-                    {% if not parse_result.errors %}
-                        <span class="badge text-bg-success">Siap Impor</span>
-                    {% else %}
-                        <span class="badge text-bg-danger">Perlu Perbaikan</span>
-                    {% endif %}
-                    {% if import_token %}
-                        <form method="post" action="{% url 'referensi:commit_import' %}">
-                            {% csrf_token %}
-                            <input type="hidden" name="token" value="{{ import_token }}">
-                            <button type="submit" class="btn btn-success btn-sm">
-                                <i class="bi bi-cloud-upload"></i> Impor ke Database
-                            </button>
-                        </form>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="ajax-messages" class="mb-3"></div>
-                {% if parse_result.errors %}
-                    <div class="alert alert-danger">
-                        <h6 class="alert-heading">Terjadi masalah:</h6>
-                        <ul class="mb-0">
-                            {% for error in parse_result.errors %}
-                                <li>{{ error }}</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                {% else %}
-                    <div class="table-responsive small mb-3">
-                        <table class="table table-bordered table-sm align-middle mb-0 table-preview-summary">
-                            <tbody>
-                                <tr>
-                                    <th scope="row" style="width:35%">Total pekerjaan</th>
-                                    <td>{{ parse_result.total_jobs }}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Total rincian</th>
-                                    <td>{{ parse_result.total_rincian }}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Nama berkas</th>
-                                    <td>{{ uploaded_name|default:"-" }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    {% if parse_result.warnings %}
-                        <div class="alert alert-warning small">
-                            <strong>Catatan:</strong>
-                            <ul class="mb-0">
-                                {% for warning in parse_result.warnings %}
-                                    <li>{{ warning }}</li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                    {% endif %}
-                    <ul class="nav nav-pills small" id="previewTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="tab-ahsp" data-bs-toggle="tab" data-bs-target="#pane-ahsp" type="button" role="tab" aria-controls="pane-ahsp" aria-selected="true">
-                                AHSP Referensi ({{ parse_result.total_jobs }})
-                            </button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="tab-rincian" data-bs-toggle="tab" data-bs-target="#pane-rincian" type="button" role="tab" aria-controls="pane-rincian" aria-selected="false">
-                                Rincian Item ({{ parse_result.total_rincian }})
-                            </button>
-                        </li>
-                    </ul>
-                    <div class="tab-content border rounded-3 border-light-subtle mt-3">
-                        <div class="tab-pane fade show active" id="pane-ahsp" role="tabpanel" aria-labelledby="tab-ahsp">
-                            <div id="jobs-preview-container">
-                                {% include "referensi/preview/_jobs_table.html" with parse_result=parse_result job_formset=job_formset job_rows=job_rows job_page_info=job_page_info details_page=details_page %}
-                            </div>
-                        </div>
-                        <div class="tab-pane fade" id="pane-rincian" role="tabpanel" aria-labelledby="tab-rincian">
-                            <div id="details-preview-container">
-                                {% include "referensi/preview/_details_table.html" with parse_result=parse_result detail_formset=detail_formset detail_rows=detail_rows detail_page_info=detail_page_info jobs_page=jobs_page %}
-                            </div>
-                        </div>
-                    </div>
+        <div
+            class="card-header bg-body-tertiary d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-center">
+            <div>
+                <h5 class="mb-0">Ringkasan Hasil Preview</h5>
+                {% if uploaded_name %}
+                <small class="text-muted">File: {{ uploaded_name }}</small>
                 {% endif %}
             </div>
-        {% else %}
-            <div class="card-body">
-                <div id="ajax-messages" class="mb-3"></div>
-                <div class="alert alert-info mb-0" role="alert">
-                    <h6 class="alert-heading mb-1">Belum ada preview</h6>
-                    <p class="mb-0 small">Unggah file Excel AHSP untuk melihat detail pekerjaan dan rincian sebelum impor.</p>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                {% if not parse_result.errors %}
+                <span class="badge text-bg-success">Siap Impor</span>
+                {% else %}
+                <span class="badge text-bg-danger">Perlu Perbaikan</span>
+                {% endif %}
+                {% if import_token %}
+                <form method="post" action="{% url 'referensi:commit_import' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="token" value="{{ import_token }}">
+                    <button type="submit" class="btn btn-success btn-sm">
+                        <i class="bi bi-cloud-upload"></i> Impor ke Database
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="ajax-messages" class="mb-3"></div>
+            {% if parse_result.errors %}
+            <div class="alert alert-danger">
+                <h6 class="alert-heading">Terjadi masalah:</h6>
+                <ul class="mb-0">
+                    {% for error in parse_result.errors %}
+                    <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
+            <div class="table-responsive small mb-3">
+                <table class="table table-bordered table-sm align-middle mb-0 table-preview-summary">
+                    <tbody>
+                        <tr>
+                            <th scope="row" style="width:35%">Total pekerjaan</th>
+                            <td>{{ parse_result.total_jobs }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Total rincian</th>
+                            <td>{{ parse_result.total_rincian }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Nama berkas</th>
+                            <td>{{ uploaded_name|default:"-" }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            {% if parse_result.warnings %}
+            <div class="alert alert-warning small">
+                <strong>Catatan:</strong>
+                <ul class="mb-0">
+                    {% for warning in parse_result.warnings %}
+                    <li>{{ warning }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            <ul class="nav nav-pills small" id="previewTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="tab-ahsp" data-bs-toggle="tab" data-bs-target="#pane-ahsp"
+                        type="button" role="tab" aria-controls="pane-ahsp" aria-selected="true">
+                        AHSP Referensi ({{ parse_result.total_jobs }})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-rincian" data-bs-toggle="tab" data-bs-target="#pane-rincian"
+                        type="button" role="tab" aria-controls="pane-rincian" aria-selected="false">
+                        Rincian Item ({{ parse_result.total_rincian }})
+                    </button>
+                </li>
+            </ul>
+            <div class="tab-content border rounded-3 border-light-subtle mt-3">
+                <div class="tab-pane fade show active" id="pane-ahsp" role="tabpanel" aria-labelledby="tab-ahsp">
+                    <div id="jobs-preview-container">
+                        {% include "referensi/preview/_jobs_table.html" with parse_result=parse_result
+                        job_formset=job_formset job_rows=job_rows job_page_info=job_page_info details_page=details_page
+                        %}
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="pane-rincian" role="tabpanel" aria-labelledby="tab-rincian">
+                    <div id="details-preview-container">
+                        {% include "referensi/preview/_details_table.html" with parse_result=parse_result
+                        detail_formset=detail_formset detail_rows=detail_rows detail_page_info=detail_page_info
+                        jobs_page=jobs_page %}
+                    </div>
                 </div>
             </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="card-body">
+            <div id="ajax-messages" class="mb-3"></div>
+            <div class="alert alert-info mb-0" role="alert">
+                <h6 class="alert-heading mb-1">Belum ada preview</h6>
+                <p class="mb-0 small">Unggah file Excel AHSP untuk melihat detail pekerjaan dan rincian sebelum impor.
+                </p>
+            </div>
+        </div>
         {% endif %}
     </div>
 </div>
 {% endblock %}
-

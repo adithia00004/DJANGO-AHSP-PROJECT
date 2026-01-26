@@ -3,6 +3,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 from simple_history.models import HistoricalRecords
+from .models_staging import AHSPImportStaging  # Import Staging Model
 
 
 class AHSPReferensiManager(models.Manager):

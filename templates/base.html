@@ -209,8 +209,9 @@
         role="navigation" aria-label="Primary">
         <div class="container">
 
-            <!-- Brand -->
-            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+            <!-- Brand (Admin/Superuser -> Admin Portal, Others -> Home) -->
+            <a class="navbar-brand d-flex align-items-center gap-2"
+                href="{% if user.is_authenticated and user.is_staff %}{% url 'referensi:admin_portal' %}{% else %}/{% endif %}">
                 <span class="d-inline-flex align-items-center justify-content-center rounded-2 p-1 border">
                     <i class="bi bi-grid-1x2-fill"></i>
                 </span>
@@ -235,7 +236,13 @@
 
                     {% if user.is_authenticated %}
                     <!-- Subscription Status Badge -->
-                    {% if subscription_status == 'TRIAL' %}
+                    {% if subscription_status == 'ADMIN' %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1"
+                        title="Full Access Administrator">
+                        <i class="bi bi-shield-lock-fill me-1"></i>
+                        ADMIN
+                    </span>
+                    {% elif subscription_status == 'TRIAL' %}
                     <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1"
                         title="Trial berakhir dalam {{ subscription_days_left }} hari">
                         <i class="bi bi-clock-history me-1"></i>

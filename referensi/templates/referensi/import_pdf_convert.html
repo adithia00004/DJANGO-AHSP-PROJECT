@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Convert PDF to Excel{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:import_options' %}">Import AHSP</a></li>
+                    <li class="breadcrumb-item active">PDF → Excel</li>
+                </ol>
+            </nav>
+            <h2 class="mb-1">
+                <i class="fas fa-file-pdf text-danger me-2"></i>
+                Convert PDF ke Excel
+            </h2>
+            <p class="text-muted">Upload file PDF untuk dikonversi menjadi Excel</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+
+                        <div class="mb-4">
+                            <label for="pdf_file" class="form-label">Pilih File PDF</label>
+                            <input type="file" class="form-control form-control-lg" id="pdf_file" name="pdf_file"
+                                accept=".pdf" required>
+                            <div class="form-text">
+                                Format: PDF. Maksimal 50MB.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label d-block fw-semibold mb-2">Pilih Mode Konversi</label>
+
+                            <!-- Mode 1: Import (Siap Impor) - Default -->
+                            <div class="form-check bg-light p-3 rounded mb-2 border border-success-subtle">
+                                <input class="form-check-input" type="radio" name="import_mode" id="modeImport"
+                                    value="import" checked>
+                                <label class="form-check-label w-100" for="modeImport">
+                                    <strong class="text-success"><i class="fas fa-check-circle me-1"></i> Siap
+                                        Impor</strong>
+                                    <div class="text-muted small mt-1">
+                                        Data bersih siap masuk database. Baris sampah dibuang otomatis.
+                                        Kolom dirapikan ke struktur standar.
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Mode 2a: Validation (Text / Default) -->
+                            <div class="form-check bg-light p-3 rounded mb-2 border border-warning-subtle">
+                                <input class="form-check-input" type="radio" name="import_mode" id="modeValidation"
+                                    value="validation">
+                                <label class="form-check-label w-100" for="modeValidation">
+                                    <strong class="text-warning-emphasis"><i class="fas fa-search me-1"></i> Validasi &
+                                        Cek (Standard)</strong>
+                                    <div class="text-muted small mt-1">
+                                        Metode Teks. Tampilkan SEMUA data mentah + Status.
+                                        Cocok untuk melihat wrapping teks yang terpotong.
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Mode 2b: Validation Hybrid (Lattice) -->
+                            <div class="form-check bg-light p-3 rounded mb-2 border border-info-subtle">
+                                <input class="form-check-input" type="radio" name="import_mode"
+                                    id="modeValidationHybrid" value="validation_hybrid">
+                                <label class="form-check-label w-100" for="modeValidationHybrid">
+                                    <strong class="text-info-emphasis"><i class="fas fa-table me-1"></i> Validasi Hybrid
+                                        (Eksperimental)</strong>
+                                    <div class="text-muted small mt-1">
+                                        Metode Garis Tabel (Lattice). Lebih tahan terhadap Teks Panjang (Wrapping).
+                                        Gunakan jika Validasi Standard terlalu berantakan.
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Mode 3: Source (Sumber Mentah) -->
+                            <div class="form-check bg-light p-3 rounded mb-2 border border-secondary-subtle">
+                                <input class="form-check-input" type="radio" name="import_mode" id="modeSource"
+                                    value="source">
+                                <label class="form-check-label w-100" for="modeSource">
+                                    <strong class="text-secondary"><i class="fas fa-file-alt me-1"></i> Sumber
+                                        Mentah</strong>
+                                    <div class="text-muted small mt-1">
+                                        Data PDF apa adanya tanpa proses. Cocok untuk copy-paste manual
+                                        jika mode lain tidak sesuai.
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-cog me-2"></i>Convert ke Excel
+                            </button>
+                            <a href="{% url 'referensi:import_options' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Kembali
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card bg-light border-0">
+                <div class="card-body">
+                    <h6><i class="fas fa-info-circle me-2"></i>Informasi</h6>
+                    <ul class="small mb-0">
+                        <li>Sistem akan mengekstrak tabel dari PDF</li>
+                        <li>Setiap tabel akan menjadi sheet terpisah</li>
+                        <li>Hasil konversi bisa didownload</li>
+                        <li>Review dan bersihkan data jika perlu</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -53,12 +53,13 @@
             </div>
             <div class="card-body d-flex flex-column">
                 <p class="text-muted flex-grow-1">
-                    Unggah file Excel AHSP untuk memeriksa hasil parsing secara visual. Setelah memastikan data benar,
-                    lanjutkan dengan konfirmasi agar sistem menulis data ke database referensi.
+                    Gunakan tools import terbaru untuk mengkonversi PDF, validasi format Excel, dan review data di
+                    staging
+                    sebelum masuk ke database utama. Mendukung workflow lengkap.
                 </p>
                 <div class="d-grid d-sm-flex justify-content-sm-end gap-2">
-                    <a class="btn btn-success" href="{% url 'referensi:preview_import' %}">
-                        <i class="bi bi-search"></i> Mulai Preview Import
+                    <a class="btn btn-success" href="{% url 'referensi:import_options' %}">
+                        <i class="bi bi-file-earmark-plus"></i> Import Data AHSP
                     </a>
                 </div>
             </div>

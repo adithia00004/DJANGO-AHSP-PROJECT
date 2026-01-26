@@ -1,0 +1,716 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Validation Report{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:import_options' %}">Import AHSP</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'referensi:import_validate' %}">Validasi</a></li>
+                    <li class="breadcrumb-item active">Report</li>
+                </ol>
+            </nav>
+            <h2 class="mb-1">
+                <i class="fas fa-clipboard-list text-info me-2"></i>
+                Validation Report
+            </h2>
+            <p class="text-muted">Hasil validasi file Excel</p>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <div class="card border-0 shadow-sm bg-body-tertiary">
+                <div class="card-body text-center py-2">
+                    <h4 class="mb-0">{{ total_rows|default:0 }}</h4>
+                    <small class="text-muted">Total Baris</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card-body text-center py-2">
+                    <h4 class="mb-0">{{ ahsp_blocks_found|default:0 }}</h4>
+                    <small>AHSP Blocks</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card border-0 shadow-sm bg-success text-white">
+                <div class="card-body text-center py-2">
+                    <h4 class="mb-0">{{ valid_count|default:0 }}</h4>
+                    <small>Data Valid</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card border-0 shadow-sm bg-info text-white">
+                <div class="card-body text-center py-2">
+                    <h4 class="mb-0">{{ info_count|default:0 }}</h4>
+                    <small>Info</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card border-0 shadow-sm bg-warning">
+                <div class="card-body text-center py-2">
+                    <h4 class="mb-0">{{ warning_count|default:0 }}</h4>
+                    <small>Warning</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card border-0 shadow-sm bg-secondary text-white">
+                <div class="card-body text-center py-2">
+                    <h4 class="mb-0">{{ header_rows_found|default:0 }}</h4>
+                    <small>Headers</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Split View Layout -->
+    <div class="row">
+        <!-- LEFT PANEL: Navigation Tree -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0"
+                style="height: calc(100vh - 250px); overflow-y: auto; position: sticky; top: 20px;">
+                <div
+                    class="card-header bg-light py-2 sticky-top border-bottom d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-uppercase text-muted small fw-bold">Struktur AHSP</h6>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary active" onclick="filterTree('all')"
+                            title="Show All">All</button>
+                        <button class="btn btn-outline-danger" onclick="filterTree('error')" title="Errors">Err</button>
+                        <button class="btn btn-outline-warning" onclick="filterTree('warning')"
+                            title="Warnings">Warn</button>
+                        <button class="btn btn-outline-dark" onclick="filterTree('anomaly')" title="Anomalies"><i
+                                class="fas fa-exclamation-triangle"></i></button>
+                    </div>
+                </div>
+                <div class="list-group list-group-flush" id="treeList">
+                    {% for result in results %}
+                    {% if result.type != 'table_container' %}
+                    <!-- Render Hierarchy/Header Rows -->
+                    <a href="#" class="list-group-item list-group-item-action py-2 tree-item"
+                        data-target-row="{{ result.row }}" data-node-type="{{ result.type }}"
+                        data-status="{{ result.child_table_status|default:result.severity }}"
+                        data-is-anomaly="{{ result.child_is_anomaly|yesno:'true,false' }}"
+                        style="padding-left: {{ result.ui_level|add:10 }}px;">
+
+                        {% if result.is_folder %}
+                        <i class="fas fa-folder text-warning me-2"></i>
+                        {% else %}
+                        <i class="fas fa-file-alt text-muted me-2 opacity-50"></i>
+                        {% endif %}
+
+                        <span class="small fw-semibold">{{ result.first_col|default:"Header" }}</span>
+
+                        <!-- Status Badges: Use child_table_status for Parents -->
+                        {% if result.child_table_status == 'valid' %}
+                        <span class="badge bg-success float-end" title="Tabel Valid"><i class="fas fa-check"></i></span>
+                        {% elif result.child_table_status == 'warning' %}
+                        <span class="badge bg-warning text-dark float-end" title="Ada Warning"><i
+                                class="fas fa-exclamation"></i></span>
+                        {% elif result.child_table_status == 'error' %}
+                        <span class="badge bg-danger float-end" title="Ada Error"><i class="fas fa-times"></i></span>
+                        {% elif result.severity == 'warning' %}
+                        <span class="badge bg-warning text-dark float-end" style="transform: scale(0.7);">!</span>
+                        {% elif result.severity == 'danger' %}
+                        <span class="badge bg-danger float-end" style="transform: scale(0.7);">X</span>
+                        {% endif %}
+
+                        <!-- Anomaly Badge on Tree -->
+                        {% if result.child_is_anomaly %}
+                        <span class="badge bg-danger float-end me-1" title="Anomali Struktur"><i
+                                class="fas fa-exclamation-triangle"></i></span>
+                        {% endif %}
+                    </a>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Detail View -->
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0" style="min-height: calc(100vh - 250px);">
+                <div class="card-header bg-white py-2 border-bottom d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center flex-grow-1" style="min-width: 0;">
+                        <h6 class="mb-0 text-uppercase text-muted small fw-bold me-2" style="white-space: nowrap;">
+                            Rincian Data</h6>
+                        <span class="badge bg-light text-dark border text-wrap text-start lh-sm py-2"
+                            id="selectedCodeDisplay" style="white-space: normal; overflow-wrap: break-word;">Pilih
+                            Item</span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-center ms-2 flex-shrink-0">
+                        <!-- Edit Mode Toggle -->
+                        <button class="btn btn-outline-primary btn-sm" id="toggleEditMode">
+                            <i class="fas fa-edit me-1"></i>Edit Mode
+                        </button>
+                        <!-- Save Button (Hidden by default) -->
+                        <button class="btn btn-success btn-sm d-none" id="saveChangesBtn">
+                            <i class="fas fa-save me-1"></i>Simpan Perubahan
+                        </button>
+                        <!-- Changes Counter -->
+                        <span class="badge bg-warning text-dark d-none" id="changesCounter">0 perubahan</span>
+                    </div>
+                </div>
+                <div class="card-body p-0 position-relative bg-light">
+
+                    <!-- Empty State -->
+                    <div id="emptyState" class="text-center p-5 mt-5">
+                        <i class="fas fa-arrow-left fa-3x text-muted mb-3 opacity-25"></i>
+                        <p class="text-muted">Pilih Parent AHSP di panel kiri untuk melihat rincian.</p>
+                    </div>
+
+                    <!-- Detail Tables (Hidden by Default) -->
+                    {% for result in results %}
+                    {% if result.type == 'table_container' %}
+                    <div class="detail-view p-4 bg-white h-100" id="detail-{{ result.row }}"
+                        data-parent-code="{{ result.first_col }}" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0 text-primary">{{ result.first_col }}</h5>
+                            <!-- Table Status Badge -->
+                            {% if result.table_status == 'valid' %}
+                            <span class="badge bg-success"><i class="fas fa-check me-1"></i>Tabel Valid</span>
+                            {% elif result.table_status == 'warning' %}
+                            <span class="badge bg-warning text-dark"><i class="fas fa-exclamation me-1"></i>Ada
+                                Warning</span>
+                            {% elif result.table_status == 'error' %}
+                            <span class="badge bg-danger"><i class="fas fa-times me-1"></i>Ada Error</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Stats Summary -->
+                        <div class="mb-3 small">
+                            <span class="badge bg-primary">Baris: {{ result.row }}</span>
+                            <span class="badge bg-body-secondary text-dark">{{ result.table_rows|length }} item</span>
+                            {% if result.grouped_rows.UK %}
+                            <span class="badge" style="background-color: #6f42c1; color: white;">Unit Kerja</span>
+                            {% endif %}
+                            {% if result.grouped_rows.LL %}
+                            <span class="badge bg-dark">Lain-lain</span>
+                            {% endif %}
+                            {% if result.is_anomaly %}
+                            <span class="badge bg-danger ms-2"><i
+                                    class="fas fa-exclamation-triangle me-1"></i>ANOMALI</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Anomaly Reasons -->
+                        {% if result.is_anomaly and result.anomaly_reasons %}
+                        <div class="alert alert-warning py-2 small mb-3">
+                            <strong><i class="fas fa-exclamation-triangle me-1"></i>Tabel Anomali:</strong>
+                            <ul class="mb-0 mt-1 ps-3">
+                                {% for reason in result.anomaly_reasons %}
+                                <li>{{ reason }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center" width="5%">No</th>
+                                    <th width="35%">Uraian</th>
+                                    <th width="15%">Kode</th>
+                                    <th width="10%">Satuan</th>
+                                    <th class="text-end" width="15%">Koefisien</th>
+                                    <th width="20%">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% with groups=result.grouped_rows seen=result.seen_segment_headers %}
+                                <!-- Copy Paste reuse standard Row Template -->
+
+                                <!-- Segmen TK (formerly A) -->
+                                {% if groups.TK or 'TK' in seen %}
+                                <tr class="table-secondary">
+                                    <td colspan="6" class="fw-bold small px-3">TENAGA KERJA (TK)</td>
+                                </tr>
+                                {% for row in groups.TK %}
+                                {% include "referensi/partials/validate_row_template.html" with row=row %}
+                                {% endfor %}
+                                {% endif %}
+
+                                <!-- Segmen BHN (formerly B) -->
+                                {% if groups.BHN or 'BHN' in seen %}
+                                <tr class="table-secondary">
+                                    <td colspan="6" class="fw-bold small px-3">BAHAN (BHN)</td>
+                                </tr>
+                                {% for row in groups.BHN %}
+                                {% include "referensi/partials/validate_row_template.html" with row=row %}
+                                {% endfor %}
+                                {% endif %}
+
+                                <!-- Segmen PR (formerly C) -->
+                                {% if groups.PR or 'PR' in seen %}
+                                <tr class="table-secondary">
+                                    <td colspan="6" class="fw-bold small px-3">PERALATAN (PR)</td>
+                                </tr>
+                                {% for row in groups.PR %}
+                                {% include "referensi/partials/validate_row_template.html" with row=row %}
+                                {% endfor %}
+                                {% endif %}
+
+                                <!-- Segmen ANOMALI (formerly UK check/LL check) -->
+                                {% if groups.ANOMALI %}
+                                <tr class="table-dark">
+                                    <td colspan="6" class="fw-bold small px-3 text-warning">
+                                        <i class="fas fa-exclamation-triangle me-1"></i> LAINNYA / ANOMALI
+                                    </td>
+                                </tr>
+                                {% for row in groups.ANOMALI %}
+                                {% include "referensi/partials/validate_row_template.html" with row=row %}
+                                {% endfor %}
+                                {% endif %}
+
+                                {% if groups.OTHER %}
+                                <tr class="table-light">
+                                    <td colspan="6" class="fw-bold small px-3">LAINNYA</td>
+                                </tr>
+                                {% for row in groups.OTHER %}
+                                {% include "referensi/partials/validate_row_template.html" with row=row %}
+                                {% endfor %}
+                                {% endif %}
+                                {% endwith %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h6 class="text-muted mb-3">🚀 Langkah Selanjutnya</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{% url 'referensi:import_options' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Kembali ke Menu
+                        </a>
+
+                        <!-- WYSIWYG Export Buttons -->
+                        <button type="button" class="btn btn-success" onclick="exportFromTable('valid')">
+                            <i class="fas fa-file-excel me-2"></i>Download Data Valid (WYSIWYG)
+                        </button>
+                        <button type="button" class="btn btn-warning text-dark" onclick="exportFromTable('anomaly')">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Download Anomali (WYSIWYG)
+                        </button>
+
+                        <a href="{% url 'referensi:import_excel' %}" class="btn btn-primary">
+                            <i class="fas fa-check me-2"></i>Lanjut Import ke Database
+                        </a>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Download "Data Valid" untuk mendapatkan Excel siap impor.
+                        Download "Anomali" untuk mereview data dengan format non-standar.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tree-item {
+        font-size: 0.9rem;
+        cursor: pointer;
+        border-left: 3px solid transparent;
+    }
+
+    .tree-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .tree-item.active-node {
+        background-color: #e9ecef;
+        border-left-color: #0d6efd;
+        color: #0d6efd;
+        font-weight: bold;
+    }
+
+    /* Edit Mode Styles */
+    .edit-mode .editable-cell {
+        background-color: #fffde7;
+        cursor: text;
+        border: 1px dashed #ffc107 !important;
+    }
+
+    .editable-cell:focus {
+        background-color: #fff9c4 !important;
+        outline: 2px solid #ffc107;
+    }
+
+    .edit-mode .delete-row-btn {
+        display: inline-block !important;
+    }
+
+    .row-deleted {
+        opacity: 0.4;
+        text-decoration: line-through;
+        background-color: #ffebee !important;
+    }
+
+    .cell-modified {
+        background-color: #e3f2fd !important;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const treeItems = document.querySelectorAll('.tree-item');
+        const emptyState = document.getElementById('emptyState');
+        const detailViews = document.querySelectorAll('.detail-view');
+        const titleBadge = document.getElementById('selectedCodeDisplay');
+        const toggleEditBtn = document.getElementById('toggleEditMode');
+        const saveBtn = document.getElementById('saveChangesBtn');
+        const changesCounter = document.getElementById('changesCounter');
+        const cardBody = document.querySelector('.card-body');
+
+        let isEditMode = false;
+        let changes = {
+            modified: [],  // {rowId, col, oldValue, newValue}
+            deleted: []    // [rowId, ...]
+        };
+
+        // Tree Navigation
+        treeItems.forEach(item => {
+            item.addEventListener('click', function (e) {
+                e.preventDefault();
+                treeItems.forEach(t => t.classList.remove('active-node'));
+                this.classList.add('active-node');
+
+                const clickedRow = parseInt(this.getAttribute('data-target-row'));
+                const clickedText = this.querySelector('span').innerText;
+
+                let foundDetail = null;
+                let minDist = Infinity;
+
+                detailViews.forEach(view => {
+                    const viewRow = parseInt(view.id.replace('detail-', ''));
+                    if (viewRow > clickedRow) {
+                        const dist = viewRow - clickedRow;
+                        if (dist < minDist) {
+                            minDist = dist;
+                            foundDetail = view;
+                        }
+                    }
+                });
+
+                if (foundDetail && minDist < 10) {
+                    hideAllDetails();
+                    foundDetail.style.display = 'block';
+                    emptyState.style.display = 'none';
+                    titleBadge.innerText = clickedText;
+                } else {
+                    hideAllDetails();
+                    emptyState.style.display = 'block';
+                    titleBadge.innerText = clickedText + " (Folder)";
+                }
+            });
+        });
+
+        function hideAllDetails() {
+            detailViews.forEach(v => v.style.display = 'none');
+        }
+
+        // Edit Mode Toggle
+        toggleEditBtn.addEventListener('click', function () {
+            isEditMode = !isEditMode;
+
+            if (isEditMode) {
+                // Enable Edit Mode
+                cardBody.classList.add('edit-mode');
+                this.classList.remove('btn-outline-primary');
+                this.classList.add('btn-primary');
+                this.innerHTML = '<i class="fas fa-times me-1"></i>Keluar Edit';
+
+                // Make cells editable
+                document.querySelectorAll('.editable-cell').forEach(cell => {
+                    cell.setAttribute('contenteditable', 'true');
+                });
+
+                // Show delete buttons
+                document.querySelectorAll('.delete-row-btn').forEach(btn => {
+                    btn.classList.remove('d-none');
+                });
+
+            } else {
+                // Disable Edit Mode
+                cardBody.classList.remove('edit-mode');
+                this.classList.remove('btn-primary');
+                this.classList.add('btn-outline-primary');
+                this.innerHTML = '<i class="fas fa-edit me-1"></i>Edit Mode';
+
+                // Make cells non-editable
+                document.querySelectorAll('.editable-cell').forEach(cell => {
+                    cell.setAttribute('contenteditable', 'false');
+                });
+
+                // Hide delete buttons
+                document.querySelectorAll('.delete-row-btn').forEach(btn => {
+                    btn.classList.add('d-none');
+                });
+            }
+        });
+
+        // Track Cell Changes
+        document.querySelectorAll('.editable-cell').forEach(cell => {
+            const originalValue = cell.innerText;
+            cell.setAttribute('data-original', originalValue);
+
+            cell.addEventListener('blur', function () {
+                const newValue = this.innerText.trim();
+                const oldValue = this.getAttribute('data-original');
+                const rowId = this.closest('.data-row')?.getAttribute('data-row-id');
+                const col = this.getAttribute('data-col');
+
+                if (newValue !== oldValue) {
+                    this.classList.add('cell-modified');
+                    // Add to changes
+                    changes.modified.push({ rowId, col, oldValue, newValue });
+                    updateChangesUI();
+                }
+            });
+        });
+
+        // Delete Row
+        document.querySelectorAll('.delete-row-btn').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                const row = this.closest('.data-row');
+                const rowId = row?.getAttribute('data-row-id');
+
+                if (row.classList.contains('row-deleted')) {
+                    // Undo delete
+                    row.classList.remove('row-deleted');
+                    changes.deleted = changes.deleted.filter(id => id !== rowId);
+                    this.innerHTML = '<i class="fas fa-trash-alt" style="font-size: 0.7rem;"></i>';
+                } else {
+                    // Mark as deleted
+                    row.classList.add('row-deleted');
+                    changes.deleted.push(rowId);
+                    this.innerHTML = '<i class="fas fa-undo" style="font-size: 0.7rem;"></i>';
+                }
+                updateChangesUI();
+            });
+        });
+
+        function updateChangesUI() {
+            const total = changes.modified.length + changes.deleted.length;
+            if (total > 0) {
+                changesCounter.classList.remove('d-none');
+                changesCounter.innerText = total + ' perubahan';
+                saveBtn.classList.remove('d-none');
+            } else {
+                changesCounter.classList.add('d-none');
+                saveBtn.classList.add('d-none');
+            }
+        }
+
+        // Save Changes
+        saveBtn.addEventListener('click', function () {
+            console.log('Saving changes:', changes);
+            alert('Fitur simpan akan mengirim data ke server.\n\nModified: ' + changes.modified.length + '\nDeleted: ' + changes.deleted.length);
+            // TODO: POST to save endpoint
+        });
+        // Initialize
+        updateChangesUI();
+
+        // Define global filter function
+        window.filterTree = function (type) {
+            const items = document.querySelectorAll('.tree-item');
+            const buttons = document.querySelectorAll('.btn-group button');
+
+            // Update buttons
+            buttons.forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('onclick').includes(type)) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Filter items
+            items.forEach(item => {
+                const status = item.getAttribute('data-status');
+                const isAnomaly = item.getAttribute('data-is-anomaly') === 'true';
+
+                let show = false;
+                if (type === 'all') show = true;
+                else if (type === 'error' && status === 'error') show = true;
+                else if (type === 'warning' && status === 'warning') show = true;
+                else if (type === 'anomaly' && isAnomaly) show = true;
+
+                item.style.display = show ? 'block' : 'none';
+            });
+        }
+
+        // WYSIWYG Export Function
+        window.exportFromTable = function (type) {
+            const hierarchy = [];
+            const dataRows = [];
+
+            // Collect hierarchy from tree items (Parent AHSP only - those with node type hierarchy_parent)
+            document.querySelectorAll('.tree-item[data-node-type="hierarchy_parent"]').forEach(item => {
+                const codeSpan = item.querySelector('span.small.fw-semibold');
+                const rawText = codeSpan ? codeSpan.textContent.trim() : '';
+
+                let code = rawText;
+                let title = '';
+
+                // Regex to extract AHSP Code (digits and dots at start)
+                const codeMatch = rawText.match(/^([\d\.]+)/);
+                if (codeMatch) {
+                    code = codeMatch[1].trim();
+                    // Title is everything after the code
+                    title = rawText.slice(code.length).trim();
+                } else {
+                    // Fallback: Split by first space if no regex match
+                    const parts = rawText.split(/\s+/, 2);
+                    code = parts[0];
+                    title = rawText.slice(code.length).trim();
+                }
+
+                // Cleanup title (remove leading separators like - . :)
+                title = title.replace(/^[-\.:\s]+/, '').trim();
+
+                // If title is still empty, look at the full item text (in case title is outside the span)
+                if (!title) {
+                    const fullText = item.textContent.trim();
+                    // Remove the code part from full text
+                    let potentialTitle = fullText.replace(code, '').trim();
+                    // Clean artifacts
+                    potentialTitle = potentialTitle.replace(/^[\s\u00A0]+/, '').replace(/[\u2713\u2717\u26A0]/g, '').trim();
+                    if (potentialTitle) {
+                        title = potentialTitle;
+                    }
+                }
+
+                if (code) {
+                    hierarchy.push({
+                        code: code,
+                        title: title || rawText // Use full text if title really empty
+                    });
+                }
+            });
+
+            console.log('Hierarchy items found:', hierarchy.length, hierarchy.slice(0, 3));
+
+            // Collect data rows from ALL detail tables (not just visible)
+            const detailViews = document.querySelectorAll('.detail-view[data-parent-code]');
+            console.log('Detail views found:', detailViews.length);
+
+            detailViews.forEach(detailView => {
+                // Get parent AHSP code from data attribute (reliable)
+                const parentCode = detailView.getAttribute('data-parent-code') || '-';
+
+                // Check if this is an anomaly table
+                const hasAnomaly = detailView.querySelector('.badge.bg-danger') !== null;
+                const hasUK = detailView.querySelector('.table-warning') !== null;
+                const hasLL = detailView.querySelector('.table-dark') !== null;
+                const isAnomaly = hasAnomaly || hasUK || hasLL;
+
+                // Skip based on export type
+                if (type === 'valid' && isAnomaly) return;
+                if (type === 'anomaly' && !isAnomaly) return;
+
+                // Find all data rows
+                const tbody = detailView.querySelector('table tbody');
+                if (!tbody) return;
+
+                let currentSegment = '-';
+
+                tbody.querySelectorAll('tr').forEach(row => {
+                    // Check if this is a segment header row
+                    if (row.classList.contains('table-secondary')) {
+                        const text = row.textContent.trim();
+                        if (text.includes('TENAGA')) currentSegment = 'TK';
+                        else if (text.includes('BAHAN')) currentSegment = 'BHN';
+                        else if (text.includes('PERALATAN')) currentSegment = 'PR';
+                        return; // Skip header row
+                    }
+
+                    // Check for Anomaly Header (rendered as table-dark or warning)
+                    if (row.classList.contains('table-dark') || row.classList.contains('table-warning')) {
+                        currentSegment = 'ANOMALI';
+                        return;
+                    }
+
+                    // Data row - should have class 'data-row'
+                    if (row.classList.contains('data-row')) {
+                        const cells = row.querySelectorAll('td');
+                        // Cells: col_2 (no), col_3 (uraian), col_4 (kode), col_5 (satuan), col_6 (koef), status
+                        if (cells.length >= 5) {
+                            dataRows.push({
+                                parent_code: parentCode,
+                                segment: currentSegment,
+                                no: cells[0]?.textContent?.trim() || '-',
+                                uraian: cells[1]?.textContent?.trim() || '-',
+                                kode_ref: cells[2]?.textContent?.trim() || '-',
+                                satuan: cells[3]?.textContent?.trim() || '-',
+                                koefisien: cells[4]?.textContent?.trim() || '-',
+                                anomaly_reason: isAnomaly ? (hasUK ? 'Unit Kerja' : hasLL ? 'Lain-lain' : 'Struktur Anomali') : ''
+                            });
+                        }
+                    }
+                });
+            });
+
+            if (dataRows.length === 0) {
+                alert('Tidak ada data untuk diekspor. Cek apakah ada tabel yang sesuai dengan tipe export.');
+                return;
+            }
+
+            console.log('Exporting', type, ':', dataRows.length, 'rows,', hierarchy.length, 'hierarchy items');
+
+            // Send to backend
+            const payload = {
+                type: type,
+                hierarchy: hierarchy,
+                data_rows: dataRows
+            };
+
+            fetch('{% url "referensi:export_from_frontend" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(response => {
+                    if (!response.ok) throw new Error('Export failed');
+                    return response.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = type === 'valid' ? 'ahsp_valid_data.xlsx' : 'ahsp_anomaly_data.xlsx';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                })
+                .catch(err => {
+                    console.error('Export error:', err);
+                    alert('Terjadi kesalahan saat export. Silakan coba lagi.');
+                });
+        }
+    });
+</script>
+{% endblock %}
