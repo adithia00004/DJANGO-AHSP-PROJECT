@@ -13,7 +13,8 @@
 .lp-toolbar {
   position: sticky;
   top: var(--dp-topbar-h);
-  z-index: var(--dp-z-toolbar);
+  z-index: 2500;
+  /* Absolutely ensure toolbar is strictly above everything */
   min-height: var(--lp-toolbar-h, 48px);
   background: var(--bs-body-bg, #fff);
   border-bottom: 2px solid var(--dp-c-border);
@@ -184,9 +185,11 @@ body.lp-overlay-open {
   position: fixed;
   inset: 0;
   display: none;
-  z-index: var(--lp-overlay-z);
-  background: color-mix(in srgb, var(--dp-c-text) 22%, transparent);
-  backdrop-filter: blur(2px);
+  z-index: 2100;
+  /* Di atas Toolbar & Topbar */
+  background: transparent;
+  pointer-events: none;
+  /* Biarkan klik tembus ke konten utama */
   transition: background var(--ux-duration-200) var(--ux-ease);
 }
 
@@ -198,10 +201,14 @@ body.lp-overlay-open {
 #lp-sidebar .lp-sidebar-inner {
   position: absolute;
   right: 10px;
-  top: var(--dp-topbar-h);
+  /* Top = 0 (Full Height) */
+  top: 0;
   left: auto;
   width: clamp(320px, var(--lp-sidebar-w), 760px);
-  height: calc(100vh - var(--dp-topbar-h) - 16px);
+  /* Height = Viewport Full */
+  height: 100vh;
+  border-radius: 0;
+  /* Flat edges for full height drawer */
   display: flex;
   flex-direction: column;
   overflow: auto;
@@ -211,17 +218,30 @@ body.lp-overlay-open {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
-  border-radius: var(--dp-radius-lg);
+  /* border-radius: var(--dp-radius-lg); Overridden by top:0 style */
   box-shadow: var(--dp-shadow-lg);
   transition: transform var(--ux-duration-200) var(--ux-ease),
     opacity var(--ux-duration-200) var(--ux-ease);
   z-index: 1;
+  pointer-events: auto;
+  /* Panel tetap bisa diklik */
 }
 
 #lp-sidebar.is-open .lp-sidebar-inner,
 #lp-sidebar.show .lp-sidebar-inner {
   transform: translateX(0);
   opacity: 1;
+}
+
+/* Locked state - visual indicator bahwa sidebar tidak akan auto-close */
+#lp-sidebar.is-locked .lp-sidebar-inner {
+  border-color: var(--dp-c-primary);
+  box-shadow: var(--dp-shadow-lg), 0 0 0 2px color-mix(in srgb, var(--dp-c-primary) 25%, transparent);
+}
+
+#lp-sidebar.is-locked .lp-sidebar-header {
+  background: color-mix(in srgb, var(--dp-c-primary) 8%, transparent);
+  border-bottom-color: var(--dp-c-primary);
 }
 
 #lp-sidebar .lp-sidebar-header {
@@ -256,7 +276,7 @@ body.lp-overlay-open {
 /* Hotspot kanan (desktop only) */
 .lp-overlay-hotspot {
   position: fixed;
-  top: var(--lp-topbar-h);
+  top: 0;
   right: 0;
   bottom: 0;
   width: 10px;
@@ -271,109 +291,189 @@ body.lp-overlay-open {
   }
 }
 
-/* Sidebar tree & search - PERBAIKAN HIERARKI INDENTASI */
-#lp-nav .lp-node__header {
+/* ========= MINI TOC STYLES ========= */
+
+/* TOC Stats Summary */
+.lp-toc-stats {
+  font-size: .75rem;
+  color: var(--dp-c-muted);
+  padding: .5rem .75rem;
+  background: var(--dp-c-surface-2);
+  border-bottom: 1px solid var(--dp-c-border);
+  white-space: nowrap;
+}
+
+.lp-toc-stats i {
+  opacity: .7;
+}
+
+/* TOC Controls */
+.lp-toc-controls {
   display: flex;
-  align-items: center;
   gap: .5rem;
   padding: .5rem .75rem;
-  border-radius: var(--dp-radius-md);
-  cursor: pointer;
-  transition: background var(--ux-duration-200) var(--ux-ease), transform var(--ux-duration-200) var(--ux-ease);
+  border-bottom: 1px solid var(--dp-c-border);
 }
 
-#lp-nav .lp-node__header:hover {
-  background: var(--dp-c-surface-2);
-  transform: translateX(2px);
+.lp-toc-controls .btn {
+  padding: .25rem .5rem;
+  font-size: .7rem;
 }
 
-#lp-nav .lp-node__toggle {
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: var(--dp-radius-sm);
-  border: 1px solid var(--dp-c-border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* TOC Search */
+.lp-toc-search-wrap {
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--dp-c-border);
+}
+
+.lp-toc-search-wrap input {
   font-size: .8rem;
-  color: var(--dp-c-muted);
-  transition: background var(--ux-duration-200) var(--ux-ease);
-  flex-shrink: 0;
+  padding: .35rem .6rem;
 }
 
-#lp-nav .lp-node__toggle:hover {
+/* TOC Tree Container */
+.lp-toc-tree {
+  padding: .5rem 0;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+/* Node Base - Klasifikasi Level */
+.lp-toc-node {
+  margin: 0;
+}
+
+.lp-toc-klas {
+  border-bottom: 1px solid var(--dp-c-border);
+}
+
+.lp-toc-klas:last-child {
+  border-bottom: none;
+}
+
+/* Header Styles */
+.lp-toc-header {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .4rem .75rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--ux-duration-150) var(--ux-ease);
+}
+
+.lp-toc-header:hover {
   background: var(--dp-c-surface-2);
-  border-color: var(--dp-c-primary);
 }
 
-/* HIERARKI FONT WEIGHT - Klasifikasi lebih tebal dari Sub */
-#lp-nav .lp-node[data-level="klas"]>.lp-node__header .lp-node__label {
-  font-weight: 700;
-  font-size: var(--ux-font-md);
-  color: var(--dp-c-text);
+/* Toggle Icon */
+.lp-toc-toggle {
+  width: 1rem;
+  text-align: center;
+  font-size: .65rem;
+  color: var(--dp-c-muted);
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
-#lp-nav .lp-node[data-level="sub"]>.lp-node__header .lp-node__label {
-  font-weight: 600;
-  font-size: var(--ux-font-sm);
-  color: var(--dp-c-text);
+.lp-toc-toggle:hover {
+  color: var(--dp-c-primary);
 }
 
-#lp-nav .lp-node[data-level="job"]>.lp-node__header .lp-node__label {
-  font-weight: 400;
-  font-size: var(--ux-font-xs);
-  color: var(--dp-c-text);
-}
-
-#lp-nav .lp-node__label {
-  color: var(--dp-c-text);
-  text-decoration: none;
-  white-space: nowrap;
+/* Label Styles */
+.lp-toc-label {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  white-space: nowrap;
+  font-size: .8rem;
+  color: var(--dp-c-text);
+  line-height: 1.3;
 }
 
-#lp-nav .lp-node__label:hover {
-  text-decoration: underline;
+.lp-toc-klas>.lp-toc-header .lp-toc-label {
+  font-weight: 600;
+  font-size: .85rem;
 }
 
-#lp-nav .lp-node__count {
+.lp-toc-sub>.lp-toc-header .lp-toc-label {
+  font-weight: 500;
+  font-size: .78rem;
+}
+
+/* Badge/Count */
+.lp-toc-badge {
+  font-size: .65rem;
+  padding: .1rem .35rem;
+  background: var(--dp-c-surface-2);
   color: var(--dp-c-muted);
-  font-size: .75em;
+  border-radius: 1rem;
+  min-width: 1.2rem;
+  text-align: center;
   flex-shrink: 0;
 }
 
-/* INDENTASI HIERARKIS - Sub dan Pekerjaan lebih menjorok */
-#lp-nav .lp-node__children {
-  border-left: 2px solid var(--dp-c-border);
-  margin-left: .75rem;
-  padding-left: .75rem;
-}
-
-#lp-nav .lp-node[data-level="sub"] .lp-node__children {
-  border-left: 1px solid color-mix(in srgb, var(--dp-c-border) 60%, transparent);
+/* Children Container - Indentation */
+.lp-toc-children {
   margin-left: 1rem;
-  padding-left: 1rem;
+  border-left: 1px solid var(--dp-c-border);
+  padding-left: .25rem;
 }
 
-#lp-nav .lp-node--active>.lp-node__header {
-  background: var(--dp-c-primary-subtle);
-  outline: 2px solid color-mix(in srgb, var(--dp-c-primary) 35%, transparent);
-  outline-offset: -2px;
-  box-shadow: var(--dp-shadow-sm);
+.lp-toc-klas>.lp-toc-children {
+  margin-left: .75rem;
 }
 
-#lp-nav .lp-hit {
-  background: var(--ux-hit-bg);
-  border-radius: .25rem;
-  padding: 0 .125rem;
+.lp-toc-sub>.lp-toc-children {
+  margin-left: .75rem;
+  border-left-style: dashed;
 }
 
-#lp-nav .lp-node__header:focus-visible,
-#lp-nav .lp-node__label:focus-visible {
+/* Pekerjaan Items (3rd level) */
+.lp-toc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: .35rem;
+  padding: .25rem .75rem .25rem .5rem;
+  cursor: pointer;
+  transition: background var(--ux-duration-150) var(--ux-ease);
+}
+
+.lp-toc-item:hover {
+  background: var(--dp-c-surface-2);
+}
+
+.lp-toc-bullet {
+  font-size: .6rem;
+  color: var(--dp-c-muted);
+  margin-top: .2rem;
+  flex-shrink: 0;
+}
+
+.lp-toc-text {
+  font-size: .72rem;
+  color: var(--dp-c-text);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Active State */
+.lp-toc-active {
+  background: var(--dp-c-primary-subtle) !important;
+}
+
+.lp-toc-active .lp-toc-label,
+.lp-toc-active .lp-toc-text {
+  font-weight: 600;
+}
+
+/* Focus States */
+.lp-toc-header:focus-visible,
+.lp-toc-item:focus-visible {
   outline: 2px solid var(--dp-c-primary);
-  outline-offset: 2px;
+  outline-offset: -2px;
   border-radius: var(--dp-radius-sm);
 }
 
@@ -1178,13 +1278,14 @@ body.lp-overlay-open {
 /* ============== ACCESSIBILITY ENHANCEMENTS ============== */
 @media (forced-colors: active) {
 
-  #lp-nav .lp-node__toggle,
+  .lp-toc-toggle,
   #lp-app .btn.lp-btn,
   #klas-list .card {
     border-color: CanvasText !important;
   }
 
-  #lp-nav .lp-node__header:focus-visible,
+  .lp-toc-header:focus-visible,
+  .lp-toc-item:focus-visible,
   #lp-app .btn.lp-btn:focus-visible {
     outline: 2px solid Highlight !important;
   }
@@ -1719,4 +1820,102 @@ body.lp-overlay-open {
 /* Sub header styling */
 .lp-sub-header {
   background: transparent;
+}
+
+/* =====================================================================
+   TEMPLATE LIBRARY GRID
+   ===================================================================== */
+.template-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.template-item {
+  border: 1px solid var(--dp-c-border);
+  border-radius: var(--dp-radius-md);
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--dp-c-bg);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-item:hover {
+  border-color: var(--dp-c-primary);
+  box-shadow: var(--dp-shadow-md);
+  transform: translateY(-2px);
+}
+
+.template-item-content {
+  flex-grow: 1;
+}
+
+.template-item-name {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: var(--dp-c-text);
+}
+
+.template-item-meta {
+  font-size: 0.8rem;
+  color: var(--dp-c-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.template-item-category {
+  display: inline-block;
+  background: var(--dp-c-surface-2);
+  padding: 0.1rem 0.4rem;
+  border-radius: 1rem;
+  font-size: 0.7rem;
+  width: fit-content;
+}
+
+.template-list-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 3rem;
+  color: var(--dp-c-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1.1rem;
+}
+
+.template-list-empty i {
+  font-size: 2.5rem;
+  opacity: 0.5;
+}
+
+/* =====================================================================
+   Z-INDEX FIXES
+   ===================================================================== */
+#templateLibraryModal {
+  z-index: 100000 !important;
+  /* Force on top of everything */
+}
+
+.modal-backdrop {
+  z-index: 99999 !important;
+}
+
+/* Ensure inner modal content is standard */
+#templateLibraryModal .modal-content {
+  box-shadow: var(--dp-shadow-lg);
+}
+
+/* Force Nav Button to be clickable */
+.lp-sidebar-toggle {
+  cursor: pointer;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 2501;
+  /* Higher than toolbar (2500) and sidebar (2100) */
 }

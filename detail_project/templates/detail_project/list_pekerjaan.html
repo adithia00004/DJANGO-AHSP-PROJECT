@@ -76,6 +76,13 @@
       </div>
     </div>
 
+    {# Toggle Sidebar TOC #}
+    <button class="btn btn-sm btn-outline-secondary dp-btn lp-btn lp-sidebar-toggle" type="button"
+      title="{% trans 'Buka Daftar Isi' %}">
+      <i class="bi bi-list-nested"></i>
+      <span class="d-none d-lg-inline">{% trans "Navigasi" %}</span>
+    </button>
+
     {# Right Section: Template, Export, Save & Info #}
     <div class="ms-auto d-flex align-items-center gap-2">
       {# Template dropdown button - NEW #}
@@ -87,7 +94,7 @@
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
           <li>
-            <button class="dropdown-item" type="button" data-action="open-sidebar">
+            <button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#templateLibraryModal">
               <i class="bi bi-grid-3x3-gap"></i> {% trans "Lihat Template Library" %}
             </button>
           </li>
@@ -147,70 +154,52 @@
     {# Hotspot kanan untuk membuka Overlay Nav saat hover di tepi kanan #}
     <div class="lp-overlay-hotspot" aria-hidden="true"></div>
 
-    <!-- Sidebar Overlay (Template Library) - Positioned on RIGHT -->
+    <!-- Sidebar Overlay (Mini TOC) - Positioned on RIGHT -->
     <aside id="lp-sidebar" class="dp-z-sidebar" role="dialog" aria-modal="true"
-      aria-label="{% trans 'Template Pekerjaan' %}" aria-hidden="true">
-      <div class="lp-sidebar-inner dp-surface dp-border">
+      aria-label="{% trans 'Navigasi Pekerjaan' %}">
+      <div class="lp-sidebar-inner dp-surface dp-border" style="display:flex; flex-direction:column; height:100%;">
         <!-- Header -->
-        <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2">
-          <h6 class="m-0"><i class="bi bi-collection"></i> {% trans "Template Library" %}</h6>
-          <button class="btn btn-sm btn-outline-secondary lp-btn" type="button" data-action="close-sidebar"
-            title="{% trans 'Tutup' %}">
+        <div class="lp-sidebar-header d-flex align-items-center justify-content-between gap-2 p-2 border-bottom">
+          <h6 class="m-0 small text-uppercase fw-bold text-muted"><i class="bi bi-list-nested me-1"></i> {% trans
+            "Daftar Isi" %}</h6>
+          <button class="btn btn-sm btn-text lp-btn p-0" type="button" data-action="close-sidebar"
+            title="{% trans 'Tutup Sidebar' %}">
             <i class="bi bi-x-lg"></i>
           </button>
         </div>
 
-        <!-- Search & Filter -->
-        <div class="lp-sidebar-search mt-3">
-          <div class="input-group input-group-sm">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input id="template-search" type="search" class="form-control" placeholder="{% trans 'Cari template...' %}"
-              autocomplete="off">
+        <!-- Mini TOC Content -->
+        <div id="lp-toc-wrapper" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+
+          <!-- Stats Summary -->
+          <div id="lp-toc-stats" class="lp-toc-stats">
+            <small class="text-muted">Memuat...</small>
+          </div>
+
+          <!-- Controls: Expand/Collapse -->
+          <div class="lp-toc-controls">
+            <button id="lp-toc-expand-all" class="btn btn-outline-secondary btn-sm" type="button">
+              <i class="bi bi-arrows-expand"></i> Expand All
+            </button>
+            <button id="lp-toc-collapse-all" class="btn btn-outline-secondary btn-sm" type="button">
+              <i class="bi bi-arrows-collapse"></i> Collapse All
+            </button>
+          </div>
+
+          <!-- Search Filter -->
+          <div class="lp-toc-search-wrap">
+            <input id="lp-toc-search" type="search" class="form-control form-control-sm"
+              placeholder="Filter navigasi..." autocomplete="off">
+          </div>
+
+          <!-- Tree Container -->
+          <div id="lp-toc-tree" class="lp-toc-tree ux-scrollbar">
+            <!-- Content built by JS -->
           </div>
         </div>
 
-        <!-- Category Filter -->
-        <div class="mt-2">
-          <select id="template-category" class="form-select form-select-sm">
-            <option value="">{% trans "Semua Kategori" %}</option>
-            <option value="rumah">{% trans "Rumah" %}</option>
-            <option value="ruko">{% trans "Ruko" %}</option>
-            <option value="infrastruktur">{% trans "Infrastruktur" %}</option>
-            <option value="utilitas">{% trans "Utilitas" %}</option>
-            <option value="lainnya">{% trans "Lainnya" %}</option>
-          </select>
-        </div>
-
-        <!-- Template List -->
-        <div id="template-list" class="template-list mt-3">
-          <div class="text-center text-muted py-3">
-            <i class="bi bi-arrow-clockwise spin"></i> {% trans "Memuat template..." %}
-          </div>
-        </div>
-
-        <!-- Quick Actions: Template -->
-        <div class="template-actions mt-3 pt-3 border-top">
-          <h6 class="small text-muted mb-2"><i class="bi bi-lightning"></i> {% trans "Aksi Template" %}</h6>
-
-          <button id="btn-save-as-template" class="btn btn-sm btn-success w-100 mb-2" type="button"
-            title="{% trans 'Simpan pekerjaan saat ini sebagai template reusable' %}">
-            <i class="bi bi-bookmark-plus"></i> {% trans "Simpan Sebagai Template" %}
-          </button>
-
-          <button id="btn-import-from-file" class="btn btn-sm btn-outline-primary w-100 mb-2" type="button"
-            title="{% trans 'Import template dari file JSON' %}">
-            <i class="bi bi-upload"></i> {% trans "Import dari File" %}
-          </button>
-
-          <a id="btn-export-template" href="{% url 'detail_project:export_template_json' project.id %}"
-            class="btn btn-sm btn-outline-success w-100" download
-            title="{% trans 'Download pekerjaan sebagai template JSON' %}">
-            <i class="bi bi-download"></i> {% trans "Export Template JSON" %}
-          </a>
-        </div>
-
-        <!-- Hidden file input for import -->
-        <input type="file" id="import-template-file" accept=".json" class="d-none">
+        <!-- Footer / Resizer -->
+        <div class="lp-resizer" title="Drag to resize"></div>
       </div>
     </aside>
 
@@ -325,6 +314,61 @@
           <button type="button" class="btn btn-success" id="btn-confirm-save-template">
             <i class="bi bi-save"></i> {% trans "Simpan Template" %}
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW: Template Library Modal -->
+  <div class="modal fade" id="templateLibraryModal" tabindex="-1" aria-hidden="true" aria-labelledby="templateLibLabel">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="templateLibLabel"><i class="bi bi-collection"></i> {% trans "Template Library" %}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0">
+          <div class="d-flex flex-column h-100">
+            <!-- Modal Toolbar: Search & Filter -->
+            <div class="p-3 border-bottom dp-surface-subtle d-flex flex-wrap gap-2 sticky-top bg-white"
+              style="z-index: 10;">
+              <div class="input-group" style="max-width: 300px;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input id="template-search" type="search" class="form-control"
+                  placeholder="{% trans 'Cari template...' %}" autocomplete="off">
+              </div>
+              <select id="template-category" class="form-select" style="max-width: 200px;">
+                <option value="">{% trans "Semua Kategori" %}</option>
+                <option value="rumah">{% trans "Rumah" %}</option>
+                <option value="ruko">{% trans "Ruko" %}</option>
+                <option value="infrastruktur">{% trans "Infrastruktur" %}</option>
+                <option value="utilitas">{% trans "Utilitas" %}</option>
+                <option value="lainnya">{% trans "Lainnya" %}</option>
+              </select>
+
+              <div class="ms-auto d-flex gap-2">
+                <button type="button" class="btn btn-outline-primary"
+                  onclick="document.getElementById('import-template-file').click()">
+                  <i class="bi bi-upload"></i> Import JSON
+                </button>
+                <!-- Hidden file input -->
+                <input type="file" id="import-template-file" accept=".json" class="d-none">
+              </div>
+            </div>
+
+            <!-- Template Grid Container -->
+            <div id="template-list" class="flex-grow-1 p-3 template-list">
+              <div class="text-center text-muted py-5">
+                <div class="spinner-border text-primary mb-3" role="status"></div>
+                <div>{% trans "Memuat template library..." %}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer justify-content-between">
+          <small class="text-muted">Klik template untuk melihat detail dan preview.</small>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
         </div>
       </div>
     </div>

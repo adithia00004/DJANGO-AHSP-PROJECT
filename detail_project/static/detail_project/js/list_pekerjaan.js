@@ -1,16 +1,8 @@
 // /static/detail_project/js/list_pekerjaan.js
 /* =====================================================================
-   List Pekerjaan — JS (Drop-in Replace, v2 → feel v1)
-   Target: Batch 2, tapi memaksa layout & workflow mirip Batch 1 (legacy)
-   - Otomatis "migrasi" layout bila template masih punya tabel global #lp-table:
-     * Buat <div id="klas-list" class="vstack gap-3"> setelah tabel
-     * Sembunyikan wrapper tabel global → kartu per Klas/Sub tampil seperti v1
+   List Pekerjaan — JS
    - Kompatibel: jQuery 3.7, Select2 4.1, Bootstrap 5
-   - Sidebar: Overlay (aktif), Hover-Edge kanan (desktop), fokus/shortcuts aman
-   - Payload & kontrak API: TANPA perubahan (SSOT)
-
-   Catatan: Bila di kemudian hari kamu sudah menghapus tabel global dari template
-   (mengikuti rekomendasi), bagian migrasi layout akan otomatis no-op.
+   - Fitur: TOC Sidebar, Drag & Drop, Template Library, Filter
    ===================================================================== */
 
 (function () {
@@ -57,83 +49,48 @@
     return (msg) => console.warn('[LP] Toast:', msg);
   })();
 
-  // ========= [DOM REFS] Sidebar & Area Utama =================================
-  const edgeSidebar = document.getElementById('lpSidebar'); // (hover-edge) — nonaktif khusus halaman
-  const overlaySidebar = document.getElementById('lp-sidebar'); // Overlay (aktif)
-  const overlayPanel = overlaySidebar?.querySelector('.lp-sidebar-inner');
-  const rightHotspot = document.querySelector('.lp-overlay-hotspot'); // hotspot kanan (baru)
-  const HOVER_AUTO_CLOSE = (overlaySidebar?.dataset.hoverclose ?? '1') !== '0';
-  let overlayOpenMode = null; // 'hover' | 'manual' | null
-  const mainArea = document.querySelector('.lp-main'); // untuk ARIA hide saat overlay terbuka
-
-  // ========= [DOM REFS] Root & Anchors =======================================
+  // ========= [DOM REFS] ========================================================
+  const mainArea = document.querySelector('.lp-main');
   const root = document.getElementById('lp-app');
 
-  // --- [LEGACY FEEL MIGRATION] -----------------------------------------------
-  // Batch 2 template menaruh #klas-list di <tbody> dalam #lp-table.
-  // Agar mirip Batch 1, kita buat DIV container baru dan sembunyikan tabel global.
-  function ensureLegacyLayoutContainer() {
-    // Cari elemen-elemen potensial
+  // Pastikan #klas-list adalah DIV container
+  function ensureKlasList() {
     const tableWrap = document.querySelector('.lp-table-wrap');
-    const table = document.getElementById('lp-table');
     let klasList = document.getElementById('klas-list');
 
-    // Jika #klas-list sudah berupa DIV card container → tidak perlu migrasi
-    if (klasList && klasList.tagName !== 'TBODY') {
-      return klasList;
-    }
+    if (klasList && klasList.tagName !== 'TBODY') return klasList;
 
-    // Jika tidak ada tabel global → kemungkinan template sudah legacy-friendly
-    if (!table || !tableWrap) {
-      // pastikan #klas-list ada, kalau tidak buat
-      if (!klasList) {
-        klasList = document.createElement('div');
-        klasList.id = 'klas-list';
-        klasList.className = 'vstack gap-3';
-        (mainArea || document.body).appendChild(klasList);
-      } else if (klasList.tagName === 'TBODY') {
-        // konversi tbody → div
-        const newDiv = document.createElement('div');
-        newDiv.id = 'klas-list';
-        newDiv.className = 'vstack gap-3';
-        klasList.replaceWith(newDiv);
-        klasList = newDiv;
-      }
-      return klasList;
-    }
-
-    // Ada tabel global dan #klas-list berada di TBODY → migrasikan
     const newDiv = document.createElement('div');
     newDiv.id = 'klas-list';
     newDiv.className = 'vstack gap-3';
 
-    // Sisipkan setelah wrapper tabel agar tata letak tidak lompat
-    tableWrap.insertAdjacentElement('afterend', newDiv);
+    if (tableWrap) {
+      tableWrap.insertAdjacentElement('afterend', newDiv);
+      tableWrap.style.display = 'none';
+    } else if (klasList?.tagName === 'TBODY') {
+      klasList.replaceWith(newDiv);
+    } else {
+      (mainArea || document.body).appendChild(newDiv);
+    }
 
-    // Sembunyikan wrapper tabel global (feel seperti v1)
-    tableWrap.style.display = 'none';
-
-    // Kembalikan container baru
     return newDiv;
   }
 
-  // Buat/ambil container list yang benar (DIV seperti v1)
-  let klasWrap = ensureLegacyLayoutContainer();
+  let klasWrap = ensureKlasList();
 
   // Tombol (kanonik + alias class)
   const btnAddKlasAll = Array.from(document.querySelectorAll('#btn-add-klas, .js-add-klas'));
   const btnSaveAll = Array.from(document.querySelectorAll('#btn-save, .js-save'));
   const btnCompactAll = Array.from(document.querySelectorAll('#btn-compact, .js-compact'));
-  const btnSidebarTogAll = Array.from(document.querySelectorAll('#btn-sidebar-toggle, .js-sidebar-toggle, .btn-sidebar-toggle'));
 
-  // Sidebar Nav anchors
-  const navWrap = document.getElementById('lp-nav');
-  const navSearchSide = document.getElementById('lp-nav-search-side');
+  // Mini TOC DOM anchors
+  const tocTree = document.getElementById('lp-toc-tree');
+  const tocStats = document.getElementById('lp-toc-stats');
+  const tocSearch = document.getElementById('lp-toc-search');
+  const tocExpandAll = document.getElementById('lp-toc-expand-all');
+  const tocCollapseAll = document.getElementById('lp-toc-collapse-all');
   const navSearchToolbar = document.getElementById('lp-nav-search');
-  const navAnnounce = document.getElementById('lp-nav-announce');
   const tbAnnounce = document.getElementById('lp-toolbar-announce');
-  const btnExpandAllAll = Array.from(document.querySelectorAll('.lp-nav-expand-all, #lp-nav-expand-all'));
-  const btnCollapseAllAll = Array.from(document.querySelectorAll('.lp-nav-collapse-all, #lp-nav-collapse-all'));
 
   // ========= [A11Y] Live region ==============================================
   let live = document.getElementById('lp-live');
@@ -371,7 +328,7 @@
     });
   }
 
-  function handleDragEnd(e) {
+  function handleDragEnd() {
     log('[DRAG] End');
     resetDragState();
   }
@@ -522,18 +479,12 @@
   }
 
   // ========= [DIAGNOSTICS] Cek Anchor Wajib ==================================
-  // Note: Navigation elements (#lp-nav, expand/collapse) removed - replaced by Template Library
   const REQUIRED = [
     ['#lp-app', !!root],
     ['#klas-list (DIV legacy)', !!klasWrap && klasWrap.tagName !== 'TBODY'],
     ['#btn-add-klas', btnAddKlasAll.length > 0],
     ['#btn-save', btnSaveAll.length > 0],
     ['#btn-compact', btnCompactAll.length > 0],
-    // Navigation elements no longer required (replaced by Template Library sidebar)
-    // ['#lp-nav', !!navWrap],
-    // ['#lp-nav-search-side', !!navSearchSide],
-    // ['.lp-nav-expand-all/#lp-nav-expand-all', btnExpandAllAll.length > 0],
-    // ['.lp-nav-collapse-all/#lp-nav-collapse-all', btnCollapseAllAll.length > 0],
   ];
   function injectDiagBanner(missingKeys) {
     if (!root) return;
@@ -545,7 +496,7 @@
     box.innerHTML = `<b>LP Diagnostic:</b> Anchor wajib belum lengkap: <code>${missingKeys.join(', ')}</code>. Fitur terkait dinonaktifkan supaya tidak crash.`;
     root.prepend(box);
   }
-  const missing = REQUIRED.filter(([k, ok]) => !ok).map(([k]) => k);
+  const missing = REQUIRED.filter(([, ok]) => !ok).map(([key]) => key);
   if (missing.length) {
     warn('Missing required anchors:', missing);
     injectDiagBanner(missing);
@@ -553,189 +504,115 @@
     log('All required anchors OK');
   }
 
-  // ========= [SIDEBAR-EDGE (STUB)] Dinonaktifkan di halaman ini ==============
-  function openEdge() { }
-  function closeEdge() { }
-  function isEdgeOpen() { return false; }
+  // ========= [SIDEBAR] ========================================================
+  // Sederhana: buka / tutup. Tidak ada "locked mode" yang kompleks.
+  //
+  // | Aksi              | Hasil                    |
+  // |-------------------|--------------------------|
+  // | Klik Navigasi     | Toggle (buka/tutup)      |
+  // | Klik X / ESC      | Tutup                    |
+  // | Hover masuk       | Buka                     |
+  // | Hover keluar      | Tutup (delay 150ms)      |
+  //
+  const Sidebar = {
+    _open: false,
+    _timer: null,
 
-  // ========= [HOVER-EDGE KANAN] untuk Overlay lokal (desktop) =================
-  function setupRightHoverEdge() {
-    if (!rightHotspot || !overlaySidebar) return;
+    get el() { return document.getElementById('lp-sidebar'); },
+
+    isOpen() { return this._open; },
+
+    open() {
+      this._clearTimer();
+      if (this._open) return;
+      this._open = true;
+      this._render();
+    },
+
+    close() {
+      this._clearTimer();
+      if (!this._open) return;
+      this._open = false;
+      this._render();
+    },
+
+    toggle() {
+      this._open ? this.close() : this.open();
+    },
+
+    // Untuk hover: tutup dengan delay agar tidak flickering
+    closeDelayed(ms = 150) {
+      this._clearTimer();
+      this._timer = setTimeout(() => this.close(), ms);
+    },
+
+    _clearTimer() {
+      if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    },
+
+    _render() {
+      const sb = this.el;
+      if (!sb) return;
+
+      sb.classList.toggle('show', this._open);
+      sb.classList.toggle('is-open', this._open);
+      sb.setAttribute('aria-hidden', String(!this._open));
+
+      // Update tombol
+      document.querySelectorAll('.lp-sidebar-toggle, .btn-sidebar-toggle').forEach(btn => {
+        btn.setAttribute('aria-expanded', String(this._open));
+      });
+    }
+  };
+
+  // Alias untuk kompatibilitas dengan kode lain
+  const SidebarManager = {
+    isOpen: () => Sidebar.isOpen(),
+    open: () => Sidebar.open(),
+    close: () => Sidebar.close(),
+    toggle: () => Sidebar.toggle(),
+    locked: false // selalu false, tidak ada locked mode
+  };
+
+  if (__DEBUG__) window.Sidebar = Sidebar;
+
+  // === EVENT HANDLERS ===
+
+  // Hover (desktop only)
+  (function () {
     const isDesktop = () => window.matchMedia('(min-width: 992px)').matches;
-    const panel = overlayPanel || overlaySidebar;   // penting: pakai panel, bukan aside
-    let tIn = null, tOut = null;
-    const ENTER_DELAY = 10, LEAVE_DELAY = 120;
+    const hotspot = document.querySelector('.lp-overlay-hotspot');
+    const sidebar = document.getElementById('lp-sidebar');
 
-    rightHotspot.addEventListener('mouseenter', () => {
-      if (!isDesktop()) return;
-      clearTimeout(tOut);
-      tIn = setTimeout(() => setOverlayVisible(true, { autofocus: false, mode: 'hover' }), ENTER_DELAY);
-    }, { passive: true });
-
-    rightHotspot.addEventListener('mouseleave', () => {
-      if (!isDesktop()) return;
-      clearTimeout(tIn);
-      if (HOVER_AUTO_CLOSE && overlayOpenMode === 'hover' && !panel.matches(':hover')) {
-        tOut = setTimeout(() => setOverlayVisible(false), LEAVE_DELAY);
-      }
-    }, { passive: true });
-
-    panel.addEventListener('mouseenter', () => { clearTimeout(tOut); }, { passive: true });
-
-    panel.addEventListener('mouseleave', () => {
-      if (!isDesktop()) return;
-      if (HOVER_AUTO_CLOSE && overlayOpenMode === 'hover' && !rightHotspot.matches(':hover')) {
-        tOut = setTimeout(() => setOverlayVisible(false), LEAVE_DELAY);
-      }
-    }, { passive: true });
-  }
-  try { setupRightHoverEdge(); } catch (_) { }
-
-  // ========= [OVERLAY SIDEBAR] Open/Close & Focus Trap =======================
-  let lastFocusBeforeOpen = null;
-
-  // [TDZ-SAFE] Predeclare suggest boxes agar aman ketika overlay ditutup cepat
-  let sideSuggest = null;
-  let tbSuggest = null;
-
-  function setOverlayVisible(show, opts = {}) {
-    const { autofocus = true, mode = null } = opts;
-    if (!overlaySidebar) return;
-
-    overlaySidebar.classList.toggle('show', show);
-    overlaySidebar.classList.toggle('is-open', show);
-    document.body.classList.toggle('lp-overlay-open', show);
-    btnSidebarTogAll.forEach(btn => btn.setAttribute('aria-expanded', String(show)));
-
-    // Sinkronkan trigger standar (data-toggle="side-right")
-    document.querySelectorAll('[data-toggle="side-right"][aria-controls="lp-sidebar"]')
-      .forEach(el => el.setAttribute('aria-expanded', String(show)));
-    document.querySelectorAll('[data-open="lp-sidebar"]').forEach(el => {
-      el.setAttribute('aria-expanded', String(show));
-    });
-
-    // ARIA sync & announce
-    overlaySidebar.setAttribute('aria-hidden', show ? 'false' : 'true');
-    if (mainArea) {
-      if (show) mainArea.setAttribute('aria-hidden', 'true');
-      else mainArea.removeAttribute('aria-hidden');
-    }
-    try {
-      document.dispatchEvent(new CustomEvent('lp:overlay:change', { detail: { open: !!show } }));
-    } catch (_) { }
-
-    if (show) {
-      overlayOpenMode = mode || overlayOpenMode || 'manual';
-      lastFocusBeforeOpen = document.activeElement;
-      if (autofocus) requestAnimationFrame(() => navSearchSide?.focus());
-      startFocusTrap();
-      try { localStorage.setItem('lp_sidebar_open', '1'); } catch { }
-    } else {
-      overlayOpenMode = null;
-      stopFocusTrap();
-      if (navSearchSide) { navSearchSide.value = ''; }
-      if (sideSuggest) { hideSuggestions(sideSuggest); } // TDZ-safe
-      try { localStorage.setItem('lp_sidebar_open', '0'); } catch { }
-      if (lastFocusBeforeOpen && document.contains(lastFocusBeforeOpen)) lastFocusBeforeOpen.focus();
-      else btnSidebarTogAll[0]?.focus();
-    }
-  }
-
-  function isOverlayOpen() {
-    return !!(overlaySidebar &&
-      (overlaySidebar.classList.contains('show') || overlaySidebar.classList.contains('is-open')));
-  }
-
-  (function restoreOverlayState() {
-    if (!overlaySidebar) return;
-    try {
-      const pref = localStorage.getItem('lp_sidebar_open');
-      if (pref === '1') setOverlayVisible(true);
-    } catch { }
+    hotspot?.addEventListener('mouseenter', () => { if (isDesktop()) Sidebar.open(); });
+    hotspot?.addEventListener('mouseleave', () => { if (isDesktop()) Sidebar.closeDelayed(); });
+    sidebar?.addEventListener('mouseenter', () => Sidebar._clearTimer());
+    sidebar?.addEventListener('mouseleave', () => { if (isDesktop()) Sidebar.closeDelayed(); });
   })();
 
-  btnSidebarTogAll.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (isOverlayOpen()) setOverlayVisible(false);
-      else setOverlayVisible(true, { mode: 'manual' });
-    });
-  });
-
-  // Delegasi global: tombol apapun yang punya data-open="lp-sidebar"
+  // Klik tombol Navigasi → toggle
   document.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-open="lp-sidebar"]');
-    if (!t) return;
-    e.preventDefault();
-    setOverlayVisible(!isOverlayOpen(), { mode: 'manual' });
-  }, false);
-
-  // Shortcuts umum (ESC, '/'), dengan pengecualian untuk Select2
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && window.jQuery && jQuery(e.target).closest('.select2-container').length) {
-      return; // biarkan Select2 handle ESC saat dropdown aktif
-    }
-    if (e.key === '/' && isOverlayOpen()) {
-      const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.target.closest('.lp-sidebar-toggle, .btn-sidebar-toggle, [data-open="lp-sidebar"]')) {
       e.preventDefault();
-      navSearchSide?.focus();
-      return;
-    }
-    if (e.key === 'Escape' && isOverlayOpen()) {
-      setOverlayVisible(false);
+      Sidebar.toggle();
     }
   });
 
-  // Menelan shortcut app-level saat Select2 fokus/terbuka
+  // Klik tombol X → simulasi tekan ESC
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-action="close-sidebar"]')) {
+      e.preventDefault();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    }
+  });
+
+  // ESC → tutup sidebar
   document.addEventListener('keydown', (e) => {
-    const $jq = window.jQuery;
-    if ($jq && $jq(e.target).closest('.select2-dropdown, .select2-container--open').length) {
-      const key = e.key.toLowerCase();
-      const meta = e.ctrlKey || e.metaKey;
-      if (key === '/' || (meta && (key === 'f' || key === 's'))) {
-        e.stopImmediatePropagation();
-      }
+    if (e.key === 'Escape' && Sidebar.isOpen()) {
+      if (window.jQuery && jQuery(e.target).closest('.select2-container').length) return;
+      Sidebar.close();
     }
-  }, true);
-
-  // Klik backdrop overlay menutup panel
-  overlaySidebar?.addEventListener('click', (e) => {
-    const panel = overlaySidebar.querySelector('.lp-sidebar-inner');
-    if (!panel) return;
-    if (!panel.contains(e.target)) setOverlayVisible(false);
   });
-  overlaySidebar?.querySelector('[data-action="close-sidebar"]')
-    ?.addEventListener('click', () => setOverlayVisible(false));
-
-  // ========= [FOCUS TRAP] ====================================================
-  let trapKeydown = null;
-  function getFocusable(container) {
-    return Array.from(container.querySelectorAll(
-      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
-    )).filter(el => {
-      const cs = window.getComputedStyle(el);
-      return cs.visibility !== 'hidden' && cs.display !== 'none';
-    });
-  }
-  function startFocusTrap() {
-    if (!overlaySidebar) return;
-    const cont = overlaySidebar;
-    trapKeydown = (e) => {
-      if (!isOverlayOpen()) return;
-      if (e.key !== 'Tab') return;
-      const focusables = getFocusable(cont);
-      if (!focusables.length) return;
-      const first = focusables[0], last = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', trapKeydown, true);
-  }
-  function stopFocusTrap() {
-    if (trapKeydown) document.removeEventListener('keydown', trapKeydown, true);
-    trapKeydown = null;
-  }
 
   // ========= [APP GUARDS] Root & Project Id ==================================
   if (!root || !klasWrap) {
@@ -869,13 +746,6 @@
       }
       return [];
     } catch (_) { return []; }
-  }
-
-  function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-  function highlightLabel(raw, kw) {
-    if (!kw) return escapeHtml(raw);
-    const re = new RegExp(`(${escRe(kw)})`, 'ig');
-    return escapeHtml(raw).replace(re, '<span class="lp-hit">$1</span>');
   }
 
   // ========= [URAIAN] Preview 2-baris & Edit =================================
@@ -1414,21 +1284,6 @@
     return row;
   }
 
-  // ========= [SIDEBAR TREE] Konstruksi, Search, dan Suggest ==================
-  function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
-  function setNodeOpen(node, open) {
-    node.classList.toggle('open', open);
-    node.querySelector(':scope > .lp-node__header')?.setAttribute('aria-expanded', String(open));
-    node.querySelectorAll(':scope > .lp-node__header .lp-node__toggle').forEach(t => t.textContent = open ? '▾' : '▸');
-    const kids = node.querySelector(':scope > .lp-node__children');
-    if (kids) kids.style.display = open ? '' : 'none';
-  }
-  function setNavAll(open) {
-    if (!navWrap) return;
-    navWrap.querySelectorAll('.lp-node').forEach(n => setNodeOpen(n, open));
-    say(open ? 'Semua bagian terbuka' : 'Semua bagian tertutup');
-  }
-
   function collectTree() {
     const data = [];
     if (!klasWrap) return data;
@@ -1463,244 +1318,194 @@
   }
 
   function scheduleSidebarRebuild() {
-    if (!navWrap) return;
     clearTimeout(scheduleSidebarRebuild._tid);
-    scheduleSidebarRebuild._tid = setTimeout(buildSidebar, 120);
+    scheduleSidebarRebuild._tid = setTimeout(buildMiniToc, 120);
   }
 
-  // ====== Autocomplete (grouped) =============================================
-  function ensureSuggest(container, id) {
-    // Cari global dulu untuk mencegah duplikat ID
-    let box = document.getElementById(id);
-    if (!box) {
-      box = document.createElement('div');
-      box.id = id;
-      box.className = 'lp-autocomplete d-none';
-      (container || document.body).appendChild(box);
-    } else if (container && box.parentElement !== container) {
-      container.appendChild(box);
-    }
-    return box;
-  }
-
-  function rankText(s, q) {
-    const t = s.toLowerCase(), qq = q.toLowerCase();
-    const idx = t.indexOf(qq);
-    if (idx === -1) return Infinity;
-    return idx + Math.abs(s.length - qq.length) * 0.01;
-  }
-  function buildGroupedSuggestions(tree, q) {
-    const out = { klas: [], sub: [], pekerjaan: [] };
-    if (!q || q.length < 2) return out;
-    tree.forEach(K => {
-      const rk = rankText(K.name, q);
-      if (Number.isFinite(rk)) out.klas.push({ id: K.id, name: K.name, r: rk });
-      (K.sub || []).forEach(S => {
-        const rs = rankText(S.name, q);
-        if (Number.isFinite(rs)) out.sub.push({ id: S.id, name: S.name, r: rs });
-        (S.pekerjaan || []).forEach(P => {
-          const rp = rankText(P.name, q);
-          if (Number.isFinite(rp)) out.pekerjaan.push({ id: P.id, name: P.name, r: rp });
-        });
-      });
-    });
-    out.klas.sort((a, b) => a.r - b.r); out.sub.sort((a, b) => a.r - b.r); out.pekerjaan.sort((a, b) => a.r - b.r);
-    return out;
-  }
-  function renderSuggest(box, groups, q) {
-    if (!box) return;
-    if (!q || q.length < 2 || (!groups.klas.length && !groups.sub.length && !groups.pekerjaan.length)) {
-      hideSuggestions(box); return;
-    }
-    const makeGroup = (title, arr) => arr.length ? `
-      <div class="lp-ac-group">
-        <div class="lp-ac-title">${title}</div>
-        ${arr.slice(0, 8).map(i => `<div class="lp-ac-item" data-id="${escapeHtml(i.id)}">${escapeHtml(i.name)}</div>`).join('')}
-      </div>` : '';
-    box.innerHTML = [
-      makeGroup('Klasifikasi', groups.klas),
-      makeGroup('Sub-Klasifikasi', groups.sub),
-      makeGroup('Pekerjaan', groups.pekerjaan),
-    ].join('');
-    box.classList.remove('d-none');
-    if (box === sideSuggest) { navSearchSide?.setAttribute('aria-expanded', 'true'); }
-    if (box === tbSuggest) { navSearchToolbar?.setAttribute('aria-expanded', 'true'); }
-    const total = groups.klas.length + groups.sub.length + groups.pekerjaan.length;
-    const msg = total ? `${total} hasil` : 'Tidak ada hasil';
-    if (box === sideSuggest) { navAnnounce && (navAnnounce.textContent = msg); }
-    if (box === tbSuggest) { tbAnnounce && (tbAnnounce.textContent = msg); }
-
-    box.querySelectorAll('.lp-ac-item').forEach(it => {
-      it.addEventListener('click', () => {
-        const id = it.getAttribute('data-id');
-        if (id) {
-          scrollToAnchor(id);
-          if (box === sideSuggest) setOverlayVisible(false);
-        }
-      });
-    });
-  }
-  function hideSuggestions(box) {
-    if (!box) return;
-    box.classList.add('d-none');
-    if (box === sideSuggest) { navSearchSide?.setAttribute('aria-expanded', 'false'); }
-    if (box === tbSuggest) { navSearchToolbar?.setAttribute('aria-expanded', 'false'); }
-  }
-
-  function handleSearchInput(which) {
-    const q = which === 'side' ? (navSearchSide?.value || '') : (navSearchToolbar?.value || '');
-    const tree = collectTree();
-    const groups = buildGroupedSuggestions(tree, q);
-    if (which === 'side') renderSuggest(sideSuggest, groups, q);
-    else renderSuggest(tbSuggest, groups, q);
-  }
-  function commitSearch(which) {
-    const box = which === 'side' ? sideSuggest : tbSuggest;
-    const first = box && !box.classList.contains('d-none') ? box.querySelector('.lp-ac-item') : null;
-    if (first) {
-      const id = first.getAttribute('data-id');
-      if (id) {
-        scrollToAnchor(id);
-        if (which === 'side') setOverlayVisible(false);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // === Wiring event pada input & tombol Cari (toolbar & sidebar) =============
-  navSearchSide?.addEventListener('input', () => handleSearchInput('side'));
-  navSearchToolbar?.addEventListener('input', () => handleSearchInput('toolbar'));
-  navSearchSide?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commitSearch('side'); }
-  });
-  navSearchToolbar?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commitSearch('toolbar'); }
-  });
-  document.getElementById('lp-toolbar-find')
-    ?.addEventListener('click', () => { commitSearch('toolbar') || handleSearchInput('toolbar'); });
-
-  function buildSidebar() {
-    if (!navWrap) return;
+  // ====== MINI TOC: Build compact navigation tree =====================
+  function buildMiniToc() {
+    if (!tocTree) return;
     try {
       const data = collectTree();
+      const filterText = (tocSearch?.value || '').toLowerCase().trim();
 
-      navWrap.innerHTML = '';
-      btnExpandAllAll.forEach(b => b.onclick = () => setNavAll(true));
-      btnCollapseAllAll.forEach(b => b.onclick = () => setNavAll(false));
+      // Calculate stats
+      let totalKlas = 0, totalSub = 0, totalPkj = 0;
+      data.forEach(K => {
+        totalKlas++;
+        (K.sub || []).forEach(S => {
+          totalSub++;
+          totalPkj += (S.pekerjaan || []).length;
+        });
+      });
 
+      // Update stats display
+      if (tocStats) {
+        tocStats.innerHTML = `<i class="bi bi-diagram-3 me-1"></i>${totalKlas} Klas · ${totalSub} Sub · ${totalPkj} Pkj`;
+      }
+
+      // Build tree HTML - compact 3-level tree
       if (!Array.isArray(data) || data.length === 0) {
-        navWrap.innerHTML = '<div class="text-muted small" style="padding:.5rem .75rem;">Belum ada klasifikasi/sub/pekerjaan.</div>';
-        hideSuggestions(sideSuggest); hideSuggestions(tbSuggest);
+        tocTree.innerHTML = '<div class="text-muted small px-2 py-3 text-center">Belum ada klasifikasi</div>';
         return;
       }
 
-      const keywords = (navSearchSide?.value || '').trim().toLowerCase();
-      const match = (s) => !keywords || s.toLowerCase().includes(keywords);
+      // Filter matching function
+      const matchFilter = (text) => !filterText || text.toLowerCase().includes(filterText);
 
-      navWrap.setAttribute('role', 'tree');
-      navWrap.setAttribute('aria-label', 'Navigasi List Pekerjaan');
+      // Generate tree with all 3 levels
+      const html = data.map(K => {
+        const subMatches = (K.sub || []).some(S =>
+          matchFilter(S.name) || (S.pekerjaan || []).some(P => matchFilter(P.name))
+        );
+        const klasMatch = matchFilter(K.name) || subMatches;
+        if (!klasMatch && filterText) return '';
 
-      data.forEach((K) => {
-        const node = el('div', 'lp-node');
-        const head = el('div', 'lp-node__header');
-        const toggle = el('span', 'lp-node__toggle', '▸');
-        const label = document.createElement('a');
-        label.className = 'lp-node__label';
-        label.innerHTML = highlightLabel(K.name, keywords);
-        label.href = `#${K.id}`;
-        label.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(K.id); });
-        const count = el('span', 'lp-node__count', `${(K.sub || []).length} sub`);
+        const subHtml = (K.sub || []).map(S => {
+          const pkjMatches = (S.pekerjaan || []).filter(P => matchFilter(P.name));
+          const subMatch = matchFilter(S.name) || pkjMatches.length > 0;
+          if (!subMatch && filterText) return '';
 
-        head.appendChild(toggle); head.appendChild(label); head.appendChild(count);
-        head.setAttribute('role', 'treeitem'); head.setAttribute('aria-expanded', 'false');
-        node.appendChild(head);
+          // Render pekerjaan (3rd level) - compact single line items
+          const pkjHtml = (S.pekerjaan || []).map(P => {
+            if (filterText && !matchFilter(P.name)) return '';
+            const truncName = truncateText(P.name, 45);
+            return `
+              <div class="lp-toc-item" data-anchor="${escapeHtml(P.id)}" title="${escapeHtml(P.name)}">
+                <span class="lp-toc-bullet">·</span>
+                <span class="lp-toc-text">${escapeHtml(truncName)}</span>
+              </div>`;
+          }).filter(Boolean).join('');
 
-        const children = el('div', 'lp-node__children');
-        children.setAttribute('role', 'group');
-        node.appendChild(children);
+          return `
+            <div class="lp-toc-node lp-toc-sub" data-sub-id="${escapeHtml(S.id)}">
+              <div class="lp-toc-header" data-anchor="${escapeHtml(S.id)}">
+                <span class="lp-toc-toggle">▸</span>
+                <span class="lp-toc-label" title="${escapeHtml(S.name)}">${escapeHtml(truncateText(S.name, 35))}</span>
+                <span class="lp-toc-badge">${(S.pekerjaan || []).length}</span>
+              </div>
+              <div class="lp-toc-children" style="display:none;">
+                ${pkjHtml}
+              </div>
+            </div>`;
+        }).filter(Boolean).join('');
 
-        head.addEventListener('click', (e) => {
-          if (e.target.closest('a')) return;
-          setNodeOpen(node, !node.classList.contains('open'));
+        return `
+          <div class="lp-toc-node lp-toc-klas" data-klas-id="${escapeHtml(K.id)}">
+            <div class="lp-toc-header" data-anchor="${escapeHtml(K.id)}">
+              <span class="lp-toc-toggle">▸</span>
+              <span class="lp-toc-label" title="${escapeHtml(K.name)}">${escapeHtml(truncateText(K.name, 30))}</span>
+              <span class="lp-toc-badge">${(K.sub || []).length}</span>
+            </div>
+            <div class="lp-toc-children" style="display:none;">
+              ${subHtml}
+            </div>
+          </div>`;
+      }).filter(Boolean).join('');
+
+      tocTree.innerHTML = html || '<div class="text-muted small px-2 py-3 text-center">Tidak ada hasil</div>';
+
+      // Bind click events
+      tocTree.querySelectorAll('.lp-toc-header, .lp-toc-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const anchor = el.dataset.anchor;
+
+          // If clicking on toggle area of header, toggle children
+          if (el.classList.contains('lp-toc-header')) {
+            const node = el.closest('.lp-toc-node');
+            const children = node?.querySelector('.lp-toc-children');
+            const toggle = el.querySelector('.lp-toc-toggle');
+
+            if (e.target === toggle || e.target.closest('.lp-toc-toggle')) {
+              // Toggle only
+              if (children) {
+                const isOpen = children.style.display !== 'none';
+                children.style.display = isOpen ? 'none' : '';
+                if (toggle) toggle.textContent = isOpen ? '▸' : '▾';
+              }
+              return;
+            }
+          }
+
+          // Navigate to anchor
+          if (anchor) {
+            scrollToAnchor(anchor);
+          }
         });
-
-        let openK = false;
-        (K.sub || []).forEach((S) => {
-          const nodeS = el('div', 'lp-node');
-          const headS = el('div', 'lp-node__header');
-          const toggleS = el('span', 'lp-node__toggle', '▸');
-          const labelS = document.createElement('a');
-          labelS.className = 'lp-node__label';
-          labelS.innerHTML = highlightLabel(S.name, keywords);
-          labelS.href = `#${S.id}`;
-          labelS.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(S.id); });
-          const countS = el('span', 'lp-node__count', `${(S.pekerjaan || []).length}`);
-
-          headS.appendChild(toggleS); headS.appendChild(labelS); headS.appendChild(countS);
-          headS.setAttribute('role', 'treeitem'); headS.setAttribute('aria-expanded', 'false');
-          nodeS.appendChild(headS);
-
-          const childrenS = el('div', 'lp-node__children');
-          childrenS.setAttribute('role', 'group');
-          nodeS.appendChild(childrenS);
-
-          let openS = false;
-          (S.pekerjaan || []).forEach((P) => {
-            const hit = match(K.name) || match(S.name) || match(P.name);
-            if (!keywords || hit) openK = openS = true;
-
-            const item = el('div', 'lp-node');
-            const headP = el('div', 'lp-node__header');
-            const bullet = el('span', 'lp-node__toggle', '•');
-            const labelP = document.createElement('a');
-            labelP.className = 'lp-node__label';
-            labelP.innerHTML = highlightLabel(P.name, keywords);
-            labelP.href = `#${P.id}`;
-            labelP.addEventListener('click', (ev) => { ev.preventDefault(); scrollToAnchor(P.id); });
-
-            headP.appendChild(bullet); headP.appendChild(labelP);
-            headP.setAttribute('role', 'treeitem');
-            item.appendChild(headP);
-            childrenS.appendChild(item);
-          });
-
-          setNodeOpen(nodeS, openS);
-          children.appendChild(nodeS);
-
-          headS.addEventListener('click', (e) => {
-            if (e.target.tagName === 'A') return;
-            setNodeOpen(nodeS, !nodeS.classList.contains('open'));
-          });
-        });
-
-        setNodeOpen(node, openK);
-        navWrap.appendChild(node);
       });
 
-      if (!navWrap.querySelector('.lp-node')) {
-        navWrap.innerHTML = '<div class="text-muted small" style="padding:.5rem .75rem;">Tidak ada hasil yang cocok.</div>';
+      // Auto-expand if search is active
+      if (filterText) {
+        tocTree.querySelectorAll('.lp-toc-children').forEach(c => c.style.display = '');
+        tocTree.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '▾');
       }
+
     } catch (e) {
-      err('buildSidebar failed:', e);
+      err('buildMiniToc failed:', e);
     }
   }
 
-  // Inisialisasi suggest container SETELAH fungsi di atas siap
-  sideSuggest = navSearchSide
-    ? ensureSuggest(navSearchSide.closest('.lp-sidebar-search') || overlayPanel || document.body, 'lp-nav-suggest')
-    : null;
-  tbSuggest = navSearchToolbar
-    ? ensureSuggest(navSearchToolbar.closest('.lp-toolbar-search') || document.body, 'lp-nav-suggest-toolbar')
-    : null;
+  // TOC search filter
+  let tocSearchTimer = null;
+  tocSearch?.addEventListener('input', () => {
+    clearTimeout(tocSearchTimer);
+    tocSearchTimer = setTimeout(buildMiniToc, 150);
+  });
+
+  // Expand/Collapse All buttons
+  tocExpandAll?.addEventListener('click', () => {
+    tocTree?.querySelectorAll('.lp-toc-children').forEach(c => c.style.display = '');
+    tocTree?.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '▾');
+    say('Semua bagian terbuka');
+  });
+  tocCollapseAll?.addEventListener('click', () => {
+    tocTree?.querySelectorAll('.lp-toc-children').forEach(c => c.style.display = 'none');
+    tocTree?.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '▸');
+    say('Semua bagian tertutup');
+  });
+
+  // Toolbar search handling (kept for backwards compat)
+  function handleToolbarSearch() {
+    const q = (navSearchToolbar?.value || '').toLowerCase().trim();
+    if (!q) return;
+    const tree = collectTree();
+    // Find first match and scroll
+    for (const K of tree) {
+      if (K.name.toLowerCase().includes(q)) {
+        scrollToAnchor(K.id);
+        return;
+      }
+      for (const S of (K.sub || [])) {
+        if (S.name.toLowerCase().includes(q)) {
+          scrollToAnchor(S.id);
+          return;
+        }
+        for (const P of (S.pekerjaan || [])) {
+          if (P.name.toLowerCase().includes(q)) {
+            scrollToAnchor(P.id);
+            return;
+          }
+        }
+      }
+    }
+    tShow('Tidak ditemukan: ' + q, 'warning');
+  }
+
+  navSearchToolbar?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); handleToolbarSearch(); }
+  });
+  document.getElementById('lp-toolbar-find')
+    ?.addEventListener('click', handleToolbarSearch);
+
+  // (Old suggest initialization removed - Mini TOC doesn't use suggest boxes)
 
   function scrollToAnchor(anchorId) {
     const target = document.getElementById(anchorId);
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     target.classList.remove('lp-flash'); void target.offsetWidth; target.classList.add('lp-flash');
-    if (isEdgeOpen()) closeEdge();
-    if (isOverlayOpen()) setOverlayVisible(false);
+    // Tutup sidebar setelah navigasi
+    Sidebar.close();
   }
 
   // ========= [LOAD & SAVE] ====================================================
@@ -2009,8 +1814,9 @@
     }
 
     if (!container) {
-      const activeLink = navWrap?.querySelector('.lp-node--active a.lp-node__label');
-      const anchorId = activeLink ? (activeLink.getAttribute('href') || '').slice(1) : null;
+      // Try to find active item from Mini TOC
+      const activeItem = tocTree?.querySelector('.lp-toc-active');
+      const anchorId = activeItem?.dataset?.anchor;
       if (anchorId) {
         const el = document.getElementById(anchorId);
         const klasCard = el?.closest('.card.shadow-sm');
@@ -2054,58 +1860,75 @@
     document.querySelector('#btn-save')?.click();
   });
 
-  // ========= [SCROLL SPY] Sinkron active node di tree ========================
+  // ========= [SCROLL SPY] Sinkron active node di Mini TOC ========================
   function setupScrollSpy() {
-    if (setupScrollSpy._done) return;
+    if (setupScrollSpy._done || !tocTree) return;
     const io = new IntersectionObserver(entries => {
       const vis = entries.filter(e => e.isIntersecting)
         .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
       if (!vis) return;
       const id = vis.target.id || vis.target.dataset.anchorId;
       if (!id) return;
-      navWrap?.querySelectorAll('.lp-node--active').forEach(n => n.classList.remove('lp-node--active'));
-      const link = navWrap?.querySelector(`a.lp-node__label[href="#${CSS.escape(id)}"]`);
-      link?.closest('.lp-node')?.classList.add('lp-node--active');
+      // Highlight active item in Mini TOC
+      tocTree.querySelectorAll('.lp-toc-active').forEach(n => n.classList.remove('lp-toc-active'));
+      const item = tocTree.querySelector(`[data-anchor="${CSS.escape(id)}"]`);
+      item?.classList.add('lp-toc-active');
     }, { rootMargin: '-45% 0px -50% 0px', threshold: 0.01 });
-    document.querySelectorAll('[data-anchor-id]').forEach(el => io.observe(el));
+    document.querySelectorAll('[data-anchor-id], .card, .sub-wrap > div').forEach(el => {
+      if (el.id || el.dataset.anchorId) io.observe(el);
+    });
     setupScrollSpy._done = true;
   }
 
-  // ========= [OVERLAY RESIZE] Persist width ==================================
-  (function enableOverlayResize() {
-    const aside = overlaySidebar;
-    const panel = overlayPanel;
-    if (!aside || !panel) return;
+  // ========= [SIDEBAR RESIZE] Persist width ==================================
+  (function enableSidebarResize() {
+    const sidebar = document.getElementById('lp-sidebar');
+    const panel = sidebar?.querySelector('.lp-sidebar-inner');
+    if (!sidebar || !panel) return;
+
     let resizer = panel.querySelector('.lp-resizer');
-    if (!resizer) { resizer = document.createElement('div'); resizer.className = 'lp-resizer'; panel.appendChild(resizer); }
-    // preferensi arah: 'east' (drag kanan membesar) atau 'west' (drag kiri membesar)
-    const RESIZE_SENSE = (overlaySidebar?.dataset.resizeSense || 'west').toLowerCase();
+    if (!resizer) {
+      resizer = document.createElement('div');
+      resizer.className = 'lp-resizer';
+      panel.appendChild(resizer);
+    }
+
+    const RESIZE_SENSE = (sidebar.dataset.resizeSense || 'west').toLowerCase();
+
+    // Restore saved width
     try {
       const saved = localStorage.getItem('lp_sidebar_w');
-      if (saved) {
-        document.documentElement.style.setProperty('--lp-sidebar-w', `${parseInt(saved, 10)}px`);
-      } else {
-        document.documentElement.style.setProperty('--lp-sidebar-w', `486px`);
-      }
+      document.documentElement.style.setProperty('--lp-sidebar-w', saved ? `${parseInt(saved, 10)}px` : '380px');
     } catch { }
+
     let drag = false, startX = 0, startW = 0;
+
     resizer.addEventListener('mousedown', (e) => {
-      drag = true; startX = e.clientX; startW = panel.getBoundingClientRect().width; e.preventDefault();
+      drag = true;
+      startX = e.clientX;
+      startW = panel.getBoundingClientRect().width;
+      e.preventDefault();
       document.body.style.userSelect = 'none';
     });
+
     window.addEventListener('mousemove', (e) => {
       if (!drag) return;
-      const MIN_W = 320, MAX_W = 760;
+      const MIN_W = 280, MAX_W = 500;
       const dx = e.clientX - startX;
       const wRaw = (RESIZE_SENSE === 'east') ? (startW - dx) : (startW + dx);
       const w = Math.min(Math.max(wRaw, MIN_W), MAX_W);
       document.documentElement.style.setProperty('--lp-sidebar-w', `${w}px`);
     });
+
     window.addEventListener('mouseup', () => {
-      if (!drag) return; drag = false; document.body.style.userSelect = '';
+      if (!drag) return;
+      drag = false;
+      document.body.style.userSelect = '';
       const v = getComputedStyle(document.documentElement).getPropertyValue('--lp-sidebar-w');
       const w = parseInt(v, 10);
-      if (Number.isFinite(w)) { try { localStorage.setItem('lp_sidebar_w', String(w)); } catch { } }
+      if (Number.isFinite(w)) {
+        try { localStorage.setItem('lp_sidebar_w', String(w)); } catch { }
+      }
     });
   })();
 
@@ -2130,22 +1953,19 @@
     if (typeof $ === 'undefined') warn('jQuery belum tersedia saat init awal (defer race?), lanjut saja.');
     if (typeof $?.fn?.select2 !== 'function') warn('Select2 belum terpasang; dropdown ref tetap jalan tanpa enhance.');
 
-    btnExpandAllAll.forEach(b => b.onclick = () => setNavAll(true));
-    btnCollapseAllAll.forEach(b => b.onclick = () => setNavAll(false));
-
     // Keyboard shortcuts (scoped ke #lp-app)
     try {
       const { bindMap } = window.DP.core.keys;
       bindMap(document, {
         'Ctrl+S': () => handleSave(),
         'Cmd+S': () => handleSave(),
-        'Esc': () => { if (isOverlayOpen()) setOverlayVisible(false); },
-        '/': () => { if (isOverlayOpen()) navSearchSide?.focus(); else navSearchToolbar?.focus(); }
+        'Esc': () => { if (SidebarManager.isOpen()) SidebarManager.close(); },
+        '/': () => { if (SidebarManager.isOpen()) tocSearch?.focus(); else navSearchToolbar?.focus(); }
       }, { scopeSelector: '#lp-app' });
     } catch (_) { /* no-op jika core belum siap */ }
 
     await loadTree();
-    setupRightHoverEdge();
+    setupScrollSpy();
   })();
 
   // ========= [P2] Bootstrap Tooltips Initialization =========================
@@ -2165,29 +1985,21 @@
     }
   })();
 
-  // ========= [DEBUG] =========================================================
-  window.LP_DEBUG = {
-    newKlas, addSub, addPekerjaan, handleSave, scheduleSidebarRebuild,
-    report() {
-      const map = {
-        '#lp-app': !!root,
-        '#klas-list (DIV)': !!klasWrap && klasWrap.tagName !== 'TBODY',
-        '#btn-add-klas': btnAddKlasAll.length,
-        '#btn-save': btnSaveAll.length,
-        '#btn-compact': btnCompactAll.length,
-        'toggle canonical/alias': btnSidebarTogAll.length,
-        '#lp-sidebar (overlay)': !!overlaySidebar,
-        '#lpSidebar (edge)': !!edgeSidebar,
-        '#lp-nav': !!navWrap,
-        '#lp-nav-search-side': !!navSearchSide,
-        '#lp-nav-search (toolbar)': !!navSearchToolbar,
-        '.lp-nav-expand-all/#lp-nav-expand-all': btnExpandAllAll.length,
-        '.lp-nav-collapse-all/#lp-nav-collapse-all': btnCollapseAllAll.length,
-      };
-      console.table(map);
-      return map;
-    }
-  };
+  // ========= [DEBUG] (hanya aktif jika __DEBUG__ = true) ======================
+  if (__DEBUG__) {
+    window.LP_DEBUG = {
+      newKlas, addSub, addPekerjaan, handleSave, scheduleSidebarRebuild, buildMiniToc,
+      report() {
+        console.table({
+          '#lp-app': !!root,
+          '#klas-list': !!klasWrap,
+          '#btn-add-klas': btnAddKlasAll.length,
+          '#btn-save': btnSaveAll.length,
+          '#lp-toc-tree': !!tocTree,
+        });
+      }
+    };
+  }
 
   // ========= [TEMPLATE LIBRARY] ===============================================
   (async function initTemplateLibrary() {
@@ -2462,22 +2274,14 @@
 
     templateCategory?.addEventListener('change', loadTemplates);
 
-    // Load templates when sidebar opens
-    const sidebar = document.getElementById('lp-sidebar');
-    if (sidebar) {
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach(m => {
-          if (m.attributeName === 'class' && sidebar.classList.contains('visible')) {
-            loadTemplates();
-          }
-        });
-      });
-      observer.observe(sidebar, { attributes: true });
-    }
-
-    // Initial load if sidebar is visible
-    if (sidebar?.classList.contains('visible')) {
-      loadTemplates();
+    // Load templates when Modal opens
+    const templateModal = document.getElementById('templateLibraryModal');
+    if (templateModal) {
+      // Fix Z-Index/Stacking Context issues by moving modal to body
+      if (templateModal.parentElement !== document.body) {
+        document.body.appendChild(templateModal);
+      }
+      templateModal.addEventListener('shown.bs.modal', loadTemplates);
     }
 
     // ========== Toolbar Template Dropdown Handlers ==========
@@ -2495,82 +2299,8 @@
       importFileInput?.click();
     });
 
-    // Toolbar: Open Template Library sidebar (NOT the main navigation sidebar)
-    document.querySelectorAll('[data-action="open-sidebar"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        // Directly open #lp-sidebar (Template Library) - NOT dp-sidebar
-        const sb = document.getElementById('lp-sidebar');
-        if (sb) {
-          sb.classList.add('is-open');
-          sb.style.display = 'block';
-          document.body.classList.add('lp-overlay-open');
-          loadTemplates();
-          console.log('[TEMPLATE] Template Library sidebar opened');
-        } else {
-          console.warn('[TEMPLATE] #lp-sidebar not found');
-        }
-      });
-    });
-
-    // Close Template Library sidebar
-    function closeLpSidebar() {
-      const sb = document.getElementById('lp-sidebar');
-      if (sb) {
-        sb.classList.remove('is-open', 'show');
-        sb.style.display = 'none';
-        document.body.classList.remove('lp-overlay-open');
-        console.log('[TEMPLATE] Template Library sidebar closed');
-      }
-    }
-
-    document.querySelectorAll('[data-action="close-sidebar"]').forEach(btn => {
-      btn.addEventListener('click', closeLpSidebar);
-    });
-
-    // Close on backdrop click (clicking outside .lp-sidebar-inner)
-    document.getElementById('lp-sidebar')?.addEventListener('click', (e) => {
-      // Only close if click is on the backdrop, not the inner content
-      if (e.target.id === 'lp-sidebar') {
-        closeLpSidebar();
-      }
-    });
-
-    // Close on Escape key
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const sb = document.getElementById('lp-sidebar');
-        if (sb && (sb.classList.contains('is-open') || sb.style.display === 'block')) {
-          closeLpSidebar();
-        }
-      }
-    });
-
-    // Hover on right edge to open sidebar (desktop only)
-    const hotspot = document.querySelector('.lp-overlay-hotspot');
-    let hoverTimer = null;
-    const HOVER_DELAY = 150; // ms before opening
-
-    if (hotspot && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      hotspot.addEventListener('mouseenter', () => {
-        hoverTimer = setTimeout(() => {
-          const sb = document.getElementById('lp-sidebar');
-          if (sb && !sb.classList.contains('is-open')) {
-            sb.classList.add('is-open');
-            sb.style.display = 'block';
-            document.body.classList.add('lp-overlay-open');
-            loadTemplates();
-            console.log('[TEMPLATE] Sidebar opened via hover');
-          }
-        }, HOVER_DELAY);
-      }, { passive: true });
-
-      hotspot.addEventListener('mouseleave', () => {
-        if (hoverTimer) {
-          clearTimeout(hoverTimer);
-          hoverTimer = null;
-        }
-      }, { passive: true });
-    }
+    // Sidebar sudah dikelola oleh Sidebar object di atas
+    // Tidak perlu duplikasi event handlers
 
     log('[TEMPLATE] Template Library initialized');
   })();
@@ -2811,8 +2541,7 @@
       currentInsertBefore = null;
     }
 
-    // Override the original handleDragOver to add indicator positioning
-    const originalHandleDragOver = handleDragOver;
+    // Override handlers to add indicator positioning
     handleDragOver = function (e) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -2820,38 +2549,27 @@
       const tbody = e.currentTarget;
       if (!tbody || tbody.tagName !== 'TBODY') return;
 
-      // Highlight valid drop zone
       if (dragState.dragOverTarget !== tbody) {
         document.querySelectorAll('.lp-drag-over').forEach(el => el.classList.remove('lp-drag-over'));
         tbody.classList.add('lp-drag-over');
         dragState.dragOverTarget = tbody;
       }
 
-      // Position drop indicator
       positionDropIndicator(tbody, e.clientY);
     };
 
-    // Override handleDragLeave to hide indicator
-    const originalHandleDragLeave = handleDragLeave;
     handleDragLeave = function (e) {
       const tbody = e.currentTarget;
       if (!tbody || tbody.tagName !== 'TBODY') return;
 
       const rect = tbody.getBoundingClientRect();
-      const x = e.clientX;
-      const y = e.clientY;
-
-      if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+      if (e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom) {
         tbody.classList.remove('lp-drag-over');
-        if (dragState.dragOverTarget === tbody) {
-          dragState.dragOverTarget = null;
-        }
+        if (dragState.dragOverTarget === tbody) dragState.dragOverTarget = null;
         hideDropIndicator();
       }
     };
 
-    // Override handleDrop to use indicator position and hide indicator
-    const originalHandleDrop = handleDrop;
     handleDrop = function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -2870,68 +2588,37 @@
         return;
       }
 
-      // Find target klas/sub
       const targetSubCard = targetTbody.closest('.lp-sub-card, .sub-wrap > div, .border.rounded');
-      const targetKlasCard = targetTbody.closest('.lp-klas-card, .card');
       const targetSubId = targetSubCard?.dataset.subId || targetSubCard?.id || null;
-      const targetKlasId = targetKlasCard?.dataset.klasId || targetKlasCard?.id || null;
 
-      log('[DROP] Target:', {
-        targetKlasId,
-        targetSubId,
-        sourceKlasId: dragState.sourceKlasId,
-        sourceSubId: dragState.sourceSubId
-      });
-
-      // Use the tracked insert position from indicator
       const insertBeforeRow = currentInsertBefore;
-
-      // Perform the move
       if (insertBeforeRow) {
         targetTbody.insertBefore(draggingRow, insertBeforeRow);
       } else {
         targetTbody.appendChild(draggingRow);
       }
 
-      // Renumber both source and target tbody
       renum(sourceTbody);
-      if (targetTbody !== sourceTbody) {
-        renum(targetTbody);
-      }
+      if (targetTbody !== sourceTbody) renum(targetTbody);
 
-      // Update ordering indices
       updateOrderingIndices(targetTbody);
-      if (targetTbody !== sourceTbody) {
-        updateOrderingIndices(sourceTbody);
-      }
+      if (targetTbody !== sourceTbody) updateOrderingIndices(sourceTbody);
 
-      // Mark as dirty
       setDirty(true);
-
-      // Rebuild sidebar to reflect changes
       scheduleSidebarRebuild();
-
-      // Broadcast to other tabs
       broadcastOrderingChange();
 
-      // Show feedback
-      const movedWithinSameSub = (targetSubId === dragState.sourceSubId);
-      const msg = movedWithinSameSub
+      const msg = (targetSubId === dragState.sourceSubId)
         ? 'Urutan pekerjaan diubah'
         : 'Pekerjaan dipindahkan ke sub/klasifikasi lain';
-
       tShow(msg, 'success');
       say(msg);
 
-      log('[DROP] Complete - moved pekerjaan');
       resetDragState();
       hideDropIndicator();
     };
 
-    // Override handleDragEnd to ensure indicator is hidden
-    const originalHandleDragEnd = handleDragEnd;
-    handleDragEnd = function (e) {
-      log('[DRAG] End');
+    handleDragEnd = function () {
       resetDragState();
       hideDropIndicator();
     };
