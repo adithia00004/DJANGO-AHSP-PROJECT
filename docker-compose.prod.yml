@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -32,7 +32,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ahsp_redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     volumes:
       - redis_data:/data
     expose:
@@ -54,7 +54,7 @@ services:
       DATABASES_HOST: db
       DATABASES_PORT: 5432
       DATABASES_USER: ${POSTGRES_USER:-postgres}
-      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       DATABASES_DBNAME: ${POSTGRES_DB:-ahsp_sni_db}
       PGBOUNCER_POOL_MODE: transaction
       PGBOUNCER_MAX_CLIENT_CONN: 1000
@@ -89,14 +89,14 @@ services:
       POSTGRES_ENGINE: django.db.backends.postgresql
       POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_HOST: db
       POSTGRES_PORT: ${DB_PORT:-5432}
 
       # Redis Configuration
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       REDIS_DB: ${REDIS_DB:-0}
 
       # Application Configuration
@@ -104,10 +104,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-WARNING}
 
       # Explicit Connection Strings (Critical for Docker)
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
       CACHE_BACKEND: redis
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/1
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/1
 
     volumes:
       # CRITICAL CHANGE: No code mount (- ./:/app)
@@ -146,14 +146,14 @@ services:
       DJANGO_DEBUG: "False"
       POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_HOST: db
       POSTGRES_PORT: ${DB_PORT:-5432}
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
 
     # No code mount
 
@@ -180,14 +180,14 @@ services:
       DJANGO_DEBUG: "False"
       POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_HOST: db
       POSTGRES_PORT: ${DB_PORT:-5432}
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
-      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
-      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
 
     # No code mount
 
@@ -207,13 +207,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ahsp_flower
-    command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+    command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
     environment:
       DJANGO_ENV: production
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     depends_on:
@@ -235,3 +235,4 @@ volumes:
 networks:
   ahsp_network:
     driver: bridge
+

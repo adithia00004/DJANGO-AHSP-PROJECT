@@ -78,16 +78,16 @@ class CustomUser(AbstractUser):
     @property
     def can_edit(self) -> bool:
         """Check if user can edit/input data (Admin, Trial, or Pro)."""
-        if self.has_full_access:
-            return True
-        return self.is_subscription_active
+        from subscriptions.entitlements import FEATURE_WRITE_ACCESS, has_feature_access
+
+        return has_feature_access(self, FEATURE_WRITE_ACCESS)
     
     @property
     def can_export_clean(self) -> bool:
         """Check if user can export without watermark (Admin or Pro only)."""
-        if self.has_full_access:
-            return True
-        return self.is_pro_active
+        from subscriptions.entitlements import FEATURE_EXPORT_CLEAN, has_feature_access
+
+        return has_feature_access(self, FEATURE_EXPORT_CLEAN)
     
     @property
     def days_until_expiry(self) -> int:

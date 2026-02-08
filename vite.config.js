@@ -109,8 +109,8 @@ export default defineConfig({
       },
     },
 
-    // Source maps for production debugging
-    sourcemap: true,
+    // Keep source maps for local/dev builds, disable in production to reduce source exposure.
+    sourcemap: process.env.NODE_ENV !== 'production',
 
     // Target modern browsers
     target: 'es2015',

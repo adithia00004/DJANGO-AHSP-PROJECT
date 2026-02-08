@@ -13,12 +13,20 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
+from django.db import transaction as db_transaction
 
 from .models import SubscriptionPlan, PaymentTransaction
 from .midtrans import midtrans_client, MidtransError
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_managed_access_user(user) -> bool:
+    """
+    Users with full-access (staff/superuser) should not go through checkout flow.
+    """
+    return bool(getattr(user, "has_full_access", False))
 
 
 class CreatePaymentView(LoginRequiredMixin, View):
@@ -31,6 +39,13 @@ class CreatePaymentView(LoginRequiredMixin, View):
     
     def post(self, request):
         try:
+            if _is_managed_access_user(request.user):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Akun admin/staff tidak memerlukan checkout langganan.',
+                    'code': 'ADMIN_CHECKOUT_BLOCKED'
+                }, status=403)
+
             data = json.loads(request.body)
             plan_id = data.get('plan_id')
             
@@ -115,31 +130,42 @@ class PaymentWebhookView(View):
                 logger.warning(f"Invalid webhook signature for order {order_id}")
                 return HttpResponse(status=403)
             
-            # Get transaction
-            try:
-                transaction = PaymentTransaction.objects.get(order_id=order_id)
-            except PaymentTransaction.DoesNotExist:
-                logger.warning(f"Transaction not found: {order_id}")
-                return HttpResponse(status=404)
-            
-            # Update transaction
-            transaction.midtrans_transaction_id = data.get('transaction_id', '')
-            transaction.payment_type = data.get('payment_type', '')
-            transaction.midtrans_response = data
-            
-            # Process based on status
-            if transaction_status in ['capture', 'settlement']:
-                if fraud_status == 'accept':
-                    self._handle_success(transaction)
-            elif transaction_status in ['cancel', 'deny']:
-                transaction.status = PaymentTransaction.STATUS_FAILED
-            elif transaction_status == 'expire':
-                transaction.status = PaymentTransaction.STATUS_EXPIRED
-            elif transaction_status == 'refund':
-                transaction.status = PaymentTransaction.STATUS_REFUND
-            # pending - keep as pending
-            
-            transaction.save()
+            # Lock transaction row to ensure webhook idempotency on retries.
+            with db_transaction.atomic():
+                try:
+                    payment_tx = PaymentTransaction.objects.select_for_update().get(order_id=order_id)
+                except PaymentTransaction.DoesNotExist:
+                    logger.warning(f"Transaction not found: {order_id}")
+                    return HttpResponse(status=404)
+
+                # Update transaction metadata for audit trail
+                payment_tx.midtrans_transaction_id = data.get('transaction_id', '')
+                payment_tx.payment_type = data.get('payment_type', '')
+                payment_tx.midtrans_response = data
+
+                # Process based on status
+                if transaction_status in ['capture', 'settlement']:
+                    if fraud_status == 'accept':
+                        already_success = (
+                            payment_tx.status == PaymentTransaction.STATUS_SUCCESS and
+                            payment_tx.paid_at is not None
+                        )
+                        if already_success:
+                            logger.info(
+                                "Ignoring duplicate successful webhook for order %s",
+                                order_id
+                            )
+                        else:
+                            self._handle_success(payment_tx)
+                elif transaction_status in ['cancel', 'deny']:
+                    payment_tx.status = PaymentTransaction.STATUS_FAILED
+                elif transaction_status == 'expire':
+                    payment_tx.status = PaymentTransaction.STATUS_EXPIRED
+                elif transaction_status == 'refund':
+                    payment_tx.status = PaymentTransaction.STATUS_REFUND
+                # pending - keep as pending
+
+                payment_tx.save()
             
             return HttpResponse(status=200)
             
@@ -228,6 +254,10 @@ class CheckoutView(LoginRequiredMixin, View):
         from django.conf import settings
         
         plan = get_object_or_404(SubscriptionPlan, id=plan_id, is_active=True)
+
+        if _is_managed_access_user(request.user):
+            messages.info(request, 'Akun admin/staff memiliki akses penuh dan tidak memerlukan checkout.')
+            return redirect('dashboard:dashboard')
         
         # Check if user already has active subscription
         if request.user.subscription_status == 'PRO' and request.user.is_subscription_active:

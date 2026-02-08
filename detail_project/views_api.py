@@ -8,11 +8,74 @@ import math
 import re
 import base64
 from io import BytesIO
+from functools import wraps
 from typing import Any, Dict, Optional, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
 from datetime import datetime
+from subscriptions.entitlements import FEATURE_PRO_ONLY, get_feature_access
 
 logger = logging.getLogger(__name__)
+
+
+def _require_pro_export_access(request, feature_label: str):
+    """
+    Enforce PRO-only access for non-PDF export formats.
+    """
+    decision = get_feature_access(getattr(request, "user", None), FEATURE_PRO_ONLY)
+    if not decision.allowed:
+        status_code = 401 if decision.code == 'AUTH_REQUIRED' else 403
+        return JsonResponse({
+            'success': False,
+            'error': f'{feature_label} hanya tersedia untuk pengguna Pro. {decision.message}',
+            'code': decision.code if decision.code != 'SUBSCRIPTION_EXPIRED' else 'PRO_REQUIRED',
+            'subscription_status': getattr(request.user, 'subscription_status', None),
+            'upgrade_url': decision.upgrade_url,
+        }, status=status_code)
+
+    return None
+
+
+def _api_pro_export_required(feature_label: str):
+    """
+    Decorator factory for PRO-only export endpoints (CSV/JSON/WORD/XLSX).
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            access_error = _require_pro_export_access(request, feature_label)
+            if access_error:
+                return access_error
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def _enforce_professional_export_tier(view_func):
+    """
+    Dynamic tier guard for professional export endpoint.
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        format_type = request.GET.get('format')
+        if request.method == 'POST' and not format_type:
+            try:
+                payload = json.loads(request.body.decode('utf-8') or '{}')
+                format_type = payload.get('format')
+            except Exception:
+                format_type = None
+
+        normalized_format = (format_type or 'pdf').lower()
+        if normalized_format in ('word', 'xlsx'):
+            access_error = _require_pro_export_access(
+                request,
+                f"Export {normalized_format.upper()}"
+            )
+            if access_error:
+                return access_error
+
+        return view_func(request, *args, **kwargs)
+
+    return wrapper
 
 # FASE 0.3: Monitoring Setup
 from .monitoring_helpers import log_optimistic_lock_conflict
@@ -66,6 +129,7 @@ from .export_config import (
 )
 from .exports import RekapRABExporter, RekapKebutuhanExporter
 from .api_helpers import rate_limit
+from accounts.mixins import api_pdf_export_allowed
 
 try:
     from referensi.models import RincianReferensi  # type: ignore
@@ -5384,15 +5448,10 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
     Auth: login_required
     """
     try:
-        from dashboard.models import Project
-        project = get_object_or_404(Project, id=project_id)
-    except Exception as e:
+        project = _owner_or_404(project_id, request.user)
+    except Exception:
         logger.error(f"[Kurva S API] Project not found: {project_id}", exc_info=True)
         return JsonResponse({'error': 'Project not found'}, status=404)
-
-    # Check permission (reuse existing pattern from other APIs)
-    # TODO: Add proper permission check if needed
-    # For now, login_required is sufficient
 
     from django.core.cache import cache
     from django.db.models import Max
@@ -5537,9 +5596,8 @@ def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonRespons
     Auth: login_required
     """
     try:
-        from dashboard.models import Project
-        project = get_object_or_404(Project, id=project_id)
-    except Exception as e:
+        project = _owner_or_404(project_id, request.user)
+    except Exception:
         logger.error(f"[Kurva S Harga API] Project not found: {project_id}", exc_info=True)
         return JsonResponse({'error': 'Project not found'}, status=404)
 
@@ -5896,9 +5954,8 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     Auth: login_required
     """
     try:
-        from dashboard.models import Project
-        project = get_object_or_404(Project, id=project_id)
-    except Exception as e:
+        project = _owner_or_404(project_id, request.user)
+    except Exception:
         logger.error(f"[Rekap Kebutuhan API] Project not found: {project_id}", exc_info=True)
         return JsonResponse({'error': 'Project not found'}, status=404)
 
@@ -6141,13 +6198,12 @@ def api_chart_data(request: HttpRequest, project_id: int) -> JsonResponse:
     Method: GET
     Auth: login_required
     """
-    from dashboard.models import Project
     from .exports.jadwal_pekerjaan_adapter import JadwalPekerjaanExportAdapter
     from decimal import Decimal
     
     # Get project
     try:
-        project = get_object_or_404(Project, id=project_id)
+        project = _owner_or_404(project_id, request.user)
     except Exception:
         return JsonResponse({'error': 'Project not found'}, status=404)
     
@@ -6518,6 +6574,7 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
 
         # Build pekerjaan list with items
         pekerjaan_list = []
+        total_items = 0
         for p in p_qs:
             items = []
             # OPTIMIZATION: Use prefetched detail_list instead of dict lookup
@@ -6535,6 +6592,7 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
                     "satuan": sanitize_str(d.satuan),
                     "koefisien": koefisien_val,
                 })
+                total_items += 1
 
             pekerjaan_list.append({
                 "kode": sanitize_str(getattr(p, "snapshot_kode", None)),
@@ -6558,7 +6616,7 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
             "pekerjaan_list": pekerjaan_list,
             "stats": {
                 "total_pekerjaan": len(pekerjaan_list),
-                "total_items": sum(len(p["items"]) for p in pekerjaan_list),
+                "total_items": total_items,
                 "is_limited": is_limited,
                 "limit": 1000 if is_limited else None,
                 "total_in_project": total_pekerjaan_count,
@@ -6638,7 +6696,9 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
     harga_list = []
     harga_map = {}  # old_id -> export_id
     if is_full:
-        harga_items = HargaItemProject.objects.filter(project=project).order_by('id')
+        harga_items = HargaItemProject.objects.filter(project=project).only(
+            'id', 'kode_item', 'uraian', 'satuan', 'kategori', 'harga_satuan'
+        ).order_by('id')
         for idx, h in enumerate(harga_items):
             harga_map[h.id] = idx + 1
             harga_list.append({
@@ -6651,8 +6711,8 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
             })
     else:
         # Template mode: build harga_map for DetailAHSP ref but don't export prices
-        for h in HargaItemProject.objects.filter(project=project):
-            harga_map[h.id] = h.kode_item  # Use kode as reference instead of export_id
+        for harga_id, kode_item in HargaItemProject.objects.filter(project=project).values_list('id', 'kode_item'):
+            harga_map[harga_id] = kode_item  # Use kode as reference instead of export_id
     
     # ========== Export ItemConversionProfile (FULL mode only) ==========
     conversion_list = []
@@ -6673,7 +6733,17 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
     pekerjaan_list = []
     pekerjaan_map = {}  # old_id -> export_id
     pekerjaan_snapshot_map = {}  # old_id -> snapshot_kode (for template mode bundle refs)
-    pekerjaan_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
+    pekerjaan_qs = Pekerjaan.objects.filter(project=project).only(
+        'id',
+        'sub_klasifikasi_id',
+        'source_type',
+        'snapshot_kode',
+        'snapshot_uraian',
+        'snapshot_satuan',
+        'ordering_index',
+        'ref_id',
+        'budgeted_cost',
+    ).order_by('ordering_index', 'id')
     for idx, p in enumerate(pekerjaan_qs):
         pekerjaan_map[p.id] = idx + 1
         pekerjaan_snapshot_map[p.id] = p.snapshot_kode or f"PKJ-{idx+1}"
@@ -6707,8 +6777,17 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
     # ========== Export DetailAHSPProject ==========
     detail_list = []
     detail_map = {}
-    details = DetailAHSPProject.objects.filter(project=project).select_related(
-        'harga_item', 'ref_pekerjaan'
+    details = DetailAHSPProject.objects.filter(project=project).only(
+        'id',
+        'pekerjaan_id',
+        'kategori',
+        'kode',
+        'uraian',
+        'satuan',
+        'koefisien',
+        'harga_item_id',
+        'ref_ahsp_id',
+        'ref_pekerjaan_id',
     ).order_by('pekerjaan_id', 'id')
     
     for idx, d in enumerate(details):
@@ -6837,7 +6916,9 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
                 })
             
             pekerjaan_tahapan_list = []
-            for pt in PekerjaanTahapan.objects.filter(tahap__project=project).select_related('tahap', 'pekerjaan'):
+            for pt in PekerjaanTahapan.objects.filter(tahap__project=project).only(
+                'tahap_id', 'pekerjaan_id', 'bobot'
+            ):
                 pekerjaan_tahapan_list.append({
                     "_tahap_ref": tahapan_map.get(pt.tahap_id),
                     "_pekerjaan_ref": pekerjaan_map.get(pt.pekerjaan_id),
@@ -8216,3 +8297,53 @@ def export_template_json(request: HttpRequest, project_id: int):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
+
+# ============================================================================
+# LEGACY EXPORT TIER ENFORCEMENT
+# ============================================================================
+
+# PDF exports: TRIAL blocked, PRO clean, EXPIRED allowed.
+export_rekap_kebutuhan_pdf = api_pdf_export_allowed(export_rekap_kebutuhan_pdf)
+export_rekap_rab_pdf = api_pdf_export_allowed(export_rekap_rab_pdf)
+export_volume_pekerjaan_pdf = api_pdf_export_allowed(export_volume_pekerjaan_pdf)
+export_harga_items_pdf = api_pdf_export_allowed(export_harga_items_pdf)
+export_rincian_ahsp_pdf = api_pdf_export_allowed(export_rincian_ahsp_pdf)
+export_jadwal_pekerjaan_pdf = api_pdf_export_allowed(export_jadwal_pekerjaan_pdf)
+
+# WORD exports: PRO-only.
+export_rekap_kebutuhan_word = _api_pro_export_required("Export Word")(export_rekap_kebutuhan_word)
+export_rekap_rab_word = _api_pro_export_required("Export Word")(export_rekap_rab_word)
+export_volume_pekerjaan_word = _api_pro_export_required("Export Word")(export_volume_pekerjaan_word)
+export_harga_items_word = _api_pro_export_required("Export Word")(export_harga_items_word)
+export_rincian_ahsp_word = _api_pro_export_required("Export Word")(export_rincian_ahsp_word)
+export_jadwal_pekerjaan_word = _api_pro_export_required("Export Word")(export_jadwal_pekerjaan_word)
+
+# XLSX exports: PRO-only.
+export_rekap_kebutuhan_xlsx = _api_pro_export_required("Export Excel")(export_rekap_kebutuhan_xlsx)
+export_rekap_rab_xlsx = _api_pro_export_required("Export Excel")(export_rekap_rab_xlsx)
+export_volume_pekerjaan_xlsx = _api_pro_export_required("Export Excel")(export_volume_pekerjaan_xlsx)
+export_harga_items_xlsx = _api_pro_export_required("Export Excel")(export_harga_items_xlsx)
+export_rincian_ahsp_xlsx = _api_pro_export_required("Export Excel")(export_rincian_ahsp_xlsx)
+export_jadwal_pekerjaan_xlsx = _api_pro_export_required("Export Excel")(export_jadwal_pekerjaan_xlsx)
+
+# CSV exports: PRO-only.
+api_export_rincian_rab_csv = _api_pro_export_required("Export CSV")(api_export_rincian_rab_csv)
+export_rekap_rab_csv = _api_pro_export_required("Export CSV")(export_rekap_rab_csv)
+export_harga_items_csv = _api_pro_export_required("Export CSV")(export_harga_items_csv)
+export_rincian_ahsp_csv = _api_pro_export_required("Export CSV")(export_rincian_ahsp_csv)
+export_jadwal_pekerjaan_csv = _api_pro_export_required("Export CSV")(export_jadwal_pekerjaan_csv)
+
+# JSON exports: PRO-only (policy decision).
+export_rekap_kebutuhan_json = _api_pro_export_required("Export JSON")(export_rekap_kebutuhan_json)
+export_rekap_rab_json = _api_pro_export_required("Export JSON")(export_rekap_rab_json)
+export_volume_pekerjaan_json = _api_pro_export_required("Export JSON")(export_volume_pekerjaan_json)
+export_harga_items_json = _api_pro_export_required("Export JSON")(export_harga_items_json)
+export_list_pekerjaan_json = _api_pro_export_required("Export JSON")(export_list_pekerjaan_json)
+export_template_ahsp_json = _api_pro_export_required("Export JSON")(export_template_ahsp_json)
+export_project_full_json = _api_pro_export_required("Export JSON")(export_project_full_json)
+export_template_json = _api_pro_export_required("Export JSON")(export_template_json)
+
+# Professional export supports dynamic format: pdf/word/xlsx.
+export_jadwal_pekerjaan_professional = api_pdf_export_allowed(
+    _enforce_professional_export_tier(export_jadwal_pekerjaan_professional)
+)

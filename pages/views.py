@@ -1,17 +1,21 @@
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
+from referensi.permissions import has_referensi_portal_access
+
 
 class LandingPageView(TemplateView):
     """
     Landing page - the main entry point for unauthenticated users.
-    Redirects to dashboard if user is already logged in.
+    Redirects authenticated users based on role/permissions.
     """
     template_name = 'pages/landing.html'
 
     def dispatch(self, request, *args, **kwargs):
-        # Redirect authenticated users to dashboard
+        # Redirect authenticated users to their primary area
         if request.user.is_authenticated:
+            if has_referensi_portal_access(request.user):
+                return redirect('referensi:admin_portal')
             return redirect('dashboard:dashboard')
         return super().dispatch(request, *args, **kwargs)
 

@@ -10,6 +10,28 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 
+if os.getenv("DJANGO_ENV", "").lower() not in {"prod", "production"}:
+    raise RuntimeError("Production settings loaded without DJANGO_ENV=production/prod.")
+
+_secret_key = (SECRET_KEY or "").strip()
+_secret_key_lower = _secret_key.lower()
+_insecure_secret_fragments = (
+    "insecure-dev-key",
+    "change-this",
+    "replace-me",
+    "your-secret-key",
+    "staging-secret-key-change-me",
+)
+
+if not _secret_key:
+    raise RuntimeError("DJANGO_SECRET_KEY must be set for production.")
+
+if any(fragment in _secret_key_lower for fragment in _insecure_secret_fragments):
+    raise RuntimeError("DJANGO_SECRET_KEY uses an insecure/default placeholder value in production.")
+
+if len(_secret_key) < 32:
+    raise RuntimeError("DJANGO_SECRET_KEY is too short for production (minimum 32 characters).")
+
 # ---------------------------------------------------------------------------
 # Hosts / Security
 # ---------------------------------------------------------------------------
@@ -22,6 +44,39 @@ ALLOWED_HOSTS = [
 
 if not ALLOWED_HOSTS:
     raise RuntimeError("DJANGO_ALLOWED_HOSTS must be set for production.")
+
+_invalid_prod_hosts = {
+    "yourdomain.com",
+    "www.yourdomain.com",
+    "api.yourdomain.com",
+    "example.com",
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "testserver",
+}
+_found_invalid_hosts = [host for host in ALLOWED_HOSTS if host.lower() in _invalid_prod_hosts]
+if _found_invalid_hosts:
+    raise RuntimeError(
+        "DJANGO_ALLOWED_HOSTS still contains placeholder/dev hosts: "
+        + ", ".join(_found_invalid_hosts)
+    )
+
+if not CSRF_TRUSTED_ORIGINS:
+    raise RuntimeError("DJANGO_CSRF_TRUSTED_ORIGINS must be set for production.")
+
+_invalid_csrf = [
+    origin
+    for origin in CSRF_TRUSTED_ORIGINS
+    if not origin.lower().startswith("https://")
+    or "yourdomain.com" in origin.lower()
+    or "example.com" in origin.lower()
+]
+if _invalid_csrf:
+    raise RuntimeError(
+        "DJANGO_CSRF_TRUSTED_ORIGINS contains invalid/placeholder values: "
+        + ", ".join(_invalid_csrf)
+    )
 
 SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "True").lower() == "true"
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"  # Always mandatory in production
@@ -126,4 +181,3 @@ if SENTRY_DSN:
         send_default_pii=False,  # Privacy: don't send PII
         environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
     )
-

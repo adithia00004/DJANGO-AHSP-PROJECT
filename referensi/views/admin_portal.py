@@ -3,22 +3,22 @@
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.decorators import login_required
 from django.forms import modelformset_factory
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from referensi.forms import AHSPReferensiInlineForm, RincianReferensiInlineForm
 from referensi.models import AHSPReferensi, RincianReferensi
+from referensi.permissions import has_referensi_portal_access
 from referensi.services.admin_service import AdminPortalService
 
 from .constants import ITEM_DISPLAY_LIMIT, JOB_DISPLAY_LIMIT, TAB_ITEMS, TAB_JOBS
 
 
 @login_required
-@login_required
 def admin_portal(request):
-    if not request.user.has_perms(["referensi.view_ahspreferensi", "referensi.change_ahspreferensi"]):
+    if not has_referensi_portal_access(request.user):
         messages.warning(request, "Anda tidak memiliki izin untuk mengakses Admin Portal.")
         return redirect("/")
         
@@ -26,9 +26,8 @@ def admin_portal(request):
 
 
 @login_required
-@login_required
 def ahsp_database(request):
-    if not request.user.has_perms(["referensi.view_ahspreferensi", "referensi.change_ahspreferensi"]):
+    if not has_referensi_portal_access(request.user):
         messages.warning(request, "Anda tidak memiliki izin untuk mengakses Database AHSP.")
         return redirect("/")
     service = AdminPortalService(
@@ -199,9 +198,8 @@ def ahsp_database(request):
 
 
 @login_required
-@login_required
 def ahsp_database_api(request):
-    if not request.user.has_perms(["referensi.view_ahspreferensi", "referensi.change_ahspreferensi"]):
+    if not has_referensi_portal_access(request.user):
         return redirect("/")
     """
     Lightweight view for API-based AHSP Database.

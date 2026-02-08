@@ -17,11 +17,12 @@ from django.http import HttpResponse, FileResponse
 from django.views.decorators.http import require_POST
 
 from referensi.models_staging import AHSPImportStaging
+from referensi.permissions import has_referensi_import_access
 
 
 def is_admin(user):
-    """Check if user is admin/staff."""
-    return user.is_staff or user.is_superuser
+    """Backward-compatible gate for import endpoints."""
+    return has_referensi_import_access(user)
 
 
 # =============================================================================
@@ -43,8 +44,6 @@ def import_options(request):
 
 @login_required
 @user_passes_test(is_admin)
-
-@login_required
 def import_pdf_convert(request):
     """
     Opsi 1: PDF to Excel Conversion with Batch Support

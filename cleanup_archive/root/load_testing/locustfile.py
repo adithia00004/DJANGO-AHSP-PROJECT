@@ -32,10 +32,10 @@ from locust import HttpUser, task, between, tag
 # ============================================================================
 # AUTHENTICATION CONFIGURATION
 # ============================================================================
-# Set these via environment variables or edit directly for testing
+# Set these via environment variables (never hardcode credentials in this file)
 
-TEST_USERNAME = "aditf96@gmail.com"
-TEST_PASSWORD = "Ph@ntomk1d"  # password user aditf96
+TEST_USERNAME = os.getenv("TEST_USERNAME", "").strip()
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "").strip()
 
 # Project IDs to test (from your database)
 TEST_PROJECT_IDS = [160, 161, 163, 139, 162]
@@ -84,7 +84,12 @@ def _parse_user_pool(raw: str) -> list[tuple[str, str]]:
 
 USER_POOL = _parse_user_pool(os.getenv("TEST_USER_POOL", ""))
 if not USER_POOL:
-    USER_POOL = [(TEST_USERNAME, TEST_PASSWORD)]
+    if TEST_USERNAME and TEST_PASSWORD:
+        USER_POOL = [(TEST_USERNAME, TEST_PASSWORD)]
+    else:
+        raise RuntimeError(
+            "No Locust credentials configured. Set TEST_USER_POOL or TEST_USERNAME and TEST_PASSWORD."
+        )
 else:
     _login_logger.info(
         "Multi-user pool configured: %d users (%s)",

@@ -33,6 +33,87 @@ class SubscriptionPlan(models.Model):
         return f"{self.name} - Rp {self.price:,.0f}"
 
 
+class SubscriptionFeature(models.Model):
+    """
+    Feature catalog for entitlement policy checks.
+    """
+
+    code = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return self.code
+
+
+class PlanFeatureEntitlement(models.Model):
+    """
+    Data-driven entitlement matrix by subscription status and optional plan override.
+
+    - If plan is NULL: acts as status-level default matrix.
+    - If plan is set: acts as plan-specific override.
+    """
+
+    ACCESS_DENY = "deny"
+    ACCESS_ALLOW = "allow"
+    ACCESS_WATERMARK = "watermark"
+    ACCESS_CHOICES = [
+        (ACCESS_DENY, "Deny"),
+        (ACCESS_ALLOW, "Allow"),
+        (ACCESS_WATERMARK, "Allow with Watermark"),
+    ]
+
+    STATUS_TRIAL = "TRIAL"
+    STATUS_PRO = "PRO"
+    STATUS_EXPIRED = "EXPIRED"
+    STATUS_CHOICES = [
+        (STATUS_TRIAL, "Trial"),
+        (STATUS_PRO, "Pro"),
+        (STATUS_EXPIRED, "Expired"),
+    ]
+
+    feature = models.ForeignKey(
+        SubscriptionFeature,
+        on_delete=models.CASCADE,
+        related_name="entitlements",
+    )
+    plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="feature_entitlements",
+    )
+    subscription_status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    access_level = models.CharField(
+        max_length=20,
+        choices=ACCESS_CHOICES,
+        default=ACCESS_DENY,
+    )
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["feature__code", "subscription_status", "plan__duration_months"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["feature", "plan", "subscription_status"],
+                name="uniq_entitlement_feature_plan_status",
+            )
+        ]
+
+    def __str__(self):
+        plan_label = self.plan.name if self.plan else "DEFAULT"
+        return f"{self.feature.code}:{self.subscription_status}:{plan_label}={self.access_level}"
+
+
 class PaymentTransaction(models.Model):
     """
     Record of payment transactions via Midtrans.

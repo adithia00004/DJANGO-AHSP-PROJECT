@@ -30,8 +30,10 @@ def subscription_context(request):
         'days_until_expiry': user.days_until_expiry,
         'subscription_days_left': user.days_until_expiry,  # alias for templates
         'show_upgrade_banner': (
-            user.subscription_status == 'TRIAL' or
-            user.subscription_status == 'EXPIRED' or
-            (user.is_subscription_active and user.days_until_expiry <= 7)
+            (not user.has_full_access) and (
+                user.subscription_status == 'TRIAL' or
+                user.subscription_status == 'EXPIRED' or
+                (user.is_subscription_active and user.days_until_expiry <= 7)
+            )
         ),
     }

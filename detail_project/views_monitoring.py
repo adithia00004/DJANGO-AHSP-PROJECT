@@ -2,9 +2,13 @@
 API Monitoring Views - Track deprecated API usage and performance metrics
 """
 
+import hmac
+import json
+import logging
 import os
 
 from django.http import JsonResponse
+from django.core.cache import cache
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
@@ -16,6 +20,8 @@ from .utils.performance import (
     analyze_slow_queries,
     get_query_breakdown
 )
+
+logger = logging.getLogger(__name__)
 
 
 def is_staff_or_superuser(user):
@@ -219,17 +225,42 @@ def api_report_client_metric(request):
             'error': 'Method not allowed. Use POST.'
         }, status=405)
 
-    required_key = os.getenv("METRICS_API_KEY")
-    if required_key:
-        provided_key = request.META.get("HTTP_X_METRICS_KEY")
-        if provided_key != required_key:
-            return JsonResponse({
-                'ok': False,
-                'error': 'Invalid metrics key'
-            }, status=403)
+    required_key = os.getenv("METRICS_API_KEY", "").strip()
+    if not required_key:
+        # Fail closed by default: endpoint stays disabled until API key is configured.
+        logger.warning("Client metrics endpoint called without METRICS_API_KEY configured")
+        return JsonResponse({
+            'ok': False,
+            'error': 'Metrics endpoint is not configured'
+        }, status=503)
+
+    provided_key = (request.META.get("HTTP_X_METRICS_KEY") or "").strip()
+    if not provided_key or not hmac.compare_digest(provided_key, required_key):
+        return JsonResponse({
+            'ok': False,
+            'error': 'Unauthorized'
+        }, status=403)
+
+    rate_limit = int(os.getenv("METRICS_RATE_LIMIT", "60"))
+    rate_window = int(os.getenv("METRICS_RATE_WINDOW", "60"))
+
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.META.get("REMOTE_ADDR", "unknown")
+
+    rate_key = f"metrics_rate:{client_ip}"
+    current_count = cache.get(rate_key, 0)
+    if current_count >= rate_limit:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Rate limit exceeded',
+            'retry_after': rate_window
+        }, status=429)
+    cache.set(rate_key, current_count + 1, rate_window)
 
     try:
-        import json
         body = request.body.decode("utf-8") if request.body else "{}"
         data = json.loads(body)
 
@@ -243,9 +274,14 @@ def api_report_client_metric(request):
             }, status=400)
 
         # Log client metric (could also store in database)
-        import logging
-        logger = logging.getLogger('client_performance')
-        logger.info(f"[{metric_type}] {metric}")
+        logging.getLogger('client_performance').info(
+            "Client metric received",
+            extra={
+                "metric_type": metric_type,
+                "metric": metric,
+                "client_ip": client_ip,
+            },
+        )
 
         return JsonResponse({
             'ok': True,
@@ -257,8 +293,9 @@ def api_report_client_metric(request):
             'ok': False,
             'error': 'Invalid JSON'
         }, status=400)
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to process client metric")
         return JsonResponse({
             'ok': False,
-            'error': str(e)
+            'error': 'Internal server error'
         }, status=500)

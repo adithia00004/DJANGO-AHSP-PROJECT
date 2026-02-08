@@ -169,7 +169,8 @@
                 </div>
                 <div class="card-body">
                     <div class="metadata-json">
-                        <pre class="mb-0">{{ log.metadata|safe }}</pre>
+                        <pre class="mb-0" id="metadata-json-pre"></pre>
+                        {{ log.metadata|json_script:"log-metadata-data" }}
                     </div>
                 </div>
             </div>
@@ -335,14 +336,15 @@
 <script>
 // Format JSON metadata
 document.addEventListener('DOMContentLoaded', function() {
-    const metadataEl = document.querySelector('.metadata-json pre');
-    if (metadataEl) {
+    const metadataEl = document.getElementById('metadata-json-pre');
+    const metadataScript = document.getElementById('log-metadata-data');
+
+    if (metadataEl && metadataScript) {
         try {
-            const jsonText = metadataEl.textContent;
-            const jsonObj = JSON.parse(jsonText);
+            const jsonObj = JSON.parse(metadataScript.textContent);
             metadataEl.textContent = JSON.stringify(jsonObj, null, 2);
         } catch (e) {
-            // Leave as-is if not valid JSON
+            metadataEl.textContent = metadataScript.textContent || '';
         }
     }
 });

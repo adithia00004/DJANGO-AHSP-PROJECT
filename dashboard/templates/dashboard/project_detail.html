@@ -361,6 +361,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnConfirm = document.getElementById('btnConfirmCopy');
     const progressAlert = document.getElementById('copyProgressAlert');
     const errorAlert = document.getElementById('copyErrorAlert');
+    const deepCopyUrl = "{% url 'detail_project:api_deep_copy_project' project.pk %}";
+    const batchCopyUrl = "{% url 'detail_project:api_batch_copy_project' project.pk %}";
+    const projectDetailUrlTemplate = "{% url 'dashboard:project_detail' 999999 %}";
+    const dashboardUrl = "{% url 'dashboard:dashboard' %}";
 
     // FASE 3.2: Batch mode elements
     const batchModeToggle = document.getElementById('batchModeToggle');
@@ -447,7 +451,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             // Call API
-            const response = await fetch(`/detail-project/api/project/{{ project.pk }}/deep-copy/`, {
+            const response = await fetch(deepCopyUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -605,7 +609,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Redirect after 2 seconds (give time to read warnings)
             setTimeout(() => {
-                window.location.href = `/project/${data.new_project.id}/`;
+                window.location.href = projectDetailUrlTemplate.replace('999999', data.new_project.id);
             }, 2000);
 
         } catch (error) {
@@ -684,7 +688,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             // Call batch copy API
-            const response = await fetch(`/detail-project/api/project/{{ project.pk }}/batch-copy/`, {
+            const response = await fetch(batchCopyUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -720,7 +724,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Redirect to dashboard after 2 seconds
             setTimeout(() => {
-                window.location.href = '/dashboard/';
+                window.location.href = dashboardUrl;
             }, 2000);
 
         } catch (error) {

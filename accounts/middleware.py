@@ -6,7 +6,10 @@ for users with expired subscriptions.
 """
 import json
 import re
-from django.http import JsonResponse
+from urllib.parse import urlencode
+
+from django.http import HttpResponseRedirect, JsonResponse
+from subscriptions.entitlements import FEATURE_WRITE_ACCESS, get_feature_access
 
 
 class SubscriptionMiddleware:
@@ -54,21 +57,25 @@ class SubscriptionMiddleware:
         if any(pattern.match(path) for pattern in self.excluded_patterns):
             return self.get_response(request)
         
-        # Check subscription
-        if not request.user.is_subscription_active:
+        # Check write entitlement via centralized policy engine.
+        decision = get_feature_access(request.user, FEATURE_WRITE_ACCESS)
+        if not decision.allowed:
             # Check if this is an API request (expects JSON)
             if self._is_api_request(request):
                 return JsonResponse({
                     'success': False,
-                    'error': 'Langganan Anda telah berakhir. Anda hanya memiliki akses baca.',
-                    'code': 'SUBSCRIPTION_EXPIRED',
-                    'upgrade_url': '/pricing/'
+                    'error': decision.message,
+                    'code': decision.code,
+                    'upgrade_url': decision.upgrade_url,
                 }, status=403)
             else:
-                # For regular form submissions, redirect or show message
-                # Let the view handle it (decorator/mixin will catch it)
-                pass
-        
+                # Block non-API write and redirect users to upgrade page.
+                query = urlencode({
+                    'reason': 'subscription_expired',
+                    'next': request.get_full_path(),
+                })
+                return HttpResponseRedirect(f"/pricing/?{query}")
+
         return self.get_response(request)
     
     def _is_api_request(self, request) -> bool:

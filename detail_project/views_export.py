@@ -6,7 +6,6 @@ Handles batch export API untuk PDF dan Word generation
 from django.http import JsonResponse, FileResponse, Http404
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.files.base import ContentFile
@@ -16,9 +15,53 @@ import json
 import base64
 import logging
 
+from accounts.mixins import api_export_excel_word_required, api_pdf_export_allowed
+
 from .models_export import ExportSession, ExportPage
 
 logger = logging.getLogger(__name__)
+
+
+def _owner_project_or_404(project_id, user):
+    from dashboard.models import Project
+    return get_object_or_404(Project, id=project_id, owner=user)
+
+
+@api_export_excel_word_required
+def _require_pro_for_excel_word(request):
+    """
+    Reuse decorator-based policy for dynamic format checks in shared endpoints.
+    """
+    return None
+
+
+def _enforce_export_tier(request, format_type, metadata=None, options=None):
+    """
+    Enforce tier policy by export format.
+
+    - PDF: PRO clean, EXPIRED with watermark, TRIAL blocked by decorator.
+    - Word/Excel: PRO only.
+    """
+    normalized_format = (format_type or '').lower()
+
+    if normalized_format in (ExportSession.FORMAT_WORD, ExportSession.FORMAT_XLSX):
+        return _require_pro_for_excel_word(request)
+
+    if normalized_format == ExportSession.FORMAT_PDF:
+        pdf_ctx = getattr(request, 'pdf_export_context', {})
+        if pdf_ctx.get('add_watermark'):
+            watermark_text = pdf_ctx.get('watermark_text') or 'DEMO - Dashboard-RAB'
+            if isinstance(metadata, dict):
+                metadata['add_watermark'] = True
+                metadata['watermark_text'] = watermark_text
+            if isinstance(options, dict):
+                options['add_watermark'] = True
+                options['watermark_text'] = watermark_text
+        return None
+
+    return JsonResponse({
+        'error': 'Invalid format. Must be pdf, word, or xlsx'
+    }, status=400)
 
 
 # ============================================================================
@@ -26,7 +69,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 @login_required
-@csrf_exempt  # Frontend will send CSRF token via header
+@api_pdf_export_allowed
 @require_http_methods(["POST"])
 def export_init(request):
     """
@@ -61,6 +104,8 @@ def export_init(request):
         estimated_pages = data.get('estimatedPages', 0)
         project_name = data.get('projectName', '')
         metadata = data.get('metadata', {})
+        if not isinstance(metadata, dict):
+            metadata = {}
 
         # Validate required fields
         if not report_type:
@@ -91,34 +136,23 @@ def export_init(request):
         # - PRO: ✅ (clean exports)
         # - EXPIRED: PDF with watermark only, no Word/Excel
         
-        user = request.user
-        add_watermark = False
-        
-        if user.subscription_status == 'TRIAL':
-            return JsonResponse({
-                'success': False,
-                'error': 'Fitur export tersedia setelah Anda upgrade ke Pro. Trial tidak termasuk fitur export.',
-                'code': 'TRIAL_NO_EXPORT',
-                'upgrade_url': '/subscriptions/pricing/'
-            }, status=403)
-        
-        if not user.is_pro_active:
-            # EXPIRED user
-            if format_type in ['word', 'xlsx']:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Export Word dan Excel hanya tersedia untuk pengguna Pro. Silakan upgrade langganan Anda.',
-                    'code': 'PRO_REQUIRED',
-                    'subscription_status': user.subscription_status,
-                    'upgrade_url': '/subscriptions/pricing/'
-                }, status=403)
-            # PDF allowed but with watermark
-            add_watermark = True
+        access_error = _enforce_export_tier(
+            request=request,
+            format_type=format_type,
+            metadata=metadata,
+        )
+        if access_error:
+            return access_error
 
-        # Add watermark flag to metadata for PDF generation
-        if add_watermark:
-            metadata['add_watermark'] = True
-            metadata['watermark_text'] = 'DEMO - Dashboard-RAB'
+        # Optional metadata.projectId must belong to current user.
+        project_id = metadata.get('projectId')
+        if project_id is not None:
+            try:
+                project_id = int(project_id)
+            except (TypeError, ValueError):
+                return JsonResponse({'error': 'Invalid metadata.projectId'}, status=400)
+            _owner_project_or_404(project_id, request.user)
+            metadata['projectId'] = project_id
 
         # Create export session
         session = ExportSession.objects.create(
@@ -140,13 +174,16 @@ def export_init(request):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
+    except Http404:
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
     except Exception as e:
         logger.error(f"Error in export_init: {str(e)}", exc_info=True)
         return JsonResponse({'error': 'Internal server error'}, status=500)
 
 
 @login_required
-@csrf_exempt
+@api_pdf_export_allowed
 @require_http_methods(["POST"])
 def export_upload_pages(request):
     """
@@ -196,6 +233,10 @@ def export_upload_pages(request):
             export_id=export_id,
             user=request.user
         )
+
+        access_error = _enforce_export_tier(request, session.format_type)
+        if access_error:
+            return access_error
 
         # Check if session expired
         if session.is_expired:
@@ -261,7 +302,7 @@ def export_upload_pages(request):
 
 
 @login_required
-@csrf_exempt
+@api_pdf_export_allowed
 @require_http_methods(["POST"])
 def export_finalize(request):
     """
@@ -296,6 +337,17 @@ def export_finalize(request):
             export_id=export_id,
             user=request.user
         )
+
+        previous_metadata = dict(session.metadata or {})
+        access_error = _enforce_export_tier(
+            request=request,
+            format_type=session.format_type,
+            metadata=session.metadata,
+        )
+        if access_error:
+            return access_error
+        if session.metadata != previous_metadata:
+            session.save(update_fields=['metadata', 'updated_at'])
 
         # Check if session expired
         if session.is_expired:
@@ -539,8 +591,7 @@ def generate_excel_from_pages(session, pages):
             logger.info(f"[generate_excel_from_pages] projectId from metadata: {project_id}")
             
             if project_id:
-                from .models import Project
-                project = Project.objects.get(id=project_id)
+                project = _owner_project_or_404(project_id, session.user)
                 logger.info(f"[generate_excel_from_pages] Found project: {project.nama}")
                 
                 from .exports.export_manager import ExportManager
@@ -635,6 +686,7 @@ def generate_excel_from_pages(session, pages):
 # ============================================================================
 
 @login_required
+@api_pdf_export_allowed
 @require_http_methods(["GET"])
 def export_download(request, export_id):
     """
@@ -651,6 +703,10 @@ def export_download(request, export_id):
             export_id=export_id,
             user=request.user
         )
+
+        access_error = _enforce_export_tier(request, session.format_type)
+        if access_error:
+            return access_error
 
         # Check if completed
         if session.status != ExportSession.STATUS_COMPLETED:
@@ -683,6 +739,7 @@ def export_download(request, export_id):
 # ============================================================================
 
 @login_required
+@api_pdf_export_allowed
 @require_http_methods(["GET"])
 def export_status(request, export_id):
     """
@@ -706,6 +763,10 @@ def export_status(request, export_id):
             export_id=export_id,
             user=request.user
         )
+
+        access_error = _enforce_export_tier(request, session.format_type)
+        if access_error:
+            return access_error
 
         response_data = {
             'status': session.status,
@@ -734,7 +795,7 @@ def export_status(request, export_id):
 # ============================================================================
 
 @login_required
-@csrf_exempt
+@api_pdf_export_allowed
 @require_http_methods(["POST"])
 def api_start_export_async(request, project_id):
     """
@@ -755,14 +816,9 @@ def api_start_export_async(request, project_id):
         "status_url": "/api/export-status/async/abc-123-def/"
     }
     """
-    from detail_project.tasks import generate_export_async
-    from detail_project.models import Project
-    
     try:
         # Validate project access
-        project = get_object_or_404(Project, id=project_id)
-        if project.owner != request.user:
-            return JsonResponse({'error': 'Permission denied'}, status=403)
+        _owner_project_or_404(project_id, request.user)
         
         # Parse request
         data = json.loads(request.body)
@@ -784,33 +840,15 @@ def api_start_export_async(request, project_id):
         if format_type not in ['pdf', 'word']:
             return JsonResponse({'error': 'Invalid format. Must be pdf or word'}, status=400)
         
-        # ============================================================
-        # SUBSCRIPTION CHECK - Export Restrictions
-        # ============================================================
-        user = request.user
-        add_watermark = False
-        
-        if user.subscription_status == 'TRIAL':
-            return JsonResponse({
-                'success': False,
-                'error': 'Fitur export tersedia setelah Anda upgrade ke Pro. Trial tidak termasuk fitur export.',
-                'code': 'TRIAL_NO_EXPORT',
-                'upgrade_url': '/subscriptions/pricing/'
-            }, status=403)
-        
-        if not user.is_pro_active:
-            # EXPIRED user
-            if format_type == 'word':
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Export Word hanya tersedia untuk pengguna Pro. Silakan upgrade langganan Anda.',
-                    'code': 'PRO_REQUIRED',
-                    'upgrade_url': '/subscriptions/pricing/'
-                }, status=403)
-            # PDF allowed but with watermark
-            add_watermark = True
-            options['add_watermark'] = True
-            options['watermark_text'] = 'DEMO - Dashboard-RAB'
+        access_error = _enforce_export_tier(
+            request=request,
+            format_type=format_type,
+            options=options,
+        )
+        if access_error:
+            return access_error
+
+        from detail_project.tasks import generate_export_async
         
         # Start Celery task
         logger.info(
@@ -834,6 +872,9 @@ def api_start_export_async(request, project_id):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     
+    except Http404:
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
     except Exception as e:
         logger.error(f"Error starting async export: {str(e)}", exc_info=True)
         return JsonResponse({'error': 'Internal server error'}, status=500)
@@ -910,6 +951,7 @@ def api_export_status_async(request, task_id):
 
 
 @login_required
+@api_pdf_export_allowed
 @require_http_methods(["GET"])
 def api_export_download_async(request, task_id):
     """
@@ -941,6 +983,9 @@ def api_export_download_async(request, task_id):
         
         # Determine content type
         format_type = result.get('format', 'pdf')
+        access_error = _enforce_export_tier(request, format_type)
+        if access_error:
+            return access_error
         content_type = 'application/pdf' if format_type == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         
         # Return file

@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, date
 
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Sum, Q, Max
@@ -420,6 +420,9 @@ def api_assign_pekerjaan_weekly(request, project_id):
 
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    except Http404:
+        return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1001,14 +1004,10 @@ def api_reset_progress(request, project_id):
     """
     try:
         from detail_project.models import PekerjaanProgressWeekly
-        from dashboard.models import Project
         import json
 
-        # Get project
-        try:
-            project = Project.objects.get(id=project_id)
-        except Project.DoesNotExist:
-            return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
+        # Ownership check (same policy as other V2 endpoints)
+        project = _owner_or_404(project_id, request.user)
 
         # Parse request body for mode
         try:
@@ -1042,6 +1041,9 @@ def api_reset_progress(request, project_id):
             'mode': progress_mode,
             'message': f'{mode_label} progress reset to 0 for {updated_count} records'
         })
+
+    except Http404:
+        return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
 
     except Exception as e:
         import traceback

@@ -9,7 +9,7 @@ User = get_user_model()
 
 class Project(models.Model):
     # === Kolom Sistem & Identitas ===
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="projects", db_index=True)
+    owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name="projects", db_index=True)
     index_project = models.CharField(max_length=30, unique=True, editable=False, null=True, blank=True)
 
     # === 6 Kolom Wajib ===

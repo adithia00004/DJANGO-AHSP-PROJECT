@@ -9,6 +9,8 @@ from django.utils.http import urlencode
 from django.conf import settings
 from django.conf.urls.static import static
 
+from referensi.permissions import has_referensi_portal_access
+
 # Health check views
 from detail_project.views_health import (
     health_check,
@@ -21,7 +23,7 @@ from detail_project.views_health import (
 # Redirect root URL -> dashboard (jika login) atau login page
 def home_redirect(request):
     if request.user.is_authenticated:
-        if request.user.is_superuser or request.user.is_staff:
+        if has_referensi_portal_access(request.user):
             return redirect("referensi:admin_portal")
         return redirect('dashboard:dashboard')  # pastikan dashboard/urls.py punya name="dashboard"
     return redirect('account_login')
@@ -87,4 +89,3 @@ if settings.DEBUG and getattr(settings, 'SILK_ENABLED', False):
         urlpatterns = [path('silk/', include('silk.urls', namespace='silk'))] + urlpatterns
     except ImportError:
         pass
-

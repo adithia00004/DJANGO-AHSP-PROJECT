@@ -414,6 +414,8 @@
       const modal = document.getElementById('importProjectModal');
       const fileInput = document.getElementById('importFile');
       const progressCheckbox = document.getElementById('importProgress');
+      const importProjectUrl = "{% url 'detail_project:import_project_from_json' %}";
+      const listPekerjaanUrlTemplate = "{% url 'detail_project:list_pekerjaan' 999999 %}";
 
       // Reset modal state when it's closed
       modal.addEventListener('hidden.bs.modal', function () {
@@ -446,7 +448,7 @@
         const formData = new FormData(form);
 
         try {
-          const response = await fetch('/detail_project/api/project/import/json/', {
+          const response = await fetch(importProjectUrl, {
             method: 'POST',
             body: formData,
             headers: {
@@ -471,7 +473,7 @@
                 Harga Items: ${data.stats?.harga_items || 0}
               </div>
               <div class="d-flex gap-2 justify-content-center">
-                <a href="/detail_project/${data.project_id}/list-pekerjaan/" class="btn btn-primary">
+                <a href="${listPekerjaanUrlTemplate.replace('999999', data.project_id)}" class="btn btn-primary">
                   <i class="fas fa-folder-open"></i> Buka Project
                 </a>
                 <button type="button" class="btn btn-outline-secondary" onclick="location.reload()">

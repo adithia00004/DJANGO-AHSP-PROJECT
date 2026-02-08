@@ -11,6 +11,8 @@ venv/
 
 # Django (local DB)
 *.sqlite3
+test_db.sqlite3
+test_pytest_db.sqlite3
 local_settings.py
 
 # Test & tooling caches
@@ -27,28 +29,24 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+nul
+NUL
 
 # Collected static/media (jika dipakai)
 staticfiles/
 media/
 
-# Local backups
+# Local backups and artifacts
 backups/
-cleanup_archive/
-
-NUL
-localhost*.pem
-# dev artifacts
+dump.rdb
 runserver.log
 *.log
-__pycache__/
-*.pyc
-
-
-*.map__pycache__/
-*.pyc
-dump.rdb
-test_db.sqlite3
+localhost*.pem
+cleanup_archive/root/backup_full_data.json
+cleanup_archive/root/local_full_backup.dump
+cleanup_archive/root/local_full_backup.sql
+cleanup_archive/root/dump/**/*.csv
+cleanup_archive/root/load_testing/hasil_test_*.csv
 
 # Docker
 *.dockerfile
@@ -70,6 +68,11 @@ logs_volume/
 .env.docker
 .env.production
 .env.staging
-test_pytest_db.sqlite3
-node_modules
-node_modules
+
+# Node
+node_modules/
+
+# Local private credential vault (never commit real values)
+SECRETS_LOCAL.md
+SECRETS_PROPOSED_REVIEW.md
+secrets_local/

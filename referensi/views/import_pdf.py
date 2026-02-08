@@ -13,11 +13,12 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 
 from referensi.models_staging import AHSPImportStaging
+from referensi.permissions import has_referensi_import_access
 
 
 def is_admin(user):
-    """Check if user is admin/staff."""
-    return user.is_staff or user.is_superuser
+    """Backward-compatible gate for import endpoints."""
+    return has_referensi_import_access(user)
 
 
 @login_required

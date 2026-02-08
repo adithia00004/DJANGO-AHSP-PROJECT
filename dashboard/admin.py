@@ -73,6 +73,13 @@ class ProjectAdmin(admin.ModelAdmin):
     # Items per page
     list_per_page = 25
 
+    def has_delete_permission(self, request, obj=None):
+        """
+        Enforce retention policy: project deletion is soft-delete only via `is_active`.
+        Hard delete from admin is disabled to prevent accidental cascade data loss.
+        """
+        return False
+
     # Fieldsets for organized form
     fieldsets = (
         ('Identitas Project', {

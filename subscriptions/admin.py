@@ -1,12 +1,34 @@
 from django.contrib import admin
-from .models import SubscriptionPlan, PaymentTransaction
+from .models import (
+    PaymentTransaction,
+    PlanFeatureEntitlement,
+    SubscriptionFeature,
+    SubscriptionPlan,
+)
 
 
 @admin.register(SubscriptionPlan)
 class SubscriptionPlanAdmin(admin.ModelAdmin):
-    list_display = ['name', 'duration_months', 'price', 'is_active']
+    list_display = ['name', 'duration_months', 'price', 'is_active', 'entitlement_count']
     list_filter = ['is_active', 'duration_months']
     search_fields = ['name']
+
+    def entitlement_count(self, obj):
+        return obj.feature_entitlements.count()
+
+
+@admin.register(SubscriptionFeature)
+class SubscriptionFeatureAdmin(admin.ModelAdmin):
+    list_display = ["code", "name", "is_active"]
+    list_filter = ["is_active"]
+    search_fields = ["code", "name"]
+
+
+@admin.register(PlanFeatureEntitlement)
+class PlanFeatureEntitlementAdmin(admin.ModelAdmin):
+    list_display = ["feature", "subscription_status", "plan", "access_level", "note"]
+    list_filter = ["subscription_status", "access_level", "plan", "feature"]
+    search_fields = ["feature__code", "feature__name", "plan__name", "note"]
 
 
 @admin.register(PaymentTransaction)

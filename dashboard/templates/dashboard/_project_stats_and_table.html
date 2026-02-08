@@ -267,7 +267,7 @@
               class="btn btn-sm btn-outline-warning" title="Edit Project" aria-label="Edit Project">
               <i class="fas fa-edit"></i>
             </a>
-            <a href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/?include_progress=1"
+            <a href="{% url 'detail_project:export_project_full_json' project.pk %}?include_progress=1"
               class="btn btn-sm btn-outline-info" title="Export Project (JSON)" aria-label="Export Project (JSON)"
               download>
               <i class="fas fa-download"></i>
@@ -434,7 +434,7 @@
           class="btn btn-sm btn-outline-warning" title="Edit Project" aria-label="Edit Project">
           <i class="fas fa-edit"></i>
         </a>
-        <a href="/detail_project/api/project/{{ project.pk }}/export/full-backup/json/?include_progress=1"
+        <a href="{% url 'detail_project:export_project_full_json' project.pk %}?include_progress=1"
           class="btn btn-sm btn-outline-info" title="Export Project (JSON)" aria-label="Export Project (JSON)" download>
           <i class="fas fa-download"></i>
         </a>

@@ -76,11 +76,7 @@
 
   const varTable = document.getElementById('vp-var-table');
   const btnVarAdd = document.getElementById('vp-var-add');
-  const btnVarImportBtn = document.getElementById('vp-var-import-btn');
-  const btnVarExportBtn = document.getElementById('vp-var-export-btn');
   const fileVarImport = document.getElementById('vp-var-import');
-  // Overlay sidebar (pengganti offcanvas)
-  const sidebarEl = document.getElementById('vp-sidebar');
 
   const searchInput = document.getElementById('vp-search');
   const searchDrop = document.getElementById('vp-search-results');
@@ -375,13 +371,6 @@
     const n = Number(s);
     return Number.isFinite(n) ? n : '';
   }
-
-  function parseNumberOrEmpty(val) {
-    const s = normalizeLocaleNumericString(val);
-    if (!s) return '';
-    const n = Number(s);
-    return Number.isFinite(n) ? n : '';
-  }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
@@ -391,7 +380,6 @@
     if (btnSave) btnSave.disabled = !dirty;
     window.__vpDirty = dirty;
   }
-
 
   // ===== Search Index & UI =====
   let searchIndex = []; // {type, id, label, el}
@@ -1643,7 +1631,6 @@
     });
   })();
 
-
   // ===== Build table dari tree
   async function enhanceWithGroups() {
     try {
@@ -1763,7 +1750,6 @@
       }
       rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
       rows.forEach(tr => bindRow(tr));
-
 
       // 3) Ambil formula state dari server; kalau error → pakai localStorage
       let serverFormula = null;
@@ -2163,7 +2149,6 @@
     } catch { return {}; }
   }
   function saveFormulas(map) { localStorage.setItem(storageKeyForms(), JSON.stringify(map)); }
-
 
   // ==== Init: load variables, render table, bind baris existing (SSR)
   loadVars();

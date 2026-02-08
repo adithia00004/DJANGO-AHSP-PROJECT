@@ -11,6 +11,13 @@ from functools import wraps
 from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import redirect
+from subscriptions.entitlements import (
+    FEATURE_EXPORT_EXCEL_WORD,
+    FEATURE_EXPORT_PDF,
+    FEATURE_PRO_ONLY,
+    FEATURE_WRITE_ACCESS,
+    get_feature_access,
+)
 
 
 class SubscriptionRequiredMixin:
@@ -29,16 +36,12 @@ class SubscriptionRequiredMixin:
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect('account_login')
-        
-        # Admin keypass bypass
-        if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-            return super().dispatch(request, *args, **kwargs)
-        
-        # Check if user has active subscription
-        if not request.user.is_subscription_active:
+
+        decision = get_feature_access(request.user, FEATURE_WRITE_ACCESS)
+        if not decision.allowed:
             messages.warning(request, self.subscription_message)
             return redirect(self.subscription_redirect_url)
-        
+
         return super().dispatch(request, *args, **kwargs)
 
 
@@ -53,16 +56,12 @@ class ProSubscriptionRequiredMixin(SubscriptionRequiredMixin):
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect('account_login')
-        
-        # Admin keypass bypass
-        if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-            return super(SubscriptionRequiredMixin, self).dispatch(request, *args, **kwargs)
-        
-        # Only allow PRO users
-        if not request.user.is_pro_active:
+
+        decision = get_feature_access(request.user, FEATURE_PRO_ONLY)
+        if not decision.allowed:
             messages.warning(request, self.subscription_message)
             return redirect(self.subscription_redirect_url)
-        
+
         return super(SubscriptionRequiredMixin, self).dispatch(request, *args, **kwargs)
 
 
@@ -84,18 +83,15 @@ def subscription_required(view_func=None, redirect_url='pages:pricing'):
         def wrapper(request, *args, **kwargs):
             if not request.user.is_authenticated:
                 return redirect('account_login')
-            
-            # Admin keypass bypass
-            if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-                return view_func(request, *args, **kwargs)
-            
-            if not request.user.is_subscription_active:
+
+            decision = get_feature_access(request.user, FEATURE_WRITE_ACCESS)
+            if not decision.allowed:
                 messages.warning(
                     request,
                     "Langganan Anda telah berakhir. Silakan upgrade untuk melanjutkan."
                 )
                 return redirect(redirect_url)
-            
+
             return view_func(request, *args, **kwargs)
         return wrapper
     
@@ -118,18 +114,15 @@ def pro_subscription_required(view_func=None, redirect_url='pages:pricing'):
         def wrapper(request, *args, **kwargs):
             if not request.user.is_authenticated:
                 return redirect('account_login')
-            
-            # Admin keypass bypass
-            if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-                return view_func(request, *args, **kwargs)
-            
-            if not request.user.is_pro_active:
+
+            decision = get_feature_access(request.user, FEATURE_PRO_ONLY)
+            if not decision.allowed:
                 messages.warning(
                     request,
                     "Fitur ini hanya tersedia untuk pengguna Pro."
                 )
                 return redirect(redirect_url)
-            
+
             return view_func(request, *args, **kwargs)
         return wrapper
     
@@ -156,19 +149,16 @@ def api_subscription_required(view_func):
                 'error': 'Authentication required',
                 'code': 'AUTH_REQUIRED'
             }, status=401)
-        
-        # Admin keypass bypass
-        if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-            return view_func(request, *args, **kwargs)
-        
-        if not request.user.is_subscription_active:
+
+        decision = get_feature_access(request.user, FEATURE_WRITE_ACCESS)
+        if not decision.allowed:
             return JsonResponse({
                 'success': False,
-                'error': 'Langganan Anda telah berakhir. Silakan upgrade untuk melanjutkan.',
-                'code': 'SUBSCRIPTION_EXPIRED',
-                'upgrade_url': '/pricing/'
+                'error': decision.message,
+                'code': decision.code,
+                'upgrade_url': decision.upgrade_url,
             }, status=403)
-        
+
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -191,19 +181,16 @@ def api_pro_required(view_func):
                 'error': 'Authentication required',
                 'code': 'AUTH_REQUIRED'
             }, status=401)
-        
-        # Admin keypass bypass
-        if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-            return view_func(request, *args, **kwargs)
-        
-        if not request.user.is_pro_active:
+
+        decision = get_feature_access(request.user, FEATURE_PRO_ONLY)
+        if not decision.allowed:
             return JsonResponse({
                 'success': False,
-                'error': 'Fitur ini hanya tersedia untuk pengguna Pro.',
-                'code': 'PRO_REQUIRED',
-                'upgrade_url': '/pricing/'
+                'error': decision.message,
+                'code': decision.code,
+                'upgrade_url': decision.upgrade_url,
             }, status=403)
-        
+
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -235,20 +222,17 @@ def api_export_excel_word_required(view_func):
                 'error': 'Silakan login terlebih dahulu.',
                 'code': 'AUTH_REQUIRED'
             }, status=401)
-        
-        # Admin keypass bypass
-        if hasattr(request.user, 'has_full_access') and request.user.has_full_access:
-            return view_func(request, *args, **kwargs)
-        
-        if not request.user.is_pro_active:
+
+        decision = get_feature_access(request.user, FEATURE_EXPORT_EXCEL_WORD)
+        if not decision.allowed:
             return JsonResponse({
                 'success': False,
-                'error': 'Export Excel dan Word hanya tersedia untuk pengguna Pro. Silakan upgrade langganan Anda.',
-                'code': 'PRO_REQUIRED',
+                'error': decision.message,
+                'code': decision.code,
                 'subscription_status': request.user.subscription_status,
-                'upgrade_url': '/subscriptions/pricing/'
+                'upgrade_url': decision.upgrade_url,
             }, status=403)
-        
+
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -274,54 +258,23 @@ def get_pdf_export_context(request):
         if ctx['add_watermark']:
             # Add watermark logic
     """
-    if not request.user.is_authenticated:
+    decision = get_feature_access(request.user, FEATURE_EXPORT_PDF)
+    if not decision.allowed:
         return {
             'blocked': True,
             'response': JsonResponse({
                 'success': False,
-                'error': 'Silakan login terlebih dahulu.',
-                'code': 'AUTH_REQUIRED'
-            }, status=401)
+                'error': decision.message,
+                'code': decision.code,
+                'upgrade_url': decision.upgrade_url,
+            }, status=403 if decision.code != 'AUTH_REQUIRED' else 401)
         }
-    
-    user = request.user
-    
-    # Admin keypass bypass - treat as PRO
-    if hasattr(user, 'has_full_access') and user.has_full_access:
-        return {
-            'blocked': False,
-            'add_watermark': False,
-            'watermark_text': None,
-            'is_pro': True
-        }
-    
-    # TRIAL users cannot export PDF at all (per feature matrix)
-    if user.subscription_status == 'TRIAL':
-        return {
-            'blocked': True,
-            'response': JsonResponse({
-                'success': False,
-                'error': 'Export PDF tersedia setelah Anda upgrade ke Pro. Trial tidak termasuk fitur export.',
-                'code': 'TRIAL_NO_EXPORT',
-                'upgrade_url': '/subscriptions/pricing/'
-            }, status=403)
-        }
-    
-    # PRO users get clean PDF
-    if user.is_pro_active:
-        return {
-            'blocked': False,
-            'add_watermark': False,
-            'watermark_text': None,
-            'is_pro': True
-        }
-    
-    # EXPIRED users get watermarked PDF
+
     return {
         'blocked': False,
-        'add_watermark': True,
-        'watermark_text': 'DEMO - Dashboard-RAB',
-        'is_pro': False
+        'add_watermark': decision.add_watermark,
+        'watermark_text': 'DEMO - Dashboard-RAB' if decision.add_watermark else None,
+        'is_pro': not decision.add_watermark,
     }
 
 

@@ -5,9 +5,11 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
+from referensi.permissions import has_referensi_portal_access
+
 
 class AccountAdapter(DefaultAccountAdapter):
-    """Custom login redirect behavior for admin vs regular users."""
+    """Custom login redirect behavior based on explicit access permissions."""
 
     def get_login_redirect_url(self, request):  # type: ignore[override]
         """Respect explicit ?next=... but default staff to admin portal."""
@@ -23,9 +25,7 @@ class AccountAdapter(DefaultAccountAdapter):
             return next_url
 
         user = getattr(request, "user", None)
-        if user is not None and user.is_authenticated and (
-            user.is_superuser or getattr(user, "is_staff", False)
-        ):
+        if user is not None and has_referensi_portal_access(user):
             return reverse("referensi:admin_portal")
 
         return super().get_login_redirect_url(request)

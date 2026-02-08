@@ -3,6 +3,19 @@ set -e
 
 echo "Starting Django AHSP Application..."
 
+# Production startup guard:
+# Fail fast if production environment is misconfigured.
+if [ "$DJANGO_ENV" = "production" ] || [ "$DJANGO_ENV" = "prod" ]; then
+  echo "Running production startup guard..."
+  python manage.py check --settings=config.settings.production
+  python manage.py shell --settings=config.settings.production << 'END'
+from django.conf import settings
+if settings.DEBUG:
+    raise RuntimeError("Production guard failed: DEBUG must be False.")
+print("Production guard passed: DEBUG=False")
+END
+fi
+
 # Wait for database to be ready
 echo "Waiting for PostgreSQL..."
 while ! pg_isready -h $POSTGRES_HOST -p $POSTGRES_PORT -U postgres; do
