@@ -1378,6 +1378,29 @@ body.lp-overlay-open {
   transition: background-color 0.2s ease, outline 0.2s ease;
 }
 
+/* Hierarchy drag handle (Klasifikasi/Sub-Klasifikasi) */
+#klas-list .lp-drag-handle {
+  cursor: grab;
+}
+
+#klas-list .lp-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Klasifikasi/Sub card dragging states */
+#klas-list .lp-klas-card.lp-klas-dragging,
+#klas-list .lp-sub-card.lp-sub-dragging {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+/* Active hierarchy drop container */
+#klas-list .lp-hierarchy-drag-over {
+  outline: 2px dashed var(--bs-primary, #0d6efd);
+  outline-offset: -2px;
+  background-color: rgba(13, 110, 253, 0.06);
+}
+
 /* =====================================================================
    BORDER ENHANCEMENT - Proportional Border Visibility
    =====================================================================

@@ -157,6 +157,21 @@
   box-shadow: var(--dp-shadow-sm);
 }
 
+/* Manual quantity column width control */
+.vp-col-width-control {
+  border-radius: var(--dp-radius-md, 6px);
+  overflow: hidden;
+}
+
+.vp-col-width-control .btn {
+  box-shadow: none !important;
+}
+
+#vp-col-width-label {
+  min-width: 4.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Dropdown animation (matches Harga Items) */
 #vp-toolbar .dropdown-menu {
   background: var(--dp-c-bg);
@@ -409,6 +424,13 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown {
   font-family: var(--bs-font-monospace, monospace);
 }
 
+.vp-cell .fx-editor-open {
+  white-space: nowrap;
+  font-size: var(--ux-font-xs);
+  min-width: 2rem;
+  padding-inline: .45rem;
+}
+
 .vp-cell .fx-preview {
   position: static;
   display: block;
@@ -431,6 +453,64 @@ body[data-page="volume_pekerjaan"] .select2-container--open .select2-dropdown {
 .vp-cell .form-control {
   min-width: 14rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Detached formula editor modal */
+#vpFormulaEditorModal .modal-dialog {
+  max-width: min(96vw, 1200px);
+}
+
+#vpFormulaEditorModal .vp-formula-editor-content {
+  display: flex;
+  flex-direction: column;
+  min-height: min(80vh, 820px);
+}
+
+#vpFormulaEditorModal .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  min-height: 0;
+}
+
+#vpFormulaEditorModal .vp-fe-input-wrap {
+  position: relative;
+  min-height: 0;
+}
+
+#vpFormulaEditorModal #vp-fe-input {
+  min-height: 40vh;
+  resize: vertical;
+  font-family: var(--bs-font-monospace, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#vpFormulaEditorModal .modal-dialog.vp-formula-editor-fullscreen {
+  margin: 0;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+}
+
+#vpFormulaEditorModal .modal-dialog.vp-formula-editor-fullscreen .modal-content {
+  height: 100dvh;
+  border-radius: 0;
+}
+
+#vpFormulaEditorModal .modal-dialog.vp-formula-editor-fullscreen .modal-body {
+  flex: 1;
+}
+
+#vpFormulaEditorModal .modal-dialog.vp-formula-editor-fullscreen #vp-fe-input {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Empty quantity highlight */
@@ -460,6 +540,9 @@ body[data-page="volume_pekerjaan"] {
   top: calc(var(--dp-topbar-h) + 8px);
   bottom: 12px;
   left: auto;
+  height: calc(100vh - var(--dp-topbar-h) - 20px);
+  height: calc(100dvh - var(--dp-topbar-h) - 20px);
+  max-height: calc(100dvh - var(--dp-topbar-h) - 20px);
   width: clamp(360px, var(--lp-sidebar-w), 640px);
   display: none;
   background: var(--dp-c-bg);
@@ -488,8 +571,16 @@ body[data-page="volume_pekerjaan"] {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   height: 100%;
+  max-height: 100%;
+  width: 100%;
+  max-width: 100%;
   position: relative;
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: 0;
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -548,8 +639,7 @@ body[data-page="volume_pekerjaan"] {
   flex: 1;
   min-height: 0;
   /* Critical for flex child overflow */
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   padding: .4rem .6rem;
   background: var(--dp-c-surface);
   display: flex;
@@ -558,28 +648,51 @@ body[data-page="volume_pekerjaan"] {
 }
 
 /* Hint text - compact */
-#vp-sidebar .dp-sidebar-body>.d-flex:first-child small {
-  font-size: .65rem;
+#vp-sidebar .vp-mini-hint {
+  font-size: .7rem;
   color: var(--dp-c-muted);
   background: var(--dp-c-surface-2);
-  padding: .2rem .4rem;
-  border-radius: 3px;
-  border-left: 2px solid var(--dp-c-info, #0dcaf0);
+  border: 1px solid var(--dp-c-border);
+  border-left: 3px solid var(--dp-c-info, #0dcaf0);
+  border-radius: 6px;
+  padding: .25rem .45rem;
   line-height: 1.3;
 }
 
-#vp-sidebar .dp-sidebar-body>.d-flex:first-child code {
-  font-size: .6rem;
+#vp-sidebar .vp-mini-hint code {
+  font-size: .65rem;
   background: var(--dp-c-bg);
-  padding: .1rem .25rem;
-  border-radius: 2px;
+  color: var(--dp-c-text);
+  padding: .08rem .28rem;
+  border-radius: 3px;
+}
+
+/* Toolbar parameter */
+#vp-sidebar .vp-param-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .45rem;
+  flex-wrap: wrap;
+  padding: .25rem .1rem;
+}
+
+#vp-sidebar .vp-param-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 /* Add Parameter button - compact */
 #vp-var-add {
-  font-size: .7rem;
-  padding: .2rem .4rem;
+  font-size: .72rem;
+  padding: .24rem .46rem;
   border-radius: var(--dp-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
 }
 
 #vp-var-add:hover {
@@ -592,7 +705,7 @@ body[data-page="volume_pekerjaan"] {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin-top: .25rem !important;
+  margin-top: 0 !important;
 }
 
 #vp-var-table {
@@ -656,16 +769,10 @@ body[data-page="volume_pekerjaan"] {
   border-radius: var(--dp-radius-sm);
 }
 
-/* ===== ACTION BAR (Import/Export/Template) ===== */
-#vp-sidebar .dp-sidebar-body>div:last-of-type {
-  margin-top: .5rem;
-  padding-top: .5rem;
-  border-top: 1px solid var(--dp-c-border);
-}
-
-#vp-sidebar .dp-sidebar-body .btn-outline-secondary {
+/* ===== ACTIONS (Import/Export/Template) ===== */
+#vp-sidebar .vp-param-tools .btn-outline-secondary {
   font-size: var(--ux-font-2xs, 0.7rem);
-  padding: .25rem .4rem;
+  padding: .24rem .42rem;
   border-radius: var(--dp-radius-sm);
   transition: all 0.2s ease;
   display: inline-flex;
@@ -673,7 +780,7 @@ body[data-page="volume_pekerjaan"] {
   gap: .25rem;
 }
 
-#vp-sidebar .dp-sidebar-body .btn-outline-secondary:hover {
+#vp-sidebar .vp-param-tools .btn-outline-secondary:hover {
   transform: translateY(-1px);
   box-shadow: var(--dp-shadow-sm);
 }

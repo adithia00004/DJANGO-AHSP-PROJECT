@@ -30,6 +30,14 @@
   // Debounce autosave (ms)
   const AUTOSAVE_MS = Number(root.dataset.autosaveMs || 30000);
 
+  // Quantity column width (manual, persisted per-project)
+  const QTY_COL_W_DEFAULT_CH = 48;
+  const QTY_COL_W_MIN_CH = 28;
+  const QTY_COL_W_MAX_CH = 96;
+  const QTY_COL_W_STEP_CH = 4;
+  const QTY_COL_W_STORAGE_KEY = `vp_qty_col_w:${projectId}`;
+  let qtyColWidthCh = QTY_COL_W_DEFAULT_CH;
+
   // ---- State in-memory (global selector agar mendukung multi-tabel/di dalam card)
   let rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
   const originalValueById = {}; // nilai tersimpan di server (baseline)
@@ -42,6 +50,8 @@
   let autosaveTimer = null;
   let saving = false;
   let allowUnload = false;
+  let formulaEditorModal = null;
+  let formulaEditorContext = null; // { id, tr, input, preview, fxBtn }
 
   // Undo stack (batch autosave/simpan terakhir)
   const undoStack = []; // item: { ts, changes:[{id,before,after}] }
@@ -77,10 +87,70 @@
   const varTable = document.getElementById('vp-var-table');
   const btnVarAdd = document.getElementById('vp-var-add');
   const fileVarImport = document.getElementById('vp-var-import');
+  const formulaEditorModalEl = document.getElementById('vpFormulaEditorModal');
+  const formulaEditorDialogEl = formulaEditorModalEl ? formulaEditorModalEl.querySelector('.modal-dialog') : null;
+  const formulaEditorMetaEl = document.getElementById('vp-fe-meta');
+  const formulaEditorInputEl = document.getElementById('vp-fe-input');
+  const formulaEditorPreviewEl = document.getElementById('vp-fe-preview');
+  const formulaEditorApplyBtn = document.getElementById('vp-fe-apply');
+  const formulaEditorFullscreenBtn = document.getElementById('vp-fe-toggle-fullscreen');
 
   const searchInput = document.getElementById('vp-search');
   const searchDrop = document.getElementById('vp-search-results');
   const prefixBadge = document.getElementById('vp-search-prefix-badge');
+  const btnColNarrow = document.getElementById('vp-col-narrow');
+  const btnColWider = document.getElementById('vp-col-wider');
+  const btnColReset = document.getElementById('vp-col-reset');
+  const colWidthLabel = document.getElementById('vp-col-width-label');
+
+  function clampQtyColWidth(ch) {
+    const n = Number(ch);
+    if (!Number.isFinite(n)) return QTY_COL_W_DEFAULT_CH;
+    return Math.max(QTY_COL_W_MIN_CH, Math.min(QTY_COL_W_MAX_CH, Math.round(n)));
+  }
+  function loadQtyColWidth() {
+    try {
+      const raw = localStorage.getItem(QTY_COL_W_STORAGE_KEY);
+      if (raw == null) return QTY_COL_W_DEFAULT_CH;
+      return clampQtyColWidth(raw);
+    } catch {
+      return QTY_COL_W_DEFAULT_CH;
+    }
+  }
+  function applyQtyColWidth(ch, { persist = false } = {}) {
+    qtyColWidthCh = clampQtyColWidth(ch);
+    const widthCss = `${qtyColWidthCh}ch`;
+    root.style.setProperty('--vp-qty-col-w', widthCss);
+
+    // Apply to current rendered table(s)
+    document.querySelectorAll('#vp-table .vp-table col.col-qty, #vp-table > colgroup > col.col-qty')
+      .forEach((col) => { col.style.width = widthCss; });
+
+    if (colWidthLabel) colWidthLabel.textContent = widthCss;
+    if (persist) {
+      try { localStorage.setItem(QTY_COL_W_STORAGE_KEY, String(qtyColWidthCh)); } catch { }
+    }
+  }
+  function initQtyColWidthControl() {
+    qtyColWidthCh = loadQtyColWidth();
+    applyQtyColWidth(qtyColWidthCh, { persist: false });
+
+    if (btnColNarrow && !btnColNarrow.dataset.bound) {
+      btnColNarrow.addEventListener('click', () => applyQtyColWidth(qtyColWidthCh - QTY_COL_W_STEP_CH, { persist: true }));
+      btnColNarrow.dataset.bound = '1';
+    }
+    if (btnColWider && !btnColWider.dataset.bound) {
+      btnColWider.addEventListener('click', () => applyQtyColWidth(qtyColWidthCh + QTY_COL_W_STEP_CH, { persist: true }));
+      btnColWider.dataset.bound = '1';
+    }
+    if (btnColReset && !btnColReset.dataset.bound) {
+      btnColReset.addEventListener('click', () => applyQtyColWidth(QTY_COL_W_DEFAULT_CH, { persist: true }));
+      btnColReset.dataset.bound = '1';
+    }
+  }
+
+  // Init manual width control as early as possible so first render follows user preference.
+  initQtyColWidthControl();
 
   // Reposition dropdown to always appear below toolbar and not cover the input
   function positionSearchDropdown() {
@@ -785,15 +855,15 @@
     const lis = state.ul.querySelectorAll('li');
     lis.forEach((li, i) => li.classList.toggle('active', i === state.activeIdx));
   }
-  function applyActiveSuggestion(inputEl) {
+  function applyActiveSuggestion(inputEl, opts = {}) {
     const state = suggestState.get(inputEl);
     if (!state || state.activeIdx < 0) return false;
     const it = state.items[state.activeIdx];
     if (!it) return false;
-    applySuggestion(inputEl, it.name);
+    applySuggestion(inputEl, it.name, opts);
     return true;
   }
-  function applySuggestion(inputEl, varCode) {
+  function applySuggestion(inputEl, varCode, opts = {}) {
     const value = String(inputEl.value || '');
     const caret = inputEl.selectionStart ?? value.length;
     const idf = getCaretIdentifier(inputEl);
@@ -804,10 +874,22 @@
     inputEl.value = ensureEq + before + varCode + after;
     const pos = (ensureEq ? 1 : 0) + before.length + varCode.length;
     inputEl.setSelectionRange(pos, pos);
+    if (typeof opts.onAfterInsert === 'function') {
+      opts.onAfterInsert();
+      hideSuggest(inputEl);
+      return;
+    }
+    const id = Number(opts.id);
+    if (Number.isFinite(id) && opts.previewEl) {
+      handleInputChange(id, inputEl, opts.previewEl, false);
+      hideSuggest(inputEl);
+      return;
+    }
     const tr = inputEl.closest('tr');
-    const id = parseInt(tr.dataset.pekerjaanId, 10);
+    if (!tr) { hideSuggest(inputEl); return; }
+    const rowId = parseInt(tr.dataset.pekerjaanId, 10);
     const preview = tr.querySelector('.fx-preview');
-    handleInputChange(id, inputEl, preview, false);
+    handleInputChange(rowId, inputEl, preview, false);
     hideSuggest(inputEl);
   }
   function updateSuggestions(inputEl, id) {
@@ -824,9 +906,33 @@
     let items = itemsAll;
     if (idf) {
       const q = idf.word.toLowerCase();
-      items = itemsAll.filter(it => it.name.toLowerCase().startsWith(q));
+      const scored = itemsAll.map((it) => {
+        const name = String(it.name || '').toLowerCase();
+        const label = String(it.label || '').toLowerCase();
+        let score = -1;
+
+        if (!q) score = 0;
+        else if (name === q) score = 1200;
+        else if (label === q) score = 1100;
+        else if (name.startsWith(q)) score = 1000;
+        else if (label.startsWith(q)) score = 900;
+        else {
+          const nameIdx = name.indexOf(q);
+          const labelIdx = label.indexOf(q);
+          if (nameIdx >= 0) score = 800 - Math.min(nameIdx, 200);
+          else if (labelIdx >= 0) score = 700 - Math.min(labelIdx, 200);
+        }
+        return { ...it, _score: score };
+      }).filter((it) => it._score >= 0);
+
+      scored.sort((a, b) => {
+        if (b._score !== a._score) return b._score - a._score;
+        return (varLabels[a.name] || a.name).localeCompare((varLabels[b.name] || b.name), 'id');
+      });
+      items = scored.map(({ _score, ...rest }) => rest);
+    } else {
+      items.sort((a, b) => (varLabels[a.name] || a.name).localeCompare(varLabels[b.name] || b.name, 'id'));
     }
-    items.sort((a, b) => (varLabels[a.name] || a.name).localeCompare(varLabels[b.name] || b.name, 'id'));
     showSuggest(inputEl, items);
   }
 
@@ -862,6 +968,202 @@
     if (tgt) { tgt.focus(); try { tgt.select(); } catch { } }
   }
 
+  function setFxState(id, fxBtn, nextState) {
+    const on = !!nextState;
+    fxModeById[id] = on;
+    if (!fxBtn) return;
+    fxBtn.setAttribute('aria-pressed', String(on));
+    fxBtn.classList.toggle('active', on);
+  }
+
+  function ensureFormulaEditorModal() {
+    if (!formulaEditorModalEl || !window.bootstrap) return null;
+    if (!formulaEditorModal) {
+      formulaEditorModal = bootstrap.Modal.getOrCreateInstance(formulaEditorModalEl);
+    }
+    return formulaEditorModal;
+  }
+
+  function updateFormulaEditorFullscreenButton() {
+    if (!formulaEditorFullscreenBtn || !formulaEditorDialogEl) return;
+    const isFull = formulaEditorDialogEl.classList.contains('vp-formula-editor-fullscreen');
+    formulaEditorFullscreenBtn.setAttribute('aria-pressed', String(isFull));
+    formulaEditorFullscreenBtn.innerHTML = isFull
+      ? '<i class="bi bi-fullscreen-exit me-1"></i><span class="d-none d-sm-inline">Exit</span>'
+      : '<i class="bi bi-arrows-fullscreen me-1"></i><span class="d-none d-sm-inline">Fullscreen</span>';
+  }
+
+  function getRowUraianText(tr) {
+    if (!tr) return '';
+    const uraianTd = tr.querySelector('td.text-wrap');
+    return String(uraianTd?.textContent || '').trim();
+  }
+
+  function updateFormulaEditorPreview() {
+    if (!formulaEditorContext || !formulaEditorPreviewEl || !formulaEditorInputEl) return;
+
+    const { id } = formulaEditorContext;
+    const raw = String(formulaEditorInputEl.value || '');
+    const trimmed = raw.trim();
+
+    formulaEditorPreviewEl.classList.remove('text-danger', 'text-success', 'text-muted');
+
+    if (!trimmed) {
+      formulaEditorPreviewEl.classList.add('text-muted');
+      formulaEditorPreviewEl.textContent = 'Formula kosong.';
+      return;
+    }
+
+    const isFx = !!fxModeById[id] || trimmed.startsWith('=');
+    if (!isFx) {
+      const normalized = normQty(trimmed);
+      formulaEditorPreviewEl.classList.add('text-success');
+      formulaEditorPreviewEl.textContent = normalized ? `Nilai: ${normalized}` : 'Nilai tidak valid.';
+      return;
+    }
+
+    try {
+      if (typeof VolFormula === 'undefined' || !VolFormula.evaluate) {
+        throw new Error('Formula engine tidak tersedia');
+      }
+      const expr = trimmed.startsWith('=') ? trimmed : `=${trimmed}`;
+      let val = VolFormula.evaluate(expr, variables, { clampMinZero: true });
+      if (!Number.isFinite(val) || val < 0) val = 0;
+      const rounded = roundHalfUp(val, STORE_PLACES);
+      formulaEditorPreviewEl.classList.add('text-success');
+      formulaEditorPreviewEl.textContent = buildFormulaPreview(expr, rounded);
+    } catch (err) {
+      formulaEditorPreviewEl.classList.add('text-danger');
+      formulaEditorPreviewEl.textContent = `Error: ${err?.message || 'Formula tidak valid'}`;
+    }
+  }
+
+  function openFormulaEditorForRow(tr) {
+    if (!tr) return;
+    const id = parseInt(tr.dataset.pekerjaanId, 10);
+    if (!Number.isFinite(id)) return;
+    const input = tr.querySelector('.qty-input');
+    const preview = tr.querySelector('.fx-preview');
+    const fxBtn = tr.querySelector('.fx-toggle');
+    if (!input || !formulaEditorInputEl) return;
+
+    const modal = ensureFormulaEditorModal();
+    if (!modal) return;
+
+    formulaEditorContext = { id, tr, input, preview, fxBtn };
+    const raw = String(rawInputById[id] || input.value || '');
+    formulaEditorInputEl.value = raw;
+
+    if (formulaEditorMetaEl) {
+      const uraian = getRowUraianText(tr);
+      formulaEditorMetaEl.textContent = uraian
+        ? `Pekerjaan #${id} - ${uraian}`
+        : `Pekerjaan #${id}`;
+    }
+
+    updateFormulaEditorPreview();
+    updateSuggestions(formulaEditorInputEl, id);
+    updateFormulaEditorFullscreenButton();
+    modal.show();
+    setTimeout(() => {
+      formulaEditorInputEl.focus();
+      const len = formulaEditorInputEl.value.length;
+      formulaEditorInputEl.setSelectionRange(len, len);
+    }, 80);
+  }
+
+  function applyFormulaEditorValue() {
+    if (!formulaEditorContext || !formulaEditorInputEl) return;
+    const { id, input, preview, fxBtn } = formulaEditorContext;
+    const raw = String(formulaEditorInputEl.value || '');
+    const trimmed = raw.trim();
+
+    input.value = raw;
+    rawInputById[id] = raw;
+
+    if (!trimmed) {
+      setFxState(id, fxBtn, false);
+    } else if (trimmed.startsWith('=')) {
+      setFxState(id, fxBtn, true);
+    }
+
+    handleInputChange(id, input, preview, false);
+    persistRowFormula(id);
+    hideSuggest(formulaEditorInputEl);
+    hideSuggest(input);
+
+    const modal = ensureFormulaEditorModal();
+    modal && modal.hide();
+    input.focus();
+  }
+
+  (function installFormulaEditorEvents() {
+    if (!formulaEditorModalEl) return;
+
+    if (formulaEditorInputEl && !formulaEditorInputEl.dataset.boundEditor) {
+      formulaEditorInputEl.addEventListener('input', () => {
+        updateFormulaEditorPreview();
+        if (formulaEditorContext) updateSuggestions(formulaEditorInputEl, formulaEditorContext.id);
+      });
+      formulaEditorInputEl.addEventListener('keydown', (ev) => {
+        if (!formulaEditorContext) return;
+        const { id } = formulaEditorContext;
+        const state = suggestState.get(formulaEditorInputEl);
+        const suggestVisible = state && state.box && state.box.style.display !== 'none' && state.items.length > 0;
+
+        if ((ev.ctrlKey || ev.metaKey) && ev.code === 'Space') {
+          ev.preventDefault();
+          const cur = String(formulaEditorInputEl.value || '');
+          if (!cur.trim().startsWith('=')) formulaEditorInputEl.value = `=${cur}`;
+          updateFormulaEditorPreview();
+          updateSuggestions(formulaEditorInputEl, id);
+          return;
+        }
+
+        if (suggestVisible) {
+          if (ev.key === 'ArrowDown') { ev.preventDefault(); moveActive(formulaEditorInputEl, +1); return; }
+          if (ev.key === 'ArrowUp') { ev.preventDefault(); moveActive(formulaEditorInputEl, -1); return; }
+          if (ev.key === 'Enter') {
+            const ok = applyActiveSuggestion(formulaEditorInputEl, {
+              id,
+              onAfterInsert: () => {
+                updateFormulaEditorPreview();
+              }
+            });
+            if (ok) { ev.preventDefault(); return; }
+          }
+          if (ev.key === 'Escape') { ev.preventDefault(); hideSuggest(formulaEditorInputEl); return; }
+        }
+
+        if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+          ev.preventDefault();
+          applyFormulaEditorValue();
+        }
+      });
+      formulaEditorInputEl.addEventListener('blur', () => setTimeout(() => hideSuggest(formulaEditorInputEl), 120));
+      formulaEditorInputEl.dataset.boundEditor = '1';
+    }
+
+    if (formulaEditorApplyBtn && !formulaEditorApplyBtn.dataset.boundEditor) {
+      formulaEditorApplyBtn.addEventListener('click', applyFormulaEditorValue);
+      formulaEditorApplyBtn.dataset.boundEditor = '1';
+    }
+
+    if (formulaEditorFullscreenBtn && formulaEditorDialogEl && !formulaEditorFullscreenBtn.dataset.boundEditor) {
+      formulaEditorFullscreenBtn.addEventListener('click', () => {
+        formulaEditorDialogEl.classList.toggle('vp-formula-editor-fullscreen');
+        updateFormulaEditorFullscreenButton();
+      });
+      formulaEditorFullscreenBtn.dataset.boundEditor = '1';
+      updateFormulaEditorFullscreenButton();
+    }
+
+    formulaEditorModalEl.addEventListener('hidden.bs.modal', () => {
+      hideSuggest(formulaEditorInputEl);
+      formulaEditorContext = null;
+    });
+  })();
+
   function bindRow(tr) {
     if (tr.dataset.bound === '1') return;
     tr.dataset.bound = '1';
@@ -869,6 +1171,7 @@
     const id = parseInt(tr.dataset.pekerjaanId, 10);
     const input = tr.querySelector('.qty-input');
     const fxBtn = tr.querySelector('.fx-toggle');
+    const editorBtn = tr.querySelector('.fx-editor-open');
     const preview = tr.querySelector('.fx-preview');
 
     try { if (window.bootstrap && fxBtn) new bootstrap.Tooltip(fxBtn); } catch { }
@@ -877,11 +1180,7 @@
     const initMap = loadFormulas();
     const f = initMap[id] || {};
     if (typeof f.fx === 'boolean') {
-      fxModeById[id] = !!f.fx;
-      if (fxBtn) {
-        fxBtn.setAttribute('aria-pressed', String(!!f.fx));
-        fxBtn.classList.toggle('active', !!f.fx);
-      }
+      setFxState(id, fxBtn, !!f.fx);
     } else { fxModeById[id] = false; }
     if (typeof f.raw === 'string' && f.raw.trim() && input && !input.value) {
       rawInputById[id] = f.raw;
@@ -899,9 +1198,7 @@
 
     fxBtn && fxBtn.addEventListener('click', () => {
       const newState = !fxModeById[id];
-      fxModeById[id] = newState;
-      fxBtn.setAttribute('aria-pressed', String(newState));
-      fxBtn.classList.toggle('active', newState);
+      setFxState(id, fxBtn, newState);
       if (newState) {
         const cur = String(input.value || '').trim();
         if (!cur.startsWith('=')) input.value = '=' + cur;
@@ -914,6 +1211,9 @@
       persistRowFormula(id);
       updateSuggestions(input, id);
     });
+
+    editorBtn && editorBtn.addEventListener('click', () => openFormulaEditorForRow(tr));
+    input && input.addEventListener('dblclick', () => openFormulaEditorForRow(tr));
 
     let debTimer = null;
     input && input.addEventListener('input', () => {
@@ -960,6 +1260,12 @@
         ev.preventDefault();
         if (btnSave && !btnSave.disabled) btnSave.click();
         else scheduleAutosave(300);
+        return;
+      }
+      // Open detached editor
+      if (ev.altKey && ev.key === 'Enter') {
+        ev.preventDefault();
+        openFormulaEditorForRow(tr);
         return;
       }
       // Toggle suggestion panel
@@ -1031,6 +1337,26 @@
     const rounded = roundHalfUp(num, STORE_PLACES);
     return formatIdSmart(rounded);
   }
+  function buildFormulaPreview(exprOrRaw, resultNumber) {
+    const expr = String(exprOrRaw || '').replace(/^=/, '').trim();
+    const resultText = formatIdSmart(resultNumber);
+    if (!expr) return resultText;
+
+    // Replace known parameter codes with their current numeric values.
+    let substituted = expr.replace(/[A-Za-z_][A-Za-z0-9_]*/g, (token) => {
+      const code = String(token || '').toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(variables, code)) return token;
+      return formatIdSmart(Number(variables[code] || 0));
+    });
+
+    // Normalize spacing for readability: "2*2*3" -> "2 * 2 * 3"
+    substituted = substituted
+      .replace(/\s*([+\-*/(),])\s*/g, ' $1 ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return `${substituted} = ${resultText}`;
+  }
   function setRowDirtyVisual(id, isDirty) {
     const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
     if (!tr) return;
@@ -1055,7 +1381,11 @@
 
     inputEl.classList.remove('is-invalid', 'is-valid');
     inputEl.removeAttribute('title');
-    if (previewEl) previewEl.textContent = '';
+    if (previewEl) {
+      previewEl.textContent = '';
+      previewEl.classList.remove('text-success', 'text-danger');
+      previewEl.classList.add('text-muted');
+    }
 
     if (isFormulaMode(id, raw)) {
       const expr = raw.startsWith('=') ? raw : ('=' + raw);
@@ -1065,7 +1395,12 @@
         if (!Number.isFinite(val) || val < 0) val = 0;
         const rounded = roundHalfUp(val, STORE_PLACES);
         currentValueById[id] = rounded;
-        if (previewEl) previewEl.textContent = `${expr}  →  ${formatIdSmart(rounded)}`;
+        if (previewEl) {
+          // Input keeps the formula; preview shows param values and evaluated result.
+          previewEl.textContent = buildFormulaPreview(expr, rounded);
+          previewEl.classList.remove('text-muted', 'text-danger');
+          previewEl.classList.add('text-success');
+        }
         inputEl.classList.add('is-valid');
         // Row indicators: valid formula clears invalid, set zero if 0
         if (tr) {
@@ -1077,6 +1412,11 @@
         inputEl.classList.add('is-invalid');
         const msg = (e && e.message) ? e.message : 'Formula error';
         inputEl.setAttribute('title', msg);
+        if (previewEl) {
+          previewEl.textContent = `Error: ${msg}`;
+          previewEl.classList.remove('text-muted', 'text-success');
+          previewEl.classList.add('text-danger');
+        }
         if (tr) tr.classList.add('vp-row-invalid');
       }
       persistRowFormula(id); // simpan raw & state fx setiap kali formula diproses
@@ -1125,13 +1465,22 @@
   }
 
   // ===== Parameter table (Label & Kode)
-  function slugifyName(s) {
+  function normalizeParamCode(s) {
     let t = String(s || '').trim();
     if (!t) return '';
-    t = t.normalize('NFKD').replace(/[^\w\s]/g, '').replace(/\s+/g, '_');
+    t = t
+      // Keep prime/apostrophe semantic so D4 and D4' don't collide
+      .replace(/['\u2018\u2019\u2032\u02BC`\u00B4]+/g, '_prime_')
+      .normalize('NFKD')
+      .replace(/[^A-Za-z0-9_]+/g, '_')
+      .toLowerCase();
     if (/^[0-9]/.test(t)) t = '_' + t;
     t = t.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
     return t || '_param';
+  }
+
+  function slugifyName(s) {
+    return normalizeParamCode(s);
   }
 
   function renderVarTable() {
@@ -1467,9 +1816,7 @@
     const errors = [];
     const outVars = {}, outLabels = {};
     Object.keys(srcVars).forEach(code => {
-      let safe = String(code || '').trim();
-      safe = safe.normalize('NFKD').replace(/[^\w]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
-      if (/^[0-9]/.test(safe)) safe = '_' + safe;
+      const safe = normalizeParamCode(code);
       if (!safe) return;
       const val = parseNumberOrEmpty(srcVars[code]);
       if (val === '') { errors.push(`Kode ${code}: Nilai tidak valid`); return; }
@@ -1637,6 +1984,7 @@
       // Jika SSR sudah menyediakan baris pekerjaan, tidak perlu rebuild via API
       if (document.querySelector('tr[data-pekerjaan-id]')) {
         rows = Array.from(document.querySelectorAll('tr[data-pekerjaan-id]'));
+        applyQtyColWidth(qtyColWidthCh, { persist: false });
         buildSearchIndex();
         // applyCollapseOnTable aman dipanggil; akan no-op jika tidak ada baris .vp-klass/.vp-sub
         applyCollapseOnTable();
@@ -1695,6 +2043,9 @@
                   <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
                           title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
                           aria-pressed="false">fx</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm fx-editor-open"
+                          title="Buka editor formula (Alt+Enter)"
+                          aria-label="Buka editor formula"><i class="bi bi-arrows-angle-expand"></i></button>
                   <div class="flex-grow-1">
                     <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input" aria-label="Quantity">
                     <div class="form-text fx-preview text-muted small" style="min-height:1rem;"></div>
@@ -1709,6 +2060,7 @@
       });
 
       buildSearchIndex();
+      applyQtyColWidth(qtyColWidthCh, { persist: false });
       applyCollapseOnTable();
       applyCollapseOnCards();
     } catch (e) {
@@ -2082,25 +2434,27 @@
     }
   }
 
-  // Load parameters from server and merge with localStorage
+  // Load parameters from server and replace localStorage snapshot
   async function loadParamsFromServer() {
     try {
       const data = await HTTP.jget(EP_PARAMS);
       if (data?.ok && Array.isArray(data.parameters)) {
-        // Merge server params with localStorage
         const serverParams = {};
         const serverLabels = {};
 
         for (const p of data.parameters) {
-          serverParams[p.name] = Number(p.value) || 0;
-          serverLabels[p.name] = p.label || p.name;
+          const code = String(p?.name || '').trim();
+          if (!code) continue;
+          serverParams[code] = Number(p.value) || 0;
+          serverLabels[code] = p.label || code;
         }
 
-        // Server is authoritative - override localStorage
-        variables = { ...variables, ...serverParams };
-        varLabels = { ...varLabels, ...serverLabels };
+        // Server is authoritative on successful fetch.
+        // This prevents duplicate params from stale localStorage entries.
+        variables = serverParams;
+        varLabels = serverLabels;
 
-        // Save merged state to localStorage
+        // Persist authoritative snapshot back to localStorage
         localStorage.setItem(storageKeyVars(), JSON.stringify(variables));
         localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels));
 
@@ -2157,30 +2511,40 @@
   saveVarLabels();
   renderVarTable();
 
-  // Load from server (async - will merge with localStorage and re-render)
+  // Load from server (async - will replace local snapshot and re-render)
   loadParamsFromServer();
 
   // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
   rows.forEach(tr => bindRow(tr));
 
   // ===== EXPORT INITIALIZATION =====
-  // Initialize unified export (CSV/PDF/Word) via ExportManager
+  // Initialize unified export (XLSX/PDF/Word/JSON) via ExportManager
+  let exportInitAttempts = 0;
+  const MAX_EXPORT_INIT_ATTEMPTS = 20;
+  let exportInitDone = false;
+
   function initExportButtons() {
+    if (exportInitDone) return;
+
     if (typeof ExportManager === 'undefined') {
-      console.warn('[Volume] ⚠️ ExportManager not loaded - export buttons disabled');
+      exportInitAttempts += 1;
+      if (exportInitAttempts <= MAX_EXPORT_INIT_ATTEMPTS) {
+        setTimeout(initExportButtons, 150);
+        return;
+      }
+      console.warn('[Volume] ExportManager not loaded - export buttons disabled');
       return;
     }
 
     try {
       const exporter = new ExportManager(projectId, 'volume-pekerjaan');
+      let isExporting = false;
 
-      // Helper function to get current parameters from localStorage
       function getExportParameters() {
         try {
           const raw = localStorage.getItem(storageKeyVars());
           const params = raw ? JSON.parse(raw) : {};
           if (typeof params !== 'object' || !params) return {};
-          console.log('[Volume] Loaded parameters for export:', params);
           return params;
         } catch (err) {
           console.warn('[Volume] Failed to load parameters:', err);
@@ -2188,35 +2552,35 @@
         }
       }
 
-      const btnCSV = document.getElementById('btn-export-csv');
+      async function handleExport(format, e, useAsync = false) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (isExporting) return;
+        isExporting = true;
+        try {
+          const options = { parameters: getExportParameters() };
+          if (useAsync || format === 'pdf' || format === 'word') {
+            await exporter.exportAsAsync(format, options);
+          } else {
+            await exporter.exportAs(format, options);
+          }
+        } finally {
+          isExporting = false;
+        }
+      }
+
+      const btnXLSX = document.getElementById('btn-export-xlsx');
       const btnPDF = document.getElementById('btn-export-pdf');
       const btnWord = document.getElementById('btn-export-word');
+      const btnJSON = document.getElementById('btn-export-json');
 
-      if (btnCSV) {
-        btnCSV.addEventListener('click', async (e) => {
-          e.preventDefault();
-          console.log('[Volume] 📥 CSV export requested');
-          await exporter.exportAs('csv', { parameters: getExportParameters() });
-        });
-      }
+      if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', e));
+      if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', e, true));
+      if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', e, true));
+      if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', e));
 
-      if (btnPDF) {
-        btnPDF.addEventListener('click', async (e) => {
-          e.preventDefault();
-          console.log('[Volume] 📄 PDF export requested');
-          await exporter.exportAs('pdf', { parameters: getExportParameters() });
-        });
-      }
-
-      if (btnWord) {
-        btnWord.addEventListener('click', async (e) => {
-          e.preventDefault();
-          console.log('[Volume] 📝 Word export requested');
-          await exporter.exportAs('word', { parameters: getExportParameters() });
-        });
-      }
-
-      console.log('[Volume] ✓ Export buttons initialized');
+      exportInitDone = true;
+      console.log('[Volume] Export buttons initialized');
     } catch (err) {
       console.error('[Volume] Export initialization failed:', err);
     }
@@ -2350,3 +2714,4 @@
   window.vpGetVariables = () => ({ ...variables });
 
 })();
+

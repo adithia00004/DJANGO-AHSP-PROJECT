@@ -108,6 +108,8 @@
   let isDirty = false;
   let allowUnload = false;
   let dirtySuppressCount = 0;
+  let hardReloadBypassUntil = 0;
+  const HARD_RELOAD_BYPASS_MS = 1500;
 
   function setDirty(dirty) {
     if (dirty && dirtySuppressCount > 0) {
@@ -170,8 +172,15 @@
     return ok;
   }
 
+  function isEditableTarget(target) {
+    if (!target || !(target instanceof Element)) return false;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return true;
+    return false;
+  }
+
   // Prevent accidental data loss on page close/refresh
   window.addEventListener('beforeunload', (e) => {
+    if (Date.now() < hardReloadBypassUntil) return;
     if (isDirty && !allowUnload) {
       const msg = 'Anda memiliki perubahan yang belum disimpan. Yakin ingin keluar?';
       e.preventDefault();
@@ -182,9 +191,24 @@
 
   window.addEventListener('keydown', (e) => {
     if (!isDirty) return;
+    if (e.defaultPrevented) return;
+    if (e.repeat) return;
+    if (isEditableTarget(e.target)) return;
+
     const key = String(e.key || '').toLowerCase();
-    const isReload = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && key === 'r');
-    if (!isReload) return;
+    const isF5 = e.key === 'F5';
+    const isHardReload =
+      ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'r')
+      || (isF5 && (e.ctrlKey || e.metaKey || e.shiftKey));
+    if (isHardReload) {
+      // Let hard reload pass without the custom/native unsaved-change blocker.
+      hardReloadBypassUntil = Date.now() + HARD_RELOAD_BYPASS_MS;
+      return;
+    }
+
+    const isSoftReload = isF5 || ((e.ctrlKey || e.metaKey) && key === 'r');
+    if (!isSoftReload) return;
+
     const modalApi = getModalApi();
     if (!modalApi || !modalApi.confirm) return;
     e.preventDefault();
@@ -277,7 +301,110 @@
     dragOverTarget: null    // Current drop target (tbody or row)
   };
 
+  // Auto-scroll while dragging near viewport/container edges.
+  const DRAG_SCROLL_EDGE_PX = 72;
+  const DRAG_SCROLL_MAX_STEP = 22;
+  let dragScrollRaf = 0;
+  let dragScrollActive = false;
+  let dragScrollPointerX = 0;
+  let dragScrollPointerY = 0;
+  let dragScrollContainer = null;
+
+  function dragScrollSpeed(distance, edge = DRAG_SCROLL_EDGE_PX, max = DRAG_SCROLL_MAX_STEP) {
+    if (distance >= edge) return 0;
+    const ratio = (edge - distance) / edge;
+    return Math.max(1, Math.round(ratio * max));
+  }
+
+  function findScrollableAncestor(el) {
+    let node = el instanceof Element ? el : null;
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      const overflowY = style.overflowY || style.overflow;
+      const canScrollY = /(auto|scroll|overlay)/.test(overflowY || '');
+      if (canScrollY && node.scrollHeight > node.clientHeight + 1) return node;
+      node = node.parentElement;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+
+  function resolveDragScrollContainer(hintEl) {
+    return findScrollableAncestor(hintEl || klasWrap || document.body);
+  }
+
+  function tickDragAutoScroll() {
+    if (!dragScrollActive) return;
+
+    const viewportH = window.innerHeight || document.documentElement.clientHeight;
+    const topDistance = dragScrollPointerY;
+    const bottomDistance = Math.max(0, viewportH - dragScrollPointerY);
+
+    let windowDelta = 0;
+    if (topDistance < DRAG_SCROLL_EDGE_PX) {
+      windowDelta = -dragScrollSpeed(topDistance);
+    } else if (bottomDistance < DRAG_SCROLL_EDGE_PX) {
+      windowDelta = dragScrollSpeed(bottomDistance);
+    }
+
+    if (windowDelta !== 0) {
+      window.scrollBy(0, windowDelta);
+    }
+
+    const c = dragScrollContainer;
+    if (c && c !== document.body && c !== document.documentElement && c !== document.scrollingElement) {
+      const rect = c.getBoundingClientRect();
+      const inVerticalRange = dragScrollPointerY >= rect.top && dragScrollPointerY <= rect.bottom;
+      if (inVerticalRange) {
+        const cTopDistance = dragScrollPointerY - rect.top;
+        const cBottomDistance = rect.bottom - dragScrollPointerY;
+        let cDelta = 0;
+        if (cTopDistance < DRAG_SCROLL_EDGE_PX) {
+          cDelta = -dragScrollSpeed(cTopDistance);
+        } else if (cBottomDistance < DRAG_SCROLL_EDGE_PX) {
+          cDelta = dragScrollSpeed(cBottomDistance);
+        }
+        if (cDelta !== 0) {
+          c.scrollTop += cDelta;
+        }
+      }
+    }
+
+    dragScrollRaf = window.requestAnimationFrame(tickDragAutoScroll);
+  }
+
+  function startDragAutoScroll(containerHint, e = null) {
+    dragScrollContainer = resolveDragScrollContainer(containerHint);
+    if (e) {
+      dragScrollPointerX = e.clientX;
+      dragScrollPointerY = e.clientY;
+    }
+    if (dragScrollActive) return;
+    dragScrollActive = true;
+    dragScrollRaf = window.requestAnimationFrame(tickDragAutoScroll);
+  }
+
+  function updateDragAutoScroll(e, containerHint = null) {
+    if (!e) return;
+    dragScrollPointerX = e.clientX;
+    dragScrollPointerY = e.clientY;
+    if (containerHint) {
+      dragScrollContainer = resolveDragScrollContainer(containerHint);
+    } else if (!dragScrollContainer) {
+      dragScrollContainer = resolveDragScrollContainer(e.target);
+    }
+  }
+
+  function stopDragAutoScroll() {
+    dragScrollActive = false;
+    dragScrollContainer = null;
+    if (dragScrollRaf) {
+      window.cancelAnimationFrame(dragScrollRaf);
+      dragScrollRaf = 0;
+    }
+  }
+
   function resetDragState() {
+    stopDragAutoScroll();
     // Remove visual feedback
     document.querySelectorAll('.lp-row-dragging').forEach(el => el.classList.remove('lp-row-dragging'));
     document.querySelectorAll('.lp-drop-target').forEach(el => el.classList.remove('lp-drop-target'));
@@ -291,6 +418,28 @@
       sourceTbody: null,
       dragOverTarget: null
     };
+  }
+
+  function resolveDropTbody(target) {
+    if (!target || !(target instanceof Element)) return null;
+    if (target.tagName === 'TBODY') return target;
+    if (target.tagName === 'TABLE') return target.querySelector('tbody');
+    if (target.closest) {
+      const tbody = target.closest('tbody');
+      if (tbody) return tbody;
+      const subCard = target.closest('.lp-sub-card');
+      if (subCard) return subCard.querySelector('tbody');
+    }
+    return null;
+  }
+
+  function getDropAreaRect(target, fallbackTbody) {
+    if (target instanceof Element) {
+      if (target.tagName === 'TABLE' || target.classList.contains('lp-sub-card')) {
+        return target.getBoundingClientRect();
+      }
+    }
+    return fallbackTbody?.getBoundingClientRect?.() || null;
   }
 
   function handleDragStart(e) {
@@ -311,6 +460,7 @@
     dragState.pekerjaanId = row.dataset.id || row.id;
 
     row.classList.add('lp-row-dragging');
+    startDragAutoScroll(row, e);
 
     // Set drag data
     e.dataTransfer.effectAllowed = 'move';
@@ -334,11 +484,13 @@
   }
 
   function handleDragOver(e) {
+    if (!dragState.draggingRow) return;
     e.preventDefault(); // Required to allow drop
     e.dataTransfer.dropEffect = 'move';
+    updateDragAutoScroll(e, e.currentTarget);
 
-    const tbody = e.currentTarget;
-    if (!tbody || tbody.tagName !== 'TBODY') return;
+    const tbody = resolveDropTbody(e.currentTarget);
+    if (!tbody) return;
 
     // Highlight valid drop zone
     if (dragState.dragOverTarget !== tbody) {
@@ -352,11 +504,13 @@
   }
 
   function handleDragLeave(e) {
-    const tbody = e.currentTarget;
-    if (!tbody || tbody.tagName !== 'TBODY') return;
+    if (!dragState.draggingRow) return;
+    const tbody = resolveDropTbody(e.currentTarget);
+    if (!tbody) return;
 
     // Only remove highlight if actually leaving (not just moving to child)
-    const rect = tbody.getBoundingClientRect();
+    const rect = getDropAreaRect(e.currentTarget, tbody);
+    if (!rect) return;
     const x = e.clientX;
     const y = e.clientY;
 
@@ -369,11 +523,12 @@
   }
 
   function handleDrop(e) {
+    if (!dragState.draggingRow) return;
     e.preventDefault();
     e.stopPropagation();
 
-    const targetTbody = e.currentTarget;
-    if (!targetTbody || targetTbody.tagName !== 'TBODY') {
+    const targetTbody = resolveDropTbody(e.currentTarget);
+    if (!targetTbody) {
       resetDragState();
       return;
     }
@@ -472,10 +627,152 @@
 
   function attachDropZone(tbody) {
     if (!tbody || tbody.tagName !== 'TBODY') return;
+    const table = tbody.closest('table.list-pekerjaan') || tbody.closest('table');
 
-    tbody.addEventListener('dragover', handleDragOver);
-    tbody.addEventListener('dragleave', handleDragLeave);
-    tbody.addEventListener('drop', handleDrop);
+    if (tbody.dataset.dndBound !== '1') {
+      tbody.addEventListener('dragover', handleDragOver);
+      tbody.addEventListener('dragleave', handleDragLeave);
+      tbody.addEventListener('drop', handleDrop);
+      tbody.dataset.dndBound = '1';
+    }
+
+    // Important: empty tbody often has near-zero height.
+    // Bind on table as well so new/unsaved empty sub-kategori tetap bisa jadi target drop.
+    if (table && table.dataset.dndBound !== '1') {
+      table.addEventListener('dragover', handleDragOver);
+      table.addEventListener('dragleave', handleDragLeave);
+      table.addEventListener('drop', handleDrop);
+      table.dataset.dndBound = '1';
+    }
+  }
+
+  // ========= [DRAG & DROP] Hierarchy (Klasifikasi/Sub-Klasifikasi) ===========
+  let hierarchyDragState = {
+    type: null,               // 'klas' | 'sub'
+    draggingEl: null,         // HTMLElement being dragged
+    overContainer: null,      // Current container under drag
+    insertBeforeEl: null,     // Target sibling to insert before
+  };
+
+  function resetHierarchyDragState() {
+    stopDragAutoScroll();
+    document.querySelectorAll('.lp-klas-dragging').forEach(el => el.classList.remove('lp-klas-dragging'));
+    document.querySelectorAll('.lp-sub-dragging').forEach(el => el.classList.remove('lp-sub-dragging'));
+    document.querySelectorAll('.lp-hierarchy-drag-over').forEach(el => el.classList.remove('lp-hierarchy-drag-over'));
+    hierarchyDragState = { type: null, draggingEl: null, overContainer: null, insertBeforeEl: null };
+  }
+
+  function getHierarchyContainerFromEvent(e) {
+    if (hierarchyDragState.type === 'klas') {
+      if (klasWrap && klasWrap.contains(e.target)) return klasWrap;
+      return null;
+    }
+    // sub: allow dropping inside any sub-wrap, or over a klas card (append to its sub-wrap)
+    const directSubWrap = e.target.closest('.sub-wrap');
+    if (directSubWrap) return directSubWrap;
+    const klasCard = e.target.closest('.lp-klas-card');
+    return klasCard?.querySelector('.sub-wrap') || null;
+  }
+
+  function getInsertBeforeByY(container, draggingEl, y, itemClass) {
+    const items = Array.from(container.children)
+      .filter(el => el !== draggingEl && el.classList.contains(itemClass));
+    for (const item of items) {
+      const rect = item.getBoundingClientRect();
+      const middle = rect.top + rect.height / 2;
+      if (y < middle) return item;
+    }
+    return null;
+  }
+
+  function initHierarchyDragAndDrop() {
+    if (!klasWrap) return;
+
+    klasWrap.addEventListener('dragstart', (e) => {
+      const klasHandle = e.target.closest('.lp-drag-handle-klas');
+      const subHandle = e.target.closest('.lp-drag-handle-sub');
+      if (!klasHandle && !subHandle) return;
+
+      const isKlas = !!klasHandle;
+      const item = isKlas
+        ? klasHandle.closest('.lp-klas-card')
+        : subHandle.closest('.lp-sub-card');
+      if (!item) return;
+
+      hierarchyDragState.type = isKlas ? 'klas' : 'sub';
+      hierarchyDragState.draggingEl = item;
+      item.classList.add(isKlas ? 'lp-klas-dragging' : 'lp-sub-dragging');
+      startDragAutoScroll(item, e);
+
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', item.id || '');
+      }
+    });
+
+    klasWrap.addEventListener('dragover', (e) => {
+      if (!hierarchyDragState.draggingEl) return;
+      const container = getHierarchyContainerFromEvent(e);
+      if (!container) return;
+
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      updateDragAutoScroll(e, container);
+
+      if (hierarchyDragState.overContainer !== container) {
+        document.querySelectorAll('.lp-hierarchy-drag-over').forEach(el => el.classList.remove('lp-hierarchy-drag-over'));
+        container.classList.add('lp-hierarchy-drag-over');
+        hierarchyDragState.overContainer = container;
+      }
+
+      hierarchyDragState.insertBeforeEl = getInsertBeforeByY(
+        container,
+        hierarchyDragState.draggingEl,
+        e.clientY,
+        hierarchyDragState.type === 'klas' ? 'lp-klas-card' : 'lp-sub-card'
+      );
+    });
+
+    klasWrap.addEventListener('drop', (e) => {
+      if (!hierarchyDragState.draggingEl) return;
+      const container = getHierarchyContainerFromEvent(e);
+      if (!container) {
+        resetHierarchyDragState();
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const { type, draggingEl, insertBeforeEl } = hierarchyDragState;
+      const sourceContainer = draggingEl.parentElement;
+
+      if (insertBeforeEl && insertBeforeEl.parentElement === container) {
+        container.insertBefore(draggingEl, insertBeforeEl);
+      } else {
+        container.appendChild(draggingEl);
+      }
+
+      setDirty(true);
+      scheduleSidebarRebuild();
+      broadcastOrderingChange();
+
+      if (type === 'klas') {
+        const moved = sourceContainer !== container ? 'Klasifikasi dipindahkan' : 'Urutan klasifikasi diubah';
+        tShow(moved, 'success');
+        say(moved);
+      } else {
+        const moved = sourceContainer !== container ? 'Sub-Klasifikasi dipindahkan' : 'Urutan sub-klasifikasi diubah';
+        tShow(moved, 'success');
+        say(moved);
+      }
+
+      resetHierarchyDragState();
+    });
+
+    klasWrap.addEventListener('dragend', () => {
+      if (hierarchyDragState.draggingEl) resetHierarchyDragState();
+    });
   }
 
   // ========= [DIAGNOSTICS] Cek Anchor Wajib ==================================
@@ -503,6 +800,8 @@
   } else {
     log('All required anchors OK');
   }
+
+  initHierarchyDragAndDrop();
 
   // ========= [SIDEBAR] ========================================================
   // Sederhana: buka / tutup. Tidak ada "locked mode" yang kompleks.
@@ -807,15 +1106,19 @@
     kCounter++;
     const id = `k_${Date.now()}_${uid()}`;
     const div = document.createElement('div');
-    div.className = 'card shadow-sm';
+    div.className = 'card shadow-sm lp-klas-card';
     div.id = id;
     div.dataset.anchorId = id;
+    div.dataset.klasId = id;
 
     div.innerHTML = `
       <div class="card-header d-flex gap-2 align-items-center">
         <button class="btn btn-sm btn-outline-secondary lp-collapse-toggle" type="button"
           data-target="sub-wrap" aria-expanded="true" title="Collapse/Expand">
           <i class="bi bi-caret-down-fill"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-secondary lp-drag-handle lp-drag-handle-klas" type="button" title="Drag Klasifikasi" draggable="true">
+          <i class="bi bi-grip-vertical"></i>
         </button>
         <input class="form-control klas-name" placeholder="Nama Klasifikasi (auto: Klasifikasi ${kCounter})" value="${prefillName ? escapeHtml(prefillName) : ''}">
         <button class="btn btn-primary btn-add-sub lp-btn lp-btn-wide" type="button">
@@ -856,15 +1159,19 @@
     const { name = null } = options;
     const id = `s_${Date.now()}_${uid()}`;
     const block = document.createElement('div');
-    block.className = 'border rounded p-2';
+    block.className = 'border rounded p-2 lp-sub-card';
     block.id = id;
     block.dataset.anchorId = id;
+    block.dataset.subId = id;
 
     block.innerHTML = `
     <div class="d-flex gap-2 align-items-center mb-2 lp-sub-header">
       <button class="btn btn-sm btn-outline-secondary lp-collapse-toggle" type="button"
         data-target="lp-sub-body" aria-expanded="true" title="Collapse/Expand">
         <i class="bi bi-caret-down-fill"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-secondary lp-drag-handle lp-drag-handle-sub" type="button" title="Drag Sub-Klasifikasi" draggable="true">
+        <i class="bi bi-grip-vertical"></i>
       </button>
       <input class="form-control sub-name" placeholder="Nama Sub-Klasifikasi (mis. 1.1)" value="${name ? escapeHtml(name) : ''}">
       <button class="btn btn-primary btn-add-pekerjaan lp-btn lp-btn-wide" type="button">
@@ -1529,11 +1836,17 @@
 
       list.forEach(k => {
         const kCard = newKlas(k.name || null);
-        if (k.id) kCard.dataset.id = k.id;
+        if (k.id) {
+          kCard.dataset.id = k.id;
+          kCard.dataset.klasId = String(k.id);
+        }
         const subWrap = kCard.querySelector('.sub-wrap');
         (k.sub || []).forEach(s => {
           const subBlock = addSub(subWrap, { name: s.name || null });
-          if (s.id) subBlock.dataset.id = s.id;
+          if (s.id) {
+            subBlock.dataset.id = s.id;
+            subBlock.dataset.subId = String(s.id);
+          }
           const tbody = subBlock.querySelector('tbody');
           (s.pekerjaan || []).forEach(p => {
             const row = addPekerjaan(tbody, {
@@ -1758,7 +2071,13 @@
       // Broadcast to other tabs
       broadcastOrderingChange();
 
-      await reloadAfterSave();
+      // Keep current editing context (no hard re-render) and only sync IDs.
+      try {
+        await syncTreeIdsFromServer();
+      } catch (syncErr) {
+        console.warn('[LP] Save succeeded but ID sync failed:', syncErr);
+      }
+      scheduleSidebarRebuild();
     } catch (e) {
       const raw = (e && e.body && typeof e.body === 'string') ? e.body : (e?.message || '');
       const clean = String(raw).replace(/<[^>]+>/g, '').slice(0, 800);
@@ -1783,6 +2102,57 @@
   }
 
   async function reloadAfterSave() { klasWrap.innerHTML = ''; await loadTree(); }
+
+  async function syncTreeIdsFromServer() {
+    if (!projectId) return;
+    const data = await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`, { method: 'GET' });
+    const serverKlas = Array.isArray(data?.klasifikasi) ? data.klasifikasi : [];
+
+    const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
+    kCards.forEach((kc, ki) => {
+      const kSrv = serverKlas[ki];
+      if (kSrv?.id) {
+        kc.dataset.id = String(kSrv.id);
+        kc.dataset.klasId = String(kSrv.id);
+      }
+
+      const subBlocks = Array.from(kc.querySelector('.sub-wrap')?.children || []);
+      subBlocks.forEach((sb, si) => {
+        const sSrv = kSrv?.sub?.[si];
+        if (sSrv?.id) {
+          sb.dataset.id = String(sSrv.id);
+          sb.dataset.subId = String(sSrv.id);
+        }
+
+        const rows = Array.from(sb.querySelectorAll('tbody tr'));
+        rows.forEach((tr, pi) => {
+          const pSrv = sSrv?.pekerjaan?.[pi];
+          if (pSrv?.id) tr.dataset.id = String(pSrv.id);
+
+          const srcSel = tr.querySelector('.src');
+          const srcNow = srcSel?.value || tr.dataset.sourceType || 'custom';
+          tr.dataset.sourceType = srcNow;
+          tr.dataset.originalSourceType = srcNow;
+
+          let refRaw;
+          if (HAS_JQ) {
+            refRaw = $(tr).find('.ref-select').val();
+          } else {
+            refRaw = tr.querySelector('.ref-select')?.value ?? '';
+          }
+
+          const refVal = (refRaw == null || refRaw === '') ? null : String(refRaw);
+          if (refVal) {
+            tr.dataset.refId = refVal;
+            tr.dataset.originalRefId = refVal;
+          } else {
+            delete tr.dataset.refId;
+            delete tr.dataset.originalRefId;
+          }
+        });
+      });
+    });
+  }
 
   // ========= [BINDING] Toolbar & Sidebar Buttons =============================
   btnAddKlasAll.forEach(b => b.addEventListener('click', () => newKlas()));
@@ -2248,10 +2618,10 @@
         });
 
         tShow(response.message || 'Import berhasil!', 'success');
-        setDirty();
+        setDirty(false);
 
-        // Reload page to show new data
-        setTimeout(() => location.reload(), 1000);
+        // Refresh data in-place to avoid blocking reload confirmation popup.
+        await reloadAfterSave();
 
       } catch (err) {
         if (err instanceof SyntaxError) {
@@ -2543,11 +2913,13 @@
 
     // Override handlers to add indicator positioning
     handleDragOver = function (e) {
+      if (!dragState.draggingRow) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+      updateDragAutoScroll(e, e.currentTarget);
 
-      const tbody = e.currentTarget;
-      if (!tbody || tbody.tagName !== 'TBODY') return;
+      const tbody = resolveDropTbody(e.currentTarget);
+      if (!tbody) return;
 
       if (dragState.dragOverTarget !== tbody) {
         document.querySelectorAll('.lp-drag-over').forEach(el => el.classList.remove('lp-drag-over'));
@@ -2559,10 +2931,12 @@
     };
 
     handleDragLeave = function (e) {
-      const tbody = e.currentTarget;
-      if (!tbody || tbody.tagName !== 'TBODY') return;
+      if (!dragState.draggingRow) return;
+      const tbody = resolveDropTbody(e.currentTarget);
+      if (!tbody) return;
 
-      const rect = tbody.getBoundingClientRect();
+      const rect = getDropAreaRect(e.currentTarget, tbody);
+      if (!rect) return;
       if (e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom) {
         tbody.classList.remove('lp-drag-over');
         if (dragState.dragOverTarget === tbody) dragState.dragOverTarget = null;
@@ -2571,11 +2945,12 @@
     };
 
     handleDrop = function (e) {
+      if (!dragState.draggingRow) return;
       e.preventDefault();
       e.stopPropagation();
 
-      const targetTbody = e.currentTarget;
-      if (!targetTbody || targetTbody.tagName !== 'TBODY') {
+      const targetTbody = resolveDropTbody(e.currentTarget);
+      if (!targetTbody) {
         resetDragState();
         hideDropIndicator();
         return;
@@ -2627,4 +3002,3 @@
   })();
 
 })();
-

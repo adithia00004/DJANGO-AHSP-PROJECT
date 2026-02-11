@@ -2,6 +2,7 @@
 # ================================
 from django.db import models
 from decimal import Decimal
+import html
 from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -247,7 +248,30 @@ class Pekerjaan(TimeStampedModel):
         count = Pekerjaan.objects.filter(project=self.project, source_type=self.SOURCE_CUSTOM).count()
         return f"CUST-{count + 1:04d}"
 
+    @staticmethod
+    def _decode_html_entities_deep(value, max_passes: int = 8):
+        """
+        Decode HTML entities repeatedly to prevent double/triple encoded text
+        such as '&amp;amp;#x27;' being persisted as display text.
+        """
+        if value is None:
+            return None
+        text = str(value)
+        if "&" not in text:
+            return text
+        for _ in range(max_passes):
+            decoded = html.unescape(text)
+            if decoded == text:
+                break
+            text = decoded
+        return text
+
     def save(self, *args, **kwargs):
+        # Normalize encoded entities before persistence (e.g. '&#x27;' -> "'").
+        self.snapshot_kode = self._decode_html_entities_deep(self.snapshot_kode)
+        self.snapshot_uraian = self._decode_html_entities_deep(self.snapshot_uraian)
+        self.snapshot_satuan = self._decode_html_entities_deep(self.snapshot_satuan)
+
         if self.is_custom and not self.snapshot_kode and not self.pk:
           try:
               from .services import generate_custom_code  # import lokal untuk hindari circular

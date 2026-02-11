@@ -44,6 +44,24 @@
       title="Collapse semua Klasifikasi dan Sub" aria-label="Collapse all">
       <i class="bi bi-arrows-collapse" aria-hidden="true"></i>
     </button>
+
+    <!-- Manual width control for Quantity input column -->
+    <div class="btn-group btn-group-sm vp-col-width-control" role="group" aria-label="Lebar kolom Quantity">
+      <button id="vp-col-narrow" class="btn btn-outline-secondary dp-btn-sm" type="button"
+        title="Perkecil lebar input formula" aria-label="Perkecil lebar input formula">
+        <i class="bi bi-dash-lg" aria-hidden="true"></i>
+      </button>
+      <button id="vp-col-width-label" class="btn btn-outline-secondary dp-btn-sm" type="button"
+        aria-label="Lebar kolom Quantity saat ini" disabled>48ch</button>
+      <button id="vp-col-wider" class="btn btn-outline-secondary dp-btn-sm" type="button"
+        title="Perbesar lebar input formula" aria-label="Perbesar lebar input formula">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+      </button>
+      <button id="vp-col-reset" class="btn btn-outline-secondary dp-btn-sm" type="button"
+        title="Reset lebar ke default" aria-label="Reset lebar input formula">
+        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+      </button>
+    </div>
   </div>
 
   <!-- Actions kanan -->
@@ -179,24 +197,64 @@
         </div>
       </div>
 
-      <div class="dp-sidebar-body d-flex flex-column gap-3" tabindex="-1">
-        <!-- Info callout -->
-        <div class="alert alert-info py-2 px-3 mb-0 small">
+      <div class="dp-sidebar-body d-flex flex-column gap-2" tabindex="-1">
+        <div class="vp-mini-hint">
           <i class="bi bi-info-circle me-1"></i>
-          Gunakan di formula, contoh: <code>= panjang * lebar * tinggi</code>
+          Formula: <code>= panjang * lebar * tinggi</code>
         </div>
 
-        <!-- Add button -->
-        <div class="d-flex justify-content-between align-items-center">
+        <div class="vp-param-toolbar">
           <span class="text-muted small">
             <span id="vp-param-count">0</span> parameter
           </span>
-          <button type="button" class="btn btn-primary btn-sm" id="vp-var-add">
-            <i class="bi bi-plus-lg me-1"></i>Tambah
-          </button>
+
+          <div class="vp-param-tools">
+            <button type="button" class="btn btn-primary btn-sm" id="vp-var-add" title="Tambah parameter">
+              <i class="bi bi-plus-lg me-1"></i>Tambah
+            </button>
+
+            <button class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" title="Import JSON/CSV/XLSX"
+              aria-label="Import parameter">
+              <i class="bi bi-file-arrow-up"></i>
+            </button>
+            <input type="file" id="vp-var-import" accept=".json,.csv,.xlsx" class="d-none">
+
+            <div class="dropdown">
+              <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="vp-var-export-btn"
+                data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" title="Export parameter"
+                aria-label="Export parameter">
+                <i class="bi bi-file-arrow-down"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="vp-var-export-btn">
+                <li><button class="dropdown-item" type="button" id="vp-export-json">Export JSON</button></li>
+                <li><button class="dropdown-item" type="button" id="vp-export-csv">Export CSV</button></li>
+                <li><button class="dropdown-item" type="button" id="vp-export-xlsx">Export XLSX</button></li>
+                <li>
+                  <hr class="dropdown-divider">
+                </li>
+                <li><button class="dropdown-item" type="button" id="vp-export-copy-json">Copy JSON to
+                    Clipboard</button></li>
+              </ul>
+            </div>
+
+            <div class="dropdown vp-template-dropdown">
+              <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"
+                aria-expanded="false" title="Template parameter">
+                Tpl
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" type="button" id="vp-template-xlsx-gen">Generate Template
+                    (.xlsx)</button></li>
+                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}"
+                    download>Template (.csv)</a></li>
+                <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}"
+                    download>Template (.json)</a></li>
+              </ul>
+            </div>
+          </div>
         </div>
 
-        <div class="table-responsive mt-2 flex-grow-1">
+        <div class="table-responsive vp-param-table-wrap flex-grow-1">
           <!-- Header proxy untuk tabel parameter -->
           <div id="vp-vars-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
 
@@ -210,51 +268,6 @@
             </thead>
             <tbody><!-- diisi JS --></tbody>
           </table>
-        </div>
-
-        <div class="mt-2">
-          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div class="d-flex gap-2 align-items-center">
-              <button class="btn btn-sm btn-outline-secondary" id="vp-var-import-btn" title="Import JSON/CSV/XLSX">
-                <i class="bi bi-file-arrow-up"></i> Import
-              </button>
-              <input type="file" id="vp-var-import" accept=".json,.csv,.xlsx" class="d-none">
-
-              <!-- Export dropup (Bootstrap dropdown like Template) -->
-              <div class="dropup">
-                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="vp-var-export-btn"
-                  data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">
-                  <i class="bi bi-file-arrow-down"></i> Export
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="vp-var-export-btn">
-                  <li><button class="dropdown-item" type="button" id="vp-export-json">Export JSON</button></li>
-                  <li><button class="dropdown-item" type="button" id="vp-export-csv">Export CSV</button></li>
-                  <li><button class="dropdown-item" type="button" id="vp-export-xlsx">Export XLSX</button></li>
-                  <li>
-                    <hr class="dropdown-divider">
-                  </li>
-                  <li><button class="dropdown-item" type="button" id="vp-export-copy-json">Copy JSON to
-                      Clipboard</button></li>
-                </ul>
-              </div>
-
-              <!-- Template dropup (sample files / generator) -->
-              <div class="dropup vp-template-dropdown">
-                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"
-                  aria-expanded="false">
-                  Template
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li><button class="dropdown-item" type="button" id="vp-template-xlsx-gen">Generate Template
-                      (.xlsx)</button></li>
-                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}"
-                      download>Template (.csv)</a></li>
-                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}"
-                      download>Template (.json)</a></li>
-                </ul>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -316,7 +329,7 @@
                         <col style="width:6ch"> <!-- No -->
                         <col class="col-urai"> <!-- Uraian -->
                         <col style="width:10ch"> <!-- Satuan -->
-                        <col class="col-qty" style="width:48ch"> <!-- Quantity (lebih lebar untuk formula panjang) -->
+                        <col class="col-qty" style="width:var(--vp-qty-col-w, 48ch)"> <!-- Quantity (lebih lebar untuk formula panjang) -->
                       </colgroup>
                       <thead class="table-light">
                         <tr>
@@ -338,6 +351,10 @@
                               <button type="button" class="btn btn-outline-secondary btn-sm fx-toggle"
                                 title="Mode formula: awali dengan '=' atau tekan Ctrl+Space"
                                 aria-pressed="false">fx</button>
+                              <button type="button" class="btn btn-outline-secondary btn-sm fx-editor-open"
+                                title="Buka editor formula (Alt+Enter)" aria-label="Buka editor formula">
+                                <i class="bi bi-arrows-angle-expand"></i>
+                              </button>
                               <div class="flex-grow-1">
                                 <input type="text" inputmode="decimal" class="form-control form-control-sm qty-input"
                                   aria-label="Quantity (gunakan koma sebagai desimal, mis. 12,345)">
@@ -400,6 +417,7 @@
         <ul class="mb-2">
           <li>Kelola via tombol <strong>Parameter Perhitungan</strong> (sidebar kanan).</li>
           <li>Nama (label) boleh spasi; di formula gunakan <em>kode</em> (dibuat otomatis).</li>
+          <li>Gunakan tombol <strong>expand</strong> di kolom quantity atau <kbd>Alt+Enter</kbd> untuk editor formula panjang.</li>
         </ul>
         <h6 class="mb-1">Operator Dasar</h6>
         <p class="mb-2"><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>( )</code></p>
@@ -419,6 +437,46 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editor Formula Quantity -->
+<div class="modal fade dp-modal" id="vpFormulaEditorModal" tabindex="-1" aria-labelledby="vpFormulaEditorLabel"
+  aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content vp-formula-editor-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="vpFormulaEditorLabel">Editor Formula Quantity</h5>
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="vp-fe-toggle-fullscreen"
+            aria-pressed="false" title="Toggle fullscreen">
+            <i class="bi bi-arrows-fullscreen me-1"></i>
+            <span class="d-none d-sm-inline">Fullscreen</span>
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted" id="vp-fe-meta"></div>
+        <div class="vp-fe-input-wrap">
+          <textarea id="vp-fe-input" class="form-control font-monospace" rows="12" spellcheck="false"
+            placeholder="Ketik formula quantity di sini. Contoh: = panjang * lebar * tinggi"></textarea>
+        </div>
+        <div class="d-flex justify-content-between align-items-start gap-3 mt-2">
+          <div id="vp-fe-preview" class="small text-muted"></div>
+          <div class="small text-muted text-end">
+            <div><kbd>Alt+Enter</kbd> buka editor</div>
+            <div><kbd>Ctrl+Enter</kbd> terapkan</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary" id="vp-fe-apply">
+          <i class="bi bi-check2 me-1"></i>Terapkan
+        </button>
       </div>
     </div>
   </div>
@@ -455,58 +513,4 @@
 
 
 <script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
-
-<script>
-  // Initialize export buttons for Volume Pekerjaan (using global SSOT modal)
-  (function () {
-    const projectId = document.getElementById('vol-app')?.dataset?.projectId;
-    if (!projectId || typeof ExportManager === 'undefined') {
-      console.warn('[VolumePekerjaan] ExportManager not available');
-      return;
-    }
-
-    // Uses global modal from base_detail.html automatically
-    const exporter = new ExportManager(projectId, 'volume-pekerjaan');
-
-    // Export lock to prevent double-clicking
-    let isExporting = false;
-
-    // Collect parameters from volume_pekerjaan.js variables
-    const getParameters = () => {
-      if (typeof window.vpGetVariables === 'function') {
-        return window.vpGetVariables();
-      }
-      return {};
-    };
-
-    const handleExport = async (format, formatName, e, useAsync = false) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (isExporting) return;
-      isExporting = true;
-      try {
-        const options = { parameters: getParameters() };
-        if (useAsync || format === 'pdf' || format === 'word') {
-          await exporter.exportAsAsync(format, options);
-        } else {
-          await exporter.exportAs(format, options);
-        }
-      } finally {
-        isExporting = false;
-      }
-    };
-
-    const btnXLSX = document.getElementById('btn-export-xlsx');
-    const btnPDF = document.getElementById('btn-export-pdf');
-    const btnWord = document.getElementById('btn-export-word');
-    const btnJSON = document.getElementById('btn-export-json');
-
-    if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
-    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
-    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
-    if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
-
-    console.log('[VolumePekerjaan] Export buttons initialized with SSOT modal');
-  })();
-</script>
 {% endblock %}

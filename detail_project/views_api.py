@@ -6,6 +6,7 @@ import csv
 import logging
 import math
 import re
+import html
 import base64
 from io import BytesIO
 from functools import wraps
@@ -343,9 +344,17 @@ def _warn(path: str, message: str):
 def _sanitize_text(val: Optional[str]) -> Optional[str]:
     if val is None:
         return None
-    # FIX: Jangan escape HTML di API level. Biarkan frontend menerima raw string.
-    # JSON encoder sudah menangani escaping quote.
-    return str(val)
+    # Decode entity berulang agar teks yang pernah double-encoded tampil normal.
+    # Contoh: "&amp;amp;#x27;" -> "'"
+    text = str(val)
+    if "&" not in text:
+        return text
+    for _ in range(8):
+        decoded = html.unescape(text)
+        if decoded == text:
+            break
+        text = decoded
+    return text
 
 def _owner_or_404(project_id, user):
     from dashboard.models import Project
@@ -899,11 +908,32 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # ============================
     errors = []
     keep_k = set()
+    keep_all_s = set()
     keep_all_p = set()  # global keep untuk semua pekerjaan di payload
     assigned_orders: Set[int] = set()
 
-    existing_k = {k.id: k for k in Klasifikasi.objects.filter(project=project)}
-    existing_s = {s.id: s for s in SubKlasifikasi.objects.filter(project=project)}
+    klas_queryset = list(Klasifikasi.objects.filter(project=project).order_by('id'))
+    sub_queryset = list(SubKlasifikasi.objects.filter(project=project).order_by('id'))
+
+    # Snapshot natural-key maps BEFORE temporary re-indexing.
+    existing_k_by_order = {k.ordering_index: k for k in klas_queryset}
+    existing_s_by_klas_order = {(s.klasifikasi_id, s.ordering_index): s for s in sub_queryset}
+
+    # Free unique slots first to avoid transient UniqueViolation during reordering/moves.
+    # - Klasifikasi unique_together: (project, ordering_index)
+    # - SubKlasifikasi unique_together: (project, klasifikasi, ordering_index)
+    klas_temp_offset = 5_000_000
+    for idx, kobj in enumerate(klas_queryset, start=1):
+        kobj.ordering_index = klas_temp_offset + idx
+        kobj.save(update_fields=["ordering_index"])
+
+    sub_temp_offset = 6_000_000
+    for idx, sobj in enumerate(sub_queryset, start=1):
+        sobj.ordering_index = sub_temp_offset + idx
+        sobj.save(update_fields=["ordering_index"])
+
+    existing_k = {k.id: k for k in klas_queryset}
+    existing_s = {s.id: s for s in sub_queryset}
     pekerjaan_queryset = list(Pekerjaan.objects.filter(project=project).order_by('id'))
     existing_p = {p.id: p for p in pekerjaan_queryset}
     reuse_pool: Dict[int, list[Pekerjaan]] = {}
@@ -998,7 +1028,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         pobj.snapshot_kode = tmp.snapshot_kode
         pobj.snapshot_uraian = tmp.snapshot_uraian
         pobj.snapshot_satuan = tmp.snapshot_satuan
-        pobj.ordering_index = final_order
+        pobj.ordering_index = order
         pobj.save(update_fields=[
             "sub_klasifikasi", "source_type", "ref",
             "snapshot_kode", "snapshot_uraian", "snapshot_satuan", "ordering_index"
@@ -1068,8 +1098,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             k_obj.ordering_index = k_order
             k_obj.save(update_fields=["name", "ordering_index"])
         else:
-            k_obj = Klasifikasi.objects.filter(project=project, ordering_index=k_order).first()
-            if k_obj:
+            k_obj = existing_k_by_order.get(k_order)
+            if k_obj and k_obj.project_id == project.id and k_obj.id not in keep_k:
                 if k_obj.name != k_name:
                     k_obj.name = k_name
                     k_obj.save(update_fields=["name"])
@@ -1077,7 +1107,6 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                 k_obj = Klasifikasi.objects.create(project=project, name=k_name, ordering_index=k_order)
         keep_k.add(k_obj.id)
 
-        keep_s = set()
         sub_list = (k.get("sub") or k.get("subs") or [])
         if not isinstance(sub_list, list):
             errors.append(_err(f"klasifikasi[{ki}].sub", "Harus list"))
@@ -1096,8 +1125,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                 s_obj.klasifikasi = k_obj
                 s_obj.save(update_fields=["name", "ordering_index", "klasifikasi"])
             else:
-                s_obj = SubKlasifikasi.objects.filter(project=project, klasifikasi=k_obj, ordering_index=s_order).first()
-                if s_obj:
+                s_obj = existing_s_by_klas_order.get((k_obj.id, s_order))
+                if s_obj and s_obj.project_id == project.id and s_obj.id not in keep_all_s:
                     if s_obj.name != s_name:
                         s_obj.name = s_name
                         s_obj.save(update_fields=["name"])
@@ -1105,7 +1134,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     s_obj = SubKlasifikasi.objects.create(
                         project=project, klasifikasi=k_obj, name=s_name, ordering_index=s_order
                     )
-            keep_s.add(s_obj.id)
+            keep_all_s.add(s_obj.id)
 
             pekerjaan_list = (s.get("pekerjaan") or s.get("jobs") or [])
             if not isinstance(pekerjaan_list, list):
@@ -1346,8 +1375,14 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     source_change_state["reload_jobs"].add(pobj.id)
                     keep_all_p.add(pobj.id)
 
-        # Hapus sub yang tidak ada lagi di Klas ini
-        SubKlasifikasi.objects.filter(project=project, klasifikasi=k_obj).exclude(id__in=keep_s).delete()
+        # NOTE:
+        # Jangan hapus sub per-klas di tengah loop.
+        # Jika sub lama dihapus di sini, CASCADE dapat menghapus pekerjaan yang
+        # baru dipindahkan ke klas/sub lain (masih diproses pada iterasi berikutnya),
+        # lalu memicu DatabaseError: "Save with update_fields did not affect any rows."
+
+    # Hapus sub yang tidak ada di payload (global, setelah seluruh mutasi selesai)
+    SubKlasifikasi.objects.filter(project=project).exclude(id__in=keep_all_s).delete()
 
     # Hapus klasifikasi yang tidak ada lagi
     Klasifikasi.objects.filter(project=project).exclude(id__in=keep_k).delete()
