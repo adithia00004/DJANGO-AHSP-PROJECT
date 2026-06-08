@@ -83,6 +83,7 @@
   data-endpoint-list="{% url 'detail_project:api_list_harga_items' project.id %}"
   data-endpoint-save="{% url 'detail_project:api_save_harga_items' project.id %}"
   data-template-url="{% url 'detail_project:template_ahsp' project.id %}" data-locale="id-ID">
+  {% if bootstrap_harga %}{{ bootstrap_harga|json_script:"hi-bootstrap" }}{% endif %}
 
   <div id="hi-lock-overlay" class="hi-lock-overlay d-none" role="alert" aria-live="assertive">
     <div class="hi-lock-card">

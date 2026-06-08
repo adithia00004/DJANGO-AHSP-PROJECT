@@ -13,6 +13,10 @@
 <link rel="stylesheet" href="{% static 'detail_project/css/volume_pekerjaan.css' %}">
 {% endblock %}
 
+{% block dp_topbar_extra %}
+{% include "detail_project/_sync_led.html" with scope="volume" watch="pekerjaan" change_status=change_status %}
+{% endblock %}
+
 {% block dp_content %}
 
 <!-- Page Title -->
@@ -178,6 +182,7 @@
   data-endpoint-save="{% url 'detail_project:api_save_volume_pekerjaan' project.id %}"
   data-endpoint-formula="{% url 'detail_project:api_volume_formula_state' project.id %}"
   data-endpoint-tree="/detail_project/api/project/{{ project.id }}/list-pekerjaan/tree/">
+  {% if bootstrap_volume %}{{ bootstrap_volume|json_script:"vp-bootstrap" }}{% endif %}
   <!-- ===== Overlay Sidebar Kanan (REFACTORED - Component Library) ===== -->
   <aside id="vp-sidebar" class="dp-sidebar-overlay" role="complementary" data-side="right" data-align="topbar"
     data-hoverclose="1" data-resize-sense="east" aria-labelledby="vpSidebarTitle" aria-hidden="true">

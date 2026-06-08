@@ -1,7 +1,7 @@
 ﻿{% extends "detail_project/base_detail.html" %}
 {% load static i18n %}
 {% block dp_topbar_extra %}
-{% include "detail_project/_sync_led.html" with scope="template" watch="pekerjaan" change_status=change_status %}
+{% include "detail_project/_sync_led.html" with scope="template" watch="pekerjaan,harga" change_status=change_status %}
 {% endblock %}
 {% block title %}Template AHSP - {{ project.nama }}{% endblock %}
 {% block body_attrs %}data-page="template_ahsp"{% endblock %}
@@ -31,6 +31,7 @@
   data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
   data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
   data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
+  {% if bootstrap_detail %}{{ bootstrap_detail|json_script:"ta-bootstrap-detail" }}{% endif %}
 
 
 
