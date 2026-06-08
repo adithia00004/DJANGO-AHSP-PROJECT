@@ -29,6 +29,18 @@ Menutup akar masalah (divergensi "yang berjalan" vs "yang diedit") dan sisa luba
 
 Update terakhir: 2026-06-08, berdasarkan pemeriksaan working tree lokal.
 
+### Kondisi Operasional Saat Ini
+
+- Branch aktif lokal: `checkpoint/save-sync-plan-20260608`.
+- Branch ini sudah dipush ke remote: `origin/checkpoint/save-sync-plan-20260608`.
+- Commit checkpoint docs: `0ecb99c1 docs: add save sync implementation tracker`.
+- Scope commit checkpoint tersebut hanya dokumen audit/implementation plan; **perubahan kode aplikasi lain belum masuk commit ini**.
+- Working tree masih sangat dirty dan lintas-area (`detail_project`, `referensi`, `dashboard`, `subscriptions`, `accounts`, static build, migrations, docs lain, dan file lokal/generated).
+- Jangan menjalankan `git add .` / `git add -A` untuk checkpoint berikutnya. Commit berikut harus scoped per item plan.
+- Server lokal yang sedang berjalan **tidak otomatis merepresentasikan `main` bersih**. Ia menjalankan file dari working tree saat ini dan bisa reload bila autoreload aktif.
+- Tidak perlu mematikan server hanya karena branch docs checkpoint sudah dibuat. Namun sebelum menjalankan V1/V2/V3, sebaiknya matikan server agar build, collectstatic, migration, dan cleanup asset tidak bertabrakan dengan proses berjalan.
+- Jangan switch balik ke `main` selama working tree masih dirty kecuali ada strategi stash/commit scoped yang jelas. Switching branch dalam kondisi ini berisiko membuat konflik dan menyulitkan audit perubahan.
+
 Legenda:
 - **DONE**: sudah terimplementasi dan bukti source/test tersedia.
 - **PARTIAL**: sebagian sudah selesai, masih ada sisa cleanup/verifikasi.
@@ -40,7 +52,7 @@ Legenda:
 
 | Kode | Item | Status | Bukti / catatan | Next action |
 |---|---|---|---|---|
-| 0 | Checkpoint working tree + baseline | PARTIAL | Baseline test pernah dicatat, tetapi repo masih sangat dirty dan dokumen plan/audit masih untracked | Buat checkpoint terkurasi sebelum lanjut perubahan besar |
+| 0 | Checkpoint working tree + baseline | PARTIAL | Checkpoint docs sudah commit+push (`0ecb99c1`), tetapi repo masih sangat dirty dan perubahan kode belum dicommit scoped | Buat checkpoint terkurasi per scope sebelum lanjut perubahan besar |
 | 1A | Middleware `no-store` halaman `detail_project` | DONE | `config.middleware.cache_control.DetailProjectNoStoreMiddleware` terdaftar di settings; test header ada | Tetap verifikasi runtime di staging |
 | 1B | Bootstrap defensif | DONE (B1) | Strategy yang dipilih: andalkan `no-store`, tanpa fetch tambahan | Tidak perlu B2 kecuali ada bukti cache eksternal |
 | 1C | Dockerfile collectstatic fail-fast | DONE | `collectstatic` build tidak lagi disembunyikan | Verifikasi saat clean build |
