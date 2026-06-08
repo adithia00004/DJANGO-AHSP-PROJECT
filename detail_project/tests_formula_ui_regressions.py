@@ -1,8 +1,73 @@
+import os
 from pathlib import Path
+from unittest import skipUnless
 
 from django.test import SimpleTestCase
 
 
+class SaveSyncUiRegressionGuardsTests(SimpleTestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        root = Path(__file__).resolve().parent
+        static_js = root / "static" / "detail_project" / "js"
+        cls.template_ahsp_js_source = (static_js / "template_ahsp.js").read_text(
+            encoding="utf-8"
+        )
+        cls.harga_items_js_source = (static_js / "harga_items.js").read_text(
+            encoding="utf-8"
+        )
+
+    def test_template_reload_acknowledges_pekerjaan_sync_led(self):
+        self.assertIn(
+            "function acknowledgePekerjaanSyncIfSettled()",
+            self.template_ahsp_js_source,
+        )
+        self.assertIn("dp:sync-led-ack", self.template_ahsp_js_source)
+
+    def test_template_auto_reloads_pending_jobs_on_open(self):
+        source = self.template_ahsp_js_source
+        self.assertIn(
+            "function scheduleAutoReloadPendingJobs(reason = 'open')",
+            source,
+        )
+        self.assertIn("scheduleAutoReloadPendingJobs('page-open');", source)
+        self.assertIn("scheduleAutoReloadPendingJobs('source-change-sync');", source)
+        self.assertIn("resolveReloadJob(id);", source)
+
+    def test_template_active_header_uses_ascii_empty_placeholder(self):
+        source = self.template_ahsp_js_source
+        self.assertIn(
+            "$('#ta-active-satuan').textContent = $('.satuan', li)?.textContent?.trim() || '-';",
+            source,
+        )
+        self.assertIn("placeholder: 'Cari AHSP atau Pekerjaan...'", source)
+
+    def _assert_token_not_actively_sent(self, source, label):
+        for line in source.splitlines():
+            if "payload.client_updated_at =" in line:
+                self.assertTrue(
+                    line.lstrip().startswith("//"),
+                    f"{label}: client_updated_at tidak boleh dikirim aktif: {line!r}",
+                )
+
+    def test_template_save_is_last_save_wins_with_dormant_token(self):
+        source = self.template_ahsp_js_source
+        self._assert_token_not_actively_sent(source, "template_ahsp.js")
+        self.assertIn("last-save-wins", source)
+        self.assertIn("if (!js.ok && js.conflict)", source)
+
+    def test_harga_save_is_last_save_wins_with_dormant_token(self):
+        source = self.harga_items_js_source
+        self._assert_token_not_actively_sent(source, "harga_items.js")
+        self.assertIn("last-save-wins", source)
+        self.assertIn("j.conflict", source)
+
+
+@skipUnless(
+    os.getenv("RUN_WIP_UI_GUARDS") == "1",
+    "Guard Formula/Volume WIP hanya dijalankan bersama implementasi WIP lokal.",
+)
 class FormulaUiRegressionGuardsTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
