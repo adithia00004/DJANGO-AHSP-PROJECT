@@ -66,7 +66,7 @@ Legenda:
 | V1 | Cleanup build/manifest Jadwal | DONE | Commit `63d63c0c`. Nested tracked dist dihapus; clean `vite build` (emptyOutDir); satu hash end-to-end `jadwal-kegiatan-C9Ct7gjz.js` (source manifest == bundle == staticfiles); `git ls-files` nested = 0 | Verifikasi runtime di staging (Fase 4): buka Jadwal tanpa 500 |
 | V2 | Migration drift `referensi/0024` | DONE | Commit `97b135da`. `0024_alter_ahspimportstaging_segment_type` dibuat + applied lokal; `makemigrations --check --dry-run` = No changes detected (semua app) | Apply saat deploy (entrypoint `migrate`) |
 | V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
-| V4 | Triase 5 test merah baseline/domain | TODO | Masih perlu keputusan: update expectation atau `xfail` beralasan | Triage setelah V1/V2 bersih |
+| V4 | Triase 5 test merah baseline/domain | DONE | Commit `d8ade683`. Ekspektasi diperbarui ke perilaku yang disengaja: param value 12dp (migrasi 0043/0044) + kode item di-resolve SSOT (query via uraian; harga item resolved diberi nilai untuk rekap). Suite `detail_project` kini **263 passed, 0 failed** | — |
 | D1 | Konfirmasi shared-login | WAITING | Menentukan apakah asumsi benar-benar 1 akun = 1 operator, bukan 1 akun dipakai 2 orang | Wajib dijawab sebelum 3A |
 | D2 | Persetujuan 3A last-save-wins | WAITING | 3A menurunkan UI optimistic-lock Template/Harga yang sudah terbangun | Wajib disetujui sebelum mengubah UI save |
 | 4 | Verifikasi staging/browser gate | TODO | Belum boleh dianggap selesai sebelum V1/V2 ditutup | Clean build -> collectstatic -> buka halaman target |
