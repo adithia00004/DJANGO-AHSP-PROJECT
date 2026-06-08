@@ -60,15 +60,15 @@ Legenda:
 | 2B | Precision `watch` | DONE source / TODO runtime | Template `pekerjaan,harga`; Volume `pekerjaan` | Uji browser perubahan harga tidak memicu Volume, tapi memicu Template |
 | 2C | Legacy sync indicator JS/partial/CSS | DONE | Commit `3a11ebfb`. `sync_indicator.js` + partial sebelumnya dihapus; kini `.dp-sync-led` dipindah ke `sync_led.css` dan `sync_indicator.css` dihapus. Tidak ada referensi `sync_indicator` tersisa | — |
 | 2D | Hygiene Jadwal (`le.log`, legacy `mode`) | DONE source / TODO runtime | Source guard sebelumnya bersih; legacy `mode` sudah disesuaikan | Uji Jadwal planned/actual save di browser |
-| 3A | Policy single-user last-save-wins | WAITING | UI Template/Harga masih mengirim `client_updated_at` dan masih punya dialog konflik | Eksekusi hanya setelah konfirmasi produk |
+| 3A | Policy single-user last-save-wins | DONE | Commit `affc446f`. D1/D2 disetujui. UI Template & Harga **tidak** lagi kirim `client_updated_at` (dikomentari → dialog konflik tak pernah muncul). Backend 409 + handler konflik **DORMAN/reversibel**; test backend yang kirim token usang tetap 409. Source guard last-save-wins ditambahkan | Verifikasi runtime di staging (Fase 4) |
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
 | 3C | Import Validate await save + `beforeunload` | DONE source / TODO runtime | Source sudah memakai `await persistCurrentEdits()` dan guard unload | Simulasi offline/500 dan reload dengan dirty edit |
 | V1 | Cleanup build/manifest Jadwal | DONE | Commit `63d63c0c`. Nested tracked dist dihapus; clean `vite build` (emptyOutDir); satu hash end-to-end `jadwal-kegiatan-C9Ct7gjz.js` (source manifest == bundle == staticfiles); `git ls-files` nested = 0 | Verifikasi runtime di staging (Fase 4): buka Jadwal tanpa 500 |
 | V2 | Migration drift `referensi/0024` | DONE | Commit `97b135da`. `0024_alter_ahspimportstaging_segment_type` dibuat + applied lokal; `makemigrations --check --dry-run` = No changes detected (semua app) | Apply saat deploy (entrypoint `migrate`) |
 | V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
 | V4 | Triase 5 test merah baseline/domain | DONE | Commit `d8ade683`. Ekspektasi diperbarui ke perilaku yang disengaja: param value 12dp (migrasi 0043/0044) + kode item di-resolve SSOT (query via uraian; harga item resolved diberi nilai untuk rekap). Suite `detail_project` kini **263 passed, 0 failed** | — |
-| D1 | Konfirmasi shared-login | WAITING | Menentukan apakah asumsi benar-benar 1 akun = 1 operator, bukan 1 akun dipakai 2 orang | Wajib dijawab sebelum 3A |
-| D2 | Persetujuan 3A last-save-wins | WAITING | 3A menurunkan UI optimistic-lock Template/Harga yang sudah terbangun | Wajib disetujui sebelum mengubah UI save |
+| D1 | Konfirmasi shared-login | RESOLVED | Dikonfirmasi: **1 akun = 1 operator** (bukan shared-login). Last-save-wins aman | — |
+| D2 | Persetujuan 3A last-save-wins | RESOLVED | **Disetujui**. 3A dieksekusi (commit `affc446f`) dengan backend token dorman/reversibel | — |
 | 4 | Verifikasi staging/browser gate | TODO | Belum boleh dianggap selesai sebelum V1/V2 ditutup | Clean build -> collectstatic -> buka halaman target |
 
 ### Jalur Eksekusi Terdekat
