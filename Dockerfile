@@ -60,7 +60,7 @@ RUN if [ -f package.json ]; then \
     fi
 
 # Collect static files
-RUN python manage.py collectstatic --noinput --clear 2>/dev/null || true
+RUN python manage.py collectstatic --noinput --clear
 
 # Create app user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
