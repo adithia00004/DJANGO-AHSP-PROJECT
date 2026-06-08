@@ -492,6 +492,12 @@
       // Also show toast for quick notification (optional)
       showToast(`✓ ${successCount} pekerjaan berhasil disimpan`, 'success');
       updateStatusBar();
+      window.dispatchEvent(new CustomEvent('dp:sync-led-ack', {
+        detail: {
+          projectId: Number(state.projectId),
+          jadwal: true,
+        },
+      }));
 
       const savedPekerjaanIds = Array.from(changesByPekerjaan.keys()).map((pid) => Number(pid));
 
