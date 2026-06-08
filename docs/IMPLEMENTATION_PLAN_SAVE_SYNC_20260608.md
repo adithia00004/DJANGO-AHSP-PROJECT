@@ -63,8 +63,8 @@ Legenda:
 | 3A | Policy single-user last-save-wins | WAITING | UI Template/Harga masih mengirim `client_updated_at` dan masih punya dialog konflik | Eksekusi hanya setelah konfirmasi produk |
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
 | 3C | Import Validate await save + `beforeunload` | DONE source / TODO runtime | Source sudah memakai `await persistCurrentEdits()` dan guard unload | Simulasi offline/500 dan reload dengan dirty edit |
-| V1 | Cleanup build/manifest Jadwal | BLOCKED | Nested dist masih tracked di `detail_project/static/detail_project/detail_project/...`; hash manifest tidak tunggal | Hapus nested tracked dist, clean build, clean collectstatic, verifikasi satu hash |
-| V2 | Migration drift `referensi/0024` | BLOCKED | `makemigrations referensi --check --dry-run` masih menghasilkan `0024_alter_ahspimportstaging_segment_type` | Generate migration, commit, apply, cek ulang |
+| V1 | Cleanup build/manifest Jadwal | DONE | Commit `63d63c0c`. Nested tracked dist dihapus; clean `vite build` (emptyOutDir); satu hash end-to-end `jadwal-kegiatan-C9Ct7gjz.js` (source manifest == bundle == staticfiles); `git ls-files` nested = 0 | Verifikasi runtime di staging (Fase 4): buka Jadwal tanpa 500 |
+| V2 | Migration drift `referensi/0024` | DONE | Commit `97b135da`. `0024_alter_ahspimportstaging_segment_type` dibuat + applied lokal; `makemigrations --check --dry-run` = No changes detected (semua app) | Apply saat deploy (entrypoint `migrate`) |
 | V3 | Split/hapus `sync_indicator.css` legacy | TODO | CSS terkonfirmasi masih memuat `.dp-sync-led` | Pindahkan style LED dulu, baru hapus legacy CSS |
 | V4 | Triase 5 test merah baseline/domain | TODO | Masih perlu keputusan: update expectation atau `xfail` beralasan | Triage setelah V1/V2 bersih |
 | D1 | Konfirmasi shared-login | WAITING | Menentukan apakah asumsi benar-benar 1 akun = 1 operator, bukan 1 akun dipakai 2 orang | Wajib dijawab sebelum 3A |
