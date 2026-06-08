@@ -58,14 +58,14 @@ Legenda:
 | 1C | Dockerfile collectstatic fail-fast | DONE | `collectstatic` build tidak lagi disembunyikan | Verifikasi saat clean build |
 | 2A | Sync LED output + Jadwal | DONE source / TODO runtime | Include LED ada di Rekap RAB, Rincian RAB, Rekap Kebutuhan, Jadwal | Uji browser: ubah data hulu -> LED berubah -> refresh benar |
 | 2B | Precision `watch` | DONE source / TODO runtime | Template `pekerjaan,harga`; Volume `pekerjaan` | Uji browser perubahan harga tidak memicu Volume, tapi memicu Template |
-| 2C | Legacy sync indicator JS/partial | PARTIAL | `sync_indicator.js` dan partial legacy sudah dihapus; `sync_indicator.css` masih dipakai untuk `.dp-sync-led` | Split CSS LED ke `sync_led.css`/CSS utama, lalu hapus legacy CSS |
+| 2C | Legacy sync indicator JS/partial/CSS | DONE | Commit `3a11ebfb`. `sync_indicator.js` + partial sebelumnya dihapus; kini `.dp-sync-led` dipindah ke `sync_led.css` dan `sync_indicator.css` dihapus. Tidak ada referensi `sync_indicator` tersisa | — |
 | 2D | Hygiene Jadwal (`le.log`, legacy `mode`) | DONE source / TODO runtime | Source guard sebelumnya bersih; legacy `mode` sudah disesuaikan | Uji Jadwal planned/actual save di browser |
 | 3A | Policy single-user last-save-wins | WAITING | UI Template/Harga masih mengirim `client_updated_at` dan masih punya dialog konflik | Eksekusi hanya setelah konfirmasi produk |
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
 | 3C | Import Validate await save + `beforeunload` | DONE source / TODO runtime | Source sudah memakai `await persistCurrentEdits()` dan guard unload | Simulasi offline/500 dan reload dengan dirty edit |
 | V1 | Cleanup build/manifest Jadwal | DONE | Commit `63d63c0c`. Nested tracked dist dihapus; clean `vite build` (emptyOutDir); satu hash end-to-end `jadwal-kegiatan-C9Ct7gjz.js` (source manifest == bundle == staticfiles); `git ls-files` nested = 0 | Verifikasi runtime di staging (Fase 4): buka Jadwal tanpa 500 |
 | V2 | Migration drift `referensi/0024` | DONE | Commit `97b135da`. `0024_alter_ahspimportstaging_segment_type` dibuat + applied lokal; `makemigrations --check --dry-run` = No changes detected (semua app) | Apply saat deploy (entrypoint `migrate`) |
-| V3 | Split/hapus `sync_indicator.css` legacy | TODO | CSS terkonfirmasi masih memuat `.dp-sync-led` | Pindahkan style LED dulu, baru hapus legacy CSS |
+| V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
 | V4 | Triase 5 test merah baseline/domain | TODO | Masih perlu keputusan: update expectation atau `xfail` beralasan | Triage setelah V1/V2 bersih |
 | D1 | Konfirmasi shared-login | WAITING | Menentukan apakah asumsi benar-benar 1 akun = 1 operator, bukan 1 akun dipakai 2 orang | Wajib dijawab sebelum 3A |
 | D2 | Persetujuan 3A last-save-wins | WAITING | 3A menurunkan UI optimistic-lock Template/Harga yang sudah terbangun | Wajib disetujui sebelum mengubah UI save |
