@@ -4,6 +4,10 @@
 
 {% block body_attrs %}data-page="rekap_kebutuhan"{% endblock %}
 
+{% block dp_topbar_extra %}
+{% include "detail_project/_sync_led.html" with scope="rekap_kebutuhan" watch="pekerjaan,volume,ahsp,harga" change_status=change_status %}
+{% endblock %}
+
 {% block detail_css %}{% endblock %}
 
 {% block extra_css %}

@@ -4,6 +4,10 @@
 {# Set data-page di body #}
 {% block body_attrs %}data-page="rincian_rab"{% endblock %}
 
+{% block dp_topbar_extra %}
+{% include "detail_project/_sync_led.html" with scope="rincian_rab" watch="pekerjaan,volume,ahsp,harga" change_status=change_status %}
+{% endblock %}
+
 {% block title %}Rincian RAB – {{ project.nama }}{% endblock %}
 
 {% block extra_head %}

@@ -7,6 +7,10 @@
 {# Set data-page di body #}
 {% block body_attrs %}data-page="rekap_rab"{% endblock %}
 
+{% block dp_topbar_extra %}
+{% include "detail_project/_sync_led.html" with scope="rekap_rab" watch="pekerjaan,volume,ahsp,harga" change_status=change_status %}
+{% endblock %}
+
 {% block extra_css %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
