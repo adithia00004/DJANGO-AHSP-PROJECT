@@ -2,8 +2,8 @@
 
 Tanggal: 2026-06-08
 Acuan temuan: `docs/AUDIT_SAVE_SYNC_PAGES_20260608.md` (S1–S7, P-1…P-5).
-Status dokumen: **rencana + adendum pasca-implementasi parsial**. Sebagian fase teknis sudah dieksekusi di working tree; perubahan policy single-user/last-save-wins **belum dieksekusi** dan tetap menunggu konfirmasi eksplisit.
-Revisi: v3 — amandemen A1–A5, temuan verifikasi implementasi, dan adendum single-user/single-role sudah dimasukkan; dokumen ini menjadi checklist final sebelum eksekusi lanjutan.
+Status dokumen: **implementasi mayor selesai di workspace; konsolidasi commit dan runtime gate belum selesai**. Policy single-user/last-save-wins sudah disetujui dan dieksekusi.
+Revisi: v4 — hasil verifikasi ulang 2026-06-09 dimasukkan, termasuk perbedaan antara kondisi workspace lokal dan branch yang reproducible.
 
 ## Tujuan
 
@@ -27,14 +27,17 @@ Menutup akar masalah (divergensi "yang berjalan" vs "yang diedit") dan sisa luba
 
 ## Progress Tracker
 
-Update terakhir: 2026-06-08, berdasarkan pemeriksaan working tree lokal.
+Update terakhir: 2026-06-09, berdasarkan pemeriksaan source, commit, build, migration, collectstatic, dan test lokal.
 
 ### Kondisi Operasional Saat Ini
 
 - Branch aktif lokal: `checkpoint/save-sync-plan-20260608`.
 - Branch ini sudah dipush ke remote: `origin/checkpoint/save-sync-plan-20260608`.
-- Commit checkpoint docs: `0ecb99c1 docs: add save sync implementation tracker`.
-- Scope commit checkpoint tersebut hanya dokumen audit/implementation plan; **perubahan kode aplikasi lain belum masuk commit ini**.
+- HEAD code terverifikasi: `ac730cc3` (commit docs ini berada tepat di atasnya). Di atas `9e0e8c83` (V1–V4/3A) kini ada konsolidasi scoped fondasi save/sync: `3faea393` (V1 outDir), `6e1e9d89` (S1 autorefresh), `adc60101` (1A), `13c95e4d` (1C), `0a522606` (2C), `a263b1b9` (2A), `26369ac8` (2B), `c1f1317d` (2D), `ac730cc3` (3A test). **Belum dipush.**
+- Catatan teknis: file MIXED (2B/2D) di-stage lewat blob ke index lalu di-commit **tanpa pathspec** (`git commit -- <file>` direkam dari working tree, bukan index — jangan dipakai untuk commit scoped file MIXED).
+- Konsolidasi memakai **bedah hunk/blob** untuk file MIXED (base.py, template_ahsp/volume/harga, save_handler): hanya baris save/sync yang di-commit; kerja WIP lain (opaque param endpoints, refactor export, `progressMode`, UI param/volume/import) **tetap di working tree, uncommitted**.
+- **3C (Import Validate) DITUNDA**: hunk `persistCurrentEdits`/`beforeunload` menyatu dalam satu hunk 224 baris dengan rework UI validasi dan bergantung pada `collectExportPayload` + route `validate_save_edits` (fitur edit import yang juga WIP). Tidak bisa jadi commit scoped yang berfungsi tanpa fitur itu; commit bersama fitur Import Validate saat fitur tersebut siap.
+- Branch remote (`origin/...9e0e8c83`) belum mereproduksi fondasi ini sampai 9 commit di atas dipush.
 - Working tree masih sangat dirty dan lintas-area (`detail_project`, `referensi`, `dashboard`, `subscriptions`, `accounts`, static build, migrations, docs lain, dan file lokal/generated).
 - Jangan menjalankan `git add .` / `git add -A` untuk checkpoint berikutnya. Commit berikut harus scoped per item plan.
 - Server lokal yang sedang berjalan **tidak otomatis merepresentasikan `main` bersih**. Ia menjalankan file dari working tree saat ini dan bisa reload bila autoreload aktif.
@@ -53,39 +56,51 @@ Legenda:
 | Kode | Item | Status | Bukti / catatan | Next action |
 |---|---|---|---|---|
 | 0 | Checkpoint working tree + baseline | PARTIAL | Checkpoint docs sudah commit+push (`0ecb99c1`), tetapi repo masih sangat dirty dan perubahan kode belum dicommit scoped | Buat checkpoint terkurasi per scope sebelum lanjut perubahan besar |
-| 1A | Middleware `no-store` halaman `detail_project` | DONE | `config.middleware.cache_control.DetailProjectNoStoreMiddleware` terdaftar di settings; test header ada | Tetap verifikasi runtime di staging |
-| 1B | Bootstrap defensif | DONE (B1) | Strategy yang dipilih: andalkan `no-store`, tanpa fetch tambahan | Tidak perlu B2 kecuali ada bukti cache eksternal |
-| 1C | Dockerfile collectstatic fail-fast | DONE | `collectstatic` build tidak lagi disembunyikan | Verifikasi saat clean build |
-| 2A | Sync LED output + Jadwal | DONE source / TODO runtime | Include LED ada di Rekap RAB, Rincian RAB, Rekap Kebutuhan, Jadwal | Uji browser: ubah data hulu -> LED berubah -> refresh benar |
-| 2B | Precision `watch` | DONE source / TODO runtime | Template `pekerjaan,harga`; Volume `pekerjaan` | Uji browser perubahan harga tidak memicu Volume, tapi memicu Template |
-| 2C | Legacy sync indicator JS/partial/CSS | DONE | Commit `3a11ebfb`. `sync_indicator.js` + partial sebelumnya dihapus; kini `.dp-sync-led` dipindah ke `sync_led.css` dan `sync_indicator.css` dihapus. Tidak ada referensi `sync_indicator` tersisa | — |
-| 2D | Hygiene Jadwal (`le.log`, legacy `mode`) | DONE source / TODO runtime | Source guard sebelumnya bersih; legacy `mode` sudah disesuaikan | Uji Jadwal planned/actual save di browser |
-| 3A | Policy single-user last-save-wins | DONE | Commit `affc446f`. D1/D2 disetujui. UI Template & Harga **tidak** lagi kirim `client_updated_at` (dikomentari → dialog konflik tak pernah muncul). Backend 409 + handler konflik **DORMAN/reversibel**; test backend yang kirim token usang tetap 409. Source guard last-save-wins ditambahkan | Verifikasi runtime di staging (Fase 4) |
+| 1A | Middleware `no-store` halaman `detail_project` | DONE / COMMITTED / TODO runtime | Commit `adc60101` (cache_control.py + hunk middleware base.py + tests_page_cache_headers.py). Sisa base.py (opaque/accounts/dll) sengaja dibiarkan unstaged | Uji clean branch + runtime header |
+| 1B | Bootstrap defensif | DONE (B1) / COMMITTED via 2A/2B | Strategy B1: andalkan `no-store`. Bootstrap json_script masuk `26369ac8` (2B) + context di `a263b1b9` (2A) | — |
+| 1C | Dockerfile collectstatic fail-fast | DONE / COMMITTED | Commit `13c95e4d` | Uji build image |
+| 2A | Sync LED output + Jadwal | DONE / COMMITTED / TODO runtime | Commit `a263b1b9` (views.py context + LED include rekap_rab/rincian_rab/rekap_kebutuhan/kelola_tahapan). 11 targeted tests lulus | Uji browser |
+| 2B | Precision `watch` + bootstrap json_script | DONE / COMMITTED / TODO runtime | Commit `26369ac8` via blob-surgery: Template `pekerjaan,harga` + `ta-bootstrap-detail`; Volume LED + `vp-bootstrap`; Harga `hi-bootstrap`. WIP opaque/formula-label di file sama tetap uncommitted | Uji browser |
+| 2C | Legacy sync indicator JS/partial/CSS | DONE / COMMITTED | CSS split `3a11ebfb`; penghapusan `sync_indicator.js` + `_sync_indicator.html` di `0a522606` | — |
+| 2D | Hygiene Jadwal (`le.log`, `sync-led-ack`) | DONE / COMMITTED / TODO runtime | `le.log`→`console.log` di `a263b1b9`; `dp:sync-led-ack` di `c1f1317d` (blob-surgery, `progressMode` dibiarkan uncommitted) | Uji planned/actual |
+| 3A | Policy single-user last-save-wins | DONE / COMMITTED / TEST GAP DITUTUP | UI `affc446f`; test gap Harga ditutup `ac730cc3` (backend stale-token 409 dormant + last-save-wins, 3 tests lulus). Test Template aktif sudah ada sebelumnya | Verifikasi runtime |
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
-| 3C | Import Validate await save + `beforeunload` | DONE source / TODO runtime | Source sudah memakai `await persistCurrentEdits()` dan guard unload | Simulasi offline/500 dan reload dengan dirty edit |
-| V1 | Cleanup build/manifest Jadwal | DONE | Commit `63d63c0c`. Nested tracked dist dihapus; clean `vite build` (emptyOutDir); satu hash end-to-end `jadwal-kegiatan-C9Ct7gjz.js` (source manifest == bundle == staticfiles); `git ls-files` nested = 0 | Verifikasi runtime di staging (Fase 4): buka Jadwal tanpa 500 |
+| 3C | Import Validate await save + `beforeunload` | DEFERRED / UNCOMMITTED | Hunk save/sync menyatu (224 baris) dengan rework UI validasi + bergantung `collectExportPayload`/route `validate_save_edits` (fitur edit import WIP). Tak separable jadi commit berfungsi | Commit bersama fitur Import Validate saat fitur siap; lalu simulasi offline/500 |
+| V1 | Cleanup build/manifest Jadwal | DONE / COMMITTED | Fix absolute `outDir` di `vite.config.js` committed `3faea393`; nested dist + single bundle sudah committed sebelumnya | Clean build ulang dari branch bersih (Fase 4) |
 | V2 | Migration drift `referensi/0024` | DONE | Commit `97b135da`. `0024_alter_ahspimportstaging_segment_type` dibuat + applied lokal; `makemigrations --check --dry-run` = No changes detected (semua app) | Apply saat deploy (entrypoint `migrate`) |
 | V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
-| V4 | Triase 5 test merah baseline/domain | DONE | Commit `d8ade683`. Ekspektasi diperbarui ke perilaku yang disengaja: param value 12dp (migrasi 0043/0044) + kode item di-resolve SSOT (query via uraian; harga item resolved diberi nilai untuk rekap). Suite `detail_project` kini **263 passed, 0 failed** | — |
+| V4 | Triase 5 test merah baseline/domain | DONE / VERIFIED | Commit `d8ade683`. Suite `detail_project` diverifikasi ulang 2026-06-09: **264 passed, 0 failed** | — |
 | D1 | Konfirmasi shared-login | RESOLVED | Dikonfirmasi: **1 akun = 1 operator** (bukan shared-login). Last-save-wins aman | — |
 | D2 | Persetujuan 3A last-save-wins | RESOLVED | **Disetujui**. 3A dieksekusi (commit `affc446f`) dengan backend token dorman/reversibel | — |
 | 4 | Verifikasi staging/browser gate | TODO | Belum boleh dianggap selesai sebelum V1/V2 ditutup | Clean build -> collectstatic -> buka halaman target |
 
 ### Jalur Eksekusi Terdekat
 
-1. **V1 - Build/manifest Jadwal**: tutup nested tracked dist dan buktikan satu hash end-to-end.
-2. **V2 - Migration drift referensi**: generate `0024`, lalu pastikan `makemigrations --check --dry-run` bersih.
-3. **V3 - CSS legacy**: pindahkan style LED aktif dari `sync_indicator.css`, lalu hapus legacy file/link.
-4. **Fase 4 - Gate staging/browser**: jalankan setelah V1/V2/V3 minimal bersih.
-5. **D1/D2 - Keputusan produk single-user**: jawab shared-login dan setujui 3A sebelum perubahan UI save.
-6. **3A - Last-save-wins**: eksekusi setelah D1/D2 clear, bukan bagian blocker teknis awal.
+1. ~~Konsolidasi V1 + commit fondasi 1A–2D scoped~~ **SELESAI** (`3faea393`..`ac730cc3`). 3C ditunda (lihat Kondisi Operasional). Belum dipush.
+2. **Push** 9 commit konsolidasi ke `origin/checkpoint/save-sync-plan-20260608`.
+3. **Uji branch reproducible**: worktree bersih dari HEAD `ac730cc3` (atau clean clone), lalu `manage.py check`, migration check, build (`npm run build`), collectstatic, dan suite test — verifikasi bahwa fondasi save/sync berfungsi **tanpa** WIP yang masih uncommitted (mis. halaman Template/Volume tetap render & bootstrap meski WIP opaque belum ada).
+4. **Fase 4 - Gate staging/browser**: uji Jadwal tanpa 500, no-store header, LED lintas-page, Template/Harga last-save-wins. (Import Validate failure UX menunggu commit fitur 3C.)
+5. **3B util save seragam**: tetap opsional dan ditunda setelah gate launch.
 
 ### Jangan Dikerjakan Dulu Tanpa Konfirmasi
 
 - Menghapus optimistic-lock backend. Backend token harus tetap dormant/reversible.
-- Mengubah UI Template AHSP/Harga Items ke last-save-wins.
 - Menghapus Sync LED dari halaman output. LED tetap dipakai sebagai indikator pasif.
-- Menghapus `sync_indicator.css` sebelum style `.dp-sync-led` dipindahkan.
+- Menandai Fase 4 selesai hanya berdasarkan unit/source test tanpa browser/staging verification.
+
+### Hasil Verifikasi Ulang 2026-06-09
+
+- `python manage.py check`: **lulus, 0 issues**.
+- `python manage.py makemigrations --check --dry-run`: **lulus, No changes detected**.
+- `python manage.py showmigrations referensi`: migration `0024` **applied**.
+- `npm run build`: **lulus**, menghasilkan satu entry Jadwal `jadwal-kegiatan-C9Ct7gjz.js`.
+- `python manage.py collectstatic --noinput --clear`: **lulus**, dan staticfiles memuat hash Jadwal yang sama.
+- `python -m pytest detail_project/ -q --reuse-db`: **264 passed, 0 failed**.
+- Targeted 3A (`tests_template_ahsp_formula_state` + source guards): **55 passed**.
+- Targeted no-store/Sync LED: **11 passed**.
+- Targeted Import Validate UI: **2 passed**.
+- Test permission referensi masih memiliki **1 failure baseline/domain**: ekspektasi redirect login, sedangkan middleware subscription mengarahkan ke pricing. Ini bukan regresi save-sync, tetapi tetap perlu triase terpisah.
+- Percobaan awal menjalankan dua suite pytest secara paralel menghasilkan lock `test_pytest_db.sqlite3`; hasil tersebut tidak dipakai sebagai verdict. Suite utama kemudian diulang secara tunggal dan lulus.
 
 ---
 
@@ -256,18 +271,18 @@ Rollback: kembalikan baris semula (tidak disarankan untuk `le.log`, itu memang b
 
 ---
 
-## Adendum Arsitektur — Single-user SSOT Save Policy (menunggu konfirmasi)
+## Adendum Arsitektur — Single-user SSOT Save Policy (disetujui)
 
-Status: **proposal perubahan plan, belum otomatis dieksekusi ke kode**.
+Status: **D1/D2 resolved dan policy sudah dieksekusi pada UI Template AHSP + Harga Items**. Backend token dan handler konflik sengaja tetap dormant/reversible.
 
-Keputusan produk yang sedang dipertimbangkan:
+Keputusan produk:
 - Aplikasi diasumsikan **1 akun = 1 user/operator = 1 role aktif**.
 - Multi-tab/multi-page edit bersamaan dianggap kasus kecil, bukan workflow utama.
 - Database tetap menjadi **SSOT**.
 - Browser/HTML tidak boleh menjadi sumber kebenaran stale.
 - Redis/cache tetap boleh dipakai sebagai akselerator read model/perhitungan, tetapi harus bisa diinvalidate dan tidak menjadi sumber kebenaran edit.
 
-Policy target bila disetujui:
+Policy yang diterapkan:
 - Load page/API selalu mengambil state terbaru dari DB/read model yang valid.
 - Save dari UI memakai pola **last-save-wins**: payload terakhir yang berhasil diproses server menjadi state terbaru.
 - UI normal **tidak mengirim optimistic-lock token** seperti `client_updated_at` untuk memblok save.
@@ -288,11 +303,11 @@ Trade-off:
 - Negatif: bila user benar-benar mengedit objek sama di dua tab, save terakhir akan menimpa save sebelumnya tanpa dialog.
 - Mitigasi: `no-store`, refresh/fetch terbaru saat page dibuka, dirty-state jujur, dan read-after-write setelah save.
 
-Konfirmasi yang dibutuhkan sebelum eksekusi kode:
-- Apakah policy last-save-wins ini berlaku untuk **semua page input**, termasuk Harga Items dan Template AHSP?
-- Apakah Sync LED tetap dipertahankan sebagai indikator pasif/sinkron manual, atau dikurangi agar tidak memberi warning lintas page?
-- Apakah backend tetap boleh menyimpan dukungan `client_updated_at` untuk API/internal test, tetapi UI tidak mengirim token?
-- **[BARU] Risiko shared-login**: apakah ada kemungkinan **satu akun dipakai 2 orang** (mis. satu firma satu login)? Bila ya, last-save-wins berarti dua orang bisa saling menimpa tanpa peringatan. Bila tidak (benar-benar 1 operator), policy ini aman.
+Keputusan yang sudah dikonfirmasi:
+- Last-save-wins berlaku untuk Harga Items dan Template AHSP.
+- Sync LED dipertahankan sebagai indikator pasif/sinkron manual.
+- Backend tetap menyimpan dukungan `client_updated_at`; UI normal tidak mengirim token.
+- Shared-login tidak menjadi workflow produk: **1 akun = 1 operator**.
 
 ### Pengaman rekayasa (keputusan engineering yang disarankan)
 
@@ -421,7 +436,7 @@ DoD launch: semua baris matriks runtime ✅, header benar, aset terbaru tersaji.
 | 2B | watch precision | 0 | rendah (Template lebih cerewet) | tidak |
 | 2C | hapus dead code | 0 | positif | tidak |
 | 2D | hygiene Jadwal (`le.log`, legacy `mode`) **[A4]** | 0 | positif | dianjurkan (murah, bug nyata) |
-| 3A | last-save-wins UI save policy | 0 | rendah-sedang (overwrite multi-tab diterima) | perlu konfirmasi produk |
+| 3A | last-save-wins UI save policy | 0 | rendah-sedang (overwrite multi-tab diterima) | sudah disetujui; runtime gate belum |
 | 3B | util save seragam | 3A | sedang (kedip; risiko regresi) | tidak (boleh pasca-launch) |
 | 3C | Import Validate save UX **[A5]** | 0 | sedang (save lebih lambat; prompt unload) | **ya, BILA Import Validate dipakai sebelum launch** |
 | V1 | cleanup build/manifest Jadwal | 0 | nihil | **ya (blocker)** |
@@ -430,7 +445,7 @@ DoD launch: semua baris matriks runtime ✅, header benar, aset terbaru tersaji.
 | V4 | triase 5 test merah baseline | 0 | nihil | tidak (kualitas gate) |
 | 4 | verifikasi staging | semua | — | **ya (gate)** |
 
-Jalur minimum siap-launch: **Fase 0 → 1A → 1C → V1 → V2 → 4** (+ P-2). **V1 (build/manifest Jadwal)** dan **V2 (migration drift)** adalah **launch blocker** dari hasil verifikasi. **[A5]** Bila workflow **Import Validate** dipakai sebelum launch, **3C masuk jalur minimum**. **2D** dianjurkan lebih awal karena murah & menutup bug nyata. **2A** (LED output) disesuaikan dengan adendum: indikator pasif/silent, **bukan** dialog konflik multi-tab. **3A** (last-save-wins) perlu konfirmasi produk sebelum eksekusi karena mengubah perilaku konflik save; bila disetujui, ia **menurunkan** UI optimistic-lock yang sudah terbangun (lihat Pengaman rekayasa di adendum).
+Jalur minimum siap-launch saat ini: **konsolidasi commit fase 1A–2D/3C + fix `vite.config.js` → verifikasi clean branch → Fase 4 staging/browser**. V2–V4 dan behavior 3A sudah tertutup. V1 belum dianggap fully reproducible sampai konfigurasi `outDir` ikut committed.
 
 ---
 
@@ -450,10 +465,10 @@ Jalur minimum siap-launch: **Fase 0 → 1A → 1C → V1 → V2 → 4** (+ P-2).
 4. Source guard: legacy jadwal **tidak** mengirim `mode: state.timeScale` ke backend v2; planned/actual mengirim `mode` benar. (Fase 2D)
 5. Source guard Import Validate: handler Simpan memakai `await persistCurrentEdits()`. (Fase 3C)
 6. Source guard Import Validate: ada `beforeunload` berdasarkan `changes.modified`/`changes.deleted`. (Fase 3C)
-7. Source guard last-save-wins (Fase 3A, bila disetujui):
-   - UI save normal **tidak** mengirim `client_updated_at` dan **tidak** punya dialog konflik multi-tab (Template AHSP & Harga Items).
+7. Source guard last-save-wins (Fase 3A):
+   - UI save normal **tidak** mengirim `client_updated_at`. Handler dialog konflik boleh tetap dormant/reversible dan tidak terpicu pada flow normal.
    - Backend test dorman: save tanpa token → `200`; save dengan token usang eksplisit → masih `409` (plumbing reversibel utuh).
-   - Test `409`-blocking lama **di-update** ke kontrak baru (bukan dihapus); tidak ada test merah baru pada gate Fase 0.
+   - Template sudah punya test token usang eksplisit. Harga Items masih membutuhkan regression test aktif setara; test historisnya hanya ada di `cleanup_archive`.
 
 ## Rollback umum
 Setiap fase di-commit terpisah dengan pesan jelas; rollback = `git revert <commit fase>`. Tag `pre-sync-hardening` (Fase 0) adalah titik balik penuh.
