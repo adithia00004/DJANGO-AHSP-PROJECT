@@ -33,7 +33,7 @@ Update terakhir: 2026-06-09, berdasarkan pemeriksaan source, commit, build, migr
 
 - Branch aktif lokal: `checkpoint/save-sync-plan-20260608`.
 - Branch ini sudah dipush ke remote: `origin/checkpoint/save-sync-plan-20260608`.
-- HEAD code terverifikasi: `ac730cc3` (commit docs ini berada tepat di atasnya). Di atas `9e0e8c83` (V1–V4/3A) kini ada konsolidasi scoped fondasi save/sync: `3faea393` (V1 outDir), `6e1e9d89` (S1 autorefresh), `adc60101` (1A), `13c95e4d` (1C), `0a522606` (2C), `a263b1b9` (2A), `26369ac8` (2B), `c1f1317d` (2D), `ac730cc3` (3A test). **Belum dipush.**
+- HEAD code terverifikasi: `5026c26f` (commit docs ini berada tepat di atasnya). Di atas `9e0e8c83` (V1–V4/3A): konsolidasi scoped fondasi save/sync `3faea393` (V1 outDir), `6e1e9d89` (S1 autorefresh), `adc60101` (1A), `13c95e4d` (1C), `0a522606` (2C), `a263b1b9` (2A), `26369ac8` (2B), `c1f1317d` (2D), `ac730cc3` (3A test), `bc75fbb1` (docs) — **sudah dipush**. Lalu `5026c26f` (revert orphan migration 0024) dari verifikasi clean-branch — **belum dipush**.
 - Catatan teknis: file MIXED (2B/2D) di-stage lewat blob ke index lalu di-commit **tanpa pathspec** (`git commit -- <file>` direkam dari working tree, bukan index — jangan dipakai untuk commit scoped file MIXED).
 - Konsolidasi memakai **bedah hunk/blob** untuk file MIXED (base.py, template_ahsp/volume/harga, save_handler): hanya baris save/sync yang di-commit; kerja WIP lain (opaque param endpoints, refactor export, `progressMode`, UI param/volume/import) **tetap di working tree, uncommitted**.
 - **3C (Import Validate) DITUNDA**: hunk `persistCurrentEdits`/`beforeunload` menyatu dalam satu hunk 224 baris dengan rework UI validasi dan bergantung pada `collectExportPayload` + route `validate_save_edits` (fitur edit import yang juga WIP). Tidak bisa jadi commit scoped yang berfungsi tanpa fitur itu; commit bersama fitur Import Validate saat fitur tersebut siap.
@@ -67,12 +67,12 @@ Legenda:
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
 | 3C | Import Validate await save + `beforeunload` | DEFERRED / UNCOMMITTED | Hunk save/sync menyatu (224 baris) dengan rework UI validasi + bergantung `collectExportPayload`/route `validate_save_edits` (fitur edit import WIP). Tak separable jadi commit berfungsi | Commit bersama fitur Import Validate saat fitur siap; lalu simulasi offline/500 |
 | V1 | Cleanup build/manifest Jadwal | DONE / COMMITTED | Fix absolute `outDir` di `vite.config.js` committed `3faea393`; nested dist + single bundle sudah committed sebelumnya | Clean build ulang dari branch bersih (Fase 4) |
-| V2 | Migration drift `referensi/0024` | DONE | Commit `97b135da`. `0024_alter_ahspimportstaging_segment_type` dibuat + applied lokal; `makemigrations --check --dry-run` = No changes detected (semua app) | Apply saat deploy (entrypoint `migrate`) |
+| V2 | Migration drift `referensi/0024` | REVISED / DONE | `97b135da` keliru: 0024 (AlterField segment_type +`LAIN`) bergantung 0023 dan butuh model import-batch (semua WIP), padahal model branch masih state 0020 (`[A,B,C,HEADING]`). Clean-branch `makemigrations --check` GAGAL (NodeNotFoundError). Diperbaiki `5026c26f`: untrack 0024 (file tetap di disk, untracked seperti 0021–0023). Clean-branch kini = No changes detected. 0021–0024 + model menyusul bersama fitur import-batch | — |
 | V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
 | V4 | Triase 5 test merah baseline/domain | DONE / VERIFIED | Commit `d8ade683`. Suite `detail_project` diverifikasi ulang 2026-06-09: **264 passed, 0 failed** | — |
 | D1 | Konfirmasi shared-login | RESOLVED | Dikonfirmasi: **1 akun = 1 operator** (bukan shared-login). Last-save-wins aman | — |
 | D2 | Persetujuan 3A last-save-wins | RESOLVED | **Disetujui**. 3A dieksekusi (commit `affc446f`) dengan backend token dorman/reversibel | — |
-| 4 | Verifikasi staging/browser gate | TODO | Belum boleh dianggap selesai sebelum V1/V2 ditutup | Clean build -> collectstatic -> buka halaman target |
+| 4 | Verifikasi staging/browser gate | PARTIAL | Clean-branch (worktree `5026c26f`): `check` ✅, `makemigrations --check` ✅ No changes (pasca-fix 0024), `npm run build` ✅ outDir benar tanpa nested + 1 bundle `jadwal-kegiatan-DXFScqEi`. Suite test penuh ⏸️ butuh Postgres (host unreachable saat verifikasi; save/sync tests sudah lulus di Postgres pada main, kode identik) | Jalankan suite penuh saat Postgres tersedia → collectstatic → gate browser |
 
 ### Jalur Eksekusi Terdekat
 
@@ -101,6 +101,17 @@ Legenda:
 - Targeted Import Validate UI: **2 passed**.
 - Test permission referensi masih memiliki **1 failure baseline/domain**: ekspektasi redirect login, sedangkan middleware subscription mengarahkan ke pricing. Ini bukan regresi save-sync, tetapi tetap perlu triase terpisah.
 - Percobaan awal menjalankan dua suite pytest secara paralel menghasilkan lock `test_pytest_db.sqlite3`; hasil tersebut tidak dipakai sebagai verdict. Suite utama kemudian diulang secara tunggal dan lulus.
+
+### Hasil Verifikasi Clean-Branch (Fase 4) — 2026-06-09
+
+Dijalankan di **git worktree terpisah** dari HEAD bersih (tanpa WIP lokal), supaya membuktikan fondasi save/sync berfungsi tanpa kerja yang belum di-commit.
+
+- `manage.py check` (clean tree): **lulus, 0 issues**.
+- `makemigrations --check --dry-run` (clean tree): awalnya **GAGAL** — `NodeNotFoundError: 0024 ... dependencies reference nonexistent parent 0023`. Investigasi: `referensi/0021/0022/0023` semua untracked, dan model branch (`AHSPImportStaging.SEGMENT_CHOICES`, `KodeItemReferensi`) masih state 0020 (`[A,B,C,HEADING]`, tanpa `LAIN`/`sumber`/`batch`/uniq). 0024 = orphan dari fitur import-batch yang mayoritas WIP. **Diperbaiki** `5026c26f` (untrack 0024). Re-run clean tree: **No changes detected**.
+- `npm run build` (clean tree, via junction node_modules): **lulus** (vite 5.4.21, ✓ built). outDir = `detail_project/static/detail_project/dist` (BENAR, absolut via `path.resolve(__dirname,...)`), **tidak** membuat nested `detail_project/detail_project`, satu bundle Jadwal `jadwal-kegiatan-DXFScqEi.js`. V1 reproducible terkonfirmasi.
+- Suite test penuh: **tertunda** — beberapa migration memakai SQL Postgres-only (`USING`), jadi sqlite tidak bisa dipakai; host Postgres `getaddrinfo failed` saat verifikasi. Save/sync tests sudah lulus di Postgres pada working tree main (kode committed identik), dan clean-tree `check`+`makemigrations` hijau. **Jalankan suite penuh di clean tree saat Postgres tersedia** sebelum menyatakan Fase 4 selesai.
+
+Pelajaran: jangan commit migration anak tanpa rantai parent + perubahan model-nya. Selalu uji `makemigrations --check` di worktree bersih (bukan working tree yang dirty) sebelum gate.
 
 ---
 
