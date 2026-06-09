@@ -34,8 +34,8 @@ Menyiapkan release yang:
 | L2 | Archive/untrack dependency dan arsip | DONE (commit `8483685e`) | Clean install/build/test hijau; node_modules + cleanup_archive untracked (tetap di disk) |
 | L3 | Hapus backup/scratch file terverifikasi | DONE (commit `8483685e`) | Reference scan + smoke test hijau; 9 file backup/scratch dihapus |
 | L4 | Review compatibility/deprecated code | TODO | Bukti pemakaian atau removal test per simbol |
-| L5 | Security/TLS/production compose | TODO | `check --deploy`, HTTPS, port policy lulus |
-| L6 | Backup SSOT dan single-DB enforcement | TODO | Restore drill lulus |
+| L5 | Security/TLS/production compose | TODO (scaffolding siap) | Caddy auto-TLS (`deploy/Caddyfile` + `deploy/docker-compose.prod.proxy.yml`) + runbook `RUNBOOK_DEPLOY_TLS_L5_L6.md`. Eksekusi menunggu domain/secrets. Gate: `check --deploy`, HTTPS, port policy |
+| L6 | Backup SSOT dan single-DB enforcement | TODO (scaffolding siap) | `scripts/restore_drill_db.sh` (restore ke DB scratch + verifikasi, tak sentuh live). Gate: restore drill LULUS + PG16 native dimatikan |
 | L7 | CI, browser gate, UAT, dan Opaque sign-off | PARTIAL (CI hijau) | CI HEAD HIJAU di `fc8fdcba` (root cause: ci.yml override `DJANGO_SETTINGS_MODULE` → diperbaiki ke `config.settings.test`). Sisa: browser gate ulang, UAT proyek nyata, Opaque sign-off |
 | L8 | Release candidate dan GO/NO-GO | TODO | Semua P0/P1 wajib PASS |
 
