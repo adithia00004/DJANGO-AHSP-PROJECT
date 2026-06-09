@@ -1,6 +1,9 @@
 # PRE-PRODUCTION LAUNCH CHECKLIST
 ## Django AHSP Project
 
+> Dokumen ini adalah referensi historis.
+> SSOT status review launch ada di folder `Review/` (terutama `Review/MASTER_REVIEW.md` dan `Review/CHECKLIST_PROGRESS.md`).
+
 Dokumen ini adalah checklist eksekusi launch (GO/NO-GO).
 Dokumen audit temuan teknis tetap di `AUDIT_PRE_LAUNCH.md`.
 Dokumen agenda provider/pihak ketiga ada di `AGENDA_PROVIDER_PIHAK_KETIGA.md`.

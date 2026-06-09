@@ -1,5 +1,9 @@
 # LAPORAN AUDIT PRE-LAUNCH PRODUCTION
 ## Django AHSP Project
+
+> Dokumen ini adalah referensi historis.
+> SSOT status review launch ada di folder `Review/` (terutama `Review/MASTER_REVIEW.md` dan `Review/CHECKLIST_PROGRESS.md`).
+
 **Tanggal audit:** 2026-02-08
 **Status dokumen:** Disesuaikan dengan kondisi codebase saat ini (verifikasi langsung file utama)
 
