@@ -4,24 +4,62 @@
 
 {% block title %}Dashboard-RAB - Manajemen Proyek Konstruksi Profesional{% endblock %}
 
+{% block extra_head %}
+<meta name="description"
+    content="Dashboard-RAB membantu tim konstruksi menyusun AHSP, mengelola RAB, memantau progres proyek, dan menghasilkan laporan profesional lebih cepat.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Dashboard-RAB - Manajemen Proyek Konstruksi Profesional">
+<meta property="og:description"
+    content="Platform terpadu untuk analisa harga satuan, manajemen proyek, dan laporan konstruksi yang akurat.">
+<meta property="og:image" content="{% static 'images/dashboard-preview.svg' %}">
+<meta property="og:url" content="{{ request.build_absolute_uri }}">
+<meta name="twitter:card" content="summary_large_image">
+{% endblock %}
+
 {% block extra_css %}
 <style>
     /* ===== LANDING PAGE STYLES - SSOT Aligned with Modern twist ===== */
     :root {
-        --hero-gradient: linear-gradient(135deg, var(--corp-blue-700, #004aad) 0%, var(--corp-blue-900, #002a66) 100%);
-        --accent-glow: 0 0 60px rgba(0, 86, 214, 0.3);
-        --glass-bg: rgba(255, 255, 255, 0.9);
-        --glass-border: 1px solid rgba(255, 255, 255, 0.5);
+        /* Default (Light Mode) - Crisp & Professional */
+        --hero-gradient: linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%);
+        --hero-text: #0b1c33;
+        /* Deep Navy for readability */
+        --hero-subtext: #475569;
+        /* Slate 600 */
+        --hero-badge-bg: rgba(13, 110, 253, 0.08);
+        /* Very subtle blue */
+        --hero-badge-text: #0d6efd;
+        --hero-shape-color: rgba(13, 110, 253, 0.03);
+        /* Very subtle */
+
+        --accent-glow: 0 0 60px rgba(13, 110, 253, 0.15);
+    }
+
+    [data-bs-theme="dark"] {
+        /* Dark Mode - Consistent with Light Mode (Dark -> Deep Blue) */
+        --hero-gradient: linear-gradient(180deg, #1a1d21 0%, #0f2b4d 100%);
+        --hero-text: #f8fafc;
+        --hero-subtext: #94a3b8;
+        --hero-badge-bg: rgba(56, 189, 248, 0.1);
+        --hero-badge-text: #38bdf8;
+        --hero-shape-color: rgba(255, 255, 255, 0.03);
+
+        --accent-glow: 0 0 60px rgba(56, 189, 248, 0.2);
+    }
+
+    html {
+        scroll-padding-top: 100px;
     }
 
     /* Modern Hero Section */
     .hero-section {
         background: var(--hero-gradient);
-        padding: 6rem 0 8rem;
-        color: #fff;
+        padding: 10rem 0 8rem;
+        /* Increased top padding to avoid navbar overlap */
+        color: var(--hero-text);
         position: relative;
         overflow: hidden;
-        clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%);
+        /* Removed clip-path to prevent cutting off content on some screens */
     }
 
     /* Abstract Background Shapes */
@@ -31,9 +69,10 @@
         position: absolute;
         width: 600px;
         height: 600px;
-        background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
+        background: radial-gradient(circle, var(--hero-shape-color) 0%, rgba(255, 255, 255, 0) 70%);
         border-radius: 50%;
         z-index: 0;
+        pointer-events: none;
     }
 
     .hero-section::before {
@@ -51,61 +90,97 @@
         font-size: 3.5rem;
         font-weight: 800;
         letter-spacing: -0.02em;
-        line-height: 1.1;
+        line-height: 1.15;
         margin-bottom: 1.5rem;
-        background: linear-gradient(to right, #ffffff, #e0e7ff);
+        color: var(--hero-text);
+        position: relative;
+        z-index: 2;
+    }
+
+    .hero-tagline span.highlight {
+        background: linear-gradient(to right, var(--bs-primary), var(--bs-info));
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
-        position: relative;
-        z-index: 1;
+    }
+
+    [data-bs-theme="dark"] .hero-tagline span.highlight {
+        background: linear-gradient(to right, #60a5fa, #bfdbfe);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
 
     .hero-subheadline {
         font-size: 1.25rem;
         font-weight: 400;
         line-height: 1.6;
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--hero-subtext);
         margin-bottom: 2.5rem;
-        max-width: 540px;
+        max-width: 580px;
         position: relative;
-        z-index: 1;
+        z-index: 2;
+    }
+
+    .hero-badge {
+        background: var(--hero-badge-bg);
+        color: var(--hero-badge-text);
+        border: 1px solid rgba(13, 110, 253, 0.2);
+    }
+
+    [data-bs-theme="dark"] .hero-badge {
+        border-color: rgba(255, 255, 255, 0.2);
     }
 
     /* Modern Buttons */
     .btn-hero-primary {
-        background: #fff;
-        color: var(--corp-blue-800, #003680);
+        background: var(--bs-primary);
+        color: #fff;
         font-weight: 700;
         padding: 0.8rem 2rem;
         border-radius: 50px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 10px 20px rgba(13, 110, 253, 0.2);
         transition: all 0.3s ease;
         border: none;
+        position: relative;
+        z-index: 2;
     }
 
     .btn-hero-primary:hover {
         transform: translateY(-3px);
-        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.25);
-        color: var(--corp-blue-600, #0056d6);
+        box-shadow: 0 15px 30px rgba(13, 110, 253, 0.3);
+        filter: brightness(1.1);
+        color: #fff;
     }
 
     .btn-hero-outline {
-        background: rgba(255, 255, 255, 0.1);
-        color: #fff;
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: transparent;
+        color: var(--hero-text);
+        border: 2px solid var(--bs-gray-300);
         font-weight: 600;
         padding: 0.8rem 2rem;
         border-radius: 50px;
-        backdrop-filter: blur(5px);
         transition: all 0.3s ease;
+        position: relative;
+        z-index: 2;
+    }
+
+    [data-bs-theme="dark"] .btn-hero-outline {
+        border-color: rgba(255, 255, 255, 0.3);
+        color: #fff;
     }
 
     .btn-hero-outline:hover {
-        background: rgba(255, 255, 255, 0.2);
+        border-color: var(--bs-primary);
+        color: var(--bs-primary);
+        transform: translateY(-3px);
+        background: rgba(13, 110, 253, 0.05);
+    }
+
+    [data-bs-theme="dark"] .btn-hero-outline:hover {
+        background: rgba(255, 255, 255, 0.1);
         border-color: #fff;
         color: #fff;
-        transform: translateY(-3px);
     }
 
     /* Dashboard Preview Image */
@@ -126,17 +201,18 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    /* Feature Cards - Glassy & Clean */
+    /* Feature Cards - Theme Aware */
     .feature-card {
         padding: 2rem;
         border-radius: 1rem;
-        background: #fff;
-        border: 1px solid #edf2f7;
+        background: var(--dp-c-surface);
+        border: 1px solid var(--dp-c-border);
         height: 100%;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
         overflow: hidden;
         z-index: 1;
+        box-shadow: var(--dp-shadow-sm);
     }
 
     .feature-card::before {
@@ -154,8 +230,8 @@
 
     .feature-card:hover {
         transform: translateY(-10px);
-        box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.05);
-        border-color: transparent;
+        box-shadow: var(--dp-shadow-lg);
+        border-color: var(--dp-c-primary-subtle);
     }
 
     .feature-card:hover::before {
@@ -178,42 +254,57 @@
         transform: scale(1.1) rotate(5deg);
     }
 
+    .feature-card h5 {
+        color: var(--dp-c-text);
+        font-weight: 700;
+    }
+
+    .feature-card p {
+        color: var(--dp-c-muted);
+    }
+
     /* Section Headers */
     .section-header h2 {
         font-size: 2.5rem;
         font-weight: 800;
         letter-spacing: -0.03em;
         margin-bottom: 1rem;
-        color: var(--bs-gray-900);
+        color: var(--dp-c-text);
     }
 
     .section-header p {
         font-size: 1.125rem;
-        color: var(--bs-gray-600);
+        color: var(--dp-c-muted);
         max-width: 600px;
         margin: 0 auto;
     }
 
-    /* Pricing Cards - Modern */
+    /* Pricing Cards - Theme Aware */
     .pricing-card {
         border-radius: 1.5rem;
-        border: 1px solid var(--bs-gray-200);
-        background: #fff;
+        border: 1px solid var(--dp-c-border);
+        background: var(--dp-c-surface);
         padding: 2.5rem;
         position: relative;
         transition: all 0.3s ease;
+        box-shadow: var(--dp-shadow-sm);
     }
 
     .pricing-card:hover {
         transform: translateY(-8px);
-        box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+        box-shadow: var(--dp-shadow-lg);
         border-color: var(--bs-primary);
     }
 
     .pricing-card.popular {
-        background: linear-gradient(to bottom, #fff, #f8fafc);
+        background: linear-gradient(to bottom, var(--dp-c-surface), var(--dp-c-surface-2));
         border: 2px solid var(--bs-primary);
-        box-shadow: 0 10px 30px -10px rgba(0, 86, 214, 0.15);
+        box-shadow: 0 10px 30px -10px rgba(13, 110, 253, 0.15);
+    }
+
+    .pricing-card.promo-active {
+        border: 2px solid var(--bs-success);
+        box-shadow: 0 14px 32px -12px rgba(25, 135, 84, 0.35);
     }
 
     .badge-popular {
@@ -229,14 +320,98 @@
         top: -15px;
         left: 50%;
         transform: translateX(-50%);
-        box-shadow: 0 4px 10px rgba(0, 86, 214, 0.3);
+        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
     }
 
     .pricing-card .price {
         font-size: 3rem;
         font-weight: 800;
-        color: var(--bs-gray-900);
+        color: var(--dp-c-text);
         letter-spacing: -0.03em;
+    }
+
+    .pricing-card .per-month {
+        color: var(--dp-c-muted);
+    }
+
+    .pricing-card h4 {
+        color: var(--dp-c-text);
+        font-weight: 700;
+    }
+
+    .features-list li {
+        color: var(--dp-c-text);
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .features-list li i {
+        color: var(--bs-success);
+    }
+
+    .promo-state-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.3rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        border: 1px solid transparent;
+    }
+
+    .promo-state-chip.promo-active {
+        background: rgba(25, 135, 84, 0.12);
+        color: #146c43;
+        border-color: rgba(25, 135, 84, 0.35);
+    }
+
+    .promo-state-chip.promo-upcoming {
+        background: rgba(13, 202, 240, 0.12);
+        color: #087990;
+        border-color: rgba(13, 202, 240, 0.35);
+    }
+
+    .promo-state-chip.promo-none {
+        background: rgba(108, 117, 125, 0.12);
+        color: #495057;
+        border-color: rgba(108, 117, 125, 0.35);
+    }
+
+    .promo-panel {
+        border-radius: 0.9rem;
+        border: 1px dashed var(--dp-c-border);
+        padding: 0.7rem 0.8rem;
+        margin-bottom: 1rem;
+        min-height: 68px;
+    }
+
+    .promo-panel .promo-panel-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        margin-bottom: 0.2rem;
+        color: var(--dp-c-text);
+    }
+
+    .promo-panel .promo-panel-time {
+        font-size: 0.78rem;
+        color: var(--dp-c-muted);
+    }
+
+    .promo-panel.promo-active {
+        background: rgba(25, 135, 84, 0.08);
+        border-color: rgba(25, 135, 84, 0.45);
+    }
+
+    .promo-panel.promo-upcoming {
+        background: rgba(13, 202, 240, 0.08);
+        border-color: rgba(13, 202, 240, 0.45);
+    }
+
+    .promo-panel.promo-none {
+        background: rgba(108, 117, 125, 0.06);
     }
 
     /* Footer CTA */
@@ -244,6 +419,40 @@
         background: var(--hero-gradient);
         position: relative;
         overflow: hidden;
+    }
+
+    /* FAQ Accordion Overrides */
+    .accordion-item {
+        background-color: var(--dp-c-surface);
+        border-color: var(--dp-c-border);
+    }
+
+    .accordion-button {
+        background-color: var(--dp-c-surface);
+        color: var(--dp-c-text);
+        font-weight: 600;
+    }
+
+    .accordion-button:not(.collapsed) {
+        background-color: var(--dp-c-primary-subtle);
+        color: var(--bs-primary);
+        box-shadow: none;
+    }
+
+    .accordion-button::after {
+        filter: grayscale(1);
+    }
+
+    .accordion-button:not(.collapsed)::after {
+        filter: none;
+    }
+
+    [data-bs-theme="dark"] .accordion-button::after {
+        filter: invert(1);
+    }
+
+    [data-bs-theme="dark"] .accordion-button:not(.collapsed)::after {
+        filter: none;
     }
 </style>
 {% endblock %}
@@ -300,23 +509,22 @@
         <div class="row align-items-center g-5">
             <div class="col-lg-6 text-center text-lg-start">
                 <span
-                    class="d-inline-flex align-items-center gap-2 py-1 px-3 rounded-pill bg-white bg-opacity-10 border border-white border-opacity-25 text-white mb-4 fw-medium small backdrop-blur-sm shadow-sm">
-                    <span class="badge bg-white text-primary rounded-pill px-2 py-1"
-                        style="font-size: 0.7rem;">BARU</span>
+                    class="d-inline-flex align-items-center gap-2 py-1 px-3 rounded-pill hero-badge mb-4 fw-medium small backdrop-blur-sm shadow-sm">
+                    <span class="badge bg-primary rounded-pill px-2 py-1" style="font-size: 0.7rem;">BARU</span>
                     <span>Smart Construction Management</span>
                 </span>
 
                 <!-- Tagline -->
-                <h1 class="hero-tagline text-white mb-4">
-                    Perencanaan & Pengawasan <br>
-                    <span style="color: #93c5fd; -webkit-text-fill-color: #93c5fd;">Lebih Cerdas & Cepat.</span>
+                <h1 class="hero-tagline mb-4">
+                    Solusi Terpadu <br>
+                    <span class="highlight">RAB & Manajemen Proyek</span>
                 </h1>
 
                 <!-- Subheadline -->
                 <p class="hero-subheadline text-white-75 mb-5">
-                    Platform terintegrasi untuk menyusun <strong>RAB</strong>, mengelola <strong>Jadwal (Kurva
-                        S)</strong>,
-                    dan <strong>Laporan Proyek</strong> dalam satu dashboard profesional.
+                    Platform profesional untuk menyusun <strong>Analisa Harga Satuan</strong>, mengelola
+                    <strong>Jadwal</strong>,
+                    dan memantau <strong>Progress Proyek</strong> dalam satu dashboard yang mudah digunakan.
                 </p>
 
                 <!-- CTA Buttons -->
@@ -329,8 +537,8 @@
                     </a>
                 </div>
 
-                <div
-                    class="mt-5 pt-3 d-flex align-items-center gap-4 justify-content-center justify-content-lg-start opacity-75 border-top border-white border-opacity-10">
+                <div class="mt-5 pt-3 d-flex align-items-center gap-4 justify-content-center justify-content-lg-start opacity-75 border-top border-secondary border-opacity-10"
+                    style="color: var(--hero-subtext);">
                     <div class="d-flex align-items-center gap-2 pt-3">
                         <i class="bi bi-shield-check fs-5"></i>
                         <span class="small fw-medium">Data Terenkripsi</span>
@@ -351,10 +559,10 @@
                     <img src="{% static 'images/dashboard-preview.svg' %}" alt="Dashboard Preview" class="img-fluid">
 
                     <!-- Floating Badge -->
-                    <div class="position-absolute bottom-0 end-0 m-4 p-3 bg-white rounded-4 shadow-lg d-none d-md-block text-start border animate-float"
+                    <div class="position-absolute bottom-0 end-0 m-4 p-3 bg-body rounded-4 shadow-lg d-none d-md-block text-start border animate-float"
                         style="min-width: 200px;">
                         <div class="d-flex align-items-center gap-3">
-                            <div class="bg-success bg-opacity-10 p-2 rounded-3 text-success">
+                            <div class="bg-success-subtle p-2 rounded-3 text-success">
                                 <i class="bi bi-graph-up-arrow fs-5"></i>
                             </div>
                             <div>
@@ -373,75 +581,91 @@
 <!-- Features Section -->
 <section id="features" class="py-5">
     <div class="container">
-        <div class="section-header">
+        <div class="section-header text-center mb-5">
             <h2>Fitur Unggulan</h2>
-            <p>Semua yang Anda butuhkan untuk mengelola proyek konstruksi secara profesional</p>
+            <p>Solusi lengkap untuk kebutuhan manajemen proyek dan konsultansi Anda</p>
         </div>
 
         <div class="row g-4">
+            <!-- 1. AHSP Terupdate -->
             <div class="col-md-6 col-lg-4">
                 <div class="feature-card">
                     <div class="icon bg-primary-subtle text-primary">
-                        <i class="bi bi-calculator"></i>
+                        <i class="bi bi-database-check"></i>
                     </div>
-                    <h5>Analisa Harga Satuan</h5>
+                    <h5>AHSP Terupdate</h5>
                     <p class="text-muted mb-0">
-                        Database AHSP SNI terintegrasi. Buat analisa custom dengan mudah dan akurat.
+                        Akses database Analisa Harga Satuan Pekerjaan (AHSP) yang selalu diperbarui sesuai regulasi dan
+                        harga pasar terkini.
                     </p>
                 </div>
             </div>
+
+            <!-- 2. Export PDF/XLSX Automatis -->
             <div class="col-md-6 col-lg-4">
                 <div class="feature-card">
                     <div class="icon bg-success-subtle text-success">
-                        <i class="bi bi-bar-chart-line"></i>
+                        <i class="bi bi-file-earmark-excel"></i>
                     </div>
-                    <h5>Gantt Chart Interaktif</h5>
+                    <h5>Export Otomatis</h5>
                     <p class="text-muted mb-0">
-                        Visualisasi jadwal proyek dengan Gantt Chart yang responsif dan mudah diedit.
+                        Generate laporan RAB dan rekapitulasi ke format PDF atau Excel (XLSX) profesional hanya dengan
+                        satu klik.
                     </p>
                 </div>
             </div>
+
+            <!-- 3. Integrasi Data -->
             <div class="col-md-6 col-lg-4">
                 <div class="feature-card">
                     <div class="icon bg-info-subtle text-info">
-                        <i class="bi bi-graph-up-arrow"></i>
+                        <i class="bi bi-diagram-3"></i>
                     </div>
-                    <h5>Kurva S Otomatis</h5>
+                    <h5>Integrasi Data Pusat</h5>
                     <p class="text-muted mb-0">
-                        Generate Kurva S secara otomatis dari data progress pekerjaan Anda.
+                        Satu sumber kebenaran (Single Source of Truth) untuk semua data proyek, menghindari duplikasi
+                        dan kesalahan input.
                     </p>
                 </div>
             </div>
+
+            <!-- 4. Library/Template RAB -->
             <div class="col-md-6 col-lg-4">
                 <div class="feature-card">
                     <div class="icon bg-warning-subtle text-warning">
-                        <i class="bi bi-file-earmark-spreadsheet"></i>
+                        <i class="bi bi-collection"></i>
                     </div>
-                    <h5>Export Profesional</h5>
+                    <h5>Library Template RAB</h5>
                     <p class="text-muted mb-0">
-                        Export ke PDF, Excel, dan Word dengan format siap presentasi.
+                        Gunakan kembali template RAB proyek sebelumnya atau akses library standar untuk mempercepat
+                        penyusunan penawaran.
                     </p>
                 </div>
             </div>
+
+            <!-- 5. Laporan Mingguan/Bulanan Automatis -->
             <div class="col-md-6 col-lg-4">
                 <div class="feature-card">
                     <div class="icon bg-danger-subtle text-danger">
-                        <i class="bi bi-cloud-arrow-up"></i>
+                        <i class="bi bi-calendar-check"></i>
                     </div>
-                    <h5>Import Data Mudah</h5>
+                    <h5>Laporan Berkala Otomatis</h5>
                     <p class="text-muted mb-0">
-                        Import data dari Excel atau template project yang sudah ada.
+                        Buat laporan harian, mingguan, dan bulanan secara otomatis berdasarkan input progress lapangan.
                     </p>
                 </div>
             </div>
+
+            <!-- 6. Kurva S dan Timeline Automatis -->
             <div class="col-md-6 col-lg-4">
                 <div class="feature-card">
                     <div class="icon bg-secondary-subtle text-secondary">
-                        <i class="bi bi-shield-check"></i>
+                        <i class="bi bi-graph-up-arrow"></i>
                     </div>
-                    <h5>Aman & Terpercaya</h5>
+                    <h5>Kurva S & Timeline</h5>
                     <p class="text-muted mb-0">
-                        Data Anda dienkripsi dan disimpan dengan standar keamanan tinggi.
+                        Visualisasi jadwal (Timeline) dan Kurva S yang terbentuk otomatis dari bobot pekerjaan dan
+                        realisasi di lapangan.
                     </p>
                 </div>
             </div>
@@ -454,27 +678,50 @@
     <div class="container">
         <div class="section-header">
             <h2>Pilih Paket yang Tepat</h2>
-            <p>Harga transparan, tanpa biaya tersembunyi</p>
+
         </div>
 
         <div class="row g-4 justify-content-center">
             {% for plan in pricing_plans %}
             <div class="col-md-6 col-lg-4">
-                <div class="pricing-card {% if plan.popular %}popular{% endif %}">
+                <div class="pricing-card {% if plan.popular %}popular{% endif %} {% if plan.is_promo_highlighted %}promo-active{% endif %}">
                     {% if plan.popular %}
                     <span class="badge-popular">Paling Populer</span>
                     {% endif %}
 
                     <div class="text-center mb-3">
                         <h4 class="mb-1">{{ plan.duration }}</h4>
+                        <span class="promo-state-chip promo-{{ plan.promotion_state }}">
+                            <i class="bi {% if plan.is_promo_highlighted %}bi-lightning-charge-fill{% elif plan.is_upcoming_promo %}bi-clock-history{% else %}bi-ticket-perforated{% endif %}"></i>
+                            {{ plan.promotion_state_label }}
+                        </span>
                         {% if plan.discount %}
-                        <span class="badge bg-success">Hemat {{ plan.discount }}</span>
+                        <span class="badge bg-success ms-1">{{ plan.discount }}</span>
                         {% endif %}
                     </div>
 
                     <div class="text-center mb-3">
+                        {% if plan.discount_amount %}
+                        <div class="small text-muted text-decoration-line-through">{{ plan.base_price_display }}</div>
+                        {% endif %}
                         <span class="price">{{ plan.price_display }}</span>
                         <div class="per-month">{{ plan.per_month }}</div>
+                        {% if plan.promotion_name %}
+                        <div class="small text-muted">{{ plan.promotion_name }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="promo-panel promo-{{ plan.promotion_state }}">
+                        <div class="promo-panel-title">
+                            {% if plan.promotion_panel_name %}
+                            {{ plan.promotion_panel_name }}
+                            {% else %}
+                            Promo Subscription
+                            {% endif %}
+                        </div>
+                        <div class="promo-panel-time">
+                            {{ plan.promotion_timing_label }}
+                        </div>
                     </div>
 
                     <ul class="features-list">
@@ -497,6 +744,12 @@
                         Mulai Gratis
                     </a>
                     {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12">
+                <div class="alert alert-info mb-0 text-center">
+                    Paket berlangganan belum tersedia.
                 </div>
             </div>
             {% endfor %}
@@ -602,16 +855,80 @@
 </section>
 {% endblock %}
 
+{% block footer %}
+<footer class="bg-body-tertiary pt-5 pb-3 border-top">
+    <div class="container">
+        <div class="row g-4 justify-content-between">
+            <div class="col-lg-4">
+                <a class="d-flex align-items-center gap-2 mb-3 text-decoration-none text-body" href="/">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded-2 p-1 border bg-body">
+                        <i class="bi bi-grid-1x2-fill text-primary"></i>
+                    </span>
+                    <span class="fw-bold fs-5">Dashboard-RAB</span>
+                </a>
+                <p class="text-muted small mb-4">
+                    Solusi manajemen konstruksi modern untuk kontraktor dan konsultan. Hemat waktu, akurat, dan
+                    profesional.
+                </p>
+                <div class="d-flex gap-3">
+                    <a href="#" class="text-muted hover-primary"><i class="bi bi-facebook fs-5"></i></a>
+                    <a href="#" class="text-muted hover-primary"><i class="bi bi-twitter-x fs-5"></i></a>
+                    <a href="#" class="text-muted hover-primary"><i class="bi bi-instagram fs-5"></i></a>
+                    <a href="#" class="text-muted hover-primary"><i class="bi bi-linkedin fs-5"></i></a>
+                </div>
+            </div>
+
+            <div class="col-lg-2 col-6">
+                <h6 class="fw-bold mb-3">Produk</h6>
+                <ul class="list-unstyled d-flex flex-column gap-2 small">
+                    <li><a href="#features" class="text-muted text-decoration-none hover-primary">Fitur</a></li>
+                    <li><a href="#pricing" class="text-muted text-decoration-none hover-primary">Harga</a></li>
+                    <li><a href="#" class="text-muted text-decoration-none hover-primary">Update</a></li>
+                </ul>
+            </div>
+
+            <div class="col-lg-2 col-6">
+                <h6 class="fw-bold mb-3">Dukungan</h6>
+                <ul class="list-unstyled d-flex flex-column gap-2 small">
+                    <li><a href="#faq" class="text-muted text-decoration-none hover-primary">FAQ</a></li>
+                    <li><a href="#" class="text-muted text-decoration-none hover-primary">Panduan</a></li>
+                    <li><a href="#" class="text-muted text-decoration-none hover-primary">Kontak</a></li>
+                </ul>
+            </div>
+
+            <div class="col-lg-2 col-6">
+                <h6 class="fw-bold mb-3">Legal</h6>
+                <ul class="list-unstyled d-flex flex-column gap-2 small">
+                    <li><a href="#" class="text-muted text-decoration-none hover-primary">Privasi</a></li>
+                    <li><a href="#" class="text-muted text-decoration-none hover-primary">Syarat & Ketentuan</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="border-top mt-5 pt-3 text-center">
+            <small class="text-muted">&copy; {% now "Y" %} ADIT PORTOFOLIO Project. All rights reserved.</small>
+        </div>
+    </div>
+</footer>
+{% endblock %}
+
 {% block extra_js %}
 <script>
     // Smooth scroll for anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const href = this.getAttribute('href');
+            if (!href || href === '#') {
+                return;
             }
+
+            const target = document.querySelector(href);
+            if (!target) {
+                return;
+            }
+
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     });
 </script>

@@ -1,14 +1,19 @@
 from types import SimpleNamespace
+from datetime import timedelta
 
 from django.http import HttpResponse
-from django.test import RequestFactory, SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
-from accounts.context_processors import subscription_context
+from accounts.context_processors import app_contact_context, subscription_context
 from accounts.middleware import SubscriptionMiddleware
+from accounts.signals import start_trial_on_email_confirmation
 from config.adapters import AccountAdapter
 from config.urls import home_redirect, admin_login_redirect
 from pages.views import LandingPageView
+from subscriptions.entitlements import FEATURE_WRITE_ACCESS, get_feature_access
 
 
 class DummyUser(SimpleNamespace):
@@ -112,6 +117,17 @@ class AdminLoginRedirectTests(SimpleTestCase):
         self.assertEqual(response.url, f"{reverse('account_login')}?next=%2Fadmin%2F")
 
 
+class LoginTemplateRedirectFieldTests(TestCase):
+    def test_login_template_preserves_next_field(self):
+        response = self.client.get(f"{reverse('account_login')}?next=/admin/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'name="next" value="/admin/"',
+            html=False,
+        )
+
+
 class SubscriptionMiddlewareTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -181,6 +197,15 @@ class SubscriptionContextTests(SimpleTestCase):
         self.assertFalse(context["show_upgrade_banner"])
 
 
+class AppContactContextTests(SimpleTestCase):
+    @override_settings(SUPPORT_EMAIL="helpdesk@ahsp.test")
+    def test_app_contact_context_exposes_support_email(self):
+        request = SimpleNamespace(user=SimpleNamespace(is_authenticated=False))
+        context = app_contact_context(request)
+
+        self.assertEqual(context["support_email"], "helpdesk@ahsp.test")
+
+
 class LandingRedirectTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -214,3 +239,111 @@ class LandingRedirectTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("dashboard:dashboard"))
+
+
+class TrialLifetimePolicyTests(TestCase):
+    def setUp(self):
+        self.user_model = get_user_model()
+
+    def test_start_trial_can_only_be_used_once(self):
+        user = self.user_model.objects.create_user(
+            username="trial_once_user",
+            email="trial-once@example.com",
+            password="Secret123!",
+            subscription_status="EXPIRED",
+        )
+
+        started_first_time = user.start_trial(days=14)
+        user.refresh_from_db()
+        first_trial_end = user.trial_end_date
+
+        self.assertTrue(started_first_time)
+        self.assertEqual(user.subscription_status, user.SubscriptionStatus.TRIAL)
+        self.assertTrue(user.trial_used_once)
+        self.assertIsNotNone(first_trial_end)
+
+        # Simulate trial expiration.
+        user.subscription_status = user.SubscriptionStatus.EXPIRED
+        user.trial_end_date = timezone.now() - timedelta(days=1)
+        user.save(update_fields=["subscription_status", "trial_end_date"])
+
+        started_second_time = user.start_trial(days=14)
+        user.refresh_from_db()
+
+        self.assertFalse(started_second_time)
+        self.assertEqual(user.subscription_status, user.SubscriptionStatus.EXPIRED)
+        self.assertLessEqual(user.trial_end_date, timezone.now())
+
+    def test_email_confirm_signal_does_not_restart_consumed_trial(self):
+        user = self.user_model.objects.create_user(
+            username="signal_trial_once_user",
+            email="signal-trial-once@example.com",
+            password="Secret123!",
+            subscription_status="EXPIRED",
+            trial_used_once=True,
+            trial_end_date=timezone.now() - timedelta(days=2),
+        )
+
+        email_address = SimpleNamespace(user=user)
+        start_trial_on_email_confirmation(request=None, email_address=email_address)
+        user.refresh_from_db()
+
+        self.assertEqual(user.subscription_status, user.SubscriptionStatus.EXPIRED)
+        self.assertTrue(user.trial_used_once)
+        self.assertLessEqual(user.trial_end_date, timezone.now())
+
+
+class TrialAccessGuardTests(TestCase):
+    def setUp(self):
+        self.user_model = get_user_model()
+        self.factory = RequestFactory()
+        self.middleware = SubscriptionMiddleware(lambda req: HttpResponse("OK"))
+
+    def test_trial_without_end_date_has_no_write_access(self):
+        user = self.user_model.objects.create_user(
+            username="trial_no_end_guard",
+            email="trial_no_end_guard@example.com",
+            password="Secret123!",
+            subscription_status="TRIAL",
+            trial_end_date=None,
+            trial_used_once=False,
+        )
+
+        decision = get_feature_access(user, FEATURE_WRITE_ACCESS)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.code, "SUBSCRIPTION_EXPIRED")
+
+    def test_trial_without_end_date_blocked_by_middleware_for_api_write(self):
+        user = self.user_model.objects.create_user(
+            username="trial_no_end_middleware",
+            email="trial_no_end_middleware@example.com",
+            password="Secret123!",
+            subscription_status="TRIAL",
+            trial_end_date=None,
+            trial_used_once=False,
+        )
+
+        request = self.factory.post(
+            "/detail_project/api/project/1/list-pekerjaan/save/",
+            HTTP_ACCEPT="application/json",
+        )
+        request.user = user
+        response = self.middleware(request)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_context_processor_consistent_for_trial_without_end_date(self):
+        user = self.user_model.objects.create_user(
+            username="trial_no_end_context",
+            email="trial_no_end_context@example.com",
+            password="Secret123!",
+            subscription_status="TRIAL",
+            trial_end_date=None,
+            trial_used_once=False,
+        )
+        request = self.factory.get("/")
+        request.user = user
+
+        context = subscription_context(request)
+        self.assertFalse(context["is_subscription_active"])
+        self.assertFalse(context["can_edit"])

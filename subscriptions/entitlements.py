@@ -20,6 +20,7 @@ FEATURE_EXPORT_PDF = "export_pdf"
 FEATURE_EXPORT_EXCEL_WORD = "export_excel_word"
 FEATURE_EXPORT_CLEAN = "export_clean"
 FEATURE_PRO_ONLY = "pro_only"
+INTERNAL_STATUS_TRIAL_PENDING = "TRIAL_PENDING"
 
 
 @dataclass
@@ -28,7 +29,7 @@ class FeatureAccessDecision:
     code: str
     message: str
     add_watermark: bool = False
-    upgrade_url: str = "/subscriptions/pricing/"
+    upgrade_url: str = "/pricing/"
     source: str = "fallback"
     access_level: str = PlanFeatureEntitlement.ACCESS_DENY
 
@@ -53,7 +54,7 @@ def _latest_success_plan_for_user(user) -> Optional[SubscriptionPlan]:
 
 
 def _deny_decision(feature_code: str, subscription_status: str, source: str, access_level: str) -> FeatureAccessDecision:
-    if feature_code == FEATURE_EXPORT_PDF and subscription_status == "TRIAL":
+    if feature_code == FEATURE_EXPORT_PDF and subscription_status in {"TRIAL", INTERNAL_STATUS_TRIAL_PENDING}:
         return FeatureAccessDecision(
             allowed=False,
             code="TRIAL_NO_EXPORT",
@@ -131,11 +132,32 @@ def _fallback_access_level(subscription_status: str, feature_code: str) -> str:
             FEATURE_EXPORT_CLEAN: PlanFeatureEntitlement.ACCESS_DENY,
             FEATURE_PRO_ONLY: PlanFeatureEntitlement.ACCESS_DENY,
         },
+        INTERNAL_STATUS_TRIAL_PENDING: {
+            FEATURE_WRITE_ACCESS: PlanFeatureEntitlement.ACCESS_DENY,
+            FEATURE_EXPORT_PDF: PlanFeatureEntitlement.ACCESS_DENY,
+            FEATURE_EXPORT_EXCEL_WORD: PlanFeatureEntitlement.ACCESS_DENY,
+            FEATURE_EXPORT_CLEAN: PlanFeatureEntitlement.ACCESS_DENY,
+            FEATURE_PRO_ONLY: PlanFeatureEntitlement.ACCESS_DENY,
+        },
     }
     return matrix.get(subscription_status, {}).get(
         feature_code,
         PlanFeatureEntitlement.ACCESS_DENY,
     )
+
+
+def _normalize_subscription_status(user, subscription_status: str) -> str:
+    """
+    Convert nominal subscription status into an effective policy status.
+
+    This prevents a "TRIAL" label without active trial window (or stale "PRO"
+    without active end date) from unintentionally receiving active entitlements.
+    """
+    if subscription_status == "TRIAL" and not getattr(user, "is_trial_active", False):
+        return INTERNAL_STATUS_TRIAL_PENDING
+    if subscription_status == "PRO" and not getattr(user, "is_pro_active", False):
+        return "EXPIRED"
+    return subscription_status
 
 
 def get_feature_access(user, feature_code: str) -> FeatureAccessDecision:
@@ -160,7 +182,8 @@ def get_feature_access(user, feature_code: str) -> FeatureAccessDecision:
             access_level=PlanFeatureEntitlement.ACCESS_ALLOW,
         )
 
-    subscription_status = getattr(user, "subscription_status", "EXPIRED")
+    raw_subscription_status = getattr(user, "subscription_status", "EXPIRED")
+    subscription_status = _normalize_subscription_status(user, raw_subscription_status)
     if not getattr(user, "pk", None):
         fallback_level = _fallback_access_level(subscription_status, feature_code)
         return _level_to_decision(

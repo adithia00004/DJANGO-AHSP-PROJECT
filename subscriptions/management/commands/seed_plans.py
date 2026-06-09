@@ -11,18 +11,21 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         plans = [
             {
+                'base_tier': SubscriptionPlan.BASE_TIER_1,
                 'name': 'Quarterly (3 Bulan)',
                 'duration_months': 3,
                 'price': 900000,
                 'description': 'Akses penuh selama 3 bulan',
             },
             {
+                'base_tier': SubscriptionPlan.BASE_TIER_2,
                 'name': 'Semi-Annual (6 Bulan)',
                 'duration_months': 6,
                 'price': 1500000,
                 'description': 'Akses penuh selama 6 bulan - Hemat 17%',
             },
             {
+                'base_tier': SubscriptionPlan.BASE_TIER_3,
                 'name': 'Annual (12 Bulan)',
                 'duration_months': 12,
                 'price': 2500000,
@@ -32,9 +35,10 @@ class Command(BaseCommand):
         
         for plan_data in plans:
             plan, created = SubscriptionPlan.objects.update_or_create(
-                duration_months=plan_data['duration_months'],
+                base_tier=plan_data['base_tier'],
                 defaults={
                     'name': plan_data['name'],
+                    'duration_months': plan_data['duration_months'],
                     'price': plan_data['price'],
                     'description': plan_data['description'],
                     'is_active': True,

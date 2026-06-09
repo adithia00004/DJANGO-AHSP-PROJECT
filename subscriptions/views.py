@@ -17,6 +17,7 @@ from django.db import transaction as db_transaction
 
 from .models import SubscriptionPlan, PaymentTransaction
 from .midtrans import midtrans_client, MidtransError
+from .pricing_service import format_currency_idr, resolve_effective_plan_pricing
 
 
 logger = logging.getLogger(__name__)
@@ -57,13 +58,25 @@ class CreatePaymentView(LoginRequiredMixin, View):
             
             # Get the plan
             plan = get_object_or_404(SubscriptionPlan, id=plan_id, is_active=True)
+            pricing = resolve_effective_plan_pricing(plan)
             
             # Create transaction record
             transaction = PaymentTransaction.objects.create(
                 user=request.user,
                 plan=plan,
-                amount=plan.price,
-                status=PaymentTransaction.STATUS_PENDING
+                amount=pricing.final_price,
+                duration_months_snapshot=plan.duration_months,
+                base_amount_snapshot=pricing.base_price,
+                discount_amount_snapshot=pricing.discount_amount,
+                promotion_id_snapshot=pricing.promotion.id if pricing.promotion else None,
+                promotion_name_snapshot=pricing.promotion.name if pricing.promotion else "",
+                promotion_discount_type_snapshot=(
+                    pricing.promotion.discount_type if pricing.promotion else ""
+                ),
+                promotion_discount_value_snapshot=(
+                    pricing.promotion.discount_value if pricing.promotion else None
+                ),
+                status=PaymentTransaction.STATUS_PENDING,
             )
             transaction.order_id = transaction.generate_order_id()
             transaction.save()
@@ -71,7 +84,7 @@ class CreatePaymentView(LoginRequiredMixin, View):
             # Get Midtrans Snap token
             result = midtrans_client.create_snap_token(
                 order_id=transaction.order_id,
-                amount=int(plan.price),
+                amount=int(pricing.final_price),
                 user_email=request.user.email,
                 user_name=request.user.get_full_name() or request.user.username,
                 item_name=f"AHSP Pro - {plan.name}"
@@ -180,14 +193,19 @@ class PaymentWebhookView(View):
         transaction.status = PaymentTransaction.STATUS_SUCCESS
         transaction.paid_at = timezone.now()
         
-        # Activate user subscription
-        if transaction.plan:
+        # Activate user subscription using immutable duration snapshot when available.
+        duration_months = transaction.duration_months_snapshot or getattr(
+            transaction.plan,
+            "duration_months",
+            0,
+        )
+        if duration_months > 0:
             transaction.user.activate_subscription(
-                months=transaction.plan.duration_months
+                months=duration_months
             )
             logger.info(
                 f"Subscription activated for {transaction.user.email}: "
-                f"{transaction.plan.duration_months} months"
+                f"{duration_months} months"
             )
 
 
@@ -209,9 +227,16 @@ class PaymentFinishView(LoginRequiredMixin, View):
                 )
                 
                 if transaction.status == PaymentTransaction.STATUS_SUCCESS:
+                    duration_months = (
+                        transaction.duration_months_snapshot
+                        or getattr(transaction.plan, "duration_months", 0)
+                    )
+                    duration_label = (
+                        f"{duration_months} bulan" if duration_months > 0 else "sesuai paket"
+                    )
                     messages.success(
                         request,
-                        f"Pembayaran berhasil! Subscription Anda aktif selama {transaction.plan.duration_months} bulan."
+                        f"Pembayaran berhasil! Subscription Anda aktif selama {duration_label}."
                     )
                 elif transaction.status == PaymentTransaction.STATUS_PENDING:
                     messages.info(
@@ -237,10 +262,7 @@ class PricingPageView(View):
     """
     
     def get(self, request):
-        plans = SubscriptionPlan.objects.filter(is_active=True)
-        return render(request, 'subscriptions/pricing.html', {
-            'plans': plans
-        })
+        return redirect("pages:pricing")
 
 
 class CheckoutView(LoginRequiredMixin, View):
@@ -254,6 +276,7 @@ class CheckoutView(LoginRequiredMixin, View):
         from django.conf import settings
         
         plan = get_object_or_404(SubscriptionPlan, id=plan_id, is_active=True)
+        pricing = resolve_effective_plan_pricing(plan)
 
         if _is_managed_access_user(request.user):
             messages.info(request, 'Akun admin/staff memiliki akses penuh dan tidak memerlukan checkout.')
@@ -266,6 +289,10 @@ class CheckoutView(LoginRequiredMixin, View):
         
         return render(request, 'subscriptions/checkout.html', {
             'plan': plan,
+            'pricing': pricing,
+            'price_display': format_currency_idr(pricing.final_price),
+            'base_price_display': format_currency_idr(pricing.base_price),
+            'discount_amount_display': format_currency_idr(pricing.discount_amount),
             'midtrans_client_key': getattr(settings, 'MIDTRANS_CLIENT_KEY', ''),
         })
 

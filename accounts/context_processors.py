@@ -1,6 +1,16 @@
 """
 Context processors for subscription-related template variables.
 """
+from django.conf import settings
+
+
+def app_contact_context(request):
+    """
+    Add support contact variables available to all templates.
+    """
+    return {
+        "support_email": getattr(settings, "SUPPORT_EMAIL", getattr(settings, "DEFAULT_FROM_EMAIL", "")),
+    }
 
 
 def subscription_context(request):
