@@ -80,6 +80,7 @@ services:
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,web}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      USE_VITE_DEV_SERVER: ${USE_VITE_DEV_SERVER:-False}
       
       # Database Configuration
       POSTGRES_ENGINE: django.db.backends.postgresql
@@ -93,6 +94,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
       REDIS_DB: ${REDIS_DB:-0}
       
       # Application Configuration
@@ -132,6 +135,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ahsp_celery
+    entrypoint: []
     command: celery -A config worker -l info --concurrency=4
     environment:
       # Reuse web service environment
@@ -146,8 +150,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
     volumes:
       - ./:/app
+      - logs_volume:/app/logs
     depends_on:
       - db
       - redis
@@ -155,6 +162,12 @@ services:
     networks:
       - ahsp_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     profiles:
       - celery
 
@@ -164,6 +177,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ahsp_celery_beat
+    entrypoint: []
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     environment:
       DJANGO_ENV: ${DJANGO_ENV:-development}
@@ -177,8 +191,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
     volumes:
       - ./:/app
+      - logs_volume:/app/logs
     depends_on:
       - db
       - redis
@@ -186,6 +203,8 @@ services:
     networks:
       - ahsp_network
     restart: unless-stopped
+    healthcheck:
+      disable: true
     profiles:
       - celery
 
@@ -195,13 +214,25 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ahsp_flower
+    entrypoint: []
     command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
     environment:
       DJANGO_ENV: ${DJANGO_ENV:-development}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${DB_PORT:-5432}
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_password}@redis:${REDIS_PORT:-6379}/0
+    volumes:
+      - ./:/app
+      - logs_volume:/app/logs
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     depends_on:
@@ -209,6 +240,12 @@ services:
     networks:
       - ahsp_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
     profiles:
       - celery
 

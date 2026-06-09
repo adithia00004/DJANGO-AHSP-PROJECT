@@ -230,10 +230,10 @@ WHITENOISE_USE_FINDERS = DEBUG
 # Sessions / Crispy forms
 # ---------------------------------------------------------------------------
 
-# CRITICAL: Use pure cache backend for Redis sessions (not cached_db)
-# cached_db still writes to database, defeating the purpose of Redis
-# Pure cache backend = sessions ONLY in Redis (fast, concurrent-safe)
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# Keep the database as the session source of truth. The default cache can be
+# LocMemCache in development/staging, which is process-local and unsafe with
+# multiple Gunicorn workers when used as a cache-only session backend.
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
 SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_SAVE_EVERY_REQUEST = False
