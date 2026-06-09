@@ -36,7 +36,7 @@ Menyiapkan release yang:
 | L4 | Review compatibility/deprecated code | TODO | Bukti pemakaian atau removal test per simbol |
 | L5 | Security/TLS/production compose | TODO | `check --deploy`, HTTPS, port policy lulus |
 | L6 | Backup SSOT dan single-DB enforcement | TODO | Restore drill lulus |
-| L7 | CI, browser gate, UAT, dan Opaque sign-off | PARTIAL | Test lokal hijau; CI/UAT belum |
+| L7 | CI, browser gate, UAT, dan Opaque sign-off | PARTIAL (CI hijau) | CI HEAD HIJAU di `fc8fdcba` (root cause: ci.yml override `DJANGO_SETTINGS_MODULE` → diperbaiki ke `config.settings.test`). Sisa: browser gate ulang, UAT proyek nyata, Opaque sign-off |
 | L8 | Release candidate dan GO/NO-GO | TODO | Semua P0/P1 wajib PASS |
 
 ## 4. Fase L0 — Safety dan Baseline
