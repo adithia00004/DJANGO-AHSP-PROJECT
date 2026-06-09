@@ -91,6 +91,14 @@ Legenda:
 4. Setelah UAT diterima, backup database dan deploy hasil merge ke production menggunakan prosedur clean build, migrate, collectstatic, dan health check.
 5. Kerjakan 3C hanya saat fitur Import Validate WIP siap sebagai satu scope utuh. Evaluasi 3B setelah rilis berdasarkan bukti duplikasi atau bug, bukan sebagai blocker launch.
 
+### Release Tracking
+
+- Draft PR: [#5 — Harden save sync workflow and staging runtime](https://github.com/adithia00004/DJANGO-AHSP-PROJECT/pull/5).
+- Target: `main`; source: `checkpoint/save-sync-plan-20260608`.
+- PR dibuka 2026-06-09 dalam status draft.
+- GitHub Actions CI run `#71` mulai berjalan setelah PR dibuat; verdict akhir dicatat setelah run selesai.
+- UAT manual project nyata tetap menjadi approval gate sebelum PR diubah menjadi ready/merged.
+
 ### Jangan Dikerjakan Dulu Tanpa Konfirmasi
 
 - Menghapus optimistic-lock backend. Backend token harus tetap dormant/reversible.
