@@ -33,11 +33,11 @@ Update terakhir: 2026-06-09, berdasarkan pemeriksaan source, commit, build, migr
 
 - Branch aktif lokal: `checkpoint/save-sync-plan-20260608`.
 - Branch ini sudah dipush ke remote: `origin/checkpoint/save-sync-plan-20260608`.
-- HEAD dan remote terverifikasi sinkron pada `29c1976a`. Fondasi save/sync, clean-branch contract, perbaikan staging, browser asset fixes, dan record gate final sudah dipush ke `origin/checkpoint/save-sync-plan-20260608`.
+- HEAD lokal dan remote terverifikasi sinkron saat update tracker. Batas kode runtime adalah `39693e1a`; record penutupan gate adalah `29c1976a`; pembaruan tracking pasca-gate berada pada commit sesudahnya di `origin/checkpoint/save-sync-plan-20260608`.
 - Catatan teknis: file MIXED (2B/2D) di-stage lewat blob ke index lalu di-commit **tanpa pathspec** (`git commit -- <file>` direkam dari working tree, bukan index — jangan dipakai untuk commit scoped file MIXED).
 - Konsolidasi memakai **bedah hunk/blob** untuk file MIXED (base.py, template_ahsp/volume/harga, save_handler): hanya baris save/sync yang di-commit; kerja WIP lain (opaque param endpoints, refactor export, `progressMode`, UI param/volume/import) **tetap di working tree, uncommitted**.
 - **3C (Import Validate) DITUNDA**: hunk `persistCurrentEdits`/`beforeunload` menyatu dalam satu hunk 224 baris dengan rework UI validasi dan bergantung pada `collectExportPayload` + route `validate_save_edits` (fitur edit import yang juga WIP). Tidak bisa jadi commit scoped yang berfungsi tanpa fitur itu; commit bersama fitur Import Validate saat fitur tersebut siap.
-- Branch remote sudah memuat seluruh commit scoped save/sync sampai `29c1976a`.
+- Branch remote sudah memuat seluruh commit scoped runtime save/sync sampai `39693e1a` beserta record gate dan langkah pasca-gate.
 - Working tree masih sangat dirty dan lintas-area (`detail_project`, `referensi`, `dashboard`, `subscriptions`, `accounts`, static build, migrations, docs lain, dan file lokal/generated).
 - Jangan menjalankan `git add .` / `git add -A` untuk checkpoint berikutnya. Commit berikut harus scoped per item plan.
 - Server lokal yang sedang berjalan **tidak otomatis merepresentasikan `main` bersih**. Ia menjalankan file dari working tree saat ini dan bisa reload bila autoreload aktif.
@@ -77,7 +77,7 @@ Legenda:
 ### Jalur Eksekusi Terdekat
 
 1. ~~Konsolidasi V1 + commit fondasi 1A–2D scoped~~ **SELESAI** (`3faea393`..`ac730cc3`). 3C ditunda (lihat Kondisi Operasional).
-2. ~~Push commit konsolidasi dan penutupan gate~~ **SELESAI**; remote = HEAD `29c1976a`.
+2. ~~Push commit konsolidasi dan penutupan gate~~ **SELESAI**; runtime sampai `39693e1a`, record gate `29c1976a`.
 3. ~~Perbaiki clean-branch test contract~~ **SELESAI** (`a4532185`, `0e905202`, `1d218b3c`).
 4. ~~Benahi Docker staging lokal~~ **SELESAI** (`160d9956`).
 5. ~~Fase 4 browser gate~~ **SELESAI**; asset conflict ditutup di `39693e1a`.
@@ -86,7 +86,7 @@ Legenda:
 ### Rekomendasi Setelah Gate
 
 1. Bekukan scope save/sync pada branch ini; jangan gabungkan WIP lain ke commit rilis.
-2. Buat PR `checkpoint/save-sync-plan-20260608` ke `main`, jalankan CI, lalu review hanya commit scoped sampai `29c1976a`.
+2. Buat PR `checkpoint/save-sync-plan-20260608` ke `main`, jalankan CI, lalu review commit runtime sampai `39693e1a` beserta commit dokumentasi gate setelahnya.
 3. Lakukan UAT singkat menggunakan satu project nyata: edit-save-reload pada List Pekerjaan, Volume, Template AHSP, dan Harga Items; lanjutkan cek Rekap/Jadwal.
 4. Setelah UAT diterima, backup database dan deploy hasil merge ke production menggunakan prosedur clean build, migrate, collectstatic, dan health check.
 5. Kerjakan 3C hanya saat fitur Import Validate WIP siap sebagai satu scope utuh. Evaluasi 3B setelah rilis berdasarkan bukti duplikasi atau bug, bukan sebagai blocker launch.
