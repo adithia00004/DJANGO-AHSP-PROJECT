@@ -6,7 +6,11 @@ on:
   pull_request:
 
 env:
-  DJANGO_SETTINGS_MODULE: config.settings
+  # Use the dedicated test settings (matches pytest.ini). The previous value
+  # config.settings overrode pytest.ini and ran the suite with non-test settings
+  # (SESSION_COOKIE_SECURE=True + AllAuth backend) which breaks force_login over
+  # the HTTP test client -> spurious /accounts/login redirects (302) in CI.
+  DJANGO_SETTINGS_MODULE: config.settings.test
   DJANGO_DB_ENGINE: postgres
   POSTGRES_DB: ahsp_ci
   POSTGRES_USER: postgres
