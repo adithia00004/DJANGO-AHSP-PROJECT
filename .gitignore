@@ -76,3 +76,10 @@ node_modules/
 SECRETS_LOCAL.md
 SECRETS_PROPOSED_REVIEW.md
 secrets_local/
+
+# Local dev/temp artifacts (not part of the app)
+.tmp_darkcheck_server.pid
+_wcag_check.py
+_wcag_check_result.txt
+generate_pass.py
+.env.empty
