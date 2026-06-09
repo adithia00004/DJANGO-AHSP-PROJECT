@@ -114,6 +114,7 @@ TEMPLATES = [
                 "django.template.context_processors.i18n",
                 "django.template.context_processors.media",
                 "django.template.context_processors.tz",
+                "accounts.context_processors.app_contact_context",
                 "accounts.context_processors.subscription_context",  # Subscription info
             ],
         },
@@ -197,6 +198,14 @@ ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True  # Auto-login after email confirmatio
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_SIGNUP_REDIRECT_URL = "/dashboard/"  # Where to go after signup
 
+_account_prevent_enum = os.getenv("ACCOUNT_PREVENT_ENUMERATION", "true").strip().lower()
+if _account_prevent_enum in {"strict"}:
+    ACCOUNT_PREVENT_ENUMERATION = "strict"
+elif _account_prevent_enum in {"false", "0", "no"}:
+    ACCOUNT_PREVENT_ENUMERATION = False
+else:
+    ACCOUNT_PREVENT_ENUMERATION = True
+
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGIN_URL = "/accounts/login/"
 LOGOUT_REDIRECT_URL = "/"
@@ -230,10 +239,10 @@ WHITENOISE_USE_FINDERS = DEBUG
 # Sessions / Crispy forms
 # ---------------------------------------------------------------------------
 
-# Keep the database as the session source of truth. The default cache can be
-# LocMemCache in development/staging, which is process-local and unsafe with
-# multiple Gunicorn workers when used as a cache-only session backend.
-SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+# CRITICAL: Use pure cache backend for Redis sessions (not cached_db)
+# cached_db still writes to database, defeating the purpose of Redis
+# Pure cache backend = sessions ONLY in Redis (fast, concurrent-safe)
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
 SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_SAVE_EVERY_REQUEST = False
@@ -321,6 +330,18 @@ else:
 
 PERFORMANCE_LOG_THRESHOLD = float(os.getenv("DJANGO_PERF_THRESHOLD", "1.0"))
 
+# Opaque ID rollout flag:
+# - True  : strict opaque mode (bp_N / cp_N)
+# - False : legacy descriptive mode allowed for runtime parameter CRUD/sync
+OPAQUE_ID_ENABLED = os.getenv("OPAQUE_ID_ENABLED", "True").lower() == "true"
+
+# Label-only formula UI rollout flag:
+# - True  : enable label-first formula UX improvements on Volume Pekerjaan page
+# - False : fallback to existing UI behavior (rollback switch)
+FORMULA_LABEL_ONLY_UI_ENABLED = (
+    os.getenv("FORMULA_LABEL_ONLY_UI_ENABLED", "True").lower() == "true"
+)
+
 # ---------------------------------------------------------------------------
 # Rate Limiting (Phase 1 Security)
 # ---------------------------------------------------------------------------
@@ -386,6 +407,7 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@ahsp.example.com")
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", DEFAULT_FROM_EMAIL)
 
 # Audit alert settings
 AUDIT_ALERT_EMAIL_RECIPIENTS = [

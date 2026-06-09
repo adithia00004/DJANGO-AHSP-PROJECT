@@ -145,6 +145,7 @@ EMAIL_BACKEND = os.getenv(
     "django.core.mail.backends.smtp.EmailBackend",
 )
 DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "no-reply@example.com")
+SUPPORT_EMAIL = os.getenv("DJANGO_SUPPORT_EMAIL", os.getenv("SUPPORT_EMAIL", DEFAULT_FROM_EMAIL))
 
 # Ensure cached_db sessions stored in primary cache (e.g., Redis) when configured
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
