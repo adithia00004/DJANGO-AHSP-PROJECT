@@ -36,7 +36,7 @@ Update terakhir: 2026-06-09, berdasarkan pemeriksaan source, commit, build, migr
 - HEAD lokal dan remote terverifikasi sinkron saat update tracker. Batas kode runtime adalah `39693e1a`; record penutupan gate adalah `29c1976a`; pembaruan tracking pasca-gate berada pada commit sesudahnya di `origin/checkpoint/save-sync-plan-20260608`.
 - Catatan teknis: file MIXED (2B/2D) di-stage lewat blob ke index lalu di-commit **tanpa pathspec** (`git commit -- <file>` direkam dari working tree, bukan index — jangan dipakai untuk commit scoped file MIXED).
 - Konsolidasi memakai **bedah hunk/blob** untuk file MIXED (base.py, template_ahsp/volume/harga, save_handler): hanya baris save/sync yang di-commit; kerja WIP lain (opaque param endpoints, refactor export, `progressMode`, UI param/volume/import) **tetap di working tree, uncommitted**.
-- **3C (Import Validate) DITUNDA**: hunk `persistCurrentEdits`/`beforeunload` menyatu dalam satu hunk 224 baris dengan rework UI validasi dan bergantung pada `collectExportPayload` + route `validate_save_edits` (fitur edit import yang juga WIP). Tidak bisa jadi commit scoped yang berfungsi tanpa fitur itu; commit bersama fitur Import Validate saat fitur tersebut siap.
+- **3C (Import Validate) DONE** (2026-06-09): fitur Import Validate sudah di-commit utuh di C1 (`c8775c01`), termasuk `await persistCurrentEdits()` + error-keeps-state + `beforeunload` + route `validate_save_edits`. Test source-guard `test_import_validate_report_ui.py` (2) lulus. Tinggal simulasi offline/500 manual saat QA browser.
 - Branch remote sudah memuat seluruh commit scoped runtime save/sync sampai `39693e1a` beserta record gate dan langkah pasca-gate.
 - Working tree masih sangat dirty dan lintas-area (`detail_project`, `referensi`, `dashboard`, `subscriptions`, `accounts`, static build, migrations, docs lain, dan file lokal/generated).
 - Jangan menjalankan `git add .` / `git add -A` untuk checkpoint berikutnya. Commit berikut harus scoped per item plan.
@@ -65,7 +65,7 @@ Legenda:
 | 2D | Hygiene Jadwal (`le.log`, `sync-led-ack`) | DONE / VERIFIED | `a263b1b9` + `c1f1317d`; bundle production tunggal termuat tanpa error browser | — |
 | 3A | Policy single-user last-save-wins | DONE / VERIFIED | UI `affc446f`; test Harga `ac730cc3`; guard clean-branch aktif dan staging lulus | — |
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
-| 3C | Import Validate await save + `beforeunload` | DEFERRED / UNCOMMITTED | Hunk save/sync menyatu (224 baris) dengan rework UI validasi + bergantung `collectExportPayload`/route `validate_save_edits` (fitur edit import WIP). Tak separable jadi commit berfungsi | Commit bersama fitur Import Validate saat fitur siap; lalu simulasi offline/500 |
+| 3C | Import Validate await save + `beforeunload` | DONE / VERIFIED | Fitur Import Validate kini ter-commit (C1 `c8775c01`). `import_validate_report.html`: handler Simpan `await persistCurrentEdits()` sebelum tanda sukses; `persistCurrentEdits()` throw bila `!response.ok`/`body.ok!==true`; gagal → tombol+counter tetap aktif + pesan error; pagination guard; `beforeunload`. Route `validate_save_edits` ada. Test `referensi/tests/test_import_validate_report_ui.py` (2) **PASS**. Sisa: simulasi offline/500 manual saat QA browser | — |
 | V1 | Cleanup build/manifest Jadwal | DONE / VERIFIED | Fix absolute `outDir` di `3faea393`; clean build, manifest, staticfiles, dan browser asset sudah konsisten | — |
 | V2 | Migration drift `referensi/0024` | REVISED / DONE | `97b135da` keliru: 0024 (AlterField segment_type +`LAIN`) bergantung 0023 dan butuh model import-batch (semua WIP), padahal model branch masih state 0020 (`[A,B,C,HEADING]`). Clean-branch `makemigrations --check` GAGAL (NodeNotFoundError). Diperbaiki `5026c26f`: untrack 0024 (file tetap di disk, untracked seperti 0021–0023). Clean-branch kini = No changes detected. 0021–0024 + model menyusul bersama fitur import-batch | — |
 | V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
@@ -81,7 +81,7 @@ Legenda:
 3. ~~Perbaiki clean-branch test contract~~ **SELESAI** (`a4532185`, `0e905202`, `1d218b3c`).
 4. ~~Benahi Docker staging lokal~~ **SELESAI** (`160d9956`).
 5. ~~Fase 4 browser gate~~ **SELESAI**; asset conflict ditutup di `39693e1a`.
-6. **3B util save seragam** tetap opsional; **3C Import Validate** tetap deferred bersama fitur WIP terkait.
+6. **3C Import Validate** SELESAI (C1 `c8775c01`, 2026-06-09; test lulus). **3B util save seragam** satu-satunya sisa — opsional, pasca-launch.
 
 ### Rekomendasi Setelah Gate
 
@@ -503,7 +503,7 @@ DoD launch: semua baris matriks runtime ✅, header benar, aset terbaru tersaji.
 | V4 | triase 5 test merah baseline | 0 | nihil | tidak (kualitas gate) |
 | 4 | verifikasi staging | semua | — | **ya (gate)** |
 
-Jalur minimum launch save/sync sudah tertutup. Sisa di luar gate ini adalah 3B yang opsional dan 3C yang deferred bersama fitur Import Validate WIP.
+Jalur minimum launch save/sync sudah tertutup. 3C Import Validate sudah SELESAI (C1 `c8775c01`, test lulus). Satu-satunya sisa adalah 3B (util save seragam) yang opsional/pasca-launch.
 
 ---
 
