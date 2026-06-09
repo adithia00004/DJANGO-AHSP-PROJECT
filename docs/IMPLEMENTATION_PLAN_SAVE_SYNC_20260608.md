@@ -33,14 +33,14 @@ Update terakhir: 2026-06-09, berdasarkan pemeriksaan source, commit, build, migr
 
 - Branch aktif lokal: `checkpoint/save-sync-plan-20260608`.
 - Branch ini sudah dipush ke remote: `origin/checkpoint/save-sync-plan-20260608`.
-- HEAD lokal dan remote terverifikasi sinkron saat update tracker. Batas kode runtime adalah `39693e1a`; record penutupan gate adalah `29c1976a`; pembaruan tracking pasca-gate berada pada commit sesudahnya di `origin/checkpoint/save-sync-plan-20260608`.
+- HEAD lokal dan remote terverifikasi sinkron pada `2c591bae`.
 - Catatan teknis: file MIXED (2B/2D) di-stage lewat blob ke index lalu di-commit **tanpa pathspec** (`git commit -- <file>` direkam dari working tree, bukan index — jangan dipakai untuk commit scoped file MIXED).
-- Konsolidasi memakai **bedah hunk/blob** untuk file MIXED (base.py, template_ahsp/volume/harga, save_handler): hanya baris save/sync yang di-commit; kerja WIP lain (opaque param endpoints, refactor export, `progressMode`, UI param/volume/import) **tetap di working tree, uncommitted**.
+- Konsolidasi C0-C7 sudah mengikutsertakan fitur referensi/import AHSP 2026, pricing/subscription, opaque parameter/formula, dashboard/export, infra, dan dokumentasi. PR tidak lagi terbatas pada save/sync.
 - **3C (Import Validate) DONE** (2026-06-09): fitur Import Validate sudah di-commit utuh di C1 (`c8775c01`), termasuk `await persistCurrentEdits()` + error-keeps-state + `beforeunload` + route `validate_save_edits`. Test source-guard `test_import_validate_report_ui.py` (2) lulus. Tinggal simulasi offline/500 manual saat QA browser.
-- Branch remote sudah memuat seluruh commit scoped runtime save/sync sampai `39693e1a` beserta record gate dan langkah pasca-gate.
-- Working tree masih sangat dirty dan lintas-area (`detail_project`, `referensi`, `dashboard`, `subscriptions`, `accounts`, static build, migrations, docs lain, dan file lokal/generated).
-- Jangan menjalankan `git add .` / `git add -A` untuk checkpoint berikutnya. Commit berikut harus scoped per item plan.
-- Server lokal yang sedang berjalan **tidak otomatis merepresentasikan `main` bersih**. Ia menjalankan file dari working tree saat ini dan bisa reload bila autoreload aktif.
+- Branch remote sudah memuat seluruh commit C0-C7 sampai `2c591bae`.
+- Working tree sudah bersih dari perubahan kode; hanya dokumen tracker ini yang berubah saat verifikasi.
+- Draft PR #5 kini memuat **295 file, +48.032/-3.006 baris, 44 commit**. Scope dan deskripsi PR harus diperbarui sebelum review karena masih menggambarkan PR save/sync terisolasi.
+- Server Docker yang berjalan dibuat sebelum commit C0-C7. Bind mount melihat file baru, tetapi proses Gunicorn/Celery tidak auto-reload kode Python; runtime harus direstart/rebuild sebelum UAT fitur terbaru.
 - Tidak perlu mematikan server hanya karena branch docs checkpoint sudah dibuat. Namun sebelum menjalankan V1/V2/V3, sebaiknya matikan server agar build, collectstatic, migration, dan cleanup asset tidak bertabrakan dengan proses berjalan.
 - Jangan switch balik ke `main` selama working tree masih dirty kecuali ada strategi stash/commit scoped yang jelas. Switching branch dalam kondisi ini berisiko membuat konflik dan menyulitkan audit perubahan.
 
@@ -55,7 +55,7 @@ Legenda:
 
 | Kode | Item | Status | Bukti / catatan | Next action |
 |---|---|---|---|---|
-| 0 | Checkpoint working tree + baseline | PARTIAL | Checkpoint docs sudah commit+push (`0ecb99c1`), tetapi repo masih sangat dirty dan perubahan kode belum dicommit scoped | Buat checkpoint terkurasi per scope sebelum lanjut perubahan besar |
+| 0 | Checkpoint working tree + baseline | DONE / REVERIFY RELEASE | Perubahan lintas-area sudah dikonsolidasi dalam C0-C7 dan dipush sampai `2c591bae`; worktree hanya memuat update tracker ini | Jalankan gate ulang untuk scope release yang sudah membesar |
 | 1A | Middleware `no-store` halaman `detail_project` | DONE / VERIFIED | Commit `adc60101`; 12 halaman staging terautentikasi mengirim `no-store` | — |
 | 1B | Bootstrap defensif | DONE (B1) / COMMITTED via 2A/2B | Strategy B1: andalkan `no-store`. Bootstrap json_script masuk `26369ac8` (2B) + context di `a263b1b9` (2A) | — |
 | 1C | Dockerfile collectstatic fail-fast | DONE / VERIFIED | Commit `13c95e4d`; startup staging menjalankan collectstatic dan web sehat | — |
@@ -64,7 +64,7 @@ Legenda:
 | 2C | Legacy sync indicator JS/partial/CSS | DONE / COMMITTED | CSS split `3a11ebfb`; penghapusan `sync_indicator.js` + `_sync_indicator.html` di `0a522606` | — |
 | 2D | Hygiene Jadwal (`le.log`, `sync-led-ack`) | DONE / VERIFIED | `a263b1b9` + `c1f1317d`; bundle production tunggal termuat tanpa error browser | — |
 | 3A | Policy single-user last-save-wins | DONE / VERIFIED | UI `affc446f`; test Harga `ac730cc3`; guard clean-branch aktif dan staging lulus | — |
-| 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
+| 3B | Util save read-after-write seragam | DEFERRED (keputusan 2026-06-09) | Opsional; user memutuskan menunda pasca-launch (risiko regresi, Volume/Harga sudah aman fungsional). Evaluasi hanya jika ada bukti duplikasi/bug | Pasca-launch, berbasis bukti |
 | 3C | Import Validate await save + `beforeunload` | DONE / VERIFIED | Fitur Import Validate kini ter-commit (C1 `c8775c01`). `import_validate_report.html`: handler Simpan `await persistCurrentEdits()` sebelum tanda sukses; `persistCurrentEdits()` throw bila `!response.ok`/`body.ok!==true`; gagal → tombol+counter tetap aktif + pesan error; pagination guard; `beforeunload`. Route `validate_save_edits` ada. Test `referensi/tests/test_import_validate_report_ui.py` (2) **PASS**. Sisa: simulasi offline/500 manual saat QA browser | — |
 | V1 | Cleanup build/manifest Jadwal | DONE / VERIFIED | Fix absolute `outDir` di `3faea393`; clean build, manifest, staticfiles, dan browser asset sudah konsisten | — |
 | V2 | Migration drift `referensi/0024` | REVISED / DONE | `97b135da` keliru: 0024 (AlterField segment_type +`LAIN`) bergantung 0023 dan butuh model import-batch (semua WIP), padahal model branch masih state 0020 (`[A,B,C,HEADING]`). Clean-branch `makemigrations --check` GAGAL (NodeNotFoundError). Diperbaiki `5026c26f`: untrack 0024 (file tetap di disk, untracked seperti 0021–0023). Clean-branch kini = No changes detected. 0021–0024 + model menyusul bersama fitur import-batch | — |
@@ -72,7 +72,7 @@ Legenda:
 | V4 | Triase 5 test merah baseline/domain | DONE / VERIFIED | Commit `d8ade683`. Suite `detail_project` diverifikasi ulang 2026-06-09: **264 passed, 0 failed** | — |
 | D1 | Konfirmasi shared-login | RESOLVED | Dikonfirmasi: **1 akun = 1 operator** (bukan shared-login). Last-save-wins aman | — |
 | D2 | Persetujuan 3A last-save-wins | RESOLVED | **Disetujui**. 3A dieksekusi (commit `affc446f`) dengan backend token dorman/reversibel | — |
-| 4 | Verifikasi staging/browser gate | DONE / VERIFIED | Clean staging: check + migration graph hijau; PostgreSQL suite **49 passed, 44 WIP skipped**; 12 halaman HTTP 200 + `no-store`; 8 halaman Chromium tanpa error/request gagal; Jadwal memakai satu aset manifest; seluruh service Docker sehat | — |
+| 4 | Verifikasi staging/browser gate | PARTIAL / REVALIDATION REQUIRED | Gate save/sync lama lulus, tetapi commit C0-C7 masuk setelah gate tersebut. Suite terbaru **403 passed, 1 failed, 40 skipped**; CI terbaru gagal; Celery/Flower berstatus unhealthy karena health check masih memeriksa port web 8000 | Tutup test merah, perbaiki health check worker, restart/rebuild, lalu ulang runtime/browser gate |
 
 ### Jalur Eksekusi Terdekat
 
@@ -81,7 +81,8 @@ Legenda:
 3. ~~Perbaiki clean-branch test contract~~ **SELESAI** (`a4532185`, `0e905202`, `1d218b3c`).
 4. ~~Benahi Docker staging lokal~~ **SELESAI** (`160d9956`).
 5. ~~Fase 4 browser gate~~ **SELESAI**; asset conflict ditutup di `39693e1a`.
-6. **3C Import Validate** SELESAI (C1 `c8775c01`, 2026-06-09; test lulus). **3B util save seragam** satu-satunya sisa — opsional, pasca-launch.
+6. **3C Import Validate** SELESAI (C1 `c8775c01`, 2026-06-09; test lulus). **3B util save seragam** tetap opsional, pasca-launch.
+7. **Gate release C0-C7** BELUM SELESAI: perbaiki satu test permission/import, health check Celery/Flower, dan ulang CI serta browser/UAT setelah restart runtime.
 
 ### Rekomendasi Setelah Gate
 
@@ -99,7 +100,25 @@ Legenda:
 - CI awal gagal karena workflow memaksa SQLite, sedangkan migration aplikasi memakai SQL PostgreSQL `USING`.
 - Workflow diperbaiki pada `d6741fb9` agar memakai service PostgreSQL 15 dengan health check.
 - GitHub Actions CI run `#73`: **SUCCESS**; step pytest lulus.
+- Setelah C0-C7 dipush, GitHub Actions run `27189265715` pada HEAD `2c591bae`: **FAILURE** di pytest.
+- Reproduksi lokal: **403 passed, 1 failed, 40 skipped**. Kegagalan tunggal berada di `referensi/tests/test_import_permissions.py`: test mengharapkan redirect login, tetapi `SubscriptionMiddleware` lebih dulu mengarahkan user tanpa subscription aktif ke pricing. Test perlu mengaktifkan entitlement agar benar-benar menguji permission layer, atau ekspektasinya harus diselaraskan dengan kontrak produk.
 - UAT manual project nyata tetap menjadi approval gate sebelum PR diubah menjadi ready/merged.
+
+### Verifikasi Pasca-Konsolidasi C0-C7 — 2026-06-09
+
+- Git: branch lokal dan remote sinkron pada `2c591bae`; tidak ada perubahan kode lokal yang belum dipush.
+- `python manage.py check`: **lulus, 0 issues**.
+- `python manage.py makemigrations --check --dry-run`: **lulus, No changes detected**.
+- Migration staging terpasang lengkap: accounts `0003`, subscriptions `0003`-`0005`, referensi `0021`-`0024`, detail_project `0037`-`0044`.
+- Targeted pricing/import/subscription/pages: **68 passed**.
+- Suite penuh lokal: **403 passed, 1 failed, 40 skipped**.
+- CI HEAD terbaru: **gagal** pada pytest, konsisten dengan kegagalan lokal.
+- Docker web, PostgreSQL, dan Redis sehat. Celery dan Flower berjalan tetapi ditandai **unhealthy** karena mewarisi health check `curl localhost:8000`; Celery Beat juga memakai health check yang tidak sesuai.
+- Container web dibuat sebelum commit C0-C7. Karena memakai Gunicorn tanpa autoreload, perubahan Python terbaru belum dapat dianggap aktif sampai service direstart/rebuild.
+- Host Django dan Docker memakai database logis yang sama (`ahsp_sni_db`) dan keduanya melihat **159 project**; data project tidak terhapus.
+- Dashboard selalu memfilter `Project.owner=request.user`. Project `195` masih ada dan aktif, tetapi dimiliki akun `aditf96` (user ID 8). Akun staging `admin` (user ID 220) tidak memiliki project, sehingga login dengan akun tersebut membuat project lama tampak hilang.
+- Database staging memuat banyak akun/fixture audit dan project milik beberapa owner. Jangan melakukan reassignment atau cleanup data sebelum backup dan daftar kepemilikan disetujui.
+- `git diff --check origin/main...HEAD` menemukan whitespace/trailing newline minor pada beberapa file; bukan blocker runtime, tetapi sebaiknya dibersihkan sebelum merge.
 
 ### Jangan Dikerjakan Dulu Tanpa Konfirmasi
 
