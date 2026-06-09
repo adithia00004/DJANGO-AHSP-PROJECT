@@ -1,13 +1,13 @@
 {# Gantt View Tab Content - COMPLETELY REDESIGNED #}
 <div class="tab-pane fade" id="gantt-view" role="tabpanel" aria-labelledby="gantt-tab">
-  {#
+  {% comment %}
     NEW DESIGN CONCEPT:
     - Modern split-view layout (tree + timeline)
     - Canvas-based rendering for performance
     - Hierarchical tree with expand/collapse
     - Dual-bar visualization (planned vs actual)
     - NO resemblance to old Frappe Gantt design
-  #}
+  {% endcomment %}
 
   {# Main Gantt Container - Always rendered, styled by CSS #}
   <div id="gantt-redesign-container" class="gantt-redesign-wrapper">
@@ -21,10 +21,10 @@
     </div>
   </div>
 
-  {#
+  {% comment %}
     OLD Frappe Gantt - COMPLETELY HIDDEN
     Kept for fallback only, never shown to user
-  #}
+  {% endcomment %}
   <div style="display: none !important; visibility: hidden !important;">
     <div id="gantt-chart" class="gantt-chart-canvas"></div>
   </div>

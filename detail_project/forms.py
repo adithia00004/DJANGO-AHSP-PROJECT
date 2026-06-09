@@ -27,5 +27,5 @@ class DetailAHSPRowForm(forms.ModelForm):
             "kode": forms.TextInput(attrs={"class": "form-control"}),
             "uraian": forms.TextInput(attrs={"class": "form-control"}),
             "satuan": forms.TextInput(attrs={"class": "form-control"}),
-            "koefisien": forms.NumberInput(attrs={"min": 0, "step": "0.000001", "class": "form-control"}),
+            "koefisien": forms.NumberInput(attrs={"min": 0, "step": "0.000000000001", "class": "form-control"}),
         }

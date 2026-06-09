@@ -377,6 +377,6 @@
     return v;
   }
 
-  G.VolFormula = { evaluate };
+  G.VolFormula = { evaluate, tokenize };
 
 })();

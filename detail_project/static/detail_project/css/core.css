@@ -1735,14 +1735,6 @@ body[data-page="volume_pekerjaan"] {
   font-variant-numeric: tabular-nums;
 }
 
-/* C.3 Indikator tombol “fx” saat mode formula aktif */
-.fx-toggle[aria-pressed="true"],
-.fx-toggle.active {
-  border-color: color-mix(in srgb, var(--dp-c-info) 50%, transparent);
-  box-shadow: 0 0 0 .2rem var(--ux-ring-info);
-}
-
-
 /* ---------------------------------------------------------------------
    D) SIDEBAR OVERLAY (KANAN)
    - Struktur panel kanan yang bisa dibuka via tombol/hover dan di-resize.
@@ -2315,4 +2307,202 @@ body[data-page="rekap_rab"] {
   float: right;
   font-weight: 600;
   color: #0d6efd;
+}
+
+/* ===========================================================
+   BLUEPRINT ORNAMENTS (Professional Drafter Theme)
+   =========================================================== */
+:root {
+  /* Pattern Colors */
+  --dp-ornament-grid-light: rgba(0, 0, 0, 0.04);
+  --dp-ornament-grid-dark: rgba(255, 255, 255, 0.06);
+  --dp-ornament-line-light: rgba(0, 0, 0, 0.15);
+  --dp-ornament-line-dark: rgba(255, 255, 255, 0.2);
+  --dp-ornament-tick-light: rgba(0, 0, 0, 0.4);
+  --dp-ornament-tick-dark: rgba(255, 255, 255, 0.5);
+  --dp-ornament-text-light: rgba(0, 0, 0, 0.3);
+  --dp-ornament-text-dark: rgba(255, 255, 255, 0.4);
+
+  /* Active Variables (Default to Light) */
+  --dp-ornament-grid: var(--dp-ornament-grid-light);
+  --dp-ornament-line: var(--dp-ornament-line-light);
+  --dp-ornament-tick: var(--dp-ornament-tick-light);
+  --dp-ornament-text: var(--dp-ornament-text-light);
+}
+
+:root[data-bs-theme="dark"],
+:root[data-theme="dark"] {
+  --dp-ornament-grid: var(--dp-ornament-grid-dark);
+  --dp-ornament-line: var(--dp-ornament-line-dark);
+  --dp-ornament-tick: var(--dp-ornament-tick-dark);
+  --dp-ornament-text: var(--dp-ornament-text-dark);
+}
+
+/* Container */
+#dp-ornament-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  /* Behind everything */
+  overflow: hidden;
+}
+
+/* 1. LAYER GRID */
+.dp-ornament-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: 40px 40px;
+  background-position: 20px 20px;
+  background-image: linear-gradient(to right, var(--dp-ornament-grid) 1px, transparent 1px), linear-gradient(to bottom, var(--dp-ornament-grid) 1px, transparent 1px);
+}
+
+/* 2. LAYER DOME */
+.dp-ornament-dome {
+  position: absolute;
+  top: -200px;
+  right: -200px;
+  width: 800px;
+  height: 800px;
+  opacity: 0.8;
+  background:
+    radial-gradient(circle at center, transparent 30%, var(--dp-ornament-line) 30.2%, transparent 30.5%),
+    radial-gradient(circle at center, transparent 45%, var(--dp-ornament-line) 45.2%, transparent 45.5%),
+    radial-gradient(circle at center, transparent 60%, var(--dp-ornament-line) 60.2%, transparent 60.5%);
+}
+
+/* 3. LAYER CROSSHAIR */
+.dp-ornament-crosshair {
+  position: absolute;
+  top: 350px;
+  right: 10px;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 100px;
+  background-image:
+    repeating-linear-gradient(to right, var(--dp-ornament-line), var(--dp-ornament-line) 10px, transparent 10px, transparent 14px, var(--dp-ornament-line) 14px, var(--dp-ornament-line) 16px, transparent 16px, transparent 20px),
+    repeating-linear-gradient(to bottom, var(--dp-ornament-line), var(--dp-ornament-line) 10px, transparent 10px, transparent 14px, var(--dp-ornament-line) 14px, var(--dp-ornament-line) 16px, transparent 16px, transparent 20px);
+  background-size: 100% 1px, 1px 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1px dashed var(--dp-ornament-line);
+  border-radius: 50%;
+}
+
+/* 4. LAYER DIMENSION V */
+.dp-ornament-dim-v {
+  position: absolute;
+  top: 3%;
+  left: 5%;
+  width: 20px;
+  height: 500px;
+  background:
+    linear-gradient(to right, transparent 49%, var(--dp-ornament-line) 49%, var(--dp-ornament-line) 51%, transparent 51%),
+    linear-gradient(45deg, transparent 48%, var(--dp-ornament-tick) 48%, var(--dp-ornament-tick) 52%, transparent 52%),
+    linear-gradient(45deg, transparent 48%, var(--dp-ornament-tick) 48%, var(--dp-ornament-tick) 52%, transparent 52%);
+  background-size: 100% 100%, 12px 12px, 12px 12px;
+  background-repeat: no-repeat;
+  background-position: center, top left, bottom left;
+}
+
+/* 5. LAYER DIMENSION H */
+.dp-ornament-dim-h {
+  position: absolute;
+  bottom: 5%;
+  right: 6%;
+  width: 45%;
+  height: 20px;
+  background:
+    linear-gradient(to bottom, transparent 49%, var(--dp-ornament-line) 49%, var(--dp-ornament-line) 51%, transparent 51%),
+    linear-gradient(45deg, transparent 48%, var(--dp-ornament-tick) 48%, var(--dp-ornament-tick) 52%, transparent 52%),
+    linear-gradient(45deg, transparent 48%, var(--dp-ornament-tick) 48%, var(--dp-ornament-tick) 52%, transparent 52%);
+  background-size: 100% 100%, 12px 12px, 12px 12px;
+  background-repeat: no-repeat;
+  background-position: center, bottom left, bottom right;
+}
+
+/* 6. LAYER SECTION */
+.dp-ornament-section {
+  position: absolute;
+  bottom: 15px;
+  left: 40px;
+  width: 20px;
+  height: 20px;
+  opacity: 0.7;
+  border: 1px solid var(--dp-ornament-line);
+  border-radius: 50%;
+  background: linear-gradient(to bottom right, transparent 50%, var(--dp-ornament-line) 50%);
+  background-size: 10px 10px;
+  background-repeat: no-repeat;
+  background-position: center;
+  transform: rotate(45deg);
+}
+
+/* 7. LAYER ANGLES */
+.dp-ornament-angles {
+  position: absolute;
+  bottom: -150px;
+  right: -150px;
+  width: 500px;
+  height: 500px;
+  opacity: 0.4;
+  transform: rotate(-30deg);
+  background: repeating-linear-gradient(90deg, transparent, transparent 39px, var(--dp-ornament-grid) 39px, var(--dp-ornament-grid) 40px);
+}
+
+/* 8. LAYER IDENTITY */
+.dp-ornament-identity {
+  position: absolute;
+  bottom: 18px;
+  left: 64px;
+  padding-top: 5px;
+  border-top: 1px solid var(--dp-ornament-line);
+  text-align: left;
+}
+
+.dp-ornament-identity::after {
+  content: "PROJECT: DASHBOARD-RAB \\A SCALE: NTS  •  REV: 01";
+  white-space: pre;
+  font-family: var(--dp-font-mono);
+  /* Use core variable */
+  font-size: 10px;
+  color: var(--dp-ornament-text);
+  letter-spacing: 1px;
+  display: block;
+  line-height: 1.5;
+}
+
+/* 9. LAYER NORTH ARROW */
+.dp-ornament-north {
+  position: absolute;
+  top: 40px;
+  left: 80px;
+  width: 20px;
+  height: 20px;
+  opacity: 0.6;
+}
+
+.dp-ornament-north::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 15px solid var(--dp-ornament-line);
+}
+
+.dp-ornament-north::after {
+  content: 'N';
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--dp-font-mono);
+  font-size: 10px;
+  color: var(--dp-ornament-text);
 }

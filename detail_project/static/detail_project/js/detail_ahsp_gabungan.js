@@ -7,6 +7,31 @@
 
   const sel = document.getElementById('pkj-multi');
   const tbody = document.querySelector('#dag-table tbody');
+  let dirty = false;
+  let lastSelectedIds = sel
+    ? Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean)
+    : [];
+
+  function setDirty(value) {
+    dirty = !!value;
+  }
+
+  function restoreSelection(ids) {
+    if (!sel) return;
+    const keep = new Set((ids || []).map(Number));
+    Array.from(sel.options).forEach((option) => {
+      option.selected = keep.has(Number(option.value));
+    });
+  }
+
+  tbody?.addEventListener('input', () => setDirty(true));
+  tbody?.addEventListener('change', () => setDirty(true));
+
+  window.addEventListener('beforeunload', (e) => {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 
   document.getElementById('btn-save-dag').onclick = async function(){
     // Kumpulkan semua baris per pekerjaan
@@ -57,6 +82,7 @@
         alert(`❌ ${msg}`);
         return;
       }
+      setDirty(false);
       alert(`✅ Disimpan: ${js.saved_rows ?? 0} baris`);
     } catch (e) {
       console.error(e);
@@ -67,7 +93,16 @@
   // (Opsional) tambahkan UI untuk memuat baris dari pekerjaan terpilih
   if (sel) {
     sel.onchange = function(){
+      if (dirty) {
+        const proceed = confirm('Perubahan Detail AHSP gabungan belum disimpan. Buang perubahan dan ganti pilihan pekerjaan?');
+        if (!proceed) {
+          restoreSelection(lastSelectedIds);
+          return;
+        }
+        setDirty(false);
+      }
       const ids = Array.from(sel.selectedOptions).map(o => parseInt(o.value)).filter(Boolean);
+      lastSelectedIds = ids;
       tbody.innerHTML = '';
       ids.forEach(id => addRow(id));
     };
@@ -89,7 +124,7 @@
       <td><input class="form-control form-control-sm kode" value="${data.kode || ''}"></td>
       <td><input class="form-control form-control-sm uraian" value="${data.uraian || ''}"></td>
       <td><input class="form-control form-control-sm sat" value="${data.satuan || ''}"></td>
-      <td><input type="number" min="0" step="0.000001" class="form-control form-control-sm koef" value="${(data.koefisien ?? '')}"></td>
+      <td><input type="number" min="0" step="0.000000000001" class="form-control form-control-sm koef" value="${(data.koefisien ?? '')}"></td>
     `;
     tbody.appendChild(tr);
   }

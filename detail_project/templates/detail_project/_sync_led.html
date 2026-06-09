@@ -1,9 +1,9 @@
 {% load static %}
-{% with initial_ahsp=change_status.last_ahsp_change|date:"c" initial_harga=change_status.last_harga_change|date:"c" %}
+{% with initial_ahsp=change_status.last_ahsp_change|date:"c" initial_harga=change_status.last_harga_change|date:"c" initial_pekerjaan=initial_pekerjaan_ts|date:"c" initial_volume=initial_volume_ts|date:"c" initial_jadwal=initial_jadwal_ts|date:"c" %}
 <div class="dp-sync-led" data-endpoint="{% url 'detail_project:api_get_change_status' project.id %}"
     data-scope="{{ scope }}" data-watch="{{ watch }}" data-project-id="{{ project.id }}"
     data-initial-ahsp="{{ initial_ahsp }}" data-initial-harga="{{ initial_harga }}"
-    data-initial-pekerjaan="{% now 'c' %}" data-initial-volume="{% now 'c' %}" data-initial-jadwal="{% now 'c' %}"
+    data-initial-pekerjaan="{{ initial_pekerjaan }}" data-initial-volume="{{ initial_volume }}" data-initial-jadwal="{{ initial_jadwal }}"
     data-page-loaded="{% now 'c' %}" data-auto-option="{% if auto_option %}true{% else %}false{% endif %}"
     data-auto-enabled="false" tabindex="0" role="status" aria-label="Status sinkronisasi">
     <span class="dp-sync-led__dot dp-sync-led__dot--checking" aria-hidden="true"></span>

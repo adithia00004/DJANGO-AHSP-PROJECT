@@ -1,8 +1,6 @@
 import json
-from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
-from django.core.validators import MinValueValidator
 from django.test import RequestFactory, TestCase
 
 from dashboard.models import Project
@@ -10,20 +8,6 @@ from detail_project.models import ProjectParameter
 from detail_project.views_api import api_project_parameters_sync
 
 
-def _negative_parameter_precision_is_available():
-    field = ProjectParameter._meta.get_field("value")
-    rejects_negative = any(
-        isinstance(validator, MinValueValidator)
-        and validator.limit_value >= 0
-        for validator in field.validators
-    )
-    return field.decimal_places == 12 and not rejects_negative
-
-
-@skipUnless(
-    _negative_parameter_precision_is_available(),
-    "Negative parameter precision masih WIP dan belum tersedia pada model branch ini.",
-)
 class Phase4NegativeParameterTests(TestCase):
     def setUp(self):
         user_model = get_user_model()

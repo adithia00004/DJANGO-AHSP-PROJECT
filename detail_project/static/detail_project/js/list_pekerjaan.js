@@ -948,6 +948,7 @@
   let availableAhspSources = [];
   let defaultAhspSource = null;
   let ahspSourcesLoaded = false;
+  let ahspSourcesPromise = null;
 
   /**
    * Fetch available AHSP sources from backend.
@@ -955,19 +956,30 @@
    */
   async function fetchAhspSources() {
     if (ahspSourcesLoaded) return;
-    try {
-      const sourcesUrl = document.querySelector('[data-sources-url]')?.dataset.sourcesUrl
-        || '/referensi/api/sources';
-      const data = await jfetch(sourcesUrl);
-      availableAhspSources = data.sources || [];
-      defaultAhspSource = data.default || (availableAhspSources[0] || null);
-      ahspSourcesLoaded = true;
-      log('[AHSP-SRC] Loaded sources:', availableAhspSources, 'default:', defaultAhspSource);
-    } catch (e) {
-      warn('[AHSP-SRC] Failed to load sources:', e);
-      availableAhspSources = [];
-      defaultAhspSource = null;
-    }
+    if (ahspSourcesPromise) return ahspSourcesPromise;
+    ahspSourcesPromise = (async () => {
+      try {
+        const sourcesUrl = document.querySelector('[data-sources-url]')?.dataset.sourcesUrl
+          || '/referensi/api/sources';
+        const data = await jfetch(sourcesUrl);
+        availableAhspSources = data.sources || [];
+        defaultAhspSource = data.default || (availableAhspSources[0] || null);
+        ahspSourcesLoaded = true;
+        document.querySelectorAll('.lp-row').forEach(row => {
+          const selected = row.dataset.ahspSumber || null;
+          populateAhspSourceDropdown(row, selected);
+          updateAhspSourceVisibility(row);
+        });
+        log('[AHSP-SRC] Loaded sources:', availableAhspSources, 'default:', defaultAhspSource);
+      } catch (e) {
+        warn('[AHSP-SRC] Failed to load sources:', e);
+        availableAhspSources = [];
+        defaultAhspSource = null;
+      } finally {
+        ahspSourcesPromise = null;
+      }
+    })();
+    return ahspSourcesPromise;
   }
 
   /**
@@ -980,7 +992,12 @@
     if (!dropdown) return;
 
     const selectedValue = preselect || defaultAhspSource || '';
-    dropdown.innerHTML = availableAhspSources
+    const options = [...availableAhspSources];
+    if (selectedValue && !options.includes(selectedValue)) {
+      options.unshift(selectedValue);
+    }
+
+    dropdown.innerHTML = options
       .map(s => {
         const selected = (s === selectedValue) ? ' selected' : '';
         return `<option value="${escapeHtml(s)}"${selected}>${escapeHtml(s)}</option>`;
@@ -1248,6 +1265,8 @@
       mode = 'ref',
       ref_id = null,
       ref_label = null,
+      ahsp_sumber = null,
+      ref_sumber = null,
       uraian = '',
       satuan = '',
       snapshot_kode = null,
@@ -1305,6 +1324,8 @@
     // gate editing via dataset
     row.dataset.sourceType = mode || 'ref';
     if (ref_id) row.dataset.refId = String(ref_id);
+    const initialAhspSource = ahsp_sumber || ref_sumber || null;
+    if (initialAhspSource) row.dataset.ahspSumber = String(initialAhspSource);
 
     // BUGFIX: Store original values for comparison during save
     // This prevents false-negative change detection when dataset.refId
@@ -1324,9 +1345,13 @@
 
     // ----- AHSP Source dropdown init -----
     const ahspSrcSel = row.querySelector('.ahsp-source-select');
-    if (ahspSrcSel && ahspSourcesLoaded) {
+    if (ahspSrcSel) {
       // Populate dropdown with available sources
-      populateAhspSourceDropdown(row, preset.ahsp_sumber || null);
+      if (ahspSourcesLoaded) {
+        populateAhspSourceDropdown(row, initialAhspSource);
+      } else if (initialAhspSource) {
+        ahspSrcSel.innerHTML = `<option value="${escapeHtml(initialAhspSource)}" selected>${escapeHtml(initialAhspSource)}</option>`;
+      }
       // Set initial visibility based on mode
       updateAhspSourceVisibility(row);
 
@@ -1440,6 +1465,12 @@
       $sel.on('select2:select', function () {
         const v = $sel.val();
         if (v) row.dataset.refId = String(v);
+        const selected = $sel.select2('data')[0];
+        if (selected?.sumber) {
+          row.dataset.ahspSumber = String(selected.sumber);
+          const sourceDropdown = row.querySelector('.ahsp-source-select');
+          if (sourceDropdown) sourceDropdown.value = String(selected.sumber);
+        }
         const srcNow = srcSel?.value;
         const ta = row.querySelector('.uraian');
         if (srcNow === 'ref_modified' && ta && !ta.value) {
@@ -1858,7 +1889,9 @@
               uraian: p.snapshot_uraian || '',
               satuan: p.snapshot_satuan || '',
               snapshot_kode: p.snapshot_kode || null,
-              snapshot_uraian: p.snapshot_uraian || null
+              snapshot_uraian: p.snapshot_uraian || null,
+              ahsp_sumber: p.ahsp_sumber || p.ref_sumber || null,
+              ref_sumber: p.ref_sumber || null
             },
               { autofocus: false });
             if (p.id) row.dataset.id = p.id;
@@ -1937,6 +1970,9 @@
           } else {
             refRaw = tr.querySelector('.ref-select')?.value ?? '';
           }
+          if (refRaw == null || refRaw === '') {
+            refRaw = tr.dataset.refId || tr.dataset.originalRefId || '';
+          }
 
           const uraian = (tr.querySelector('.uraian')?.value || '').trim();
           const satuan = (tr.querySelector('.satuan')?.value || '').trim();
@@ -1965,10 +2001,6 @@
           globalOrder += 1;
 
           const existingId = tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined;
-          // BUGFIX: Use originalRefId (set at load) instead of refId (updated on select)
-          const originalRefId = (tr.dataset.originalRefId ?? null);
-          const originalSourceType = (tr.dataset.originalSourceType ?? 'custom');
-          const isRefChanged = (refIdNum != null) && (String(refIdNum) !== String(originalRefId ?? ''));
 
           const p = {
             id: existingId,
@@ -1981,20 +2013,23 @@
             p.snapshot_uraian = uraian;
             if (satuan) p.snapshot_satuan = satuan;
           } else if (src === 'ref_modified') {
-            // BUGFIX: Always send ref_id if:
-            // 1. New pekerjaan (!existingId)
-            // 2. ref_id changed (isRefChanged)
-            // 3. Source type changed (originalSourceType !== src)
-            if (!existingId || isRefChanged || originalSourceType !== src) {
+            const ahspSumber = getRowAhspSource(tr);
+            // Always send ref_id for reference rows. The backend can usually infer an
+            // existing reference from id, but explicit ref_id keeps saves stable
+            // after drag/drop, partial reloads, or stale row-id sync.
+            if (refIdNum != null) {
               p.ref_id = refIdNum;
             }
+            if (ahspSumber) p.ahsp_sumber = ahspSumber;
             if (uraian) p.snapshot_uraian = uraian;
             if (satuan) p.snapshot_satuan = satuan;
           } else { // 'ref'
-            // BUGFIX: Same logic - send ref_id on source type change
-            if (!existingId || isRefChanged || originalSourceType !== src) {
+            const ahspSumber = getRowAhspSource(tr);
+            // Keep ref_id explicit for every reference row; see ref_modified note.
+            if (refIdNum != null) {
               p.ref_id = refIdNum;
             }
+            if (ahspSumber) p.ahsp_sumber = ahspSumber;
           }
 
           s.pekerjaan.push(p);
@@ -2139,6 +2174,9 @@
             refRaw = $(tr).find('.ref-select').val();
           } else {
             refRaw = tr.querySelector('.ref-select')?.value ?? '';
+          }
+          if (refRaw == null || refRaw === '') {
+            refRaw = tr.dataset.refId || tr.dataset.originalRefId || '';
           }
 
           const refVal = (refRaw == null || refRaw === '') ? null : String(refRaw);
@@ -2334,6 +2372,7 @@
       }, { scopeSelector: '#lp-app' });
     } catch (_) { /* no-op jika core belum siap */ }
 
+    await fetchAhspSources();
     await loadTree();
     setupScrollSpy();
   })();
@@ -2353,6 +2392,37 @@
     } else {
       warn('[TOOLTIP] Bootstrap not available - tooltips disabled');
     }
+  })();
+
+  // ========= [EXPORT] Download without navigating away ========================
+  (function initListPekerjaanExport() {
+    const exportButton = document.getElementById('btn-export-json');
+    if (!exportButton) return;
+
+    exportButton.addEventListener('click', async () => {
+      if (!projectId) {
+        tShow('Project tidak valid untuk export.', 'danger');
+        return;
+      }
+      if (isDirty) {
+        tShow('Menyimpan perubahan sebelum export...', 'info');
+        await handleSave();
+        if (isDirty) {
+          tShow('Export dibatalkan karena perubahan belum berhasil disimpan.', 'warning');
+          return;
+        }
+      }
+      if (typeof window.ExportManager === 'undefined') {
+        tShow('Modul export belum siap. Muat ulang halaman lalu coba lagi.', 'danger');
+        return;
+      }
+
+      const exporter = new window.ExportManager(projectId, 'list-pekerjaan', {
+        modalId: null,
+        buttonIds: { json: exportButton.id },
+      });
+      await exporter.exportAs('json', { requestTimeoutMs: 30000 });
+    });
   })();
 
   // ========= [DEBUG] (hanya aktif jika __DEBUG__ = true) ======================
@@ -2383,6 +2453,17 @@
     let currentTemplates = [];
     let selectedTemplateId = null;
 
+    function getCsrfToken() {
+      const cookie = document.cookie
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith('csrftoken='));
+      if (cookie) return decodeURIComponent(cookie.slice('csrftoken='.length));
+      return document.querySelector('meta[name="csrf-token"]')?.content
+        || document.querySelector('input[name="csrfmiddlewaretoken"]')?.value
+        || '';
+    }
+
     // Load templates on sidebar open
     async function loadTemplates() {
       if (!templateList) return;
@@ -2398,9 +2479,9 @@
         const data = await jfetch(`/detail_project/api/templates/?${params}`);
         currentTemplates = data.templates || [];
         renderTemplateList();
-      } catch (err) {
+      } catch (error) {
         templateList.innerHTML = '<div class=\"template-list-empty\"><i class=\"bi bi-exclamation-circle\"></i> Gagal memuat template</div>';
-        err('[TEMPLATE]', err);
+        err('[TEMPLATE]', error);
       }
     }
 
@@ -2484,6 +2565,8 @@
       btnConfirmImport.innerHTML = '<i class=\"bi bi-arrow-clockwise spin\"></i> Importing...';
 
       try {
+        const csrfToken = getCsrfToken();
+        if (!csrfToken) throw new Error('Token keamanan tidak ditemukan. Muat ulang halaman.');
         const data = await jfetch(`/detail_project/api/project/${projectId}/templates/${selectedTemplateId}/import/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
@@ -2492,8 +2575,11 @@
 
         bootstrap.Modal.getInstance(document.getElementById('templatePreviewModal'))?.hide();
         tShow(data.message || 'Template berhasil diimport!', 'success');
-        await loadTree();  // Refresh data
-        setDirty(true);
+        // Import template is persisted by the backend. Reload from DB without
+        // duplicating the current DOM, then keep the page clean so a following
+        // Save cannot overwrite the import with stale pre-import rows.
+        await reloadAfterSave();
+        setDirty(false);
 
       } catch (err) {
         tShow('Gagal import template: ' + (err.body?.message || err.message), 'danger');
@@ -2525,6 +2611,8 @@
       btnConfirmSaveTemplate.innerHTML = '<i class=\"bi bi-arrow-clockwise spin\"></i> Menyimpan...';
 
       try {
+        const csrfToken = getCsrfToken();
+        if (!csrfToken) throw new Error('Token keamanan tidak ditemukan. Muat ulang halaman.');
         const data = await jfetch(`/detail_project/api/project/${projectId}/templates/create/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
@@ -2556,20 +2644,6 @@
     // ========== Import from File ==========
     const btnImportFromFile = document.getElementById('btn-import-from-file');
     const importFileInput = document.getElementById('import-template-file');
-
-    // Helper to get CSRF token
-    const getCsrfToken = () => {
-      // Try from cookie first
-      const cookies = document.cookie.split(';');
-      for (const cookie of cookies) {
-        const [name, value] = cookie.trim().split('=');
-        if (name === 'csrftoken') return value;
-      }
-      // Fallback to meta tag or hidden input
-      return document.querySelector('meta[name="csrf-token"]')?.content
-        || document.querySelector('input[name="csrfmiddlewaretoken"]')?.value
-        || '';
-    };
 
     btnImportFromFile?.addEventListener('click', () => {
       importFileInput?.click();

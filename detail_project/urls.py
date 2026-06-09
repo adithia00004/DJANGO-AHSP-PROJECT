@@ -102,6 +102,7 @@ urlpatterns = [
     path('api/project/<int:project_id>/orphaned-items/', views_api.api_list_orphaned_harga_items, name='api_list_orphaned_items'),
     path('api/project/<int:project_id>/orphaned-items/cleanup/', views_api.api_cleanup_orphaned_harga_items, name='api_cleanup_orphaned_items'),
     path('api/project/<int:project_id>/change-status/', views_api.api_get_change_status, name='api_get_change_status'),
+    path('api/project/<int:project_id>/source-change/ack/', views_api.api_ack_source_change_flags, name='api_ack_source_change_flags'),
     path('api/project/<int:project_id>/audit-trail/', views_api.api_get_audit_trail, name='api_get_audit_trail'),
     
     # ===== API: Conversion Profiles =====
@@ -118,6 +119,8 @@ urlpatterns = [
     path('api/project/<int:project_id>/parameters/', views_api.api_project_parameters, name='api_project_parameters'),
     path('api/project/<int:project_id>/parameters/<int:param_id>/', views_api.api_project_parameter_detail, name='api_project_parameter_detail'),
     path('api/project/<int:project_id>/parameters/sync/', views_api.api_project_parameters_sync, name='api_project_parameters_sync'),
+    path('api/project/<int:project_id>/computed-parameters/', views_api.api_project_computed_parameters, name='api_project_computed_parameters'),
+    path('api/project/<int:project_id>/computed-parameters/sync/', views_api.api_project_computed_parameters_sync, name='api_project_computed_parameters_sync'),
 
 
     # ===== API: Rekap =====
@@ -135,6 +138,7 @@ urlpatterns = [
     # ===== API: Volume Formula State =====
     path('api/project/<int:project_id>/volume/formula/',       views_api.api_volume_formula_state, name='api_volume_formula_state'),
     path('api/project/<int:project_id>/volume-formula-state/', views_api.api_volume_formula_state, name='api_volume_formula_state_alias'),
+    path('api/project/<int:project_id>/template-ahsp/formula/', views_api.api_template_ahsp_formula_state, name='api_template_ahsp_formula_state'),
 
     # ===== API: Deep Copy (FASE 3.1) =====
     path('api/project/<int:project_id>/deep-copy/', views_api.api_deep_copy_project, name='api_deep_copy_project'),
@@ -212,6 +216,14 @@ urlpatterns = [
           views_api.export_harga_items_word,
           name='export_harga_items_word'),
 
+     path('api/project/<int:project_id>/export/harga-items/xlsx/',
+          views_api.export_harga_items_xlsx,
+          name='export_harga_items_xlsx'),
+
+     path('api/project/<int:project_id>/export/harga-items/json/',
+          views_api.export_harga_items_json,
+          name='export_harga_items_json'),
+
      # Export Rincian AHSP
      path('api/project/<int:project_id>/export/rincian-ahsp/csv/',
           views_api.export_rincian_ahsp_csv,
@@ -250,22 +262,6 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/jadwal-pekerjaan/professional/',
           views_api.export_jadwal_pekerjaan_professional,
           name='export_jadwal_pekerjaan_professional'),
-
-     # Export Harga Items
-     path('api/project/<int:project_id>/export/harga-items/pdf/',
-          views_api.export_harga_items_pdf,
-          name='export_harga_items_pdf'),
-
-     path('api/project/<int:project_id>/export/harga-items/word/',
-          views_api.export_harga_items_word,
-          name='export_harga_items_word'),
-
-     path('api/project/<int:project_id>/export/harga-items/xlsx/',
-          views_api.export_harga_items_xlsx,
-          name='export_harga_items_xlsx'),
-    path('api/project/<int:project_id>/export/harga-items/json/',
-          views_api.export_harga_items_json,
-          name='export_harga_items_json'),
 
     # ========================================================================
     # Async Export API Endpoints (Celery-based)

@@ -14,8 +14,10 @@
 }
 
 /* Selaraskan background header & toolbar dengan container utama */
-#ta-app > .ta-page-header,
-#ta-toolbar { background: var(--dp-c-bg) !important; }
+#ta-app>.ta-page-header,
+#ta-toolbar {
+  background: var(--dp-c-bg) !important;
+}
 
 /* ============== ENHANCED TOOLBAR (dari rekap_rab) ============== */
 .ta-toolbar,
@@ -25,7 +27,8 @@
   z-index: var(--dp-z-toolbar);
   min-height: var(--lp-toolbar-h, 56px);
   background: var(--dp-c-bg);
-  border-bottom: 0; /* selaras dengan halaman lain */
+  border-bottom: 0;
+  /* selaras dengan halaman lain */
   display: flex;
   align-items: center;
   gap: .5rem;
@@ -115,9 +118,17 @@
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(var(--bs-primary-rgb), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0.7);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--bs-primary-rgb), 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0);
+  }
 }
 
 /* Dirty Indicator (enhanced visual) */
@@ -132,8 +143,17 @@
 }
 
 @keyframes blink {
-  0%, 50%, 100% { opacity: 1; }
-  25%, 75% { opacity: 0.3; }
+
+  0%,
+  50%,
+  100% {
+    opacity: 1;
+  }
+
+  25%,
+  75% {
+    opacity: 0.3;
+  }
 }
 
 /* ============== BODY GRID LAYOUT (dari list_pekerjaan) ============== */
@@ -146,22 +166,26 @@
 }
 
 /* Vertical resizer between sidebar and editor */
-#ta-resizer.ux-resizer{
+#ta-resizer.ux-resizer {
   cursor: col-resize;
   background: transparent;
   position: relative;
 }
-#ta-resizer.ux-resizer::after{
+
+#ta-resizer.ux-resizer::after {
   content: "";
-  position: absolute; inset: 0;
+  position: absolute;
+  inset: 0;
   background: linear-gradient(to right, transparent, color-mix(in srgb, var(--dp-c-text) 14%, transparent), transparent);
   opacity: .2;
 }
+
 #ta-resizer.ux-resizer:hover::after,
-#ta-resizer.ux-resizer:focus::after{
+#ta-resizer.ux-resizer:focus::after {
   opacity: .35;
 }
-body.user-resizing #ta-resizer.ux-resizer::after{
+
+body.user-resizing #ta-resizer.ux-resizer::after {
   opacity: .5;
 }
 
@@ -176,7 +200,9 @@ body.user-resizing #ta-resizer.ux-resizer::after{
 }
 
 /* Hapus background pada header metadata pekerjaan */
-#ta-app .ta-job-header { background: transparent !important; }
+#ta-app .ta-job-header {
+  background: transparent !important;
+}
 
 .ta-sidebar-header h5 {
   font-size: var(--ux-font-lg);
@@ -190,24 +216,27 @@ body.user-resizing #ta-resizer.ux-resizer::after{
 /* ============== SELECT2 THEME (dark/light aware) ============== */
 /* Scope to Template AHSP page to avoid global impact */
 body[data-page="template_ahsp"] .select2-container .select2-selection--single,
-body[data-page="template_ahsp"] .select2-container .select2-selection--multiple{
+body[data-page="template_ahsp"] .select2-container .select2-selection--multiple {
   background-color: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
   border-radius: var(--dp-radius-md);
 }
-body[data-page="template_ahsp"] .select2-container .select2-selection__rendered{
+
+body[data-page="template_ahsp"] .select2-container .select2-selection__rendered {
   color: var(--dp-c-text);
 }
-body[data-page="template_ahsp"] .select2-container .select2-selection__placeholder{
+
+body[data-page="template_ahsp"] .select2-container .select2-selection__placeholder {
   color: var(--dp-c-muted);
 }
-body[data-page="template_ahsp"] .select2-container .select2-selection--single .select2-selection__arrow b{
+
+body[data-page="template_ahsp"] .select2-container .select2-selection--single .select2-selection__arrow b {
   border-color: var(--dp-c-muted) transparent transparent transparent;
 }
 
 /* Dropdown panel */
-body[data-page="template_ahsp"] .select2-container .select2-dropdown{
+body[data-page="template_ahsp"] .select2-container .select2-dropdown {
   background: var(--dp-c-surface);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
@@ -222,46 +251,51 @@ body[data-page="template_ahsp"] .select2-container .select2-dropdown{
   z-index: var(--dp-z-thead);
   background: var(--dp-c-surface-2);
 }
-body[data-page="template_ahsp"] .select2-container .select2-results__option{
+
+body[data-page="template_ahsp"] .select2-container .select2-results__option {
   color: var(--dp-c-text);
 }
+
 /* Hover/highlighted option – keep strong contrast */
-body[data-page="template_ahsp"] .select2-container .select2-results__option--highlighted[aria-selected]{
+body[data-page="template_ahsp"] .select2-container .select2-results__option--highlighted[aria-selected] {
   background: color-mix(in srgb, var(--dp-c-primary) 20%, var(--dp-c-surface));
   color: var(--dp-c-text);
 }
+
 /* Selected option */
-body[data-page="template_ahsp"] .select2-container .select2-results__option[aria-selected=true]{
+body[data-page="template_ahsp"] .select2-container .select2-results__option[aria-selected=true] {
   background: color-mix(in srgb, var(--dp-c-primary) 28%, var(--dp-c-surface));
   color: var(--dp-c-text);
   font-weight: 600;
 }
 
 /* Search box inside dropdown */
-body[data-page="template_ahsp"] .select2-container .select2-search__field{
+body[data-page="template_ahsp"] .select2-container .select2-search__field {
   background: var(--dp-c-bg);
   color: var(--dp-c-text);
   border: 1px solid var(--dp-c-border);
   border-radius: var(--dp-radius-sm);
 }
-body[data-page="template_ahsp"] .select2-container .select2-search__field::placeholder{
+
+body[data-page="template_ahsp"] .select2-container .select2-search__field::placeholder {
   color: var(--dp-c-muted);
 }
 
 /* Focus ring for accessibility */
-body[data-page="template_ahsp"] .select2-container--default .select2-selection--single:focus{
+body[data-page="template_ahsp"] .select2-container--default .select2-selection--single:focus {
   outline: 0;
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   border-color: var(--dp-c-primary);
 }
-body[data-page="template_ahsp"] .select2-container .select2-search__field:focus{
+
+body[data-page="template_ahsp"] .select2-container .select2-search__field:focus {
   outline: 0;
   box-shadow: 0 0 0 .2rem var(--dp-c-focus);
   border-color: var(--dp-c-primary);
 }
 
 /* Disabled state */
-body[data-page="template_ahsp"] .select2-container--disabled .select2-selection{
+body[data-page="template_ahsp"] .select2-container--disabled .select2-selection {
   background: color-mix(in srgb, var(--dp-c-bg) 70%, var(--dp-c-surface));
   color: var(--dp-c-muted);
 }

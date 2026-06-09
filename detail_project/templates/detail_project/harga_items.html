@@ -306,7 +306,7 @@
 
 <script>
   // Initialize export buttons for Harga Items (using global SSOT modal)
-  (function () {
+  document.addEventListener('DOMContentLoaded', function () {
     const projectId = document.getElementById('hi-app')?.dataset?.projectId;
     if (!projectId || typeof ExportManager === 'undefined') {
       console.warn('[HargaItems] ExportManager not available');
@@ -324,8 +324,11 @@
       if (isExporting) return;
       isExporting = true;
       try {
-        if (useAsync || format === 'pdf' || format === 'word') {
-          await exporter.exportAsAsync(format);
+        if (useAsync) {
+          const asyncOk = await exporter.exportAsAsync(format, { allowSyncFallback: true });
+          if (asyncOk === false) {
+            await exporter.exportAs(format);
+          }
         } else {
           await exporter.exportAs(format);
         }
@@ -340,11 +343,11 @@
     const btnJSON = document.getElementById('btn-export-json');
 
     if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
-    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
-    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
+    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e));
+    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e));
     if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
 
     console.log('[HargaItems] Export buttons initialized with SSOT modal');
-  })();
+  });
 </script>
 {% endblock %}

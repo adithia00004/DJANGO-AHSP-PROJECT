@@ -31,7 +31,7 @@
         <td>${editable ? `<input class="form-control form-control-sm" data-field="kode_item" value="${it.kode_item ?? ''}">` : (it.kode_item ?? '')}</td>
         <td>${editable ? `<input class="form-control form-control-sm" data-field="uraian_item" value="${it.uraian_item ?? ''}">` : (it.uraian_item ?? '')}</td>
         <td>${editable ? `<input class="form-control form-control-sm" data-field="satuan_item" value="${it.satuan_item ?? ''}">` : (it.satuan_item ?? '')}</td>
-        <td>${editable ? `<input type="number" step="0.000001" min="0" class="form-control form-control-sm" data-field="koefisien" value="${it.koefisien ?? '0'}">` : (it.koefisien ?? '0')}</td>
+        <td>${editable ? `<input type="number" step="0.000000000001" min="0" class="form-control form-control-sm" data-field="koefisien" value="${it.koefisien ?? '0'}">` : (it.koefisien ?? '0')}</td>
         <td>${editable ? `<input type="number" step="0.01" min="0" class="form-control form-control-sm" data-field="harga_satuan" value="${it.harga_satuan ?? ''}">` : (it.harga_satuan ?? '')}</td>
         <td class="text-nowrap">${editable ? `
           <button class="btn btn-sm btn-outline-danger" data-action="delete">Hapus</button>

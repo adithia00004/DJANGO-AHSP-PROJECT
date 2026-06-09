@@ -382,7 +382,6 @@ export class SaveHandler {
     const modeLabel = progressMode === 'actual' ? 'Realisasi' : 'Perencanaan';
     const message = `Berhasil menyimpan ${savedCount} perubahan (${modeLabel})`;
     this.showToast(message, 'success');
-    this.showToast(message, 'success');
 
     // Call success callback
     if (typeof this.onSuccess === 'function') {

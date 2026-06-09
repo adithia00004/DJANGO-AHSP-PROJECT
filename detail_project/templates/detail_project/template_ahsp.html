@@ -14,6 +14,7 @@
 {{ block.super }}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
 <link rel="stylesheet" href="{% static 'detail_project/css/components-library.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/param_sidebar_shared.css' %}">
 <link rel="stylesheet" href="{% static 'detail_project/css/template_ahsp_enhanced.css' %}">
 {% endblock %}
 
@@ -25,14 +26,20 @@
 
 {% block dp_content %}
 <div id="ta-app" class="ta-app" data-project-id="{{ project.id }}" data-locale="id-ID"
+  data-opaque-id-enabled="{% if opaque_id_enabled %}1{% else %}0{% endif %}"
   data-endpoint-get-pattern="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
   data-endpoint-save-pattern="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"
   data-endpoint-reset-pattern="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
   data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
   data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
-  data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}">
-  {% if bootstrap_detail %}{{ bootstrap_detail|json_script:"ta-bootstrap-detail" }}{% endif %}
+  data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}"
+  data-endpoint-parameters="{% url 'detail_project:api_project_parameters' project.id %}"
+  data-endpoint-computed-parameters="{% url 'detail_project:api_project_computed_parameters' project.id %}"
+  data-endpoint-parameters-sync="{% url 'detail_project:api_project_parameters_sync' project.id %}"
+  data-endpoint-computed-parameters-sync="{% url 'detail_project:api_project_computed_parameters_sync' project.id %}"
+  data-endpoint-parameter-detail-pattern="{% url 'detail_project:api_project_parameter_detail' project.id 0 %}">
 
+  {% if bootstrap_detail %}{{ bootstrap_detail|json_script:"ta-bootstrap-detail" }}{% endif %}
 
 
   <!-- Toolbar (simplified, compact) -->
@@ -63,6 +70,12 @@
         download>
         <i class="bi bi-filetype-json"></i>
       </a>
+
+      <button type="button" class="btn btn-primary btn-sm" id="ta-btn-param-sidebar-toggle"
+        aria-controls="ta-param-sidebar" aria-expanded="false" title="Buka panel parameter">
+        <i class="bi bi-sliders2"></i>
+        <span class="d-none d-sm-inline">Parameter</span>
+      </button>
 
       <!-- Help -->
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
@@ -103,23 +116,20 @@
             <div class="form-check">
               <input class="form-check-input ta-filter-check" type="checkbox" value="ref" id="ta-check-ref" checked>
               <label class="form-check-label small" for="ta-check-ref">
-                <span class="badge bg-info me-1">REF</span> Referensi <span class="text-muted">({{ count_ref|default:0
-                  }})</span>
+                <span class="badge bg-info me-1">REF</span> Referensi <span class="text-muted">({{ count_ref|default:0 }})</span>
               </label>
             </div>
             <div class="form-check">
               <input class="form-check-input ta-filter-check" type="checkbox" value="ref_modified" id="ta-check-mod"
                 checked>
               <label class="form-check-label small" for="ta-check-mod">
-                <span class="badge bg-warning text-dark me-1">MOD</span> Modified <span class="text-muted">({{
-                  count_mod|default:0 }})</span>
+                <span class="badge bg-warning text-dark me-1">MOD</span> Modified <span class="text-muted">({{ count_mod|default:0 }})</span>
               </label>
             </div>
             <div class="form-check">
               <input class="form-check-input ta-filter-check" type="checkbox" value="custom" id="ta-check-cus" checked>
               <label class="form-check-label small" for="ta-check-cus">
-                <span class="badge bg-success me-1">CUS</span> Custom <span class="text-muted">({{
-                  count_custom|default:0 }})</span>
+                <span class="badge bg-success me-1">CUS</span> Custom <span class="text-muted">({{ count_custom|default:0 }})</span>
               </label>
             </div>
             <hr class="my-2">
@@ -130,7 +140,8 @@
       <ul id="ta-job-list" class="ta-job-list">
         {% for p in pekerjaan %}
         <li class="ta-job-item" tabindex="0" role="button" data-pekerjaan-id="{{ p.id }}"
-          data-source-type="{{ p.source_type }}">
+          data-source-type="{{ p.source_type }}" data-ahsp-sumber="{{ p.ref.sumber|default:'' }}"
+          data-source-label="{{ p.source_badge }}">
           <div class="primary">
             <span class="kode">{{ p.snapshot_kode|default:"-" }}</span>
             <span class="uraian">{{ p.snapshot_uraian }}</span>
@@ -144,6 +155,7 @@
             {% elif p.source_type == 'custom' %}
             <span class="ux-badge-cus mono">CUS</span>
             {% endif %}
+            <span class="rk-chip mono">{{ p.source_badge }}</span>
           </div>
         </li>
         {% empty %}
@@ -178,15 +190,15 @@
           </div>
           <div class="cell wide">
             <div class="label">Uraian</div>
-            <div id="ta-active-uraian" class="value">—</div>
+            <div id="ta-active-uraian" class="value">-</div>
           </div>
           <div class="cell">
             <div class="label">Satuan</div>
-            <div id="ta-active-satuan" class="value">—</div>
+            <div id="ta-active-satuan" class="value">-</div>
           </div>
           <div class="cell">
             <div class="label">Sumber</div>
-            <div id="ta-active-source" class="value"><span class="badge">—</span></div>
+            <div id="ta-active-source" class="value"><span class="badge">-</span></div>
           </div>
         </div>
       </section>
@@ -390,6 +402,264 @@
     </main>
   </div>
 
+  <!-- Hover hotspot kanan untuk sidebar parameter -->
+  <div class="vp-overlay-hotspot ta-param-overlay-hotspot" aria-hidden="true"></div>
+
+  <!-- ===== Overlay Sidebar Parameter (Full CRUD — identik Volume Pekerjaan) ===== -->
+  <aside id="ta-param-sidebar" class="dp-sidebar-overlay dp-param-sidebar" role="complementary" data-side="right"
+    data-align="topbar" data-hoverclose="1" data-resize-sense="east" aria-labelledby="taParamSidebarTitle"
+    aria-hidden="true">
+    <div class="dp-sidebar-inner dp-scrollbar">
+      <!-- Header -->
+      <div class="dp-sidebar-header">
+        <h6 id="taParamSidebarTitle">
+          <i class="bi bi-sliders2 me-2"></i>Parameter Perhitungan
+        </h6>
+        <div class="d-flex align-items-center gap-2">
+          <span id="ta-param-sync-status" class="dp-ps-sync-indicator" title="Status sync"></span>
+          <button type="button" class="btn btn-sm btn-outline-secondary dp-btn-sm"
+            data-action="close-param-sidebar" aria-label="Tutup">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="dp-sidebar-body d-flex flex-column gap-2" tabindex="-1">
+        <!-- Mini hint -->
+        <div class="dp-ps-mini-hint">
+          <i class="bi bi-info-circle me-1"></i>
+          Formula: <code>= panjang * lebar * tinggi</code>
+        </div>
+
+        <!-- Tabs: Base / Computed -->
+        <div class="dp-ps-pane-tabs" role="tablist" aria-label="Mode Sidebar Parameter">
+          <button type="button" class="btn btn-sm btn-outline-secondary dp-ps-pane-tab is-active" id="ta-tab-base"
+            role="tab" aria-selected="true" data-pane="base">
+            Parameter <span class="badge text-bg-secondary ms-1" id="ta-tab-base-count">0</span>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary dp-ps-pane-tab" id="ta-tab-computed"
+            role="tab" aria-selected="false" data-pane="computed">
+            Formula <span class="badge text-bg-secondary ms-1" id="ta-tab-computed-count">0</span>
+          </button>
+        </div>
+
+        <!-- Search -->
+        <div class="input-group input-group-sm dp-ps-sidebar-search" role="search">
+          <span class="input-group-text" aria-hidden="true"><i class="bi bi-search"></i></span>
+          <input type="search" class="form-control" id="ta-sidebar-search"
+            placeholder="Cari parameter / formula parameter..." autocomplete="off"
+            aria-label="Cari parameter atau formula parameter">
+          <button type="button" class="btn btn-outline-secondary" id="ta-sidebar-search-clear"
+            aria-label="Bersihkan pencarian" title="Bersihkan pencarian" hidden>
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        <!-- Pane: Base Parameters -->
+        <div class="dp-ps-pane is-active" data-pane="base">
+          <div class="dp-ps-param-toolbar">
+            <span class="text-muted small">
+              <span id="ta-param-count">0</span> parameter
+            </span>
+            <div class="dp-ps-param-tools">
+              <button type="button" class="btn btn-primary btn-sm" id="ta-var-add" title="Tambah parameter">
+                <i class="bi bi-plus-lg me-1"></i>Tambah
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" id="ta-var-import-btn" title="Import JSON/CSV/XLSX"
+                aria-label="Import parameter">
+                <i class="bi bi-file-arrow-up"></i>
+              </button>
+              <input type="file" id="ta-var-import" accept=".json,.csv,.xlsx" class="d-none">
+              <div class="dropdown">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="ta-var-export-btn"
+                  data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" title="Export parameter"
+                  aria-label="Export parameter">
+                  <i class="bi bi-file-arrow-down"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="ta-var-export-btn">
+                  <li><button class="dropdown-item" type="button" id="ta-export-json">Export JSON</button></li>
+                  <li><button class="dropdown-item" type="button" id="ta-export-csv">Export CSV</button></li>
+                  <li><button class="dropdown-item" type="button" id="ta-export-xlsx">Export XLSX</button></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><button class="dropdown-item" type="button" id="ta-export-copy-json">Copy JSON to Clipboard</button></li>
+                </ul>
+              </div>
+              <div class="dropdown dp-ps-template-dropdown">
+                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"
+                  aria-expanded="false" title="Template parameter">
+                  Tpl
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li><button class="dropdown-item" type="button" id="ta-template-xlsx-gen">Generate Template (.xlsx)</button></li>
+                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.csv' %}" download>Template (.csv)</a></li>
+                  <li><a class="dropdown-item" href="{% static 'detail_project/samples/parameters.json' %}" download>Template (.json)</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="table-responsive dp-ps-param-table-wrap flex-grow-1">
+            <div id="ta-vars-head-proxy" class="dp-ps-head-proxy" aria-hidden="true"></div>
+            <table class="table table-sm align-middle" id="ta-var-table">
+              <thead class="dp-ps-thead-sticky">
+                <tr>
+                  <th style="width:45%">Nama</th>
+                  <th style="width:35%">Nilai</th>
+                  <th class="text-end" style="width:20%">Aksi</th>
+                </tr>
+              </thead>
+              <tbody><!-- diisi JS --></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Pane: Computed Parameters (Formula) -->
+        <div class="dp-ps-pane" data-pane="computed">
+          <div class="dp-ps-cparam-section">
+            <div class="dp-ps-param-toolbar">
+              <span class="text-muted small">
+                <span id="ta-cparam-count">0</span> formula turunan
+              </span>
+              <div class="dp-ps-param-tools">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="ta-cparam-add"
+                  title="Tambah formula turunan">
+                  <i class="bi bi-function me-1"></i>Tambah Formula
+                </button>
+              </div>
+            </div>
+            <div class="table-responsive dp-ps-param-table-wrap dp-ps-cparam-table-wrap">
+              <table class="table table-sm align-middle" id="ta-cparam-table">
+                <thead class="dp-ps-thead-sticky">
+                  <tr>
+                    <th style="width:35%">Nama</th>
+                    <th style="width:40%">Formula</th>
+                    <th class="text-end" style="width:25%">Nilai / Aksi</th>
+                  </tr>
+                </thead>
+                <tbody><!-- diisi JS --></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resize handle -->
+      <div class="dp-resizer"></div>
+    </div>
+  </aside>
+
+  <!-- Modal: Editor Formula (untuk computed parameters) -->
+  <div class="modal fade dp-modal" id="taFormulaEditorModal" tabindex="-1" aria-labelledby="taFormulaEditorLabel"
+    aria-hidden="true" data-bs-backdrop="false">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content vp-formula-editor-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="taFormulaEditorLabel">Editor Formula Quantity</h5>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="small text-muted" id="ta-fe-meta"></div>
+          <div id="ta-fe-computed-name-wrap" class="mt-2 d-none">
+            <label for="ta-fe-computed-name" class="form-label form-label-sm mb-1">Nama Formula Parameter</label>
+            <input type="text" id="ta-fe-computed-name" class="form-control form-control-sm"
+              placeholder="Masukkan nama formula parameter">
+            <div class="form-text">Nama akan diperbarui bersamaan saat klik Terapkan.</div>
+          </div>
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-1">
+            <div class="small text-muted">
+              Preview Label dan Preview Nilai ditampilkan bersamaan.
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="ta-fe-show-values" checked>
+                <label class="form-check-label small" for="ta-fe-show-values">Tampilkan Nilai</label>
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="ta-fe-undo" disabled>
+                <i class="bi bi-arrow-counterclockwise me-1"></i>Undo Formula
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="ta-fe-toggle-view" aria-pressed="false">
+                <i class="bi bi-pencil-square me-1"></i>Edit Formula
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-sm" id="ta-fe-open-palette">
+                <i class="bi bi-grid-3x3-gap me-1"></i>Parameter Palette
+              </button>
+            </div>
+          </div>
+          <div class="vp-fe-input-wrap">
+            <div id="ta-fe-highlight-layer" class="vp-fe-highlight-layer" aria-hidden="true">
+              <pre id="ta-fe-highlight" class="vp-fe-highlight-content"></pre>
+            </div>
+            <textarea id="ta-fe-input" class="form-control font-monospace" rows="12" spellcheck="false"
+              placeholder="Ketik angka/operator, lalu pilih parameter/fungsi dari autosuggestion. Contoh: = SUM()"></textarea>
+          </div>
+          <div id="ta-fe-block" class="vp-fe-block d-none" role="status" aria-live="polite">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <span id="ta-fe-block-text"></span>
+          </div>
+          <div id="ta-fe-chip-preview" class="vp-chip-preview" aria-live="polite"></div>
+          <div class="vp-fe-bottom-row mt-2">
+            <div class="vp-fe-bottom-main">
+              <div id="ta-fe-preview" class="small fx-preview fx-preview-modal" data-preview-state="empty">
+                <div class="fx-preview-label-line">
+                  <span class="fx-preview-caption">Preview Label:</span>
+                  <span class="fx-preview-label-text">-</span>
+                </div>
+                <div class="fx-preview-value-line">
+                  <span class="fx-preview-caption">Preview Nilai:</span>
+                  <span class="fx-preview-value-text">-</span>
+                </div>
+                <div class="fx-preview-error-line d-none"></div>
+              </div>
+              <div id="ta-fe-resolver" class="vp-fe-resolver d-none">
+                <div id="ta-fe-resolver-text" class="small text-warning-emphasis"></div>
+                <button type="button" class="btn btn-outline-warning btn-sm mt-1" id="ta-fe-resolve-btn">
+                  Pilih Parameter Pengganti
+                </button>
+              </div>
+            </div>
+            <div class="small text-muted vp-fe-shortcuts">
+              <div class="vp-fe-shortcut-item"><kbd>Ctrl+Space</kbd><span>tampilkan autosuggestion</span></div>
+              <div class="vp-fe-shortcut-item"><kbd>Ctrl+Shift+Z</kbd><span>undo formula baris ini</span></div>
+              <div class="vp-fe-shortcut-item"><kbd>Ctrl+Enter</kbd><span>terapkan</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-primary" id="ta-fe-apply">
+            <i class="bi bi-check2 me-1"></i>Terapkan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Parameter Palette -->
+  <div class="modal fade dp-modal" id="taParamPaletteModal" tabindex="-1" aria-labelledby="taParamPaletteLabel"
+    aria-hidden="true" data-bs-backdrop="false">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="taParamPaletteLabel">Parameter Palette</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <input type="text" id="ta-palette-search" class="form-control"
+              placeholder="Cari berdasarkan label parameter...">
+          </div>
+          <div id="ta-palette-list" class="vp-palette-list"></div>
+        </div>
+        <div class="modal-footer justify-content-between">
+          <small class="text-muted">Klik parameter untuk menyisipkan ke formula aktif.</small>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Template row -->
   <template id="ta-row-template">
     <tr class="ta-row">
@@ -415,30 +685,6 @@
       </td>
     </tr>
   </template>
-  <!-- Modal: Konflik penyimpanan -->
-  <div class="modal fade" id="taConflictModal" tabindex="-1" aria-labelledby="taConflictLabel" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="taConflictLabel">Data template berubah</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
-        </div>
-        <div class="modal-body">
-          <p class="mb-2">Pekerjaan ini telah diperbarui oleh pengguna lain sejak Anda membukanya.</p>
-          <ul class="mb-0">
-            <li><strong>Muat ulang data terbaru</strong> untuk melihat perubahan terakhir (perubahan Anda akan dibuang).
-            </li>
-            <li><strong>Timpa perubahan terbaru</strong> jika Anda ingin mempertahankan versi yang sedang diedit.</li>
-          </ul>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-choice="reload">Muat ulang data terbaru</button>
-          <button type="button" class="btn btn-danger" data-choice="overwrite">Timpa dengan versiku</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Modal: Bantuan Template AHSP -->
   <div class="modal fade" id="taHelpModal" tabindex="-1" aria-labelledby="taHelpLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-scrollable modal-md">
@@ -486,5 +732,11 @@
 
 {% block extra_js %}
 {{ block.super }}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+<script src="{% static 'detail_project/js/vol_formula_engine.js' %}" defer></script>
+<script src="{% static 'detail_project/js/shared/param_store.js' %}" defer></script>
+<script src="{% static 'detail_project/js/shared/formula_adapter.js' %}" defer></script>
+<script src="{% static 'detail_project/js/shared/param_sidebar_editor.js' %}" defer></script>
+<script src="{% static 'detail_project/js/shared/formula_editor_modal.js' %}" defer></script>
 <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}

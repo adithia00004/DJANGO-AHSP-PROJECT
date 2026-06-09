@@ -1925,8 +1925,8 @@ body.lp-overlay-open {
   /* Force on top of everything */
 }
 
-.modal-backdrop {
-  z-index: 99999 !important;
+body[data-page="list_pekerjaan"] .modal-backdrop {
+  z-index: var(--dp-z-backdrop) !important;
 }
 
 /* Ensure inner modal content is standard */
