@@ -1,9 +1,12 @@
 """Multi-file import: several clean/interchange xlsx merge into ONE staging batch."""
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from referensi.models import AHSPReferensi
 from referensi.models_staging import AHSPImportBatch, AHSPImportStaging
@@ -26,6 +29,7 @@ class ImportMultiFileTests(TestCase):
             username="import-multi-admin",
             email="import-multi-admin@example.com",
             password="Secret123!",
+            trial_end_date=timezone.now() + timedelta(days=7),
         )
         self.client.force_login(self.user)
 

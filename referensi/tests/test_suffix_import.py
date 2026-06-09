@@ -1,6 +1,7 @@
 """Integration/regression tests for letter-suffix AHSP codes (e.g. 2.2.1.1.5.a)."""
 
 import tempfile
+from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from referensi.models import AHSPReferensi
 from referensi.models_staging import AHSPImportBatch, AHSPImportStaging
@@ -98,6 +100,7 @@ class SuffixCleanImportTests(TestCase):
             username="suffix-admin",
             email="suffix-admin@example.com",
             password="Secret123!",
+            trial_end_date=timezone.now() + timedelta(days=7),
         )
         self.client.force_login(self.user)
         self.factory = RequestFactory()

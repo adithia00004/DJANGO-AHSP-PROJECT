@@ -3,6 +3,7 @@ server-side, while Edit Mode changes on rendered tables are preserved."""
 
 import json
 import os
+from datetime import timedelta
 from io import BytesIO
 
 import pandas as pd
@@ -11,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -29,6 +31,7 @@ class ExportCompletenessTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             username="export-admin", email="export-admin@example.com", password="Secret123!",
+            trial_end_date=timezone.now() + timedelta(days=7),
         )
         self.client.force_login(self.user)
 

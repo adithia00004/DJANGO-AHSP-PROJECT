@@ -1,6 +1,7 @@
 """Multi-file validation upload: several xlsx merged into one validation/report."""
 
 import os
+from datetime import timedelta
 from io import BytesIO
 
 import pandas as pd
@@ -9,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from referensi.views.import_views import _get_validation_results
 
@@ -26,6 +28,7 @@ class ValidateMultiFileUploadTests(TestCase):
             username="validate-admin",
             email="validate-admin@example.com",
             password="Secret123!",
+            trial_end_date=timezone.now() + timedelta(days=7),
         )
         self.client.force_login(self.user)
 
