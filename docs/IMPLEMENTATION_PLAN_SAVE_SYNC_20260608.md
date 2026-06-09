@@ -2,8 +2,8 @@
 
 Tanggal: 2026-06-08
 Acuan temuan: `docs/AUDIT_SAVE_SYNC_PAGES_20260608.md` (S1–S7, P-1…P-5).
-Status dokumen: **implementasi mayor selesai di workspace; konsolidasi commit dan runtime gate belum selesai**. Policy single-user/last-save-wins sudah disetujui dan dieksekusi.
-Revisi: v4 — hasil verifikasi ulang 2026-06-09 dimasukkan, termasuk perbedaan antara kondisi workspace lokal dan branch yang reproducible.
+Status dokumen: **implementasi save/sync mayor dan Fase 4 staging/browser sudah lulus**. Policy single-user/last-save-wins sudah disetujui dan dieksekusi.
+Revisi: v6 — blocker clean-branch, session multi-worker, Docker staging, aset Jadwal, dan browser runtime ditutup pada 2026-06-09.
 
 ## Tujuan
 
@@ -33,11 +33,11 @@ Update terakhir: 2026-06-09, berdasarkan pemeriksaan source, commit, build, migr
 
 - Branch aktif lokal: `checkpoint/save-sync-plan-20260608`.
 - Branch ini sudah dipush ke remote: `origin/checkpoint/save-sync-plan-20260608`.
-- HEAD code terverifikasi: `5026c26f` (commit docs ini berada tepat di atasnya). Di atas `9e0e8c83` (V1–V4/3A): konsolidasi scoped fondasi save/sync `3faea393` (V1 outDir), `6e1e9d89` (S1 autorefresh), `adc60101` (1A), `13c95e4d` (1C), `0a522606` (2C), `a263b1b9` (2A), `26369ac8` (2B), `c1f1317d` (2D), `ac730cc3` (3A test), `bc75fbb1` (docs) — **sudah dipush**. Lalu `5026c26f` (revert orphan migration 0024) dari verifikasi clean-branch — **belum dipush**.
+- HEAD dan remote terverifikasi sinkron pada `39693e1a`. Fondasi save/sync, clean-branch contract, perbaikan staging, dan browser asset fixes sudah dipush ke `origin/checkpoint/save-sync-plan-20260608`.
 - Catatan teknis: file MIXED (2B/2D) di-stage lewat blob ke index lalu di-commit **tanpa pathspec** (`git commit -- <file>` direkam dari working tree, bukan index — jangan dipakai untuk commit scoped file MIXED).
 - Konsolidasi memakai **bedah hunk/blob** untuk file MIXED (base.py, template_ahsp/volume/harga, save_handler): hanya baris save/sync yang di-commit; kerja WIP lain (opaque param endpoints, refactor export, `progressMode`, UI param/volume/import) **tetap di working tree, uncommitted**.
 - **3C (Import Validate) DITUNDA**: hunk `persistCurrentEdits`/`beforeunload` menyatu dalam satu hunk 224 baris dengan rework UI validasi dan bergantung pada `collectExportPayload` + route `validate_save_edits` (fitur edit import yang juga WIP). Tidak bisa jadi commit scoped yang berfungsi tanpa fitur itu; commit bersama fitur Import Validate saat fitur tersebut siap.
-- Branch remote (`origin/...9e0e8c83`) belum mereproduksi fondasi ini sampai 9 commit di atas dipush.
+- Branch remote sudah memuat seluruh commit scoped save/sync sampai `39693e1a`.
 - Working tree masih sangat dirty dan lintas-area (`detail_project`, `referensi`, `dashboard`, `subscriptions`, `accounts`, static build, migrations, docs lain, dan file lokal/generated).
 - Jangan menjalankan `git add .` / `git add -A` untuk checkpoint berikutnya. Commit berikut harus scoped per item plan.
 - Server lokal yang sedang berjalan **tidak otomatis merepresentasikan `main` bersih**. Ia menjalankan file dari working tree saat ini dan bisa reload bila autoreload aktif.
@@ -56,31 +56,32 @@ Legenda:
 | Kode | Item | Status | Bukti / catatan | Next action |
 |---|---|---|---|---|
 | 0 | Checkpoint working tree + baseline | PARTIAL | Checkpoint docs sudah commit+push (`0ecb99c1`), tetapi repo masih sangat dirty dan perubahan kode belum dicommit scoped | Buat checkpoint terkurasi per scope sebelum lanjut perubahan besar |
-| 1A | Middleware `no-store` halaman `detail_project` | DONE / COMMITTED / TODO runtime | Commit `adc60101` (cache_control.py + hunk middleware base.py + tests_page_cache_headers.py). Sisa base.py (opaque/accounts/dll) sengaja dibiarkan unstaged | Uji clean branch + runtime header |
+| 1A | Middleware `no-store` halaman `detail_project` | DONE / VERIFIED | Commit `adc60101`; 12 halaman staging terautentikasi mengirim `no-store` | — |
 | 1B | Bootstrap defensif | DONE (B1) / COMMITTED via 2A/2B | Strategy B1: andalkan `no-store`. Bootstrap json_script masuk `26369ac8` (2B) + context di `a263b1b9` (2A) | — |
-| 1C | Dockerfile collectstatic fail-fast | DONE / COMMITTED | Commit `13c95e4d` | Uji build image |
-| 2A | Sync LED output + Jadwal | DONE / COMMITTED / TODO runtime | Commit `a263b1b9` (views.py context + LED include rekap_rab/rincian_rab/rekap_kebutuhan/kelola_tahapan). 11 targeted tests lulus | Uji browser |
-| 2B | Precision `watch` + bootstrap json_script | DONE / COMMITTED / TODO runtime | Commit `26369ac8` via blob-surgery: Template `pekerjaan,harga` + `ta-bootstrap-detail`; Volume LED + `vp-bootstrap`; Harga `hi-bootstrap`. WIP opaque/formula-label di file sama tetap uncommitted | Uji browser |
+| 1C | Dockerfile collectstatic fail-fast | DONE / VERIFIED | Commit `13c95e4d`; startup staging menjalankan collectstatic dan web sehat | — |
+| 2A | Sync LED output + Jadwal | DONE / VERIFIED | Commit `a263b1b9`; halaman output dan Jadwal lulus Chromium gate tanpa `pageerror` | — |
+| 2B | Precision `watch` + bootstrap json_script | DONE / VERIFIED | Commit `26369ac8`; helper bootstrap clean-branch dipulihkan di `1d218b3c`, fallback Template defensif aktif | — |
 | 2C | Legacy sync indicator JS/partial/CSS | DONE / COMMITTED | CSS split `3a11ebfb`; penghapusan `sync_indicator.js` + `_sync_indicator.html` di `0a522606` | — |
-| 2D | Hygiene Jadwal (`le.log`, `sync-led-ack`) | DONE / COMMITTED / TODO runtime | `le.log`→`console.log` di `a263b1b9`; `dp:sync-led-ack` di `c1f1317d` (blob-surgery, `progressMode` dibiarkan uncommitted) | Uji planned/actual |
-| 3A | Policy single-user last-save-wins | DONE / COMMITTED / TEST GAP DITUTUP | UI `affc446f`; test gap Harga ditutup `ac730cc3` (backend stale-token 409 dormant + last-save-wins, 3 tests lulus). Test Template aktif sudah ada sebelumnya | Verifikasi runtime |
+| 2D | Hygiene Jadwal (`le.log`, `sync-led-ack`) | DONE / VERIFIED | `a263b1b9` + `c1f1317d`; bundle production tunggal termuat tanpa error browser | — |
+| 3A | Policy single-user last-save-wins | DONE / VERIFIED | UI `affc446f`; test Harga `ac730cc3`; guard clean-branch aktif dan staging lulus | — |
 | 3B | Util save read-after-write seragam | TODO / optional | Refactor lintas halaman berisiko regresi | Tunda sampai blocker launch bersih |
 | 3C | Import Validate await save + `beforeunload` | DEFERRED / UNCOMMITTED | Hunk save/sync menyatu (224 baris) dengan rework UI validasi + bergantung `collectExportPayload`/route `validate_save_edits` (fitur edit import WIP). Tak separable jadi commit berfungsi | Commit bersama fitur Import Validate saat fitur siap; lalu simulasi offline/500 |
-| V1 | Cleanup build/manifest Jadwal | DONE / COMMITTED | Fix absolute `outDir` di `vite.config.js` committed `3faea393`; nested dist + single bundle sudah committed sebelumnya | Clean build ulang dari branch bersih (Fase 4) |
+| V1 | Cleanup build/manifest Jadwal | DONE / VERIFIED | Fix absolute `outDir` di `3faea393`; clean build, manifest, staticfiles, dan browser asset sudah konsisten | — |
 | V2 | Migration drift `referensi/0024` | REVISED / DONE | `97b135da` keliru: 0024 (AlterField segment_type +`LAIN`) bergantung 0023 dan butuh model import-batch (semua WIP), padahal model branch masih state 0020 (`[A,B,C,HEADING]`). Clean-branch `makemigrations --check` GAGAL (NodeNotFoundError). Diperbaiki `5026c26f`: untrack 0024 (file tetap di disk, untracked seperti 0021–0023). Clean-branch kini = No changes detected. 0021–0024 + model menyusul bersama fitur import-batch | — |
 | V3 | Split/hapus `sync_indicator.css` legacy | DONE | Commit `3a11ebfb`. `.dp-sync-led` dipindah ke `sync_led.css` baru (legacy `.dp-sync-indicator` dibuang); `base_detail.html` link ke `sync_led.css`; `django check` bersih | — |
 | V4 | Triase 5 test merah baseline/domain | DONE / VERIFIED | Commit `d8ade683`. Suite `detail_project` diverifikasi ulang 2026-06-09: **264 passed, 0 failed** | — |
 | D1 | Konfirmasi shared-login | RESOLVED | Dikonfirmasi: **1 akun = 1 operator** (bukan shared-login). Last-save-wins aman | — |
 | D2 | Persetujuan 3A last-save-wins | RESOLVED | **Disetujui**. 3A dieksekusi (commit `affc446f`) dengan backend token dorman/reversibel | — |
-| 4 | Verifikasi staging/browser gate | PARTIAL | Clean-branch (worktree `5026c26f`): `check` ✅, `makemigrations --check` ✅ No changes (pasca-fix 0024), `npm run build` ✅ outDir benar tanpa nested + 1 bundle `jadwal-kegiatan-DXFScqEi`. Suite test penuh ⏸️ butuh Postgres (host unreachable saat verifikasi; save/sync tests sudah lulus di Postgres pada main, kode identik) | Jalankan suite penuh saat Postgres tersedia → collectstatic → gate browser |
+| 4 | Verifikasi staging/browser gate | DONE / VERIFIED | Clean staging: check + migration graph hijau; PostgreSQL suite **49 passed, 44 WIP skipped**; 12 halaman HTTP 200 + `no-store`; 8 halaman Chromium tanpa error/request gagal; Jadwal memakai satu aset manifest; seluruh service Docker sehat | — |
 
 ### Jalur Eksekusi Terdekat
 
 1. ~~Konsolidasi V1 + commit fondasi 1A–2D scoped~~ **SELESAI** (`3faea393`..`ac730cc3`). 3C ditunda (lihat Kondisi Operasional). Belum dipush.
-2. **Push** 9 commit konsolidasi ke `origin/checkpoint/save-sync-plan-20260608`.
-3. **Uji branch reproducible**: worktree bersih dari HEAD `ac730cc3` (atau clean clone), lalu `manage.py check`, migration check, build (`npm run build`), collectstatic, dan suite test — verifikasi bahwa fondasi save/sync berfungsi **tanpa** WIP yang masih uncommitted (mis. halaman Template/Volume tetap render & bootstrap meski WIP opaque belum ada).
-4. **Fase 4 - Gate staging/browser**: uji Jadwal tanpa 500, no-store header, LED lintas-page, Template/Harga last-save-wins. (Import Validate failure UX menunggu commit fitur 3C.)
-5. **3B util save seragam**: tetap opsional dan ditunda setelah gate launch.
+2. ~~Push commit konsolidasi~~ **SELESAI**; remote = HEAD `c2c5a46f`.
+3. ~~Perbaiki clean-branch test contract~~ **SELESAI** (`a4532185`, `0e905202`, `1d218b3c`).
+4. ~~Benahi Docker staging lokal~~ **SELESAI** (`160d9956`).
+5. ~~Fase 4 browser gate~~ **SELESAI**; asset conflict ditutup di `39693e1a`.
+6. **3B util save seragam** tetap opsional; **3C Import Validate** tetap deferred bersama fitur WIP terkait.
 
 ### Jangan Dikerjakan Dulu Tanpa Konfirmasi
 
@@ -92,7 +93,7 @@ Legenda:
 
 - `python manage.py check`: **lulus, 0 issues**.
 - `python manage.py makemigrations --check --dry-run`: **lulus, No changes detected**.
-- `python manage.py showmigrations referensi`: migration `0024` **applied**.
+- `python manage.py showmigrations referensi`: branch clean berakhir pada `0020`; migration WIP `0021`–`0024` tidak masuk graph branch.
 - `npm run build`: **lulus**, menghasilkan satu entry Jadwal `jadwal-kegiatan-C9Ct7gjz.js`.
 - `python manage.py collectstatic --noinput --clear`: **lulus**, dan staticfiles memuat hash Jadwal yang sama.
 - `python -m pytest detail_project/ -q --reuse-db`: **264 passed, 0 failed**.
@@ -110,6 +111,34 @@ Dijalankan di **git worktree terpisah** dari HEAD bersih (tanpa WIP lokal), supa
 - `makemigrations --check --dry-run` (clean tree): awalnya **GAGAL** — `NodeNotFoundError: 0024 ... dependencies reference nonexistent parent 0023`. Investigasi: `referensi/0021/0022/0023` semua untracked, dan model branch (`AHSPImportStaging.SEGMENT_CHOICES`, `KodeItemReferensi`) masih state 0020 (`[A,B,C,HEADING]`, tanpa `LAIN`/`sumber`/`batch`/uniq). 0024 = orphan dari fitur import-batch yang mayoritas WIP. **Diperbaiki** `5026c26f` (untrack 0024). Re-run clean tree: **No changes detected**.
 - `npm run build` (clean tree, via junction node_modules): **lulus** (vite 5.4.21, ✓ built). outDir = `detail_project/static/detail_project/dist` (BENAR, absolut via `path.resolve(__dirname,...)`), **tidak** membuat nested `detail_project/detail_project`, satu bundle Jadwal `jadwal-kegiatan-DXFScqEi.js`. V1 reproducible terkonfirmasi.
 - Suite test penuh: **tertunda** — beberapa migration memakai SQL Postgres-only (`USING`), jadi sqlite tidak bisa dipakai; host Postgres `getaddrinfo failed` saat verifikasi. Save/sync tests sudah lulus di Postgres pada working tree main (kode committed identik), dan clean-tree `check`+`makemigrations` hijau. **Jalankan suite penuh di clean tree saat Postgres tersedia** sebelum menyatakan Fase 4 selesai.
+
+### Verifikasi Independen Tambahan — 2026-06-09
+
+- Clean worktree dari remote HEAD `c2c5a46f` dibuat ulang dan dibuang setelah pemeriksaan.
+- `manage.py check`: **lulus**.
+- `makemigrations --check --dry-run`: **No changes detected**; ada warning autentikasi Postgres lokal, tetapi migration graph dapat dimuat.
+- `npm run build`: **lulus**, satu bundle `jadwal-kegiatan-DXFScqEi.js`, tanpa nested dist.
+- `collectstatic --clear`: **lulus, 325 files copied**; hash manifest tersedia di source dan staticfiles.
+- Runtime `runserver` lokal:
+  - halaman List/Volume/Jadwal mengirim `Cache-Control: private, no-cache, no-store, must-revalidate`;
+  - endpoint API change-status tidak diberi `no-store`.
+- Runtime tersebut **bukan staging container**. Port 8000 dijawab `WSGIServer/CPython 3.13` dari beberapa proses `manage.py runserver`.
+- Docker `ahsp_web` memakai bind mount workspace, tetapi image dibuat 2026-01-17 dan startup gagal saat migrate karena mencoba DB `localhost:5432`; container belum menjadi staging runtime yang valid.
+- Clean-HEAD source suite `tests_formula_ui_regressions.py`: **35 failed, 5 passed**. Dua guard khusus last-save-wins tetap lulus, tetapi test file juga berisi guard WIP Volume/Formula yang implementasinya belum committed. Ini adalah blocker reproducibility test, bukan bukti regresi 3A.
+- Catatan di bagian ini adalah kondisi sebelum penutupan blocker. Verdict final berada pada bagian berikut.
+
+### Penutupan Blocker dan Staging Final — 2026-06-09
+
+- Clean-branch test contract dipisahkan dari fitur WIP. Guard save/sync tetap aktif; guard Opaque/Formula hanya berjalan saat dependency fiturnya tersedia.
+- Kontrak Harga diperbaiki: item standalone yang tampil pada list dapat disimpan. Helper bootstrap Volume/Harga tersedia pada clean branch; Template memakai fallback defensif bila helper optimasi tidak tersedia.
+- Session staging diubah dari cache-only menjadi `cached_db`. Database menjadi SSOT session sehingga login stabil pada Gunicorn multi-worker walau cache default memakai `LocMemCache`.
+- Compose staging mematikan Vite dev server secara default dan memuat bundle manifest. Jadwal menyajikan satu `jadwal-kegiatan-C9Ct7gjz.js` dengan HTTP 200.
+- Celery/Flower tidak lagi menjalankan entrypoint web; broker/result backend menunjuk Redis service. Web, DB, Redis, PgBouncer, Celery, dan Flower terverifikasi sehat.
+- PostgreSQL clean suite: **49 passed, 44 skipped**, tanpa failure. Skip hanya untuk guard fitur WIP yang implementasinya belum masuk branch.
+- Runtime HTTP terautentikasi: **12/12 halaman** status 200 dan `Cache-Control: private, no-cache, no-store, must-revalidate`.
+- Chromium headless: **8/8 halaman utama** status 200, tanpa `pageerror` dan tanpa request gagal. Duplikasi `ExportManager.js` serta referensi CSS tidak tersedia ditutup di `39693e1a`.
+- Fixture user/project staging sementara dihapus setelah verifikasi.
+- Verdict Fase 4: **DONE / VERIFIED**.
 
 Pelajaran: jangan commit migration anak tanpa rantai parent + perubahan model-nya. Selalu uji `makemigrations --check` di worktree bersih (bukan working tree yang dirty) sebelum gate.
 
@@ -456,7 +485,7 @@ DoD launch: semua baris matriks runtime ✅, header benar, aset terbaru tersaji.
 | V4 | triase 5 test merah baseline | 0 | nihil | tidak (kualitas gate) |
 | 4 | verifikasi staging | semua | — | **ya (gate)** |
 
-Jalur minimum siap-launch saat ini: **konsolidasi commit fase 1A–2D/3C + fix `vite.config.js` → verifikasi clean branch → Fase 4 staging/browser**. V2–V4 dan behavior 3A sudah tertutup. V1 belum dianggap fully reproducible sampai konfigurasi `outDir` ikut committed.
+Jalur minimum launch save/sync sudah tertutup. Sisa di luar gate ini adalah 3B yang opsional dan 3C yang deferred bersama fitur Import Validate WIP.
 
 ---
 
