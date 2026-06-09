@@ -26,7 +26,21 @@ yang masih diroute/dipanggil/diuji = sengaja. Penghapusan butuh konfirmasi + smo
 
 ---
 
-## B. DEAD candidates — JS monolith pra-vite (0 referensi)
+## B. DIHAPUS (terverifikasi) — JS monolith pra-vite
+
+> **Update 2026-06-10:** verifikasi exact-string (`<nama>.js`) di SELURUH file tracked
+> (template/JS/Python/test, kecuali `dist/`) menyelamatkan `detail_ahsp_gabungan.js`
+> yang ternyata **dirujuk test** `tests_detail_ahsp_gabungan_ui.py` → **DIPERTAHANKAN**.
+> 10 file lain exact 0-ref → **DIHAPUS**. Bukti aman: `npm run build` hijau (tak ada
+> import putus) + suite `350 OK, 40 skipped` + `dist/` tidak berubah.
+
+**Dihapus (10):** `_common.js`, `harga_numeric_patch.js`, `item_table.js`,
+`kelola_tahapan_grid.js`, `list_pekerjaan_test_helpers.js`, `performance_profiler.js`,
+`referensi_modal.js`, `rekap_kebutuhan_enhanced.js`, `test_toolbar_buttons.js`,
+`toggle_costum.js`. (Sejarah tetap di Git.)
+**Dipertahankan:** `detail_ahsp_gabungan.js` (dirujuk test; hapus hanya bersama test-nya).
+
+### Inventaris awal (sebelum verifikasi exact)
 
 Top-level `detail_project/static/detail_project/js/*.js` yang **tidak dirujuk** template/JS
 mana pun (digantikan oleh bundle vite `src/` → `dist/`). Diverifikasi 0-ref termasuk
