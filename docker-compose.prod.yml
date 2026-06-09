@@ -82,7 +82,7 @@ services:
       DJANGO_ENV: production
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DJANGO_DEBUG: "False"
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS},healthcheck.local
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
 
       # Database Configuration

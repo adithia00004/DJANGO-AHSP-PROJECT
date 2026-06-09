@@ -77,18 +77,30 @@ const INNERHTML_ALLOWLIST = [
     { context: 'renderVarTable (clear)', safe: 'clearing content' },
     // renderVarTable — empty state
     { context: 'renderVarTable (empty row)', safe: 'static string' },
+    // renderVarTable — filtered empty state
+    { context: 'renderVarTable (filtered empty row)', safe: 'static string' },
     // renderVarTable — row with escapeHtml(label), formatIdSmart(val)
     { context: 'renderVarTable (data row)', safe: 'escapeHtml on label, formatIdSmart on value' },
     // renderComputedTable — tbody clear
     { context: 'renderComputedTable (clear)', safe: 'clearing content' },
     // renderComputedTable — empty state
     { context: 'renderComputedTable (empty row)', safe: 'static string' },
+    // renderComputedTable — filtered empty state
+    { context: 'renderComputedTable (filtered empty row)', safe: 'static string' },
     // renderComputedTable — row with escapeHtml on dynamic fields
     { context: 'renderComputedTable (row)', safe: 'escapeHtml on label/formula' },
     // renderComputedTableHistoryRows
     { context: 'renderComputedTableHistoryRows', safe: 'escapeHtml on dynamic fields' },
     // renderComputedTableHistoryRows 2
     { context: 'renderComputedTableHistoryRows (2)', safe: 'escapeHtml on dynamic fields' },
+    // formula preview state — clear
+    { context: 'formula chip preview (clear)', safe: 'clearing content' },
+    // formula preview action — static icon and label
+    { context: 'formula editor button (set)', safe: 'static icon and label' },
+    // formula preview chip — helper escapes formula tokens and labels
+    { context: 'formula chip preview (render)', safe: 'buildFormulaChipHtml escapes dynamic values internally' },
+    // formula preview action — static icon and label
+    { context: 'formula editor button (edit)', safe: 'static icon and label' },
     // showExportMenu — static menu items
     { context: 'showExportMenu', safe: 'static menu HTML, no user data' },
     // renderFormulaOverviewTable — tbody clear

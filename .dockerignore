@@ -1,0 +1,97 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+*.py[cod]
+__pycache__
+*.so
+.Python
+env/
+.venv
+venv/
+.env
+.env.local
+*.egg-info/
+dist/
+build/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Django
+db.sqlite3
+/staticfiles/
+/media/
+/logs/
+*.log
+local_settings.py
+/coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+.env.local
+.env.*.local
+
+# Development
+.e2e_artifacts/
+load_testing/
+result_*.html
+resultado_*.csv
+
+# Test artifacts
+hasil_test_*.csv
+hasil_test_*.html
+
+# Temporary files
+*.tmp
+*.bak
+temp/
+tmp/
+
+# Database backups
+backup_*.json
+backups/
+
+# Documentation (excluded from image)
+*.md
+docs/
+
+# Historical/local archives
+cleanup_archive/
+Review/
+AHSP Document/
+
+# Local helper and scratch files
+analyze_pdf_structure.py
+debug_excel_structure.py
+debug_pdf_structure.py
+fix_template.py
+temp.html
+_wcag_check.py
+_wcag_check_result.txt
+generate_pass.py
+
+# Cache
+.cache/
+__pycache__/
+*.pyc

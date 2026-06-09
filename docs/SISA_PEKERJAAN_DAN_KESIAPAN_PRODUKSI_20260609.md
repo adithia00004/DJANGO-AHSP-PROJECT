@@ -1,8 +1,27 @@
 # Sisa Pekerjaan & Tingkat Kesiapan Produksi
 
 **Tanggal:** 2026-06-09
+
+## Update Progress 2026-06-09
+
+Item yang selesai:
+
+- P0-4 test merah: backend final 404 passed.
+- P0-5 production image: image immutable healthy tanpa bind mount.
+- P1-6 archive/cleanup: selesai di index lokal, menunggu checkpoint commit.
+- Dependency audit: Python bersih; frontend tidak lagi memiliki critical vulnerability.
+
+Sisa blocker aktual:
+
+1. hardening deployment nyata: domain, TLS, secret, port, dan kredensial dev;
+2. backup terjadwal serta restore drill;
+3. mitigasi/penggantian `xlsx` karena advisory high tanpa fix;
+4. CI remote, UAT proyek nyata, dan Opaque ID sign-off;
+5. review lalu commit/push staged cleanup 19.901 file.
+
+Catatan operasional: Redis AOF sempat korup. Backup dibuat dan repair berhasil; semua service kembali healthy.
 **Branch:** `checkpoint/save-sync-plan-20260608` (HEAD `75dff35b`, sinkron dengan origin)
-**Konteks:** disusun setelah konsolidasi seluruh WIP (C0–C7), migrasi data ke Docker SSOT, dan penyelesaian plan Save/Sync (3C). Dokumen ini melengkapi `IMPLEMENTATION_PLAN_SAVE_SYNC_20260608.md` dan `OPAQUE_ID_CHECKLIST.md`.
+**Konteks:** disusun setelah konsolidasi seluruh WIP (C0–C7), migrasi data ke Docker SSOT, dan penyelesaian plan Save/Sync (3C). Dokumen ini melengkapi `IMPLEMENTATION_PLAN_SAVE_SYNC_20260608.md`, `AUDIT_KESIAPAN_LAUNCH_20260609.md`, `IMPLEMENTATION_PLAN_KESIAPAN_LAUNCH_20260609.md`, dan `OPAQUE_ID_CHECKLIST.md`.
 
 ---
 
@@ -42,6 +61,7 @@ Skala prioritas:
 | P0-2 | **Backup terjadwal SSOT** | ❌ | Data Juni kini "live" di volume Docker; hanya ada **dump satu-kali**. Volume rusak/terhapus → kehilangan seluruh kerja sejak migrasi. | Jadwalkan backup berkala (`scripts/safe_backup_db.sh`) + uji restore |
 | P0-3 | **Cegah divergensi dua-DB** | ❌ | PG16 native masih jalan & menjawab `localhost:5432`. `runserver` host tak sengaja menulis ke **DB lama** → dua salinan menyimpang, sulit direkonsiliasi. | Pakai **hanya** Docker; setelah yakin, hentikan service `postgresql-x64-16` native |
 | P0-4 | **1 test merah + CI merah** | ❌ | **Diperjelas (lihat AUDIT_KESIAPAN_LAUNCH):** suite Django di **Docker HIJAU** (350 OK). Yang merah = pytest `test_import_permissions::test_import_endpoints_block_user_without_permissions` — **ekspektasi usang** (endpoint tetap blokir 302 tapi redirect ke *pricing*, bukan *login*), **bukan lubang keamanan**. Tetap menahan CI hijau → blok merge | Perbaiki ekspektasi test (atau urutan middleware); hijaukan CI |
+| P0-5 | **Image production tidak lengkap/reproducible** | ❌ | `.dockerignore` mengecualikan app `referensi/` dan `package-lock.json`. Development bind mount menutupi masalah; image immutable dapat gagal build/start atau tidak memiliki fitur referensi/import | Perbaiki build context, gunakan `npm ci`, lalu uji clean image tanpa bind mount |
 
 ### P1 — Sebelum launch (kualitas & verifikasi)
 
@@ -52,6 +72,7 @@ Skala prioritas:
 | P1-3 | **QA sign-off Opaque ID (Gate D/Phase 2) + monitoring** | 🟡 | Migration opaque sudah dijalankan di target; tanpa sign-off + window monitoring, regresi parameter/formula bisa tak terdeteksi. | Jalankan AC Gate D; pantau error 1 minggu (`opaque_daily_monitor.sh`) |
 | P1-4 | **Review & rapikan PR #5** | 🟡 | PR membesar (~295 file). Tanpa review, risiko merge kode tak ter-review ke main. | Review per area; pisah bila perlu sebelum merge |
 | P1-5 | **Update dokumen tracker** | 🟡 | Item 4 mencatat celery/flower unhealthy yang **sudah diperbaiki** sesi ini; dokumen perlu sinkron. | Update tracker: healthcheck DONE |
+| P1-6 | **Archive dan cleanup repo** | 🟡 | `node_modules` + `cleanup_archive` membentuk ~89% ukuran file HEAD; backup/scratch file masih tracked | Arsipkan cleanup_archive eksternal, untrack dependency, hapus dead file terverifikasi per batch |
 
 ### P2 — Pasca-launch / opsional
 
@@ -89,13 +110,15 @@ Penilaian per-area (0–100%), berdasarkan kondisi 2026-06-09:
 
 ## 5. Rekomendasi Urutan Eksekusi
 
-1. **P0-1 Hardening** (admin, port, mode, secret/password) — lindungi data klien lebih dulu.
-2. **P0-2 Backup terjadwal** + uji restore — amankan SSOT.
-3. **P0-3 Matikan jalur PG16 native** — hentikan risiko divergensi.
-4. **P0-4 Perbaiki 1 test merah + CI** — buka jalan merge.
-5. **P1-1/P1-5 Revalidasi gate + update dokumen.**
-6. **P1-2 UAT proyek nyata** → set PR ready → merge.
-7. **P1-3 Sign-off & monitoring Opaque ID.**
-8. P2 menyusul pasca-launch.
+1. **P0-5 Perbaiki production image** — pastikan release dapat dibangun dari checkout bersih.
+2. **P1-6 Archive/cleanup batch aman** — kecilkan HEAD tanpa menghapus compatibility code aktif.
+3. **P0-1 Hardening** (admin, port, mode, secret/password) — lindungi data klien.
+4. **P0-2 Backup terjadwal** + uji restore — amankan SSOT.
+5. **P0-3 Matikan jalur PG16 native** — hentikan risiko divergensi.
+6. **P0-4 Perbaiki 1 test merah + CI** — buka jalan merge.
+7. **P1-1/P1-5 Revalidasi gate + update dokumen.**
+8. **P1-2 UAT proyek nyata** → set PR ready → merge.
+9. **P1-3 Sign-off & monitoring Opaque ID.**
+10. P2 menyusul pasca-launch.
 
 > Catatan: P0-1 menyentuh keamanan/akses dan P0-3 menyentuh infrastruktur DB — setiap langkah yang berdampak ke akses/produksi akan dikonfirmasi lebih dulu sebelum dieksekusi.

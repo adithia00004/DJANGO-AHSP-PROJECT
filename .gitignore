@@ -50,7 +50,6 @@ cleanup_archive/root/load_testing/hasil_test_*.csv
 
 # Docker
 *.dockerfile
-.dockerignore
 docker-compose.override.yml
 .docker/
 docker-entrypoint.sh.bak
@@ -71,6 +70,20 @@ logs_volume/
 
 # Node
 node_modules/
+
+# Historical cleanup archive (stored outside the repository before removal)
+/cleanup_archive/
+
+# Verified local backup/scratch files
+detail_project/static/detail_project/js/rekap_kebutuhan.js.bak
+detail_project/static/detail_project/js/rekap_kebutuhan.js.backup_bom
+referensi/static/referensi/css/ahsp_database_backup.css
+referensi/views/preview_old.py.backup
+analyze_pdf_structure.py
+debug_excel_structure.py
+debug_pdf_structure.py
+fix_template.py
+temp.html
 
 # Local private credential vault (never commit real values)
 SECRETS_LOCAL.md

@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from referensi.permissions import REFERENSI_IMPORT_PERMISSIONS, REFERENSI_PORTAL_PERMISSIONS
 
@@ -9,20 +12,24 @@ from referensi.permissions import REFERENSI_IMPORT_PERMISSIONS, REFERENSI_PORTAL
 class ReferensiImportPermissionTests(TestCase):
     def setUp(self):
         user_model = get_user_model()
+        active_trial_end = timezone.now() + timedelta(days=7)
         self.no_perm_user = user_model.objects.create_user(
             username="no_perm_import_user",
             email="no-perm-import@example.com",
             password="Secret123!",
+            trial_end_date=active_trial_end,
         )
         self.portal_only_user = user_model.objects.create_user(
             username="portal_only_user",
             email="portal-only@example.com",
             password="Secret123!",
+            trial_end_date=active_trial_end,
         )
         self.import_user = user_model.objects.create_user(
             username="import_perm_user",
             email="import-perm@example.com",
             password="Secret123!",
+            trial_end_date=active_trial_end,
         )
 
         self._grant_permissions(self.portal_only_user, REFERENSI_PORTAL_PERMISSIONS)
