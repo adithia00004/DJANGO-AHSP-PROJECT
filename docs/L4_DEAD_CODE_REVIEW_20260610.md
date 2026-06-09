@@ -65,9 +65,10 @@ terkait (Volume, Template AHSP, Harga, Jadwal, List Pekerjaan). Sejarah tetap di
 
 ## C. DEAD (lain-lain)
 
-- Dok refactoring **di dalam folder static**: `js/jadwal_pekerjaan/kelola_tahapan/`
-  (`MIGRATION_PROGRESS.md`, `PHASE_3_REFACTORING_PLAN.md`, `README.txt`, `REFACTORING.md`).
-  Bukan aset web; pindahkan ke `docs/` atau hapus.
+- ~~Dok refactoring di dalam folder static~~ **SELESAI (2026-06-10):** 4 dok
+  (`MIGRATION_PROGRESS.md`, `PHASE_3_REFACTORING_PLAN.md`, `README.txt`, `REFACTORING.md`)
+  dipindah dari `static/js/.../kelola_tahapan/` → `docs/archive/kelola_tahapan_refactor/`
+  (keluar dari aset yang ter-serve collectstatic). Modul JS live di folder itu tetap.
 - Guard `ProgrammingError/OperationalError` kompat Opaque (D4) — hapus **setelah** semua
   env confirmed migrated.
 
