@@ -504,6 +504,106 @@
     }
 
     // =====================================================
+    // Bulk delete by source
+    // =====================================================
+
+    function resetDeleteModal() {
+        const preview = document.getElementById('delete-preview');
+        if (preview) preview.classList.add('d-none');
+        const content = document.getElementById('delete-preview-content');
+        if (content) content.innerHTML = '';
+        document.getElementById('btn-confirm-delete')?.classList.add('d-none');
+    }
+
+    function renderDeletePreview(preview) {
+        const wrap = document.getElementById('delete-preview');
+        const content = document.getElementById('delete-preview-content');
+        const confirmBtn = document.getElementById('btn-confirm-delete');
+        if (!wrap || !content) return;
+
+        if (!preview || !preview.jobs_count) {
+            content.innerHTML = '<div class="text-muted"><i class="bi bi-info-circle"></i> Tidak ada data yang cocok dengan filter ini.</div>';
+            wrap.classList.remove('d-none');
+            confirmBtn?.classList.add('d-none');
+            return;
+        }
+
+        let html = '<ul class="list-group">';
+        html += `<li class="list-group-item d-flex justify-content-between align-items-center"><span><i class="bi bi-briefcase text-primary"></i> Pekerjaan AHSP</span><span class="badge bg-danger">${(preview.jobs_count || 0).toLocaleString('id-ID')}</span></li>`;
+        html += `<li class="list-group-item d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul text-info"></i> Rincian Item</span><span class="badge bg-danger">${(preview.rincian_count || 0).toLocaleString('id-ID')}</span></li>`;
+        if (preview.affected_sources && preview.affected_sources.length) {
+            html += `<li class="list-group-item"><strong>Sumber terdampak:</strong><br><small class="text-muted">${preview.affected_sources.join(', ')}</small></li>`;
+        }
+        html += '</ul>';
+        content.innerHTML = html;
+        wrap.classList.remove('d-none');
+        confirmBtn?.classList.remove('d-none');
+    }
+
+    async function handlePreviewDelete() {
+        const sumber = (document.getElementById('delete-sumber')?.value || '').trim();
+        if (!sumber) {
+            showToast('Pilih Sumber terlebih dahulu', 'warning');
+            return;
+        }
+        const btn = document.getElementById('btn-preview-delete');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Memuat...';
+        try {
+            const params = new URLSearchParams({ sumber });
+            const response = await fetch(`${config.apiUrls.deletePreview}?${params.toString()}`, {
+                credentials: 'same-origin',
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Gagal memuat preview');
+            renderDeletePreview(data.preview);
+        } catch (error) {
+            showToast(error.message || 'Gagal memuat preview', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    }
+
+    async function handleConfirmDelete() {
+        const sumber = (document.getElementById('delete-sumber')?.value || '').trim();
+        if (!sumber) {
+            showToast('Pilih Sumber terlebih dahulu', 'warning');
+            return;
+        }
+        if (!window.confirm(`Hapus permanen semua data AHSP dengan sumber "${sumber}"? Tindakan ini tidak dapat dibatalkan.`)) {
+            return;
+        }
+        const btn = document.getElementById('btn-confirm-delete');
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Menghapus...';
+        try {
+            const response = await fetch(config.apiUrls.deleteExecute, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': config.csrfToken },
+                credentials: 'same-origin',
+                body: JSON.stringify({ sumber, confirm: true }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Gagal menghapus data');
+            const r = data.result || {};
+            showToast(`Berhasil menghapus ${(r.jobs_deleted || 0).toLocaleString('id-ID')} pekerjaan & ${(r.rincian_deleted || 0).toLocaleString('id-ID')} rincian.`, 'success');
+            const modalEl = document.getElementById('modalBulkDelete');
+            if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+            resetDeleteModal();
+            loadStats();
+            loadData();
+        } catch (error) {
+            showToast(error.message || 'Gagal menghapus data', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
+    }
+
+    // =====================================================
     // Initialization
     // =====================================================
 
@@ -552,9 +652,15 @@
 
         // Bulk delete
         document.getElementById('btn-bulk-delete')?.addEventListener('click', () => {
+            resetDeleteModal();
             const modal = new bootstrap.Modal(document.getElementById('modalBulkDelete'));
             modal.show();
         });
+        // Changing the source invalidates a stale preview.
+        document.getElementById('delete-sumber')?.addEventListener('change', resetDeleteModal);
+        // Preview + execute (these were never wired -> button did nothing).
+        document.getElementById('btn-preview-delete')?.addEventListener('click', handlePreviewDelete);
+        document.getElementById('btn-confirm-delete')?.addEventListener('click', handleConfirmDelete);
     }
 
     // Start when DOM is ready

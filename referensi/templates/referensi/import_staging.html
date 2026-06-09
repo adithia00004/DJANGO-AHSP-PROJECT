@@ -27,40 +27,54 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-body text-center">
                     <h3 class="mb-0 text-primary">{{ total_items|default:0 }}</h3>
-                    <small class="text-muted">Total Items</small>
+                    <small class="text-muted">Rincian Valid</small>
+                    <div class="small text-muted">Baris item A/B/C/LAIN</div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card border-0 shadow-sm">
                 <div class="card-body text-center">
-                    <h3 class="mb-0 text-info">{{ total_headings|default:0 }}</h3>
-                    <small class="text-muted">AHSP Headings</small>
+                    <h3 class="mb-0 text-info">{{ parent_ahsp_count|default:0 }}</h3>
+                    <small class="text-muted">Parent AHSP</small>
+                    <div class="small text-muted">Kode parent dari regex valid</div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card border-0 shadow-sm">
                 <div class="card-body text-center">
-                    <h3 class="mb-0 text-secondary">{{ files|length }}</h3>
-                    <small class="text-muted">Files</small>
+                    <h3 class="mb-0 text-secondary">{{ total_headings|default:0 }}</h3>
+                    <small class="text-muted">Baris Judul</small>
+                    <div class="small text-muted">{{ files|length }} file, {{ total_staging_rows|default:0 }} total row</div>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="card border-0 shadow-sm">
                 <div class="card-body text-center py-2">
-                    <form method="post" action="{% url 'referensi:import_staging_commit' %}" class="d-inline">
+                    <form method="post" action="{% url 'referensi:import_staging_commit' %}"
+                        class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-center">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-success btn-sm" {% if not staging_data %}disabled{% endif
-                            %}>
+                        {% if active_batch %}
+                        <input type="hidden" name="batch_id" value="{{ active_batch.id }}">
+                        {% endif %}
+                        <input type="text" name="sumber" class="form-control form-control-sm" style="max-width: 150px;"
+                            placeholder="Sumber (mis. AHSP 2024)" value="{{ default_sumber }}"
+                            title="Versi/tahun sumber AHSP" {% if not staging_data %}disabled{% endif %} required>
+                        <select name="commit_mode" id="commitModeSelect" class="form-select form-select-sm"
+                            style="max-width: 180px;" {% if not staging_data %}disabled{% endif %}>
+                            <option value="merge" {% if commit_mode == 'merge' %}selected{% endif %}>Merge/update</option>
+                            <option value="replace" {% if commit_mode == 'replace' %}selected{% endif %}>Replace kode batch</option>
+                            <option value="abort_duplicate" {% if commit_mode == 'abort_duplicate' %}selected{% endif %}>Abort jika duplikat</option>
+                        </select>
+                        <button type="submit" class="btn btn-success btn-sm" {% if not staging_data %}disabled{% endif %}>
                             <i class="fas fa-check me-1"></i>Commit
                         </button>
                     </form>
                     <form method="post" action="{% url 'referensi:import_staging_clear' %}" class="d-inline">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-danger btn-sm" {% if not staging_data %}disabled{%
-                            endif %}>
+                        <button type="submit" class="btn btn-outline-danger btn-sm" {% if not staging_data %}disabled{% endif %}>
                             <i class="fas fa-trash me-1"></i>Clear
                         </button>
                     </form>
@@ -68,6 +82,84 @@
             </div>
         </div>
     </div>
+
+    {% if active_batch or import_batches %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <strong>Batch aktif:</strong>
+                {% if active_batch %}
+                <span class="badge bg-primary">#{{ active_batch.id }}</span>
+                <span>{{ active_batch.file_name }}</span>
+                <span class="text-muted">Sumber: {{ default_sumber|default:"-" }}</span>
+                {% else %}
+                <span class="text-muted">Data staging lama tanpa batch</span>
+                {% endif %}
+                {% if import_batches|length > 1 %}
+                <form method="get" class="ms-auto d-flex align-items-center gap-2">
+                    <label for="batchSelect" class="small text-muted mb-0">Ganti batch</label>
+                    <select name="batch" id="batchSelect" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for batch in import_batches %}
+                        <option value="{{ batch.id }}" {% if active_batch and batch.id == active_batch.id %}selected{% endif %}>
+                            #{{ batch.id }} - {{ batch.file_name|truncatechars:28 }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="hidden" name="commit_mode" value="{{ commit_mode }}">
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if commit_preflight %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <strong><i class="fas fa-search me-2"></i>Preflight Commit Database</strong>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-2">
+                    <div class="small text-muted">Parent AHSP</div>
+                    <div class="h5 mb-0">{{ commit_preflight.parent_total }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="small text-muted">AHSP Baru</div>
+                    <div class="h5 mb-0 text-success">{{ commit_preflight.new_ahsp }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="small text-muted">AHSP Existing</div>
+                    <div class="h5 mb-0 {% if commit_preflight.existing_ahsp %}text-warning{% endif %}">
+                        {{ commit_preflight.existing_ahsp }}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="small text-muted">Rincian Baru</div>
+                    <div class="h5 mb-0 text-success">{{ commit_preflight.new_rincian }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="small text-muted">Rincian Update</div>
+                    <div class="h5 mb-0 text-info">{{ commit_preflight.update_rincian }}</div>
+                </div>
+                <div class="col-md-2">
+                    <div class="small text-muted">Rincian Hapus</div>
+                    <div class="h5 mb-0 {% if commit_preflight.delete_rincian %}text-danger{% endif %}">
+                        {{ commit_preflight.delete_rincian }}
+                    </div>
+                </div>
+            </div>
+            {% if commit_preflight.existing_ahsp %}
+            <div class="alert alert-warning small mb-0 mt-3">
+                Sumber <strong>{{ commit_preflight.sumber }}</strong> sudah memiliki
+                <strong>{{ commit_preflight.existing_ahsp }}</strong> kode AHSP yang sama.
+                Mode <strong>Merge/update</strong> akan update/tambah tanpa menghapus sisa lama.
+                Mode <strong>Replace kode batch</strong> akan menghapus rincian lama pada kode yang sama jika tidak ada di batch.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Data Table -->
     <div class="card border-0 shadow-sm">
@@ -129,6 +221,8 @@
                                 <span class="badge bg-warning text-dark">Bahan</span>
                                 {% elif item.segment_type == 'C' %}
                                 <span class="badge bg-secondary">Alat</span>
+                                {% elif item.segment_type == 'LAIN' %}
+                                <span class="badge bg-dark">Lainnya</span>
                                 {% elif item.segment_type == 'UK' %}
                                 <span class="badge bg-purple text-white" style="background-color: #6f42c1;">Unit
                                     Kerja</span>
@@ -188,6 +282,18 @@
     document.addEventListener('DOMContentLoaded', function () {
         // Tree Logic
         const rows = document.querySelectorAll('tr.tree-node');
+        const commitModeSelect = document.getElementById('commitModeSelect');
+
+        if (commitModeSelect) {
+            commitModeSelect.addEventListener('change', function () {
+                const url = new URL(window.location.href);
+                url.searchParams.set('commit_mode', this.value);
+                {% if active_batch %}
+                url.searchParams.set('batch', '{{ active_batch.id }}');
+                {% endif %}
+                window.location.href = url.toString();
+            });
+        }
 
         rows.forEach((row, index) => {
             if (row.classList.contains('folder-row')) {

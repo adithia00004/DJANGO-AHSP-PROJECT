@@ -6,6 +6,7 @@ from .views import (
     admin_portal,
     ahsp_database,
     ahsp_database_api,
+    pricing_management,
 )
 from .views.preview import debug_clear_data
 from .views.api import api_bulk_delete, api_delete_preview, api_list_sources, api_search_ahsp
@@ -37,9 +38,11 @@ from .views.import_views import (
     import_options,
     import_pdf_convert,
     import_pdf_download_part,
+    import_pdf_download_all,
     pdf_convert_download,
     excel_validate_upload,
     excel_validate_report,
+    save_validation_edits,
     excel_validate_download,
     excel_clean_upload,
     staging_view,
@@ -47,11 +50,13 @@ from .views.import_views import (
     staging_commit,
     export_valid_excel,
     export_anomaly_excel,
+    repair_preflight,
     export_from_frontend,
 )
 
 urlpatterns = [
     path("admin-portal/", admin_portal, name="admin_portal"),
+    path("admin/pricing/", pricing_management, name="pricing_management"),
     path("admin/database/", lambda request: redirect('referensi:ahsp_database_api'), name="ahsp_database_legacy"),  # Redirect to new
     path("admin/database-v2/", ahsp_database_api, name="ahsp_database_api"),
 
@@ -62,11 +67,14 @@ urlpatterns = [
     path("import/pdf-convert/", import_pdf_convert, name="import_pdf_convert"),
     path("import/pdf-convert/download/<str:file_id>/", pdf_convert_download, name="import_pdf_download"),
     path("import/pdf-convert/download-part/<str:file_id>/<int:part_number>/", import_pdf_download_part, name="import_pdf_download_part"),
+    path("import/pdf-convert/download-all/<str:file_id>/", import_pdf_download_all, name="import_pdf_download_all"),
     path("import/validate/", excel_validate_upload, name="import_validate"),
     path("import/validate/report/<str:file_id>/", excel_validate_report, name="import_validate_report"),
+    path("import/validate/<str:file_id>/save-edits/", save_validation_edits, name="validate_save_edits"),
     path("import/validate/download/<str:file_id>/", excel_validate_download, name="import_validate_download"),
     path("import/export/valid/", export_valid_excel, name="export_valid_excel"),
     path("import/export/anomaly/", export_anomaly_excel, name="export_anomaly_excel"),
+    path("import/validate/repair/preflight/", repair_preflight, name="repair_preflight"),
     path("import/export/from-frontend/", export_from_frontend, name="export_from_frontend"),
     path("import/excel/", excel_clean_upload, name="import_excel"),
     path("import/staging/", staging_view, name="import_staging"),
@@ -102,4 +110,3 @@ urlpatterns = [
     path("export/async/", ExportAsyncView.as_view(), name="export_async"),
     path("export/task-status/<str:task_id>/", export_task_status, name="export_task_status"),
 ]
-

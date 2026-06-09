@@ -46,8 +46,7 @@
         <div class="ahsp-stat-item">
             <i class="bi bi-eye-slash" style="color: var(--ahsp-text-muted);"></i>
             <div>
-                <div class="stat-value small text-muted">Ditampilkan: {{ jobs.summary.displayed }}/{{
-                    jobs.summary.total_filtered }}</div>
+                <div class="stat-value small text-muted">Ditampilkan: {{ jobs.summary.displayed }}/{{ jobs.summary.total_filtered }}</div>
                 <div class="stat-label">Terbatas {{ jobs.summary.limit }} baris</div>
             </div>
         </div>
@@ -215,13 +214,10 @@
                                 <div class="ahsp-rincian-badges">
                                     <span class="badge bg-primary-subtle text-primary-emphasis"
                                         title="Tenaga Kerja">TK:{{ row.category_counts.TK }}</span>
-                                    <span class="badge bg-info-subtle text-info-emphasis" title="Bahan">BHN:{{
-                                        row.category_counts.BHN }}</span>
-                                    <span class="badge bg-secondary-subtle text-secondary-emphasis" title="Alat">ALT:{{
-                                        row.category_counts.ALT }}</span>
+                                    <span class="badge bg-info-subtle text-info-emphasis" title="Bahan">BHN:{{ row.category_counts.BHN }}</span>
+                                    <span class="badge bg-secondary-subtle text-secondary-emphasis" title="Alat">ALT:{{ row.category_counts.ALT }}</span>
                                     {% if row.category_counts.LAIN > 0 %}
-                                    <span class="badge bg-dark-subtle text-dark-emphasis" title="Lainnya">+{{
-                                        row.category_counts.LAIN }}</span>
+                                    <span class="badge bg-dark-subtle text-dark-emphasis" title="Lainnya">+{{ row.category_counts.LAIN }}</span>
                                     {% endif %}
                                     <span class="badge bg-body-secondary text-body fw-semibold"
                                         title="Total Rincian">Σ{{ row.object.rincian_total }}</span>

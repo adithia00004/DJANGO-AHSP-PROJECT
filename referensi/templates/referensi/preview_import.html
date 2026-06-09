@@ -185,8 +185,7 @@
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Rincian Item:</span>
-                                <span class="badge bg-success fs-6">{{ debug_stats.file_rincian_count|default:0
-                                    }}</span>
+                                <span class="badge bg-success fs-6">{{ debug_stats.file_rincian_count|default:0 }}</span>
                             </div>
                         </div>
                     </div>
@@ -310,16 +309,12 @@
             <div class="tab-content border rounded-3 border-light-subtle mt-3">
                 <div class="tab-pane fade show active" id="pane-ahsp" role="tabpanel" aria-labelledby="tab-ahsp">
                     <div id="jobs-preview-container">
-                        {% include "referensi/preview/_jobs_table.html" with parse_result=parse_result
-                        job_formset=job_formset job_rows=job_rows job_page_info=job_page_info details_page=details_page
-                        %}
+                        {% include "referensi/preview/_jobs_table.html" with parse_result=parse_result job_formset=job_formset job_rows=job_rows job_page_info=job_page_info details_page=details_page %}
                     </div>
                 </div>
                 <div class="tab-pane fade" id="pane-rincian" role="tabpanel" aria-labelledby="tab-rincian">
                     <div id="details-preview-container">
-                        {% include "referensi/preview/_details_table.html" with parse_result=parse_result
-                        detail_formset=detail_formset detail_rows=detail_rows detail_page_info=detail_page_info
-                        jobs_page=jobs_page %}
+                        {% include "referensi/preview/_details_table.html" with parse_result=parse_result detail_formset=detail_formset detail_rows=detail_rows detail_page_info=detail_page_info jobs_page=jobs_page %}
                     </div>
                 </div>
             </div>

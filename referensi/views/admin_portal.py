@@ -7,11 +7,22 @@ from django.contrib.auth.decorators import login_required
 from django.forms import modelformset_factory
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
-from referensi.forms import AHSPReferensiInlineForm, RincianReferensiInlineForm
+from referensi.forms import (
+    AHSPReferensiInlineForm,
+    RincianReferensiInlineForm,
+    SubscriptionPlanPricingForm,
+    SubscriptionPlanPromotionForm,
+)
 from referensi.models import AHSPReferensi, RincianReferensi
 from referensi.permissions import has_referensi_portal_access
 from referensi.services.admin_service import AdminPortalService
+from subscriptions.models import SubscriptionPlan, SubscriptionPlanPromotion
+from subscriptions.pricing_service import (
+    format_currency_idr,
+    resolve_effective_plan_pricing,
+)
 
 from .constants import ITEM_DISPLAY_LIMIT, JOB_DISPLAY_LIMIT, TAB_ITEMS, TAB_JOBS
 
@@ -220,6 +231,124 @@ def ahsp_database_api(request):
         'sources': sources,
     }
     return render(request, "referensi/ahsp_database_api.html", context)
+
+
+@login_required
+def pricing_management(request):
+    if not has_referensi_portal_access(request.user):
+        messages.warning(request, "Anda tidak memiliki izin untuk mengakses manajemen pricing.")
+        return redirect("/")
+
+    plans_queryset = SubscriptionPlan.objects.filter(
+        base_tier__in=[
+            SubscriptionPlan.BASE_TIER_1,
+            SubscriptionPlan.BASE_TIER_2,
+            SubscriptionPlan.BASE_TIER_3,
+        ]
+    ).order_by("base_tier")
+    promotions_queryset = SubscriptionPlanPromotion.objects.select_related("plan").filter(
+        plan__base_tier__in=[
+            SubscriptionPlan.BASE_TIER_1,
+            SubscriptionPlan.BASE_TIER_2,
+            SubscriptionPlan.BASE_TIER_3,
+        ]
+    ).order_by(
+        "-is_active", "-priority", "-start_at", "-created_at"
+    )
+
+    PlanFormSet = modelformset_factory(
+        SubscriptionPlan,
+        form=SubscriptionPlanPricingForm,
+        extra=0,
+    )
+    PromotionFormSet = modelformset_factory(
+        SubscriptionPlanPromotion,
+        form=SubscriptionPlanPromotionForm,
+        extra=1,
+        can_delete=False,
+    )
+
+    action = request.POST.get("action")
+    if request.method == "POST" and action == "save_plans":
+        plans_formset = PlanFormSet(request.POST, queryset=plans_queryset, prefix="plans")
+        promotions_formset = PromotionFormSet(queryset=promotions_queryset, prefix="promos")
+        if plans_formset.is_valid():
+            plans_formset.save()
+            messages.success(request, "Harga plan berhasil diperbarui.")
+            return redirect("referensi:pricing_management")
+        messages.error(request, "Perubahan plan belum tersimpan. Periksa data yang dimasukkan.")
+    elif request.method == "POST" and action == "save_promotions":
+        plans_formset = PlanFormSet(queryset=plans_queryset, prefix="plans")
+        promotions_formset = PromotionFormSet(request.POST, queryset=promotions_queryset, prefix="promos")
+        if promotions_formset.is_valid():
+            promotions_formset.save()
+            messages.success(request, "Promo terjadwal berhasil diperbarui.")
+            return redirect("referensi:pricing_management")
+        messages.error(request, "Perubahan promo belum tersimpan. Periksa data yang dimasukkan.")
+    else:
+        plans_formset = PlanFormSet(queryset=plans_queryset, prefix="plans")
+        promotions_formset = PromotionFormSet(queryset=promotions_queryset, prefix="promos")
+
+    promotion_schedule_rows = _build_promotion_schedule_rows(promotions_queryset)
+
+    context = {
+        "plans_formset": plans_formset,
+        "promotions_formset": promotions_formset,
+        "promotion_schedule_rows": promotion_schedule_rows,
+        "schedule_summary": {
+            "total": len(promotion_schedule_rows),
+            "active": sum(1 for row in promotion_schedule_rows if row["status_code"] == "active"),
+            "upcoming": sum(1 for row in promotion_schedule_rows if row["status_code"] == "upcoming"),
+            "ended": sum(1 for row in promotion_schedule_rows if row["status_code"] == "ended"),
+            "inactive": sum(1 for row in promotion_schedule_rows if row["status_code"] == "inactive"),
+        },
+        "schedule_now": timezone.localtime(timezone.now()),
+    }
+    return render(request, "referensi/pricing_management.html", context)
+
+
+def _build_promotion_schedule_rows(promotions_queryset):
+    rows = []
+    now = timezone.now()
+
+    for promo in promotions_queryset.order_by("start_at", "-priority", "-created_at"):
+        if not promo.is_active:
+            status_code = "inactive"
+            status_label = "Nonaktif"
+            status_badge = "secondary"
+        elif now < promo.start_at:
+            status_code = "upcoming"
+            status_label = "Akan Datang"
+            status_badge = "info"
+        elif promo.start_at <= now < promo.end_at:
+            status_code = "active"
+            status_label = "Aktif"
+            status_badge = "success"
+        else:
+            status_code = "ended"
+            status_label = "Berakhir"
+            status_badge = "dark"
+
+        preview = resolve_effective_plan_pricing(
+            plan=promo.plan,
+            now=promo.start_at,
+            promotion=promo,
+        )
+
+        rows.append(
+            {
+                "promotion": promo,
+                "status_code": status_code,
+                "status_label": status_label,
+                "status_badge": status_badge,
+                "base_price_display": format_currency_idr(preview.base_price),
+                "final_price_display": format_currency_idr(preview.final_price),
+                "discount_amount_display": format_currency_idr(preview.discount_amount),
+                "discount_badge": preview.discount_badge,
+            }
+        )
+
+    return rows
 
 
 def _build_redirect_url(tab, tab_filters, extra_params=None):

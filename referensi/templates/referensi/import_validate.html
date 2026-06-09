@@ -17,7 +17,7 @@
                 <i class="fas fa-clipboard-check text-warning me-2"></i>
                 Validasi Excel
             </h2>
-            <p class="text-muted">Upload Excel untuk dicek formatnya</p>
+            <p class="text-muted">Upload satu atau beberapa Excel; semuanya digabung jadi satu laporan & satu file Data Valid</p>
         </div>
     </div>
 
@@ -29,11 +29,12 @@
                         {% csrf_token %}
 
                         <div class="mb-4">
-                            <label for="excel_file" class="form-label">Pilih File Excel</label>
+                            <label for="excel_file" class="form-label">Pilih File Excel (boleh lebih dari satu)</label>
                             <input type="file" class="form-control form-control-lg" id="excel_file" name="excel_file"
-                                accept=".xlsx,.xls" required>
+                                accept=".xlsx,.xls" multiple required>
                             <div class="form-text">
-                                Format: .xlsx atau .xls
+                                Format: .xlsx atau .xls. Pilih beberapa file sekaligus -> digabung jadi satu
+                                validasi & satu file unduhan. Kode yang sama di >1 file akan diperingatkan.
                             </div>
                         </div>
 

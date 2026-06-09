@@ -150,7 +150,11 @@ class KodeItemReferensi(models.Model):
             models.UniqueConstraint(
                 fields=["kategori", "uraian_item", "satuan_item"],
                 name="uniq_kode_item_kombinasi",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["kategori", "kode_item"],
+                name="uniq_kode_item_per_kategori",
+            ),
         ]
         indexes = [
             models.Index(fields=["kategori"]),

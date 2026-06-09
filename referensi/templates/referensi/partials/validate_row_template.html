@@ -1,4 +1,13 @@
 <tr class="data-row" data-row-id="{{ row.row }}">
+    <td>
+        <select class="form-select form-select-sm segment-select" data-original="{{ row.original_row.col_1 }}" disabled>
+            <option value="A" {% if row.original_row.col_1 == 'A' or row.original_row.col_1 == 'TK' %}selected{% endif %}>TK</option>
+            <option value="B" {% if row.original_row.col_1 == 'B' or row.original_row.col_1 == 'BHN' %}selected{% endif %}>BHN</option>
+            <option value="C" {% if row.original_row.col_1 == 'C' or row.original_row.col_1 == 'PR' %}selected{% endif %}>PR</option>
+            <option value="LAIN" {% if row.original_row.col_1 == 'LAIN' or row.original_row.col_1 == 'LAINNYA' %}selected{% endif %}>LAIN</option>
+            <option value="ANOMALI" {% if row.original_row.col_1 == 'ANOMALI' or row.original_row.col_1 == 'UK' or row.original_row.col_1 == 'LL' or row.original_row.col_1 == 'TOTAL' %}selected{% endif %}>ANOMALI</option>
+        </select>
+    </td>
     <td class="text-center editable-cell" data-col="2">{{ row.original_row.col_2 }}</td>
     <td class="editable-cell" data-col="3">{{ row.original_row.col_3 }}</td>
     <td class="editable-cell" data-col="4"><span class="font-monospace small">{{ row.original_row.col_4 }}</span></td>

@@ -50,6 +50,7 @@ class ReferensiImportPermissionTests(TestCase):
             ("post", reverse("referensi:import_staging_commit")),
             ("get", reverse("referensi:export_valid_excel")),
             ("get", reverse("referensi:export_anomaly_excel")),
+            ("post", reverse("referensi:repair_preflight")),
             ("post", reverse("referensi:export_from_frontend")),
             ("get", reverse("referensi:import_pdf_download", args=["dummy-file-id"])),
             ("get", reverse("referensi:import_pdf_download_part", args=["dummy-file-id", 1])),
