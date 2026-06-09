@@ -86,7 +86,16 @@ from django.views.decorators.http import require_POST, require_GET, require_http
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.db import transaction, IntegrityError
-from django.db.models import Max, F, Sum, DecimalField, ExpressionWrapper
+from django.db.models import (
+    DecimalField,
+    Exists,
+    ExpressionWrapper,
+    F,
+    Max,
+    OuterRef,
+    Q,
+    Sum,
+)
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.html import escape
@@ -1491,6 +1500,36 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
     return JsonResponse({"ok": saved > 0, "saved": saved, "errors": errors, "decimal_places": dp_vol}, status=status_code)
 
 # ---------- View 2b: Volume LIST (flat, ringan) ----------
+def build_volume_list_payload(project):
+    p_ids = list(
+        Pekerjaan.objects
+        .filter(project=project)
+        .values_list("id", flat=True)
+    )
+    vol_qs = (
+        VolumePekerjaan.objects
+        .filter(project=project, pekerjaan_id__in=p_ids)
+        .values("pekerjaan_id", "quantity")
+    )
+    vol_map = {row["pekerjaan_id"]: row["quantity"] for row in vol_qs}
+    dp_vol = getattr(
+        VolumePekerjaan._meta.get_field("quantity"),
+        "decimal_places",
+        DECIMAL_SPEC["VOL"].dp,
+    )
+    return {
+        "ok": True,
+        "items": [
+            {
+                "pekerjaan_id": pid,
+                "quantity": to_dp_str(vol_map.get(pid, 0), dp_vol),
+            }
+            for pid in p_ids
+        ],
+        "decimal_places": dp_vol,
+    }
+
+
 @login_required
 @require_GET
 def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
@@ -2351,6 +2390,66 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
     return JsonResponse({"ok": True, "cloned_count": int(moved)})
 
 # ---------- View 4: Harga Items ----------
+def _active_harga_items_queryset(project):
+    expanded_refs = DetailAHSPExpanded.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+    detail_refs = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+    return (
+        HargaItemProject.objects
+        .filter(project=project)
+        .annotate(
+            used_in_expanded=Exists(expanded_refs),
+            used_in_detail=Exists(detail_refs),
+        )
+        .filter(
+            Q(used_in_expanded=True)
+            | Q(used_in_expanded=False, used_in_detail=False)
+        )
+    )
+
+
+def build_harga_items_payload(project, canon=True):
+    items = list(
+        _active_harga_items_queryset(project)
+        .order_by("kode_item")
+        .values(
+            "id",
+            "kode_item",
+            "kategori",
+            "uraian",
+            "satuan",
+            "harga_satuan",
+        )
+    )
+    if canon:
+        dp = getattr(
+            HargaItemProject._meta.get_field("harga_satuan"),
+            "decimal_places",
+            DECIMAL_SPEC["HARGA"].dp,
+        )
+        for item in items:
+            item["harga_satuan"] = to_dp_str(item.get("harga_satuan"), dp)
+
+    pricing = _get_or_create_pricing(project)
+    return {
+        "ok": True,
+        "items": items,
+        "meta": {
+            "markup_percent": to_dp_str(pricing.markup_percent, 2),
+            "project_updated_at": (
+                project.updated_at.isoformat()
+                if getattr(project, "updated_at", None)
+                else None
+            ),
+        },
+    }
+
+
 @login_required
 @require_POST
 @transaction.atomic
@@ -2417,11 +2516,10 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     errors = []
     updated = 0
 
-    # DUAL STORAGE: Check against expanded_refs (expanded components)
-    allowed_ids = set(HargaItemProject.objects
-                      .filter(project=project, expanded_refs__project=project)
-                      .values_list('id', flat=True)
-                      .distinct())
+    # Save accepts exactly the project-owned rows exposed by the list endpoint.
+    allowed_ids = set(
+        _active_harga_items_queryset(project).values_list("id", flat=True)
+    )
 
     dp = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
 
@@ -4153,6 +4251,15 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
 
 
 # ---------- View 7 Volume Formula State (GET/POST di endpoint yang sama) ----------
+def build_volume_formula_state_payload(project):
+    rows = list(
+        VolumeFormulaState.objects
+        .filter(project=project)
+        .values("pekerjaan_id", "raw", "is_fx")
+    )
+    return {"ok": True, "items": rows}
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 @transaction.atomic

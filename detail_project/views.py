@@ -137,8 +137,11 @@ def template_ahsp_view(request, project_id: int):
     first_pkj = pekerjaan[0] if pekerjaan else None
     bootstrap_detail = None
     if first_pkj is not None:
-        from .views_api import build_detail_ahsp_payload
-        bootstrap_detail = build_detail_ahsp_payload(project, first_pkj)
+        from . import views_api
+
+        build_detail_payload = getattr(views_api, "build_detail_ahsp_payload", None)
+        if callable(build_detail_payload):
+            bootstrap_detail = build_detail_payload(project, first_pkj)
 
     ctx = {
         "project": project,
