@@ -59,6 +59,14 @@
             {{ filter_form.status_timeline }}
           </div>
 
+          <!-- Active/Archived Filter -->
+          <div class="col-md-3">
+            <label for="{{ filter_form.is_active.id_for_label }}" class="form-label">
+              {{ filter_form.is_active.label }}
+            </label>
+            {{ filter_form.is_active }}
+          </div>
+
           <!-- Budget Range -->
           <div class="col-md-3">
             <label class="form-label">Rentang Anggaran</label>
@@ -165,6 +173,13 @@
         <div class="btn-group btn-group-sm" role="group">
           <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn" title="Edit langsung di tabel">
             <i class="fas fa-edit"></i> Edit Data
+          </button>
+          <button type="button" class="btn btn-outline-warning" id="bulkArchiveBtn" title="Archive project terpilih">
+            <i class="fas fa-archive"></i> Archive
+          </button>
+          <button type="button" class="btn btn-outline-success" id="bulkUnarchiveBtn"
+            title="Aktifkan kembali project terpilih">
+            <i class="fas fa-box-open"></i> Unarchive
           </button>
           <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
             <i class="fas fa-trash"></i> Hapus
@@ -515,8 +530,7 @@
     <li class="page-item active"><span class="page-link">{{ num }}</span></li>
     {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %} <li class="page-item"><a
         class="page-link"
-        href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{
-        num }}</a></li>
+        href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a></li>
       {% endif %}
       {% endfor %}
 
@@ -687,7 +701,9 @@
 
     // Get selected project IDs
     function getSelectedProjectIds() {
-      const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
+      const checkedBoxes = desktopTable
+        ? desktopTable.querySelectorAll('.project-checkbox:checked')
+        : document.querySelectorAll('.project-checkbox:checked');
       return Array.from(checkedBoxes).map(cb => cb.value);
     }
 

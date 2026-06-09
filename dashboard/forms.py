@@ -267,7 +267,7 @@ class ProjectFilterForm(forms.Form):
             ('true', 'Aktif'),
             ('false', 'Archived'),
         ],
-        label="Status",
+        label="Status Aktif",
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
 
@@ -302,9 +302,11 @@ class ProjectFilterForm(forms.Form):
 
 # ====== Upload Excel ======
 class UploadProjectForm(forms.Form):
+    MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+
     file = forms.FileField(
         label="Pilih file Excel (.xlsx)",
-        widget=forms.ClearableFileInput(attrs={"class": "form-control"}),
+        widget=forms.ClearableFileInput(attrs={"class": "form-control", "accept": ".xlsx"}),
         help_text="Unggah file Excel dengan format kolom sesuai template.",
     )
 
@@ -312,7 +314,6 @@ class UploadProjectForm(forms.Form):
         f = self.cleaned_data["file"]
         if not f.name.lower().endswith(".xlsx"):
             raise forms.ValidationError("Format file tidak didukung. Gunakan file .xlsx.")
-        # (Opsional) batasi ukuran file, contoh 10 MB:
-        # if f.size > 10 * 1024 * 1024:
-        #     raise forms.ValidationError("Ukuran file maksimal 10 MB.")
+        if f.size > self.MAX_UPLOAD_SIZE_BYTES:
+            raise forms.ValidationError("Ukuran file maksimal 10 MB.")
         return f

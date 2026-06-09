@@ -1,10 +1,14 @@
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Value, DecimalField, Q, CharField
 from django.db.models.functions import Coalesce, Cast
 from decimal import Decimal
 from collections import defaultdict
+from io import BytesIO
+import csv
 import openpyxl
+import re
 from openpyxl.styles import Font, Alignment, Border, Side
 from datetime import date, timedelta
 
@@ -347,14 +351,344 @@ def export_dashboard_xlsx(request):
 # 1. Excel Export (Upgraded to new logic)
 export_excel = export_dashboard_xlsx
 
-# 2. CSV Export (Stub - Deprecated in favor of Excel)
+def _compute_weighted_progress_map(projects):
+    """
+    Compute weighted progress for a list of projects.
+    Keeps export CSV/PDF logic consistent with dashboard/xlsx weighted formula.
+    """
+    if not projects:
+        return {}
+
+    progress_map = {project.id: 0.0 for project in projects}
+    project_ids = [project.id for project in projects]
+
+    pekerjaan_actual_aggregates = {}
+    weekly_aggregates = PekerjaanProgressWeekly.objects.filter(
+        project_id__in=project_ids
+    ).values('pekerjaan_id').annotate(
+        total_actual=Coalesce(
+            Sum('actual_proportion'),
+            Value(Decimal('0')),
+            output_field=DecimalField()
+        )
+    )
+
+    for agg in weekly_aggregates:
+        pekerjaan_actual_aggregates[agg['pekerjaan_id']] = float(agg['total_actual'])
+
+    pekerjaan_by_project = defaultdict(list)
+    projects_needing_rekap = set()
+    pekerjaan_rows = Pekerjaan.objects.filter(project_id__in=project_ids).values(
+        'id', 'project_id', 'budgeted_cost'
+    )
+    for row in pekerjaan_rows:
+        pekerjaan_by_project[row['project_id']].append(row)
+        if not row['budgeted_cost'] or row['budgeted_cost'] <= 0:
+            projects_needing_rekap.add(row['project_id'])
+
+    rekap_total_by_project = {}
+    for project in projects:
+        if project.id not in projects_needing_rekap:
+            continue
+        try:
+            rekap_rows = compute_rekap_for_project(project)
+            rekap_total_by_project[project.id] = {
+                row['pekerjaan_id']: Decimal(str(row.get('total', 0)))
+                for row in rekap_rows
+            }
+        except Exception:
+            rekap_total_by_project[project.id] = {}
+
+    for project in projects:
+        try:
+            pekerjaan_rows = pekerjaan_by_project.get(project.id, [])
+            fallback_lookup = rekap_total_by_project.get(project.id, {})
+            total_project_cost = Decimal('0.00')
+            total_realization_cost = Decimal('0.00')
+
+            for pkj in pekerjaan_rows:
+                pekerjaan_id = pkj['id']
+                budgeted_cost = pkj['budgeted_cost']
+                if budgeted_cost and budgeted_cost > 0:
+                    item_cost = budgeted_cost
+                else:
+                    item_cost = fallback_lookup.get(pekerjaan_id, Decimal('0'))
+
+                if item_cost > 0:
+                    total_project_cost += item_cost
+                    actual_percent = pekerjaan_actual_aggregates.get(pekerjaan_id, 0.0)
+                    actual_percent = min(actual_percent, 100.0)
+                    realization = item_cost * Decimal(str(actual_percent / 100.0))
+                    total_realization_cost += realization
+
+            if total_project_cost > 0:
+                weighted_progress = float((total_realization_cost / total_project_cost) * 100)
+            elif pekerjaan_rows:
+                sum_progress = sum(pekerjaan_actual_aggregates.get(p['id'], 0.0) for p in pekerjaan_rows)
+                weighted_progress = sum_progress / len(pekerjaan_rows)
+            else:
+                weighted_progress = 0.0
+        except Exception:
+            weighted_progress = 0.0
+
+        progress_map[project.id] = weighted_progress
+
+    return progress_map
+
+
+def _timeline_status_text(project):
+    if not project.tanggal_mulai or not project.tanggal_selesai:
+        return "-"
+
+    today = date.today()
+    deadline_threshold = today + timedelta(days=30)
+
+    if project.tanggal_selesai < today:
+        return "Selesai"
+    if project.tanggal_selesai <= deadline_threshold:
+        return "Deadline"
+    if project.tanggal_mulai > today:
+        return "Belum Mulai"
+    return "Berjalan"
+
+
+def _safe_date_text(value):
+    return value.strftime('%Y-%m-%d') if value else ""
+
+
+def _status_text(project):
+    return "Aktif" if project.is_active else "Non-Aktif"
+
+
+def _safe_filename_fragment(text, fallback="project"):
+    cleaned = re.sub(r'[^A-Za-z0-9._-]+', '_', str(text or fallback))
+    cleaned = cleaned.strip('._')
+    if not cleaned:
+        cleaned = fallback
+    return cleaned[:80]
+
+
+# 2. CSV Export (Real implementation)
 @login_required
 @api_export_excel_word_required
 def export_csv(request):
-    return HttpResponse("Fitur Export CSV telah digantikan oleh Export Excel (Full Columns). Silakan gunakan tombol Export Excel.", content_type="text/plain")
+    queryset = Project.objects.filter(owner=request.user)
+    queryset = _apply_dashboard_filters(request, queryset)
+    projects = list(queryset)
+    progress_map = _compute_weighted_progress_map(projects)
 
-# 3. Project PDF Export (Stub - Placeholder)
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename=Project_Export_{date.today().isoformat()}.csv'
+    response.write('\ufeff')  # UTF-8 BOM for spreadsheet compatibility
+
+    writer = csv.writer(response)
+    headers = [
+        "Index", "Nama Project", "Tahun", "Sumber Dana", "Lokasi",
+        "Nilai Anggaran (Rp)", "Progress (%)", "Status Aktif", "Status Timeline",
+        "Nama Client", "Jabatan Client", "Instansi Client",
+        "Nama Kontraktor", "Instansi Kontraktor",
+        "Konsultan Perencana", "Instansi Perencana",
+        "Konsultan Pengawas", "Instansi Pengawas",
+        "Tanggal Mulai", "Tanggal Selesai", "Durasi (Hari)",
+        "Ket 1", "Ket 2", "Kategori"
+    ]
+    writer.writerow(headers)
+
+    for project in projects:
+        writer.writerow([
+            project.index_project or "",
+            project.nama or "",
+            project.tahun_project or "",
+            project.sumber_dana or "",
+            project.lokasi_project or "",
+            float(project.anggaran_owner) if project.anggaran_owner is not None else "",
+            round(progress_map.get(project.id, 0.0), 2),
+            _status_text(project),
+            _timeline_status_text(project),
+            project.nama_client or "",
+            project.jabatan_client or "",
+            project.instansi_client or "",
+            project.nama_kontraktor or "",
+            project.instansi_kontraktor or "",
+            project.nama_konsultan_perencana or "",
+            project.instansi_konsultan_perencana or "",
+            project.nama_konsultan_pengawas or "",
+            project.instansi_konsultan_pengawas or "",
+            _safe_date_text(project.tanggal_mulai),
+            _safe_date_text(project.tanggal_selesai),
+            project.durasi_hari or "",
+            project.ket_project1 or "",
+            project.ket_project2 or "",
+            project.kategori or "",
+        ])
+
+    return response
+
+
+# 3. Project PDF Export (Real implementation)
 @login_required
 @api_pdf_export_allowed
 def export_project_pdf(request, pk):
-    return HttpResponse("Fitur Export PDF Project sedang dalam maintenance. Silakan gunakan Export PDF di halaman Detail Project.", content_type="text/plain")
+    project = get_object_or_404(Project, pk=pk, owner=request.user)
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import Paragraph, Spacer, Table, TableStyle, SimpleDocTemplate
+        from xml.sax.saxutils import escape as xml_escape
+    except ImportError:
+        return HttpResponse(
+            "Library PDF export belum tersedia pada environment ini.",
+            content_type="text/plain",
+            status=503
+        )
+
+    def _pdf_text(value):
+        if value is None:
+            return "-"
+        text = str(value).strip()
+        if not text:
+            return "-"
+        return xml_escape(text).replace('\n', '<br/>')
+
+    progress_map = _compute_weighted_progress_map([project])
+    weighted_progress = progress_map.get(project.id, 0.0)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+        title=f"Laporan Project {project.nama}",
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ProjectTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        leading=20,
+        spaceAfter=6,
+    )
+    section_style = ParagraphStyle(
+        "SectionHeading",
+        parent=styles["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        textColor=colors.HexColor("#1f2937"),
+        spaceBefore=6,
+        spaceAfter=4,
+    )
+    value_style = ParagraphStyle(
+        "ValueText",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+    )
+
+    def build_section(title, rows):
+        table_rows = []
+        for label, value in rows:
+            table_rows.append([
+                Paragraph(f"<b>{_pdf_text(label)}</b>", value_style),
+                Paragraph(_pdf_text(value), value_style),
+            ])
+
+        table = Table(table_rows, colWidths=[4.5 * cm, 11.5 * cm], hAlign='LEFT')
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#eef4fb')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#c7cfd9')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        return [Paragraph(title, section_style), table, Spacer(1, 0.35 * cm)]
+
+    anggaran_text = "-"
+    if project.anggaran_owner is not None:
+        anggaran_text = f"Rp {float(project.anggaran_owner):,.2f}"
+
+    story = [
+        Paragraph("Laporan Detail Project", title_style),
+        Paragraph(_pdf_text(project.nama), styles["Normal"]),
+        Spacer(1, 0.5 * cm),
+    ]
+
+    story.extend(build_section("Informasi Utama", [
+        ("Index Project", project.index_project or "-"),
+        ("Nama Project", project.nama),
+        ("Tahun", project.tahun_project or "-"),
+        ("Kategori", project.kategori or "-"),
+        ("Sumber Dana", project.sumber_dana),
+        ("Lokasi", project.lokasi_project),
+    ]))
+    story.extend(build_section("Status & Progres", [
+        ("Status Aktif", _status_text(project)),
+        ("Status Timeline", _timeline_status_text(project)),
+        ("Progress Realisasi", f"{weighted_progress:.2f}%"),
+        ("Anggaran Owner", anggaran_text),
+    ]))
+    story.extend(build_section("Timeline", [
+        ("Tanggal Mulai", _safe_date_text(project.tanggal_mulai) or "-"),
+        ("Tanggal Selesai", _safe_date_text(project.tanggal_selesai) or "-"),
+        ("Durasi (Hari)", project.durasi_hari or "-"),
+    ]))
+    story.extend(build_section("Client", [
+        ("Nama Client", project.nama_client),
+        ("Jabatan", project.jabatan_client or "-"),
+        ("Instansi", project.instansi_client or "-"),
+    ]))
+    story.extend(build_section("Stakeholder", [
+        ("Kontraktor", project.nama_kontraktor or "-"),
+        ("Instansi Kontraktor", project.instansi_kontraktor or "-"),
+        ("Konsultan Perencana", project.nama_konsultan_perencana or "-"),
+        ("Instansi Perencana", project.instansi_konsultan_perencana or "-"),
+        ("Konsultan Pengawas", project.nama_konsultan_pengawas or "-"),
+        ("Instansi Pengawas", project.instansi_konsultan_pengawas or "-"),
+    ]))
+    story.extend(build_section("Keterangan Tambahan", [
+        ("Deskripsi", project.deskripsi or "-"),
+        ("Keterangan 1", project.ket_project1 or "-"),
+        ("Keterangan 2", project.ket_project2 or "-"),
+    ]))
+
+    pdf_ctx = getattr(request, 'pdf_export_context', {}) or {}
+    add_watermark = bool(pdf_ctx.get('add_watermark'))
+    watermark_text = pdf_ctx.get('watermark_text') or 'DEMO - Dashboard-RAB'
+
+    def _decorate_page(canvas, _doc):
+        canvas.saveState()
+
+        if add_watermark:
+            if hasattr(canvas, "setFillAlpha"):
+                canvas.setFillAlpha(0.18)
+            canvas.setFillColor(colors.HexColor('#9ca3af'))
+            canvas.setFont("Helvetica-Bold", 34)
+            page_width, page_height = A4
+            canvas.translate(page_width / 2, page_height / 2)
+            canvas.rotate(35)
+            canvas.drawCentredString(0, 0, watermark_text)
+
+        canvas.setFillColor(colors.HexColor('#4b5563'))
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(A4[0] - 2 * cm, 1.2 * cm, f"Dibuat: {date.today().isoformat()}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_decorate_page, onLaterPages=_decorate_page)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    filename = f"project_{_safe_filename_fragment(project.nama)}_{date.today().isoformat()}.pdf"
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response

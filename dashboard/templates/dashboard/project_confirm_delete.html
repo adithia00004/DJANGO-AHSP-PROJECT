@@ -21,7 +21,7 @@
                 <div class="alert alert-warning d-flex align-items-center" role="alert">
                     <i class="fas fa-triangle-exclamation me-2"></i>
                     <div>
-                        <strong>Peringatan:</strong> Tindakan ini <u>tidak dapat dibatalkan</u>.
+                        <strong>Peringatan:</strong> Project akan <u>diarsipkan (soft delete)</u> dan bisa diaktifkan kembali melalui fitur unarchive.
                     </div>
                 </div>
 
@@ -49,8 +49,9 @@
 
                 <form method="post">
                     {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ next_url }}">
                     <div class="d-flex justify-content-between">
-                        <a href="{% url 'dashboard:project_detail' project.pk %}" class="btn btn-secondary">
+                        <a href="{{ next_url }}" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Batal
                         </a>
                         <button type="submit" class="btn btn-danger">

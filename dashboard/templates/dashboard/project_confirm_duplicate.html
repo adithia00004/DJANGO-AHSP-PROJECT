@@ -21,6 +21,23 @@
 
       <form method="post">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+
+        {% if form.non_field_errors or form.errors %}
+        <div class="alert alert-danger">
+          <strong>Periksa kembali input form:</strong>
+          <ul class="mb-0 mt-2">
+            {% for err in form.non_field_errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+            {% for field in form %}
+              {% for err in field.errors %}
+              <li>{{ field.label }}: {{ err }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
 
         <!-- === NAVIGATION TABS === -->
         <ul class="nav nav-tabs mb-3" id="projectTab" role="tablist">
@@ -47,23 +64,69 @@
           <!-- TAB 1: IDENTITAS PROYEK -->
           <div class="tab-pane fade show active" id="identitas" role="tabpanel">
             <div class="row">
-              <div class="col-md-6 mb-3">{{ form.nama.label_tag }} {{ form.nama }}</div>
-              <div class="col-md-6 mb-3">{{ form.tahun_project.label_tag }} {{ form.tahun_project }}</div>
-              <div class="col-md-6 mb-3">{{ form.lokasi_project.label_tag }} {{ form.lokasi_project }}</div>
-              <div class="col-md-6 mb-3">{{ form.anggaran_owner.label_tag }} {{ form.anggaran_owner }}</div>
-              <div class="col-md-6 mb-3">{{ form.ket_project1.label_tag }} {{ form.ket_project1 }}</div>
-              <div class="col-md-6 mb-3">{{ form.ket_project2.label_tag }} {{ form.ket_project2 }}</div>
-              <div class="col-md-12 mb-3">{{ form.deskripsi.label_tag }} {{ form.deskripsi }}</div>
-              <div class="col-md-6 mb-3">{{ form.kategori.label_tag }} {{ form.kategori }}</div>
+              <div class="col-md-6 mb-3">
+                {{ form.nama.label_tag }} <span class="text-danger">*</span>
+                {{ form.nama }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.tanggal_mulai.label_tag }} <span class="text-danger">*</span>
+                {{ form.tanggal_mulai }}
+                <small class="form-text text-muted">Tahun project akan otomatis diambil dari tanggal ini</small>
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.tanggal_selesai.label_tag }}
+                {{ form.tanggal_selesai }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.durasi_hari.label_tag }}
+                {{ form.durasi_hari }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.lokasi_project.label_tag }} <span class="text-danger">*</span>
+                {{ form.lokasi_project }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.anggaran_owner.label_tag }} <span class="text-danger">*</span>
+                {{ form.anggaran_owner }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.ket_project1.label_tag }}
+                {{ form.ket_project1 }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.ket_project2.label_tag }}
+                {{ form.ket_project2 }}
+              </div>
+              <div class="col-md-12 mb-3">
+                {{ form.deskripsi.label_tag }}
+                {{ form.deskripsi }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.kategori.label_tag }}
+                {{ form.kategori }}
+              </div>
             </div>
           </div>
 
           <!-- TAB 2: PEMILIK PROYEK -->
           <div class="tab-pane fade" id="pemilik" role="tabpanel">
             <div class="row">
-              <div class="col-md-6 mb-3">{{ form.nama_client.label_tag }} {{ form.nama_client }}</div>
-              <div class="col-md-6 mb-3">{{ form.instansi_client.label_tag }} {{ form.instansi_client }}</div>
-              <div class="col-md-6 mb-3">{{ form.sumber_dana.label_tag }} {{ form.sumber_dana }}</div>
+              <div class="col-md-6 mb-3">
+                {{ form.nama_client.label_tag }} <span class="text-danger">*</span>
+                {{ form.nama_client }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.jabatan_client.label_tag }}
+                {{ form.jabatan_client }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.instansi_client.label_tag }}
+                {{ form.instansi_client }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.sumber_dana.label_tag }} <span class="text-danger">*</span>
+                {{ form.sumber_dana }}
+              </div>
             </div>
           </div>
 
@@ -82,7 +145,7 @@
 
         <!-- === ACTION BUTTONS === -->
         <div class="d-flex justify-content-between mt-4">
-          <a href="{% url 'dashboard:dashboard' %}" class="btn btn-secondary">
+          <a href="{{ next_url }}" class="btn btn-secondary">
             <i class="fas fa-arrow-left"></i> Batal
           </a>
           <button type="submit" class="btn btn-success">
