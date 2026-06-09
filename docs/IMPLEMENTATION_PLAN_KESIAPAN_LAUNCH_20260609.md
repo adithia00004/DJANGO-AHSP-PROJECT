@@ -31,8 +31,8 @@ Menyiapkan release yang:
 |---|---|---|---|
 | L0 | Freeze, backup, baseline, dan manifest cleanup | DONE | Backup + checksum + baseline tercatat |
 | L1 | Perbaikan clean production image | DONE | Image final healthy tanpa bind mount |
-| L2 | Archive/untrack dependency dan arsip | DONE, BELUM COMMIT | Clean install/build/test hijau |
-| L3 | Hapus backup/scratch file terverifikasi | DONE, BELUM COMMIT | Reference scan + smoke test hijau |
+| L2 | Archive/untrack dependency dan arsip | DONE (commit `8483685e`) | Clean install/build/test hijau; node_modules + cleanup_archive untracked (tetap di disk) |
+| L3 | Hapus backup/scratch file terverifikasi | DONE (commit `8483685e`) | Reference scan + smoke test hijau; 9 file backup/scratch dihapus |
 | L4 | Review compatibility/deprecated code | TODO | Bukti pemakaian atau removal test per simbol |
 | L5 | Security/TLS/production compose | TODO | `check --deploy`, HTTPS, port policy lulus |
 | L6 | Backup SSOT dan single-DB enforcement | TODO | Restore drill lulus |
