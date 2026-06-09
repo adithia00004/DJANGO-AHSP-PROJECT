@@ -83,3 +83,4 @@ _wcag_check.py
 _wcag_check_result.txt
 generate_pass.py
 .env.empty
+.claude/settings.local.json
