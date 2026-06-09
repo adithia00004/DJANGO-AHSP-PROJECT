@@ -41,7 +41,7 @@ Skala prioritas:
 | P0-1 | **Hardening keamanan SSOT** | ❌ | Superuser `admin/admin` di DB data nyata + port `:8000` & `:5432` bind `0.0.0.0` + mode `development` + (kemungkinan) `SECRET_KEY`/`POSTGRES_PASSWORD` default. **Jika mesin terjangkau jaringan → data klien bisa diakses/diubah pihak luar.** | Ganti/nonaktifkan dev-admin + password kuat; ikat port ke `127.0.0.1` (jika lokal) atau pasang firewall; `DJANGO_ENV` non-development; `SECRET_KEY` & DB password kuat |
 | P0-2 | **Backup terjadwal SSOT** | ❌ | Data Juni kini "live" di volume Docker; hanya ada **dump satu-kali**. Volume rusak/terhapus → kehilangan seluruh kerja sejak migrasi. | Jadwalkan backup berkala (`scripts/safe_backup_db.sh`) + uji restore |
 | P0-3 | **Cegah divergensi dua-DB** | ❌ | PG16 native masih jalan & menjawab `localhost:5432`. `runserver` host tak sengaja menulis ke **DB lama** → dua salinan menyimpang, sulit direkonsiliasi. | Pakai **hanya** Docker; setelah yakin, hentikan service `postgresql-x64-16` native |
-| P0-4 | **1 test merah + CI merah** | ❌ | Gate kualitas gagal → tak boleh merge/deploy; regresi bisa lolos. (Suite terbaru: 403 passed, **1 failed**, 40 skipped.) | Identifikasi & perbaiki test gagal; selidiki & hijaukan CI |
+| P0-4 | **1 test merah + CI merah** | ❌ | **Diperjelas (lihat AUDIT_KESIAPAN_LAUNCH):** suite Django di **Docker HIJAU** (350 OK). Yang merah = pytest `test_import_permissions::test_import_endpoints_block_user_without_permissions` — **ekspektasi usang** (endpoint tetap blokir 302 tapi redirect ke *pricing*, bukan *login*), **bukan lubang keamanan**. Tetap menahan CI hijau → blok merge | Perbaiki ekspektasi test (atau urutan middleware); hijaukan CI |
 
 ### P1 — Sebelum launch (kualitas & verifikasi)
 
