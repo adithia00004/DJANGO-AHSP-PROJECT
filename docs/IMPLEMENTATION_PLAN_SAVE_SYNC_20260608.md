@@ -96,7 +96,9 @@ Legenda:
 - Draft PR: [#5 — Harden save sync workflow and staging runtime](https://github.com/adithia00004/DJANGO-AHSP-PROJECT/pull/5).
 - Target: `main`; source: `checkpoint/save-sync-plan-20260608`.
 - PR dibuka 2026-06-09 dalam status draft.
-- GitHub Actions CI run `#71` mulai berjalan setelah PR dibuat; verdict akhir dicatat setelah run selesai.
+- CI awal gagal karena workflow memaksa SQLite, sedangkan migration aplikasi memakai SQL PostgreSQL `USING`.
+- Workflow diperbaiki pada `d6741fb9` agar memakai service PostgreSQL 15 dengan health check.
+- GitHub Actions CI run `#73`: **SUCCESS**; step pytest lulus.
 - UAT manual project nyata tetap menjadi approval gate sebelum PR diubah menjadi ready/merged.
 
 ### Jangan Dikerjakan Dulu Tanpa Konfirmasi
