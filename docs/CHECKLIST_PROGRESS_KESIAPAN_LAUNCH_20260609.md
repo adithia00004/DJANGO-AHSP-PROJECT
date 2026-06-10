@@ -70,6 +70,8 @@ Lokasi backup eksternal:
 
 ## L5-L8 - Production dan Release
 
+> **Plan eksekusi aktif:** `IMPLEMENTATION_PLAN_RC_20260610.md` (fase R0-R6, dibuat 2026-06-10 11:30 WITA) — L5→R2, L6→R3, L7→R4, L8→R5, plus R1 (penutupan temuan kode pra-UAT: F10/F11/F14, M7/M9/M12). R0 (baseline RC: semua fix audit committed+pushed+CI) sudah DONE.
+
 - [ ] Jalankan stack nyata dengan domain, TLS, dan secret produksi.
 - [ ] Hilangkan kredensial dev dan batasi port PostgreSQL/Flower.
 - [ ] Jadwalkan backup SSOT dan lakukan restore drill.
@@ -112,6 +114,9 @@ Lokasi backup eksternal:
 | Audit | Catatan arsitektur & workflow (2026-06-10 06:45 WITA) | Tidak ada restrukturisasi pemblokir launch; 4 utang struktural pasca-launch dicatat di `AUDIT_KESIAPAN_LAUNCH_20260609.md` |
 | Audit | Audit UI/UX + peta z-index (2026-06-10 06:50 WITA) | Dokumen baru `AUDIT_UI_UX_20260610.md`; 216 deklarasi z-index dipetakan, 5 skala bersaing, temuan U1-U10 (2 tinggi: toast tertutup modal); checklist visual UAT ditambahkan |
 | UI/UX | Eksekusi pra-UAT M1/M2/M8 + Kontrak Feedback (2026-06-10 10:55 WITA) | U1 fixed (templateLibraryModal → token); U14 fixed (orphan/audit admin-only + 4 test baru); U2/U9 fixed (4 toast referensi → DP.toast, modal 99999 → token); guard test `feedback_governance_guard` (z literal + budget confirm/alert 18 file); vitest 235 passed |
+| Review | Verifikasi review eksternal + tindak lanjut (2026-06-10 11:09-11:15 WITA) | 5 klaim BENAR & ditindaklanjuti: SSOT tunggal (banner SUPERSEDED dok Feb), F9 exclusion dipersempit `/subscriptions/payment/`, CI Py3.11 + job frontend + trigger checkpoint/**, wording feature-complete/RC, npm audit full 5 / prod-only 2 moderate. Commit `a115296d`, `51c4a0ff` |
+| Fix | Import full-backup raw-only (2026-06-10 11:15 WITA) | `expand_bundle_to_components` salah signature + except-pass → imported project bernilai nol; fix `_populate_expanded_from_raw` + raw-fallback services; 3 regression test; verifikasi independen 26 passed; commit `38046135` |
+| Release | Push ke origin + plan RC (2026-06-10 11:30 WITA) | Branch pushed `4d1f4353..51c4a0ff` (CI berjalan); `IMPLEMENTATION_PLAN_RC_20260610.md` dibuat (R0 DONE, R1-R5 jalur launch, R6 backlog) |
 | Security | Fix F9 expired-user payment (2026-06-10) | `accounts/middleware.py` exclude `/subscriptions/` + 2 regression test (subscriptions 23 passed) |
 | Security | Hardening F1/F2 compose prod (2026-06-10) | Bind loopback default db/web/flower, Flower `--basic-auth`, guard `:?` SECRET_KEY; `docker compose config` valid |
 
