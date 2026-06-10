@@ -2492,17 +2492,25 @@
         return;
       }
 
-      templateList.innerHTML = currentTemplates.map(t => `
-        <div class=\"template-item\" data-template-id=\"${t.id}\">
+      // U19: escapeHtml WAJIB — nama template adalah input user dan (bila
+      // publik) tampil lintas-user; tanpa escape = stored XSS antar-user.
+      templateList.innerHTML = currentTemplates.map(t => {
+        const badge = t.is_public
+          ? '<span class=\"badge bg-success-subtle text-success border ms-1\">Publik</span>'
+          : (t.is_mine
+            ? '<span class=\"badge bg-secondary-subtle text-secondary border ms-1\">Milik Saya</span>'
+            : '');
+        return `
+        <div class=\"template-item\" data-template-id=\"${Number(t.id)}\">
           <div class=\"template-item-content\">
-            <div class=\"template-item-name\">${t.name}</div>
+            <div class=\"template-item-name\">${escapeHtml(t.name)}${badge}</div>
             <div class=\"template-item-meta\">
-              ${t.total_klasifikasi} klas, ${t.total_sub} sub, ${t.total_pekerjaan} pkj
+              ${Number(t.total_klasifikasi)} klas, ${Number(t.total_sub)} sub, ${Number(t.total_pekerjaan)} pkj
             </div>
           </div>
           <i class=\"bi bi-chevron-right template-item-arrow\"></i>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
 
       // Bind click
       templateList.querySelectorAll('.template-item').forEach(el => {

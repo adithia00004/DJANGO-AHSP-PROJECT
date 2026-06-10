@@ -9065,6 +9065,8 @@ def api_list_templates(request: HttpRequest):
             'total_pekerjaan': t.total_pekerjaan,
             'usage_count': t.usage_count,
             'created_at': t.created_at.isoformat() if t.created_at else None,
+            'is_public': t.is_public,
+            'is_mine': t.created_by_id == request.user.id,
         })
     
     return JsonResponse({
@@ -9177,13 +9179,19 @@ def api_create_template(request: HttpRequest, project_id: int):
         }, status=400)
     
     # Create template - store the full export data as content
+    # Keputusan produk 2026-06-10: template baru PRIVATE by default; hanya
+    # admin/staff yang boleh langsung menerbitkan ke library publik.
+    is_public = bool(payload.get('is_public')) and (
+        request.user.is_staff or request.user.is_superuser
+    )
+
     template = PekerjaanTemplate.objects.create(
         name=name,
         description=description,
         category=category,
         content=content,  # Now includes klasifikasi, sub, pekerjaan, detail_ahsp
         created_by=request.user,
-        is_public=True,
+        is_public=is_public,
     )
     
     return JsonResponse({

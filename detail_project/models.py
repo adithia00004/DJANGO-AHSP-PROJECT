@@ -1317,8 +1317,10 @@ class PekerjaanTemplate(TimeStampedModel):
         related_name='created_templates'
     )
     is_public = models.BooleanField(
-        default=True,
-        help_text="If True, visible to all users. If False, only creator can see."
+        # Keputusan produk 2026-06-10 (UAT B2.5): private-by-default — library
+        # publik hanya berisi template yang dikurasi admin (via Django admin).
+        default=False,
+        help_text="If True, visible to all users (admin-curated). If False, only creator can see."
     )
     usage_count = models.PositiveIntegerField(
         default=0,
