@@ -7,9 +7,10 @@
 
 ## 0. Persiapan (sekali)
 
-- [ ] Stack sehat: `docker compose ps` semua healthy; buka `http://localhost:8000` → login page tanpa error.
-- [ ] Frontend dist segar: `npm run build` sudah dijalankan pada HEAD terbaru.
-- [ ] Siapkan 4 akun uji (via Django admin atau shell):
+- [x] Stack sehat (2026-06-10 13:20): semua container healthy; `/health/` 200; `/accounts/login/` 200.
+- [x] Frontend dist segar: `npm run build` pada HEAD `452401ae`.
+- [ ] **Prasyarat skenario pembayaran (§5):** daftar akun sandbox di dashboard.sandbox.midtrans.com → salin **Server Key** & **Client Key** sandbox → isi `MIDTRANS_SERVER_KEY=...` dan `MIDTRANS_CLIENT_KEY=...` di `.env` → `docker compose restart web`. Tanpa ini, §5 langkah pembayaran berhenti di "create payment" (server key kosong by design) — seksi lain tetap bisa dikerjakan.
+- [x] 4 akun uji DIBUAT (2026-06-10 13:15, idempotent, email pre-verified; password sementara `UatAhsp2026!` — ganti/hapus akun `uat_*` setelah UAT selesai):
   | Akun | Setup | Untuk skenario |
   |---|---|---|
   | `uat_trial` | `subscription_status=TRIAL`, `trial_end_date=+7 hari` | gating export terkunci, batas trial |
