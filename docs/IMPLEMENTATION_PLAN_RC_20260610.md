@@ -58,10 +58,10 @@ Eksekusi (runbook: `RUNBOOK_DEPLOY_TLS_L5_L6.md`; compose sudah hardened-by-defa
 
 ## R3 — L6: Data Safety
 
-- [ ] Jadwalkan `scripts/safe_backup_db.sh` (cron/systemd timer) + retensi + lokasi terisolasi (PVD-07).
-- [ ] Jalankan `scripts/restore_drill_db.sh` → restore ke DB scratch + verifikasi jumlah project/AHSP/user (PVD-08); berita acara di SSOT.
-- [ ] Pastikan satu jalur DB: PG16 native Windows mati permanen ATAU pindah port; tidak ada `runserver` host ke SSOT (insiden 2026-06-10).
-- [ ] Restriksi akses DB internal-only (PVD-09).
+- [x] **Restore drill LULUS 2026-06-10 12:06 WITA** (dieksekusi pemilik): dump segar dibuat DARI DALAM container (pg_dump 15↔server 15; pg_dump 16 host sengaja dihindari — arsipnya berisiko tak terbaca pg_restore 15) → `backups/ahsp_sni_db_drill_20260610_120341.dump` 21 MB, SHA-256 `aed701c1...494bc` → restore ke scratch `restore_drill_20260610_120615` → verifikasi `projects|users|ahsp|plans = 159|80|5104|3` (MATCH baseline L0) → scratch dihapus, live tak tersentuh. (PVD-08 versi lokal ✓; ulangi di staging VPS saat R2.)
+- [~] **Satu jalur DB — akar B2 ditemukan & ditutup**: PG16 native ternyata masih listen `0.0.0.0:5432` dan MEMENANGKAN koneksi host (verifikasi `select version()` → 16.9) — host pytest selama ini mendarat di PG16, bukan Docker SSOT (ditemukan `test_ahsp_sni_db` 13 MB di PG16). PG16 juga melayani project lain (`govautomator` dll), jadi keputusan pemilik: **pindah port → 5433** (bukan disable). `postgresql.conf:64` sudah diubah; **TINGGAL restart service sebagai Administrator** + verifikasi host:5432 = PG15 Docker.
+- [ ] Jadwalkan backup otomatis + retensi + lokasi terisolasi — ditangguhkan ke VPS (PVD-07); interim: dump manual pra-perubahan-besar (pola yang sudah berjalan).
+- [ ] Restriksi akses DB internal-only di production (PVD-09 — tugas VPS).
 
 ## R4 — L7: UAT & Sign-off
 
