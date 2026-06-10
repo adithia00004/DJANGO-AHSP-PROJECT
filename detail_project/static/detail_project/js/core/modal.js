@@ -226,6 +226,17 @@
     });
   }
 
+  // U17 (UAT 2026-06-10): saat modal Bootstrap mana pun mulai ditutup dengan
+  // fokus masih di dalamnya, Bootstrap memberi aria-hidden pada elemen yang
+  // memuat fokus -> browser memunculkan warning "Blocked aria-hidden".
+  // Lepaskan fokus lebih dulu; berlaku global untuk semua modal.
+  document.addEventListener('hide.bs.modal', function (event) {
+    const active = document.activeElement;
+    if (active && event.target.contains(active) && typeof active.blur === 'function') {
+      active.blur();
+    }
+  });
+
   DP.core.modal = { show, confirm, alert };
   DP.modal = DP.core.modal;
 })();

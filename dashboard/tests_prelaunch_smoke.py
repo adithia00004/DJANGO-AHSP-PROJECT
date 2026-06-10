@@ -719,7 +719,13 @@ class PrelaunchFunctionalSmokeTests(TestCase):
         self.assertContains(response, "Kolom wajib belum ada")
         self.assertContains(response, "nama_client")
 
-    def test_project_upload_rejects_formula_cell(self):
+    def test_project_upload_formula_cell_reads_cached_value_not_formula(self):
+        """
+        UAT 2026-06-10: dengan data_only=True, sel berformula dibaca sebagai
+        NILAI ter-cache (number/teks). Formula yang ditulis openpyxl tidak punya
+        cache -> menjadi kosong -> tertangkap validasi field wajib; string
+        formulanya sendiri tidak pernah masuk database.
+        """
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))
         upload_file = self._build_upload_file(
             headers=["nama", "tanggal_mulai", "sumber_dana", "lokasi_project", "nama_client", "anggaran_owner"],
@@ -730,8 +736,10 @@ class PrelaunchFunctionalSmokeTests(TestCase):
             {"file": upload_file},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Formula tidak diizinkan")
+        # Pesan lama tidak dipakai lagi; string formula tidak tersimpan.
+        self.assertNotContains(response, "Formula tidak diizinkan")
         self.assertFalse(Project.objects.filter(owner=self.owner, nama="=NOW()").exists())
+        self.assertFalse(Project.objects.filter(owner=self.owner, nama__startswith="=").exists())
 
     def test_project_upload_duplicate_name_in_file_is_skipped(self):
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))

@@ -711,7 +711,11 @@ def project_upload_view(request):
         if form.is_valid():
             try:
                 file = request.FILES['file']
-                wb = openpyxl.load_workbook(file, read_only=True, data_only=False)
+                # UAT 2026-06-10: data_only=True — sel berformula dibaca sebagai
+                # NILAI hasil hitung yang ter-cache di file (number/teks), bukan
+                # string formula. Formula tanpa nilai cache menjadi kosong dan
+                # tertangkap validasi field seperti sel kosong biasa.
+                wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
 
                 # Batasi jumlah data untuk mencegah beban berlebih
@@ -753,21 +757,19 @@ def project_upload_view(request):
                     if all(data.get(h) in (None, "") for h in UPLOAD_ALL_HEADERS):
                         continue
 
-                    # Tolak formula cell untuk mencegah formula injection dari source Excel.
-                    formula_headers = []
-                    for field_name in UPLOAD_ALL_HEADERS:
-                        col_index = idx.get(field_name)
-                        if col_index is None:
-                            continue
-                        try:
-                            cell = ws.cell(row=rownum, column=col_index + 1)
-                        except Exception:
-                            cell = None
-                        if cell is not None and getattr(cell, "data_type", None) == "f":
-                            formula_headers.append(field_name)
-                    if formula_headers:
+                    # Guard injection: dengan data_only=True string formula tidak
+                    # pernah terbaca dari sel formula; yang tersisa hanya TEKS
+                    # literal berawalan "=" (berbahaya bila di-reexport ke Excel).
+                    suspicious = [
+                        field_name
+                        for field_name, value in data.items()
+                        if isinstance(value, str) and value.lstrip().startswith("=")
+                    ]
+                    if suspicious:
                         error_rows.append(
-                            (rownum, {"__all__": [f"Formula tidak diizinkan pada kolom: {', '.join(formula_headers)}"]})
+                            (rownum, {"__all__": [
+                                f"Teks berawalan '=' tidak diizinkan pada kolom: {', '.join(suspicious)}"
+                            ]})
                         )
                         continue
 

@@ -320,6 +320,17 @@ Setiap butir: **cara memeriksa → hasil yang BENAR → lokasi fix bila rusak.**
 |---|---|---|---|
 | U16 | 🟡 Sedang | **Redundansi konsep Hapus/Archive/Unarchive di dashboard** — terbukti di backend: `project_delete`, `bulk_delete`, dan `bulk_archive` SAMA-SAMA `is_active=False` (tiga label + dua ikon untuk satu operasi); bulk bar menduplikasi aksi kolom Aksi; "Edit" bermakna ganda (form penuh vs inline massal); 25 modal hapus per-baris; console menampilkan dump data chart + log init | **FIXED 2026-06-10**: (1) konsep tunggal **Hapus** — tombol+handler Archive/Unarchive dihapus dari UI (endpoint backend dipertahankan; pemulihan via Django admin; fitur "restore deleted" dinilai tidak urgent, bila kelak dibuat → ikon/tempat khusus); (2) 25 modal/baris → **1 modal reusable** `#deleteProjectModal` (desktop+mobile) — sekaligus memperbaiki bug laten tombol mobile menarget modal desktop; (3) label dibedakan: pensil = "Edit detail project (form lengkap)", bulk = "Edit Massal"; bar diberi animasi slide-in halus; (4) console bersih: dump `Chart Data Loaded` + 15 log init/emoji dihapus dari template + 5 file JS (`node --check` lulus); (5) smoke test diperbarui (assertNotContains archive btn). **Bonus**: registrasi `models_export` di `apps.py.ready()` — memperbaiki flaky "no such table export_session" saat menjalankan subset suite |
 
+### 9.y Temuan UAT lanjutan — U17/U18 (2026-06-10, Journey B1-upload & B2, dilaporkan pemilik)
+
+| ID | Severity | Temuan | Status |
+|---|---|---|---|
+| U17 | 🟢 Rendah | **Warning a11y "Blocked aria-hidden"** saat modal ditutup dengan fokus masih di dalamnya (terlihat pada `#messagesModal` pasca-upload) — perilaku Bootstrap 5 bila fokus tidak dilepas sebelum hide | **FIXED**: handler global `hide.bs.modal` di `core/modal.js` melepas fokus (blur) elemen aktif di dalam modal sebelum ditutup — berlaku semua modal |
+| U18 | 🟡 Sedang | **Sel berformula di Excel mass-create ditolak mentah** ("Formula tidak diizinkan") — user yang tak sengaja menyertakan formula harus membersihkan file manual | **FIXED** (permintaan pemilik): `load_workbook(data_only=True)` — formula kini terbaca sebagai **nilai** ter-cache (number/teks); formula tanpa cache = sel kosong (tertangkap validasi field). Guard injection dipertahankan utk TEKS literal berawalan `=`. Test diperbarui |
+| — | ℹ️ Info | Log `express-utils.js` + font `AdobeClean` dari `chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj` di console | **Bukan aplikasi kita** — itu ekstensi Adobe Acrobat di Chrome user; abaikan (atau disable ekstensi saat UAT agar console bersih) |
+| — | ℹ️ Info | Log init lama (toast/ux/resizable/chart) masih tampil setelah U16 | Penyebab: container web menyajikan snapshot `staticfiles/` lama (whitenoise) — perlu `docker compose restart web` (entrypoint re-collectstatic) + hard refresh. Sudah di-restart 2026-06-10; verifikasi ulang di browser |
+
+**Catatan UAT B2 (List Pekerjaan): SEMUA LULUS** (B2.1-B2.5) — drag-drop, picker select2, template library export/import aman. Usulan pemilik atas Template Library dibahas terpisah (delete sudah creator-or-superuser; pertimbangan akses/skala library publik = keputusan produk menyusul).
+
 ### 9.3 Urutan eksekusi yang disarankan
 
 | Kapan | Item | Effort |
