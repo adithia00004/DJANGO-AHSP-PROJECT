@@ -44,7 +44,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # Match the production image (Dockerfile: python:3.11-slim) so a
+          # green CI actually attests the runtime we ship (audit finding F3).
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -54,3 +56,27 @@ jobs:
       - name: Run pytest
         run: |
           pytest
+
+  frontend:
+    # Audit finding F4: JS regressions were previously not caught by CI.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Match the image build stage (Dockerfile: node:20).
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run vitest
+        run: npx vitest run
+
+      - name: Production build
+        run: npm run build

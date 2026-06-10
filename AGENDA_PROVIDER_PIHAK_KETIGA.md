@@ -8,7 +8,10 @@ Dokumen ini untuk mengontrol pekerjaan eksternal/non-kode:
 - pengaturan operasional pihak ketiga
 
 Tanggal mulai: 2026-02-08
-Status: ACTIVE
+Status: ACTIVE — masih akurat per 2026-06-10 (PVD-01..09 memang TODO; konsisten dengan blocker L5/L6 di SSOT).
+
+> ℹ️ **SSOT status launch keseluruhan:** `docs/CHECKLIST_PROGRESS_KESIAPAN_LAUNCH_20260609.md`.
+> Dokumen ini tetap dipakai KHUSUS sebagai tracker pekerjaan provider/pihak ketiga (domain, VPS, DNS, SSL, backup job, Midtrans production).
 
 ---
 

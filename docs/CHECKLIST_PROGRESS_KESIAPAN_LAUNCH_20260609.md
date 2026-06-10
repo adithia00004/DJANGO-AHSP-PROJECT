@@ -1,5 +1,9 @@
 # Checklist Progress Kesiapan Launch
 
+> ✅ **DOKUMEN INI ADALAH SSOT TUNGGAL STATUS LAUNCH** (ditetapkan 2026-06-10).
+> Dokumen launch lama (`Review/CHECKLIST_PROGRESS.md`, `PRE_PRODUCTION_LAUNCH_CHECKLIST.md`) = SUPERSEDED/arsip.
+> `AGENDA_PROVIDER_PIHAK_KETIGA.md` tetap aktif khusus tracker provider (PVD-01..09).
+
 **Tanggal mulai:** 2026-06-09
 **Branch:** `checkpoint/save-sync-plan-20260608`
 **Image RC:** `ahsp-launch:rc-20260609-final`
@@ -86,7 +90,8 @@ Lokasi backup eksternal:
 | Migration drift | PASS |
 | Immutable container | Healthy, mounts `[]` |
 | Python dependency audit | 0 vulnerability |
-| npm dependency audit | 0 critical, 0 high, 5 moderate (re-audit 2026-06-10, pasca patch `xlsx@0.20.3`) |
+| npm dependency audit (full) | 0 critical, 0 high, 5 moderate (re-audit 2026-06-10, pasca patch `xlsx@0.20.3`) |
+| npm dependency audit (production-only, `--omit=dev`) | 0 critical, 0 high, **2 moderate** (verifikasi 2026-06-10 11:09) |
 
 ## Record Eksekusi
 

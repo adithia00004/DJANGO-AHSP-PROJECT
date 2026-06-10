@@ -110,7 +110,7 @@ Perbaikan lain yang diterapkan sesi ini (dari temuan 2026-06-10 pagi): **F1** (d
 
 ### Kesimpulan addendum
 
-Lapisan auth/ownership/permission **konsisten dan rapi di seluruh app** — pola `login_required + owner-scope` hampir 100% dengan guard test otomatis. Temuan berarti satu-satunya yang kritis (F9, monetisasi) **sudah diperbaiki + regression test** di sesi ini. Sisa pekerjaan menuju launch tidak berubah: **L5** (deploy TLS/secrets nyata), **L6** (backup terjadwal + restore drill), **L7** (browser UAT semua halaman di tabel atas + E2E Midtrans sandbox + Opaque Gate D sign-off), plus keputusan F10 (gating export referensi). Verdict: **NO-GO publik sampai L5-L7 selesai; kode aplikasi sendiri dinilai launch-ready** dengan catatan F10-F13.
+Lapisan auth/ownership/permission **konsisten dan rapi di seluruh app** — pola `login_required + owner-scope` hampir 100% dengan guard test otomatis. Temuan berarti satu-satunya yang kritis (F9, monetisasi) **sudah diperbaiki + regression test** di sesi ini. Sisa pekerjaan menuju launch tidak berubah: **L5** (deploy TLS/secrets nyata), **L6** (backup terjadwal + restore drill), **L7** (browser UAT semua halaman di tabel atas + E2E Midtrans sandbox + Opaque Gate D sign-off), plus keputusan F10 (gating export referensi). Verdict: **NO-GO publik sampai L5-L7 selesai; kode aplikasi sendiri dinilai launch-ready** dengan catatan F10-F13. *(Revisi wording 11:09, hasil review eksternal: istilah yang tepat = **feature-complete; layak release candidate setelah gate tersisa ditutup** — F10/F11/F14 + UAT masih open, CI saat itu belum meng-cover frontend.)*
 
 ---
 
@@ -269,6 +269,25 @@ Hasil review menyeluruh kedua dokumen audit (dokumen ini + `AUDIT_UI_UX_20260610
 3. **Insiden Redis 2026-06-10** yang dirujuk tabel 06:20: akar masalah = `manage.py runserver` native host (4 proses) membajak `localhost:8000` dari Docker + `ahsp_redis` ter-recreate dari compose prod sehingga port 6379 tidak terpublish ke host → allauth rate-limit gagal konek cache → 500 di halaman login. Solusi disepakati: matikan runserver native, operasikan hanya via stack Docker (`docker compose up -d`), perubahan kode via `docker compose restart web`.
 4. **Penomoran temuan lintas dokumen:** F1-F14 (dokumen ini) + U1-U15 (`AUDIT_UI_UX_20260610.md`) — tidak ada nomor ganda/celah. Status terkini: F9 FIXED (+2 regression test); F1/F2 FIXED (compose hardening); F3-F8, F10-F14, U1-U15 OPEN dengan prioritas di masing-masing dokumen.
 5. **Tindak lanjut prioritas gabungan sebelum UAT L7:** M1+M2+M8 (UI/UX §9.3, ~1 jam) + keputusan F10 (gating export referensi) + F14 (gate export-test).
+
+---
+
+## Verifikasi Review Eksternal 2026-06-10 11:09 WITA
+
+Review independen pihak kedua atas kedua dokumen audit diverifikasi klaim-per-klaim terhadap source/git:
+
+| Klaim reviewer | Hasil verifikasi | Tindakan |
+|---|---|---|
+| **Tinggi: SSOT launch tidak sinkron** — `Review/CHECKLIST_PROGRESS.md` (2026-02-17, klaim SSOT, 29/54) & `PRE_PRODUCTION_LAUNCH_CHECKLIST.md` (gate `[x]` semua, "pytest 79 passed") bertentangan dengan audit Juni | **BENAR** — keduanya snapshot Februari berbasis lingkungan dev; risiko GO dari dokumen salah nyata | **FIXED**: banner SUPERSEDED di kedua dokumen; `docs/CHECKLIST_PROGRESS_KESIAPAN_LAUNCH_20260609.md` ditetapkan SSOT tunggal; `AGENDA_PROVIDER` ditandai tetap aktif khusus tracker provider (isinya TODO PVD-01..09 = masih akurat & konsisten NO-GO) |
+| **Tinggi: FIXED tapi belum masuk Git** (middleware, compose, tests, audit UI/UX untracked; HEAD remote `4d1f4353`) | **BENAR saat review ditulis; sudah berubah** — kini ter-commit lokal: `c5442a07` (F9+F1/F2), `bf04ae9a` (docs), `a842cb14` (UI fixes). Status tepat: **fixed locally, committed, PENDING PUSH + CI** (branch 3+ commit di depan origin) | Push + CI run = langkah berikutnya sebelum status "release-closed" |
+| **Sedang: klaim "kode launch-ready" terlalu kuat** (F10/F11/F14 open, UAT belum, CI belum cover frontend, Python mismatch) | **BENAR** — istilah direvisi | **FIXED**: wording resmi kini "**feature-complete; layak release candidate setelah gate tersisa ditutup**". Catatan: U14 sudah CLOSED (commit `a842cb14`); F10/F11/F14 + UAT tetap open |
+| **Sedang: pengecualian F9 terlalu luas** (`^/subscriptions/` memutihkan endpoint write masa depan) | **BENAR** — kritik desain valid | **FIXED**: dipersempit ke `^/subscriptions/payment/` (satu-satunya POST ter-autentikasi; webhook anonim sudah di-skip middleware; checkout/pricing GET-only). Test subscriptions+accounts: 48 passed |
+| **Rendah: scope npm audit perlu diperjelas** | **BENAR** — diverifikasi ulang: full dependency = **5 moderate**; production-only (`--omit=dev`) = **2 moderate** | **FIXED**: dicatat dengan dua angka terpisah (lihat juga tabel gate di checklist) |
+| Penilaian UI/UX reviewer (U1/U2/U7/U8/U11/U14/U15 terkonfirmasi; U1/U2 = static-analysis sampai M1/M2 direproduksi browser) | Sesuai — dan M1/M2 **fix-nya sudah diterapkan** (`a842cb14`); reproduksi browser tetap wajib saat UAT L7 | — |
+
+Tindak lanjut tambahan yang dieksekusi bersamaan: **F3** (CI Python 3.12 → **3.11**, match image) dan **F4** (job `frontend` baru di CI: `npm ci` → vitest → production build) pada `.github/workflows/ci.yml` — efektif setelah push.
+
+Verifikasi sampingan: `SECRETS_LOCAL.md` di root **tidak ter-track** (`.gitignore:89`) dan ter-exclude dari image (`.dockerignore` `*.md`) — aman; berisi SECRET_KEY dev, pastikan SECRET_KEY production berbeda saat L5.
 
 ---
 

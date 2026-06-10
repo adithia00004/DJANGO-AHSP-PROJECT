@@ -1,9 +1,15 @@
 # CHECKLIST PROGRESS REVIEW
 
-**Terakhir diperbarui:** 2026-02-17
-**Overall Progress:** 29 / 54 items
+> ⚠️ **SUPERSEDED (2026-06-10) — DOKUMEN INI BUKAN LAGI SSOT.**
+> Status di bawah adalah snapshot review Februari 2026 dan TIDAK mencerminkan kondisi saat ini.
+> **SSOT tunggal status launch:** `docs/CHECKLIST_PROGRESS_KESIAPAN_LAUNCH_20260609.md`
+> (audit pendukung: `docs/AUDIT_KESIAPAN_LAUNCH_20260609.md`, `docs/AUDIT_UI_UX_20260610.md`).
+> Jangan mengambil keputusan GO/NO-GO dari dokumen ini.
 
-Status di dokumen ini adalah status resmi SSOT untuk progres review launch.
+**Terakhir diperbarui:** 2026-02-17 *(ARSIP)*
+**Overall Progress:** 29 / 54 items *(snapshot Februari — usang)*
+
+~~Status di dokumen ini adalah status resmi SSOT untuk progres review launch.~~ *(dicabut 2026-06-10)*
 
 ---
 
