@@ -11,6 +11,7 @@ from django.db.models import (
     Q,
     Exists,
     OuterRef,
+    Subquery,
     Case,
     When,
     Value,
@@ -86,6 +87,7 @@ def invalidate_rekap_cache(project_or_id) -> None:
         return
     cache.delete(f"rekap:{pid}:v1")
     cache.delete(f"rekap:{pid}:v2")
+    cache.delete(f"rekap:{pid}:v3")
 
 
 KEBUTUHAN_CACHE_TIMEOUT = 300  # seconds
@@ -516,10 +518,11 @@ def active_harga_items_queryset(project):
     """
     Return the canonical set shown and editable on the Harga Items page.
 
-    Expanded references define items that affect project calculations. Fully
-    standalone items are retained for import workflows until they are linked or
-    explicitly cleaned up. Raw-only items are intentionally excluded because
-    they indicate an incomplete/failed expansion.
+    Expanded references define the normal calculation path. For legacy/imported
+    pekerjaan whose expanded rows are missing, raw references are also active
+    because calculation falls back to DetailAHSPProject for that pekerjaan.
+    Fully standalone items are retained for import workflows until explicitly
+    cleaned up.
     """
     expanded_exists = DetailAHSPExpanded.objects.filter(
         project=project,
@@ -529,26 +532,48 @@ def active_harga_items_queryset(project):
         project=project,
         harga_item_id=OuterRef("pk"),
     )
+    expanded_job_ids = DetailAHSPExpanded.objects.filter(
+        project=project,
+    ).values("pekerjaan_id")
+    raw_fallback_exists = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    ).exclude(pekerjaan_id__in=Subquery(expanded_job_ids))
     return (
         HargaItemProject.objects.filter(project=project)
         .annotate(
             used_in_expanded=Exists(expanded_exists),
             used_in_raw=Exists(raw_exists),
+            used_in_raw_fallback=Exists(raw_fallback_exists),
         )
-        .filter(Q(used_in_expanded=True) | Q(used_in_expanded=False, used_in_raw=False))
+        .filter(
+            Q(used_in_expanded=True)
+            | Q(used_in_raw_fallback=True)
+            | Q(used_in_expanded=False, used_in_raw=False)
+        )
     )
 
 
 def used_harga_items_queryset(project):
-    """Return canonical price items that currently affect project calculations."""
+    """Return price items that currently affect project calculations."""
     expanded_exists = DetailAHSPExpanded.objects.filter(
         project=project,
         harga_item_id=OuterRef("pk"),
     )
+    expanded_job_ids = DetailAHSPExpanded.objects.filter(
+        project=project,
+    ).values("pekerjaan_id")
+    raw_fallback_exists = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    ).exclude(pekerjaan_id__in=Subquery(expanded_job_ids))
     return (
         HargaItemProject.objects.filter(project=project)
-        .annotate(used_in_expanded=Exists(expanded_exists))
-        .filter(used_in_expanded=True)
+        .annotate(
+            used_in_expanded=Exists(expanded_exists),
+            used_in_raw_fallback=Exists(raw_fallback_exists),
+        )
+        .filter(Q(used_in_expanded=True) | Q(used_in_raw_fallback=True))
     )
 
 
@@ -2283,9 +2308,15 @@ def compute_rekap_for_project(project):
 
     kategori_keys = ['TK', 'BHN', 'ALT', 'LAIN']
 
-    def _aggregate_components(model, apply_bundle_multiplier=False):
+    def _aggregate_components(
+        model,
+        apply_bundle_multiplier=False,
+        pekerjaan_ids=None,
+    ):
         data: Dict[int, Dict[str, float]] = {}
         qs = model.objects.filter(project=project)
+        if pekerjaan_ids is not None:
+            qs = qs.filter(pekerjaan_id__in=pekerjaan_ids)
 
         effective_coef = DJF('koefisien')
         if apply_bundle_multiplier:
@@ -2327,8 +2358,17 @@ def compute_rekap_for_project(project):
         return data
 
     agg = _aggregate_components(DetailAHSPExpanded, apply_bundle_multiplier=True)
-    if not agg:
-        agg = _aggregate_components(DetailAHSPProject)
+    all_job_ids = set(
+        Pekerjaan.objects.filter(project=project).values_list("id", flat=True)
+    )
+    raw_fallback_job_ids = all_job_ids.difference(agg.keys())
+    if raw_fallback_job_ids:
+        agg.update(
+            _aggregate_components(
+                DetailAHSPProject,
+                pekerjaan_ids=raw_fallback_job_ids,
+            )
+        )
 
     # --- Volume map
     vol_map = dict(VolumePekerjaan.objects
@@ -2581,11 +2621,13 @@ def compute_kebutuhan_items(
             )
         )
 
-    if not details:
-        details = list(
+    expanded_job_ids = {row["pekerjaan_id"] for row in details}
+    raw_fallback_job_ids = set(pekerjaan_ids).difference(expanded_job_ids)
+    if raw_fallback_job_ids:
+        details.extend(
             DetailAHSPProject.objects.filter(
                 project=project,
-                pekerjaan_id__in=pekerjaan_ids
+                pekerjaan_id__in=raw_fallback_job_ids
             ).values(
                 'pekerjaan_id',
                 'kategori',
@@ -3030,11 +3072,13 @@ def compute_kebutuhan_timeline(
         )
     )
 
-    if not details:
-        details = list(
+    expanded_job_ids = {row["pekerjaan_id"] for row in details}
+    raw_fallback_job_ids = set(pekerjaan_ids).difference(expanded_job_ids)
+    if raw_fallback_job_ids:
+        details.extend(
             DetailAHSPProject.objects.filter(
                 project=project,
-                pekerjaan_id__in=pekerjaan_ids
+                pekerjaan_id__in=raw_fallback_job_ids
             ).values(
                 'pekerjaan_id',
                 'kategori',

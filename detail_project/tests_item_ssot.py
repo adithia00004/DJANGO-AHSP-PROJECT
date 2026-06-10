@@ -17,7 +17,13 @@ from detail_project.models import (
     Pekerjaan,
     SubKlasifikasi,
 )
-from detail_project.services import _upsert_harga_item, active_harga_items_queryset
+from detail_project.services import (
+    _upsert_harga_item,
+    active_harga_items_queryset,
+    compute_rekap_for_project,
+    used_harga_items_queryset,
+)
+from detail_project.models import VolumePekerjaan
 from detail_project.views_api import api_save_detail_ahsp_for_pekerjaan
 
 
@@ -140,7 +146,7 @@ class ItemSsotTests(TestCase):
         raw.refresh_from_db()
         self.assertEqual(raw.uraian, "Canonical")
 
-    def test_active_item_contract_includes_expanded_and_standalone_not_raw_only(self):
+    def test_active_item_contract_includes_raw_fallback_items(self):
         standalone = self._item("B.001", kategori="BHN")
         expanded_item = self._item("TK.002")
         raw_only_item = self._item("TK.003")
@@ -166,9 +172,10 @@ class ItemSsotTests(TestCase):
             satuan=expanded_item.satuan,
             koefisien=Decimal("1"),
         )
+        raw_only_job = self._pekerjaan("CUST.RAW.ITEM", 2)
         DetailAHSPProject.objects.create(
             project=self.project,
-            pekerjaan=self.pekerjaan,
+            pekerjaan=raw_only_job,
             harga_item=raw_only_item,
             kategori="TK",
             kode=raw_only_item.kode_item,
@@ -180,7 +187,15 @@ class ItemSsotTests(TestCase):
         active_ids = set(
             active_harga_items_queryset(self.project).values_list("id", flat=True)
         )
-        self.assertEqual(active_ids, {standalone.id, expanded_item.id})
+        self.assertEqual(
+            active_ids,
+            {standalone.id, expanded_item.id, raw_only_item.id},
+        )
+
+        used_ids = set(
+            used_harga_items_queryset(self.project).values_list("id", flat=True)
+        )
+        self.assertEqual(used_ids, {expanded_item.id, raw_only_item.id})
 
         export_data = HargaItemsAdapter(self.project).get_export_data()
         exported_codes = {
@@ -191,7 +206,62 @@ class ItemSsotTests(TestCase):
             )
             if row_type == "item"
         }
-        self.assertEqual(exported_codes, {"TK.002"})
+        self.assertEqual(exported_codes, {"TK.002", "TK.003"})
+
+    def test_rekap_falls_back_per_job_when_project_has_mixed_storage(self):
+        expanded_item = self._item("TK.EXPANDED")
+        expanded_raw = DetailAHSPProject.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            harga_item=expanded_item,
+            kategori="TK",
+            kode=expanded_item.kode_item,
+            uraian=expanded_item.uraian,
+            satuan=expanded_item.satuan,
+            koefisien=Decimal("2"),
+        )
+        DetailAHSPExpanded.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            source_detail=expanded_raw,
+            harga_item=expanded_item,
+            kategori="TK",
+            kode=expanded_item.kode_item,
+            uraian=expanded_item.uraian,
+            satuan=expanded_item.satuan,
+            koefisien=Decimal("2"),
+        )
+        VolumePekerjaan.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            quantity=Decimal("1"),
+        )
+
+        raw_only_job = self._pekerjaan("CUST.RAW", 2)
+        raw_only_item = self._item("TK.RAW")
+        DetailAHSPProject.objects.create(
+            project=self.project,
+            pekerjaan=raw_only_job,
+            harga_item=raw_only_item,
+            kategori="TK",
+            kode=raw_only_item.kode_item,
+            uraian=raw_only_item.uraian,
+            satuan=raw_only_item.satuan,
+            koefisien=Decimal("3"),
+        )
+        VolumePekerjaan.objects.create(
+            project=self.project,
+            pekerjaan=raw_only_job,
+            quantity=Decimal("1"),
+        )
+
+        rows = {
+            row["pekerjaan_id"]: row
+            for row in compute_rekap_for_project(self.project)
+        }
+
+        self.assertEqual(rows[self.pekerjaan.id]["A"], 200.0)
+        self.assertEqual(rows[raw_only_job.id]["A"], 300.0)
 
     def test_bundle_expansion_failure_rolls_back_replace_all_save(self):
         old_item = self._item("TK.OLD")

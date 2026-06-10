@@ -8963,13 +8963,13 @@ def import_project_from_json(request: HttpRequest):
             if skipped_weeks > 0:
                 logger.info(f"Import jadwal: {imported_weeks} progress records imported, {skipped_weeks} skipped (beyond week {actual_project_weeks})")
         
-        # Trigger bundle expansion for imported project
+        # Build canonical expanded storage after every raw detail has been
+        # imported. The previous call used expand_bundle_to_components with a
+        # Pekerjaan instance (wrong signature) and swallowed the resulting
+        # exception, leaving imported pekerjaan raw-only and worth zero.
         for pkj_id in pekerjaan_map.values():
-            try:
-                pekerjaan = Pekerjaan.objects.get(id=pkj_id)
-                expand_bundle_to_components(pekerjaan)
-            except Exception:
-                pass  # Non-critical
+            pekerjaan = Pekerjaan.objects.get(id=pkj_id)
+            _populate_expanded_from_raw(new_project, pekerjaan)
         
         return JsonResponse({
             'status': 'success',

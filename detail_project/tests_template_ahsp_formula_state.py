@@ -19,6 +19,7 @@ if not hasattr(detail_models, "TemplateAhspKoefFormulaState"):
     )
 
 from detail_project.models import (
+    DetailAHSPExpanded,
     DetailAHSPProject,
     HargaItemProject,
     Klasifikasi,
@@ -668,6 +669,14 @@ class TemplateAhspKoefFormulaApiTests(TestCase):
         body = json.loads(response.content.decode("utf-8"))
         self.assertEqual(body.get("status"), "success")
         self.assertEqual(body.get("stats", {}).get("template_ahsp_koef_formulas"), 0)
+        imported_project_id = body["project_id"]
+        imported_job = Pekerjaan.objects.get(project_id=imported_project_id)
+        self.assertTrue(
+            DetailAHSPExpanded.objects.filter(
+                project_id=imported_project_id,
+                pekerjaan=imported_job,
+            ).exists()
+        )
 
     def test_formula_save_keeps_harga_item_and_rekap_computation_consistent(self):
         HargaItemProject.objects.create(
