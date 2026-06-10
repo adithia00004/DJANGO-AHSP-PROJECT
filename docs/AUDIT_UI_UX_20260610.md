@@ -314,6 +314,12 @@ Setiap butir: **cara memeriksa → hasil yang BENAR → lokasi fix bila rusak.**
 - *Saat ini:* blank permanen (`visibility:hidden` menunggu theme-boot).
 - *Fix:* 1 baris `<noscript>` di `base.html`.
 
+### 9.x Temuan UAT pertama — U16 (2026-06-10, Journey B1, dilaporkan pemilik)
+
+| ID | Severity | Temuan | Keputusan pemilik & status |
+|---|---|---|---|
+| U16 | 🟡 Sedang | **Redundansi konsep Hapus/Archive/Unarchive di dashboard** — terbukti di backend: `project_delete`, `bulk_delete`, dan `bulk_archive` SAMA-SAMA `is_active=False` (tiga label + dua ikon untuk satu operasi); bulk bar menduplikasi aksi kolom Aksi; "Edit" bermakna ganda (form penuh vs inline massal); 25 modal hapus per-baris; console menampilkan dump data chart + log init | **FIXED 2026-06-10**: (1) konsep tunggal **Hapus** — tombol+handler Archive/Unarchive dihapus dari UI (endpoint backend dipertahankan; pemulihan via Django admin; fitur "restore deleted" dinilai tidak urgent, bila kelak dibuat → ikon/tempat khusus); (2) 25 modal/baris → **1 modal reusable** `#deleteProjectModal` (desktop+mobile) — sekaligus memperbaiki bug laten tombol mobile menarget modal desktop; (3) label dibedakan: pensil = "Edit detail project (form lengkap)", bulk = "Edit Massal"; bar diberi animasi slide-in halus; (4) console bersih: dump `Chart Data Loaded` + 15 log init/emoji dihapus dari template + 5 file JS (`node --check` lulus); (5) smoke test diperbarui (assertNotContains archive btn). **Bonus**: registrasi `models_export` di `apps.py.ready()` — memperbaiki flaky "no such table export_session" saat menjalankan subset suite |
+
 ### 9.3 Urutan eksekusi yang disarankan
 
 | Kapan | Item | Effort |

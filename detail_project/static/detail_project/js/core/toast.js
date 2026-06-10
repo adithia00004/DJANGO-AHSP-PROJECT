@@ -338,5 +338,4 @@
     };
   }
 
-  console.log('[Toast] Unified Global Toast System initialized');
 })();

@@ -94,7 +94,6 @@
   // ============================================================================
 
   document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔧 Initializing Mass Edit Toggle...');
 
     const toggleBtn = document.getElementById('massEditToggleBtn');
     const saveBtn = document.getElementById('massEditSaveAllBtn');
@@ -167,7 +166,6 @@
       }
     });
 
-    console.log('✅ Mass Edit Toggle initialized');
   });
 
   // ============================================================================
@@ -175,7 +173,6 @@
   // ============================================================================
 
   function enterEditMode() {
-    console.log('📝 Entering edit mode...');
 
     const table = document.querySelector('.dashboard-project-table');
     const bulkActionsBar = document.getElementById('bulkActionsBar');
@@ -600,7 +597,6 @@
   // ============================================================================
 
   async function saveAllChanges() {
-    console.log('💾 Saving all changes...');
 
     // Validate all fields first
     const table = document.querySelector('.dashboard-project-table');
@@ -652,13 +648,11 @@
       }
     });
 
-    console.log('📋 Projects with changes:', Array.from(projectIds));
 
     // For each modified project, collect ALL field values
     projectIds.forEach(projectId => {
       const projectData = { id: projectId };
 
-      console.log(`🔍 Collecting data for project ${projectId}...`);
 
       ALL_FIELDS.forEach(field => {
         // Find INPUT or TEXTAREA element specifically (not TD which also has data attributes)
@@ -666,7 +660,6 @@
 
         if (input) {
           const value = input.value;
-          console.log(`  - ${field.name}: "${value}"`);
 
           // Only include field if it has a value (don't send empty strings for optional fields)
           if (value || field.required) {
@@ -677,11 +670,9 @@
         }
       });
 
-      console.log(`✅ Project ${projectId} data:`, projectData);
       changes.push(projectData);
     });
 
-    console.log('📤 Total changes to send:', changes);
 
     // Send to server
     sendBulkUpdate(changes);
@@ -692,8 +683,6 @@
   // ============================================================================
 
   function sendBulkUpdate(changes) {
-    console.log('📤 Sending bulk update...');
-    console.log('Changes to send:', changes);
 
     const saveBtn = document.getElementById('massEditSaveAllBtn');
     if (saveBtn) {
@@ -705,10 +694,8 @@
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
-    console.log('CSRF Token:', csrfToken ? 'Found' : 'NOT FOUND');
 
     const requestBody = { changes: changes };
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
     fetch('/dashboard/mass-edit-bulk/', {
       method: 'POST',
@@ -720,8 +707,6 @@
       body: JSON.stringify(requestBody)
     })
     .then(response => {
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
 
       if (!response.ok) {
         return response.text().then(text => {
@@ -733,10 +718,8 @@
       return response.json();
     })
     .then(data => {
-      console.log('Response data:', data);
 
       if (data.success) {
-        console.log('✅ Success! Updated count:', data.updated_count);
 
         if (window.showToast) {
           window.showToast(`${data.updated_count} project berhasil diupdate`, 'success');
@@ -746,7 +729,6 @@
         editedCells.clear();
         isEditMode = false;
 
-        console.log('🔄 Reloading page...');
 
         // Reload page after short delay
         setTimeout(() => {
@@ -789,7 +771,6 @@
       }
     }
 
-    console.log('🚪 Exiting edit mode...');
 
     isEditMode = false;
 

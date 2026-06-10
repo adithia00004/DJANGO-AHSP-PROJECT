@@ -328,7 +328,6 @@ const ErrorHandler = (() => {
         });
 
         window.addEventListener('online', () => {
-            console.log('[ErrorHandler] Connection restored');
             // Use global toast if available
             if (window.DP && window.DP.toast && window.DP.toast.network) {
                 window.DP.toast.network.online();
@@ -392,7 +391,6 @@ const ErrorHandler = (() => {
     function init() {
         setupGlobalHandlers();
         createModalHTML();
-        console.log('[ErrorHandler] Initialized with timeout:', CONFIG.TIMEOUT_MS, 'ms');
     }
 
     // Auto-init on DOM ready

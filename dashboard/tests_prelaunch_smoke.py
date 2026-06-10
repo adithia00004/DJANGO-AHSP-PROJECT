@@ -574,9 +574,12 @@ class PrelaunchFunctionalSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'name="is_active"')
-        self.assertContains(response, 'id="bulkArchiveBtn"')
-        self.assertContains(response, 'id="bulkUnarchiveBtn"')
+        # U16 (UAT 2026-06-10): konsep tunggal "Hapus" — tombol Archive/Unarchive
+        # dihapus dari UI (endpoint backend tetap ada untuk pemulihan via admin).
+        self.assertNotContains(response, 'id="bulkArchiveBtn"')
+        self.assertNotContains(response, 'id="bulkUnarchiveBtn"')
         self.assertContains(response, 'id="bulkDeleteBtn"')
+        self.assertContains(response, 'id="deleteProjectModal"')
 
     def test_bulk_archive_and_unarchive_owner_projects(self):
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))

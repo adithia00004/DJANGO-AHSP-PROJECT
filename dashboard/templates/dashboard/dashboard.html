@@ -728,21 +728,12 @@
     projectsBySumberData = [];
   }
 
-  // Debug logging
-  console.log('Chart Data Loaded:', {
-    yearData: projectsByYearData,
-    sumberData: projectsBySumberData,
-    analytics: analytics
-  });
-
   // Function to initialize all charts - called when panel is shown
   function initializeCharts() {
     if (chartsInitialized) {
-      console.log('Charts already initialized, skipping...');
       return;
     }
     chartsInitialized = true;
-    console.log('Initializing charts...');
 
     // Chart 1: Projects per Tahun
     if (projectsByYearData && projectsByYearData.length > 0) {
@@ -1020,14 +1011,14 @@
     parent.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-tasks fa-3x mb-3 opacity-25"></i><p>Belum ada data untuk ditampilkan</p></div>';
   }
 
-  console.log('Charts initialized successfully!');
+
   }
 
   // Listen for the Bootstrap collapse panel to be shown
   const chartsPanel = document.getElementById('miniChartsPanel');
   if (chartsPanel) {
     chartsPanel.addEventListener('shown.bs.collapse', function () {
-      console.log('Charts panel shown, initializing charts...');
+
       // Small delay to ensure DOM is fully rendered
       setTimeout(initializeCharts, 100);
     });

@@ -255,7 +255,7 @@ Empat jalur ringkas untuk eksekusi & tracking per akun. Referensi `(→X#)` menu
 | Journey | Status | Temuan (langkah → apa yang terjadi) |
 |---|---|---|
 | A Pengunjung→Akun | [ ] | |
-| B Proyek: input→hasil | [ ] | |
+| B Proyek: input→hasil | [~] B1 selesai | **U16** (B1.4-edit): redundansi Hapus/Archive/Unarchive + aksi ganda bulk bar vs kolom Aksi + console noise → **FIXED hari yang sama** (konsep tunggal Hapus, 1 modal reusable, label Edit Massal, console bersih — detail di `AUDIT_UI_UX_20260610.md` §9.x). **Ulangi cek B1 setelah refresh halaman** |
 | C Upgrade & bayar | [ ] | |
 | D Gating trial | [ ] | |
 | E Admin/referensi | [ ] | |

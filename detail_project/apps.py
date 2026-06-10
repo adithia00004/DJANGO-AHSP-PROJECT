@@ -102,6 +102,12 @@ class DetailProjectConfig(AppConfig):
     name = 'detail_project'
     def ready(self):
         from . import signals  # noqa: F401
+        # Register satellite model modules explicitly. Without this, their
+        # tables are only created under DisableMigrations (test settings) when
+        # something else happens to import them first — running a SUBSET of
+        # the suite (e.g. `pytest dashboard/`) then failed with
+        # "no such table: detail_project_export_session".
+        from . import models_export  # noqa: F401
         _patch_sqlite_explain()
         connection_created.connect(
             ensure_projectparameter_index,

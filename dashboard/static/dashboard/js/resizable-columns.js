@@ -45,7 +45,6 @@
       // Load text wrap preference
       this.loadTextWrapPreference();
 
-      console.log('✅ Resizable columns initialized');
     }
 
     makeResizable(th, index) {
@@ -140,7 +139,6 @@
 
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(widths));
-        console.log('💾 Column widths saved', widths);
       } catch (e) {
         console.warn('Failed to save column widths to localStorage', e);
       }
@@ -152,7 +150,6 @@
         if (!savedWidths) return;
 
         const widths = JSON.parse(savedWidths);
-        console.log('📂 Loading saved column widths', widths);
 
         this.headers.forEach((th, index) => {
           const columnKey = this.getColumnKey(th, index);
@@ -200,7 +197,6 @@
           });
         });
 
-        console.log('🔄 Column widths reset');
         if (window.DP?.toast?.show) {
           window.DP.toast.show({ message: 'Ukuran kolom telah direset ke default', type: 'success' });
         } else if (window.showToast) {
