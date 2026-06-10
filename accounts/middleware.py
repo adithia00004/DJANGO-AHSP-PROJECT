@@ -35,6 +35,10 @@ class SubscriptionMiddleware:
         r'^/media/',
         r'^/$',  # Landing page
         r'^/pricing/',
+        # Payment/upgrade flow must stay reachable for EXPIRED users —
+        # blocking POST /subscriptions/payment/create/ would make renewal
+        # impossible. Views there enforce their own auth/role guards.
+        r'^/subscriptions/',
     ]
     
     WRITE_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}

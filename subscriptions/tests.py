@@ -557,3 +557,67 @@ class SubscriptionPricingRouteTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("pages:pricing"))
+
+
+class ExpiredUserRenewalFlowTests(TestCase):
+    """
+    Regression for launch-audit finding F9 (2026-06-10).
+
+    SubscriptionMiddleware blocks write methods for users without write
+    entitlement. /subscriptions/ must be excluded, otherwise an EXPIRED user
+    can never POST /subscriptions/payment/create/ to renew their plan.
+    Uses the real test client so the middleware chain actually runs
+    (RequestFactory-based tests bypass middleware and missed this).
+    """
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.expired_user = user_model.objects.create_user(
+            username="expired_buyer",
+            email="expired@example.com",
+            password="Secret123!",
+        )
+        self.expired_user.subscription_status = (
+            user_model.SubscriptionStatus.EXPIRED
+        )
+        self.expired_user.save(update_fields=["subscription_status"])
+
+        self.plan = SubscriptionPlan.objects.create(
+            name="Pro 1 Bulan",
+            duration_months=1,
+            price=Decimal("250000"),
+            is_active=True,
+        )
+
+    @patch("subscriptions.views.midtrans_client.create_snap_token")
+    def test_expired_user_can_create_payment_through_middleware(
+        self, mock_snap_token
+    ):
+        mock_snap_token.return_value = {"token": "snap-renewal", "redirect_url": ""}
+        self.client.force_login(self.expired_user)
+
+        response = self.client.post(
+            reverse("subscriptions:create_payment"),
+            data=json.dumps({"plan_id": self.plan.id}),
+            content_type="application/json",
+        )
+
+        payload = json.loads(response.content)
+        # Must NOT be the middleware's SUBSCRIPTION_EXPIRED block.
+        self.assertNotEqual(payload.get("code"), "SUBSCRIPTION_EXPIRED")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+
+    def test_expired_user_writes_elsewhere_still_blocked(self):
+        """The exclusion must not loosen write-gating outside /subscriptions/."""
+        self.client.force_login(self.expired_user)
+
+        response = self.client.post(
+            "/dashboard/bulk/archive/",
+            data=json.dumps({"project_ids": []}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        payload = json.loads(response.content)
+        self.assertEqual(payload.get("code"), "SUBSCRIPTION_EXPIRED")
