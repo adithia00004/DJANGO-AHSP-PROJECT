@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["main", "develop"]
+    # checkpoint/** included so release-prep branches get CI without a PR
+    # (audit finding F4).
+    branches: ["main", "develop", "checkpoint/**"]
   pull_request:
 
 env:
