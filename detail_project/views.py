@@ -3,11 +3,32 @@
 # ================================
 from functools import wraps
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 
 from .models import Pekerjaan, ProjectChangeStatus, VolumePekerjaan
+
+
+def staff_only_page(view_func):
+    """
+    U14: utility/maintenance pages (Orphan Cleanup, Audit Trail) are intended
+    for the admin role only. Non-staff owners are redirected to the project's
+    List Pekerjaan with a notice. Mirrors the in-body guard pattern used by
+    referensi (has_referensi_portal_access).
+    """
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        user = request.user
+        if not (user.is_staff or user.is_superuser):
+            messages.warning(request, "Halaman ini hanya tersedia untuk admin.")
+            project_id = kwargs.get('project_id') or kwargs.get('pid')
+            if project_id:
+                return redirect('detail_project:list_pekerjaan', project_id=project_id)
+            return redirect('dashboard:dashboard')
+        return view_func(request, *args, **kwargs)
+    return _wrapped
 
 
 def _ensure_change_status(project):
@@ -175,6 +196,7 @@ def harga_items_view(request, project_id: int):
 
 @login_required
 @coerce_project_id
+@staff_only_page
 def orphan_cleanup_view(request, project_id: int):
     project = _project_or_404(project_id, request.user)
     context = {
@@ -186,6 +208,7 @@ def orphan_cleanup_view(request, project_id: int):
 
 @login_required
 @coerce_project_id
+@staff_only_page
 def audit_trail_view(request, project_id: int):
     project = _project_or_404(project_id, request.user)
     pekerjaan_options = (

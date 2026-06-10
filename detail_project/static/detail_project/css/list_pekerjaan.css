@@ -1921,8 +1921,9 @@ body.lp-overlay-open {
    Z-INDEX FIXES
    ===================================================================== */
 #templateLibraryModal {
-  z-index: 100000 !important;
-  /* Force on top of everything */
+  /* U1 fix: stay on the modal layer of the dp z-scale so the global toast
+     (--dp-z-toast: 13100) remains visible above this modal. */
+  z-index: var(--dp-z-modal) !important;
 }
 
 body[data-page="list_pekerjaan"] .modal-backdrop {

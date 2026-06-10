@@ -114,6 +114,8 @@
               <span>{{ t_harga_items }}</span>
             </a>
           </li>
+          {# U14: utilitas admin-only — disembunyikan dari pemilik proyek biasa #}
+          {% if request.user.is_staff or request.user.is_superuser %}
           <li>
             <a class="dp-link {% if side_active == 'orphan_cleanup' %}is-active{% endif %}"
                {% if side_active == 'orphan_cleanup' %}aria-current="page"{% endif %}
@@ -122,6 +124,7 @@
               <span>{{ t_orphan_cleanup }}</span>
             </a>
           </li>
+          {% endif %}
 
           <!-- Analysis Section -->
           <li class="dp-nav-section">Analisis & Laporan</li>
@@ -133,6 +136,8 @@
               <span>{{ t_rincian_ahsp }}</span>
             </a>
           </li>
+          {# U14: utilitas admin-only — disembunyikan dari pemilik proyek biasa #}
+          {% if request.user.is_staff or request.user.is_superuser %}
           <li>
             <a class="dp-link {% if side_active == 'audit_trail' %}is-active{% endif %}"
                {% if side_active == 'audit_trail' %}aria-current="page"{% endif %}
@@ -141,6 +146,7 @@
               <span>{{ t_audit_trail }}</span>
             </a>
           </li>
+          {% endif %}
           <li>
             <a class="dp-link {% if side_active == 'rekap_rab' %}is-active{% endif %}"
                {% if side_active == 'rekap_rab' %}aria-current="page"{% endif %}

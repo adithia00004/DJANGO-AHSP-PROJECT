@@ -371,7 +371,21 @@ Kesimpulan: pekerjaan = **adopsi/penertiban**, bukan membangun komponen baru.
 
 **Catatan teknis langkah 3 (satu-satunya bagian non-mekanis):** `confirm()` native bersifat sinkron-blocking; `DP.modal.confirm` asinkron — setiap callsite `if (confirm(...)) {...}` perlu direstrukturisasi menjadi `await`/callback. Karena menyentuh aksi destruktif, wajib smoke test per aksi; jangan mass-replace satu commit.
 
-### 10.5 Definisi selesai
+### 10.5 Record eksekusi — 2026-06-10 10:55 WITA
+
+Langkah 1+2 §10.4 plus item pra-UAT §9.3 **DIEKSEKUSI**:
+
+| Item | Perubahan | Hasil |
+|---|---|---|
+| **M1/U1** | `list_pekerjaan.css` — `#templateLibraryModal` 100000 → `var(--dp-z-modal)` | toast (13100) kini selalu di atas modal |
+| **M8/U14** | Decorator baru `staff_only_page` (`views.py`) pada `orphan_cleanup_view` + `audit_trail_view` (redirect ke List Pekerjaan + pesan); sidebar: kedua `<li>` dibungkus `{% if request.user.is_staff or is_superuser %}` | + file test baru `tests_admin_only_pages.py` (4 test: non-staff redirect, staff 200, sidebar hide/show); `tests_page_cache_headers` owner → staff |
+| **M2/U2/U9 (langkah 1)** | 3 fallback toast referensi → z token `var(--dp-z-toast)`; `ahsp_database_api.js` (duplikat ke-4, baru terdeteksi guard!) kini delegasi `DP.toast`; warning memori `import_progress.js` → `DP.toast.show`; `ahsp_database.css` modal/backdrop 99999/99998 → token 13000/12990, toast util → 13100 | Semua notifikasi referensi seragam via `DP.toast`; tidak ada z literal 9xxxx tersisa |
+| **Langkah 2 (guard)** | File test baru `feedback_governance_guard.test.js`: (a) larang `style.zIndex` literal ≥1000 di luar `js/core/`; (b) budget `confirm()`/`alert()` per file — baseline **18 file, total budget 37 callsite** (guard menemukan 7 file tambahan yang luput dari grep manual, termasuk modul `src/`), hanya boleh turun | 2 test hijau |
+| Bonus | `volume_pekerjaan.js` boost 13055/13054 literal → `var(--dp-z-confirm, 13055)` / `var(--dp-z-confirm-backdrop, 13054)` | sebagian U5 tertutup |
+
+Catatan koreksi data: jumlah callsite native sebenarnya **±37 di 18 file** (bukan 27 — grep awal melewatkan folder `src/` dan beberapa modul). Tabel `NATIVE_DIALOG_BUDGET` di guard test adalah angka otoritatif; angka 27 pada U11/M6 di atas dibaca sebagai perkiraan awal.
+
+### 10.6 Definisi selesai
 
 - `grep -rn "confirm(\|alert(" --include="*.js"` (non-test, non-vendor, di luar `js/core/`) = 0 hasil.
 - Tidak ada `zIndex`/`z-index` literal pada elemen feedback di luar `core.css`/`toast-global.css`.

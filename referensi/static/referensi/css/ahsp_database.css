@@ -196,14 +196,16 @@
     font-size: var(--ahsp-font-size-sm);
 }
 
-/* Modal Improvements */
+/* Modal Improvements
+   U2 fix (AUDIT_UI_UX §10): pakai skala token dp — tetap di atas topbar
+   (12044) tapi DI BAWAH toast (--dp-z-toast 13100) agar notifikasi tidak
+   pernah tertutup modal. */
 .modal.fade.show {
-    z-index: 99999 !important;
-    /* Higher than topbar */
+    z-index: var(--dp-z-modal, 13000) !important;
 }
 
 .modal-backdrop.show {
-    z-index: 99998 !important;
+    z-index: var(--dp-z-backdrop, 12990) !important;
 }
 
 #modalBulkDelete .modal-header {
@@ -266,11 +268,12 @@ button[type="submit"].btn-warning {
     }
 }
 
-/* Utility: Toast Notifications */
+/* Utility: Toast Notifications (fallback darurat — jalur utama = DP.toast)
+   U2 fix: toast harus selalu di lapisan token toast, di atas modal. */
 .alert.position-fixed {
     min-width: 300px;
     max-width: 500px;
-    z-index: 9999;
+    z-index: var(--dp-z-toast, 13100);
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
 }
 

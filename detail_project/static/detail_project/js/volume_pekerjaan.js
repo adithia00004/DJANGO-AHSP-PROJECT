@@ -526,15 +526,16 @@
     const feOpen = formulaEditorModalEl && formulaEditorModalEl.classList.contains('show');
     if (!feOpen) return;
     const boost = () => {
+      // Kontrak Feedback UI (AUDIT_UI_UX §10): layer via token, bukan literal.
       document.querySelectorAll('.modal.show').forEach((m) => {
         if (m.id === 'vpFormulaEditorModal') return;
-        m.style.zIndex = '13055';
+        m.style.zIndex = 'var(--dp-z-confirm, 13055)';
       });
       const backdrops = document.querySelectorAll('.modal-backdrop');
       if (backdrops.length > 1) {
-        backdrops[backdrops.length - 1].style.zIndex = '13054';
+        backdrops[backdrops.length - 1].style.zIndex = 'var(--dp-z-confirm-backdrop, 13054)';
       } else if (backdrops.length === 1) {
-        backdrops[0].style.zIndex = '13054';
+        backdrops[0].style.zIndex = 'var(--dp-z-confirm-backdrop, 13054)';
       }
     };
     requestAnimationFrame(boost);

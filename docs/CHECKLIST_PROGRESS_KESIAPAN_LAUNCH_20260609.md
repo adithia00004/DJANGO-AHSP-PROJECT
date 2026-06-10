@@ -106,6 +106,7 @@ Lokasi backup eksternal:
 | Audit | Rincian per-halaman (2026-06-10 06:28 WITA) | 12 halaman detail_project + 6 referensi + 4 dashboard + pages/subscriptions/accounts dinilai satu-per-satu; temuan baru F14 (export-test ter-route); prioritas UAT browser ditetapkan |
 | Audit | Catatan arsitektur & workflow (2026-06-10 06:45 WITA) | Tidak ada restrukturisasi pemblokir launch; 4 utang struktural pasca-launch dicatat di `AUDIT_KESIAPAN_LAUNCH_20260609.md` |
 | Audit | Audit UI/UX + peta z-index (2026-06-10 06:50 WITA) | Dokumen baru `AUDIT_UI_UX_20260610.md`; 216 deklarasi z-index dipetakan, 5 skala bersaing, temuan U1-U10 (2 tinggi: toast tertutup modal); checklist visual UAT ditambahkan |
+| UI/UX | Eksekusi pra-UAT M1/M2/M8 + Kontrak Feedback (2026-06-10 10:55 WITA) | U1 fixed (templateLibraryModal → token); U14 fixed (orphan/audit admin-only + 4 test baru); U2/U9 fixed (4 toast referensi → DP.toast, modal 99999 → token); guard test `feedback_governance_guard` (z literal + budget confirm/alert 18 file); vitest 235 passed |
 | Security | Fix F9 expired-user payment (2026-06-10) | `accounts/middleware.py` exclude `/subscriptions/` + 2 regression test (subscriptions 23 passed) |
 | Security | Hardening F1/F2 compose prod (2026-06-10) | Bind loopback default db/web/flower, Flower `--basic-auth`, guard `:?` SECRET_KEY; `docker compose config` valid |
 
