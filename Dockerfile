@@ -41,11 +41,12 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Install runtime dependencies
+# F6 (launch audit): git removed — nothing in the app shells out to git at
+# runtime; it only added image bloat and attack surface.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     postgresql-client \
     curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python dependencies from the builder.

@@ -76,8 +76,10 @@ Eksekusi (runbook: `RUNBOOK_DEPLOY_TLS_L5_L6.md`; compose sudah hardened-by-defa
 
 **Sign-off lain:**
 - [ ] Opaque ID QA Gate D + monitoring window 7 hari (`opaque_daily_monitor.sh`) — sisa dari `OPAQUE_ID_CHECKLIST.md`
-- [ ] (Opsional, dicatat sadar-risiko bila dilewati) Test M5 perf 100+ param & test R1 feature-flag off
+- [x] ~~Test M5 perf & test R1 feature-flag~~ — verifikasi 2026-06-10 13:00: KEDUANYA SUDAH ADA (`tests_phase3a_migration.py::test_m5_large_project_migrates_under_ten_seconds`; `tests_phase1_opaque_api.py` 2× `test_r1_feature_flag_off_*`) — catatan "belum ada" di memori sesi lama usang
 - [ ] UAT sign-off tertulis di SSOT (siapa, kapan, hasil)
+
+**Kit eksekusi:** `docs/UAT_SCRIPT_R4_20260610.md` (dibuat 2026-06-10 13:05) — skrip langkah-demi-langkah 8 seksi: persiapan 4 akun role, per-halaman prioritas, skenario gating per-role (M7/M8/F9/F10), import 3-tier, tema/ketahanan (M11/M12), dan Gate D. Frontend dist sudah di-build segar pada HEAD.
 
 ## R5 — L8: Release & GO/NO-GO
 
