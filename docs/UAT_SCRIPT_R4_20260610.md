@@ -25,6 +25,66 @@
 
 ---
 
+## Matriks Kapabilitas per Role — acuan "output yang diharapkan"
+
+Sumber kebenaran: `subscriptions/entitlements.py` (matrix fallback) + middleware + gate per-view. Setiap sel = perilaku yang HARUS terlihat saat UAT.
+
+| Kapabilitas | TRIAL (aktif) | PRO (aktif) | EXPIRED | ADMIN/STAFF |
+|---|---|---|---|---|
+| Lihat data project milik sendiri | ✓ | ✓ | ✓ (read-only) | ✓ |
+| Buat/edit/simpan data (write) | ✓ | ✓ | ✗ blokir halus → pesan/pricing | ✓ (bypass penuh) |
+| Export CSV / JSON | ✓ | ✓ | ✓ | ✓ |
+| Export PDF | ✗ terkunci 🔒→pricing | ✓ bersih | **✓ TAPI ber-WATERMARK** | ✓ bersih |
+| Export Excel / Word | ✗ terkunci 🔒 | ✓ | ✗ terkunci 🔒 | ✓ |
+| Checkout / bayar plan | ✓ | ✓ | ✓ **(F9 — wajib bisa)** | ✗ ditolak `ADMIN_CHECKOUT_BLOCKED` |
+| Menu sidebar Orphan Cleanup & Audit Trail | ✗ tersembunyi | ✗ tersembunyi | ✗ tersembunyi | ✓ muncul & terbuka |
+| Halaman export-test | ✗ redirect | ✗ redirect | ✗ redirect | ✓ |
+| Portal referensi / database / import / export ref | ✗ redirect `/` | ✗ redirect `/` | ✗ redirect `/` | ✓ (dengan permission portal) |
+| Banner upgrade | ✓ tampil | ✗ (kecuali sisa ≤7 hari) | ✓ tampil | ✗ |
+
+## Jalur Per-Role (Role Tracks) — checklist tracking terpisah
+
+Empat jalur ringkas untuk eksekusi & tracking per akun. Referensi `(→X#)` menunjuk langkah journey detail; item bertanda ★ = pemeriksaan unik yang TIDAK ada di journey.
+
+### 🟦 Track 1 — `uat_pro` (jalur penuh)
+- [ ] Seluruh Journey B (B1-B8) tanpa satu pun gembok/blokir (→B)
+- [ ] Dropdown export: 4 tombol normal semua; PDF TANPA watermark (→B8.1-B8.2)
+- [ ] Banner upgrade TIDAK tampil
+- [ ] Sidebar TANPA menu admin (→B1.3)
+
+### 🟨 Track 2 — `uat_trial`
+- [ ] Write berfungsi: buat project + input ringan (→D1)
+- [ ] Export PDF/Excel/Word TERKUNCI (gembok+badge Pro) → klik → `/pricing/` (→D2-D3)
+- [ ] CSV/JSON tetap bisa (→D2)
+- [ ] Menu admin tersembunyi + URL langsung di-redirect (→D4-D5)
+- [ ] URL export referensi → redirect `/` (→D6)
+- [ ] Banner upgrade tampil
+
+### 🟥 Track 3 — `uat_expired`
+- [ ] Data terlihat read-only; edit→save ditolak halus, bukan 500 (→C1-C2)
+- [ ] ★ **Export PDF: tombol TIDAK terkunci, file terunduh DENGAN WATERMARK** (matrix EXPIRED=watermark) — buka PDF, pastikan watermark ada
+- [ ] ★ Export Excel/Word: terkunci 🔒 (beda dengan PDF!)
+- [ ] Checkout → Snap popup → bayar sandbox → jadi PRO → write terbuka (→C3-C7) [F9]
+- [ ] Banner upgrade tampil
+
+### 🟩 Track 4 — `uat_staff` (admin)
+- [ ] Root `/` → redirect Admin Portal (→E1)
+- [ ] Database v2 CRUD + bulk + export referensi (→E2-E5) [F10 sisi boleh]
+- [ ] Import tier-1 PDF + tier-2/3 Excel + staging commit (→E7-E9)
+- [ ] Menu Orphan/Audit muncul & berfungsi; export-test terbuka (→E10-E11)
+- [ ] ★ **Checkout DITOLAK**: buka pricing → pilih plan → bayar → pesan `Akun admin/staff tidak memerlukan checkout` (bukan Snap popup)
+- [ ] Export di project sendiri: semua format, PDF bersih tanpa watermark
+
+### Tracking hasil per role
+| Track | Status | Temuan |
+|---|---|---|
+| 1 PRO | [ ] | |
+| 2 TRIAL | [ ] | |
+| 3 EXPIRED | [ ] | |
+| 4 ADMIN | [ ] | |
+
+---
+
 ## Journey A — Pengunjung Baru → Punya Akun
 *Persona: calon pelanggan, belum login. Mode incognito.*
 
