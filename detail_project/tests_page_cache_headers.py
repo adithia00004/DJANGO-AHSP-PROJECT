@@ -66,7 +66,8 @@ class DetailProjectPageCacheHeaderTests(TransactionTestCase):
         "rekap_kebutuhan",
         "jadwal_pekerjaan",
         "export_test",
-        "rincian_rab",
+        # "rincian_rab" dihapus: halaman legacy (U15) kini redirect permanen
+        # ke rincian_ahsp, tidak lagi me-render HTML.
     )
 
     def setUp(self):

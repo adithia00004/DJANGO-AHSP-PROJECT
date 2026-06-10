@@ -44,12 +44,9 @@
         <span class="d-none d-sm-inline">Export</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="btn-export-xlsx"><i
-              class="bi bi-file-earmark-excel text-success me-2"></i>Excel (XLSX)</button></li>
-        <li><button class="dropdown-item" type="button" id="btn-export-pdf"><i
-              class="bi bi-file-earmark-pdf text-danger me-2"></i>PDF</button></li>
-        <li><button class="dropdown-item" type="button" id="btn-export-word"><i
-              class="bi bi-file-earmark-word text-primary me-2"></i>Word</button></li>
+        <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-xlsx" label="Excel (XLSX)" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed %}</li>
+        <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-pdf" label="PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed %}</li>
+        <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed %}</li>
         <li>
           <hr class="dropdown-divider">
         </li>

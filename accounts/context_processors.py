@@ -27,10 +27,24 @@ def subscription_context(request):
     """
     if not request.user.is_authenticated:
         return {}
-    
+
     user = request.user
-    
+
+    # M7 (audit UI/UX): tombol export Pro harus terlihat TERKUNCI bagi user
+    # tanpa entitlement, bukan gagal setelah diklik. Dipakai oleh
+    # detail_project/_export_menu_item.html.
+    from subscriptions.entitlements import (
+        FEATURE_EXPORT_EXCEL_WORD,
+        FEATURE_EXPORT_PDF,
+        get_feature_access,
+    )
+    pdf_access = get_feature_access(user, FEATURE_EXPORT_PDF)
+    excel_word_access = get_feature_access(user, FEATURE_EXPORT_EXCEL_WORD)
+
     return {
+        'export_pdf_allowed': pdf_access.allowed,
+        'export_pdf_watermark': pdf_access.add_watermark,
+        'export_excel_word_allowed': excel_word_access.allowed,
         'subscription_status': 'ADMIN' if user.has_full_access else user.subscription_status,
         'is_subscription_active': user.is_subscription_active,
         'is_trial_active': user.is_trial_active,

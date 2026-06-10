@@ -15,6 +15,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal
 from datetime import datetime, timezone as py_timezone
 from subscriptions.entitlements import FEATURE_PRO_ONLY, get_feature_access
 
+from .decorators import api_deprecated  # U15: deprecation header rincian-rab
+
 logger = logging.getLogger(__name__)
 
 
@@ -3954,6 +3956,11 @@ def _compute_rincian_rab(project):
 
 @login_required
 @require_GET
+@api_deprecated(
+    sunset_date="2026-09-01",
+    migration_endpoint="api_get_rekap_rab",
+    reason="Halaman Rincian RAB legacy (U15) — digantikan Rincian AHSP + Rekap RAB",
+)
 def api_get_rincian_rab(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
 
@@ -4000,6 +4007,11 @@ def api_get_rincian_rab(request: HttpRequest, project_id: int):
 
 @login_required
 @require_GET
+@api_deprecated(
+    sunset_date="2026-09-01",
+    migration_endpoint="export_rekap_rab_csv",
+    reason="Halaman Rincian RAB legacy (U15) — digantikan Rincian AHSP + Rekap RAB",
+)
 def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
     rows, totals = _compute_rincian_rab(project)

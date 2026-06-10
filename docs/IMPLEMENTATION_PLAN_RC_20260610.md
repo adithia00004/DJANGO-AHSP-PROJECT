@@ -11,7 +11,7 @@
 | Fase | Scope | Status | Gate keluar |
 |---|---|---|---|
 | R0 | Baseline RC: semua fix audit ter-commit + pushed + CI | **DONE 2026-06-10** (commit `c5442a07`..`51c4a0ff`) | [~] CI remote HIJAU di HEAD (run pertama dengan job frontend — verifikasi di GitHub Actions) |
-| R1 | Penutupan temuan kode pra-UAT (F10/F11/F14, M7/M9/M12) | TODO | Suite + guard hijau; tidak ada temuan severity ≥ Sedang yang open di kode |
+| R1 | Penutupan temuan kode pra-UAT (F10/F11/F14, M7/M9/M12) | **DONE 2026-06-10** | Suite + guard hijau ✓; tidak ada temuan severity ≥ Sedang yang open di kode ✓ |
 | R2 | L5 — Deploy production nyata (domain/TLS/secrets) | TODO (scaffolding siap) | HTTPS aktif; `check --deploy` bersih; tanpa kredensial dev |
 | R3 | L6 — Data safety (backup terjadwal + restore drill) | TODO (script siap) | Restore drill PASS; satu jalur DB |
 | R4 | L7 — UAT browser + Midtrans sandbox + Opaque sign-off | TODO | UAT sign-off tertulis di SSOT |
@@ -36,14 +36,14 @@ Legenda: `[x]` selesai+bukti · `[~]` sebagian · `[ ]` belum · `[!]` blocker.
 
 | Item | Temuan | Aksi | Effort | Status |
 |---|---|---|---|---|
-| R1.1 | **F10** export referensi login-only | **KEPUTUSAN PEMILIK dibutuhkan**: (a) gate Pro entitlement, (b) gate permission portal, atau (c) terima risiko. Lalu implement + test | keputusan + ~1 jam | [ ] |
-| R1.2 | **F11** `debug_clear_data` ter-route | Gate `settings.DEBUG` + superuser-only (atau hapus route) | ~15 mnt | [ ] |
-| R1.3 | **F14** halaman `export-test` | Gate `staff_only_page` (decorator sudah ada) atau DEBUG-only | ~15 mnt | [ ] |
-| R1.4 | **U15/M9** `rincian-rab` legacy | Redirect 301 → `rincian-ahsp`; tandai 2 API-nya deprecated (header, pola tahapan v1) | ~30 mnt | [ ] |
-| R1.5 | **M7** gating Pro tak terlihat di UI export | View kirim flag entitlement → `_export_dropdown.html` render disabled + gembok + tooltip upgrade | ~½ hari | [ ] |
-| R1.6 | **U8/M12** `<noscript>` fallback anti-FOUC | 1 baris di `base.html` | ~5 mnt | [ ] |
+| R1.1 | **F10** export referensi login-only | **KEPUTUSAN PEMILIK 2026-06-10: (b) gate permission portal.** `ReferensiPortalRequiredMixin` pada 4 view export + gate `export_task_status` (yang ternyata TANPA auth — gap bonus tertutup) + 5 test `test_export_permissions.py` | keputusan + ~1 jam | [x] 2026-06-10 |
+| R1.2 | **F11** `debug_clear_data` ter-route | Gate `settings.DEBUG` + superuser (404 di production) di atas permission existing | ~15 mnt | [x] 2026-06-10 |
+| R1.3 | **F14** halaman `export-test` | Decorator `staff_only_page` diterapkan | ~15 mnt | [x] 2026-06-10 |
+| R1.4 | **U15/M9** `rincian-rab` legacy | View → redirect permanen ke `rincian-ahsp`; 2 API diberi `@api_deprecated` (sunset 2026-09-01, telemetry pola tahapan v1) | ~30 mnt | [x] 2026-06-10 |
+| R1.5 | **M7** gating Pro tak terlihat di UI export | `subscription_context` expose `export_pdf_allowed`/`export_excel_word_allowed`; partial baru `_export_menu_item.html` (terkunci = link `/pricing/` + gembok + badge Pro); dipasang di 4 halaman (rekap_rab, harga_items, volume, rincian_ahsp — JS existing null-safe); 3 test `tests_export_button_visibility.py`. Catatan: `_export_dropdown.html` lama = partial yatim (tidak pernah di-include) | ~½ hari | [x] 2026-06-10 |
+| R1.6 | **U8/M12** `<noscript>` fallback anti-FOUC | `<noscript>` di `base.html` | ~5 mnt | [x] 2026-06-10 |
 
-**Gate R1:** pytest + vitest + 2 guard hijau; F10 tercatat keputusannya di SSOT.
+**Gate R1:** pytest + vitest + 2 guard hijau; F10 tercatat keputusannya di SSOT. → **Status gate: [x] LULUS 2026-06-10 12:25 WITA** — pytest 418 passed/40 skipped (+1 test sync-LED disesuaikan: kasus rincian_rab dihapus karena halaman kini redirect, re-run file 6 passed), vitest 235 passed/25 skipped (termasuk 2 guard).
 
 ## R2 — L5: Production Deploy Nyata (dependensi: provider)
 

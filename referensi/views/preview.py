@@ -572,6 +572,14 @@ def debug_clear_data(request):
     Clear all AHSP and Rincian data for testing purposes.
     WARNING: This is a dangerous operation!
     """
+    # F11 (launch audit): wipe-all endpoint must never be reachable in
+    # production — DEBUG-only AND superuser-only, on top of the permission.
+    from django.conf import settings
+    from django.http import Http404
+
+    if not settings.DEBUG or not request.user.is_superuser:
+        raise Http404
+
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 

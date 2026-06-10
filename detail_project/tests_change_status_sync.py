@@ -13,7 +13,6 @@ from detail_project.views import (
     jadwal_pekerjaan_view,
     rekap_kebutuhan_view,
     rekap_rab_view,
-    rincian_rab_view,
 )
 from detail_project.views_api import api_get_change_status
 
@@ -81,7 +80,8 @@ class ChangeStatusSyncTests(TestCase):
     def test_summary_and_schedule_pages_render_scoped_sync_led(self):
         cases = (
             (rekap_rab_view, "rekap_rab", "pekerjaan,volume,ahsp,harga"),
-            (rincian_rab_view, "rincian_rab", "pekerjaan,volume,ahsp,harga"),
+            # rincian_rab dihapus dari kasus: halaman legacy (U15, 2026-06-10)
+            # kini redirect permanen ke rincian_ahsp, tidak me-render sync LED.
             (rekap_kebutuhan_view, "rekap_kebutuhan", "pekerjaan,volume,ahsp,harga"),
             (jadwal_pekerjaan_view, "jadwal", "pekerjaan,volume,jadwal"),
         )

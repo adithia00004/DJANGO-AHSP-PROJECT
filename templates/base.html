@@ -16,6 +16,15 @@
             visibility: hidden
         }
     </style>
+    <!-- U8 (audit UI/UX): tanpa JS, theme-boot tak pernah jalan — pastikan
+         halaman tetap terlihat alih-alih blank permanen. -->
+    <noscript>
+        <style>
+            html:not([data-theme-ready]) {
+                visibility: visible
+            }
+        </style>
+    </noscript>
     <script>
 
         /* Early theme boot (no-FLASH) — honor saved or OS */

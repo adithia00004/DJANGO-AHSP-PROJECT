@@ -95,22 +95,13 @@
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
           <li>
-            <button class="dropdown-item" type="button" id="btn-export-xlsx" title="Export ke Excel (XLSX)">
-              <i class="bi bi-file-earmark-excel text-success me-2"></i>
-              Export Excel
-            </button>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-xlsx" label="Export Excel" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed title="Export ke Excel (XLSX)" %}
           </li>
           <li>
-            <button class="dropdown-item" type="button" id="btn-export-pdf" title="Export ke PDF">
-              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-              Export PDF
-            </button>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-pdf" label="Export PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed title="Export ke PDF" %}
           </li>
           <li>
-            <button class="dropdown-item" type="button" id="btn-export-word" title="Export ke Word (dapat diedit)">
-              <i class="bi bi-file-earmark-word text-primary me-2"></i>
-              Export Word
-            </button>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Export Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed title="Export ke Word (dapat diedit)" %}
           </li>
           <li>
             <hr class="dropdown-divider">

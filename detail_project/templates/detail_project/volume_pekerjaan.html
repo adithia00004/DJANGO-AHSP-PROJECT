@@ -82,22 +82,13 @@
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
         <li>
-          <button class="dropdown-item" type="button" id="btn-export-xlsx">
-            <i class="bi bi-file-earmark-excel text-success me-2"></i>
-            Export Excel
-          </button>
+          {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-xlsx" label="Export Excel" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed %}
         </li>
         <li>
-          <button class="dropdown-item" type="button" id="btn-export-pdf">
-            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-            Export PDF
-          </button>
+          {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-pdf" label="Export PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed %}
         </li>
         <li>
-          <button class="dropdown-item" type="button" id="btn-export-word">
-            <i class="bi bi-file-earmark-word text-primary me-2"></i>
-            Export Word
-          </button>
+          {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Export Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed %}
         </li>
         <li>
           <hr class="dropdown-divider">

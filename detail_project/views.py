@@ -269,26 +269,22 @@ def rekap_kebutuhan_view(request, project_id: int):
     }
     return render(request, "detail_project/rekap_kebutuhan.html", ctx)
 
-# --- NEW: Page Rincian RAB ---
+# --- LEGACY: Page Rincian RAB (U15, launch audit 2026-06-10) ---
 @login_required
 @coerce_project_id
 def rincian_rab_view(request, project_id: int):
     """
-    Page 'Rincian RAB' (read-only table  export).
-    Data diambil via API: /api/project/<project_id>/rincian-rab/.
+    LEGACY — fungsinya digantikan Rincian AHSP + Rekap RAB (keputusan pemilik
+    2026-06-10). Tidak ada lagi link masuk; redirect permanen agar bookmark
+    lama tetap bekerja. API pendukungnya diberi deprecation header.
     """
     project = _project_or_404(project_id, request.user)
-    ctx = {
-        "project": project,
-        "side_active": "rincian_rab",
-        "change_status": _ensure_change_status(project),
-        **_get_sync_initial_timestamps(project),
-    }
-    return render(request, "detail_project/rincian_rab.html", ctx)
+    return redirect('detail_project:rincian_ahsp', project_id=project.id, permanent=True)
 
 
 @login_required
 @coerce_project_id
+@staff_only_page
 def export_test_view(request, project_id: int):
     """
     Export System Test Page - Phase 4
