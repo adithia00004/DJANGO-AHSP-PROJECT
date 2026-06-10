@@ -4,6 +4,17 @@
 **Lingkungan:** stack Docker lokal `http://localhost:8000` (UAT diulang ringkas di staging saat R2).
 **Cara pakai:** kerjakan journey berurutan (A→G). Centang bila output SESUAI harapan; bila TIDAK, catat di tabel Hasil (journey, langkah, apa yang terjadi, error console/network bila ada) lalu laporkan.
 
+**Peta cakupan app ↔ journey** (revisi 16:05 — celah dashboard/accounts/referensi ditambal):
+| App | Journey/langkah |
+|---|---|
+| pages | A1-A2 (landing, pricing) |
+| accounts (allauth) | A3-A7 (signup, verifikasi, login, rate-limit, reset password) |
+| dashboard | B1.1-B1.7 (CRUD, upload Excel, bulk ops, export), B8.4-B8.5 (backup/duplicate) |
+| detail_project (12 halaman) | B2-B7 + B6.4 (rincian-rab redirect) + D4-D5 & E10 (orphan/audit per-role) + E11 (export-test) |
+| referensi | E1-E12 (portal, database v2, pricing mgmt, import tier-1/2/3, audit, export) + D6 (gate F10) |
+| subscriptions | A2 (pricing), C1-C7 (checkout→Snap→webhook→renewal) |
+| Lintas app | D (gating), F (tema/responsif/ketahanan), G (Opaque Gate D) |
+
 ## 0. Persiapan (status saat revisi)
 
 - [x] Stack sehat (13:20): semua container healthy; `/health/` 200; `/accounts/login/` 200.
@@ -25,6 +36,7 @@
 | A4 | (Dev) lihat log web container: `docker compose logs web --tail 20` | Email verifikasi tercetak di console backend (EMAIL_BACKEND console) |
 | A5 | Login dengan akun baru | Redirect ke **Dashboard** (kosong, empty-state ramah — bukan error); banner trial muncul |
 | A6 | Logout → login lagi salah password 6× cepat | Rate-limit allauth menahan (pesan wajar, **bukan** error 500 — regresi insiden Redis) |
+| A7 | Halaman login → **Lupa password** → submit email akun A3 → ambil link reset dari log container → set password baru → login | Seluruh alur reset jalan (form → "email terkirim" → form password baru → sukses login) |
 
 **Catatan A:** akun baru via signup berstatus TRIAL_PENDING sampai email dikonfirmasi (trial 14 hari aktif setelah konfirmasi — signal `email_confirmed`). Konfirmasi via link di log A4 → cek banner berubah.
 
@@ -39,6 +51,10 @@
 | B1.1 | Login `uat_pro` → Dashboard → **+ Tambah Project** (modal) | Modal `addProjectModal` terbuka rapi; form lengkap |
 | B1.2 | Isi nama/tahun/lokasi/anggaran → simpan | Toast sukses (kanan-atas); project muncul di tabel dashboard dengan statistik 0 |
 | B1.3 | Klik project → halaman Project Detail → tombol masuk detail | Sidebar global muncul: seksi **Input Data / Analisis & Laporan / Perencanaan**; **TANPA** Orphan Cleanup & Audit Trail (bukan staff) [U14] |
+| B1.4 | Kembali ke Dashboard → **Edit** project (ubah nama/anggaran) → simpan | Perubahan tersimpan; tabel & statistik ter-update |
+| B1.5 | Dashboard → **Upload Excel** (mass create) dengan file template berisi 2-3 project | Project baru muncul; baris invalid ditolak dengan pesan jelas per baris |
+| B1.6 | Centang beberapa project uji → **Bulk Archive** → lalu **Unarchive**; satu project uji → **Bulk Delete** (konfirmasi `dpConfirmModal`) | Status berubah benar; delete butuh konfirmasi; project nyata TIDAK tersentuh (hanya data uji!) |
+| B1.7 | Dashboard → **Export Excel** dan **Export CSV** (level dashboard) + Project Detail → **Export PDF** | Ketiga file terunduh; isi sesuai filter aktif |
 
 ### B2. List Pekerjaan (susun struktur pekerjaan)
 | # | Aksi | Output yang diharapkan |
@@ -141,10 +157,12 @@
 | E4 | Pilih beberapa → **Bulk Delete** → modal konfirmasi → eksekusi | Modal di atas konten, hasil tampil; data terhapus (pakai data uji!) |
 | E5 | **Export** single & multiple dari database | File terunduh [F10 — staff boleh] |
 | E6 | **Pricing Management** → ubah harga plan/promo | Tersimpan; cek halaman Pricing publik ikut berubah |
-| E7 | **Import 3-tier** dengan file AHSP nyata: upload → validate report | Report tanpa false "Kolom Bergeser" [Bug C fixed]; WYSIWYG repair bisa edit |
-| E8 | Staging → commit | Data masuk; AHSP suffix `.a` namanya BUKAN kodenya [Bug A fixed] |
-| E9 | Buka project (staff punya akses penuh) → sidebar | Orphan Cleanup & Audit Trail **MUNCUL** [U14 staff-side ✓]; keduanya terbuka |
-| E10 | Audit dashboard referensi | Log import tampil; statistik render |
+| E7 | **Import Tier-1**: upload PDF AHSP → konversi → unduh hasil Excel (per-part bila besar) | Konversi selesai; progress bar jalan; file Excel valid untuk tier-2 |
+| E8 | **Import Tier-2/3** dengan file Excel AHSP nyata: upload → validate report | Report tanpa false "Kolom Bergeser" [Bug C fixed]; WYSIWYG repair bisa edit |
+| E9 | Staging → commit | Data masuk; AHSP suffix `.a` namanya BUKAN kodenya [Bug A fixed] |
+| E10 | Buka project (staff punya akses penuh) → sidebar | Orphan Cleanup & Audit Trail **MUNCUL** [U14 staff-side ✓]; keduanya terbuka dan berfungsi |
+| E11 | Ketik URL `/detail_project/<id>/export-test/` (staff) lalu coba juga dengan `uat_trial` | Staff: halaman uji export terbuka; trial: redirect + pesan admin [F14 ✓] |
+| E12 | Audit dashboard referensi | Log import tampil; statistik render; mark-resolved bekerja |
 
 ---
 
