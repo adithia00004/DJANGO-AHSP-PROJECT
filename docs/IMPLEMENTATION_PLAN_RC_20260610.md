@@ -13,7 +13,7 @@
 | R0 | Baseline RC: semua fix audit ter-commit + pushed + CI | **DONE 2026-06-10** (commit `c5442a07`..`51c4a0ff`) | [~] CI remote HIJAU di HEAD (run pertama dengan job frontend — verifikasi di GitHub Actions) |
 | R1 | Penutupan temuan kode pra-UAT (F10/F11/F14, M7/M9/M12) | **DONE 2026-06-10** | Suite + guard hijau ✓; tidak ada temuan severity ≥ Sedang yang open di kode ✓ |
 | R2 | L5 — Deploy production nyata (domain/TLS/secrets) | TODO (scaffolding siap) | HTTPS aktif; `check --deploy` bersih; tanpa kredensial dev |
-| R3 | L6 — Data safety (backup terjadwal + restore drill) | TODO (script siap) | Restore drill PASS; satu jalur DB |
+| R3 | L6 — Data safety (backup terjadwal + restore drill) | **DONE lingkup lokal 2026-06-10** (drill PASS + B2 closed); sisa = tugas VPS (PVD-07/09) | Restore drill PASS ✓; satu jalur DB ✓ |
 | R4 | L7 — UAT browser + Midtrans sandbox + Opaque sign-off | TODO | UAT sign-off tertulis di SSOT |
 | R5 | L8 — RC build + GO/NO-GO | TODO | Keputusan GO terdokumentasi |
 | R6 | Pasca-launch (tidak memblokir) | BACKLOG | — |
@@ -59,7 +59,7 @@ Eksekusi (runbook: `RUNBOOK_DEPLOY_TLS_L5_L6.md`; compose sudah hardened-by-defa
 ## R3 — L6: Data Safety
 
 - [x] **Restore drill LULUS 2026-06-10 12:06 WITA** (dieksekusi pemilik): dump segar dibuat DARI DALAM container (pg_dump 15↔server 15; pg_dump 16 host sengaja dihindari — arsipnya berisiko tak terbaca pg_restore 15) → `backups/ahsp_sni_db_drill_20260610_120341.dump` 21 MB, SHA-256 `aed701c1...494bc` → restore ke scratch `restore_drill_20260610_120615` → verifikasi `projects|users|ahsp|plans = 159|80|5104|3` (MATCH baseline L0) → scratch dihapus, live tak tersentuh. (PVD-08 versi lokal ✓; ulangi di staging VPS saat R2.)
-- [~] **Satu jalur DB — akar B2 ditemukan & ditutup**: PG16 native ternyata masih listen `0.0.0.0:5432` dan MEMENANGKAN koneksi host (verifikasi `select version()` → 16.9) — host pytest selama ini mendarat di PG16, bukan Docker SSOT (ditemukan `test_ahsp_sni_db` 13 MB di PG16). PG16 juga melayani project lain (`govautomator` dll), jadi keputusan pemilik: **pindah port → 5433** (bukan disable). `postgresql.conf:64` sudah diubah; **TINGGAL restart service sebagai Administrator** + verifikasi host:5432 = PG15 Docker.
+- [x] **Satu jalur DB — B2 CLOSED 2026-06-10 12:45 WITA**: akar masalah = PG16 native masih memenangkan `host:5432` (host pytest selama ini mendarat di PG16 — bukti `test_ahsp_sni_db` di sana). Keputusan pemilik: pindah port (PG16 juga melayani project lain). `postgresql.conf:64` → 5433, service di-restart pemilik (Administrator). **Verifikasi:** `host:5432` → PostgreSQL 15.15 Docker SSOT ✓; `host:5433` → PG16 (project lain) ✓; listener bersih tanpa tabrakan ✓; smoke pytest host vs PG15 → 30 passed ✓. Catatan: project lain (`govautomator` dll) kini konek via port 5433.
 - [ ] Jadwalkan backup otomatis + retensi + lokasi terisolasi — ditangguhkan ke VPS (PVD-07); interim: dump manual pra-perubahan-besar (pola yang sudah berjalan).
 - [ ] Restriksi akses DB internal-only di production (PVD-09 — tugas VPS).
 

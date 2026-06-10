@@ -120,6 +120,7 @@ Lokasi backup eksternal:
 | R0 | Gate CI remote (2026-06-10 11:50 WITA) | CI `51c4a0ff` SUCCESS — run pertama dengan job backend Py3.11 + frontend (vitest+build). R0 CLOSED |
 | R3 | Restore drill LULUS (2026-06-10 12:06 WITA, dieksekusi pemilik) | Dump in-container 21 MB SHA-256 `aed701c1...494bc` → scratch DB → `159\|80\|5104\|3` match baseline L0 → scratch dihapus, live aman. Blocker #2 (restore drill) CLOSED untuk lingkup lokal |
 | R3 | Akar B2 ditemukan (2026-06-10 12:30 WITA) | PG16 native masih menang di host:5432 (host pytest selama ini ke PG16, bukti `test_ahsp_sni_db`); PG16 juga melayani project lain → keputusan pemilik: pindah port 5433. `postgresql.conf` diubah; menunggu restart service (Administrator) + verifikasi |
+| R3 | **B2 CLOSED** (2026-06-10 12:45 WITA) | PG16 di-restart pemilik → host:5432 = PostgreSQL 15.15 Docker SSOT ✓, host:5433 = PG16 native ✓, listener tanpa tabrakan ✓, smoke pytest vs PG15 30 passed ✓. Blocker lama B2 (dua jalur DB) resmi tertutup |
 | R1 | Eksekusi penuh R1.1-R1.6 (2026-06-10 12:10 WITA) | **F10 keputusan pemilik: gate permission portal** — `ReferensiPortalRequiredMixin` 4 view + `export_task_status` (bonus: endpoint ini sebelumnya TANPA auth) + 5 test; F11 DEBUG+superuser; F14 staff-gate; U15 redirect permanen + 2 API `@api_deprecated` sunset 2026-09-01; **M7 tombol export Pro kini terlihat terkunci** (context processor + `_export_menu_item.html` di 4 halaman + 3 test); U8 noscript. Vitest 235 passed; pytest penuh menyusul |
 | Security | Fix F9 expired-user payment (2026-06-10) | `accounts/middleware.py` exclude `/subscriptions/` + 2 regression test (subscriptions 23 passed) |
 | Security | Hardening F1/F2 compose prod (2026-06-10) | Bind loopback default db/web/flower, Flower `--basic-auth`, guard `:?` SECRET_KEY; `docker compose config` valid |
@@ -128,9 +129,12 @@ Lokasi backup eksternal:
 
 *(diperbarui 2026-06-10 06:20 WITA — audit per-app/per-page selesai, lihat addendum di `AUDIT_KESIAPAN_LAUNCH_20260609.md`)*
 
-1. Production domain/TLS/secret/network hardening belum diterapkan pada deployment nyata (scaffolding Caddy + runbook siap).
-2. Backup terjadwal dan restore drill belum dilakukan (`scripts/restore_drill_db.sh` siap).
-3. UAT browser proyek nyata (semua halaman pada tabel per-page addendum + E2E Midtrans sandbox) dan Opaque ID sign-off belum selesai.
-4. F10: export database referensi hanya digate login — keputusan gating (Pro/permission) sebelum public launch.
+*(update 2026-06-10 12:45 WITA — lihat `IMPLEMENTATION_PLAN_RC_20260610.md` untuk tracking fase)*
+
+1. Production domain/TLS/secret/network hardening belum diterapkan pada deployment nyata (scaffolding Caddy + runbook siap) — fase R2, menunggu provider PVD-01..06.
+2. UAT browser proyek nyata (semua halaman pada tabel per-page addendum + E2E Midtrans sandbox) dan Opaque ID Gate D sign-off belum selesai — fase R4.
+3. Backup TERJADWAL + restriksi akses DB = tugas VPS (PVD-07/09) saat R2.
+
+Blocker yang CLOSED 2026-06-10: ~~restore drill~~ (LULUS, `159|80|5104|3`); ~~dua jalur DB (B2)~~ (PG16 → port 5433; host:5432 = Docker SSOT); ~~F10~~ (gate permission portal, terimplementasi + test); F11/F14/U15/M7/U8 (R1 closed).
 
 Blocker selesai sejak versi sebelumnya: advisory high `xlsx` (dipatch 0.20.3, `4d1f4353`); CI remote hijau (`fc8fdcba`); cleanup 19.901 file di-commit (`8483685e`); **F9 user expired tidak bisa bayar (FIXED + regression test, 2026-06-10)**; **F1/F2 hardening compose prod (bind loopback default, Flower basic-auth, guard SECRET_KEY — 2026-06-10)**.
