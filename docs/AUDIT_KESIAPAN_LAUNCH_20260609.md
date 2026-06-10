@@ -1,6 +1,12 @@
 # Audit Kesiapan Launch & Dead Code — Basis Implementation Plan
 
 **Tanggal:** 2026-06-09
+**Branch:** `checkpoint/save-sync-plan-20260608` (verifikasi ulang dari HEAD `e05f0748`)
+**Metode:** pemeriksaan source + runtime Docker (`manage.py check`, suite test, baca `production.py`/compose), inventaris file & penanda dead-code.
+**Tujuan:** menjadi dasar penyusunan implementation plan menuju launch.
+**Pelengkap:** `SISA_PEKERJAAN_DAN_KESIAPAN_PRODUKSI_20260609.md`, `IMPLEMENTATION_PLAN_SAVE_SYNC_20260608.md`, `OPAQUE_ID_CHECKLIST.md`, `AUDIT_UI_UX_20260610.md` (audit lapisan presentasi, temuan U1-U15).
+
+> **Struktur dokumen:** bagian atas = addendum kronologis (2026-06-09 → 2026-06-10); bagian bawah (mulai "1. Ringkasan Eksekutif") = dokumen audit asli 2026-06-09 yang dipertahankan utuh sebagai baseline. Status temuan asli (A/B/C/D/E) yang sudah berubah dikoreksi di addendum, bukan diedit di tempat.
 
 ## Addendum Eksekusi 2026-06-09
 
@@ -18,12 +24,255 @@ Temuan A6-A8, C1, D1-D3, dan E1 telah diverifikasi ulang dan ditindaklanjuti:
 Redis AOF sempat korup. Setelah backup volume, `redis-check-aof` memangkas 44 byte tail yang rusak; Redis, web, dan worker kembali healthy.
 
 Verdict terbaru tetap **NO-GO public launch**. Blocker tersisa: TLS/domain/secrets/network, restore drill, advisory `xlsx`, CI/UAT, dan Opaque ID sign-off.
-**Branch:** `checkpoint/save-sync-plan-20260608` (verifikasi ulang dari HEAD `e05f0748`)
-**Metode:** pemeriksaan source + runtime Docker (`manage.py check`, suite test, baca `production.py`/compose), inventaris file & penanda dead-code.
-**Tujuan:** menjadi dasar penyusunan implementation plan menuju launch.
-**Pelengkap:** `SISA_PEKERJAAN_DAN_KESIAPAN_PRODUKSI_20260609.md`, `IMPLEMENTATION_PLAN_SAVE_SYNC_20260608.md`, `OPAQUE_ID_CHECKLIST.md`.
+
+## Addendum Verifikasi Ulang 2026-06-10 05:47 WITA (HEAD `4d1f4353`)
+
+Audit ulang independen terhadap HEAD terbaru. Status dokumen di atas sebagian sudah usang:
+
+### Temuan dokumen yang sudah TERTUTUP sejak addendum 2026-06-09
+
+- **Advisory high `xlsx` SELESAI** — dipatch ke `xlsx@0.20.3` via tarball resmi SheetJS CDN (commit `4d1f4353`). Verifikasi: `npm ls xlsx` → 0.20.3; `npm audit` → **0 critical, 0 high, 5 moderate**. Kalimat "Residual high xlsx@0.18.5" di addendum 2026-06-09 tidak berlaku lagi.
+- **Cleanup 19.901 file sudah di-commit** (`8483685e`); working tree clean. Bukan lagi staged-only.
+- **CI remote HIJAU** di `fc8fdcba` (root cause: `ci.yml` meng-override `DJANGO_SETTINGS_MODULE` → diperbaiki ke `config.settings.test`).
+- **L4 lanjutan:** 10 file JS pra-vite 0-referensi dihapus (`f462f20d`); legacy bertanda yang masih diroute/diuji dipertahankan (lihat `docs/L4_DEAD_CODE_REVIEW_20260610.md`).
+
+### Temuan BARU (belum tercatat di audit/checklist sebelumnya)
+
+| ID | Severity | Temuan | Bukti | Rekomendasi |
+|---|---|---|---|---|
+| F1 | 🟠 Tinggi | **`docker-compose.prod.yml` publish port berbahaya secara default**: `db` → `"${DB_PORT:-5432}:5432"` (semua interface), `flower` → `:5555` tanpa basic-auth | `docker-compose.prod.yml:21,210,218`; overlay Caddy hanya memberi **komentar** "REMOVE host port publishing" (`deploy/docker-compose.prod.proxy.yml:9-15`) — langkah manual rawan terlewat saat deploy L5 | Default-kan bind `127.0.0.1:` atau hapus mapping db/web; tambah `--basic-auth` pada command Flower. Buat default-nya aman, bukan instruksi |
+| F2 | 🟡 Sedang | **`DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}` tanpa guard `:?`** di compose prod (web/celery/beat/flower), tidak konsisten dengan `POSTGRES_PASSWORD`/`REDIS_PASSWORD` yang fail-fast | `docker-compose.prod.yml:83,145,179,213` | Pakai `${DJANGO_SECRET_KEY:?...}` agar gagal saat `compose up`, bukan saat startup guard |
+| F3 | 🟡 Sedang | **Mismatch versi Python: CI 3.12 vs image produksi 3.11** — CI hijau tidak sepenuhnya membuktikan perilaku image | `.github/workflows/ci.yml:47` (`3.12`) vs `Dockerfile:2,33` (`python:3.11-slim`) | Samakan versi, atau jalankan job test di dalam image |
+| F4 | 🟡 Sedang | **CI belum menjalankan frontend suite & build** (temuan C3 masih open); trigger hanya `push: main/develop` + PR — branch checkpoint tidak otomatis ter-CI | `.github/workflows/ci.yml` hanya `pytest` | Tambah job vitest + `npm run build`; pertimbangkan trigger branch release |
+| F5 | 🟢 Rendah | **Bug kecil entrypoint**: `pg_isready ... -U postgres` hardcoded, bukan `$POSTGRES_USER` | `docker-entrypoint.sh:21` | Ganti ke `-U "$POSTGRES_USER"` sebelum kredensial produksi memakai user lain |
+| F6 | 🟢 Rendah | **Runtime image meng-install `git`** (kemungkinan tidak diperlukan; bloat + attack surface kecil) | `Dockerfile:48` | Hapus dari stage runtime bila tidak dipakai |
+| F7 | 🟢 Rendah | **`.env.pgbouncer` ter-track** — isi diverifikasi hanya template placeholder (aman), tapi namanya memicu alarm scanner | `git ls-files` | Rename ke `.env.pgbouncer.example` |
+| F8 | 🟢 Info | **5 advisory moderate npm tersisa** = `uuid<11.1.1` via `exceljs` + tooling transitive; `npm audit fix --force` akan downgrade `exceljs` ke 3.4.0 (**breaking — jangan dijalankan**) | `npm audit` 2026-06-10 | Defer sadar-risiko; tunggu rilis exceljs yang menaikkan uuid |
+
+### Yang diverifikasi ulang dan terkonfirmasi masih benar
+
+- `.dockerignore` bersih (A7/A8 tertutup); Dockerfile multi-stage + `npm ci` + dist-only sesuai klaim L1.
+- `node_modules/` & `cleanup_archive/` untracked (0 file); tidak ada `.bak/.backup/.old` ter-track; tidak ada secret nyata ter-track (hanya file example/template).
+- **A2/A3 masih berlaku**: stack berjalan saat audit = mode dev; `docker ps` → web `0.0.0.0:8000`, PostgreSQL `0.0.0.0:5432`, Flower `0.0.0.0:5555` terpublish. (Verifikasi internal container tidak dilakukan pada sesi ini; bukti = port publishing + dokumen sebelumnya.)
+
+**Verdict 2026-06-10: tetap NO-GO public launch.** Blocker tersisa: L5 (TLS/domain/secrets — scaffolding siap), L6 (backup terjadwal + restore drill — script siap), L7 (browser UAT + Opaque ID sign-off; CI sudah hijau), L8 GO/NO-GO. `xlsx` **bukan lagi blocker**. Tindakan murah berikutnya: F1+F2 (hardening default compose prod) sebelum eksekusi L5.
 
 ---
+
+## Addendum Audit Per-App & Per-Page 2026-06-10 06:20 WITA (HEAD `4d1f4353` + working tree)
+
+Audit mendalam backend + frontend per app dan per halaman. Metode: pemetaan seluruh URL (6 app lokal), inspeksi decorator auth/permission/ownership pada semua views, pemeriksaan middleware & entitlements, inventaris JS per halaman + disiplin XSS, lalu gate verifikasi penuh.
+
+**Gate verifikasi sesi ini (host, `config.settings.test` + Postgres Docker):**
+- Backend `pytest`: **404 passed, 40 skipped** (158 detik) — HIJAU.
+- Frontend `vitest`: **233 passed, 25 skipped** (11 file test) — HIJAU.
+
+### Temuan baru sesi ini (F9-F13) — F9 KRITIS, LANGSUNG DIPERBAIKI
+
+| ID | Severity | Temuan | Bukti | Status |
+|---|---|---|---|---|
+| F9 | 🔴 Kritis | **User EXPIRED tidak bisa membayar/renew.** `SubscriptionMiddleware` memblokir semua POST untuk user tanpa write-entitlement, dan `/subscriptions/` TIDAK ada di `EXCLUDED_PATH_PATTERNS` — POST `/subscriptions/payment/create/` (Snap.js) terblokir 403 `SUBSCRIPTION_EXPIRED`. User yang langganannya habis (persis yang harus membayar) tidak bisa checkout. Tidak tertangkap test karena test payment memakai `RequestFactory` yang **melewati middleware** | `accounts/middleware.py:30-38` + `subscriptions/entitlements.py:128-134` (EXPIRED → WRITE_ACCESS=DENY); test lama `subscriptions/tests.py` (RequestFactory) | **FIXED sesi ini**: `^/subscriptions/` ditambahkan ke exclude list + 2 regression test berbasis test client (middleware aktif): expired user bisa create payment; write di luar `/subscriptions/` tetap terblokir. `subscriptions/tests.py` → 23 passed |
+| F10 | 🟡 Sedang | **Export database referensi hanya digate login** — `ExportSingleJobView`/`ExportMultipleJobsView`/`ExportSearchResultsView`/`ExportAsyncView` memakai `LoginRequiredMixin` saja; user trial/expired apa pun bisa mengunduh seluruh AHSP referensi (aset produk), padahal export di `detail_project` digate entitlement Pro | `referensi/views/export_views.py:33,90,168,256` | OPEN — keputusan bisnis: gate dengan entitlement Pro / permission portal sebelum launch |
+| F11 | 🟢 Rendah | **`debug_clear_data` ter-route permanen** — menghapus SELURUH data referensi; sudah digate `@permission_required("referensi.import_ahsp_data")` tapi tetap berbahaya operasional di production | `referensi/urls.py:63`, `referensi/views/preview.py:568-606` | OPEN — sarankan gate tambahan `settings.DEBUG` atau superuser-only |
+| F12 | 🟢 Rendah | **XSS governance guard hanya meng-cover `volume_pekerjaan.js`** — file lain ber-`innerHTML` banyak (`rekap_kebutuhan.js` 31×, `list_pekerjaan.js` 29×, `rincian_ahsp.js` 18×). Spot-check: semuanya PUNYA helper `esc()` lokal dan dipakai pada interpolasi (bukan vulnerability), tapi tanpa guard allowlist regresi bisa lolos | `detail_project/static/.../tests/xss_governance_guard.test.js` (single-file scope) | OPEN — perluas allowlist test ke JS klasik lain |
+| F13 | 🟢 Info | **Unit test frontend terpusat di modul jadwal/volume** — 11 file vitest semuanya untuk gantt/grid/kurva-s/formula/XSS; JS halaman klasik (list_pekerjaan, harga_items, rekap_*, rincian_*, dashboard, referensi import UI) tanpa unit test, dimitigasi test backend + rencana browser UAT (L7) | inventaris `*.test.js` | OPEN — terima sebagai risiko sadar; browser UAT L7 wajib menyentuh halaman ini |
+
+Perbaikan lain yang diterapkan sesi ini (dari temuan 2026-06-10 pagi): **F1** (db/web/flower kini default bind `127.0.0.1` via `DB_BIND`/`WEB_BIND`/`FLOWER_BIND`; Flower wajib `--basic-auth`) dan **F2** (`DJANGO_SECRET_KEY` kini guard `:?` di keempat service) di `docker-compose.prod.yml` — tervalidasi `docker compose config`. `.env.production.example` diperbarui.
+
+### Penilaian per app
+
+| App | Halaman/Endpoint | Backend | Frontend | Test | Nilai |
+|---|---|---|---|---|---|
+| **pages** | `/` landing, `/pricing/` | Publik by design (TemplateView, tanpa data sensitif) | Statis | 7 test | ✅ Siap |
+| **accounts** | (tanpa URL sendiri; auth via `/accounts/` allauth) | `CustomUser` TRIAL/PRO/EXPIRED + properti aktif ter-normalisasi; `SubscriptionMiddleware` write-gating (bug F9 fixed) | — | 25 test | ✅ Siap (pasca F9) |
+| **dashboard** | dashboard, project detail/edit/delete/duplicate, upload Excel, mass-edit, bulk delete/archive/unarchive, export xlsx/csv/pdf | 100% `@login_required`; SEMUA query project di-scope `owner=request.user` (`get_object_or_404(..., owner=...)`); bulk ops `@require_POST` | 5 JS klasik (dashboard, formset, mass-edit, resizable, ux) | 29 test | ✅ Siap |
+| **detail_project** | 12 halaman web + ±100 API (list/volume/template/harga/rekap/rincian/jadwal/tahapan v1-v2/export/monitoring) | Web views: `@login_required` + `_project_or_404(owner)` semua. API: 77 def / 78 `@login_required` / 75 `_owner_or_404` (2 sisanya memang non-project: list template global & import-create). Tahapan v1 12/12, v2 7/7. Monitoring staff-only; client-metric fail-closed API-key; export async login+rate-limit. Ada guard test khusus `tests_page_security_audit.py` | Jadwal = Vite app modular (satu-satunya entry). Halaman lain JS klasik dengan `esc()` lokal terverifikasi. XSS guard baru cover volume (F12) | 271 test backend + 233 vitest | ✅ Siap (catatan F12/F13) |
+| **referensi** | admin portal, database v2, import 3-tier (PDF→Excel→staging→commit), audit dashboard, export, CRUD API | Portal & import digate permission terpusat (`referensi/permissions.py`: portal perms + `import_ahsp_data`); `ImportRateLimitMiddleware`; CRUD/lookup API login+permission | 7 JS klasik (import UI besar di template) | 68 test | ⚠️ Siap bersyarat (F10 export gating, F11 debug endpoint) |
+| **subscriptions** | checkout, payment create/finish, webhook Midtrans, pricing redirect | Webhook: signature verified + `select_for_update` idempotent + snapshot durasi immutable; create-payment server-side pricing (amount client diabaikan); staff diblokir checkout. Bug F9 fixed | Snap.js (Midtrans) | 21→23 test | ✅ Siap (pasca F9) |
+
+### Penilaian per halaman utama (jalur pengguna)
+
+| Halaman | Auth/Owner | API pendukung | Frontend | Catatan |
+|---|---|---|---|---|
+| Landing & Pricing | publik | — | statis | OK |
+| Login/Signup (allauth) | rate-limited allauth | — | — | Insiden Redis 2026-06-10 = masalah runtime host, bukan kode (rincian di "Koreksi Silang 08:05" butir 3) |
+| Dashboard list/CRUD/upload | login+owner | bulk/export | dashboard.js dkk | OK |
+| List Pekerjaan | login+owner | save/tree/upsert + template library | list_pekerjaan.js (esc ✓) | Multi-sumber bug (BUG_REPORT 2026-06-02) sudah FIXED + regression test |
+| Volume Pekerjaan | login+owner | volume save/list, parameters/computed+sync (opaque) | volume_pekerjaan.js 7.641 baris + formula engine (tested) + XSS guard | Opaque ID Phase 1-4 done; sisa sign-off Gate D |
+| Template/Detail AHSP | login+owner | detail-ahsp get/save/reset, bundle expansion | template_ahsp.js, detail_ahsp_gabungan.js (esc ✓) | Orphan harga auto-cleanup aktif |
+| Harga Items | login+owner | harga save/list, orphan list/cleanup | harga_items.js (esc ✓) | SSR-bootstrap anti-flash |
+| Rekap RAB / Kebutuhan / Rincian | login+owner | rekap/rincian + export 4-5 format per jenis | rekap_*.js, rincian_*.js (esc ✓) | Export PDF/Excel/Word digate entitlement Pro (`_api_pro_export_required`) |
+| Jadwal Pekerjaan (grid/gantt/kurva-S) | login+owner | tahapan v1 (deprecation header) + v2 weekly canonical + chart-data SSoT | Vite bundle (core/grid/chart modules), 11 file test | Jalur paling teruji di frontend |
+| Audit Trail & Orphan Cleanup | login+owner | audit-trail, orphaned-items | audit_trail.js, orphan_cleanup.js | OK |
+| Referensi: import 3-tier | permission import | staging/commit/repair/export | template-embedded JS | Suffix & shift bugs FIXED (2026-06-02), suite import hijau |
+| Referensi: database & portal | permission portal | jobs/items CRUD API | ahsp_database_v2.js | OK |
+| Checkout & pembayaran | login (+F9 fix) | create payment (server pricing), webhook signature | Snap.js | Perlu E2E sandbox Midtrans saat UAT (L7) |
+
+### Kesimpulan addendum
+
+Lapisan auth/ownership/permission **konsisten dan rapi di seluruh app** — pola `login_required + owner-scope` hampir 100% dengan guard test otomatis. Temuan berarti satu-satunya yang kritis (F9, monetisasi) **sudah diperbaiki + regression test** di sesi ini. Sisa pekerjaan menuju launch tidak berubah: **L5** (deploy TLS/secrets nyata), **L6** (backup terjadwal + restore drill), **L7** (browser UAT semua halaman di tabel atas + E2E Midtrans sandbox + Opaque Gate D sign-off), plus keputusan F10 (gating export referensi). Verdict: **NO-GO publik sampai L5-L7 selesai; kode aplikasi sendiri dinilai launch-ready** dengan catatan F10-F13.
+
+---
+
+## Addendum Rincian Per-Halaman 2026-06-10 06:28 WITA
+
+Detail audit setiap halaman: akses, API pendukung, frontend (file + ukuran + disiplin XSS), cakupan test, dan status. Melengkapi tabel per-app di addendum 06:20.
+
+### A. detail_project — 12 halaman
+
+Semua halaman: `@login_required` + `_project_or_404(owner=user, is_active=True)`; cache `no-store` via `DetailProjectNoStoreMiddleware` (teruji `tests_page_cache_headers.py`); guard keamanan lintas-halaman `tests_page_security_audit.py`; CSRF export teruji `tests_export_csrf.py`.
+
+#### 1. List Pekerjaan — `/detail_project/<id>/list-pekerjaan/`
+- **API:** save/tree/upsert + Template Library (7 endpoint: list/detail/create/import/delete/export/import-file) + export JSON.
+- **Frontend:** `list_pekerjaan.js` (3.078 baris) + modul core (`http/format/toast/keys`), `esc()` ✓.
+- **Test:** `tests_list_pekerjaan_upsert_drag_drop`, `tests_list_pekerjaan_upsert_validation`, `tests_list_pekerjaan_export`, `tests_template_library_api`, `tests_import_multi_source_regressions`.
+- **Catatan:** bug multi-sumber (BUG B, 2026-06-02) FIXED + regression. Follow-up minor: tampilkan `sumber` AHSP di UI. **Status: ✅ siap.**
+
+#### 2. Volume Pekerjaan — `/detail_project/<id>/volume-pekerjaan/`
+- **API:** volume save/list, parameters CRUD+sync, computed-parameters+sync (opaque `bp_N`/`cp_N`, 409 conflict), formula state, export 4 format.
+- **Frontend:** `volume_pekerjaan.js` (7.641 baris — terbesar) + `vol_formula_engine` + `volume_runtime` + `numeric` patch; SSR-bootstrap anti-flash; XSS governance allowlist khusus file ini.
+- **Test:** backend `tests_volume_pekerjaan_save_api`, `tests_volume_formula_owner_guard`, `tests_formula_server_validation`, `tests_formula_integration`, `tests_phase1_opaque_api`, `tests_volume_export_adapter`; vitest `vol_formula_engine`, `shared_param_store`, `formula_adapter`, `xss_governance_guard`.
+- **Catatan:** Opaque ID Phase 1-4 done; sisa Gate D sign-off + test M5 (perf 100+ param). **Status: ✅ siap (pending sign-off).**
+
+#### 3. Template AHSP — `/detail_project/<id>/template-ahsp/` (+ alias legacy `detail-ahsp`)
+- **API:** detail-ahsp get/save/reset-to-ref per pekerjaan, formula state; orphan harga auto-cleanup saat save.
+- **Frontend:** `template_ahsp.js` (2.442) + shared param modules (`param_store`, `formula_adapter`, `param_sidebar_editor`, `formula_editor_modal`), `esc()` ✓; SSR-bootstrap.
+- **Test:** `tests_template_ahsp_formula_state`, `tests_template_ahsp_ui_regressions`, `tests_orphan_autocleanup`.
+- **Status: ✅ siap.**
+
+#### 4. Harga Items — `/detail_project/<id>/harga-items/`
+- **API:** harga save/list + export 5 format (csv/pdf/word/xlsx/json); export non-CSV digate entitlement Pro.
+- **Frontend:** `harga_items.js` (1.241) + numeric, `escapeHtml` ✓; SSR-bootstrap.
+- **Test:** `tests_harga_items_save_api`, `tests_harga_items_export`, `tests_item_ssot`.
+- **Status: ✅ siap.**
+
+#### 5. Orphan Cleanup — `/detail_project/<id>/orphan-cleanup/`
+- **API:** orphaned-items list + cleanup. **Frontend:** `orphan_cleanup.js` (209). **Test:** `tests_orphan_autocleanup`.
+- **Catatan:** kini safety-net manual (auto-cleanup sudah berjalan saat save Detail AHSP). **Status: ✅ siap.** *(Revisi 08:05: ⚠️ catatan U14 — dimaksudkan admin-only tapi belum digate role; lihat Koreksi Silang)*
+
+#### 6. Audit Trail — `/detail_project/<id>/audit-trail/`
+- **API:** audit-trail (read-only), change-status, source-change ack. **Frontend:** `audit_trail.js` (220). **Test:** `tests_change_status_sync`, `tests_data_retention`.
+- **Status: ✅ siap.** *(Revisi 08:05: ⚠️ catatan U14 — dimaksudkan admin-only tapi belum digate role; lihat Koreksi Silang)*
+
+#### 7. Rincian AHSP — `/detail_project/<id>/rincian-ahsp/` (+ alias legacy `detail-ahsp-gabungan`)
+- **API:** save gabungan, bundle expansion, export 4 format.
+- **Frontend:** `rincian_ahsp.js` (1.602) + `detail_ahsp_gabungan.js`, `esc()` ✓ (spot-check baris 864-942).
+- **Test:** `tests_detail_ahsp_gabungan_ui`.
+- **Status: ✅ siap.**
+
+#### 8. Rekap RAB — `/detail_project/<id>/rekap-rab/`
+- **API:** rekap + pricing project/per-pekerjaan + export 5 format (gate Pro untuk PDF/Excel/Word).
+- **Frontend:** `rekap_rab.js` (922) + `ExcelExporter`.
+- **Test:** `tests_export_access` (entitlement), `tests_export_csrf`.
+- **Status: ✅ siap.**
+
+#### 9. Rekap Kebutuhan — `/detail_project/<id>/rekap-kebutuhan/`
+- **API:** rekap-kebutuhan + validate + filters + enhanced + timeline + weekly (procurement) + export 4 format.
+- **Frontend:** `rekap_kebutuhan.js` (2.882) + toolbar + vendor `echarts`; `esc()` ✓ (spot-check).
+- **Test:** tercakup via suite tahapan/export; tanpa unit test JS sendiri (F13).
+- **Status: ✅ siap (cek visual chart saat UAT).**
+
+#### 10. Rincian RAB — `/detail_project/<id>/rincian-rab/`
+- **API:** rincian-rab GET + export CSV.
+- **Frontend:** **JS inline di template** (±120 baris, satu-satunya halaman tanpa file JS terpisah) — konsistensi minor, bukan risiko.
+- **Status: ✅ siap.** *(Revisi 08:05: 🟡 LEGACY — digantikan Rincian AHSP + Rekap RAB, tanpa link masuk; kandidat redirect/deprecation, lihat U15 di `AUDIT_UI_UX_20260610.md`)*
+
+#### 11. Jadwal Pekerjaan — `/detail_project/<id>/jadwal-pekerjaan/` (grid + Gantt + Kurva-S)
+- **API:** tahapan v1 (12 endpoint, deprecation header + telemetry) + **v2 weekly canonical** (7 endpoint, `PekerjaanProgressWeekly` SSoT) + chart-data SSoT + kurva-s-harga + regenerate; export 4 format + professional report.
+- **Frontend:** **satu-satunya Vite app** — `jadwal_kegiatan_app.js` (4.927) + chunks `core/grid/chart` + `ExportManager`; vendor xlsx/jspdf/html2canvas di chunk terpisah.
+- **Test:** vitest 8 file (tanstack-grid, gantt-canvas-overlay, unified-gantt/table, state-manager, week-zero, validation-utils); backend `tests_api_v2_access`, `tests_monitoring_security`.
+- **Catatan:** jalur frontend paling teruji; deprecation v1 dimonitor dashboard staff-only. **Status: ✅ siap.**
+
+#### 12. Export Test — `/detail_project/<id>/export-test/`
+- **Temuan baru F14 (🟢 Rendah):** halaman uji developer (Phase 4 export) ter-route di production dan dapat diakses semua pemilik proyek (login+owner). Tidak bocor data lintas-user, tapi bukan untuk end-user.
+- **Saran:** gate `settings.DEBUG`/staff-only, atau keluarkan dari urls production. **Status: ⚠️ gate sebelum launch (rendah).**
+
+### B. referensi — 6 kelompok halaman
+
+Semua halaman admin dicek `has_referensi_portal_access()` **di dalam body** (redirect `/` + warning) di atas `@login_required`; import digate `@permission_required("referensi.import_ahsp_data")` + `ImportRateLimitMiddleware`.
+
+| Halaman | Akses | Frontend | Test | Status |
+|---|---|---|---|---|
+| Admin Portal `/referensi/admin-portal/` | login + portal access (in-body) | `admin_portal.js` | — (smoke via suite) | ✅ |
+| AHSP Database v2 `/referensi/admin/database-v2/` (+ redirect legacy) | login + portal access; CRUD API jobs/items/stats login-gated | `ahsp_database_api.js`/`v2.js` | `test_ahsp_code`, `test_item_code_registry_runtime` | ✅ |
+| Pricing Management `/referensi/admin/pricing/` | login + portal access; kelola SubscriptionPlan tier 1-3 + promo | template form | `test_pricing_management` | ✅ |
+| Import 3-Tier `/referensi/import/...` (options → pdf-convert → validate/report → staging → commit) | permission import + rate-limit | JS embedded besar di `import_validate_report.html` (WYSIWYG editor) | 10 file test (repair, schema, staging_validation, multifile, permissions, suffix, pdf, batch_commit_policy, validate_report_ui, export_completeness) — bug A-D FIXED | ✅ |
+| Audit Dashboard `/referensi/audit/...` (logs/detail/resolve/statistics/export) | login + portal guard | template | `test_audit_template_security` | ✅ |
+| Export `/referensi/export/...` (single/multiple/search/async) | **login saja** | — | `test_export_completeness` | ⚠️ **F10** — gate Pro/permission belum diputuskan |
+
+Plus **F11**: `debug/clear-data/` (hapus seluruh data referensi) — permission-gated tapi sebaiknya DEBUG/superuser-only.
+
+### C. dashboard — 4 kelompok halaman
+
+| Halaman | Akses | Frontend | Test | Status |
+|---|---|---|---|---|
+| Dashboard utama `/dashboard/` (list + filter + statistik + mass-edit) | login; queryset `owner=request.user` | 5 JS (dashboard/formset/mass-edit/resizable/ux) | 29 test (2 file) | ✅ |
+| Project detail/edit/delete/duplicate | login + `get_object_or_404(pk, owner, is_active)`; duplicate via `DeepCopyService` (termasuk VolumeFormulaState Step 9 + opaque remap Opsi B) | modal templates | tercakup suite dashboard + `tests_phase45_rollback`/copy | ✅ |
+| Upload Excel `/dashboard/upload/` | login; project dibuat `owner=request.user` | `formset.js` | suite dashboard | ✅ |
+| Export & bulk (xlsx/csv/pdf, delete/archive/unarchive) | login + `@require_POST` (bulk); owner-filtered | — | suite dashboard | ✅ |
+
+### D. pages, subscriptions, accounts
+
+| Halaman | Akses | Catatan | Status |
+|---|---|---|---|
+| Landing `/` | publik | redirect dashboard/portal jika login | ✅ |
+| Pricing `/pricing/` | publik | render plan dari DB; target redirect middleware subscription | ✅ |
+| Checkout `/subscriptions/checkout/<plan>/` | login; staf/superuser diblokir (ADMIN_CHECKOUT_BLOCKED) | server-side pricing — `amount` client diabaikan (teruji) | ✅ |
+| Payment create (AJAX Snap.js) | login (+ exclude middleware pasca-F9) | regression test expired-user PASS | ✅ |
+| Payment finish | login | status polling transaksi | ✅ |
+| Webhook Midtrans | publik by design | signature verified + `select_for_update` idempotent + snapshot durasi | ✅ |
+| Login/Signup/Reset (allauth `/accounts/...`) | publik + rate-limit allauth (cache-backed) | insiden 500 (2026-06-10) = Redis runtime host, bukan kode | ✅ |
+| Django Admin `/admin/` | superuser; login dialihkan ke allauth | — | ✅ |
+
+### Rekap temuan baru dari rincian per-halaman
+
+| ID | Severity | Temuan | Status |
+|---|---|---|---|
+| F14 | 🟢 Rendah | Halaman dev `export-test` ter-route di production untuk semua owner | OPEN — gate DEBUG/staff sebelum launch |
+
+Prioritas UAT browser (L7) berdasarkan bobot risiko frontend: (1) Volume Pekerjaan — file JS terbesar + formula opaque; (2) Jadwal Pekerjaan — grid/Gantt/Kurva-S interaktif; (3) Import 3-tier referensi — WYSIWYG embedded; (4) Checkout E2E Midtrans sandbox (pasca-fix F9); (5) Rekap Kebutuhan — chart echarts tanpa unit test.
+
+---
+
+## Catatan Arsitektur & Workflow 2026-06-10 06:45 WITA (hasil review arsitektural)
+
+**Kesimpulan: tidak ada yang fundamental rusak; arsitektur = "modular monolith + progressive enhancement" yang sehat dan proporsional. Tidak ada restrukturisasi yang memblokir launch.**
+
+### Yang dinilai benar (JANGAN diubah)
+- Django SSR + JS per halaman (bukan SPA) — tepat untuk solo-maintainer dengan ±150 endpoint.
+- Batas 6 app memetakan domain dengan bersih; multi-tenancy owner-scope konsisten + guard test.
+- Keputusan sulit sudah benar: opaque ID via counter table, jadwal v2 weekly canonical SSoT, deprecation v1 ber-telemetry, entitlements engine terpusat.
+- Infra compose single-host + Caddy + Celery proporsional; jangan ke k8s/microservices. Evolusi 6-12 bulan yang layak: managed Postgres (operasional, bukan kode).
+
+### 4 utang struktural — roadmap PASCA-launch (berurutan)
+1. **`views_api.py` god-file (~8.000 baris, ±77 endpoint).** Pecah jadi package `views_api/` per domain (volume/harga/detail_ahsp/rekap/parameters/export) dengan re-export di `__init__.py` agar `urls.py` tak berubah; per-batch dengan suite hijau. Pola sudah ada (`views_api_tahapan.py`, `views_export.py`).
+2. **Tiga subsistem export paralel** (±30 endpoint sinkron per-format, jalur async Celery, pipeline batch client `export/init→upload-pages→finalize`). Konsolidasi: satu export service + format-adapter (pola adapter sudah ada di `exports/volume_pekerjaan_adapter.py`) + satu dispatcher + satu jalur async; endpoint lama jadi thin alias selama deprecation.
+3. **Middleware subscription berbasis regex path rapuh — kelas bug F9.** Pindahkan enforcement utama ke decorator per-view (`@requires_write_entitlement`, padanan `_api_pro_export_required` sudah ada); middleware tetap sebagai defense-in-depth, bukan satu-satunya lapisan.
+4. **Frontend: 3 file monolit + util terduplikasi** (`volume_pekerjaan.js` 7.6k, `list_pekerjaan.js` 3.1k, `rekap_kebutuhan.js` 2.9k; `esc()`/http/format diduplikasi per file). Bukan rewrite — angkat bertahap: satukan util ke `js/core/`+`js/shared/`, jadikan volume entry Vite kedua (multi-entry sudah terbukti di Jadwal), perluas XSS guard (F12); side-effect: unit test per halaman jadi murah (menutup F13).
+
+### Catatan workflow client-side
+Pola SSR-bootstrap → edit → dirty-guard → save eksplisit → sync LED → change-status adalah state model yang tepat untuk aplikasi data-entry (lebih prediktabel daripada auto-save). Rapikan saat disentuh lagi: (a) arahkan semua save ke `upsert/`, jadikan `save/` full-create reset-only (docstring-nya sendiri memperingatkan risiko duplikasi); (b) beri deprecation header + telemetry pada alias URL legacy (`detail-ahsp`, `detail-ahsp-gabungan`, `volume-formula-state` alias) seperti pola tahapan v1 agar pemangkasan kelak berbasis data.
+
+### Urutan eksekusi yang disarankan
+Launch dulu (L5-L8) → #3 (kecil, cegah kelas bug F9 terulang) → #1 (mekanis) → #4 bertahap per halaman → #2 saat ada permintaan fitur export berikutnya. Semua evolusioner, tanpa big-bang rewrite.
+
+---
+
+## Koreksi Silang & Review Konsistensi 2026-06-10 08:05 WITA
+
+Hasil review menyeluruh kedua dokumen audit (dokumen ini + `AUDIT_UI_UX_20260610.md`):
+
+1. **Revisi status per-halaman** (addendum 06:28) berdasarkan klarifikasi pemilik produk + temuan U14/U15 di `AUDIT_UI_UX_20260610.md` §9:
+   - Halaman **#5 Orphan Cleanup** & **#6 Audit Trail**: status "✅ siap" direvisi menjadi **"⚠️ siap dengan catatan U14"** — keduanya dimaksudkan admin-only tetapi sidebar & view belum punya gating role (terlihat/terbuka untuk semua pemilik proyek).
+   - Halaman **#10 Rincian RAB**: status "✅ siap" direvisi menjadi **"🟡 LEGACY (U15)"** — fungsinya sudah digantikan Rincian AHSP + Rekap RAB, tidak punya satu pun link masuk; kandidat redirect/deprecation, bukan halaman aktif.
+2. **Koreksi angka:** baris "volume_pekerjaan.js ~3500 baris" pada tabel per-halaman 06:20 adalah angka usang; ukuran terverifikasi = **7.641 baris** (sudah benar di addendum 06:28).
+3. **Insiden Redis 2026-06-10** yang dirujuk tabel 06:20: akar masalah = `manage.py runserver` native host (4 proses) membajak `localhost:8000` dari Docker + `ahsp_redis` ter-recreate dari compose prod sehingga port 6379 tidak terpublish ke host → allauth rate-limit gagal konek cache → 500 di halaman login. Solusi disepakati: matikan runserver native, operasikan hanya via stack Docker (`docker compose up -d`), perubahan kode via `docker compose restart web`.
+4. **Penomoran temuan lintas dokumen:** F1-F14 (dokumen ini) + U1-U15 (`AUDIT_UI_UX_20260610.md`) — tidak ada nomor ganda/celah. Status terkini: F9 FIXED (+2 regression test); F1/F2 FIXED (compose hardening); F3-F8, F10-F14, U1-U15 OPEN dengan prioritas di masing-masing dokumen.
+5. **Tindak lanjut prioritas gabungan sebelum UAT L7:** M1+M2+M8 (UI/UX §9.3, ~1 jam) + keputusan F10 (gating export referensi) + F14 (gate export-test).
+
+---
+
+# DOKUMEN AUDIT ASLI (2026-06-09) — baseline, dipertahankan utuh
 
 ## 1. Ringkasan Eksekutif
 

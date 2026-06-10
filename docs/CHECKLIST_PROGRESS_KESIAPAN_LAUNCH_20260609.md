@@ -61,10 +61,8 @@ Lokasi backup eksternal:
 - [x] Paket Python terdampak lain dinaikkan ke versi perbaikan.
 - [x] Frontend critical vulnerabilities turun dari 4 menjadi 0.
 - [x] jsPDF, Vitest, coverage-v8, dan happy-dom dinaikkan dan lulus test/build.
-- [!] `xlsx@0.18.5` masih memiliki 1 advisory high dan tidak menyediakan fix di registry npm.
-- [~] Lima advisory moderate tersisa pada tooling/transitive dependency.
-
-Mitigasi sementara `xlsx`: hanya proses workbook internal/terpercaya. Penggantian library atau build resmi SheetJS yang telah diperbaiki perlu diputuskan sebelum public launch.
+- [x] `xlsx` dipatch ke `0.20.3` via tarball resmi SheetJS CDN (commit `4d1f4353`, 2026-06-10) — advisory high (Prototype Pollution + ReDoS) tertutup; `npm audit` → 0 critical, 0 high.
+- [~] Lima advisory moderate tersisa (`uuid<11.1.1` via `exceljs` + tooling transitive). `npm audit fix --force` akan downgrade `exceljs` ke 3.4.0 (breaking) — jangan dijalankan; defer sadar-risiko.
 
 ## L5-L8 - Production dan Release
 
@@ -88,7 +86,7 @@ Mitigasi sementara `xlsx`: hanya proses workbook internal/terpercaya. Penggantia
 | Migration drift | PASS |
 | Immutable container | Healthy, mounts `[]` |
 | Python dependency audit | 0 vulnerability |
-| npm dependency audit | 0 critical, 1 high, 5 moderate |
+| npm dependency audit | 0 critical, 0 high, 5 moderate (re-audit 2026-06-10, pasca patch `xlsx@0.20.3`) |
 
 ## Record Eksekusi
 
@@ -102,11 +100,22 @@ Mitigasi sementara `xlsx`: hanya proses workbook internal/terpercaya. Penggantia
 | L2/L3 | Cleanup | Vendor, arsip, dan 9 dead file keluar dari HEAD |
 | Quality | Test baseline | Permission test dan XSS governance guard diperbaiki sesuai kontrak |
 | Security | Dependency upgrade | Python audit bersih; npm critical menjadi nol |
+| Security | Patch `xlsx` 0.20.3 (2026-06-10) | Commit `4d1f4353`; npm audit 0 critical, 0 high |
+| Audit | Re-audit independen (2026-06-10 05:47 WITA) | HEAD `4d1f4353`; temuan baru F1-F8 dicatat di addendum `AUDIT_KESIAPAN_LAUNCH_20260609.md` |
+| Audit | Audit per-app/per-page (2026-06-10 06:20 WITA) | 6 app, ±150 endpoint dipetakan; auth/owner-scope konsisten; temuan F9-F13; gate: pytest 404 passed / vitest 233 passed |
+| Audit | Rincian per-halaman (2026-06-10 06:28 WITA) | 12 halaman detail_project + 6 referensi + 4 dashboard + pages/subscriptions/accounts dinilai satu-per-satu; temuan baru F14 (export-test ter-route); prioritas UAT browser ditetapkan |
+| Audit | Catatan arsitektur & workflow (2026-06-10 06:45 WITA) | Tidak ada restrukturisasi pemblokir launch; 4 utang struktural pasca-launch dicatat di `AUDIT_KESIAPAN_LAUNCH_20260609.md` |
+| Audit | Audit UI/UX + peta z-index (2026-06-10 06:50 WITA) | Dokumen baru `AUDIT_UI_UX_20260610.md`; 216 deklarasi z-index dipetakan, 5 skala bersaing, temuan U1-U10 (2 tinggi: toast tertutup modal); checklist visual UAT ditambahkan |
+| Security | Fix F9 expired-user payment (2026-06-10) | `accounts/middleware.py` exclude `/subscriptions/` + 2 regression test (subscriptions 23 passed) |
+| Security | Hardening F1/F2 compose prod (2026-06-10) | Bind loopback default db/web/flower, Flower `--basic-auth`, guard `:?` SECRET_KEY; `docker compose config` valid |
 
 ## Blocker Aktif
 
-1. Production domain/TLS/secret/network hardening belum diterapkan pada deployment nyata.
-2. Backup terjadwal dan restore drill belum dilakukan.
-3. Advisory high `xlsx` belum memiliki fix dan perlu keputusan mitigasi/penggantian.
-4. CI remote, UAT browser proyek nyata, dan Opaque ID sign-off belum selesai.
-5. Cleanup 19.901 file masih staged lokal dan belum menjadi checkpoint Git.
+*(diperbarui 2026-06-10 06:20 WITA — audit per-app/per-page selesai, lihat addendum di `AUDIT_KESIAPAN_LAUNCH_20260609.md`)*
+
+1. Production domain/TLS/secret/network hardening belum diterapkan pada deployment nyata (scaffolding Caddy + runbook siap).
+2. Backup terjadwal dan restore drill belum dilakukan (`scripts/restore_drill_db.sh` siap).
+3. UAT browser proyek nyata (semua halaman pada tabel per-page addendum + E2E Midtrans sandbox) dan Opaque ID sign-off belum selesai.
+4. F10: export database referensi hanya digate login — keputusan gating (Pro/permission) sebelum public launch.
+
+Blocker selesai sejak versi sebelumnya: advisory high `xlsx` (dipatch 0.20.3, `4d1f4353`); CI remote hijau (`fc8fdcba`); cleanup 19.901 file di-commit (`8483685e`); **F9 user expired tidak bisa bayar (FIXED + regression test, 2026-06-10)**; **F1/F2 hardening compose prod (bind loopback default, Flower basic-auth, guard SECRET_KEY — 2026-06-10)**.
