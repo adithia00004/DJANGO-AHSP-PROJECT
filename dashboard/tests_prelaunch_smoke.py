@@ -580,6 +580,11 @@ class PrelaunchFunctionalSmokeTests(TestCase):
         self.assertNotContains(response, 'id="bulkUnarchiveBtn"')
         self.assertContains(response, 'id="bulkDeleteBtn"')
         self.assertContains(response, 'id="deleteProjectModal"')
+        # Komentar template {# .. #} TIDAK boleh multi-baris — bila bocor,
+        # sintaksnya ter-render mentah ke halaman (regresi UAT 2026-06-11).
+        # (Catatan: string "U16" sendiri sah di komentar JS/CSS inline.)
+        self.assertNotContains(response, '{#')
+        self.assertNotContains(response, '#}')
 
     def test_bulk_archive_and_unarchive_owner_projects(self):
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))

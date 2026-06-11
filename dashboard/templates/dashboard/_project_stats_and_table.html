@@ -170,8 +170,7 @@
           <span id="selectedCount" class="badge bg-primary me-2">0</span>
           <span class="text-muted">project dipilih</span>
         </div>
-        {# U16 (UAT 2026-06-10): konsep tunggal "Hapus" — Archive/Unarchive dihapus dari UI
-           (backend tetap soft-delete; pemulihan via Django admin bila diperlukan). #}
+        {# U16: konsep tunggal "Hapus" — Archive/Unarchive dihapus dari UI (soft-delete; pemulihan via admin) #}
         <div class="btn-group btn-group-sm" role="group">
           <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn"
             title="Edit beberapa project sekaligus langsung di tabel">
@@ -284,8 +283,7 @@
               download>
               <i class="fas fa-download"></i>
             </a>
-            {# U16: satu modal konfirmasi reusable (#deleteProjectModal di bawah tabel),
-               bukan satu modal per baris. #}
+            {# U16: satu modal konfirmasi reusable, bukan satu modal per baris #}
             <button type="button" class="btn btn-sm btn-outline-danger js-delete-project" title="Hapus Project"
               aria-label="Hapus Project" data-project-name="{{ project.nama }}"
               data-delete-url="{% url 'dashboard:project_delete' project.pk %}">
@@ -430,8 +428,7 @@
           class="btn btn-sm btn-outline-info" title="Export Project (JSON)" aria-label="Export Project (JSON)" download>
           <i class="fas fa-download"></i>
         </a>
-        {# U16: modal reusable bersama; juga memperbaiki bug lama — tombol mobile
-           menarget #deleteModal-<pk> yang hanya ada di DOM desktop. #}
+        {# U16: modal reusable bersama; fix bug lama tombol mobile menarget modal desktop #}
         <button type="button" class="btn btn-sm btn-outline-danger js-delete-project" title="Hapus Project"
           aria-label="Hapus Project" data-project-name="{{ project.nama }}"
           data-delete-url="{% url 'dashboard:project_delete' project.pk %}">
