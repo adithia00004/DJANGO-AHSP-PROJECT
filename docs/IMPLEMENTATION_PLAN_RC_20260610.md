@@ -14,7 +14,7 @@
 | R1 | Penutupan temuan kode pra-UAT (F10/F11/F14, M7/M9/M12) | **DONE 2026-06-10** | Suite + guard hijau ✓; tidak ada temuan severity ≥ Sedang yang open di kode ✓ |
 | R2 | L5 — Deploy production nyata (domain/TLS/secrets) | TODO (scaffolding siap) | HTTPS aktif; `check --deploy` bersih; tanpa kredensial dev |
 | R3 | L6 — Data safety (backup terjadwal + restore drill) | **DONE lingkup lokal 2026-06-10** (drill PASS + B2 closed); sisa = tugas VPS (PVD-07/09) | Restore drill PASS ✓; satu jalur DB ✓ |
-| R4 | L7 — UAT browser + Midtrans sandbox + Opaque sign-off | TODO | UAT sign-off tertulis di SSOT |
+| R4 | L7 — UAT browser + Midtrans sandbox + Opaque sign-off | **IN PROGRESS** — Journey B1-B2 LULUS (temuan U16-U19 fixed same-day); Gate D window hari-1 PASS (2026-06-11); sisa: B3-B8, Journey A/C/D/E/F, role tracks | UAT sign-off tertulis di SSOT |
 | R5 | L8 — RC build + GO/NO-GO | TODO | Keputusan GO terdokumentasi |
 | R6 | Pasca-launch (tidak memblokir) | BACKLOG | — |
 

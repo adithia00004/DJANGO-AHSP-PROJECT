@@ -255,11 +255,11 @@ Empat jalur ringkas untuk eksekusi & tracking per akun. Referensi `(→X#)` menu
 | Journey | Status | Temuan (langkah → apa yang terjadi) |
 |---|---|---|
 | A Pengunjung→Akun | [ ] | |
-| B Proyek: input→hasil | [~] B1 selesai | **U16** (B1.4-edit): redundansi Hapus/Archive/Unarchive + aksi ganda bulk bar vs kolom Aksi + console noise → **FIXED hari yang sama** (konsep tunggal Hapus, 1 modal reusable, label Edit Massal, console bersih — detail di `AUDIT_UI_UX_20260610.md` §9.x). **Ulangi cek B1 setelah refresh halaman** |
+| B Proyek: input→hasil | [~] B1-B2 LULUS | **B1**: U16 (redundansi Hapus/Archive + console noise) → FIXED; U17 (aria-hidden modal) → FIXED; U18 (formula xlsx mass-create → kini dibaca sebagai nilai) → FIXED. Export project: aman. **B2.1-B2.5 semua LULUS** (drag-drop, select2, template library export/import). Keputusan B2.5: Template Library **private-by-default + kurasi admin** (opsi A) → diimplementasikan + **U19 stored-XSS antar-user ditemukan & FIXED** saat implementasi. Lanjut B3 |
 | C Upgrade & bayar | [ ] | |
 | D Gating trial | [ ] | |
 | E Admin/referensi | [ ] | |
 | F Tema/ketahanan | [ ] | |
-| G Opaque Gate D | [ ] | |
+| G Opaque Gate D | [~] window berjalan | G2 hari-1 (log `20260611_170240`): STATUS_CHECK=**PASS** — 83 base + 10 computed param, 0 non-opaque; ulangi harian s/d hari-7 |
 
 **Sign-off UAT:** nama: ____ · tanggal: ____ · keputusan: LULUS / LULUS bersyarat / GAGAL
