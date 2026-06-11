@@ -29,7 +29,10 @@ class ExportManager {
     this.baseUrl = `/detail_project/api/project/${projectId}/export/${pageType}/`;
 
     // Modal loading support - use global modal by default (SSOT)
-    this.modalId = options.modalId || ExportManager.GLOBAL_MODAL_ID;
+    this.modalId = Object.prototype.hasOwnProperty.call(options, 'modalId')
+      ? options.modalId
+      : ExportManager.GLOBAL_MODAL_ID;
+    this.buttonIds = options.buttonIds || {};
     this.modalInstance = null;
     this.modalLabelEl = null;
     this.modalTextEl = null;
@@ -46,6 +49,7 @@ class ExportManager {
    * @private
    */
   _initModal() {
+    if (!this.modalId) return;
     const modalEl = document.getElementById(this.modalId);
     if (!modalEl) {
       console.warn(`[ExportManager] Modal element #${this.modalId} not found`);
@@ -136,7 +140,10 @@ class ExportManager {
       }
 
       console.log(`[ExportManager] Fetching from server...`);
-      const response = await fetch(url, fetchOptions);
+      const requestTimeoutMs = Number.isFinite(options.requestTimeoutMs)
+        ? Math.max(3000, options.requestTimeoutMs)
+        : 60000;
+      const response = await this._fetchWithTimeout(url, fetchOptions, requestTimeoutMs);
       console.log(`[ExportManager] Server response received: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
@@ -146,7 +153,7 @@ class ExportManager {
         if (contentType && contentType.includes('application/json')) {
           try {
             const error = await response.json();
-            errorMsg = error.error || error.detail || errorMsg;
+            errorMsg = error.error || error.detail || error.message || error.user_message || errorMsg;
           } catch (e) {
             console.warn('[ExportManager] Could not parse error JSON');
           }
@@ -183,6 +190,9 @@ class ExportManager {
    */
   async exportAsAsync(format, options = {}) {
     const asyncUrl = `/detail_project/api/project/${this.projectId}/export-async/`;
+    const startTimeoutMs = Number.isFinite(options.asyncStartTimeoutMs)
+      ? Math.max(3000, options.asyncStartTimeoutMs)
+      : 15000;
 
     console.log(`[ExportManager] Starting ASYNC ${format.toUpperCase()} export...`);
     console.log(`[ExportManager] Export type: ${this.pageType}`);
@@ -192,7 +202,7 @@ class ExportManager {
       this._updateModalProgress('Memulai proses export...', 0);
 
       // 1. Start async export task
-      const startResponse = await fetch(asyncUrl, {
+      const startResponse = await this._fetchWithTimeout(asyncUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -205,11 +215,23 @@ class ExportManager {
           format: format,
           options: options
         })
-      });
+      }, startTimeoutMs);
 
       if (!startResponse.ok) {
-        const error = await startResponse.json();
-        throw new Error(error.error || `HTTP ${startResponse.status}`);
+        let errorMsg = `HTTP ${startResponse.status}: ${startResponse.statusText}`;
+        try {
+          const contentType = startResponse.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const error = await startResponse.json();
+            errorMsg = error.error || error.detail || errorMsg;
+          } else {
+            const txt = await startResponse.text();
+            if (txt && txt.trim()) errorMsg = txt.slice(0, 240);
+          }
+        } catch (_) {
+          // ignore parse errors, keep generic message
+        }
+        throw new Error(errorMsg);
       }
 
       const { task_id, status_url } = await startResponse.json();
@@ -224,13 +246,19 @@ class ExportManager {
         this._updateModalProgress('Download file...', 95);
         await this._downloadAsyncResult(task_id, format);
         this._showSuccess(format);
+        return true;
       } else {
         throw new Error(result.error || 'Export failed');
       }
 
     } catch (error) {
       console.error(`[ExportManager] ASYNC ${format.toUpperCase()} export failed:`, error);
-      this._showError(format, error.message);
+      if (options && options.allowSyncFallback) {
+        this._toast(`Async ${format.toUpperCase()} tidak tersedia, mencoba mode langsung...`, 'info');
+      } else {
+        this._showError(format, error.message);
+      }
+      return false;
     } finally {
       this._hideLoading(format);
     }
@@ -245,10 +273,10 @@ class ExportManager {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const response = await fetch(statusUrl, {
+        const response = await this._fetchWithTimeout(statusUrl, {
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
           credentials: 'same-origin'
-        });
+        }, 10000);
 
         if (!response.ok) {
           throw new Error(`Status check failed: HTTP ${response.status}`);
@@ -293,10 +321,10 @@ class ExportManager {
   async _downloadAsyncResult(taskId, format) {
     const downloadUrl = `/detail_project/api/export-download/async/${taskId}/`;
 
-    const response = await fetch(downloadUrl, {
+    const response = await this._fetchWithTimeout(downloadUrl, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       credentials: 'same-origin'
-    });
+    }, 15000);
 
     if (!response.ok) {
       const error = await response.json();
@@ -630,6 +658,25 @@ class ExportManager {
   }
 
   /**
+   * Fetch wrapper with hard timeout to avoid infinite loading UI.
+   * @private
+   */
+  async _fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error(`Request timeout setelah ${Math.round(timeoutMs / 1000)} detik`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
    * Show toast notification
    * @private
    */
@@ -678,6 +725,10 @@ class ExportManager {
    * @private
    */
   _getButton(format) {
+    const configuredId = this.buttonIds[format];
+    if (configuredId) {
+      return document.getElementById(configuredId);
+    }
     const map = {
       csv: 'btn-export-csv',
       pdf: 'btn-export-pdf',

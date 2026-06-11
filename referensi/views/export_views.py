@@ -22,7 +22,12 @@ from django.views.decorators.http import require_http_methods
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect
+
 from referensi.models import AHSPReferensi
+from referensi.permissions import has_referensi_portal_access
 from referensi.services.export_service import excel_export_service
 from referensi.services.pdf_export_service import pdf_export_service
 from referensi.services.ahsp_repository import ahsp_repository
@@ -30,7 +35,24 @@ from referensi.services.ahsp_repository import ahsp_repository
 logger = logging.getLogger(__name__)
 
 
-class ExportSingleJobView(LoginRequiredMixin, View):
+class ReferensiPortalRequiredMixin(LoginRequiredMixin):
+    """
+    F10 (launch audit, keputusan pemilik 2026-06-10): export database
+    referensi adalah aset produk — hanya untuk pemegang akses portal
+    (admin/staff dengan permission referensi), bukan semua user login.
+    Pola guard sama dengan halaman portal (in-body redirect + warning).
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated and not has_referensi_portal_access(request.user):
+            messages.warning(
+                request, "Export database referensi hanya tersedia untuk admin portal."
+            )
+            return redirect("/")
+        return super().dispatch(request, *args, **kwargs)
+
+
+class ExportSingleJobView(ReferensiPortalRequiredMixin, View):
     """Export single AHSP job."""
 
     def get(self, request: HttpRequest, pk: int, format: str = 'excel'):
@@ -87,7 +109,7 @@ class ExportSingleJobView(LoginRequiredMixin, View):
             return JsonResponse({'error': str(e)}, status=500)
 
 
-class ExportMultipleJobsView(LoginRequiredMixin, View):
+class ExportMultipleJobsView(ReferensiPortalRequiredMixin, View):
     """Export multiple AHSP jobs."""
 
     def post(self, request: HttpRequest, format: str = 'excel'):
@@ -165,7 +187,7 @@ class ExportMultipleJobsView(LoginRequiredMixin, View):
             return JsonResponse({'error': str(e)}, status=500)
 
 
-class ExportSearchResultsView(LoginRequiredMixin, View):
+class ExportSearchResultsView(ReferensiPortalRequiredMixin, View):
     """Export search results."""
 
     def get(self, request: HttpRequest, format: str = 'excel'):
@@ -253,7 +275,7 @@ class ExportSearchResultsView(LoginRequiredMixin, View):
             return JsonResponse({'error': str(e)}, status=500)
 
 
-class ExportAsyncView(LoginRequiredMixin, View):
+class ExportAsyncView(ReferensiPortalRequiredMixin, View):
     """Queue async export for large datasets."""
 
     def post(self, request: HttpRequest):
@@ -319,6 +341,7 @@ class ExportAsyncView(LoginRequiredMixin, View):
 
 
 # Export task status check
+@login_required
 @require_http_methods(["GET"])
 def export_task_status(request: HttpRequest, task_id: str):
     """
@@ -326,7 +349,13 @@ def export_task_status(request: HttpRequest, task_id: str):
 
     Returns:
         JSON with task status and download URL when ready
+
+    F10: sebelumnya endpoint ini tanpa auth sama sekali; kini login +
+    akses portal (selaras view export lain).
     """
+    if not has_referensi_portal_access(request.user):
+        return JsonResponse({'error': 'Akses portal referensi diperlukan.'}, status=403)
+
     from celery.result import AsyncResult
 
     result = AsyncResult(task_id)

@@ -15,6 +15,42 @@
   let modalInstance = null;
   let pendingResolve = null;
 
+  function isVolumePageNoBackdropMode() {
+    return String(document.body?.dataset?.page || '') === 'volume_pekerjaan';
+  }
+
+  /** Remove orphan backdrops when more exist than open modals */
+  function cleanupOrphanBackdrops() {
+    const doCleanup = () => {
+      const openModals = document.querySelectorAll('.modal.show');
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      const noBackdrop = isVolumePageNoBackdropMode();
+      if (noBackdrop && backdrops.length) {
+        backdrops.forEach((bd) => bd.remove());
+      }
+      const expected = openModals.length;
+      if (!noBackdrop && backdrops.length > expected) {
+        for (let i = backdrops.length - 1; i >= expected; i--) {
+          backdrops[i].remove();
+        }
+      }
+      if (expected === 0) {
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+      }
+    };
+    // Run at multiple intervals to catch Bootstrap's async backdrop removal
+    setTimeout(doCleanup, 50);
+    setTimeout(doCleanup, 300);
+    setTimeout(doCleanup, 600);
+  }
+
+  // Global listener: clean up orphan backdrops whenever ANY modal closes
+  document.addEventListener('hidden.bs.modal', () => {
+    cleanupOrphanBackdrops();
+  });
+
   function ensureModal() {
     let modalEl = document.getElementById(MODAL_ID);
     if (modalEl) return modalEl;
@@ -130,13 +166,38 @@
             pendingResolve(confirmed || resolveWhenHidden);
             pendingResolve = null;
           }
+          // Clean up orphan backdrops from stacked modal scenario
+          cleanupOrphanBackdrops();
         },
         { once: true },
       );
 
       if (window.bootstrap) {
-        modalInstance = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+        const noBackdrop = isVolumePageNoBackdropMode();
+        modalEl.setAttribute('data-bs-backdrop', noBackdrop ? 'false' : 'true');
+        modalInstance = window.bootstrap.Modal.getOrCreateInstance(modalEl, {
+          backdrop: noBackdrop ? false : true,
+        });
+        if (modalInstance?._config) {
+          modalInstance._config.backdrop = noBackdrop ? false : true;
+        }
+        // Boost z-index if another modal is already open (e.g. formula editor)
+        const otherOpen = document.querySelector('.modal.show:not(#' + MODAL_ID + ')');
+        if (otherOpen) {
+          const otherZ = parseInt(getComputedStyle(otherOpen).zIndex, 10) || 1050;
+          modalEl.style.zIndex = String(otherZ + 5);
+          // Boost backdrop after it's added to DOM
+          modalEl.addEventListener('shown.bs.modal', () => {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length > 0) {
+              backdrops[backdrops.length - 1].style.zIndex = String(otherZ + 4);
+            }
+          }, { once: true });
+        }
         modalInstance.show();
+        if (noBackdrop) {
+          setTimeout(cleanupOrphanBackdrops, 0);
+        }
       } else {
         if (pendingResolve) {
           pendingResolve(false);
@@ -164,6 +225,17 @@
       resolveOnClose: true,
     });
   }
+
+  // U17 (UAT 2026-06-10): saat modal Bootstrap mana pun mulai ditutup dengan
+  // fokus masih di dalamnya, Bootstrap memberi aria-hidden pada elemen yang
+  // memuat fokus -> browser memunculkan warning "Blocked aria-hidden".
+  // Lepaskan fokus lebih dulu; berlaku global untuk semua modal.
+  document.addEventListener('hide.bs.modal', function (event) {
+    const active = document.activeElement;
+    if (active && event.target.contains(active) && typeof active.blur === 'function') {
+      active.blur();
+    }
+  });
 
   DP.core.modal = { show, confirm, alert };
   DP.modal = DP.core.modal;

@@ -11,7 +11,7 @@ class DecimalSpec:
 
 # Standar proyek (sumber kebenaran)
 DECIMAL_SPEC = {
-    "KOEF":  DecimalSpec("KOEF", 6),  # koefisien detail AHSP
+    "KOEF":  DecimalSpec("KOEF", 12),  # koefisien detail AHSP
     "VOL":   DecimalSpec("VOL", 3),   # volume pekerjaan
     "HARGA": DecimalSpec("HARGA", 2), # harga satuan (Rp)
 }

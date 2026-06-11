@@ -82,6 +82,7 @@ class JadwalKegiatanApp {
     this._costViewAutoActivated = false;
     this._ganttScrollSyncHandlers = null;
     this._stateManagerListener = null;
+    this._syncRefreshHandler = null;
     this._suppressStateManagerEvent = false;
     this._currencyFormatter = null;
 
@@ -192,6 +193,7 @@ class JadwalKegiatanApp {
 
       // Expose to window for backwards compatibility
       window.JadwalKegiatanApp = this;
+      this._bindSyncRefresh();
     } catch (error) {
       console.error('❌ Failed to initialize Jadwal Kegiatan App:', error);
       throw error;
@@ -2992,6 +2994,13 @@ class JadwalKegiatanApp {
     console.log('[JadwalKegiatanApp] Save completed successfully');
     this.state.isDirty = false;
     this._clearSaveErrorRows();
+    window.dispatchEvent(new CustomEvent('dp:sync-led-ack', {
+      detail: {
+        projectId: Number(this.state.projectId),
+        jadwal: true,
+        payload: result,
+      },
+    }));
 
     // Update status bar if exists
     const progressMode = (this.state.progressMode || 'planned').toLowerCase();
@@ -3037,6 +3046,19 @@ class JadwalKegiatanApp {
 
     await this._loadInitialData({ forceReload: true });
     this.showToast('Data berhasil di-refresh', 'success');
+  }
+
+  _bindSyncRefresh() {
+    if (this._syncRefreshHandler) return;
+    this._syncRefreshHandler = (event) => {
+      if (event?.detail?.scope !== 'jadwal') return;
+      event.preventDefault();
+      this.refresh().catch((error) => {
+        console.error('[JadwalKegiatanApp] Sync refresh failed:', error);
+        this.showToast('Gagal memuat data terbaru', 'danger');
+      });
+    };
+    window.addEventListener('dp:sync-refresh-request', this._syncRefreshHandler);
   }
 
   /**
@@ -4870,6 +4892,10 @@ class JadwalKegiatanApp {
    */
   destroy() {
     this._unbindStateManagerEvents();
+    if (this._syncRefreshHandler) {
+      window.removeEventListener('dp:sync-refresh-request', this._syncRefreshHandler);
+      this._syncRefreshHandler = null;
+    }
 
     if (this.gridManager) {
       this.gridManager.destroy();

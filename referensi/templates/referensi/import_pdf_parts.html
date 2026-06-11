@@ -47,8 +47,12 @@
 
                 <div class="separator my-5"></div>
 
-                <div class="d-flex justify-content-end">
-                    <a href="{% url 'referensi:import_options' %}" class="btn btn-secondary me-3">Kembali</a>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <a href="{% url 'referensi:import_options' %}" class="btn btn-secondary">Kembali</a>
+                    <a href="{% url 'referensi:import_pdf_download_all' file_id %}"
+                        class="btn btn-success download-all-btn">
+                        <i class="fas fa-file-archive me-1"></i> Download Semua (ZIP)
+                    </a>
                 </div>
             </div>
         </div>
@@ -85,49 +89,63 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const downloadBtns = document.querySelectorAll('.download-part-btn');
         const overlay = document.getElementById('loadingOverlay');
+        const overlayMsg = overlay.querySelector('h4');
+        const defaultMsg = overlayMsg ? overlayMsg.textContent : 'Sedang Mengkonversi PDF...';
 
-        downloadBtns.forEach(btn => {
-            btn.addEventListener('click', async function (e) {
+        async function downloadAsBlob(url, filename, loadingMsg) {
+            // Show blocking overlay
+            if (overlayMsg) overlayMsg.textContent = loadingMsg || defaultMsg;
+            overlay.classList.remove('d-none');
+
+            try {
+                const response = await fetch(url);
+
+                if (!response.ok) throw new Error('Network response was not ok');
+
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+
+                // Trigger download
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                window.URL.revokeObjectURL(downloadUrl);
+            } catch (error) {
+                alert('Gagal mendownload file: ' + error.message);
+            } finally {
+                // Hide overlay & restore message
+                overlay.classList.add('d-none');
+                if (overlayMsg) overlayMsg.textContent = defaultMsg;
+            }
+        }
+
+        // Per-part downloads
+        document.querySelectorAll('.download-part-btn').forEach(btn => {
+            btn.addEventListener('click', function (e) {
                 e.preventDefault();
-
-                // Show blocking overlay
-                overlay.classList.remove('d-none');
-
-                const url = this.getAttribute('href');
                 const part = this.getAttribute('data-part');
-                const filename = `AHSP_Part_${part}.xlsx`; // Idealnya dari header content-disposition
-
-                try {
-                    const response = await fetch(url);
-
-                    if (!response.ok) throw new Error('Network response was not ok');
-
-                    const blob = await response.blob();
-                    const downloadUrl = window.URL.createObjectURL(blob);
-
-                    // Trigger download
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = downloadUrl;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-
-                    window.URL.revokeObjectURL(downloadUrl);
-
-                    // Show success feedback
-                    // (Optional: use toast if desired, but file download is obvious enough)
-
-                } catch (error) {
-                    alert('Gagal mendownload file: ' + error.message);
-                } finally {
-                    // Hide overlay
-                    overlay.classList.add('d-none');
-                }
+                downloadAsBlob(this.getAttribute('href'), `AHSP_Part_${part}.xlsx`);
             });
         });
+
+        // Batch download (all parts as a single ZIP)
+        const allBtn = document.querySelector('.download-all-btn');
+        if (allBtn) {
+            allBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                downloadAsBlob(
+                    this.getAttribute('href'),
+                    'AHSP_Batch.zip',
+                    'Mengkonversi & membungkus semua bagian (ZIP)...'
+                );
+            });
+        }
     });
 </script>
 {% endblock %}

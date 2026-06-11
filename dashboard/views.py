@@ -13,13 +13,46 @@ from django.utils.safestring import mark_safe
 from datetime import date, timedelta
 import json
 import decimal
+import logging
 
 from .forms import ProjectForm, ProjectFilterForm, UploadProjectForm
 from .models import Project
+from detail_project.exceptions import DeepCopyBusinessError, DeepCopyValidationError
 from detail_project.progress_utils import reset_project_progress
+from detail_project.services import DeepCopyService
 from detail_project.models import PekerjaanProgressWeekly, Pekerjaan
 
 import openpyxl
+
+logger = logging.getLogger(__name__)
+
+
+UPLOAD_REQUIRED_HEADERS = [
+    "nama",
+    "tanggal_mulai",
+    "sumber_dana",
+    "lokasi_project",
+    "nama_client",
+    "anggaran_owner",
+]
+UPLOAD_OPTIONAL_HEADERS = [
+    "tanggal_selesai",
+    "durasi_hari",
+    "ket_project1",
+    "ket_project2",
+    "jabatan_client",
+    "instansi_client",
+    "nama_kontraktor",
+    "instansi_kontraktor",
+    "nama_konsultan_perencana",
+    "instansi_konsultan_perencana",
+    "nama_konsultan_pengawas",
+    "instansi_konsultan_pengawas",
+    "deskripsi",
+    "kategori",
+]
+UPLOAD_ALL_HEADERS = UPLOAD_REQUIRED_HEADERS + UPLOAD_OPTIONAL_HEADERS
+MAX_UPLOAD_ROWS = 2000
 
 
 # Custom JSON Encoder for Decimal types
@@ -37,6 +70,20 @@ def _get_safe_next(request, default_name='dashboard:dashboard'):
     # fallback ke dashboard
     from django.urls import reverse
     return reverse(default_name)
+
+
+def _generate_copy_name(owner, original_name):
+    base_name = (original_name or "").strip() or "Project"
+    default_candidate = f"{base_name} (Copy)"
+    if not Project.objects.filter(owner=owner, nama=default_candidate).exists():
+        return default_candidate
+
+    sequence = 2
+    while True:
+        candidate = f"{base_name} (Copy {sequence})"
+        if not Project.objects.filter(owner=owner, nama=candidate).exists():
+            return candidate
+        sequence += 1
 
 @login_required
 def dashboard_view(request):
@@ -503,13 +550,37 @@ def dashboard_view(request):
 @login_required
 def project_detail(request, pk):
     project = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
-    return render(request, 'dashboard/project_detail.html', {'project': project})
+    today = date.today()
+    deadline_threshold = today + timedelta(days=30)
+
+    timeline_status = None
+    if project.tanggal_mulai and project.tanggal_selesai:
+        if (
+            project.tanggal_mulai <= today
+            and project.tanggal_selesai < today
+        ):
+            timeline_status = 'selesai'
+        elif (
+            project.tanggal_mulai <= today
+            and project.tanggal_selesai <= deadline_threshold
+        ):
+            timeline_status = 'deadline'
+        elif project.tanggal_mulai > today:
+            timeline_status = 'belum_mulai'
+        else:
+            timeline_status = 'berjalan'
+
+    return render(request, 'dashboard/project_detail.html', {
+        'project': project,
+        'timeline_status': timeline_status,
+    })
 
 
 @login_required
 def project_edit(request, pk):
     project = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
     original_start = project.tanggal_mulai
+    next_url = _get_safe_next(request)
     if request.method == 'POST':
         form = ProjectForm(request.POST, instance=project)
         if form.is_valid():
@@ -533,47 +604,99 @@ def project_edit(request, pk):
         'form': form,
         'title': 'Edit Project',
         'project': project,
+        'next_url': next_url,
     })
 
 
 @login_required
 def project_delete(request, pk):
     project = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
+    next_url = _get_safe_next(request)
     if request.method == 'POST':
         project.is_active = False  # Soft delete
         project.save()
         messages.success(request, 'Project berhasil dihapus.')
         return redirect(_get_safe_next(request))
-    return render(request, 'dashboard/project_confirm_delete.html', {'project': project})
+    return render(request, 'dashboard/project_confirm_delete.html', {
+        'project': project,
+        'next_url': next_url,
+    })
 
 
 @login_required
 def project_duplicate(request, pk):
     original = get_object_or_404(Project, pk=pk, owner=request.user, is_active=True)
+    next_url = _get_safe_next(request)
 
     if request.method == 'POST':
         form = ProjectForm(request.POST)
         if form.is_valid():
-            duplicated = form.save(commit=False)
-            duplicated.pk = None
-            duplicated.owner = request.user
-            duplicated.save()
-            messages.success(request, 'Proyek berhasil diduplikasi dan disimpan.')
-            return redirect(_get_safe_next(request))
+            try:
+                service = DeepCopyService(original)
+                duplicated = service.copy(
+                    new_owner=request.user,
+                    new_name=form.cleaned_data['nama'],
+                    new_tanggal_mulai=form.cleaned_data.get('tanggal_mulai'),
+                    copy_jadwal=True,
+                )
+
+                # Keep this legacy form behavior: allow editing project metadata while duplicating.
+                editable_fields = [
+                    'tanggal_mulai',
+                    'tanggal_selesai',
+                    'durasi_hari',
+                    'sumber_dana',
+                    'lokasi_project',
+                    'nama_client',
+                    'anggaran_owner',
+                    'ket_project1',
+                    'ket_project2',
+                    'jabatan_client',
+                    'instansi_client',
+                    'nama_kontraktor',
+                    'instansi_kontraktor',
+                    'nama_konsultan_perencana',
+                    'instansi_konsultan_perencana',
+                    'nama_konsultan_pengawas',
+                    'instansi_konsultan_pengawas',
+                    'deskripsi',
+                    'kategori',
+                ]
+                for field_name in editable_fields:
+                    if field_name in form.cleaned_data:
+                        setattr(duplicated, field_name, form.cleaned_data.get(field_name))
+
+                # Preserve system flags not present in ProjectForm.
+                duplicated.allow_bundle_soft_errors = original.allow_bundle_soft_errors
+                duplicated.week_start_day = original.week_start_day
+                duplicated.week_end_day = original.week_end_day
+                duplicated.save()
+
+                messages.success(request, 'Proyek berhasil diduplikasi dan disimpan.')
+                return redirect(_get_safe_next(request))
+            except DeepCopyBusinessError as exc:
+                form.add_error('nama', exc.user_message)
+                messages.error(request, 'Gagal menyimpan duplikat. Silakan gunakan nama proyek lain.')
+            except DeepCopyValidationError as exc:
+                form.add_error(None, exc.user_message)
+                messages.error(request, 'Gagal menyimpan duplikat. Silakan periksa kembali data form.')
+            except Exception:
+                form.add_error(None, 'Terjadi kesalahan saat melakukan deep copy project.')
+                messages.error(request, 'Gagal menyimpan duplikat. Silakan coba lagi.')
         else:
             messages.error(request, 'Gagal menyimpan duplikat. Silakan periksa kembali.')
     else:
-        initial_data = {
-            field.name: getattr(original, field.name)
-            for field in original._meta.fields
-            if field.name != 'id'
-        }
-        initial_data['nama'] = f"{original.nama} (Copy)"
+        initial_data = {}
+        for field_name in ProjectForm().fields.keys():
+            if hasattr(original, field_name):
+                initial_data[field_name] = getattr(original, field_name)
+        initial_data['nama'] = _generate_copy_name(request.user, original.nama)
         form = ProjectForm(initial=initial_data)
 
     return render(request, 'dashboard/project_confirm_duplicate.html', {
         'form': form,
-        'original_project': original
+        'original_project': original,
+        'next_url': next_url,
     })
 
 
@@ -588,54 +711,92 @@ def project_upload_view(request):
         if form.is_valid():
             try:
                 file = request.FILES['file']
+                # UAT 2026-06-10: data_only=True — sel berformula dibaca sebagai
+                # NILAI hasil hitung yang ter-cache di file (number/teks), bukan
+                # string formula. Formula tanpa nilai cache menjadi kosong dan
+                # tertangkap validasi field seperti sel kosong biasa.
                 wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
-                # Batasi ukuran untuk mencegah beban berlebih
-                MAX_ROWS = 2000  # data saja (tanpa header)
-                if (ws.max_row - 1) > MAX_ROWS:
-                    messages.error(request, f"Baris data melebihi batas {MAX_ROWS}.")
+
+                # Batasi jumlah data untuk mencegah beban berlebih
+                if (ws.max_row - 1) > MAX_UPLOAD_ROWS:
+                    messages.error(request, f"Baris data melebihi batas {MAX_UPLOAD_ROWS}.")
                     context["upload_form"] = form
                     return render(request, "dashboard/project_upload.html", context)
 
                 raw_headers = [str(c.value).strip() if c.value else "" for c in ws[1]]
                 lower_headers = [h.lower() for h in raw_headers]
-
-                expected = [
-                    "nama","tanggal_mulai","sumber_dana","lokasi_project","nama_client","anggaran_owner",
-                    "tanggal_selesai","durasi_hari",
-                    "ket_project1","ket_project2","jabatan_client","instansi_client",
-                    "nama_kontraktor","instansi_kontraktor",
-                    "nama_konsultan_perencana","instansi_konsultan_perencana",
-                    "nama_konsultan_pengawas","instansi_konsultan_pengawas",
-                    "deskripsi","kategori",
-                ]
-
-                missing = [h for h in expected if h not in lower_headers]
-                if missing:
-                    messages.error(request, "Header Excel tidak sesuai. Kolom belum ada: " + ", ".join(missing))
+                missing_required = [h for h in UPLOAD_REQUIRED_HEADERS if h not in lower_headers]
+                if missing_required:
+                    messages.error(
+                        request,
+                        "Header Excel tidak sesuai. Kolom wajib belum ada: " + ", ".join(missing_required),
+                    )
                     context["upload_form"] = form
                     return render(request, "dashboard/project_upload.html", context)
 
                 idx = {h.lower(): i for i, h in enumerate(raw_headers)}
+                reserved_names = {
+                    (name or "").strip().lower()
+                    for name in Project.objects.filter(owner=request.user).values_list("nama", flat=True)
+                    if name
+                }
 
                 for rownum, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                  data = {h: (row[idx[h]] if idx.get(h) is not None and idx[h] < len(row) else None) for h in expected}
-                  if not any([data.get("nama"), data.get("lokasi_project"), data.get("sumber_dana")]):
-                      continue
+                    data = {}
+                    for field_name in UPLOAD_ALL_HEADERS:
+                        col_index = idx.get(field_name)
+                        value = None
+                        if col_index is not None and col_index < len(row):
+                            value = row[col_index]
+                            if isinstance(value, str):
+                                value = value.strip()
+                        data[field_name] = value
 
-                  f = ProjectForm(data=data)
-                  if f.is_valid():
-                      obj = f.save(commit=False)
-                      obj.owner = request.user
-                      to_create.append(obj)
-                  else:
-                      error_rows.append((rownum, dict(f.errors)))
-                
+                    # Skip baris benar-benar kosong
+                    if all(data.get(h) in (None, "") for h in UPLOAD_ALL_HEADERS):
+                        continue
+
+                    # Guard injection: dengan data_only=True string formula tidak
+                    # pernah terbaca dari sel formula; yang tersisa hanya TEKS
+                    # literal berawalan "=" (berbahaya bila di-reexport ke Excel).
+                    suspicious = [
+                        field_name
+                        for field_name, value in data.items()
+                        if isinstance(value, str) and value.lstrip().startswith("=")
+                    ]
+                    if suspicious:
+                        error_rows.append(
+                            (rownum, {"__all__": [
+                                f"Teks berawalan '=' tidak diizinkan pada kolom: {', '.join(suspicious)}"
+                            ]})
+                        )
+                        continue
+
+                    f = ProjectForm(data=data)
+                    if f.is_valid():
+                        candidate_name = (f.cleaned_data.get("nama") or "").strip().lower()
+                        if candidate_name in reserved_names:
+                            error_rows.append((rownum, {"nama": ["Nama project sudah ada. Gunakan nama lain."]}))
+                            continue
+                        reserved_names.add(candidate_name)
+
+                        obj = f.save(commit=False)
+                        obj.owner = request.user
+                        to_create.append(obj)
+                    else:
+                        error_rows.append((rownum, dict(f.errors)))
+
                 if to_create:
                     with transaction.atomic():
                         for obj in to_create:
                             obj.save()
                     messages.success(request, f"{len(to_create)} proyek berhasil diupload.")
+                    if error_rows:
+                        messages.warning(
+                            request,
+                            f"{len(error_rows)} baris dilewati karena tidak valid. Silakan cek file dan upload ulang bila perlu.",
+                        )
                     return redirect('dashboard:dashboard')
                 else:
                     if error_rows:
@@ -644,7 +805,11 @@ def project_upload_view(request):
                         messages.info(request, "File tidak berisi data yang dapat diimport.")
 
             except Exception as e:
-                messages.error(request, f"Gagal membaca file: {e}")
+                logger.exception("Failed to parse upload Excel", extra={"user_id": request.user.id, "error": str(e)})
+                messages.error(
+                    request,
+                    "Gagal membaca file Excel. Pastikan file valid dan sesuai template.",
+                )
 
         context['upload_form'] = form
 

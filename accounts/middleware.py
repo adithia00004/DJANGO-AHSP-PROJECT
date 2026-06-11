@@ -35,6 +35,13 @@ class SubscriptionMiddleware:
         r'^/media/',
         r'^/$',  # Landing page
         r'^/pricing/',
+        # F9: the renewal flow must stay reachable for EXPIRED users —
+        # blocking POST /subscriptions/payment/create/ would make renewal
+        # impossible. Scoped to /payment/ only (review 2026-06-10): a blanket
+        # ^/subscriptions/ would silently exempt any future write endpoint
+        # from entitlement checks. Webhook is anonymous (middleware already
+        # skips unauthenticated requests); checkout/pricing are GET-only.
+        r'^/subscriptions/payment/',
     ]
     
     WRITE_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}

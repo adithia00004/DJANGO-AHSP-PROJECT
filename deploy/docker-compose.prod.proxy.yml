@@ -1,0 +1,37 @@
+# Overlay: TLS reverse proxy (Caddy) in front of the web service. Auto Let's Encrypt.
+#
+# Usage (from repo root):
+#   DOMAIN=ahsp.yourdomain.id \
+#   docker compose -p ahsp \
+#     -f docker-compose.prod.yml \
+#     -f deploy/docker-compose.prod.proxy.yml up -d
+#
+# IMPORTANT hardening (L5), do these in docker-compose.prod.yml before exposing:
+#   - REMOVE host port publishing for `web` (8000), `db` (5432), and `redis`
+#     (6379). Only Caddy (80/443) should be reachable from the network.
+#   - Set DJANGO_ENV=production and real secrets via .env.production
+#     (see .env.production.example). production.py refuses placeholder values.
+#   - Do NOT create the dev admin/admin (entrypoint only does this when
+#     DJANGO_ENV=development).
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: ahsp_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN to your real public hostname}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    networks:
+      - ahsp_network
+
+volumes:
+  caddy_data:
+  caddy_config:

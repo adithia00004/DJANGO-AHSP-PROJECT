@@ -15,7 +15,10 @@ export default defineConfig({
   // Build configuration
   build: {
     // Output directory (Django static files)
-    outDir: './detail_project/static/detail_project/dist',
+    outDir: path.resolve(
+      __dirname,
+      'detail_project/static/detail_project/dist'
+    ),
 
     // Generate manifest for Django integration
     manifest: true,

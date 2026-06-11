@@ -7,6 +7,10 @@
 {# Set data-page di body #}
 {% block body_attrs %}data-page="rekap_rab"{% endblock %}
 
+{% block dp_topbar_extra %}
+{% include "detail_project/_sync_led.html" with scope="rekap_rab" watch="pekerjaan,volume,ahsp,harga" change_status=change_status %}
+{% endblock %}
+
 {% block extra_css %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'detail_project/css/core.css' %}">
@@ -91,22 +95,13 @@
         </button>
         <ul class="dropdown-menu dropdown-menu-end">
           <li>
-            <button class="dropdown-item" type="button" id="btn-export-xlsx" title="Export ke Excel (XLSX)">
-              <i class="bi bi-file-earmark-excel text-success me-2"></i>
-              Export Excel
-            </button>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-xlsx" label="Export Excel" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed title="Export ke Excel (XLSX)" %}
           </li>
           <li>
-            <button class="dropdown-item" type="button" id="btn-export-pdf" title="Export ke PDF">
-              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-              Export PDF
-            </button>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-pdf" label="Export PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed title="Export ke PDF" %}
           </li>
           <li>
-            <button class="dropdown-item" type="button" id="btn-export-word" title="Export ke Word (dapat diedit)">
-              <i class="bi bi-file-earmark-word text-primary me-2"></i>
-              Export Word
-            </button>
+            {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Export Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed title="Export ke Word (dapat diedit)" %}
           </li>
           <li>
             <hr class="dropdown-divider">
@@ -257,7 +252,7 @@
 {{ block.super }}
 
 <!-- SheetJS for Excel export (keep this - for your Excel feature) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <!-- Excel Exporter (keep this - your existing feature) -->
 <script src="{% static 'detail_project/js/export/ExcelExporter.js' %}"></script>

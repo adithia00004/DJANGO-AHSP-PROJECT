@@ -69,12 +69,21 @@
                 <p class="text-muted mb-0">{{ plan.duration_months }} bulan akses penuh</p>
             </div>
             <div class="text-end">
-                <div class="plan-price">Rp {{ plan.price|floatformat:0 }}</div>
-                {% if plan.discount_percentage > 0 %}
-                <span class="badge bg-success">Hemat {{ plan.discount_percentage }}%</span>
+                {% if pricing.discount_amount > 0 %}
+                <div class="small text-muted text-decoration-line-through">{{ base_price_display }}</div>
+                {% endif %}
+                <div class="plan-price">{{ price_display }}</div>
+                {% if pricing.discount_badge %}
+                <span class="badge bg-success">{{ pricing.discount_badge }}</span>
                 {% endif %}
             </div>
         </div>
+
+        {% if pricing.discount_amount > 0 %}
+        <div class="small text-success mb-3">
+            Anda hemat {{ discount_amount_display }} dari harga normal.
+        </div>
+        {% endif %}
 
         <hr>
 

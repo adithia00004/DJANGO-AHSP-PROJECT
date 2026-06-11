@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
@@ -17,12 +18,17 @@ from dashboard.views_export import export_csv, export_dashboard_xlsx, export_pro
 from detail_project.models_export import ExportSession
 from detail_project.views_api import (
     api_export_rincian_rab_csv,
+    export_volume_pekerjaan_pdf,
     export_jadwal_pekerjaan_professional,
     export_project_full_json,
     export_rekap_rab_pdf,
     export_rekap_rab_xlsx,
 )
-from detail_project.views_export import api_export_download_async, export_download
+from detail_project.views_export import (
+    api_export_download_async,
+    api_start_export_async,
+    export_download,
+)
 
 
 class ExportAccessControlTests(TestCase):
@@ -262,3 +268,57 @@ class ExportAccessControlTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(".pdf", response["Content-Disposition"])
+
+    def test_volume_pdf_export_passes_query_params_to_manager(self):
+        request = self.factory.get(
+            f"/api/project/{self.expired_project.id}/export/volume-pekerjaan/pdf/",
+            {"params": json.dumps({"bp_1": 10.5, "cp_2": 3})},
+        )
+        request.user = self.expired_user
+
+        with patch("detail_project.exports.export_manager.ExportManager") as manager_cls:
+            manager = manager_cls.return_value
+            manager.export_volume_pekerjaan.return_value = HttpResponse(
+                b"%PDF-1.4",
+                content_type="application/pdf",
+            )
+
+            response = export_volume_pekerjaan_pdf(request, self.expired_project.id)
+
+        self.assertEqual(response.status_code, 200)
+        manager.export_volume_pekerjaan.assert_called_once()
+        called_args, called_kwargs = manager.export_volume_pekerjaan.call_args
+        self.assertEqual(called_args[0], "pdf")
+        self.assertEqual(called_kwargs.get("parameters"), {"bp_1": 10.5, "cp_2": 3})
+
+    def test_start_async_export_returns_task_id_when_task_starts(self):
+        class DummyTask:
+            id = "task-123"
+
+        class DummyGenerateExportAsync:
+            @staticmethod
+            def delay(**kwargs):
+                return DummyTask()
+
+        fake_tasks_module = ModuleType("detail_project.tasks")
+        fake_tasks_module.generate_export_async = DummyGenerateExportAsync()
+
+        body = {
+            "export_type": "volume-pekerjaan",
+            "format": "pdf",
+            "options": {"parameters": {"bp_1": 5}},
+        }
+        request = self.factory.post(
+            f"/api/project/{self.expired_project.id}/export-async/",
+            data=json.dumps(body),
+            content_type="application/json",
+        )
+        request.user = self.expired_user
+
+        with patch.dict(sys.modules, {"detail_project.tasks": fake_tasks_module}):
+            response = api_start_export_async(request, self.expired_project.id)
+
+        self.assertEqual(response.status_code, 202)
+        payload = json.loads(response.content)
+        self.assertEqual(payload.get("task_id"), "task-123")
+        self.assertIn("/api/export-status/async/task-123/", payload.get("status_url", ""))

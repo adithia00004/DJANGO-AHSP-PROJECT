@@ -492,6 +492,12 @@
       // Also show toast for quick notification (optional)
       showToast(`✓ ${successCount} pekerjaan berhasil disimpan`, 'success');
       updateStatusBar();
+      window.dispatchEvent(new CustomEvent('dp:sync-led-ack', {
+        detail: {
+          projectId: Number(state.projectId),
+          jadwal: true,
+        },
+      }));
 
       const savedPekerjaanIds = Array.from(changesByPekerjaan.keys()).map((pid) => Number(pid));
 
@@ -682,7 +688,7 @@
     const url = `/detail_project/api/v2/project/${state.projectId}/assign-weekly/`;
     const payload = {
       assignments: weeklyAssignments,
-      mode: state.timeScale,        // tell backend which grid view is active so it can sync PekerjaanTahapan
+      mode: state.progressMode || 'planned',
       week_end_day: state.weekEndDay || 6
     };
     bootstrap.log.info(`SaveHandler: - POST ${url}`, payload);

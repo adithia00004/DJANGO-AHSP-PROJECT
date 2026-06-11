@@ -1,6 +1,7 @@
 # detail_project/services.py
 from typing import Dict, List, Optional, Set, Tuple
 from django.db import transaction
+from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import (
     Sum,
     F as DJF,
@@ -10,6 +11,7 @@ from django.db.models import (
     Q,
     Exists,
     OuterRef,
+    Subquery,
     Case,
     When,
     Value,
@@ -26,6 +28,8 @@ import time
 import hashlib
 import json
 import calendar
+import re
+from .formula_tokenizer import remap_expression
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,8 @@ from .models import (
     SubKlasifikasi,
     Pekerjaan,
     VolumePekerjaan,
+    VolumeFormulaState,
+    TemplateAhspKoefFormulaState,
     DetailAHSPProject,
     DetailAHSPExpanded,
     DetailAHSPAudit,
@@ -64,6 +70,8 @@ from .models import (
     HargaItemProject,
     ProjectPricing,
     ProjectParameter,
+    ProjectComputedParameter,
+    ParameterSequence,
     TahapPelaksanaan,
     PekerjaanTahapan,
 )
@@ -79,6 +87,7 @@ def invalidate_rekap_cache(project_or_id) -> None:
         return
     cache.delete(f"rekap:{pid}:v1")
     cache.delete(f"rekap:{pid}:v2")
+    cache.delete(f"rekap:{pid}:v3")
 
 
 KEBUTUHAN_CACHE_TIMEOUT = 300  # seconds
@@ -462,6 +471,22 @@ except Exception:
     RincianReferensi = None  # type: ignore
 
 
+def _resolve_ahsp_by_code_in_source(kode_ahsp: str | None, sumber: str | None):
+    """
+    Resolve nested AHSP references within the same source as their parent.
+
+    AHSP codes are only unique per source. Looking up by code alone can select
+    another source or raise MultipleObjectsReturned once multiple AHSP versions
+    are imported.
+    """
+    if AHSPReferensi is None or not kode_ahsp:
+        return None
+    qs = AHSPReferensi.objects.filter(kode_ahsp=kode_ahsp)
+    if sumber:
+        qs = qs.filter(sumber=sumber)
+    return qs.order_by("id").first()
+
+
 def _orphaned_items_queryset(project):
     """
     Base queryset untuk HargaItemProject yang tidak direferensikan oleh
@@ -486,6 +511,69 @@ def _orphaned_items_queryset(project):
         )
         .filter(used_in_raw=False, used_in_expanded=False)
         .order_by("kode_item")
+    )
+
+
+def active_harga_items_queryset(project):
+    """
+    Return the canonical set shown and editable on the Harga Items page.
+
+    Expanded references define the normal calculation path. For legacy/imported
+    pekerjaan whose expanded rows are missing, raw references are also active
+    because calculation falls back to DetailAHSPProject for that pekerjaan.
+    Fully standalone items are retained for import workflows until explicitly
+    cleaned up.
+    """
+    expanded_exists = DetailAHSPExpanded.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+    raw_exists = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+    expanded_job_ids = DetailAHSPExpanded.objects.filter(
+        project=project,
+    ).values("pekerjaan_id")
+    raw_fallback_exists = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    ).exclude(pekerjaan_id__in=Subquery(expanded_job_ids))
+    return (
+        HargaItemProject.objects.filter(project=project)
+        .annotate(
+            used_in_expanded=Exists(expanded_exists),
+            used_in_raw=Exists(raw_exists),
+            used_in_raw_fallback=Exists(raw_fallback_exists),
+        )
+        .filter(
+            Q(used_in_expanded=True)
+            | Q(used_in_raw_fallback=True)
+            | Q(used_in_expanded=False, used_in_raw=False)
+        )
+    )
+
+
+def used_harga_items_queryset(project):
+    """Return price items that currently affect project calculations."""
+    expanded_exists = DetailAHSPExpanded.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    )
+    expanded_job_ids = DetailAHSPExpanded.objects.filter(
+        project=project,
+    ).values("pekerjaan_id")
+    raw_fallback_exists = DetailAHSPProject.objects.filter(
+        project=project,
+        harga_item_id=OuterRef("pk"),
+    ).exclude(pekerjaan_id__in=Subquery(expanded_job_ids))
+    return (
+        HargaItemProject.objects.filter(project=project)
+        .annotate(
+            used_in_expanded=Exists(expanded_exists),
+            used_in_raw_fallback=Exists(raw_fallback_exists),
+        )
+        .filter(Q(used_in_expanded=True) | Q(used_in_raw_fallback=True))
     )
 
 
@@ -765,6 +853,91 @@ def touch_project_change(project, *, ahsp=False, harga=False):
     return now_ts
 
 
+def _normalize_job_ids(values) -> List[int]:
+    if not values:
+        return []
+    cleaned: List[int] = []
+    for value in values:
+        try:
+            num = int(value)
+        except (TypeError, ValueError):
+            continue
+        if num > 0:
+            cleaned.append(num)
+    return sorted(set(cleaned))
+
+
+def register_source_change_flags(
+    project,
+    *,
+    reload_job_ids=None,
+    volume_reset_job_ids=None,
+) -> Dict[str, List[int]]:
+    tracker = get_change_tracker(project, create=True)
+    if tracker is None:
+        return {"reload_job_ids": [], "volume_reset_job_ids": []}
+
+    existing_reload = _normalize_job_ids(getattr(tracker, "pending_reload_job_ids", []))
+    existing_volume = _normalize_job_ids(getattr(tracker, "pending_volume_reset_job_ids", []))
+    merged_reload = sorted(set(existing_reload).union(_normalize_job_ids(reload_job_ids)))
+    merged_volume = sorted(set(existing_volume).union(_normalize_job_ids(volume_reset_job_ids)))
+
+    if merged_reload != existing_reload or merged_volume != existing_volume:
+        tracker.pending_reload_job_ids = merged_reload
+        tracker.pending_volume_reset_job_ids = merged_volume
+        tracker.save(
+            update_fields=[
+                "pending_reload_job_ids",
+                "pending_volume_reset_job_ids",
+                "updated_at",
+            ]
+        )
+
+    return {"reload_job_ids": merged_reload, "volume_reset_job_ids": merged_volume}
+
+
+def clear_source_change_flags(
+    project,
+    *,
+    reload_job_ids=None,
+    volume_reset_job_ids=None,
+) -> Dict[str, List[int]]:
+    tracker = get_change_tracker(project, create=True)
+    if tracker is None:
+        return {"reload_job_ids": [], "volume_reset_job_ids": []}
+
+    existing_reload = set(_normalize_job_ids(getattr(tracker, "pending_reload_job_ids", [])))
+    existing_volume = set(_normalize_job_ids(getattr(tracker, "pending_volume_reset_job_ids", [])))
+    remove_reload = set(_normalize_job_ids(reload_job_ids))
+    remove_volume = set(_normalize_job_ids(volume_reset_job_ids))
+
+    next_reload = sorted(existing_reload - remove_reload) if remove_reload else sorted(existing_reload)
+    next_volume = sorted(existing_volume - remove_volume) if remove_volume else sorted(existing_volume)
+
+    if next_reload != sorted(existing_reload) or next_volume != sorted(existing_volume):
+        tracker.pending_reload_job_ids = next_reload
+        tracker.pending_volume_reset_job_ids = next_volume
+        tracker.save(
+            update_fields=[
+                "pending_reload_job_ids",
+                "pending_volume_reset_job_ids",
+                "updated_at",
+            ]
+        )
+
+    return {"reload_job_ids": next_reload, "volume_reset_job_ids": next_volume}
+
+
+def get_pending_source_change_flags(project) -> Dict[str, List[int]]:
+    tracker = get_change_tracker(project, create=False)
+    if tracker is None:
+        return {"reload_job_ids": [], "volume_reset_job_ids": []}
+    return {
+        "reload_job_ids": _normalize_job_ids(getattr(tracker, "pending_reload_job_ids", [])),
+        "volume_reset_job_ids": _normalize_job_ids(getattr(tracker, "pending_volume_reset_job_ids", [])),
+    }
+
+
 def validate_project_data(project, *, orphan_threshold: int = 0) -> Dict[str, object]:
     """
     Run validation checks for legacy data. Returns issue summary.
@@ -903,6 +1076,27 @@ def fix_project_data(
     return summary
 
 
+_PLACEHOLDER_ITEM_CODES = {"", "-", "–", "—"}
+
+
+def normalize_project_item_code(kategori: str, kode_item: str, uraian: str, satuan: str | None) -> str:
+    """
+    Return the system-owned canonical item code.
+
+    Codes supplied by AHSP files or UI payloads are provenance only. Base items
+    are resolved from category/description/unit through KodeItemReferensi.
+    LAIN rows keep their code because it identifies the referenced AHSP/job.
+    """
+    category = (kategori or "LAIN").strip().upper() or "LAIN"
+    code = (kode_item or "").strip()
+    if category == "LAIN" and code not in _PLACEHOLDER_ITEM_CODES:
+        return code
+
+    from referensi.services.item_code_registry import resolve_item_code
+
+    return resolve_item_code(category, uraian, satuan)
+
+
 def _upsert_harga_item(project, kategori: str, kode_item: str, uraian: str, satuan: str | None):
     """
     Upsert master harga unik per proyek (tanpa mengubah harga_satuan).
@@ -912,6 +1106,8 @@ def _upsert_harga_item(project, kategori: str, kode_item: str, uraian: str, satu
     Uses select_for_update() to prevent race conditions.
     """
     from django.core.exceptions import ValidationError
+
+    kode_item = normalize_project_item_code(kategori, kode_item, uraian, satuan)
 
     try:
         # Try to get existing with row-level lock
@@ -939,6 +1135,23 @@ def _upsert_harga_item(project, kategori: str, kode_item: str, uraian: str, satu
 
         if changed:
             obj.save(update_fields=["uraian", "satuan", "updated_at"])
+
+            # HargaItemProject is the canonical metadata source. Keep stored
+            # projections aligned so legacy readers cannot observe stale labels.
+            canonical_fields = {
+                "kategori": obj.kategori,
+                "kode": obj.kode_item,
+                "uraian": obj.uraian,
+                "satuan": obj.satuan,
+            }
+            DetailAHSPProject.objects.filter(
+                project=project,
+                harga_item=obj,
+            ).update(**canonical_fields)
+            DetailAHSPExpanded.objects.filter(
+                project=project,
+                harga_item=obj,
+            ).update(**canonical_fields)
 
         return obj
 
@@ -1228,10 +1441,11 @@ def expand_bundle_to_components(
         else:
             # Base component (TK/BHN/ALT) - store ORIGINAL koefisien (per 1 unit bundle)
             final_koef = comp.koefisien * base_koef
+            code = normalize_project_item_code(comp.kategori, comp.kode, comp.uraian, comp.satuan)
 
             result.append({
                 'kategori': comp.kategori,
-                'kode': comp.kode,
+                'kode': code,
                 'uraian': comp.uraian,
                 'satuan': comp.satuan,
                 'koefisien': final_koef,
@@ -1292,7 +1506,7 @@ def expand_ahsp_bundle_to_components(
     if depth > MAX_DEPTH:
         raise ValueError(f"Maksimum kedalaman AHSP bundle expansion terlampaui (max {MAX_DEPTH})")
 
-    # Initialize visited set (track by kode_ahsp string, not ID)
+    # Initialize visited set (track by source + kode_ahsp, not code alone).
     if visited is None:
         visited = set()
 
@@ -1308,13 +1522,14 @@ def expand_ahsp_bundle_to_components(
         raise ValueError(f"AHSP Referensi #{ref_ahsp_id} tidak ditemukan")
 
     # Check circular dependency
-    if ahsp.kode_ahsp in visited:
+    ahsp_key = f"{ahsp.sumber}::{ahsp.kode_ahsp}"
+    if ahsp_key in visited:
         visited_codes = list(visited)
         cycle_str = " → ".join(visited_codes)
         logger.error(f"[EXPAND_AHSP_BUNDLE] Circular dependency detected: {cycle_str}")
         raise ValueError(f"Circular dependency detected in AHSP bundle expansion: {cycle_str}")
 
-    visited.add(ahsp.kode_ahsp)
+    visited.add(ahsp_key)
 
     # Fetch components from RincianReferensi
     if not RincianReferensi:
@@ -1326,7 +1541,7 @@ def expand_ahsp_bundle_to_components(
 
     if comp_count == 0:
         logger.warning(f"[EXPAND_AHSP_BUNDLE] No components found in AHSP '{ahsp.kode_ahsp}' - returning empty")
-        visited.discard(ahsp.kode_ahsp)
+        visited.discard(ahsp_key)
         return []
 
     result = []
@@ -1337,8 +1552,10 @@ def expand_ahsp_bundle_to_components(
             logger.info(f"[EXPAND_AHSP_BUNDLE] LAIN item detected: '{comp.kode_item}' (koef={comp.koefisien})")
 
             try:
-                # Try to find AHSP by kode_ahsp matching kode_item
-                nested_ahsp = AHSPReferensi.objects.get(kode_ahsp=comp.kode_item)
+                # Resolve nested AHSP in the same source as the parent AHSP.
+                nested_ahsp = _resolve_ahsp_by_code_in_source(comp.kode_item, ahsp.sumber)
+                if nested_ahsp is None:
+                    raise AHSPReferensi.DoesNotExist
 
                 # Recursive expansion
                 nested_components = expand_ahsp_bundle_to_components(
@@ -1360,10 +1577,16 @@ def expand_ahsp_bundle_to_components(
 
                 # Treat as base component
                 final_koef = comp.koefisien * base_koef
+                code = normalize_project_item_code(
+                    comp.kategori,
+                    comp.kode_item,
+                    comp.uraian_item,
+                    comp.satuan_item,
+                )
 
                 result.append({
                     'kategori': comp.kategori,
-                    'kode': comp.kode_item,
+                    'kode': code,
                     'uraian': comp.uraian_item,
                     'satuan': comp.satuan_item,
                     'koefisien': final_koef,
@@ -1374,10 +1597,16 @@ def expand_ahsp_bundle_to_components(
         else:
             # Base component (TK/BHN/ALT)
             final_koef = comp.koefisien * base_koef
+            code = normalize_project_item_code(
+                comp.kategori,
+                comp.kode_item,
+                comp.uraian_item,
+                comp.satuan_item,
+            )
 
             result.append({
                 'kategori': comp.kategori,
-                'kode': comp.kode_item,
+                'kode': code,
                 'uraian': comp.uraian_item,
                 'satuan': comp.satuan_item,
                 'koefisien': final_koef,
@@ -1386,7 +1615,7 @@ def expand_ahsp_bundle_to_components(
             })
 
     # Remove from visited after processing (backtracking)
-    visited.discard(ahsp.kode_ahsp)
+    visited.discard(ahsp_key)
 
     logger.info(f"[EXPAND_AHSP_BUNDLE] Expansion complete: {len(result)} base components returned")
 
@@ -1470,10 +1699,16 @@ def _populate_expanded_from_raw(project, pekerjaan):
 
                 # Add expanded components
                 for comp in expanded_components:
+                    comp_code = normalize_project_item_code(
+                        comp['kategori'],
+                        comp['kode'],
+                        comp['uraian'],
+                        comp['satuan'],
+                    )
                     comp_hip = _upsert_harga_item(
                         project,
                         comp['kategori'],
-                        comp['kode'],
+                        comp_code,
                         comp['uraian'],
                         comp['satuan']
                     )
@@ -1484,7 +1719,7 @@ def _populate_expanded_from_raw(project, pekerjaan):
                         source_detail=detail_obj,
                         harga_item=comp_hip,
                         kategori=comp['kategori'],
-                        kode=comp['kode'],
+                        kode=comp_code,
                         uraian=comp['uraian'],
                         satuan=comp['satuan'],
                         koefisien=quantize_half_up(comp['koefisien'], dp_koef),
@@ -1534,10 +1769,16 @@ def _populate_expanded_from_raw(project, pekerjaan):
 
                 # Add expanded components
                 for comp in expanded_components:
+                    comp_code = normalize_project_item_code(
+                        comp['kategori'],
+                        comp['kode'],
+                        comp['uraian'],
+                        comp['satuan'],
+                    )
                     comp_hip = _upsert_harga_item(
                         project,
                         comp['kategori'],
-                        comp['kode'],
+                        comp_code,
                         comp['uraian'],
                         comp['satuan']
                     )
@@ -1548,7 +1789,7 @@ def _populate_expanded_from_raw(project, pekerjaan):
                         source_detail=detail_obj,
                         harga_item=comp_hip,
                         kategori=comp['kategori'],
-                        kode=comp['kode'],
+                        kode=comp_code,
                         uraian=comp['uraian'],
                         satuan=comp['satuan'],
                         koefisien=quantize_half_up(comp['koefisien'], dp_koef),
@@ -1819,7 +2060,12 @@ def clone_ref_pekerjaan(
         for rr in rincian_qs:
             # Kategori sinkron dengan app referensi: TK/BHN/ALT/LAIN
             kategori = rr.kategori
-            kode = rr.kode_item
+            kode = normalize_project_item_code(
+                kategori,
+                rr.kode_item,
+                rr.uraian_item,
+                rr.satuan_item,
+            )
             uraian = rr.uraian_item
             satuan = rr.satuan_item
             koef = rr.koefisien
@@ -1829,8 +2075,8 @@ def clone_ref_pekerjaan(
             ref_ahsp_obj = None
             if kategori == 'LAIN' and AHSPReferensi is not None:
                 try:
-                    # Try to find AHSP by kode_ahsp matching kode_item
-                    ref_ahsp_obj = AHSPReferensi.objects.filter(kode_ahsp=kode).first()
+                    # Resolve nested AHSP in the same source as the cloned parent.
+                    ref_ahsp_obj = _resolve_ahsp_by_code_in_source(kode, getattr(ref_obj, "sumber", None))
                     if ref_ahsp_obj:
                         logger.info(f"[CLONE_REF_PKJ] LAIN item '{kode}' resolved to AHSP '{ref_ahsp_obj.kode_ahsp}' (ID: {ref_ahsp_obj.id})")
                     else:
@@ -1844,9 +2090,9 @@ def clone_ref_pekerjaan(
                 pekerjaan=pkj,
                 harga_item=hip,
                 kategori=kategori,
-                kode=kode,
-                uraian=uraian,
-                satuan=satuan,
+                kode=hip.kode_item,
+                uraian=hip.uraian,
+                satuan=hip.satuan,
                 koefisien=koef,
                 ref_ahsp=ref_ahsp_obj,  # Set ref_ahsp for LAIN items
             ))
@@ -2009,17 +2255,24 @@ def compute_rekap_for_project(project):
     volume_ts = VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
     pekerjaan_ts = Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
     pricing_ts = ProjectPricing.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
+    source_sig = tuple(
+        Pekerjaan.objects
+        .filter(project=project)
+        .order_by('id')
+        .values_list('id', 'source_type', 'ref_id', 'ref__sumber')
+    )
 
     def _ts(val):
         return val.isoformat() if val else "0"
 
-    cache_key = f"rekap:{project.id}:v2"
+    cache_key = f"rekap:{project.id}:v3"
     signature = (
         _ts(raw_ts),
         _ts(expanded_ts),
         _ts(volume_ts),
         _ts(pekerjaan_ts),
         _ts(pricing_ts),
+        source_sig,
     )
     cached = cache.get(cache_key)
     if cached and cached.get("sig") == signature:
@@ -2055,9 +2308,15 @@ def compute_rekap_for_project(project):
 
     kategori_keys = ['TK', 'BHN', 'ALT', 'LAIN']
 
-    def _aggregate_components(model, apply_bundle_multiplier=False):
+    def _aggregate_components(
+        model,
+        apply_bundle_multiplier=False,
+        pekerjaan_ids=None,
+    ):
         data: Dict[int, Dict[str, float]] = {}
         qs = model.objects.filter(project=project)
+        if pekerjaan_ids is not None:
+            qs = qs.filter(pekerjaan_id__in=pekerjaan_ids)
 
         effective_coef = DJF('koefisien')
         if apply_bundle_multiplier:
@@ -2070,11 +2329,11 @@ def compute_rekap_for_project(project):
                     then=DJF('source_detail__koefisien'),
                 ),
                 default=Value(Decimal('1.0')),
-                output_field=DecimalField(max_digits=18, decimal_places=6),
+                output_field=DecimalField(max_digits=18, decimal_places=12),
             )
             effective_coef = ExpressionWrapper(
                 effective_coef * bundle_multiplier,
-                output_field=DecimalField(max_digits=24, decimal_places=6),
+                output_field=DecimalField(max_digits=24, decimal_places=12),
             )
 
         value_expr = ExpressionWrapper(
@@ -2099,8 +2358,17 @@ def compute_rekap_for_project(project):
         return data
 
     agg = _aggregate_components(DetailAHSPExpanded, apply_bundle_multiplier=True)
-    if not agg:
-        agg = _aggregate_components(DetailAHSPProject)
+    all_job_ids = set(
+        Pekerjaan.objects.filter(project=project).values_list("id", flat=True)
+    )
+    raw_fallback_job_ids = all_job_ids.difference(agg.keys())
+    if raw_fallback_job_ids:
+        agg.update(
+            _aggregate_components(
+                DetailAHSPProject,
+                pekerjaan_ids=raw_fallback_job_ids,
+            )
+        )
 
     # --- Volume map
     vol_map = dict(VolumePekerjaan.objects
@@ -2112,7 +2380,15 @@ def compute_rekap_for_project(project):
     for p in (Pekerjaan.objects
               .filter(project=project)
               .order_by('ordering_index', 'id')
-              .values('id', 'snapshot_kode', 'snapshot_uraian', 'snapshot_satuan', 'markup_override_percent', 'source_type')):
+              .values(
+                  'id',
+                  'snapshot_kode',
+                  'snapshot_uraian',
+                  'snapshot_satuan',
+                  'markup_override_percent',
+                  'source_type',
+                  'ref__sumber',
+              )):
         pkj_id   = p['id']
         A        = agg.get(pkj_id, {}).get('TK', 0.0)  or 0.0
         B        = agg.get(pkj_id, {}).get('BHN', 0.0) or 0.0
@@ -2131,13 +2407,24 @@ def compute_rekap_for_project(project):
         G      = E_base + F
         volume = float(vol_map.get(pkj_id) or 0.0)
         total  = float(G) * volume
+        source_type = p.get('source_type', '')
+        ref_sumber = p.get('ref__sumber') or ''
+        if source_type == Pekerjaan.SOURCE_REF:
+            source_label = ref_sumber or 'AHSP'
+        elif source_type == Pekerjaan.SOURCE_REF_MOD:
+            source_label = f"{ref_sumber or 'AHSP'} (modified)"
+        else:
+            source_label = 'Kustom'
 
         result.append(dict(
             pekerjaan_id = pkj_id,
             kode         = p['snapshot_kode'],
             uraian       = p['snapshot_uraian'],
             satuan       = p['snapshot_satuan'],
-            source_type  = p.get('source_type', ''),  # Added for UI filtering
+            source_type  = source_type,  # Added for UI filtering
+            ref_sumber   = ref_sumber,
+            ahsp_sumber  = ref_sumber,
+            source_label = source_label,
 
             A=A, B=B, C=C, D=D,
             LAIN=LAIN,
@@ -2334,11 +2621,13 @@ def compute_kebutuhan_items(
             )
         )
 
-    if not details:
-        details = list(
+    expanded_job_ids = {row["pekerjaan_id"] for row in details}
+    raw_fallback_job_ids = set(pekerjaan_ids).difference(expanded_job_ids)
+    if raw_fallback_job_ids:
+        details.extend(
             DetailAHSPProject.objects.filter(
                 project=project,
-                pekerjaan_id__in=pekerjaan_ids
+                pekerjaan_id__in=raw_fallback_job_ids
             ).values(
                 'pekerjaan_id',
                 'kategori',
@@ -2783,11 +3072,13 @@ def compute_kebutuhan_timeline(
         )
     )
 
-    if not details:
-        details = list(
+    expanded_job_ids = {row["pekerjaan_id"] for row in details}
+    raw_fallback_job_ids = set(pekerjaan_ids).difference(expanded_job_ids)
+    if raw_fallback_job_ids:
+        details.extend(
             DetailAHSPProject.objects.filter(
                 project=project,
-                pekerjaan_id__in=pekerjaan_ids
+                pekerjaan_id__in=raw_fallback_job_ids
             ).values(
                 'pekerjaan_id',
                 'kategori',
@@ -3279,6 +3570,8 @@ class DeepCopyService:
             'subklasifikasi': [],
             'pekerjaan': [],
             'volume': [],
+            'volume_formula': [],
+            'template_ahsp_koef_formula': [],
             'ahsp_template': [],
         }
 
@@ -3288,10 +3581,13 @@ class DeepCopyService:
             'project': {},
             'pricing': {},
             'parameter': {},
+            'computed_parameter': {},
             'klasifikasi': {},
             'subklasifikasi': {},
             'pekerjaan': {},
             'volume': {},
+            'volume_formula_state': {},
+            'template_ahsp_koef_formula_state': {},
             'harga_item': {},
             'ahsp_template': {},
             'rincian_ahsp': {},
@@ -3304,13 +3600,26 @@ class DeepCopyService:
             'subklasifikasi_copied': 0,
             'pekerjaan_copied': 0,
             'volume_copied': 0,
+            'volume_formula_copied': 0,
+            'template_ahsp_koef_formula_copied': 0,
             'harga_item_copied': 0,
             'ahsp_template_copied': 0,
             'rincian_ahsp_copied': 0,
             'parameter_copied': 0,
+            'computed_parameter_copied': 0,
             'tahapan_copied': 0,
             'jadwal_copied': 0,
         }
+
+        # Name remap tracking for cross-project copy.
+        # Format: old_name_lower -> new_name
+        self.name_mappings = {
+            'parameter': {},
+            'computed_parameter': {},
+        }
+        # Local allocator state for opaque names per prefix.
+        # Example: {'bp': {'next': 3, 'used': {'bp_1', 'bp_2'}}}
+        self._opaque_allocators = {}
 
     @transaction.atomic
     def copy(
@@ -3340,7 +3649,6 @@ class DeepCopyService:
         """
         from dashboard.models import Project
         from django.db import IntegrityError, OperationalError, ProgrammingError
-        import re
 
         # ===== INPUT VALIDATION =====
 
@@ -3417,32 +3725,41 @@ class DeepCopyService:
             # Step 3: Copy ProjectParameter
             self._copy_project_parameters(new_project)
 
-            # Step 4: Copy Klasifikasi
+            # Step 4: Copy ProjectComputedParameter
+            self._copy_project_computed_parameters(new_project)
+
+            # Step 5: Copy Klasifikasi
             self._copy_klasifikasi(new_project)
 
-            # Step 5: Copy SubKlasifikasi
+            # Step 6: Copy SubKlasifikasi
             self._copy_subklasifikasi(new_project)
 
-            # Step 6: Copy Pekerjaan
+            # Step 7: Copy Pekerjaan
             self._copy_pekerjaan(new_project)
 
-            # Step 7: Copy VolumePekerjaan
+            # Step 8: Copy VolumePekerjaan
             self._copy_volume_pekerjaan(new_project)
 
-            # Step 8: Copy HargaItem
+            # Step 9: Copy VolumeFormulaState
+            self._copy_volume_formula_states(new_project)
+
+            # Step 10: Copy HargaItem
             self._copy_harga_item(new_project)
 
-            # Step 9: Copy AhspTemplate (using existing model)
+            # Step 11: Copy AhspTemplate (using existing model)
             self._copy_ahsp_template(new_project)
 
-            # Step 10: Copy RincianAhsp (using DetailAHSPProject model)
+            # Step 12: Copy RincianAhsp (using DetailAHSPProject model)
             self._copy_rincian_ahsp(new_project)
 
-            # Step 11: Copy Tahapan (if copy_jadwal=True)
+            # Step 13: Copy Template AHSP koef formula sidecar
+            self._copy_template_ahsp_koef_formula_states(new_project)
+
+            # Step 14: Copy Tahapan (if copy_jadwal=True)
             if copy_jadwal:
                 self._copy_tahapan(new_project)
 
-                # Step 12: Copy JadwalPekerjaan (if copy_jadwal=True)
+                # Step 15: Copy JadwalPekerjaan (if copy_jadwal=True)
                 self._copy_jadwal_pekerjaan(new_project)
 
             # Check if any items were skipped and generate warnings
@@ -3717,21 +4034,27 @@ class DeepCopyService:
 
     def _copy_project_parameters(self, new_project):
         """
-        Step 3: Copy ProjectParameter instances (Optimized with bulk_create).
+        Step 3: Copy ProjectParameter instances with target opaque ID remap.
 
         Performance: O(1) queries instead of O(n) queries.
 
         Args:
             new_project: The newly created project
         """
-        parameters = ProjectParameter.objects.filter(project=self.source)
+        parameters = ProjectParameter.objects.filter(project=self.source).order_by('id')
 
         # Prepare instances for bulk creation
         items_to_create = []
         for old_param in parameters:
+            old_name = str(old_param.name or '').strip()
+            if not old_name:
+                continue
+            new_name = self._next_copy_opaque_name(new_project, 'bp')
+            self.name_mappings['parameter'][old_name.lower()] = new_name
+
             new_param = ProjectParameter(
                 project=new_project,
-                name=old_param.name,
+                name=new_name,
                 value=old_param.value,
                 label=old_param.label,
                 unit=old_param.unit,
@@ -3748,6 +4071,120 @@ class DeepCopyService:
         )
 
         self.stats['parameter_copied'] = len(created)
+
+    @staticmethod
+    def _remap_formula_identifiers(expression: str, name_map: Dict[str, str]) -> str:
+        """
+        Replace identifier tokens in expression using map.
+        Only exact identifier tokens are replaced; operators/spacing preserved.
+        """
+        if not expression or not name_map:
+            return expression
+
+        return remap_expression(expression, name_map)
+
+    def _next_copy_opaque_name(self, project, prefix: str) -> str:
+        """
+        Allocate next opaque name in target project namespace.
+        """
+        if prefix not in ('bp', 'cp'):
+            raise ValueError(f"Unsupported opaque prefix: {prefix}")
+
+        seq, _ = ParameterSequence.objects.select_for_update().get_or_create(
+            project=project,
+            prefix=prefix,
+            defaults={'last_num': 0},
+        )
+        seq.last_num += 1
+        seq.save(update_fields=['last_num', 'updated_at'])
+        return f'{prefix}_{seq.last_num}'
+
+    def _copy_project_computed_parameters(self, new_project):
+        """
+        Step 4: Copy ProjectComputedParameter with target opaque ID remap.
+
+        Expression identifiers are remapped using copied base parameter names and
+        copied computed parameter names (old_name -> new_name).
+        """
+        try:
+            # Use savepoint so optional table errors don't abort outer copy transaction.
+            with transaction.atomic():
+                computed_params = list(
+                    ProjectComputedParameter.objects.filter(project=self.source).order_by('id')
+                )
+
+                if not computed_params:
+                    self.stats['computed_parameter_copied'] = 0
+                    return
+
+                # Base mapping comes from step 3 remap.
+                name_map = dict(self.name_mappings.get('parameter') or {})
+
+                # Determine computed name map first, then remap expressions in second pass.
+                computed_name_map = {}
+                for cp in computed_params:
+                    old_name = str(cp.name or '').strip()
+                    if not old_name:
+                        continue
+                    computed_name_map[old_name.lower()] = self._next_copy_opaque_name(new_project, 'cp')
+                self.name_mappings['computed_parameter'] = computed_name_map
+                combined_name_map = {**name_map, **computed_name_map}
+
+                items_to_create = []
+                for old_cp in computed_params:
+                    old_name = str(old_cp.name or '').strip()
+                    if not old_name:
+                        continue
+                    new_name = computed_name_map.get(old_name.lower(), old_name)
+                    remapped_expression = self._remap_formula_identifiers(
+                        str(old_cp.expression or ''),
+                        combined_name_map,
+                    )
+
+                    new_cp = ProjectComputedParameter(
+                        project=new_project,
+                        name=new_name,
+                        expression=remapped_expression,
+                        label=old_cp.label,
+                        unit=old_cp.unit,
+                        description=old_cp.description,
+                    )
+                    items_to_create.append((old_cp.id, new_cp))
+
+                created = self._bulk_create_with_mapping(
+                    ProjectComputedParameter,
+                    items_to_create,
+                    'computed_parameter',
+                    batch_size=500,
+                )
+                self.stats['computed_parameter_copied'] = len(created)
+        except (ProgrammingError, OperationalError) as exc:
+            err = str(exc).lower()
+            is_missing_cparam_table = (
+                'projectcomputedparameter' in err
+                or 'detail_project_projectcomputedparameter' in err
+            )
+            if not is_missing_cparam_table:
+                raise
+
+            # Backward compatibility: environments that haven't applied the
+            # ProjectComputedParameter migration should not break project copy.
+            self.stats['computed_parameter_copied'] = 0
+            warn = {
+                'code': 3006,
+                'message': 'Skip copy computed parameter: tabel belum tersedia',
+                'details': {'error': str(exc)},
+            }
+            self.warnings.append(warn)
+            logger.warning(
+                "Skip copying computed parameters due to missing/incompatible table",
+                extra={
+                    'source_project_id': self.source.id,
+                    'new_project_id': getattr(new_project, 'id', None),
+                    'error': str(exc),
+                }
+            )
+            return
 
     def _copy_klasifikasi(self, new_project):
         """
@@ -3962,6 +4399,185 @@ class DeepCopyService:
 
         self.stats['volume_copied'] = len(created)
         self.skipped_items['volume'].extend(skipped)
+
+    def _copy_volume_formula_states(self, new_project):
+        """
+        Step 8: Copy VolumeFormulaState instances with pekerjaan FK remap.
+
+        For `is_fx=True`, formula identifiers are remapped using source->target
+        parameter/computed mappings.
+        """
+        try:
+            formula_states = VolumeFormulaState.objects.filter(project=self.source)
+        except (ProgrammingError, OperationalError) as exc:
+            err = str(exc).lower()
+            is_missing_formula_table = (
+                'volumeformulastate' in err
+                or 'detail_project_volumeformulastate' in err
+            )
+            if not is_missing_formula_table:
+                raise
+            self.stats['volume_formula_copied'] = 0
+            self.warnings.append({
+                'code': 3007,
+                'message': 'Skip copy volume formula state: tabel belum tersedia',
+                'details': {'error': str(exc)},
+            })
+            logger.warning(
+                "Skip copying volume formula states due to missing/incompatible table",
+                extra={
+                    'source_project_id': self.source.id,
+                    'new_project_id': getattr(new_project, 'id', None),
+                    'error': str(exc),
+                }
+            )
+            return
+
+        name_map = {
+            **(self.name_mappings.get('parameter') or {}),
+            **(self.name_mappings.get('computed_parameter') or {}),
+        }
+
+        items_to_create = []
+        skipped = []
+
+        for old_state in formula_states:
+            old_id = old_state.id
+            old_pekerjaan_id = old_state.pekerjaan_id
+            new_pekerjaan_id = self.mappings['pekerjaan'].get(old_pekerjaan_id)
+
+            if not new_pekerjaan_id:
+                skipped.append({
+                    'id': old_id,
+                    'reason': 'Parent Pekerjaan not found or not copied',
+                    'missing_parent_id': old_pekerjaan_id,
+                })
+                continue
+
+            raw_value = old_state.raw or ''
+            if old_state.is_fx and raw_value:
+                raw_value = self._remap_formula_identifiers(raw_value, name_map)
+
+            new_state = VolumeFormulaState(
+                project=new_project,
+                pekerjaan_id=new_pekerjaan_id,
+                raw=raw_value,
+                is_fx=old_state.is_fx,
+            )
+            items_to_create.append((old_id, new_state))
+
+        created = self._bulk_create_with_mapping(
+            VolumeFormulaState,
+            items_to_create,
+            'volume_formula_state',
+            batch_size=500
+        )
+
+        self.stats['volume_formula_copied'] = len(created)
+        self.skipped_items['volume_formula'].extend(skipped)
+
+    def _copy_template_ahsp_koef_formula_states(self, new_project):
+        """
+        Copy TemplateAhspKoefFormulaState with pekerjaan FK remap + row_key validation.
+        """
+        try:
+            formula_states = TemplateAhspKoefFormulaState.objects.filter(project=self.source)
+        except (ProgrammingError, OperationalError) as exc:
+            err = str(exc).lower()
+            is_missing_table = (
+                'templateahspkoefformulastate' in err
+                or 'detail_project_templateahspkoefformulastate' in err
+            )
+            if not is_missing_table:
+                raise
+            self.stats['template_ahsp_koef_formula_copied'] = 0
+            self.warnings.append({
+                'code': 3008,
+                'message': 'Skip copy template AHSP koef formula: tabel belum tersedia',
+                'details': {'error': str(exc)},
+            })
+            logger.warning(
+                "Skip copying Template AHSP koef formula due to missing/incompatible table",
+                extra={
+                    'source_project_id': self.source.id,
+                    'new_project_id': getattr(new_project, 'id', None),
+                    'error': str(exc),
+                }
+            )
+            return
+
+        name_map = {
+            **(self.name_mappings.get('parameter') or {}),
+            **(self.name_mappings.get('computed_parameter') or {}),
+        }
+
+        mapped_pekerjaan_ids = set(self.mappings['pekerjaan'].values())
+        valid_codes_by_pekerjaan: Dict[int, Set[str]] = {}
+        if mapped_pekerjaan_ids:
+            pairs = (
+                DetailAHSPProject.objects
+                .filter(project=new_project, pekerjaan_id__in=mapped_pekerjaan_ids)
+                .values_list('pekerjaan_id', 'kode')
+            )
+            for pekerjaan_id, kode in pairs:
+                row_key = str(kode or '').strip()
+                if not row_key:
+                    continue
+                valid_codes_by_pekerjaan.setdefault(pekerjaan_id, set()).add(row_key)
+
+        items_to_create = []
+        skipped = []
+
+        for old_state in formula_states:
+            old_id = old_state.id
+            old_pekerjaan_id = old_state.pekerjaan_id
+            new_pekerjaan_id = self.mappings['pekerjaan'].get(old_pekerjaan_id)
+            row_key = str(old_state.row_key or '').strip()
+
+            if not new_pekerjaan_id:
+                skipped.append({
+                    'id': old_id,
+                    'reason': 'Parent Pekerjaan not found or not copied',
+                    'missing_parent_id': old_pekerjaan_id,
+                })
+                continue
+            if not row_key:
+                skipped.append({
+                    'id': old_id,
+                    'reason': 'row_key kosong',
+                    'missing_parent_id': old_pekerjaan_id,
+                })
+                continue
+            valid_codes = valid_codes_by_pekerjaan.get(new_pekerjaan_id, set())
+            if row_key not in valid_codes:
+                skipped.append({
+                    'id': old_id,
+                    'reason': f"row_key '{row_key}' tidak ada di detail target",
+                    'missing_parent_id': old_pekerjaan_id,
+                })
+                continue
+
+            raw_value = old_state.raw or ''
+            if old_state.is_fx and raw_value:
+                raw_value = self._remap_formula_identifiers(raw_value, name_map)
+
+            new_state = TemplateAhspKoefFormulaState(
+                project=new_project,
+                pekerjaan_id=new_pekerjaan_id,
+                row_key=row_key,
+                raw=raw_value,
+                is_fx=old_state.is_fx,
+            )
+            items_to_create.append((old_id, new_state))
+
+        created = self._bulk_create_with_mapping(
+            TemplateAhspKoefFormulaState,
+            items_to_create,
+            'template_ahsp_koef_formula_state',
+            batch_size=500
+        )
+        self.stats['template_ahsp_koef_formula_copied'] = len(created)
+        self.skipped_items['template_ahsp_koef_formula'].extend(skipped)
 
     def _copy_harga_item(self, new_project):
         """

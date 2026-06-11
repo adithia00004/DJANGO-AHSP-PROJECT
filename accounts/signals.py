@@ -14,6 +14,6 @@ def start_trial_on_email_confirmation(request, email_address, **kwargs):
     """
     user = email_address.user
     
-    # Only start trial if user doesn't already have an active subscription
-    if not user.is_subscription_active:
+    # Only start trial once, and only for users without active access.
+    if not user.is_subscription_active and not user.trial_used_once:
         user.start_trial(days=14)

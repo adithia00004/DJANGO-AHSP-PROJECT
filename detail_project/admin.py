@@ -4,7 +4,7 @@ from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     HargaItemProject, DetailAHSPProject, DetailAHSPExpanded,
     TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly,
-    ItemConversionProfile
+    ItemConversionProfile, PekerjaanTemplate
 )
 
 @admin.register(Klasifikasi)
@@ -131,3 +131,16 @@ class PekerjaanProgressWeeklyAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
+
+
+@admin.register(PekerjaanTemplate)
+class PekerjaanTemplateAdmin(admin.ModelAdmin):
+    """Kurasi library template (keputusan produk 2026-06-10: private-by-default;
+    admin menerbitkan template terpilih ke library publik via is_public)."""
+    list_display = ("name", "category", "created_by", "is_public",
+                    "usage_count", "total_pekerjaan", "created_at")
+    list_editable = ("is_public",)
+    list_filter = ("is_public", "category")
+    search_fields = ("name", "description", "created_by__username")
+    readonly_fields = ("usage_count", "total_klasifikasi", "total_sub",
+                       "total_pekerjaan", "created_at", "updated_at")

@@ -1,0 +1,186 @@
+{% extends "referensi/base.html" %}
+
+{% block title %}Manajemen Pricing{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">Manajemen Pricing & Promo</h2>
+        <p class="text-muted mb-0">Kelola harga plan dan promo terjadwal untuk subscription.</p>
+    </div>
+    <a href="{% url 'referensi:admin_portal' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Kembali ke Admin Portal
+    </a>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Konfigurasi 3 Harga Dasar</h5>
+        <span class="badge text-bg-primary">Server-side source of truth</span>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Tiap tier (`Harga Dasar 1/2/3`) dapat disesuaikan nama menu, lama subscription (bulan), dan harga dasar.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_plans">
+            {{ plans_formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>Tier</th>
+                            <th>Plan</th>
+                            <th class="text-end">Durasi (bulan)</th>
+                            <th class="text-end">Harga Dasar (Rp)</th>
+                            <th>Aktif</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for form in plans_formset %}
+                        <tr>
+                            {{ form.id }}
+                            <td><span class="badge text-bg-secondary">{{ form.instance.get_base_tier_display }}</span></td>
+                            <td>{{ form.name }}</td>
+                            <td class="text-end">{{ form.duration_months }}</td>
+                            <td class="text-end">{{ form.price }}</td>
+                            <td>{{ form.is_active }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-save"></i> Simpan Perubahan Harga
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Tabel Jadwal Promo</h5>
+        <div class="small text-muted">
+            Update: {{ schedule_now|date:"d M Y H:i" }} WIB
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="mb-3 d-flex flex-wrap gap-2">
+            <span class="badge text-bg-primary">Total: {{ schedule_summary.total }}</span>
+            <span class="badge text-bg-success">Aktif: {{ schedule_summary.active }}</span>
+            <span class="badge text-bg-info">Akan Datang: {{ schedule_summary.upcoming }}</span>
+            <span class="badge text-bg-dark">Berakhir: {{ schedule_summary.ended }}</span>
+            <span class="badge text-bg-secondary">Nonaktif: {{ schedule_summary.inactive }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Plan</th>
+                        <th>Promo</th>
+                        <th>Periode</th>
+                        <th>Status Jadwal</th>
+                        <th class="text-end">Priority</th>
+                        <th>Preview Harga</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in promotion_schedule_rows %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ row.promotion.plan.name }}</div>
+                            <div class="small text-muted">
+                                {{ row.promotion.plan.get_base_tier_display }} - {{ row.promotion.plan.duration_months }} bulan
+                            </div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{{ row.promotion.name }}</div>
+                            <div class="small text-muted">{{ row.discount_badge|default:"Tanpa diskon" }}</div>
+                        </td>
+                        <td>
+                            <div>{{ row.promotion.start_at|date:"d M Y H:i" }}</div>
+                            <div class="small text-muted">s/d {{ row.promotion.end_at|date:"d M Y H:i" }}</div>
+                        </td>
+                        <td>
+                            <span class="badge text-bg-{{ row.status_badge }}">{{ row.status_label }}</span>
+                        </td>
+                        <td class="text-end">{{ row.promotion.priority }}</td>
+                        <td>
+                            <div class="small text-muted text-decoration-line-through">{{ row.base_price_display }}</div>
+                            <div class="fw-semibold">{{ row.final_price_display }}</div>
+                            <div class="small text-success">Hemat {{ row.discount_amount_display }}</div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            Belum ada promo terjadwal. Tambahkan promo pada form di bawah.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-body-tertiary d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Promo Terjadwal</h5>
+        <span class="badge text-bg-success">Rule: priority tertinggi, lalu terbaru</span>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_promotions">
+            {{ promotions_formset.management_form }}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>Plan</th>
+                            <th>Nama Promo</th>
+                            <th>Tipe</th>
+                            <th class="text-end">Nilai</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th class="text-end">Priority</th>
+                            <th>Aktif</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for form in promotions_formset %}
+                        <tr>
+                            {{ form.id }}
+                            <td>{{ form.plan }}</td>
+                            <td>{{ form.name }}</td>
+                            <td>{{ form.discount_type }}</td>
+                            <td class="text-end">{{ form.discount_value }}</td>
+                            <td>{{ form.start_at }}</td>
+                            <td>{{ form.end_at }}</td>
+                            <td class="text-end">{{ form.priority }}</td>
+                            <td>{{ form.is_active }}</td>
+                        </tr>
+                        {% if form.non_field_errors %}
+                        <tr>
+                            <td colspan="8">
+                                <div class="alert alert-danger py-2 mb-0">{{ form.non_field_errors }}</div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-save"></i> Simpan Perubahan Promo
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

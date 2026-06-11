@@ -29,6 +29,10 @@ class CustomUser(AbstractUser):
         null=True, blank=True,
         help_text="When the trial period ends"
     )
+    trial_used_once = models.BooleanField(
+        default=False,
+        help_text="Marks whether free trial has been consumed once for this account.",
+    )
     subscription_end_date = models.DateTimeField(
         null=True, blank=True,
         help_text="When the paid subscription ends"
@@ -105,11 +109,16 @@ class CustomUser(AbstractUser):
     # Methods
     # =========================================================================
     
-    def start_trial(self, days: int = 14) -> None:
-        """Start a trial period for this user."""
+    def start_trial(self, days: int = 14) -> bool:
+        """Start a trial period for this user once per account lifetime."""
+        if self.trial_used_once:
+            return False
+
         self.subscription_status = self.SubscriptionStatus.TRIAL
         self.trial_end_date = timezone.now() + timedelta(days=days)
-        self.save(update_fields=['subscription_status', 'trial_end_date'])
+        self.trial_used_once = True
+        self.save(update_fields=['subscription_status', 'trial_end_date', 'trial_used_once'])
+        return True
     
     def activate_subscription(self, months: int) -> None:
         """Activate or extend paid subscription."""

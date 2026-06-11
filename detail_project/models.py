@@ -3,6 +3,7 @@
 from django.db import models
 from decimal import Decimal
 import html
+import re
 from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -31,6 +32,15 @@ class TimeStampedModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+BASE_PARAM_NAME_RE = re.compile(r"^bp_[1-9][0-9]*$")
+COMPUTED_PARAM_NAME_RE = re.compile(r"^cp_[1-9][0-9]*$")
+LEGACY_PARAM_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _opaque_id_enabled() -> bool:
+    return bool(getattr(settings, "OPAQUE_ID_ENABLED", True))
 
 
 class NameAliasManager(models.Manager):
@@ -156,7 +166,7 @@ class Pekerjaan(TimeStampedModel):
         r = self.ref
         if not r:
             return None
-        for attr in ("tahun", "tahun_sni", "versi", "versi_tahun"):
+        for attr in ("sumber", "tahun", "tahun_sni", "versi", "versi_tahun"):
             val = getattr(r, attr, None)
             if val:
                 return str(val)
@@ -170,10 +180,7 @@ class Pekerjaan(TimeStampedModel):
         - CUSTOM:       'Kustom'
         """
         if self.is_ref or self.is_ref_modified:
-            base = "AHSP"
-            yr = self.ref_year()
-            if yr:
-                base = f"{base} {yr}"
+            base = self.ref_year() or "AHSP"
             if self.is_ref_modified:
                 base = f"{base} (modified)"
             return base
@@ -416,7 +423,7 @@ class DetailAHSPProject(TimeStampedModel):
     kode = models.CharField(max_length=100)
     uraian = models.TextField()
     satuan = models.CharField(max_length=50, blank=True, null=True)
-    koefisien = models.DecimalField(max_digits=18, decimal_places=6, validators=[MinValueValidator(0)])
+    koefisien = models.DecimalField(max_digits=18, decimal_places=12, validators=[MinValueValidator(0)])
     
 
     # bundle target (hanya dipakai saat kategori = 'LAIN')
@@ -519,7 +526,7 @@ class DetailAHSPExpanded(TimeStampedModel):
     satuan = models.CharField(max_length=50, blank=True, null=True)
     koefisien = models.DecimalField(
         max_digits=18,
-        decimal_places=6,
+        decimal_places=12,
         validators=[MinValueValidator(0)],
         help_text='Koefisien final setelah expansion (sudah dikali multiplier)'
     )
@@ -626,6 +633,42 @@ class VolumeFormulaState(TimeStampedModel):
 
     def __str__(self):
         return f"F[{self.project_id}:{self.pekerjaan_id}] = {('fx' if self.is_fx else 'val')}«{(self.raw or '')[:30]}... »"
+
+
+class TemplateAhspKoefFormulaState(TimeStampedModel):
+    """
+    Sidecar formula state untuk kolom koefisien pada Template AHSP.
+    - Nilai canonical tetap di DetailAHSPProject.koefisien.
+    - row_key menggunakan kode baris detail (unique per pekerjaan).
+    """
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='template_ahsp_koef_formula_states',
+    )
+    pekerjaan = models.ForeignKey(
+        Pekerjaan,
+        on_delete=models.CASCADE,
+        related_name='template_ahsp_koef_formula_states',
+    )
+    row_key = models.CharField(max_length=100)
+    raw = models.TextField(blank=True, default="")
+    is_fx = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "pekerjaan", "row_key"],
+                name="uniq_ta_koef_formula_per_row",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["project", "pekerjaan"], name="ta_koef_proj_pkj_idx"),
+            models.Index(fields=["project", "pekerjaan", "row_key"], name="ta_koef_proj_row_idx"),
+        ]
+
+    def __str__(self):
+        return f"TAFX[{self.project_id}:{self.pekerjaan_id}:{self.row_key}]"
 
 
 # === Profit/Margin per Project ===
@@ -1005,9 +1048,8 @@ class ProjectParameter(TimeStampedModel):
         help_text="Nama variabel parameter (lowercase, no spaces, e.g., 'panjang', 'lebar')"
     )
     value = models.DecimalField(
-        max_digits=18,
-        decimal_places=3,
-        validators=[MinValueValidator(0)],
+        max_digits=24,
+        decimal_places=12,
         help_text="Nilai parameter (numeric)"
     )
     label = models.CharField(
@@ -1039,19 +1081,164 @@ class ProjectParameter(TimeStampedModel):
 
     def clean(self):
         """Validation"""
-        # Ensure name is lowercase and no spaces
         if self.name:
-            if ' ' in self.name:
-                raise ValidationError({
-                    'name': 'Parameter name cannot contain spaces. Use underscore instead (e.g., "koef_beton")'
-                })
-            # Auto-lowercase
             self.name = self.name.lower()
+            if _opaque_id_enabled():
+                if not BASE_PARAM_NAME_RE.match(self.name):
+                    raise ValidationError({
+                        'name': 'Parameter name harus format opaque bp_N (contoh: bp_1).'
+                    })
+                if self.name.startswith('cp_'):
+                    raise ValidationError({
+                        'name': 'Parameter base tidak boleh memakai prefix cp_.'
+                    })
+            else:
+                if self.name.startswith('cp_'):
+                    raise ValidationError({
+                        'name': 'Parameter base tidak boleh memakai prefix cp_.'
+                    })
+                if not (LEGACY_PARAM_NAME_RE.match(self.name) or BASE_PARAM_NAME_RE.match(self.name)):
+                    raise ValidationError({
+                        'name': 'Parameter name harus format legacy valid (a-z, 0-9, _) atau bp_N.'
+                    })
 
     def save(self, *args, **kwargs):
         """Override save for validation"""
         self.full_clean()
         super().save(*args, **kwargs)
+
+
+class ProjectComputedParameter(TimeStampedModel):
+    """
+    Formula-based project parameters (derived variables).
+
+    Examples:
+        - name="area_l1", expression="panjang_l1 * lebar_l1"
+        - name="volume_l1", expression="area_l1 * tinggi_l1"
+    """
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='computed_parameters',
+        help_text="Project owner"
+    )
+    name = models.CharField(
+        max_length=100,
+        help_text="Kode variabel turunan (lowercase, no spaces)"
+    )
+    expression = models.TextField(
+        help_text="Formula turunan, contoh: panjang_l1 * lebar_l1"
+    )
+    label = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Label tampilan UI"
+    )
+    unit = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Satuan output formula"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Deskripsi opsional"
+    )
+
+    class Meta:
+        unique_together = [('project', 'name')]
+        ordering = ['name']
+        verbose_name = 'Formula Parameter Project'
+        verbose_name_plural = 'Formula Parameter Project'
+        indexes = [
+            models.Index(fields=['project', 'name']),
+        ]
+
+    def __str__(self):
+        return f"{self.project.index_project} - {self.name} = {self.expression}"
+
+    def clean(self):
+        if self.name:
+            self.name = self.name.lower()
+            if _opaque_id_enabled():
+                if not COMPUTED_PARAM_NAME_RE.match(self.name):
+                    raise ValidationError({
+                        'name': 'Formula parameter name harus format opaque cp_N (contoh: cp_1).'
+                    })
+                if self.name.startswith('bp_'):
+                    raise ValidationError({
+                        'name': 'Formula parameter tidak boleh memakai prefix bp_.'
+                    })
+            else:
+                if self.name.startswith('bp_'):
+                    raise ValidationError({
+                        'name': 'Formula parameter tidak boleh memakai prefix bp_.'
+                    })
+                if not (LEGACY_PARAM_NAME_RE.match(self.name) or COMPUTED_PARAM_NAME_RE.match(self.name)):
+                    raise ValidationError({
+                        'name': 'Formula parameter name harus format legacy valid (a-z, 0-9, _) atau cp_N.'
+                    })
+        if self.expression is not None:
+            self.expression = str(self.expression).strip()
+        if not self.expression:
+            raise ValidationError({'expression': 'Formula wajib diisi'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class ParameterSequence(TimeStampedModel):
+    """
+    Monotonic counter per project and prefix for opaque parameter names.
+    """
+    project = models.ForeignKey(
+        'dashboard.Project',
+        on_delete=models.CASCADE,
+        related_name='parameter_sequences',
+    )
+    prefix = models.CharField(
+        max_length=4,
+        help_text="Opaque prefix: bp or cp",
+    )
+    last_num = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = [('project', 'prefix')]
+        indexes = [
+            models.Index(fields=['project', 'prefix']),
+        ]
+
+    def __str__(self):
+        return f"ParameterSequence[{self.project_id}:{self.prefix}]={self.last_num}"
+
+
+class ParameterMigrationLog(models.Model):
+    TYPE_BASE = "base"
+    TYPE_COMPUTED = "computed"
+    TYPE_CHOICES = (
+        (TYPE_BASE, "Base"),
+        (TYPE_COMPUTED, "Computed"),
+    )
+
+    project = models.ForeignKey(
+        "dashboard.Project",
+        on_delete=models.CASCADE,
+        related_name="parameter_migration_logs",
+    )
+    old_name = models.CharField(max_length=100)
+    new_name = models.CharField(max_length=100)
+    param_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    migrated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("project", "old_name", "new_name", "param_type")]
+        indexes = [
+            models.Index(fields=["project", "param_type"]),
+            models.Index(fields=["project", "old_name"]),
+        ]
+
+    def __str__(self):
+        return f"ParamMigration[{self.project_id}] {self.param_type}: {self.old_name} -> {self.new_name}"
 
 
 class ProjectChangeStatus(TimeStampedModel):
@@ -1062,6 +1249,16 @@ class ProjectChangeStatus(TimeStampedModel):
     )
     last_ahsp_change = models.DateTimeField(null=True, blank=True)
     last_harga_change = models.DateTimeField(null=True, blank=True)
+    pending_reload_job_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Daftar pekerjaan yang wajib reload Template/Harga setelah perubahan sumber.",
+    )
+    pending_volume_reset_job_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Daftar pekerjaan yang wajib cek ulang Volume/Jadwal setelah perubahan sumber.",
+    )
     unit_code_sequence = models.PositiveIntegerField(
         default=0,
         help_text="Pencacah kode otomatis 'Unit-XXXX' terakhir per proyek."
@@ -1120,8 +1317,10 @@ class PekerjaanTemplate(TimeStampedModel):
         related_name='created_templates'
     )
     is_public = models.BooleanField(
-        default=True,
-        help_text="If True, visible to all users. If False, only creator can see."
+        # Keputusan produk 2026-06-10 (UAT B2.5): private-by-default — library
+        # publik hanya berisi template yang dikurasi admin (via Django admin).
+        default=False,
+        help_text="If True, visible to all users (admin-curated). If False, only creator can see."
     )
     usage_count = models.PositiveIntegerField(
         default=0,
@@ -1149,13 +1348,33 @@ class PekerjaanTemplate(TimeStampedModel):
         """Auto-calculate stats from content."""
         if self.content and isinstance(self.content, dict):
             klasifikasi = self.content.get('klasifikasi', [])
-            self.total_klasifikasi = len(klasifikasi)
-            self.total_sub = sum(len(k.get('sub', [])) for k in klasifikasi)
-            self.total_pekerjaan = sum(
-                len(s.get('pekerjaan', []))
-                for k in klasifikasi
-                for s in k.get('sub', [])
-            )
+            sub_flat = self.content.get('sub_klasifikasi', [])
+            pekerjaan_flat = self.content.get('pekerjaan', [])
+
+            if (
+                isinstance(klasifikasi, list)
+                and isinstance(sub_flat, list)
+                and isinstance(pekerjaan_flat, list)
+            ):
+                # Flat export format (project_template v3.x).
+                self.total_klasifikasi = len(klasifikasi)
+                self.total_sub = len(sub_flat)
+                self.total_pekerjaan = len(pekerjaan_flat)
+            else:
+                nested_klasifikasi = klasifikasi if isinstance(klasifikasi, list) else []
+                self.total_klasifikasi = len(nested_klasifikasi)
+                self.total_sub = sum(
+                    len(k.get('sub', []))
+                    for k in nested_klasifikasi
+                    if isinstance(k, dict)
+                )
+                self.total_pekerjaan = sum(
+                    len(s.get('pekerjaan', []))
+                    for k in nested_klasifikasi
+                    if isinstance(k, dict)
+                    for s in (k.get('sub', []) if isinstance(k.get('sub', []), list) else [])
+                    if isinstance(s, dict)
+                )
         super().save(*args, **kwargs)
     
     def increment_usage(self):

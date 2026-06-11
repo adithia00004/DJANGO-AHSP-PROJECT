@@ -2,16 +2,42 @@ name: CI
 
 on:
   push:
-    branches: ["main", "develop"]
+    # checkpoint/** included so release-prep branches get CI without a PR
+    # (audit finding F4).
+    branches: ["main", "develop", "checkpoint/**"]
   pull_request:
 
 env:
-  DJANGO_SETTINGS_MODULE: config.settings
-  DJANGO_DB_ENGINE: sqlite
+  # Use the dedicated test settings (matches pytest.ini). The previous value
+  # config.settings overrode pytest.ini and ran the suite with non-test settings
+  # (SESSION_COOKIE_SECURE=True + AllAuth backend) which breaks force_login over
+  # the HTTP test client -> spurious /accounts/login redirects (302) in CI.
+  DJANGO_SETTINGS_MODULE: config.settings.test
+  DJANGO_DB_ENGINE: postgres
+  POSTGRES_DB: ahsp_ci
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_HOST: 127.0.0.1
+  POSTGRES_PORT: 5432
 
 jobs:
   tests:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: ahsp_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ahsp_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -20,7 +46,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # Match the production image (Dockerfile: python:3.11-slim) so a
+          # green CI actually attests the runtime we ship (audit finding F3).
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -30,3 +58,27 @@ jobs:
       - name: Run pytest
         run: |
           pytest
+
+  frontend:
+    # Audit finding F4: JS regressions were previously not caught by CI.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Match the image build stage (Dockerfile: node:20).
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run vitest
+        run: npx vitest run
+
+      - name: Production build
+        run: npm run build

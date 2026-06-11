@@ -1,0 +1,22 @@
+{# Item menu export dengan kesadaran entitlement (M7, audit UI/UX §9.2).
+   Params:
+     btn_id   : id tombol (JS existing bind ke id ini; null-safe bila terkunci)
+     label    : teks item, mis. "Export PDF"
+     icon     : kelas ikon bootstrap-icons, mis. "bi-file-earmark-pdf text-danger"
+     allowed  : boolean entitlement (export_pdf_allowed / export_excel_word_allowed)
+     title    : tooltip saat aktif (opsional)
+   Saat terkunci: item menjadi link ke /pricing/ dengan ikon gembok + badge Pro
+   (titik konversi — tidak ada kegagalan kejutan pasca-klik). #}
+{% if allowed %}
+<button class="dropdown-item" type="button" id="{{ btn_id }}"{% if title %} title="{{ title }}"{% endif %}>
+  <i class="bi {{ icon }} me-2"></i>{{ label }}
+</button>
+{% else %}
+<a class="dropdown-item d-flex align-items-center"
+   href="/pricing/?reason=export_locked"
+   title="Fitur Pro — upgrade untuk membuka {{ label }}">
+  <i class="bi bi-lock-fill text-muted me-2"></i>
+  <span class="text-muted">{{ label }}</span>
+  <span class="badge text-bg-warning ms-auto">Pro</span>
+</a>
+{% endif %}

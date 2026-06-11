@@ -29,11 +29,21 @@
                         {% csrf_token %}
 
                         <div class="mb-4">
-                            <label for="excel_file" class="form-label">Pilih File Excel</label>
+                            <label for="excel_file" class="form-label">Pilih File Excel (boleh lebih dari satu)</label>
                             <input type="file" class="form-control form-control-lg" id="excel_file" name="excel_file"
-                                accept=".xlsx,.xls" required>
+                                accept=".xlsx,.xls" multiple required>
                             <div class="form-text">
-                                Format: .xlsx atau .xls dengan kolom yang sesuai
+                                Mendukung file "Data Valid" hasil validasi (AHSP Interchange v1) maupun Excel
+                                flat biasa. Pilih beberapa file sekaligus -> digabung jadi satu batch staging.
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="sumber" class="form-label">Sumber AHSP <span class="text-muted">(versi/tahun)</span></label>
+                            <input type="text" class="form-control" id="sumber" name="sumber"
+                                placeholder="Mis. AHSP 2024" autocomplete="off">
+                            <div class="form-text">
+                                Tidak ada di file Excel, jadi perlu dideklarasikan. Bisa juga diisi saat commit.
                             </div>
                         </div>
 

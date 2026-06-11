@@ -1,0 +1,27 @@
+# TLS-terminating reverse proxy for the AHSP web service.
+# Caddy automatically provisions and renews a Let's Encrypt certificate for
+# {$DOMAIN}. It terminates HTTPS and forwards to the internal `web` service.
+#
+# Django (config/settings/production.py) already sets HSTS, secure cookies, and
+# SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https"); Caddy sets that
+# header, so Django correctly sees requests as secure.
+#
+# Alternative: nginx + certbot can replace this; keep the same proxy headers.
+
+{$DOMAIN} {
+	encode gzip zstd
+
+	reverse_proxy web:8000 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	# Don't leak server software.
+	header -Server
+
+	log {
+		output stdout
+		format console
+	}
+}

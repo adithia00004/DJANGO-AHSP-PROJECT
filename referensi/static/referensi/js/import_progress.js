@@ -360,18 +360,18 @@
                     if (percentUsed > 80) {
                         console.warn(`Memory usage high: ${usedMB} MB / ${limitMB} MB (${percentUsed.toFixed(1)}%)`);
 
-                        // Suggest user action
+                        // Suggest user action — via toast terpadu
+                        // (Kontrak Feedback UI, AUDIT_UI_UX §10).
                         if (percentUsed > 90) {
-                            const warning = document.createElement('div');
-                            warning.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-                            warning.style.zIndex = '99999';
-                            warning.innerHTML = `
-                                <strong>Peringatan Memori!</strong> Browser menggunakan banyak memori.
-                                Pertimbangkan untuk me-refresh halaman atau mengurangi jumlah data yang ditampilkan.
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            `;
-                            document.body.appendChild(warning);
-                            setTimeout(() => warning.remove(), 10000);
+                            const msg = 'Peringatan Memori! Browser menggunakan banyak memori. '
+                                + 'Pertimbangkan untuk me-refresh halaman atau mengurangi jumlah data yang ditampilkan.';
+                            if (window.DP && window.DP.toast) {
+                                window.DP.toast.show({ message: msg, type: 'warning', duration: 10000 });
+                            } else if (window.showToast) {
+                                window.showToast(msg, 'warning', 10000);
+                            } else {
+                                console.warn(msg);
+                            }
                         }
                     }
                 }

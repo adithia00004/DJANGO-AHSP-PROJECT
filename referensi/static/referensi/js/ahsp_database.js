@@ -25,10 +25,12 @@
             return;
         }
 
-        // Fallback to inline toast
+        // Emergency fallback only (core/toast.js failed to load).
+        // Kontrak Feedback UI (AUDIT_UI_UX §10): no literal z-index — stay on
+        // the toast token layer so modals can never cover notifications.
         const toast = document.createElement('div');
         toast.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-        toast.style.zIndex = '99999';
+        toast.style.zIndex = 'var(--dp-z-toast, 13100)';
         toast.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>

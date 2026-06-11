@@ -524,13 +524,15 @@ Contoh fungsi:
 = sum(10, 20, 30)
 = min(5, 3, 8)
 = max(5, 3, 8)
-= round(panjang * lebar, 2)
+= round(luas_dinding * tinggi, 2)
 ```
 
 Project Parameter:
-- Definisikan variabel global (contoh: `lebar_jalan = 6`).
-- Pakai variabel itu di banyak formula.
-- Ubah sekali, formula terkait ikut ter-update.
+- Definisikan parameter global lewat sidebar (label bebas, kode opaque dibuat otomatis server).
+- Saat menulis formula, cari parameter berdasarkan label melalui autocomplete (`Ctrl+Space`) atau `Parameter Palette`.
+- Formula disimpan dalam kode opaque internal, tetapi preview/editor menampilkan label agar mudah dibaca.
+- Gunakan mode `Preview Label`/`Preview Nilai` di editor formula untuk validasi cepat sebelum menerapkan.
+- Ubah nilai/label sekali, formula terkait ikut ter-update tanpa perlu edit kode manual.
 
 Manajemen:
 - Impor/ekspor parameter via JSON/CSV/XLSX.
@@ -847,6 +849,40 @@ Dampak: Menengah
 ### Q5: Kapan pakai Copy Project dibanding Template?
 - Copy Project untuk menyalin proyek lengkap.
 - Template untuk menyalin struktur pekerjaan saja.
+
+---
+
+## Formula Koefisien di Template AHSP
+
+Fitur ini memungkinkan kolom `koefisien` di halaman Template AHSP diisi dengan formula berbasis parameter project (`bp_*`, `cp_*`).
+
+### Cara Pakai Cepat
+
+1. Buka halaman **Template AHSP**.
+2. Tampilkan panel parameter dari tombol `Parameter` (sidebar kanan).
+3. Pada kolom koefisien, ketik formula dengan awalan `=`.  
+Contoh: `=bp_1 * 2`
+4. Keluar dari input (blur) untuk evaluasi otomatis.
+5. Simpan data seperti biasa.
+
+### Aturan Validasi
+
+- Hasil formula koefisien wajib dalam range `0.000001` s/d `999999.999999`.
+- Jika formula error sintaks/range, baris ditandai merah dan simpan diblok.
+- Jika parameter hilang, baris ditandai kuning dan koefisien memakai nilai valid terakhir.
+- Formula aktif ditandai badge `fx`.
+
+### Catatan Mode REF/MOD/CUS
+
+- `REF`: tetap read-only.
+- `MOD`: editable, tetapi tidak menerima payload bundle.
+- `CUS`: editable penuh termasuk bundle.
+
+### Troubleshooting Cepat
+
+- Muncul warning parameter hilang: cek parameter di halaman Volume Pekerjaan.
+- Formula berubah setelah save: sistem melakukan re-evaluasi berdasarkan snapshot parameter terbaru.
+- Gagal load detail + error parsing JSON di browser: hubungi admin untuk cek migration sidecar dan log server.
 
 ---
 

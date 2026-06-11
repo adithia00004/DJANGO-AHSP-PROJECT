@@ -12,8 +12,10 @@ from io import BytesIO
 from functools import wraps
 from typing import Any, Dict, Optional, Set
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP  # <-- NEW: Decimal handling
-from datetime import datetime
+from datetime import datetime, timezone as py_timezone
 from subscriptions.entitlements import FEATURE_PRO_ONLY, get_feature_access
+
+from .decorators import api_deprecated  # U15: deprecation header rincian-rab
 
 logger = logging.getLogger(__name__)
 
@@ -79,16 +81,17 @@ def _enforce_professional_export_tier(view_func):
     return wrapper
 
 # FASE 0.3: Monitoring Setup
-from .monitoring_helpers import log_optimistic_lock_conflict
-
 from django.http import JsonResponse, HttpRequest, HttpResponse, Http404
+from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.db import transaction, IntegrityError
-from django.db.models import Max, F, Sum, DecimalField, ExpressionWrapper
+from django.db.utils import OperationalError, ProgrammingError
+from django.db.models import Max, F, Sum, DecimalField, ExpressionWrapper, Q, Exists, OuterRef
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.utils.text import slugify
 from django.utils.html import escape
 from django.utils.timezone import now
 from django.utils.dateparse import parse_datetime
@@ -101,7 +104,8 @@ from .models import (
     Klasifikasi, SubKlasifikasi, Pekerjaan, VolumePekerjaan,
     DetailAHSPProject, DetailAHSPExpanded, DetailAHSPAudit,
     HargaItemProject, ItemConversionProfile, VolumeFormulaState, ProjectPricing,  # Added ItemConversionProfile
-    ProjectChangeStatus, ProjectParameter,  # Added ProjectParameter for template import
+    TemplateAhspKoefFormulaState,
+    ProjectChangeStatus, ProjectParameter, ProjectComputedParameter, ParameterSequence,  # Added ProjectParameter for template import
     PekerjaanProgressWeekly, TahapPelaksanaan,
 )
 from .services import (
@@ -113,11 +117,17 @@ from .services import (
     cascade_bundle_re_expansion,  # CRITICAL: Re-expand pekerjaan that reference modified one
     detect_orphaned_items,
     delete_orphaned_items,
+    cleanup_orphaned_items,
     snapshot_pekerjaan_details,
     log_audit,
     touch_project_change,
     get_change_tracker,
+    register_source_change_flags,
+    clear_source_change_flags,
+    get_pending_source_change_flags,
     _populate_expanded_from_raw,
+    active_harga_items_queryset,
+    used_harga_items_queryset,
 )
 
 from .export_config import (
@@ -131,6 +141,7 @@ from .export_config import (
 from .exports import RekapRABExporter, RekapKebutuhanExporter
 from .api_helpers import rate_limit
 from accounts.mixins import api_pdf_export_allowed
+from .formula_tokenizer import remap_expression
 
 try:
     from referensi.models import RincianReferensi  # type: ignore
@@ -163,6 +174,19 @@ _UNIT_AUTO_KATEGORI = {
 }
 _UNIT_CODE_PREFIX = "Unit-"
 _UNIT_CODE_PATTERN = re.compile(rf"^{_UNIT_CODE_PREFIX}(\d{{4}})$")
+_BASE_PARAM_NAME_RE = re.compile(r"^bp_[1-9][0-9]*$")
+_COMPUTED_PARAM_NAME_RE = re.compile(r"^cp_[1-9][0-9]*$")
+_LEGACY_PARAM_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+_TA_KOEF_SIDECAR_TABLE_MARKERS = (
+    "templateahspkoefformulastate",
+    "detail_project_templateahspkoefformulastate",
+)
+
+
+def _is_missing_ta_koef_sidecar_table(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in _TA_KOEF_SIDECAR_TABLE_MARKERS)
 
 
 def _lock_or_create_change_status(project):
@@ -382,6 +406,164 @@ def _extract_parameters_from_request(request: HttpRequest) -> dict:
         return {}
 
 
+def _parse_parameter_value_allow_negative(raw_value) -> Optional[Decimal]:
+    """
+    Parse parameter numeric value while allowing negatives.
+
+    Reuses existing `parse_any` normalization for locale formats, then applies
+    sign manually because `parse_any` rejects negative values by design.
+    """
+    if raw_value is None:
+        return None
+
+    text = str(raw_value).strip()
+    if not text:
+        return None
+
+    sign = Decimal("-1") if text.startswith("-") else Decimal("1")
+    normalized = text[1:].strip() if sign < 0 else text
+    parsed = parse_any(normalized)
+    if parsed is None:
+        return None
+    return quantize_half_up(parsed * sign, 12)
+
+
+def _to_iso_timestamp(dt):
+    if not dt:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return dt.astimezone(py_timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_sync_timestamp(raw_value):
+    if raw_value is None:
+        return None
+    value = str(raw_value).strip()
+    if not value:
+        return None
+    dt = parse_datetime(value)
+    if not dt:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return dt
+
+
+def _latest_project_param_update(project, model_cls):
+    return (
+        model_cls.objects.filter(project=project)
+        .aggregate(ts=Max("updated_at"))
+        .get("ts")
+    )
+
+
+def _is_stale_sync(project, model_cls, payload):
+    client_ts = _parse_sync_timestamp(payload.get("last_sync_at"))
+    if not client_ts:
+        return False, None
+    latest_ts = _latest_project_param_update(project, model_cls)
+    if latest_ts and latest_ts > client_ts:
+        return True, latest_ts
+    return False, latest_ts
+
+
+def _next_opaque_name(project, prefix: str) -> str:
+    """
+    Allocate monotonic opaque name using ParameterSequence.
+    """
+    if prefix not in {"bp", "cp"}:
+        raise ValueError(f"Unsupported opaque prefix: {prefix}")
+    sequence, _ = ParameterSequence.objects.select_for_update().get_or_create(
+        project=project,
+        prefix=prefix,
+        defaults={"last_num": 0},
+    )
+    sequence.last_num += 1
+    sequence.save(update_fields=["last_num", "updated_at"])
+    return f"{prefix}_{sequence.last_num}"
+
+
+def _is_opaque_id_enabled() -> bool:
+    return bool(getattr(settings, "OPAQUE_ID_ENABLED", True))
+
+
+def _normalize_legacy_name(raw: str, fallback: str) -> str:
+    value = str(raw or "").strip().lower()
+    value = re.sub(r"[^a-z0-9_]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    if not value:
+        value = fallback
+    if value and value[0].isdigit():
+        value = f"v_{value}"
+    if not _LEGACY_PARAM_NAME_RE.match(value):
+        value = fallback
+    return value
+
+
+def _next_legacy_name(project, model_cls, label: str, fallback: str) -> str:
+    base_name = _normalize_legacy_name(label, fallback)
+    candidate = base_name
+    suffix = 2
+    existing = set(
+        model_cls.objects.filter(project=project).values_list("name", flat=True)
+    )
+    while candidate in existing:
+        candidate = f"{base_name}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _is_valid_base_param_name(name: str) -> bool:
+    value = str(name or "").strip().lower()
+    if _is_opaque_id_enabled():
+        return bool(_BASE_PARAM_NAME_RE.match(value))
+    if _COMPUTED_PARAM_NAME_RE.match(value):
+        return False
+    return bool(_LEGACY_PARAM_NAME_RE.match(value) or _BASE_PARAM_NAME_RE.match(value))
+
+
+def _is_valid_computed_param_name(name: str) -> bool:
+    value = str(name or "").strip().lower()
+    if _is_opaque_id_enabled():
+        return bool(_COMPUTED_PARAM_NAME_RE.match(value))
+    if _BASE_PARAM_NAME_RE.match(value):
+        return False
+    return bool(_LEGACY_PARAM_NAME_RE.match(value) or _COMPUTED_PARAM_NAME_RE.match(value))
+
+
+def _base_name_format_error_text() -> str:
+    if _is_opaque_id_enabled():
+        return "Kode tidak sesuai format opaque (bp_N)"
+    return "Kode tidak sesuai format legacy/opaque yang diizinkan untuk parameter base"
+
+
+def _computed_name_format_error_text() -> str:
+    if _is_opaque_id_enabled():
+        return "Kode tidak sesuai format opaque (cp_N)"
+    return "Kode tidak sesuai format legacy/opaque yang diizinkan untuk formula turunan"
+
+
+def generate_base_param_name(project, label: str) -> str:
+    if _is_opaque_id_enabled():
+        return _next_opaque_name(project, "bp")
+    return _next_legacy_name(project, ProjectParameter, label, fallback="param")
+
+
+def generate_computed_param_name(project, label: str) -> str:
+    if _is_opaque_id_enabled():
+        return _next_opaque_name(project, "cp")
+    return _next_legacy_name(project, ProjectComputedParameter, label, fallback="rumus")
+
+
+def generate_bp_name(project):
+    return generate_base_param_name(project, "param")
+
+
+def generate_cp_name(project):
+    return generate_computed_param_name(project, "rumus")
+
+
 def _get_or_create_pricing(project):
     """
     Defaults used by the *pricing API*:
@@ -402,7 +584,7 @@ def _get_or_create_pricing(project):
 def _safe_snap_from_ref(ref_obj, src, ov_ura=None, ov_sat=None):
     """
     Kembalikan tuple (kode, uraian, satuan) yang aman (tidak kosong) dari AHSP referensi.
-    - src == ref_modified → hormati override_uraian/satuan bila diisi.
+    - src == ref_modified â†’ hormati override_uraian/satuan bila diisi.
     - fallback bila data referensi kosong (mis. di test/seed).
     """
     rid  = getattr(ref_obj, "id", None)
@@ -438,7 +620,7 @@ def api_search_ahsp(request: HttpRequest, project_id: int):
     qs = qs.order_by("kode_ahsp")[:limit]
     results = [{
         "id": obj.id,
-        "text": f"{obj.kode_ahsp} — {obj.nama_ahsp[:80]}",
+        "text": f"{obj.kode_ahsp} - {obj.nama_ahsp[:80]}",
         "kode_ahsp": obj.kode_ahsp,
         "nama_ahsp": obj.nama_ahsp,
         "satuan": obj.satuan,
@@ -628,7 +810,7 @@ def _str_to_src(s):
 @require_GET
 def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
     """
-    Kembalikan struktur Klasifikasi → Sub → Pekerjaan yang sudah tersimpan.
+    Kembalikan struktur Klasifikasi â†’ Sub â†’ Pekerjaan yang sudah tersimpan.
 
     Query params:
     - search (q): Filter pekerjaan by kode AHSP, referensi AHSP nama, atau uraian pekerjaan
@@ -678,6 +860,7 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
             'snapshot_uraian',
             'snapshot_satuan',
             'ref_id',
+            'ref__sumber',
             'budgeted_cost',
         )
     )
@@ -739,6 +922,8 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
                     "snapshot_uraian": _sanitize_text(p.get("snapshot_uraian")),
                     "snapshot_satuan": _sanitize_text(p.get("snapshot_satuan")),
                     "ref_id": p.get("ref_id"),
+                    "ref_sumber": p.get("ref__sumber") or "",
+                    "ahsp_sumber": p.get("ref__sumber") or "",
                     "budgeted_cost": float(p.get("budgeted_cost") or 0),
                 })
                 total_pekerjaan_count += 1
@@ -768,7 +953,7 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
 @transaction.atomic
 def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     """
-    Upsert struktur Klasifikasi → SubKlasifikasi → Pekerjaan.
+    Upsert struktur Klasifikasi â†’ SubKlasifikasi â†’ Pekerjaan.
 
     - Klasifikasi upsert-by-natural-key: (project, ordering_index)
     - SubKlasifikasi upsert-by-natural-key: (project, klasifikasi, ordering_index)
@@ -822,40 +1007,101 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # ============================
     pre_errors = []
     all_ref_ids = set()
-    ref_locs = []  # simpan path + nilai untuk marking "not found"
+    ref_locs = []  # simpan path + nilai untuk marking "not found"/source mismatch
+    existing_ref_meta = {
+        row["id"]: (row["source_type"], row["ref_id"])
+        for row in Pekerjaan.objects.filter(project=project).values("id", "source_type", "ref_id")
+    }
+
+    seen_klas_order: Dict[int, int] = {}
 
     for ki, k in enumerate(klas_list):
+        if not isinstance(k, dict):
+            pre_errors.append(_err(f"klasifikasi[{ki}]", "Harus objek"))
+            continue
+
+        k_order = _safe_int(k.get("ordering_index"), ki + 1)
+        prev_ki = seen_klas_order.get(k_order)
+        if prev_ki is not None:
+            pre_errors.append(_err(
+                f"klasifikasi[{ki}].ordering_index",
+                f"Duplikat dengan klasifikasi[{prev_ki}].ordering_index"
+            ))
+        else:
+            seen_klas_order[k_order] = ki
+
         sub_list = (k.get("sub") or k.get("subs") or [])
         if not isinstance(sub_list, list):
             pre_errors.append(_err(f"klasifikasi[{ki}].sub", "Harus list"))
             continue
 
+        seen_sub_order: Dict[int, int] = {}
         for si, s in enumerate(sub_list):
+            if not isinstance(s, dict):
+                pre_errors.append(_err(f"klasifikasi[{ki}].sub[{si}]", "Harus objek"))
+                continue
+
+            s_order = _safe_int(s.get("ordering_index"), si + 1)
+            prev_si = seen_sub_order.get(s_order)
+            if prev_si is not None:
+                pre_errors.append(_err(
+                    f"klasifikasi[{ki}].sub[{si}].ordering_index",
+                    f"Duplikat dengan klasifikasi[{ki}].sub[{prev_si}].ordering_index"
+                ))
+            else:
+                seen_sub_order[s_order] = si
+
             pekerjaan_list = (s.get("pekerjaan") or s.get("jobs") or [])
             if not isinstance(pekerjaan_list, list):
                 pre_errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan", "Harus list"))
                 continue
 
             for pi, p in enumerate(pekerjaan_list):
+                if not isinstance(p, dict):
+                    pre_errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}]", "Harus objek"))
+                    continue
+
                 src = _str_to_src(p.get("source_type"))
                 p_id = p.get("id")  # jika ada, berarti baris existing (boleh tanpa ref_id bila tidak berubah)
+                p_id_int = None
+                if p_id is not None:
+                    try:
+                        p_id_int = int(p_id)
+                    except (TypeError, ValueError):
+                        pre_errors.append(_err(
+                            f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].id",
+                            "ID pekerjaan tidak valid"
+                        ))
 
                 if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
                     rid_raw = p.get("ref_id", None)
 
                     if rid_raw is None:
+                        if p_id:
+                            if p_id_int not in existing_ref_meta:
+                                pre_errors.append(_err(
+                                    f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].id",
+                                    "ID pekerjaan tidak ditemukan dalam project ini; pilih ulang referensi lalu simpan"
+                                ))
+                            else:
+                                old_src, old_ref_id = existing_ref_meta[p_id_int]
+                                if old_src not in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] or not old_ref_id:
+                                    pre_errors.append(_err(
+                                        f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                                        "Wajib diisi saat mengganti source type ke ref/ref_modified"
+                                    ))
                         # Tanpa ref_id:
-                        #  - kalau baris existing (punya id) → DIIZINKAN (artinya tidak ganti referensi)
-                        #  - kalau baris baru (tanpa id)     → ERROR (ref_id tetap wajib)
+                        #  - kalau baris existing (punya id) â†’ DIIZINKAN (artinya tidak ganti referensi)
+                        #  - kalau baris baru (tanpa id)     â†’ ERROR (ref_id tetap wajib)
                         if not p_id:
                             pre_errors.append(_err(
                                 f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
                                 "Wajib untuk source=ref/ref_modified (baris baru)"
                             ))
-                        # kalau p_id ada, tidak menambahkan ke all_ref_ids → tidak ada cek existensi (karena tak mengubah ref)
+                        # kalau p_id ada, tidak menambahkan ke all_ref_ids â†’ tidak ada cek existensi (karena tak mengubah ref)
                         continue
 
-                    # Ada ref_id → harus integer & akan dicek eksistensinya (ini kasus ganti ref atau baris baru lengkap)
+                    # Ada ref_id â†’ harus integer & akan dicek eksistensinya (ini kasus ganti ref atau baris baru lengkap)
                     try:
                         rid = int(rid_raw)
                     except (TypeError, ValueError):
@@ -866,7 +1112,12 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                         continue
 
                     all_ref_ids.add(rid)
-                    ref_locs.append((f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id", rid))
+                    expected_sumber = (p.get("ahsp_sumber") or p.get("ref_sumber") or "").strip()
+                    ref_locs.append((
+                        f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                        rid,
+                        expected_sumber,
+                    ))
 
 
                 elif src == Pekerjaan.SOURCE_CUSTOM:
@@ -884,11 +1135,24 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
     # validasi eksistensi ref_id (bulk)
     if all_ref_ids:
-        found = set(AHSPReferensi.objects.filter(id__in=all_ref_ids).values_list("id", flat=True))
+        ref_source_by_id = {
+            row["id"]: row.get("sumber") or ""
+            for row in AHSPReferensi.objects.filter(id__in=all_ref_ids).values("id", "sumber")
+        }
+        found = set(ref_source_by_id)
         missing = all_ref_ids - found
-        for path, rid in ref_locs:
+        for path, rid, expected_sumber in ref_locs:
             if rid in missing:
                 pre_errors.append(_err(path, f"Referensi #{rid} tidak ditemukan"))
+            elif expected_sumber and ref_source_by_id.get(rid) != expected_sumber:
+                pre_errors.append(_err(
+                    path.replace(".ref_id", ".ahsp_sumber"),
+                    (
+                        f"Sumber AHSP tidak sesuai dengan referensi terpilih. "
+                        f"Referensi #{rid} berasal dari '{ref_source_by_id.get(rid)}', "
+                        f"bukan '{expected_sumber}'."
+                    ),
+                ))
 
     source_change_state = {
         "reload_jobs": set(),
@@ -979,9 +1243,16 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         - VolumePekerjaan: reset volume jadi NULL/0
         - PekerjaanTahapan: hapus dari semua tahapan (jadwal)
         - VolumeFormulaState: hapus formula state
+        - TemplateAhspKoefFormulaState: hapus formula koef sidecar
         - detail_ready flag: set ke False
         """
-        from .models import DetailAHSPProject, VolumePekerjaan, PekerjaanTahapan, VolumeFormulaState
+        from .models import (
+            DetailAHSPProject,
+            VolumePekerjaan,
+            PekerjaanTahapan,
+            VolumeFormulaState,
+            TemplateAhspKoefFormulaState,
+        )
 
         # 1. Hapus semua DetailAHSPProject (template AHSP)
         DetailAHSPProject.objects.filter(project=project, pekerjaan=pobj).delete()
@@ -995,7 +1266,10 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         # 4. Hapus volume formula state
         VolumeFormulaState.objects.filter(project=project, pekerjaan=pobj).delete()
 
-        # 5. Set detail_ready flag ke False
+        # 5. Hapus formula sidecar koefisien Template AHSP
+        TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=pobj).delete()
+
+        # 6. Set detail_ready flag ke False
         pobj.detail_ready = False
         pobj.save(update_fields=['detail_ready'])
 
@@ -1007,7 +1281,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
     def _adopt_tmp_into(pobj, tmp, s_obj, order: int):
         """
-        Salin snapshot tmp → pobj, pindahkan seluruh detail tmp → pobj, lalu hapus tmp.
+        Salin snapshot tmp â†’ pobj, pindahkan seluruh detail tmp â†’ pobj, lalu hapus tmp.
 
         IMPORTANT: Karena pekerjaan berubah (source_type atau ref_id), reset semua data terkait:
         - Volume, jadwal, formula state akan di-reset
@@ -1068,7 +1342,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             return
         summary = (
             f"Source change: "
-            f"{_format_source_label(old_source, old_ref_id)} → {_format_source_label(new_source, new_ref_id)}"
+            f"{_format_source_label(old_source, old_ref_id)} â†’ {_format_source_label(new_source, new_ref_id)}"
         )
         try:
             log_audit(
@@ -1169,15 +1443,18 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     old_ref_id = getattr(pobj, "ref_id", None)
                     change_was_applied = False
 
-                    # Ganti tipe sumber → pasti replace
+                    # Ganti tipe sumber â†’ pasti replace
                     if pobj.source_type != src:
                         # Special case: ganti ke REF/REF_MOD tapi tidak ada ref_id
                         if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and new_ref_id is None:
-                            errors.append(_err(
-                                f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
-                                "Wajib diisi saat mengganti source type ke ref/ref_modified"
-                            ))
-                            continue
+                            if getattr(pobj, "ref_id", None):
+                                new_ref_id = pobj.ref_id
+                            else:
+                                errors.append(_err(
+                                    f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                                    "Wajib diisi saat mengganti source type ke ref/ref_modified"
+                                ))
+                                continue
                         replace = True
                     # Untuk REF/REF_MOD: hanya replace jika ref_id benar-benar BERBEDA
                     elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
@@ -1188,7 +1465,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                                 # Payload anomali: fail-safe ke replace agar state konsisten
                                 replace = True
                         else:
-                            # Tidak ada ref_id baru → tidak dianggap replace
+                            # Tidak ada ref_id baru â†’ tidak dianggap replace
                             replace = False
 
                     if replace:
@@ -1402,10 +1679,18 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
     response_payload = {"ok": status == 200, "errors": errors, "summary": summary}
     if source_change_state["reload_jobs"] or source_change_state["volume_reset_jobs"]:
+        persisted_flags = register_source_change_flags(
+            project,
+            reload_job_ids=source_change_state["reload_jobs"],
+            volume_reset_job_ids=source_change_state["volume_reset_jobs"],
+        )
         response_payload["change_flags"] = {
-            "reload_job_ids": sorted(source_change_state["reload_jobs"]),
-            "volume_reset_job_ids": sorted(source_change_state["volume_reset_jobs"]),
+            "reload_job_ids": persisted_flags["reload_job_ids"],
+            "volume_reset_job_ids": persisted_flags["volume_reset_job_ids"],
         }
+        # Source change me-reset DetailAHSPProject â†’ bisa meninggalkan harga item orphan.
+        # Bersihkan setelah commit agar tidak muncul lagi di Harga Items.
+        transaction.on_commit(lambda: _auto_cleanup_orphans(project))
 
     return JsonResponse(response_payload, status=status)
 
@@ -1441,9 +1726,15 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
  
 
     saved = 0
+    saved_job_ids = []
     errors = []
 
     for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            key = f"{path_prefix}[{idx}]" if path_prefix else f"[{idx}]"
+            errors.append(_err(key, "Setiap item harus objek"))
+            continue
+
         pid = row.get("pekerjaan_id") or row.get("id")
         raw = row.get("quantity")
 
@@ -1464,7 +1755,7 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
         dec = parse_any(raw)
         if dec is None:
             key = f"{path_prefix}[{idx}].quantity" if path_prefix else f"[{idx}].quantity"
-            errors.append(_err(key, "Harus angka ≥ 0"))
+            errors.append(_err(key, "Harus angka â‰¥ 0"))
             continue
 
         qty = quantize_half_up(dec, DECIMAL_SPEC["VOL"])  # 3dp HALF_UP
@@ -1479,28 +1770,43 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
             defaults={"quantity": qty},
         )
         saved += 1
+        saved_job_ids.append(int(pid))
 
     # CACHE FIX: Invalidate cache AFTER transaction commits
     if saved:
+        clear_source_change_flags(project, volume_reset_job_ids=saved_job_ids)
         transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
-    # Partial success → 200. Semua gagal → 400.
-
-    status_code = 200 if saved > 0 else 400
+    # Semua sukses â†’ 200. Sebagian gagal â†’ 207. Semua gagal â†’ 400.
+    if errors and saved > 0:
+        status_code = 207
+    elif errors:
+        status_code = 400
+    else:
+        status_code = 200
     dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
-    return JsonResponse({"ok": saved > 0, "saved": saved, "errors": errors, "decimal_places": dp_vol}, status=status_code)
+    return JsonResponse(
+        {
+            "ok": saved > 0 and not errors,
+            "saved": saved,
+            # FIX(#A): kirim id baris yang BENAR-BENAR tersimpan agar frontend hanya
+            # meng-commit baseline untuk baris ini; baris yang gagal tetap "dirty".
+            "saved_job_ids": saved_job_ids,
+            "errors": errors,
+            "decimal_places": dp_vol,
+        },
+        status=status_code,
+    )
 
 # ---------- View 2b: Volume LIST (flat, ringan) ----------
-@login_required
-@require_GET
-def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
+def build_volume_list_payload(project):
     """
-    Kembalikan daftar flat {pekerjaan_id, quantity} untuk seluruh pekerjaan di project.
-    FE akan merge map ini ke pohon dari api_get_list_pekerjaan_tree.
-    Quantity bernilai "0" (string dp-kanonik) jika belum ada record VolumePekerjaan.
-    """
-    project = _owner_or_404(project_id, request.user)
+    Bangun daftar flat {pekerjaan_id, quantity} untuk seluruh pekerjaan (dict siap JSON).
 
+    Dipakai bersama oleh:
+    - api_list_volume_pekerjaan (jalur AJAX)
+    - volume_pekerjaan_view (bootstrap SSR, agar prefill tidak round-trip saat buka halaman).
+    """
     # Ambil semua pekerjaan id dalam project (agar item tanpa volume pun ikut 0)
     p_ids = list(
         Pekerjaan.objects
@@ -1510,8 +1816,8 @@ def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
 
     # Ambil volume yang sudah ada
     vol_qs = VolumePekerjaan.objects.filter(project=project, pekerjaan_id__in=p_ids)\
-                                    .values("pekerjaan_id", "quantity")
-    vol_map = {row["pekerjaan_id"]: row["quantity"] for row in vol_qs}
+                                    .values("pekerjaan_id", "quantity", "updated_at")
+    vol_map = {row["pekerjaan_id"]: row for row in vol_qs}
 
     # Tentukan dp kanonik untuk wire format (ikuti spec VOL)
     dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
@@ -1519,12 +1825,26 @@ def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
     items = [
         {
             "pekerjaan_id": pid,
-            "quantity": to_dp_str(vol_map.get(pid, 0), dp_vol),  # "123,456" → kirim style kanonik "123.456"
+            "quantity": to_dp_str((vol_map.get(pid) or {}).get("quantity", 0), dp_vol),  # "123,456" â†’ kirim style kanonik "123.456"
+            "has_quantity": pid in vol_map,
+            "updated_at": _to_iso_timestamp((vol_map.get(pid) or {}).get("updated_at")),
         }
         for pid in p_ids
     ]
 
-    return JsonResponse({"ok": True, "items": items, "decimal_places": dp_vol})
+    return {"ok": True, "items": items, "decimal_places": dp_vol}
+
+
+@login_required
+@require_GET
+def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
+    """
+    Kembalikan daftar flat {pekerjaan_id, quantity} untuk seluruh pekerjaan di project.
+    FE akan merge map ini ke pohon dari api_get_list_pekerjaan_tree.
+    Quantity bernilai "0" (string dp-kanonik) jika belum ada record VolumePekerjaan.
+    """
+    project = _owner_or_404(project_id, request.user)
+    return JsonResponse(build_volume_list_payload(project))
 
 
 # ---------- View 3: Detail AHSP per Pekerjaan ----------
@@ -1533,24 +1853,41 @@ def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
 # 3B) SAVE   : api_save_detail_ahsp_for_pekerjaan (replace-all)
 # 3C) RESET  : api_reset_detail_ahsp_to_ref (khusus ref_modified)
 
-@login_required
-@require_GET
-def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int):
+def _detail_ahsp_version(pkj: Pekerjaan):
     """
-    Ambil rincian detail AHSP untuk 1 pekerjaan.
+    Version token for Template AHSP optimistic locking.
+
+    Detail AHSP saves are scoped to one pekerjaan. Using project.updated_at here
+    creates false conflicts when another pekerjaan in the same project was saved.
+    """
+    return getattr(pkj, "detail_last_modified", None) or getattr(pkj, "updated_at", None)
+
+
+def _detail_ahsp_version_iso(pkj: Pekerjaan) -> str | None:
+    version = _detail_ahsp_version(pkj)
+    return version.isoformat() if version else None
+
+
+def build_detail_ahsp_payload(project, pkj):
+    """
+    Bangun payload detail AHSP untuk 1 pekerjaan (dict siap di-JSON-kan).
 
     Perilaku:
     - Selalu ambil data dari DetailAHSPProject (jika ada) apa pun source_type.
     - Jika source_type == 'ref' dan belum ada detail proyek, fallback ke RincianReferensi (read-only).
     - UI harus treat read_only=True untuk pekerjaan 'ref'.
     - Kirim 'harga_satuan' (dp mengikuti field model HargaItemProject.harga_satuan).
-    """
-    project = _owner_or_404(project_id, request.user)
-    pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
 
-    dp_koef = DECIMAL_SPEC["KOEF"].dp  # biasanya 6
+    Dipakai bersama oleh:
+    - api_get_detail_ahsp (jalur AJAX per pekerjaan)
+    - template_ahsp_view (bootstrap SSR pekerjaan pertama, agar tidak ada
+      round-trip fetch + flash "Memuat data..." saat halaman Template dibuka).
+    """
+    dp_koef = DECIMAL_SPEC["KOEF"].dp  # standar numeric.py
     source_str = ("ref" if pkj.is_ref else ("ref_modified" if pkj.is_ref_modified else "custom"))
     read_only = pkj.is_ref  # UI read-only untuk REF
+    ref_sumber = getattr(getattr(pkj, "ref", None), "sumber", None) or ""
+    source_label = pkj.source_badge()
 
     # 1) Ambil detail proyek (jika ada), sertakan harga_satuan
     qs = (DetailAHSPProject.objects
@@ -1563,15 +1900,49 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
                   'uraian',
                   'satuan',
                   'koefisien',
-                  'ref_ahsp_id',
-                  'ref_pekerjaan_id',  # NEW: bundle support
-                  'harga_item__harga_satuan'))
+	                  'ref_ahsp_id',
+	                  'ref_pekerjaan_id',  # NEW: bundle support
+	                  'harga_item__kategori',
+	                  'harga_item__kode_item',
+	                  'harga_item__uraian',
+	                  'harga_item__satuan',
+	                  'harga_item__harga_satuan'))
 
     # dp harga: fallback aman ke 2 desimal
     dp_harga = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
 
     raw_details = list(qs)
     detail_ids = [row["id"] for row in raw_details if row.get("id") is not None]
+    detail_codes = {
+        (row.get("kode") or "").strip()
+        for row in raw_details
+        if (row.get("kode") or "").strip()
+    }
+
+    formula_state_by_row_key = {}
+    if detail_codes:
+        try:
+            formula_rows = (
+                TemplateAhspKoefFormulaState.objects
+                .filter(project=project, pekerjaan=pkj, row_key__in=detail_codes)
+                .values("row_key", "raw", "is_fx")
+            )
+            formula_state_by_row_key = {
+                (row.get("row_key") or "").strip(): row
+                for row in formula_rows
+                if (row.get("row_key") or "").strip()
+            }
+        except (OperationalError, ProgrammingError) as exc:
+            if _is_missing_ta_koef_sidecar_table(exc):
+                logger.warning(
+                    "[TA] Koef sidecar table missing while loading detail (project=%s pekerjaan=%s). "
+                    "Returning detail without formula metadata.",
+                    project.id,
+                    pkj.id,
+                )
+                formula_state_by_row_key = {}
+            else:
+                raise
 
     expanded_totals: dict[int, Decimal] = {}
     if detail_ids:
@@ -1604,20 +1975,27 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
 
         # BUNDLE LOGIC (QUANTITY SEMANTIC - 2025-11-18):
         # 1. services.py menyimpan koef komponen TANPA dikali koef bundle (per 1 unit bundle)
-        # 2. bundle_total = Σ(original_koef × harga komponen) → harga satuan bundle per unit
-        # 3. Frontend kembali menggunakan formula umum (jumlah = koef × harga)
+        # 2. bundle_total = Î£(original_koef Ã— harga komponen) â†’ harga satuan bundle per unit
+        # 3. Frontend kembali menggunakan formula umum (jumlah = koef Ã— harga)
         # 4. Harga satuan yang dikirim API harus langsung bundle_total
         # 5. Jumlah baris dihitung di layer presentasi (tidak perlu pembagian/multiplikasi tambahan di sini).
         if is_bundle and bundle_total > Decimal("0"):
             effective_price = bundle_total
 
+        row_key = (it.get("kode") or "").strip()
+        formula_state = formula_state_by_row_key.get(row_key)
+        koef_formula_raw = (formula_state.get("raw") or "") if formula_state else ""
+        koef_is_fx = bool(formula_state and formula_state.get("is_fx") and koef_formula_raw.strip())
+
         items.append({
             "id": it["id"],
-            "kategori": it["kategori"],
-            "kode": it["kode"] or "",
-            "uraian": it["uraian"] or "",
-            "satuan": (it.get("satuan") or None),
+            "kategori": it["harga_item__kategori"],
+            "kode": it["harga_item__kode_item"] or "",
+            "uraian": it["harga_item__uraian"] or "",
+            "satuan": (it.get("harga_item__satuan") or None),
             "koefisien": to_dp_str(koef_decimal, dp_koef),
+            "koef_formula_raw": koef_formula_raw,
+            "koef_is_fx": koef_is_fx,
             "ref_ahsp_id": it.get("ref_ahsp_id"),
             "ref_pekerjaan_id": it.get("ref_pekerjaan_id"),  # NEW: bundle support
             "harga_satuan": to_dp_str(effective_price, dp_harga),
@@ -1631,9 +2009,13 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
         if not ref_id and pkj.snapshot_kode:
             try:
                 from referensi.models import AHSPReferensi  # lazy import
-                ref_obj = AHSPReferensi.objects.filter(kode_ahsp=pkj.snapshot_kode).first()
+                ref_qs = AHSPReferensi.objects.filter(kode_ahsp=pkj.snapshot_kode).order_by("id")
+                ref_obj = ref_qs.first() if ref_qs.count() == 1 else None
                 if ref_obj:
                     ref_id = ref_obj.id
+                    if not ref_sumber:
+                        ref_sumber = getattr(ref_obj, "sumber", None) or ""
+                        source_label = ref_sumber or source_label
             except Exception:
                 ref_obj = None
 
@@ -1653,6 +2035,8 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
                         "uraian": r.get("uraian_item") or "",
                         "satuan": (r.get("satuan_item") or None),
                         "koefisien": to_dp_str(r.get("koefisien", 0), dp_koef),
+                        "koef_formula_raw": "",
+                        "koef_is_fx": False,
                         "ref_ahsp_id": None,         # fallback tidak mendukung bundle
                         # Tidak ada harga_satuan pada fallback; biarkan UI cari dari /harga-items/ bila perlu
                     }
@@ -1663,7 +2047,7 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
 
     kat_meta = [{"code": c, "label": l} for c, l in getattr(HargaItemProject, 'KATEGORI_CHOICES', [])]
 
-    return JsonResponse({
+    return {
         "ok": True,
         "pekerjaan": {
             "id": pkj.id,
@@ -1671,16 +2055,59 @@ def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int
             "uraian": pkj.snapshot_uraian,
             "satuan": pkj.snapshot_satuan,
             "source_type": source_str,
+            "ref_sumber": ref_sumber,
+            "ahsp_sumber": ref_sumber,
+            "source_label": source_label,
             "detail_ready": pkj.detail_ready,
             "budgeted_cost": float(pkj.budgeted_cost or 0),
-            "updated_at": pkj.updated_at.isoformat() if hasattr(pkj, 'updated_at') and pkj.updated_at else None,  # For optimistic locking
+            "updated_at": _detail_ahsp_version_iso(pkj),  # Detail-scoped optimistic locking token
+            "detail_updated_at": _detail_ahsp_version_iso(pkj),
         },
         "items": items,
         "meta": {
             "kategori_opts": kat_meta,
             "read_only": read_only,
         }
-    })
+    }
+
+
+@login_required
+@require_GET
+def api_get_detail_ahsp(request: HttpRequest, project_id: int, pekerjaan_id: int):
+    """
+    Ambil rincian detail AHSP untuk 1 pekerjaan (delegasi ke build_detail_ahsp_payload).
+    """
+    project = _owner_or_404(project_id, request.user)
+    pkj = get_object_or_404(
+        Pekerjaan.objects.select_related("ref"),
+        id=pekerjaan_id,
+        project=project,
+    )
+    return JsonResponse(build_detail_ahsp_payload(project, pkj))
+
+
+def _auto_cleanup_orphans(project):
+    """
+    Buang HargaItemProject yang menjadi orphan setelah mutasi Detail AHSP.
+
+    Dipanggil via transaction.on_commit setelah save Detail AHSP (per-pekerjaan /
+    gabungan) dan setelah source change reset. Tujuannya agar item harga yang tidak
+    lagi dipakai pekerjaan mana pun TIDAK muncul lagi di halaman Harga Items
+    (gejala "item ada di Harga tapi tidak ada di Template AHSP").
+
+    AMAN: _orphaned_items_queryset hanya menargetkan item yang tidak direferensikan
+    oleh DetailAHSPProject (raw) MAUPUN DetailAHSPExpanded. Item yang masih dipakai
+    pekerjaan lain (mis. bahan bersama) tidak akan terhapus. Kegagalan cleanup tidak
+    pernah menggagalkan operasi simpan utama.
+    """
+    try:
+        result = cleanup_orphaned_items(project)
+        deleted = result.get("deleted_count", 0)
+        if deleted:
+            logger.info(f"[ORPHAN_CLEANUP] Auto-removed {deleted} orphan harga item(s) for project {project.id}")
+    except Exception as e:
+        logger.error(f"[ORPHAN_CLEANUP] Auto-cleanup failed for project {project.id}: {e}", exc_info=True)
+
 
 @login_required
 @require_POST
@@ -1689,9 +2116,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     """
     Simpan detail AHSP untuk 1 pekerjaan (mode replace-all).
     - Hanya untuk 'custom' & 'ref_modified' (bukan 'ref').
-    - Validasi: kategori, kode/uraian wajib, koef ≥ 0 (titik/koma), kode unik per pekerjaan.
+    - Validasi: kategori, kode/uraian wajib, koef â‰¥ 0 (titik/koma), kode unik per pekerjaan.
     - Dukung bundle referensi via 'ref_ahsp_id' HANYA untuk baris kategori 'LAIN' pada pekerjaan 'custom'.
-    - Koefisien disimpan HALF_UP ke dp KOEF (default 6).
+    - Koefisien disimpan HALF_UP ke dp KOEF (default 12).
     - detail_ready True bila ada baris valid.
     """
     project = _owner_or_404(project_id, request.user)
@@ -1735,49 +2162,38 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             "errors": [_err("$", "Payload JSON tidak valid")]
         }, status=400)
 
-    # OPTIMISTIC LOCKING: Check client timestamp against server timestamp
-    client_updated_at = payload.get('client_updated_at')
-    if client_updated_at:
-        from datetime import datetime
-        try:
-            # Parse ISO format timestamp from client
-            client_dt = datetime.fromisoformat(client_updated_at.replace('Z', '+00:00'))
+    client_updated_at = payload.get("client_updated_at")
+    force_overwrite = payload.get("force_overwrite") is True
+    if client_updated_at and not force_overwrite:
+        client_dt = parse_datetime(str(client_updated_at))
+        if client_dt is None:
+            return JsonResponse({
+                "ok": False,
+                "user_message": "Token versi data tidak valid. Muat ulang halaman lalu coba lagi.",
+                "errors": [_err("client_updated_at", "Format timestamp tidak valid")],
+            }, status=400)
+        if timezone.is_naive(client_dt):
+            client_dt = timezone.make_aware(client_dt, py_timezone.utc)
 
-            # Refresh project to get latest timestamp
-            project.refresh_from_db()
-            server_dt = project.updated_at if hasattr(project, 'updated_at') and project.updated_at else None
-
-            if server_dt and client_dt < server_dt:
-                # Data has been modified by another user since client loaded it
-                logger.warning(
-                    f"[SAVE_DETAIL_AHSP] CONFLICT - Pekerjaan {pkj.id} modified by another user. "
-                    f"Client: {client_dt.isoformat()}, Server: {server_dt.isoformat()}"
-                )
-
-                # FASE 0.3: Log optimistic lock conflict
-                log_optimistic_lock_conflict(
-                    project_id=project.id,
-                    pekerjaan_id=pkj.id,
-                    client_timestamp=client_updated_at,
-                    server_timestamp=server_dt.isoformat()
-                )
-
-                return JsonResponse({
-                    "ok": False,
-                    "conflict": True,  # Special flag for conflict
-                    "user_message": (
-                        "⚠️ KONFLIK DATA TERDETEKSI!\n\n"
-                        "Data pekerjaan ini telah diubah oleh pengguna lain sejak Anda membukanya.\n\n"
-                        "Pilihan:\n"
-                        "• Muat Ulang: Refresh halaman untuk melihat perubahan terbaru (data Anda akan hilang)\n"
-                        "• Timpa: Simpan data Anda dan timpa perubahan pengguna lain (tidak disarankan)"
-                    ),
-                    "server_updated_at": server_dt.isoformat(),
-                    "errors": [_err("updated_at", "Data telah berubah sejak Anda membukanya")]
-                }, status=409)  # 409 Conflict
-        except (ValueError, AttributeError) as e:
-            logger.warning(f"[SAVE_DETAIL_AHSP] Invalid client_updated_at format: {client_updated_at}, error: {e}")
-            # Continue without optimistic locking if timestamp is invalid
+        server_dt = _detail_ahsp_version(pkj)
+        if server_dt and client_dt < server_dt:
+            logger.warning(
+                "[SAVE_DETAIL_AHSP] CONFLICT project=%s pekerjaan=%s client=%s server=%s",
+                project.id,
+                pkj.id,
+                client_dt.isoformat(),
+                server_dt.isoformat(),
+            )
+            return JsonResponse({
+                "ok": False,
+                "conflict": True,
+                "user_message": (
+                    "Detail AHSP telah berubah sejak terakhir dimuat. "
+                    "Muat ulang data terbaru atau konfirmasi timpa."
+                ),
+                "server_updated_at": server_dt.isoformat(),
+                "errors": [_err("client_updated_at", "Data telah berubah di server")],
+            }, status=409)
 
     rows = payload.get('rows') or []
     if not isinstance(rows, list):
@@ -1787,12 +2203,28 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             "errors": [_err("rows", "Harus list")]
         }, status=400)
 
+    if pkj.source_type == Pekerjaan.SOURCE_REF_MOD:
+        for i, row in enumerate(rows):
+            has_bundle_payload = (
+                str(row.get('ref_kind') or '').strip()
+                or str(row.get('ref_id') or '').strip()
+                or row.get('ref_ahsp_id') not in (None, '')
+            )
+            if has_bundle_payload:
+                return JsonResponse({
+                    "ok": False,
+                    "user_message": "Mode MOD tidak mendukung bundle AHSP. Hapus referensi bundle lalu simpan ulang.",
+                    "errors": [_err(f"rows[{i}]", "Payload bundle tidak diizinkan untuk pekerjaan MOD")],
+                }, status=400)
+
     # Normalisasi & validasi
     errors = []
-    normalized = []  # tuple: (kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj)
+    normalized = []  # tuple: (kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj, koef_formula_raw, koef_is_fx)
     seen_kode: Set[str] = set()
     unit_code_state: Dict[str, object] = {}
     valid_kats = set(dict(HargaItemProject.KATEGORI_CHOICES).keys())
+    formula_koef_min = Decimal("1").scaleb(-DECIMAL_SPEC["KOEF"].dp)
+    formula_koef_max = Decimal("1000000") - formula_koef_min
 
     for i, r in enumerate(rows):
         kat = _normalize_kategori(r.get('kategori'))
@@ -1805,6 +2237,10 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         uraian = (r.get('uraian') or '').strip()
         satuan = (r.get('satuan') or '').strip() or None
         koef = parse_any(r.get('koefisien'))  # parser robust (koma/titik, ribuan)
+        koef_formula_raw = str(r.get('koef_formula_raw') or '').strip()
+        koef_is_fx = bool(r.get('koef_is_fx', False))
+        if koef_formula_raw and not koef_is_fx:
+            koef_is_fx = koef_formula_raw.startswith('=')
 
         # --- Validasi dasar ---
         if not uraian:
@@ -1812,12 +2248,21 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         if not kode:
             errors.append(_err(f"rows[{i}].kode", "Wajib")); continue
         if koef is None:
-            errors.append(_err(f"rows[{i}].koefisien", "Harus ≥ 0 dan berupa angka yang valid")); continue
+            errors.append(_err(f"rows[{i}].koefisien", "Harus â‰¥ 0 dan berupa angka yang valid")); continue
+        if koef_is_fx and koef_formula_raw:
+            formula_errors = _validate_formula_raw(koef_formula_raw)
+            if formula_errors:
+                errors.append(_err(f"rows[{i}].koef_formula_raw", "; ".join(formula_errors))); continue
+            if koef < formula_koef_min or koef > formula_koef_max:
+                errors.append(_err(
+                    f"rows[{i}].koefisien",
+                    f"Hasil formula di luar range koefisien ({formula_koef_min} s/d {formula_koef_max})"
+                )); continue
         if kode in seen_kode:
             errors.append(_err(f"rows[{i}].kode", "Kode duplikat dalam pekerjaan ini")); continue
         seen_kode.add(kode)
 
-        # --- Bundle referensi (opsional) — 2 jenis: AHSP atau Pekerjaan ---
+        # --- Bundle referensi (opsional) â€” 2 jenis: AHSP atau Pekerjaan ---
         ref_ahsp_obj = None
         ref_pekerjaan_obj = None
 
@@ -1865,7 +2310,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                         ref_kode = ref_pekerjaan_obj.snapshot_kode or f"PKJ#{ref_pekerjaan_obj.id}"
                         errors.append(_warn(
                             f"rows[{i}].ref_id",
-                            f"❌ Pekerjaan '{ref_kode}' tidak memiliki komponen AHSP. "
+                            f"âŒ Pekerjaan '{ref_kode}' tidak memiliki komponen AHSP. "
                             f"Bundle harus mereferensi pekerjaan yang sudah memiliki komponen. "
                             f"Silakan isi komponen pekerjaan tersebut terlebih dahulu atau pilih pekerjaan lain."
                         ))
@@ -1904,9 +2349,19 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                     errors.append(_err(f"rows[{i}].ref_ahsp_id", f"Referensi #{ref_ahsp_id} tidak ditemukan")); continue
 
         # --- Kumpulkan baris tervalidasi ---
-        normalized.append((kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj))
+        normalized.append((
+            kat,
+            kode,
+            uraian,
+            satuan,
+            koef,
+            ref_ahsp_obj,
+            ref_pekerjaan_obj,
+            koef_formula_raw,
+            koef_is_fx,
+        ))
 
-    # Bila semua baris error → fatal (400) kecuali jika seluruh error bertipe warning
+    # Bila semua baris error â†’ fatal (400) kecuali jika seluruh error bertipe warning
     if errors and not normalized:
         all_warnings = all(err.get("severity") == "warning" for err in errors)
         allow_soft = getattr(project, "allow_bundle_soft_errors", False)
@@ -1916,7 +2371,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             allow_soft, all_warnings, status, project.id
         )
         log_fn = logger.warning if status == 207 else logger.error
-        log_fn(f"[SAVE_DETAIL_AHSP] No valid rows ({len(errors)} errors) – status={status}")
+        log_fn(f"[SAVE_DETAIL_AHSP] No valid rows ({len(errors)} errors) â€“ status={status}")
         error_count = len(errors)
         if all_warnings:
             user_message = (
@@ -1936,11 +2391,33 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             "errors": errors,
             "pekerjaan": {
                 "id": pkj.id,
-                "updated_at": pkj.updated_at.isoformat() if getattr(pkj, "updated_at", None) else None,
+                "updated_at": _detail_ahsp_version_iso(pkj),
+                "detail_updated_at": _detail_ahsp_version_iso(pkj),
             }
         }, status=status)
 
     logger.info(f"[SAVE_DETAIL_AHSP] Validation passed: {len(normalized)} rows valid, {len(errors)} errors")
+
+    # Replace-all saves are atomic. Never silently discard invalid rows while
+    # committing the remaining subset.
+    if errors:
+        return JsonResponse({
+            "ok": False,
+            "success": False,
+            "user_message": (
+                f"[ERROR] Tidak ada data yang disimpan. "
+                f"Perbaiki {len(errors)} kesalahan lalu simpan ulang."
+            ),
+            "saved_raw_rows": 0,
+            "saved_rows": 0,
+            "saved_expanded_rows": 0,
+            "errors": errors,
+            "pekerjaan": {
+                "id": pkj.id,
+                "updated_at": _detail_ahsp_version_iso(pkj),
+                "detail_updated_at": _detail_ahsp_version_iso(pkj),
+            },
+        }, status=400)
 
     # ========================================================================
     # DUAL STORAGE IMPLEMENTATION
@@ -1949,7 +2426,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     # STORAGE 2: Expand bundles to DetailAHSPExpanded (computed for rekap)
     # ========================================================================
 
-    dp_koef = DECIMAL_SPEC["KOEF"].dp  # default 6
+    dp_koef = DECIMAL_SPEC["KOEF"].dp  # default 12
 
     # STORAGE 1: Prepare raw input (keep bundles!)
     raw_details_to_create = []
@@ -1958,7 +2435,17 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     # Catch ValidationError from _upsert_harga_item (kategori immutability check)
     from django.core.exceptions import ValidationError
     try:
-        for kat, kode, uraian, satuan, koef, ref_ahsp_obj, ref_pekerjaan_obj in normalized:
+        for (
+            kat,
+            kode,
+            uraian,
+            satuan,
+            koef,
+            ref_ahsp_obj,
+            ref_pekerjaan_obj,
+            _koef_formula_raw,
+            _koef_is_fx,
+        ) in normalized:
             # Upsert HargaItemProject (create master harga record)
             # For LAIN bundles, create placeholder with harga_satuan=0
             # CRITICAL: This may raise ValidationError if kategori mismatch detected
@@ -1969,10 +2456,10 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             pekerjaan=pkj,
             harga_item=hip,
             kategori=kat,
-            kode=kode,
-            uraian=uraian,
-            satuan=satuan,
-            koefisien=quantize_half_up(koef, dp_koef),  # HALF_UP dp=6
+            kode=hip.kode_item,
+            uraian=hip.uraian,
+            satuan=hip.satuan,
+            koefisien=quantize_half_up(koef, dp_koef),  # HALF_UP dp=KOEF
             # Field bundle: keep refs for LAIN bundles
             ref_ahsp=(ref_ahsp_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
             ref_pekerjaan=(ref_pekerjaan_obj if (kat == HargaItemProject.KATEGORI_LAIN and pkj.source_type == Pekerjaan.SOURCE_CUSTOM) else None),
@@ -1999,6 +2486,55 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         created_raw = []
         logger.warning(f"[SAVE_DETAIL_AHSP] No raw details to create")
 
+    # Sync sidecar formula koefisien (row_key = kode) dalam transaksi yang sama.
+    active_formula_by_kode: Dict[str, str] = {}
+    for row in normalized:
+        row_kode = row[1]
+        row_formula_raw = (row[7] or "").strip()
+        row_is_fx = bool(row[8])
+        if row_is_fx and row_formula_raw:
+            active_formula_by_kode[row_kode] = row_formula_raw
+
+    sidecar_created = 0
+    sidecar_updated = 0
+    try:
+        sidecar_qs = TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=pkj)
+        if active_formula_by_kode:
+            sidecar_qs.exclude(row_key__in=list(active_formula_by_kode.keys())).delete()
+        else:
+            sidecar_qs.delete()
+
+        for row_kode, row_formula_raw in active_formula_by_kode.items():
+            _, was_created = TemplateAhspKoefFormulaState.objects.update_or_create(
+                project=project,
+                pekerjaan=pkj,
+                row_key=row_kode,
+                defaults={
+                    "raw": row_formula_raw,
+                    "is_fx": True,
+                },
+            )
+            if was_created:
+                sidecar_created += 1
+            else:
+                sidecar_updated += 1
+        logger.info(
+            "[SAVE_DETAIL_AHSP] Synced koef formula sidecar: created=%s updated=%s active=%s",
+            sidecar_created,
+            sidecar_updated,
+            len(active_formula_by_kode),
+        )
+    except (OperationalError, ProgrammingError) as exc:
+        if _is_missing_ta_koef_sidecar_table(exc):
+            logger.warning(
+                "[SAVE_DETAIL_AHSP] Koef sidecar table missing (project=%s pekerjaan=%s). "
+                "Skipping formula metadata sync.",
+                project.id,
+                pkj.id,
+            )
+        else:
+            raise
+
     # STORAGE 2: Expand bundles to DetailAHSPExpanded
     old_expanded_count = DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pkj).count()
     DetailAHSPExpanded.objects.filter(project=project, pekerjaan=pkj).delete()
@@ -2017,7 +2553,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         if detail_obj.kategori == HargaItemProject.KATEGORI_LAIN and detail_obj.ref_pekerjaan:
             # BUNDLE - Expand to components
             ref_pkj_kode = detail_obj.ref_pekerjaan.snapshot_kode if detail_obj.ref_pekerjaan else "Unknown"
-            logger.info(f"[SAVE_DETAIL_AHSP] BUNDLE detected: '{detail_obj.kode}' → ref_pekerjaan={ref_pkj_kode} (ID: {detail_obj.ref_pekerjaan_id})")
+            logger.info(f"[SAVE_DETAIL_AHSP] BUNDLE detected: '{detail_obj.kode}' â†’ ref_pekerjaan={ref_pkj_kode} (ID: {detail_obj.ref_pekerjaan_id})")
 
             detail_dict = {
                 'kategori': detail_obj.kategori,
@@ -2073,9 +2609,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                         source_detail=detail_obj,  # Link back to raw input
                         harga_item=comp_hip,
                         kategori=comp['kategori'],
-                        kode=comp['kode'],
-                        uraian=comp['uraian'],
-                        satuan=comp['satuan'],
+                        kode=comp_hip.kode_item,
+                        uraian=comp_hip.uraian,
+                        satuan=comp_hip.satuan,
                         koefisien=quantize_half_up(comp['koefisien'], dp_koef),
                         source_bundle_kode=detail_obj.kode,  # Bundle kode for tracking
                         expansion_depth=comp['depth'],
@@ -2092,7 +2628,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
         elif detail_obj.kategori == HargaItemProject.KATEGORI_LAIN and detail_obj.ref_ahsp:
             # AHSP BUNDLE - Expand from Master AHSP
-            logger.info(f"[SAVE_DETAIL_AHSP] AHSP BUNDLE detected: '{detail_obj.kode}' → ref_ahsp_id={detail_obj.ref_ahsp_id}")
+            logger.info(f"[SAVE_DETAIL_AHSP] AHSP BUNDLE detected: '{detail_obj.kode}' â†’ ref_ahsp_id={detail_obj.ref_ahsp_id}")
 
             try:
                 # Expand AHSP bundle recursively
@@ -2134,9 +2670,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                         source_detail=detail_obj,  # Link back to raw input
                         harga_item=comp_hip,
                         kategori=comp['kategori'],
-                        kode=comp['kode'],
-                        uraian=comp['uraian'],
-                        satuan=comp['satuan'],
+                        kode=comp_hip.kode_item,
+                        uraian=comp_hip.uraian,
+                        satuan=comp_hip.satuan,
                         koefisien=quantize_half_up(comp['koefisien'], dp_koef),
                         source_bundle_kode=detail_obj.kode,  # Bundle kode for tracking
                         expansion_depth=comp['depth'],
@@ -2186,6 +2722,29 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     else:
         logger.warning(f"[SAVE_DETAIL_AHSP] No expanded components to create")
 
+    if errors:
+        # Returning an HTTP response from an atomic view does not roll back by
+        # itself. Explicitly mark the transaction so raw/master changes cannot
+        # survive a failed or partial expansion.
+        transaction.set_rollback(True)
+        return JsonResponse({
+            "ok": False,
+            "success": False,
+            "user_message": (
+                f"[ERROR] Penyimpanan dibatalkan karena ekspansi gagal "
+                f"({len(errors)} kesalahan). Data sebelumnya tetap dipertahankan."
+            ),
+            "saved_raw_rows": 0,
+            "saved_rows": 0,
+            "saved_expanded_rows": 0,
+            "errors": errors,
+            "pekerjaan": {
+                "id": pkj.id,
+                "updated_at": _detail_ahsp_version_iso(pkj),
+                "detail_updated_at": _detail_ahsp_version_iso(pkj),
+            },
+        }, status=400)
+
     # Update pekerjaan.detail_ready dan timestamp detail
     detail_ready = len(expanded_to_create) > 0
     detail_change_ts = timezone.now()
@@ -2225,6 +2784,9 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
         # 2. Invalidate cache (always needed)
         invalidate_rekap_cache(project)
+
+        # 3. Auto-cleanup orphan harga item akibat baris dihapus/diubah saat save.
+        _auto_cleanup_orphans(project)
 
     transaction.on_commit(cascade_operations)
 
@@ -2269,10 +2831,12 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         "saved_raw_rows": len(saved_raw_details),
         "saved_rows": len(saved_raw_details),
         "saved_expanded_rows": len(expanded_to_create),
+        "saved_formula_rows": len(active_formula_by_kode),
         "errors": errors,
         "pekerjaan": {
             "id": pkj.id,
-            "updated_at": pkj.updated_at.isoformat() if hasattr(pkj, 'updated_at') and pkj.updated_at else None
+            "updated_at": _detail_ahsp_version_iso(pkj),
+            "detail_updated_at": _detail_ahsp_version_iso(pkj),
         }
     }, status=status_code)
 
@@ -2300,6 +2864,7 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 
     # Bersihkan isi lama
     DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
+    TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=pkj).delete()
 
     # Buat pekerjaan TEMP agar services dapat auto-load rincian,
     # kemudian adopsi detail TEMP ke pekerjaan asli dan hapus TEMP.
@@ -2347,6 +2912,8 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 
     # CACHE FIX: Invalidate cache AFTER transaction commits
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
+    # Reset-to-ref mengganti detail â†’ harga item custom lama bisa jadi orphan.
+    transaction.on_commit(lambda: _auto_cleanup_orphans(project))
 
     return JsonResponse({"ok": True, "cloned_count": int(moved)})
 
@@ -2400,11 +2967,11 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
                     "ok": False,
                     "conflict": True,  # Special flag for conflict
                     "user_message": (
-                        "⚠️ KONFLIK DATA TERDETEKSI!\n\n"
+                        "âš ï¸ KONFLIK DATA TERDETEKSI!\n\n"
                         "Data harga telah diubah oleh pengguna lain sejak Anda membukanya.\n\n"
                         "Pilihan:\n"
-                        "• Muat Ulang: Refresh halaman untuk melihat perubahan terbaru (data Anda akan hilang)\n"
-                        "• Timpa: Simpan data Anda dan timpa perubahan pengguna lain (tidak disarankan)"
+                        "â€¢ Muat Ulang: Refresh halaman untuk melihat perubahan terbaru (data Anda akan hilang)\n"
+                        "â€¢ Timpa: Simpan data Anda dan timpa perubahan pengguna lain (tidak disarankan)"
                     ),
                     "server_updated_at": server_dt.isoformat(),
                     "errors": [_err("updated_at", "Data telah berubah sejak Anda membukanya")]
@@ -2417,11 +2984,12 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     errors = []
     updated = 0
 
-    # DUAL STORAGE: Check against expanded_refs (expanded components)
-    allowed_ids = set(HargaItemProject.objects
-                      .filter(project=project, expanded_refs__project=project)
-                      .values_list('id', flat=True)
-                      .distinct())
+    # Match api_list_harga_items: editable rows are expanded components plus
+    # standalone imported items that are not referenced by raw/expanded details.
+    allowed_ids = set(
+        active_harga_items_queryset(project)
+        .values_list('id', flat=True)
+    )
 
     dp = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
 
@@ -2436,7 +3004,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
 
         dec = parse_any(harga_raw)
         if dec is None:
-            errors.append(_err(f"items[{i}].harga_satuan", "Harus ≥ 0 dan berupa angka yang valid")); continue
+            errors.append(_err(f"items[{i}].harga_satuan", "Harus â‰¥ 0 dan berupa angka yang valid")); continue
 
         # P0 FIX: ROW-LEVEL LOCKING - Prevent concurrent edit race condition
         try:
@@ -2462,7 +3030,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
         if mp_raw not in (None, ''):
             val = parse_any(mp_raw)
             if val is None or val < 0 or val > 100:
-                errors.append(_err("markup_percent", "Harus 0–100 dan berupa angka yang valid"))
+                errors.append(_err("markup_percent", "Harus 0â€“100 dan berupa angka yang valid"))
             else:
                 pricing = _get_or_create_pricing(project)
                 pricing.markup_percent = quantize_half_up(val, 2)
@@ -2494,15 +3062,15 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     # Build user-friendly message
     if status_code == 200:
         if updated > 0 and pricing_saved:
-            user_message = f"✅ Berhasil menyimpan {updated} perubahan harga dan profit/margin!"
+            user_message = f"âœ… Berhasil menyimpan {updated} perubahan harga dan profit/margin!"
         elif updated > 0:
-            user_message = f"✅ Berhasil menyimpan {updated} perubahan harga!"
+            user_message = f"âœ… Berhasil menyimpan {updated} perubahan harga!"
         elif pricing_saved:
-            user_message = "✅ Berhasil menyimpan profit/margin!"
+            user_message = "âœ… Berhasil menyimpan profit/margin!"
         else:
-            user_message = "✅ Tidak ada perubahan untuk disimpan."
+            user_message = "âœ… Tidak ada perubahan untuk disimpan."
     else:
-        user_message = f"⚠️ Data tersimpan sebagian. {len(errors)} kesalahan ditemukan."
+        user_message = f"âš ï¸ Data tersimpan sebagian. {len(errors)} kesalahan ditemukan."
 
     if status_code == 200 and (updated > 0 or pricing_saved):
         touch_project_change(project, harga=True)
@@ -2704,7 +3272,7 @@ def api_project_pricing(request: HttpRequest, project_id: int):
             "rounding_base": int(getattr(obj, "rounding_base", rounding_default) or rounding_default),
         })
 
-    # === POST: VALIDASI BODY DULU (agar error → 400, bukan 404 dari cek owner) ===
+    # === POST: VALIDASI BODY DULU (agar error â†’ 400, bukan 404 dari cek owner) ===
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except Exception:
@@ -2729,7 +3297,7 @@ def api_project_pricing(request: HttpRequest, project_id: int):
         except Exception:
             return JsonResponse({"ok": False, "errors": [_err("rounding_base", "Harus bilangan bulat > 0")]}, status=400)
 
-    # Lolos validasi → baru cek kepemilikan & simpan
+    # Lolos validasi â†’ baru cek kepemilikan & simpan
     project = _owner_or_404(project_id, request.user)
     with transaction.atomic():
         obj = _get_or_create_pricing(project)
@@ -2778,8 +3346,8 @@ def api_project_parameters(request: HttpRequest, project_id: int):
     GET  -> List all parameters for project
            Returns: { ok: true, parameters: [...] }
     
-    POST -> Create new parameter
-            Body: { name, value, label?, unit?, description? }
+    POST -> Create new parameter (server-generated opaque name)
+            Body: { value, label?, unit?, description? }
             Returns: { ok: true, parameter: {...}, created: true }
     """
     from .models import ProjectParameter
@@ -2790,6 +3358,7 @@ def api_project_parameters(request: HttpRequest, project_id: int):
         params = ProjectParameter.objects.filter(project=project).order_by('name')
         return JsonResponse({
             "ok": True,
+            "synced_at": _to_iso_timestamp(timezone.now()),
             "parameters": [
                 {
                     "id": p.id,
@@ -2808,43 +3377,44 @@ def api_project_parameters(request: HttpRequest, project_id: int):
         payload = json.loads(request.body.decode("utf-8"))
     except Exception:
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
-    
-    name = str(payload.get("name", "")).strip().lower()
-    if not name:
-        return JsonResponse({"ok": False, "errors": [_err("name", "Nama parameter wajib diisi")]}, status=400)
-    
-    # Validate name format (no spaces, alphanumeric + underscore)
-    import re
-    if not re.match(r'^[a-z_][a-z0-9_]*$', name):
-        return JsonResponse({
-            "ok": False, 
-            "errors": [_err("name", "Nama harus huruf kecil, angka, underscore saja (awali huruf/underscore)")]
-        }, status=400)
-    
-    # Check duplicate
-    if ProjectParameter.objects.filter(project=project, name=name).exists():
-        return JsonResponse({
-            "ok": False, 
-            "errors": [_err("name", f"Parameter '{name}' sudah ada")]
-        }, status=400)
-    
+
     # Parse value
-    value = parse_any(payload.get("value", 0))
+    value = _parse_parameter_value_allow_negative(payload.get("value", 0))
     if value is None:
         value = Decimal("0")
-    
-    param = ProjectParameter.objects.create(
-        project=project,
-        name=name,
-        value=value,
-        label=payload.get("label", "") or name,
-        unit=payload.get("unit", "") or "",
-        description=payload.get("description", "") or "",
-    )
+
+    label = str(payload.get("label", "")).strip()
+    unit = str(payload.get("unit", "")).strip()
+    description = str(payload.get("description", "")).strip()
+
+    param = None
+    create_error = None
+    for _ in range(3):
+        try:
+            generated_name = generate_base_param_name(project, label or "param")
+            param = ProjectParameter.objects.create(
+                project=project,
+                name=generated_name,
+                value=value,
+                label=label or generated_name,
+                unit=unit,
+                description=description,
+            )
+            break
+        except IntegrityError as exc:
+            create_error = exc
+
+    if param is None:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err("name", "Gagal generate kode parameter unik. Coba ulangi.")],
+            "details": str(create_error) if create_error else "",
+        }, status=409)
     
     return JsonResponse({
         "ok": True,
         "created": True,
+        "synced_at": _to_iso_timestamp(timezone.now()),
         "parameter": {
             "id": param.id,
             "name": param.name,
@@ -2897,7 +3467,7 @@ def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id
     updated_fields = []
     
     if "value" in payload:
-        value = parse_any(payload.get("value"))
+        value = _parse_parameter_value_allow_negative(payload.get("value"))
         if value is not None:
             param.value = value
             updated_fields.append("value")
@@ -2937,21 +3507,19 @@ def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id
 @transaction.atomic
 def api_project_parameters_sync(request: HttpRequest, project_id: int):
     """
-    Bulk sync parameters from localStorage to database.
-    
-    POST body: {
+    Bulk sync base parameters.
+
+    POST body:
+    {
         "parameters": {
-            "code1": { "value": 10, "label": "Label 1" },
-            "code2": { "value": 20, "label": "Label 2" },
+            "bp_1": { "value": 10, "label": "Panjang" },
             ...
         },
-        "mode": "merge" | "replace"  // default: merge
+        "mode": "replace" | "merge",
+        "last_sync_at": "2026-02-11T10:00:00Z"
     }
-    
-    - merge: Update existing, create new, keep others
-    - replace: Delete all existing, create from payload
-    
-    Returns: { ok: true, created: N, updated: N, deleted: N }
+
+    Invalid item names are skipped and returned as warnings (partial success).
     """
     from .models import ProjectParameter
     
@@ -2963,33 +3531,52 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
     
     params_data = payload.get("parameters", {})
-    mode = payload.get("mode", "merge")
+    mode = str(payload.get("mode", "replace") or "replace").strip().lower()
     
     if not isinstance(params_data, dict):
         return JsonResponse({"ok": False, "errors": [_err("parameters", "Harus berupa object/dictionary")]}, status=400)
+    if mode not in {"replace", "merge"}:
+        return JsonResponse({"ok": False, "errors": [_err("mode", "Mode harus replace atau merge")]}, status=400)
+
+    is_conflict, latest_ts = _is_stale_sync(project, ProjectParameter, payload)
+    if is_conflict:
+        return JsonResponse({
+            "ok": False,
+            "error": "conflict",
+            "server_updated_at": _to_iso_timestamp(latest_ts),
+        }, status=409)
     
     created_count = 0
     updated_count = 0
     deleted_count = 0
-    
-    import re
+    warnings = []
     
     if mode == "replace":
         # Delete all existing parameters
         deleted_count = ProjectParameter.objects.filter(project=project).delete()[0]
         
         # Create all from payload
-        for code, data in params_data.items():
-            name = str(code).strip().lower()
-            if not re.match(r'^[a-z_][a-z0-9_]*$', name):
-                continue  # Skip invalid names
+        for idx, (raw_code, data) in enumerate(params_data.items()):
+            name = str(raw_code or "").strip().lower()
+            if not _is_valid_base_param_name(name):
+                warnings.append({
+                    "name": str(raw_code),
+                    "index": idx,
+                    "error": _base_name_format_error_text(),
+                })
+                continue
             
-            value = parse_any(data.get("value", 0)) if isinstance(data, dict) else parse_any(data)
+            value = (
+                _parse_parameter_value_allow_negative(data.get("value", 0))
+                if isinstance(data, dict)
+                else _parse_parameter_value_allow_negative(data)
+            )
             if value is None:
                 value = Decimal("0")
             
-            label = data.get("label", name) if isinstance(data, dict) else name
-            unit = data.get("unit", "") if isinstance(data, dict) else ""
+            label = str(data.get("label", name)).strip() if isinstance(data, dict) else name
+            unit = str(data.get("unit", "")).strip() if isinstance(data, dict) else ""
+            description = str(data.get("description", "")).strip() if isinstance(data, dict) else ""
             
             ProjectParameter.objects.create(
                 project=project,
@@ -2997,32 +3584,43 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
                 value=value,
                 label=label or name,
                 unit=unit,
+                description=description,
             )
             created_count += 1
     else:
         # Merge mode: update existing, create new
         existing = {p.name: p for p in ProjectParameter.objects.filter(project=project)}
         
-        for code, data in params_data.items():
-            name = str(code).strip().lower()
-            if not re.match(r'^[a-z_][a-z0-9_]*$', name):
-                continue  # Skip invalid names
+        for idx, (raw_code, data) in enumerate(params_data.items()):
+            name = str(raw_code or "").strip().lower()
+            if not _is_valid_base_param_name(name):
+                warnings.append({
+                    "name": str(raw_code),
+                    "index": idx,
+                    "error": _base_name_format_error_text(),
+                })
+                continue
             
-            value = parse_any(data.get("value", 0)) if isinstance(data, dict) else parse_any(data)
+            value = (
+                _parse_parameter_value_allow_negative(data.get("value", 0))
+                if isinstance(data, dict)
+                else _parse_parameter_value_allow_negative(data)
+            )
             if value is None:
                 value = Decimal("0")
             
-            label = data.get("label", name) if isinstance(data, dict) else name
-            unit = data.get("unit", "") if isinstance(data, dict) else ""
+            label = str(data.get("label", name)).strip() if isinstance(data, dict) else name
+            unit = str(data.get("unit", "")).strip() if isinstance(data, dict) else ""
+            description = str(data.get("description", "")).strip() if isinstance(data, dict) else ""
             
             if name in existing:
                 # Update existing
                 param = existing[name]
                 param.value = value
                 param.label = label or name
-                if unit:
-                    param.unit = unit
-                param.save(update_fields=["value", "label", "unit", "updated_at"])
+                param.unit = unit
+                param.description = description
+                param.save(update_fields=["value", "label", "unit", "description", "updated_at"])
                 updated_count += 1
             else:
                 # Create new
@@ -3032,6 +3630,7 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
                     value=value,
                     label=label or name,
                     unit=unit,
+                    description=description,
                 )
                 created_count += 1
     
@@ -3041,6 +3640,201 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
         "updated": updated_count,
         "deleted": deleted_count,
         "mode": mode,
+        "warnings": warnings,
+        "synced_at": _to_iso_timestamp(timezone.now()),
+    })
+
+
+# ========== API: Project Computed Parameters (derived formula variables) ==========
+
+@login_required
+@require_http_methods(["GET", "POST"])
+@transaction.atomic
+def api_project_computed_parameters(request: HttpRequest, project_id: int):
+    """
+    GET  -> List all computed parameters for project.
+    POST -> Create new computed parameter with server-generated opaque name.
+    """
+    project = _owner_or_404(project_id, request.user)
+    if request.method == "GET":
+        params = ProjectComputedParameter.objects.filter(project=project).order_by('name')
+        return JsonResponse({
+            "ok": True,
+            "synced_at": _to_iso_timestamp(timezone.now()),
+            "computed_parameters": [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "expression": p.expression,
+                    "label": p.label or p.name,
+                    "unit": p.unit or "",
+                    "description": p.description or "",
+                }
+                for p in params
+            ]
+        })
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+
+    expression = str(payload.get("expression", "")).strip()
+    if not expression:
+        return JsonResponse({"ok": False, "errors": [_err("expression", "Formula wajib diisi")]}, status=400)
+
+    label = str(payload.get("label", "")).strip()
+    unit = str(payload.get("unit", "")).strip()
+    description = str(payload.get("description", "")).strip()
+
+    obj = None
+    create_error = None
+    for _ in range(3):
+        try:
+            generated_name = generate_computed_param_name(project, label or "rumus")
+            obj = ProjectComputedParameter.objects.create(
+                project=project,
+                name=generated_name,
+                expression=expression,
+                label=label or generated_name,
+                unit=unit,
+                description=description,
+            )
+            break
+        except IntegrityError as exc:
+            create_error = exc
+
+    if obj is None:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err("name", "Gagal generate kode formula turunan unik. Coba ulangi.")],
+            "details": str(create_error) if create_error else "",
+        }, status=409)
+
+    return JsonResponse({
+        "ok": True,
+        "created": True,
+        "synced_at": _to_iso_timestamp(timezone.now()),
+        "computed_parameter": {
+            "id": obj.id,
+            "name": obj.name,
+            "expression": obj.expression,
+            "label": obj.label,
+            "unit": obj.unit,
+            "description": obj.description,
+        },
+    }, status=201)
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_project_computed_parameters_sync(request: HttpRequest, project_id: int):
+    """
+    Bulk sync computed parameters from client snapshot.
+
+    POST body:
+    {
+        "computed_parameters": {
+            "area_l1": { "expression": "panjang_l1 * lebar_l1", "label": "Area L1" },
+            ...
+        },
+        "mode": "replace" | "merge"  // default: replace
+    }
+    """
+    project = _owner_or_404(project_id, request.user)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+
+    params_data = payload.get("computed_parameters", {})
+    mode = str(payload.get("mode", "replace") or "replace").strip().lower()
+    if not isinstance(params_data, dict):
+        return JsonResponse({"ok": False, "errors": [_err("computed_parameters", "Harus berupa object/dictionary")]}, status=400)
+    if mode not in ("replace", "merge"):
+        return JsonResponse({"ok": False, "errors": [_err("mode", "Mode harus replace atau merge")]}, status=400)
+
+    is_conflict, latest_ts = _is_stale_sync(project, ProjectComputedParameter, payload)
+    if is_conflict:
+        return JsonResponse({
+            "ok": False,
+            "error": "conflict",
+            "server_updated_at": _to_iso_timestamp(latest_ts),
+        }, status=409)
+
+    created_count = 0
+    updated_count = 0
+    deleted_count = 0
+    warnings = []
+
+    if mode == "replace":
+        deleted_count = ProjectComputedParameter.objects.filter(project=project).delete()[0]
+        existing = {}
+    else:
+        existing = {p.name: p for p in ProjectComputedParameter.objects.filter(project=project)}
+
+    for idx, (raw_code, data) in enumerate(params_data.items()):
+        name = str(raw_code or "").strip().lower()
+        if not name:
+            warnings.append({
+                "name": str(raw_code),
+                "index": idx,
+                "error": "Kode kosong",
+            })
+            continue
+        if not _is_valid_computed_param_name(name):
+            warnings.append({
+                "name": str(raw_code),
+                "index": idx,
+                "error": _computed_name_format_error_text(),
+            })
+            continue
+
+        if not isinstance(data, dict):
+            data = {"expression": str(data or "")}
+
+        expression = str(data.get("expression", "")).strip()
+        if not expression:
+            warnings.append({
+                "name": name,
+                "index": idx,
+                "error": "Expression kosong, item di-skip",
+            })
+            continue
+
+        label = str(data.get("label", "")).strip() or name
+        unit = str(data.get("unit", "")).strip()
+        description = str(data.get("description", "")).strip()
+
+        if name in existing:
+            obj = existing[name]
+            obj.expression = expression
+            obj.label = label
+            obj.unit = unit
+            obj.description = description
+            obj.save(update_fields=["expression", "label", "unit", "description", "updated_at"])
+            updated_count += 1
+        else:
+            ProjectComputedParameter.objects.create(
+                project=project,
+                name=name,
+                expression=expression,
+                label=label,
+                unit=unit,
+                description=description,
+            )
+            created_count += 1
+
+    return JsonResponse({
+        "ok": True,
+        "created": created_count,
+        "updated": updated_count,
+        "deleted": deleted_count,
+        "mode": mode,
+        "warnings": warnings,
+        "synced_at": _to_iso_timestamp(timezone.now()),
     })
 
 
@@ -3067,6 +3861,7 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
         pkj = get_object_or_404(Pekerjaan, id=pkj_id, project=project)
 
         DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj).delete()
+        TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=pkj).delete()
 
         to_create = []
         saved_here = 0
@@ -3079,7 +3874,7 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
             satuan = (r.get('satuan') or '').strip() or None
             koef_dec = parse_any(r.get('koefisien'))
             if koef_dec is None or koef_dec < 0:
-                all_errors.append(_err(f"items[{i}].rows[{j}].koefisien", "Harus ≥ 0 dan berupa angka yang valid")); continue
+                all_errors.append(_err(f"items[{i}].rows[{j}].koefisien", "Harus â‰¥ 0 dan berupa angka yang valid")); continue
             dp_koef = DECIMAL_SPEC["KOEF"].dp
             koef_q = quantize_half_up(koef_dec, dp_koef)
             if not uraian or not kode:
@@ -3087,7 +3882,8 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
             hip = _upsert_harga_item(project, kat, kode, uraian, satuan)
             to_create.append(DetailAHSPProject(
                 project=project, pekerjaan=pkj, harga_item=hip,
-                kategori=kat, kode=kode, uraian=uraian, satuan=satuan, koefisien=koef_q
+                kategori=kat, kode=hip.kode_item, uraian=hip.uraian,
+                satuan=hip.satuan, koefisien=koef_q
             ))
             saved_here += 1
         if to_create:
@@ -3097,6 +3893,8 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
     # CACHE FIX: Invalidate cache AFTER transaction commits
     if total_saved > 0:
         transaction.on_commit(lambda: invalidate_rekap_cache(project))
+        # Auto-cleanup orphan harga item akibat baris dihapus/diubah saat save gabungan.
+        transaction.on_commit(lambda: _auto_cleanup_orphans(project))
 
     status_code = 200 if not all_errors else (207 if total_saved > 0 else 400)
     return JsonResponse({"ok": status_code == 200, "saved_rows": total_saved, "errors": all_errors}, status=status_code)
@@ -3104,7 +3902,7 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
 
 
 # ---------- View 5.1: Rincian RAB (helper + endpoint) ----------
-# Helper: hitung rincian baris per (pekerjaan × item) dengan subtotal = koef × volume × harga
+# Helper: hitung rincian baris per (pekerjaan Ã— item) dengan subtotal = koef Ã— volume Ã— harga
 def _compute_rincian_rab(project):
     """
     Return:
@@ -3158,6 +3956,11 @@ def _compute_rincian_rab(project):
 
 @login_required
 @require_GET
+@api_deprecated(
+    sunset_date="2026-09-01",
+    migration_endpoint="api_get_rekap_rab",
+    reason="Halaman Rincian RAB legacy (U15) — digantikan Rincian AHSP + Rekap RAB",
+)
 def api_get_rincian_rab(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
 
@@ -3204,6 +4007,11 @@ def api_get_rincian_rab(request: HttpRequest, project_id: int):
 
 @login_required
 @require_GET
+@api_deprecated(
+    sunset_date="2026-09-01",
+    migration_endpoint="export_rekap_rab_csv",
+    reason="Halaman Rincian RAB legacy (U15) — digantikan Rincian AHSP + Rekap RAB",
+)
 def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
     rows, totals = _compute_rincian_rab(project)
@@ -3270,45 +4078,22 @@ def api_export_rincian_rab_csv(request: HttpRequest, project_id: int):
 
 # ---------- View 6: Rekap ----------
 
-@login_required
-def api_list_harga_items(request: HttpRequest, project_id: int):
+def build_harga_items_payload(project, canon=True):
     """
-    List all Harga Items in this project.
+    Bangun daftar Harga Items proyek (dict siap JSON).
 
-    UPDATED (2026-01-09):
-    - Shows items that are USED in DetailAHSPExpanded (excludes bundle items)
-    - ALSO shows standalone items (no expanded refs AND no detail refs) for import support
-    - This ensures imported items appear while bundle items are excluded
+    - Menampilkan item yang dipakai di DetailAHSPExpanded (mengecualikan bundle)
+      plus item standalone (belum tertaut, untuk dukungan import).
+    - canon=True â†’ harga_satuan dikirim sebagai string kanonik (sesuai EP_LIST?canon=1).
 
-    P0 FIX (2025-11-11):
-    - Added project_updated_at for optimistic locking
+    Dipakai bersama oleh:
+    - api_list_harga_items (jalur AJAX)
+    - harga_items_view (bootstrap SSR, agar fetchList tidak round-trip saat buka halaman).
     """
-    from django.db.models import Q, Exists, OuterRef
-    from .models import DetailAHSPExpanded, DetailAHSPProject
-    
-    project = _owner_or_404(project_id, request.user)
-    
-    # Items used in DetailAHSPExpanded (expanded components)
-    used_in_expanded = Q(expanded_refs__project=project)
-    
-    # Standalone items: not referenced anywhere (for import support)
-    # These are items created by import that aren't yet linked to any AHSP
-    has_expanded_refs = Exists(
-        DetailAHSPExpanded.objects.filter(harga_item=OuterRef('pk'))
-    )
-    has_detail_refs = Exists(
-        DetailAHSPProject.objects.filter(harga_item=OuterRef('pk'))
-    )
-    standalone = ~has_expanded_refs & ~has_detail_refs
-    
-    qs = (HargaItemProject.objects
-          .filter(project=project)
-          .filter(used_in_expanded | standalone)
-          .distinct()
-          .order_by('kode_item'))
+    qs = active_harga_items_queryset(project).order_by('kode_item')
     items = list(qs.values('id','kode_item','kategori','uraian','satuan','harga_satuan'))
 
-    if request.GET.get('canon') == '1':
+    if canon:
         dp = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
         for it in items:
             it['harga_satuan'] = to_dp_str(it.get('harga_satuan'), dp)  # "12345.67" atau None
@@ -3320,7 +4105,16 @@ def api_list_harga_items(request: HttpRequest, project_id: int):
         "project_updated_at": project.updated_at.isoformat() if hasattr(project, 'updated_at') and project.updated_at else None
     }
 
-    return JsonResponse({"ok": True, "items": items, "meta": meta})
+    return {"ok": True, "items": items, "meta": meta}
+
+
+@login_required
+def api_list_harga_items(request: HttpRequest, project_id: int):
+    """
+    List all Harga Items in this project (delegasi ke build_harga_items_payload).
+    """
+    project = _owner_or_404(project_id, request.user)
+    return JsonResponse(build_harga_items_payload(project, canon=(request.GET.get('canon') == '1')))
 
 
 @login_required
@@ -3504,8 +4298,25 @@ def api_get_change_status(request: HttpRequest, project_id: int):
     except Exception:
         pass
 
-    # Jadwal tracking - placeholder for future implementation
+    # Jadwal tracking: latest timestamp across tahapan, assignments, and weekly progress.
     jadwal_changed_at = None
+    try:
+        from detail_project.models import PekerjaanProgressWeekly, PekerjaanTahapan, TahapPelaksanaan
+
+        jadwal_latest = max(
+            filter(
+                None,
+                [
+                    TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"],
+                    PekerjaanTahapan.objects.filter(tahapan__project=project).aggregate(last=Max("updated_at"))["last"],
+                    PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"],
+                ],
+            ),
+            default=None,
+        )
+        jadwal_changed_at = jadwal_latest.isoformat() if jadwal_latest else None
+    except Exception:
+        pass
 
     pekerjaan_qs = Pekerjaan.objects.filter(
         project=project,
@@ -3524,6 +4335,7 @@ def api_get_change_status(request: HttpRequest, project_id: int):
         }
         for pkj in pekerjaan_qs.order_by("-detail_last_modified")[:10]
     ]
+    pending_flags = get_pending_source_change_flags(project)
 
     return JsonResponse(
         {
@@ -3535,6 +4347,35 @@ def api_get_change_status(request: HttpRequest, project_id: int):
             "jadwal_changed_at": jadwal_changed_at,
             "affected_pekerjaan_count": affected_count,
             "recent_pekerjaan": recent,
+            "pending_reload_job_ids": pending_flags["reload_job_ids"],
+            "pending_volume_reset_job_ids": pending_flags["volume_reset_job_ids"],
+        }
+    )
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_ack_source_change_flags(request: HttpRequest, project_id: int):
+    project = _owner_or_404(project_id, request.user)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+
+    reload_ids = payload.get("reload_job_ids") or payload.get("resolved_reload_job_ids") or []
+    volume_ids = payload.get("volume_reset_job_ids") or payload.get("resolved_volume_job_ids") or []
+
+    updated_flags = clear_source_change_flags(
+        project,
+        reload_job_ids=reload_ids,
+        volume_reset_job_ids=volume_ids,
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "pending_reload_job_ids": updated_flags["reload_job_ids"],
+            "pending_volume_reset_job_ids": updated_flags["volume_reset_job_ids"],
         }
     )
 
@@ -3717,7 +4558,7 @@ def api_get_audit_trail(request: HttpRequest, project_id: int):
 def api_get_rekap_rab(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
 
-    # Ambil hasil penuh dari services (A..G, total = G×volume)
+    # Ambil hasil penuh dari services (A..G, total = GÃ—volume)
     data = compute_rekap_for_project(project)
 
     # Ambil pricing JIKA ADA (jangan create default row agar kompatibel dgn test stub)
@@ -4057,8 +4898,8 @@ def export_rekap_kebutuhan_xlsx(request: HttpRequest, project_id: int):
 @transaction.atomic
 def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: int):
     """
-    GET  → kembalikan {project_markup, override_markup, effective_markup}
-    POST → terima {"override_markup": "12,5"} atau null untuk clear
+    GET  â†’ kembalikan {project_markup, override_markup, effective_markup}
+    POST â†’ terima {"override_markup": "12,5"} atau null untuk clear
     """
     from .numeric import parse_any, to_dp_str
 
@@ -4127,13 +4968,13 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
     if dec < 0:
         return JsonResponse({
             "ok": False,
-            "errors": [_err("override_markup", "Profit/Margin (BUK) tidak boleh negatif. Masukkan nilai 0–100")]
+            "errors": [_err("override_markup", "Profit/Margin (BUK) tidak boleh negatif. Masukkan nilai 0â€“100")]
         }, status=400)
 
     if dec > 100:
         return JsonResponse({
             "ok": False,
-            "errors": [_err("override_markup", "Profit/Margin (BUK) maksimal 100%. Masukkan nilai 0–100")]
+            "errors": [_err("override_markup", "Profit/Margin (BUK) maksimal 100%. Masukkan nilai 0â€“100")]
         }, status=400)
 
     # Save and return updated values
@@ -4152,15 +4993,126 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
     })
 
 
+# ---------- Formula Raw Validation Utility ----------
+_FORMULA_MAX_LENGTH = 500
+_FORMULA_ALLOWED_CHARS_RE = re.compile(
+    r'^[a-zA-Z0-9_., ()+\-*/^\s]*$'
+)
+_FORMULA_IDENTIFIER_RE = re.compile(r'^(bp|cp)_[1-9][0-9]*$')
+_FORMULA_ALLOWED_FUNCTIONS = frozenset([
+    'sum', 'min', 'max', 'round', 'avg', 'abs', 'floor', 'ceil', 'pow',
+])
+_FORMULA_TOKEN_RE = re.compile(
+    r'[a-zA-Z_][a-zA-Z0-9_]*'   # identifiers / function names
+    r'|[0-9]+(?:\.[0-9]+)?'      # numeric literals
+    r'|[+\-*/^(),=]'             # operators / delimiters
+)
+
+
+def _validate_formula_raw(raw: str) -> list:
+    """
+    Validate a formula expression string.
+
+    Returns a list of error strings. Empty list â†’ valid.
+
+    Layer 1: Character whitelist  (fast reject of injection chars)
+    Layer 2: Token / function whitelist  (semantic check)
+    """
+    errors = []
+
+    # Empty or whitespace-only â†’ valid (means "clear formula")
+    if not raw or not raw.strip():
+        return errors
+
+    # Length limit
+    if len(raw) > _FORMULA_MAX_LENGTH:
+        errors.append(
+            f"Formula terlalu panjang ({len(raw)} karakter, maks {_FORMULA_MAX_LENGTH})"
+        )
+        return errors
+
+    # Strip leading "=" for validation (formulas start with "=")
+    body = raw.strip()
+    if body.startswith('='):
+        body = body[1:]
+
+    # Layer 1 â€” Character whitelist
+    if not _FORMULA_ALLOWED_CHARS_RE.match(body):
+        # Find the first offending character for a helpful message
+        for ch in body:
+            if not re.match(r'[a-zA-Z0-9_., ()+\-*/^\s]', ch):
+                errors.append(
+                    f"Karakter tidak diizinkan dalam formula: '{ch}' "
+                    f"(U+{ord(ch):04X})"
+                )
+                break
+        return errors
+
+    # Layer 2 â€” Token / function whitelist
+    tokens = _FORMULA_TOKEN_RE.findall(body)
+    for token in tokens:
+        # Skip pure numbers, operators, delimiters
+        if re.match(r'^[0-9]', token) or token in ('+', '-', '*', '/', '^', '(', ')', ',', '='):
+            continue
+
+        # Must be an identifier or function name
+        token_lower = token.lower()
+
+        if token_lower in _FORMULA_ALLOWED_FUNCTIONS:
+            continue
+
+        if _FORMULA_IDENTIFIER_RE.match(token_lower):
+            continue
+
+        errors.append(
+            f"Token tidak dikenal dalam formula: '{token}'. "
+            f"Identifier harus berformat bp_N atau cp_N, "
+            f"fungsi yang diizinkan: {', '.join(sorted(_FORMULA_ALLOWED_FUNCTIONS))}"
+        )
+        break  # Report first unknown token only
+
+    return errors
+
+
+def build_volume_formula_state_payload(project):
+    """
+    Bangun payload formula state volume (dict siap JSON), setara jalur GET.
+
+    Dipakai bersama oleh:
+    - api_volume_formula_state (GET)
+    - volume_pekerjaan_view (bootstrap SSR, agar prefill tidak round-trip saat buka halaman).
+    """
+    latest_ts = _latest_project_param_update(project, VolumeFormulaState)
+    rows = list(
+        VolumeFormulaState.objects
+        .filter(project=project)
+        .values("pekerjaan_id", "raw", "is_fx", "updated_at")
+    )
+    items = [
+        {
+            "pekerjaan_id": row.get("pekerjaan_id"),
+            "raw": row.get("raw") or "",
+            "is_fx": bool(row.get("is_fx")),
+            "updated_at": _to_iso_timestamp(row.get("updated_at")),
+        }
+        for row in rows
+    ]
+    return {
+        "ok": True,
+        "synced_at": _to_iso_timestamp(latest_ts or timezone.now()),
+        "items": items,
+    }
+
+
 # ---------- View 7 Volume Formula State (GET/POST di endpoint yang sama) ----------
 @login_required
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
 def api_volume_formula_state(request: HttpRequest, project_id: int):
     """
-    GET  → kembalikan daftar formula state yang ada untuk project.
+    GET  â†’ kembalikan daftar formula state yang ada untuk project.
             { ok: true, items: [{pekerjaan_id, raw, is_fx}] }
-    POST → upsert ringan: body {items:[{pekerjaan_id, raw, is_fx}]}
+    POST â†’ upsert ringan: body {items:[{pekerjaan_id, raw, is_fx}]}
             - Validasi: pekerjaan milik project & owner
             - Hanya simpan subset yang dikirim
             - Tidak mengubah nilai Volume (quantity)
@@ -4168,12 +5120,7 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
 
     if request.method == "GET":
-        rows = list(
-            VolumeFormulaState.objects
-            .filter(project=project)
-            .values("pekerjaan_id", "raw", "is_fx")
-        )
-        return JsonResponse({"ok": True, "items": rows})
+        return JsonResponse(build_volume_formula_state_payload(project))
 
     # POST
     try:
@@ -4181,12 +5128,21 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
     except Exception:
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
 
+    is_conflict, latest_ts = _is_stale_sync(project, VolumeFormulaState, payload)
+    if is_conflict:
+        return JsonResponse({
+            "ok": False,
+            "error": "conflict",
+            "server_updated_at": _to_iso_timestamp(latest_ts),
+        }, status=409)
+
     items = payload.get("items") or []
     if not isinstance(items, list):
         return JsonResponse({"ok": False, "errors": [_err("items", "Harus berupa list")]}, status=400)
 
     created = 0
     updated = 0
+    deleted = 0
     errors  = []
 
     for i, it in enumerate(items):
@@ -4202,6 +5158,23 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
         except Pekerjaan.DoesNotExist:
             errors.append(_err(f"items[{i}].pekerjaan_id", "Pekerjaan tidak ditemukan di project ini")); continue
 
+        # VolumeFormulaState is only for active formulas. Numeric/manual input
+        # must delete any stale sidecar so the UI cannot override VolumePekerjaan
+        # with an old raw value on the next reload.
+        if not (is_fx and raw):
+            deleted += VolumeFormulaState.objects.filter(project=project, pekerjaan=pkj).delete()[0]
+            continue
+
+        # Validate formula content (only when formula mode is active and raw is non-empty)
+        if is_fx and raw:
+            validation_errors = _validate_formula_raw(raw)
+            if validation_errors:
+                errors.append(_err(
+                    f"items[{i}].raw",
+                    "; ".join(validation_errors)
+                ))
+                continue
+
         obj, was_created = VolumeFormulaState.objects.update_or_create(
             project=project, pekerjaan=pkj,
             defaults=dict(raw=raw, is_fx=is_fx)
@@ -4209,11 +5182,63 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
         if was_created: created += 1
         else: updated += 1
 
-    status_code = 400 if errors and (created + updated == 0) else 200
+    status_code = 400 if errors and (created + updated + deleted == 0) else 200
+    latest_ts = _latest_project_param_update(project, VolumeFormulaState)
     return JsonResponse(
-        {"ok": status_code == 200, "created": created, "updated": updated, "errors": errors},
+        {
+            "ok": status_code == 200,
+            "created": created,
+            "updated": updated,
+            "deleted": deleted,
+            "errors": errors,
+            "synced_at": _to_iso_timestamp(latest_ts or timezone.now()),
+        },
         status=status_code
     )
+
+
+@login_required
+@require_GET
+def api_template_ahsp_formula_state(request: HttpRequest, project_id: int):
+    """
+    Secondary endpoint (read-only) untuk bulk pre-load formula koefisien
+    Template AHSP lintas pekerjaan.
+    """
+    project = _owner_or_404(project_id, request.user)
+    try:
+        latest_ts = _latest_project_param_update(project, TemplateAhspKoefFormulaState)
+        rows = list(
+            TemplateAhspKoefFormulaState.objects
+            .filter(project=project)
+            .values("pekerjaan_id", "row_key", "raw", "is_fx", "updated_at")
+        )
+    except (OperationalError, ProgrammingError) as exc:
+        if _is_missing_ta_koef_sidecar_table(exc):
+            logger.warning(
+                "[TA] Koef sidecar table missing while loading bulk formula state (project=%s). "
+                "Returning empty state.",
+                project.id,
+            )
+            latest_ts = timezone.now()
+            rows = []
+        else:
+            raise
+    items = [
+        {
+            "pekerjaan_id": row.get("pekerjaan_id"),
+            "row_key": (row.get("row_key") or "").strip(),
+            "raw": row.get("raw") or "",
+            "is_fx": bool(row.get("is_fx")),
+            "updated_at": _to_iso_timestamp(row.get("updated_at")),
+        }
+        for row in rows
+        if (row.get("row_key") or "").strip()
+    ]
+    return JsonResponse({
+        "ok": True,
+        "synced_at": _to_iso_timestamp(latest_ts or timezone.now()),
+        "items": items,
+    })
 
 
 
@@ -4515,9 +5540,7 @@ def export_harga_items_json(request: HttpRequest, project_id: int):
         
         # Fetch harga items with conversion profiles
         items_qs = (
-            HargaItemProject.objects
-            .filter(project=project, expanded_refs__project=project)
-            .distinct()
+            used_harga_items_queryset(project)
             .select_related('conversion_profile')
             .order_by('kategori', 'kode_item')
         )
@@ -4539,7 +5562,11 @@ def export_harga_items_json(request: HttpRequest, project_id: int):
                 'satuan': item.satuan,
                 'kategori': item.kategori,
                 'kategori_label': kategori_labels.get(item.kategori, item.kategori),
-                'harga_satuan': float(item.harga_satuan) if item.harga_satuan else None,
+                'harga_satuan': (
+                    float(item.harga_satuan)
+                    if item.harga_satuan is not None
+                    else None
+                ),
             }
             
             # Add conversion profile if exists
@@ -4548,11 +5575,11 @@ def export_harga_items_json(request: HttpRequest, project_id: int):
                     conv = item.conversion_profile
                     item_dict['conversion'] = {
                         'market_unit': conv.market_unit,
-                        'market_price': float(conv.market_price) if conv.market_price else None,
-                        'factor_to_base': float(conv.factor_to_base) if conv.factor_to_base else None,
-                        'density': float(conv.density) if conv.density else None,
-                        'capacity_m3': float(conv.capacity_m3) if conv.capacity_m3 else None,
-                        'capacity_ton': float(conv.capacity_ton) if conv.capacity_ton else None,
+                        'market_price': float(conv.market_price) if conv.market_price is not None else None,
+                        'factor_to_base': float(conv.factor_to_base) if conv.factor_to_base is not None else None,
+                        'density': float(conv.density) if conv.density is not None else None,
+                        'capacity_m3': float(conv.capacity_m3) if conv.capacity_m3 is not None else None,
+                        'capacity_ton': float(conv.capacity_ton) if conv.capacity_ton is not None else None,
                         'method': conv.method,
                     }
             except Exception:
@@ -5448,7 +6475,7 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
     Response format:
     {
         "hargaMap": {
-            "123": 38500000.00,  // pekerjaan_id → total harga (G × volume)
+            "123": 38500000.00,  // pekerjaan_id â†’ total harga (G Ã— volume)
             "456": 120000000.00,
             ...
         },
@@ -5462,7 +6489,7 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
             "123": {
                 "kode": "A.1.1",
                 "uraian": "Pekerjaan Galian",
-                "satuan": "m³",
+                "satuan": "mÂ³",
                 "harga_satuan": 385000.00,  // G (with markup)
                 "volume": 100.0,
                 "total": 38500000.00,
@@ -5530,7 +6557,7 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
     for row in rekap_rows:
         pkj_id = str(row['pekerjaan_id'])
 
-        # Total harga = G × volume (already calculated in compute_rekap_for_project)
+        # Total harga = G Ã— volume (already calculated in compute_rekap_for_project)
         total_harga = Decimal(str(row.get('total', 0)))
 
         # Store in maps
@@ -5583,8 +6610,8 @@ def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonRespons
     Phase 1: Kurva S Harga - Calculate weekly cost progression.
 
     Formula:
-        Weekly Cost = (Total Harga Pekerjaan × Proportion %) / 100
-        Where Total Harga = Volume × G (unit price with markup)
+        Weekly Cost = (Total Harga Pekerjaan Ã— Proportion %) / 100
+        Where Total Harga = Volume Ã— G (unit price with markup)
 
     Response format:
     {
@@ -5658,7 +6685,7 @@ def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonRespons
         .order_by('ordering_index')
     )
 
-    # Build pekerjaan cost map: pekerjaan_id → budgeted_cost (fallback ke rekap)
+    # Build pekerjaan cost map: pekerjaan_id â†’ budgeted_cost (fallback ke rekap)
     pekerjaan_costs = {}
     pekerjaan_meta = {}
     total_project_cost = Decimal('0.00')
@@ -5937,7 +6964,7 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     Phase 1: Rekap Kebutuhan - Calculate weekly resource requirements for procurement planning.
 
     Formula:
-        Weekly Requirement = Item Quantity × (Weekly Proportion / 100)
+        Weekly Requirement = Item Quantity Ã— (Weekly Proportion / 100)
 
     Response format:
     {
@@ -6029,7 +7056,7 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
             'detail': str(e)
         }, status=500)
 
-    # Build item index: (kategori, kode) → item data
+    # Build item index: (kategori, kode) â†’ item data
     item_index = {}
     for item in kebutuhan_items:
         key = (item['kategori'], item['kode'])
@@ -6042,7 +7069,7 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     # Step 2: Get weekly progress data
 
     # PERFORMANCE OPTIMIZATION: Prefetch related data to avoid N+1 queries
-    # Before: 1000+ queries (N pekerjaan × M components × volume lookups)
+    # Before: 1000+ queries (N pekerjaan Ã— M components Ã— volume lookups)
     # After: 3-5 queries total
     weekly_progress = PekerjaanProgressWeekly.objects.filter(
         project=project
@@ -6095,7 +7122,7 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
             kode = harga_item.kode_item or harga_item.uraian
             koefisien = Decimal(str(comp.koefisien))
 
-            # Calculate weekly requirement: volume × koefisien × proportion / 100
+            # Calculate weekly requirement: volume Ã— koefisien Ã— proportion / 100
             weekly_qty = volume * koefisien * Decimal(str(proportion)) / Decimal('100')
 
             # Aggregate by item
@@ -6482,77 +7509,96 @@ def export_list_pekerjaan_json(request: HttpRequest, project_id: int):
     """
     Export List Pekerjaan to JSON format for backup/import.
     
-    Returns hierarchical structure: Klasifikasi → Sub → Pekerjaan
+    Returns hierarchical structure: Klasifikasi â†’ Sub â†’ Pekerjaan
     """
-    try:
-        project = _owner_or_404(project_id, request.user)
-        
-        # Get all data
-        k_qs = Klasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
-        s_qs = SubKlasifikasi.objects.filter(project=project).order_by('ordering_index', 'id')
-        p_qs = Pekerjaan.objects.filter(project=project).order_by('ordering_index', 'id')
-        
-        # Build maps
-        subs_by_klas = {}
-        for s in s_qs:
-            subs_by_klas.setdefault(s.klasifikasi_id, []).append(s)
-        
-        pkj_by_sub = {}
-        for p in p_qs:
-            pkj_by_sub.setdefault(p.sub_klasifikasi_id, []).append(p)
-        
-        # Build hierarchical structure
-        klasifikasi_data = []
-        for k in k_qs:
-            k_obj = {
-                "name": k.name,
-                "ordering_index": k.ordering_index,
-                "sub": []
-            }
-            for s in subs_by_klas.get(k.id, []):
-                s_obj = {
-                    "name": s.name,
-                    "ordering_index": s.ordering_index,
-                    "pekerjaan": []
-                }
-                for p in pkj_by_sub.get(s.id, []):
-                    s_obj["pekerjaan"].append({
-                        "source_type": _src_to_str(p.source_type),
-                        "snapshot_kode": getattr(p, "snapshot_kode", None) or "",
-                        "snapshot_uraian": p.snapshot_uraian or "",
-                        "snapshot_satuan": p.snapshot_satuan or "",
-                        "ordering_index": p.ordering_index,
-                        "budgeted_cost": str(p.budgeted_cost or 0),
-                        "ref_ahsp_id": p.ref_id if p.source_type == Pekerjaan.SOURCE_REF else None,
-                    })
-                k_obj["sub"].append(s_obj)
-            klasifikasi_data.append(k_obj)
-        
-        export_data = {
-            "export_type": "list_pekerjaan",
-            "export_version": "1.0",
-            "project_id": project_id,
-            "project_name": project.nama,
-            "export_date": timezone.now().isoformat(),
-            "klasifikasi": klasifikasi_data,
-            "stats": {
-                "total_klasifikasi": len(klasifikasi_data),
-                "total_sub": sum(len(k["sub"]) for k in klasifikasi_data),
-                "total_pekerjaan": sum(len(s["pekerjaan"]) for k in klasifikasi_data for s in k["sub"]),
-            }
-        }
-        
-        response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
-        filename = f"list_pekerjaan_{project.nama.replace(' ', '_')}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
-        
-    except Exception as e:
-        logger.error(f"Export List Pekerjaan JSON error: {e}", exc_info=True)
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export JSON gagal: {str(e)}'
-        }, status=500)
+    project = _owner_or_404(project_id, request.user)
+
+    k_qs = Klasifikasi.objects.filter(project=project).only(
+        "id", "name", "ordering_index"
+    ).order_by("ordering_index", "id")
+    s_qs = SubKlasifikasi.objects.filter(project=project).only(
+        "id", "klasifikasi_id", "name", "ordering_index"
+    ).order_by("ordering_index", "id")
+    p_qs = Pekerjaan.objects.filter(project=project).only(
+        "id",
+        "sub_klasifikasi_id",
+        "source_type",
+        "ref_id",
+        "snapshot_kode",
+        "snapshot_uraian",
+        "snapshot_satuan",
+        "ordering_index",
+        "budgeted_cost",
+    ).order_by("ordering_index", "id")
+
+    subs_by_klas = {}
+    for sub in s_qs:
+        subs_by_klas.setdefault(sub.klasifikasi_id, []).append(sub)
+
+    pekerjaan_by_sub = {}
+    for pekerjaan in p_qs:
+        pekerjaan_by_sub.setdefault(pekerjaan.sub_klasifikasi_id, []).append(pekerjaan)
+
+    klasifikasi_data = []
+    total_sub = 0
+    total_pekerjaan = 0
+    for klasifikasi in k_qs:
+        sub_data = []
+        for sub in subs_by_klas.get(klasifikasi.id, []):
+            pekerjaan_data = []
+            for pekerjaan in pekerjaan_by_sub.get(sub.id, []):
+                pekerjaan_data.append({
+                    "source_type": _src_to_str(pekerjaan.source_type),
+                    "snapshot_kode": pekerjaan.snapshot_kode or "",
+                    "snapshot_uraian": pekerjaan.snapshot_uraian or "",
+                    "snapshot_satuan": pekerjaan.snapshot_satuan or "",
+                    "ordering_index": pekerjaan.ordering_index,
+                    "budgeted_cost": str(pekerjaan.budgeted_cost or 0),
+                    "ref_ahsp_id": (
+                        pekerjaan.ref_id
+                        if pekerjaan.source_type == Pekerjaan.SOURCE_REF
+                        else None
+                    ),
+                })
+            total_pekerjaan += len(pekerjaan_data)
+            sub_data.append({
+                "name": sub.name,
+                "ordering_index": sub.ordering_index,
+                "pekerjaan": pekerjaan_data,
+            })
+
+        total_sub += len(sub_data)
+        klasifikasi_data.append({
+            "name": klasifikasi.name,
+            "ordering_index": klasifikasi.ordering_index,
+            "sub": sub_data,
+        })
+
+    export_data = {
+        "export_type": "list_pekerjaan",
+        "export_version": "1.0",
+        "project_id": project_id,
+        "project_name": project.nama,
+        "export_date": timezone.now().isoformat(),
+        "klasifikasi": klasifikasi_data,
+        "stats": {
+            "total_klasifikasi": len(klasifikasi_data),
+            "total_sub": total_sub,
+            "total_pekerjaan": total_pekerjaan,
+        },
+    }
+
+    response = JsonResponse(
+        export_data,
+        json_dumps_params={"indent": 2, "ensure_ascii": False},
+    )
+    safe_project_name = slugify(project.nama) or f"project-{project.id}"
+    timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"list_pekerjaan_{safe_project_name}_{timestamp}.json"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 # ============================================================================
@@ -6574,7 +7620,7 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
         # Replace unicode replacement character (U+FFFD) with empty string
         # Also handle potential encoding issues
         try:
-            result = str(s).replace('\ufffd', '').replace('�', '')
+            result = str(s).replace('\ufffd', '').replace('ï¿½', '')
             # Ensure the string can be JSON serialized
             result.encode('utf-8')
             return result
@@ -6593,7 +7639,11 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
         # Prefetch detail AHSP items with ordering
         detail_prefetch = Prefetch(
             'detail_list',
-            queryset=DetailAHSPProject.objects.order_by('id')
+            queryset=(
+                DetailAHSPProject.objects
+                .select_related('harga_item', 'ref_ahsp', 'ref_pekerjaan')
+                .order_by('id')
+            )
         )
 
         # OPTIMIZATION: Add only() to load only required fields, reducing memory
@@ -6606,6 +7656,17 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
         ).prefetch_related(
             detail_prefetch
         ).order_by('ordering_index', 'id')[:1000]  # LIMIT to first 1000 pekerjaan for safety
+
+        formula_state_rows = (
+            TemplateAhspKoefFormulaState.objects
+            .filter(project=project)
+            .values('pekerjaan_id', 'row_key', 'raw', 'is_fx')
+        )
+        formula_state_map = {
+            (row.get('pekerjaan_id'), (row.get('row_key') or '').strip()): row
+            for row in formula_state_rows
+            if (row.get('row_key') or '').strip()
+        }
 
         # Build pekerjaan list with items
         pekerjaan_list = []
@@ -6620,16 +7681,46 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
                 except (ValueError, TypeError):
                     koefisien_val = 0.0
 
+                row_key = (d.kode or '').strip()
+                fstate = formula_state_map.get((p.id, row_key))
+                formula_raw = (fstate.get('raw') or '') if fstate else ''
+                formula_is_fx = bool(fstate and fstate.get('is_fx') and formula_raw.strip())
+
                 items.append({
                     "kategori": sanitize_str(d.kategori),
                     "kode": sanitize_str(d.kode),
                     "uraian": sanitize_str(d.uraian),
                     "satuan": sanitize_str(d.satuan),
                     "koefisien": koefisien_val,
+                    "koef_formula_raw": formula_raw,
+                    "koef_is_fx": formula_is_fx,
+                    "bundle_type": (
+                        "pekerjaan" if d.ref_pekerjaan_id
+                        else "ahsp" if d.ref_ahsp_id
+                        else None
+                    ),
+                    "bundle_ref_snapshot_kode": (
+                        sanitize_str(d.ref_pekerjaan.snapshot_kode)
+                        if d.ref_pekerjaan_id
+                        else None
+                    ),
+                    "_ref_pekerjaan_export_id": d.ref_pekerjaan_id,
+                    "bundle_ref_ahsp_id": d.ref_ahsp_id,
+                    "bundle_ref_ahsp_kode": (
+                        sanitize_str(d.ref_ahsp.kode_ahsp)
+                        if d.ref_ahsp_id
+                        else None
+                    ),
+                    "bundle_ref_ahsp_sumber": (
+                        sanitize_str(d.ref_ahsp.sumber)
+                        if d.ref_ahsp_id
+                        else None
+                    ),
                 })
                 total_items += 1
 
             pekerjaan_list.append({
+                "_export_id": p.id,
                 "kode": sanitize_str(getattr(p, "snapshot_kode", None)),
                 "uraian": sanitize_str(p.snapshot_uraian),
                 "satuan": sanitize_str(p.snapshot_satuan),
@@ -6644,7 +7735,7 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
 
         export_data = {
             "export_type": "template_ahsp",
-            "export_version": "1.0",
+            "export_version": "1.1",
             "project_id": project_id,
             "project_name": sanitize_str(project.nama),
             "export_date": timezone.now().isoformat(),
@@ -6682,6 +7773,90 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
 # EXPORT: FULL PROJECT BACKUP (for migration/restore)
 # ============================================================================
 
+def _as_list(value):
+    """Return value when it's a list; otherwise empty list."""
+    return value if isinstance(value, list) else []
+
+
+def to_version_tuple(raw):
+    """
+    Parse export version safely into numeric tuple.
+
+    Examples:
+    - "3.0" -> (3, 0)
+    - "3.0-beta" -> (3, 0)
+    - "v2" -> (2, 0)
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return (1, 0)
+
+    chunks = re.findall(r"\d+", text)
+    if not chunks:
+        return (1, 0)
+
+    parsed = tuple(int(part) for part in chunks[:3])
+    if len(parsed) == 1:
+        return (parsed[0], 0)
+    return parsed
+
+
+def _resolve_parameter_sections(data):
+    """
+    Resolve parameter sections with canonical keys first and legacy fallback.
+    """
+    export_version = to_version_tuple(data.get('export_version', '1.0'))
+    if export_version >= (3, 0):
+        project_parameters = _as_list(data.get('project_parameters'))
+        project_computed_parameters = _as_list(data.get('project_computed_parameters'))
+        # Tolerate malformed v3 exports that still use legacy key.
+        if not project_parameters:
+            project_parameters = _as_list(data.get('parameters'))
+        if not project_computed_parameters:
+            project_computed_parameters = _as_list(data.get('computed_parameters'))
+    else:
+        project_parameters = _as_list(data.get('project_parameters')) or _as_list(data.get('parameters'))
+        project_computed_parameters = _as_list(data.get('project_computed_parameters')) or _as_list(data.get('computed_parameters'))
+
+    return export_version, project_parameters, project_computed_parameters
+
+
+def _should_parse_parameter_sections(data):
+    """
+    Parameter sections are only expected on project_full_backup/project_template.
+    Legacy payload without export_type remains supported.
+    """
+    export_type = str(data.get('export_type') or '').strip()
+    if not export_type:
+        return True
+    return export_type in {'project_full_backup', 'project_template'}
+
+
+def _build_cross_project_param_maps(project, project_parameters, project_computed_parameters):
+    """
+    Build source->target name mapping for cross-project import/copy policy (Opsi B).
+
+    Always regenerates target opaque IDs (`bp_*`, `cp_*`) regardless of source format.
+    """
+    base_map = {}
+    computed_map = {}
+
+    for row in project_parameters:
+        old_name = str((row or {}).get('name', '')).strip().lower()
+        if not old_name or old_name in base_map:
+            continue
+        base_map[old_name] = generate_bp_name(project)
+
+    for row in project_computed_parameters:
+        old_name = str((row or {}).get('name', '')).strip().lower()
+        if not old_name or old_name in computed_map:
+            continue
+        computed_map[old_name] = generate_cp_name(project)
+
+    combined_map = {**base_map, **computed_map}
+    return base_map, computed_map, combined_map
+
+
 def _build_export_data(project, mode='full', template_meta=None, include_progress=False):
     """
     Build export data structure based on mode.
@@ -6698,7 +7873,7 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
         dict: Complete export data structure
     """
     from .models import (
-        VolumeFormulaState, ProjectParameter, ProjectPricing,
+        VolumeFormulaState, ProjectParameter, ProjectComputedParameter, ProjectPricing,
         TahapPelaksanaan, PekerjaanTahapan, PekerjaanProgressWeekly
     )
     
@@ -6870,6 +8045,16 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
                 "raw": vf.raw,
                 "is_fx": vf.is_fx,
             })
+
+        # Export Template AHSP Koef Formula Sidecar
+        template_ahsp_koef_formula_list = []
+        for st in TemplateAhspKoefFormulaState.objects.filter(project=project):
+            template_ahsp_koef_formula_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(st.pekerjaan_id),
+                "row_key": st.row_key,
+                "raw": st.raw,
+                "is_fx": st.is_fx,
+            })
         
         # Export ProjectParameter
         parameter_list = []
@@ -6880,6 +8065,17 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
                 "label": pp.label or "",
                 "unit": pp.unit or "",
                 "description": pp.description or "",
+            })
+
+        # Export ProjectComputedParameter
+        computed_parameter_list = []
+        for cp in ProjectComputedParameter.objects.filter(project=project):
+            computed_parameter_list.append({
+                "name": cp.name,
+                "expression": cp.expression,
+                "label": cp.label or "",
+                "unit": cp.unit or "",
+                "description": cp.description or "",
             })
         
         # Export ProjectPricing
@@ -6922,7 +8118,7 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
         
         export_data = {
             "export_type": "project_full_backup",
-            "export_version": "2.0",
+            "export_version": "3.0",
             "export_date": timezone.now().isoformat(),
             "include_progress": include_progress,
             "project": project_data,
@@ -6931,11 +8127,13 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
             "harga_items": harga_list,
             "conversion_profiles": conversion_list,
             "pekerjaan": pekerjaan_list,
-            "volume": volume_list,
+            "volume_pekerjaan": volume_list,
             "detail_ahsp": detail_list,
-            "volume_formulas": formula_list,
-            "parameters": parameter_list,
-            "pricing": pricing_data,
+            "volume_formula_states": formula_list,
+            "template_ahsp_koef_formula_states": template_ahsp_koef_formula_list,
+            "project_parameters": parameter_list,
+            "project_computed_parameters": computed_parameter_list,
+            "project_pricing": pricing_data,
         }
         
         # Optional: Include progress/jadwal data
@@ -6990,6 +8188,17 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
                 "unit": pp.unit or "",
                 "description": pp.description or "",
             })
+
+        # Export ProjectComputedParameter for template (reusable formulas)
+        computed_parameter_list = []
+        for cp in ProjectComputedParameter.objects.filter(project=project):
+            computed_parameter_list.append({
+                "name": cp.name,
+                "expression": cp.expression,
+                "label": cp.label or "",
+                "unit": cp.unit or "",
+                "description": cp.description or "",
+            })
         
         # Export VolumeFormulaState for template (reusable formulas)
         formula_list = []
@@ -7002,10 +8211,22 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
                     "raw": vf.raw,
                     "is_fx": vf.is_fx,
                 })
+
+        # Export Template AHSP Koef Formula Sidecar for template
+        template_ahsp_koef_formula_list = []
+        for st in TemplateAhspKoefFormulaState.objects.filter(project=project):
+            pkj_ref = pekerjaan_map.get(st.pekerjaan_id)
+            if pkj_ref:
+                template_ahsp_koef_formula_list.append({
+                    "_pekerjaan_ref": pkj_ref,
+                    "row_key": st.row_key,
+                    "raw": st.raw,
+                    "is_fx": st.is_fx,
+                })
         
         export_data = {
             "export_type": "project_template",
-            "export_version": "2.2",  # Bumped version for formulas
+            "export_version": "3.0",
             "export_date": timezone.now().isoformat(),
             "template_meta": template_meta or {
                 "name": f"Template dari {project.nama}",
@@ -7017,15 +8238,19 @@ def _build_export_data(project, mode='full', template_meta=None, include_progres
             "sub_klasifikasi": sub_list,
             "pekerjaan": pekerjaan_list,
             "detail_ahsp": detail_list,
-            "parameters": parameter_list,
-            "volume_formulas": formula_list,  # NEW v2.2: Volume formulas
+            "project_parameters": parameter_list,
+            "project_computed_parameters": computed_parameter_list,
+            "volume_formulas": formula_list,
+            "template_ahsp_koef_formulas": template_ahsp_koef_formula_list,
             "stats": {
                 "total_klasifikasi": len(klasifikasi_list),
                 "total_sub": len(sub_list),
                 "total_pekerjaan": len(pekerjaan_list),
                 "total_detail": len(detail_list),
                 "total_parameters": len(parameter_list),
+                "total_computed_parameters": len(computed_parameter_list),
                 "total_formulas": len(formula_list),
+                "total_template_ahsp_koef_formulas": len(template_ahsp_koef_formula_list),
             }
         }
     
@@ -7043,7 +8268,7 @@ def export_project_full_json(request: HttpRequest, project_id: int):
     
     Returns all project data:
     - Project metadata
-    - Klasifikasi → SubKlasifikasi → Pekerjaan
+    - Klasifikasi â†’ SubKlasifikasi â†’ Pekerjaan
     - HargaItemProject + ItemConversionProfile
     - VolumePekerjaan
     - DetailAHSPProject
@@ -7177,13 +8402,28 @@ def export_project_full_json(request: HttpRequest, project_id: int):
             })
         
         # ========== Export VolumeFormulaState ==========
-        from .models import VolumeFormulaState, ProjectParameter, ProjectPricing
+        from .models import (
+            VolumeFormulaState,
+            TemplateAhspKoefFormulaState,
+            ProjectParameter,
+            ProjectComputedParameter,
+            ProjectPricing,
+        )
         formula_list = []
         for vf in VolumeFormulaState.objects.filter(project=project):
             formula_list.append({
                 "_pekerjaan_ref": pekerjaan_map.get(vf.pekerjaan_id),
                 "raw": vf.raw,
                 "is_fx": vf.is_fx,
+            })
+
+        template_ahsp_koef_formula_list = []
+        for st in TemplateAhspKoefFormulaState.objects.filter(project=project):
+            template_ahsp_koef_formula_list.append({
+                "_pekerjaan_ref": pekerjaan_map.get(st.pekerjaan_id),
+                "row_key": st.row_key,
+                "raw": st.raw,
+                "is_fx": st.is_fx,
             })
         
         # ========== Export ProjectParameter ==========
@@ -7195,6 +8435,17 @@ def export_project_full_json(request: HttpRequest, project_id: int):
                 "label": pp.label or "",
                 "unit": pp.unit or "",
                 "description": pp.description or "",
+            })
+
+        # ========== Export ProjectComputedParameter ==========
+        computed_parameter_list = []
+        for cp in ProjectComputedParameter.objects.filter(project=project):
+            computed_parameter_list.append({
+                "name": cp.name,
+                "expression": cp.expression,
+                "label": cp.label or "",
+                "unit": cp.unit or "",
+                "description": cp.description or "",
             })
         
         # ========== Export ProjectPricing ==========
@@ -7212,7 +8463,7 @@ def export_project_full_json(request: HttpRequest, project_id: int):
         # Build export data
         export_data = {
             "export_type": "project_full_backup",
-            "export_version": "1.1",  # Bumped version for new fields
+            "export_version": "3.0",
             "source_project_id": project_id,
             "export_date": timezone.now().isoformat(),
             "include_progress": include_progress,
@@ -7224,9 +8475,11 @@ def export_project_full_json(request: HttpRequest, project_id: int):
             "pekerjaan": pekerjaan_list,
             "volume_pekerjaan": volume_list,
             "detail_ahsp": detail_list,
-            # NEW in v1.1
+            # Formula + parameter sections
             "volume_formula_states": formula_list,
+            "template_ahsp_koef_formula_states": template_ahsp_koef_formula_list,
             "project_parameters": parameter_list,
+            "project_computed_parameters": computed_parameter_list,
             "project_pricing": pricing_data,
         }
         
@@ -7296,7 +8549,7 @@ def export_project_full_json(request: HttpRequest, project_id: int):
         
         response = JsonResponse(export_data, json_dumps_params={'indent': 2, 'ensure_ascii': False})
         safe_name = project.nama.replace(' ', '_').replace('/', '-')[:50]
-        filename = f"project_backup_v1.1_{safe_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filename = f"project_backup_v3.0_{safe_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.json"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
         
@@ -7370,6 +8623,11 @@ def import_project_from_json(request: HttpRequest):
                 'status': 'error',
                 'message': 'Invalid export type. Expected "project_full_backup".'
             }, status=400)
+
+        export_version, project_parameters_data, project_computed_parameters_data = _resolve_parameter_sections(data)
+        logger.info(
+            f"[IMPORT] project_full_backup export_version={data.get('export_version')} parsed={export_version}"
+        )
         
         import_progress = request.POST.get('import_progress', '0') == '1' or data.get('include_progress', False)
         
@@ -7407,6 +8665,13 @@ def import_project_from_json(request: HttpRequest):
             new_project.durasi_hari = proj_data['durasi_hari']
         
         new_project.save()
+
+        # Opsi B: always regenerate parameter opaque IDs in target project.
+        base_name_map, computed_name_map, combined_name_map = _build_cross_project_param_maps(
+            new_project,
+            project_parameters_data,
+            project_computed_parameters_data,
+        )
         
         # ========== Import Klasifikasi ==========
         klas_map = {}  # export_id -> new_id
@@ -7436,14 +8701,15 @@ def import_project_from_json(request: HttpRequest):
         
         for h in harga_items_data:
             try:
-                new_h = HargaItemProject.objects.create(
-                    project=new_project,
-                    kode_item=h['kode_item'],
-                    uraian=h['uraian'],
-                    satuan=h.get('satuan', ''),
-                    kategori=h['kategori'],
-                    harga_satuan=Decimal(h.get('harga_satuan', '0')),
+                new_h = _upsert_harga_item(
+                    new_project,
+                    h['kategori'],
+                    h.get('kode_item', ''),
+                    h['uraian'],
+                    h.get('satuan', ''),
                 )
+                new_h.harga_satuan = Decimal(h.get('harga_satuan', '0'))
+                new_h.save(update_fields=['harga_satuan', 'updated_at'])
                 harga_map[h['_export_id']] = new_h.id
             except Exception as e:
                 logger.error(f"[IMPORT] Failed to import harga_item {h.get('kode_item')}: {e}")
@@ -7494,7 +8760,10 @@ def import_project_from_json(request: HttpRequest):
             pekerjaan_map[p['_export_id']] = new_p.id
         
         # ========== Import VolumePekerjaan ==========
-        for v in data.get('volume_pekerjaan', []):
+        volume_rows = _as_list(data.get('volume_pekerjaan'))
+        if not volume_rows:
+            volume_rows = _as_list(data.get('volume'))
+        for v in volume_rows:
             pkj_id = pekerjaan_map.get(v['_pekerjaan_ref'])
             if pkj_id:
                 VolumePekerjaan.objects.create(
@@ -7504,6 +8773,7 @@ def import_project_from_json(request: HttpRequest):
                 )
         
         # ========== Import DetailAHSPProject ==========
+        detail_codes_by_pekerjaan: Dict[int, Set[str]] = {}
         for d in data.get('detail_ahsp', []):
             pkj_id = pekerjaan_map.get(d['_pekerjaan_ref'])
             harga_id = harga_map.get(d['_harga_item_ref'])
@@ -7512,45 +8782,129 @@ def import_project_from_json(request: HttpRequest):
             
             ref_pkj_id = pekerjaan_map.get(d.get('_ref_pekerjaan_ref')) if d.get('_ref_pekerjaan_ref') else None
             
+            harga_item = HargaItemProject.objects.get(pk=harga_id)
+            if not harga_item.kode_item:
+                continue
+
             DetailAHSPProject.objects.create(
                 project=new_project,
                 pekerjaan_id=pkj_id,
                 harga_item_id=harga_id,
                 kategori=d['kategori'],
-                kode=d['kode'],
-                uraian=d.get('uraian', ''),
-                satuan=d.get('satuan', ''),
+                kode=harga_item.kode_item,
+                uraian=harga_item.uraian,
+                satuan=harga_item.satuan,
                 koefisien=Decimal(d.get('koefisien', '0')),
                 ref_ahsp_id=d.get('ref_ahsp_id'),  # Direct FK
                 ref_pekerjaan_id=ref_pkj_id,
             )
+            detail_codes_by_pekerjaan.setdefault(pkj_id, set()).add(harga_item.kode_item)
         
-        # ========== Import VolumeFormulaState (NEW in v1.1) ==========
-        from .models import VolumeFormulaState, ProjectParameter, ProjectPricing
-        for vf in data.get('volume_formula_states', []):
+        # ========== Import VolumeFormulaState ==========
+        from .models import (
+            VolumeFormulaState,
+            TemplateAhspKoefFormulaState,
+            ProjectParameter,
+            ProjectComputedParameter,
+            ProjectPricing,
+        )
+        formula_rows = _as_list(data.get('volume_formula_states'))
+        if not formula_rows:
+            formula_rows = _as_list(data.get('volume_formulas'))
+        for vf in formula_rows:
             pkj_id = pekerjaan_map.get(vf.get('_pekerjaan_ref'))
             if pkj_id:
+                remapped_raw = remap_expression(str(vf.get('raw', '') or ''), combined_name_map)
                 VolumeFormulaState.objects.create(
                     project=new_project,
                     pekerjaan_id=pkj_id,
-                    raw=vf.get('raw', ''),
+                    raw=remapped_raw,
                     is_fx=vf.get('is_fx', True),
                 )
+
+        # ========== Import Template AHSP Koef Formula Sidecar ==========
+        ta_formula_rows = _as_list(data.get('template_ahsp_koef_formula_states'))
+        if not ta_formula_rows:
+            ta_formula_rows = _as_list(data.get('template_ahsp_koef_formulas'))
+        imported_template_ahsp_koef_formulas = 0
+        for st in ta_formula_rows:
+            pkj_id = pekerjaan_map.get(st.get('_pekerjaan_ref'))
+            row_key = str(st.get('row_key') or '').strip()
+            raw_formula = str(st.get('raw') or '').strip()
+            is_fx = bool(st.get('is_fx', False))
+            if not pkj_id or not row_key:
+                continue
+            valid_codes = detail_codes_by_pekerjaan.get(pkj_id, set())
+            if row_key not in valid_codes:
+                logger.warning(
+                    "[IMPORT] Skip template koef formula row_key='%s' for pekerjaan=%s: kode tidak ditemukan di detail",
+                    row_key,
+                    pkj_id,
+                )
+                continue
+            if not (is_fx and raw_formula):
+                continue
+
+            remapped_raw_formula = remap_expression(raw_formula, combined_name_map)
+            TemplateAhspKoefFormulaState.objects.update_or_create(
+                project=new_project,
+                pekerjaan_id=pkj_id,
+                row_key=row_key,
+                defaults={
+                    "raw": remapped_raw_formula,
+                    "is_fx": True,
+                },
+            )
+            imported_template_ahsp_koef_formulas += 1
         
-        # ========== Import ProjectParameter (NEW in v1.1) ==========
-        for pp in data.get('project_parameters', []):
+        # ========== Import ProjectParameter (v3 canonical + legacy fallback) ==========
+        imported_base = 0
+        processed_base_names = set()
+        for pp in project_parameters_data:
+            old_name = str(pp.get('name', '')).strip().lower()
+            if not old_name or old_name in processed_base_names:
+                continue
+            processed_base_names.add(old_name)
+            new_name = base_name_map.get(old_name)
+            if not new_name:
+                continue
             ProjectParameter.objects.create(
                 project=new_project,
-                name=pp['name'],
+                name=new_name,
                 value=Decimal(pp.get('value', '0')),
                 label=pp.get('label', ''),
                 unit=pp.get('unit', ''),
                 description=pp.get('description', ''),
             )
+            imported_base += 1
+
+        # ========== Import ProjectComputedParameter ==========
+        computed_imported = 0
+        processed_computed_names = set()
+        for cp in project_computed_parameters_data:
+            old_name = str(cp.get('name', '')).strip().lower()
+            if not old_name or old_name in processed_computed_names:
+                continue
+            processed_computed_names.add(old_name)
+            name = computed_name_map.get(old_name, '')
+            expression = str(cp.get('expression', '')).strip()
+            if not name or not expression:
+                continue
+            remapped_expression = remap_expression(expression, combined_name_map)
+            ProjectComputedParameter.objects.create(
+                project=new_project,
+                name=name,
+                expression=remapped_expression,
+                label=cp.get('label', ''),
+                unit=cp.get('unit', ''),
+                description=cp.get('description', ''),
+            )
+            computed_imported += 1
         
-        # ========== Import ProjectPricing (NEW in v1.1) ==========
-        if data.get('project_pricing'):
-            pp = data['project_pricing']
+        # ========== Import ProjectPricing ==========
+        pricing_data = data.get('project_pricing') or data.get('pricing')
+        if pricing_data:
+            pp = pricing_data
             ProjectPricing.objects.create(
                 project=new_project,
                 markup_percent=Decimal(pp.get('markup_percent', '10')),
@@ -7621,13 +8975,13 @@ def import_project_from_json(request: HttpRequest):
             if skipped_weeks > 0:
                 logger.info(f"Import jadwal: {imported_weeks} progress records imported, {skipped_weeks} skipped (beyond week {actual_project_weeks})")
         
-        # Trigger bundle expansion for imported project
+        # Build canonical expanded storage after every raw detail has been
+        # imported. The previous call used expand_bundle_to_components with a
+        # Pekerjaan instance (wrong signature) and swallowed the resulting
+        # exception, leaving imported pekerjaan raw-only and worth zero.
         for pkj_id in pekerjaan_map.values():
-            try:
-                pekerjaan = Pekerjaan.objects.get(id=pkj_id)
-                expand_bundle_to_components(pekerjaan)
-            except Exception:
-                pass  # Non-critical
+            pekerjaan = Pekerjaan.objects.get(id=pkj_id)
+            _populate_expanded_from_raw(new_project, pekerjaan)
         
         return JsonResponse({
             'status': 'success',
@@ -7639,6 +8993,9 @@ def import_project_from_json(request: HttpRequest):
                 'sub_klasifikasi': len(sub_map),
                 'pekerjaan': len(pekerjaan_map),
                 'harga_items': len(harga_map),
+                'parameters': imported_base,
+                'computed_parameters': computed_imported,
+                'template_ahsp_koef_formulas': imported_template_ahsp_koef_formulas,
             }
         })
         
@@ -7658,6 +9015,14 @@ def import_project_from_json(request: HttpRequest):
 from .models import PekerjaanTemplate
 
 
+def _can_access_template(template: PekerjaanTemplate, user) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    if template.is_public:
+        return True
+    return bool(template.created_by_id and template.created_by_id == getattr(user, "id", None))
+
+
 @login_required
 @require_GET
 def api_list_templates(request: HttpRequest):
@@ -7670,7 +9035,12 @@ def api_list_templates(request: HttpRequest):
     
     Returns list of templates with basic info (no content).
     """
-    qs = PekerjaanTemplate.objects.filter(is_public=True)
+    # Show public templates + private templates owned by current user.
+    qs = (
+        PekerjaanTemplate.objects
+        .filter(Q(is_public=True) | Q(created_by=request.user))
+        .distinct()
+    )
     
     # Filter by category
     category = request.GET.get('category', '').strip()
@@ -7695,6 +9065,8 @@ def api_list_templates(request: HttpRequest):
             'total_pekerjaan': t.total_pekerjaan,
             'usage_count': t.usage_count,
             'created_at': t.created_at.isoformat() if t.created_at else None,
+            'is_public': t.is_public,
+            'is_mine': t.created_by_id == request.user.id,
         })
     
     return JsonResponse({
@@ -7715,6 +9087,12 @@ def api_get_template_detail(request: HttpRequest, template_id: int):
     try:
         template = PekerjaanTemplate.objects.get(id=template_id)
     except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+
+    if not _can_access_template(template, request.user):
         return JsonResponse({
             'ok': False,
             'message': 'Template tidak ditemukan'
@@ -7752,7 +9130,7 @@ def api_create_template(request: HttpRequest, project_id: int):
         "category": "rumah"  // optional, default "lainnya"
     }
     
-    Exports current Klasifikasi → Sub → Pekerjaan → DetailAHSP structure to template.
+    Exports current Klasifikasi â†’ Sub â†’ Pekerjaan â†’ DetailAHSP structure to template.
     Uses unified _build_export_data helper with 'template' mode.
     """
     project = _owner_or_404(project_id, request.user)
@@ -7801,13 +9179,19 @@ def api_create_template(request: HttpRequest, project_id: int):
         }, status=400)
     
     # Create template - store the full export data as content
+    # Keputusan produk 2026-06-10: template baru PRIVATE by default; hanya
+    # admin/staff yang boleh langsung menerbitkan ke library publik.
+    is_public = bool(payload.get('is_public')) and (
+        request.user.is_staff or request.user.is_superuser
+    )
+
     template = PekerjaanTemplate.objects.create(
         name=name,
         description=description,
         category=category,
         content=content,  # Now includes klasifikasi, sub, pekerjaan, detail_ahsp
         created_by=request.user,
-        is_public=True,
+        is_public=is_public,
     )
     
     return JsonResponse({
@@ -7863,7 +9247,14 @@ def _import_template_data(project, data, user=None):
     """
     from decimal import Decimal
     
-    stats = {'klasifikasi': 0, 'sub': 0, 'pekerjaan': 0, 'detail': 0}
+    stats = {
+        'klasifikasi': 0,
+        'sub': 0,
+        'pekerjaan': 0,
+        'detail': 0,
+        'formulas': 0,
+        'template_ahsp_koef_formulas': 0,
+    }
     errors = []
     
     # Get next ordering indices
@@ -7872,6 +9263,8 @@ def _import_template_data(project, data, user=None):
     
     # Detect format: new (flat arrays) or legacy (nested)
     is_new_format = 'sub_klasifikasi' in data and isinstance(data.get('sub_klasifikasi'), list)
+    should_parse_params = _should_parse_parameter_sections(data)
+    export_version, project_parameters_data, project_computed_parameters_data = _resolve_parameter_sections(data)
     
     # Maps for ID remapping
     klas_map = {}   # export_id -> new_id
@@ -7930,7 +9323,11 @@ def _import_template_data(project, data, user=None):
             }.get(src_str, Pekerjaan.SOURCE_CUSTOM)
             
             ref_obj = None
-            ref_id = p_data.get('ref_id')
+            ref_id = (
+                p_data.get('ref_id')
+                or p_data.get('ref_ahsp_id')
+                or p_data.get('source_ref_id')
+            )
             if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and ref_id:
                 try:
                     ref_obj = AHSPReferensi.objects.get(id=ref_id)
@@ -7978,15 +9375,12 @@ def _import_template_data(project, data, user=None):
                 continue
             
             try:
-                harga_item, _ = HargaItemProject.objects.get_or_create(
-                    project=project,
-                    kode_item=harga_kode,
-                    defaults={
-                        'uraian': d_data.get('uraian', ''),
-                        'satuan': d_data.get('satuan', ''),
-                        'kategori': d_data.get('kategori', 'LAIN'),
-                        'harga_satuan': Decimal('0'),  # Price not imported in template mode
-                    }
+                harga_item = _upsert_harga_item(
+                    project,
+                    d_data.get('kategori', 'LAIN'),
+                    harga_kode,
+                    d_data.get('uraian', ''),
+                    d_data.get('satuan', ''),
                 )
                 
                 # Handle bundle references for LAIN category
@@ -8008,14 +9402,17 @@ def _import_template_data(project, data, user=None):
                                 pass
                 
                 # Create DetailAHSP
+                row_kode = str(d_data.get('kode', '') or '').strip()
+                if not row_kode:
+                    continue
                 DetailAHSPProject.objects.create(
                     project=project,
                     pekerjaan_id=pkj_id,
                     harga_item=harga_item,
                     kategori=d_data.get('kategori', 'LAIN'),
-                    kode=d_data.get('kode', ''),
-                    uraian=d_data.get('uraian', ''),
-                    satuan=d_data.get('satuan', ''),
+                    kode=harga_item.kode_item,
+                    uraian=harga_item.uraian,
+                    satuan=harga_item.satuan,
                     koefisien=Decimal(d_data.get('koefisien', '0')),
                     ref_ahsp=ref_ahsp,
                     ref_pekerjaan=ref_pekerjaan,
@@ -8073,7 +9470,11 @@ def _import_template_data(project, data, user=None):
                     }.get(src_str, Pekerjaan.SOURCE_CUSTOM)
                     
                     ref_obj = None
-                    ref_id = p_data.get('ref_ahsp_id') or p_data.get('ref_id')
+                    ref_id = (
+                        p_data.get('ref_ahsp_id')
+                        or p_data.get('ref_id')
+                        or p_data.get('source_ref_id')
+                    )
                     if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and ref_id:
                         try:
                             ref_obj = AHSPReferensi.objects.get(id=ref_id)
@@ -8106,32 +9507,76 @@ def _import_template_data(project, data, user=None):
                     except IntegrityError as e:
                         errors.append(f"Gagal membuat pekerjaan: {e}")
     
-    # ========== Import Parameters (v2.1+) ==========
+    # ========== Import Parameters ==========
     stats['parameters'] = 0
-    for param_data in data.get('parameters', []):
-        param_name = param_data.get('name', '').strip()
-        if not param_name:
-            continue
-        
-        try:
-            param, created = ProjectParameter.objects.update_or_create(
-                project=project,
-                name=param_name,
-                defaults={
-                    'value': Decimal(param_data.get('value', '0')),
-                    'label': param_data.get('label', ''),
-                    'unit': param_data.get('unit', ''),
-                    'description': param_data.get('description', ''),
-                }
-            )
-            if created:
+    stats['computed_parameters'] = 0
+    param_name_map = {}
+    computed_name_map = {}
+    combined_name_map = {}
+    if should_parse_params:
+        param_name_map, computed_name_map, combined_name_map = _build_cross_project_param_maps(
+            project,
+            project_parameters_data,
+            project_computed_parameters_data,
+        )
+
+        processed_base_names = set()
+        for param_data in project_parameters_data:
+            old_name = str(param_data.get('name', '')).strip().lower()
+            if not old_name or old_name in processed_base_names:
+                continue
+            processed_base_names.add(old_name)
+            new_name = param_name_map.get(old_name)
+            if not new_name:
+                continue
+
+            try:
+                ProjectParameter.objects.create(
+                    project=project,
+                    name=new_name,
+                    value=Decimal(param_data.get('value', '0')),
+                    label=param_data.get('label', ''),
+                    unit=param_data.get('unit', ''),
+                    description=param_data.get('description', ''),
+                )
                 stats['parameters'] += 1
-        except Exception as e:
-            errors.append(f"Gagal import parameter '{param_name}': {e}")
+            except Exception as e:
+                errors.append(f"Gagal import parameter '{old_name}': {e}")
+
+        processed_computed_names = set()
+        for cparam_data in project_computed_parameters_data:
+            old_name = str(cparam_data.get('name', '')).strip().lower()
+            if not old_name or old_name in processed_computed_names:
+                continue
+            processed_computed_names.add(old_name)
+            cparam_name = computed_name_map.get(old_name, '')
+            expression = str(cparam_data.get('expression', '')).strip()
+            if not cparam_name or not expression:
+                continue
+
+            try:
+                remapped_expression = remap_expression(expression, combined_name_map)
+                ProjectComputedParameter.objects.create(
+                    project=project,
+                    name=cparam_name,
+                    expression=remapped_expression,
+                    label=cparam_data.get('label', ''),
+                    unit=cparam_data.get('unit', ''),
+                    description=cparam_data.get('description', ''),
+                )
+                stats['computed_parameters'] += 1
+            except Exception as e:
+                errors.append(f"Gagal import computed parameter '{old_name}': {e}")
+    elif project_parameters_data or project_computed_parameters_data:
+        errors.append(
+            f"Section parameter di-skip: export_type '{data.get('export_type')}' tidak sesuai (versi {export_version})"
+        )
     
     # ========== Import Volume Formulas (v2.2+) ==========
-    stats['formulas'] = 0
-    for formula_data in data.get('volume_formulas', []):
+    formula_rows = _as_list(data.get('volume_formulas'))
+    if not formula_rows:
+        formula_rows = _as_list(data.get('volume_formula_states'))
+    for formula_data in formula_rows:
         pkj_ref = formula_data.get('_pekerjaan_ref')
         pkj_id = pkj_map.get(pkj_ref)
         if not pkj_id:
@@ -8140,13 +9585,15 @@ def _import_template_data(project, data, user=None):
         raw_formula = formula_data.get('raw', '')
         if not raw_formula:
             continue
+
+        remapped_raw_formula = remap_expression(str(raw_formula), combined_name_map)
         
         try:
             formula, created = VolumeFormulaState.objects.update_or_create(
                 project=project,
                 pekerjaan_id=pkj_id,
                 defaults={
-                    'raw': raw_formula,
+                    'raw': remapped_raw_formula,
                     'is_fx': formula_data.get('is_fx', False),
                 }
             )
@@ -8154,6 +9601,59 @@ def _import_template_data(project, data, user=None):
                 stats['formulas'] += 1
         except Exception as e:
             errors.append(f"Gagal import formula: {e}")
+
+    # ========== Import Template AHSP Koef Formula Sidecar ==========
+    imported_pkj_ids = set(pkj_map.values())
+    valid_detail_codes_by_pkj: Dict[int, Set[str]] = {}
+    if imported_pkj_ids:
+        detail_pairs = (
+            DetailAHSPProject.objects
+            .filter(project=project, pekerjaan_id__in=imported_pkj_ids)
+            .values_list('pekerjaan_id', 'kode')
+        )
+        for pekerjaan_id, kode in detail_pairs:
+            row_key = (kode or '').strip()
+            if not row_key:
+                continue
+            valid_detail_codes_by_pkj.setdefault(pekerjaan_id, set()).add(row_key)
+
+    ta_formula_rows = _as_list(data.get('template_ahsp_koef_formulas'))
+    if not ta_formula_rows:
+        ta_formula_rows = _as_list(data.get('template_ahsp_koef_formula_states'))
+    for formula_data in ta_formula_rows:
+        pkj_ref = formula_data.get('_pekerjaan_ref')
+        pkj_id = pkj_map.get(pkj_ref)
+        row_key = str(formula_data.get('row_key') or '').strip()
+        if not pkj_id or not row_key:
+            continue
+
+        valid_codes = valid_detail_codes_by_pkj.get(pkj_id, set())
+        if row_key not in valid_codes:
+            errors.append(
+                f"Formula koefisien di-skip: row_key '{row_key}' tidak ditemukan pada detail pekerjaan ref '{pkj_ref}'"
+            )
+            continue
+
+        raw_formula = str(formula_data.get('raw') or '').strip()
+        is_fx = bool(formula_data.get('is_fx', False))
+        if not (is_fx and raw_formula):
+            continue
+
+        remapped_raw_formula = remap_expression(raw_formula, combined_name_map)
+        try:
+            _, created = TemplateAhspKoefFormulaState.objects.update_or_create(
+                project=project,
+                pekerjaan_id=pkj_id,
+                row_key=row_key,
+                defaults={
+                    'raw': remapped_raw_formula,
+                    'is_fx': True,
+                }
+            )
+            if created:
+                stats['template_ahsp_koef_formulas'] += 1
+        except Exception as e:
+            errors.append(f"Gagal import formula koefisien '{row_key}': {e}")
     
     return stats, errors
 
@@ -8174,6 +9674,12 @@ def api_import_template(request: HttpRequest, project_id: int, template_id: int)
     try:
         template = PekerjaanTemplate.objects.get(id=template_id)
     except PekerjaanTemplate.DoesNotExist:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Template tidak ditemukan'
+        }, status=404)
+
+    if not _can_access_template(template, request.user):
         return JsonResponse({
             'ok': False,
             'message': 'Template tidak ditemukan'
@@ -8233,9 +9739,7 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
     
     try:
         payload = json.loads(request.body.decode('utf-8'))
-        print(f"[IMPORT DEBUG] Received payload, content keys: {list(payload.keys())}")
-    except Exception as e:
-        print(f"[IMPORT ERROR] Failed to parse JSON: {e}")
+    except Exception:
         return JsonResponse({
             'ok': False,
             'message': 'Payload JSON tidak valid'
@@ -8243,42 +9747,45 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
     
     content = payload.get('content')
     if not content or not isinstance(content, dict):
-        print(f"[IMPORT ERROR] Invalid content: {type(content)}")
         return JsonResponse({
             'ok': False,
             'message': 'Content template tidak valid'
         }, status=400)
     
-    print(f"[IMPORT DEBUG] Content keys: {list(content.keys())}")
-    print(f"[IMPORT DEBUG] export_type: {content.get('export_type')}, version: {content.get('export_version')}")
-    print(f"[IMPORT DEBUG] klasifikasi: {len(content.get('klasifikasi', []))}, sub: {len(content.get('sub_klasifikasi', []))}")
-    print(f"[IMPORT DEBUG] pekerjaan: {len(content.get('pekerjaan', []))}, detail: {len(content.get('detail_ahsp', []))}")
-    print(f"[IMPORT DEBUG] parameters: {len(content.get('parameters', []))}")
+    dbg_version, dbg_params, dbg_computed = _resolve_parameter_sections(content)
+    logger.debug(
+        "[IMPORT_TEMPLATE_FILE] project=%s export_type=%s export_version=%s parsed=%s klas=%s sub=%s pekerjaan=%s detail=%s params=%s computed=%s",
+        project.id,
+        content.get('export_type'),
+        content.get('export_version'),
+        dbg_version,
+        len(content.get('klasifikasi', [])),
+        len(content.get('sub_klasifikasi', [])),
+        len(content.get('pekerjaan', [])),
+        len(content.get('detail_ahsp', [])),
+        len(dbg_params),
+        len(dbg_computed),
+    )
     
     # Check for data
     has_data = content.get('pekerjaan') or content.get('klasifikasi')
     if not has_data:
-        print(f"[IMPORT ERROR] No pekerjaan or klasifikasi found")
         return JsonResponse({
             'ok': False,
             'message': 'Template tidak memiliki data pekerjaan'
         }, status=400)
     
-    print(f"[IMPORT DEBUG] Starting import to project {project.id} ({project.nama})")
-    
     # Use unified import helper
     try:
         stats, errors = _import_template_data(project, content, user=request.user)
-        print(f"[IMPORT DEBUG] Import completed. Stats: {stats}")
-        if errors:
-            print(f"[IMPORT WARN] Errors during import: {errors}")
-    except Exception as e:
-        print(f"[IMPORT ERROR] Exception during _import_template_data: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        logger.exception(
+            "[IMPORT_TEMPLATE_FILE] Unexpected failure while importing template to project %s",
+            project.id,
+        )
         return JsonResponse({
             'ok': False,
-            'message': f'Error saat import: {str(e)}'
+            'message': 'Terjadi kesalahan saat memproses import template'
         }, status=500)
     
     # Invalidate cache
@@ -8293,7 +9800,6 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
     if errors:
         response_data['warnings'] = errors
     
-    print(f"[IMPORT DEBUG] Returning success response: {response_data}")
     return JsonResponse(response_data)
 
 

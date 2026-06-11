@@ -24,7 +24,7 @@ class HargaItemsAdapter:
         should be calculated from market_price / factor_to_base, not the stored harga_satuan
         which might be outdated.
         """
-        from detail_project.models import HargaItemProject, ItemConversionProfile
+        from detail_project.services import used_harga_items_queryset
 
         # Column configuration for Satuan Dasar
         headers_dasar = ['No', 'Kode', 'Uraian', 'Satuan', 'Harga Satuan (Rp)']
@@ -36,9 +36,7 @@ class HargaItemsAdapter:
 
         # Fetch harga items
         items_qs = (
-            HargaItemProject.objects
-            .filter(project=self.project, expanded_refs__project=self.project)
-            .distinct()
+            used_harga_items_queryset(self.project)
             .select_related('conversion_profile')
             .order_by('kategori', 'kode_item')
         )

@@ -42,6 +42,11 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Faster storage for static lookups in development
 WHITENOISE_USE_FINDERS = True
+# Re-read static files from disk on every request so source edits (JS/CSS) are served
+# IMMEDIATELY in dev — no `collectstatic` and no runserver restart needed. Without this,
+# WhiteNoise caches its file map at startup and keeps serving STALE assets after edits
+# (root cause of "fixes don't take effect" on the local dev server).
+WHITENOISE_AUTOREFRESH = True
 
 # Attach in-memory cache for quick iteration
 CACHES["locmem"] = {

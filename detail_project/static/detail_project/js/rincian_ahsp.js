@@ -166,6 +166,16 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[m]));
+  function formatSourceLabel(row) {
+    const label = String(row?.source_label || '').trim();
+    if (label) return label;
+    const sourceType = String(row?.source_type || '').trim().toLowerCase();
+    const sumber = String(row?.ahsp_sumber || row?.ref_sumber || '').trim();
+    if (sourceType === 'ref_modified') return sumber ? `${sumber} (modified)` : 'AHSP (modified)';
+    if (sourceType === 'ref') return sumber || 'AHSP';
+    if (sourceType === 'custom') return 'Kustom';
+    return '—';
+  }
 
   /**
    * Parse numeric input with robust handling of Indonesian/international formats
@@ -617,6 +627,7 @@
 
       // Source type badge
       const srcType = (r.source_type || '').toLowerCase();
+      const srcLabel = formatSourceLabel(r);
       let srcBadge = '';
       if (srcType === 'ref') {
         srcBadge = '<span class="ux-badge-ref mono">REF</span>';
@@ -631,6 +642,7 @@
         <div class="rk-item-meta">
           <span class="mono">${esc(r.kode || '')}</span>
           ${srcBadge}
+          <span class="rk-chip mono">${esc(srcLabel)}</span>
           ${Math.abs(bukEff - projectBUK) > 1e-6 ? `<span class="rk-chip rk-chip-warn mono">${bukEff.toFixed(2)}%</span>` : ''}
           <span class="rk-chip mono">${esc(r.satuan || '')}</span>
           <span class="row-note">HSP:</span><span class="mono">${fmt(G)}</span>
@@ -685,63 +697,71 @@
     }
   }
 
-  // CRITICAL FIX #4: Connect Volume Alert to Bundle Changes
+  // CRITICAL FIX #4: Connect volume alert to source/template changes
   if (projectId && sourceChange) {
     window.addEventListener('dp:source-change', (event) => {
       const detail = event.detail || {};
       if (Number(detail.projectId) !== projectId) return;
+      if (!detail.state) return;
 
-      let needsRefresh = false;
+      const toIds = (section) => Object.keys(section || {})
+        .map((key) => Number(key))
+        .filter((id) => Number.isFinite(id));
 
-      // Handle volume changes (existing logic)
-      if (detail.state && detail.state.volume) {
-        const volumeJobs = Object.keys(detail.state.volume)
-          .map((key) => Number(key))
-          .filter((id) => Number.isFinite(id));
+      const volumeJobs = toIds(detail.state.volume);
+      // Backward compatibility: legacy consumers expected `state.ahsp`,
+      // current producer emits `state.reload`.
+      const reloadJobs = toIds(detail.state.reload || detail.state.ahsp);
+      const previousPending = new Set(pendingVolumeJobs);
+      pendingVolumeJobs = new Set([...volumeJobs, ...reloadJobs]);
 
-        volumeJobs.forEach(id => pendingVolumeJobs.add(id));
-        needsRefresh = true;
+      // Clear detail cache for jobs affected by source/template reload.
+      reloadJobs.forEach((id) => cacheDetail.delete(id));
+
+      const newReloadJobs = reloadJobs.filter((id) => !previousPending.has(id));
+      if (newReloadJobs.length > 0) {
+        showToast(
+          `Warning: ${newReloadJobs.length} pekerjaan terpengaruh perubahan template/sumber.`,
+          'warning',
+          3000
+        );
       }
 
-      // CRITICAL FIX: Handle AHSP/bundle changes (NEW!)
-      if (detail.state && detail.state.ahsp) {
-        const ahspJobs = Object.keys(detail.state.ahsp)
-          .map((key) => Number(key))
-          .filter((id) => Number.isFinite(id));
-
-        // Clear cache for affected pekerjaan (force re-fetch)
-        ahspJobs.forEach(id => {
-          cacheDetail.delete(id);
-          pendingVolumeJobs.add(id); // Re-use existing alert system
+      renderList();
+      if (selectedId && pendingVolumeJobs.has(selectedId)) {
+        updateVolumeAlertForSelection(selectedId);
+        selectItem(selectedId).catch((err) => {
+          console.error('[SOURCE-CHANGE] Failed to refresh detail:', err);
         });
-
-        needsRefresh = true;
-
-        // Show toast notification for AHSP changes
-        const affectedCount = ahspJobs.length;
-        if (affectedCount > 0) {
-          showToast(
-            `⚠️ ${affectedCount} pekerjaan terpengaruh perubahan AHSP. Data otomatis di-refresh.`,
-            'warning',
-            3000
-          );
-        }
+      } else {
+        updateVolumeAlertForSelection(selectedId);
       }
+    });
+  }
 
-      // Refresh UI jika ada perubahan
-      if (needsRefresh) {
-        renderList();
+  if (projectId) {
+    window.addEventListener('dp:sync-refresh-request', (event) => {
+      const detail = event.detail || {};
+      if (Number(detail.projectId) !== projectId) return;
+      if (detail.scope && detail.scope !== 'rincian' && detail.scope !== 'global') return;
 
-        // Re-fetch current selection jika affected
-        if (selectedId && pendingVolumeJobs.has(selectedId)) {
-          updateVolumeAlertForSelection(selectedId);
+      event.preventDefault();
+      const isAuto = detail.reason === 'auto';
+      const targetId = selectedId;
 
-          // Force refresh detail to show new bundle data
-          selectItem(selectedId).catch(err => {
-            console.error('[SOURCE-CHANGE] Failed to refresh detail:', err);
-          });
-        }
-      }
+      loadRekap()
+        .then(async () => {
+          if (targetId && rows.some((row) => Number(row.pekerjaan_id) === Number(targetId))) {
+            await selectItem(Number(targetId));
+          }
+          if (!isAuto) {
+            showToast('Rincian AHSP berhasil disegarkan.', 'info', 2000);
+          }
+        })
+        .catch((err) => {
+          console.error('[RINCIAN] Sync refresh failed:', err);
+          showToast('Gagal menyegarkan rincian AHSP.', 'error');
+        });
     });
   }
 
@@ -805,7 +825,7 @@
 
       const items = detail.items || [];
       renderDetailTable(items, effPct);
-      if ($src) $src.textContent = (detail.pekerjaan?.source_type || '—').toUpperCase();
+      if ($src) $src.textContent = formatSourceLabel(detail.pekerjaan);
     } finally {
       setLoading(false, 'detail'); // TIER 3: Clear detail loading
     }
@@ -1579,3 +1599,4 @@
   }
 
 })();
+

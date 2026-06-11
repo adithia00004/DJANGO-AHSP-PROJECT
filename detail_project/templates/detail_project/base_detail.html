@@ -11,7 +11,7 @@
 {% block detail_css %}
 <link rel="stylesheet" href="{% static 'detail_project/css/detail_ahsp.css' %}">
 {% endblock %}
-<link rel="stylesheet" href="{% static 'detail_project/css/sync_indicator.css' %}">
+<link rel="stylesheet" href="{% static 'detail_project/css/sync_led.css' %}">
 
 {% block extra_css %}{% endblock %}
 
@@ -74,7 +74,7 @@
 </div>
 
 <!-- Global ExportManager (SSOT for all export operations) -->
-<script src="{% static 'detail_project/js/export/ExportManager.js' %}" defer></script>
+<script src="{% static 'detail_project/js/export/ExportManager.js' %}?v=20260606-1"></script>
 
 {% include 'detail_project/_sidebar_global.html' %}
 
@@ -85,7 +85,6 @@
 {% block extra_js %}
 <script src="{% static 'detail_project/js/numeric.umd.js' %}" defer></script>
 <script src="{% static 'detail_project/js/source_change_state.js' %}" defer></script>
-<script src="{% static 'detail_project/js/sync_indicator.js' %}" defer></script>
 <script src="{% static 'detail_project/js/sync_led.js' %}" defer></script>
 <script src="{% static 'detail_project/js/core/messages.js' %}" defer></script>
 {% block page_js %}{% endblock %}

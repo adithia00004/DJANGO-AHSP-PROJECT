@@ -13,9 +13,7 @@
     <div class="card shadow-sm">
       <div class="card-header bg-light d-flex align-items-center justify-content-between">
         <strong><i class="fas fa-file-upload"></i> Upload Proyek dari Excel (.xlsx)</strong>
-        <!-- 🔽 Tombol Download Template -->
-        <a class="btn btn-sm btn-download-template"
-           href="{% static 'dashboard/sample/project_upload_template.xlsx' %}">
+        <a class="btn btn-sm btn-download-template" href="{% static 'dashboard/sample/project_upload_template.xlsx' %}">
           <i class="fas fa-download"></i> Download Template
         </a>
       </div>
@@ -58,27 +56,39 @@
           </div>
 
           <hr class="my-2">
-          <p class="small mb-0">
-            <strong>Catatan:</strong>
-            <ul class="small mb-0">
-              <li><code>tahun_project</code> akan otomatis diambil dari <code>tanggal_mulai</code></li>
-              <li>Jika <code>tanggal_selesai</code> kosong, akan diset ke 31 Desember tahun project</li>
-              <li>Jika <code>durasi_hari</code> kosong, akan dihitung otomatis dari selisih tanggal</li>
-              <li>Maksimal 2000 baris data per upload</li>
-            </ul>
-          </p>
+          <strong class="small">Catatan:</strong>
+          <ul class="small mb-0">
+            <li><code>tahun_project</code> akan otomatis diambil dari <code>tanggal_mulai</code></li>
+            <li>Jika <code>tanggal_selesai</code> kosong, akan diset ke 31 Desember tahun project</li>
+            <li>Jika <code>durasi_hari</code> kosong, akan dihitung otomatis dari selisih tanggal</li>
+            <li>Maksimal 2000 baris data per upload</li>
+            <li>Formula Excel tidak diizinkan untuk mencegah import data berbahaya</li>
+          </ul>
         </div>
 
         <form id="upload-form" method="post" enctype="multipart/form-data" class="row g-3">
           {% csrf_token %}
+          {% if upload_form.non_field_errors %}
+            <div class="col-12">
+              <div class="alert alert-danger mb-0">
+                {% for e in upload_form.non_field_errors %}{{ e }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+              </div>
+            </div>
+          {% endif %}
           <div class="col-12">
             {{ upload_form.file.label_tag }}
             {{ upload_form.file }}
             {% if upload_form.file.errors %}
               <div class="text-danger small mt-1">
-                {% for e in upload_form.file.errors %}• {{ e }}<br>{% endfor %}
+                {% for e in upload_form.file.errors %}* {{ e }}<br>{% endfor %}
               </div>
             {% endif %}
+          </div>
+          <div class="col-12 d-none" id="upload-progress">
+            <div class="alert alert-primary mb-0 d-flex align-items-center" role="status">
+              <div class="spinner-border spinner-border-sm me-2" aria-hidden="true"></div>
+              <span>Sedang memproses upload dan import, mohon tunggu...</span>
+            </div>
           </div>
           <div class="col-12 d-flex gap-2">
             <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-secondary">
@@ -124,4 +134,23 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const form = document.getElementById('upload-form');
+  const submitBtn = document.getElementById('upload-submit');
+  const progressBox = document.getElementById('upload-progress');
+
+  if (!form || !submitBtn || !progressBox) {
+    return;
+  }
+
+  form.addEventListener('submit', function () {
+    submitBtn.disabled = true;
+    progressBox.classList.remove('d-none');
+  });
+});
+</script>
 {% endblock %}

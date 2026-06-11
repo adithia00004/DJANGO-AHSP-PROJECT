@@ -18,6 +18,21 @@
   const EP_LIST = (ROOT.dataset.endpointList || '') + '?canon=1';
   const EP_SAVE = ROOT.dataset.endpointSave || '';
 
+  // PERF: bootstrap SSR (payload canon=1) supaya fetchList() pertama tidak perlu
+  // round-trip AJAX saat halaman dibuka. null jika tidak tersedia → fallback fetch.
+  // Freshness payload dijamin oleh DetailProjectNoStoreMiddleware pada respons HTML.
+  const HI_BOOTSTRAP = (() => {
+    try {
+      const el = document.getElementById('hi-bootstrap');
+      if (!el) return null;
+      const data = JSON.parse(el.textContent || 'null');
+      return (data && typeof data === 'object') ? data : null;
+    } catch (e) {
+      console.warn('[HI] Gagal membaca bootstrap SSR:', e);
+      return null;
+    }
+  })();
+
   // DOM
   const $tbody = document.getElementById('hi-tbody');
   const $filter = document.getElementById('hi-filter');
@@ -169,6 +184,50 @@
     updateSyncLockState();
   });
 
+  window.addEventListener('dp:sync-refresh-request', (event) => {
+    const detail = event.detail || {};
+    if (Number(detail.projectId) !== projectId) return;
+    if (detail.scope && detail.scope !== 'harga' && detail.scope !== 'global') return;
+
+    event.preventDefault();
+    const isAuto = detail.reason === 'auto';
+
+    const refreshList = () => fetchList()
+      .then(() => {
+        updateSyncLockState();
+        if (!isAuto) {
+          toast('Data harga berhasil disegarkan.', 'info');
+        }
+      })
+      .catch((err) => {
+        console.error('[HI] Sync refresh failed:', err);
+        toast('Gagal menyegarkan data harga.', 'error');
+      });
+
+    if (!dirty) {
+      refreshList();
+      return;
+    }
+
+    if (isAuto) {
+      toast('Perubahan belum disimpan. Sinkronisasi otomatis ditunda.', 'warning');
+      return;
+    }
+
+    confirmModal(
+      'Perubahan harga yang belum disimpan akan hilang jika Anda melanjutkan sinkronisasi.',
+      {
+        title: 'Konfirmasi Sinkronisasi',
+        confirmText: 'Sinkronkan',
+        cancelText: 'Batal',
+        confirmClass: 'btn btn-warning',
+      }
+    ).then((ok) => {
+      if (!ok) return;
+      refreshList();
+    });
+  });
+
   // ===== Helpers: numeric & format
   const toUI = (s) => N ? N.formatForUI(N.enforceDp(s || '', DP)) : (s || '');
   // Locale-aware canonicalizer: prevents "100.000" (id-ID grouping) becoming 100.00
@@ -273,11 +332,15 @@
   const lsk = (kode) => 'hiConv:' + kode;
 
   // ===== Fetch list
-  async function fetchList() {
-    setEmpty('Memuat data…');
+  async function fetchList(preloaded) {
+    // PERF: pakai bootstrap SSR pada panggilan pertama agar tidak ada flash "Memuat data…".
+    if (!preloaded) setEmpty('Memuat data…');
     try {
-      const res = await fetch(EP_LIST, { credentials: 'same-origin' });
-      const j = await res.json();
+      let j = preloaded;
+      if (!j) {
+        const res = await fetch(EP_LIST, { credentials: 'same-origin' });
+        j = await res.json();
+      }
       if (!j.ok) throw new Error('Gagal memuat.');
       rows = (j.items || []).map((it, i) => ({
         idx: i + 1,
@@ -583,10 +646,10 @@
         return;
       }
 
-      // P0 FIX: OPTIMISTIC LOCKING - Include timestamp in payload
-      if (projectUpdatedAt) {
-        payload.client_updated_at = projectUpdatedAt;
-      }
+      // POLICY single-user / last-save-wins: UI sengaja TIDAK mengirim client_updated_at,
+      // sehingga backend tidak pernah membalas 409 dan dialog konflik di bawah tidak pernah
+      // muncul. Backend tetap DORMAN (reversible): kirim ulang token di sini untuk mengaktifkan.
+      // if (projectUpdatedAt) { payload.client_updated_at = projectUpdatedAt; }
 
       const spin = document.getElementById('hi-save-spin');
       $btnSave.disabled = true; spin?.removeAttribute('hidden');
@@ -626,6 +689,25 @@
           toast('🔄 Memuat ulang data terbaru...', 'info');
           setTimeout(() => doSafeReload(), 1000);
         } else {
+          // SAFETY (#3): "Timpa" DAN dismiss (X / Escape / klik backdrop) sama-sama
+          // menghasilkan false dari confirmModal. Wajibkan konfirmasi kedua yang eksplisit
+          // sebelum menimpa perubahan pengguna lain. Dismiss/Batal pada dialog kedua =
+          // tidak melakukan apa pun (input lokal tetap aman, tidak ada penimpaan).
+          const confirmOverwrite = await confirmModal(
+            'Yakin menimpa perubahan pengguna lain? Tindakan ini tidak dapat dibatalkan.',
+            {
+              title: 'Konfirmasi Timpa',
+              confirmText: 'Ya, Timpa',
+              cancelText: 'Batal',
+              confirmClass: 'btn btn-danger',
+              cancelClass: 'btn btn-secondary',
+            }
+          );
+          if (!confirmOverwrite) {
+            toast('Penyimpanan dibatalkan. Perubahan Anda tetap dipertahankan.', 'info');
+            return;
+          }
+
           // User chose to force overwrite - retry without timestamp
           console.log('[SAVE] User chose to force overwrite');
           toast('⚠️ Menyimpan dengan mode timpa...', 'warning');
@@ -677,10 +759,45 @@
 
       // P0 FIX: Use user_message from server
       if (!res.ok || !j.ok) {
-        const userMsg = j.user_message || 'Sebagian gagal disimpan. Silakan coba lagi.';
+        // SAFETY (#2): JANGAN fetchList() saat gagal — itu menimpa input lokal yang belum
+        // tersimpan. Pertahankan input. Karena server melakukan partial-commit (207), baris
+        // yang valid SUDAH tersimpan; tandai baris itu bersih dan biarkan baris gagal tetap
+        // dirty + invalid agar pengguna bisa memperbaikinya dan menyimpan ulang.
+        const userMsg = j.user_message || 'Sebagian gagal disimpan. Input Anda tetap dipertahankan.';
         toast(userMsg, 'warning');
         console.warn('[SAVE] Errors:', j.errors || []);
-        fetchList(); // segarkan untuk sinkron
+
+        // Petakan index error payload → baris (payload.items & idsSaving urut sama).
+        const failedIdx = new Set();
+        (j.errors || []).forEach((er) => {
+          const m = /items\[(\d+)\]/.exec((er && er.field) || '');
+          if (m) failedIdx.add(Number(m[1]));
+        });
+
+        idsSaving.forEach(({ id, canon }, i) => {
+          const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
+          if (!tr) return;
+          const input = tr.querySelector('.hi-input-price');
+          if (failedIdx.has(i)) {
+            // Baris gagal → tetap dirty, tandai invalid untuk diperbaiki.
+            input?.classList.add('ux-invalid');
+          } else {
+            // Baris ini tersimpan di server → bersihkan dirty TANPA reload (input dipertahankan).
+            tr.classList.add('hi-row-saved');
+            setTimeout(() => tr.classList.remove('hi-row-saved'), 1200);
+            tr.classList.remove('hi-row-empty');
+            tr.classList.toggle('hi-row-zero', Number(canon) === 0);
+            setRowDirtyVisual(tr, false);
+            tr.dataset.origCanon = canon;
+            input?.classList.remove('ux-invalid');
+          }
+        });
+
+        // Refresh token optimistic-lock agar simpan ulang berikutnya tidak memicu konflik palsu
+        // (partial-commit sudah menaikkan project.updated_at di server).
+        if (j.project_updated_at) {
+          projectUpdatedAt = j.project_updated_at;
+        }
       } else {
         const userMsg = j.user_message || `✅ Berhasil menyimpan ${j.updated ?? payload.items.length} item.`;
         toast(userMsg, 'success');
@@ -710,8 +827,8 @@
       }
     } catch (e) {
       console.error(e);
-      toast('❌ Gagal menyimpan. Periksa koneksi internet Anda.', 'error');
-      fetchList();
+      // SAFETY (#2): jangan fetchList() saat gagal jaringan — pertahankan input lokal pengguna.
+      toast('❌ Gagal menyimpan (masalah jaringan). Perubahan Anda tetap ada — coba simpan lagi.', 'error');
     } finally {
       const spin = document.getElementById('hi-save-spin');
       $btnSave.disabled = false; spin?.setAttribute('hidden', '');
@@ -792,6 +909,9 @@
       prev.textContent = isInv ? '—' : rupiah(harga);
       if (isInv) invalid++; else hit++;
 
+      // FIX (#4): paste mengubah nilai baris → tandai kotor agar status dirty/visual ikut.
+      setRowDirtyVisual(tr, true);
+
       // simpan profil konversi jika ada factor (tanpa push ke server)
       if (factor) {
         convStore.set(Number(tr.dataset.itemId), {
@@ -809,6 +929,9 @@
         });
       }
     });
+
+    // FIX (#4): aktifkan dirty global bila ada baris yang berubah oleh paste.
+    if (hit + invalid > 0) setDirty(true);
 
     toast(`Paste massal: ${hit} baris${invalid ? `, ${invalid} tidak valid` : ''}.`, invalid ? 'warn' : 'success');
   });
@@ -1110,7 +1233,7 @@
   }
 
   // ===== Init
-  fetchList();
+  fetchList(HI_BOOTSTRAP);  // PERF: seed dari bootstrap SSR; null → fetch normal
 
   // ===== Export buttons already initialized in initUnifiedExport() IIFE above =====
   // (Removed duplicate initExportButtons function - it was causing projectId undefined error)

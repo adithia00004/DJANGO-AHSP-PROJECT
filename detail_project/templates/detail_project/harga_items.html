@@ -44,12 +44,9 @@
         <span class="d-none d-sm-inline">Export</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
-        <li><button class="dropdown-item" type="button" id="btn-export-xlsx"><i
-              class="bi bi-file-earmark-excel text-success me-2"></i>Excel (XLSX)</button></li>
-        <li><button class="dropdown-item" type="button" id="btn-export-pdf"><i
-              class="bi bi-file-earmark-pdf text-danger me-2"></i>PDF</button></li>
-        <li><button class="dropdown-item" type="button" id="btn-export-word"><i
-              class="bi bi-file-earmark-word text-primary me-2"></i>Word</button></li>
+        <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-xlsx" label="Excel (XLSX)" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed %}</li>
+        <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-pdf" label="PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed %}</li>
+        <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed %}</li>
         <li>
           <hr class="dropdown-divider">
         </li>
@@ -83,6 +80,7 @@
   data-endpoint-list="{% url 'detail_project:api_list_harga_items' project.id %}"
   data-endpoint-save="{% url 'detail_project:api_save_harga_items' project.id %}"
   data-template-url="{% url 'detail_project:template_ahsp' project.id %}" data-locale="id-ID">
+  {% if bootstrap_harga %}{{ bootstrap_harga|json_script:"hi-bootstrap" }}{% endif %}
 
   <div id="hi-lock-overlay" class="hi-lock-overlay d-none" role="alert" aria-live="assertive">
     <div class="hi-lock-card">
@@ -305,7 +303,7 @@
 
 <script>
   // Initialize export buttons for Harga Items (using global SSOT modal)
-  (function () {
+  document.addEventListener('DOMContentLoaded', function () {
     const projectId = document.getElementById('hi-app')?.dataset?.projectId;
     if (!projectId || typeof ExportManager === 'undefined') {
       console.warn('[HargaItems] ExportManager not available');
@@ -323,8 +321,11 @@
       if (isExporting) return;
       isExporting = true;
       try {
-        if (useAsync || format === 'pdf' || format === 'word') {
-          await exporter.exportAsAsync(format);
+        if (useAsync) {
+          const asyncOk = await exporter.exportAsAsync(format, { allowSyncFallback: true });
+          if (asyncOk === false) {
+            await exporter.exportAs(format);
+          }
         } else {
           await exporter.exportAs(format);
         }
@@ -339,11 +340,11 @@
     const btnJSON = document.getElementById('btn-export-json');
 
     if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
-    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
-    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
+    if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e));
+    if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e));
     if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
 
     console.log('[HargaItems] Export buttons initialized with SSOT modal');
-  })();
+  });
 </script>
 {% endblock %}

@@ -19,6 +19,23 @@
     <div class="card-body">
       <form method="post">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+
+        {% if form.non_field_errors or form.errors %}
+        <div class="alert alert-danger">
+          <strong>Periksa kembali input form:</strong>
+          <ul class="mb-0 mt-2">
+            {% for err in form.non_field_errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+            {% for field in form %}
+              {% for err in field.errors %}
+              <li>{{ field.label }}: {{ err }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
 
         <!-- === NAVIGATION TABS === -->
         <ul class="nav nav-tabs mb-3" id="projectTab" role="tablist">
@@ -142,7 +159,7 @@
 
         <!-- === SUBMIT BUTTONS === -->
         <div class="d-flex justify-content-between mt-4">
-          <a href="{% url 'dashboard:dashboard' %}" class="btn btn-secondary">
+          <a href="{{ next_url }}" class="btn btn-secondary">
             <i class="fas fa-arrow-left"></i> Batal
           </a>
           <button type="submit" class="btn btn-primary">

@@ -4,12 +4,18 @@ from allauth.account.adapter import DefaultAccountAdapter
 from django.conf import settings
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext_lazy as _
 
 from referensi.permissions import has_referensi_portal_access
 
 
 class AccountAdapter(DefaultAccountAdapter):
     """Custom login redirect behavior based on explicit access permissions."""
+
+    error_messages = {
+        **DefaultAccountAdapter.error_messages,
+        "email_taken": _("Data pendaftaran tidak dapat diproses. Silakan gunakan data lain."),
+    }
 
     def get_login_redirect_url(self, request):  # type: ignore[override]
         """Respect explicit ?next=... but default staff to admin portal."""

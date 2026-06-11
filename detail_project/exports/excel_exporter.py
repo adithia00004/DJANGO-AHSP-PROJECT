@@ -313,6 +313,7 @@ class ExcelExporter(ConfigExporterBase):
         param_table = param_page.get('table_data', {})
         param_headers = param_table.get('headers', [])
         param_rows = param_table.get('rows', [])
+        param_codes = param_table.get('param_codes', [])
         
         # Track actual cell locations for formula references
         param_value_cells = {}  # {param_code: 'D5', ...}
@@ -333,12 +334,13 @@ class ExcelExporter(ConfigExporterBase):
                 cell = ws_params.cell(row=current_row, column=col_idx, value=val)
                 cell.font = Font(size=9)
                 cell.border = border
-                if col_idx == 4:  # Value column - right align numbers
+                if col_idx == 3:  # Value column - right align numbers
                     cell.alignment = Alignment(horizontal='right')
-                    # Store cell reference (param code is in column 2)
-                    if len(row) > 1:
-                        param_code = row[1]  # Kode column
-                        param_value_cells[param_code] = f'D{current_row}'
+            # Store value cell reference by parameter code metadata (aligned with rows)
+            if row_idx < len(param_codes):
+                param_code = str(param_codes[row_idx] or '').strip().lower()
+                if param_code:
+                    param_value_cells[param_code] = f'C{current_row}'
             current_row += 1
         
         # Apply column widths
@@ -370,6 +372,8 @@ class ExcelExporter(ConfigExporterBase):
         volume_rows = volume_table.get('rows', [])
         hierarchy_levels = volume_page.get('hierarchy_levels', {})
         row_types = volume_page.get('row_types', [])
+        row_formulas = volume_page.get('row_formulas', [])
+        formula_display_mode = volume_page.get('formula_display_mode', 'raw')
         num_cols = len(volume_headers)
         
         # Headers
@@ -399,18 +403,39 @@ class ExcelExporter(ConfigExporterBase):
                     ws_volume.cell(row=current_row, column=col_idx).border = border
             else:
                 # Normal row
+                raw_formula = row_formulas[row_idx] if row_idx < len(row_formulas) else ''
                 for col_idx, val in enumerate(row, 1):
                     cell = ws_volume.cell(row=current_row, column=col_idx)
                     cell.font = Font(size=9)
                     cell.border = border
                     
                     # Column 3 is Formula - try to convert to Excel formula
-                    if col_idx == 3 and adapter and val and str(val).startswith('='):
+                    if (
+                        col_idx == 3
+                        and adapter
+                        and formula_display_mode != 'label'
+                        and val
+                        and str(val).startswith('=')
+                    ):
                         try:
                             excel_formula = self._convert_volume_formula(val, param_value_cells)
                             cell.value = excel_formula
                         except Exception:
                             cell.value = val  # Fallback to raw formula
+                    elif col_idx == 3 and formula_display_mode == 'label' and isinstance(val, str) and val.startswith('='):
+                        # In human-readable mode, keep formula as text so Excel does not evaluate it.
+                        cell.value = f"'{val}"
+                    elif (
+                        col_idx == num_cols
+                        and adapter
+                        and isinstance(raw_formula, str)
+                        and raw_formula.strip().startswith('=')
+                    ):
+                        # Volume column uses Excel formula referencing Parameters sheet.
+                        try:
+                            cell.value = self._convert_volume_formula(raw_formula, param_value_cells)
+                        except Exception:
+                            cell.value = val  # Fallback to stored numeric value
                     else:
                         cell.value = val
                     

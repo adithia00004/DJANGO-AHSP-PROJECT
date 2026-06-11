@@ -1,6 +1,60 @@
 {% extends "pages/landing.html" %}
+{% load static %}
 
 {% block title %}Harga - Dashboard-RAB{% endblock %}
+
+{% block extra_head %}
+<meta name="description"
+    content="Pilih paket langganan Dashboard-RAB sesuai kebutuhan proyek Anda dengan harga transparan dan promo aktif yang dihitung otomatis.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Harga Paket Dashboard-RAB">
+<meta property="og:description"
+    content="Bandingkan paket Dashboard-RAB dan mulai trial gratis untuk manajemen proyek konstruksi yang lebih efisien.">
+<meta property="og:image" content="{% static 'images/dashboard-preview.svg' %}">
+<meta property="og:url" content="{{ request.build_absolute_uri }}">
+<meta name="twitter:card" content="summary_large_image">
+{% endblock %}
+
+{% block topbar %}
+<!-- Pricing Page Navbar -->
+<nav id="dp-topbar" class="navbar navbar-expand-lg bg-body border-bottom shadow-sm sticky-top dp-z-topbar py-3"
+    role="navigation" aria-label="Primary">
+    <div class="container">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'pages:landing' %}">
+            <span class="d-inline-flex align-items-center justify-content-center rounded-2 p-1 border">
+                <i class="bi bi-grid-1x2-fill"></i>
+            </span>
+            <span class="fw-semibold">Dashboard-RAB</span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#pricingNav"
+            aria-controls="pricingNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="pricingNav">
+            <ul class="navbar-nav mx-auto">
+                <li class="nav-item"><a class="nav-link" href="{% url 'pages:landing' %}#features">Fitur</a></li>
+                <li class="nav-item"><a class="nav-link" href="#pricing">Harga</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'pages:landing' %}#faq">FAQ</a></li>
+            </ul>
+            <div class="d-flex align-items-center gap-2">
+                <button id="theme-toggle" data-action="toggle-theme" class="btn btn-outline-secondary btn-sm"
+                    type="button" aria-pressed="false" aria-label="Toggle theme" title="Light/Dark">
+                    <i id="theme-icon" class="bi bi-moon-stars"></i>
+                </button>
+
+                {% if user.is_authenticated %}
+                <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-info btn-sm">Dashboard</a>
+                {% else %}
+                <a href="{% url 'account_login' %}" class="btn btn-outline-primary btn-sm">Masuk</a>
+                <a href="{% url 'account_signup' %}" class="btn btn-primary btn-sm">Daftar Gratis</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</nav>
+{% endblock %}
 
 {% block content %}
 <!-- Pricing Section Only -->
@@ -14,21 +68,44 @@
         <div class="row g-4 justify-content-center">
             {% for plan in pricing_plans %}
             <div class="col-md-6 col-lg-4">
-                <div class="pricing-card {% if plan.popular %}popular{% endif %}">
+                <div class="pricing-card {% if plan.popular %}popular{% endif %} {% if plan.is_promo_highlighted %}promo-active{% endif %}">
                     {% if plan.popular %}
                     <span class="badge-popular">Paling Populer</span>
                     {% endif %}
 
                     <div class="text-center mb-3">
                         <h4 class="mb-1">{{ plan.duration }}</h4>
+                        <span class="promo-state-chip promo-{{ plan.promotion_state }}">
+                            <i class="bi {% if plan.is_promo_highlighted %}bi-lightning-charge-fill{% elif plan.is_upcoming_promo %}bi-clock-history{% else %}bi-ticket-perforated{% endif %}"></i>
+                            {{ plan.promotion_state_label }}
+                        </span>
                         {% if plan.discount %}
-                        <span class="badge bg-success">Hemat {{ plan.discount }}</span>
+                        <span class="badge bg-success ms-1">{{ plan.discount }}</span>
                         {% endif %}
                     </div>
 
                     <div class="text-center mb-3">
+                        {% if plan.discount_amount %}
+                        <div class="small text-muted text-decoration-line-through">{{ plan.base_price_display }}</div>
+                        {% endif %}
                         <span class="price">{{ plan.price_display }}</span>
                         <div class="per-month">{{ plan.per_month }}</div>
+                        {% if plan.promotion_name %}
+                        <div class="small text-muted">{{ plan.promotion_name }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="promo-panel promo-{{ plan.promotion_state }}">
+                        <div class="promo-panel-title">
+                            {% if plan.promotion_panel_name %}
+                            {{ plan.promotion_panel_name }}
+                            {% else %}
+                            Promo Subscription
+                            {% endif %}
+                        </div>
+                        <div class="promo-panel-time">
+                            {{ plan.promotion_timing_label }}
+                        </div>
                     </div>
 
                     <ul class="features-list">
@@ -40,10 +117,23 @@
                         {% endfor %}
                     </ul>
 
+                    {% if plan.id and user.is_authenticated %}
+                    <a href="{% url 'subscriptions:checkout' plan.id %}"
+                        class="btn {% if plan.popular %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+                        Pilih Paket
+                    </a>
+                    {% else %}
                     <a href="{% url 'account_signup' %}"
                         class="btn {% if plan.popular %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
                         Pilih Paket
                     </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12">
+                <div class="alert alert-info mb-0 text-center">
+                    Paket berlangganan belum tersedia.
                 </div>
             </div>
             {% endfor %}

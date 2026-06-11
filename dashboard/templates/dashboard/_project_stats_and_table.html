@@ -59,6 +59,14 @@
             {{ filter_form.status_timeline }}
           </div>
 
+          <!-- Active/Archived Filter -->
+          <div class="col-md-3">
+            <label for="{{ filter_form.is_active.id_for_label }}" class="form-label">
+              {{ filter_form.is_active.label }}
+            </label>
+            {{ filter_form.is_active }}
+          </div>
+
           <!-- Budget Range -->
           <div class="col-md-3">
             <label class="form-label">Rentang Anggaran</label>
@@ -162,9 +170,11 @@
           <span id="selectedCount" class="badge bg-primary me-2">0</span>
           <span class="text-muted">project dipilih</span>
         </div>
+        {# U16: konsep tunggal "Hapus" — Archive/Unarchive dihapus dari UI (soft-delete; pemulihan via admin) #}
         <div class="btn-group btn-group-sm" role="group">
-          <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn" title="Edit langsung di tabel">
-            <i class="fas fa-edit"></i> Edit Data
+          <button type="button" class="btn btn-outline-primary" id="massEditToggleBtn"
+            title="Edit beberapa project sekaligus langsung di tabel">
+            <i class="fas fa-table"></i> Edit Massal
           </button>
           <button type="button" class="btn btn-outline-danger" id="bulkDeleteBtn" title="Hapus project terpilih">
             <i class="fas fa-trash"></i> Hapus
@@ -264,7 +274,8 @@
               <i class="fas fa-list"></i>
             </a>
             <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
-              class="btn btn-sm btn-outline-warning" title="Edit Project" aria-label="Edit Project">
+              class="btn btn-sm btn-outline-warning" title="Edit detail project (form lengkap)"
+              aria-label="Edit detail project (form lengkap)">
               <i class="fas fa-edit"></i>
             </a>
             <a href="{% url 'detail_project:export_project_full_json' project.pk %}?include_progress=1"
@@ -272,34 +283,12 @@
               download>
               <i class="fas fa-download"></i>
             </a>
-            <button type="button" class="btn btn-sm btn-outline-danger" title="Hapus Project" aria-label="Hapus Project"
-              data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}">
+            {# U16: satu modal konfirmasi reusable, bukan satu modal per baris #}
+            <button type="button" class="btn btn-sm btn-outline-danger js-delete-project" title="Hapus Project"
+              aria-label="Hapus Project" data-project-name="{{ project.nama }}"
+              data-delete-url="{% url 'dashboard:project_delete' project.pk %}">
               <i class="fas fa-trash"></i>
             </button>
-          </div>
-
-          <!-- Modal Konfirmasi Hapus -->
-          <div class="modal fade" id="deleteModal-{{ project.pk }}" tabindex="-1"
-            aria-labelledby="deleteModalLabel-{{ project.pk }}" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <h5 class="modal-title" id="deleteModalLabel-{{ project.pk }}">Hapus Project</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
-                </div>
-                <div class="modal-body">
-                  Kamu yakin ingin menghapus project <strong>{{ project.nama }}</strong>?
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
-                  <form method="post" action="{% url 'dashboard:project_delete' project.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button type="submit" class="btn btn-danger">Ya, Hapus</button>
-                  </form>
-                </div>
-              </div>
-            </div>
           </div>
         </td>
 
@@ -431,40 +420,20 @@
           <i class="fas fa-list"></i>
         </a>
         <a href="{% url 'dashboard:project_edit' project.pk %}?next={{ request.get_full_path|urlencode }}"
-          class="btn btn-sm btn-outline-warning" title="Edit Project" aria-label="Edit Project">
+          class="btn btn-sm btn-outline-warning" title="Edit detail project (form lengkap)"
+          aria-label="Edit detail project (form lengkap)">
           <i class="fas fa-edit"></i>
         </a>
         <a href="{% url 'detail_project:export_project_full_json' project.pk %}?include_progress=1"
           class="btn btn-sm btn-outline-info" title="Export Project (JSON)" aria-label="Export Project (JSON)" download>
           <i class="fas fa-download"></i>
         </a>
-        <button type="button" class="btn btn-sm btn-outline-danger" title="Hapus Project" aria-label="Hapus Project"
-          data-bs-toggle="modal" data-bs-target="#deleteModal-{{ project.pk }}">
+        {# U16: modal reusable bersama; fix bug lama tombol mobile menarget modal desktop #}
+        <button type="button" class="btn btn-sm btn-outline-danger js-delete-project" title="Hapus Project"
+          aria-label="Hapus Project" data-project-name="{{ project.nama }}"
+          data-delete-url="{% url 'dashboard:project_delete' project.pk %}">
           <i class="fas fa-trash"></i>
         </button>
-      </div>
-    </div>
-
-    <!-- Delete Modal (reuse from table) -->
-    <div class="modal fade" id="deleteModal-{{ project.pk }}-mobile" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Hapus Project</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
-          </div>
-          <div class="modal-body">
-            Kamu yakin ingin menghapus project <strong>{{ project.nama }}</strong>?
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
-            <form method="post" action="{% url 'dashboard:project_delete' project.pk %}">
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{{ request.get_full_path }}">
-              <button type="submit" class="btn btn-danger">Ya, Hapus</button>
-            </form>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -478,6 +447,66 @@
   </div>
   {% endfor %}
 </div>
+
+{# ===== U16: SATU modal konfirmasi hapus reusable (desktop + mobile) ===== #}
+<div class="modal fade" id="deleteProjectModal" tabindex="-1" aria-labelledby="deleteProjectModalLabel"
+  aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteProjectModalLabel">Hapus Project</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        Kamu yakin ingin menghapus project <strong id="deleteProjectModalName"></strong>?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+        <form method="post" id="deleteProjectModalForm" action="">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn btn-danger">Ya, Hapus</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* U16: kemunculan bar aksi lebih halus */
+  #bulkActionsBar,
+  #massEditActionBar {
+    animation: dpBarSlideIn .18s ease-out;
+  }
+
+  @keyframes dpBarSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
+
+<script>
+  // U16: wiring modal hapus reusable — tombol .js-delete-project membawa
+  // data-project-name + data-delete-url; modal diisi saat klik.
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-delete-project');
+    if (!btn) return;
+    document.getElementById('deleteProjectModalName').textContent =
+      btn.dataset.projectName || '';
+    document.getElementById('deleteProjectModalForm').action =
+      btn.dataset.deleteUrl || '';
+    bootstrap.Modal.getOrCreateInstance(
+      document.getElementById('deleteProjectModal')
+    ).show();
+  });
+</script>
 
 <!-- === PERFORMANCE OPTIMIZATION: Pagination to eliminate 116s outliers === -->
 {% if page_obj %}
@@ -515,8 +544,7 @@
     <li class="page-item active"><span class="page-link">{{ num }}</span></li>
     {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %} <li class="page-item"><a
         class="page-link"
-        href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{
-        num }}</a></li>
+        href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ num }}</a></li>
       {% endif %}
       {% endfor %}
 
@@ -687,7 +715,9 @@
 
     // Get selected project IDs
     function getSelectedProjectIds() {
-      const checkedBoxes = document.querySelectorAll('.project-checkbox:checked');
+      const checkedBoxes = desktopTable
+        ? desktopTable.querySelectorAll('.project-checkbox:checked')
+        : document.querySelectorAll('.project-checkbox:checked');
       return Array.from(checkedBoxes).map(cb => cb.value);
     }
 
@@ -709,7 +739,7 @@
 
         const confirmed = await confirmAction({
           title: 'Konfirmasi Hapus',
-          message: `Yakin ingin menghapus ${selectedIds.length} project terpilih? Project akan di-archive (soft delete).`,
+          message: `Yakin ingin menghapus ${selectedIds.length} project terpilih?`,
           confirmText: 'Hapus',
           confirmClass: 'btn-danger'
         });
@@ -739,89 +769,9 @@
       });
     }
 
-    // Bulk Archive
-    const bulkArchiveBtn = document.getElementById('bulkArchiveBtn');
-    if (bulkArchiveBtn) {
-      bulkArchiveBtn.addEventListener('click', async function () {
-        const selectedIds = getSelectedProjectIds();
-        if (selectedIds.length === 0) {
-          toast('Pilih minimal satu project untuk di-archive.', 'warning');
-          return;
-        }
-
-        const confirmed = await confirmAction({
-          title: 'Konfirmasi Archive',
-          message: `Yakin ingin meng-archive ${selectedIds.length} project terpilih?`,
-          confirmText: 'Archive',
-          confirmClass: 'btn-warning'
-        });
-        if (!confirmed) return;
-
-        fetch('{% url "dashboard:bulk_archive" %}', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCSRFToken()
-          },
-          body: JSON.stringify({ project_ids: selectedIds })
-        })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              toast(`Berhasil meng-archive ${data.archived_count} project.`, 'success');
-              setTimeout(() => window.location.reload(), 1000);
-            } else {
-              toast(data.error || 'Terjadi kesalahan saat meng-archive project.', 'error');
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            toast('Terjadi kesalahan saat meng-archive project.', 'error');
-          });
-      });
-    }
-
-    // Bulk Unarchive
-    const bulkUnarchiveBtn = document.getElementById('bulkUnarchiveBtn');
-    if (bulkUnarchiveBtn) {
-      bulkUnarchiveBtn.addEventListener('click', async function () {
-        const selectedIds = getSelectedProjectIds();
-        if (selectedIds.length === 0) {
-          toast('Pilih minimal satu project untuk diaktifkan.', 'warning');
-          return;
-        }
-
-        const confirmed = await confirmAction({
-          title: 'Konfirmasi Aktifkan',
-          message: `Yakin ingin mengaktifkan kembali ${selectedIds.length} project terpilih?`,
-          confirmText: 'Aktifkan',
-          confirmClass: 'btn-success'
-        });
-        if (!confirmed) return;
-
-        fetch('{% url "dashboard:bulk_unarchive" %}', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCSRFToken()
-          },
-          body: JSON.stringify({ project_ids: selectedIds })
-        })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              toast(`Berhasil mengaktifkan ${data.unarchived_count} project.`, 'success');
-              setTimeout(() => window.location.reload(), 1000);
-            } else {
-              toast(data.error || 'Terjadi kesalahan saat mengaktifkan project.', 'error');
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            toast('Terjadi kesalahan saat mengaktifkan project.', 'error');
-          });
-      });
-    }
+    // U16: handler Bulk Archive/Unarchive dihapus bersama tombolnya — konsep
+    // tunggal "Hapus" (soft-delete); endpoint backend tetap ada untuk pemulihan
+    // via admin/tooling.
 
     // Bulk Export (removed from toolbar but kept handler for backwards compatibility)
     const bulkExportBtn = document.getElementById('bulkExportBtn');

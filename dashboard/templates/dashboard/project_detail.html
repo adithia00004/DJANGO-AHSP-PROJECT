@@ -80,23 +80,28 @@
                         {% if project.tanggal_mulai and project.tanggal_selesai %}
                         <div class="mt-3">
                             <p class="mb-1"><strong>Status Pelaksanaan:</strong></p>
-                            {% load tz %}
-                            {% now "Y-m-d" as today_str %}
-                            {% if project.tanggal_selesai|date:"Y-m-d" < today_str %}
+                            {% if timeline_status == 'selesai' %}
                                 <span class="badge bg-danger fs-6">
-                                    <i class="fas fa-exclamation-triangle"></i> Terlambat
+                                    <i class="fas fa-check-circle"></i> Selesai
                                 </span>
-                                <p class="small text-danger mt-2 mb-0">
-                                    Project melewati deadline pada {{ project.tanggal_selesai|date:"d M Y" }}
+                                <p class="small text-muted mt-2 mb-0">
+                                    Project selesai pada {{ project.tanggal_selesai|date:"d M Y" }}
                                 </p>
-                            {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
+                            {% elif timeline_status == 'deadline' %}
+                                <span class="badge bg-warning text-dark fs-6">
+                                    <i class="fas fa-hourglass-half"></i> Deadline
+                                </span>
+                                <p class="small text-muted mt-2 mb-0">
+                                    Project berada pada rentang deadline (<= 30 hari menuju target selesai)
+                                </p>
+                            {% elif timeline_status == 'belum_mulai' %}
                                 <span class="badge bg-secondary fs-6">
                                     <i class="fas fa-clock"></i> Belum Mulai
                                 </span>
                                 <p class="small text-muted mt-2 mb-0">
                                     Project akan dimulai pada {{ project.tanggal_mulai|date:"d M Y" }}
                                 </p>
-                            {% else %}
+                            {% elif timeline_status == 'berjalan' %}
                                 <span class="badge bg-success fs-6">
                                     <i class="fas fa-play-circle"></i> Sedang Berjalan
                                 </span>
@@ -118,9 +123,51 @@
                                     {% now "Y-m-d" as today %}
                                     {{ project.tanggal_selesai|timeuntil }} lagi
                                 </p>
+                            {% else %}
+                                <span class="badge bg-light text-dark fs-6">
+                                    <i class="fas fa-minus-circle"></i> Belum Ditentukan
+                                </span>
                             {% endif %}
                         </div>
                         {% endif %}
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="card h-100 border-light shadow-sm">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="fas fa-info-circle"></i> Data Inti Project</h6>
+                            </div>
+                            <div class="card-body small">
+                                <ul class="list-unstyled mb-0">
+                                    <li class="mb-1"><strong>Index:</strong> {{ project.index_project|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Tahun:</strong> {{ project.tahun_project|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Sumber Dana:</strong> {{ project.sumber_dana|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Lokasi:</strong> {{ project.lokasi_project|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Kategori:</strong> {{ project.kategori|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Anggaran Owner:</strong> Rp {{ project.anggaran_owner|default:0|floatformat:0|intcomma }}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card h-100 border-light shadow-sm">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0"><i class="fas fa-users"></i> Client & Stakeholder</h6>
+                            </div>
+                            <div class="card-body small">
+                                <ul class="list-unstyled mb-0">
+                                    <li class="mb-1"><strong>Nama Client:</strong> {{ project.nama_client|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Jabatan Client:</strong> {{ project.jabatan_client|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Instansi Client:</strong> {{ project.instansi_client|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Kontraktor:</strong> {{ project.nama_kontraktor|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Instansi Kontraktor:</strong> {{ project.instansi_kontraktor|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Konsultan Perencana:</strong> {{ project.nama_konsultan_perencana|default:"-" }}</li>
+                                    <li class="mb-1"><strong>Konsultan Pengawas:</strong> {{ project.nama_konsultan_pengawas|default:"-" }}</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -392,8 +439,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Reset modal on open
     modal.addEventListener('show.bs.modal', function() {
         form.reset();
-        document.getElementById('newProjectName').value = '{{ project.nama }} (Copy)';
-        document.getElementById('baseName').value = '{{ project.nama }}';
+        document.getElementById('newProjectName').value = '{{ project.nama|escapejs }} (Copy)';
+        document.getElementById('baseName').value = '{{ project.nama|escapejs }}';
         batchModeToggle.checked = false;
         projectNameField.classList.remove('d-none');
         baseNameField.classList.add('d-none');

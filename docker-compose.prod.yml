@@ -16,9 +16,10 @@ services:
       # Keeping it mounted is fine for single-server VPS setup.
       - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     ports:
-      # In production, we typically don't expose DB port to outside world, only internal network.
-      # But user might want to access it via SSH tunnel. Keeping it configurable.
-      - "${DB_PORT:-5432}:5432"
+      # Hardened default (launch-audit F1): bind loopback only, so the DB is
+      # never reachable from the network. Access remotely via SSH tunnel.
+      # Override DB_BIND=0.0.0.0 explicitly only if you understand the risk.
+      - "${DB_BIND:-127.0.0.1}:${DB_PORT:-5432}:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ahsp_sni_db}" ]
       interval: 10s
@@ -80,9 +81,9 @@ services:
     environment:
       # Django Configuration
       DJANGO_ENV: production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       DJANGO_DEBUG: "False"
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS},healthcheck.local
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
 
       # Database Configuration
@@ -117,7 +118,10 @@ services:
       - logs_volume:/app/logs
 
     ports:
-      - "${WEB_PORT:-8000}:8000"
+      # Hardened default (launch-audit F1): loopback only. The Caddy TLS proxy
+      # (deploy/docker-compose.prod.proxy.yml) reaches `web` over the internal
+      # docker network, so host publishing is only for local smoke tests.
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8000}:8000"
 
     depends_on:
       db:
@@ -142,7 +146,7 @@ services:
     command: celery -A config worker -l info --concurrency=4
     environment:
       DJANGO_ENV: production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       DJANGO_DEBUG: "False"
       POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -176,7 +180,7 @@ services:
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     environment:
       DJANGO_ENV: production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       DJANGO_DEBUG: "False"
       POSTGRES_DB: ${POSTGRES_DB:-ahsp_sni_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -207,15 +211,17 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ahsp_flower
-    command: celery -A config flower --port=5555 --broker=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
+    # Hardened (launch-audit F1): Flower requires basic auth and binds loopback
+    # only. Set FLOWER_BASIC_AUTH=user:strongpassword in the env file.
+    command: celery -A config flower --port=5555 --basic-auth=${FLOWER_BASIC_AUTH:?FLOWER_BASIC_AUTH (user:password) is required} --broker=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:${REDIS_PORT:-6379}/0
     environment:
       DJANGO_ENV: production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       REDIS_HOST: redis
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
-      - "${FLOWER_PORT:-5555}:5555"
+      - "${FLOWER_BIND:-127.0.0.1}:${FLOWER_PORT:-5555}:5555"
     depends_on:
       - celery
     networks:

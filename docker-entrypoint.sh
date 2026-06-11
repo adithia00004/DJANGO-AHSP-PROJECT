@@ -18,7 +18,8 @@ fi
 
 # Wait for database to be ready
 echo "Waiting for PostgreSQL..."
-while ! pg_isready -h $POSTGRES_HOST -p $POSTGRES_PORT -U postgres; do
+# F5 (launch audit): honor configured DB user instead of hardcoded "postgres".
+while ! pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "${POSTGRES_USER:-postgres}"; do
   sleep 1
 done
 echo "PostgreSQL started"

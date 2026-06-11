@@ -5,6 +5,10 @@
 
 {% block title %}Jadwal Pekerjaan - {{ project.nama }}{% endblock %}
 
+{% block dp_topbar_extra %}
+{% include "detail_project/_sync_led.html" with scope="jadwal" watch="pekerjaan,volume,jadwal" change_status=change_status %}
+{% endblock %}
+
 {% block detail_css %}{% endblock %}
 
 {% block extra_css %}
@@ -1057,7 +1061,7 @@
 <link rel="stylesheet" href="{% static css_asset %}">
 {% endfor %}
 <script type="module" src="{% static jadwal_entry.file %}"></script>
-<script>le.log('%cdY"? PRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
+<script>console.log('%cPRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
   console.log('Using built assets from static/dist/ (manifest resolved)');
 </script>
 {% endif %}

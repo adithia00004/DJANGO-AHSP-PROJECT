@@ -1,6 +1,13 @@
 # PRE-PRODUCTION LAUNCH CHECKLIST
 ## Django AHSP Project
 
+> ⚠️ **SUPERSEDED (2026-06-10) — ARSIP, JANGAN DIPAKAI UNTUK GO/NO-GO.**
+> Tanda `[x]` pada gate di bawah adalah snapshot Februari 2026 dengan basis lingkungan dev
+> (mis. "pytest 79 passed" — suite sekarang 410) dan BERTENTANGAN dengan status aktual
+> (TLS/domain/secrets production & restore drill BELUM dieksekusi — lihat blocker L5-L8).
+> **SSOT tunggal status launch:** `docs/CHECKLIST_PROGRESS_KESIAPAN_LAUNCH_20260609.md`.
+> Rujukan lama ke `Review/CHECKLIST_PROGRESS.md` juga sudah dicabut (ikut SUPERSEDED).
+
 Dokumen ini adalah checklist eksekusi launch (GO/NO-GO).
 Dokumen audit temuan teknis tetap di `AUDIT_PRE_LAUNCH.md`.
 Dokumen agenda provider/pihak ketiga ada di `AGENDA_PROVIDER_PIHAK_KETIGA.md`.

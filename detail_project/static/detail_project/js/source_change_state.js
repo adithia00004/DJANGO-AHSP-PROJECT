@@ -72,6 +72,40 @@
       .filter((value) => Number.isFinite(value) && value > 0);
   }
 
+  function sameIdSet(a, b) {
+    if (a.length !== b.length) return false;
+    const set = new Set(a);
+    return b.every((id) => set.has(id));
+  }
+
+  function getCsrfToken() {
+    const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  async function ackServer(projectId, payload) {
+    if (!projectId || !payload || typeof payload !== 'object') return null;
+    try {
+      const response = await fetch(`/detail_project/api/project/${projectId}/source-change/ack/`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json().catch(() => null);
+    } catch (error) {
+      console.warn('[SourceChangeState] ack to server failed', error);
+      return null;
+    }
+  }
+
   function emit(action, detail) {
     const payload = { action, ...detail };
     window.dispatchEvent(
@@ -117,6 +151,38 @@
     });
   }
 
+  function syncFlags(projectId, flags = {}) {
+    if (!projectId) return;
+    const nextReload = sanitizeIds(flags.reload_job_ids);
+    const nextVolume = sanitizeIds(flags.volume_reset_job_ids);
+    const state = readState(projectId);
+    const currentReload = Object.keys(state.reload).map((key) => Number(key)).filter((id) => Number.isFinite(id));
+    const currentVolume = Object.keys(state.volume).map((key) => Number(key)).filter((id) => Number.isFinite(id));
+
+    if (sameIdSet(currentReload, nextReload) && sameIdSet(currentVolume, nextVolume)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const nextState = { reload: {}, volume: {} };
+    nextReload.forEach((id) => {
+      const key = String(id);
+      nextState.reload[key] = state.reload[key] || { ts: now };
+    });
+    nextVolume.forEach((id) => {
+      const key = String(id);
+      nextState.volume[key] = state.volume[key] || { ts: now };
+    });
+
+    writeState(projectId, nextState);
+    emit('sync', {
+      projectId,
+      syncedReloadIds: nextReload,
+      syncedVolumeIds: nextVolume,
+      state: cloneState(nextState),
+    });
+  }
+
   function markReloaded(projectId, jobIds) {
     if (!projectId) return;
     const ids = sanitizeIds(jobIds);
@@ -137,6 +203,15 @@
       resolvedReloadIds: removed,
       resolvedVolumeIds: [],
       state: cloneState(state),
+    });
+    return ackServer(projectId, { reload_job_ids: removed }).then((serverState) => {
+      if (serverState && Array.isArray(serverState.pending_reload_job_ids) && Array.isArray(serverState.pending_volume_reset_job_ids)) {
+        syncFlags(projectId, {
+          reload_job_ids: serverState.pending_reload_job_ids,
+          volume_reset_job_ids: serverState.pending_volume_reset_job_ids,
+        });
+      }
+      return serverState;
     });
   }
 
@@ -160,6 +235,15 @@
       resolvedReloadIds: [],
       resolvedVolumeIds: removed,
       state: cloneState(state),
+    });
+    return ackServer(projectId, { volume_reset_job_ids: removed }).then((serverState) => {
+      if (serverState && Array.isArray(serverState.pending_reload_job_ids) && Array.isArray(serverState.pending_volume_reset_job_ids)) {
+        syncFlags(projectId, {
+          reload_job_ids: serverState.pending_reload_job_ids,
+          volume_reset_job_ids: serverState.pending_volume_reset_job_ids,
+        });
+      }
+      return serverState;
     });
   }
 
@@ -190,6 +274,7 @@
 
   global[moduleName] = {
     pushFlags,
+    syncFlags,
     markReloaded,
     markVolumeResolved,
     listReloadJobs,

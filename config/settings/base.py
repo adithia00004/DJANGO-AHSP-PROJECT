@@ -75,6 +75,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "config.middleware.cache_control.DetailProjectNoStoreMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "accounts.middleware.SubscriptionMiddleware",  # Subscription access control
@@ -113,6 +114,7 @@ TEMPLATES = [
                 "django.template.context_processors.i18n",
                 "django.template.context_processors.media",
                 "django.template.context_processors.tz",
+                "accounts.context_processors.app_contact_context",
                 "accounts.context_processors.subscription_context",  # Subscription info
             ],
         },
@@ -195,6 +197,14 @@ ACCOUNT_EMAIL_VERIFICATION = os.getenv("ACCOUNT_EMAIL_VERIFICATION", "optional")
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True  # Auto-login after email confirmation
 ACCOUNT_SESSION_REMEMBER = True
 ACCOUNT_SIGNUP_REDIRECT_URL = "/dashboard/"  # Where to go after signup
+
+_account_prevent_enum = os.getenv("ACCOUNT_PREVENT_ENUMERATION", "true").strip().lower()
+if _account_prevent_enum in {"strict"}:
+    ACCOUNT_PREVENT_ENUMERATION = "strict"
+elif _account_prevent_enum in {"false", "0", "no"}:
+    ACCOUNT_PREVENT_ENUMERATION = False
+else:
+    ACCOUNT_PREVENT_ENUMERATION = True
 
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGIN_URL = "/accounts/login/"
@@ -320,6 +330,18 @@ else:
 
 PERFORMANCE_LOG_THRESHOLD = float(os.getenv("DJANGO_PERF_THRESHOLD", "1.0"))
 
+# Opaque ID rollout flag:
+# - True  : strict opaque mode (bp_N / cp_N)
+# - False : legacy descriptive mode allowed for runtime parameter CRUD/sync
+OPAQUE_ID_ENABLED = os.getenv("OPAQUE_ID_ENABLED", "True").lower() == "true"
+
+# Label-only formula UI rollout flag:
+# - True  : enable label-first formula UX improvements on Volume Pekerjaan page
+# - False : fallback to existing UI behavior (rollback switch)
+FORMULA_LABEL_ONLY_UI_ENABLED = (
+    os.getenv("FORMULA_LABEL_ONLY_UI_ENABLED", "True").lower() == "true"
+)
+
 # ---------------------------------------------------------------------------
 # Rate Limiting (Phase 1 Security)
 # ---------------------------------------------------------------------------
@@ -385,6 +407,7 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@ahsp.example.com")
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", DEFAULT_FROM_EMAIL)
 
 # Audit alert settings
 AUDIT_ALERT_EMAIL_RECIPIENTS = [

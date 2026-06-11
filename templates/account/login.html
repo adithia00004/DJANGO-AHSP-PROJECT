@@ -2,28 +2,51 @@
 {% extends "base.html" %}
 {% load crispy_forms_tags %}
 
-{% block title %}Login | AHSP-RAB{% endblock %}
+{% block title %}Masuk | Dashboard RAB{% endblock %}
 
 {% block content %}
+<div class="row justify-content-center align-items-center min-vh-75 py-5">
+    <div class="col-12 col-md-8 col-lg-5 col-xl-4">
 
-<h1 style="color:rgba(3, 44, 131, 0.884);">WELCOME SIMPANSE</h1>
-<div class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-4">
-            <div class="card shadow-sm rounded-4">
-                <div class="card-body">
-                    <h4 class="text-center mb-4">Masuk ke Sistem</h4>
-                    <form method="POST" action="{% url 'account_login' %}">
-                        {% csrf_token %}
-                        {{ form|crispy }}
-                        <button type="submit" class="btn btn-primary w-100">Login</button>
-                    </form>
-                    <div class="text-center mt-3">
-                        <a href="{% url 'account_signup' %}">Belum punya akun?</a>
-                    </div>
+        <div class="card dp-card shadow-lg border-0 rounded-4 overflow-hidden">
+            <div class="card-header bg-primary bg-opacity-10 border-0 text-center py-4">
+                <div class="d-inline-flex align-items-center justify-content-center bg-body p-3 rounded-circle shadow-sm mb-3 text-primary"
+                    style="width: 80px; height: 80px;">
+                    <i class="bi bi-grid-1x2-fill fs-2"></i>
                 </div>
+                <h4 class="fw-bold mb-1 text-primary">Dashboard RAB</h4>
+                <div class="text-secondary small">Sistem Analisa Harga Satuan Pekerjaan</div>
+            </div>
+
+            <div class="card-body p-4 p-md-5">
+                <div class="text-center mb-4">
+                    <h5 class="fw-bold">Selamat Datang</h5>
+                    <p class="text-secondary small">Silakan masuk untuk melanjutkan</p>
+                </div>
+
+                <form method="POST" action="{% url 'account_login' %}">
+                    {% csrf_token %}
+                    {% if redirect_field_value %}
+                    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+                    {% endif %}
+                    {{ form|crispy }}
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary py-2 fw-semibold shadow-sm">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Masuk
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card-footer bg-body-tertiary border-top p-3 text-center">
+                <small class="text-secondary">
+                    Belum punya akun? <a href="{% url 'account_signup' %}"
+                        class="fw-semibold text-decoration-none">Daftar Sekarang</a>
+                </small>
             </div>
         </div>
+
     </div>
 </div>
 {% endblock %}

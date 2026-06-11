@@ -579,7 +579,6 @@
       return window.DP.toast[type](message, duration);
     }
     // Fallback: log to console if global toast not loaded
-    console.log(`[Toast/${type}] ${message}`);
   }
 
   // Keep global reference for backward compatibility
@@ -747,7 +746,6 @@
   // ============================================================================
 
   document.addEventListener('DOMContentLoaded', function () {
-    console.log('🚀 Initializing UX Enhancements...');
 
     initFAB();
     initQuickSearch();
@@ -759,7 +757,6 @@
     initResponsiveEnhancements();
     initAccessibility();
 
-    console.log('✅ UX Enhancements initialized successfully');
 
     // Welcome toast (optional - comment out if not needed)
     // setTimeout(() => {

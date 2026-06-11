@@ -19,19 +19,19 @@
     "@tanstack/virtual-core": "^3.10.8",
     "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
-    "jspdf": "^2.5.1",
+    "jspdf": "4.2.1",
     "uplot": "^1.6.32",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@testing-library/dom": "^9.3.4",
     "@vitejs/plugin-legacy": "^5.0.0",
-    "@vitest/coverage-v8": "^1.6.1",
-    "happy-dom": "^13.10.1",
+    "@vitest/coverage-v8": "4.1.8",
+    "happy-dom": "20.10.2",
     "rollup-plugin-visualizer": "^5.12.0",
     "terser": "^5.0.0",
     "vite": "^5.0.0",
-    "vitest": "^1.5.4"
+    "vitest": "4.1.8"
   },
   "license": "MIT"
 }
