@@ -1,11 +1,9 @@
 import json
-from datetime import timedelta
 from unittest import SkipTest
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase, override_settings
-from django.utils import timezone
 
 from dashboard.models import Project
 from detail_project import models as detail_models
@@ -121,7 +119,9 @@ class Phase1OpaqueApiTests(TestCase):
         self.assertTrue(body.get("ok"))
         self.assertRegex(body["computed_parameter"]["name"], r"^cp_[1-9][0-9]*$")
 
-    def test_sync_base_parameters_partial_success_with_warnings(self):
+    def test_sync_base_parameters_invalid_name_rejects_atomically(self):
+        # WP-B3 / VP-03 (supersedes old partial-success-with-warnings): an invalid
+        # item rejects the WHOLE replace sync (422); nothing is created or deleted.
         request = self._post_json(
             "/api/project/parameters/sync/",
             {
@@ -133,17 +133,16 @@ class Phase1OpaqueApiTests(TestCase):
             },
         )
         response = api_project_parameters_sync(request, self.project.id)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 422)
         body = json.loads(response.content.decode("utf-8"))
-        self.assertTrue(body.get("ok"))
-        self.assertEqual(body.get("created"), 1)
-        self.assertEqual(len(body.get("warnings", [])), 1)
-        self.assertEqual(body["warnings"][0]["name"], "diskon")
-        self.assertEqual(body["warnings"][0]["index"], 1)
-        self.assertTrue(ProjectParameter.objects.filter(project=self.project, name="bp_1").exists())
+        self.assertFalse(body.get("ok"))
+        self.assertTrue(body.get("errors"))
+        # Validate-before-delete: the valid item is NOT created when payload is partly invalid.
+        self.assertFalse(ProjectParameter.objects.filter(project=self.project, name="bp_1").exists())
         self.assertFalse(ProjectParameter.objects.filter(project=self.project, name="diskon").exists())
 
-    def test_sync_computed_parameters_partial_success_with_warnings(self):
+    def test_sync_computed_parameters_invalid_name_rejects_atomically(self):
+        # WP-B3 / VP-03 (supersedes old partial-success-with-warnings).
         request = self._post_json(
             "/api/project/computed-parameters/sync/",
             {
@@ -155,37 +154,36 @@ class Phase1OpaqueApiTests(TestCase):
             },
         )
         response = api_project_computed_parameters_sync(request, self.project.id)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 422)
         body = json.loads(response.content.decode("utf-8"))
-        self.assertTrue(body.get("ok"))
-        self.assertEqual(body.get("created"), 1)
-        self.assertEqual(len(body.get("warnings", [])), 1)
-        self.assertEqual(body["warnings"][0]["name"], "total_luas")
-        self.assertEqual(body["warnings"][0]["index"], 1)
-        self.assertTrue(ProjectComputedParameter.objects.filter(project=self.project, name="cp_1").exists())
+        self.assertFalse(body.get("ok"))
+        self.assertTrue(body.get("errors"))
+        self.assertFalse(ProjectComputedParameter.objects.filter(project=self.project, name="cp_1").exists())
         self.assertFalse(ProjectComputedParameter.objects.filter(project=self.project, name="total_luas").exists())
 
-    def test_sync_base_returns_409_when_last_sync_is_stale(self):
+    def test_sync_base_ignores_stale_marker_and_uses_last_write_wins(self):
         ProjectParameter.objects.create(
             project=self.project,
             name="bp_1",
             value="1",
             label="Panjang",
         )
-        stale_ts = (timezone.now() - timedelta(days=1)).isoformat()
         request = self._post_json(
             "/api/project/parameters/sync/",
             {
                 "mode": "replace",
-                "last_sync_at": stale_ts,
+                "last_sync_at": "2000-01-01T00:00:00+00:00",
                 "parameters": {"bp_1": {"value": 2, "label": "Panjang"}},
             },
         )
         response = api_project_parameters_sync(request, self.project.id)
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            ProjectParameter.objects.get(project=self.project, name="bp_1").value,
+            2,
+        )
         body = json.loads(response.content.decode("utf-8"))
-        self.assertEqual(body.get("error"), "conflict")
-        self.assertIn("server_updated_at", body)
+        self.assertTrue(body.get("ok"))
 
     def test_formula_state_get_returns_updated_at_and_synced_at(self):
         VolumeFormulaState.objects.create(
@@ -209,7 +207,7 @@ class Phase1OpaqueApiTests(TestCase):
         self.assertTrue(row["is_fx"])
         self.assertTrue(row.get("updated_at"))
 
-    def test_formula_state_post_returns_409_when_last_sync_is_stale(self):
+    def test_formula_state_ignores_stale_marker_and_uses_last_write_wins(self):
         VolumeFormulaState.objects.create(
             project=self.project,
             pekerjaan=self.pekerjaan,
@@ -217,11 +215,10 @@ class Phase1OpaqueApiTests(TestCase):
             is_fx=True,
         )
 
-        stale_ts = (timezone.now() - timedelta(days=1)).isoformat()
         request = self._post_json(
             "/api/project/volume-formula-state/",
             {
-                "last_sync_at": stale_ts,
+                "last_sync_at": "2000-01-01T00:00:00+00:00",
                 "items": [
                     {
                         "pekerjaan_id": self.pekerjaan.id,
@@ -232,11 +229,15 @@ class Phase1OpaqueApiTests(TestCase):
             },
         )
         response = api_volume_formula_state(request, self.project.id)
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200)
+        state = VolumeFormulaState.objects.get(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+        )
+        self.assertEqual(state.raw, "=bp_1 * 3")
 
         body = json.loads(response.content.decode("utf-8"))
-        self.assertEqual(body.get("error"), "conflict")
-        self.assertIn("server_updated_at", body)
+        self.assertTrue(body.get("ok"))
 
     def test_model_validation_rejects_cross_prefix_names(self):
         with self.assertRaises(ValidationError):

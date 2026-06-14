@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan:** **IN PROGRESS - WP-B1/WP-B2 DONE / WP-B3 NEXT**
+**Status keseluruhan:** **IN PROGRESS - WP-B1/WP-B2/WP-A1/WP-B3 DONE / WP-B4 + WP-A2 NEXT**
 
 ## 1. Aturan Tracking
 
@@ -30,11 +30,11 @@ Status:
 | WP | Scope | Status | Mulai | Selesai | Gate/Dependency | Catatan |
 |---|---|---|---|---|---|---|
 | WP-00 | Inventory, ownership ledger, baseline | IN PROGRESS | 2026-06-14 | - | Gate 0 | Baseline dan consumer scan berjalan |
-| WP-A1 | Stored XSS removal | PENDING | - | - | WP-00 | Boleh paralel setelah baseline |
+| WP-A1 | Stored XSS removal | DONE | 2026-06-14 | 2026-06-14 | WP-00 | F-01+LP-01+RR-01+RR-18 fixed & regression-locked (Django 2 + vitest 9). Browser visual UAT → Fase 4. CSP/SRI = WP-A2 |
 | WP-A2 | CSP report-only/enforcement plan | PENDING | - | - | WP-A1 | - |
 | WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
 | WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
-| WP-B3 | Atomic mutation convention | PENDING | - | - | WP-00 | - |
+| WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
 | WP-B4 | Canonical readiness | PENDING | - | - | WP-B1 | - |
 | WP-B5 | Server-authoritative export | PENDING | - | - | B1/B2/B4 | - |
 | WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
@@ -65,7 +65,7 @@ Status:
 | KF-01 | Audit Trail admin-only tests | Test client redirect login meski `force_login` | known-failing | REMOVE bersama CL-17; pastikan penyebab bukan auth global |
 | KF-02 | Rincian/export-button visibility | 3 fixture mendapat HTTP 302, expected 200 | known-failing | WP-00 triage; fix test/environment bila masih relevan |
 | KF-03 | Rekap Kebutuhan suite teardown | Assertions lulus; exit 1 karena DB dipakai session lain | environment-only | Gunakan `--keepdb`; catat assertion terpisah dari teardown |
-| KF-04 | Frontend Vitest | 235 passed, 25 skipped | passing | Baseline 2026-06-14 |
+| KF-04 | Frontend Vitest | 247 passed, 25 skipped | passing | Checkpoint WP-B3 2026-06-14 |
 | KF-05 | Django targeted baseline | 20 passed sebelum WP-B1 | passing | `tests_item_ssot` + `tests_template_ahsp_formula_state` |
 | KF-06 | Frontend production build | Tidak dijalankan | protected-dirty-output | `detail_project/static/detail_project/dist` sudah memiliki perubahan user; jangan overwrite pada WP-B1 |
 
@@ -226,3 +226,83 @@ Belum dilakukan:
 | 2026-06-14 | WP-B1 | Final targeted regression | PASS | 30 tests; Django system check 0 issue |
 | 2026-06-14 | WP-B2 | Shared signature contract | PASS | Harga bulk, override, volume, progress, endpoint consumers, dan query budget |
 | 2026-06-14 | WP-B2 | Final targeted regression | PASS | 40 tests; Django system check 0 issue |
+| 2026-06-14 | WP-B1/B2 | **Verifikasi independen (Claude) — contract** | PASS | `tests_rekap_calculation_contract` 16/16; konfirmasi `DEFAULT_PROJECT_MARKUP_PERCENT=10.00` (`services.py:37`), controller Rekap RAB tak rekalkulasi (`views_api.py:4577`), chart-data via `build_project_cache_signature` (`:7234`) |
+| 2026-06-14 | WP-B1/B2 | **Gate B1 closure — regresi consumer hilir** | PASS | 70/70: `tests_volume_export_adapter, harga_items_export, harga_items_save_api, list_pekerjaan_export, export_access, export_csrf, item_ssot, change_status_sync, page_cache_headers, api_v2_access, orphan_autocleanup, phase4_negative_param` (+contract). Tak ada regresi dari refactor `compute_rekap_for_project`/signature |
+| 2026-06-14 | WP-B1/B2 | **Regresi dashboard + security + data-safety** | PASS | 48/48: `dashboard` (mass_edit/data_retention/prelaunch_smoke), `tests_page_security_audit`, `tests_phase0_data_safety` |
+
+| 2026-06-14 | WP-A1 | F-01 dashboard chart XSS | PASS | `dashboard.tests_chart_xss` 2/2: payload `</script><script>alert(1)` ter-escape jadi `<...`; nilai numerik (`1000000.0`) tetap angka. Helper `_safe_inline_json` (`dashboard/views.py`) mirror escaping `json_script` + DecimalEncoder float |
+
+**Catatan WP-A1 (decision):** F-01 memakai pendekatan **escape-translate** (`<`/`>`/`&`→`\uXXXX`, U+2028/2029 sudah ditangani `json.dumps ensure_ascii`) — bukan `json_script` — untuk mempertahankan nilai float chart & zero perubahan template/JS (regresi minimal). Migrasi `json_script` + hapus inline = scope **WP-A2 (CSP)**. **WP-A1 SELESAI 2026-06-14:** F-01 (dashboard), LP-01 (preview Template Library), RR-01 (hierarki + highlight Rekap RAB), RR-18 (print reinjection) — semua user-data → `innerHTML` kini di-escape; dikunci `xss_render_guard.test.js` (9) + `xss_governance_guard.test.js` (3) + `dashboard.tests_chart_xss` (2). Sisa di luar WP-A1: WP-A2 (CSP report-only + SRI/self-host) dan browser visual UAT (Fase 4).
+
+**Penutupan Gate B1 (verifikasi independen):** total **134 test OK** lintas 16+ modul consumer terdampak; tidak ada regresi pada Rekap RAB, Rincian AHSP (export parity), Rekap Kebutuhan signature, Kurva S/chart-data cache, Harga Items, SSOT item, change-status sync, dan dashboard/security. Catatan: traceback `Project.DoesNotExist`/`Http404` yang muncul saat run adalah exception yang **memang di-assert** oleh test owner-isolation (bukan kegagalan); hasil akhir runner `OK`. Doc 28 terverifikasi konsisten dengan kondisi kode aktual.
+
+### WP-B3 — Atomic Mutation Convention (increment-1)
+
+Helper bersama **`atomic_error_response`** (`detail_project/api_helpers.py`): `transaction.set_rollback(True)` + envelope konsisten (`ok/success/error/message/errors`), status 400/422/500 — **tak pernah 207 untuk satu save**. Diterapkan ke:
+- **LP-02** (`views_api.py` upsert): error pemrosesan → batalkan SELURUH transaksi SEBELUM delete omitted; `207`→`400` (validate-before-delete).
+- **JDW-01** (`views_api_tahapan_v2.py` assign_weekly): cabang `if errors` kini `set_rollback` (no partial), bukan 400 dgn klaim `saved`.
+- **JDW-03** (sync gagal): rollback seluruh transaksi (weekly + sync) + pesan generik (tak bocor `str(sync_error)`, A-3).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-14 | WP-B3 | `tests_wp_b3_atomic` (failure-injection) | PASS | 5/5: happy-path 200; JDW-01 bad-item→400 + 0 weekly rows (rollback); JDW-03 mocked-sync-fail→500 + 0 rows + no leak; LP-02 mocked-create-fail→4xx + 0 klas/pek (rollback); valid upsert 200 |
+| 2026-06-14 | WP-B3 | Regresi endpoint terdampak | PASS | 22/22: `tests_wp_b3_atomic` + `tests_list_pekerjaan_upsert_validation` + `tests_list_pekerjaan_upsert_drag_drop` + `tests_change_status_sync`; `manage.py check` 0 issue. (Log "Exception: boom" = mock LP-02, bukan kegagalan) |
+
+#### WP-B3 increment-2 — Volume cluster (VP-01/02/03/04)
+
+- **VP-01** (`api_volume_formula_state`): restruktur **validate-all-first → reject atomik**; tak ada lagi "200 dengan errors" parsial. **VP-04** type-guard item non-dict → 400 (bukan 500).
+- **VP-02** (`api_project_parameter_detail` DELETE): dependency guard `_parameter_dependents` (tokenizer match identifier utuh — `bp_3` ≠ `bp_30`) memindai computed expr + volume formula + koef formula; param dipakai → **422** + `usage`, tidak dihapus.
+- **VP-03** (`api_project_parameters_sync` + `api_project_computed_parameters_sync`): **validate-before-delete** pada mode replace — payload sebagian invalid → **422**, tidak menghapus data lama.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-14 | WP-B3 inc-2 | `tests_wp_b3_atomic.VolumeAtomicSyncTests` | PASS | Formula/parameter dan quantity memakai validate-all-first; mixed payload→400/422 tanpa write; VP-02 dependency→422; stale marker diabaikan sesuai LWW |
+| 2026-06-14 | WP-B3 inc-2 | Regresi parameter/formula/volume | PASS | 45/45: + `tests_phase1_opaque_api` + `tests_volume_formula_owner_guard` + `tests_volume_pekerjaan_save_api` + `tests_formula_integration` + `tests_phase0_data_safety` |
+
+**UF-007 (UF-003 terealisasi):** 2 test lama `tests_phase1_opaque_api` (`test_sync_*_partial_success_with_warnings`) mengunci perilaku partial-success-with-warnings (200) yang **dibatalkan VP-03/B-1**. Diperbarui ke kontrak baru: invalid item → **422** atomik, tidak ada partial. Bukan regresi — kontrak lama memang yang salah.
+
+#### WP-B3 increment-3 — Harga Items save (`api_save_harga_items`)
+
+Restruktur **validate-all-first → reject atomik** (no 207):
+- **HI-06**: harga negatif ditolak (`dec < 0` → 400), bukan tersimpan;
+- **HI-01 (backend)**: `harga_satuan` null/empty = **belum diisi → stored NULL** (tidak dikoersi ke 0, tidak error). Catatan: fix penuh HI-01 (FE kirim hanya baris dirty) = WP-P1;
+- atomic: payload sebagian invalid → 400, tidak ada partial (rollback);
+- markup divalidasi sebelum apply.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-14 | WP-B3 inc-3 | `tests_wp_b3_atomic.HargaAtomicSaveTests` | PASS | 5/5: happy→250; HI-06 negatif→400 (harga utuh); HI-01 null & "" → NULL; partial(id invalid)→400 no-207 (rollback, harga tetap 100) |
+| 2026-06-14 | WP-B3 inc-3 | Regresi Harga | PASS | Save atomik, null tetap missing, harga negatif ditolak, stale token diabaikan; frontend tidak membersihkan dirty state setelah rollback |
+
+**Direklasifikasi keluar WP-B3:** HI-16 + HI-02 (conversion "Terapkan dan Simpan" atomik = fitur, D-HI-02) → **WP-P1**. DB `CheckConstraint(koefisien__gte=0)` tetap follow-up hardening migrasi.
+
+#### WP-B3 increment-4 — Template AHSP save (`api_save_detail_ahsp_for_pekerjaan`) — WP-B3 SELESAI
+
+- Atomicity **sudah ada** (kode: "Replace-all saves are atomic… `if errors: return`" — validate-before-mutate, no partial). Tidak diubah.
+- **TA-01**: tambah penolakan koefisien **negatif** (`koef < 0` → 400) untuk koef manual maupun formula; **0 tetap sah**. `bulk_create` tak jalankan `full_clean`, jadi aturan ditegakkan di kode. DB `CheckConstraint(koefisien__gte=0)` = follow-up migrasi (hardening).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-14 | WP-B3 inc-4 | `tests_wp_b3_atomic.TemplateSaveAtomicTests` | PASS | 3/3: happy→200 (1 detail); TA-01 negatif sibling→400 + 0 detail (atomic); koef 0→200 |
+| 2026-06-14 | WP-B3 final | Regresi penuh | PASS | 96/96: `tests_wp_b3_atomic` (20) + `tests_template_ahsp_ui_regressions` + `tests_template_ahsp_formula_state` + `tests_formula_server_validation` + `tests_formula_integration` |
+
+**UF-008 (UF-003 lanjutan):** `test_valid_items_saved_despite_invalid_sibling` (`tests_formula_server_validation`, endpoint `volume-formula-state`) mengunci partial-success (200) yang dibatalkan VP-01/A-5 → diperbarui jadi `test_invalid_sibling_rejects_whole_batch_atomically` (400, valid sibling tak tersimpan).
+
+#### WP-B3 increment-5 — Penutupan verifikasi checkpoint
+
+- Save quantity Volume diubah dari partial `207` menjadi validate-all-first `400` tanpa write.
+- Stale token pada Template AHSP, Harga Items, parameter, computed parameter, dan formula state diabaikan sesuai last-write-wins.
+- Prompt merge/reload dan polling konflik Volume dihapus.
+- Frontend Harga Items mempertahankan seluruh dirty state ketika batch ditolak atomik.
+- Save Volume tidak melanjutkan sync formula bila bagian volume ditolak.
+- Guard frontend `atomic_save_contract_guard.test.js` mengunci kontrak tersebut.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-14 | WP-B3 inc-5 | Contract backend target | PASS | 69/69: WP-B3 + Volume + parameter/formula + Harga + Template |
+| 2026-06-14 | WP-B3 inc-5 | Frontend Vitest | PASS | 247 passed, 25 skipped; atomic/LWW guard 3/3 |
+| 2026-06-14 | WP-B1/B2/A1/B3 checkpoint | Regresi gabungan | PASS | 174/174 backend + 247 frontend; `manage.py check` dan `makemigrations --check --dry-run` bersih |
+
+**WP-B3 SELESAI.** Endpoint target kini all-or-nothing (`200/400-422/500`), tidak memiliki concurrency `409`, tidak mengembalikan `207` untuk form save, dan frontend tidak mengakui data yang di-rollback sebagai tersimpan.
+
+**Residual cleanup yang sengaja tidak diperbaiki:** dua jalur `207` masih berada pada API full-save List Pekerjaan lama dan API Detail AHSP gabungan lama. Keduanya tidak menjadi source aktif UI baru dan dimiliki cleanup Section E (`CL-05`/`CL-10`). Planner cleanup wajib menghapus route/test legacy tersebut; jangan menjadikannya kontrak baru.

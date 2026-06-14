@@ -244,7 +244,7 @@ class TemplateAhspKoefFormulaApiTests(TestCase):
         self.assertFalse(body.get("ok"))
         self.assertIn("bundle", (body.get("user_message") or "").lower())
 
-    def test_save_detail_rejects_stale_client_timestamp(self):
+    def test_save_detail_ignores_stale_token_and_uses_last_write_wins(self):
         loaded_at = self.pekerjaan_custom.updated_at.isoformat()
 
         first_response = self._call_post(
@@ -282,13 +282,18 @@ class TemplateAhspKoefFormulaApiTests(TestCase):
             self.project.id,
             self.pekerjaan_custom.id,
         )
-        self.assertEqual(second_response.status_code, 409, second_response.content.decode("utf-8"))
+        self.assertEqual(second_response.status_code, 200, second_response.content.decode("utf-8"))
         body = json.loads(second_response.content.decode("utf-8"))
-        self.assertFalse(body.get("ok"))
-        self.assertTrue(body.get("conflict"))
-        self.assertTrue(body.get("server_updated_at"))
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(
+            DetailAHSPProject.objects.filter(
+                project=self.project,
+                pekerjaan=self.pekerjaan_custom,
+            ).count(),
+            1,
+        )
 
-    def test_save_detail_accepts_force_overwrite_after_conflict(self):
+    def test_save_detail_ignores_legacy_force_overwrite_flag(self):
         loaded_at = self.pekerjaan_custom.updated_at.isoformat()
 
         first_response = self._call_post(

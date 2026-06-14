@@ -2067,8 +2067,8 @@
         }
       }
 
-      // BUGFIX: Check for validation errors in response
-      // Backend returns status 207 with errors array when validation fails
+      // Defensive compatibility guard; atomic validation failures normally
+      // reject through jfetch before reaching this success branch.
       if (response && response.errors && response.errors.length > 0) {
         console.error('[LP] Save validation errors:', response.errors);
 
@@ -2583,9 +2583,9 @@
         previewTree.innerHTML = klasList.map(k => {
           const subHtml = (k.sub || []).map(s => {
             const pkjCount = (s.pekerjaan || []).length;
-            return `<div class=\"template-sub-item\"><i class=\"bi bi-folder2\"></i> ${s.name} <span class=\"text-muted\">(${pkjCount} pkj)</span></div>`;
+            return `<div class=\"template-sub-item\"><i class=\"bi bi-folder2\"></i> ${escapeHtml(s.name)} <span class=\"text-muted\">(${pkjCount} pkj)</span></div>`;
           }).join('');
-          return `<div class=\"template-klas-item\"><div class=\"template-klas-name\"><i class=\"bi bi-folder-fill text-primary\"></i> ${k.name}</div>${subHtml}</div>`;
+          return `<div class=\"template-klas-item\"><div class=\"template-klas-name\"><i class=\"bi bi-folder-fill text-primary\"></i> ${escapeHtml(k.name)}</div>${subHtml}</div>`;
         }).join('') || '<div class=\"text-muted\">Template kosong</div>';
 
       } catch (err) {

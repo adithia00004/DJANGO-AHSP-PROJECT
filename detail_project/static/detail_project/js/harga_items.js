@@ -95,10 +95,9 @@
   let viewRows = [];
   let bukCanonLoaded = "";
 
-  // P0 FIX: Dirty state tracking & optimistic locking
+  // Dirty state tracking
   let dirty = false;
   let allowUnload = false;
-  let projectUpdatedAt = null;  // Timestamp for optimistic locking
   let formLocked = false;
   let pendingTemplateReloadJobs = new Set(
     sourceChange && projectId ? sourceChange.listReloadJobs(projectId) : [],
@@ -371,10 +370,6 @@
       }
 
       // P0 FIX: OPTIMISTIC LOCKING - Store timestamp when data is loaded
-      if (j.meta && j.meta.project_updated_at) {
-        projectUpdatedAt = j.meta.project_updated_at;
-        console.log('[HARGA_ITEMS] Loaded timestamp:', projectUpdatedAt);
-      }
 
       renderTable(rows);
       setDirty(false);  // Mark as clean after loading
@@ -646,10 +641,7 @@
         return;
       }
 
-      // POLICY single-user / last-save-wins: UI sengaja TIDAK mengirim client_updated_at,
-      // sehingga backend tidak pernah membalas 409 dan dialog konflik di bawah tidak pernah
-      // muncul. Backend tetap DORMAN (reversible): kirim ulang token di sini untuk mengaktifkan.
-      // if (projectUpdatedAt) { payload.client_updated_at = projectUpdatedAt; }
+      // Application policy: last-write-wins. Atomicity is enforced per request.
 
       const spin = document.getElementById('hi-save-spin');
       $btnSave.disabled = true; spin?.removeAttribute('hidden');
@@ -662,108 +654,11 @@
       });
       const j = await res.json();
 
-      // P0 FIX: OPTIMISTIC LOCKING - Handle conflict (409 status)
-      if (!j.ok && j.conflict) {
-        console.warn('[SAVE] Conflict detected - data modified by another user');
-
-        const confirmMsg = [
-          'Konflik data terdeteksi.',
-          '',
-          'Data harga telah diubah oleh pengguna lain sejak Anda membukanya.',
-          '',
-          'Pilih "Muat Ulang" untuk melihat perubahan terbaru (data Anda akan hilang).',
-          'Pilih "Timpa" untuk menyimpan data Anda (perubahan pengguna lain akan hilang).',
-        ].join('\n');
-
-        const doReload = await confirmModal(confirmMsg, {
-          title: 'Konfirmasi Konflik',
-          confirmText: 'Muat Ulang',
-          cancelText: 'Timpa',
-          confirmClass: 'btn btn-primary',
-          cancelClass: 'btn btn-danger',
-        });
-
-        if (doReload) {
-          // User chose to reload - refresh page
-          console.log('[SAVE] User chose to reload');
-          toast('🔄 Memuat ulang data terbaru...', 'info');
-          setTimeout(() => doSafeReload(), 1000);
-        } else {
-          // SAFETY (#3): "Timpa" DAN dismiss (X / Escape / klik backdrop) sama-sama
-          // menghasilkan false dari confirmModal. Wajibkan konfirmasi kedua yang eksplisit
-          // sebelum menimpa perubahan pengguna lain. Dismiss/Batal pada dialog kedua =
-          // tidak melakukan apa pun (input lokal tetap aman, tidak ada penimpaan).
-          const confirmOverwrite = await confirmModal(
-            'Yakin menimpa perubahan pengguna lain? Tindakan ini tidak dapat dibatalkan.',
-            {
-              title: 'Konfirmasi Timpa',
-              confirmText: 'Ya, Timpa',
-              cancelText: 'Batal',
-              confirmClass: 'btn btn-danger',
-              cancelClass: 'btn btn-secondary',
-            }
-          );
-          if (!confirmOverwrite) {
-            toast('Penyimpanan dibatalkan. Perubahan Anda tetap dipertahankan.', 'info');
-            return;
-          }
-
-          // User chose to force overwrite - retry without timestamp
-          console.log('[SAVE] User chose to force overwrite');
-          toast('⚠️ Menyimpan dengan mode timpa...', 'warning');
-
-          const retryPayload = { ...payload };
-          delete retryPayload.client_updated_at;
-
-          const retryRes = await fetch(EP_SAVE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-            credentials: 'same-origin',
-            body: JSON.stringify(retryPayload)
-          });
-          const retryJ = await retryRes.json();
-
-          if (retryJ.ok) {
-            const userMsg = retryJ.user_message || '✅ Data berhasil disimpan (mode timpa)';
-            toast(userMsg, 'success');
-            setDirty(false);
-
-            // Update stored timestamp
-            if (retryJ.project_updated_at) {
-              projectUpdatedAt = retryJ.project_updated_at;
-            }
-
-            // Visual feedback
-            idsSaving.forEach(({ id, canon }) => {
-              const tr = $tbody.querySelector(`tr[data-item-id="${id}"]`);
-              if (!tr) return;
-              tr.classList.add('hi-row-saved');
-              setTimeout(() => tr.classList.remove('hi-row-saved'), 1200);
-              tr.classList.remove('hi-row-empty');
-              tr.classList.toggle('hi-row-zero', Number(canon) === 0);
-              setRowDirtyVisual(tr, false);
-              tr.dataset.origCanon = canon;
-              const input = tr.querySelector('.hi-input-price');
-              input?.classList.remove('ux-invalid');
-            });
-
-            setTimeout(() => fetchList(), 900);
-          } else {
-            const errMsg = retryJ.user_message || 'Gagal menyimpan data.';
-            toast(errMsg, 'error');
-            console.error('[SAVE] Retry failed:', retryJ.errors);
-          }
-        }
-        return; // Exit early - conflict handled
-      }
-
       // P0 FIX: Use user_message from server
       if (!res.ok || !j.ok) {
-        // SAFETY (#2): JANGAN fetchList() saat gagal — itu menimpa input lokal yang belum
-        // tersimpan. Pertahankan input. Karena server melakukan partial-commit (207), baris
-        // yang valid SUDAH tersimpan; tandai baris itu bersih dan biarkan baris gagal tetap
-        // dirty + invalid agar pengguna bisa memperbaikinya dan menyimpan ulang.
-        const userMsg = j.user_message || 'Sebagian gagal disimpan. Input Anda tetap dipertahankan.';
+        // Atomic rejection: no submitted row was persisted. Keep all rows dirty
+        // and only mark the fields identified by the server as invalid.
+        const userMsg = j.user_message || 'Data tidak disimpan. Perbaiki input lalu coba lagi.';
         toast(userMsg, 'warning');
         console.warn('[SAVE] Errors:', j.errors || []);
 
@@ -779,35 +674,15 @@
           if (!tr) return;
           const input = tr.querySelector('.hi-input-price');
           if (failedIdx.has(i)) {
-            // Baris gagal → tetap dirty, tandai invalid untuk diperbaiki.
             input?.classList.add('ux-invalid');
           } else {
-            // Baris ini tersimpan di server → bersihkan dirty TANPA reload (input dipertahankan).
-            tr.classList.add('hi-row-saved');
-            setTimeout(() => tr.classList.remove('hi-row-saved'), 1200);
-            tr.classList.remove('hi-row-empty');
-            tr.classList.toggle('hi-row-zero', Number(canon) === 0);
-            setRowDirtyVisual(tr, false);
-            tr.dataset.origCanon = canon;
             input?.classList.remove('ux-invalid');
           }
         });
-
-        // Refresh token optimistic-lock agar simpan ulang berikutnya tidak memicu konflik palsu
-        // (partial-commit sudah menaikkan project.updated_at di server).
-        if (j.project_updated_at) {
-          projectUpdatedAt = j.project_updated_at;
-        }
       } else {
         const userMsg = j.user_message || `✅ Berhasil menyimpan ${j.updated ?? payload.items.length} item.`;
         toast(userMsg, 'success');
         setDirty(false);  // Mark as clean after successful save
-
-        // P0 FIX: Update stored timestamp after successful save
-        if (j.project_updated_at) {
-          projectUpdatedAt = j.project_updated_at;
-          console.log('[SAVE] Updated timestamp:', projectUpdatedAt);
-        }
 
         // Tandai baris-baris yang tersimpan dan bersihkan status dirty/empty
         idsSaving.forEach(({ id, canon }) => {

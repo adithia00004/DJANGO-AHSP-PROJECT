@@ -14,8 +14,42 @@ from typing import Any, Dict, Optional, List
 from django.http import JsonResponse, QueryDict
 from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
+from django.db import transaction as _db_transaction
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# WP-B3: ATOMIC MUTATION CONVENTION (B-1 / A-5)
+# ============================================================================
+
+def atomic_error_response(errors=None, *, status=400, message=None, **extra):
+    """Reject an atomic save as all-or-nothing.
+
+    Rolls back the *current* transaction (so no partial write survives) and
+    returns a consistent error envelope. Use for any single save/form where
+    one or more items failed validation or processing.
+
+    Contract (doc 26 A-5 / B-1):
+    - single save = 200 / 400-422 / 500 — NEVER 207 (207 only for genuinely
+      independent batches, e.g. multiple exports/projects);
+    - response must NOT claim any item was saved;
+    - last-write-wins: no optimistic-locking 409 here.
+
+    Must be called inside a ``transaction.atomic`` block.
+    """
+    _db_transaction.set_rollback(True)
+    errors = errors or []
+    msg = message or "Perubahan ditolak. Tidak ada perubahan yang disimpan."
+    payload = {
+        "ok": False,
+        "success": False,
+        "error": msg,
+        "message": msg,
+        "errors": errors,
+    }
+    payload.update(extra)
+    return JsonResponse(payload, status=status)
 
 
 # ============================================================================

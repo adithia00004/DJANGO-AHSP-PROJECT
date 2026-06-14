@@ -38,6 +38,10 @@ from detail_project.progress_utils import (
 
 # Import helper from original views
 from detail_project.views_api_tahapan import _owner_or_404
+from detail_project.api_helpers import atomic_error_response
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -369,31 +373,30 @@ def api_assign_pekerjaan_weekly(request, project_id):
                 'validation_errors': validation_errors
             }, status=400)
 
-        # If errors, return them
+        # WP-B3 / JDW-01: atomic all-or-nothing — roll back, no partial save, no 207.
         if errors:
-            return JsonResponse({
-                'ok': False,
-                'error': 'Some assignments failed',
-                'errors': errors,
-                'saved': saved_assignments,
-                'saved_assignments': saved_assignments
-            }, status=400)
+            return atomic_error_response(
+                errors=errors,
+                status=400,
+                message='Sebagian perubahan tidak valid. Tidak ada perubahan yang disimpan.',
+            )
 
         # Success: keep PekerjaanTahapan (view layer) in sync so legacy reads stay accurate.
         # Note: mode here refers to time scale mode ('weekly'), not progress mode ('planned'/'actual')
         try:
             synced_count = sync_weekly_to_tahapan(project.id, mode='weekly', week_end_day=week_end_day)
-        except Exception as sync_error:
-            import traceback
-            traceback.print_exc()
-            return JsonResponse({
-                'ok': False,
-                'error': f'Assignments saved, but failed to sync view layer: {sync_error}',
-                'created_count': created_count,
-                'updated_count': updated_count,
-                'assignments': saved_assignments,
-                'saved_assignments': saved_assignments
-            }, status=500)
+        except Exception:
+            # WP-B3 / JDW-03: sync is part of the save contract. On failure roll
+            # back the weekly writes too (no canonical/projection drift) and do
+            # not leak the exception detail (A-3).
+            logger.exception(
+                "assign_weekly: sync_weekly_to_tahapan failed",
+                extra={'project_id': project.id},
+            )
+            return atomic_error_response(
+                status=500,
+                message='Gagal menyimpan jadwal. Tidak ada perubahan yang disimpan.',
+            )
 
         # Invalidate caches for affected pekerjaan
         affected_pekerjaan_ids = {item.get('pekerjaan_id') for item in assignments if item.get('pekerjaan_id')}

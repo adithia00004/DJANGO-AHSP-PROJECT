@@ -95,9 +95,6 @@
   let formulaSyncTimer = null;
   let formulaSyncInFlight = false;
   let formulaSyncAt = null;
-  let formulaRemoteStaleAt = '';
-  let formulaRemoteWatchTimer = null;
-  let formulaRemotePromptedAt = '';
   let formulaLocalDirty = false;
   let formulaEditorHasBlockingError = false;
   let formulaEditorBlockingMessage = '';
@@ -111,7 +108,6 @@
   const rawInputTouchedAtById = {};
   const negativeClampNoticeById = new Set(); // non-blocking warning agar tidak spam
   const FORMULA_SYNC_DELAY = 1600;
-  const FORMULA_REMOTE_WATCH_MS = 30000;
   const SUGGEST_HIDE_DELAY_MS = 200;
   const FORMULA_ALLOWED_FUNCTIONS = Object.freeze([
     'sum', 'min', 'max', 'round', 'avg', 'abs', 'floor', 'ceil', 'pow',
@@ -2960,37 +2956,8 @@
     formulaSyncInFlight = true;
     showFormulaSyncStatus('pending');
     try {
-      const res = await HTTP.jpost(EP_FORMULA_STATE, {
-        items,
-        last_sync_at: formulaSyncAt || null,
-      });
+      const res = await HTTP.jpost(EP_FORMULA_STATE, { items });
       syncFormulaStateToServer._retries = 0;
-
-      if (res.status === 409 || res.data?.error === 'conflict') {
-        const staleAt = String(res.data?.server_updated_at || '').trim();
-        formulaRemoteStaleAt = staleAt;
-        formulaRemotePromptedAt = staleAt || formulaRemotePromptedAt;
-        showFormulaSyncStatus('stale');
-        const touchedRows = items
-          .map((it) => Number(it.pekerjaan_id))
-          .filter((it) => Number.isFinite(it))
-          .slice(0, 4);
-        const touchedText = touchedRows.length ? ` baris #${touchedRows.join(', #')}` : '';
-        const staleText = staleAt ? ` (server update ${formatIsoDateTime(staleAt) || staleAt})` : '';
-        TOAST.action(`Konflik sinkron formula pada${touchedText}${staleText}. Merge = pertahankan edit lokal + server, Reload = pakai versi server.`, [
-          {
-            label: 'Merge',
-            class: 'btn-warning',
-            onClick: () => { mergeFormulaChangesFromServer({ showNotice: true }); },
-          },
-          {
-            label: 'Reload',
-            class: 'btn-outline-light',
-            onClick: () => { confirmReload('Data formula di server lebih baru.'); },
-          },
-        ]);
-        return { ok: false, conflict: true, synced: 0 };
-      }
 
       if (!(res.ok && res.data?.ok)) {
         showFormulaSyncStatus('error');
@@ -3003,8 +2970,6 @@
       items.forEach((item) => formulaDirtySet.delete(Number(item.pekerjaan_id)));
       clearFormulaLocalDirtyIfClean();
       if (res.data?.synced_at) setFormulaSyncAt(String(res.data.synced_at));
-      formulaRemoteStaleAt = '';
-      formulaRemotePromptedAt = '';
       showFormulaSyncStatus('synced');
       setBtnSaveEnabled();
       return { ok: true, synced: items.length };
@@ -3090,70 +3055,6 @@
       handleInputChange(id, input, preview, false);
     });
     setBtnSaveEnabled();
-  }
-
-  async function mergeFormulaChangesFromServer(options = {}) {
-    const result = await fetchFormulaStateSnapshotFromServer();
-    if (!result) {
-      TOAST.warn('Tidak bisa mengambil perubahan formula dari server.');
-      return false;
-    }
-    const local = loadFormulas();
-    const merged = mergeFormulaStateMaps(result.map, local);
-    saveFormulas(merged);
-    applyFormulaSnapshotToRows(merged);
-    if (result.synced_at) setFormulaSyncAt(result.synced_at);
-    formulaRemoteStaleAt = '';
-    formulaRemotePromptedAt = '';
-    showFormulaSyncStatus('synced');
-    if (options.showNotice !== false) {
-      TOAST.ok('Perubahan formula terbaru berhasil digabungkan.');
-    }
-    return true;
-  }
-
-  async function checkFormulaRemoteChanges(options = {}) {
-    const force = options.force === true;
-    if (!force && formulaSyncInFlight) return;
-    const result = await fetchFormulaStateSnapshotFromServer();
-    if (!result || !result.synced_at) return;
-    const serverMs = parseIsoMs(result.synced_at);
-    const localMs = parseIsoMs(formulaSyncAt);
-    if (!serverMs) return;
-    if (!localMs) {
-      setFormulaSyncAt(result.synced_at);
-      return;
-    }
-    if (serverMs <= localMs) return;
-
-    formulaRemoteStaleAt = result.synced_at;
-    showFormulaSyncStatus('stale');
-    if (formulaRemotePromptedAt === result.synced_at) return;
-    formulaRemotePromptedAt = result.synced_at;
-
-    TOAST.action('Data formula berubah di server. Pilih merge atau reload.', [
-      {
-        label: 'Merge',
-        class: 'btn-warning',
-        onClick: () => { mergeFormulaChangesFromServer({ showNotice: true }); },
-      },
-      {
-        label: 'Reload',
-        class: 'btn-outline-light',
-        onClick: () => { confirmReload('Data formula berubah di server.'); },
-      },
-    ]);
-  }
-
-  function startFormulaRemoteWatch() {
-    if (formulaRemoteWatchTimer) clearInterval(formulaRemoteWatchTimer);
-    formulaRemoteWatchTimer = setInterval(() => {
-      if (document.hidden) return;
-      checkFormulaRemoteChanges();
-    }, FORMULA_REMOTE_WATCH_MS);
-    window.addEventListener('focus', () => {
-      checkFormulaRemoteChanges({ force: true });
-    });
   }
 
   function persistRowFormula(id) {
@@ -6447,7 +6348,6 @@
       applyCollapseOnCards();
       syncSummaryBarWithCurrentFilter();
       if (formulaDirtySet.size) scheduleFormulaServerSync();
-      checkFormulaRemoteChanges();
     } catch (e) {
       console.warn('Prefill rekap gagal', e);
       await enhanceWithGroups();
@@ -6586,16 +6486,13 @@
         const res = await HTTP.jpost(EP_SAVE, { items });
         json = res?.data || {};
         const errCount = Array.isArray(json.errors) ? json.errors.length : 0;
-        // FIX(#A): tentukan baris yang BENAR-BENAR tersimpan dari server.
-        // Hanya baris ini yang boleh di-commit; sisanya tetap dirty (input dipertahankan).
-        // Penting: partial-save kini balas 207 (res.ok tetap true), jadi kita TIDAK boleh
-        // mengandalkan res.ok saja — selalu cek json.errors & saved_job_ids.
-        if (Array.isArray(json.saved_job_ids)) {
+        // Atomic response: acknowledge rows only after a complete success.
+        if (res.ok && json.ok && errCount === 0 && Array.isArray(json.saved_job_ids)) {
           savedIdSet = new Set(json.saved_job_ids.map(Number));
-        } else if (res.ok && errCount === 0) {
+        } else if (res.ok && json.ok && errCount === 0) {
           savedIdSet = new Set(postingIds.map(Number));
         }
-        if (!res.ok || errCount > 0) {
+        if (!res.ok || !json.ok || errCount > 0) {
           markErrors(json);
           const savedCount = savedIdSet.size;
           const failedCount = postingIds.length - savedCount;
@@ -6605,6 +6502,11 @@
         }
       }
       const volumeSaved = savedIdSet.size > 0;
+      if (hasVolumeChanges && !volumeSaved) {
+        // Treat one Save action as a unit from the user's perspective. Do not
+        // persist formula sidecars after the volume portion was rejected.
+        return;
+      }
 
       if (formulaSyncTimer) {
         clearTimeout(formulaSyncTimer);
@@ -6620,13 +6522,6 @@
           if (reason === 'manual') TOAST.ok(`Formula tersimpan (${formulaResult.synced}).`);
         } else if (!formulaResult.ok && reason === 'manual') {
           setSaveStatus('Sinkron formula gagal.', 'danger');
-        }
-        return;
-      }
-
-      if (!volumeSaved) {
-        if (formulaResult.ok && formulaResult.synced > 0) {
-          TOAST.warn(`Formula tersimpan (${formulaResult.synced}), tetapi volume belum tersimpan.`);
         }
         return;
       }
@@ -6827,7 +6722,6 @@
   let paramSyncTimer = null;
   let computedSyncTimer = null;
   const PARAM_SYNC_DELAY = 2000; // 2 seconds debounce
-  let syncConflictPromptOpen = false;
   let baseParamSyncAt = null;
   let computedParamSyncAt = null;
 
@@ -6972,33 +6866,6 @@
       syncComputedParamsToServer();
     }, PARAM_SYNC_DELAY);
   }
-  async function promptSyncConflict(kind, serverUpdatedAt) {
-    if (syncConflictPromptOpen) return;
-    syncConflictPromptOpen = true;
-    try {
-      const kindLabel = kind === 'computed'
-        ? 'formula turunan'
-        : (kind === 'formula' ? 'formula volume' : 'parameter');
-      const tsInfo = serverUpdatedAt ? `\nWaktu update server: ${serverUpdatedAt}` : '';
-      const ok = await confirmModal(
-        `Terdeteksi konflik sinkronisasi ${kindLabel} (data di server lebih baru).${tsInfo}\n\nReload data dari server sekarang?`,
-        {
-          title: 'Konflik Sinkronisasi',
-          confirmText: 'Reload',
-          cancelText: 'Tetap Lokal',
-          confirmClass: 'btn btn-warning',
-        }
-      );
-      if (ok) {
-        window.location.reload();
-        return;
-      }
-      TOAST.warn('Perubahan lokal dipertahankan sementara. Lakukan sinkronisasi ulang setelah review.');
-    } finally {
-      syncConflictPromptOpen = false;
-    }
-  }
-
   function summarizeSyncWarnings(warnings) {
     if (!Array.isArray(warnings) || !warnings.length) return '';
     return warnings.slice(0, 3).map((w, idx) => {
@@ -7023,14 +6890,7 @@
       const res = await HTTP.jpost(EP_PARAMS_SYNC, {
         parameters: params,
         mode: 'replace',
-        last_sync_at: baseParamSyncAt || null,
       });
-
-      if (res.status === 409 || res.data?.error === 'conflict') {
-        showParamSyncStatus('error');
-        await promptSyncConflict('base', res.data?.server_updated_at || '');
-        return;
-      }
 
       if (res.ok && res.data?.ok) {
         console.log('[VP] Params synced to server:', {
@@ -7074,13 +6934,7 @@
       const res = await HTTP.jpost(EP_CPARAMS_SYNC, {
         computed_parameters: payload,
         mode: 'replace',
-        last_sync_at: computedParamSyncAt || null,
       });
-      if (res.status === 409 || res.data?.error === 'conflict') {
-        showParamSyncStatus('error');
-        await promptSyncConflict('computed', res.data?.server_updated_at || '');
-        return;
-      }
       if (res.ok && res.data?.ok) {
         console.log('[VP] Computed params synced to server:', {
           created: Number(res.data?.created || 0),
@@ -7378,8 +7232,6 @@
   initSidebarPaneTabs();
   loadFormulaPreviewMode();
   loadFormulaShowInlineValues();
-  startFormulaRemoteWatch();
-
   // Load from server (async - will replace local snapshot and re-render)
   runOpaqueMigrationLoadOnce().then((didMigrateLoad) => {
     if (!didMigrateLoad) {

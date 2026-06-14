@@ -63,6 +63,23 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 
+# WP-A1 / F-01: XSS-safe embedding of JSON inside an inline <script> block.
+# Mirrors django.utils.html.json_script escaping so free-text values
+# (e.g. sumber_dana) containing "</script>" cannot break out of the
+# script context. Preserves DecimalEncoder float output (no chart change).
+_JSON_SCRIPT_ESCAPES = {
+    ord('<'): '\\u003c',
+    ord('>'): '\\u003e',
+    ord('&'): '\\u0026',
+    ord(' '): '\\u2028',
+    ord(' '): '\\u2029',
+}
+
+
+def _safe_inline_json(value):
+    return mark_safe(json.dumps(value, cls=DecimalEncoder).translate(_JSON_SCRIPT_ESCAPES))
+
+
 def _get_safe_next(request, default_name='dashboard:dashboard'):
     next_url = request.POST.get('next') or request.GET.get('next')
     if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
@@ -534,9 +551,9 @@ def dashboard_view(request):
         },
         # Chart data (JSON serialized for JavaScript)
         'chart_data': {
-            'projects_by_year': mark_safe(json.dumps(list(projects_by_year), cls=DecimalEncoder)),
-            'projects_by_sumber': mark_safe(json.dumps(list(projects_by_sumber), cls=DecimalEncoder)),
-            'budget_by_year': mark_safe(json.dumps(list(budget_by_year), cls=DecimalEncoder)),
+            'projects_by_year': _safe_inline_json(list(projects_by_year)),
+            'projects_by_sumber': _safe_inline_json(list(projects_by_sumber)),
+            'budget_by_year': _safe_inline_json(list(budget_by_year)),
         },
         # Recent activity
         'recent_created': recent_created,

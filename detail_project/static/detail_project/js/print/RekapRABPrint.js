@@ -11,6 +11,11 @@
 
 import { PrintComponents, PrintUtils } from './PrintComponents.js';
 
+// RR-18: escape user-controlled text before reinjecting into innerHTML.
+// Print extracts values via textContent (which decodes HTML entities), so they
+// must be re-escaped before being placed back into an innerHTML template.
+const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
 export function initRekapRABPrint(rabModule) {
   if (!rabModule || !rabModule.btnPrint) {
     PrintUtils.log('Warning: RABModule or print button not found');
@@ -291,27 +296,27 @@ class RekapRABPrintHandler {
             <tr>
               <td class="info-label">Nama Proyek</td>
               <td class="info-separator">:</td>
-              <td class="info-value">${info.projectName || '-'}</td>
+              <td class="info-value">${escapeHtml(info.projectName || '-')}</td>
             </tr>
             <tr>
               <td class="info-label">Pemilik Proyek</td>
               <td class="info-separator">:</td>
-              <td class="info-value">${info.owner || '-'}</td>
+              <td class="info-value">${escapeHtml(info.owner || '-')}</td>
             </tr>
             <tr>
               <td class="info-label">Lokasi</td>
               <td class="info-separator">:</td>
-              <td class="info-value">${info.location || '-'}</td>
+              <td class="info-value">${escapeHtml(info.location || '-')}</td>
             </tr>
             <tr>
               <td class="info-label">Tahun Anggaran</td>
               <td class="info-separator">:</td>
-              <td class="info-value">${info.year || new Date().getFullYear()}</td>
+              <td class="info-value">${escapeHtml(info.year || new Date().getFullYear())}</td>
             </tr>
             <tr>
               <td class="info-label">Sumber Dana</td>
               <td class="info-separator">:</td>
-              <td class="info-value">${info.sumberDana || '-'}</td>
+              <td class="info-value">${escapeHtml(info.sumberDana || '-')}</td>
             </tr>
             <tr>
               <td class="info-label">Tanggal Cetak</td>
@@ -349,8 +354,8 @@ class RekapRABPrintHandler {
               ${klasifikasiData.map((item, idx) => `
                 <tr>
                   <td style="text-align: center;">${idx + 1}</td>
-                  <td>${item.name}</td>
-                  <td style="text-align: right;">${item.total}</td>
+                  <td>${escapeHtml(item.name)}</td>
+                  <td style="text-align: right;">${escapeHtml(item.total)}</td>
                 </tr>
               `).join('')}
             </tbody>

@@ -87,6 +87,8 @@
   }
 
   const escAttr = (s = '') => String(s ?? '').replace(/"/g, '&quot;');
+  // RR-01: full HTML escaping for any user-controlled text rendered via innerHTML.
+  const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   const levelLabel = (level) => {
     if (level === 1) return 'Klasifikasi';
     if (level === 2) return 'Sub-klasifikasi';
@@ -321,8 +323,8 @@
       
       // ENHANCEMENT #1: Apply highlight pada nama K/S
       const displayName = currentFilter 
-        ? highlightMatch(node.name, currentFilter)
-        : node.name;
+        ? highlightMatch(escapeHtml(node.name), currentFilter)
+        : escapeHtml(node.name);
       const toggleLabel = (plainLabel ? `${labelType} ${plainLabel}` : labelType).trim();
       
       tdU.innerHTML = `<span class="toggle" role="button" tabindex="0" aria-expanded="${isExpanded}" aria-label="Toggle ${escAttr(toggleLabel)}"><i class="bi ${icon} me-1"></i></span>${displayName}`;
@@ -333,11 +335,11 @@
     } else {
       // ENHANCEMENT #1: Apply highlight pada label & kode pekerjaan
       const displayLabel = currentFilter 
-        ? highlightMatch(node.label, currentFilter)
-        : node.label;
+        ? highlightMatch(escapeHtml(node.label), currentFilter)
+        : escapeHtml(node.label);
       const displayKode = currentFilter && node.kode
-        ? highlightMatch(node.kode, currentFilter)
-        : (node.kode || '');
+        ? highlightMatch(escapeHtml(node.kode), currentFilter)
+        : escapeHtml(node.kode || '');
       
       tdU.innerHTML = `<span class="text-muted small d-block">Pekerjaan</span><span>${displayLabel}</span>`;
       tdK.innerHTML = displayKode;

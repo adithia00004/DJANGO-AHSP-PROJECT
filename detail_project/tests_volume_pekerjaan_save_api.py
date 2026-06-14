@@ -252,23 +252,23 @@ class SaveVolumePekerjaanApiTests(TestCase):
         paths = [e.get("path") for e in body.get("errors", [])]
         self.assertIn("[0]", paths)
 
-    def test_partial_success_returns_207_with_saved_job_ids(self):
-        # Partial save (some rows rejected) must be DISTINGUISHABLE so the frontend
-        # only commits rows that actually persisted and keeps failed rows dirty.
+    def test_mixed_validity_rejects_whole_batch_atomically(self):
         response = self._post(
             [
                 {"pekerjaan_id": self.pekerjaan.id, "quantity": "2.5"},
                 {"pekerjaan_id": self.foreign_pekerjaan.id, "quantity": "3"},
             ]
         )
-        self.assertEqual(response.status_code, 207, response.content.decode("utf-8"))
+        self.assertEqual(response.status_code, 400, response.content.decode("utf-8"))
         body = json.loads(response.content.decode("utf-8"))
-        # ok is False on partial (not fully successful); `saved` counts persisted rows.
         self.assertFalse(body.get("ok"))
-        self.assertEqual(body.get("saved"), 1)
         self.assertTrue(body.get("errors"))
-        # saved_job_ids must list ONLY the row that actually persisted.
-        self.assertEqual(body.get("saved_job_ids"), [self.pekerjaan.id])
+        self.assertFalse(
+            VolumePekerjaan.objects.filter(
+                project=self.project,
+                pekerjaan=self.pekerjaan,
+            ).exists()
+        )
 
     def test_non_owner_cannot_save_foreign_project(self):
         with self.assertRaises(Http404):

@@ -143,7 +143,7 @@ from .export_config import (
     format_volume,
 )
 from .exports import RekapRABExporter, RekapKebutuhanExporter
-from .api_helpers import rate_limit
+from .api_helpers import rate_limit, atomic_error_response
 from accounts.mixins import api_pdf_export_allowed
 from .formula_tokenizer import remap_expression
 
@@ -460,16 +460,6 @@ def _latest_project_param_update(project, model_cls):
         .aggregate(ts=Max("updated_at"))
         .get("ts")
     )
-
-
-def _is_stale_sync(project, model_cls, payload):
-    client_ts = _parse_sync_timestamp(payload.get("last_sync_at"))
-    if not client_ts:
-        return False, None
-    latest_ts = _latest_project_param_update(project, model_cls)
-    if latest_ts and latest_ts > client_ts:
-        return True, latest_ts
-    return False, latest_ts
 
 
 def _next_opaque_name(project, prefix: str) -> str:
@@ -1662,6 +1652,15 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         # baru dipindahkan ke klas/sub lain (masih diproses pada iterasi berikutnya),
         # lalu memicu DatabaseError: "Save with update_fields did not affect any rows."
 
+    # WP-B3 / LP-02: atomic all-or-nothing. Jika ada error pemrosesan, batalkan
+    # SELURUH transaksi SEBELUM delete omitted dijalankan — jangan 207 parsial.
+    if errors:
+        return atomic_error_response(
+            errors=errors,
+            status=400,
+            message=f"{len(errors)} perubahan tidak dapat diproses. Tidak ada perubahan yang disimpan.",
+        )
+
     # Hapus sub yang tidak ada di payload (global, setelah seluruh mutasi selesai)
     SubKlasifikasi.objects.filter(project=project).exclude(id__in=keep_all_s).delete()
 
@@ -1671,7 +1670,7 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # Hapus pekerjaan yang tidak ada di payload (global, setelah seluruh mutasi selesai)
     Pekerjaan.objects.filter(project=project).exclude(id__in=keep_all_p).delete()
 
-    status = 200 if not errors else 207
+    status = 200  # WP-B3: errors already rejected atomically above (no 207)
     summary = {
         "klasifikasi": Klasifikasi.objects.filter(project=project).count(),
         "sub": SubKlasifikasi.objects.filter(project=project).count(),
@@ -1729,9 +1728,8 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
         return JsonResponse({"ok": False, "errors": [_err("$", "Harus array of objek atau {items:[...]}")]}, status=400)
  
 
-    saved = 0
-    saved_job_ids = []
     errors = []
+    plan = []
 
     for idx, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -1747,10 +1745,11 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
             errors.append(_err(key, "Wajib"))
             continue
 
-        # Validasi kepemilikan pekerjaan supaya tidak 500 saat FK tak cocok
+        # Validate ownership before any mutation so a mixed payload cannot
+        # persist only its valid rows.
         try:
             from .models import Pekerjaan
-            Pekerjaan.objects.get(id=pid, project=project)
+            pekerjaan = Pekerjaan.objects.get(id=pid, project=project)
         except Pekerjaan.DoesNotExist:
             key = f"{path_prefix}[{idx}].pekerjaan_id" if path_prefix else f"[{idx}].pekerjaan_id"
             errors.append(_err(key, "Pekerjaan tidak ditemukan di project ini"))
@@ -1768,38 +1767,42 @@ def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
             errors.append(_err(key, "Tidak boleh negatif"))
             continue
 
+        plan.append((pekerjaan, qty))
+
+    if errors:
+        return atomic_error_response(
+            errors=errors,
+            status=400,
+            message=f"{len(errors)} volume tidak valid. Tidak ada perubahan yang disimpan.",
+            user_message=(
+                "Perubahan volume ditolak karena ada data yang tidak valid. "
+                "Tidak ada perubahan yang disimpan."
+            ),
+        )
+
+    saved_job_ids = []
+    for pekerjaan, qty in plan:
         VolumePekerjaan.objects.update_or_create(
             project=project,
-            pekerjaan_id=pid,
+            pekerjaan=pekerjaan,
             defaults={"quantity": qty},
         )
-        saved += 1
-        saved_job_ids.append(int(pid))
+        saved_job_ids.append(pekerjaan.id)
 
-    # CACHE FIX: Invalidate cache AFTER transaction commits
-    if saved:
+    if saved_job_ids:
         clear_source_change_flags(project, volume_reset_job_ids=saved_job_ids)
         transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
-    # Semua sukses â†’ 200. Sebagian gagal â†’ 207. Semua gagal â†’ 400.
-    if errors and saved > 0:
-        status_code = 207
-    elif errors:
-        status_code = 400
-    else:
-        status_code = 200
     dp_vol = getattr(VolumePekerjaan._meta.get_field('quantity'), 'decimal_places', DECIMAL_SPEC["VOL"].dp)
     return JsonResponse(
         {
-            "ok": saved > 0 and not errors,
-            "saved": saved,
-            # FIX(#A): kirim id baris yang BENAR-BENAR tersimpan agar frontend hanya
-            # meng-commit baseline untuk baris ini; baris yang gagal tetap "dirty".
+            "ok": True,
+            "saved": len(saved_job_ids),
             "saved_job_ids": saved_job_ids,
-            "errors": errors,
+            "errors": [],
             "decimal_places": dp_vol,
         },
-        status=status_code,
+        status=200,
     )
 
 # ---------- View 2b: Volume LIST (flat, ringan) ----------
@@ -1859,10 +1862,7 @@ def api_list_volume_pekerjaan(request: HttpRequest, project_id: int):
 
 def _detail_ahsp_version(pkj: Pekerjaan):
     """
-    Version token for Template AHSP optimistic locking.
-
-    Detail AHSP saves are scoped to one pekerjaan. Using project.updated_at here
-    creates false conflicts when another pekerjaan in the same project was saved.
+    Last-modified marker returned for UI freshness information.
     """
     return getattr(pkj, "detail_last_modified", None) or getattr(pkj, "updated_at", None)
 
@@ -2064,7 +2064,7 @@ def build_detail_ahsp_payload(project, pkj):
             "source_label": source_label,
             "detail_ready": pkj.detail_ready,
             "budgeted_cost": float(pkj.budgeted_cost or 0),
-            "updated_at": _detail_ahsp_version_iso(pkj),  # Detail-scoped optimistic locking token
+            "updated_at": _detail_ahsp_version_iso(pkj),
             "detail_updated_at": _detail_ahsp_version_iso(pkj),
         },
         "items": items,
@@ -2166,39 +2166,6 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
             "errors": [_err("$", "Payload JSON tidak valid")]
         }, status=400)
 
-    client_updated_at = payload.get("client_updated_at")
-    force_overwrite = payload.get("force_overwrite") is True
-    if client_updated_at and not force_overwrite:
-        client_dt = parse_datetime(str(client_updated_at))
-        if client_dt is None:
-            return JsonResponse({
-                "ok": False,
-                "user_message": "Token versi data tidak valid. Muat ulang halaman lalu coba lagi.",
-                "errors": [_err("client_updated_at", "Format timestamp tidak valid")],
-            }, status=400)
-        if timezone.is_naive(client_dt):
-            client_dt = timezone.make_aware(client_dt, py_timezone.utc)
-
-        server_dt = _detail_ahsp_version(pkj)
-        if server_dt and client_dt < server_dt:
-            logger.warning(
-                "[SAVE_DETAIL_AHSP] CONFLICT project=%s pekerjaan=%s client=%s server=%s",
-                project.id,
-                pkj.id,
-                client_dt.isoformat(),
-                server_dt.isoformat(),
-            )
-            return JsonResponse({
-                "ok": False,
-                "conflict": True,
-                "user_message": (
-                    "Detail AHSP telah berubah sejak terakhir dimuat. "
-                    "Muat ulang data terbaru atau konfirmasi timpa."
-                ),
-                "server_updated_at": server_dt.isoformat(),
-                "errors": [_err("client_updated_at", "Data telah berubah di server")],
-            }, status=409)
-
     rows = payload.get('rows') or []
     if not isinstance(rows, list):
         return JsonResponse({
@@ -2252,7 +2219,11 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         if not kode:
             errors.append(_err(f"rows[{i}].kode", "Wajib")); continue
         if koef is None:
-            errors.append(_err(f"rows[{i}].koefisien", "Harus â‰¥ 0 dan berupa angka yang valid")); continue
+            errors.append(_err(f"rows[{i}].koefisien", "Harus berupa angka yang valid")); continue
+        # WP-B3 / TA-01: reject negative manual koefisien (0 is a valid input).
+        # bulk_create() does not run full_clean, so enforce the domain rule here.
+        if koef < 0:
+            errors.append(_err(f"rows[{i}].koefisien", "Koefisien tidak boleh negatif")); continue
         if koef_is_fx and koef_formula_raw:
             formula_errors = _validate_formula_raw(koef_formula_raw)
             if formula_errors:
@@ -2369,12 +2340,12 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     if errors and not normalized:
         all_warnings = all(err.get("severity") == "warning" for err in errors)
         allow_soft = getattr(project, "allow_bundle_soft_errors", False)
-        status = 207 if (all_warnings and allow_soft) else 400
+        status = 400
         logger.debug(
             "SAVE_DETAIL_AHSP soft_errors=%s all_warnings=%s status=%s project_id=%s",
             allow_soft, all_warnings, status, project.id
         )
-        log_fn = logger.warning if status == 207 else logger.error
+        log_fn = logger.error
         log_fn(f"[SAVE_DETAIL_AHSP] No valid rows ({len(errors)} errors) â€“ status={status}")
         error_count = len(errors)
         if all_warnings:
@@ -2760,7 +2731,7 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
     _commit_unit_code_state(unit_code_state, should_persist=len(saved_raw_details) > 0)
     logger.info(f"[SAVE_DETAIL_AHSP] Updated pekerjaan.detail_ready = {detail_ready}")
 
-    # OPSI A: Update project timestamp for optimistic locking
+    # Keep the project change marker current for downstream cache/status consumers.
     if len(saved_raw_details) > 0:
         project.updated_at = timezone.now()
         project.save(update_fields=['updated_at'])
@@ -2794,17 +2765,12 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
 
     transaction.on_commit(cascade_operations)
 
-    if errors:
-        status_code = 207 if len(saved_raw_details) > 0 else 400
-    else:
-        status_code = 200
+    status_code = 400 if errors else 200
     logger.info(f"[SAVE_DETAIL_AHSP] SUCCESS - Status: {status_code}, Raw: {len(saved_raw_details)}, Expanded: {len(expanded_to_create)}, Errors: {len(errors)}")
 
     # Build user-friendly message
     if status_code == 200:
         user_message = f"[OK] Data berhasil disimpan! {len(saved_raw_details)} baris komponen tersimpan."
-    elif status_code == 207:
-        user_message = f"[WARN] Data tersimpan sebagian. {len(saved_raw_details)} baris berhasil, {len(errors)} kesalahan ditemukan."
     else:
         user_message = f"[ERROR] Gagal menyimpan data. {len(errors)} kesalahan ditemukan."
 
@@ -2933,11 +2899,8 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     - Validates items against DetailAHSPExpanded (expanded components)
     - Only allows editing items that are actually used in expanded storage
 
-    P0 FIXES (2025-11-11):
-    - Added row-level locking to prevent concurrent edit race conditions
-    - Added optimistic locking with timestamp checking
-    - Fixed cache invalidation timing
-    - Added user-friendly error messages
+    Uses last-write-wins while keeping each request atomic and validating the
+    complete payload before mutation.
     """
     project = _owner_or_404(project_id, request.user)
     try:
@@ -2949,153 +2912,104 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
             "errors": [_err("$", "Payload JSON tidak valid")]
         }, status=400)
 
-    # P0 FIX: OPTIMISTIC LOCKING - Check client timestamp against server timestamp
-    client_updated_at = payload.get('client_updated_at')
-    if client_updated_at:
-        from datetime import datetime
-        try:
-            # Parse ISO format timestamp from client
-            client_dt = datetime.fromisoformat(client_updated_at.replace('Z', '+00:00'))
-
-            # Refresh project to get latest timestamp
-            project.refresh_from_db()
-            server_dt = project.updated_at if hasattr(project, 'updated_at') and project.updated_at else None
-
-            if server_dt and client_dt < server_dt:
-                # Data has been modified by another user since client loaded it
-                logger.warning(
-                    f"[SAVE_HARGA_ITEMS] CONFLICT - Project {project.id} modified by another user. "
-                    f"Client: {client_dt.isoformat()}, Server: {server_dt.isoformat()}"
-                )
-                return JsonResponse({
-                    "ok": False,
-                    "conflict": True,  # Special flag for conflict
-                    "user_message": (
-                        "âš ï¸ KONFLIK DATA TERDETEKSI!\n\n"
-                        "Data harga telah diubah oleh pengguna lain sejak Anda membukanya.\n\n"
-                        "Pilihan:\n"
-                        "â€¢ Muat Ulang: Refresh halaman untuk melihat perubahan terbaru (data Anda akan hilang)\n"
-                        "â€¢ Timpa: Simpan data Anda dan timpa perubahan pengguna lain (tidak disarankan)"
-                    ),
-                    "server_updated_at": server_dt.isoformat(),
-                    "errors": [_err("updated_at", "Data telah berubah sejak Anda membukanya")]
-                }, status=409)  # 409 Conflict
-        except (ValueError, AttributeError) as e:
-            logger.warning(f"[SAVE_HARGA_ITEMS] Invalid client_updated_at format: {client_updated_at}, error: {e}")
-            # Continue without optimistic locking if timestamp is invalid
-
     items = payload.get('items') or []
     errors = []
-    updated = 0
 
     # Match api_list_harga_items: editable rows are expanded components plus
-    # standalone imported items that are not referenced by raw/expanded details.
+    # standalone imported items not referenced by raw/expanded details.
     allowed_ids = set(
-        active_harga_items_queryset(project)
-        .values_list('id', flat=True)
+        active_harga_items_queryset(project).values_list('id', flat=True)
     )
-
     dp = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
 
+    # WP-B3 / HI-06 + HI-01: validate the WHOLE payload before mutating.
+    # - HI-01: null/empty harga = "belum diisi" -> stored NULL (NOT coerced to 0);
+    # - HI-06: negative harga rejected;
+    # - atomic all-or-nothing (no 207 partial).
+    plan = []  # (item_id, new_price_or_None)
     for i, it in enumerate(items):
+        if not isinstance(it, dict):
+            errors.append(_err(f"items[{i}]", "Harus berupa objek")); continue
         item_id = it.get('id')
-        harga_raw = it.get('harga_satuan')
-
         if item_id is None:
             errors.append(_err(f"items[{i}].id", "Wajib")); continue
         if item_id not in allowed_ids:
             errors.append(_err(f"items[{i}].id", "Item ini tidak digunakan di Detail AHSP proyek")); continue
-
+        harga_raw = it.get('harga_satuan')
+        if harga_raw is None or (isinstance(harga_raw, str) and harga_raw.strip() == ""):
+            plan.append((item_id, None)); continue  # HI-01: belum diisi
         dec = parse_any(harga_raw)
         if dec is None:
-            errors.append(_err(f"items[{i}].harga_satuan", "Harus â‰¥ 0 dan berupa angka yang valid")); continue
+            errors.append(_err(f"items[{i}].harga_satuan", "Harus angka yang valid")); continue
+        if dec < 0:
+            errors.append(_err(f"items[{i}].harga_satuan", "Harga tidak boleh negatif")); continue
+        plan.append((item_id, quantize_half_up(dec, dp)))
 
-        # P0 FIX: ROW-LEVEL LOCKING - Prevent concurrent edit race condition
-        try:
-            # Acquire row-level lock with select_for_update()
-            obj = (HargaItemProject.objects
-                   .select_for_update()  # Lock this row
-                   .get(project=project, id=item_id))
-
-            # Update with lock held
-            new_price = quantize_half_up(dec, dp)
-            if obj.harga_satuan != new_price:
-                obj.harga_satuan = new_price
-                obj.save(update_fields=['harga_satuan', 'updated_at'])
-                updated += 1
-        except HargaItemProject.DoesNotExist:
-            errors.append(_err(f"items[{i}].id", "Item tidak ditemukan"))
-            continue
-
-    # === NEW: Profit/Margin (opsional)
-    pricing_saved = False
+    # Profit/Margin (optional) — validate before applying.
+    markup_value = None
     if 'markup_percent' in (payload or {}):
         mp_raw = payload.get('markup_percent')
         if mp_raw not in (None, ''):
             val = parse_any(mp_raw)
             if val is None or val < 0 or val > 100:
-                errors.append(_err("markup_percent", "Harus 0â€“100 dan berupa angka yang valid"))
+                errors.append(_err("markup_percent", "Harus 0-100 dan berupa angka yang valid"))
             else:
-                pricing = _get_or_create_pricing(project)
-                pricing.markup_percent = quantize_half_up(val, 2)
-                pricing.save(update_fields=["markup_percent", "updated_at"])
-                pricing_saved = True
+                markup_value = quantize_half_up(val, 2)
 
-    # === NEW: status code partial
-    if errors and (updated == 0 and not pricing_saved):
-        status_code = 400
-    elif errors:
-        status_code = 207
-    else:
-        status_code = 200
+    if errors:
+        return atomic_error_response(
+            errors=errors,
+            status=400,
+            message=f"{len(errors)} data tidak valid. Tidak ada perubahan yang disimpan.",
+            user_message="Perubahan ditolak karena ada data yang tidak valid. Tidak ada perubahan yang disimpan.",
+        )
 
-    # P0 FIX: Cache invalidation AFTER transaction commits
+    # Apply all validated changes atomically.
+    updated = 0
+    for item_id, new_price in plan:
+        obj = HargaItemProject.objects.select_for_update().get(project=project, id=item_id)
+        if obj.harga_satuan != new_price:
+            obj.harga_satuan = new_price
+            obj.save(update_fields=['harga_satuan', 'updated_at'])
+            updated += 1
+
+    pricing_saved = False
+    if markup_value is not None:
+        pricing = _get_or_create_pricing(project)
+        pricing.markup_percent = markup_value
+        pricing.save(update_fields=["markup_percent", "updated_at"])
+        pricing_saved = True
+
     if updated > 0 or pricing_saved:
-        # OPSI A: Update project timestamp for optimistic locking
-        # This ensures project.updated_at reflects when harga items were modified
         project.updated_at = timezone.now()
         project.save(update_fields=['updated_at'])
-        logger.info(f"[PROJECT_TIMESTAMP] Updated project {project.id} timestamp after {updated} harga changes")
-
-        def invalidate_harga_cache():
-            invalidate_rekap_cache(project)
-            logger.info(f"[CACHE] Invalidated cache for project {project.id} after harga items update")
-
-        transaction.on_commit(invalidate_harga_cache)
-
-    # Build user-friendly message
-    if status_code == 200:
-        if updated > 0 and pricing_saved:
-            user_message = f"âœ… Berhasil menyimpan {updated} perubahan harga dan profit/margin!"
-        elif updated > 0:
-            user_message = f"âœ… Berhasil menyimpan {updated} perubahan harga!"
-        elif pricing_saved:
-            user_message = "âœ… Berhasil menyimpan profit/margin!"
-        else:
-            user_message = "âœ… Tidak ada perubahan untuk disimpan."
-    else:
-        user_message = f"âš ï¸ Data tersimpan sebagian. {len(errors)} kesalahan ditemukan."
-
-    if status_code == 200 and (updated > 0 or pricing_saved):
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
         touch_project_change(project, harga=True)
 
-    # Refresh project to get updated timestamp
     project.refresh_from_db()
-
-    # kirim balik nilai Profit/Margin terbaru untuk sinkronisasi FE
     pricing = _get_or_create_pricing(project)
+    if updated > 0 and pricing_saved:
+        user_message = f"Berhasil menyimpan {updated} perubahan harga dan profit/margin."
+    elif updated > 0:
+        user_message = f"Berhasil menyimpan {updated} perubahan harga."
+    elif pricing_saved:
+        user_message = "Berhasil menyimpan profit/margin."
+    else:
+        user_message = "Tidak ada perubahan untuk disimpan."
+
     return JsonResponse(
         {
-            "ok": status_code == 200,
+            "ok": True,
             "user_message": user_message,
             "updated": updated,
             "pricing_saved": pricing_saved,
             "markup_percent": to_dp_str(pricing.markup_percent, 2),
-            "project_updated_at": project.updated_at.isoformat() if hasattr(project, 'updated_at') and project.updated_at else None,
-            "errors": errors,
+            "project_updated_at": project.updated_at.isoformat() if getattr(project, 'updated_at', None) else None,
+            "errors": [],
         },
-        status=status_code
+        status=200,
     )
+
 
 
 # ---------- View: Item Conversion Profiles ----------
@@ -3409,11 +3323,16 @@ def api_project_parameters(request: HttpRequest, project_id: int):
             create_error = exc
 
     if param is None:
-        return JsonResponse({
-            "ok": False,
-            "errors": [_err("name", "Gagal generate kode parameter unik. Coba ulangi.")],
-            "details": str(create_error) if create_error else "",
-        }, status=409)
+        logger.error(
+            "Failed to allocate a unique base parameter name for project=%s: %r",
+            project.id,
+            create_error,
+        )
+        return atomic_error_response(
+            errors=[_err("name", "Gagal membuat parameter. Coba ulangi.")],
+            status=500,
+            message="Gagal membuat parameter.",
+        )
     
     return JsonResponse({
         "ok": True,
@@ -3428,6 +3347,61 @@ def api_project_parameters(request: HttpRequest, project_id: int):
             "description": param.description,
         }
     }, status=201)
+
+
+def _parameter_dependents(project, name):
+    """WP-B3 / VP-02: find formulas/expressions that reference a base parameter.
+
+    Scans computed-parameter expressions, volume formulas, and Template AHSP koef
+    formulas. Uses the formula tokenizer to match whole identifiers so 'bp_3'
+    does not match 'bp_30'. Returns a list of usage entries; empty => safe to
+    delete.
+    """
+    from .models import (
+        ProjectComputedParameter,
+        VolumeFormulaState,
+        TemplateAhspKoefFormulaState,
+    )
+    from .formula_tokenizer import tokenize_formula
+
+    target = (name or "").strip().lower()
+    if not target:
+        return []
+
+    def _refs(expr):
+        return any(
+            tok_type == "id" and raw.strip().lower() == target
+            for (tok_type, raw, _s, _e) in tokenize_formula(expr or "")
+        )
+
+    usage = []
+    for cp in ProjectComputedParameter.objects.filter(project=project).only("name", "label", "expression"):
+        if _refs(cp.expression):
+            usage.append({"type": "computed_parameter", "ref": cp.label or cp.name})
+    vf_qs = (
+        VolumeFormulaState.objects.filter(project=project, is_fx=True)
+        .select_related("pekerjaan")
+    )
+    for vf in vf_qs:
+        if _refs(vf.raw):
+            pkj = vf.pekerjaan
+            usage.append({
+                "type": "volume_formula",
+                "ref": (pkj.snapshot_kode or pkj.snapshot_uraian or f"#{vf.pekerjaan_id}"),
+                "pekerjaan_id": vf.pekerjaan_id,
+            })
+    kf_qs = (
+        TemplateAhspKoefFormulaState.objects.filter(project=project, is_fx=True)
+        .select_related("pekerjaan")
+    )
+    for kf in kf_qs:
+        if _refs(kf.raw):
+            usage.append({
+                "type": "koef_formula",
+                "ref": f"{(kf.pekerjaan.snapshot_kode or kf.pekerjaan_id)}:{kf.row_key}",
+                "pekerjaan_id": kf.pekerjaan_id,
+            })
+    return usage
 
 
 @login_required
@@ -3458,6 +3432,22 @@ def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id
         })
     
     if request.method == "DELETE":
+        # WP-B3 / VP-02: dependency guard. A parameter still referenced by a
+        # formula/expression cannot be deleted. Returns 422 (resource conflict,
+        # not concurrency-409 per B-1) with the usage list so the UI can explain.
+        dependents = _parameter_dependents(project, param.name)
+        if dependents:
+            return JsonResponse({
+                "ok": False,
+                "success": False,
+                "error": "Parameter masih dipakai dan tidak dapat dihapus.",
+                "message": (
+                    f"Parameter '{param.label or param.name}' masih dipakai oleh "
+                    f"{len(dependents)} formula/komponen."
+                ),
+                "code": "parameter_in_use",
+                "usage": dependents,
+            }, status=422)
         name = param.name
         param.delete()
         return JsonResponse({"ok": True, "deleted": True, "name": name})
@@ -3519,8 +3509,7 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
             "bp_1": { "value": 10, "label": "Panjang" },
             ...
         },
-        "mode": "replace" | "merge",
-        "last_sync_at": "2026-02-11T10:00:00Z"
+        "mode": "replace" | "merge"
     }
 
     Invalid item names are skipped and returned as warnings (partial success).
@@ -3542,19 +3531,26 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
     if mode not in {"replace", "merge"}:
         return JsonResponse({"ok": False, "errors": [_err("mode", "Mode harus replace atau merge")]}, status=400)
 
-    is_conflict, latest_ts = _is_stale_sync(project, ProjectParameter, payload)
-    if is_conflict:
-        return JsonResponse({
-            "ok": False,
-            "error": "conflict",
-            "server_updated_at": _to_iso_timestamp(latest_ts),
-        }, status=409)
-    
+    # WP-B3 / VP-03: validate the WHOLE payload BEFORE any delete (replace mode
+    # deletes all first). Any invalid item rejects the entire sync atomically —
+    # never delete old data for a payload that is partly invalid.
+    invalid = [
+        _err(f"parameters[{raw_code}]", _base_name_format_error_text())
+        for raw_code in params_data
+        if not _is_valid_base_param_name(str(raw_code or "").strip().lower())
+    ]
+    if invalid:
+        return atomic_error_response(
+            errors=invalid,
+            status=422,
+            message="Sebagian kode parameter tidak valid. Tidak ada perubahan yang disimpan.",
+        )
+
     created_count = 0
     updated_count = 0
     deleted_count = 0
     warnings = []
-    
+
     if mode == "replace":
         # Delete all existing parameters
         deleted_count = ProjectParameter.objects.filter(project=project).delete()[0]
@@ -3709,11 +3705,16 @@ def api_project_computed_parameters(request: HttpRequest, project_id: int):
             create_error = exc
 
     if obj is None:
-        return JsonResponse({
-            "ok": False,
-            "errors": [_err("name", "Gagal generate kode formula turunan unik. Coba ulangi.")],
-            "details": str(create_error) if create_error else "",
-        }, status=409)
+        logger.error(
+            "Failed to allocate a unique computed parameter name for project=%s: %r",
+            project.id,
+            create_error,
+        )
+        return atomic_error_response(
+            errors=[_err("name", "Gagal membuat formula turunan. Coba ulangi.")],
+            status=500,
+            message="Gagal membuat formula turunan.",
+        )
 
     return JsonResponse({
         "ok": True,
@@ -3760,13 +3761,24 @@ def api_project_computed_parameters_sync(request: HttpRequest, project_id: int):
     if mode not in ("replace", "merge"):
         return JsonResponse({"ok": False, "errors": [_err("mode", "Mode harus replace atau merge")]}, status=400)
 
-    is_conflict, latest_ts = _is_stale_sync(project, ProjectComputedParameter, payload)
-    if is_conflict:
-        return JsonResponse({
-            "ok": False,
-            "error": "conflict",
-            "server_updated_at": _to_iso_timestamp(latest_ts),
-        }, status=409)
+    # WP-B3 / VP-03: validate the WHOLE payload BEFORE any delete (replace mode
+    # deletes all first). Reject the entire sync atomically if any item is invalid.
+    invalid = []
+    for raw_code, data in params_data.items():
+        name = str(raw_code or "").strip().lower()
+        if not name:
+            invalid.append(_err(f"computed_parameters[{raw_code}]", "Kode kosong")); continue
+        if not _is_valid_computed_param_name(name):
+            invalid.append(_err(f"computed_parameters[{raw_code}]", _computed_name_format_error_text())); continue
+        expr = str((data.get("expression", "") if isinstance(data, dict) else (data or ""))).strip()
+        if not expr:
+            invalid.append(_err(f"computed_parameters[{name}]", "Expression kosong"))
+    if invalid:
+        return atomic_error_response(
+            errors=invalid,
+            status=422,
+            message="Sebagian formula turunan tidak valid. Tidak ada perubahan yang disimpan.",
+        )
 
     created_count = 0
     updated_count = 0
@@ -5096,24 +5108,18 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
     except Exception:
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
 
-    is_conflict, latest_ts = _is_stale_sync(project, VolumeFormulaState, payload)
-    if is_conflict:
-        return JsonResponse({
-            "ok": False,
-            "error": "conflict",
-            "server_updated_at": _to_iso_timestamp(latest_ts),
-        }, status=409)
-
     items = payload.get("items") or []
     if not isinstance(items, list):
         return JsonResponse({"ok": False, "errors": [_err("items", "Harus berupa list")]}, status=400)
 
-    created = 0
-    updated = 0
-    deleted = 0
-    errors  = []
-
+    # WP-B3 / VP-01 + VP-04: validate the WHOLE payload BEFORE mutating, then apply
+    # atomically. No partial write, no `ok:true` when some items fail.
+    errors = []
+    plan = []  # (pekerjaan, action, raw, is_fx) where action in {"delete", "upsert"}
     for i, it in enumerate(items):
+        if not isinstance(it, dict):
+            errors.append(_err(f"items[{i}]", "Harus berupa objek")); continue
+
         pkj_id = it.get("pekerjaan_id")
         raw    = (it.get("raw") or "").strip()
         is_fx  = bool(it.get("is_fx", True))
@@ -5130,38 +5136,44 @@ def api_volume_formula_state(request: HttpRequest, project_id: int):
         # must delete any stale sidecar so the UI cannot override VolumePekerjaan
         # with an old raw value on the next reload.
         if not (is_fx and raw):
-            deleted += VolumeFormulaState.objects.filter(project=project, pekerjaan=pkj).delete()[0]
-            continue
+            plan.append((pkj, "delete", None, None)); continue
 
-        # Validate formula content (only when formula mode is active and raw is non-empty)
-        if is_fx and raw:
-            validation_errors = _validate_formula_raw(raw)
-            if validation_errors:
-                errors.append(_err(
-                    f"items[{i}].raw",
-                    "; ".join(validation_errors)
-                ))
-                continue
+        validation_errors = _validate_formula_raw(raw)
+        if validation_errors:
+            errors.append(_err(f"items[{i}].raw", "; ".join(validation_errors))); continue
 
-        obj, was_created = VolumeFormulaState.objects.update_or_create(
-            project=project, pekerjaan=pkj,
-            defaults=dict(raw=raw, is_fx=is_fx)
+        plan.append((pkj, "upsert", raw, is_fx))
+
+    if errors:
+        return atomic_error_response(
+            errors=errors,
+            status=400,
+            message=f"{len(errors)} formula tidak valid. Tidak ada perubahan yang disimpan.",
         )
-        if was_created: created += 1
-        else: updated += 1
 
-    status_code = 400 if errors and (created + updated + deleted == 0) else 200
+    created = updated = deleted = 0
+    for pkj, action, raw, is_fx in plan:
+        if action == "delete":
+            deleted += VolumeFormulaState.objects.filter(project=project, pekerjaan=pkj).delete()[0]
+        else:
+            _obj, was_created = VolumeFormulaState.objects.update_or_create(
+                project=project, pekerjaan=pkj,
+                defaults=dict(raw=raw, is_fx=is_fx),
+            )
+            created += 1 if was_created else 0
+            updated += 0 if was_created else 1
+
     latest_ts = _latest_project_param_update(project, VolumeFormulaState)
     return JsonResponse(
         {
-            "ok": status_code == 200,
+            "ok": True,
             "created": created,
             "updated": updated,
             "deleted": deleted,
-            "errors": errors,
+            "errors": [],
             "synced_at": _to_iso_timestamp(latest_ts or timezone.now()),
         },
-        status=status_code
+        status=200,
     )
 
 

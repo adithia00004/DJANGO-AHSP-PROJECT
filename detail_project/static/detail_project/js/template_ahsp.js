@@ -1732,11 +1732,7 @@
     }
 
     const payload = { rows: rowsCanon };
-    // POLICY single-user / last-save-wins: UI sengaja TIDAK mengirim client_updated_at,
-    // sehingga backend tidak pernah membalas 409 dan dialog konflik di bawah tidak pernah
-    // muncul. Backend + handler konflik dibiarkan DORMAN (reversible) untuk multi-user:
-    // cukup kirim ulang token di sini.
-    // if (currentCache?.updatedAt) { payload.client_updated_at = currentCache.updatedAt; }
+    // Application policy: last-write-wins. The request itself remains atomic.
 
     const btnSave = $('#ta-btn-save');
     const spin = $('#ta-btn-save-spin');
@@ -1755,63 +1751,10 @@
         console.error('[SAVE] HTTP Error:', r.status, r.statusText);
       }
       return r.json();
-    }).then(async initialJs => {
-      let js = initialJs;
+    }).then(initialJs => {
+      const js = initialJs;
       // DEBUG: Log full response
       console.log('[SAVE] Response:', js);
-
-      if (!js.ok && js.conflict) {
-        const conflictMessage = [
-          'Detail AHSP telah berubah sejak terakhir dimuat.',
-          '',
-          'Pilih "Muat Ulang" untuk melihat data terbaru.',
-          'Pilih "Timpa" untuk mempertahankan perubahan lokal Anda.',
-        ].join('\n');
-        const modalConfirm = window.DP?.modal?.confirm;
-        const doReload = modalConfirm
-          ? await modalConfirm(conflictMessage, {
-            title: 'Konflik Data',
-            confirmText: 'Muat Ulang',
-            cancelText: 'Timpa',
-            confirmClass: 'btn btn-primary',
-            cancelClass: 'btn btn-danger',
-          })
-          : window.confirm(`${conflictMessage}\n\nOK = Muat Ulang, Batal = Timpa`);
-
-        if (doReload) {
-          const jobEl = $(`.ta-job-item[data-pekerjaan-id="${jobId}"]`);
-          if (jobEl) triggerSelectJobInternal(jobEl, jobId, true);
-          const error = new Error('Save cancelled after conflict reload');
-          error.handled = true;
-          throw error;
-        }
-
-        const overwriteMessage = 'Yakin menimpa perubahan yang lebih baru di server? Tindakan ini tidak dapat dibatalkan.';
-        const confirmOverwrite = modalConfirm
-          ? await modalConfirm(overwriteMessage, {
-            title: 'Konfirmasi Timpa',
-            confirmText: 'Ya, Timpa',
-            cancelText: 'Batal',
-            confirmClass: 'btn btn-danger',
-            cancelClass: 'btn btn-secondary',
-          })
-          : window.confirm(overwriteMessage);
-        if (!confirmOverwrite) {
-          toast('Penyimpanan dibatalkan. Perubahan lokal tetap dipertahankan.', 'info');
-          const error = new Error('Save cancelled after conflict');
-          error.handled = true;
-          throw error;
-        }
-
-        const retryPayload = { ...payload, force_overwrite: true };
-        const retryResponse = await fetch(url, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-          body: JSON.stringify(retryPayload),
-        });
-        js = await retryResponse.json().catch(() => ({}));
-      }
 
       // IMPROVED: Use user_message from server for better UX
       if (!js.ok) {
@@ -1827,25 +1770,7 @@
         return Promise.reject(error);
       }
 
-      // Partial success (status 207) - some errors but data saved
-      if (js.errors && js.errors.length > 0) {
-        let userMsg = js.user_message || `âš ï¸ Data tersimpan sebagian. ${js.errors.length} kesalahan ditemukan.`;
-
-        // BUNDLE ERROR FIX: Show details for bundle errors to help user understand issue
-        const bundleErrors = js.errors.filter(e => e.field && e.field.startsWith('bundle.'));
-        if (bundleErrors.length > 0) {
-          const bundleDetails = bundleErrors.map(e => `â€¢ ${e.message}`).slice(0, 3).join('\n');
-          userMsg += '\n\nDetail:\n' + bundleDetails;
-          if (bundleErrors.length > 3) {
-            userMsg += `\n... dan ${bundleErrors.length - 3} error lainnya.`;
-          }
-        }
-
-        toast(userMsg, 'warning', 5000); // Longer duration for error messages
-        console.warn('[SAVE] Partial success with errors:', js.errors);
-      } else {
-        // Full success - use server's success message with expansion feedback
-        let userMsg = js.user_message || 'âœ… Data berhasil disimpan!';
+      let userMsg = js.user_message || 'âœ… Data berhasil disimpan!';
 
         // ENHANCED: Show bundle expansion feedback
         const rawRows = js.saved_raw_rows || 0;
@@ -1860,9 +1785,8 @@
           }
         }
 
-        toast(userMsg, 'success');
-        console.log('[SAVE] Success - Raw:', rawRows, 'Expanded:', expandedRows, 'Expansion:', expandedRows - rawRows);
-      }
+      toast(userMsg, 'success');
+      console.log('[SAVE] Success - Raw:', rawRows, 'Expanded:', expandedRows, 'Expansion:', expandedRows - rawRows);
 
       // Update state
       setDirty(false);

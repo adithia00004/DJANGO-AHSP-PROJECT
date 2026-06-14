@@ -334,8 +334,10 @@ class FormulaValidationIntegrationTests(TestCase):
         self.assertTrue(len(errors) > 0)
         self.assertIn("unknown_func", str(errors))
 
-    def test_valid_items_saved_despite_invalid_sibling(self):
-        """If one item is invalid, others should still be saved (partial success)."""
+    def test_invalid_sibling_rejects_whole_batch_atomically(self):
+        """WP-B3 / VP-01 (supersedes the old partial-success contract): an invalid
+        item rejects the WHOLE formula sync (400). The valid sibling is NOT saved
+        (all-or-nothing, A-5)."""
         pekerjaan2 = Pekerjaan.objects.create(
             project=self.project,
             sub_klasifikasi=self.pekerjaan.sub_klasifikasi,
@@ -359,8 +361,14 @@ class FormulaValidationIntegrationTests(TestCase):
                 },
             ]
         })
-        self.assertEqual(response.status_code, 200)  # partial success
+        self.assertEqual(response.status_code, 400)
         body = json.loads(response.content.decode("utf-8"))
-        self.assertTrue(body.get("ok"))  # at least one saved
-        self.assertEqual(body.get("created") + body.get("updated", 0), 1)
+        self.assertFalse(body.get("ok"))
         self.assertTrue(len(body.get("errors", [])) > 0)
+        # All-or-nothing: the valid sibling must NOT have been persisted.
+        from detail_project.models import VolumeFormulaState
+        self.assertFalse(
+            VolumeFormulaState.objects.filter(
+                project=self.project, pekerjaan=self.pekerjaan
+            ).exists()
+        )
