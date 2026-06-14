@@ -3906,14 +3906,27 @@ def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
             DetailAHSPProject.objects.bulk_create(to_create, ignore_conflicts=True)
         total_saved += saved_here
 
+    # Atomic contract (DEC-002 / A-5): a single invalid row rejects the whole
+    # save. set_rollback discards every mutation made in the loop above so the
+    # client never sees a partial 207 for one form submission (last-write-wins).
+    if all_errors:
+        return atomic_error_response(
+            errors=all_errors,
+            status=400,
+            message=f"{len(all_errors)} baris detail tidak valid. Tidak ada perubahan yang disimpan.",
+            user_message=(
+                "Detail AHSP ditolak karena ada data yang tidak valid. "
+                "Tidak ada perubahan yang disimpan."
+            ),
+        )
+
     # CACHE FIX: Invalidate cache AFTER transaction commits
     if total_saved > 0:
         transaction.on_commit(lambda: invalidate_rekap_cache(project))
         # Auto-cleanup orphan harga item akibat baris dihapus/diubah saat save gabungan.
         transaction.on_commit(lambda: _auto_cleanup_orphans(project))
 
-    status_code = 200 if not all_errors else (207 if total_saved > 0 else 400)
-    return JsonResponse({"ok": status_code == 200, "saved_rows": total_saved, "errors": all_errors}, status=status_code)
+    return JsonResponse({"ok": True, "saved_rows": total_saved, "errors": []}, status=200)
 
 
 

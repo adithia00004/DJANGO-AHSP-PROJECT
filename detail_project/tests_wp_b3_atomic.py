@@ -539,3 +539,80 @@ class TemplateSaveAtomicTests(TestCase):
         )
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(self._detail_count(), 1)
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class DetailGabunganAtomicSaveTests(TestCase):
+    """WP-B3 follow-up: Detail AHSP gabungan save (api_save_detail_ahsp_gabungan)
+    must be all-or-nothing across every pekerjaan in the payload — no partial 207,
+    and an invalid row in one pekerjaan must not persist another pekerjaan."""
+
+    def setUp(self):
+        self.owner = _make_pro_user("wpb3_gabungan")
+        self.project = _make_project(self.owner, "WP-B3 Gabungan")
+        klas = Klasifikasi.objects.create(project=self.project, name="K", ordering_index=1)
+        sub = SubKlasifikasi.objects.create(
+            project=self.project, klasifikasi=klas, name="S", ordering_index=1
+        )
+        self.pkj_a = Pekerjaan.objects.create(
+            project=self.project, sub_klasifikasi=sub, source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_uraian="A", snapshot_satuan="m2", ordering_index=1,
+        )
+        self.pkj_b = Pekerjaan.objects.create(
+            project=self.project, sub_klasifikasi=sub, source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_uraian="B", snapshot_satuan="m2", ordering_index=2,
+        )
+        self.client.force_login(self.owner)
+        self.url = reverse(
+            "detail_project:api_save_detail_ahsp_gabungan",
+            kwargs={"project_id": self.project.id},
+        )
+
+    def _save(self, items):
+        return self.client.post(
+            self.url, data=json.dumps({"items": items}), content_type="application/json"
+        )
+
+    def _count(self, pkj):
+        return DetailAHSPProject.objects.filter(project=self.project, pekerjaan=pkj).count()
+
+    def test_happy_save_creates_detail_for_all(self):
+        r = self._save([
+            {"pekerjaan_id": self.pkj_a.id, "rows": [
+                {"kategori": "BHN", "kode": "SMN", "uraian": "Semen", "koefisien": "2.5"}]},
+            {"pekerjaan_id": self.pkj_b.id, "rows": [
+                {"kategori": "BHN", "kode": "PSR", "uraian": "Pasir", "koefisien": "1"}]},
+        ])
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self._count(self.pkj_a), 1)
+        self.assertEqual(self._count(self.pkj_b), 1)
+
+    def test_invalid_row_rejects_whole_batch_no_207(self):
+        r = self._save([
+            {"pekerjaan_id": self.pkj_a.id, "rows": [
+                {"kategori": "BHN", "kode": "SMN", "uraian": "Semen", "koefisien": "2.5"}]},
+            {"pekerjaan_id": self.pkj_b.id, "rows": [
+                {"kategori": "BHN", "kode": "PSR", "uraian": "Pasir", "koefisien": "-1"}]},
+        ])
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertNotEqual(r.status_code, 207)
+        self.assertFalse(r.json().get("ok"))
+        # All-or-nothing: the valid pekerjaan A must NOT be persisted either.
+        self.assertEqual(self._count(self.pkj_a), 0)
+        self.assertEqual(self._count(self.pkj_b), 0)
+
+    def test_invalid_row_does_not_wipe_existing_detail(self):
+        # Seed A with existing detail, then a failing batch must leave it intact.
+        ok = self._save([
+            {"pekerjaan_id": self.pkj_a.id, "rows": [
+                {"kategori": "BHN", "kode": "SMN", "uraian": "Semen", "koefisien": "2.5"}]},
+        ])
+        self.assertEqual(ok.status_code, 200, ok.content)
+        self.assertEqual(self._count(self.pkj_a), 1)
+        bad = self._save([
+            {"pekerjaan_id": self.pkj_a.id, "rows": [
+                {"kategori": "BHN", "kode": "SMN", "uraian": "Semen", "koefisien": "bukan-angka"}]},
+        ])
+        self.assertEqual(bad.status_code, 400, bad.content)
+        # The delete-then-recreate must have rolled back; existing detail survives.
+        self.assertEqual(self._count(self.pkj_a), 1)

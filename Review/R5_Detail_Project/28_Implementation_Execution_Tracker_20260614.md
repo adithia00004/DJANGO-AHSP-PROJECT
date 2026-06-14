@@ -302,7 +302,13 @@ Restruktur **validate-all-first → reject atomik** (no 207):
 | 2026-06-14 | WP-B3 inc-5 | Contract backend target | PASS | 69/69: WP-B3 + Volume + parameter/formula + Harga + Template |
 | 2026-06-14 | WP-B3 inc-5 | Frontend Vitest | PASS | 247 passed, 25 skipped; atomic/LWW guard 3/3 |
 | 2026-06-14 | WP-B1/B2/A1/B3 checkpoint | Regresi gabungan | PASS | 174/174 backend + 247 frontend; `manage.py check` dan `makemigrations --check --dry-run` bersih |
+| 2026-06-15 | WP-B3 verifikasi | Verifikasi fix checkpoint owner (commit `c1e46bd7`) | PASS | 409 nol di `views_api.py`; quantity-save 400-atomic (1772-1806); `harga_items.js` cabang gagal pertahankan dirty (658-699); test LWW 164/210 ada |
+| 2026-06-15 | WP-B3 follow-up | `api_save_detail_ahsp_gabungan` 207→atomic 400 | PASS | 92/92: `tests_wp_b3_atomic` (+`DetailGabunganAtomicSaveTests` 3) + `tests_phase1_opaque_api` + `tests_formula_server_validation` |
 
 **WP-B3 SELESAI.** Endpoint target kini all-or-nothing (`200/400-422/500`), tidak memiliki concurrency `409`, tidak mengembalikan `207` untuk form save, dan frontend tidak mengakui data yang di-rollback sebagai tersimpan.
 
-**Residual cleanup yang sengaja tidak diperbaiki:** dua jalur `207` masih berada pada API full-save List Pekerjaan lama dan API Detail AHSP gabungan lama. Keduanya tidak menjadi source aktif UI baru dan dimiliki cleanup Section E (`CL-05`/`CL-10`). Planner cleanup wajib menghapus route/test legacy tersebut; jangan menjadikannya kontrak baru.
+**Verifikasi 2026-06-15 (fix checkpoint owner):** ketiga temuan HIGH owner terverifikasi benar terhadap kode aktual — (1) seluruh `status=409`/`is_stale_sync` dihapus dari `views_api.py`; (2) `api_save_volume_pekerjaan` validate-all-first → `atomic_error_response(400)` tanpa partial-write/207; (3) `harga_items.js` cabang gagal hanya menandai `ux-invalid`, baseline `origCanon`/clean hanya pada sukses. Test 409 lama sudah diubah ke last-write-wins (200).
+
+**Follow-up 2026-06-15:** ditemukan satu jalur `207` aktif yang belum tercakup — `api_save_detail_ahsp_gabungan` (URL `/detail-ahsp/save/`, masih reachable). Diperbaiki ke kontrak atomik (`atomic_error_response(400)`, set_rollback membatalkan delete+create per-item; tak ada 207). Catatan: JS pemanggilnya (`detail_ahsp_gabungan.js`) **orphan** (tak dimuat template manapun) — endpoint reachable-by-URL tapi tanpa halaman UI aktif; tetap dihardening agar selaras DEC-003 dan tak meninggalkan partial-write live hingga cleanup.
+
+**Residual cleanup yang sengaja tidak diperbaiki:** satu jalur `207` tersisa pada API full-save List Pekerjaan lama (`api_save_list_pekerjaan`, line 779) — tidak dipanggil frontend (kanonikal = `/upsert/`), dimiliki cleanup Section E (`CL-05`). Endpoint gabungan + JS orphan-nya tetap milik `CL-10` (hapus route/JS/test legacy); kontrak atomiknya sekarang hanya jaring pengaman sampai dihapus — jangan jadikan fitur baru.
