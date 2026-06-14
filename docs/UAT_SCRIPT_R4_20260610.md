@@ -1,5 +1,13 @@
 # Skrip UAT Browser — Fase R4 (L7) — Pola Client-Side Workflow
 
+Kredensial UAT — http://localhost:8000/accounts/login/
+Role	Email (untuk login)	Password	Track
+🟦 PRO	uat_pro@uat.local	Pro-Ahsp#2026	Track 1 + Journey B
+🟨 TRIAL	uat_trial@uat.local	Trial-Ahsp#2026	Track 2 + Journey D
+🟥 EXPIRED	uat_expired@uat.local	Expired-Ahsp#2026	Track 3 + Journey C
+🟩 ADMIN	uat_staff@uat.local	Staff-Ahsp#2026	Track 4 + Journey E
+
+
 **Dibuat:** 2026-06-10 13:05 WITA · **Revisi v2:** 2026-06-10 15:47 WITA — disusun ulang mengikuti **alur perjalanan pengguna nyata** (journey), setiap langkah = *Aksi → Output yang diharapkan*. Penanda `[M*/F*/U*]` = jejak temuan audit yang diverifikasi langkah itu.
 **Lingkungan:** stack Docker lokal `http://localhost:8000` (UAT diulang ringkas di staging saat R2).
 **Cara pakai:** kerjakan journey berurutan (A→G). Centang bila output SESUAI harapan; bila TIDAK, catat di tabel Hasil (journey, langkah, apa yang terjadi, error console/network bila ada) lalu laporkan.

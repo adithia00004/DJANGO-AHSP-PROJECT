@@ -62,6 +62,7 @@ export class EventBinder {
     const saveButton = dom.saveButton;
     const refreshButton = dom.refreshButton;
     const resetButton = dom.resetButton;
+    const helpButton = document.getElementById('help-button');
 
     if (saveButton) {
       saveButton.addEventListener('click', () => this.app.saveChanges());
@@ -75,6 +76,10 @@ export class EventBinder {
       resetButton.addEventListener('click', () => this.app._handleResetProgress());
     }
 
+    if (helpButton) {
+      helpButton.addEventListener('click', () => this._showKeyboardShortcutsHelp());
+    }
+
     this.app._syncToolbarRadios();
     this.app._attachRadioGroupHandler('displayMode', (value) => this.app._handleDisplayModeChange(value));
     this.app._attachRadioGroupHandler('progressMode', (value) => this.app._handleProgressModeChange(value));
@@ -84,6 +89,7 @@ export class EventBinder {
     this.app._setupCostViewToggle();
     this._setupKeyboardShortcuts();
     this._setupUXEnhancements();
+    this.app._setupUnsavedChangesGuard();
   }
 
   /**
@@ -108,60 +114,60 @@ export class EventBinder {
 
     this.app.keyboardShortcuts.register('ctrl+s', () => {
       this.app.saveChanges();
-      Toast.info('Saving changes... (Ctrl+S)');
-    }, { description: 'Save all changes' });
+      Toast.info('Menyimpan perubahan... (Ctrl+S)');
+    }, { description: 'Simpan semua perubahan' });
 
     this.app.keyboardShortcuts.register('ctrl+r', () => {
       this.app.refresh();
-      Toast.info('Refreshing data... (Ctrl+R)');
-    }, { description: 'Refresh data from server' });
+      Toast.info('Memuat ulang data... (Ctrl+R)');
+    }, { description: 'Muat ulang data dari server' });
 
     this.app.keyboardShortcuts.register('ctrl+alt+p', () => {
       const plannedRadio = document.getElementById('mode-planned');
       if (plannedRadio) {
         plannedRadio.checked = true;
         plannedRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Switched to Perencanaan mode (Ctrl+Alt+P)');
+        Toast.info('Mode Perencanaan aktif (Ctrl+Alt+P)');
       }
-    }, { description: 'Switch to Perencanaan mode' });
+    }, { description: 'Aktifkan mode Perencanaan' });
 
     this.app.keyboardShortcuts.register('ctrl+alt+a', () => {
       const actualRadio = document.getElementById('mode-actual');
       if (actualRadio) {
         actualRadio.checked = true;
         actualRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Switched to Realisasi mode (Ctrl+Alt+A)');
+        Toast.info('Mode Realisasi aktif (Ctrl+Alt+A)');
       }
-    }, { description: 'Switch to Realisasi mode' });
+    }, { description: 'Aktifkan mode Realisasi' });
 
     this.app.keyboardShortcuts.register('ctrl+alt+1', () => {
       const percentageRadio = document.getElementById('mode-percentage');
       if (percentageRadio && !percentageRadio.disabled) {
         percentageRadio.checked = true;
         percentageRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Display: Percentage (Ctrl+Alt+1)');
+        Toast.info('Tampilan Persentase aktif (Ctrl+Alt+1)');
       }
-    }, { description: 'Switch to Percentage display' });
+    }, { description: 'Tampilkan nilai Persentase' });
 
     this.app.keyboardShortcuts.register('ctrl+alt+2', () => {
       const volumeRadio = document.getElementById('mode-volume');
       if (volumeRadio && !volumeRadio.disabled) {
         volumeRadio.checked = true;
         volumeRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Display: Volume (Ctrl+Alt+2)');
+        Toast.info('Tampilan Volume aktif (Ctrl+Alt+2)');
       }
-    }, { description: 'Switch to Volume display' });
+    }, { description: 'Tampilkan nilai Volume' });
 
     this.app.keyboardShortcuts.register('ctrl+alt+3', () => {
       const costRadio = document.getElementById('mode-cost');
       if (costRadio && !costRadio.disabled) {
         costRadio.checked = true;
         costRadio.dispatchEvent(new Event('change', { bubbles: true }));
-        Toast.info('Display: Cost (Ctrl+Alt+3)');
+        Toast.info('Tampilan Biaya aktif (Ctrl+Alt+3)');
       } else {
-        Toast.warning('Cost view only available in Realisasi mode');
+        Toast.warning('Tampilan Biaya hanya tersedia pada mode Realisasi');
       }
-    }, { description: 'Switch to Cost display' });
+    }, { description: 'Tampilkan nilai Biaya' });
 
     this.app.keyboardShortcuts.register('escape', () => {
       const openDropdowns = document.querySelectorAll('.dropdown-menu.show');
@@ -172,11 +178,11 @@ export class EventBinder {
           if (bsDropdown) bsDropdown.hide();
         }
       });
-    }, { description: 'Close open menus', preventDefault: false });
+    }, { description: 'Tutup menu yang terbuka', preventDefault: false });
 
     this.app.keyboardShortcuts.register('ctrl+shift+/', () => {
       this._showKeyboardShortcutsHelp();
-    }, { description: 'Show keyboard shortcuts help' });
+    }, { description: 'Buka bantuan pintasan keyboard' });
 
     if (this.app?.state?.debugUnifiedTable || window.DEBUG_UNIFIED_TABLE) {
       console.log('[EventBinder] Keyboard shortcuts registered', this.app.keyboardShortcuts.getShortcuts?.());
@@ -226,19 +232,25 @@ export class EventBinder {
 
     const modalHtml = `
       <div class="modal fade" id="keyboardShortcutsModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
           <div class="modal-content">
             <div class="modal-header">
               <h5 class="modal-title">
-                <i class="bi bi-keyboard"></i> Keyboard Shortcuts
+                <i class="bi bi-question-circle"></i> Bantuan Jadwal Pekerjaan
               </h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
             </div>
             <div class="modal-body">
+              <div class="alert alert-info">
+                Isi progres pada mode <strong>Rencana</strong> atau <strong>Realisasi</strong>.
+                Total progres setiap pekerjaan tidak boleh melebihi 100%.
+                Sel berwarna kuning menandakan perubahan yang belum disimpan.
+              </div>
+              <h6>Pintasan keyboard</h6>
               <table class="table table-sm">
                 <thead>
                   <tr>
-                    <th>Shortcut</th>
+                    <th>Pintasan</th>
                     <th>Deskripsi</th>
                   </tr>
                 </thead>
@@ -248,7 +260,7 @@ export class EventBinder {
               </table>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
             </div>
           </div>
         </div>

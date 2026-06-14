@@ -23,6 +23,7 @@ class RincianAHSPAdapter:
             DetailAHSPProject,
             DetailAHSPExpanded,
         )
+        from detail_project.services import compute_rekap_for_project
 
         sections = []  # List of pekerjaan sections
         recap_rows = []  # Lampiran Rekap AHSP rows
@@ -89,13 +90,10 @@ class RincianAHSPAdapter:
         total_items = 0
         grand_total = Decimal('0')
 
-        # Build sections - each pekerjaan becomes a section
-        # Determine default project markup (Profit/Margin)
-        try:
-            default_markup = Decimal(str(getattr(self.project.pricing, 'markup_percent', '10.00')))
-        except Exception:
-            # If pricing not created yet, use 10.00%
-            default_markup = Decimal('10.00')
+        canonical_rekap = {
+            int(row['pekerjaan_id']): row
+            for row in compute_rekap_for_project(self.project)
+        }
 
         for klas in klasifikasi_list:
             klas_name = getattr(klas, 'name', getattr(klas, 'nama', 'Klasifikasi'))
@@ -122,7 +120,6 @@ class RincianAHSPAdapter:
 
                     groups: List[dict] = []
                     detail_no = 1
-                    pekerjaan_total = Decimal('0')
 
                     for key, title, short_title in groups_spec:
                         rows_in_group = []
@@ -144,7 +141,6 @@ class RincianAHSPAdapter:
                                 )
                             jumlah = koefisien * harga_satuan
                             subtotal += jumlah
-                            pekerjaan_total += jumlah
 
                             rows_in_group.append([
                                 str(detail_no),
@@ -166,12 +162,17 @@ class RincianAHSPAdapter:
                             'subtotal': self._format_number(subtotal, 0),
                         })
 
-                    # Effective Profit/Margin (override per pekerjaan if available)
-                    ov = getattr(pek, 'markup_override_percent', None)
-                    eff_markup = Decimal(str(ov)) if ov is not None else default_markup
-                    E_total = pekerjaan_total
-                    F_margin = (E_total * eff_markup) / Decimal('100')
-                    G_hsp = E_total + F_margin
+                    canonical = canonical_rekap.get(pek.id, {})
+                    E_total = self._to_decimal(
+                        canonical.get('component_cost_before_markup', 0)
+                    )
+                    eff_markup = self._to_decimal(
+                        canonical.get('markup_percent_effective', 0)
+                    )
+                    F_margin = self._to_decimal(canonical.get('markup_amount', 0))
+                    G_hsp = self._to_decimal(
+                        canonical.get('unit_price_after_markup', 0)
+                    )
 
                     # Add to recap rows (Lampiran)
                     recap_rows.append([

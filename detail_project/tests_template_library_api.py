@@ -314,6 +314,24 @@ class TemplateLibraryApiTests(TestCase):
         self.assertIn("await reloadAfterSave();", script)
         self.assertNotIn("await loadTree();  // Refresh data\n        setDirty(true);", script)
 
+    def test_template_preview_waits_until_library_modal_is_hidden(self):
+        with open(
+            "detail_project/static/detail_project/js/list_pekerjaan.js",
+            encoding="utf-8",
+        ) as handle:
+            script = handle.read()
+
+        self.assertIn("function showTemplatePreviewModal()", script)
+        self.assertIn(
+            "templateLibraryModalEl.addEventListener('hidden.bs.modal'",
+            script,
+        )
+        self.assertIn("libraryModal.hide();", script)
+        self.assertNotIn(
+            "new bootstrap.Modal(document.getElementById('templatePreviewModal'))",
+            script,
+        )
+
     def test_template_frontend_save_uses_dataset_ref_fallback(self):
         with open(
             "detail_project/static/detail_project/js/list_pekerjaan.js",

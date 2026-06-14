@@ -83,6 +83,7 @@ class JadwalKegiatanApp {
     this._ganttScrollSyncHandlers = null;
     this._stateManagerListener = null;
     this._syncRefreshHandler = null;
+    this._beforeUnloadHandler = null;
     this._suppressStateManagerEvent = false;
     this._currencyFormatter = null;
 
@@ -383,17 +384,29 @@ class JadwalKegiatanApp {
       return;
     }
     const hasFailures = this.state?.failedRows instanceof Set && this.state.failedRows.size > 0;
-    saveButton.disabled = false;
+    const modifiedCount = this._getModifiedCount();
+    const isBusy = Boolean(this.state?.isLoading || this.saveHandler?.isSaving);
+    saveButton.disabled = isBusy || modifiedCount === 0;
+    saveButton.classList.toggle('has-changes', modifiedCount > 0);
     saveButton.classList.toggle('btn-outline-danger', Boolean(hasFailures));
-    saveButton.classList.toggle('btn-success', !hasFailures);
+    saveButton.classList.toggle('btn-primary', !hasFailures);
     if (hasFailures) {
       saveButton.setAttribute(
         'title',
         'Ada baris dengan peringatan (>100%/volume). Klik untuk melihat detail dan perbaiki.'
       );
+    } else if (modifiedCount > 0) {
+      saveButton.setAttribute('title', `Simpan ${modifiedCount} perubahan`);
     } else {
-      saveButton.removeAttribute('title');
+      saveButton.setAttribute('title', 'Tidak ada perubahan untuk disimpan');
     }
+  }
+
+  _getModifiedCount() {
+    const modeState = this._getCurrentModeState?.();
+    const progressCount = modeState?.modifiedCells instanceof Map ? modeState.modifiedCells.size : 0;
+    const costCount = modeState?.costModifiedCells instanceof Map ? modeState.costModifiedCells.size : 0;
+    return progressCount + costCount;
   }
 
   _ensureStateCollections() {
@@ -1559,11 +1572,14 @@ class JadwalKegiatanApp {
     const progressMode = this.state.progressMode || 'planned';
     const modeLabel = progressMode === 'planned' ? 'Perencanaan' : 'Realisasi';
 
-    const confirmed = window.confirm(
-      `Reset semua progress ${modeLabel} ke 0%?\n\n` +
-      `Data ${modeLabel === 'Perencanaan' ? 'Realisasi' : 'Perencanaan'} tidak akan terpengaruh.\n\n` +
-      `Operasi ini dapat di-undo dengan memasukkan ulang data.`
-    );
+    const confirmed = await this._confirmAction({
+      title: `Reset progres ${modeLabel}?`,
+      message:
+        `Semua progres ${modeLabel} akan dikembalikan ke 0%. ` +
+        `Data ${modeLabel === 'Perencanaan' ? 'Realisasi' : 'Perencanaan'} tidak akan terpengaruh.`,
+      confirmLabel: 'Reset progres',
+      danger: true,
+    });
     if (!confirmed) {
       return;
     }
@@ -1775,9 +1791,12 @@ class JadwalKegiatanApp {
     }
 
     if (this.state.isDirty && this.state.modifiedCells instanceof Map && this.state.modifiedCells.size > 0) {
-      const confirmed = window.confirm(
-        'Mengubah batas minggu akan me-refresh data dan membatalkan perubahan yang belum disimpan. Lanjutkan?'
-      );
+      const confirmed = await this._confirmAction({
+        title: 'Ubah struktur waktu?',
+        message: 'Perubahan yang belum disimpan akan dibatalkan ketika struktur waktu disusun ulang.',
+        confirmLabel: 'Susun ulang',
+        danger: true,
+      });
       if (!confirmed) {
         return;
       }
@@ -2928,18 +2947,73 @@ class JadwalKegiatanApp {
     });
   }
 
+  _confirmAction(options = {}) {
+    const modalEl = document.getElementById('confirmModal');
+    const titleEl = document.getElementById('confirmModalLabel');
+    const messageEl = document.getElementById('confirm-message');
+    const confirmButton = document.getElementById('confirm-action');
+    if (!modalEl || !confirmButton || typeof bootstrap === 'undefined') {
+      return Promise.resolve(window.confirm(options.message || 'Lanjutkan tindakan ini?'));
+    }
+
+    const {
+      title = 'Konfirmasi tindakan',
+      message = 'Lanjutkan tindakan ini?',
+      confirmLabel = 'Lanjutkan',
+      danger = false,
+    } = options;
+
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    confirmButton.textContent = confirmLabel;
+    confirmButton.classList.toggle('btn-danger', danger);
+    confirmButton.classList.toggle('btn-primary', !danger);
+
+    return new Promise((resolve) => {
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      let settled = false;
+
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        confirmButton.removeEventListener('click', handleConfirm);
+        modalEl.removeEventListener('hidden.bs.modal', handleHidden);
+        resolve(value);
+      };
+      const handleConfirm = () => {
+        finish(true);
+        modal.hide();
+      };
+      const handleHidden = () => finish(false);
+
+      confirmButton.addEventListener('click', handleConfirm, { once: true });
+      modalEl.addEventListener('hidden.bs.modal', handleHidden, { once: true });
+      modal.show();
+    });
+  }
+
+  _setupUnsavedChangesGuard() {
+    if (this._beforeUnloadHandler) return;
+    this._beforeUnloadHandler = (event) => {
+      if (!this.state?.isDirty && this._getModifiedCount() === 0) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', this._beforeUnloadHandler);
+  }
+
   /**
    * Save changes to server (using modern SaveHandler)
    */
   async saveChanges() {
     if (!this.saveHandler) {
       console.error('[JadwalKegiatanApp] SaveHandler not initialized');
-      Toast.error('Save handler not initialized');
+      Toast.error('Fitur penyimpanan belum siap');
       return;
     }
 
     if (!this._validateRowTotalsBeforeSave()) {
-      Toast.warning('Please fix validation errors before saving');
+      Toast.warning('Perbaiki nilai yang tidak valid sebelum menyimpan');
       return;
     }
 
@@ -2947,8 +3021,9 @@ class JadwalKegiatanApp {
 
     // Set button to loading state
     if (saveButton) {
-      ButtonStateManager.setLoading(saveButton, 'Saving...');
+      ButtonStateManager.setLoading(saveButton, 'Menyimpan...');
     }
+    this._updateStatusBar('Menyimpan perubahan...');
 
     try {
       // Delegate to SaveHandler
@@ -2964,14 +3039,16 @@ class JadwalKegiatanApp {
           ButtonStateManager.setSuccess(saveButton, 2000);
         }
 
-        Toast.success('Changes saved successfully!');
+        Toast.success('Perubahan berhasil disimpan');
       } else {
         // Set button to error state
         if (saveButton) {
           ButtonStateManager.setError(saveButton, 2000);
         }
 
-        Toast.error(result.message || 'Failed to save changes');
+        if (result.reason !== 'no_changes') {
+          Toast.error(result.message || 'Perubahan gagal disimpan');
+        }
       }
     } catch (error) {
       console.error('[JadwalKegiatanApp] Save error:', error);
@@ -2981,7 +3058,9 @@ class JadwalKegiatanApp {
         ButtonStateManager.setError(saveButton, 2000);
       }
 
-      Toast.error('An error occurred while saving');
+      Toast.error('Terjadi kesalahan saat menyimpan');
+    } finally {
+      this._updateStatusBar();
     }
   }
 
@@ -2993,6 +3072,7 @@ class JadwalKegiatanApp {
   _onSaveSuccess(result) {
     console.log('[JadwalKegiatanApp] Save completed successfully');
     this.state.isDirty = false;
+    this.state.lastSavedAt = new Date();
     this._clearSaveErrorRows();
     window.dispatchEvent(new CustomEvent('dp:sync-led-ack', {
       detail: {
@@ -3034,13 +3114,17 @@ class JadwalKegiatanApp {
    */
   async refresh() {
     if (this.state.isDirty) {
-      const confirmed = confirm(
-        'Ada perubahan yang belum disimpan. Yakin ingin refresh?'
-      );
+      const confirmed = await this._confirmAction({
+        title: 'Muat ulang data?',
+        message: 'Perubahan yang belum disimpan akan dibatalkan.',
+        confirmLabel: 'Muat ulang',
+        danger: true,
+      });
       if (!confirmed) return;
     }
 
     console.log('Refreshing data...');
+    this._updateStatusBar('Memuat ulang data...');
     this._resetEditedCellsState();
     this.state.isDirty = false;
 
@@ -3195,7 +3279,23 @@ class JadwalKegiatanApp {
         this.gridManager.updateTopScrollMetrics();
       }
     }
+    this._updateEmptyState();
     this._updateStatusBar();
+  }
+
+  _updateEmptyState() {
+    const emptyState = this.state?.domRefs?.emptyStateEl;
+    const gridBody = this.state?.domRefs?.tanstackGridBody;
+    if (!emptyState) return;
+
+    const pekerjaanCount = Array.isArray(this.state?.flatPekerjaan)
+      ? this.state.flatPekerjaan.filter((node) => node?.type === 'pekerjaan').length
+      : 0;
+    const isEmpty = !this.state?.isLoading && pekerjaanCount === 0 && !this.state?.error;
+    emptyState.classList.toggle('d-none', !isEmpty);
+    if (gridBody) {
+      gridBody.setAttribute('aria-hidden', String(isEmpty));
+    }
   }
 
   _renderGrid() {
@@ -4491,7 +4591,7 @@ class JadwalKegiatanApp {
     return false;
   }
 
-  _updateStatusBar(message = 'Ready') {
+  _updateStatusBar(message = null) {
     const domRefs = this.state?.domRefs || {};
     const hasElements =
       domRefs.statusMessageEl || domRefs.itemCountEl || domRefs.modifiedCountEl || domRefs.totalProgressEl;
@@ -4499,8 +4599,63 @@ class JadwalKegiatanApp {
       return;
     }
 
-    if (domRefs.statusMessageEl && typeof message === 'string') {
-      domRefs.statusMessageEl.textContent = message;
+    const modifiedCount = this._getModifiedCount();
+    const hasFailures =
+      (this.state?.saveErrorRows instanceof Set && this.state.saveErrorRows.size > 0) ||
+      (this.state?.apiFailedRows instanceof Set && this.state.apiFailedRows.size > 0);
+    const isSaving = Boolean(this.saveHandler?.isSaving);
+    const isLoading = Boolean(this.state?.isLoading);
+    const explicitMessage = typeof message === 'string' && message !== 'Ready' ? message : null;
+
+    let statusClass = 'is-saved';
+    let statusIcon = 'bi-check-circle-fill';
+    let statusMessage = 'Tersimpan';
+    if (hasFailures) {
+      statusClass = 'is-error';
+      statusIcon = 'bi-exclamation-circle-fill';
+      statusMessage = 'Sebagian perubahan gagal disimpan';
+    } else if (isSaving) {
+      statusClass = 'is-saving';
+      statusIcon = 'bi-arrow-repeat';
+      statusMessage = 'Menyimpan perubahan...';
+    } else if (isLoading) {
+      statusClass = 'is-saving';
+      statusIcon = 'bi-arrow-repeat';
+      statusMessage = explicitMessage || 'Memuat data...';
+    } else if (modifiedCount > 0) {
+      statusClass = 'is-dirty';
+      statusIcon = 'bi-exclamation-circle-fill';
+      statusMessage = `${modifiedCount.toLocaleString('id-ID')} perubahan belum disimpan`;
+    } else if (explicitMessage) {
+      statusMessage = explicitMessage;
+    }
+
+    if (domRefs.statusMessageEl) {
+      domRefs.statusMessageEl.textContent = statusMessage;
+    }
+
+    if (domRefs.saveStateIndicatorEl) {
+      domRefs.saveStateIndicatorEl.classList.remove('is-saved', 'is-dirty', 'is-saving', 'is-error');
+      domRefs.saveStateIndicatorEl.classList.add(statusClass);
+      const icon = domRefs.saveStateIndicatorEl.querySelector('i');
+      if (icon) {
+        icon.className = `bi ${statusIcon}`;
+        icon.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    if (domRefs.lastSavedAtEl) {
+      const lastSavedAt = this.state?.lastSavedAt;
+      if (lastSavedAt instanceof Date && !Number.isNaN(lastSavedAt.getTime()) && modifiedCount === 0) {
+        const formatted = lastSavedAt.toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        domRefs.lastSavedAtEl.textContent = `Terakhir disimpan ${formatted}`;
+        domRefs.lastSavedAtEl.classList.remove('d-none');
+      } else if (modifiedCount > 0) {
+        domRefs.lastSavedAtEl.classList.add('d-none');
+      }
     }
 
     if (domRefs.itemCountEl) {
@@ -4511,7 +4666,6 @@ class JadwalKegiatanApp {
     }
 
     if (domRefs.modifiedCountEl) {
-      const modifiedCount = this.state?.modifiedCells instanceof Map ? this.state.modifiedCells.size : 0;
       domRefs.modifiedCountEl.textContent = modifiedCount.toLocaleString('id-ID');
     }
 
@@ -4522,6 +4676,7 @@ class JadwalKegiatanApp {
           ? '-'
           : `${totalProgress.toLocaleString('id-ID', { maximumFractionDigits: 1 })}% `;
     }
+    this._updateSaveButtonState();
   }
 
   _calculateProjectProgress() {
@@ -4838,6 +4993,7 @@ class JadwalKegiatanApp {
     } else {
       console.log(`[CellChange] Cost map size: ${modeState.costModifiedCells.size}`);
     }
+    this._updateStatusBar();
   }
 
   _bindUnifiedTabSync() {
@@ -4855,34 +5011,56 @@ class JadwalKegiatanApp {
       return;
     }
 
-    // Simple click handler - unified architecture (no container moving)
-    tabButtons.forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const mode = btn.dataset.mode;
+    const activateTab = async (btn) => {
+      const mode = btn.dataset.mode;
 
-        // 1. Update tab button active state
-        tabButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+      // 1. Update tab button active and accessibility state
+      tabButtons.forEach((tabButton) => {
+        const isActive = tabButton === btn;
+        tabButton.classList.toggle('active', isActive);
+        tabButton.setAttribute('aria-selected', String(isActive));
+        tabButton.setAttribute('tabindex', isActive ? '0' : '-1');
+      });
+      const unifiedView = document.getElementById('unified-view');
+      if (unifiedView) {
+        unifiedView.setAttribute('aria-labelledby', btn.id);
+      }
 
-        // 2. Update mode label in status bar
-        if (modeLabel) {
-          modeLabel.textContent = modeLabels[mode] || mode;
-        }
+      // 2. Update mode label in status bar
+      if (modeLabel) {
+        modeLabel.textContent = modeLabels[mode] || mode;
+      }
 
-        // 3. Lazy load chart modules if needed
-        if (mode !== 'grid' && !this._chartModulesLoaded && !this._chartModulesLoading) {
-          await this._loadChartModules();
-        }
+      // 3. Lazy load chart modules if needed
+      if (mode !== 'grid' && !this._chartModulesLoaded && !this._chartModulesLoading) {
+        await this._loadChartModules();
+      }
 
-        // 4. Switch mode via UnifiedTableManager (shows/hides overlays)
-        if (this.unifiedManager) {
-          this.unifiedManager.switchMode(mode);
-        }
+      // 4. Switch mode via UnifiedTableManager (shows/hides overlays)
+      if (this.unifiedManager) {
+        this.unifiedManager.switchMode(mode);
+      }
 
-        // 5. Update state displayMode and download button visibility
-        const modeToDisplayMode = { grid: 'grid', gantt: 'gantt', kurva: 'scurve' };
-        this.state.displayMode = modeToDisplayMode[mode] || 'grid';
-        this._updateDownloadButtonVisibility();
+      // 5. Update state displayMode and download button visibility
+      const modeToDisplayMode = { grid: 'grid', gantt: 'gantt', kurva: 'scurve' };
+      this.state.displayMode = modeToDisplayMode[mode] || 'grid';
+      this._updateDownloadButtonVisibility();
+      this._updateStatusBar();
+    };
+
+    tabButtons.forEach((btn, index) => {
+      btn.addEventListener('click', () => activateTab(btn));
+      btn.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        let nextIndex = index;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabButtons.length;
+        if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabButtons.length) % tabButtons.length;
+        if (event.key === 'Home') nextIndex = 0;
+        if (event.key === 'End') nextIndex = tabButtons.length - 1;
+        const nextTab = tabButtons[nextIndex];
+        nextTab.focus();
+        activateTab(nextTab);
       });
     });
   }
@@ -4895,6 +5073,10 @@ class JadwalKegiatanApp {
     if (this._syncRefreshHandler) {
       window.removeEventListener('dp:sync-refresh-request', this._syncRefreshHandler);
       this._syncRefreshHandler = null;
+    }
+    if (this._beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+      this._beforeUnloadHandler = null;
     }
 
     if (this.gridManager) {
@@ -4911,16 +5093,35 @@ class JadwalKegiatanApp {
 
 }
 
+function showInitializationError(error) {
+  const alert = document.getElementById('jadwal-initialization-error');
+  const message = document.getElementById('jadwal-initialization-error-message');
+  if (message) {
+    message.textContent = error?.message
+      ? `Detail: ${error.message}`
+      : 'Silakan muat ulang halaman.';
+  }
+  if (alert) {
+    alert.classList.remove('d-none');
+  }
+}
+
+async function initializeApp() {
+  try {
+    const app = new JadwalKegiatanApp();
+    await app.initialize();
+  } catch (error) {
+    console.error('[JadwalKegiatanApp] Automatic initialization failed:', error);
+    showInitializationError(error);
+  }
+}
+
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    const app = new JadwalKegiatanApp();
-    app.initialize();
-  });
+  document.addEventListener('DOMContentLoaded', initializeApp, { once: true });
 } else {
   // DOM already loaded
-  const app = new JadwalKegiatanApp();
-  app.initialize();
+  initializeApp();
 }
 
 // Export for manual initialization

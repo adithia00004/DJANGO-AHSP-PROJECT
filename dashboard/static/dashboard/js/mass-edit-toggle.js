@@ -20,6 +20,7 @@
 
   let isEditMode = false;
   let originalData = new Map(); // Stores original values for rollback
+  let draftValues = new Map(); // Keeps edits when optional columns are hidden
   let editedCells = new Set(); // Tracks which cells have been edited
   let errorCells = new Set(); // Tracks cells with validation errors
 
@@ -62,7 +63,8 @@
     'tanggal_mulai'
   ];
 
-  // All 20 editable fields
+  // All editable fields. Keep the default grid focused; users can opt into
+  // additional columns from the action bar.
   const ALL_FIELDS = [
     // 6 Required
     { name: 'nama', label: 'Nama Project', type: 'text', required: true },
@@ -88,6 +90,35 @@
     { name: 'deskripsi', label: 'Deskripsi', type: 'textarea', required: false },
     { name: 'kategori', label: 'Kategori', type: 'text', required: false }
   ];
+  const DEFAULT_FIELD_NAMES = [
+    'nama',
+    'sumber_dana',
+    'lokasi_project',
+    'nama_client',
+    'anggaran_owner',
+    'tanggal_mulai',
+    'tanggal_selesai'
+  ];
+  let visibleFieldNames = new Set(DEFAULT_FIELD_NAMES);
+  let selectedProjectIds = new Set();
+  const MULTILINE_FIELD_NAMES = new Set([
+    'nama',
+    'sumber_dana',
+    'lokasi_project',
+    'nama_client',
+    'ket_project1',
+    'ket_project2',
+    'jabatan_client',
+    'instansi_client',
+    'nama_kontraktor',
+    'instansi_kontraktor',
+    'nama_konsultan_perencana',
+    'instansi_konsultan_perencana',
+    'nama_konsultan_pengawas',
+    'instansi_konsultan_pengawas',
+    'deskripsi',
+    'kategori'
+  ]);
 
   // ============================================================================
   // INITIALIZATION
@@ -98,11 +129,23 @@
     const toggleBtn = document.getElementById('massEditToggleBtn');
     const saveBtn = document.getElementById('massEditSaveAllBtn');
     const cancelBtn = document.getElementById('massEditCancelBtn');
+    const bulkModeToggleBtn = document.getElementById('bulkModeToggleBtn');
 
     if (!toggleBtn) {
       console.warn('Mass Edit Toggle button not found');
       return;
     }
+
+    function updateMobileAvailability() {
+      const unavailable = window.innerWidth <= 992;
+      if (!bulkModeToggleBtn || isEditMode) return;
+      bulkModeToggleBtn.disabled = unavailable;
+      bulkModeToggleBtn.title = unavailable
+        ? 'Edit massal tersedia pada layar desktop (lebih dari 992px)'
+        : 'Pilih project untuk diedit atau dihapus';
+    }
+    updateMobileAvailability();
+    window.addEventListener('resize', updateMobileAvailability);
 
     // Toggle Edit Mode
     toggleBtn.addEventListener('click', function() {
@@ -183,10 +226,26 @@
       return;
     }
 
+    if (window.innerWidth <= 992) {
+      toast('Edit massal tersedia pada layar desktop.', 'warning', 4000);
+      return;
+    }
+
+    selectedProjectIds = new Set(
+      Array.from(table.querySelectorAll('tbody .project-checkbox:checked'))
+        .map(checkbox => checkbox.value)
+    );
+    if (selectedProjectIds.size === 0) {
+      toast('Pilih minimal satu project untuk diedit.', 'warning', 4000);
+      return;
+    }
+
     // Clear previous state
     originalData.clear();
+    draftValues.clear();
     editedCells.clear();
     errorCells.clear();
+    visibleFieldNames = new Set(DEFAULT_FIELD_NAMES);
 
     // Show edit action bar, hide bulk actions
     if (editActionBar) editActionBar.style.display = 'block';
@@ -198,16 +257,54 @@
     // Disable all other UI interactions
     disableUIInteractions();
 
-    // Rebuild table with ALL fields
+    buildColumnOptions();
+    updateEditSummary();
+
+    // Rebuild table with selected projects and focused fields.
     rebuildTableForEdit(table);
 
     // Mark as edit mode
     isEditMode = true;
 
     // Show success message
-    if (window.showToast) {
-      window.showToast('Mode edit aktif. Edit langsung di tabel, lalu klik Simpan Semua.', 'info', 4000);
-    }
+    toast(`${selectedProjectIds.size} project siap diedit.`, 'info', 4000);
+  }
+
+  function getVisibleFields() {
+    return ALL_FIELDS.filter(field => visibleFieldNames.has(field.name));
+  }
+
+  function buildColumnOptions() {
+    const container = document.getElementById('massEditColumnOptions');
+    if (!container) return;
+
+    container.innerHTML = ALL_FIELDS
+      .filter(field => !DEFAULT_FIELD_NAMES.includes(field.name))
+      .map(field => `
+        <label class="form-check mb-2">
+          <input class="form-check-input mass-edit-column-option" type="checkbox"
+            value="${field.name}" ${visibleFieldNames.has(field.name) ? 'checked' : ''}>
+          <span class="form-check-label">${field.label}</span>
+        </label>
+      `).join('');
+
+    container.querySelectorAll('.mass-edit-column-option').forEach(checkbox => {
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          visibleFieldNames.add(checkbox.value);
+        } else {
+          visibleFieldNames.delete(checkbox.value);
+        }
+        rebuildTableForEdit(document.querySelector('.dashboard-project-table'), true);
+      });
+    });
+  }
+
+  function updateEditSummary() {
+    const projectCount = document.getElementById('massEditProjectCount');
+    const changeCount = document.getElementById('massEditChangeCount');
+    if (projectCount) projectCount.textContent = `${selectedProjectIds.size} project`;
+    if (changeCount) changeCount.textContent = `${editedCells.size} perubahan`;
   }
 
   // ============================================================================
@@ -319,27 +416,39 @@
   // REBUILD TABLE FOR EDIT
   // ============================================================================
 
-  function rebuildTableForEdit(table) {
+  function rebuildTableForEdit(table, preserveCurrentValues = false) {
     const tbody = table.querySelector('tbody');
     const thead = table.querySelector('thead');
 
     if (!tbody || !thead) return;
 
     const rows = Array.from(tbody.querySelectorAll('tr'));
+    const currentValues = new Map();
+
+    if (preserveCurrentValues) {
+      table.querySelectorAll('input[data-project-id][data-field], textarea[data-project-id][data-field]')
+        .forEach(input => {
+          const key = `${input.dataset.projectId}-${input.dataset.field}`;
+          currentValues.set(key, input.value);
+          draftValues.set(key, input.value);
+        });
+    }
+
+    rows.forEach(row => {
+      const projectId = row.dataset.projectId || row.querySelector('.project-checkbox')?.value;
+      row.hidden = !selectedProjectIds.has(String(projectId));
+    });
 
     // Rebuild header with ALL fields
     const headerRow = thead.querySelector('tr');
     headerRow.innerHTML = '';
 
-    // Checkbox column
-    const checkboxTh = document.createElement('th');
-    checkboxTh.className = 'text-center';
-    checkboxTh.style.width = '40px';
-    checkboxTh.innerHTML = '<input type="checkbox" id="selectAll" class="form-check-input" title="Pilih semua">';
-    headerRow.appendChild(checkboxTh);
+    const projectTh = document.createElement('th');
+    projectTh.className = 'mass-edit-project-name';
+    projectTh.textContent = 'Project';
+    headerRow.appendChild(projectTh);
 
-    // Add all field headers
-    ALL_FIELDS.forEach(field => {
+    getVisibleFields().forEach(field => {
       const th = document.createElement('th');
       th.textContent = field.label;
       th.setAttribute('data-field', field.name);
@@ -360,8 +469,8 @@
 
     // Rebuild each row
     rows.forEach((row, rowIndex) => {
-      const projectId = row.querySelector('.project-checkbox')?.value;
-      if (!projectId) return;
+      const projectId = String(row.dataset.projectId || row.querySelector('.project-checkbox')?.value || '');
+      if (!projectId || !selectedProjectIds.has(projectId)) return;
 
       // Store original data from data attributes
       const originalRowData = {};
@@ -372,21 +481,31 @@
         const value = row.dataset[camelCaseName] !== undefined ? row.dataset[camelCaseName] : '';
         originalRowData[field.name] = value;
       });
-      originalData.set(projectId, originalRowData);
-
-      // Rebuild row with editable inputs
-      const checkboxCell = row.cells[0]; // Keep checkbox
+      if (!originalData.has(projectId)) originalData.set(projectId, originalRowData);
 
       row.innerHTML = '';
-      row.appendChild(checkboxCell);
+      const projectCell = document.createElement('td');
+      projectCell.className = 'mass-edit-project-name fw-semibold';
+      projectCell.textContent = originalData.get(projectId).nama || `Project ${projectId}`;
+      row.appendChild(projectCell);
 
-      // Add editable cells for each field
-      ALL_FIELDS.forEach(field => {
+      getVisibleFields().forEach(field => {
         const td = document.createElement('td');
         td.setAttribute('data-field', field.name);
         td.setAttribute('data-project-id', projectId);
 
-        const input = createEditableInput(field, originalRowData[field.name], projectId);
+        const key = `${projectId}-${field.name}`;
+        const value = draftValues.has(key)
+          ? draftValues.get(key)
+          : currentValues.has(key)
+            ? currentValues.get(key)
+          : originalData.get(projectId)[field.name];
+        const input = createEditableInput(
+          field,
+          value,
+          projectId,
+          originalData.get(projectId)[field.name]
+        );
         td.appendChild(input);
 
         row.appendChild(td);
@@ -399,27 +518,19 @@
       row.appendChild(actionTd);
     });
 
-    // Re-attach select all checkbox listener
-    const selectAllCheckbox = document.getElementById('selectAll');
-    if (selectAllCheckbox) {
-      selectAllCheckbox.addEventListener('change', function() {
-        const checkboxes = tbody.querySelectorAll('.project-checkbox');
-        checkboxes.forEach(cb => cb.checked = this.checked);
-      });
-    }
   }
 
   // ============================================================================
   // CREATE EDITABLE INPUT
   // ============================================================================
 
-  function createEditableInput(field, value, projectId) {
+  function createEditableInput(field, value, projectId, originalValue = value) {
     let input;
 
-    if (field.type === 'textarea') {
+    if (field.type === 'textarea' || MULTILINE_FIELD_NAMES.has(field.name)) {
       input = document.createElement('textarea');
-      input.className = 'form-control form-control-sm';
-      input.rows = 2;
+      input.className = 'form-control form-control-sm mass-edit-multiline';
+      input.rows = field.type === 'textarea' ? 3 : 1;
     } else {
       input = document.createElement('input');
       input.type = field.type;
@@ -479,9 +590,10 @@
     }
 
     input.value = value || '';
+    input.title = value || '';
     input.setAttribute('data-field', field.name);
     input.setAttribute('data-project-id', projectId);
-    input.setAttribute('data-original-value', value || '');
+    input.setAttribute('data-original-value', originalValue || '');
 
     if (field.required) {
       input.required = true;
@@ -491,6 +603,10 @@
     // Track changes
     input.addEventListener('input', function() {
       handleFieldChange(this, field);
+      this.title = this.value;
+      if (this.classList.contains('mass-edit-multiline')) {
+        autoSizeMultiline(this);
+      }
     });
 
     // Validate on blur (after numeric blur handler)
@@ -498,7 +614,25 @@
       validateField(this, field);
     });
 
+    if (input.classList.contains('mass-edit-multiline')) {
+      input.addEventListener('focus', function() {
+        this.classList.add('is-expanded');
+        autoSizeMultiline(this);
+      });
+      input.addEventListener('blur', function() {
+        this.classList.remove('is-expanded');
+        this.style.height = '';
+      });
+    }
+
     return input;
+  }
+
+  function autoSizeMultiline(input) {
+    const maxHeight = Math.min(window.innerHeight * 0.35, 180);
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
+    input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
 
   // ============================================================================
@@ -511,6 +645,7 @@
     const originalValue = input.getAttribute('data-original-value');
     const currentValue = input.value;
     const cellKey = `${projectId}-${fieldName}`;
+    draftValues.set(cellKey, currentValue);
 
     // Track if changed
     if (currentValue !== originalValue) {
@@ -520,6 +655,7 @@
       editedCells.delete(cellKey);
       input.parentElement.classList.remove('cell-edited');
     }
+    updateEditSummary();
 
     // Validate required fields
     if (field.required) {
@@ -598,7 +734,7 @@
 
   async function saveAllChanges() {
 
-    // Validate all fields first
+    // Validate visible fields first. Hidden fields retain their original values.
     const table = document.querySelector('.dashboard-project-table');
     const allInputs = table.querySelectorAll('input, textarea, select');
     let hasErrors = false;
@@ -649,25 +785,21 @@
     });
 
 
-    // For each modified project, collect ALL field values
+    // For each modified project, send every editable field. Empty optional
+    // values are intentional and must reach the backend to clear stored data.
     projectIds.forEach(projectId => {
       const projectData = { id: projectId };
-
 
       ALL_FIELDS.forEach(field => {
         // Find INPUT or TEXTAREA element specifically (not TD which also has data attributes)
         const input = table.querySelector(`input[data-project-id="${projectId}"][data-field="${field.name}"], textarea[data-project-id="${projectId}"][data-field="${field.name}"]`);
 
-        if (input) {
-          const value = input.value;
-
-          // Only include field if it has a value (don't send empty strings for optional fields)
-          if (value || field.required) {
-            projectData[field.name] = value;
-          }
-        } else {
-          console.warn(`  - ${field.name}: INPUT NOT FOUND`);
-        }
+        const key = `${projectId}-${field.name}`;
+        projectData[field.name] = draftValues.has(key)
+          ? draftValues.get(key)
+          : input
+            ? input.value
+            : (originalData.get(projectId)?.[field.name] || '');
       });
 
       changes.push(projectData);
@@ -706,16 +838,15 @@
       },
       body: JSON.stringify(requestBody)
     })
-    .then(response => {
-
-      if (!response.ok) {
-        return response.text().then(text => {
-          console.error('Response error text:', text);
-          throw new Error(`HTTP ${response.status}: ${text}`);
-        });
+    .then(async response => {
+      const data = await response.json().catch(() => null);
+      if (!response.ok && !data) {
+        throw new Error(`HTTP ${response.status}`);
       }
-
-      return response.json();
+      return data || {
+        success: false,
+        message: `Permintaan gagal dengan status HTTP ${response.status}.`
+      };
     })
     .then(data => {
 
@@ -739,8 +870,9 @@
         toast(data.message || 'Terjadi kesalahan saat menyimpan.', 'error', 5000);
         if (saveBtn) {
           saveBtn.disabled = false;
-          saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Semua';
+          saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan';
         }
+        applyServerErrors(data.errors || {});
       }
     })
     .catch(error => {
@@ -749,10 +881,53 @@
       toast(`Terjadi kesalahan saat menyimpan perubahan: ${error.message}`, 'error', 5000);
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan Semua';
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Simpan';
       }
     });
   }
+
+  function applyServerErrors(errors) {
+    const table = document.querySelector('.dashboard-project-table');
+    const hiddenErrorFields = new Set();
+    Object.values(errors).forEach(fields => {
+      Object.keys(fields || {}).forEach(fieldName => {
+        if (
+          ALL_FIELDS.some(field => field.name === fieldName) &&
+          !visibleFieldNames.has(fieldName)
+        ) {
+          hiddenErrorFields.add(fieldName);
+        }
+      });
+    });
+    if (hiddenErrorFields.size > 0) {
+      hiddenErrorFields.forEach(fieldName => visibleFieldNames.add(fieldName));
+      buildColumnOptions();
+      rebuildTableForEdit(table, true);
+    }
+
+    Object.entries(errors).forEach(([projectId, fields]) => {
+      const row = table?.querySelector(`tr[data-project-id="${projectId}"]`);
+      row?.classList.add('mass-edit-row-error');
+
+      Object.entries(fields || {}).forEach(([fieldName, messages]) => {
+        const input = table?.querySelector(
+          `input[data-project-id="${projectId}"][data-field="${fieldName}"], ` +
+          `textarea[data-project-id="${projectId}"][data-field="${fieldName}"]`
+        );
+        if (!input) return;
+        input.classList.add('is-invalid');
+        input.title = Array.isArray(messages) ? messages.join(' ') : String(messages);
+        input.parentElement?.classList.add('cell-error');
+      });
+    });
+    toast('Sebagian data tidak valid. Periksa field yang ditandai merah.', 'warning', 5000);
+  }
+
+  window.addEventListener('beforeunload', function(event) {
+    if (!isEditMode || editedCells.size === 0) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   // ============================================================================
   // EXIT EDIT MODE

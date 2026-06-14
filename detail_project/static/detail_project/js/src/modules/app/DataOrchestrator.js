@@ -77,6 +77,7 @@ export class DataOrchestrator {
     });
 
     app.state.isLoading = true;
+    app.state.error = null;
 
     try {
       console.log('[JadwalKegiatanApp] Loading data using modern DataLoader...');
@@ -174,9 +175,12 @@ export class DataOrchestrator {
     }
 
     if (app.state.isDirty && app.state.modifiedCells instanceof Map && app.state.modifiedCells.size > 0) {
-      const confirmed = window.confirm(
-        'Mengubah batas minggu akan me-refresh data dan membatalkan perubahan yang belum disimpan. Lanjutkan?'
-      );
+      const confirmed = await app._confirmAction({
+        title: 'Ubah struktur waktu?',
+        message: 'Perubahan yang belum disimpan akan dibatalkan ketika struktur waktu disusun ulang.',
+        confirmLabel: 'Susun ulang',
+        danger: true,
+      });
       if (!confirmed) return;
       app._resetEditedCellsState();
       app.state.isDirty = false;

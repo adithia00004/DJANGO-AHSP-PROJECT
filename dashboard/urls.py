@@ -6,8 +6,8 @@ from .views import (
     project_detail,
     project_duplicate,
     project_upload_view,
-    mass_edit_bulk_update,
 )
+from .views_mass_edit import mass_edit_bulk_update
 from .views_export import (
     export_excel,
     export_csv,

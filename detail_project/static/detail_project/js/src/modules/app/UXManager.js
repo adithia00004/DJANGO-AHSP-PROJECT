@@ -214,7 +214,8 @@ export class UXManager {
    */
   showSkeleton(type) {
     const skeleton = document.getElementById(`skeleton-${type}`);
-    const view = document.getElementById(`${type}-view`);
+    const view = document.getElementById(`${type}-view`)
+      || document.getElementById('unified-view');
     if (skeleton) {
       skeleton.classList.add('showing');
       skeleton.classList.remove('fade-out');
@@ -237,7 +238,8 @@ export class UXManager {
    */
   hideSkeleton(type) {
     const skeleton = document.getElementById(`skeleton-${type}`);
-    const view = document.getElementById(`${type}-view`);
+    const view = document.getElementById(`${type}-view`)
+      || document.getElementById('unified-view');
     if (skeleton) {
       skeleton.classList.add('fade-out');
       setTimeout(() => {

@@ -33,6 +33,8 @@ from .formula_tokenizer import remap_expression
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_PROJECT_MARKUP_PERCENT = Decimal("10.00")
+
 MONTH_NAMES_ID = {
     1: "Januari",
     2: "Februari",
@@ -2247,7 +2249,7 @@ def _get_markup_percent(project) -> Decimal:
     obj = ProjectPricing.objects.filter(project=project).first()
     if obj and obj.markup_percent is not None:
         return Decimal(str(obj.markup_percent))
-    return Decimal("0.00")
+    return DEFAULT_PROJECT_MARKUP_PERCENT
 
 def compute_rekap_for_project(project):
     raw_ts = DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
@@ -2259,7 +2261,13 @@ def compute_rekap_for_project(project):
         Pekerjaan.objects
         .filter(project=project)
         .order_by('id')
-        .values_list('id', 'source_type', 'ref_id', 'ref__sumber')
+        .values_list(
+            'id',
+            'source_type',
+            'ref_id',
+            'ref__sumber',
+            'markup_override_percent',
+        )
     )
 
     def _ts(val):
@@ -2289,14 +2297,13 @@ def compute_rekap_for_project(project):
       E (lama) diisi = F (margin) agar test lama tetap lolos,
       HSP = E_base (pra-markup) untuk konsistensi dengan halaman Volume & test.
     """
-    # --- Ambil Profit/Margin default proyek (fallback 10.00)
-    proj_markup = Decimal("0")
-    try:
-        pp = ProjectPricing.objects.filter(project=project).first()
-        if pp and pp.markup_percent is not None:
-            proj_markup = Decimal(pp.markup_percent)
-    except Exception:
-        pass
+    # --- Ambil Profit/Margin default proyek (fallback kanonik 10.00)
+    pricing = ProjectPricing.objects.filter(project=project).only("markup_percent").first()
+    proj_markup = (
+        Decimal(pricing.markup_percent)
+        if pricing and pricing.markup_percent is not None
+        else DEFAULT_PROJECT_MARKUP_PERCENT
+    )
 
     # --- Agregasi nilai per kategori
     # NEW: Read from DetailAHSPExpanded (dual storage - already expanded!).
@@ -2440,6 +2447,13 @@ def compute_rekap_for_project(project):
             markup_eff=mp,    # persen efektif
             volume=volume,
             total=total,      # = G * volume
+
+            # Nama kanonik untuk consumer baru; alias lama dipertahankan.
+            component_cost_before_markup=E_base,
+            markup_percent_effective=mp,
+            markup_amount=F,
+            unit_price_after_markup=G,
+            work_total_after_markup=total,
         ))
     cache.set(cache_key, {"sig": signature, "data": result}, 300)  # 5 menit (atau sesuai kebutuhan)
     return result

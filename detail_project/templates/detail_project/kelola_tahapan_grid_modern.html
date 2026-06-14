@@ -46,94 +46,35 @@
 
     <!-- Primary Action Buttons (Grouped) -->
     <div class="toolbar-actions">
-      <button type="button" class="btn btn-primary btn-sm btn-save" id="save-button" aria-label="Save all changes"
-        title="Save all changes">
+      <button type="button" class="btn btn-primary btn-sm btn-save" id="save-button"
+        aria-label="Simpan semua perubahan" title="Simpan semua perubahan" disabled>
         <i class="bi bi-save" aria-hidden="true"></i>
-        <span class="btn-text">Save</span>
+        <span class="btn-text">Simpan</span>
       </button>
 
       <button type="button" class="btn btn-outline-secondary btn-sm" id="refresh-button"
-        aria-label="Refresh data from server" title="Refresh data">
+        aria-label="Muat ulang data dari server" title="Muat ulang data">
         <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
       </button>
 
+      <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
+        data-bs-target="#exportModal" aria-label="Ekspor jadwal" title="Ekspor jadwal">
+        <i class="bi bi-download" aria-hidden="true"></i>
+        <span class="btn-text d-none d-md-inline">Ekspor</span>
+      </button>
+
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="help-button"
+        aria-label="Buka bantuan jadwal" title="Bantuan dan pintasan keyboard">
+        <i class="bi bi-question-circle" aria-hidden="true"></i>
+      </button>
+
+      <span class="toolbar-divider d-none d-md-block" aria-hidden="true"></span>
+
       <button type="button" class="btn btn-outline-danger btn-sm" id="btn-reset-progress"
-        title="Reset progress (mode aktif) ke 0% - data mode lain tetap aman">
-        <i class="bi bi-arrow-counterclockwise"></i>
-        <span class="btn-text d-none d-md-inline">Reset</span>
+        title="Reset progres mode aktif ke 0%; mode lain tidak terpengaruh">
+        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+        <span class="btn-text d-none d-lg-inline">Reset progres</span>
       </button>
-
-      <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#exportModal">
-        <i class="bi bi-download"></i>
-        <span class="btn-text d-none d-md-inline">Export</span>
-      </button>
-
-      <!-- More Menu (Mobile/Tablet) -->
-      <div class="dropdown toolbar-more d-lg-none">
-        <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"
-          aria-expanded="false" aria-label="More options">
-          <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width: 260px;">
-          <li class="dropdown-header">Actions</li>
-          <li>
-            <button class="dropdown-item d-flex align-items-center gap-2" type="button" id="btn-reset-progress-mobile">
-              <i class="bi bi-arrow-counterclockwise text-danger"></i> Reset Progress
-            </button>
-          </li>
-          <li>
-            <hr class="dropdown-divider">
-          </li>
-
-          <li class="dropdown-header">Time Scale</li>
-          <li class="px-3 py-1">
-            <div class="btn-group btn-group-sm w-100" role="group">
-              <input type="radio" class="btn-check" name="timeScale" id="scale-weekly-mobile" value="weekly" checked>
-              <label class="btn btn-outline-primary" for="scale-weekly-mobile">Weekly</label>
-
-              <input type="radio" class="btn-check" name="timeScale" id="scale-monthly-mobile" value="monthly">
-              <label class="btn btn-outline-primary" for="scale-monthly-mobile">Monthly</label>
-            </div>
-          </li>
-
-          <li>
-            <hr class="dropdown-divider">
-          </li>
-
-          <li class="dropdown-header">Week Boundaries</li>
-          <li class="px-3 py-1 pb-3">
-            <div class="d-flex align-items-center gap-2">
-              <div class="w-50">
-                <label class="form-label small text-muted mb-1" style="font-size: 0.7rem;">Start</label>
-                <select class="form-select form-select-sm"
-                  onchange="var elStart=document.getElementById('week-start-day-select'); if(elStart){ elStart.value=this.value; elStart.dispatchEvent(new Event('change')); }">
-                  <option value="0" {% if project.week_start_day|default:0 == 0 %}selected{% endif %}>Sen</option>
-                  <option value="1" {% if project.week_start_day|default:0 == 1 %}selected{% endif %}>Sel</option>
-                  <option value="2" {% if project.week_start_day|default:0 == 2 %}selected{% endif %}>Rab</option>
-                  <option value="3" {% if project.week_start_day|default:0 == 3 %}selected{% endif %}>Kam</option>
-                  <option value="4" {% if project.week_start_day|default:0 == 4 %}selected{% endif %}>Jum</option>
-                  <option value="5" {% if project.week_start_day|default:0 == 5 %}selected{% endif %}>Sab</option>
-                  <option value="6" {% if project.week_start_day|default:0 == 6 %}selected{% endif %}>Min</option>
-                </select>
-              </div>
-              <div class="text-muted mt-3">–</div>
-              <div class="w-50">
-                <label class="form-label small text-muted mb-1" style="font-size: 0.7rem;">End</label>
-                <select class="form-select form-select-sm"
-                  onchange="var elEnd=document.getElementById('week-end-day-select'); if(elEnd){ elEnd.value=this.value; elEnd.dispatchEvent(new Event('change')); }">
-                  <option value="0" {% if project.week_end_day|default:6 == 0 %}selected{% endif %}>Sen</option>
-                  <option value="1" {% if project.week_end_day|default:6 == 1 %}selected{% endif %}>Sel</option>
-                  <option value="2" {% if project.week_end_day|default:6 == 2 %}selected{% endif %}>Rab</option>
-                  <option value="3" {% if project.week_end_day|default:6 == 3 %}selected{% endif %}>Kam</option>
-                  <option value="4" {% if project.week_end_day|default:6 == 4 %}selected{% endif %}>Jum</option>
-                  <option value="5" {% if project.week_end_day|default:6 == 5 %}selected{% endif %}>Sab</option>
-                  <option value="6" {% if project.week_end_day|default:6 == 6 %}selected{% endif %}>Min</option>
-                </select>
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
     </div>
 
   </div>
@@ -163,70 +104,84 @@
         </div>
       </div>
 
-      <!-- Time Scale (Advanced Toolbar) -->
-      <div class="control-group">
-        <label class="control-label">Time Scale</label>
-        <div class="btn-group btn-group-sm time-scale-selector" role="group">
-          <input type="radio" class="btn-check" name="timeScale" id="scale-weekly" value="weekly" checked>
-          <label class="btn btn-outline-primary" for="scale-weekly">Weekly</label>
-
-          <input type="radio" class="btn-check" name="timeScale" id="scale-monthly" value="monthly">
-          <label class="btn btn-outline-primary" for="scale-monthly">Monthly</label>
-        </div>
-      </div>
-
-      <!-- Week Boundaries (Advanced Toolbar) -->
-      <div class="control-group week-boundary-controls">
-        <label class="control-label">Week Boundaries</label>
-        {% with start_day=project.week_start_day|default:0 end_day=project.week_end_day|default:6 %}
-        <div class="d-flex gap-2">
-          <select class="form-select form-select-sm" id="week-start-day-select" aria-label="Week start day">
-            <option value="0" {% if start_day == 0 %}selected{% endif %}>Sen</option>
-            <option value="1" {% if start_day == 1 %}selected{% endif %}>Sel</option>
-            <option value="2" {% if start_day == 2 %}selected{% endif %}>Rab</option>
-            <option value="3" {% if start_day == 3 %}selected{% endif %}>Kam</option>
-            <option value="4" {% if start_day == 4 %}selected{% endif %}>Jum</option>
-            <option value="5" {% if start_day == 5 %}selected{% endif %}>Sab</option>
-            <option value="6" {% if start_day == 6 %}selected{% endif %}>Min</option>
-          </select>
-          <span class="align-self-center text-muted">-</span>
-          <select class="form-select form-select-sm" id="week-end-day-select" aria-label="Week end day">
-            <option value="0" {% if end_day == 0 %}selected{% endif %}>Sen</option>
-            <option value="1" {% if end_day == 1 %}selected{% endif %}>Sel</option>
-            <option value="2" {% if end_day == 2 %}selected{% endif %}>Rab</option>
-            <option value="3" {% if end_day == 3 %}selected{% endif %}>Kam</option>
-            <option value="4" {% if end_day == 4 %}selected{% endif %}>Jum</option>
-            <option value="5" {% if end_day == 5 %}selected{% endif %}>Sab</option>
-            <option value="6" {% if end_day == 6 %}selected{% endif %}>Min</option>
-          </select>
-        </div>
-        {% endwith %}
-      </div>
-
       <!-- Display Mode Toggle (Grid View Only) -->
       <div class="control-group">
-        <label class="control-label">Display</label>
+        <label class="control-label">Nilai</label>
         <div class="btn-group btn-group-sm display-mode-toggle" role="group">
           <input type="radio" class="btn-check" name="displayMode" id="mode-percentage" value="percentage" checked>
-          <label class="btn btn-outline-success" for="mode-percentage" title="Show as percentage">
+          <label class="btn btn-outline-success" for="mode-percentage" title="Tampilkan sebagai persentase">
             <i class="bi bi-percent" aria-hidden="true"></i>
-            <span class="btn-text d-none d-md-inline">%</span>
+            <span class="btn-text d-none d-md-inline">Persentase</span>
           </label>
 
           <input type="radio" class="btn-check" name="displayMode" id="mode-volume" value="volume">
-          <label class="btn btn-outline-success" for="mode-volume" title="Show as volume">
+          <label class="btn btn-outline-success" for="mode-volume" title="Tampilkan sebagai volume">
             <i class="bi bi-123" aria-hidden="true"></i>
-            <span class="btn-text d-none d-md-inline">Vol</span>
+            <span class="btn-text d-none d-md-inline">Volume</span>
           </label>
 
           <input type="radio" class="btn-check" name="displayMode" id="mode-cost" value="cost" disabled>
           <label class="btn btn-outline-success" for="mode-cost" title="Aktifkan Realisasi untuk input biaya">
             <i class="bi bi-cash-coin" aria-hidden="true"></i>
-            <span class="btn-text d-none d-md-inline">Cost</span>
+            <span class="btn-text d-none d-md-inline">Biaya</span>
           </label>
         </div>
       </div>
 
+      <div class="control-group schedule-settings-trigger">
+        <label class="control-label">Tampilan waktu</label>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse"
+          data-bs-target="#scheduleDisplaySettings" aria-expanded="false" aria-controls="scheduleDisplaySettings">
+          <i class="bi bi-sliders" aria-hidden="true"></i>
+          Pengaturan
+        </button>
+      </div>
+    </div>
+
+    <div class="collapse schedule-display-settings" id="scheduleDisplaySettings">
+      <div class="schedule-settings-panel">
+        <div class="control-group">
+          <label class="control-label">Skala waktu</label>
+          <div class="btn-group btn-group-sm time-scale-selector" role="group" aria-label="Skala waktu">
+            <input type="radio" class="btn-check" name="timeScale" id="scale-weekly" value="weekly" checked>
+            <label class="btn btn-outline-primary" for="scale-weekly">Mingguan</label>
+
+            <input type="radio" class="btn-check" name="timeScale" id="scale-monthly" value="monthly">
+            <label class="btn btn-outline-primary" for="scale-monthly">Bulanan</label>
+          </div>
+        </div>
+
+        <div class="control-group week-boundary-controls">
+          <label class="control-label">Batas minggu</label>
+          {% with start_day=project.week_start_day|default:0 end_day=project.week_end_day|default:6 %}
+          <div class="d-flex gap-2 align-items-center">
+            <select class="form-select form-select-sm" id="week-start-day-select" aria-label="Hari awal minggu">
+              <option value="0" {% if start_day == 0 %}selected{% endif %}>Sen</option>
+              <option value="1" {% if start_day == 1 %}selected{% endif %}>Sel</option>
+              <option value="2" {% if start_day == 2 %}selected{% endif %}>Rab</option>
+              <option value="3" {% if start_day == 3 %}selected{% endif %}>Kam</option>
+              <option value="4" {% if start_day == 4 %}selected{% endif %}>Jum</option>
+              <option value="5" {% if start_day == 5 %}selected{% endif %}>Sab</option>
+              <option value="6" {% if start_day == 6 %}selected{% endif %}>Min</option>
+            </select>
+            <span class="text-muted">s.d.</span>
+            <select class="form-select form-select-sm" id="week-end-day-select" aria-label="Hari akhir minggu">
+              <option value="0" {% if end_day == 0 %}selected{% endif %}>Sen</option>
+              <option value="1" {% if end_day == 1 %}selected{% endif %}>Sel</option>
+              <option value="2" {% if end_day == 2 %}selected{% endif %}>Rab</option>
+              <option value="3" {% if end_day == 3 %}selected{% endif %}>Kam</option>
+              <option value="4" {% if end_day == 4 %}selected{% endif %}>Jum</option>
+              <option value="5" {% if end_day == 5 %}selected{% endif %}>Sab</option>
+              <option value="6" {% if end_day == 6 %}selected{% endif %}>Min</option>
+            </select>
+          </div>
+          {% endwith %}
+        </div>
+
+        <p class="schedule-settings-note mb-0">
+          Perubahan skala atau batas minggu akan menyusun ulang kolom waktu.
+        </p>
+      </div>
     </div>
   </div>
 
@@ -234,7 +189,7 @@
   <button class="btn btn-link btn-sm toolbar-toggle d-none d-lg-block" id="toolbar-toggle-btn" data-bs-toggle="collapse"
     data-bs-target="#toolbarSecondary" aria-expanded="true" aria-controls="toolbarSecondary">
     <i class="bi bi-chevron-up"></i>
-    <span class="toggle-text">Hide Advanced Options</span>
+    <span class="toggle-text">Sembunyikan opsi input</span>
   </button>
 </div>
 <!-- End toolbar-advanced-wrapper -->
@@ -258,42 +213,73 @@
   data-api-reset-progress="{% url 'detail_project:api_v2_reset_progress' project.id %}">
 
   <!-- Tab Navigation - unified container, mode switching via JS -->
-  <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist">
+  <ul class="nav nav-tabs mt-3" id="viewTabs" role="tablist" aria-label="Tampilan jadwal pekerjaan">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="grid-tab" data-mode="grid" type="button" role="tab">
-        <i class="bi bi-grid-3x3-gap"></i> Grid View
+      <button class="nav-link active" id="grid-tab" data-mode="grid" type="button" role="tab"
+        aria-selected="true" aria-controls="unified-view" tabindex="0">
+        <i class="bi bi-grid-3x3-gap" aria-hidden="true"></i> Grid
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="gantt-tab" data-mode="gantt" type="button" role="tab">
-        <i class="bi bi-calendar3"></i> Gantt Chart
+      <button class="nav-link" id="gantt-tab" data-mode="gantt" type="button" role="tab"
+        aria-selected="false" aria-controls="unified-view" tabindex="-1">
+        <i class="bi bi-calendar3" aria-hidden="true"></i> Gantt
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="scurve-tab" data-mode="kurva" type="button" role="tab">
-        <i class="bi bi-graph-up"></i> Kurva S
+      <button class="nav-link" id="scurve-tab" data-mode="kurva" type="button" role="tab"
+        aria-selected="false" aria-controls="unified-view" tabindex="-1">
+        <i class="bi bi-graph-up" aria-hidden="true"></i> Kurva S
       </button>
     </li>
   </ul>
 
   <!-- UNIFIED Tab Content - ONE container for ALL modes -->
   <div class="tab-content" id="viewTabsContent">
-    <div class="tab-pane fade show active" id="unified-view" role="tabpanel">
+    <div class="tab-pane fade show active" id="unified-view" role="tabpanel" aria-labelledby="grid-tab">
+      <div id="jadwal-initialization-error" class="alert alert-danger m-2 d-none" role="alert">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <strong>Jadwal pekerjaan gagal dimuat.</strong>
+            <span id="jadwal-initialization-error-message">Silakan muat ulang halaman.</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="window.location.reload()">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+            Muat ulang
+          </button>
+        </div>
+      </div>
       <div class="tanstack-grid-section" id="tanstack-grid-section">
         <div id="tanstack-grid-container" class="tanstack-grid-container chart-view-container">
+          <div id="jadwal-empty-state" class="jadwal-empty-state d-none">
+            <div class="jadwal-empty-state-icon" aria-hidden="true">
+              <i class="bi bi-calendar2-plus"></i>
+            </div>
+            <h2>Belum ada pekerjaan untuk dijadwalkan</h2>
+            <p>Tambahkan pekerjaan terlebih dahulu, kemudian kembali ke halaman ini untuk mengatur progres waktunya.</p>
+            <a class="btn btn-primary btn-sm" href="{% url 'detail_project:list_pekerjaan' project.id %}">
+              <i class="bi bi-list-check" aria-hidden="true"></i>
+              Buka Daftar Pekerjaan
+            </a>
+          </div>
           <div class="tanstack-grid-body" id="tanstack-grid-body"></div>
         </div>
       </div>
 
       <!-- Status Bar -->
-      <div class="status-bar">
+      <div class="status-bar" role="status" aria-live="polite" aria-atomic="true">
         <div class="status-left">
-          <span id="status-info">Ready</span>
+          <span id="save-state-indicator" class="save-state-indicator is-saved">
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+            <span id="status-message">Tersimpan</span>
+          </span>
           <span id="current-mode-label" class="badge bg-primary ms-2">Grid</span>
+          <span id="last-saved-at" class="last-saved-at d-none"></span>
         </div>
         <div class="status-right">
-          <span>Modified: <strong id="status-modified">0</strong></span>
-          <span class="ms-3">Rows: <strong id="status-rows">0</strong></span>
+          <span>Perubahan: <strong id="modified-count">0</strong></span>
+          <span>Pekerjaan: <strong id="item-count">0</strong></span>
+          <span class="d-none d-lg-inline">Progres: <strong id="total-progress">-</strong></span>
         </div>
       </div>
     </div>
@@ -306,15 +292,15 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="confirmModalLabel">Konfirmasi</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="confirmModalLabel">Konfirmasi tindakan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
       <div class="modal-body">
         <p id="confirm-message">Anda yakin?</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-        <button type="button" class="btn btn-primary" id="confirm-action">Ya, Lanjutkan</button>
+        <button type="button" class="btn btn-primary" id="confirm-action">Lanjutkan</button>
       </div>
     </div>
   </div>
@@ -1045,26 +1031,68 @@
 
 
 <!-- MODERN VITE MODULE LOADING -->
-{% if DEBUG and use_vite_dev_server %}
-{# Development mode: Load from Vite dev server with HMR #}
-<script type="module" src="http://localhost:5173/@vite/client"></script>
-<script type="module" src="http://localhost:5173/js/src/jadwal_kegiatan_app.js"></script>
-<script>
-  console.log('%c🔥 VITE DEV MODE', 'background: #646cff; color: white; padding: 4px 8px; border-radius: 3px;');
-  console.log('Hot Module Replacement (HMR) enabled');
-  console.log('Dev server: http://localhost:5173');
-</script>
-{% else %}
-{# Production mode: Load built assets via manifest (JS + CSS) #}
 {% vite_entry 'assets/js/jadwal-kegiatan.js' as jadwal_entry %}
 {% for css_asset in jadwal_entry.css %}
 <link rel="stylesheet" href="{% static css_asset %}">
 {% endfor %}
-<script type="module" src="{% static jadwal_entry.file %}"></script>
-<script>console.log('%cPRODUCTION MODE', 'background: #42b983; color: white; padding: 4px 8px; border-radius: 3px;');
-  console.log('Using built assets from static/dist/ (manifest resolved)');
-</script>
+<script type="module">
+  const builtEntryUrl = "{% static jadwal_entry.file %}";
+
+  function showJadwalBootstrapError(error) {
+    console.error('[JadwalKegiatanApp] Module loading failed:', error);
+    const alert = document.getElementById('jadwal-initialization-error');
+    const message = document.getElementById('jadwal-initialization-error-message');
+    if (message) {
+      message.textContent = 'Asset aplikasi tidak dapat dimuat. Silakan muat ulang halaman.';
+    }
+    if (alert) {
+      alert.classList.remove('d-none');
+    }
+  }
+
+  async function importBuiltEntry() {
+    console.info('[JadwalKegiatanApp] Loading compiled bundle');
+    return import(builtEntryUrl);
+  }
+
+{% if DEBUG and use_vite_dev_server %}
+  const viteClientUrl = "http://localhost:5173/@vite/client";
+  const viteEntryUrl = "http://localhost:5173/js/src/jadwal_kegiatan_app.js";
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 1500);
+    let response;
+    try {
+      response = await fetch(viteClientUrl, {
+        mode: 'cors',
+        signal: controller.signal,
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      throw new Error(`Vite dev server returned HTTP ${response.status}`);
+    }
+    await import(viteClientUrl);
+    await import(viteEntryUrl);
+    console.info('[JadwalKegiatanApp] Vite development bundle loaded');
+  } catch (viteError) {
+    console.warn('[JadwalKegiatanApp] Vite unavailable; using compiled bundle.', viteError);
+    try {
+      await importBuiltEntry();
+    } catch (builtError) {
+      showJadwalBootstrapError(builtError);
+    }
+  }
+{% else %}
+  try {
+    await importBuiltEntry();
+  } catch (builtError) {
+    showJadwalBootstrapError(builtError);
+  }
 {% endif %}
+</script>
 
 {% comment %}
 =============================================================================

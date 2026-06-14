@@ -806,6 +806,9 @@
 }
 
 .status-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--grid-text-muted);
 }
 
@@ -818,6 +821,34 @@
 .status-right strong {
   color: var(--grid-text);
   font-weight: 600;
+}
+
+.save-state-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.save-state-indicator.is-saved {
+  color: var(--bs-success);
+}
+
+.save-state-indicator.is-dirty {
+  color: var(--bs-warning-text-emphasis);
+}
+
+.save-state-indicator.is-saving {
+  color: var(--bs-primary);
+}
+
+.save-state-indicator.is-error {
+  color: var(--bs-danger);
+}
+
+.last-saved-at {
+  color: var(--grid-text-muted);
+  font-size: 0.78rem;
 }
 
 /* ===== Gantt Container ===== */
@@ -1482,6 +1513,46 @@
   overflow: hidden;
 }
 
+.jadwal-empty-state {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  background: var(--bs-body-bg);
+}
+
+.jadwal-empty-state.d-none {
+  display: none;
+}
+
+.jadwal-empty-state-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-bottom: 1rem;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--bs-primary);
+  background: rgba(var(--bs-primary-rgb), 0.12);
+  font-size: 1.5rem;
+}
+
+.jadwal-empty-state h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.15rem;
+}
+
+.jadwal-empty-state p {
+  max-width: 34rem;
+  margin-bottom: 1rem;
+  color: var(--bs-secondary-color);
+}
+
 .tanstack-grid-header {
   position: relative;
   overflow: hidden;
@@ -1723,14 +1794,31 @@
   /* Changed from hidden to visible for scrollbar visibility */
 }
 
-/* Active tab pane - fixed height for 1440px main-content */
+/* Active tab pane follows the shared viewport height defined above. */
 #viewTabsContent>.tab-pane.active,
 #viewTabsContent>.tab-pane.show {
-  display: block;
-  height: 1300px;
-  min-height: 1300px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
   overflow: visible;
-  /* Fixed height: 1440px main - 52px toolbar - 44px tabs - 44px margin */
+}
+
+@media (max-width: 767px) {
+  .status-bar {
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .status-left,
+  .status-right {
+    flex-wrap: wrap;
+  }
+
+  .status-right {
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
 }
 
 /* Base chart-view-container - outer container, NO SCROLL */

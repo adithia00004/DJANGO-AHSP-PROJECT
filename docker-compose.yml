@@ -78,7 +78,10 @@ services:
       DJANGO_ENV: ${DJANGO_ENV:-development}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-your-secret-key-change-in-production}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,web}
+      USE_VITE_DEV_SERVER: ${USE_VITE_DEV_SERVER:-False}
+      # Keep the Dockerfile healthcheck host valid even when .env overrides
+      # DJANGO_ALLOWED_HOSTS with a machine-specific development list.
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,web},healthcheck.local
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       
       # Database Configuration

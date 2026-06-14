@@ -73,6 +73,10 @@ class ProjectForm(forms.ModelForm):
             return Decimal("0")
 
         s = str(raw)
+        if not re.search(r"\d", s):
+            raise forms.ValidationError(
+                "Anggaran tidak valid. Masukkan nilai angka."
+            )
 
         # Sisakan angka, koma, titik, minus (buang 'Rp', spasi, dll)
         s = re.sub(r"[^\d.,\-]", "", s)

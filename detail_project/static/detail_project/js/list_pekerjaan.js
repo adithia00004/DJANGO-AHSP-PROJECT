@@ -2449,9 +2449,39 @@
     const btnSaveAsTemplate = document.getElementById('btn-save-as-template');
     const btnConfirmImport = document.getElementById('btn-confirm-import');
     const btnConfirmSaveTemplate = document.getElementById('btn-confirm-save-template');
+    const templateLibraryModalEl = document.getElementById('templateLibraryModal');
+    const templatePreviewModalEl = document.getElementById('templatePreviewModal');
 
     let currentTemplates = [];
     let selectedTemplateId = null;
+    let reopenLibraryAfterPreview = false;
+
+    function showTemplatePreviewModal() {
+      if (!templatePreviewModalEl) return;
+
+      const previewModal = bootstrap.Modal.getOrCreateInstance(templatePreviewModalEl);
+      const libraryModal = templateLibraryModalEl
+        ? bootstrap.Modal.getInstance(templateLibraryModalEl)
+        : null;
+
+      if (libraryModal && templateLibraryModalEl.classList.contains('show')) {
+        reopenLibraryAfterPreview = true;
+        templateLibraryModalEl.addEventListener('hidden.bs.modal', () => {
+          previewModal.show();
+        }, { once: true });
+        libraryModal.hide();
+        return;
+      }
+
+      reopenLibraryAfterPreview = false;
+      previewModal.show();
+    }
+
+    templatePreviewModalEl?.addEventListener('hidden.bs.modal', () => {
+      if (!reopenLibraryAfterPreview || !templateLibraryModalEl) return;
+      reopenLibraryAfterPreview = false;
+      bootstrap.Modal.getOrCreateInstance(templateLibraryModalEl).show();
+    });
 
     function getCsrfToken() {
       const cookie = document.cookie
@@ -2534,8 +2564,7 @@
       if (previewDesc) previewDesc.textContent = '';
       if (previewStats) previewStats.textContent = '';
 
-      const modal = new bootstrap.Modal(document.getElementById('templatePreviewModal'));
-      modal.show();
+      showTemplatePreviewModal();
 
       try {
         const data = await jfetch(`/detail_project/api/templates/${templateId}/`);
@@ -2581,7 +2610,8 @@
           body: '{}'
         });
 
-        bootstrap.Modal.getInstance(document.getElementById('templatePreviewModal'))?.hide();
+        reopenLibraryAfterPreview = false;
+        bootstrap.Modal.getInstance(templatePreviewModalEl)?.hide();
         tShow(data.message || 'Template berhasil diimport!', 'success');
         // Import template is persisted by the backend. Reload from DB without
         // duplicating the current DOM, then keep the page clean so a following
@@ -2727,13 +2757,12 @@
     templateCategory?.addEventListener('change', loadTemplates);
 
     // Load templates when Modal opens
-    const templateModal = document.getElementById('templateLibraryModal');
-    if (templateModal) {
+    if (templateLibraryModalEl) {
       // Fix Z-Index/Stacking Context issues by moving modal to body
-      if (templateModal.parentElement !== document.body) {
-        document.body.appendChild(templateModal);
+      if (templateLibraryModalEl.parentElement !== document.body) {
+        document.body.appendChild(templateLibraryModalEl);
       }
-      templateModal.addEventListener('shown.bs.modal', loadTemplates);
+      templateLibraryModalEl.addEventListener('shown.bs.modal', loadTemplates);
     }
 
     // ========== Toolbar Template Dropdown Handlers ==========

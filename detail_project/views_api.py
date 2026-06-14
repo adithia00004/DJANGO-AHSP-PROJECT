@@ -109,6 +109,7 @@ from .models import (
     PekerjaanProgressWeekly, TahapPelaksanaan,
 )
 from .services import (
+    DEFAULT_PROJECT_MARKUP_PERCENT,
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
     compute_kebutuhan_items, summarize_kebutuhan_rows,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
@@ -4570,57 +4571,21 @@ def api_get_rekap_rab(request: HttpRequest, project_id: int):
     except Exception:
         pp = None
 
-    default_proj_mp = Decimal("10.00")  # default yang diharapkan test bila row pricing belum ada
-
-    # Peta override per pekerjaan (hanya jika diperlukan)
-    ov_map = {}
-    needs_override = any(r.get("markup_eff") in (None, "", 0, 0.0) for r in data)
-    if needs_override:
-        pids = [r.get("pekerjaan_id") for r in data if r.get("pekerjaan_id")]
-        if pids:
-            ov_map = dict(
-                Pekerjaan.objects
-                .filter(project=project, id__in=pids)
-                .values_list("id", "markup_override_percent")
-            )
-
-    # Suntik markup_eff bila kosong/0; lengkapi F/G/total hanya jika belum ada
+    # Controller hanya menambahkan alias presentasi. Seluruh rumus berasal dari
+    # compute_rekap_for_project agar web dan export memakai kontrak yang sama.
     for r in data:
-        curr = r.get("markup_eff")
-        if curr in (None, "", 0, 0.0):
-            ov = ov_map.get(r.get("pekerjaan_id"))
-            proj_mp = pp.markup_percent if pp and pp.markup_percent is not None else default_proj_mp
-            eff = ov if ov is not None else proj_mp
-            r["markup_eff"] = float(eff)
-
-        # FIXED: JANGAN overwrite HSP! HSP sudah diset oleh services = E_base (A+B+C+LAIN tanpa markup)
-        # Untuk backward compatibility, tambahkan field terpisah untuk biaya langsung
         try:
             d_direct = float(r.get("D") or 0.0)
         except Exception:
             d_direct = 0.0
-        r["biaya_langsung"] = d_direct  # Biaya langsung (A+B+C saja, tanpa LAIN)
-
-        # HSP tetap dipertahankan dari services (E_base = A+B+C+LAIN tanpa markup)
-        # Jika HSP belum ada (data lama), gunakan E_base
-        if "HSP" not in r or r["HSP"] is None:
-            lain = float(r.get("LAIN") or 0.0)
-            r["HSP"] = d_direct + lain  # E_base = A+B+C+LAIN
-
-        # Lengkapi F/G/total hanya kalau belum disediakan oleh services
-        lain = float(r.get("LAIN") or 0.0)
-        e_base = float(r.get("E_base") or (d_direct + lain))
-        mp = float(r.get("markup_eff") or 0.0)
-        if "F" not in r:
-            r["F"] = e_base * (mp / 100.0)
-        if "G" not in r:
-            r["G"] = e_base + r["F"]
-        if "total" not in r:
-            vol = float(r.get("volume") or 0.0)
-            r["total"] = r["G"] * vol
+        r["biaya_langsung"] = d_direct
 
     # Meta untuk UI: tampilkan default bila row pricing belum ada
-    mp_meta = pp.markup_percent if pp and pp.markup_percent is not None else default_proj_mp
+    mp_meta = (
+        pp.markup_percent
+        if pp and pp.markup_percent is not None
+        else DEFAULT_PROJECT_MARKUP_PERCENT
+    )
     ppn_meta = pp.ppn_percent if pp and pp.ppn_percent is not None else Decimal("11.00")
     rb_meta = int(pp.rounding_base) if pp and getattr(pp, "rounding_base", None) else 10000
 

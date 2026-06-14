@@ -1027,6 +1027,27 @@ table .dp-thead-sticky th {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.mass-edit-mode textarea.mass-edit-multiline {
+  min-height: 2rem;
+  max-height: min(35vh, 180px);
+  line-height: 1.35;
+  overflow-y: hidden;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  transition:
+    min-height 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mass-edit-mode textarea.mass-edit-multiline.is-expanded {
+  min-height: 4.5rem;
+  resize: vertical;
+  overflow-y: auto;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.18);
+}
+
 .mass-edit-mode input.form-control-sm:focus,
 .mass-edit-mode textarea.form-control-sm:focus {
   border-color: var(--dp-c-primary, #0d6efd);
@@ -1057,6 +1078,118 @@ table .dp-thead-sticky th {
 #massEditActionBar {
   border-width: 2px;
   animation: slideDown 0.3s ease-out;
+  position: sticky;
+  top: 0.75rem;
+  z-index: var(--dp-z-toolbar, 12041);
+  overflow: visible;
+}
+
+#massEditActionBar .dropdown-menu.mass-edit-column-menu {
+  min-width: 260px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  z-index: var(--dp-z-dropdown, 12040) !important;
+}
+
+#massEditActionBar,
+#massEditActionBar .card-body,
+#massEditActionBar .dropdown {
+  overflow: visible;
+}
+
+.mass-edit-mode .mass-edit-project-name {
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+  box-sizing: border-box;
+  position: sticky;
+  left: 0;
+  background: var(--dp-c-surface, #fff);
+  background-clip: padding-box;
+  box-shadow: 2px 0 0 var(--dp-c-border, #dee2e6);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mass-edit-mode tbody td.mass-edit-project-name {
+  z-index: 4;
+}
+
+/* Intersection of sticky header and sticky first column. This selector must
+   outrank the generic sticky-header rule below, which uses !important. */
+.dashboard-table-wrapper .mass-edit-mode thead th.mass-edit-project-name {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
+  z-index: calc(var(--dp-z-thead, 12030) + 1) !important;
+  background: var(--dp-c-surface-2, #f7f8fa);
+}
+
+.mass-edit-mode th[data-field],
+.mass-edit-mode td[data-field] {
+  width: 220px;
+  min-width: 220px;
+}
+
+/* Compact structured values. */
+.mass-edit-mode th[data-field="anggaran_owner"],
+.mass-edit-mode td[data-field="anggaran_owner"],
+.mass-edit-mode th[data-field="durasi_hari"],
+.mass-edit-mode td[data-field="durasi_hari"] {
+  width: 180px;
+  min-width: 180px;
+}
+
+.mass-edit-mode th[data-field="tanggal_mulai"],
+.mass-edit-mode td[data-field="tanggal_mulai"],
+.mass-edit-mode th[data-field="tanggal_selesai"],
+.mass-edit-mode td[data-field="tanggal_selesai"] {
+  width: 165px;
+  min-width: 165px;
+}
+
+/* Identity and organization fields benefit from more horizontal context. */
+.mass-edit-mode th[data-field="nama"],
+.mass-edit-mode td[data-field="nama"],
+.mass-edit-mode th[data-field="lokasi_project"],
+.mass-edit-mode td[data-field="lokasi_project"],
+.mass-edit-mode th[data-field="nama_client"],
+.mass-edit-mode td[data-field="nama_client"],
+.mass-edit-mode th[data-field^="nama_konsultan"],
+.mass-edit-mode td[data-field^="nama_konsultan"],
+.mass-edit-mode th[data-field^="instansi_"],
+.mass-edit-mode td[data-field^="instansi_"] {
+  width: clamp(240px, 24vw, 340px);
+  min-width: clamp(240px, 24vw, 340px);
+}
+
+.mass-edit-mode th[data-field="deskripsi"],
+.mass-edit-mode td[data-field="deskripsi"] {
+  width: clamp(300px, 32vw, 460px);
+  min-width: clamp(300px, 32vw, 460px);
+}
+
+/* Expanding one editable cell expands its table column as well. Keep the
+   maximum tied to the viewport so the neighboring context remains visible. */
+.mass-edit-mode td[data-field]:focus-within {
+  min-width: clamp(280px, 38vw, 560px);
+}
+
+.mass-edit-mode td[data-field="anggaran_owner"]:focus-within,
+.mass-edit-mode td[data-field="durasi_hari"]:focus-within {
+  min-width: 180px;
+}
+
+.mass-edit-mode td[data-field="tanggal_mulai"]:focus-within,
+.mass-edit-mode td[data-field="tanggal_selesai"]:focus-within {
+  min-width: 165px;
+}
+
+.mass-edit-mode .mass-edit-row-error {
+  border-left: 4px solid var(--dp-c-danger, #dc3545);
 }
 
 @keyframes slideDown {
