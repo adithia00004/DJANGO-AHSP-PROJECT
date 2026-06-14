@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan:** **IN PROGRESS - WP-00 / WP-B1**
+**Status keseluruhan:** **IN PROGRESS - WP-B1 DONE / WP-B2 NEXT**
 
 ## 1. Aturan Tracking
 
@@ -32,7 +32,7 @@ Status:
 | WP-00 | Inventory, ownership ledger, baseline | IN PROGRESS | 2026-06-14 | - | Gate 0 | Baseline dan consumer scan berjalan |
 | WP-A1 | Stored XSS removal | PENDING | - | - | WP-00 | Boleh paralel setelah baseline |
 | WP-A2 | CSP report-only/enforcement plan | PENDING | - | - | WP-A1 | - |
-| WP-B1 | Canonical Rekap calculation | IN PROGRESS | 2026-06-14 | - | WP-00, Gate B1 | Kontrak service dan compatibility aliases diterapkan |
+| WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
 | WP-B2 | Shared cache signature | PENDING | - | - | WP-B1 | - |
 | WP-B3 | Atomic mutation convention | PENDING | - | - | WP-00 | - |
 | WP-B4 | Canonical readiness | PENDING | - | - | WP-B1 | - |
@@ -150,6 +150,7 @@ presentasi, sementara 0% tetap diperlakukan sebagai nilai valid.
 | DEC-005 | 2026-06-14 | Cleanup | Audit Trail reader dihapus; writer/history retain | CL-17 |
 | DEC-006 | 2026-06-14 | Reliability | Audit writer retain dengan observability AT-05 | WP-B7/Fase 3 |
 | DEC-007 | 2026-06-14 | Git safety | Snapshot worktree dibuat pada branch `checkpoint/r5-planning-wp-b1-start-20260614`, kemudian pekerjaan dilanjutkan di branch implementasi terpisah | Seluruh fase eksekusi |
+| DEC-008 | 2026-06-14 | Calculation | Komponen, E/F/G, dan total pekerjaan memakai Decimal HALF_UP 2 desimal; volume 3 desimal; rounding base hanya untuk grand total RAB | WP-B1 dan seluruh consumer |
 
 Perubahan baru yang belum dibahas harus dicatat di sini sebelum mengubah master
 plan atau implementasi.
@@ -180,6 +181,9 @@ Selesai 14 Juni 2026:
 - contract test mencakup default, project markup, override pekerjaan, 0%
   eksplisit, missing volume, PPN tidak masuk work total, parity export, dan
   expanded nested multiplier.
+- kalkulasi uang memakai `Decimal` + `ROUND_HALF_UP`: komponen/E/F/G dan total
+  pekerjaan dua desimal; volume tiga desimal;
+- parity service, API Rekap RAB, dan adapter export Rekap RAB dikunci test.
 
 Belum dilakukan:
 
@@ -187,8 +191,8 @@ Belum dilakukan:
 - penghapusan compatibility alias;
 - cache helper WP-B2;
 - readiness WP-B4.
-- kebijakan rounding lintas renderer masih perlu dikunci/dibuktikan sebelum
-  WP-B1 berstatus `DONE`.
+- migrasi seluruh consumer hilir tetap berada pada WP-Px/WP-B5, bukan scope
+  service WP-B1.
 
 ## 9. Verification Log
 
@@ -199,3 +203,5 @@ Belum dilakukan:
 | 2026-06-14 | WP-00 | `npm run test:frontend -- --run` | PASS | 235 passed, 25 skipped |
 | 2026-06-14 | WP-B1 | Rekap contract + SSOT/formula suites | PASS | 26 tests |
 | 2026-06-14 | WP-B1 | Rekap contract suite | PASS | 7 tests termasuk nested/export/zero markup |
+| 2026-06-14 | WP-B1 | Rounding + service/API/export parity | PASS | 9 tests sebelum explicit-zero-volume ditambah |
+| 2026-06-14 | WP-B1 | Final targeted regression | PASS | 30 tests; Django system check 0 issue |

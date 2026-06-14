@@ -21,7 +21,7 @@ from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 from collections import defaultdict
-from .numeric import to_dp_str, DECIMAL_SPEC
+from .numeric import quantize_half_up, to_dp_str, DECIMAL_SPEC
 from django.core.cache import cache
 import logging
 import time
@@ -2320,7 +2320,7 @@ def compute_rekap_for_project(project):
         apply_bundle_multiplier=False,
         pekerjaan_ids=None,
     ):
-        data: Dict[int, Dict[str, float]] = {}
+        data: Dict[int, Dict[str, Decimal]] = {}
         qs = model.objects.filter(project=project)
         if pekerjaan_ids is not None:
             qs = qs.filter(pekerjaan_id__in=pekerjaan_ids)
@@ -2357,10 +2357,10 @@ def compute_rekap_for_project(project):
         for row in qs:
             pkj_id = row['pekerjaan_id']
             data[pkj_id] = {
-                'TK': float(row['tk'] or 0.0),
-                'BHN': float(row['bhn'] or 0.0),
-                'ALT': float(row['alt'] or 0.0),
-                'LAIN': float(row['lain'] or 0.0),
+                'TK': quantize_half_up(row['tk'] or 0, DECIMAL_SPEC["HARGA"]),
+                'BHN': quantize_half_up(row['bhn'] or 0, DECIMAL_SPEC["HARGA"]),
+                'ALT': quantize_half_up(row['alt'] or 0, DECIMAL_SPEC["HARGA"]),
+                'LAIN': quantize_half_up(row['lain'] or 0, DECIMAL_SPEC["HARGA"]),
             }
         return data
 
@@ -2397,23 +2397,27 @@ def compute_rekap_for_project(project):
                   'ref__sumber',
               )):
         pkj_id   = p['id']
-        A        = agg.get(pkj_id, {}).get('TK', 0.0)  or 0.0
-        B        = agg.get(pkj_id, {}).get('BHN', 0.0) or 0.0
-        C        = agg.get(pkj_id, {}).get('ALT', 0.0) or 0.0
-        LAIN     = agg.get(pkj_id, {}).get('LAIN', 0.0) or 0.0
+        A = agg.get(pkj_id, {}).get('TK', Decimal('0.00')) or Decimal('0.00')
+        B = agg.get(pkj_id, {}).get('BHN', Decimal('0.00')) or Decimal('0.00')
+        C = agg.get(pkj_id, {}).get('ALT', Decimal('0.00')) or Decimal('0.00')
+        LAIN = agg.get(pkj_id, {}).get('LAIN', Decimal('0.00')) or Decimal('0.00')
 
-        D        = A + B + C
-        E_base   = D + LAIN
+        D = quantize_half_up(A + B + C, DECIMAL_SPEC["HARGA"])
+        E_base = quantize_half_up(D + LAIN, DECIMAL_SPEC["HARGA"])
 
         # --- effective markup: override jika ada, else project
         ov = p.get('markup_override_percent', None)
-        mp = float(ov if ov is not None else proj_markup)   # persen (mis. 12.5)
-        mp_frac = mp / 100.0
-
-        F      = E_base * mp_frac
-        G      = E_base + F
-        volume = float(vol_map.get(pkj_id) or 0.0)
-        total  = float(G) * volume
+        mp = quantize_half_up(ov if ov is not None else proj_markup, 2)
+        F = quantize_half_up(
+            E_base * mp / Decimal('100'),
+            DECIMAL_SPEC["HARGA"],
+        )
+        G = quantize_half_up(E_base + F, DECIMAL_SPEC["HARGA"])
+        volume = quantize_half_up(
+            vol_map.get(pkj_id) or 0,
+            DECIMAL_SPEC["VOL"],
+        )
+        total = quantize_half_up(G * volume, DECIMAL_SPEC["HARGA"])
         source_type = p.get('source_type', '')
         ref_sumber = p.get('ref__sumber') or ''
         if source_type == Pekerjaan.SOURCE_REF:
@@ -2433,27 +2437,27 @@ def compute_rekap_for_project(project):
             ahsp_sumber  = ref_sumber,
             source_label = source_label,
 
-            A=A, B=B, C=C, D=D,
-            LAIN=LAIN,
-            E_base=E_base,
+            A=float(A), B=float(B), C=float(C), D=float(D),
+            LAIN=float(LAIN),
+            E_base=float(E_base),
 
-            E=F,          # margin (kompat lama)
-            F=F,          # margin eksplisit
-            G=G,          # unit price sesudah markup
+            E=float(F),          # margin (kompat lama)
+            F=float(F),          # margin eksplisit
+            G=float(G),          # unit price sesudah markup
 
-            HSP=E_base,       # ★ unit price pra-markup (dipakai beberapa test/halaman)
-            unit_price=E_base,# alias aman untuk FE
+            HSP=float(E_base),       # unit price pra-markup
+            unit_price=float(E_base),# alias aman untuk FE
 
-            markup_eff=mp,    # persen efektif
-            volume=volume,
-            total=total,      # = G * volume
+            markup_eff=float(mp),    # persen efektif
+            volume=float(volume),
+            total=float(total),      # = G * volume
 
             # Nama kanonik untuk consumer baru; alias lama dipertahankan.
-            component_cost_before_markup=E_base,
-            markup_percent_effective=mp,
-            markup_amount=F,
-            unit_price_after_markup=G,
-            work_total_after_markup=total,
+            component_cost_before_markup=float(E_base),
+            markup_percent_effective=float(mp),
+            markup_amount=float(F),
+            unit_price_after_markup=float(G),
+            work_total_after_markup=float(total),
         ))
     cache.set(cache_key, {"sig": signature, "data": result}, 300)  # 5 menit (atau sesuai kebutuhan)
     return result

@@ -571,7 +571,7 @@ def _get_or_create_pricing(project):
     - markup_percent: 10.00
     - ppn_percent: 11.00 (if field exists)
     - rounding_base: 10000 (if field exists)
-    Note: Rekap perhitungan tetap 0% jika belum ada row (lihat services.compute_rekap_for_project).
+    Rekap perhitungan memakai default kanonik 10.00% jika row pricing belum ada.
     """
     field_names = {f.name for f in ProjectPricing._meta.get_fields()}
     defaults = {"markup_percent": Decimal("10.00")}

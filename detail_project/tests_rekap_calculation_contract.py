@@ -1,6 +1,8 @@
+import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.test import RequestFactory
 from django.test import TestCase
 
 from dashboard.models import Project
@@ -17,16 +19,18 @@ from .models import (
 )
 from .services import DEFAULT_PROJECT_MARKUP_PERCENT, compute_rekap_for_project
 from .exports.rincian_ahsp_adapter import RincianAHSPAdapter
+from .exports.rekap_rab_adapter import RekapRABAdapter
+from .views_api import api_get_rekap_rab
 
 
 class RekapCalculationContractTests(TestCase):
     def setUp(self):
-        owner = get_user_model().objects.create_user(
+        self.owner = get_user_model().objects.create_user(
             username="rekap-contract-owner",
             password="not-used",
         )
         self.project = Project.objects.create(
-            owner=owner,
+            owner=self.owner,
             nama="Rekap Contract",
         )
         klasifikasi = Klasifikasi.objects.create(
@@ -159,6 +163,17 @@ class RekapCalculationContractTests(TestCase):
         self.assert_decimal_equal(row["volume"], "0")
         self.assert_decimal_equal(row["work_total_after_markup"], "0")
 
+    def test_explicit_zero_volume_is_preserved(self):
+        volume = VolumePekerjaan.objects.get(pekerjaan=self.pekerjaan)
+        volume.quantity = Decimal("0.000")
+        volume.save(update_fields=["quantity", "updated_at"])
+
+        row = self._row()
+
+        self.assert_decimal_equal(row["unit_price_after_markup"], "220")
+        self.assert_decimal_equal(row["volume"], "0")
+        self.assert_decimal_equal(row["work_total_after_markup"], "0")
+
     def test_rincian_export_totals_use_canonical_service(self):
         ProjectPricing.objects.create(
             project=self.project,
@@ -225,3 +240,78 @@ class RekapCalculationContractTests(TestCase):
         # Direct 2x100 + nested (2x3)x100 = 800 before markup.
         self.assert_decimal_equal(row["component_cost_before_markup"], "800")
         self.assert_decimal_equal(row["unit_price_after_markup"], "880")
+
+    def test_money_rounding_is_half_up_at_canonical_stages(self):
+        ProjectPricing.objects.create(
+            project=self.project,
+            markup_percent=Decimal("12.50"),
+        )
+        source = DetailAHSPProject.objects.get(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            kode="BHN-001",
+        )
+        source.koefisien = Decimal("0.333333333333")
+        source.save(update_fields=["koefisien", "updated_at"])
+        expanded = DetailAHSPExpanded.objects.get(source_detail=source)
+        expanded.koefisien = Decimal("0.333333333333")
+        expanded.save(update_fields=["koefisien", "updated_at"])
+        volume = VolumePekerjaan.objects.get(pekerjaan=self.pekerjaan)
+        volume.quantity = Decimal("3.333")
+        volume.save(update_fields=["quantity", "updated_at"])
+
+        row = self._row()
+
+        self.assert_decimal_equal(row["component_cost_before_markup"], "33.33")
+        self.assert_decimal_equal(row["markup_amount"], "4.17")
+        self.assert_decimal_equal(row["unit_price_after_markup"], "37.50")
+        self.assert_decimal_equal(row["work_total_after_markup"], "124.99")
+
+    def test_service_web_and_rekap_export_use_identical_work_values(self):
+        ProjectPricing.objects.create(
+            project=self.project,
+            markup_percent=Decimal("12.50"),
+            ppn_percent=Decimal("25.00"),
+            rounding_base=1000,
+        )
+        service_row = self._row()
+
+        request = RequestFactory().get("/api/rekap-rab/")
+        request.user = self.owner
+        response = api_get_rekap_rab(request, self.project.id)
+        payload = json.loads(response.content)
+        web_row = payload["rows"][0]
+
+        export_data = RekapRABAdapter(self.project).get_export_data()
+        work_row = next(
+            row
+            for index, row in enumerate(export_data["table_data"]["rows"])
+            if export_data["hierarchy_levels"].get(index) == 3
+        )
+
+        self.assert_decimal_equal(
+            web_row["unit_price_after_markup"],
+            service_row["unit_price_after_markup"],
+        )
+        self.assert_decimal_equal(
+            web_row["work_total_after_markup"],
+            service_row["work_total_after_markup"],
+        )
+        self.assertEqual(
+            work_row[4],
+            RekapRABAdapter(self.project)._format_number(
+                service_row["unit_price_after_markup"],
+                0,
+            ),
+        )
+        self.assertEqual(
+            work_row[5],
+            RekapRABAdapter(self.project)._format_number(
+                service_row["work_total_after_markup"],
+                0,
+            ),
+        )
+        self.assert_decimal_equal(
+            export_data["totals"]["total_biaya_langsung"],
+            service_row["work_total_after_markup"],
+        )
