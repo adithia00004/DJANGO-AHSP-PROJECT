@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import (
     Sum,
+    Count,
     F as DJF,
     DecimalField,
     ExpressionWrapper,
@@ -76,6 +77,7 @@ from .models import (
     ParameterSequence,
     TahapPelaksanaan,
     PekerjaanTahapan,
+    PekerjaanProgressWeekly,
 )
 
 def invalidate_rekap_cache(project_or_id) -> None:
@@ -90,6 +92,7 @@ def invalidate_rekap_cache(project_or_id) -> None:
     cache.delete(f"rekap:{pid}:v1")
     cache.delete(f"rekap:{pid}:v2")
     cache.delete(f"rekap:{pid}:v3")
+    cache.delete(f"rekap:{pid}:v4")
 
 
 KEBUTUHAN_CACHE_TIMEOUT = 300  # seconds
@@ -100,24 +103,175 @@ def _fmt_ts(val):
     return val.isoformat() if val else "0"
 
 
+CALCULATION_CACHE_DOMAINS = (
+    "details",
+    "prices",
+    "volumes",
+    "work",
+    "pricing",
+)
+REQUIREMENTS_CACHE_DOMAINS = CALCULATION_CACHE_DOMAINS + (
+    "timeline",
+    "assignments",
+)
+SCHEDULE_CACHE_DOMAINS = REQUIREMENTS_CACHE_DOMAINS + (
+    "project_timeline",
+    "progress",
+)
+
+
+def _signature_rows(queryset, *fields):
+    return list(queryset.order_by("id").values_list(*fields))
+
+
+def _signature_state(queryset):
+    state = queryset.aggregate(count=Count("id"), last=Max("updated_at"))
+    return (state["count"], _fmt_ts(state["last"]))
+
+
+def build_project_cache_signature(project, *domains):
+    """Return a deterministic digest for selected project data domains."""
+    selected = set(domains or CALCULATION_CACHE_DOMAINS)
+    chunks = [("schema", "project-cache-signature-v1")]
+
+    if "project_timeline" in selected:
+        chunks.append((
+            "project_timeline",
+            (
+                project.id,
+                project.tanggal_mulai,
+                project.tanggal_selesai,
+                project.week_start_day,
+                project.week_end_day,
+            ),
+        ))
+    if "details" in selected:
+        chunks.append((
+            "raw_details",
+            _signature_state(DetailAHSPProject.objects.filter(project=project)),
+        ))
+        chunks.append((
+            "expanded_details",
+            _signature_state(DetailAHSPExpanded.objects.filter(project=project)),
+        ))
+    if "prices" in selected:
+        prices = HargaItemProject.objects.filter(project=project)
+        chunks.append((
+            "prices",
+            (
+                _signature_state(prices),
+                _signature_rows(
+                    prices,
+                    "id",
+                    "kode_item",
+                    "kategori",
+                    "uraian",
+                    "satuan",
+                    "harga_satuan",
+                ),
+            ),
+        ))
+    if "volumes" in selected:
+        volumes = VolumePekerjaan.objects.filter(project=project)
+        chunks.append((
+            "volumes",
+            (
+                _signature_state(volumes),
+                _signature_rows(
+                    volumes,
+                    "id",
+                    "pekerjaan_id",
+                    "quantity",
+                ),
+            ),
+        ))
+    if "work" in selected:
+        work = Pekerjaan.objects.filter(project=project)
+        chunks.append((
+            "work",
+            (
+                _signature_state(work),
+                _signature_rows(
+                    work,
+                    "id",
+                    "sub_klasifikasi_id",
+                    "source_type",
+                    "ref_id",
+                    "snapshot_kode",
+                    "snapshot_uraian",
+                    "snapshot_satuan",
+                    "ordering_index",
+                    "markup_override_percent",
+                ),
+            ),
+        ))
+    if "pricing" in selected:
+        pricing = ProjectPricing.objects.filter(project=project)
+        chunks.append((
+            "pricing",
+            (
+                _signature_state(pricing),
+                _signature_rows(
+                    pricing,
+                    "id",
+                    "markup_percent",
+                    "ppn_percent",
+                    "rounding_base",
+                ),
+            ),
+        ))
+    if "timeline" in selected:
+        timeline = TahapPelaksanaan.objects.filter(project=project)
+        chunks.append((
+            "timeline",
+            (
+                _signature_state(timeline),
+                _signature_rows(
+                    timeline,
+                    "id",
+                    "nama",
+                    "urutan",
+                    "tanggal_mulai",
+                    "tanggal_selesai",
+                    "is_auto_generated",
+                    "generation_mode",
+                ),
+            ),
+        ))
+    if "assignments" in selected:
+        assignments = PekerjaanTahapan.objects.filter(pekerjaan__project=project)
+        chunks.append((
+            "assignments",
+            (
+                _signature_state(assignments),
+                _signature_rows(
+                    assignments,
+                    "id",
+                    "pekerjaan_id",
+                    "tahapan_id",
+                    "proporsi_volume",
+                ),
+            ),
+        ))
+    if "progress" in selected:
+        chunks.append((
+            "progress",
+            _signature_state(
+                PekerjaanProgressWeekly.objects.filter(project=project)
+            ),
+        ))
+
+    payload = json.dumps(chunks, default=str, ensure_ascii=True, separators=(",", ":"))
+    return (
+        "project-cache-signature-v1",
+        tuple(sorted(selected)),
+        hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+    )
+
+
 def _kebutuhan_signature(project):
     """Build signature tuple untuk cache Rekap Kebutuhan."""
-    raw_ts = DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    expanded_ts = DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    volume_ts = VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    pekerjaan_ts = Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    tahapan_ts = TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    assignment_ts = PekerjaanTahapan.objects.filter(
-        Q(tahapan__project=project) | Q(pekerjaan__project=project)
-    ).aggregate(last=Max('updated_at'))['last']
-    return (
-        _fmt_ts(raw_ts),
-        _fmt_ts(expanded_ts),
-        _fmt_ts(volume_ts),
-        _fmt_ts(pekerjaan_ts),
-        _fmt_ts(tahapan_ts),
-        _fmt_ts(assignment_ts),
-    )
+    return build_project_cache_signature(project, *REQUIREMENTS_CACHE_DOMAINS)
 
 
 def _normalize_int_list(values):
@@ -2252,35 +2406,10 @@ def _get_markup_percent(project) -> Decimal:
     return DEFAULT_PROJECT_MARKUP_PERCENT
 
 def compute_rekap_for_project(project):
-    raw_ts = DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    expanded_ts = DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    volume_ts = VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    pekerjaan_ts = Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    pricing_ts = ProjectPricing.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']
-    source_sig = tuple(
-        Pekerjaan.objects
-        .filter(project=project)
-        .order_by('id')
-        .values_list(
-            'id',
-            'source_type',
-            'ref_id',
-            'ref__sumber',
-            'markup_override_percent',
-        )
-    )
-
-    def _ts(val):
-        return val.isoformat() if val else "0"
-
-    cache_key = f"rekap:{project.id}:v3"
-    signature = (
-        _ts(raw_ts),
-        _ts(expanded_ts),
-        _ts(volume_ts),
-        _ts(pekerjaan_ts),
-        _ts(pricing_ts),
-        source_sig,
+    cache_key = f"rekap:{project.id}:v4"
+    signature = build_project_cache_signature(
+        project,
+        *CALCULATION_CACHE_DOMAINS,
     )
     cached = cache.get(cache_key)
     if cached and cached.get("sig") == signature:

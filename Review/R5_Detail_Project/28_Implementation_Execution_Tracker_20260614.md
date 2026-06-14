@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan:** **IN PROGRESS - WP-B1 DONE / WP-B2 NEXT**
+**Status keseluruhan:** **IN PROGRESS - WP-B1/WP-B2 DONE / WP-B3 NEXT**
 
 ## 1. Aturan Tracking
 
@@ -33,7 +33,7 @@ Status:
 | WP-A1 | Stored XSS removal | PENDING | - | - | WP-00 | Boleh paralel setelah baseline |
 | WP-A2 | CSP report-only/enforcement plan | PENDING | - | - | WP-A1 | - |
 | WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
-| WP-B2 | Shared cache signature | PENDING | - | - | WP-B1 | - |
+| WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
 | WP-B3 | Atomic mutation convention | PENDING | - | - | WP-00 | - |
 | WP-B4 | Canonical readiness | PENDING | - | - | WP-B1 | - |
 | WP-B5 | Server-authoritative export | PENDING | - | - | B1/B2/B4 | - |
@@ -139,6 +139,24 @@ controller menjadi calculation source kedua.
 **Disposition:** rekalkulasi di controller dihapus. API hanya menambahkan alias
 presentasi, sementara 0% tetap diperlakukan sebagai nilai valid.
 
+### UF-005 - Kurva S Membaca Cache tetapi Tidak Menulis Cache
+
+**Ditemukan:** 14 Juni 2026 pada WP-B2.
+
+`api_kurva_s_data()` melakukan cache lookup dengan signature manual, tetapi
+response sukses tidak pernah disimpan. Cache praktis selalu miss.
+
+**Disposition:** response disimpan dengan shared signature; contract test
+membuktikan perubahan harga bulk menghasilkan nilai Kurva S baru.
+
+### UF-006 - Rekap Kebutuhan Weekly Menulis Cache Dua Kali
+
+**Ditemukan:** 14 Juni 2026 pada WP-B2.
+
+Entry identik ditulis melalui blok conditional lalu langsung ditulis ulang.
+
+**Disposition:** hapus write kedua; hanya simpan saat signature berhasil dibuat.
+
 ## 7. Change and Decision Log
 
 | ID | Tanggal | Jenis | Perubahan/Keputusan | Dampak |
@@ -151,6 +169,7 @@ presentasi, sementara 0% tetap diperlakukan sebagai nilai valid.
 | DEC-006 | 2026-06-14 | Reliability | Audit writer retain dengan observability AT-05 | WP-B7/Fase 3 |
 | DEC-007 | 2026-06-14 | Git safety | Snapshot worktree dibuat pada branch `checkpoint/r5-planning-wp-b1-start-20260614`, kemudian pekerjaan dilanjutkan di branch implementasi terpisah | Seluruh fase eksekusi |
 | DEC-008 | 2026-06-14 | Calculation | Komponen, E/F/G, dan total pekerjaan memakai Decimal HALF_UP 2 desimal; volume 3 desimal; rounding base hanya untuk grand total RAB | WP-B1 dan seluruh consumer |
+| DEC-009 | 2026-06-14 | Cache | Signature dibagi domain calculation/requirements/schedule; tabel besar memakai count+timestamp, nilai finansial kritis ikut digest | WP-B2 dan consumer |
 
 Perubahan baru yang belum dibahas harus dicatat di sini sebelum mengubah master
 plan atau implementasi.
@@ -205,3 +224,5 @@ Belum dilakukan:
 | 2026-06-14 | WP-B1 | Rekap contract suite | PASS | 7 tests termasuk nested/export/zero markup |
 | 2026-06-14 | WP-B1 | Rounding + service/API/export parity | PASS | 9 tests sebelum explicit-zero-volume ditambah |
 | 2026-06-14 | WP-B1 | Final targeted regression | PASS | 30 tests; Django system check 0 issue |
+| 2026-06-14 | WP-B2 | Shared signature contract | PASS | Harga bulk, override, volume, progress, endpoint consumers, dan query budget |
+| 2026-06-14 | WP-B2 | Final targeted regression | PASS | 40 tests; Django system check 0 issue |

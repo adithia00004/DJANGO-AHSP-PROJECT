@@ -109,7 +109,10 @@ from .models import (
     PekerjaanProgressWeekly, TahapPelaksanaan,
 )
 from .services import (
+    CALCULATION_CACHE_DOMAINS,
+    SCHEDULE_CACHE_DOMAINS,
     DEFAULT_PROJECT_MARKUP_PERCENT,
+    build_project_cache_signature,
     clone_ref_pekerjaan, _upsert_harga_item, compute_rekap_for_project,
     compute_kebutuhan_items, summarize_kebutuhan_rows,
     generate_custom_code, invalidate_rekap_cache, validate_bundle_reference,
@@ -6480,20 +6483,10 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
         logger.error(f"[Kurva S API] Project not found: {project_id}", exc_info=True)
         return JsonResponse({'error': 'Project not found'}, status=404)
 
-    from django.core.cache import cache
-    from django.db.models import Max
-    from .models import DetailAHSPExpanded, DetailAHSPProject, VolumePekerjaan, Pekerjaan, ProjectPricing
-
-    def _ts(val):
-        return val.isoformat() if val else "0"
-
-    cache_key = f"kurva_s_data:{project.id}:v1"
-    signature = (
-        _ts(DetailAHSPProject.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
-        _ts(DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
-        _ts(VolumePekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
-        _ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
-        _ts(ProjectPricing.objects.filter(project=project).aggregate(last=Max('updated_at'))['last']),
+    cache_key = f"kurva_s_data:{project.id}:v2"
+    signature = build_project_cache_signature(
+        project,
+        *CALCULATION_CACHE_DOMAINS,
     )
     cached = cache.get(cache_key)
     if cached and cached.get("sig") == signature:
@@ -6563,6 +6556,7 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
         f"{len(harga_map)} pekerjaan, total biaya Rp {total_biaya:,.2f}"
     )
 
+    cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
     return JsonResponse(response_data)
 
 
@@ -6986,19 +6980,13 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
         logger.error(f"[Rekap Kebutuhan API] Project not found: {project_id}", exc_info=True)
         return JsonResponse({'error': 'Project not found'}, status=404)
 
-    from django.core.cache import cache
-    from django.db.models import Max
-    from .models import PekerjaanProgressWeekly, VolumePekerjaan
-    from .services import compute_kebutuhan_items, _kebutuhan_signature
-
-    cache_key = f"rekap_kebutuhan_weekly:{project.id}:v1"
+    cache_key = f"rekap_kebutuhan_weekly:{project.id}:v2"
     signature = None
     try:
-        base_sig = _kebutuhan_signature(project)
-        weekly_ts = PekerjaanProgressWeekly.objects.filter(
-            project=project
-        ).aggregate(last=Max("updated_at"))["last"]
-        signature = tuple(list(base_sig) + [weekly_ts.isoformat() if weekly_ts else "0"])
+        signature = build_project_cache_signature(
+            project,
+            *SCHEDULE_CACHE_DOMAINS,
+        )
         cached = cache.get(cache_key)
         if cached and cached.get("sig") == signature:
             return JsonResponse(cached.get("data", {}))
@@ -7173,7 +7161,6 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     if signature is not None:
         cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
 
-    cache.set(cache_key, {"sig": signature, "data": response_data}, 300)
     return JsonResponse(response_data)
 
 
@@ -7244,18 +7231,10 @@ def api_chart_data(request: HttpRequest, project_id: int) -> JsonResponse:
         mode = 'both'
     
     try:
-        def _ts(val):
-            return val.isoformat() if val else "0"
-
-        cache_key = f"chart_data:{project.id}:{timescale}:{mode}:v2"
-        signature = (
-            _ts(DetailAHSPProject.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
-            _ts(DetailAHSPExpanded.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
-            _ts(VolumePekerjaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
-            _ts(Pekerjaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
-            _ts(ProjectPricing.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
-            _ts(PekerjaanProgressWeekly.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
-            _ts(TahapPelaksanaan.objects.filter(project=project).aggregate(last=Max("updated_at"))["last"]),
+        cache_key = f"chart_data:{project.id}:{timescale}:{mode}:v3"
+        signature = build_project_cache_signature(
+            project,
+            *SCHEDULE_CACHE_DOMAINS,
         )
         cached = cache.get(cache_key)
         if cached and cached.get("sig") == signature:

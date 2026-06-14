@@ -1,9 +1,12 @@
 import json
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import RequestFactory
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from dashboard.models import Project
 
@@ -13,14 +16,26 @@ from .models import (
     HargaItemProject,
     Klasifikasi,
     Pekerjaan,
+    PekerjaanProgressWeekly,
     ProjectPricing,
     SubKlasifikasi,
     VolumePekerjaan,
 )
-from .services import DEFAULT_PROJECT_MARKUP_PERCENT, compute_rekap_for_project
+from .services import (
+    CALCULATION_CACHE_DOMAINS,
+    SCHEDULE_CACHE_DOMAINS,
+    DEFAULT_PROJECT_MARKUP_PERCENT,
+    build_project_cache_signature,
+    compute_rekap_for_project,
+)
 from .exports.rincian_ahsp_adapter import RincianAHSPAdapter
 from .exports.rekap_rab_adapter import RekapRABAdapter
-from .views_api import api_get_rekap_rab
+from .views_api import (
+    api_chart_data,
+    api_get_rekap_rab,
+    api_kurva_s_data,
+    api_rekap_kebutuhan_weekly,
+)
 
 
 class RekapCalculationContractTests(TestCase):
@@ -315,3 +330,124 @@ class RekapCalculationContractTests(TestCase):
             export_data["totals"]["total_biaya_langsung"],
             service_row["work_total_after_markup"],
         )
+
+    def test_price_bulk_update_invalidates_cached_rekap(self):
+        initial_signature = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+        initial_row = self._row()
+        self.assert_decimal_equal(initial_row["component_cost_before_markup"], "200")
+
+        HargaItemProject.objects.filter(pk=self.item.pk).update(
+            harga_satuan=Decimal("150.00"),
+        )
+
+        changed_signature = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+        changed_row = self._row()
+        self.assertNotEqual(initial_signature, changed_signature)
+        self.assert_decimal_equal(changed_row["component_cost_before_markup"], "300")
+        self.assert_decimal_equal(changed_row["work_total_after_markup"], "990")
+
+    def test_calculation_signature_tracks_override_and_volume_values(self):
+        initial = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+        Pekerjaan.objects.filter(pk=self.pekerjaan.pk).update(
+            markup_override_percent=Decimal("5.00"),
+        )
+        after_override = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+        VolumePekerjaan.objects.filter(pekerjaan=self.pekerjaan).update(
+            quantity=Decimal("4.000"),
+        )
+        after_volume = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+
+        self.assertNotEqual(initial, after_override)
+        self.assertNotEqual(after_override, after_volume)
+
+    def test_schedule_signature_tracks_progress_without_changing_calculation(self):
+        calculation_before = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+        schedule_before = build_project_cache_signature(
+            self.project,
+            *SCHEDULE_CACHE_DOMAINS,
+        )
+        start = self.project.tanggal_mulai
+        PekerjaanProgressWeekly.objects.create(
+            project=self.project,
+            pekerjaan=self.pekerjaan,
+            week_number=1,
+            week_start_date=start,
+            week_end_date=start + timedelta(days=6),
+            planned_proportion=Decimal("25.00"),
+            actual_proportion=Decimal("10.00"),
+        )
+
+        calculation_after = build_project_cache_signature(
+            self.project,
+            *CALCULATION_CACHE_DOMAINS,
+        )
+        schedule_after = build_project_cache_signature(
+            self.project,
+            *SCHEDULE_CACHE_DOMAINS,
+        )
+
+        self.assertEqual(calculation_before, calculation_after)
+        self.assertNotEqual(schedule_before, schedule_after)
+
+    def test_shared_signature_consumers_return_success_for_owner(self):
+        endpoints = (
+            (api_kurva_s_data, "/api/kurva-s-data/"),
+            (api_rekap_kebutuhan_weekly, "/api/rekap-kebutuhan-weekly/"),
+            (api_chart_data, "/api/chart-data/?timescale=weekly&mode=both"),
+        )
+
+        for view, path in endpoints:
+            request = RequestFactory().get(path)
+            request.user = self.owner
+            response = view(request, self.project.id)
+            self.assertEqual(
+                response.status_code,
+                200,
+                f"{view.__name__}: {response.content.decode('utf-8')}",
+            )
+
+    def test_kurva_cache_refreshes_after_price_bulk_update(self):
+        request = RequestFactory().get("/api/kurva-s-data/")
+        request.user = self.owner
+        initial = json.loads(
+            api_kurva_s_data(request, self.project.id).content
+        )
+        self.assert_decimal_equal(initial["totalBiayaProject"], "660")
+
+        HargaItemProject.objects.filter(pk=self.item.pk).update(
+            harga_satuan=Decimal("150.00"),
+        )
+
+        refreshed_request = RequestFactory().get("/api/kurva-s-data/")
+        refreshed_request.user = self.owner
+        refreshed = json.loads(
+            api_kurva_s_data(refreshed_request, self.project.id).content
+        )
+        self.assert_decimal_equal(refreshed["totalBiayaProject"], "990")
+
+    def test_shared_signature_has_bounded_query_count(self):
+        with CaptureQueriesContext(connection) as captured:
+            build_project_cache_signature(
+                self.project,
+                *SCHEDULE_CACHE_DOMAINS,
+            )
+
+        self.assertLessEqual(len(captured), 15)
