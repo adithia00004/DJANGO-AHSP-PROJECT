@@ -44,6 +44,18 @@ describe('buildReadinessBannerHTML', () => {
     expect(html).toContain('<strong>2</strong>');
   });
 
+  test('renders jadwal-derived signals (inc-4a)', () => {
+    const html = buildReadinessBannerHTML({
+      allocation_without_volume: [{ kode: 'P-A' }],
+      incomplete_planned_allocation: [{ kode: 'P-B' }, { kode: 'P-C' }],
+      timeline_stale: true,
+    });
+    expect(html).toContain('dijadwalkan tanpa volume');
+    expect(html).toContain('jadwalnya belum 100%');
+    expect(html).toContain('tidak sesuai rentang tanggal proyek');
+    expect(html).toContain('P-A');
+  });
+
   test('ignores pending jadwal signals — never treats null as done or clear', () => {
     // Only pending signals present (all live arrays empty) → no banner, and no
     // positive "ready/complete" text is ever emitted.

@@ -53,21 +53,26 @@ null-vs-zero (locked by the underlying model facts):
                            rows and silently drops the unexpanded raw -> undercount.
   * expanded_ready       : no ``expansion_not_ready`` entry exists.
 
-KNOWN LIMITATION (resolved by inc-4): ``stale_expansion`` compares ``updated_at``,
+KNOWN LIMITATION (resolved by inc-4b): ``stale_expansion`` compares ``updated_at``,
 which a ``QuerySet.update()`` / ``bulk_update()`` can bypass. Reliable staleness
 needs an explicit expansion revision/timestamp bumped by every mutation — that is
-inc-4 work. Value-only bulk mutations ARE reflected for every other signal because
+inc-4b work. Value-only bulk mutations ARE reflected for every other signal because
 there is no cache to go stale.
 
-Jadwal-derived signals (``incomplete_planned_allocation``,
-``allocation_without_volume``, ``timeline_stale``) are declared in
-:data:`PENDING_SIGNALS` and are ``None`` until WP-B4 inc-4 makes them
-authoritative — a consumer must read ``pending_signals`` and never treat the
-``None`` default as "all clear".
+Jadwal-derived signals are LIVE since inc-4a (computed from the weekly canonical
+``PekerjaanProgressWeekly``):
+  * incomplete_planned_allocation : pekerjaan with 0 < Σ planned_proportion < 100
+                                    (Σ=0 excluded — not scheduled, not "incomplete").
+  * allocation_without_volume      : Σ planned_proportion > 0 but volume absent/0.
+  * timeline_stale (bool)          : a weekly row falls outside the current project
+                                    window [tanggal_mulai, tanggal_selesai].
+``PENDING_SIGNALS`` is now empty.
 """
 from __future__ import annotations
 
-from django.db.models import Count, Max, Q
+from decimal import Decimal
+
+from django.db.models import Count, Max, Q, Sum
 
 from .models import (
     Pekerjaan,
@@ -75,19 +80,21 @@ from .models import (
     DetailAHSPProject,
     DetailAHSPExpanded,
     HargaItemProject,
+    PekerjaanProgressWeekly,
 )
 
-SCHEMA_VERSION = "b4.3"  # b4.3 = post-review hardening (no cache, incomplete_expansion, affected_items)
+SCHEMA_VERSION = "b4.4"  # b4.4 = jadwal signals live (inc-4a)
 
-PENDING_SIGNALS = (
-    "incomplete_planned_allocation",
-    "allocation_without_volume",
-    "timeline_stale",
-)
+# All signals are now computed; nothing pending.
+PENDING_SIGNALS = ()
+
+# Tolerance for planned-proportion comparisons (percent).
+_ALLOC_TOL = Decimal("0.01")
 
 PAGE_VOLUME = "volume"
 PAGE_HARGA = "harga_items"
 PAGE_DETAIL = "template_ahsp"
+PAGE_JADWAL = "jadwal"
 
 
 def compute_project_readiness(project, request=None):
@@ -302,6 +309,57 @@ def _compute(project):
         {"harga_item_id": e["harga_item_id"], "kode": e["kode"]} for e in missing_price
     ]
 
+    # --- jadwal-derived signals (inc-4a), from the weekly canonical.
+    planned_totals = {
+        r["pekerjaan_id"]: (r["total"] or Decimal("0"))
+        for r in PekerjaanProgressWeekly.objects.filter(project=project)
+        .values("pekerjaan_id")
+        .annotate(total=Sum("planned_proportion"))
+    }
+    vol_qty = dict(
+        VolumePekerjaan.objects.filter(project=project).values_list(
+            "pekerjaan_id", "quantity"
+        )
+    )
+
+    incomplete_planned_allocation = []
+    allocation_without_volume = []
+    for pkj_id, total in planned_totals.items():
+        if total <= 0:
+            continue  # not scheduled at all — excluded (not "incomplete")
+        kode, uraian = _pkj(pkj_id)
+        # scheduled but no/zero volume — work planned without capacity.
+        qty = vol_qty.get(pkj_id)
+        if qty is None or qty == 0:
+            allocation_without_volume.append({
+                "pekerjaan_id": pkj_id, "kode": kode, "uraian": uraian,
+                "source_table": "PekerjaanProgressWeekly+VolumePekerjaan",
+                "source_page": PAGE_JADWAL,
+                "issue": "allocation_without_volume", "actual": f"{total}",
+            })
+        # partially scheduled — total planned below 100%.
+        if total < (Decimal("100") - _ALLOC_TOL):
+            incomplete_planned_allocation.append({
+                "pekerjaan_id": pkj_id, "kode": kode, "uraian": uraian,
+                "source_table": "PekerjaanProgressWeekly",
+                "source_page": PAGE_JADWAL,
+                "issue": "incomplete_planned_allocation", "actual": f"{total}",
+            })
+    incomplete_planned_allocation.sort(key=lambda e: e["pekerjaan_id"])
+    allocation_without_volume.sort(key=lambda e: e["pekerjaan_id"])
+
+    # timeline_stale: any weekly row falls OUTSIDE the current project window
+    # (e.g. project dates were changed after the schedule was built).
+    timeline_stale = False
+    start = getattr(project, "tanggal_mulai", None)
+    end = getattr(project, "tanggal_selesai", None)
+    if start and end:
+        timeline_stale = (
+            PekerjaanProgressWeekly.objects.filter(project=project)
+            .filter(Q(week_start_date__lt=start) | Q(week_end_date__gt=end))
+            .exists()
+        )
+
     # --- pekerjaan index into the rich entries above (UI highlighting).
     affected_pekerjaan = {e["pekerjaan_id"] for e in missing_volume}
     affected_pekerjaan.update(e["pekerjaan_id"] for e in expansion_not_ready)
@@ -310,6 +368,8 @@ def _compute(project):
     )
     for e in missing_price:
         affected_pekerjaan.update(e["affected_pekerjaan"])
+    affected_pekerjaan.update(e["pekerjaan_id"] for e in incomplete_planned_allocation)
+    affected_pekerjaan.update(e["pekerjaan_id"] for e in allocation_without_volume)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -318,10 +378,10 @@ def _compute(project):
         "missing_price": missing_price,
         "invalid_coefficient": invalid_coefficient,
         "expansion_not_ready": expansion_not_ready,
-        # Jadwal-derived — None until inc-4 makes them authoritative.
-        "incomplete_planned_allocation": None,
-        "allocation_without_volume": None,
-        "timeline_stale": None,
+        # Jadwal-derived — live since inc-4a.
+        "incomplete_planned_allocation": incomplete_planned_allocation,
+        "allocation_without_volume": allocation_without_volume,
+        "timeline_stale": timeline_stale,
         "pending_signals": list(PENDING_SIGNALS),
         "affected_pekerjaan": sorted(affected_pekerjaan),
         "affected_items": affected_items,

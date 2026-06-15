@@ -2,9 +2,10 @@
 
 Locks the hardened contract: null-vs-zero (volume absent vs zero, price NULL vs
 zero), per-source_detail expansion analysis (partial & stale), rich traceable
-diagnostic entries, pending jadwal signals as ``None``, and cache invalidation
-under value-only ``QuerySet.update()`` mutations.
+diagnostic entries, live jadwal signals, and live recomputation under
+value-only ``QuerySet.update()`` mutations.
 """
+from datetime import date
 from decimal import Decimal
 
 from django.conf import settings
@@ -26,6 +27,7 @@ from .models import (
     HargaItemProject,
     Klasifikasi,
     Pekerjaan,
+    PekerjaanProgressWeekly,
     SubKlasifikasi,
     VolumePekerjaan,
 )
@@ -99,6 +101,116 @@ class ReadinessContractTests(TestCase):
         return VolumePekerjaan.objects.create(
             project=self.project, pekerjaan=pekerjaan, quantity=Decimal(qty)
         )
+
+    def _weekly(self, pekerjaan, week_number, planned, start="2026-01-01", end="2026-01-07"):
+        return PekerjaanProgressWeekly.objects.create(
+            project=self.project,
+            pekerjaan=pekerjaan,
+            week_number=week_number,
+            week_start_date=date.fromisoformat(start),
+            week_end_date=date.fromisoformat(end),
+            planned_proportion=Decimal(str(planned)),
+        )
+
+    # ----- jadwal signals: incomplete / allocation-without-volume / stale (inc-4a)
+    def test_incomplete_planned_allocation_flags_partial_only(self):
+        p_partial = self._pekerjaan("P-PART")
+        p_full = self._pekerjaan("P-FULL")
+        p_unsched = self._pekerjaan("P-UNSCHED")
+        self._volume(p_partial, "1.000")
+        self._volume(p_full, "1.000")
+        self._volume(p_unsched, "1.000")
+        self._weekly(p_partial, 1, "60.00")            # 60% < 100 → incomplete
+        self._weekly(p_full, 1, "40.00")
+        self._weekly(p_full, 2, "60.00")               # 100% → complete
+        # p_unsched has no weekly rows (Σ=0) → excluded
+
+        r = compute_project_readiness(self.project)
+        flagged = {e["pekerjaan_id"] for e in r["incomplete_planned_allocation"]}
+
+        self.assertIn(p_partial.id, flagged)
+        self.assertNotIn(p_full.id, flagged)
+        self.assertNotIn(p_unsched.id, flagged)  # not scheduled ≠ incomplete
+        entry = next(e for e in r["incomplete_planned_allocation"] if e["pekerjaan_id"] == p_partial.id)
+        self.assertEqual(entry["actual"], "60.00")
+        self.assertEqual(entry["source_page"], "jadwal")
+
+    def test_incomplete_planned_allocation_honors_one_basis_point_tolerance(self):
+        p_tolerated = self._pekerjaan("P-99-99")
+        p_incomplete = self._pekerjaan("P-99-98")
+        self._volume(p_tolerated, "1.000")
+        self._volume(p_incomplete, "1.000")
+        self._weekly(p_tolerated, 1, "99.99")
+        self._weekly(p_incomplete, 1, "99.98")
+
+        flagged = {
+            e["pekerjaan_id"]
+            for e in compute_project_readiness(self.project)[
+                "incomplete_planned_allocation"
+            ]
+        }
+
+        self.assertNotIn(p_tolerated.id, flagged)
+        self.assertIn(p_incomplete.id, flagged)
+
+    def test_allocation_without_volume_flags_scheduled_without_capacity(self):
+        p_novol = self._pekerjaan("P-NOVOL")    # scheduled, no volume row
+        p_zerovol = self._pekerjaan("P-ZEROVOL")  # scheduled, volume 0
+        p_ok = self._pekerjaan("P-OK")          # scheduled, has volume
+        self._zerovol = self._volume(p_zerovol, "0.000")
+        self._volume(p_ok, "5.000")
+        self._weekly(p_novol, 1, "50.00")
+        self._weekly(p_zerovol, 1, "50.00")
+        self._weekly(p_ok, 1, "50.00")
+
+        r = compute_project_readiness(self.project)
+        flagged = {e["pekerjaan_id"] for e in r["allocation_without_volume"]}
+
+        self.assertIn(p_novol.id, flagged)
+        self.assertIn(p_zerovol.id, flagged)
+        self.assertNotIn(p_ok.id, flagged)
+        entry = next(
+            e
+            for e in r["allocation_without_volume"]
+            if e["pekerjaan_id"] == p_novol.id
+        )
+        self.assertEqual(
+            entry["source_table"],
+            "PekerjaanProgressWeekly+VolumePekerjaan",
+        )
+
+    def test_timeline_stale_only_when_week_outside_project_window(self):
+        self.project.tanggal_mulai = date(2026, 1, 1)
+        self.project.tanggal_selesai = date(2026, 1, 31)
+        self.project.save(update_fields=["tanggal_mulai", "tanggal_selesai"])
+        p = self._pekerjaan("P-1")
+        self._volume(p, "1.000")
+        self._weekly(p, 1, "50.00", start="2026-01-01", end="2026-01-07")  # in-window
+
+        self.assertFalse(compute_project_readiness(self.project)["timeline_stale"])
+
+        # Add a week ending in February — outside the project window.
+        self._weekly(p, 5, "50.00", start="2026-02-01", end="2026-02-07")
+
+        self.assertTrue(compute_project_readiness(self.project)["timeline_stale"])
+
+    def test_timeline_stale_detects_week_before_project_start(self):
+        self.project.tanggal_mulai = date(2026, 1, 8)
+        self.project.tanggal_selesai = date(2026, 1, 31)
+        self.project.save(update_fields=["tanggal_mulai", "tanggal_selesai"])
+        p = self._pekerjaan("P-BEFORE")
+        self._volume(p, "1.000")
+        self._weekly(p, 1, "100.00", start="2026-01-01", end="2026-01-07")
+
+        self.assertTrue(compute_project_readiness(self.project)["timeline_stale"])
+
+    def test_jadwal_signals_index_into_affected_pekerjaan(self):
+        p = self._pekerjaan("P-1")  # scheduled partial, no volume
+        self._weekly(p, 1, "30.00")
+
+        r = compute_project_readiness(self.project)
+
+        self.assertIn(p.id, r["affected_pekerjaan"])
 
     # ----- missing_volume: absent row vs explicit zero -------------------
     def test_missing_volume_flags_absent_row_only(self):
@@ -239,15 +351,15 @@ class ReadinessContractTests(TestCase):
 
         self.assertEqual(r["invalid_coefficient"], [])
 
-    # ----- pending jadwal signals must be None --------------------------
-    def test_jadwal_signals_are_none_and_declared_pending(self):
+    # ----- jadwal signals empty/false when nothing scheduled (live, inc-4a) ----
+    def test_jadwal_signals_empty_when_unscheduled(self):
         r = compute_project_readiness(self.project)
 
-        self.assertIsNone(r["incomplete_planned_allocation"])
-        self.assertIsNone(r["allocation_without_volume"])
-        self.assertIsNone(r["timeline_stale"])
-        self.assertEqual(r["pending_signals"], list(PENDING_SIGNALS))
-        self.assertIn("allocation_without_volume", r["pending_signals"])
+        self.assertEqual(r["incomplete_planned_allocation"], [])
+        self.assertEqual(r["allocation_without_volume"], [])
+        self.assertFalse(r["timeline_stale"])
+        self.assertEqual(r["pending_signals"], [])
+        self.assertEqual(list(PENDING_SIGNALS), [])
 
     # ----- traceability union -------------------------------------------
     def test_affected_pekerjaan_indexes_all_causes(self):
@@ -270,7 +382,10 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(r["missing_price"], [])
         self.assertEqual(r["affected_pekerjaan"], [])
         self.assertEqual(r["affected_items"], [])
-        self.assertEqual(r["schema_version"], "b4.3")
+        self.assertEqual(r["incomplete_planned_allocation"], [])
+        self.assertEqual(r["allocation_without_volume"], [])
+        self.assertFalse(r["timeline_stale"])
+        self.assertEqual(r["schema_version"], "b4.4")
 
     # ----- affected_items canonical index (Master Plan minimum contract) -
     def test_affected_items_is_canonical_item_index(self):
@@ -500,7 +615,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertIn("readiness", body)
-        self.assertEqual(body["readiness"]["schema_version"], "b4.3")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.4")
 
     def test_readiness_reflects_missing_price_and_volume(self):
         body = self.client.get(self.url).json()
@@ -509,8 +624,9 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertIn(
             self.pekerjaan.id, {e["pekerjaan_id"] for e in readiness["missing_volume"]}
         )
-        # Jadwal-derived signals remain pending (not "all clear").
-        self.assertIsNone(readiness["timeline_stale"])
+        # Jadwal-derived signals are live (inc-4a); no schedule here → not stale.
+        self.assertFalse(readiness["timeline_stale"])
+        self.assertEqual(readiness["pending_signals"], [])
 
     def test_dedicated_readiness_endpoint(self):
         # WP-B4 inc-3: dedicated GET for consumers that don't load /rekap/
@@ -523,7 +639,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["readiness"]["schema_version"], "b4.3")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.4")
         self.assertIn("BHN-NULL", {e["kode"] for e in body["readiness"]["missing_price"]})
 
     def test_dedicated_readiness_endpoint_is_owner_scoped(self):

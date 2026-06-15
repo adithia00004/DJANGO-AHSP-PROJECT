@@ -45,6 +45,18 @@ function buildReadinessBannerHTML(readiness) {
   if (inv.length) {
     lines.push(`<li><strong>${inv.length}</strong> koefisien tidak valid (negatif): ${codes(inv, 'kode')}</li>`);
   }
+  // Jadwal-derived signals (live since inc-4a).
+  const awv = readiness.allocation_without_volume || [];
+  if (awv.length) {
+    lines.push(`<li><strong>${awv.length}</strong> pekerjaan dijadwalkan tanpa volume: ${codes(awv, 'kode')} <span class="text-muted">(isi Volume atau perbaiki Jadwal)</span></li>`);
+  }
+  const ipa = readiness.incomplete_planned_allocation || [];
+  if (ipa.length) {
+    lines.push(`<li><strong>${ipa.length}</strong> pekerjaan jadwalnya belum 100%: ${codes(ipa, 'kode')} <span class="text-muted">(lengkapi di Jadwal)</span></li>`);
+  }
+  if (readiness.timeline_stale) {
+    lines.push('<li>Jadwal tidak sesuai rentang tanggal proyek <span class="text-muted">(perlu regenerasi di Jadwal)</span></li>');
+  }
 
   if (!lines.length) return null;
 

@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 25% implementasi):** **IN PROGRESS - WP-B1/WP-B2/WP-A1/WP-B3 DONE / WP-B4 `b4.3` LOCKED · UAT PASS · inc-3 SELESAI (5/5 consumer wired) · sisa inc-4 sinyal jadwal / WP-A2 NEXT**
+**Status keseluruhan (≈ 26% implementasi):** **IN PROGRESS - WP-B1/WP-B2/WP-A1/WP-B3 DONE / WP-B4 `b4.4` · inc-3 (5/5 consumer) + inc-4a (3 sinyal jadwal LIVE) DONE · sisa inc-4b stale-signature (migrasi) / WP-A2 NEXT**
 
 ## 1. Aturan Tracking
 
@@ -35,7 +35,7 @@ Status:
 | WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
 | WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
-| WP-B4 | Canonical readiness | IN PROGRESS (~85%, schema `b4.3` LOCKED) | 2026-06-15 | - | WP-B1 | b4.3 LOCKED + UF-011 FIXED + endpoint `/readiness/` + autoload. UAT Rekap RAB PASS. **inc-3 SELESAI: 5/5 consumer wired** (Rekap RAB·Rincian·Template·Jadwal·Kebutuhan). Sisa: **inc-4** sinyal jadwal aktual. Test 26 readiness backend + 264 frontend |
+| WP-B4 | Canonical readiness | IN PROGRESS (~92%, schema `b4.4`) | 2026-06-15 | - | WP-B1 | b4.4: UF-011 FIXED + `/readiness/` + autoload + **inc-3 5/5 consumer** + **inc-4a 3 sinyal jadwal LIVE**. Sisa: **inc-4b** stale-expansion signature (perlu migrasi). Test 32 readiness backend + 265 frontend |
 | WP-B5 | Server-authoritative export | PENDING | - | - | B1/B2/B4 | - |
 | WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
@@ -560,6 +560,42 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 | 2026-06-15 | WP-B4 inc-3 fan-out#3+#4 | `tests_wp_b4_readiness` + `tests_rekap_calculation_contract` + `vitest run` | PASS | 26/26 readiness backend; 42/42 readiness+rekap; 264 frontend / 25 skip. Tambahan hardening: endpoint login+owner scope, wiring template Jadwal/Kebutuhan, dan refresh readiness setelah reset Template. `node --check` + Django check bersih |
 
 **inc-3 SELESAI — kelima consumer wired:** Rekap RAB + Rincian (inline `/rekap/`), Template + Jadwal + Kebutuhan (endpoint `/readiness/` khusus; Jadwal/Kebutuhan via autoload). **Berikutnya: inc-4** — sinyal jadwal aktual (`incomplete_planned_allocation`/`allocation_without_volume`/`timeline_stale`) + stale-revision, lalu WP-B4 DONE.
+
+#### inc-4 — DESAIN (sinyal jadwal + stale-expansion signature) — menunggu persetujuan owner
+
+**Sumber data tervalidasi:** `PekerjaanProgressWeekly` (canonical; `planned_proportion` per `(pekerjaan, week_number)`, + `week_start_date/end_date`); validasi assign-time `views_api_tahapan_v2.py:332-366` sudah hitung `total_percent` + `missing_capacity`; `Project.tanggal_mulai/selesai`.
+
+**Kontrak 3 sinyal jadwal (mengisi yang sebelumnya `null`/pending):**
+
+1. `incomplete_planned_allocation` — pekerjaan **terjadwal sebagian**: `0 < Σ planned_proportion < 100` (toleransi 0.01). **Σ=0 (belum dijadwalkan) DIKECUALIKAN** agar proyek baru tak diflag massal. Entry: `{pekerjaan_id, kode, uraian, source_table:"PekerjaanProgressWeekly", source_page:"jadwal", issue:"incomplete_planned_allocation", actual: "<Σ%>"}`.
+2. `allocation_without_volume` — `Σ planned_proportion > 0` TAPI volume absen ATAU 0 (= cek `missing_capacity` existing). Lebih berat dari `missing_volume` (kerja dijadwalkan tanpa kapasitas). Entry: `{pekerjaan_id, kode, uraian, source_table:"PekerjaanProgressWeekly"+"VolumePekerjaan", source_page:"jadwal", issue, actual:"<Σ%>"}`.
+3. `timeline_stale` (bool project-level) — jadwal dibangun di atas rentang tanggal lama. **Definisi (diusulkan):** ada `PekerjaanProgressWeekly` dengan `week_start_date < project.tanggal_mulai` ATAU `week_end_date > project.tanggal_selesai`. (Sekunder opsional: `max(week_number) ≠ expected_weeks` dari tanggal.) Jika project tanpa tanggal atau tanpa weekly data → `false` (tak dapat dinilai). **Memindahkan deteksi dari client `_estimateExpectedWeeklyColumns` ke server (audit Jadwal R2).**
+
+`pending_signals` dikosongkan setelah ketiganya live; nilai `null` → list aktual.
+
+**Mekanisme stale-expansion (ganti heuristik `updated_at` yang bisa di-bypass `QuerySet.update`):**
+- **Usulan = CONTENT SIGNATURE (bukan revision-counter).** Alasan: counter di-bump saat write punya kelemahan yang SAMA dengan `updated_at` (bulk_update melewatinya). Signature dihitung **dari nilai aktual saat read** → bypass-proof.
+- Tambah field `source_signature` (CharField, nullable) di `DetailAHSPExpanded` = hash pendek dari source raw row saat ekspansi: `sha1(f"{kategori}|{kode}|{koefisien}|{ref_pekerjaan_id}|{ref_ahsp_id}")`. Ditulis di setiap create `DetailAHSPExpanded` dalam rutin ekspansi (`_populate_expanded_from_raw` + builder bundle).
+- **Readiness:** untuk tiap raw row, hitung signature CURRENT, bandingkan dgn `source_signature` tersimpan di expanded rows-nya → beda = `stale_expansion`. Menggantikan perbandingan `updated_at`.
+- **Migrasi:** add field nullable + data-migration backfill (hitung dari source saat ini; konsisten ketika deploy). Pasca-backfill tak ada NULL → readiness pakai signature murni. (NULL → fallback aman: tak diflag, tunggu re-ekspansi berikut.)
+
+**Keputusan owner (DIPUTUSKAN 2026-06-15):** (a) `timeline_stale` = **hanya minggu di luar jendela** [tanggal_mulai, tanggal_selesai]; (b) stale-expansion = **content signature** (bukan revision-counter, karena counter punya kelemahan bypass yang sama dgn updated_at); (c) `incomplete_planned_allocation` **mengecualikan Σ=0**.
+
+**Rencana increment inc-4:** inc-4a = 3 sinyal jadwal (read-only, tanpa migrasi) + contract test; inc-4b = field `source_signature` + migrasi/backfill + ganti deteksi stale + test bypass `QuerySet.update`.
+
+#### inc-4a — Sinyal jadwal LIVE (DONE 2026-06-15) → schema `b4.4`
+
+`readiness.py` kini menghitung 3 sinyal dari `PekerjaanProgressWeekly` (Σ `planned_proportion` per pekerjaan) + `VolumePekerjaan.quantity` + `Project.tanggal_*`:
+- `incomplete_planned_allocation`: `0 < Σ < 100` (toleransi 0.01); Σ=0 dikecualikan.
+- `allocation_without_volume`: `Σ > 0` & volume absen/0.
+- `timeline_stale` (bool): ada weekly row dgn `week_start_date < mulai` ATAU `week_end_date > selesai`; project tanpa tanggal/weekly → `false`.
+`PENDING_SIGNALS` kini `()` kosong; `pending_signals` di output = `[]`. Banner (`readiness_banner.js`) menampilkan ketiganya (3 baris baru). Entry jadwal masuk `affected_pekerjaan`.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B4 inc-4a | `tests_wp_b4_readiness` + lintas-consumer + `vitest run` | PASS | backend 76/76 (readiness 32; rekap 15; wp_b3 29); frontend 265 (+1 banner jadwal); `manage.py check` bersih. Review hardening: sumber `allocation_without_volume` mencatat weekly+volume; tolerance 99.99% dan minggu sebelum tanggal mulai dikunci contract test. |
+
+**Berikutnya: inc-4b** — field `source_signature` (`DetailAHSPExpanded`) + migrasi/backfill + populate di semua write ekspansi + ganti deteksi `stale_expansion` (dari `updated_at` → signature, bypass-proof) + test bypass `QuerySet.update`. Perlu migrasi DB.
 
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 
