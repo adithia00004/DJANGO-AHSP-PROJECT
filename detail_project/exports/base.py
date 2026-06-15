@@ -100,6 +100,8 @@ class BaseExporter:
             pricing: ProjectPricing instance (for markup, etc)
         """
         self.project = project
+        from .identity import get_project_identity
+        self.project_identity = get_project_identity(project)
         self.data = data
         self.pricing = pricing
         self.timestamp = now()
@@ -123,11 +125,13 @@ class BaseExporter:
             writer = csv.writer(response, delimiter=';')
         """
         response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-        
-        # Add timestamp to filename
-        timestamp_str = self.timestamp.strftime('%Y%m%d_%H%M%S')
-        filename = f"{base_filename.replace('.csv', '')}_{self.project.id}_{timestamp_str}.csv"
-        
+
+        # WP-B5 inc-B5c: project-name-first convention (was project.id).
+        from .identity import get_project_identity
+        from .naming import build_export_filename
+        name = get_project_identity(self.project)["name"]
+        filename = build_export_filename(name, base_filename.replace('.csv', ''), 'csv', self.timestamp)
+
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
     
@@ -142,7 +146,7 @@ class BaseExporter:
         
         Usage:
             info_rows = [
-                ['Nama Project', ':', self.project.nama],
+                ['Nama Project', ':', self.project_identity['name']],
                 ['Profit/Margin', ':', f'{self.pricing.markup_percent}%']
             ]
             self._write_csv_header(writer, 'REKAP RAB', info_rows)
@@ -167,11 +171,11 @@ class BaseExporter:
             self._write_csv_header(writer, 'REKAP RAB', info_rows)
         """
         return [
-            ['Nama Project', ':', self.project.nama or '-'],
+            ['Nama Project', ':', self.project_identity['name']],
             ['Project ID', ':', str(self.project.id)],
             ['Kode Proyek', ':', self.project.index_project or '-'],
-            ['Lokasi', ':', self.project.lokasi or '-'],
-            ['Tahun Anggaran', ':', str(self.project.tahun_anggaran) if self.project.tahun_anggaran else '-'],
+            ['Lokasi', ':', self.project_identity['location']],
+            ['Tahun Anggaran', ':', self.project_identity['year']],
             ['Tanggal Export', ':', self.timestamp.strftime('%d-%m-%Y %H:%M')],
         ]
     
@@ -202,7 +206,10 @@ class BaseExporter:
         
         # Add timestamp to title
         timestamp_str = self.timestamp.strftime('%Y%m%d_%H%M%S')
-        title = f"{base_filename.replace('.pdf', '')}_{self.project.nama}_{timestamp_str}"
+        title = (
+            f"{base_filename.replace('.pdf', '')}_"
+            f"{self.project_identity['name']}_{timestamp_str}"
+        )
         
         doc = SimpleDocTemplate(
             buffer,
@@ -246,7 +253,7 @@ class BaseExporter:
         
         # Subtitle (project name by default)
         if subtitle is None:
-            subtitle = self.project.nama or 'Nama Project'
+            subtitle = self.project_identity['name']
         
         subtitle_style = ParagraphStyle(
             'CustomSubtitle',
@@ -263,8 +270,8 @@ class BaseExporter:
         # Info table
         info_data = [
             ['Kode Proyek', ':', self.project.index_project or '-'],
-            ['Lokasi', ':', self.project.lokasi or '-'],
-            ['Tahun Anggaran', ':', str(self.project.tahun_anggaran) if self.project.tahun_anggaran else '-'],
+            ['Lokasi', ':', self.project_identity['location']],
+            ['Tahun Anggaran', ':', self.project_identity['year']],
         ]
         
         info_table = Table(info_data, colWidths=[40*mm, 5*mm, 80*mm])
@@ -425,7 +432,7 @@ class BaseExporter:
         
         # Subtitle (project name by default)
         if subtitle is None:
-            subtitle = self.project.nama or 'Nama Project'
+            subtitle = self.project_identity['name']
         
         subtitle_para = doc.add_paragraph()
         subtitle_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -442,8 +449,8 @@ class BaseExporter:
         
         info_data = [
             ['Kode Proyek', ':', self.project.index_project or '-'],
-            ['Lokasi', ':', self.project.lokasi or '-'],
-            ['Tahun Anggaran', ':', str(self.project.tahun_anggaran) if self.project.tahun_anggaran else '-'],
+            ['Lokasi', ':', self.project_identity['location']],
+            ['Tahun Anggaran', ':', self.project_identity['year']],
         ]
         
         for i, row_data in enumerate(info_data):

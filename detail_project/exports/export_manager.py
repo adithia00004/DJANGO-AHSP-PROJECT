@@ -41,58 +41,30 @@ class ExportManager:
     # =========================================================================
     
     def _get_project_identity(self) -> dict:
+        """SSOT identity — delegates to the canonical provider (WP-B5 inc-B5b).
+
+        Previously read non-existent field names so location & year were always
+        ``'-'``. Now sourced from ``get_project_identity`` (real Dashboard fields).
+        Output shape (name/code/location/year/owner/extra) preserved for callers.
         """
-        SSOT: Extract project identity fields with fallback logic.
-        
-        Returns:
-            dict with keys: name, code, location, year, owner, extra
-        """
-        # Project name with fallback
-        name = (
-            getattr(self.project, 'nama_project', None)
-            or getattr(self.project, 'nama', None)
-            or '-'
-        )
-        
-        # Project code with fallback
-        code = (
-            getattr(self.project, 'kode_project', None)
-            or getattr(self.project, 'index_project', None)
-            or '-'
-        )
-        
-        # Location
-        lokasi = getattr(self.project, 'lokasi', '') or '-'
-        
-        # Year
-        tahun = str(getattr(self.project, 'tahun_anggaran', '') or '-')
-        
-        # Owner/Client
-        owner = getattr(self.project, 'nama_client', '') or '-'
-        
-        # Extra identity fields
-        ket1 = getattr(self.project, 'ket_project1', None)
-        ket2 = getattr(self.project, 'ket_project2', None)
-        instansi = getattr(self.project, 'instansi_client', None)
-        tahun_project = getattr(self.project, 'tahun_anggaran', None)
-        sumber_dana = getattr(self.project, 'sumber_dana', None)
-        lokasi_project = getattr(self.project, 'lokasi', None)
-        ang_owner = getattr(self.project, 'anggaran_owner', None)
+        from .identity import get_project_identity
+
+        ident = get_project_identity(self.project)
+        ang_owner = ident['anggaran_owner']
         anggaran_fmt = f"Rp {format_currency(ang_owner)}" if ang_owner is not None else 'Rp 0'
-        
         return {
-            'name': name,
-            'code': code,
-            'location': lokasi,
-            'year': tahun,
-            'owner': owner,
+            'name': ident['name'],
+            'code': ident['code'],
+            'location': ident['location'],
+            'year': ident['year'],
+            'owner': ident['owner'],
             'extra': {
-                'ket_project1': ket1,
-                'ket_project2': ket2,
-                'instansi_client': instansi,
-                'tahun_project': tahun_project,
-                'sumber_dana': sumber_dana,
-                'lokasi_project': lokasi_project,
+                'ket_project1': ident['ket_project1'],
+                'ket_project2': ident['ket_project2'],
+                'instansi_client': ident['instansi_client'],
+                'tahun_project': ident['year'],
+                'sumber_dana': ident['sumber_dana'],
+                'lokasi_project': ident['location'],
                 'project_anggaran': anggaran_fmt,
             }
         }
@@ -1106,4 +1078,3 @@ class ExportManager:
             return result
         
         return exporter.export(data)
-

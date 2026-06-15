@@ -140,7 +140,8 @@ class CSVExporter(ConfigExporterBase):
             else:
                 yield from iter_section(data)
 
-        filename = f"{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.csv"
+        from .naming import build_export_filename  # WP-B5 inc-B5c
+        filename = build_export_filename(self.config.project_name, self.config.title, 'csv', self.config.export_date)
         response = StreamingHttpResponse(row_generator(), content_type='text/csv; charset=utf-8-sig')
         response['Content-Disposition'] = f'attachment; filename=\"{filename}\"'
         return response

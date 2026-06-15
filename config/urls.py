@@ -19,6 +19,9 @@ from detail_project.views_health import (
     liveness_check
 )
 
+# WP-A2: CSP violation report sink
+from config.middleware.csp import csp_report
+
 
 # Redirect root URL -> dashboard (jika login) atau login page
 def home_redirect(request):
@@ -44,6 +47,9 @@ urlpatterns = [
     path('health/simple/', health_check_simple, name='health_check_simple'),
     path('health/ready/', readiness_check, name='readiness_check'),
     path('health/live/', liveness_check, name='liveness_check'),
+
+    # WP-A2: CSP violation report sink (report-only phase)
+    path('csp-report/', csp_report, name='csp_report'),
 
     # Admin
     path('admin/login/', admin_login_redirect, name='admin_login_redirect'),

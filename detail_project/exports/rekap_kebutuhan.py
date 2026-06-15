@@ -193,7 +193,7 @@ class RekapKebutuhanExporter(BaseExporter):
         self._add_pdf_header(
             elements,
             'REKAP KEBUTUHAN MATERIAL, TENAGA KERJA, DAN ALAT',
-            self.project.nama
+            self.project_identity["name"]
         )
         
         # ===== PREPARE TABLE DATA =====
@@ -268,8 +268,9 @@ class RekapKebutuhanExporter(BaseExporter):
         buffer.seek(0)
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
         
-        timestamp_str = self.timestamp.strftime('%Y%m%d_%H%M%S')
-        filename = f'Rekap_Kebutuhan_{self.project.nama}_{timestamp_str}.pdf'
+        from .identity import get_project_identity  # WP-B5 inc-B5c
+        from .naming import build_export_filename
+        filename = build_export_filename(get_project_identity(self.project)["name"], "Rekap_Kebutuhan", "pdf", self.timestamp)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         return response
@@ -304,7 +305,7 @@ class RekapKebutuhanExporter(BaseExporter):
         self._add_word_header(
             doc,
             'REKAP KEBUTUHAN MATERIAL, TENAGA KERJA, DAN ALAT',
-            self.project.nama
+            self.project_identity["name"]
         )
         
         # ===== CREATE TABLE =====
@@ -428,8 +429,9 @@ class RekapKebutuhanExporter(BaseExporter):
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
         
-        timestamp_str = self.timestamp.strftime('%Y%m%d_%H%M%S')
-        filename = f'Rekap_Kebutuhan_{self.project.nama}_{timestamp_str}.docx'
+        from .identity import get_project_identity  # WP-B5 inc-B5c
+        from .naming import build_export_filename
+        filename = build_export_filename(get_project_identity(self.project)["name"], "Rekap_Kebutuhan", "docx", self.timestamp)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         return response

@@ -1206,9 +1206,12 @@ class WordExporter:
             self.doc.add_paragraph()
             
         except Exception as e:
-            # If image embedding fails, add error message
+            # WP-B5 inc-B5a: never put exception text in the document. Log under a
+            # correlation ID and show a safe placeholder referencing it.
+            from .errors import log_export_error
+            cid = log_export_error(e, context=f"embed image: {title}")
             para = self.doc.add_paragraph()
-            para.add_run(f'[{title} - Error embedding image: {str(e)}]')
+            para.add_run(f'[{title} — gambar gagal dimuat. Ref: {cid}]')
     
     # =========================================================================
     # KURVA S SECTION
@@ -1341,6 +1344,13 @@ class WordExporter:
             buffer.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
-        response['Content-Disposition'] = f'attachment; filename="{filename}.docx"'
+        from .naming import build_export_filename
+        export_filename = build_export_filename(
+            self.config.project_name,
+            filename,
+            "docx",
+            self.config.export_date,
+        )
+        response['Content-Disposition'] = f'attachment; filename="{export_filename}"'
         
         return response

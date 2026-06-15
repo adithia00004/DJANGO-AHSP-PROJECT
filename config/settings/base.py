@@ -72,6 +72,7 @@ MIDDLEWARE = [
     "config.middleware.timeout.TimeoutMiddleware",
     # Django core
     "django.middleware.security.SecurityMiddleware",
+    "config.middleware.csp.ContentSecurityPolicyMiddleware",  # WP-A2: CSP report-only
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -88,6 +89,33 @@ MIDDLEWARE = [
 
 # Request timeout configuration (3 minutes)
 REQUEST_TIMEOUT_SECONDS = 180
+
+# --- Content Security Policy (WP-A2) ---------------------------------------
+# Report-only first (non-breaking): the browser only reports what WOULD be
+# blocked. Flip DJANGO_CSP_REPORT_ONLY=False in a separate enforcement
+# milestone after inline scripts are migrated/nonced and CDN deps self-hosted.
+CSP_REPORT_ONLY = os.getenv("DJANGO_CSP_REPORT_ONLY", "True").lower() == "true"
+CSP_REPORT_PATH = "/csp-report/"
+CSP_POLICY = {
+    "default-src": ["'self'"],
+    # script-src intentionally OMITS 'unsafe-inline' so report-only surfaces
+    # every inline <script> that must be migrated/nonced before enforcement.
+    "script-src": [
+        "'self'",
+        "https://cdn.jsdelivr.net",
+        "https://code.jquery.com",
+        "https://cdn.sheetjs.com",
+    ],
+    # style-src keeps 'unsafe-inline' (pervasive inline styles, lower risk) —
+    # documented accepted exception, revisited at enforcement.
+    "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+    "img-src": ["'self'", "data:"],
+    "font-src": ["'self'", "https://cdn.jsdelivr.net", "data:"],
+    "connect-src": ["'self'"],
+    "object-src": ["'none'"],
+    "base-uri": ["'self'"],
+    "frame-ancestors": ["'self'"],
+}
 
 # ---------------------------------------------------------------------------
 # URLs / WSGI

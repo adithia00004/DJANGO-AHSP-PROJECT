@@ -1558,24 +1558,31 @@ class JadwalPekerjaanExportAdapter:
         return weighted_planned, weighted_actual
 
     def _get_project_info(self) -> Dict[str, Any]:
-        """Get project information for cover page and signature section."""
+        """Get project information for cover page and signature section.
+
+        Real identity fields sourced from the canonical provider (WP-B5 inc-B5b);
+        signature-only fields (jabatan/instansi) kept as-is (not on Dashboard yet).
+        """
+        from .identity import get_project_identity
+
+        ident = get_project_identity(self.project)
         return {
-            "nama": getattr(self.project, "nama", "Proyek Tanpa Nama"),
-            "lokasi": getattr(self.project, "lokasi", getattr(self.project, "lokasi_project", "-")),
-            "anggaran": self._format_number(getattr(self.project, "anggaran_owner", 0), 0),
+            "nama": ident["name"],
+            "lokasi": ident["location"],
+            "anggaran": self._format_number(ident["anggaran_owner"] or 0, 0),
             "tanggal_mulai": self.project_start,
             "tanggal_selesai": self.project_end,
             "durasi_hari": getattr(self.project, "durasi_hari", 0),
-            "sumber_dana": getattr(self.project, "sumber_dana", "-"),
-            "nama_client": getattr(self.project, "nama_client", "-"),
+            "sumber_dana": ident["sumber_dana"],
+            "nama_client": ident["client"],
             # Signature section fields
-            "jabatan_client": getattr(self.project, "jabatan_client", "-"),
-            "instansi_client": getattr(self.project, "instansi_client", "-"),
-            "instansi_kontraktor": getattr(self.project, "instansi_kontraktor", "-"),
-            "instansi_konsultan_pengawas": getattr(self.project, "instansi_konsultan_pengawas", "-"),
+            "jabatan_client": ident["jabatan_client"] or "-",
+            "instansi_client": ident["instansi_client"] or "-",
+            "instansi_kontraktor": ident["instansi_kontraktor"] or "-",
+            "instansi_konsultan_pengawas": ident["instansi_konsultan_pengawas"] or "-",
             # Signature names
-            "nama_kontraktor": getattr(self.project, "nama_kontraktor", "-"),
-            "nama_konsultan_pengawas": getattr(self.project, "nama_konsultan_pengawas", "-"),
+            "nama_kontraktor": ident["kontraktor"] or "-",
+            "nama_konsultan_pengawas": ident["konsultan_pengawas"] or "-",
         }
 
     def _build_rekap_harga_cache(self) -> Dict[int, Decimal]:

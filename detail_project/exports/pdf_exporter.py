@@ -946,7 +946,8 @@ class PDFExporter(ConfigExporterBase):
         pdf_content = buffer.getvalue()
         buffer.close()
         
-        filename = f"{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.pdf"
+        from .naming import build_export_filename  # WP-B5 inc-B5c
+        filename = build_export_filename(self.config.project_name, self.config.title, 'pdf', self.config.export_date)
         return self._create_response(pdf_content, filename, 'application/pdf')
 
     def export_professional(self, data: Dict[str, Any]) -> HttpResponse:
@@ -1833,27 +1834,10 @@ class PDFExporter(ConfigExporterBase):
         pdf_content = buffer.getvalue()
         buffer.close()
         
-        # Generate filename based on report type and months
-        project_name_safe = project_name.replace(' ', '_') if project_name else 'Project'
-        date_suffix = self.config.export_date.strftime('%Y%m%d')
-        
-        if report_type == 'monthly':
-            months = data.get('months', [])
-            if months and len(months) > 1:
-                # Multi-month: Laporan Bulan {min}-{max} NamaProject.pdf
-                min_m, max_m = min(months), max(months)
-                filename = f"Laporan_Bulan_{min_m}-{max_m}_{project_name_safe}_{date_suffix}.pdf"
-            else:
-                # Single month
-                month = data.get('month', 1)
-                if months:
-                    month = months[0]
-                filename = f"Laporan_Bulan_{month}_{project_name_safe}_{date_suffix}.pdf"
-        elif report_type == 'weekly':
-            week = data.get('week', 1)
-            filename = f"Laporan_Minggu_{week}_{project_name_safe}_{date_suffix}.pdf"
-        else:
-            filename = f"Laporan_Rekap_{project_name_safe}_{date_suffix}.pdf"
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            project_name, report_type, "pdf", self.config.export_date
+        )
         
         return self._create_response(pdf_content, filename, 'application/pdf')
     
@@ -6256,4 +6240,3 @@ class PDFExporter(ConfigExporterBase):
                 pages.append(drawing)
         
         return pages
-

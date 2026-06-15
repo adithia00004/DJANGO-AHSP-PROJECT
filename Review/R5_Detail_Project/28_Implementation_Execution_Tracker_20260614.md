@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 28% implementasi):** **IN PROGRESS - WP-A1/WP-B1/WP-B2/WP-B3/WP-B4 DONE (B4 schema `b4.4`, 5/5 consumer, signature stale-detect) / WP-A2 atau WP-B5 NEXT**
+**Status keseluruhan (≈ 30% implementasi):** **IN PROGRESS - WP-A1/WP-A2(report-only)/WP-B1/WP-B2/WP-B3/WP-B4 DONE / WP-B5 B5a-B5c DONE, B5d NEXT · enforcement CSP = milestone terpisah**
 
 ## 1. Aturan Tracking
 
@@ -31,12 +31,12 @@ Status:
 |---|---|---|---|---|---|---|
 | WP-00 | Inventory, ownership ledger, baseline | IN PROGRESS | 2026-06-14 | - | Gate 0 | Baseline dan consumer scan berjalan |
 | WP-A1 | Stored XSS removal | DONE | 2026-06-14 | 2026-06-14 | WP-00 | F-01+LP-01+RR-01+RR-18 fixed & regression-locked (Django 2 + vitest 9). Browser visual UAT → Fase 4. CSP/SRI = WP-A2 |
-| WP-A2 | CSP report-only/enforcement plan | PENDING | - | - | WP-A1 | - |
+| WP-A2 | CSP report-only/enforcement plan | DONE (report-only); enforcement DEFERRED (milestone terpisah) | 2026-06-15 | 2026-06-15 | WP-A1 | Middleware custom report-only + hardened sink `/csp-report/` + policy + 11 test. Inventory CDN/inline + roadmap enforcement + dep-governance tercatat. Enforcement (self-host + nonce inline) = milestone terpisah |
 | WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
 | WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
 | WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
-| WP-B5 | Server-authoritative export | PENDING | - | - | B1/B2/B4 | - |
+| WP-B5 | Server-authoritative export | IN PROGRESS (B5a+B5b+B5c DONE; B5d/B5e perlu keputusan) | 2026-06-15 | - | B1/B2/B4 | ✅B5a error-wrapper+correlation-id ✅B5b identity provider (fix lokasi/tahun='-') ✅B5c filename name-first. ⬜B5d JSON separation (B-2, perlu desain) ⬜B5e signature/snapshot/client-render (perlu desain) |
 | WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
 | WP-B8 | Tipe LAIN | PENDING | - | - | B3 | - |
@@ -48,20 +48,20 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 28% dari eksekusi implementasi selesai** (per 2026-06-15).
+**Headline: ≈ 30% dari eksekusi implementasi selesai** (per 2026-06-15).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
-| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~51% | ~23% | A1·B1·B2·B3·**B4 DONE**; A2·B5·B6·B7·B8·B9·B10 PENDING |
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~58% | ~26% | A1·**A2(report-only)**·B1·B2·B3·B4 DONE; B5·B6·B7·B8·B9·B10 PENDING (CSP enforcement = milestone terpisah) |
 | Fase 2 — Integrasi per-page (P1–P9) | 30% | ~5% | ~1.5% | readiness display terpasang di 5 halaman (bagian B4); integrasi per-page penuh belum |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 28%** | |
+| **Total** | **100%** | | **≈ 30%** | |
 
-Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ⬜, B1=5 ✅, B2=3 ✅, B3=6 ✅, **B4=6 ✅**, B5=5 ⬜, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 23/45 ≈ 51%.
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, **A2=3 ✅ (report-only; enforcement milestone terpisah)**, B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ⬜, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 26/45 ≈ 58%.
 
 **WP-B4 SELESAI** (inc-1 survei · inc-2/2.1/2.2 kontrak `b4.3` · UF-011 fix + UAT PASS · inc-3 5/5 consumer wired · inc-4a 3 sinyal jadwal · inc-4b stale-signature `b4.4`).
 
@@ -104,6 +104,7 @@ Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ⬜, B1=5 �
 | KF-06 | Frontend production build | Tidak dijalankan | protected-dirty-output | `detail_project/static/detail_project/dist` sudah memiliki perubahan user; jangan overwrite pada WP-B1 |
 | KF-07 | Subscription expired-user renewal middleware | Dua test mendapat 302: payment flow mengharapkan JSON dan write-gate lain mengharapkan 403 | known-failing, reproducible terpisah | Owner subscriptions; tidak berkaitan WP-B4/UF-011. Triage kontrak middleware vs endpoint sebelum fase subscription |
 | KF-08 | Full Django checkpoint 2026-06-15 | 437 total, 40 skipped; 8 failure KF-01/KF-02 + 2 failure KF-07 | baseline-known-only | Tidak ada failure WP-B4, Rekap RAB, Harga Items, atau last-write-wins guard |
+| KF-09 | Full Django checkpoint A2+B5a-c 2026-06-15 | 483 total, 40 skipped; 9 failure + 1 error seluruhnya KF-01/KF-02/KF-07 | baseline-known-only | Tidak ada failure baru pada CSP, identity, naming, export error wrapper, calculation, atau exporter |
 
 `python manage.py check` juga lulus tanpa issue.
 
@@ -612,8 +613,108 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 | 2026-06-15 | WP-B4 inc-4b | `tests_wp_b4_readiness` + lintas-ekspansi + `makemigrations --check` | PASS | 85/85 (readiness 36; rekap 15; wp_b3 29; item_ssot 5); migrasi 0046–0048 bersih; `manage.py check` 0 issue; frontend 265 pass / 25 skip |
 | 2026-06-15 | WP-B4 inc-4b Docker | backup + `migrate --plan` + container check + HTTP smoke | PASS | DB Docker sudah di `0048`; 752 expanded row, 0 signature NULL, 0 grup signature campuran; `/` HTTP 200. Backup: `backups/wp_b4_0048_20260615_165016.dump` |
 
-**WP-B4 SELESAI.** Schema `b4.4` lengkap: missing_volume/price (null≠zero), expansion (missing/stale/incomplete/excess, signature bypass-proof), invalid_coefficient, 3 sinyal jadwal, affected index; 5/5 consumer wired (display-only); endpoint `/readiness/` + autoload. **Berikutnya WP: A2 (CSP) atau B5 (export).**
+**WP-B4 SELESAI.** Schema `b4.4` lengkap: missing_volume/price (null≠zero), expansion (missing/stale/incomplete/excess, signature bypass-proof), invalid_coefficient, 3 sinyal jadwal, affected index; 5/5 consumer wired (display-only); endpoint `/readiness/` + autoload.
 
+**Konsistensi signature (2026-06-15):** owner memperkuat `source_signature` menambah `harga_item_id` (relation-move harga ikut terdeteksi stale). Dirapikan agar **6 field konsisten di SEMUA call-site**: helper, `_compute` recompute, kedua populate (services+views), test helper, **dan migrasi backfill `0047`** (semula 5 field → diperbaiki; kalau tidak, semua baris pre-deploy ter-flag stale palsu). `makemigrations --check` bersih, readiness suite hijau.
+
+**Berikutnya WP: A2 (CSP) — dimulai.**
+
+---
+
+### WP-A2 — CSP Report-Only + Dependency Governance (report-only DONE 2026-06-15)
+
+**Sumber:** A-4, VP-08, TA-11, RR-15. Master plan: report-only dulu, enforcement = milestone terpisah.
+
+**Keputusan owner (didelegasikan, rekomendasi Claude diadopsi):** (1) mekanisme = **middleware custom** (tanpa dependency; django-csp dipertimbangkan saat enforcement utk nonce); (2) arah CDN jangka panjang = **self-host** (CSP paling bersih, cocok on-prem) — diterapkan di fase enforcement.
+
+**Inventaris (survei):**
+- CSP: TIDAK ADA sebelumnya (production hanya `SECURE_*`/HSTS).
+- CDN tanpa SRI: `base.html` (Bootstrap), List Pekerjaan/Volume/Template/Rekap RAB/Jadwal (jQuery `code.jquery.com`, Select2/html2canvas/Bootstrap `cdn.jsdelivr.net`, SheetJS `cdn.sheetjs.com`).
+- Inline `<script>`: ~6 template (harga_items, kelola_tahapan ×2, rekap_rab, rincian_rab, _alert) + `<script>` inline lain di base.html; inline `style=""` pervasif.
+
+**Diimplementasikan (report-only, non-breaking):**
+- `config/middleware/csp.py` → `ContentSecurityPolicyMiddleware` (header dari `settings.CSP_POLICY`; nama header `Content-Security-Policy-Report-Only` saat `CSP_REPORT_ONLY=True`, jadi `Content-Security-Policy` saat flag off) + `csp_report` (sink, csrf-exempt, log `csp` logger, 204; 405 utk GET).
+- `settings/base.py`: `CSP_REPORT_ONLY` (env `DJANGO_CSP_REPORT_ONLY`, default True), `CSP_POLICY` (default-src 'self'; **script-src TANPA 'unsafe-inline'** agar inline script ke-report; style-src 'self' 'unsafe-inline' — pengecualian terdokumentasi; img/font/connect/object-src/base-uri/frame-ancestors), `CSP_REPORT_PATH=/csp-report/`. Middleware dipasang setelah `SecurityMiddleware` (production reslice tetap menjaganya).
+- `config/urls.py`: route `/csp-report/`.
+- Test `detail_project/tests_csp.py` (11): header report-only default, script-src tanpa unsafe-inline (style-src dgn), header enforcing saat flag off, tak menimpa header eksisting, sink 204/malformed/non-object/Reporting-API-array/oversized-drop/GET-405/route+csrf-exempt. Sink membatasi body 64 KiB dan menyaring nilai log.
+
+**Dependency governance:** dependency frontend baru WAJIB self-host atau SRI; tak boleh menambah domain ke `script-src` tanpa persetujuan. (DoD: "tidak ada dependency baru tanpa integrity/self-host policy".)
+
+**Roadmap enforcement (milestone terpisah — acceptance criteria tercatat, DoD):**
+1. Kumpulkan laporan violation (report-only aktif di env target) → inventaris inline script aktual.
+2. Pindahkan/nonce semua inline `<script>` (atau django-csp utk nonce).
+3. Self-host jQuery/Select2/SheetJS/html2canvas/Bootstrap → `script-src 'self'` (atau SRI bila self-host tertunda).
+4. Acceptance: workflow utama 0 violation (atau exception disetujui) → flip `DJANGO_CSP_REPORT_ONLY=False`.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-A2 report-only | `tests_csp` + `manage.py check` | PASS | 11/11; header report-only + sink hardened; non-breaking |
+
+**WP-A2 (report-only) SELESAI** — DoD report-only terpenuhi (report-only aktif, sink/laporan tersedia, dependency-governance + acceptance enforcement tercatat). **Enforcement = milestone terpisah (deferred).**
+
+---
+
+### WP-B5 — Server-Authoritative Export Framework (SURVEI 2026-06-15)
+
+**Status:** IN PROGRESS (survei + rencana increment; mulai B5a). **Sumber:** A-3, B-2, B-5. **Dependency:** WP-B1/B2/B4 (semua DONE).
+
+**Survei lanskap export (≈20 file `detail_project/exports/` + 2 sistem):**
+- **Calc reuse (DoD#1):** adapter (`rekap_rab_adapter`, `rincian_ahsp_adapter`, `rekap_kebutuhan*`, `jadwal_pekerjaan_adapter`, `export_manager`) sudah mereferensikan `compute_rekap_for_project` (kanonik WP-B1). Perlu verifikasi tak ada calc duplikat tersisa (kelas RA-03).
+- **`str(e)` leak (DoD#2):** banyak di `views_export.py` (180/300/404/413/482/544/622) + **`word_exporter.py:1211` membocorkan teks exception KE DALAM dokumen** (`[{title} - Error embedding image: {str(e)}]`). Belum ada wrapper error + correlation ID.
+- **Project identity (B-5):** terpencar — `base.py` pakai `project.nama` langsung (`:145/170/205/249/428`); `excel_exporter` pakai dict `project_info` (`nama_client`/`sumber_dana` fallback, `:1314+/2296+/2680+`); `export_manager` punya konsep identity sendiri (`:48`). BELUM ada satu provider. (Terkait RR-04 identitas hardcoded di print JS — sisi berbeda.)
+- **Filename:** `base.py:205` `{base}_{project.nama}_{timestamp}` — dekat tapi belum seragam `NamaProject_TanggalExport.ext`.
+- **JSON (B-2):** JSON MASIH ditawarkan sbg format report (`export_manager` `format_type='json'` → `JSONExporter`, `:32/1067-1071`). B-2 mengunci JSON = paket data terpisah (project_backup/work_structure_template/diagnostic_snapshot), bukan format report.
+- **Dua sistem export:** (a) server adapter + `ExportManager`; (b) client-render image upload (`views_export.py` `export_init`/`export_upload_pages`/`export_finalize`). B-5 "server-authoritative" mengarah menjauh dari client-render (perlu keputusan saat B5e).
+
+**Rencana increment (disetujui untuk eksekusi bertahap):**
+| Inc | Fokus | DoD |
+|---|---|---|
+| **B5a** | Wrapper error export + correlation ID; hapus semua `str(e)` leak (termasuk `word_exporter:1211` yg masuk dokumen) | #2 |
+| **B5b** | Satu `get_project_identity(project)` provider (dari Dashboard) dipakai semua exporter | B-5 identity |
+| **B5c** | Konvensi filename `NamaProject_TanggalExport.ext` seragam | filename |
+| **B5d** | Pisahkan JSON dari menu report (B-2): JSON=paket data via endpoint terpisah + schema_version + import atomik | #5,#6 |
+| **B5e** | Signature config per report + aturan PDF signature tak berdiri sendiri + dataset snapshot + threshold sync/bg + empty-export "." ; keputusan client-render vs server-authoritative | #3,#4 |
+
+**Catatan:** B5d & B5e perlu keputusan desain (struktur endpoint JSON; aturan signature; nasib jalur client-render) — kontrak diajukan saat tiba di increment tsb. Mulai eksekusi: **B5a**.
+
+#### inc-B5a — Error wrapper + correlation ID (DONE 2026-06-15)
+
+- Modul baru `detail_project/exports/errors.py`: `new_correlation_id()` (12-hex), `log_export_error(exc, context, ...)` (log penuh + cid, return cid), `export_error_response(exc, ...)` (JsonResponse aman: `{ok:False, error: generik, correlation_id}`, TANPA `str(e)`).
+- **Leak nyata diperbaiki:** (1) `word_exporter.py` tak lagi menaruh teks exception di DOKUMEN → placeholder dengan correlation ID; (2) `export_finalize` tak lagi membalas `str(e)`; (3) status Celery `FAILURE` tidak lagi mengirim `task.info` mentah; (4) endpoint init/upload/finalize/status/async memakai pesan generik + correlation ID.
+- Handler generik lain (`export_init`/`export_upload_pages`/`export_finalize` outer) kini sertakan `correlation_id` (str(e) hanya di log, bukan respons).
+- Test `detail_project/tests_export_errors.py` (6): cid hex-12, response tak bocor exception, status/message kustom, leak-guard word_exporter + finalize.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B5 inc-B5a | `tests_export_errors` + regresi export | PASS | 12/12 (export_errors 6 + export_csrf + harga_items_export); `manage.py check` bersih |
+
+**Berikutnya: B5b** (satu `get_project_identity(project)` provider dari Dashboard, dipakai semua exporter).
+
+#### inc-B5b — Satu provider project identity (DONE 2026-06-15)
+
+- Modul baru `detail_project/exports/identity.py`: `get_project_identity(project)` membaca **field Dashboard yang BENAR** (name=`nama`, location=`lokasi_project`, year=`tahun_project`, owner/client=`nama_client`, `sumber_dana`, `anggaran_owner`, kontraktor/konsultan). Default `'-'` hanya jika atribut benar-benar absen.
+- **Bug nyata diperbaiki:** `export_manager._get_project_identity` membaca nama field TAK ADA (`lokasi`, `tahun_anggaran`) → location & year SELALU `'-'` di export. Kini delegasi ke provider → nilai benar. (kelas RR-04 identitas salah.)
+- `jadwal_pekerjaan_adapter._get_project_info` juga di-route ke provider untuk seluruh field identitas dan signature yang memang tersedia pada model Dashboard (`jabatan_client`, `instansi_*`, nama para pihak).
+- Test `detail_project/tests_export_identity.py` (5): provider baca field riil, year dari `tahun_project`, fallback absen→'-', + guard delegasi (export_manager & jadwal adapter pakai provider, tak baca field salah).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B5 inc-B5b | `tests_export_identity` + regresi export/adapter | PASS | 33/33 (identity 5 + errors 6 + export_csrf + harga_items_export + rekap_contract 15); `manage.py check` bersih |
+
+**Catatan:** model `Project` mengisi field wajib kosong dgn default saat save (jadi jarang `'-'` di praktik). Review lanjutan memastikan provider tidak menghilangkan `index_project`, `ket_project1/2`, `jabatan_client`, atau `instansi_*`. **Berikutnya: B5c** (konvensi filename `NamaProject_TanggalExport.ext`).
+
+#### inc-B5c — Konvensi filename seragam (DONE 2026-06-15)
+
+- Modul baru `detail_project/exports/naming.py`: `build_export_filename(project_name, doc_label, ext, when)` → keputusan terkunci **`NamaProject_YYYY-MM-DD.ext`**; `doc_label` dipertahankan hanya untuk kompatibilitas call-site dan sengaja tidak masuk filename. `sanitize_for_filename` mencegah karakter header/path berbahaya.
+- Diterapkan ke seluruh download report aktif: generic CSV/XLSX/PDF/Word, Volume, Rincian AHSP, Jadwal weekly/monthly/rekap, Rekap RAB/Kebutuhan, serta endpoint download session/async. Filename UUID internal tetap internal; JSON dikecualikan karena ownership B5d.
+- Test `detail_project/tests_export_naming.py` mengunci format name+date-only, label tidak memengaruhi filename, sanitasi, dan wiring semua keluarga exporter/download.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B5 inc-B5c | `tests_export_naming` + regresi export | PASS | Review gate gabungan A2+B5a-c 77/77; frontend 265 pass/25 skip; `manage.py check` dan migration check bersih |
+| 2026-06-15 | WP-A2/B5 Docker smoke | restart web + HTTP/header/sink + container check | PASS | web/db healthy; login HTTP 200 memuat CSP Report-Only dan tanpa enforcing header; `/csp-report/` HTTP 204; `migrate --plan` kosong |
+
+**Baseline:** `tests_export_button_visibility` tetap 3 failure HTTP 302 = **KF-02 known-failing**, identik dengan baseline WP-00 dan bukan regresi A2/B5. **Berikutnya: B5d** (pisah JSON dari report — B-2; PERLU keputusan desain owner).
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 
 Owner review menolak lock b4.2 + fan-out; 5 hal diperbaiki:

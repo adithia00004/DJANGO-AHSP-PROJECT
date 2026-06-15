@@ -18,6 +18,12 @@ import logging
 from accounts.mixins import api_export_excel_word_required, api_pdf_export_allowed
 
 from .models_export import ExportSession, ExportPage
+from .exports.errors import (  # WP-B5 inc-B5a
+    GENERIC_EXPORT_MESSAGE,
+    export_error_response,
+    log_export_error,
+)
+from .exports.naming import build_export_filename
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +184,8 @@ def export_init(request):
         return JsonResponse({'error': 'Project not found'}, status=404)
 
     except Exception as e:
-        logger.error(f"Error in export_init: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        cid = log_export_error(e, context="export_init")
+        return JsonResponse({'error': 'Internal server error', 'correlation_id': cid}, status=500)
 
 
 @login_required
@@ -297,8 +303,8 @@ def export_upload_pages(request):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
     except Exception as e:
-        logger.error(f"Error in export_upload_pages: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        cid = log_export_error(e, context="export_upload_pages")
+        return JsonResponse({'error': 'Internal server error', 'correlation_id': cid}, status=500)
 
 
 @login_required
@@ -401,17 +407,21 @@ def export_finalize(request):
             })
 
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Error generating {session.format_type} for session {export_id}: {error_msg}", exc_info=True)
-            session.mark_failed(error_msg)
-            return JsonResponse({'error': f'Generation failed: {error_msg}'}, status=500)
+            # WP-B5 inc-B5a: log full detail under a correlation ID; do NOT leak str(e).
+            cid = log_export_error(e, context=f"generate {session.format_type} session {export_id}")
+            session.mark_failed(f"ref:{cid}")
+            return JsonResponse(
+                {'ok': False, 'error': 'Gagal membuat file export. Silakan coba lagi atau hubungi admin.',
+                 'correlation_id': cid},
+                status=500,
+            )
 
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
     except Exception as e:
-        logger.error(f"Error in export_finalize: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        cid = log_export_error(e, context="export_finalize")
+        return JsonResponse({'error': 'Internal server error', 'correlation_id': cid}, status=500)
 
 
 # ============================================================================
@@ -723,15 +733,18 @@ def export_download(request, export_id):
         )
 
         # Set filename for download
-        filename = f"{session.project_name or 'export'}_{session.report_type}.{session.format_type}"
-        filename = filename.replace(' ', '_')  # Remove spaces
+        filename = build_export_filename(
+            session.project_name or "Project",
+            session.report_type,
+            session.format_type,
+        )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
         return response
 
     except Exception as e:
-        logger.error(f"Error in export_download: {str(e)}", exc_info=True)
-        raise Http404("Export file not found")
+        cid = log_export_error(e, context="export_download")
+        raise Http404(f"Export file not found. Ref: {cid}")
 
 
 # ============================================================================
@@ -781,13 +794,14 @@ def export_status(request, export_id):
 
         # Add error message if failed
         if session.status == ExportSession.STATUS_FAILED:
-            response_data['error'] = session.error_message
+            response_data['error'] = GENERIC_EXPORT_MESSAGE
+            if (session.error_message or "").startswith("ref:"):
+                response_data['correlation_id'] = session.error_message[4:]
 
         return JsonResponse(response_data)
 
     except Exception as e:
-        logger.error(f"Error in export_status: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        return export_error_response(e, context="export_status")
 
 
 # ============================================================================
@@ -876,8 +890,7 @@ def api_start_export_async(request, project_id):
         return JsonResponse({'error': 'Project not found'}, status=404)
 
     except Exception as e:
-        logger.error(f"Error starting async export: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        return export_error_response(e, context="start async export")
 
 
 @login_required
@@ -936,18 +949,20 @@ def api_export_status_async(request, task_id):
             }
         
         elif task.state == 'FAILURE':
-            # Get error message
+            # Task exceptions may contain internal paths/SQL/details. Log them
+            # server-side and expose only a correlation ID.
             error_info = task.info or {}
-            if isinstance(error_info, dict):
-                response_data['error'] = error_info.get('error', str(error_info))
-            else:
-                response_data['error'] = str(error_info)
+            cid = log_export_error(
+                RuntimeError(str(error_info)),
+                context=f"async export task {task_id}",
+            )
+            response_data['error'] = GENERIC_EXPORT_MESSAGE
+            response_data['correlation_id'] = cid
         
         return JsonResponse(response_data)
     
     except Exception as e:
-        logger.error(f"Error checking async export status: {str(e)}", exc_info=True)
-        return JsonResponse({'error': 'Internal server error'}, status=500)
+        return export_error_response(e, context="async export status")
 
 
 @login_required
@@ -995,8 +1010,11 @@ def api_export_download_async(request, task_id):
         )
         
         # Set filename
-        export_type = result.get('export_type', 'export')
-        filename = f"{export_type}.{format_type}"
+        filename = build_export_filename(
+            result.get("project_name") or result.get("nama_project") or "Project",
+            result.get("export_type", "export"),
+            format_type,
+        )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         logger.info(f"Async export downloaded: task_id={task_id}, file={filename}")
@@ -1004,5 +1022,5 @@ def api_export_download_async(request, task_id):
         return response
     
     except Exception as e:
-        logger.error(f"Error downloading async export: {str(e)}", exc_info=True)
-        raise Http404("Export file not found")
+        cid = log_export_error(e, context="async export download")
+        raise Http404(f"Export file not found. Ref: {cid}")

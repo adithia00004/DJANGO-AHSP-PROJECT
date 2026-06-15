@@ -258,7 +258,8 @@ class ExcelExporter(ConfigExporterBase):
 
         output = BytesIO()
         wb.save(output)
-        filename = f"{self.config.title.replace(' ', '_')}_{self.config.export_date.strftime('%Y%m%d')}.xlsx"
+        from .naming import build_export_filename  # WP-B5 inc-B5c
+        filename = build_export_filename(self.config.project_name, self.config.title, 'xlsx', self.config.export_date)
         return self._create_response(
             output.getvalue(),
             filename,
@@ -478,7 +479,11 @@ class ExcelExporter(ConfigExporterBase):
         # Save workbook
         output = BytesIO()
         wb.save(output)
-        filename = f"Volume_Pekerjaan_{self.config.export_date.strftime('%Y%m%d')}.xlsx"
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            self.config.project_name, "Volume Pekerjaan", "xlsx",
+            self.config.export_date,
+        )
         return self._create_response(
             output.getvalue(),
             filename,
@@ -681,7 +686,11 @@ class ExcelExporter(ConfigExporterBase):
         # Save
         output = BytesIO()
         wb.save(output)
-        filename = f"Rincian_AHSP_{self.config.export_date.strftime('%Y%m%d')}.xlsx"
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            self.config.project_name, "Rincian AHSP", "xlsx",
+            self.config.export_date,
+        )
         return self._create_response(
             output.getvalue(),
             filename,
@@ -1261,8 +1270,11 @@ class ExcelExporter(ConfigExporterBase):
         output = BytesIO()
         wb.save(output)
 
-        from datetime import date
-        filename = f"Laporan_{report_type}_{date.today()}.xlsx"
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            self.config.project_name, report_type, "xlsx",
+            self.config.export_date,
+        )
 
         print(f"[ExcelExporter] [OK] Total export time: {time.time() - start_time:.2f}s")
 
@@ -2236,15 +2248,13 @@ class ExcelExporter(ConfigExporterBase):
         wb.save(buffer)
         buffer.seek(0)
 
-        # Create filename
-        project_name = project_info.get('nama', 'Project').replace(' ', '_')
-        date_suffix = self.config.export_date.strftime('%Y%m%d')
-        
-        # Filename based on single or multi-month
-        if len(months_list) == 1:
-            filename = f"Laporan_Bulan_{months_list[0]}_{project_name}_{date_suffix}.xlsx"
-        else:
-            filename = f"Laporan_Bulan_{months_list[0]}-{months_list[-1]}_{project_name}_{date_suffix}.xlsx"
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            project_info.get('nama') or self.config.project_name,
+            "Laporan Bulanan",
+            "xlsx",
+            self.config.export_date,
+        )
 
         print(f"[ExcelExporter] Monthly export complete: {filename}")
         return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -3641,14 +3651,13 @@ class ExcelExporter(ConfigExporterBase):
         wb.save(buffer)
         buffer.seek(0)
 
-        # Create filename
-        project_name = project_info.get('nama', 'Project').replace(' ', '_')
-        date_suffix = self.config.export_date.strftime('%Y%m%d')
-        
-        if len(weeks_list) == 1:
-            filename = f"Laporan_Minggu_{weeks_list[0]}_{project_name}_{date_suffix}.xlsx"
-        else:
-            filename = f"Laporan_Minggu_{weeks_list[0]}-{weeks_list[-1]}_{project_name}_{date_suffix}.xlsx"
+        from .naming import build_export_filename
+        filename = build_export_filename(
+            project_info.get('nama') or self.config.project_name,
+            "Laporan Mingguan",
+            "xlsx",
+            self.config.export_date,
+        )
 
         print(f"[ExcelExporter] Weekly export complete: {filename}")
         return self._create_response(buffer.getvalue(), filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
