@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 26% implementasi):** **IN PROGRESS - WP-B1/WP-B2/WP-A1/WP-B3 DONE / WP-B4 `b4.4` · inc-3 (5/5 consumer) + inc-4a (3 sinyal jadwal LIVE) DONE · sisa inc-4b stale-signature (migrasi) / WP-A2 NEXT**
+**Status keseluruhan (≈ 28% implementasi):** **IN PROGRESS - WP-A1/WP-B1/WP-B2/WP-B3/WP-B4 DONE (B4 schema `b4.4`, 5/5 consumer, signature stale-detect) / WP-A2 atau WP-B5 NEXT**
 
 ## 1. Aturan Tracking
 
@@ -35,7 +35,7 @@ Status:
 | WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
 | WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
-| WP-B4 | Canonical readiness | IN PROGRESS (~92%, schema `b4.4`) | 2026-06-15 | - | WP-B1 | b4.4: UF-011 FIXED + `/readiness/` + autoload + **inc-3 5/5 consumer** + **inc-4a 3 sinyal jadwal LIVE**. Sisa: **inc-4b** stale-expansion signature (perlu migrasi). Test 32 readiness backend + 265 frontend |
+| WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
 | WP-B5 | Server-authoritative export | PENDING | - | - | B1/B2/B4 | - |
 | WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
@@ -48,22 +48,22 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 25% dari eksekusi implementasi selesai** (per 2026-06-15).
+**Headline: ≈ 28% dari eksekusi implementasi selesai** (per 2026-06-15).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
-| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~49% | ~22.1% | A1·B1·B2·B3 DONE; B4 ~85% (service+kontrak+5 consumer wired, sisa inc-4); A2·B5·B6·B7·B8·B9·B10 PENDING |
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~51% | ~23% | A1·B1·B2·B3·**B4 DONE**; A2·B5·B6·B7·B8·B9·B10 PENDING |
 | Fase 2 — Integrasi per-page (P1–P9) | 30% | ~5% | ~1.5% | readiness display terpasang di 5 halaman (bagian B4); integrasi per-page penuh belum |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 25%** | |
+| **Total** | **100%** | | **≈ 28%** | |
 
-Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ⬜, B1=5 ✅, B2=3 ✅, B3=6 ✅, **B4=6 (≈85% → 5.1)**, B5=5 ⬜, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 22.1/45 ≈ 49%.
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ⬜, B1=5 ✅, B2=3 ✅, B3=6 ✅, **B4=6 ✅**, B5=5 ⬜, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 23/45 ≈ 51%.
 
-Rincian B4 (≈85%): inc-1 survei ✅ · inc-2/2.1/2.2 service+kontrak `b4.3` LOCKED ✅ · UF-011 fix + UAT PASS ✅ · **inc-3 SELESAI: 5/5 consumer wired** (Rekap RAB·Rincian·Template·Jadwal·Kebutuhan + endpoint `/readiness/` + autoload) ✅ · **sisa: inc-4 sinyal jadwal aktual & stale-revision** ⬜.
+**WP-B4 SELESAI** (inc-1 survei · inc-2/2.1/2.2 kontrak `b4.3` · UF-011 fix + UAT PASS · inc-3 5/5 consumer wired · inc-4a 3 sinyal jadwal · inc-4b stale-signature `b4.4`).
 
 > Catatan: angka ini estimasi terbobot untuk komunikasi progres, bukan metrik presisi. Diperbarui saat status WP berubah.
 
@@ -596,6 +596,23 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 | 2026-06-15 | WP-B4 inc-4a | `tests_wp_b4_readiness` + lintas-consumer + `vitest run` | PASS | backend 76/76 (readiness 32; rekap 15; wp_b3 29); frontend 265 (+1 banner jadwal); `manage.py check` bersih. Review hardening: sumber `allocation_without_volume` mencatat weekly+volume; tolerance 99.99% dan minggu sebelum tanggal mulai dikunci contract test. |
 
 **Berikutnya: inc-4b** — field `source_signature` (`DetailAHSPExpanded`) + migrasi/backfill + populate di semua write ekspansi + ganti deteksi `stale_expansion` (dari `updated_at` → signature, bypass-proof) + test bypass `QuerySet.update`. Perlu migrasi DB.
+
+#### inc-4b — Stale-expansion content signature (DONE 2026-06-15) — WP-B4 SELESAI
+
+- **Model:** field `source_signature` (`CharField(40)`, nullable) di `DetailAHSPExpanded`. Migrasi `0046` (add field) + `0047` (data-migration backfill dari source_detail, logic frozen inline).
+- **Helper:** `readiness.source_signature(...)` = sha1; koefisien dikuantisasi 12dp agar konsisten write-vs-read. Signature mencakup identitas `harga_item` agar perubahan FK langsung juga terdeteksi.
+- **Populate:** di-stamp pada SEMUA titik tulis ekspansi (loop sebelum `bulk_create` di `services.py` `_populate_expanded_from_raw` + `views_api.py` save-detail) via lazy import (tanpa circular).
+- **Deteksi:** signature CURRENT dibandingkan dengan signature tersimpan → **bypass-proof** thd `QuerySet.update()`/`bulk_update()`. Kelompok signature campuran/parsial juga dianggap stale. Fallback `updated_at` hanya bila seluruh signature grup legacy NULL.
+- **Review correction:** `0047` yang sudah sempat diterapkan Docker dapat menandai raw-lama/expanded-lama sebagai fresh saat backfill. Migrasi korektif `0048` mempertahankan grup yang terbukti stale dari timestamp sebagai NULL (agar fallback tetap bekerja), serta meng-upgrade grup fresh ke format signature dengan `harga_item_id`.
+- **Batas ownership:** signature B4 mendeteksi perubahan pada raw `DetailAHSPProject` itu sendiri. Perubahan isi master AHSP atau pekerjaan yang direferensikan tanpa perubahan raw parent tetap menjadi ownership **WP-B7 CUSTOM live-reference/cascade**, bukan diklaim selesai oleh B4.
+- **Test:** `test_stale_expansion_detected_via_signature_bypassing_updated_at` (update koef via QuerySet.update tanpa re-ekspansi → terdeteksi; metode `updated_at` lama miss) + `test_fresh_expansion_signature_matches_not_stale`; helper `_detail` stamp signature seperti produksi.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B4 inc-4b | `tests_wp_b4_readiness` + lintas-ekspansi + `makemigrations --check` | PASS | 85/85 (readiness 36; rekap 15; wp_b3 29; item_ssot 5); migrasi 0046–0048 bersih; `manage.py check` 0 issue; frontend 265 pass / 25 skip |
+| 2026-06-15 | WP-B4 inc-4b Docker | backup + `migrate --plan` + container check + HTTP smoke | PASS | DB Docker sudah di `0048`; 752 expanded row, 0 signature NULL, 0 grup signature campuran; `/` HTTP 200. Backup: `backups/wp_b4_0048_20260615_165016.dump` |
+
+**WP-B4 SELESAI.** Schema `b4.4` lengkap: missing_volume/price (null≠zero), expansion (missing/stale/incomplete/excess, signature bypass-proof), invalid_coefficient, 3 sinyal jadwal, affected index; 5/5 consumer wired (display-only); endpoint `/readiness/` + autoload. **Berikutnya WP: A2 (CSP) atau B5 (export).**
 
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 

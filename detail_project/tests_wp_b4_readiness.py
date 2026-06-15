@@ -31,7 +31,7 @@ from .models import (
     SubKlasifikasi,
     VolumePekerjaan,
 )
-from .readiness import PENDING_SIGNALS, compute_project_readiness
+from .readiness import PENDING_SIGNALS, compute_project_readiness, source_signature
 
 
 class ReadinessContractTests(TestCase):
@@ -94,6 +94,10 @@ class ReadinessContractTests(TestCase):
                 satuan="kg",
                 koefisien=Decimal(koef),
                 expansion_depth=0,
+                # mirror production: stamp the source signature at expansion time.
+                source_signature=source_signature(
+                    "BHN", item.kode_item, Decimal(koef), None, None, item.id
+                ),
             )
         return src
 
@@ -302,6 +306,71 @@ class ReadinessContractTests(TestCase):
         self.assertIn((src.id, "stale_expansion"), issues)
         self.assertFalse(r["expanded_ready"])
 
+    def test_stale_expansion_detected_via_signature_bypassing_updated_at(self):
+        # inc-4b: a value-only QuerySet.update() bypasses auto_now (updated_at
+        # unchanged) and does not re-expand. The old updated_at heuristic would
+        # MISS this; the content signature catches it.
+        p = self._pekerjaan("P-BYPASS")
+        item = self._item("BHN-1", Decimal("100.00"))
+        src = self._detail(p, item, koef="2.000000", expand=True)
+
+        DetailAHSPProject.objects.filter(id=src.id).update(koefisien=Decimal("9.000000"))
+
+        r = compute_project_readiness(self.project)
+        issues = {
+            (e["source_detail_id"], e["issue"]) for e in r["expansion_not_ready"]
+        }
+        self.assertIn((src.id, "stale_expansion"), issues)
+        self.assertFalse(r["expanded_ready"])
+
+    def test_fresh_expansion_signature_matches_not_stale(self):
+        p = self._pekerjaan("P-FRESH")
+        item = self._item("BHN-1", Decimal("100.00"))
+        self._detail(p, item, koef="2.000000", expand=True)
+
+        r = compute_project_readiness(self.project)
+
+        self.assertTrue(r["expanded_ready"])
+        self.assertEqual(r["expansion_not_ready"], [])
+
+    def test_direct_harga_item_change_is_detected_as_stale(self):
+        p = self._pekerjaan("P-ITEM-SWAP")
+        old_item = self._item("BHN-OLD", Decimal("100.00"))
+        new_item = self._item("BHN-NEW", Decimal("200.00"))
+        src = self._detail(p, old_item, koef="2.000000", expand=True)
+
+        DetailAHSPProject.objects.filter(id=src.id).update(harga_item_id=new_item.id)
+
+        issues = {
+            (e["source_detail_id"], e["issue"])
+            for e in compute_project_readiness(self.project)["expansion_not_ready"]
+        }
+        self.assertIn((src.id, "stale_expansion"), issues)
+
+    def test_mixed_expansion_signatures_are_detected_as_stale(self):
+        p = self._pekerjaan("P-MIXED-SIG")
+        item = self._item("BHN-1", Decimal("100.00"))
+        src = self._detail(p, item, koef="2.000000", expand=True)
+        DetailAHSPExpanded.objects.create(
+            project=self.project,
+            pekerjaan=p,
+            source_detail=src,
+            harga_item=item,
+            kategori="BHN",
+            kode=item.kode_item,
+            uraian=item.uraian,
+            satuan="kg",
+            koefisien=Decimal("2.000000"),
+            expansion_depth=0,
+            source_signature="0" * 40,
+        )
+
+        issues = {
+            (e["source_detail_id"], e["issue"])
+            for e in compute_project_readiness(self.project)["expansion_not_ready"]
+        }
+        self.assertIn((src.id, "stale_expansion"), issues)
+
     def test_expanded_ready_true_when_all_fresh_and_complete(self):
         p = self._pekerjaan("P-OK")
         item = self._item("BHN-1", Decimal("100.00"))
@@ -450,6 +519,14 @@ class ReadinessContractTests(TestCase):
             satuan="kg",
             koefisien=Decimal("1.000000"),
             expansion_depth=0,
+            source_signature=source_signature(
+                src.kategori,
+                src.kode,
+                src.koefisien,
+                src.ref_pekerjaan_id,
+                src.ref_ahsp_id,
+                src.harga_item_id,
+            ),
         )
 
         r = compute_project_readiness(self.project)

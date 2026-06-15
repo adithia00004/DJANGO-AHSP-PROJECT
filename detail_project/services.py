@@ -1975,6 +1975,16 @@ def _populate_expanded_from_raw(project, pekerjaan):
 
     # Bulk create
     if expanded_to_create:
+        # WP-B4 inc-4b: stamp the source row's content signature on each expanded
+        # row for bypass-proof stale detection.
+        from .readiness import source_signature as _source_signature
+        for _obj in expanded_to_create:
+            _sd = _obj.source_detail
+            _obj.source_signature = _source_signature(
+                _sd.kategori, _sd.kode, _sd.koefisien,
+                _sd.ref_pekerjaan_id, _sd.ref_ahsp_id,
+                _sd.harga_item_id,
+            )
         DetailAHSPExpanded.objects.bulk_create(expanded_to_create, ignore_conflicts=True)
         logger.info(f"[POPULATE_EXPANDED] SUCCESS - Created {len(expanded_to_create)} expanded rows")
     else:

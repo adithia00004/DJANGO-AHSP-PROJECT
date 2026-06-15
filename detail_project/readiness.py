@@ -53,11 +53,12 @@ null-vs-zero (locked by the underlying model facts):
                            rows and silently drops the unexpanded raw -> undercount.
   * expanded_ready       : no ``expansion_not_ready`` entry exists.
 
-KNOWN LIMITATION (resolved by inc-4b): ``stale_expansion`` compares ``updated_at``,
-which a ``QuerySet.update()`` / ``bulk_update()`` can bypass. Reliable staleness
-needs an explicit expansion revision/timestamp bumped by every mutation — that is
-inc-4b work. Value-only bulk mutations ARE reflected for every other signal because
-there is no cache to go stale.
+Stale-expansion detection (inc-4b): each ``DetailAHSPExpanded`` stores a
+``source_signature`` (content hash of its raw source row, captured at expansion).
+Readiness recomputes the raw row's signature at read time and flags
+``stale_expansion`` on mismatch — bypass-proof against ``QuerySet.update()`` /
+``bulk_update()`` that skip ``updated_at``. Legacy rows without a stored signature
+fall back to the ``updated_at`` heuristic until re-expanded.
 
 Jadwal-derived signals are LIVE since inc-4a (computed from the weekly canonical
 ``PekerjaanProgressWeekly``):
@@ -70,6 +71,7 @@ Jadwal-derived signals are LIVE since inc-4a (computed from the weekly canonical
 """
 from __future__ import annotations
 
+import hashlib
 from decimal import Decimal
 
 from django.db.models import Count, Max, Q, Sum
@@ -95,6 +97,40 @@ PAGE_VOLUME = "volume"
 PAGE_HARGA = "harga_items"
 PAGE_DETAIL = "template_ahsp"
 PAGE_JADWAL = "jadwal"
+
+# 12 decimal places — matches DetailAHSPProject.koefisien precision so the
+# signature is identical whether computed at write time or read time.
+_KOEF_QUANT = Decimal("1.000000000000")
+
+
+def source_signature(
+    kategori,
+    kode,
+    koefisien,
+    ref_pekerjaan_id,
+    ref_ahsp_id,
+    harga_item_id=None,
+):
+    """Content signature of a raw ``DetailAHSPProject`` row (WP-B4 inc-4b).
+
+    Captured on each ``DetailAHSPExpanded`` at expansion time and recomputed at
+    readiness time; a mismatch means the raw row changed without re-expansion
+    (``stale_expansion``). Computed from actual values → not bypassable by
+    ``QuerySet.update()`` / ``bulk_update()``.
+    """
+    try:
+        koef = Decimal(koefisien if koefisien is not None else 0).quantize(_KOEF_QUANT)
+    except Exception:
+        koef = Decimal("0").quantize(_KOEF_QUANT)
+    raw = "|".join([
+        str(kategori or ""),
+        str(kode or ""),
+        f"{koef}",
+        str(ref_pekerjaan_id or ""),
+        str(ref_ahsp_id or ""),
+        str(harga_item_id or ""),
+    ])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 def compute_project_readiness(project, request=None):
@@ -157,13 +193,20 @@ def _compute(project):
         DetailAHSPProject.objects.filter(project=project).values(
             "id", "pekerjaan_id", "kode", "uraian", "kategori",
             "koefisien", "updated_at", "ref_pekerjaan_id", "ref_ahsp_id",
+            "harga_item_id",
         )
     )
     exp_groups = {
         g["source_detail_id"]: g
         for g in DetailAHSPExpanded.objects.filter(project=project)
         .values("source_detail_id")
-        .annotate(n=Count("id"), last=Max("updated_at"))
+        .annotate(
+            n=Count("id"),
+            last=Max("updated_at"),
+            sig=Max("source_signature"),
+            signed_n=Count("source_signature"),
+            sig_n=Count("source_signature", distinct=True),
+        )
     }
     # expanded-component count per pekerjaan (exact expected for ref_pekerjaan).
     exp_count_by_pkj = {
@@ -232,13 +275,35 @@ def _compute(project):
                 "actual": actual,
             }
 
+        # Stale detection (inc-4b): compare the source row's CURRENT signature to
+        # the one captured at expansion time (bypass-proof). Legacy rows with no
+        # stored signature (sig is None) fall back to the updated_at heuristic.
+        stored_sig = g["sig"] if g else None
+        if g and g["signed_n"] not in (0, g["n"]):
+            # A source must never have a mixture of signed and legacy rows.
+            is_stale = True
+        elif g and g["sig_n"] > 1:
+            # All expanded rows produced from one raw source must carry one
+            # identical signature. Mixed signatures mean a partial rewrite.
+            is_stale = True
+        elif stored_sig is not None:
+            current_sig = source_signature(
+                row["kategori"], row["kode"], row["koefisien"],
+                row["ref_pekerjaan_id"], row["ref_ahsp_id"],
+                row["harga_item_id"],
+            )
+            is_stale = stored_sig != current_sig
+        else:
+            is_stale = (
+                g is not None
+                and g["last"] is not None
+                and row["updated_at"] is not None
+                and g["last"] < row["updated_at"]
+            )
+
         if actual == 0:
             expansion_not_ready.append(_entry("missing_expansion"))
-        elif (
-            g["last"] is not None
-            and row["updated_at"] is not None
-            and g["last"] < row["updated_at"]
-        ):
+        elif is_stale:
             expansion_not_ready.append(_entry("stale_expansion"))
         elif expected_exact and actual != expected:
             issue = "incomplete_expansion" if actual < expected else "excess_expansion"

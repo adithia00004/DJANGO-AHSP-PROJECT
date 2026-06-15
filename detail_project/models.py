@@ -542,6 +542,16 @@ class DetailAHSPExpanded(TimeStampedModel):
         default=0,
         help_text='Kedalaman expansion (0=direct, 1=1-level bundle, 2=nested, dst)'
     )
+    # WP-B4 inc-4b: content signature of the source raw row, captured at expansion
+    # time. Readiness recomputes the source signature at read time and flags
+    # stale_expansion on mismatch — bypass-proof vs QuerySet.update()/bulk_update()
+    # that skip updated_at. NULL = legacy row not yet (re)expanded after deploy.
+    source_signature = models.CharField(
+        max_length=40,
+        null=True,
+        blank=True,
+        help_text='Hash nilai source raw saat ekspansi (deteksi stale, bypass-proof). NULL=legacy.'
+    )
 
     class Meta:
         indexes = [
