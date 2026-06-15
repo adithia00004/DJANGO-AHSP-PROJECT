@@ -512,6 +512,44 @@ class RekapRabReadinessWiringTests(TestCase):
         # Jadwal-derived signals remain pending (not "all clear").
         self.assertIsNone(readiness["timeline_stale"])
 
+    def test_dedicated_readiness_endpoint(self):
+        # WP-B4 inc-3: dedicated GET for consumers that don't load /rekap/
+        # (Template AHSP, Jadwal, Rekap Kebutuhan).
+        url = reverse(
+            "detail_project:api_get_readiness",
+            kwargs={"project_id": self.project.id},
+        )
+        r = self.client.get(url)
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["readiness"]["schema_version"], "b4.3")
+        self.assertIn("BHN-NULL", {e["kode"] for e in body["readiness"]["missing_price"]})
+
+    def test_dedicated_readiness_endpoint_is_owner_scoped(self):
+        other = get_user_model().objects.create_user(
+            username="b4-readiness-other",
+            password="not-used",
+        )
+        self.client.force_login(other)
+        url = reverse(
+            "detail_project:api_get_readiness",
+            kwargs={"project_id": self.project.id},
+        )
+
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_dedicated_readiness_endpoint_requires_login(self):
+        self.client.logout()
+        url = reverse(
+            "detail_project:api_get_readiness",
+            kwargs={"project_id": self.project.id},
+        )
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response["Location"])
+
     def test_banner_builder_loads_synchronously_before_rekap_script(self):
         response = self.client.get(self.page_url)
         self.assertEqual(response.status_code, 200, response.content)

@@ -43,6 +43,9 @@
 
 
 
+  <!-- WP-B4: readiness banner (display-only; diisi readiness_autoload dari endpoint khusus) -->
+  <div id="rk-readiness" class="d-none" data-readiness-endpoint="{% url 'detail_project:api_get_readiness' project.id %}"></div>
+
   <!-- Active Filter Chips (shown when filters applied) -->
   <div id="rk-active-filters" class="mb-2" style="display: none;">
     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -645,6 +648,10 @@
 
 
 <script src="{% static 'detail_project/js/vendor/echarts.min.js' %}"></script>
+
+<!-- WP-B4: readiness banner (shared builder) + autoload (display-only) -->
+<script src="{% static 'detail_project/js/shared/readiness_banner.js' %}" defer></script>
+<script src="{% static 'detail_project/js/shared/readiness_autoload.js' %}" defer></script>
 
 <script src="{% static 'detail_project/js/rekap_kebutuhan.js' %}?v={{ now|date:'U' }}" defer></script>
 

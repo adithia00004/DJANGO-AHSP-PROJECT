@@ -478,6 +478,26 @@
    * @throws {Error} If API call fails
    * @performance Uses granular loading (list scope only) to avoid blocking detail panel
    */
+  // WP-B4 inc-3 (fan-out): readiness diagnostics dari /rekap/ (display-only,
+  // tidak menghitung ulang). HTML dibangun modul ReadinessBanner bersama.
+  function renderReadiness(readiness) {
+    let box = document.getElementById('ra-readiness');
+    const html = (window.ReadinessBanner && window.ReadinessBanner.buildReadinessBannerHTML)
+      ? window.ReadinessBanner.buildReadinessBannerHTML(readiness)
+      : null;
+    if (!html) { if (box) box.remove(); return; }
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'ra-readiness';
+      box.className = 'alert alert-warning py-2 px-3 small mb-2';
+      box.setAttribute('role', 'status');
+      const toolbar = document.getElementById('ra-toolbar');
+      if (toolbar) toolbar.insertAdjacentElement('afterend', box);
+      else ROOT.prepend(box);
+    }
+    box.innerHTML = html;
+  }
+
   async function loadRekap() {
     setLoading(true, 'list'); // TIER 3: Granular loading for list only
     try {
@@ -486,6 +506,7 @@
       const j = await safeJson(r);
       if (!r.ok || !j.ok) throw new Error('rekap fail');
       rows = j.rows || [];
+      renderReadiness(j.readiness);
       try { projectPPN = Number(j.meta?.ppn_percent ?? 0); } catch { projectPPN = 0; }
       renderList();
       updateGrandTotalFromRekap();

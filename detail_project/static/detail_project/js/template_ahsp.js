@@ -18,8 +18,38 @@
     searchAhsp: app.dataset.endpointSearchAhsp,
     parameters: app.dataset.endpointParameters,
     computedParameters: app.dataset.endpointComputedParameters,
+    readiness: app.dataset.endpointReadiness,  // WP-B4: dedicated readiness GET
   };
   const locale = app.dataset.locale || 'id-ID';
+
+  // WP-B4 inc-3 (fan-out): readiness diagnostics (display-only). Fetched from the
+  // dedicated endpoint; HTML built by the shared ReadinessBanner module. The page
+  // SHOWS the server verdict and never recomputes it.
+  function renderReadiness(readiness) {
+    let box = document.getElementById('ta-readiness');
+    const html = (window.ReadinessBanner && window.ReadinessBanner.buildReadinessBannerHTML)
+      ? window.ReadinessBanner.buildReadinessBannerHTML(readiness)
+      : null;
+    if (!html) { if (box) box.remove(); return; }
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'ta-readiness';
+      box.className = 'alert alert-warning py-2 px-3 small mb-2';
+      box.setAttribute('role', 'status');
+      const toolbar = document.getElementById('ta-toolbar');
+      if (toolbar) toolbar.insertAdjacentElement('afterend', box);
+      else app.prepend(box);
+    }
+    box.innerHTML = html;
+  }
+
+  function refreshReadiness() {
+    if (!endpoints.readiness) return;
+    fetch(endpoints.readiness, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.ok) renderReadiness(j.readiness); })
+      .catch(() => { /* advisory only — never block the editor */ });
+  }
 
   // P1 FIX: Cache TTL to prevent stale data
   const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes - balance between performance and freshness
@@ -1791,6 +1821,9 @@
       // Update state
       setDirty(false);
 
+      // WP-B4: simpan detail dapat mengubah readiness (harga/expansion/koef) → refresh banner.
+      refreshReadiness();
+
       // P0 FIX: Use response data directly instead of double fetch
       // Server already sends fresh data in save response - no need to fetch again!
       const hasExpansion = (js.saved_expanded_rows || 0) > (js.saved_raw_rows || 0);
@@ -1862,6 +1895,9 @@
       // Error already handled in doSave
     });
   });
+
+  // WP-B4: tampilkan readiness saat halaman dibuka (display-only).
+  refreshReadiness();
 
   // Hapus baris terseleksi per segmen (ENHANCED: with confirmation)
   document.addEventListener('click', (e) => {
@@ -1984,6 +2020,9 @@
           .catch(() => { });
         setDirty(false);
         setEditorModeBySource();
+        // Reset-to-reference rebuilds raw/expanded detail, so the project-level
+        // readiness verdict may change even though this is not the normal save path.
+        refreshReadiness();
 
         // Show success with item count
         const count = getData.items?.length || 0;

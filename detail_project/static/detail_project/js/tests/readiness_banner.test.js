@@ -1,6 +1,8 @@
 /* WP-B4 inc-3 — readiness banner builder behaviour tests (happy-dom).
    Real DOM/string-behaviour tests of the production module, not source grep. */
 import { describe, expect, test } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import '../shared/readiness_banner.js';
 
 const { buildReadinessBannerHTML } = globalThis.ReadinessBanner;
@@ -71,5 +73,32 @@ describe('buildReadinessBannerHTML', () => {
     const html = buildReadinessBannerHTML({ missing_price: many });
     expect(html).toContain('…');
     expect(html).not.toContain('K-9'); // beyond the max=8 window
+  });
+});
+
+// WP-B4 inc-3 — consumer wiring guard (display-only, server-authoritative).
+// Each readiness consumer must (a) read readiness from the server response and
+// (b) render via the shared ReadinessBanner module — never recompute. Grows as
+// the fan-out adds consumers.
+describe('readiness consumer wiring', () => {
+  const read = (rel) => readFileSync(resolve(__dirname, '..', rel), 'utf-8');
+  const consumers = [
+    { file: 'rekap_rab.js', readinessField: 'rRes.data.readiness' },
+    { file: 'rincian_ahsp.js', readinessField: 'j.readiness' },
+    { file: 'template_ahsp.js', readinessField: 'j.readiness' },
+  ];
+  for (const { file, readinessField } of consumers) {
+    test(`${file} renders server readiness via ReadinessBanner (no recompute)`, () => {
+      const src = read(file);
+      expect(src).toContain('ReadinessBanner');
+      expect(src).toContain('renderReadiness(');
+      expect(src).toContain(readinessField);
+    });
+  }
+
+  test('Template AHSP refreshes readiness after save and reset mutations', () => {
+    const src = read('template_ahsp.js');
+    expect(src.match(/refreshReadiness\(\);/g)?.length || 0).toBeGreaterThanOrEqual(3);
+    expect(src).toContain('Reset-to-reference rebuilds raw/expanded detail');
   });
 });

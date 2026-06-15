@@ -31,6 +31,7 @@
   data-endpoint-save-pattern="{% url 'detail_project:api_save_detail_ahsp_for_pekerjaan' project.id 0 %}"
   data-endpoint-reset-pattern="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}"
   data-endpoint-rekap="{% url 'detail_project:api_get_rekap_rab' project.id %}"
+  data-endpoint-readiness="{% url 'detail_project:api_get_readiness' project.id %}"
   data-endpoint-harga-items="{% url 'detail_project:api_list_harga_items' project.id %}"
   data-endpoint-search-ahsp="{% url 'detail_project:api_search_ahsp' project.id %}"
   data-endpoint-parameters="{% url 'detail_project:api_project_parameters' project.id %}"
@@ -738,5 +739,7 @@
 <script src="{% static 'detail_project/js/shared/formula_adapter.js' %}" defer></script>
 <script src="{% static 'detail_project/js/shared/param_sidebar_editor.js' %}" defer></script>
 <script src="{% static 'detail_project/js/shared/formula_editor_modal.js' %}" defer></script>
+<!-- WP-B4: shared readiness banner builder (exposes window.ReadinessBanner) -->
+<script src="{% static 'detail_project/js/shared/readiness_banner.js' %}" defer></script>
 <script src="{% static 'detail_project/js/template_ahsp.js' %}" defer></script>
 {% endblock %}

@@ -194,6 +194,9 @@
 </div>
 <!-- End toolbar-advanced-wrapper -->
 
+<!-- WP-B4: readiness banner (display-only; diisi readiness_autoload dari endpoint khusus) -->
+<div id="kt-readiness" class="d-none" data-readiness-endpoint="{% url 'detail_project:api_get_readiness' project.id %}"></div>
+
 <!-- Main App Container -->
 <div id="tahapan-grid-app" data-project-id="{{ project.id }}"
   data-api-base="{% url 'detail_project:api_list_create_tahapan' project.id %}"
@@ -985,6 +988,10 @@
 
 <!-- Unified Export Manager -->
 <script src="{% static 'detail_project/js/export/ExportManager.js' %}"></script>
+
+<!-- WP-B4: readiness banner (shared builder) + autoload (bundle-agnostic) -->
+<script src="{% static 'detail_project/js/shared/readiness_banner.js' %}" defer></script>
+<script src="{% static 'detail_project/js/shared/readiness_autoload.js' %}" defer></script>
 
 <!-- Tab-based Advanced Options Toggle -->
 <script>

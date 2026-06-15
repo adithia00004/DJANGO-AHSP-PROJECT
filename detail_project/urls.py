@@ -125,6 +125,7 @@ urlpatterns = [
 
     # ===== API: Rekap =====
     path('api/project/<int:project_id>/rekap/', views_api.api_get_rekap_rab, name='api_get_rekap_rab'),
+    path('api/project/<int:project_id>/readiness/', views_api.api_get_readiness, name='api_get_readiness'),
     path('api/project/<int:project_id>/rekap-kebutuhan/', views_api.api_get_rekap_kebutuhan, name='api_get_rekap_kebutuhan'),  # <-- Fase 5
 
     # PHASE 5: Data Validation

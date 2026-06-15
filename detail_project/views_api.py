@@ -4631,6 +4631,21 @@ def api_get_rekap_rab(request: HttpRequest, project_id: int):
         "readiness": compute_project_readiness(project, request=request),
     })
 
+
+@login_required
+@require_GET
+def api_get_readiness(request: HttpRequest, project_id: int):
+    """WP-B4 inc-3: dedicated canonical readiness endpoint (display-only).
+
+    For consumers that do not already load /rekap/ (Template AHSP, Jadwal, Rekap
+    Kebutuhan). Rekap RAB & Rincian read readiness inline from /rekap/.
+    """
+    project = _owner_or_404(project_id, request.user)
+    return JsonResponse({
+        "ok": True,
+        "readiness": compute_project_readiness(project, request=request),
+    })
+
 @login_required
 @require_GET
 def api_get_rekap_kebutuhan(request: HttpRequest, project_id: int):
