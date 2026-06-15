@@ -37,7 +37,7 @@ Status:
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
 | WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
 | WP-B5 | Server-authoritative export | DONE | 2026-06-15 | 2026-06-15 | B1/B2/B4 | B5a seluruh controller export memakai error-wrapper · B5b identity (fix lokasi/tahun) · B5c filename · B5d JSON keluar report+data-package atomic/versioned · B5e signature/empty/PDF-placement locked. 3 item scope (auto-async threshold, client-render migrasi, snapshot eksplisit) DEFER ke milestone perf. Full B5+CSP suite 56/56 |
-| WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
+| WP-B6 | Canonical weekly distribution | IN PROGRESS (survei + rencana 5 inc; mulai B6a) | 2026-06-16 | - | WP-B4 | Survei §WP-B6. B6a builder kanonik · B6b kebutuhan pakai builder (RK-01, risky) · B6c 4-week · B6d jadwal JS no-recompute/no-auto-regen (Vite) · B6e parity test |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
 | WP-B8 | Tipe LAIN | PENDING | - | - | B3 | - |
 | WP-B9 | Bundle limits | PENDING | - | - | B7/B8 | - |
@@ -778,6 +778,41 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 **KEPUTUSAN OWNER 2026-06-15: terima as-is → WP-B5 SELESAI.** 3 item scope (auto-async threshold, migrasi penuh client-render→server-authoritative, dataset snapshot eksplisit) di-DEFER ke **milestone performa terpisah** (DEC-B5-DEFER). Tidak memblok; semua fungsional + DoD acceptance terpenuhi.
 
 **WP-B5 SELESAI:** B5a error-wrapper+correlation-id · B5b identity provider (fix lokasi/tahun='-') · B5c filename `NamaProject_YYYY-MM-DD.ext` · B5d JSON keluar dari report + data-package atomic/versioned · B5e signature/empty/PDF-placement locked. Owner hardening: async-leak, CSP sink, full identity fields.
+
+---
+
+### WP-B6 — Canonical Weekly Distribution Service (SURVEI 2026-06-16)
+
+**Status:** IN PROGRESS (survei + rencana increment). **Sumber:** JDW/RK, KS-01..05, RK-01, R1/R2. **Dependency:** WP-B4 (DONE). **Arah sudah di-pre-decide** doc 23 §10 (D-RK-*) + audit Jadwal R1/R2.
+
+**Survei:**
+- **JS recompute + auto-regenerate senyap:** `jadwal_kegiatan_app.js:116 _estimateExpectedWeeklyColumns()` → `:2128/2140` auto `_regenerateTimeline` saat page open (R2). **Vite-bundled** (KF-06 dist protected).
+- **`compute_kebutuhan_timeline` (`services.py:3064`)** pakai `_calculate_overlap_days` (PekerjaanTahapan + overlap-hari) = **RK-01** — BUKAN weekly canonical. Kompleks (period buckets, cache).
+- **Belum ada builder distribusi mingguan kanonik bersama** (SSOT yg dipakai Jadwal + Kebutuhan).
+- `timeline_stale` server-side: ✅ sudah (B4 inc-4a).
+- Canonical weekly source = `PekerjaanProgressWeekly.planned_proportion` (per pekerjaan×week_number) — sudah dipakai B4.
+
+**Rencana increment (perlu persetujuan):**
+| Inc | Fokus | Sifat | DoD |
+|---|---|---|---|
+| **B6a** | Builder kanonik `build_weekly_distribution(project,…)` dari `planned_proportion` → bucket mingguan + minggu parsial + unscheduled; SSOT | backend, baru, **testable** | total weekly+unscheduled=total |
+| **B6b** | Rekap Kebutuhan weekly pakai builder (ganti overlap-day RK-01) | backend, **risky** (ubah angka kebutuhan; arah=D-RK §10) | kebutuhan weekly=jadwal builder; total parity |
+| **B6c** | Agregasi Periode 4-Minggu (4 bucket) via builder | backend, testable | 4-week=Σ4 minggu |
+| **B6d** | Jadwal: week_number/kolom dari server; hentikan JS recompute + auto-regenerate senyap (R1/R2) | **frontend Vite bundle** (KF-06 — perlu rebuild/strategi) | JS tak recompute week; no silent regenerate |
+| **B6e** | Contract test parity week-numbering JS↔Python | test | lulus |
+
+**Catatan:** B6a–B6c backend (bisa dites sekarang, DB up). B6d butuh strategi Vite bundle. B6b mengubah angka kebutuhan (RK-01) → perlu kehati-hatian + parity test. Mulai: **B6a** (builder kanonik, fondasi, tanpa keputusan baru).
+
+#### inc-B6a — Builder kanonik `build_weekly_distribution` (DONE 2026-06-16)
+
+`services.build_weekly_distribution(project)` — SSOT distribusi mingguan dari `PekerjaanProgressWeekly.planned_proportion`. Return: `weeks` (kolom kanonik {week_number,start,end} tersortir), `by_pekerjaan` ({pkj:{week:fraksi 0..1}}), `scheduled_fraction`, `unscheduled_fraction` (=max(0,1−Σ)). Pekerjaan tanpa baris weekly tetap muncul sebagai `scheduled=0` dan `unscheduled=1`, agar kebutuhan belum terjadwal tidak hilang. **Invariant: Σ fraksi mingguan + unscheduled = 1** (saat ≤100%) → distribusi qty apa pun atas minggu+unscheduled mereproduksi total persis. Read-only (PekerjaanProgressWeekly), tak ubah perilaku consumer lain.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B6 inc-B6a | `tests_weekly_distribution` | PASS | 7/7: empty, weeks kanonik tersortir+dates, fraksi=prop/100, full→unscheduled 0, partial→remainder, pekerjaan tanpa weekly→unscheduled 1, invariant Σ+unscheduled=1. `manage.py check` bersih |
+
+**Berikutnya: B6b** — Rekap Kebutuhan weekly/4-week pakai builder (ganti overlap-day RK-01) + parity test (`Σ weekly + unscheduled = total kebutuhan`). RISKY (ubah angka) → kawal dengan parity.
+
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 
 Owner review menolak lock b4.2 + fan-out; 5 hal diperbaiki:

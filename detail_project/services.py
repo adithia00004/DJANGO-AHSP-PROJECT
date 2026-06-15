@@ -3061,6 +3061,76 @@ def _calculate_overlap_days(start_a, end_a, start_b, end_b):
     return (end - start).days + 1
 
 
+def build_weekly_distribution(project):
+    """WP-B6 inc-B6a — Canonical weekly distribution (single source of truth).
+
+    Reads ``PekerjaanProgressWeekly.planned_proportion`` and returns the canonical
+    weekly column set + per-pekerjaan planned distribution as FRACTIONS (0..1).
+    Both Jadwal and Rekap Kebutuhan derive from this so they never diverge
+    (fixes RK-01) and the frontend never recomputes week numbers (R1/R2).
+
+    Returns::
+
+        {
+          "weeks": [{"week_number": int, "start_date": date, "end_date": date}, ...],
+          "by_pekerjaan": {pekerjaan_id: {week_number: Decimal(fraction)}},
+          "scheduled_fraction": {pekerjaan_id: Decimal},      # Σ fraction
+          "unscheduled_fraction": {pekerjaan_id: Decimal},    # max(0, 1 - Σ)
+        }
+
+    Invariant: for any pekerjaan, ``Σ weekly fractions + unscheduled = 1`` when the
+    schedule does not exceed 100% (enforced at save), so distributing any base
+    quantity over weeks + unscheduled reproduces the total exactly.
+    """
+    pekerjaan_ids = list(
+        Pekerjaan.objects.filter(project=project)
+        .order_by("id")
+        .values_list("id", flat=True)
+    )
+    rows = list(
+        PekerjaanProgressWeekly.objects.filter(project=project)
+        .values(
+            "pekerjaan_id", "week_number",
+            "week_start_date", "week_end_date", "planned_proportion",
+        )
+        .order_by("week_number", "pekerjaan_id")
+    )
+
+    hundred = Decimal("100")
+    weeks_map = {}  # week_number -> (start_date, end_date)
+    by_pekerjaan = defaultdict(dict)
+    scheduled = defaultdict(lambda: Decimal("0"))
+
+    for pekerjaan_id in pekerjaan_ids:
+        by_pekerjaan[pekerjaan_id] = {}
+        scheduled[pekerjaan_id] = Decimal("0")
+
+    for r in rows:
+        wn = r["week_number"]
+        if wn not in weeks_map:
+            weeks_map[wn] = (r["week_start_date"], r["week_end_date"])
+        frac = (r["planned_proportion"] or Decimal("0")) / hundred
+        prev = by_pekerjaan[r["pekerjaan_id"]].get(wn, Decimal("0"))
+        by_pekerjaan[r["pekerjaan_id"]][wn] = prev + frac
+        scheduled[r["pekerjaan_id"]] += frac
+
+    weeks = [
+        {"week_number": wn, "start_date": s, "end_date": e}
+        for wn, (s, e) in sorted(weeks_map.items())
+    ]
+    scheduled_fraction = {pid: sched for pid, sched in scheduled.items()}
+    unscheduled_fraction = {
+        pid: max(Decimal("0"), Decimal("1") - sched) for pid, sched in scheduled.items()
+    }
+
+    return {
+        "weeks": weeks,
+        "by_pekerjaan": {pid: dict(buckets) for pid, buckets in by_pekerjaan.items()},
+        "scheduled_fraction": scheduled_fraction,
+        "unscheduled_fraction": unscheduled_fraction,
+    }
+
+
 def compute_kebutuhan_timeline(
     project,
     mode='all',
