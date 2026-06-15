@@ -51,17 +51,17 @@ class SaveSyncUiRegressionGuardsTests(SimpleTestCase):
                     f"{label}: client_updated_at tidak boleh dikirim aktif: {line!r}",
                 )
 
-    def test_template_save_is_last_save_wins_with_dormant_token(self):
+    def test_template_save_is_last_write_wins_without_conflict_branch(self):
         source = self.template_ahsp_js_source
         self._assert_token_not_actively_sent(source, "template_ahsp.js")
-        self.assertIn("last-save-wins", source)
-        self.assertIn("if (!js.ok && js.conflict)", source)
+        self.assertIn("last-write-wins", source)
+        self.assertNotIn("if (!js.ok && js.conflict)", source)
 
-    def test_harga_save_is_last_save_wins_with_dormant_token(self):
+    def test_harga_save_is_last_write_wins_without_conflict_branch(self):
         source = self.harga_items_js_source
         self._assert_token_not_actively_sent(source, "harga_items.js")
-        self.assertIn("last-save-wins", source)
-        self.assertIn("j.conflict", source)
+        self.assertIn("last-write-wins", source)
+        self.assertNotIn("j.conflict", source)
 
 
 @skipUnless(

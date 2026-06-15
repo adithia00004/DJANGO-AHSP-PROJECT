@@ -36,4 +36,18 @@ describe('WP-B3 frontend contract', () => {
     expect(src).not.toContain('partial-save kini balas 207');
     expect(src).toContain('if (hasVolumeChanges && !volumeSaved)');
   });
+
+  test('Harga Items preserves NULL "belum diisi" and never coerces empty to 0.00 (UF-011)', () => {
+    const src = read('harga_items.js');
+    // Render: a NULL price must stay empty, not become "0.00".
+    expect(src).not.toContain("r.harga_canon === '' ? '0.00'");
+    expect(src).toContain('const isUnfilled =');
+    // Save: an empty field must be sent as null (HI-01), not coerced to "0.00".
+    expect(src).not.toContain("if (!canon) canon = '0.00';");
+    expect(src).toContain('harga_satuan: null');
+    // Clearing an existing value is a valid dirty change, not an invalid number.
+    expect(src).toContain("if (raw === '') {");
+    expect(src).toContain("const isDirty = orig !== '';");
+    expect(src).toContain("if (isDirty || $bukInput?.value !== toUI2(bukCanonLoaded))");
+  });
 });

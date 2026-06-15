@@ -493,6 +493,29 @@
   }
 
   // ENHANCEMENT #3: Better error handling
+  // WP-B4 inc-3 (pilot): render canonical readiness diagnostics from the server.
+  // Display-only — the page must NOT recompute readiness, only show what the
+  // /rekap/ endpoint reports. The HTML is built by the shared, unit-tested
+  // ReadinessBanner module (loaded as a module before this script).
+  function renderReadiness(readiness) {
+    let box = document.getElementById('rab-readiness');
+    const html = (window.ReadinessBanner && window.ReadinessBanner.buildReadinessBannerHTML)
+      ? window.ReadinessBanner.buildReadinessBannerHTML(readiness)
+      : null;
+    if (!html) {
+      if (box) box.remove();
+      return;
+    }
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'rab-readiness';
+      box.className = 'alert alert-warning py-2 px-3 small';
+      box.setAttribute('role', 'status');
+      tableWrap?.parentNode?.insertBefore(box, tableWrap);
+    }
+    box.innerHTML = html;
+  }
+
   async function loadData() {
     try {
       loadingRow && (loadingRow.style.display = '');
@@ -525,7 +548,8 @@
       }
 
       render('');
-      
+      renderReadiness(rRes.data.readiness);
+
       // ENHANCEMENT #2: Announce success
       announce('Data RAB berhasil dimuat');
       

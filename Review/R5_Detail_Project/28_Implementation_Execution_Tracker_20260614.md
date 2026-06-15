@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan:** **IN PROGRESS - WP-B1/WP-B2/WP-A1/WP-B3 DONE / WP-B4 + WP-A2 NEXT**
+**Status keseluruhan (≈ 22% implementasi):** **IN PROGRESS - WP-B1/WP-B2/WP-A1/WP-B3 DONE / WP-B4 schema `b4.3` LOCKED + pilot Rekap RAB (gate tersisa: visual UAT → fan-out Rincian dst) / WP-A2 NEXT**
 
 ## 1. Aturan Tracking
 
@@ -35,7 +35,7 @@ Status:
 | WP-B1 | Canonical Rekap calculation | DONE | 2026-06-14 | 2026-06-14 | WP-00, Gate B1 | Service, rounding, nested, dan parity web/export terverifikasi |
 | WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
-| WP-B4 | Canonical readiness | PENDING | - | - | WP-B1 | - |
+| WP-B4 | Canonical readiness | IN PROGRESS (~60%, schema `b4.3` LOCKED) | 2026-06-15 | - | WP-B1 | `readiness.py` b4.3 (no-cache+request-memo, incomplete/excess_expansion, affected_items) + pilot Rekap RAB (banner sync-load, "RAB belum final"). Owner approve+lock + 2 fix (sync-load, excess_expansion). Test 23 backend + readiness+rekap 38 + 252 frontend. Gate tersisa: visual UAT → fan-out Rincian→Template→Jadwal→Kebutuhan; inc-4 = sinyal jadwal + stale revision |
 | WP-B5 | Server-authoritative export | PENDING | - | - | B1/B2/B4 | - |
 | WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
@@ -45,6 +45,40 @@ Status:
 | WP-P1..P9 | Integrasi per-page | PENDING | - | - | Shared WP | - |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
+
+## 2.5 Progress Implementasi (estimasi terbobot)
+
+**Headline: ≈ 22% dari eksekusi implementasi selesai** (per 2026-06-15).
+Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
+
+Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
+
+| Fase | Bobot | % Selesai | Kontribusi | Dasar |
+|---|---|---|---|---|
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~46% | ~20.6% | A1·B1·B2·B3 DONE; B4 ~60% (service+kontrak+pilot, sisa fan-out+inc-4); A2·B5·B6·B7·B8·B9·B10 PENDING |
+| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~4% | ~1.2% | hanya pilot Rekap RAB (readiness display) terpasang |
+| Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
+| Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
+| **Total** | **100%** | | **≈ 22%** | |
+
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ⬜, B1=5 ✅, B2=3 ✅, B3=6 ✅, **B4=6 (≈60% → 3.6)**, B5=5 ⬜, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 20.6/45 ≈ 46%.
+
+Rincian B4 (≈60%): inc-1 survei ✅ · inc-2/2.1/2.2 service+kontrak `b4.3` LOCKED ✅ · inc-3 pilot Rekap RAB ✅ · **sisa: fan-out 4 consumer (Rincian/Template/Jadwal/Kebutuhan) + inc-4 sinyal jadwal & stale-revision** ⬜.
+
+> Catatan: angka ini estimasi terbobot untuk komunikasi progres, bukan metrik presisi. Diperbarui saat status WP berubah.
+
+## 2.6 Agenda & Sequencing (per 2026-06-15, sesudah temuan UAT)
+
+**Prinsip:** bersihkan blocker WP-B4 lebih dulu; temuan UX per-halaman (List Pekerjaan/Template) ditunda ke WP-P2 karena tidak memblok kebenaran readiness/perhitungan.
+
+1. **UF-011 (HIGH, blocker WP-B4) — ✅ FIXED & verified.** Frontend Harga Items kini mempertahankan null (belum-diisi ≠ 0). Satu-satunya temuan yang menghalangi validitas UAT readiness sudah bersih.
+2. **WP-B4 lanjut (jalur kritis) — ⏳:**
+   - (a) Owner re-UAT banner Rekap RAB — kini `missing_price` dapat diuji benar (kosongkan harga item → null → banner muncul); `missing_volume` sudah terbukti (project 163, pekerjaan 938).
+   - (b) Fan-out 1-per-1: **Rincian AHSP → Template AHSP → Jadwal → Rekap Kebutuhan**.
+   - (c) inc-4: sinyal jadwal (`incomplete_planned_allocation`/`allocation_without_volume`/`timeline_stale`) + stale-revision (limit `updated_at`).
+3. **WP-P2 (List Pekerjaan / Template AHSP) — 🔜 TIDAK memblok WP-B4, dikerjakan setelah fan-out:** UF-007 (nama mod lama saat ref_modified→ref), UF-008 (placeholder "Pekerjaan N"), UF-009 (stabilitas kode/sumber ref = Bug B), UF-010 (banner reload Template eager), ENH-01 (item picker).
+
+**Alasan UF-007..010 + ENH-01 tidak diangkat sekarang:** semua isu UX/setup-data di halaman List Pekerjaan/Template; tidak memengaruhi kebenaran sinyal readiness maupun perhitungan. Mengangkatnya sekarang memecah fokus WP-B4; dikelompokkan per-halaman di WP-P2.
 
 ## 3. Gate Status
 
@@ -68,6 +102,8 @@ Status:
 | KF-04 | Frontend Vitest | 247 passed, 25 skipped | passing | Checkpoint WP-B3 2026-06-14 |
 | KF-05 | Django targeted baseline | 20 passed sebelum WP-B1 | passing | `tests_item_ssot` + `tests_template_ahsp_formula_state` |
 | KF-06 | Frontend production build | Tidak dijalankan | protected-dirty-output | `detail_project/static/detail_project/dist` sudah memiliki perubahan user; jangan overwrite pada WP-B1 |
+| KF-07 | Subscription expired-user renewal middleware | Dua test mendapat 302: payment flow mengharapkan JSON dan write-gate lain mengharapkan 403 | known-failing, reproducible terpisah | Owner subscriptions; tidak berkaitan WP-B4/UF-011. Triage kontrak middleware vs endpoint sebelum fase subscription |
+| KF-08 | Full Django checkpoint 2026-06-15 | 437 total, 40 skipped; 8 failure KF-01/KF-02 + 2 failure KF-07 | baseline-known-only | Tidak ada failure WP-B4, Rekap RAB, Harga Items, atau last-write-wins guard |
 
 `python manage.py check` juga lulus tanpa issue.
 
@@ -156,6 +192,78 @@ membuktikan perubahan harga bulk menghasilkan nilai Kurva S baru.
 Entry identik ditulis melalui blok conditional lalu langsung ditulis ulang.
 
 **Disposition:** hapus write kedua; hanya simpan saat signature berhasil dibuat.
+
+### UF-007 - (UAT B4, project 163) Nama "modified" lama tertinggal saat switch ref_modified→ref
+
+**Ditemukan:** 2026-06-15 oleh owner saat UAT readiness (bukan disebabkan WP-B4).
+
+Pekerjaan `ref_modified` dengan nama override → diganti ke `ref` (atau ganti sumber). Nama override lama masih tampil hingga **reload**.
+
+**Verifikasi:** **TEMUAN BARU** (tidak tercatat di doc 16). **Backend BENAR** — path replace `api_upsert_list_pekerjaan` (`views_api.py:1466-1491`) clone dari ref dengan `override=None` utk `SOURCE_REF` → `snapshot_uraian` = `nama_ahsp` referensi; reload menampilkan nilai benar. **Root cause = FRONTEND** `list_pekerjaan.js:1535`: auto-reset uraian/satuan saat pindah ke ref-like HANYA dipicu bila `oldSourceType === 'custom'` — TIDAK menangani `ref_modified → ref`, sehingga field uraian (kini read-only) menyimpan nama mod lama hingga reload. Tema = source-change UX (LP), tapi bug spesifik baru.
+
+**Disposition:** tambahkan `oldSourceType === 'ref_modified'` ke kondisi auto-reset (atau reset uraian saat target = `ref` murni apa pun asalnya). Owner WP-P2 (List Pekerjaan) atau fix frontend tertarget. Severity: Medium (data benar di server; risiko salah-paham user).
+
+### UF-008 - (UAT B4) Placeholder "Pekerjaan N" untuk baris ref sebelum reload
+
+**Ditemukan:** 2026-06-15 oleh owner saat UAT.
+
+Baris mode `ref` ditandai "Pekerjaan 1/2/3" (di mini-TOC/sidebar) alih-alih nama referensi; benar setelah reload.
+
+**Verifikasi:** **TEMUAN BARU** (cosmetic). **Root cause = FRONTEND** `list_pekerjaan.js:1645` `collectTree()`: nama baris diambil dari `.uraian` input → `.current-ref` → fallback `Pekerjaan ${pi+1}`. Untuk baris ref belum-tersimpan, uraian kosong & `.current-ref` dihapus saat `syncFields` (`:1566`), sehingga jatuh ke placeholder. Tidak membaca nama ref terpilih dari Select2. `loadTree` pasca-reload mengisi `uraian`=snapshot benar → self-heal.
+
+**Disposition:** di `collectTree`, untuk baris ref baca teks ref terpilih (Select2 data / `ref_label`) sebelum fallback. Severity: Low (cosmetic, pre-save). Owner WP-P2.
+
+### UF-009 - (UAT B4) Perubahan kode/sumber referensi AHSP tidak stabil (mempertahankan versi lama)
+
+**Ditemukan:** 2026-06-15 oleh owner saat UAT.
+
+Mengubah kode/sumber referensi AHSP tetap mempertahankan versi yang tersimpan sebelumnya.
+
+**Verifikasi:** **BUKAN BARU — KNOWN (Bug B family).** Terdokumentasi di `docs/BUG_REPORT_IMPORT_DETAIL_PROJECT.md` + memory [[import-detail-project-bugs]]: resolusi referensi by `kode_ahsp` saja (tanpa sumber) → "auto-update/pertahankan versi"; uniqueness per `(sumber, kode_ahsp)`. Fix parsial sudah dilakukan (resolve by `(kode_ahsp, sumber)`, `.first()` ganti `.get()`). Konsisten dgn logika replace `views_api.py:1454-1464` (REF→REF replace HANYA bila `new_ref_id != pobj.ref_id`; bila frontend kirim ref_id stale/sama → tak replace → versi lama bertahan). **Follow-up tertinggal:** "do NOT auto-change bound ref_id" + surface sumber/versi di UI List Pekerjaan. Owner WP-P2/WP-B7 (CUSTOM live-ref) — sudah dalam scope.
+
+### UF-010 - (UAT B4) Banner reload Template AHSP muncul walau detail dibiarkan
+
+**Ditemukan:** 2026-06-15 oleh owner saat UAT.
+
+Membuka Template AHSP tanpa mengubah apa pun tetap menampilkan banner/prompt reload.
+
+**Verifikasi:** **KNOWN-class (bukan regresi WP-B4/B3).** Banner `#ta-sync-banner` (`template_ahsp.js:36-50`, "auto-reload stale jobs") = sistem **kesadaran source-change** (`register_source_change_flags`/`get_pending_source_change_flags`); `api_upsert_list_pekerjaan` menandai `reload_jobs` pada setiap edit pekerjaan (`views_api.py:1543`). BERBEDA dari prompt merge/override Volume yang dihapus WP-B3 inc-5 (itu false-positive last-write-wins). Banner ini niatnya sah (detail jadi stale saat sumber pekerjaan berubah di List Pekerjaan), TAPI **terlalu eager** (menandai reload walau perubahan tak relevan ke detail). **Disposition:** review eagerness di WP-P2 (Template) — flag reload hanya saat `source_type`/`ref_id` benar-benar berubah, bukan tiap upsert. Severity: Low-Medium (UX noise). Bukan blocker UAT readiness.
+
+### UF-011 - (UAT B4, project 163) Frontend Harga Items mengubah NULL "belum diisi" → 0.00 (mematahkan null≠zero & missing_price)
+
+**Ditemukan:** 2026-06-15 saat UAT readiness (probe DB project 163). **Severity: HIGH untuk WP-B4.**
+
+**Gejala:** owner buat 3 pekerjaan custom (Clear=harga+vol, Non Harga=vol saja, Non Volume=harga saja). `compute_project_readiness` BENAR menandai `missing_volume`=[938 "Non Volume"], tetapi `missing_price`=[] meski "Non Harga" tak diisi harga. Probe: item "Non Harga" (B-3695) tersimpan `harga_satuan=0.00`, BUKAN NULL → karena 0=gratis eksplisit (kontrak b4.3), benar tidak diflag. **Akar: harga jadi 0.00, bukan NULL.**
+
+**Root cause = FRONTEND `harga_items.js`:** (1) render `:399` `r.harga_canon === '' ? '0.00'` → harga NULL ditampilkan "0.00", `origCanon` `:425` jadi "0.00"; (2) save `:608-621` iterasi SEMUA baris, `:614` `if(!canon) canon='0.00'`, `:620` push tiap baris → baris belum-diisi terkirim `harga_satuan:"0.00"` → backend simpan 0.00. Backend HI-01 (`api_save_harga_items` simpan null utk null/empty) BENAR tapi **dikalahkan** frontend yang mengirim "0.00". `_upsert_harga_item` membuat item baru dengan `harga_satuan=NULL` (default), jadi sumber 0.00 murni dari save Harga Items.
+
+**Dampak:** setiap save Harga Items meng-convert seluruh item belum-diisi → 0 → **`missing_price` praktis tak pernah muncul**; melanggar keputusan terkunci HI-01 (null≠zero). Mengurangi nilai sinyal WP-B4 yang baru dibangun.
+
+**Fix (frontend):** render NULL sebagai kosong + placeholder "belum diisi" (bukan "0.00"), `origCanon=''`; saat save kirim `harga_satuan:null` (bukan "0.00") untuk baris kosong/belum-diisi (jangan koersi `''→'0.00'`, jangan push baris yang tetap kosong sebagai 0). Backend sudah mendukung null (HI-01). Tambah regression test (frontend: baris kosong → payload null; backend: sudah ada).
+
+**Disposition:** **FIXED 2026-06-15** (frontend `harga_items.js`, 3 path koersi 0.00 dihapus):
+- render `:399` → harga NULL tetap kosong + placeholder "belum diisi"; `origCanon=''`; hanya baris belum-diisi yang `hi-row-empty` (0 eksplisit tidak).
+- save `:608+` → field kosong dikirim `harga_satuan: null` (bukan `"0.00"`); success-branch pertahankan status belum-diisi.
+- blur handler `:564+` → kosong tidak lagi autofill `0.00` (tetap belum-diisi); CSV export tampilkan kosong utk belum-diisi.
+- review lanjutan menutup edge case clear-existing-price: event `input` kini menganggap kosong sebagai perubahan valid, mengaktifkan dirty/save, menampilkan status "belum diisi", dan tidak memberi `ux-invalid`; sebelumnya blur memperbaiki visual tetapi tombol Simpan dapat tetap disabled.
+- Guard: `atomic_save_contract_guard.test.js` +1 (UF-011: tak ada koersi `'0.00'`, kirim `harga_satuan: null`). **Verifikasi:** frontend 253 pass (+1) / 25 skip; backend `tests_wp_b3_atomic`+`tests_wp_b4_readiness` 51/51 (HI-01 null-preserve + readiness missing_price tetap hijau); `node --check` OK. Backend HI-01 tidak diubah (sudah benar). Severity HIGH → CLEARED sebelum lanjut WP-B4.
+
+### ENH-01 - Item Picker (typeahead) di Template AHSP untuk TK/BHN/ALT
+
+**Diminta:** 2026-06-15 oleh owner saat UAT (input item custom merepotkan: harus ketik kode manual; item identik antar-pekerjaan tak mudah dipakai ulang). **Tipe: ENHANCEMENT (bukan bug).**
+
+**Temuan kode:** 80% sudah ada di backend — (a) reuse antar-pekerjaan via kode: `_upsert_harga_item` upsert by `(project, kode_item)` (`services.py:1256`) → kode sama = `HargaItemProject` sama (harga konsisten); (b) auto-kode: `kode` kosong utk TK/BHN/ALT → `Unit-NNNN` (`_auto_unit_code`, `views_api.py:2206-2208`, `_UNIT_AUTO_KATEGORI` = TK/BHN/ALT); (c) daftar item: `api_list_harga_items` (id/kode_item/kategori/uraian/satuan/harga_satuan). **Gap = FRONTEND:** autocomplete hanya utk LAIN+custom (`template_ahsp.js:721 enhanceLAINAutocomplete`); item biasa tak punya picker.
+
+**Keputusan owner (15 Jun):** sumber saran = **item proyek ini saja**; kode item baru = **manual dengan auto-fallback** (`Unit-NNNN`).
+
+**Spec:**
+- Frontend `template_ahsp.js`: generalisasi `enhanceLAINAutocomplete` utk baris TK/BHN/ALT. Field kode/uraian → typeahead **difilter kategori baris**, sumber `api_list_harga_items`; tampilkan `KODE — Uraian (satuan) · Rp harga`.
+- Pilih item → isi `kode`+`uraian`+`satuan` (reuse `HargaItemProject` sama via kode); **kunci kategori** saat pick item lama (cegah konflik signal `_sync_guard_detail_kategori`).
+- "Buat baru": kode **editable**; dikosongkan → auto `Unit-NNNN` (sudah didukung backend).
+- Backend: cukup reuse `api_list_harga_items` (opsional: tambah `?q=&kategori=` server-filter bila daftar besar; v1 filter client-side).
+- Test: frontend behavior (pick mengisi field + reuse kode, filter kategori, blank→auto). Backend auto-code+upsert sudah tercakup `tests_wp_b3`/import.
+
+**Disposition:** owner **WP-P2 (Template AHSP)**. Severity: enhancement/UX (Medium value). Tidak memblokir UAT readiness.
 
 ## 7. Change and Decision Log
 
@@ -312,3 +420,126 @@ Restruktur **validate-all-first → reject atomik** (no 207):
 **Follow-up 2026-06-15:** ditemukan satu jalur `207` aktif yang belum tercakup — `api_save_detail_ahsp_gabungan` (URL `/detail-ahsp/save/`, masih reachable). Diperbaiki ke kontrak atomik (`atomic_error_response(400)`, set_rollback membatalkan delete+create per-item; tak ada 207). Catatan: JS pemanggilnya (`detail_ahsp_gabungan.js`) **orphan** (tak dimuat template manapun) — endpoint reachable-by-URL tapi tanpa halaman UI aktif; tetap dihardening agar selaras DEC-003 dan tak meninggalkan partial-write live hingga cleanup.
 
 **Residual cleanup yang sengaja tidak diperbaiki:** satu jalur `207` tersisa pada API full-save List Pekerjaan lama (`api_save_list_pekerjaan`, line 779) — tidak dipanggil frontend (kanonikal = `/upsert/`), dimiliki cleanup Section E (`CL-05`). Endpoint gabungan + JS orphan-nya tetap milik `CL-10` (hapus route/JS/test legacy); kontrak atomiknya sekarang hanya jaring pengaman sampai dihapus — jangan jadikan fitur baru.
+
+---
+
+### WP-B4 — Canonical Readiness & Missing-Value Schema (increment-1: SURVEI + KONTRAK)
+
+**Status:** inc-1 SURVEI SELESAI (2026-06-15) — menunggu persetujuan kontrak owner sebelum inc-2 (implementasi service + contract test).
+**Sumber:** A-8, A-9, B-4. **Dependency:** WP-B1 (DONE).
+
+#### Survei keadaan saat ini (readiness/missing-value TERSEBAR + MAYORITAS SENYAP)
+
+| Sinyal | Lokasi saat ini | Perilaku saat ini | Gap vs DoD |
+|---|---|---|---|
+| missing_volume | `compute_rekap_for_project` `services.py:2546` `vol_map.get(pkj_id) or 0` | volume tak ada **disamakan dengan 0** secara senyap | null≠zero tak dibedakan; tak ada penanda |
+| missing_price | `services.py` agregasi `Coalesce(Sum(coef*price),0)` (harga `NULL`→0) | harga `NULL` (belum diisi) **berkontribusi 0** senyap | tak ada penanda item belum diisi |
+| invalid_coefficient | divalidasi saat save (WP-B3 TA-01/gabungan, `koef<0`→400) | tak bisa tersimpan negatif lagi | runtime check defensif kosong (perlu sebagai jaring) |
+| expanded_ready / expansion_not_ready | `_populate_expanded_from_raw` `services.py:1156-1191`; rekap baca `DetailAHSPExpanded` + fallback raw `:2496-2507` | fallback senyap ke raw; tak ada sinyal "ekspansi belum siap/stale" ke consumer | perlu sinyal eksplisit |
+| incomplete_planned_allocation | jadwal `PekerjaanTahapan.proporsi_volume` (`models.py:950`); cek total `views_api_tahapan_v2.py:~601` | implisit di jadwal saja | perlu di schema lintas-page |
+| missing_capacity / volume-exceeds-capacity | `views_api_tahapan_v2.py:345-364` (`type:'missing_capacity'`) | hanya validasi assign-time, bukan objek readiness terbaca | satu-satunya diagnostics terstruktur yg sudah ada |
+| timeline_stale | JS `_estimateExpectedWeeklyColumns:116` (R2 audit Jadwal) | dihitung di client, memicu auto-regenerate | pindah deteksi ke server |
+
+**Konsekuensi:** belum ada service diagnostics tunggal; `null` vs `0` tidak dibedakan (defek inti B-4); tiap consumer (rekap/rincian/RAB/jadwal/kebutuhan) menghitung hint sendiri; penyebab tak dapat ditelusuri lewat schema seragam.
+
+**Fakta model yang mengunci desain null-vs-zero:**
+- `VolumePekerjaan.quantity` **NOT NULL** (`models.py:305`, `MinValueValidator(0)`) → "missing volume" = **baris tidak ada** (pekerjaan tak ada di `vol_map`); zero eksplisit = baris dengan `quantity=0`. (Sesuai 2 contract test rekap yang ada: hapus baris = missing; set 0 = preserved.)
+- `HargaItemProject.harga_satuan` **NULLABLE** (`models.py:329`) → null-vs-zero asli: `NULL`="belum diisi", `0.00`=gratis eksplisit (HI-01).
+- `PekerjaanTahapan.proporsi_volume` (`models.py:950`) → basis `incomplete_planned_allocation` (Σ per-pekerjaan ≠ 100).
+
+#### Kontrak yang DIUSULKAN (sketsa awal inc-1 — **DI-SUPERSEDE oleh inc-2.1 → `b4.2`**, lihat bagian inc-2.1 di bawah)
+
+Service tunggal `compute_project_readiness(project)` (modul baru `detail_project/readiness.py`), di-cache dengan `build_project_cache_signature` (WP-B2). Output:
+
+```text
+{
+  expanded_ready: bool,                       # semua pekerjaan ber-detail-raw punya baris expanded
+  missing_volume:  [pekerjaan_id, ...],       # tak ada baris VolumePekerjaan (≠ quantity 0)
+  missing_price:   [{harga_item_id, kode, affected_pekerjaan:[...]}, ...],  # harga_satuan IS NULL
+  invalid_coefficient: [{pekerjaan_id, kode}, ...],  # defensif; harusnya kosong pasca WP-B3
+  expansion_not_ready: [pekerjaan_id, ...],   # punya detail raw tapi expanded hilang/stale
+  incomplete_planned_allocation: [{pekerjaan_id, total_proporsi}, ...],  # Σ proporsi ≠ 100
+  timeline_stale: bool,                        # kolom mingguan ≠ rentang waktu project (deteksi server)
+  affected_pekerjaan: [...],                   # union indeks utk UI
+  affected_items: [...],
+}
+```
+
+Prinsip (selaras DoD + B-1):
+- consumer **hanya menyajikan** readiness, tidak menghitung ulang;
+- warning **tidak memblokir** save/compute kecuali operasi memang tak bisa dihitung;
+- `null` vs `0` dibedakan tegas (volume: baris-ada; harga: NULL);
+- setiap warning menyebut pekerjaan/item penyebab agar dapat ditelusuri.
+
+**Rencana increment:** inc-2 = implement `compute_project_readiness` + contract test (null-vs-zero volume & harga, incomplete allocation, expansion_not_ready); inc-3 = wiring 5 consumer (rekap/rincian/RAB/jadwal/kebutuhan) baca schema sama (display-only) + buang recompute client; inc-4 = pindahkan deteksi `timeline_stale` ke server (audit Jadwal R2) + tutup auto-regenerate page-open.
+
+#### inc-2 — Service + contract test (DONE 2026-06-15)
+
+Modul baru **`detail_project/readiness.py`** → `compute_project_readiness(project)` (cached via `build_project_cache_signature` + `CALCULATION_CACHE_DOMAINS`, schema_version `b4.1`). Sinyal calc-path LIVE: `missing_volume` (baris VolumePekerjaan absen ≠ qty 0), `missing_price` (harga_satuan `NULL`, sumber detail mirror rekap: expanded ∪ raw-fallback), `invalid_coefficient` (defensif `<0`), `expansion_not_ready`/`expanded_ready` (raw tanpa expanded; non-blocking krn rekap fallback ke raw), plus `affected_pekerjaan`/`affected_items`. **ISOLATED — belum diwire ke consumer manapun (zero perubahan perilaku endpoint).** Sinyal jadwal (`incomplete_planned_allocation`, `timeline_stale`) sengaja `[]`/`False` + dideklarasikan di `pending_signals` (consumer tak boleh anggap "all clear") → inc-4. Alasan defer: keduanya bergantung weekly-canonical `PekerjaanProgressWeekly` (`PekerjaanTahapan` = derived view) + logika kolom timeline jadwal.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B4 inc-2 | `tests_wp_b4_readiness` (`ReadinessContractTests`) | PASS | 10/10 (kontrak b4.1, di-supersede inc-2.1) |
+
+#### inc-2.1 — Contract hardening (4 koreksi owner) — DONE 2026-06-15 → schema `b4.2`
+
+Empat koreksi owner sebelum kontrak publik dikunci:
+1. **HIGH expansion D-06:** analisis kini **per-`source_detail`** (bukan per-pekerjaan). Raw row tanpa expanded component → `missing_expansion`; raw lebih baru dari expansion-nya → `stale_expansion`; sertakan `expected`/`actual` count (direct=1, bundle=None). Menangkap kasus berbahaya: pekerjaan **expanded sebagian** masuk `expanded_job_ids` → rekap baca expanded saja & **diam-diam drop raw tak-terekspansi** (undercount).
+2. **MEDIUM pending = `null`:** `incomplete_planned_allocation`/`allocation_without_volume`/`timeline_stale` → `None` (bukan `[]`/`false`) sampai inc-4 authoritative; `pending_signals` dipertahankan.
+3. **MEDIUM traceability:** tiap entry diagnostic = `{pekerjaan_id, kode, uraian, source_table, source_page, issue, (actual/expected/affected_pekerjaan)}`. Count TIDAK disimpan (turunan array). `affected_pekerjaan` = index ringan; `affected_items` dihapus (redundan — detail penuh ada di entry `missing_price`).
+4. **MEDIUM cache stale:** tambah `_readiness_digest` (Count+Sum+problem-count atas volume/harga/koef raw+expanded) di-fold ke signature → `QuerySet.update()`/`bulk_update()` value-only (tak bump `updated_at`) tetap meng-invalidasi cache. Contract test cache-invalidation ditambahkan.
+
+**Schema addition:** `allocation_without_volume` (planned proportion > 0 saat volume absen/0) dipisah dari `incomplete_planned_allocation` (total rencana < 100%). Keduanya jadwal-derived → pending (inc-4).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B4 inc-2.1 | `tests_wp_b4_readiness` | PASS | 15/15: + partial-expansion (D-06), stale-expansion, expected/actual, traceable entry (kode/uraian/source_table/source_page), pending=None, 2× cache-invalidation (bulk_update koef negatif & harga terisi). `manage.py check` 0 issue |
+
+**Kontrak FINAL `b4.2`** (live di `readiness.py`, lulus 15 test) — entry diagnostic uniform; `expanded_ready` kini sahih utk partial/stale; pending = `None` + `pending_signals`; cache tahan bulk-update.
+
+**Gate inc-3 (perlu persetujuan owner):** wiring bertahap **satu-per-satu** sesuai urutan owner — pilot **Rekap RAB** (silent-zero paling mudah diverifikasi), lalu Rincian AHSP → Template AHSP → Jadwal → Rekap Kebutuhan. JANGAN wire kelima sekaligus. Mohon review `b4.2` sebelum mulai pilot Rekap RAB. → **DISETUJUI owner 2026-06-15.**
+
+#### inc-3 PILOT — Rekap RAB (DONE 2026-06-15)
+
+Wiring display-only pertama (pilot), pola untuk consumer berikutnya:
+- **Backend** `api_get_rekap_rab` (`views_api.py:~4620`): tambah `"readiness": compute_project_readiness(project)` ke respons JSON (import `from .readiness import compute_project_readiness`). Tidak mengubah `rows`/`meta`/perhitungan — murni metadata tambahan.
+- **Frontend** `rekap_rab.js`: `renderReadiness(rRes.data.readiness)` dipanggil di `loadData()` setelah `render('')`. Banner advisory non-blocking (`#rab-readiness`, `alert-warning`) di atas tabel: hitung+kode `missing_price`/`missing_volume`/`expansion_not_ready`/`invalid_coefficient` (semua via `escapeHtml`, selaras RR-01). **Page TIDAK menghitung ulang readiness** — hanya menampilkan apa yang server laporkan. Sinyal jadwal (pending) tidak ditampilkan (hindari noise; bukan "all clear").
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B4 inc-3 pilot | `tests_wp_b4_readiness` (+`RekapRabReadinessWiringTests`) + `tests_rekap_calculation_contract` | PASS | 33/33: respons rekap memuat `readiness` b4.2; refleksi missing_price/missing_volume; timeline_stale tetap `None`. Rekap contract 15/15 tanpa regresi. `node --check` rekap_rab.js OK. `manage.py check` 0 issue |
+
+**Gate consumer berikutnya (Rincian AHSP):** pola pilot di atas siap direplikasi. Mohon review tampilan banner Rekap RAB (visual UAT) sebelum lanjut Rincian → Template → Jadwal → Kebutuhan.
+
+#### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
+
+Owner review menolak lock b4.2 + fan-out; 5 hal diperbaiki:
+1. **HIGH cache collision:** owner mereproduksi digest count+sum bertabrakan (pertukaran nilai/relasi total-tetap → signature sama → readiness stale). **Cache cross-request DIHAPUS total** (digest row-exact biayanya = recompute, jadi tak berfaedah). Kini selalu hitung dari DB live + memoize **per-request** (arg `request`). Contract test: `test_relation_move_updates_affected_set_no_stale` (pindah FK harga_item, count tetap → affected set berubah benar) + `test_bulk_update_negative_coef_is_reflected`.
+2. **Bundle expansion lengkap:** `expected/actual` per source_detail. ref_pekerjaan → expected = jumlah komponen expanded pekerjaan yg direferensikan (EXAK); ref_ahsp → `RincianReferensi` count (best-effort, tak menaikkan flag partial agar tak false-positive). Issue baru `incomplete_expansion` (actual<expected). Test `test_bundle_incomplete_expansion_flagged` (expected 2, actual 1).
+3. **`affected_items` dipulihkan:** kontrak minimum Master Plan (line 330) — index item kanonik `[{harga_item_id, kode}]`. Test `test_affected_items_is_canonical_item_index`.
+4. **Test frontend nyata (bukan source-grep):** logika banner diekstrak ke modul ESM mandiri `static/.../js/shared/readiness_banner.js` (`buildReadinessBannerHTML`, self-contained escapeHtml, expose `window.ReadinessBanner`); `rekap_rab.js` mendelegasi ke modul; template muat sebagai `<script type="module">`. Test happy-dom `tests/readiness_banner.test.js` (5): escaping XSS, null saat bersih (tak ada false "all clear"), per-signal lines, **pending diabaikan/tak dianggap selesai**, truncation.
+5. **PERFORMA query-budget:** `test_query_budget_constant_no_n_plus_1` (query count konstan utk 2 vs 8 pekerjaan, ≤12) + `test_request_scoped_memoization` (panggilan ke-2 dlm satu request = 0 query tambahan).
+
+**Stale-expansion KNOWN LIMITATION (didokumentasikan di `readiness.py`):** deteksi `stale_expansion` pakai `updated_at` yg bisa di-bypass `QuerySet.update()`. Reliable staleness butuh revision/timestamp eksplisit per mutasi = **inc-4**. Tanpa cache, semua sinyal LAIN selalu mencerminkan state terbaru.
+
+**Review lanjutan 2026-06-15:** dua gap pilot ditutup sebelum lock:
+- shared banner diubah dari module-deferred menjadi classic global yang dimuat sinkron sebelum `rekap_rab.js`; ini mencegah banner hilang pada initial load karena `loadData()` berjalan saat script klasik dieksekusi;
+- validasi count expansion kini menolak dua arah mismatch untuk expected yang exact: `actual < expected` = `incomplete_expansion`, `actual > expected` = `excess_expansion`. Pesan banner diubah menjadi “total belum final” karena mismatch dapat menyebabkan undercount maupun overcount, dan arah perbaikan diselaraskan ke page Template AHSP.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B4 inc-2.2 | `tests_wp_b4_readiness` | PASS | 23/23 (incl relation-move collision, bundle incomplete/excess expansion, affected_items, query-budget, request-memo, dan urutan load banner sebelum script Rekap RAB) |
+| 2026-06-15 | WP-B4 inc-2.2 | `tests_rekap_calculation_contract` | PASS | 15/15 tanpa regresi |
+| 2026-06-15 | WP-B4 inc-2.2 | frontend `vitest run` | PASS | 252 passed / 25 skipped (incl `readiness_banner.test.js` 5); `node --check` rekap_rab.js OK |
+
+**Owner-approved (review verdict):** null≠zero, pending=None, allocation_without_volume terpisah, diagnostic traceable, Rekap RAB display-only. **Sisa gate sebelum fan-out:** mohon review schema `b4.3` + visual UAT banner Rekap RAB → lalu Rincian AHSP satu per satu.
+
+#### inc-2.3 — Owner lock + 2 fix tambahan (2026-06-15)
+
+Owner **menyetujui & MENGUNCI schema `b4.3`** — tidak ada blocker kode tersisa sebelum fan-out. Owner menambahkan 2 perbaikan:
+1. **Race condition initial-load:** `readiness_banner.js` kini dimuat sebagai classic `<script>` **sinkron sebelum** `rekap_rab.js` (`rekap_rab.html:263`) — `globalThis.ReadinessBanner` pasti tersedia saat first load (modul diubah: tanpa top-level `export`, attach ke `globalThis`; test impor utk side-effect).
+2. **`excess_expansion`:** expanded berlebih (`actual > expected`) kini diflag (`readiness.py:236-238`) → cegah RAB terhitung ganda. Pesan banner diperjelas: **"total RAB belum dapat dianggap final"** (mismatch bisa terlalu rendah MAUPUN tinggi); baris ekspansi → "sumber AHSP belum sinkron dengan hasil ekspansi".
+
+**Verifikasi owner:** WP-B4 readiness 23/23 · readiness+rekap 38/38 · frontend 252 pass / 25 skip · `manage.py check` + migration check bersih · `node --check` + `git diff --check` bersih. Keterbatasan `stale_expansion` berbasis `updated_at` tetap tercatat utk inc-4 (`readiness.py:56`).
+
+**Status:** schema LOCKED. **Gate tersisa: visual UAT banner Rekap RAB** → setelah itu fan-out **Rincian AHSP** (1 consumer/tahap) memakai pola pilot.

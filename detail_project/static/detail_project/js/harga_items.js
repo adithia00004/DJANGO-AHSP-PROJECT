@@ -1,6 +1,6 @@
 // harga_items.js — Drop-in full version (formal terms + robust conversion)
 // - Patuh SSOT (tidak menulis --dp-*), hanya menulis var halaman (--hi-toolbar-h)
-// - Fitur: autofill 0, validasi angka (negatif/>2dp/out-of-range), bulk paste, konversi satuan
+// - Fitur: null-vs-zero, validasi angka (negatif/>2dp/out-of-range), bulk paste, konversi satuan
 (function () {
   const ROOT = document.getElementById('hi-app');
   if (!ROOT) return;
@@ -396,7 +396,11 @@
       tr.dataset.uraian = (r.uraian || '').toLowerCase();
       tr.dataset.kategori = r.kategori || '';
       tr.dataset.satuan = r.satuan || '';
-      const canonDisp = (r.harga_canon === '' ? '0.00' : r.harga_canon);
+      // HI-01 / UF-011: harga NULL ("belum diisi") tetap KOSONG — jangan render
+      // "0.00" dan jangan jadikan baseline 0, karena itu meng-convert belum-diisi
+      // → 0 eksplisit saat save (mematahkan null≠zero & sinyal missing_price).
+      const isUnfilled = (r.harga_canon === '' || r.harga_canon == null);
+      const canonDisp = isUnfilled ? '' : r.harga_canon;
 
       tr.innerHTML = `
         <td class="mono text-center">${i + 1}</td>
@@ -408,7 +412,8 @@
           <div class="d-flex align-items-center gap-2">
             <input type="text" inputmode="decimal"
                    class="form-control form-control-sm ux-focusable hi-input-price text-end ux-tabular"
-                   value="${escapeAttr(toUI(canonDisp))}"
+                   value="${escapeAttr(isUnfilled ? '' : toUI(canonDisp))}"
+                   placeholder="belum diisi"
                    aria-label="Harga satuan untuk ${escapeAttr(r.kode)}">
             <button type="button"
                     class="btn btn-sm btn-outline-secondary hi-conv-open"
@@ -421,12 +426,12 @@
         </td>
         <td class="mono hi-price-preview">${escapeHtml(rupiah(canonDisp))}</td>
       `;
-      // simpan canon awal untuk deteksi edit/empty
+      // simpan canon awal untuk deteksi edit/empty ('' utk belum-diisi → tak dirty)
       tr.dataset.origCanon = canonDisp;
       tr.dataset.manualEdited = '0';
-      // Treat null, empty, or 0 as unfilled
-      const isEmptyOrZero = (r.harga_canon === '' || r.harga_canon == null || Number(canonDisp) === 0);
-      if (isEmptyOrZero) {
+      // HI-01/UF-011: hanya baris BELUM DIISI (null/empty) yang ditandai empty;
+      // harga 0 eksplisit = gratis, bukan belum-diisi.
+      if (isUnfilled) {
         tr.classList.add('hi-row-empty');
         const inp = tr.querySelector('.hi-input-price');
         if (inp) inp.classList.add('vp-empty');
@@ -530,6 +535,30 @@
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
     const tr = el.closest('tr');
+    const raw = (el.value || '').trim();
+
+    // Menghapus harga yang sebelumnya terisi adalah perubahan valid: simpan
+    // sebagai NULL ("belum diisi"), aktifkan tombol Simpan, dan jangan tandai
+    // field sebagai angka invalid.
+    if (raw === '') {
+      el.classList.remove('ux-invalid');
+      el.classList.add('vp-empty');
+      tr?.classList.remove('hi-row-invalid', 'hi-row-zero');
+      tr?.classList.add('hi-row-empty');
+      const prev = tr?.querySelector('.hi-price-preview');
+      if (prev) prev.textContent = rupiah('');
+      if (tr) {
+        const orig = tr.dataset.origCanon || '';
+        const isDirty = orig !== '';
+        tr.dataset.manualEdited = isDirty ? '1' : '0';
+        setRowDirtyVisual(tr, isDirty);
+        if (isDirty || $bukInput?.value !== toUI2(bukCanonLoaded)) {
+          setDirty(true);
+        }
+      }
+      return;
+    }
+
     const canon = toCanon(el.value) || '';
     const num = Number(canon || 'NaN');
     const invalid = !isFinite(num) || num < 0 || num > MAX_PRICE;
@@ -538,7 +567,7 @@
     const prev = tr?.querySelector('.hi-price-preview');
     if (prev) prev.textContent = invalid ? '-' : rupiah(canon || '0.00');
     if (tr) tr.dataset.manualEdited = '1';
-    // kosong? (harga asli null) -> hilangkan tanda empty saat user mengetik
+    // Harga terisi: hilangkan tanda empty saat user mengetik.
     tr?.classList.remove('hi-row-empty');
     el.classList.remove('vp-empty');
     // nol? tandai/lepaskan sesuai nilai kanonik sekarang
@@ -560,21 +589,42 @@
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
 
-    let canon = toCanon(el.value);
-    if (!canon) canon = '0.00'; // autofill 0
+    const tr = el.closest('tr');
+    const raw = (el.value || '').trim();
+
+    // HI-01 / UF-011: field kosong = "belum diisi" — JANGAN autofill 0.00.
+    if (raw === '') {
+      el.value = '';
+      el.classList.remove('ux-invalid');
+      el.classList.add('vp-empty');
+      const prevEmpty = tr?.querySelector('.hi-price-preview');
+      if (prevEmpty) prevEmpty.textContent = rupiah('');  // "—"
+      if (tr) {
+        tr.classList.remove('hi-row-invalid', 'hi-row-zero');
+        tr.classList.add('hi-row-empty');
+        const orig = tr.dataset.origCanon || '';
+        const isDirty = (orig !== '');  // sebelumnya ada nilai → dikosongkan = perubahan
+        tr.dataset.manualEdited = isDirty ? '1' : '0';
+        setRowDirtyVisual(tr, isDirty);
+      }
+      return;
+    }
+
+    const canon = toCanon(el.value);
     const num = Number(canon);
 
     const invalid = !isFinite(num) || num < 0 || num > MAX_PRICE;
     el.value = toUI(canon);
     el.classList.toggle('ux-invalid', invalid);
-    const tr = el.closest('tr');
+    el.classList.remove('vp-empty');
     if (tr) tr.classList.toggle('hi-row-invalid', invalid);
 
     const prev = tr?.querySelector('.hi-price-preview');
     if (prev) prev.textContent = invalid ? '-' : rupiah(canon);
     if (tr) {
+      tr.classList.remove('hi-row-empty');
       const orig = tr.dataset.origCanon || '';
-      const isDirty = (orig && orig !== canon);
+      const isDirty = (orig !== canon);
       tr.dataset.manualEdited = isDirty ? '1' : '0';
       setRowDirtyVisual(tr, isDirty);
       // Atur tanda nol setelah normalisasi
@@ -610,10 +660,17 @@
         const input = tr.querySelector('.hi-input-price');
         if (!input) return;
 
-        let canon = toCanon(input.value);
-        if (!canon) canon = '0.00';
+        // HI-01 / UF-011: field kosong = "belum diisi" → kirim null (JANGAN koersi 0.00).
+        const raw = (input.value || '').trim();
+        if (raw === '') {
+          input.classList.remove('ux-invalid');
+          payload.items.push({ id, harga_satuan: null });
+          idsSaving.push({ id, canon: '' });
+          return;
+        }
+        const canon = toCanon(input.value);
         const n = Number(canon);
-        const invalid = !isFinite(n) || n < 0 || n > MAX_PRICE;
+        const invalid = !canon || !isFinite(n) || n < 0 || n > MAX_PRICE;
         input.classList.toggle('ux-invalid', invalid);
         if (invalid) { invalidCount++; return; }
 
@@ -690,10 +747,11 @@
           if (!tr) return;
           tr.classList.add('hi-row-saved');
           setTimeout(() => tr.classList.remove('hi-row-saved'), 1200);
-          tr.classList.remove('hi-row-empty');
-          tr.classList.toggle('hi-row-zero', Number(canon) === 0);
+          const unfilled = (canon === '' || canon == null);
+          tr.classList.toggle('hi-row-empty', unfilled);
+          tr.classList.toggle('hi-row-zero', !unfilled && Number(canon) === 0);
           setRowDirtyVisual(tr, false);
-          tr.dataset.origCanon = canon;
+          tr.dataset.origCanon = unfilled ? '' : canon;
           const input = tr.querySelector('.hi-input-price');
           input?.classList.remove('ux-invalid');
         });
@@ -724,9 +782,9 @@
       const uraian = tr.children[3].textContent.trim().replace(/;/g, ',');
       const satuan = tr.children[4].textContent.trim();
       const input = tr.querySelector('.hi-input-price');
-      let canon = toCanon(input.value); if (!canon) canon = '0.00';
-      const nominal = rupiah(canon).replace(/^Rp\s?/, 'Rp ');
-      lines.push([++idx, kategori, kode, uraian, satuan, canon, nominal].join(';'));
+      const canon = toCanon(input.value);  // '' jika belum diisi — biarkan kosong di CSV
+      const nominal = canon ? rupiah(canon).replace(/^Rp\s?/, 'Rp ') : '';
+      lines.push([++idx, kategori, kode, uraian, satuan, canon || '', nominal].join(';'));
     });
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

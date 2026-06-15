@@ -1,0 +1,328 @@
+"""WP-B4 — Canonical project readiness & missing-value diagnostics.
+
+Single source of truth for "can this project be computed/reported, and if not,
+which pekerjaan/item is the cause". Consumers (Rekap RAB, Rincian, Template,
+Jadwal, Kebutuhan) READ this schema and merely display it; they must not
+recompute readiness on their own (locked decision B-4 / audit A-8, A-9, D-06).
+
+Caching policy (inc-2.2):
+    There is NO cross-request cache. A count/sum digest is not collision-free —
+    swapping two coefficients with an unchanged total left the signature
+    identical and served stale data — and a row-exact digest costs as much as
+    just recomputing. So we recompute from live DB state every call (bounded by
+    a query-budget test) and only memoize WITHIN a single request via the
+    optional ``request`` argument, so two consumers in one request share one
+    computation.
+
+Diagnostic entry shape (uniform, traceable — D-RK-07 / D-06):
+
+    {
+        "pekerjaan_id":  int | None,
+        "harga_item_id": int (price only),
+        "source_detail_id": int (detail/expansion only),
+        "kode":   str,
+        "uraian": str,
+        "source_table": str,
+        "source_page":  str,
+        "issue":  str,
+        # plus optional "actual" / "expected" / "affected_pekerjaan"
+    }
+
+Counts are NOT stored — derive them from the arrays.
+
+null-vs-zero (locked by the underlying model facts):
+
+  * missing_volume       : a ``VolumePekerjaan`` row is ABSENT (``quantity`` is
+                           NOT NULL → absence is the only "belum diisi" state; an
+                           explicit ``0`` is intentional and is NOT flagged).
+  * missing_price        : ``HargaItemProject.harga_satuan IS NULL`` for an item
+                           used in the calculation path. ``0.00`` is explicit free.
+  * invalid_coefficient  : ``koefisien < 0`` (defensive — WP-B3 rejects on save).
+  * expansion (D-06)     : analysed per ``source_detail``:
+                             - no expanded component         -> ``missing_expansion``
+                             - raw newer than its expansion  -> ``stale_expansion``
+                             - fewer components than expected -> ``incomplete_expansion``
+                             - extra components beyond expected -> ``excess_expansion``
+                           Expected counts: direct row = 1; ``ref_pekerjaan`` bundle
+                           = the referenced pekerjaan's expanded-component count
+                           (exact); ``ref_ahsp`` bundle = the referensi's rincian
+                           count (best-effort — only used to report, never to raise
+                           a partial flag, to avoid false positives on nested LAIN).
+                           A PARTIALLY expanded pekerjaan is the dangerous case:
+                           ``compute_rekap_for_project`` reads only its expanded
+                           rows and silently drops the unexpanded raw -> undercount.
+  * expanded_ready       : no ``expansion_not_ready`` entry exists.
+
+KNOWN LIMITATION (resolved by inc-4): ``stale_expansion`` compares ``updated_at``,
+which a ``QuerySet.update()`` / ``bulk_update()`` can bypass. Reliable staleness
+needs an explicit expansion revision/timestamp bumped by every mutation — that is
+inc-4 work. Value-only bulk mutations ARE reflected for every other signal because
+there is no cache to go stale.
+
+Jadwal-derived signals (``incomplete_planned_allocation``,
+``allocation_without_volume``, ``timeline_stale``) are declared in
+:data:`PENDING_SIGNALS` and are ``None`` until WP-B4 inc-4 makes them
+authoritative — a consumer must read ``pending_signals`` and never treat the
+``None`` default as "all clear".
+"""
+from __future__ import annotations
+
+from django.db.models import Count, Max, Q
+
+from .models import (
+    Pekerjaan,
+    VolumePekerjaan,
+    DetailAHSPProject,
+    DetailAHSPExpanded,
+    HargaItemProject,
+)
+
+SCHEMA_VERSION = "b4.3"  # b4.3 = post-review hardening (no cache, incomplete_expansion, affected_items)
+
+PENDING_SIGNALS = (
+    "incomplete_planned_allocation",
+    "allocation_without_volume",
+    "timeline_stale",
+)
+
+PAGE_VOLUME = "volume"
+PAGE_HARGA = "harga_items"
+PAGE_DETAIL = "template_ahsp"
+
+
+def compute_project_readiness(project, request=None):
+    """Return the canonical readiness schema for ``project``.
+
+    Always recomputes from live DB state (no cross-request cache). If ``request``
+    is given, the result is memoized on it so repeated calls within one request
+    are free.
+    """
+    if request is not None:
+        store = getattr(request, "_b4_readiness", None)
+        if store is None:
+            store = {}
+            request._b4_readiness = store
+        if project.id in store:
+            return store[project.id]
+
+    data = _compute(project)
+
+    if request is not None:
+        request._b4_readiness[project.id] = data
+    return data
+
+
+def _compute(project):
+    pekerjaan_meta = {
+        p["id"]: p
+        for p in Pekerjaan.objects.filter(project=project).values(
+            "id", "snapshot_kode", "snapshot_uraian"
+        )
+    }
+    all_job_ids = set(pekerjaan_meta.keys())
+
+    def _pkj(pkj_id):
+        m = pekerjaan_meta.get(pkj_id, {})
+        return m.get("snapshot_kode") or "", m.get("snapshot_uraian") or ""
+
+    # --- missing_volume: pekerjaan with NO VolumePekerjaan row.
+    vol_job_ids = set(
+        VolumePekerjaan.objects.filter(project=project).values_list(
+            "pekerjaan_id", flat=True
+        )
+    )
+    missing_volume = []
+    for pkj_id in sorted(all_job_ids - vol_job_ids):
+        kode, uraian = _pkj(pkj_id)
+        missing_volume.append(
+            {
+                "pekerjaan_id": pkj_id,
+                "kode": kode,
+                "uraian": uraian,
+                "source_table": "VolumePekerjaan",
+                "source_page": PAGE_VOLUME,
+                "issue": "missing_volume",
+            }
+        )
+
+    # --- expansion analysis per source_detail (D-06).
+    raw_rows = list(
+        DetailAHSPProject.objects.filter(project=project).values(
+            "id", "pekerjaan_id", "kode", "uraian", "kategori",
+            "koefisien", "updated_at", "ref_pekerjaan_id", "ref_ahsp_id",
+        )
+    )
+    exp_groups = {
+        g["source_detail_id"]: g
+        for g in DetailAHSPExpanded.objects.filter(project=project)
+        .values("source_detail_id")
+        .annotate(n=Count("id"), last=Max("updated_at"))
+    }
+    # expanded-component count per pekerjaan (exact expected for ref_pekerjaan).
+    exp_count_by_pkj = {
+        r["pekerjaan_id"]: r["n"]
+        for r in DetailAHSPExpanded.objects.filter(project=project)
+        .values("pekerjaan_id")
+        .annotate(n=Count("id"))
+    }
+    # referensi rincian count per referenced AHSP (best-effort for ref_ahsp).
+    ref_ahsp_ids = {r["ref_ahsp_id"] for r in raw_rows if r["ref_ahsp_id"]}
+    rincian_count_by_ahsp = {}
+    if ref_ahsp_ids:
+        from referensi.models import RincianReferensi
+
+        rincian_count_by_ahsp = {
+            r["ahsp_id"]: r["n"]
+            for r in RincianReferensi.objects.filter(ahsp_id__in=ref_ahsp_ids)
+            .values("ahsp_id")
+            .annotate(n=Count("id"))
+        }
+
+    expansion_not_ready = []
+    invalid_coefficient = []
+    for row in raw_rows:
+        kode = row["kode"] or ""
+        uraian = row["uraian"] or ""
+        if row["koefisien"] is not None and row["koefisien"] < 0:
+            invalid_coefficient.append(
+                {
+                    "pekerjaan_id": row["pekerjaan_id"],
+                    "source_detail_id": row["id"],
+                    "kode": kode,
+                    "uraian": uraian,
+                    "source_table": "DetailAHSPProject",
+                    "source_page": PAGE_DETAIL,
+                    "issue": "invalid_coefficient",
+                    "actual": str(row["koefisien"]),
+                }
+            )
+
+        is_bundle = row["kategori"] == "LAIN" and (
+            row["ref_pekerjaan_id"] is not None or row["ref_ahsp_id"] is not None
+        )
+        if not is_bundle:
+            expected, expected_exact = 1, True
+        elif row["ref_pekerjaan_id"] is not None:
+            expected = exp_count_by_pkj.get(row["ref_pekerjaan_id"], 0)
+            expected_exact = True
+        else:  # ref_ahsp — best-effort, not used to raise partial flags
+            expected = rincian_count_by_ahsp.get(row["ref_ahsp_id"])
+            expected_exact = False
+
+        g = exp_groups.get(row["id"])
+        actual = g["n"] if g else 0
+
+        def _entry(issue):
+            return {
+                "pekerjaan_id": row["pekerjaan_id"],
+                "source_detail_id": row["id"],
+                "kode": kode,
+                "uraian": uraian,
+                "source_table": "DetailAHSPProject",
+                "source_page": PAGE_DETAIL,
+                "issue": issue,
+                "expected": expected,
+                "actual": actual,
+            }
+
+        if actual == 0:
+            expansion_not_ready.append(_entry("missing_expansion"))
+        elif (
+            g["last"] is not None
+            and row["updated_at"] is not None
+            and g["last"] < row["updated_at"]
+        ):
+            expansion_not_ready.append(_entry("stale_expansion"))
+        elif expected_exact and actual != expected:
+            issue = "incomplete_expansion" if actual < expected else "excess_expansion"
+            expansion_not_ready.append(_entry(issue))
+
+    # negative coefficient that only exists in expanded rows (defensive).
+    for e in DetailAHSPExpanded.objects.filter(
+        project=project, koefisien__lt=0
+    ).values("pekerjaan_id", "source_detail_id", "kode", "uraian", "koefisien"):
+        invalid_coefficient.append(
+            {
+                "pekerjaan_id": e["pekerjaan_id"],
+                "source_detail_id": e["source_detail_id"],
+                "kode": e["kode"] or "",
+                "uraian": e["uraian"] or "",
+                "source_table": "DetailAHSPExpanded",
+                "source_page": PAGE_DETAIL,
+                "issue": "invalid_coefficient",
+                "actual": str(e["koefisien"]),
+            }
+        )
+
+    expanded_ready = not expansion_not_ready
+
+    # --- missing_price: harga_satuan IS NULL on an item used in the calc path.
+    expanded_job_ids = set(exp_count_by_pkj.keys())
+    raw_fallback_job_ids = all_job_ids - expanded_job_ids
+
+    missing_price_map = {}
+    rows_price = list(
+        DetailAHSPExpanded.objects.filter(
+            project=project, harga_item__harga_satuan__isnull=True
+        ).values_list(
+            "harga_item_id", "harga_item__kode_item", "harga_item__uraian", "pekerjaan_id"
+        )
+    ) + list(
+        DetailAHSPProject.objects.filter(
+            project=project,
+            pekerjaan_id__in=raw_fallback_job_ids,
+            harga_item__harga_satuan__isnull=True,
+        ).values_list(
+            "harga_item_id", "harga_item__kode_item", "harga_item__uraian", "pekerjaan_id"
+        )
+    )
+    for hi_id, kode, uraian, pkj_id in rows_price:
+        entry = missing_price_map.setdefault(
+            hi_id,
+            {
+                "harga_item_id": hi_id,
+                "kode": kode or "",
+                "uraian": uraian or "",
+                "source_table": "HargaItemProject",
+                "source_page": PAGE_HARGA,
+                "issue": "missing_price",
+                "affected_pekerjaan": set(),
+            },
+        )
+        entry["affected_pekerjaan"].add(pkj_id)
+    missing_price = [
+        {**e, "affected_pekerjaan": sorted(e["affected_pekerjaan"])}
+        for e in sorted(missing_price_map.values(), key=lambda x: (x["kode"] or ""))
+    ]
+
+    # --- canonical item index (Master Plan minimum contract): items needing
+    #     attention, lightweight {harga_item_id, kode}. Full detail lives in
+    #     missing_price entries.
+    affected_items = [
+        {"harga_item_id": e["harga_item_id"], "kode": e["kode"]} for e in missing_price
+    ]
+
+    # --- pekerjaan index into the rich entries above (UI highlighting).
+    affected_pekerjaan = {e["pekerjaan_id"] for e in missing_volume}
+    affected_pekerjaan.update(e["pekerjaan_id"] for e in expansion_not_ready)
+    affected_pekerjaan.update(
+        e["pekerjaan_id"] for e in invalid_coefficient if e["pekerjaan_id"] is not None
+    )
+    for e in missing_price:
+        affected_pekerjaan.update(e["affected_pekerjaan"])
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "expanded_ready": expanded_ready,
+        "missing_volume": missing_volume,
+        "missing_price": missing_price,
+        "invalid_coefficient": invalid_coefficient,
+        "expansion_not_ready": expansion_not_ready,
+        # Jadwal-derived — None until inc-4 makes them authoritative.
+        "incomplete_planned_allocation": None,
+        "allocation_without_volume": None,
+        "timeline_stale": None,
+        "pending_signals": list(PENDING_SIGNALS),
+        "affected_pekerjaan": sorted(affected_pekerjaan),
+        "affected_items": affected_items,
+    }

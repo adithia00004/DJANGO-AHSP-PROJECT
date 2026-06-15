@@ -133,6 +133,7 @@ from .services import (
     active_harga_items_queryset,
     used_harga_items_queryset,
 )
+from .readiness import compute_project_readiness
 
 from .export_config import (
     ExportColors,
@@ -4624,7 +4625,10 @@ def api_get_rekap_rab(request: HttpRequest, project_id: int):
             "markup_percent": to_dp_str(mp_meta, 2),
             "ppn_percent": to_dp_str(ppn_meta, 2),
             "rounding_base": rb_meta,
-        }
+        },
+        # WP-B4 inc-3 (pilot): canonical readiness diagnostics, display-only.
+        # The page must SHOW these (e.g. missing price/volume) and not recompute.
+        "readiness": compute_project_readiness(project, request=request),
     })
 
 @login_required
