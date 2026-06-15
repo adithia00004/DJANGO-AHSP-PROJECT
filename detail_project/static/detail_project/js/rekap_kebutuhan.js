@@ -1840,14 +1840,12 @@
     const btnCsv = $('#btn-export-csv');
     const btnPdf = $('#btn-export-pdf');
     const btnWord = $('#btn-export-word');
-    const btnJson = $('#btn-export-json');
 
     // NOTE: Dropdown buttons removed from HTML - modal only now
     // Keep bindings for backward compatibility if buttons exist
     if (btnCsv) btnCsv.addEventListener('click', () => triggerExport('csv'));
     if (btnPdf) btnPdf.addEventListener('click', () => triggerExport('pdf'));
     if (btnWord) btnWord.addEventListener('click', () => triggerExport('word'));
-    if (btnJson) btnJson.addEventListener('click', () => triggerExport('json'));
 
     // Initialize export modal (primary export method)
     initExportModal(triggerExport);
@@ -2879,4 +2877,3 @@
 
   init();
 })();
-

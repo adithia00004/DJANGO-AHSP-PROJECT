@@ -103,15 +103,6 @@
           <li>
             {% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Export Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed title="Export ke Word (dapat diedit)" %}
           </li>
-          <li>
-            <hr class="dropdown-divider">
-          </li>
-          <li>
-            <button class="dropdown-item" type="button" id="btn-export-json" title="Export ke JSON">
-              <i class="bi bi-filetype-json text-warning me-2"></i>
-              Export JSON
-            </button>
-          </li>
         </ul>
       </div>
 
@@ -318,7 +309,6 @@
     const btnXLSX = document.getElementById('btn-export-xlsx');
     const btnPDF = document.getElementById('btn-export-pdf');
     const btnWord = document.getElementById('btn-export-word');
-    const btnJSON = document.getElementById('btn-export-json');
 
     // Helper to remove all existing listeners by cloning and replacing
     const cleanButton = (btn) => {
@@ -332,7 +322,6 @@
     const cleanXLSX = cleanButton(btnXLSX);
     const cleanPDF = cleanButton(btnPDF);
     const cleanWord = cleanButton(btnWord);
-    const cleanJSON = cleanButton(btnJSON);
 
     if (cleanXLSX) {
       cleanXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e, false));
@@ -345,10 +334,6 @@
       // Word uses async export via Celery
       cleanWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
     }
-    if (cleanJSON) {
-      cleanJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e, false));
-    }
-
     console.log('[RekapRAB] Export buttons initialized with async support');
   })();
 </script>

@@ -28,20 +28,19 @@ export const EXPORT_CONFIG = {
     WEEKLY: 'weekly'
   },
 
-  // Export formats
+  // Export formats — WP-B5 inc-B5d (B-2): JSON is a data package, NOT a report
+  // format (no json generator exists). Project data lives in project_backup.
   formats: {
     PDF: 'pdf',
     WORD: 'word',
-    EXCEL: 'xlsx',
-    JSON: 'json'
+    EXCEL: 'xlsx'
   },
 
   // DPI settings per format
   dpi: {
     pdf: 300,
     word: 300,
-    xlsx: 150,
-    json: 0 // Not applicable
+    xlsx: 150
   },
 
   // Layout parameters

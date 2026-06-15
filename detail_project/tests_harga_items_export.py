@@ -17,7 +17,6 @@ from detail_project.models import (
     SubKlasifikasi,
 )
 from detail_project.views_api import (
-    export_harga_items_json,
     export_template_ahsp_json,
 )
 
@@ -103,7 +102,6 @@ class HargaItemsExportRegressionTests(TestCase):
             "pdf": "application/pdf",
             "word": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "json": "application/json",
         }
 
         for format_type, expected_type in expected_types.items():
@@ -115,19 +113,6 @@ class HargaItemsExportRegressionTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertTrue(response["Content-Type"].startswith(expected_type))
                 self.assertIn("attachment", response["Content-Disposition"])
-
-    def test_json_export_excludes_orphans_and_preserves_zero(self):
-        request = self.factory.get("/api/export/harga-items/json/")
-        request.user = self.owner
-        response = inspect.unwrap(export_harga_items_json)(
-            request,
-            self.project.id,
-        )
-        payload = json.loads(response.content.decode("utf-8"))
-
-        self.assertEqual(payload["export_info"]["total_items"], 1)
-        self.assertEqual(payload["items"][0]["kode_item"], self.used_item.kode_item)
-        self.assertEqual(payload["items"][0]["harga_satuan"], 0.0)
 
     def test_template_export_includes_bundle_reference_metadata(self):
         target = Pekerjaan.objects.create(

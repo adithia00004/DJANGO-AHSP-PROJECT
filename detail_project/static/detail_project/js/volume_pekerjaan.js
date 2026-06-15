@@ -7302,12 +7302,10 @@
       const btnXLSX = document.getElementById('btn-export-xlsx');
       const btnPDF = document.getElementById('btn-export-pdf');
       const btnWord = document.getElementById('btn-export-word');
-      const btnJSON = document.getElementById('btn-export-json');
 
       if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', e));
       if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', e, true));
       if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', e, true));
-      if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', e));
 
       exportInitDone = true;
       console.log('[Volume] Export buttons initialized');

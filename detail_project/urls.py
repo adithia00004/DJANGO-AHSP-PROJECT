@@ -166,11 +166,7 @@ urlpatterns = [
          views_api.export_rekap_rab_xlsx,
          name='export_rekap_rab_xlsx'),
 
-    path('api/project/<int:project_id>/export/rekap-rab/json/',
-         views_api.export_rekap_rab_json,
-         name='export_rekap_rab_json'),
-
-     # Export Rekap Kebutuhan (PDF, Word, XLSX, JSON - no CSV)
+     # Export Rekap Kebutuhan (PDF, Word, XLSX - no CSV)
      path('api/project/<int:project_id>/export/rekap-kebutuhan/pdf/',
           views_api.export_rekap_kebutuhan_pdf,
           name='api_export_rekap_kebutuhan_pdf'),
@@ -182,10 +178,6 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/rekap-kebutuhan/xlsx/',
           views_api.export_rekap_kebutuhan_xlsx,
           name='api_export_rekap_kebutuhan_xlsx'),
-
-     path('api/project/<int:project_id>/export/rekap-kebutuhan/json/',
-          views_api.export_rekap_kebutuhan_json,
-          name='api_export_rekap_kebutuhan_json'),
 
      # Export Volume Pekerjaan
      path('api/project/<int:project_id>/export/volume-pekerjaan/xlsx/',
@@ -199,10 +191,6 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/volume-pekerjaan/word/',
           views_api.export_volume_pekerjaan_word,
           name='export_volume_pekerjaan_word'),
-
-     path('api/project/<int:project_id>/export/volume-pekerjaan/json/',
-          views_api.export_volume_pekerjaan_json,
-          name='export_volume_pekerjaan_json'),
 
      # Export Harga Items
      path('api/project/<int:project_id>/export/harga-items/csv/',
@@ -220,10 +208,6 @@ urlpatterns = [
      path('api/project/<int:project_id>/export/harga-items/xlsx/',
           views_api.export_harga_items_xlsx,
           name='export_harga_items_xlsx'),
-
-     path('api/project/<int:project_id>/export/harga-items/json/',
-          views_api.export_harga_items_json,
-          name='export_harga_items_json'),
 
      # Export Rincian AHSP
      path('api/project/<int:project_id>/export/rincian-ahsp/csv/',

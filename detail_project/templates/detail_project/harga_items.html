@@ -47,11 +47,6 @@
         <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-xlsx" label="Excel (XLSX)" icon="bi-file-earmark-excel text-success" allowed=export_excel_word_allowed %}</li>
         <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-pdf" label="PDF" icon="bi-file-earmark-pdf text-danger" allowed=export_pdf_allowed %}</li>
         <li>{% include 'detail_project/_export_menu_item.html' with btn_id="btn-export-word" label="Word" icon="bi-file-earmark-word text-primary" allowed=export_excel_word_allowed %}</li>
-        <li>
-          <hr class="dropdown-divider">
-        </li>
-        <li><button class="dropdown-item" type="button" id="btn-export-json"><i
-              class="bi bi-filetype-json text-warning me-2"></i>JSON</button></li>
       </ul>
     </div>
 
@@ -337,12 +332,10 @@
     const btnXLSX = document.getElementById('btn-export-xlsx');
     const btnPDF = document.getElementById('btn-export-pdf');
     const btnWord = document.getElementById('btn-export-word');
-    const btnJSON = document.getElementById('btn-export-json');
 
     if (btnXLSX) btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e));
     if (btnPDF) btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e));
     if (btnWord) btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e));
-    if (btnJSON) btnJSON.addEventListener('click', (e) => handleExport('json', 'JSON', e));
 
     console.log('[HargaItems] Export buttons initialized with SSOT modal');
   });

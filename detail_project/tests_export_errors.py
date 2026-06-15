@@ -49,7 +49,7 @@ class ExportErrorWrapperTests(TestCase):
 
 
 class ExportLeakGuardTests(TestCase):
-    """Lock the two real str(e) leaks fixed in B5a."""
+    """Lock export surfaces to the shared safe error contract."""
 
     def _src(self, rel):
         with open(os.path.join(_APP_DIR, rel), encoding="utf-8") as f:
@@ -77,3 +77,18 @@ class ExportLeakGuardTests(TestCase):
         self.assertNotIn("response_data['error'] = str(error_info)", src)
         self.assertIn("GENERIC_EXPORT_MESSAGE", src)
         self.assertIn("context=f\"async export task {task_id}\"", src)
+
+    def test_export_controllers_do_not_return_raw_exception_text(self):
+        src = self._src("views_api.py")
+        for leaked_message in [
+            "Export CSV gagal: {str(e)}",
+            "Export PDF gagal: {str(e)}",
+            "Export Word gagal: {str(e)}",
+            "Export XLSX gagal: {str(e)}",
+            "Export Excel gagal: {str(e)}",
+            "Export Professional gagal: {str(e)}",
+            "Export JSON gagal: {str(e)}",
+        ]:
+            with self.subTest(leaked_message=leaked_message):
+                self.assertNotIn(leaked_message, src)
+        self.assertIn("export_error_response", src)

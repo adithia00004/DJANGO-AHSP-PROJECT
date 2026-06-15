@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 30% implementasi):** **IN PROGRESS - WP-A1/WP-A2(report-only)/WP-B1/WP-B2/WP-B3/WP-B4 DONE / WP-B5 B5a-B5c DONE, B5d NEXT · enforcement CSP = milestone terpisah**
+**Status keseluruhan (≈ 33% implementasi):** **IN PROGRESS - WP-A1/WP-A2(report-only)/WP-B1/WP-B2/WP-B3/WP-B4/WP-B5 DONE / WP-B6 (weekly distribution) atau WP-B7 NEXT · defer: CSP enforcement, export perf (auto-async/client-render)**
 
 ## 1. Aturan Tracking
 
@@ -36,7 +36,7 @@ Status:
 | WP-B2 | Shared cache signature | DONE | 2026-06-14 | 2026-06-14 | WP-B1 | Rekap/Kurva/chart/Kebutuhan memakai helper domain bersama |
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
 | WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
-| WP-B5 | Server-authoritative export | IN PROGRESS (B5a+B5b+B5c DONE; B5d/B5e perlu keputusan) | 2026-06-15 | - | B1/B2/B4 | ✅B5a error-wrapper+correlation-id ✅B5b identity provider (fix lokasi/tahun='-') ✅B5c filename name-first. ⬜B5d JSON separation (B-2, perlu desain) ⬜B5e signature/snapshot/client-render (perlu desain) |
+| WP-B5 | Server-authoritative export | DONE | 2026-06-15 | 2026-06-15 | B1/B2/B4 | B5a seluruh controller export memakai error-wrapper · B5b identity (fix lokasi/tahun) · B5c filename · B5d JSON keluar report+data-package atomic/versioned · B5e signature/empty/PDF-placement locked. 3 item scope (auto-async threshold, client-render migrasi, snapshot eksplisit) DEFER ke milestone perf. Full B5+CSP suite 56/56 |
 | WP-B6 | Canonical weekly distribution | PENDING | - | - | WP-B4 | - |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
 | WP-B8 | Tipe LAIN | PENDING | - | - | B3 | - |
@@ -48,20 +48,20 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 30% dari eksekusi implementasi selesai** (per 2026-06-15).
+**Headline: ≈ 33% dari eksekusi implementasi selesai** (per 2026-06-15).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
-| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~58% | ~26% | A1·**A2(report-only)**·B1·B2·B3·B4 DONE; B5·B6·B7·B8·B9·B10 PENDING (CSP enforcement = milestone terpisah) |
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~69% | ~31% | A1·A2(report-only)·B1·B2·B3·B4·**B5 DONE**; B6·B7·B8·B9·B10 PENDING (CSP enforcement + export-perf = milestone terpisah) |
 | Fase 2 — Integrasi per-page (P1–P9) | 30% | ~5% | ~1.5% | readiness display terpasang di 5 halaman (bagian B4); integrasi per-page penuh belum |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 30%** | |
+| **Total** | **100%** | | **≈ 33%** | |
 
-Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, **A2=3 ✅ (report-only; enforcement milestone terpisah)**, B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ⬜, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 26/45 ≈ 58%.
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, **B5=5 ✅**, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 31/45 ≈ 69%.
 
 **WP-B4 SELESAI** (inc-1 survei · inc-2/2.1/2.2 kontrak `b4.3` · UF-011 fix + UAT PASS · inc-3 5/5 consumer wired · inc-4a 3 sinyal jadwal · inc-4b stale-signature `b4.4`).
 
@@ -714,7 +714,70 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 | 2026-06-15 | WP-B5 inc-B5c | `tests_export_naming` + regresi export | PASS | Review gate gabungan A2+B5a-c 77/77; frontend 265 pass/25 skip; `manage.py check` dan migration check bersih |
 | 2026-06-15 | WP-A2/B5 Docker smoke | restart web + HTTP/header/sink + container check | PASS | web/db healthy; login HTTP 200 memuat CSP Report-Only dan tanpa enforcing header; `/csp-report/` HTTP 204; `migrate --plan` kosong |
 
-**Baseline:** `tests_export_button_visibility` tetap 3 failure HTTP 302 = **KF-02 known-failing**, identik dengan baseline WP-00 dan bukan regresi A2/B5. **Berikutnya: B5d** (pisah JSON dari report — B-2; PERLU keputusan desain owner).
+**Baseline:** `tests_export_button_visibility` tetap 3 failure HTTP 302 = **KF-02 known-failing**, identik dengan baseline WP-00 dan bukan regresi A2/B5.
+
+#### inc-B5d — Pisah JSON dari report (B-2) — SURVEI 2026-06-15 (menunggu keputusan owner)
+
+**Survei JSON landscape:**
+- Frontend `export-coordinator.js:36` menampilkan **`JSON: 'json'` sebagai FORMAT report** (sejajar PDF/XLSX/Word/CSV) → B-2 minta dihapus dari menu report.
+- `export_manager` punya cabang `format_type == 'json'` (`:1040`) → `JSONExporter.export_jadwal_pekerjaan` (data jadwal utk import/export).
+- **Sudah ADA** (kerja opaque-ID, terpisah dari menu report): `project_backup` v3.0 (`views_api.py:8549` export + `:8624` import), template import/export (`api_import_template`/`api_import_template_from_file` `:9661/9724`) = 2 dari 3 tipe B-2.
+- **`diagnostic_snapshot` TIDAK ADA** (hanya di doc planning).
+- Entanglement: infra JSON package = bagian aktif **opaque-ID import/export** (export_version 1.0/1.1/3.0) — sentuhan hati-hati.
+
+**Usulan kontrak B5d (perlu keputusan owner):**
+1. Hapus JSON dari menu FORMAT report (frontend `export-coordinator.js` + cabang `format_type=='json'` `export_manager`) → report = PDF/XLSX/Word/CSV.
+2. Data jadwal JSON (`JSONExporter.export_jadwal_pekerjaan`): jadikan aksi "paket data" terpisah / fold ke `project_backup` / pensiun — **keputusan owner**.
+3. `project_backup`+`work_structure_template`: pastikan `schema_version`+import atomik (verifikasi).
+4. `diagnostic_snapshot`: **bangun sekarang atau defer?** — keputusan owner.
+
+**Keputusan owner (2026-06-15):** (1) hapus JSON dari menu FORMAT report — DISETUJUI; (2) data Jadwal menjadi bagian `project_backup` dengan `include_progress`, bukan report JSON tersendiri; dedicated schedule-only package belum diperlukan; (3) `diagnostic_snapshot` → **DEFER** ke milestone terpisah.
+
+**Rencana eksekusi B5d (final, menunggu Docker up):**
+1. Frontend: keluarkan JSON dari seluruh menu laporan Jadwal, Volume, Harga Items, Rekap RAB, dan Rekap Kebutuhan. JSON parameter Volume dan paket transfer List/Template tetap dipertahankan karena bukan laporan.
+2. Backend: cabang `export_manager format_type=='json'` dihapus dari dispatcher report; data package tetap melalui endpoint data yang terpisah.
+3. Verifikasi `project_backup`+`work_structure_template` punya `schema_version`+import atomik (cek `views_api.py:8549/8624`, `:9661/9724`).
+4. Test: backend (export_manager dispatch tanpa json report; data-jadwal action) — **butuh DB up**; frontend (vitest) report-menu tanpa JSON.
+
+**inc-B5d DONE 2026-06-15** (Docker up, semua hijau):
+- **Temuan kunci:** radio JSON di modal export Jadwal ternyata **DEAD** — tak ada `json-generator` (generators hanya csv/excel/pdf/word), tak ada URL `export_jadwal_pekerjaan_json`, coordinator switch pakai reportType bukan format. Jadi "JSON sebagai format report" memang tak berfungsi. Menghapusnya tak menghilangkan fitur (data project penuh termasuk jadwal ada di `project_backup`).
+- **Dihapus:** radio/binding/route JSON laporan dari Jadwal, Volume, Harga Items, Rekap RAB, dan Rekap Kebutuhan; `JSONExporter` dikeluarkan dari `ExportManager.EXPORTER_MAP` dan cabang dispatch report dihapus.
+- **DoD #6 terverifikasi & dikunci:** `project_backup` + `work_structure_template` memiliki `export_type`/`export_version` (v3.0), dan seluruh import terkait memakai `@transaction.atomic`.
+- **Keputusan owner diterapkan:** JSON keluar dari seluruh menu/endpoint report ✓; data Jadwal tersedia via `project_backup(include_progress)` ✓; `diagnostic_snapshot` defer ✓.
+- Test `detail_project/tests_export_json_separation.py` (8): seluruh JSON report route/UI hilang, backend manager menolak JSON sebagai report, data-package versioned + atomic import.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B5 inc-B5d | `tests_export_json_separation` + regresi export + `vitest` | PASS | JSON separation 8/8; full B5+CSP 56/56; frontend 265/25skip; `node --check` + `manage.py check` bersih |
+
+**Catatan defer:** dedicated schedule-only package dapat dibangun kelak bila ada workflow import parsial Jadwal yang sah; saat ini full data Jadwal round-trip melalui `project_backup`.
+
+#### inc-B5e — Signature/snapshot/threshold/empty (SURVEI + LOCK 2026-06-15)
+
+**Survei:** sebagian besar item B5e SUDAH ada:
+- **Signature config per report:** `signature_config.SignaturePresets` (PERENCANAAN owner+perencana; PELAKSANAAN owner+kontraktor+pengawas; FULL) + `DOCUMENT_PRESETS` map per report type + `build_signatures` (field cocok model: nama_client/nama_konsultan_perencana/nama_kontraktor/nama_konsultan_pengawas). **DIKUNCI** `tests_export_signature.py` (5).
+- **PDF signature tak berdiri sendiri:** `pdf_exporter` memakai `KeepTogether`, `SignatureLayoutRules` dengan minimum 3 baris, dan reservasi `signature_height` pada halaman terakhir. Contract test mengunci aturan minimum-row dan wiring layout.
+- **Empty export:** PDF/Excel/Word memiliki placeholder data kosong dan dikunci contract test.
+- **Calc dataset = layar:** WP-B1 kanonik (adapter pakai `compute_rekap_for_project`).
+- **Threshold sync/bg:** ada jalur async Celery (`api_start_export_async`) + warning `>100 pages` (`export-coordinator warningThreshold:100`). Auto-switch threshold = opsional.
+
+**DoD acceptance WP-B5 — TERPENUHI:** calc parity ✓ (B1) · no `str(e)` ✓ (B5a) · empty allowed ✓ · PDF pagination/signature ✓ (locked) · report tanpa JSON ✓ (B5d) · backup/template versioned+atomik ✓ (B5d).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-15 | WP-B5 inc-B5e | `tests_export_signature` + full B5+CSP suite | PASS | 56/56: signature roles + anti-orphan minimum 3 baris + empty placeholder + safe error wrapper + JSON separation terkunci. |
+| 2026-06-15 | WP-B5 final review | independent code review + Docker smoke | PASS | Menutup gap yang ditemukan saat review: 4 JSON-report route/UI tersisa dipensiunkan; seluruh controller export aktif memakai correlation-ID wrapper. Docker web/celery healthy, HTTP `/` 200 + CSP report-only, migration plan kosong. |
+
+**Keputusan owner diperlukan untuk MENUTUP WP-B5 (item scope non-acceptance):**
+1. **Threshold sync/background:** terima apa adanya (async ada + warning 100pp) ATAU tambah auto-switch ke async di > N pages (N=?).
+2. **Nasib jalur client-render** (`views_export.py` image-upload): pertahankan (fungsional) ATAU migrasi penuh server-authoritative (effort terpisah).
+3. **dataset snapshot per export:** terima (export pakai compute kanonik = identik layar) ATAU butuh snapshot tersimpan eksplisit.
+
+**Rekomendasi:** terima ketiganya apa-adanya/defer (fungsional; bukan bagian acceptance) → **WP-B5 DONE**. Enhancement (auto-async threshold, full server-authoritative client-render) = milestone perf terpisah, seperti CSP enforcement.
+
+**KEPUTUSAN OWNER 2026-06-15: terima as-is → WP-B5 SELESAI.** 3 item scope (auto-async threshold, migrasi penuh client-render→server-authoritative, dataset snapshot eksplisit) di-DEFER ke **milestone performa terpisah** (DEC-B5-DEFER). Tidak memblok; semua fungsional + DoD acceptance terpenuhi.
+
+**WP-B5 SELESAI:** B5a error-wrapper+correlation-id · B5b identity provider (fix lokasi/tahun='-') · B5c filename `NamaProject_YYYY-MM-DD.ext` · B5d JSON keluar dari report + data-package atomic/versioned · B5e signature/empty/PDF-placement locked. Owner hardening: async-leak, CSP sink, full identity fields.
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 
 Owner review menolak lock b4.2 + fan-out; 5 hal diperbaiki:

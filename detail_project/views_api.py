@@ -144,6 +144,7 @@ from .export_config import (
     format_volume,
 )
 from .exports import RekapRABExporter, RekapKebutuhanExporter
+from .exports.errors import export_error_response
 from .api_helpers import rate_limit, atomic_error_response
 from accounts.mixins import api_pdf_export_allowed
 from .formula_tokenizer import remap_expression
@@ -4800,12 +4801,7 @@ def export_rekap_kebutuhan_pdf(request: HttpRequest, project_id: int):
         )
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export PDF gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap kebutuhan PDF")
 
 
 # ============== FUNCTION 3: WORD EXPORT (NEW!) ==============
@@ -4838,45 +4834,7 @@ def export_rekap_kebutuhan_word(request: HttpRequest, project_id: int):
         )
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export Word gagal: {str(e)}'
-        }, status=500)
-
-
-@login_required
-@require_GET
-def export_rekap_kebutuhan_json(request: HttpRequest, project_id: int):
-    """
-    Export Rekap Kebutuhan ke format JSON.
-
-    Thin controller - delegasi ke ExportManager.
-    """
-    try:
-        # 1. Auth & get project
-        project = _owner_or_404(project_id, request.user)
-
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        params = parse_kebutuhan_query_params(request.GET)
-        return manager.export_rekap_kebutuhan(
-            'json',
-            mode=params['mode'],
-            tahapan_id=params['tahapan_id'],
-            filters=params['filters'],
-            search=params['search'],
-            time_scope=params.get('time_scope'),
-        )
-
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export JSON gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap kebutuhan Word")
 
 
 @login_required
@@ -4906,12 +4864,7 @@ def export_rekap_kebutuhan_xlsx(request: HttpRequest, project_id: int):
         )
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export Excel gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap kebutuhan XLSX")
 
 
 @login_required
@@ -5306,12 +5259,7 @@ def export_rekap_rab_csv(request: HttpRequest, project_id: int):
         return manager.export_rekap_rab('csv')
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export CSV gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap RAB CSV")
 
 
 # ============== FUNCTION 2: PDF EXPORT (REFACTORED) ==============
@@ -5335,12 +5283,7 @@ def export_rekap_rab_pdf(request: HttpRequest, project_id: int):
         return manager.export_rekap_rab('pdf')
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export PDF gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap RAB PDF")
 
 
 # ============== FUNCTION 3: WORD EXPORT (REFACTORED) ==============
@@ -5364,12 +5307,7 @@ def export_rekap_rab_word(request: HttpRequest, project_id: int):
         return manager.export_rekap_rab('word')
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export Word gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap RAB Word")
 
 
 @login_required
@@ -5384,32 +5322,7 @@ def export_rekap_rab_xlsx(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_rekap_rab('xlsx')
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export XLSX gagal: {str(e)}'
-        }, status=500)
-
-
-@login_required
-@require_GET
-def export_rekap_rab_json(request: HttpRequest, project_id: int):
-    """
-    Export Rekap RAB ke format JSON.
-    """
-    try:
-        project = _owner_or_404(project_id, request.user)
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        return manager.export_rekap_rab('json')
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export JSON gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export rekap RAB XLSX")
 
 
 # ============================================================================
@@ -5428,9 +5341,7 @@ def export_volume_pekerjaan_xlsx(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_volume_pekerjaan('xlsx', parameters=parameters)
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export Excel gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export volume pekerjaan XLSX")
 
 
 @login_required
@@ -5445,9 +5356,7 @@ def export_volume_pekerjaan_pdf(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_volume_pekerjaan('pdf', parameters=parameters)
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export volume pekerjaan PDF")
 
 
 @login_required
@@ -5462,26 +5371,7 @@ def export_volume_pekerjaan_word(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_volume_pekerjaan('word', parameters=parameters)
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
-
-
-@login_required
-@require_GET
-def export_volume_pekerjaan_json(request: HttpRequest, project_id: int):
-    """Export Volume Pekerjaan to JSON"""
-    try:
-        project = _owner_or_404(project_id, request.user)
-        # Extract parameters from query string
-        parameters = _extract_parameters_from_request(request)
-        from .exports.export_manager import ExportManager
-        manager = ExportManager(project, request.user)
-        return manager.export_volume_pekerjaan('json', parameters=parameters)
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export JSON gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export volume pekerjaan Word")
 
 
 # ============================================================================
@@ -5498,9 +5388,7 @@ def export_harga_items_csv(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_harga_items('csv')
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export harga items CSV")
 
 
 @login_required
@@ -5513,9 +5401,7 @@ def export_harga_items_pdf(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_harga_items('pdf')
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export harga items PDF")
 
 
 @login_required
@@ -5528,9 +5414,7 @@ def export_harga_items_word(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_harga_items('word')
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export harga items Word")
 
 
 @login_required
@@ -5543,94 +5427,7 @@ def export_harga_items_xlsx(request: HttpRequest, project_id: int):
         manager = ExportManager(project, request.user)
         return manager.export_harga_items('xlsx')
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
-
-
-@login_required
-@require_GET
-def export_harga_items_json(request: HttpRequest, project_id: int):
-    """Export Harga Items to JSON file"""
-    try:
-        project = _owner_or_404(project_id, request.user)
-        from .models import HargaItemProject, ItemConversionProfile
-        from decimal import Decimal
-        import json
-        from datetime import datetime
-        
-        # Fetch harga items with conversion profiles
-        items_qs = (
-            used_harga_items_queryset(project)
-            .select_related('conversion_profile')
-            .order_by('kategori', 'kode_item')
-        )
-        
-        # Kategori labels
-        kategori_labels = {
-            'TK': 'Tenaga Kerja',
-            'BHN': 'Bahan',
-            'ALT': 'Alat',
-            'LAIN': 'Lainnya'
-        }
-        
-        items_data = []
-        for item in items_qs:
-            item_dict = {
-                'id': item.id,
-                'kode_item': item.kode_item,
-                'uraian': item.uraian,
-                'satuan': item.satuan,
-                'kategori': item.kategori,
-                'kategori_label': kategori_labels.get(item.kategori, item.kategori),
-                'harga_satuan': (
-                    float(item.harga_satuan)
-                    if item.harga_satuan is not None
-                    else None
-                ),
-            }
-            
-            # Add conversion profile if exists
-            try:
-                if hasattr(item, 'conversion_profile') and item.conversion_profile:
-                    conv = item.conversion_profile
-                    item_dict['conversion'] = {
-                        'market_unit': conv.market_unit,
-                        'market_price': float(conv.market_price) if conv.market_price is not None else None,
-                        'factor_to_base': float(conv.factor_to_base) if conv.factor_to_base is not None else None,
-                        'density': float(conv.density) if conv.density is not None else None,
-                        'capacity_m3': float(conv.capacity_m3) if conv.capacity_m3 is not None else None,
-                        'capacity_ton': float(conv.capacity_ton) if conv.capacity_ton is not None else None,
-                        'method': conv.method,
-                    }
-            except Exception:
-                pass
-            
-            items_data.append(item_dict)
-        
-        # Build export data
-        export_data = {
-            'export_info': {
-                'type': 'harga_items',
-                'project_id': project.id,
-                'project_name': project.nama_proyek if hasattr(project, 'nama_proyek') else str(project),
-                'exported_at': datetime.now().isoformat(),
-                'total_items': len(items_data),
-            },
-            'items': items_data,
-        }
-        
-        # Create response
-        json_content = json.dumps(export_data, indent=2, ensure_ascii=False)
-        response = HttpResponse(json_content, content_type='application/json')
-        filename = f"harga_items_{project.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
-        
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export JSON gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export harga items XLSX")
 
 
 # ============================================================================
@@ -5649,9 +5446,7 @@ def export_rincian_ahsp_csv(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export rincian AHSP CSV")
 
 
 @login_required
@@ -5667,9 +5462,7 @@ def export_rincian_ahsp_pdf(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export rincian AHSP PDF")
 
 
 @login_required
@@ -5685,9 +5478,7 @@ def export_rincian_ahsp_word(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export rincian AHSP Word")
 
 
 @login_required
@@ -5703,9 +5494,7 @@ def export_rincian_ahsp_xlsx(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export rincian AHSP XLSX")
 
 
 # ============================================================================
@@ -5734,9 +5523,7 @@ def export_jadwal_pekerjaan_csv(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export CSV gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export jadwal pekerjaan CSV")
 
 
 @login_required
@@ -5760,9 +5547,7 @@ def export_jadwal_pekerjaan_pdf(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export PDF gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export jadwal pekerjaan PDF")
 
 
 @login_required
@@ -5786,9 +5571,7 @@ def export_jadwal_pekerjaan_word(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export Word gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export jadwal pekerjaan Word")
 
 
 @login_required
@@ -5812,9 +5595,7 @@ def export_jadwal_pekerjaan_xlsx(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({'status': 'error', 'message': f'Export XLSX gagal: {str(e)}'}, status=500)
+        return export_error_response(e, context="export jadwal pekerjaan XLSX")
 
 
 # ============================================================================
@@ -5959,12 +5740,7 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
     except Http404:
         raise
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export Professional gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export jadwal professional")
 
 
 # ============================================================================
@@ -7759,11 +7535,7 @@ def export_template_ahsp_json(request: HttpRequest, project_id: int):
         return response
         
     except Exception as e:
-        logger.error(f"Export Template AHSP JSON error: {e}", exc_info=True)
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export JSON gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export template AHSP data package")
 
 
 # ============================================================================
@@ -8551,11 +8323,7 @@ def export_project_full_json(request: HttpRequest, project_id: int):
         return response
         
     except Exception as e:
-        logger.error(f"Export Project Full JSON error: {e}", exc_info=True)
-        return JsonResponse({
-            'status': 'error',
-            'message': f'Export JSON gagal: {str(e)}'
-        }, status=500)
+        return export_error_response(e, context="export project backup data package")
 
 
 # ============================================================================
@@ -9871,11 +9639,7 @@ export_harga_items_csv = _api_pro_export_required("Export CSV")(export_harga_ite
 export_rincian_ahsp_csv = _api_pro_export_required("Export CSV")(export_rincian_ahsp_csv)
 export_jadwal_pekerjaan_csv = _api_pro_export_required("Export CSV")(export_jadwal_pekerjaan_csv)
 
-# JSON exports: PRO-only (policy decision).
-export_rekap_kebutuhan_json = _api_pro_export_required("Export JSON")(export_rekap_kebutuhan_json)
-export_rekap_rab_json = _api_pro_export_required("Export JSON")(export_rekap_rab_json)
-export_volume_pekerjaan_json = _api_pro_export_required("Export JSON")(export_volume_pekerjaan_json)
-export_harga_items_json = _api_pro_export_required("Export JSON")(export_harga_items_json)
+# JSON data packages: PRO-only (policy decision).
 export_list_pekerjaan_json = _api_pro_export_required("Export JSON")(export_list_pekerjaan_json)
 export_template_ahsp_json = _api_pro_export_required("Export JSON")(export_template_ahsp_json)
 export_project_full_json = _api_pro_export_required("Export JSON")(export_project_full_json)
