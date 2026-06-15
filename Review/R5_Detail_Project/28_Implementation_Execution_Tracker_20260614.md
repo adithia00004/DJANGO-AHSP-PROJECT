@@ -37,7 +37,7 @@ Status:
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
 | WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
 | WP-B5 | Server-authoritative export | DONE | 2026-06-15 | 2026-06-15 | B1/B2/B4 | B5a seluruh controller export memakai error-wrapper · B5b identity (fix lokasi/tahun) · B5c filename · B5d JSON keluar report+data-package atomic/versioned · B5e signature/empty/PDF-placement locked. 3 item scope (auto-async threshold, client-render migrasi, snapshot eksplisit) DEFER ke milestone perf. Full B5+CSP suite 56/56 |
-| WP-B6 | Canonical weekly distribution | IN PROGRESS (survei + rencana 5 inc; mulai B6a) | 2026-06-16 | - | WP-B4 | Survei §WP-B6. B6a builder kanonik · B6b kebutuhan pakai builder (RK-01, risky) · B6c 4-week · B6d jadwal JS no-recompute/no-auto-regen (Vite) · B6e parity test |
+| WP-B6 | Canonical weekly distribution | IN PROGRESS (backend calc-core DONE; B6d/e ke WP-P8, B6f part-2 cleanup/defer) | 2026-06-16 | - | WP-B4 | ✅B6a builder (7 test) ✅B6b+B6c `compute_kebutuhan_timeline` canonical (weekly+4-week+unscheduled+tahapan-deprecated, parity, filter periods canonical) ✅B6f part-1 snapshot scope canonical. Verifikasi B6 targeted 37/37. ⬜B6d jadwal JS no-recompute/no-auto-regen (Vite/WP-P8) ⬜B6e parity JS↔Python ⬜B6f part-2 `api_rekap_kebutuhan_weekly` tidak ada consumer aktif ditemukan; kandidat cleanup/defer |
 | WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
 | WP-B8 | Tipe LAIN | PENDING | - | - | B3 | - |
 | WP-B9 | Bundle limits | PENDING | - | - | B7/B8 | - |
@@ -812,6 +812,84 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 | 2026-06-16 | WP-B6 inc-B6a | `tests_weekly_distribution` | PASS | 7/7: empty, weeks kanonik tersortir+dates, fraksi=prop/100, full→unscheduled 0, partial→remainder, pekerjaan tanpa weekly→unscheduled 1, invariant Σ+unscheduled=1. `manage.py check` bersih |
 
 **Berikutnya: B6b** — Rekap Kebutuhan weekly/4-week pakai builder (ganti overlap-day RK-01) + parity test (`Σ weekly + unscheduled = total kebutuhan`). RISKY (ubah angka) → kawal dengan parity.
+
+#### inc-B6b — DEEP SURVEI + RENCANA (2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Temuan kunci (lebih besar dari "ganti distribusi"):**
+- Bucket minggu Rekap Kebutuhan **TIDAK** dari `PekerjaanProgressWeekly`. Dibangun `get_project_period_options` (`services.py:328`) dari **`TahapPelaksanaan`** (ISO-week key `YYYY-Www`, week_num project-relative) → lalu `compute_kebutuhan_timeline` (`:3134`) distribusi via **overlap-hari** terhadap tanggal `PekerjaanTahapan` (`assignment_map`, `_calculate_overlap_days`, loop `:3399-3422`). Ini RK-01.
+- Jadi B6b = **mengganti SUMBER bucket minggu** (TahapPelaksanaan ISO-week → `build_weekly_distribution` PekerjaanProgressWeekly) **DAN** mekanisme distribusi (overlap-hari → fraksi kanonik). Tujuan: minggu Kebutuhan == minggu Jadwal; "Tahapan bukan calculation source".
+- `base_quantity` per (item×pekerjaan) = `koef_expanded × volume × proporsi_multiplier` (`:3370-3385`) — **dipertahankan**; hanya pembagian ke periode yang diganti.
+- `compute_kebutuhan_timeline` ~400 baris: mode `week`/`month`, `mode='tahapan'` (filter 1 tahapan), filters (klas/sub/pekerjaan), time_scope, cache (`_kebutuhan_signature`). Rewrite penuh = RISIKO tinggi.
+
+**Keterkaitan / sub-keputusan:**
+1. **Week mode** — jelas: bucket dari `build_weekly_distribution(project).weeks`; distribusi `base_quantity × by_pekerjaan[pkj][week]`; sisa → bucket **unscheduled** (`unscheduled_fraction`). Inti DoD.
+2. **Month mode** — agregasi minggu-kanonik → bulan (by tanggal mulai minggu), bukan ISO-month dari TahapPelaksanaan. Supaya satu sumber.
+3. **Tahapan-mode** (`mode='tahapan'`) — bergantung `PekerjaanTahapan`; **D-RK-08 = tahapan DIPENSIUN**. Jalur ini kemungkinan usang → butuh keputusan owner: ikut pensiun (hapus mode) atau biarkan sementara.
+
+**Rencana eksekusi (usulan, perlu persetujuan):**
+- **B6b-1:** Week mode pakai builder kanonik + unscheduled bucket. Parity test: `Σ semua minggu + unscheduled == total kebutuhan` per item (invariant B6a). Regresi `tests_rekap_calculation_contract` + kebutuhan.
+- **B6b-2:** Month mode = agregasi minggu-kanonik ke bulan (satu sumber).
+- **B6b-3 (keputusan owner):** tahapan-mode → pensiun (ikut D-RK-08) ATAU pertahankan sementara.
+
+**Dampak diketahui:** B6b mengubah **nilai per-periode** Rekap Kebutuhan (memperbaiki RK-01); **total tetap** (dijaga parity test). Cache signature dipertahankan; verifikasi tanpa regresi.
+
+**STATUS: menunggu review/keputusan owner** atas (a) scope B6b-1+B6b-2 sekarang, (b) nasib tahapan-mode (B6b-3 / D-RK-08). Belum ada perubahan kode B6b (B6a tetap fondasi additive aman).
+
+**KEPUTUSAN OWNER 2026-06-16:** B6b-1 disetujui (week + builder + unscheduled; DoD Σminggu+unscheduled=total per item). B6b-2 dikoreksi → **agregasi Periode 4-Minggu (week 1-4, 5-8, …), BUKAN kalender bulan**. B6b-3 → **tahapan-mode DIPENSIUN** (D-RK-08): backend abaikan `mode=tahapan` + metadata deprecation; UI/filter/chip/export param dibersihkan di WP-P8/CL-06; Tahapan TAK BOLEH lagi ubah quantity/total.
+
+**TEMUAN TAMBAHAN (dua jalur kebutuhan):**
+- `api_rekap_kebutuhan_weekly` (`views_api.py:6748`) SUDAH pakai weekly proportion (Item Qty × proporsi/100) — bukan jalur bug — TAPI logika sendiri (belum `build_weekly_distribution`). Konvergensikan ke SSOT B6a.
+- `compute_kebutuhan_timeline` (`services.py:3134`, via `api_get_rekap_kebutuhan_timeline`) = jalur **overlap-day** (RK-01) yang dipakai TIMELINE halaman Rekap Kebutuhan → ini target utama B6b.
+
+**Edit-map cohesive rewrite `compute_kebutuhan_timeline` (B6b-1+2+3 bersama, krn deprecate tahapan membuang overlap-day utk SEMUA mode):**
+- bucket source: `_select_period_buckets`/`get_project_period_options` (TahapPelaksanaan ISO-week) → `build_weekly_distribution(project).weeks`; week mode = per-week, 4-week mode = grup 4 minggu (week_number 1-4/5-8/…).
+- distribusi: hapus `assignment_map`+overlap-day; `base_quantity × by_pekerjaan[pkj][week]` → bucket; `base_quantity × unscheduled_fraction[pkj]` → bucket 'unscheduled'. `base_quantity = koef_expanded × volume` (buang `proporsi_multiplier` tahapan).
+- `mode='tahapan'` → diabaikan (treat 'all') + `meta.deprecated_mode`. Tahapan tak ubah quantity.
+- time_scope: filter bucket via **rentang tanggal** (scope start/end → tanggal) terhadap minggu kanonik (key lama ISO-week tak kompatibel → map by date); parity diuji TANPA scope (full).
+- pertahankan: cache (`_kebutuhan_signature`), filters (klas/sub/pekerjaan), payload shape (periods[] + 'unscheduled' + meta), logging.
+- caveat frontend: period selector (week/month) frontend-coupled (Vite/template) → label "month" akan menampilkan 4-week; penyelarasan UI = WP-P8/B6d.
+
+**Tes:** parity (Σ minggu+unscheduled=total per item, tanpa scope) + regresi `tests_rekap_calculation_contract` + `tests_api_v2_access` (akses) + check/migrasi. Existing test hanya akses/kontrak field (tak mengunci overlap-day) → aman diubah.
+
+**GO OWNER 2026-06-16 dengan koreksi scope:**
+- B6b = rewrite **`compute_kebutuhan_timeline` SAJA**. `api_rekap_kebutuhan_weekly` DIKELUARKAN → **B6f follow-up** (belum SSOT: pakai detail_list raw, default volume 1.0, tanpa expanded/raw-fallback canonical, tanpa unscheduled, payload beda → blast radius besar bila dicampur).
+- B6c (agregasi 4-minggu) **masuk bersama** B6b.
+- `month_range` = **compat alias** utk four-week: request lama `month_range`→ diperlakukan `four_week_range`; meta `bucket_mode:"four_week"` + `compat_mode:"month_range"`. BUKAN kalender bulan.
+- bucket values **stabil**: `week_1`, `period4_1`, dst. Request lama `YYYY-Wxx`/`YYYY-MM` → map best-effort via tanggal. Parity full (tanpa scope) + 1 test scope sederhana (range tak kosong).
+- tahapan-mode: diabaikan utk kalkulasi (quantity == all+filter lain, TANPA PekerjaanTahapan); meta `deprecated_mode:"tahapan"` + `deprecated_tahapan_id`.
+
+**B6f (follow-up, dicatat):** konvergensi `api_rekap_kebutuhan_weekly` ke SSOT (`build_weekly_distribution` + base_quantity canonical expanded/raw-fallback + unscheduled + payload selaras). Tidak dikerjakan di B6b.
+
+#### inc-B6b + B6c — `compute_kebutuhan_timeline` canonical rewrite (DONE 2026-06-16)
+
+Rewrite `services.compute_kebutuhan_timeline` (+ helper `_scope_date_window`):
+- **Sumber bucket** = `build_weekly_distribution(project).weeks` (bukan TahapPelaksanaan ISO-week). Mode `week` (value `week_N`) atau **`four_week`** (value `period4_N`, grup 4 minggu) — `month_range` jadi **compat alias** (`meta.bucket_mode="four_week"`, `meta.compat_mode="month_range"`).
+- **Filter metadata ikut canonical:** `get_project_period_options(project)` tidak lagi membaca `TahapPelaksanaan`; `periods.weeks` = `week_N`, `periods.months` = compat 4-minggu `period4_N`, sehingga period selector tidak kosong pada project yang hanya punya `PekerjaanProgressWeekly`.
+- **Distribusi** = `base_quantity × planned_proportion_fraction[week]` → bucket; sisa `× unscheduled_fraction` → bucket `unscheduled`. `base_quantity = koef_expanded × volume` (proporsi tahapan DIBUANG).
+- **Tahapan dipensiun (D-RK-08):** `assignment_map`/overlap-day DIHAPUS; `mode='tahapan'` diperlakukan = `all` (quantity sama), hanya `meta.deprecated_mode="tahapan"` + `meta.deprecated_tahapan_id`. Tahapan TAK lagi ubah quantity.
+- **time_scope** difilter by-tanggal (`_scope_date_window` map key legacy → tanggal via period_options). Parity diuji penuh (tanpa scope).
+- Dipertahankan: cache/signature, filters (klas/sub/pekerjaan), payload shape (periods[] + `unscheduled` + meta), no-scope return.
+- `api_rekap_kebutuhan_weekly` TIDAK disentuh (B6f).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B6 inc-B6b+B6c | `tests_kebutuhan_timeline_b6b` + regresi | PASS | 34/34: 7 timeline/filter tests (weekly=proporsi, **parity Σperiode+unscheduled=total/item**, unscheduled remainder+job, four_week=compat month_range, filter periods canonical tanpa Tahapan, canonical week scope, tahapan-deprecated quantity=all) + weekly_distribution 7 + rekap_calc_contract 15 + api_v2_access 5. `manage.py check` bersih |
+
+**Caveat frontend (B6d/WP-P8):** period selector Rekap Kebutuhan (Vite/template) masih label week/month → "month" kini menampilkan data 4-minggu (label "Minggu 1-4"). Penyelarasan UI + hentikan JS week-recompute/auto-regenerate Jadwal = **B6d** (Vite bundle).
+
+**Gap-fix owner (2026-06-16, sebelum checkpoint):** `get_project_period_options()` masih berbasis `TahapPelaksanaan` → filter periode UI bisa kosong/desync utk project yang punya `PekerjaanProgressWeekly` tapi tanpa Tahapan. Diubah **canonical**: `periods.weeks` = `week_1,week_2,…`; `periods.months` = compat key 4-minggu `period4_1,period4_2,…`. `_normalize_time_scope()` kini menerima `week_N` & `period4_N` → range filter UI tetap bekerja dgn bucket baru. Konsisten dgn `_scope_date_window`/`compute_kebutuhan_timeline` (B6 suite 34/34, B4/B5 +76/76, check & migrasi bersih). Test owner: `test_period_options_are_canonical_without_tahapan`.
+
+**RESIDUAL (valid, → B6f/WP-P8):** `compute_kebutuhan_items(... time_scope=...)` (SNAPSHOT path) masih pakai helper legacy `_build_time_scope_multiplier()` berbasis `PekerjaanTahapan`. B6b menutup **timeline** path saja. Jika snapshot+time_scope masih dipakai aktif di UI/export → harus dikonvergensi (jangan ada dua cara scope kebutuhan). Masuk **B6f / WP-P8**.
+
+#### inc-B6f part-1 — Snapshot scope multiplier → canonical (DONE 2026-06-16)
+
+`_build_time_scope_multiplier()` (`services.py:472`) **TIDAK lagi pakai `PekerjaanTahapan`/overlap-day** → kini fraksi in-scope dari `build_weekly_distribution` (Σ `planned_proportion` minggu dalam jendela tanggal). Mekanisme di-swap; **edge legacy dipertahankan** (pekerjaan tanpa jadwal → 1.0 fully-in-scope). Menutup "dua cara scope kebutuhan" — snapshot path kini = timeline path (satu SSOT). Test `tests_kebutuhan_timeline_b6b` +3 (fraksi window 0.60, both 1.00, unscheduled 1.0, all→{}); B6 targeted suite **37/37**; B4/B5 regression **76/76**; `manage.py check`, `makemigrations --check --dry-run`, dan `git diff --check` bersih.
+
+**B6f part-2 (sisa):** `api_rekap_kebutuhan_weekly` (`views_api.py:6748`) konvergensi ke SSOT — pakai detail_list raw + default volume 1.0 + tanpa expanded/raw-fallback + tanpa unscheduled + payload beda. Perubahan PERILAKU endpoint (volume 1.0→real, +expanded, +unscheduled) → perlu survei consumer (kurva-s/V2) dulu. **Belum dikerjakan.**
+
+**Survei consumer B6f part-2 (2026-06-16):** pencarian repo hanya menemukan route/view/test/dokumen untuk `api_rekap_kebutuhan_weekly` / `rekap-kebutuhan-weekly`; tidak ditemukan consumer frontend aktif di luar test. Rekomendasi: **jangan konvergensi sekarang** karena endpoint tampak orphan/eksperimental dan perubahan angka/payload berisiko tanpa manfaat UI langsung. Tandai sebagai kandidat **cleanup/defer**; bila nanti dipertahankan sebagai API eksternal/mobile, konvergensikan dalam WP terpisah dengan kontrak payload eksplisit.
+
+**Berikutnya:** B6d (jadwal JS, Vite — no recompute/auto-regenerate) + B6e (parity JS↔Python) tetap dipindahkan ke **WP-P8**. Secara backend calc-core, WP-B6 dianggap cukup untuk checkpoint.
 
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 

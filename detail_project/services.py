@@ -326,76 +326,38 @@ def _ensure_date(value):
 
 
 def get_project_period_options(project):
-    tahapan_dates = TahapPelaksanaan.objects.filter(project=project).values('tanggal_mulai', 'tanggal_selesai')
-    week_map = {}
-    month_map = {}
-    
-    # Phase 4.1: Track project start date for relative week numbering
-    project_start = None
-    all_dates = []
+    """Return Rekap Kebutuhan period options from canonical weekly progress.
 
-    for item in tahapan_dates:
-        start = _ensure_date(item.get('tanggal_mulai'))
-        end = _ensure_date(item.get('tanggal_selesai')) or start
-        if not start:
+    WP-B6b/B6c: period selectors must use the same source as timeline
+    calculation. ``months`` is kept as a legacy response key for frontend
+    compatibility, but its values are 4-week periods, not calendar months.
+    """
+    canonical_weeks = build_weekly_distribution(project)["weeks"]
+    weeks = []
+    for w in canonical_weeks:
+        weeks.append({
+            'value': f"week_{w['week_number']}",
+            'label': (
+                f"Minggu {w['week_number']} "
+                f"({w['start_date'].strftime('%d %b')} - {w['end_date'].strftime('%d %b %Y')})"
+            ),
+            'start_date': w['start_date'].isoformat(),
+            'end_date': w['end_date'].isoformat(),
+        })
+
+    months = []
+    for i in range(0, len(canonical_weeks), 4):
+        group = canonical_weeks[i:i + 4]
+        if not group:
             continue
-        if end and end < start:
-            start, end = end, start
-        if not end:
-            end = start
-        all_dates.append((start, end))
-    
-    # Find earliest date for project-relative week numbering
-    if all_dates:
-        project_start = min(d[0] for d in all_dates)
-        # Align to week start (Monday)
-        project_start = project_start - timedelta(days=project_start.weekday())
-    
-    for start, end in all_dates:
-        if end < start:
-            start, end = end, start
+        first, last = group[0], group[-1]
+        months.append({
+            'value': f"period4_{i // 4 + 1}",
+            'label': f"Minggu {first['week_number']}-{last['week_number']}",
+            'start_date': first['start_date'].isoformat(),
+            'end_date': last['end_date'].isoformat(),
+        })
 
-        # Weeks (Project-relative numbering)
-        cursor = start - timedelta(days=start.weekday())
-        while cursor <= end:
-            iso_year, iso_week, _ = cursor.isocalendar()
-            key = f"{iso_year}-W{iso_week:02d}"
-            if key not in week_map:
-                week_end = cursor + timedelta(days=6)
-                
-                # Phase 4.1: Calculate project-relative week number (1-based)
-                if project_start:
-                    week_num = ((cursor - project_start).days // 7) + 1
-                else:
-                    week_num = iso_week
-                
-                label = f"Minggu {week_num} ({cursor.strftime('%d %b')} - {week_end.strftime('%d %b %Y')})"
-                week_map[key] = {
-                    'value': key,
-                    'label': label,
-                    'start_date': cursor.isoformat(),
-                    'end_date': week_end.isoformat(),
-                }
-            cursor += timedelta(days=7)
-
-        # Months
-        month_cursor = date(start.year, start.month, 1)
-        while month_cursor <= end:
-            _, last_day = calendar.monthrange(month_cursor.year, month_cursor.month)
-            month_end = date(month_cursor.year, month_cursor.month, last_day)
-            key = f"{month_cursor.year}-{month_cursor.month:02d}"
-            if key not in month_map:
-                label = f"{MONTH_NAMES_ID.get(month_cursor.month, 'Bulan')} {month_cursor.year}"
-                month_map[key] = {
-                    'value': key,
-                    'label': label,
-                    'start_date': month_cursor.isoformat(),
-                    'end_date': month_end.isoformat(),
-                }
-            month_cursor = month_end + timedelta(days=1)
-
-    weeks = sorted(week_map.values(), key=lambda item: item['start_date'])
-    months = sorted(month_map.values(), key=lambda item: item['start_date'])
     return {'weeks': weeks, 'months': months}
 
 
@@ -457,11 +419,33 @@ def _normalize_time_scope(scope):
     }
     scope = scope or {}
     mode_raw = (scope.get('mode') or 'all').strip().lower()
-    if mode_raw not in {'week', 'week_range', 'month', 'month_range'}:
+    if mode_raw not in {
+        'week', 'week_range',
+        'month', 'month_range',
+        'four_week', 'four_week_range', 'period4', 'period4_range',
+    }:
         return default
     start_raw = (scope.get('start') or '').strip()
     if not start_raw:
         return default
+
+    canonical_week = mode_raw.startswith('week') and start_raw.startswith('week_')
+    canonical_period4 = (
+        mode_raw.startswith(('month', 'four_week', 'period4'))
+        and start_raw.startswith('period4_')
+    )
+    if canonical_week or canonical_period4:
+        end_raw = (scope.get('end') or '').strip()
+        if not (mode_raw.endswith('range') and end_raw):
+            end_raw = start_raw
+        return {
+            'mode': mode_raw,
+            'start_value': start_raw,
+            'end_value': end_raw,
+            'start_date': None,
+            'end_date': None,
+        }
+
     parser = _parse_week_code if mode_raw.startswith('week') else _parse_month_code
     start_range = parser(start_raw)
     if not start_range:
@@ -497,49 +481,32 @@ def _build_time_scope_multiplier(project, pekerjaan_ids, scope):
     if not start_date or not end_date or end_date < start_date:
         return {}
 
-    assignments = (
-        PekerjaanTahapan.objects
-        .filter(
-            pekerjaan_id__in=pekerjaan_ids,
-            tahapan__project=project
-        )
-        .select_related('tahapan')
-    )
-    totals = {pk: Decimal('0') for pk in pekerjaan_ids}
-    selected = {pk: Decimal('0') for pk in pekerjaan_ids}
-
-    for assignment in assignments:
-        tahap = assignment.tahapan
-        tahap_start = _ensure_date(getattr(tahap, 'tanggal_mulai', None))
-        tahap_end = _ensure_date(getattr(tahap, 'tanggal_selesai', None)) or tahap_start
-        if not tahap_start or not tahap_end:
-            continue
-        if tahap_end < tahap_start:
-            tahap_start, tahap_end = tahap_end, tahap_start
-        duration_days = (tahap_end - tahap_start).days + 1
-        if duration_days <= 0:
-            continue
-        prop_fraction = Decimal(str(assignment.proporsi_volume or 0)) / Decimal('100')
-        pekerjaan_id = assignment.pekerjaan_id
-        totals[pekerjaan_id] = totals.get(pekerjaan_id, Decimal('0')) + prop_fraction
-
-        overlap_start = max(tahap_start, start_date)
-        overlap_end = min(tahap_end, end_date)
-        if overlap_start > overlap_end:
-            continue
-        overlap_days = (overlap_end - overlap_start).days + 1
-        overlap_fraction = prop_fraction * Decimal(overlap_days) / Decimal(duration_days)
-        selected[pekerjaan_id] = selected.get(pekerjaan_id, Decimal('0')) + overlap_fraction
+    # WP-B6f: scope fraction from the canonical weekly distribution (B6a) instead
+    # of TahapPelaksanaan overlap-days — one source for kebutuhan scope (snapshot
+    # path now matches the timeline path; Tahapan is no longer a calc source).
+    # Legacy edge preserved: a pekerjaan with NO schedule is treated as fully
+    # in-scope (1.0).
+    dist = build_weekly_distribution(project)
+    weeks_in_window = {
+        w['week_number']
+        for w in dist['weeks']
+        if not (w['end_date'] < start_date or w['start_date'] > end_date)
+    }
+    by_pekerjaan = dist['by_pekerjaan']
+    scheduled_fraction = dist['scheduled_fraction']
 
     result = {}
     for pk in pekerjaan_ids:
-        if pk not in totals or totals[pk] == 0:
-            result[pk] = Decimal('1.0')
+        if scheduled_fraction.get(pk, Decimal('0')) == 0:
+            result[pk] = Decimal('1.0')  # unscheduled → fully in scope (legacy semantics)
             continue
-        ratio = selected.get(pk, Decimal('0'))
-        if ratio > Decimal('1.0'):
-            ratio = Decimal('1.0')
-        result[pk] = ratio
+        frac = sum(
+            (f for wn, f in by_pekerjaan.get(pk, {}).items() if wn in weeks_in_window),
+            Decimal('0'),
+        )
+        if frac > Decimal('1.0'):
+            frac = Decimal('1.0')
+        result[pk] = frac
     return result
 
 
@@ -3131,6 +3098,30 @@ def build_weekly_distribution(project):
     }
 
 
+def _scope_date_window(period_options, normalized_scope):
+    """Map a (legacy) time_scope window to a (start_date, end_date) range (WP-B6b).
+
+    time_scope start/end values use the legacy period_options key system
+    (ISO-week ``YYYY-Www`` / ``YYYY-MM``); resolve them to dates so canonical
+    buckets can be filtered by DATE instead of by key. Returns (None, None) for
+    the full ('all') scope.
+    """
+    mode = (normalized_scope.get('mode') or 'all')
+    if mode == 'all':
+        return (None, None)
+    start_value = normalized_scope.get('start_value') or None
+    end_value = normalized_scope.get('end_value') or start_value
+    if not start_value and not end_value:
+        return (None, None)
+    pool = period_options.get('months' if mode.startswith('month') else 'weeks', [])
+    by_value = {p['value']: p for p in pool}
+    start_p = by_value.get(start_value)
+    end_p = by_value.get(end_value)
+    start_date = _ensure_date(start_p['start_date']) if start_p else None
+    end_date = _ensure_date(end_p['end_date']) if end_p else None
+    return (start_date, end_date)
+
+
 def compute_kebutuhan_timeline(
     project,
     mode='all',
@@ -3139,7 +3130,10 @@ def compute_kebutuhan_timeline(
     time_scope=None,
 ):
     """
-    Compute kebutuhan items dan distribusi per periode (mingguan/bulanan).
+    Compute kebutuhan items + distribusi per periode menggunakan distribusi
+    mingguan kanonik (WP-B6b): bucket = minggu kanonik (atau agregasi 4 minggu),
+    distribusi via PekerjaanProgressWeekly.planned_proportion + bucket unscheduled.
+    Tahapan TIDAK lagi menjadi sumber kalkulasi (D-RK-08).
     """
     import time
     import logging
@@ -3175,64 +3169,88 @@ def compute_kebutuhan_timeline(
                 )
                 return cached_entry.get('data', {})
 
-    if scope_mode.startswith('month'):
-        bucket_mode = 'month'
+    # WP-B6b: bucket mode — 'week' (default) or 'four_week'. Legacy 'month*' is a
+    # COMPAT ALIAS for four-week aggregation (NOT calendar month).
+    is_four_week = scope_mode.startswith('month') or scope_mode in (
+        'four_week', 'four_week_range', 'period4', 'fourweek'
+    )
+    bucket_mode = 'four_week' if is_four_week else 'week'
+    compat_mode = 'month_range' if scope_mode.startswith('month') else None
+
+    # WP-B6b / D-RK-08: Tahapan is deprecated as a calculation source. A
+    # mode='tahapan' request is treated as 'all' for quantity (only flagged).
+    deprecated_mode = 'tahapan' if (mode == 'tahapan') else None
+    deprecated_tahapan_id = tahapan_id if deprecated_mode else None
+
+    # WP-B6b: canonical weekly distribution (single source of truth, B6a).
+    weekly_dist = build_weekly_distribution(project)
+    canonical_weeks = weekly_dist['weeks']
+    dist_by_pekerjaan = weekly_dist['by_pekerjaan']
+    unscheduled_fraction_map = weekly_dist['unscheduled_fraction']
+
+    # Build ordered buckets with STABLE values + week_number -> bucket value map.
+    bucket_defs = []
+    week_to_bucket = {}
+    if bucket_mode == 'four_week':
+        for i in range(0, len(canonical_weeks), 4):
+            grp = canonical_weeks[i:i + 4]
+            first, last = grp[0], grp[-1]
+            value = f"period4_{i // 4 + 1}"
+            bucket_defs.append({
+                'value': value,
+                'label': f"Minggu {first['week_number']}-{last['week_number']}",
+                'start_date': first['start_date'].isoformat(),
+                'end_date': last['end_date'].isoformat(),
+            })
+            for w in grp:
+                week_to_bucket[w['week_number']] = value
     else:
-        bucket_mode = 'week'
+        for w in canonical_weeks:
+            value = f"week_{w['week_number']}"
+            bucket_defs.append({
+                'value': value,
+                'label': (
+                    f"Minggu {w['week_number']} "
+                    f"({w['start_date'].strftime('%d %b')} - {w['end_date'].strftime('%d %b %Y')})"
+                ),
+                'start_date': w['start_date'].isoformat(),
+                'end_date': w['end_date'].isoformat(),
+            })
+            week_to_bucket[w['week_number']] = value
 
-    start_value = normalized_scope.get('start_value') or None
-    end_value = normalized_scope.get('end_value') or start_value
+    # time_scope window: filter visible buckets by DATE (legacy keys mapped to dates).
+    scope_start_date, scope_end_date = _scope_date_window(period_options, normalized_scope)
+    if scope_start_date or scope_end_date:
+        visible_defs = []
+        for bdef in bucket_defs:
+            b_start = _ensure_date(bdef['start_date'])
+            b_end = _ensure_date(bdef['end_date']) or b_start
+            if scope_start_date and b_end and b_end < scope_start_date:
+                continue
+            if scope_end_date and b_start and b_start > scope_end_date:
+                continue
+            visible_defs.append(bdef)
+    else:
+        visible_defs = bucket_defs
 
-    buckets = _select_period_buckets(period_options, bucket_mode, start_value, end_value)
-    if not buckets:
-        buckets = period_options['weeks' if bucket_mode == 'week' else 'months']
-
-    if not buckets:
-        result = {
-            'periods': [],
-            'meta': {
-                'reason': 'no_schedule',
-                'bucket_mode': bucket_mode,
-                'quantity_totals': {},
-                'grand_total_cost': '0',
-            }
-        }
-        new_bucket = bucket or {}
-        if signature is None:
-            signature = _kebutuhan_signature(project)
-        new_bucket[entry_key] = {"sig": signature, "data": result}
-        cache.set(cache_namespace, new_bucket, KEBUTUHAN_CACHE_TIMEOUT)
-        return result
-
-    bucket_map = {}
-    for bucket in buckets:
-        start_date = _ensure_date(bucket['start_date'])
-        end_date = _ensure_date(bucket['end_date']) or start_date
-        bucket_map[bucket['value']] = {
-            'start': start_date,
-            'end': end_date,
-            'meta': bucket,
+    bucket_map = {
+        bdef['value']: {
+            'meta': bdef,
             'rows': {},
             'qty_totals': defaultdict(Decimal),
             'cost_totals': defaultdict(Decimal),
         }
+        for bdef in visible_defs
+    }
 
     normalized_time_scope = normalized_scope
 
-    if mode_flag == 'tahapan':
-        pt_qs = PekerjaanTahapan.objects.filter(
-            tahapan_id=tahapan_id
-        ).select_related('pekerjaan', 'tahapan')
-        pekerjaan_proporsi = {
-            pt.pekerjaan_id: pt.proporsi_volume / Decimal('100')
-            for pt in pt_qs
-        }
-        pekerjaan_ids = list(pekerjaan_proporsi.keys())
-    else:
-        pekerjaan_ids = list(
-            Pekerjaan.objects.filter(project=project).values_list('id', flat=True)
-        )
-        pekerjaan_proporsi = {pk: Decimal('1.0') for pk in pekerjaan_ids}
+    # WP-B6b / D-RK-08: pekerjaan scope = all project pekerjaan + klas/sub/pekerjaan
+    # filters. mode='tahapan' NO LONGER scales quantity (Tahapan deprecated as a
+    # calculation source) — it is treated exactly like 'all' here.
+    pekerjaan_ids = list(
+        Pekerjaan.objects.filter(project=project).values_list('id', flat=True)
+    )
 
     if normalized_filters['klasifikasi_ids'] or normalized_filters['sub_klasifikasi_ids']:
         queryset = Pekerjaan.objects.filter(id__in=pekerjaan_ids)
@@ -3245,17 +3263,12 @@ def compute_kebutuhan_timeline(
                 sub_klasifikasi_id__in=normalized_filters['sub_klasifikasi_ids']
             )
         pekerjaan_ids = list(queryset.values_list('id', flat=True))
-        pekerjaan_proporsi = {
-            pk: pekerjaan_proporsi.get(pk, Decimal('1.0'))
-            for pk in pekerjaan_ids
-        }
 
     if normalized_filters['pekerjaan_ids']:
         allowed = set(normalized_filters['pekerjaan_ids'])
         pekerjaan_ids = [pk for pk in pekerjaan_ids if pk in allowed]
-        pekerjaan_proporsi = {
-            pk: pekerjaan_proporsi.get(pk, Decimal('1.0')) for pk in pekerjaan_ids
-        }
+
+    pekerjaan_ids_set = set(pekerjaan_ids)
 
     if not pekerjaan_ids:
         result = {
@@ -3317,30 +3330,6 @@ def compute_kebutuhan_timeline(
             )
         )
 
-    assignment_qs = PekerjaanTahapan.objects.filter(
-        pekerjaan_id__in=pekerjaan_ids
-    ).select_related('tahapan')
-    if mode_flag == 'tahapan' and tahapan_id:
-        assignment_qs = assignment_qs.filter(tahapan_id=tahapan_id)
-
-    assignment_map = defaultdict(list)
-    for assignment in assignment_qs:
-        start_date = _ensure_date(getattr(assignment.tahapan, 'tanggal_mulai', None))
-        end_date = _ensure_date(getattr(assignment.tahapan, 'tanggal_selesai', None)) or start_date
-        if not start_date or not end_date:
-            continue
-        if end_date < start_date:
-            start_date, end_date = end_date, start_date
-        duration = (end_date - start_date).days + 1
-        if duration <= 0:
-            continue
-        assignment_map[assignment.pekerjaan_id].append({
-            'start': start_date,
-            'end': end_date,
-            'duration': duration,
-            'proporsi': Decimal(str(assignment.proporsi_volume or 0)),
-        })
-
     def accumulate(target_rows, kategori, kode, uraian, satuan, qty_val, price_val):
         key = (kategori, kode, uraian, satuan)
         row = target_rows.get(key)
@@ -3365,10 +3354,9 @@ def compute_kebutuhan_timeline(
 
     for detail in details:
         pekerjaan_id = detail['pekerjaan_id']
-        if pekerjaan_id not in pekerjaan_ids:
+        if pekerjaan_id not in pekerjaan_ids_set:
             continue
         volume_total = Decimal(str(vol_map.get(pekerjaan_id, 0) or 0))
-        proporsi_multiplier = pekerjaan_proporsi.get(pekerjaan_id, Decimal('1.0'))
         koefisien = Decimal(str(detail['koefisien'] or 0))
         if koefisien == 0 or volume_total == 0:
             continue
@@ -3382,7 +3370,7 @@ def compute_kebutuhan_timeline(
         if is_bundle_detail:
             multiplier = Decimal(str(detail.get('source_detail__koefisien') or 0))
             koefisien *= multiplier
-        base_quantity = koefisien * volume_total * proporsi_multiplier
+        base_quantity = koefisien * volume_total  # WP-B6b: no tahapan proporsi
         if base_quantity == 0:
             continue
         price_val = Decimal(str(detail.get('harga_item__harga_satuan') or 0))
@@ -3391,35 +3379,29 @@ def compute_kebutuhan_timeline(
         uraian = detail['uraian']
         satuan = detail['satuan']
 
-        assignments = assignment_map.get(pekerjaan_id)
-        if not assignments:
-            accumulate(unscheduled_rows, kategori, kode, uraian, satuan, base_quantity, price_val)
-            continue
+        # WP-B6b: distribute base quantity via canonical weekly fractions into
+        # (in-window) buckets; the remaining fraction goes to 'unscheduled'.
+        for week_number, frac in dist_by_pekerjaan.get(pekerjaan_id, {}).items():
+            if frac <= 0:
+                continue
+            bvalue = week_to_bucket.get(week_number)
+            bucket = bucket_map.get(bvalue) if bvalue else None
+            if bucket is None:  # week filtered out by time_scope window
+                continue
+            qty_val = base_quantity * frac
+            if qty_val == 0:
+                continue
+            accumulate(bucket['rows'], kategori, kode, uraian, satuan, qty_val, price_val)
+            bucket['qty_totals'][kategori] += qty_val
+            if price_val:
+                bucket['cost_totals'][kategori] += price_val * qty_val
 
-        for assignment in assignments:
-            if assignment['proporsi'] <= 0:
-                continue
-            assignment_fraction = assignment['proporsi'] / Decimal('100')
-            assignment_quantity = base_quantity * assignment_fraction
-            if assignment_quantity == 0:
-                continue
-            duration_days = assignment['duration']
-            for bucket_key, bucket in bucket_map.items():
-                start = bucket['start']
-                end = bucket['end']
-                if not start or not end:
-                    continue
-                overlap_days = _calculate_overlap_days(start, end, assignment['start'], assignment['end'])
-                if overlap_days <= 0:
-                    continue
-                ratio = Decimal(overlap_days) / Decimal(duration_days)
-                qty_val = assignment_quantity * ratio
-                if qty_val == 0:
-                    continue
-                accumulate(bucket['rows'], kategori, kode, uraian, satuan, qty_val, price_val)
-                bucket['qty_totals'][kategori] += qty_val
-                if price_val:
-                    bucket['cost_totals'][kategori] += price_val * qty_val
+        unsched_frac = unscheduled_fraction_map.get(pekerjaan_id, Decimal('1'))
+        if unsched_frac > 0:
+            accumulate(
+                unscheduled_rows, kategori, kode, uraian, satuan,
+                base_quantity * unsched_frac, price_val,
+            )
 
     periods_payload = []
     for bucket_key, bucket in bucket_map.items():
@@ -3500,12 +3482,18 @@ def compute_kebutuhan_timeline(
     meta = {
         'mode': mode_flag,
         'tahapan_id': tahapan_id,
-        'bucket_mode': bucket_mode,
+        'bucket_mode': bucket_mode,  # 'week' | 'four_week'
         'time_scope': normalized_time_scope,
         'period_count': len(periods_payload),
         'quantity_totals': {k: _format_decimal(v) for k, v in bucket_totals.items()},
         'grand_total_cost': _format_decimal(grand_total_cost),
     }
+    if compat_mode:
+        meta['compat_mode'] = compat_mode  # legacy 'month_range' alias → four_week
+    if deprecated_mode:
+        # WP-B6b / D-RK-08: tahapan-mode ignored as a calc source (UI cleanup WP-P8/CL-06).
+        meta['deprecated_mode'] = deprecated_mode
+        meta['deprecated_tahapan_id'] = deprecated_tahapan_id
 
     result = {
         'periods': periods_payload,
