@@ -472,6 +472,12 @@ class DetailAHSPProject(TimeStampedModel):
                 name="bundle_ref_exclusive",
                 condition=~Q(ref_ahsp__isnull=False, ref_pekerjaan__isnull=False)
             ),
+            # WP-P2a (TA-01 storage): defense-in-depth — koefisien tidak boleh negatif
+            # di level DB (validator app + bulk_create yang melewati full_clean).
+            models.CheckConstraint(
+                name="detailahsp_koef_nonneg",
+                condition=Q(koefisien__gte=0),
+            ),
         ]
 
     def __str__(self):
@@ -569,6 +575,13 @@ class DetailAHSPExpanded(TimeStampedModel):
             models.Index(fields=["source_detail"]),
         ]
         # NO unique constraint on kode! Multiple bundles can have same kode
+        constraints = [
+            # WP-P2a (TA-01 storage): expanded koefisien tidak boleh negatif (defense-in-depth).
+            models.CheckConstraint(
+                name="detailexpanded_koef_nonneg",
+                condition=Q(koefisien__gte=0),
+            ),
+        ]
 
     def __str__(self):
         bundle_info = f" [from {self.source_bundle_kode}]" if self.source_bundle_kode else ""

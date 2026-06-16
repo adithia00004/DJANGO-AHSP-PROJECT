@@ -25,13 +25,15 @@ class SaveSyncUiRegressionGuardsTests(SimpleTestCase):
         )
         self.assertIn("dp:sync-led-ack", self.template_ahsp_js_source)
 
-    def test_template_auto_reloads_pending_jobs_on_open(self):
+    def test_template_does_not_auto_reload_pending_jobs_on_open(self):
         source = self.template_ahsp_js_source
         self.assertIn(
             "function scheduleAutoReloadPendingJobs(reason = 'open')",
             source,
         )
-        self.assertIn("scheduleAutoReloadPendingJobs('page-open');", source)
+        self.assertNotIn("scheduleAutoReloadPendingJobs('page-open');", source)
+        self.assertIn("jobNeedsReload(id)", source)
+        self.assertIn("const needsFetch =", source)
         self.assertIn("scheduleAutoReloadPendingJobs('source-change-sync');", source)
         self.assertIn("resolveReloadJob(id);", source)
 
@@ -398,15 +400,17 @@ class FormulaUiRegressionGuardsTests(SimpleTestCase):
             self.template_ahsp_js_source,
         )
 
-    def test_template_auto_reloads_pending_jobs_on_open(self):
+    def test_template_does_not_auto_reload_pending_jobs_on_open(self):
         self.assertIn(
             "function scheduleAutoReloadPendingJobs(reason = 'open')",
             self.template_ahsp_js_source,
         )
-        self.assertIn(
+        self.assertNotIn(
             "scheduleAutoReloadPendingJobs('page-open');",
             self.template_ahsp_js_source,
         )
+        self.assertIn("jobNeedsReload(id)", self.template_ahsp_js_source)
+        self.assertIn("const needsFetch =", self.template_ahsp_js_source)
         self.assertIn(
             "scheduleAutoReloadPendingJobs('source-change-sync');",
             self.template_ahsp_js_source,

@@ -2393,7 +2393,10 @@
   // auto-select first job
   const first = $('#ta-job-list .ta-job-item:not([hidden])');
   if (first) selectJob(first);
-  scheduleAutoReloadPendingJobs('page-open');
+  // WP-P2d (UF-010): NO eager mass auto-reload on page-open. Stale (pending-reload)
+  // jobs are resolved LAZILY — selectJobInternal already fetches fresh detail when
+  // a flagged job is opened — and the sync banner shows the pending count. This
+  // stops the surprising bulk reload that fired even when the user left details alone.
 
   // =========================
   // CRITICAL SAFETY: Warn before leaving page with unsaved changes

@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 49% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2 dimulai: WP-P1 (Harga Items) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P2 (Template AHSP) dst. Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
+**Status keseluruhan (≈ 52% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga Items) + WP-P2 (Template AHSP) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P3 (Volume) dst. ENH-01 (P2 picker) defer. Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
 
 ## 1. Aturan Tracking
 
@@ -43,7 +43,8 @@ Status:
 | WP-B9 | Bundle limits | DONE (server guards; B9b UI→WP-P) | 2026-06-16 | 2026-06-16 | B7/B8 | D-10 inti: `MAX_BUNDLE_LEVELS=4` (depth 2→3, kedua jalur) + `MAX_EXPANDED_COMPONENTS=500` stop-segera + circular (existing). Test 4/4. B9b prospective-validation UI DEFER→WP-P |
 | WP-B10 | Actual-cost legacy mapping | DONE | 2026-06-16 | 2026-06-16 | WP-00/B3/B6 | Inventory: actual_cost hanya di PekerjaanProgressWeekly kanonik → mapping legacy NO MIGRATION REQUIRED. JDW-05 fix: reset actual kini hapus actual_cost (no orphan); planned tak terdampak. Test 2/2 |
 | WP-P1 | Harga Items | DONE | 2026-06-16 | 2026-06-16 | B1/B3/B4 | Model A (harga_satuan=SSOT, profil=kalkulator+provenance, LWW). P1a validasi(HI-05)·P1b atomic backend+frontend wiring(HI-02 e2e)·P1c bootstrap(HI-04)·P1d export=harga_satuan(HI-03/12)·P1e paste market÷factor+confirm(HI-07)·HI-08 localStorage dihapus·HI-16 dead code. Endpoint konversi orphan→Model-A-consistent+deprecated. Orphan-cleanup UI→Fase 3 |
-| WP-P2..P9 | Integrasi per-page | PENDING | - | - | Shared WP | P2 Template AHSP (incl UF-007..012, ENH-01); **P7 Jadwal = serap B6d/e (JS week server-authoritative + stop auto-regenerate) + B6e parity test**; **P8 Rekap Kebutuhan = serap B6f-2 cleanup (`api_rekap_kebutuhan_weekly` orphan) + period selector 4-minggu**; P3 Volume; dst |
+| WP-P2 | Template AHSP | DONE (ENH-01 defer) | 2026-06-16 | 2026-06-16 | B3/B4/B7/B8/B9 | TA-01 (app B3+DB constraint P2a/migrasi 0051)·TA-02 (B3)·TA-03 (B7c)·TA-18 (B7a-e)·TA-20 (P2b cascade-save atomik)·TA-21 (P2c e2e)·UF-010 (P2d lazy reload). ENH-01 item picker DEFER (enhancement). TA-05 dibatalkan, TA-17→CL-08 |
+| WP-P3..P9 | Integrasi per-page | PENDING | - | - | Shared WP | P3 Volume (VP-01..07); **P4 List Pekerjaan (UF-007/008/009/012)**; P5 Rincian; P6 Rekap RAB; **P7 Jadwal = serap B6d/e + B6e**; **P8 Rekap Kebutuhan = serap B6f-2 + period selector 4-minggu**; P9 Dashboard |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -71,7 +72,7 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 49% dari eksekusi implementasi selesai** (per 2026-06-16).
+**Headline: ≈ 52% dari eksekusi implementasi selesai** (per 2026-06-16).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
@@ -79,10 +80,10 @@ Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
 | Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~98% | ~44% | **A1·A2(report-only)·B1·B2·B3·B4·B5·B7·B8·B9·B10 DONE; B6 backend SSOT DONE (DoD 3/5)**; sisa hanya **B6d/e (Vite → WP-P7 Jadwal)** + defer (CSP enforcement, export-perf, B9b prospective UI, B3 DB-constraint) |
-| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~16% | ~4.8% | **WP-P1 Harga Items DONE** (Model A, HI-01..16); readiness display di 5 halaman (B4); P2–P9 belum |
+| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~27% | ~8% | **WP-P1 Harga Items + WP-P2 Template AHSP DONE**; readiness display di 5 halaman (B4); P3–P9 belum (ENH-01 picker defer) |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 49%** | |
+| **Total** | **100%** | | **≈ 52%** | |
 
 Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend SSOT ✅ ≈3.2 = DoD 3/5; sisa B6d/e frontend≈0.8 → WP-P7 Jadwal)**, **B7=4 ✅**, **B8=2 ✅**, **B9=2 ✅**, **B10=2 ✅** → selesai ≈44.2/45 ≈ 98% (sisa hanya B6d/e≈0.8 Vite → WP-P7 Jadwal).
 
@@ -1375,3 +1376,55 @@ Implementasi minimum yang dipilih owner: simpan revision/hash + waktu sync maste
 | 2026-06-16 | WP-P1 final | frontend penuh + backend P1/B3/B4/rekap/export | PASS | 283 pass/25 skip; 103/103; check + makemigrations + diff bersih |
 
 **✅ WP-P1 SELESAI.** Checklist HI tertutup: HI-01 (Fase1), HI-02 (e2e), HI-03/HI-12 (P1d), HI-04 (P1c+modal), HI-05 (P1a), HI-06 (Fase1), HI-07 (P1e), HI-08 (localStorage dihapus), HI-09 (Fase1 LWW), HI-16 (dead code). **Model A:** harga_satuan = SSOT tunggal, profil = kalkulator+provenance, last-write-wins, semua jalur (modal/paste/manual/endpoint) konsisten. Orphan-cleanup UI = Fase 3.
+
+---
+
+### WP-P2 — Template AHSP (SURVEI 2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Dependency:** B3/B4/B7/B8/B9 (semua DONE). **Checklist (doc 27):** TA-01, TA-02 (reframe atomicity), TA-03, TA-18, TA-20, TA-21. TA-05 dibatalkan (G-1). TA-17→CL-08. D-05/D-08/D-10 dimiliki B7/B8/B9. **Penting:** UF-007/008/009 = **List Pekerjaan → WP-P4** (BUKAN P2); UF-012 (volume reset ganti ref/mode) = List Pekerjaan/Volume.
+
+**Status checklist (sudah ditutup Fase 1 vs SISA):**
+| Finding | Status |
+|---|---|
+| TA-02 atomicity/no-409 | ✅ DONE (B3 LWW) |
+| TA-03 reset cascade | ✅ DONE (B7c) |
+| TA-18 master→reference_update_available+rebuild | ✅ DONE (B7a–e) |
+| TA-01 tolak koef negatif (app-level) | ✅ DONE (B3) |
+| **TA-01 storage constraint** | ⬜ SISA — DB `CheckConstraint(koefisien ≥ 0)` (follow-up B3 yang ditunda) di DetailAHSPProject (+Expanded) |
+| **TA-20 cascade SAVE-path gagal senyap** | ⬜ SISA — `cascade_operations()` (`views_api.py:2782`) jalan `on_commit` + try/except **hanya log** → user lihat "sukses" walau dependent bisa stale |
+| **TA-21 coverage e2e CUSTOM** | ⬜ SISA — test e2e: CUSTOM direct + bundle AHSP (koef>1) + nested bundle → Harga → Kebutuhan → RAB |
+| **"hapus auto reload massal page-open"** (UF-010) | ⬜ SISA — `template_ahsp.js` auto-reload eager saat buka halaman; ganti **lazy stale resolution per pekerjaan** |
+| **ENH-01 item picker TK/BHN/ALT** | ⬜ SISA (enhancement owner) — typeahead dari `api_list_harga_items` |
+| warning sebut tabel/item sumber | ✅ sebagian (readiness entries punya source_table/source_page, B4) |
+
+**KEPUTUSAN UNTUK OWNER:**
+1. **TA-20 cascade save gagal:** jadikan **atomik (rollback)** seperti reset/B7c (save batal bila cascade dependent gagal) — ATAU pertahankan post-commit tapi **tandai pending/error terlihat user** (badge readiness)? Rekомendasi: **atomik** (konsisten dgn B7c + WP-B3 "no silent success"); tapi catatan: cascade bisa menyentuh banyak dependent → save lebih berat. Alternatif aman: atomik tapi hanya untuk dependent yang BENAR berubah.
+2. **ENH-01 (item picker):** kerjakan di P2 sekarang, atau defer (enhancement, bukan bug)? Backend 80% siap (`_upsert_harga_item` reuse by kode, auto-`Unit-NNNN`, `api_list_harga_items`); sisa = frontend typeahead.
+3. **UF-010 (auto-reload eager):** `template_ahsp.js` classic? (bisa diedit) atau Vite? perlu cek sebelum scope.
+4. **Urutan:** backend dulu (TA-01 constraint + TA-20 + TA-21 tests), lalu frontend (UF-010 lazy reload + ENH-01)?
+
+**Rencana increment (USULAN):** **P2a** DB CheckConstraint koef (migrasi, TA-01 storage) · **P2b** TA-20 cascade save visibility (atomik/pending per keputusan #1) · **P2c** TA-21 e2e contract tests · **P2d** UF-010 lazy reload (frontend) · **P2e** ENH-01 item picker (frontend, bila GO).
+
+**KEPUTUSAN OWNER 2026-06-16: GO** — #1 TA-20 **atomik** (rollback bila cascade dependent gagal; cascade hanya menyentuh dependent yang benar), #2 ENH-01 **DEFER**, #4 backend dulu.
+
+#### inc-P2a/b/c — Backend Template AHSP (DONE 2026-06-16)
+
+- **P2a (TA-01 storage):** DB `CheckConstraint(koefisien ≥ 0)` di `DetailAHSPProject` (`detailahsp_koef_nonneg`) + `DetailAHSPExpanded` (`detailexpanded_koef_nonneg`). Migrasi **0051**. Defense-in-depth: `bulk_create`/direct ORM yang melewati `full_clean` kini tetap ditolak DB.
+- **P2b (TA-20):** `api_save_detail_ahsp_for_pekerjaan` — cascade re-expansion dependent dipindah dari `on_commit` (try/except hanya-log) ke **INLINE dalam transaksi atomik save**. Cascade gagal → `set_rollback(True)` + 500 generik (no silent stale). Cache-invalidate + orphan-cleanup tetap `on_commit` (side-effect). Konsisten B7c (reset) + WP-B3.
+- **P2c (TA-21):** test e2e via pipeline NYATA `_populate_expanded_from_raw`: CUSTOM direct (E_base=200, total=660), CUSTOM bundle AHSP koef>1 (5×2×100=1000, total=3300), nested pekerjaan-bundle (propagasi komponen + total>0).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P2 inc-a/b/c | `tests_wp_p2_template_ahsp` | PASS | 8/8: koef-constraint DB (neg ditolak, 0 ok, expanded neg ditolak); cascade-fail rollback save (500, nol persist) + cascade-ok save 200; e2e direct/bundle-AHSP/nested |
+| 2026-06-16 | WP-P2 inc-a/b/c | B3/B7/B8/B9/template/rekap regresi | PASS | 114/114; check + makemigrations + diff bersih |
+
+#### inc-P2d — UF-010 lazy reload (DONE 2026-06-16) → WP-P2 SELESAI (ENH-01 defer)
+
+`template_ahsp.js`: hapus `scheduleAutoReloadPendingJobs('page-open')` di boot (auto-reload massal saat buka halaman). **Stale resolution kini LAZY per-pekerjaan** — `selectJobInternal` sudah fetch detail fresh saat job ber-flag dibuka (`jobNeedsReload`→`needsFetch`); banner sync menampilkan jumlah pending. Menghentikan bulk-reload mengejutkan yang dulu jalan walau detail dibiarkan. (Event `source-change-sync` saat sesi berjalan dibiarkan — bukan page-open.)
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P2 inc-d | `tests/template_ahsp_lain.test.js` (+P2d guard) | PASS | 6/6: no `page-open` mass-reload; lazy reload on select tetap ada |
+| 2026-06-16 | WP-P2 final | frontend penuh + backend P2 | PASS | 285 pass/25 skip; backend P2 8/8 |
+
+**✅ WP-P2 SELESAI.** Checklist tertutup: TA-01 (app B3 + DB constraint P2a), TA-02 (B3), TA-03 (B7c), TA-18 (B7a–e), TA-20 (P2b atomic cascade save), TA-21 (P2c e2e tests), UF-010 (P2d lazy reload). TA-05 dibatalkan (G-1), TA-17→CL-08. **ENH-01 (item picker) DEFER** (enhancement owner; backend 80% siap). D-05/D-08/D-10 milik B7/B8/B9 (done).

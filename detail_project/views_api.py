@@ -2776,33 +2776,35 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
         project.save(update_fields=['updated_at'])
         logger.info(f"[PROJECT_TIMESTAMP] Updated project {project.id} timestamp after saving {len(saved_raw_details)} detail AHSP changes")
 
-    # CRITICAL FIX: Cascade re-expansion for bundle references
-    # When this pekerjaan is modified and is referenced by other pekerjaan as bundle,
-    # we must re-expand those referencing pekerjaan to prevent stale data
-    def cascade_operations():
-        """Execute cascade operations after transaction commits"""
-        # 1. Re-expand all pekerjaan that reference this modified pekerjaan
-        try:
-            re_expanded_count = cascade_bundle_re_expansion(project, pkj.id)
-            if re_expanded_count > 0:
-                logger.info(
-                    f"[SAVE_DETAIL_AHSP] CASCADE: Re-expanded {re_expanded_count} pekerjaan "
-                    f"that reference pekerjaan {pkj.id}"
-                )
-        except Exception as e:
-            logger.error(
-                f"[SAVE_DETAIL_AHSP] CASCADE FAILED: Error re-expanding referencing pekerjaan: {str(e)}",
-                exc_info=True
+    # WP-P2b (TA-20): cascade re-expansion runs INSIDE this atomic save (not
+    # post-commit) so a failure can NEVER leave dependent pekerjaan silently stale
+    # while the save reports success. cascade_bundle_re_expansion only re-expands
+    # pekerjaan that actually reference this one. On failure the whole save rolls
+    # back with a clear error (WP-B3 no-silent-success), consistent with reset (B7c).
+    try:
+        re_expanded_count = cascade_bundle_re_expansion(project, pkj.id)
+        if re_expanded_count > 0:
+            logger.info(
+                f"[SAVE_DETAIL_AHSP] CASCADE: Re-expanded {re_expanded_count} dependent pekerjaan of {pkj.id}"
             )
-            # Don't raise - cascade failure shouldn't fail the save operation
+    except Exception:
+        logger.error(
+            "[SAVE_DETAIL_AHSP] CASCADE FAILED for pekerjaan %s; rolling back save", pkj.id, exc_info=True
+        )
+        transaction.set_rollback(True)
+        return JsonResponse({
+            "ok": False,
+            "success": False,
+            "user_message": "Gagal menyinkronkan pekerjaan terkait. Penyimpanan dibatalkan, silakan coba lagi.",
+            "errors": [_err("$", "cascade re-expansion gagal")],
+        }, status=500)
 
-        # 2. Invalidate cache (always needed)
+    # Cache invalidation + orphan cleanup are post-commit side-effects (not data
+    # integrity), so they stay on_commit.
+    def _post_commit_side_effects():
         invalidate_rekap_cache(project)
-
-        # 3. Auto-cleanup orphan harga item akibat baris dihapus/diubah saat save.
         _auto_cleanup_orphans(project)
-
-    transaction.on_commit(cascade_operations)
+    transaction.on_commit(_post_commit_side_effects)
 
     status_code = 400 if errors else 200
     logger.info(f"[SAVE_DETAIL_AHSP] SUCCESS - Status: {status_code}, Raw: {len(saved_raw_details)}, Expanded: {len(expanded_to_create)}, Errors: {len(errors)}")

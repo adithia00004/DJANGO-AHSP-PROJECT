@@ -44,3 +44,17 @@ describe('WP-B8d — template markup', () => {
     expect(html).toContain('data-lain-mode="job"');
   });
 });
+
+describe('WP-P2d (UF-010) — no eager mass auto-reload on page-open', () => {
+  const js = read('template_ahsp.js');
+
+  test('page-open does not trigger a bulk auto-reload', () => {
+    expect(js).not.toContain("scheduleAutoReloadPendingJobs('page-open')");
+  });
+
+  test('stale jobs are still resolved lazily on selection', () => {
+    // selectJobInternal fetches fresh detail when a flagged job is opened.
+    expect(js).toContain('jobNeedsReload(id)');
+    expect(js).toContain('const needsFetch =');
+  });
+});
