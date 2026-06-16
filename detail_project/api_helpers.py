@@ -204,6 +204,44 @@ def rate_limit(max_requests: int = 100, window: int = 60, key_prefix: str = None
     return decorator
 
 
+def limit_request_body(max_bytes: int = 2_000_000):
+    """WP-P3b (VP-07): reject oversized request bodies per endpoint (DoS/abuse
+    protection) without throttling legitimate request *frequency* (autosave).
+
+    The global body limit (~50 MB) is far too large for these JSON endpoints; a
+    tight per-endpoint cap is the cheap, deterministic guard. Returns 413 before
+    the body is parsed. Default 2 MB — generous for parameter/volume payloads.
+    """
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        def wrapped_view(request, *args, **kwargs):
+            size = None
+            try:
+                cl = request.META.get('CONTENT_LENGTH')
+                size = int(cl) if cl not in (None, '') else None
+            except (TypeError, ValueError):
+                size = None
+            if size is None:
+                try:
+                    size = len(request.body)
+                except Exception:
+                    size = 0
+            if size is not None and size > max_bytes:
+                logger.warning(
+                    "Request body too large on %s: %s > %s bytes",
+                    view_func.__name__, size, max_bytes,
+                )
+                return APIResponse.error(
+                    message="Data yang dikirim terlalu besar. Kurangi jumlah baris lalu coba lagi.",
+                    code='PAYLOAD_TOO_LARGE',
+                    status=413,
+                    details={'max_bytes': max_bytes, 'received_bytes': size},
+                )
+            return view_func(request, *args, **kwargs)
+        return wrapped_view
+    return decorator
+
+
 # ============================================================================
 # STANDARDIZED API RESPONSES
 # ============================================================================

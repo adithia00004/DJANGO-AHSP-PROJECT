@@ -107,7 +107,13 @@
   let formulaDraftById = {};
   const rawInputTouchedAtById = {};
   const negativeClampNoticeById = new Set(); // non-blocking warning agar tidak spam
-  const FORMULA_SYNC_DELAY = 1600;
+  // WP-P3b: unified with the volume autosave cadence (AUTOSAVE_MS = 5 min). The
+  // three autosave subsystems (volume / formula / parameter) now share ONE calm
+  // 5-minute debounce instead of per-second background syncs — far less server
+  // chat and a smaller localStorage↔server desync surface (VP-06). Data safety in
+  // the 5-min window is covered by save-on-leave (visibilitychange/pagehide,
+  // keepalive) + the explicit Save button + the beforeunload warning.
+  const FORMULA_SYNC_DELAY = AUTOSAVE_MS;
   const SUGGEST_HIDE_DELAY_MS = 200;
   const FORMULA_ALLOWED_FUNCTIONS = Object.freeze([
     'sum', 'min', 'max', 'round', 'avg', 'abs', 'floor', 'ceil', 'pow',
@@ -453,12 +459,15 @@
       if (!r.ok) throw new Error(r.statusText);
       return r.json();
     }
-    async function jpost(url, data) {
-      if (h && h.jfetchJson) return h.jfetchJson(url, { method: 'POST', data });
+    async function jpost(url, data, opts = {}) {
+      // WP-P3b: keepalive flushes (save-on-leave) bypass the shared http layer and
+      // use a local fetch with keepalive:true so the request survives page unload.
+      if (!opts.keepalive && h && h.jfetchJson) return h.jfetchJson(url, { method: 'POST', data });
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
         credentials: 'same-origin',
+        keepalive: !!opts.keepalive,
         body: JSON.stringify(data)
       });
       const body = await r.json().catch(() => ({}));
@@ -2937,7 +2946,7 @@
     return issues;
   }
 
-  async function syncFormulaStateToServer(ids = null, { reason = 'auto' } = {}) {
+  async function syncFormulaStateToServer(ids = null, { reason = 'auto', keepalive = false } = {}) {
     const validationIssues = collectFormulaSyncValidationIssues(ids);
     if (validationIssues.length) {
       showFormulaSyncStatus('error');
@@ -2956,7 +2965,7 @@
     formulaSyncInFlight = true;
     showFormulaSyncStatus('pending');
     try {
-      const res = await HTTP.jpost(EP_FORMULA_STATE, { items });
+      const res = await HTTP.jpost(EP_FORMULA_STATE, { items }, { keepalive });
       syncFormulaStateToServer._retries = 0;
 
       if (!(res.ok && res.data?.ok)) {
@@ -6297,9 +6306,22 @@
       } catch { }
       const localFormula = loadFormulas();
       if (formulaLocalDirty) {
+        // WP-P3c (VP-06): reconcile local↔server on load. Only entries whose raw/fx
+        // GENUINELY differ from the server are unsaved. Previously every local entry
+        // was marked dirty whenever the persisted flag was set, so a stale flag (or
+        // a sync that already succeeded server-side) made the page open showing
+        // "ada perubahan yang perlu disimpan" with nothing actually edited
+        // (e.g. project 195). Server is authoritative; if nothing differs, clear it.
         Object.keys(localFormula).forEach((id) => {
           const parsedId = Number(id);
-          if (Number.isFinite(parsedId)) formulaDirtySet.add(parsedId);
+          if (!Number.isFinite(parsedId)) return;
+          const l = localFormula[id] || {};
+          const s = serverFormula[parsedId] || {};
+          const lRaw = String(l.raw || '').trim();
+          const sRaw = String(s.raw || '').trim();
+          if (lRaw !== sRaw || !!l.fx !== !!s.fx) {
+            formulaDirtySet.add(parsedId);
+          }
         });
         if (formulaDirtySet.size) showFormulaSyncStatus('pending');
         else clearFormulaLocalDirty();
@@ -6389,7 +6411,7 @@
     }, ms);
   }
 
-  async function saveDirty({ reason = 'manual' } = {}) {
+  async function saveDirty({ reason = 'manual', keepalive = false } = {}) {
     if (saving) {
       saveRetryRequested = true;
       if (reason === 'manual') {
@@ -6483,7 +6505,7 @@
       let json = {};
       let savedIdSet = new Set();
       if (hasVolumeChanges) {
-        const res = await HTTP.jpost(EP_SAVE, { items });
+        const res = await HTTP.jpost(EP_SAVE, { items }, { keepalive });
         json = res?.data || {};
         const errCount = Array.isArray(json.errors) ? json.errors.length : 0;
         // Atomic response: acknowledge rows only after a complete success.
@@ -6513,7 +6535,7 @@
         formulaSyncTimer = null;
       }
       const formulaResult = formulaDirtySet.size
-        ? await syncFormulaStateToServer(null, { reason })
+        ? await syncFormulaStateToServer(null, { reason, keepalive })
         : { ok: true, skipped: true, synced: 0 };
 
       if (!hasVolumeChanges) {
@@ -6684,6 +6706,38 @@
     if (window.__vpDirty && !allowUnload) { e.preventDefault(); e.returnValue = ''; return ''; }
   });
 
+  // WP-P3b: save-on-leave flush. With the autosave cadence relaxed to 5 minutes,
+  // this is the real safety net — it persists any pending change the moment the
+  // page is hidden or unloaded (tab switch, navigation, close, mobile background),
+  // using keepalive so the request survives unload. Replaces reliance on
+  // localStorage as the durability mechanism (which VP-06 removes). The explicit
+  // Save button and the beforeunload warning remain as additional guards.
+  let _leaveFlushed = false;
+  function flushSavesOnLeave() {
+    try { flushPendingQtyInputs(); } catch (_) { }
+    // We persist now → cancel any pending debounce timers.
+    if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
+    if (formulaSyncTimer) { clearTimeout(formulaSyncTimer); formulaSyncTimer = null; }
+    if (paramSyncTimer) { clearTimeout(paramSyncTimer); paramSyncTimer = null; }
+    if (computedSyncTimer) { clearTimeout(computedSyncTimer); computedSyncTimer = null; }
+    try {
+      if (dirtySet.size > 0) saveDirty({ reason: 'leave', keepalive: true });
+      else if (formulaLocalDirty || formulaDirtySet.size) syncFormulaStateToServer(null, { reason: 'leave', keepalive: true });
+    } catch (_) { }
+    try { if (baseParamsLocalDirty) syncParamsToServer({ keepalive: true }); } catch (_) { }
+    try { if (computedParamsLocalDirty) syncComputedParamsToServer({ keepalive: true }); } catch (_) { }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSavesOnLeave();
+  });
+  // pagehide covers navigation/close (incl. bfcache); guard against double-fire.
+  window.addEventListener('pagehide', () => {
+    if (_leaveFlushed) return;
+    _leaveFlushed = true;
+    flushSavesOnLeave();
+    setTimeout(() => { _leaveFlushed = false; }, 1500);
+  });
+
   window.addEventListener('keydown', (e) => {
     flushPendingQtyInputs();
     if (!window.__vpDirty) return;
@@ -6721,7 +6775,7 @@
   // Debounce timer for server sync
   let paramSyncTimer = null;
   let computedSyncTimer = null;
-  const PARAM_SYNC_DELAY = 2000; // 2 seconds debounce
+  const PARAM_SYNC_DELAY = AUTOSAVE_MS; // WP-P3b: unified to the 5-min autosave cadence
   let baseParamSyncAt = null;
   let computedParamSyncAt = null;
 
@@ -6876,7 +6930,7 @@
   }
 
   // Sync current parameters to server
-  async function syncParamsToServer() {
+  async function syncParamsToServer({ keepalive = false } = {}) {
     try {
       // Build parameters object with values and labels
       const params = {};
@@ -6890,7 +6944,7 @@
       const res = await HTTP.jpost(EP_PARAMS_SYNC, {
         parameters: params,
         mode: 'replace',
-      });
+      }, { keepalive });
 
       if (res.ok && res.data?.ok) {
         console.log('[VP] Params synced to server:', {
@@ -6918,7 +6972,7 @@
     }
   }
 
-  async function syncComputedParamsToServer() {
+  async function syncComputedParamsToServer({ keepalive = false } = {}) {
     try {
       const payload = {};
       Object.keys(computedParams || {}).forEach((code) => {
@@ -6934,7 +6988,7 @@
       const res = await HTTP.jpost(EP_CPARAMS_SYNC, {
         computed_parameters: payload,
         mode: 'replace',
-      });
+      }, { keepalive });
       if (res.ok && res.data?.ok) {
         console.log('[VP] Computed params synced to server:', {
           created: Number(res.data?.created || 0),
@@ -6960,13 +7014,22 @@
     }
   }
 
+  // WP-P3c (VP-06): true when the current local base params equal the server's —
+  // used to recognise a STALE dirty flag (nothing actually unsaved).
+  function _baseParamsMatchServer(serverParams, serverLabels) {
+    const lk = Object.keys(variables || {});
+    if (lk.length !== Object.keys(serverParams || {}).length) return false;
+    for (const k of lk) {
+      if (!(k in serverParams)) return false;
+      if (Number(variables[k]) !== Number(serverParams[k])) return false;
+      if (String((varLabels || {})[k] || k) !== String(serverLabels[k] || k)) return false;
+    }
+    return true;
+  }
+
   // Load parameters from server and replace localStorage snapshot
   async function loadParamsFromServer(options = {}) {
     const force = !!options.force;
-    if (!force && shouldProtectLocalBaseState()) {
-      TOAST.warn('Perubahan lokal parameter belum tersinkron. Data server tidak diterapkan agar edit lokal aman.');
-      return { ok: false, source: 'localStorage', reason: 'local_dirty' };
-    }
     try {
       const data = await HTTP.jget(EP_PARAMS);
       if (data?.ok && Array.isArray(data.parameters)) {
@@ -6978,6 +7041,19 @@
           if (!isValidBaseParamCode(code)) continue;
           serverParams[code] = Number(p.value) || 0;
           serverLabels[code] = p.label || code;
+        }
+
+        // WP-P3c (VP-06): only protect local state when there is a GENUINE local≠server
+        // diff. A dirty flag whose content already matches the server is stale (e.g.
+        // a sync that succeeded, or a prior session) → clear it and apply the server
+        // copy. This stops the false "perlu disimpan" on open (project 195) without
+        // discarding real unsaved edits. An active sync timer always protects.
+        if (!force && shouldProtectLocalBaseState()) {
+          if (paramSyncTimer || !_baseParamsMatchServer(serverParams, serverLabels)) {
+            TOAST.warn('Perubahan lokal parameter belum tersinkron. Data server tidak diterapkan agar edit lokal aman.');
+            return { ok: false, source: 'localStorage', reason: 'local_dirty' };
+          }
+          clearBaseParamsDirty();  // stale flag — local already matches server
         }
 
         // Server is authoritative on successful fetch.
@@ -7008,12 +7084,23 @@
     }
   }
 
+  // WP-P3c (VP-06): true when the current local computed params equal the server's.
+  function _computedParamsMatchServer(defs) {
+    const lk = Object.keys(computedParams || {});
+    if (lk.length !== Object.keys(defs || {}).length) return false;
+    for (const k of lk) {
+      const l = (computedParams || {})[k] || {};
+      const s = (defs || {})[k];
+      if (!s) return false;
+      if (String(l.expression || '').trim() !== String(s.expression || '').trim()) return false;
+      if (String(l.label || k).trim() !== String(s.label || k).trim()) return false;
+      if (String(l.unit || '').trim() !== String(s.unit || '').trim()) return false;
+    }
+    return true;
+  }
+
   async function loadComputedParamsFromServer(options = {}) {
     const force = !!options.force;
-    if (!force && shouldProtectLocalComputedState()) {
-      TOAST.warn('Perubahan lokal formula turunan belum tersinkron. Data server tidak diterapkan agar edit lokal aman.');
-      return { ok: false, source: 'localStorage', reason: 'local_dirty' };
-    }
     try {
       const data = await HTTP.jget(EP_CPARAMS);
       if (data?.ok && Array.isArray(data.computed_parameters)) {
@@ -7028,6 +7115,16 @@
             description: String(p?.description || '').trim(),
           };
         });
+        // WP-P3c (VP-06): clear a stale computed dirty flag when local already
+        // matches the server (false "perlu disimpan" fix); protect only real diffs.
+        if (!force && shouldProtectLocalComputedState()) {
+          const normalizedDefs = normalizeComputedParamsShape(defs);
+          if (computedSyncTimer || !_computedParamsMatchServer(normalizedDefs)) {
+            TOAST.warn('Perubahan lokal formula turunan belum tersinkron. Data server tidak diterapkan agar edit lokal aman.');
+            return { ok: false, source: 'localStorage', reason: 'local_dirty' };
+          }
+          clearComputedParamsDirty();  // stale flag — local already matches server
+        }
         computedParams = normalizeComputedParamsShape(defs);
         dropComputedNameConflicts();
         localStorage.setItem(storageKeyComputed(), JSON.stringify(computedParams));

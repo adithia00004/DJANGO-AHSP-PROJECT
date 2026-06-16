@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 52% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga Items) + WP-P2 (Template AHSP) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P3 (Volume) dst. ENH-01 (P2 picker) defer. Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
+**Status keseluruhan (≈ 55% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P4 (List Pekerjaan) dst. Defer: ENH-01 (P2 picker), P3f (redundan). Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
 
 ## 1. Aturan Tracking
 
@@ -44,7 +44,8 @@ Status:
 | WP-B10 | Actual-cost legacy mapping | DONE | 2026-06-16 | 2026-06-16 | WP-00/B3/B6 | Inventory: actual_cost hanya di PekerjaanProgressWeekly kanonik → mapping legacy NO MIGRATION REQUIRED. JDW-05 fix: reset actual kini hapus actual_cost (no orphan); planned tak terdampak. Test 2/2 |
 | WP-P1 | Harga Items | DONE | 2026-06-16 | 2026-06-16 | B1/B3/B4 | Model A (harga_satuan=SSOT, profil=kalkulator+provenance, LWW). P1a validasi(HI-05)·P1b atomic backend+frontend wiring(HI-02 e2e)·P1c bootstrap(HI-04)·P1d export=harga_satuan(HI-03/12)·P1e paste market÷factor+confirm(HI-07)·HI-08 localStorage dihapus·HI-16 dead code. Endpoint konversi orphan→Model-A-consistent+deprecated. Orphan-cleanup UI→Fase 3 |
 | WP-P2 | Template AHSP | DONE (ENH-01 defer) | 2026-06-16 | 2026-06-16 | B3/B4/B7/B8/B9 | TA-01 (app B3+DB constraint P2a/migrasi 0051)·TA-02 (B3)·TA-03 (B7c)·TA-18 (B7a-e)·TA-20 (P2b cascade-save atomik)·TA-21 (P2c e2e)·UF-010 (P2d lazy reload). ENH-01 item picker DEFER (enhancement). TA-05 dibatalkan, TA-17→CL-08 |
-| WP-P3..P9 | Integrasi per-page | PENDING | - | - | Shared WP | P3 Volume (VP-01..07); **P4 List Pekerjaan (UF-007/008/009/012)**; P5 Rincian; P6 Rekap RAB; **P7 Jadwal = serap B6d/e + B6e**; **P8 Rekap Kebutuhan = serap B6f-2 + period selector 4-minggu**; P9 Dashboard |
+| WP-P3 | Volume Pekerjaan | DONE (P3f skip-by-design) | 2026-06-16 | 2026-06-16 | B3/B4 | VP-01..07 tertutup. P3a VP-05 validasi computed · P3b VP-07 payload+rate-limit + autosave gabung 5mnt + save-on-leave · P3c VP-06 server-authoritative + fix false-dirty project 195 · P3d JSON=param data-transfer (compliant) · P3e cross-page SSOT test. P3f (sinyal stale) skip = redundan (reevaluate+dirty sudah cover). Model A: quantity=SSOT RAB+Kebutuhan |
+| WP-P4..P9 | Integrasi per-page | PENDING | - | - | Shared WP | **P4 List Pekerjaan (UF-007/008/009/012)**; P5 Rincian; P6 Rekap RAB; **P7 Jadwal = serap B6d/e + B6e**; **P8 Rekap Kebutuhan = serap B6f-2 + period selector 4-minggu**; P9 Dashboard |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -72,7 +73,7 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 52% dari eksekusi implementasi selesai** (per 2026-06-16).
+**Headline: ≈ 55% dari eksekusi implementasi selesai** (per 2026-06-16).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
@@ -80,10 +81,10 @@ Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
 | Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~98% | ~44% | **A1·A2(report-only)·B1·B2·B3·B4·B5·B7·B8·B9·B10 DONE; B6 backend SSOT DONE (DoD 3/5)**; sisa hanya **B6d/e (Vite → WP-P7 Jadwal)** + defer (CSP enforcement, export-perf, B9b prospective UI, B3 DB-constraint) |
-| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~27% | ~8% | **WP-P1 Harga Items + WP-P2 Template AHSP DONE**; readiness display di 5 halaman (B4); P3–P9 belum (ENH-01 picker defer) |
+| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~38% | ~11% | **WP-P1 Harga + WP-P2 Template + WP-P3 Volume DONE**; readiness di 5 halaman (B4); P4–P9 belum (ENH-01 + P3f defer/skip) |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 52%** | |
+| **Total** | **100%** | | **≈ 55%** | |
 
 Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend SSOT ✅ ≈3.2 = DoD 3/5; sisa B6d/e frontend≈0.8 → WP-P7 Jadwal)**, **B7=4 ✅**, **B8=2 ✅**, **B9=2 ✅**, **B10=2 ✅** → selesai ≈44.2/45 ≈ 98% (sisa hanya B6d/e≈0.8 Vite → WP-P7 Jadwal).
 
@@ -1428,3 +1429,129 @@ Implementasi minimum yang dipilih owner: simpan revision/hash + waktu sync maste
 | 2026-06-16 | WP-P2 final | frontend penuh + backend P2 | PASS | 285 pass/25 skip; backend P2 8/8 |
 
 **✅ WP-P2 SELESAI.** Checklist tertutup: TA-01 (app B3 + DB constraint P2a), TA-02 (B3), TA-03 (B7c), TA-18 (B7a–e), TA-20 (P2b atomic cascade save), TA-21 (P2c e2e tests), UF-010 (P2d lazy reload). TA-05 dibatalkan (G-1), TA-17→CL-08. **ENH-01 (item picker) DEFER** (enhancement owner; backend 80% siap). D-05/D-08/D-10 milik B7/B8/B9 (done).
+
+---
+
+### WP-P3 — Volume Pekerjaan (SURVEI 2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Dependency:** B3/B4 (DONE). **Checklist (doc 27):** VP-01..07. **Spec:** atomicity (B3), formula sync atomik, validate-before-replace, dirty cleared hanya setelah save sukses, delete param terpakai=422+usage, hilangkan prompt merge/override false-positive, null≠zero, pensiun JSON report bila tak ada import sah.
+
+**Status checklist (sudah ditutup Fase 1 vs SISA):**
+| Finding | Status |
+|---|---|
+| VP-01 partial formula sync hapus dirty | ✅ DONE (B3 inc-2 validate-all-first atomik) |
+| VP-02 delete param tanpa dependency guard | ✅ DONE (B3 inc-2 → 422+usage) |
+| VP-03 replace sync sukses parsial | ✅ DONE (B3 inc-2 validate-before-delete 422) |
+| VP-04 formula-state API tak validasi tipe item | ✅ DONE (B3 inc-2 non-dict→400) |
+| **VP-05 computed expression tak divalidasi server** | ⬜ SISA — `api_project_computed_parameters_sync` (`views_api.py:4079`) hanya cek expr non-kosong; **tak** jalankan validator formula. (Quantity formula SUDAH divalidasi `_validate_formula_raw`.) |
+| **VP-06 conflict blind-spot + prompt merge/override** | ⬜ SISA (sebagian) — 409/stale-sync **sudah dihapus** B3 (LWW) → prompt konflik tak muncul. Residual: `mergeFormulaStateMaps` (`volume_pekerjaan.js:2769`) gabung localStorage↔server bisa **menghidupkan formula yang sudah dihapus** (revive deleted) → server harus authoritative |
+| **VP-07 rate limit + payload limit** | ⬜ SISA — endpoint save volume/param/computed/formula-state belum `@rate_limit(write)` + batas payload (hardening) |
+
+**Item spec lain:**
+- "null≠zero" — ✅ desain (VolumePekerjaan.quantity NOT NULL = baris absen ≠ qty 0; B4).
+- "dirty cleared hanya setelah save sukses" — perlu verifikasi frontend (B3 atomic mendukung).
+- **JSON report Volume:** `volume_pekerjaan.js` punya `exportAsJSON` (`:5628`) + import JSON/CSV parameter. **Keputusan B-2:** ini transfer PARAMETER (label,value) atau report? Pensiun JSON-report ATAU pertahankan sebagai data-transfer parameter sah?
+
+**KEPUTUSAN UNTUK OWNER:**
+1. **VP-06 localStorage merge:** jadikan **server-authoritative** — localStorage = draft transien, TIDAK boleh menghidupkan formula yang dihapus server (sejajar HI-08 di Harga)? (rekomendasi: ya)
+2. **JSON report Volume:** import/export parameter JSON+CSV = **data-transfer sah dipertahankan** (bukan "report") ATAU dipensiun? (rekomendasi: pertahankan parameter CSV; JSON parameter boleh tetap sebagai data-transfer — bukan laporan PDF/XLSX). Mohon arahan.
+3. **VP-07 rate limit:** terapkan `@rate_limit(category='write')` + batas payload di endpoint Volume (hardening) sekarang? (rekomendasi: ya, ringan)
+4. **Urutan:** backend dulu (VP-05 validasi + VP-07 rate-limit + VP-06 backend), lalu frontend (VP-06 localStorage + JSON)?
+
+**Rencana increment (USULAN):** **P3a** VP-05 validasi expression computed (server) · **P3b** VP-07 rate-limit + payload-limit endpoint Volume · **P3c** VP-06 server-authoritative formula-state (stop revive deleted; frontend localStorage) · **P3d** JSON report (per keputusan #2).
+
+#### Cakupan Parameter & Formula (EKSPLISIT, ditambah 2026-06-16 atas permintaan owner)
+
+Volume = page yang mengelola **base parameter** (`ProjectParameter`, `bp_N`), **computed parameter** (`ProjectComputedParameter`, `cp_N`), **formula quantity** (`VolumeFormulaState`, `fx`), dan **volume quantity** (`VolumePekerjaan.quantity`). Cakupan per-sub-fitur di P3:
+| Sub-fitur | Ditutup oleh |
+|---|---|
+| Base param: CRUD/sync atomik, delete-guard | VP-02/03 (✅ B3) |
+| Computed param: sync atomik | VP-03 (✅ B3); **validasi expression** VP-05 (⬜ P3a) |
+| Formula quantity: sync atomik, validasi tipe | VP-01/04 (✅ B3) |
+| localStorage param/formula → false-dirty/revive | VP-06 (⬜ P3c) |
+| Rate-limit semua endpoint param/computed/formula | VP-07 (⬜ P3b) |
+| **Correctness inti** (evaluasi bp/cp, sirkular, span-remap, copy/export) | **Program "Opaque ID Parameter System"** (di luar P3, NEARLY COMPLETE; `tests_phase1_opaque_api` dll) |
+
+**Catatan P3a:** validator computed EXPRESSION pakai tokenizer computed (`formula_tokenizer.py`), BUKAN `_validate_formula_raw` (yang utk formula quantity). Verifikasi saat implementasi.
+
+#### Perilaku Lintas-Halaman — Volume → Rekap RAB & Rekap Kebutuhan (ditambah 2026-06-16)
+
+**SSOT lintas-halaman = `VolumePekerjaan.quantity`.** Dikonsumsi: Rekap RAB (`total = G × quantity`), Rekap Kebutuhan (`koef_expanded × quantity × proporsi_minggu`). **Formula (`VolumeFormulaState`) = KALKULATOR yang menghasilkan quantity — bukan SSOT** (paralel **Model A** Harga: harga_satuan=SSOT, conversion=kalkulator).
+
+Verifikasi wiring (terkonfirmasi):
+- `build_project_cache_signature` (services.py:175) **menyertakan `VolumePekerjaan`** → perubahan volume meng-invalidate cache RAB/Kebutuhan/Kurva. ✅
+- `api_save_volume_pekerjaan` (:1799) + `api_volume_formula_state` (:5282) memanggil `invalidate_rekap_cache` on_commit. ✅
+- Manual quantity → **hapus formula sidecar** (`api_volume_formula_state` :5453-5457: "numeric/manual input must delete stale sidecar") = Model-A last-write-wins. ✅
+
+**TEMUAN PERILAKU (perlu keputusan):**
+- (a) **Evaluasi formula = CLIENT-SIDE**; server hanya menyimpan **snapshot quantity** ke `VolumePekerjaan`. Maka **perubahan PARAMETER tidak otomatis merambat ke RAB/Kebutuhan** sampai page Volume re-evaluasi + Simpan. RAB/Kebutuhan (server) pakai quantity tersimpan terakhir. → Apakah ini diterima (by-design, user re-save) ATAU perlu **sinyal readiness "quantity formula stale vs parameter"** (analog stale_expansion AHSP)?
+- (b) **Quantity & formula disimpan via DUA call terpisah** (volume save + formula sync). Tiap call atomik (B3), tapi tak ada atomisitas lintas-call → bila quantity tersimpan tapi formula gagal sync, RAB tetap benar (pakai quantity) namun flag formula-dirty localStorage tertinggal → **kontributor false-dirty (project 195)**. P3c rekonsiliasi-on-load menutup gejalanya; perlu putuskan apakah cukup, atau gabungkan quantity+formula jadi satu endpoint atomik.
+
+**KEPUTUSAN TAMBAHAN UNTUK OWNER:**
+5. **Propagasi parameter→quantity→RAB (temuan a):** terima by-design (user Simpan ulang) ATAU tambah **sinyal stale "formula quantity belum sinkron dengan parameter terbaru"** (readiness/banner)? Rek: minimal **sinyal awareness** (jangan ubah angka otomatis; konsisten D-05/Model A — perubahan tak senyap).
+6. **Atomisitas quantity+formula (temuan b):** cukup rekonsiliasi-on-load P3c ATAU gabungkan ke satu save atomik? Rek: **P3c dulu** (tutup false-dirty), gabung-endpoint = follow-up bila perlu.
+
+**Rencana increment FINAL (USULAN):** P3a (VP-05 computed validation) · P3b (VP-07 rate/payload limit) · P3c (VP-06 server-authoritative + fix false-dirty rekonsiliasi-on-load) · P3d (JSON per #2) · **P3e (contract test e2e parameter→computed→formula→quantity→RAB & Kebutuhan, jaring pengaman lintas-halaman)** · P3f (sinyal stale formula-vs-param bila #5=ya).
+
+**KEPUTUSAN OWNER 2026-06-16: GO** — #1 VP-06 server-authoritative, #2 JSON param dipertahankan (data-transfer), #3 VP-07 rate-limit ya, #4 backend dulu, #5 tambah sinyal stale awareness (client-side eval dipertahankan), #6 P3c rekonsiliasi-on-load. False-dirty = Volume.
+
+#### inc-P3a — VP-05 validasi expression computed (DONE 2026-06-16)
+
+`api_project_computed_parameters_sync` (`:4079`) + `api_project_computed_parameters` create (`:3988`): expression computed kini divalidasi `_validate_formula_raw` (char/token/function whitelist + identifier bp_N/cp_N) — sebelumnya hanya cek non-kosong. **Di-gate `_is_opaque_id_enabled()`** — mode legacy (flag off) pakai nama deskriptif non-bp/cp, jadi validator strict tak diterapkan di sana (backward-compat R1 terjaga).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P3 inc-a | `tests_wp_p3_volume` | PASS | 5/5: sync/create terima expr valid (bp_1*bp_2), tolak identifier tak dikenal + char tak aman (422/400 atomik) |
+| 2026-06-16 | WP-P3 inc-a | opaque-API + formula + B3 regresi | PASS | 97/97; R1 flag-off (legacy names) tetap lolos krn gating; check + diff bersih |
+
+**Catatan koreksi:** `_validate_formula_raw` TERNYATA validator yang benar (generik bp_N/cp_N, sama dgn quantity formula) — kekhawatiran "perlu tokenizer khusus" tak berlaku; cukup gate ke opaque mode.
+
+#### inc-P3b — VP-07 payload-limit (DONE 2026-06-16) + temuan rate-limit (perlu keputusan)
+
+**Payload-limit (DONE):** decorator baru `api_helpers.limit_request_body(max_bytes=2MB)` → 413 sebelum parse (DoS/abuse guard, deterministik, tak throttle frekuensi). Diterapkan ke 7 endpoint Volume write: `api_save_volume_pekerjaan`, `api_volume_formula_state`, `api_project_parameters`(+detail/+sync), `api_project_computed_parameters`(+sync). Test `tests_wp_p3_volume` 7/7 (incl 413 oversized, normal lolos) + regresi B3/opaque 50/50.
+
+**⚠️ TEMUAN saat implementasi — rate-limit vs autosave (perlu keputusan owner):** Volume pakai **autosave debounce** (volume save + formula state sering dipanggil). Kategori rate-limit yang ada: `write`=20/menit, `bulk`=5/5menit — **terlalu ketat → akan men-throttle autosave yang sah** + berisiko **rapuh di test** (LocMemCache rate-limit bisa terakumulasi antar test-method). Maka per-request rate-limit BELUM diterapkan (payload-limit sudah jadi proteksi abuse utama).
+**KEPUTUSAN OWNER 2026-06-16: opsi (a) + longgarkan autosave.**
+- **Rate-limit DONE:** `@rate_limit(max_requests=240, window=60)` (≈4/dtk, generous — autosave-safe, hentikan runaway, aman dari test) pada 4 endpoint autosave/bulk: `api_save_volume_pekerjaan`, `api_volume_formula_state`, `api_project_parameters_sync`, `api_project_computed_parameters_sync`. CRUD jarang (param create/detail, computed create) = payload-limit saja (rate-limit di sana berisiko rapuh test opaque; cukup).
+- **Autosave DIGABUNG ke 1 cadence 5 menit + save-on-leave (owner: gabung, jangan per-detik):** owner mempertanyakan kenapa autosave dipisah → tak ada manfaat fungsional kuat (artefak dev bertahap). Maka **`FORMULA_SYNC_DELAY` & `PARAM_SYNC_DELAY` = `AUTOSAVE_MS` (5 menit)** — tiga subsistem (volume/formula/param) satu cadence tenang, hemat server, kecilkan permukaan desync localStorage (VP-06). **Safety net baru: save-on-leave flush** — `flushSavesOnLeave()` di `visibilitychange=hidden` + `pagehide`, pakai **`keepalive:true`** (jpost diberi opsi keepalive; saveDirty/syncFormula/syncParams/syncComputed threaded) → perubahan persist saat tab pindah/tutup/navigasi, survive unload. Tombol Simpan + beforeunload warning tetap. Ini menggantikan ketergantungan localStorage sebagai mekanisme durability (yang dihapus VP-06). Guard `tests/volume_autosave.test.js` 4/4.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P3 inc-b | `tests_wp_p3_volume` + B3/opaque regresi | PASS | 50/50 (payload 413 + rate-limit tak ganggu); frontend 285/25; node + check + diff bersih |
+
+**✅ P3b SELESAI (VP-07).**
+
+#### inc-P3c — VP-06 server-authoritative + fix false-dirty project 195 (DONE 2026-06-16)
+
+**Akar bug (project 195):** flag dirty persisten di localStorage (`formulaLocalDirty`/`baseParamsLocalDirty`/`computedParamsLocalDirty`) dibaca saat load TANPA rekonsiliasi ke server → "ada perubahan yang perlu disimpan" muncul walau tak ada edit (flag basi: sync sebelumnya sukses / sesi lama). **Fix: rekonsiliasi local↔server saat load (server authoritative):**
+- **Formula** (prefill `volume_pekerjaan.js`): hanya entri yang `raw`/`fx` BEDA dari `serverFormula` masuk `formulaDirtySet`; bila tak ada beda → `clearFormulaLocalDirty()` (tak ada false-pending).
+- **Base param** (`loadParamsFromServer`): fetch-first; bila `shouldProtectLocalBaseState()` tapi `_baseParamsMatchServer()` (local==server) & tak ada `paramSyncTimer` → `clearBaseParamsDirty()` + apply server. Hanya diff nyata yang dilindungi.
+- **Computed param** (`loadComputedParamsFromServer`): sama, `_computedParamsMatchServer()` → `clearComputedParamsDirty()`.
+- localStorage kini **draft transien**; durability dipegang save-on-leave (P3b), bukan flag localStorage.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P3 inc-c | `tests/volume_false_dirty.test.js` (guard) | PASS | 4/4: formula compare raw/fx, base/computed `_*MatchServer`+clear, sync-timer tetap protect |
+| 2026-06-16 | WP-P3 inc-c | frontend penuh + `node --check` | PASS | 293 pass/25 skip; diff bersih |
+
+**✅ P3c SELESAI — false-dirty project 195 tertutup.**
+
+#### inc-P3d — JSON report Volume (DONE 2026-06-16, verifikasi — NO CHANGE)
+
+**Temuan:** dua area export terpisah di Volume. (1) **Dropdown report utama** (`volume_pekerjaan.html:76-91`) = Excel/PDF/Word saja — **tak ada JSON report** → sudah B-2 compliant. (2) **Sidebar parameter Import/Export** (`:222-237`) = JSON/CSV/XLSX ber-`aria-label="Export/Import parameter"` + format berversi `vp-vars-v2` (base `variables`+`labels` + `computed_parameters`; **tanpa** volume/total) + import round-trip sah → **parameter data-transfer, BUKAN report**. Per keputusan owner #2 = dipertahankan. **B-2 terpenuhi tanpa perubahan kode.**
+
+| Tanggal | WP | Hasil |
+|---|---|---|
+| 2026-06-16 | WP-P3 inc-d | VERIFIED COMPLIANT — JSON Volume = parameter data-transfer (vp-vars-v2), bukan laporan; report (Excel/PDF/Word) tak punya JSON. No deprecation needed. |
+
+#### inc-P3e — Cross-page SSOT contract test (DONE 2026-06-16)
+
+`tests_wp_p3_volume.VolumeCrossPageSSOTTests`: mengunci **`VolumePekerjaan.quantity` = SSOT tunggal** yang dikonsumsi BOTH Rekap RAB (`compute_rekap_for_project`, G×qty) DAN Rekap Kebutuhan (`compute_kebutuhan_timeline`, koef×qty). qty=3 → RAB 660 + Kebutuhan 6; ubah qty=5 → RAB 1100 + Kebutuhan 10 (kedua halaman bergerak konsisten dari satu SSOT). 9/9 P3 + regresi rekap/kebutuhan 35/35.
+
+#### inc-P3f — Sinyal stale formula-vs-param: ANALISIS → TIDAK PERLU (redundan)
+
+Keputusan #5 minta sinyal "formula quantity belum sinkron dgn parameter terbaru". **Setelah telaah client-workflow:** parameter HANYA diedit di sidebar Volume; `saveVars()`/perubahan computed memanggil `reevaluateAllFormulas()` → quantity LANGSUNG dihitung ulang client-side + ditandai **dirty** → indikator "perlu disimpan" muncul → tersimpan saat autosave/save/save-on-leave. Jadi "stale param→quantity" **sudah ter-cover** oleh reevaluate-on-change + indikator dirty (yang baru saja diperbaiki akurat oleh P3c). Sinyal stale server-side terpisah akan **redundan** + menambah kompleksitas (server tak evaluasi formula). **Rekomendasi: SKIP P3f.** Residual nyata hanya jendela unsaved (sudah ditandai dirty + dijaga save-on-leave).
+
+**KEPUTUSAN OWNER 2026-06-16: P3f DI-SKIP (redundan) — disetujui.** Sinyal stale formula-vs-param tidak dibangun karena sudah ter-cover oleh `reevaluateAllFormulas()` on param-change + indikator dirty akurat (P3c). Tercatat resmi sebagai keputusan, bukan utang.
+
+**✅ WP-P3 SELESAI (P3a–P3e; P3f skip-by-design).** Checklist VP tertutup: VP-01/02/03/04 (B3) · VP-05 (P3a validasi computed) · VP-06 (P3c server-authoritative + fix false-dirty project 195) · VP-07 (P3b payload+rate-limit). Plus: autosave digabung 5-menit + save-on-leave (P3b), JSON=parameter data-transfer compliant (P3d), cross-page SSOT contract terkunci (P3e). **Model A volume:** `VolumePekerjaan.quantity` = SSOT tunggal RAB+Kebutuhan; formula = kalkulator client-side; localStorage = draft transien (durability via save-on-leave).

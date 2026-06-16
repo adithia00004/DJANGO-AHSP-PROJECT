@@ -148,7 +148,7 @@ from .export_config import (
 )
 from .exports import RekapRABExporter, RekapKebutuhanExporter
 from .exports.errors import export_error_response
-from .api_helpers import rate_limit, atomic_error_response
+from .api_helpers import rate_limit, atomic_error_response, limit_request_body
 from accounts.mixins import api_pdf_export_allowed
 from .formula_tokenizer import remap_expression
 
@@ -1706,6 +1706,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
 # ---------- View 2: Volume ----------
 @login_required
+@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe, stops runaway floods
+@limit_request_body()  # WP-P3b (VP-07): cap body size (DoS guard)
 @require_POST
 @transaction.atomic
 def api_save_volume_pekerjaan(request: HttpRequest, project_id: int):
@@ -3563,6 +3565,7 @@ def api_project_pricing(request: HttpRequest, project_id: int):
 # ========== API: Project Parameters (for volume formula calculations) ==========
 
 @login_required
+@limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
 def api_project_parameters(request: HttpRequest, project_id: int):
@@ -3711,6 +3714,7 @@ def _parameter_dependents(project, name):
 
 
 @login_required
+@limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "PUT", "DELETE"])
 @transaction.atomic
 def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id: int):
@@ -3803,6 +3807,8 @@ def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id
 
 
 @login_required
+@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe
+@limit_request_body()  # WP-P3b (VP-07)
 @require_POST
 @transaction.atomic
 def api_project_parameters_sync(request: HttpRequest, project_id: int):
@@ -3954,6 +3960,7 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
 # ========== API: Project Computed Parameters (derived formula variables) ==========
 
 @login_required
+@limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
 def api_project_computed_parameters(request: HttpRequest, project_id: int):
@@ -3988,6 +3995,13 @@ def api_project_computed_parameters(request: HttpRequest, project_id: int):
     expression = str(payload.get("expression", "")).strip()
     if not expression:
         return JsonResponse({"ok": False, "errors": [_err("expression", "Formula wajib diisi")]}, status=400)
+    # WP-P3a (VP-05): validate the computed expression server-side (same validator
+    # as quantity formulas) — reject invalid/unsafe expressions, not just empty.
+    # Gated to opaque-ID mode (legacy descriptive names aren't bp_N/cp_N).
+    if _is_opaque_id_enabled():
+        expr_errors = _validate_formula_raw(expression)
+        if expr_errors:
+            return JsonResponse({"ok": False, "errors": [_err("expression", "; ".join(expr_errors))]}, status=400)
 
     label = str(payload.get("label", "")).strip()
     unit = str(payload.get("unit", "")).strip()
@@ -4038,6 +4052,8 @@ def api_project_computed_parameters(request: HttpRequest, project_id: int):
 
 
 @login_required
+@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe
+@limit_request_body()  # WP-P3b (VP-07)
 @require_POST
 @transaction.atomic
 def api_project_computed_parameters_sync(request: HttpRequest, project_id: int):
@@ -4079,6 +4095,16 @@ def api_project_computed_parameters_sync(request: HttpRequest, project_id: int):
         expr = str((data.get("expression", "") if isinstance(data, dict) else (data or ""))).strip()
         if not expr:
             invalid.append(_err(f"computed_parameters[{name}]", "Expression kosong"))
+        elif _is_opaque_id_enabled():
+            # WP-P3a (VP-05): apply the SAME server-side formula validator used by
+            # quantity formulas (char/token/function whitelist, identifier format
+            # bp_N/cp_N) — previously computed expressions were only checked for
+            # non-emptiness, letting invalid/unsafe expressions through. Gated to
+            # opaque-ID mode; the legacy (flag-off) path uses descriptive names that
+            # are not bp_N/cp_N, so the strict validator must not apply there.
+            expr_errors = _validate_formula_raw(expr)
+            if expr_errors:
+                invalid.append(_err(f"computed_parameters[{name}]", "; ".join(expr_errors)))
     if invalid:
         return atomic_error_response(
             errors=invalid,
@@ -5404,6 +5430,8 @@ def build_volume_formula_state_payload(project):
 
 # ---------- View 7 Volume Formula State (GET/POST di endpoint yang sama) ----------
 @login_required
+@rate_limit(max_requests=240, window=60)  # WP-P3b (VP-07): generous — autosave-safe
+@limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
 def api_volume_formula_state(request: HttpRequest, project_id: int):
