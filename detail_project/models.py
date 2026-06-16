@@ -445,6 +445,15 @@ class DetailAHSPProject(TimeStampedModel):
         help_text='Reference to another Pekerjaan in same project (bundle support for LAIN category)'
     )
 
+    # WP-B7a: snapshot of the master AHSP reference at expansion time. When this
+    # row references a master via ``ref_ahsp``, the content signature of the
+    # master's RincianReferensi is stamped here (see
+    # ``readiness.master_reference_signature``). Readiness compares this against
+    # the master's CURRENT signature to surface ``reference_update_available``
+    # (D-05 reference synchronization). NULL = never stamped (legacy / no master).
+    ref_snapshot_signature = models.CharField(max_length=40, null=True, blank=True)
+    ref_synced_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         indexes = [
             models.Index(fields=["project", "pekerjaan"]),                # sudah ada

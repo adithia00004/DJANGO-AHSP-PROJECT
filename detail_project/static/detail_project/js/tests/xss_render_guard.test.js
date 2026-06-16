@@ -6,6 +6,7 @@
  *   - list_pekerjaan.js  (LP-01: Template Library preview)
  *   - rekap_rab.js       (RR-01: hierarchy label/kode render + search highlight)
  *   - print/RekapRABPrint.js (RR-18: print reinjection of extracted text)
+ *   - audit_trail.js     (AT-01: audit row + diff render of user-controlled text)
  *
  * If any of these regress (raw user data back into innerHTML), this FAILS.
  *
@@ -72,5 +73,33 @@ describe('RR-18 — Rekap RAB print reinjection', () => {
   test('no raw ${info.*} / ${item.*} reinjection remains', () => {
     expect(src).not.toMatch(/\$\{info\.[a-zA-Z]/);
     expect(src).not.toMatch(/\$\{item\.[a-zA-Z]/);
+  });
+});
+
+describe('AT-01 — Audit Trail stored-XSS', () => {
+  const src = read('audit_trail.js');
+
+  test('escapeHtml helper exists', () => {
+    expect(src).toContain('function escapeHtml');
+  });
+
+  test('row render escapes every user-controlled field', () => {
+    expect(src).toContain('${escapeHtml(entry.pekerjaan?.kode');
+    expect(src).toContain('${escapeHtml(entry.pekerjaan?.uraian');
+    expect(src).toContain('${escapeHtml(entry.action)}');
+    expect(src).toContain('${escapeHtml(entry.triggered_by)}');
+    expect(src).toContain('${escapeHtml(entry.user?.username');
+    expect(src).toContain('${escapeHtml(entry.change_summary');
+  });
+
+  test('diff render escapes serialized old/new data', () => {
+    expect(src).toContain('${escapeHtml(oldText');
+    expect(src).toContain('${escapeHtml(newText');
+  });
+
+  test('no raw ${entry.*} reinjection into innerHTML remains', () => {
+    expect(src).not.toMatch(/\$\{entry\.action\}/);
+    expect(src).not.toMatch(/\$\{entry\.triggered_by\}/);
+    expect(src).not.toMatch(/\$\{entry\.change_summary/);
   });
 });

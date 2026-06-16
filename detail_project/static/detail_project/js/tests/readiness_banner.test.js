@@ -56,6 +56,15 @@ describe('buildReadinessBannerHTML', () => {
     expect(html).toContain('P-A');
   });
 
+  test('renders reference_update_available signal (B7b)', () => {
+    const html = buildReadinessBannerHTML({
+      reference_update_available: [{ kode: 'A.2.3.1.1' }],
+    });
+    expect(html).toContain('versi master AHSP lama');
+    expect(html).toContain('A.2.3.1.1');
+    expect(html).toContain('sinkronkan di Template AHSP');
+  });
+
   test('ignores pending jadwal signals — never treats null as done or clear', () => {
     // Only pending signals present (all live arrays empty) → no banner, and no
     // positive "ready/complete" text is ever emitted.
@@ -112,5 +121,16 @@ describe('readiness consumer wiring', () => {
     const src = read('template_ahsp.js');
     expect(src.match(/refreshReadiness\(\);/g)?.length || 0).toBeGreaterThanOrEqual(3);
     expect(src).toContain('Reset-to-reference rebuilds raw/expanded detail');
+  });
+
+  // WP-B7e — Template AHSP exposes the manual master-sync action.
+  test('Template AHSP wires reference_update_available sync action', () => {
+    const src = read('template_ahsp.js');
+    expect(src).toContain('renderSyncReferenceAction');
+    expect(src).toContain('reference_update_available');
+    expect(src).toContain('endpoints.syncReference');
+    expect(src).toContain("method: 'POST'");
+    // refreshes the verdict after a successful sync (line removed when in sync)
+    expect(src).toMatch(/Tersinkronkan/);
   });
 });

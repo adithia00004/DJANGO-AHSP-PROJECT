@@ -22,6 +22,19 @@
   let hasNext = false;
   const detailCache = new Map();
 
+  // AT-01: audit entries carry user-controlled text (pekerjaan uraian, change
+  // summary, username, and serialized old/new data). Escape everything before it
+  // reaches innerHTML so stored values cannot execute as markup.
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[m]));
+  }
+
   function showAlert(message, variant = "info") {
     if (!message) {
       alertBox.classList.add("d-none");
@@ -63,11 +76,11 @@
         <div class="audit-diff">
           <details>
             <summary>Old Data</summary>
-            <pre>${oldText || "null"}</pre>
+            <pre>${escapeHtml(oldText || "null")}</pre>
           </details>
           <details>
             <summary>New Data</summary>
-            <pre>${newText || "null"}</pre>
+            <pre>${escapeHtml(newText || "null")}</pre>
           </details>
         </div>
       `;
@@ -101,15 +114,15 @@
     results.forEach((entry) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td class="text-nowrap">${formatDate(entry.created_at)}</td>
+        <td class="text-nowrap">${escapeHtml(formatDate(entry.created_at))}</td>
         <td>
-          <div class="fw-semibold">${entry.pekerjaan?.kode || "-"}</div>
-          <small class="text-muted">${entry.pekerjaan?.uraian || ""}</small>
+          <div class="fw-semibold">${escapeHtml(entry.pekerjaan?.kode || "-")}</div>
+          <small class="text-muted">${escapeHtml(entry.pekerjaan?.uraian || "")}</small>
         </td>
-        <td><span class="badge text-bg-secondary">${entry.action}</span></td>
-        <td>${entry.triggered_by}</td>
-        <td>${entry.user?.username || "-"}</td>
-        <td>${entry.change_summary || "-"}</td>
+        <td><span class="badge text-bg-secondary">${escapeHtml(entry.action)}</span></td>
+        <td>${escapeHtml(entry.triggered_by)}</td>
+        <td>${escapeHtml(entry.user?.username || "-")}</td>
+        <td>${escapeHtml(entry.change_summary || "-")}</td>
         <td><button class="btn btn-link btn-sm p-0 audit-detail-btn" type="button">Lihat</button></td>
       `;
 

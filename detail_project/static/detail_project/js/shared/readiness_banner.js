@@ -45,6 +45,12 @@ function buildReadinessBannerHTML(readiness) {
   if (inv.length) {
     lines.push(`<li><strong>${inv.length}</strong> koefisien tidak valid (negatif): ${codes(inv, 'kode')}</li>`);
   }
+  // CUSTOM master reference sync (B7b) — advisory: a newer corrected version of
+  // the chosen master AHSP exists; user can sync in Template AHSP.
+  const rua = readiness.reference_update_available || [];
+  if (rua.length) {
+    lines.push(`<li><strong>${rua.length}</strong> bundle memakai versi master AHSP lama: ${codes(rua, 'kode')} <span class="text-muted">(sinkronkan di Template AHSP)</span></li>`);
+  }
   // Jadwal-derived signals (live since inc-4a).
   const awv = readiness.allocation_without_volume || [];
   if (awv.length) {

@@ -85,7 +85,7 @@ from .models import (
     PekerjaanProgressWeekly,
 )
 
-SCHEMA_VERSION = "b4.4"  # b4.4 = jadwal signals live (inc-4a)
+SCHEMA_VERSION = "b4.5"  # b4.5 = reference_update_available signal (B7b)
 
 # All signals are now computed; nothing pending.
 PENDING_SIGNALS = ()
@@ -130,6 +130,56 @@ def source_signature(
         str(ref_ahsp_id or ""),
         str(harga_item_id or ""),
     ])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def master_reference_signature(ref_ahsp_id):
+    """Content signature of a master AHSP's components (WP-B7a).
+
+    Computed from ``RincianReferensi`` rows of the referenced master AHSP — each
+    row's ``kategori``, ``kode_item``, ``koefisien`` (quantized 12dp),
+    ``satuan_item`` and ``uraian_item``, in a deterministic order. Stamped on the
+    raw ``DetailAHSPProject`` bundle row at expansion time (``ref_snapshot_signature``)
+    and recomputed at readiness time; a mismatch means the chosen master version
+    was corrected in place since the project last expanded it
+    (``reference_update_available``, D-05). Returns ``None`` if the master is
+    missing or has no rincian.
+    """
+    if not ref_ahsp_id:
+        return None
+    from referensi.models import RincianReferensi
+
+    rows = list(
+        RincianReferensi.objects.filter(ahsp_id=ref_ahsp_id)
+        .values("kategori", "kode_item", "koefisien", "satuan_item", "uraian_item")
+        .order_by("kategori", "kode_item", "uraian_item", "satuan_item")
+    )
+    return _master_sig_from_rows(rows)
+
+
+def _master_sig_from_rows(rows):
+    """Signature from already-fetched RincianReferensi rows (ordered).
+
+    Shared by ``master_reference_signature`` (single master) and ``_compute``
+    (bulk, one query for all referenced masters — preserves the query budget).
+    Returns ``None`` for an empty master.
+    """
+    if not rows:
+        return None
+    parts = []
+    for r in rows:
+        try:
+            koef = Decimal(r["koefisien"] if r["koefisien"] is not None else 0).quantize(_KOEF_QUANT)
+        except Exception:
+            koef = Decimal("0").quantize(_KOEF_QUANT)
+        parts.append("|".join([
+            str(r["kategori"] or ""),
+            str(r["kode_item"] or ""),
+            f"{koef}",
+            str(r["satuan_item"] or ""),
+            str(r["uraian_item"] or ""),
+        ]))
+    raw = "\n".join(parts)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -193,7 +243,7 @@ def _compute(project):
         DetailAHSPProject.objects.filter(project=project).values(
             "id", "pekerjaan_id", "kode", "uraian", "kategori",
             "koefisien", "updated_at", "ref_pekerjaan_id", "ref_ahsp_id",
-            "harga_item_id",
+            "harga_item_id", "ref_snapshot_signature",
         )
     )
     exp_groups = {
@@ -215,18 +265,27 @@ def _compute(project):
         .values("pekerjaan_id")
         .annotate(n=Count("id"))
     }
-    # referensi rincian count per referenced AHSP (best-effort for ref_ahsp).
+    # referensi rincian per referenced AHSP — ONE query yields both the
+    # best-effort component count (for expansion analysis) and the master content
+    # signature (for B7b reference_update_available). Grouped in Python to keep
+    # the query budget constant regardless of the number of distinct masters.
     ref_ahsp_ids = {r["ref_ahsp_id"] for r in raw_rows if r["ref_ahsp_id"]}
     rincian_count_by_ahsp = {}
+    master_sig_by_ahsp = {}
     if ref_ahsp_ids:
+        from collections import defaultdict as _defaultdict
         from referensi.models import RincianReferensi
 
-        rincian_count_by_ahsp = {
-            r["ahsp_id"]: r["n"]
-            for r in RincianReferensi.objects.filter(ahsp_id__in=ref_ahsp_ids)
-            .values("ahsp_id")
-            .annotate(n=Count("id"))
-        }
+        _rows_by_ahsp = _defaultdict(list)
+        for r in (
+            RincianReferensi.objects.filter(ahsp_id__in=ref_ahsp_ids)
+            .values("ahsp_id", "kategori", "kode_item", "koefisien", "satuan_item", "uraian_item")
+            .order_by("ahsp_id", "kategori", "kode_item", "uraian_item", "satuan_item")
+        ):
+            _rows_by_ahsp[r["ahsp_id"]].append(r)
+        for _aid, _rws in _rows_by_ahsp.items():
+            rincian_count_by_ahsp[_aid] = len(_rws)
+            master_sig_by_ahsp[_aid] = _master_sig_from_rows(_rws)
 
     expansion_not_ready = []
     invalid_coefficient = []
@@ -327,6 +386,37 @@ def _compute(project):
         )
 
     expanded_ready = not expansion_not_ready
+
+    # --- reference_update_available (B7b, D-05): a bundle row references a master
+    #     AHSP whose content was corrected in place since this project last
+    #     expanded it (stored snapshot signature != master's current signature).
+    #     A new yearly version (different `sumber`) is a NEW master row and does
+    #     NOT trigger this — the project stays pinned to its chosen version.
+    #     Rows never stamped (legacy) or whose master is gone are skipped to
+    #     avoid false positives (the latter surfaces via expansion signals).
+    reference_update_available = []
+    for row in raw_rows:
+        if not row["ref_ahsp_id"]:
+            continue
+        stored = row["ref_snapshot_signature"]
+        if stored is None:
+            continue
+        current = master_sig_by_ahsp.get(row["ref_ahsp_id"])
+        if current is None or stored == current:
+            continue
+        reference_update_available.append(
+            {
+                "pekerjaan_id": row["pekerjaan_id"],
+                "source_detail_id": row["id"],
+                "kode": row["kode"] or "",
+                "uraian": row["uraian"] or "",
+                "ref_ahsp_id": row["ref_ahsp_id"],
+                "source_table": "DetailAHSPProject",
+                "source_page": PAGE_DETAIL,
+                "issue": "reference_update_available",
+            }
+        )
+    reference_update_available.sort(key=lambda e: e["source_detail_id"])
 
     # --- missing_price: harga_satuan IS NULL on an item used in the calc path.
     expanded_job_ids = set(exp_count_by_pkj.keys())
@@ -435,6 +525,7 @@ def _compute(project):
         affected_pekerjaan.update(e["affected_pekerjaan"])
     affected_pekerjaan.update(e["pekerjaan_id"] for e in incomplete_planned_allocation)
     affected_pekerjaan.update(e["pekerjaan_id"] for e in allocation_without_volume)
+    affected_pekerjaan.update(e["pekerjaan_id"] for e in reference_update_available)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -447,6 +538,8 @@ def _compute(project):
         "incomplete_planned_allocation": incomplete_planned_allocation,
         "allocation_without_volume": allocation_without_volume,
         "timeline_stale": timeline_stale,
+        # CUSTOM master reference sync (B7b) — advisory, non-blocking.
+        "reference_update_available": reference_update_available,
         "pending_signals": list(PENDING_SIGNALS),
         "affected_pekerjaan": sorted(affected_pekerjaan),
         "affected_items": affected_items,

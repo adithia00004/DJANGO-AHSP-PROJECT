@@ -1792,9 +1792,11 @@ def _populate_expanded_from_raw(project, pekerjaan):
 
     # Process each item: expand bundles or pass-through direct items
     expanded_to_create = []
+    ref_ahsp_rows = []  # WP-B7a: bundle rows referencing a master AHSP, to stamp.
     for detail_obj in raw_details:
         if detail_obj.kategori == 'LAIN' and detail_obj.ref_ahsp_id:
             # AHSP BUNDLE - expand from master AHSP
+            ref_ahsp_rows.append(detail_obj)
             logger.info(f"[POPULATE_EXPANDED] AHSP bundle detected: '{detail_obj.kode}' → ref_ahsp_id={detail_obj.ref_ahsp_id}")
 
             try:
@@ -1956,6 +1958,22 @@ def _populate_expanded_from_raw(project, pekerjaan):
         logger.info(f"[POPULATE_EXPANDED] SUCCESS - Created {len(expanded_to_create)} expanded rows")
     else:
         logger.warning(f"[POPULATE_EXPANDED] No expanded rows to create")
+
+    # WP-B7a: stamp the master reference snapshot on each ref_ahsp bundle row.
+    # This records the master version the project just expanded from; readiness
+    # later compares it against the master's CURRENT signature to surface
+    # reference_update_available when the chosen version is corrected in place
+    # (D-05 reference synchronization). User-entered koefisien is never touched.
+    if ref_ahsp_rows:
+        from .readiness import master_reference_signature as _master_sig
+        from django.utils import timezone as _tz
+        _now = _tz.now()
+        for _d in ref_ahsp_rows:
+            _d.ref_snapshot_signature = _master_sig(_d.ref_ahsp_id)
+            _d.ref_synced_at = _now
+        DetailAHSPProject.objects.bulk_update(
+            ref_ahsp_rows, ["ref_snapshot_signature", "ref_synced_at"]
+        )
 
 
 @transaction.atomic

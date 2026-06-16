@@ -19,6 +19,7 @@
     parameters: app.dataset.endpointParameters,
     computedParameters: app.dataset.endpointComputedParameters,
     readiness: app.dataset.endpointReadiness,  // WP-B4: dedicated readiness GET
+    syncReference: app.dataset.endpointSyncReference,  // WP-B7d: manual master sync
   };
   const locale = app.dataset.locale || 'id-ID';
 
@@ -41,6 +42,54 @@
       else app.prepend(box);
     }
     box.innerHTML = html;
+    renderSyncReferenceAction(box, readiness);
+  }
+
+  // WP-B7e: when readiness reports outdated master references, offer a one-click
+  // manual sync (D-05: user-initiated, never silent). Rebuilds expanded storage
+  // from the current master while preserving the user's bundle koefisien.
+  function renderSyncReferenceAction(box, readiness) {
+    const stale = (readiness && readiness.reference_update_available) || [];
+    if (!stale.length || !endpoints.syncReference) return;
+
+    const bar = document.createElement('div');
+    bar.className = 'mt-2 d-flex align-items-center gap-2';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-warning';
+    btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sinkronkan referensi';
+    const status = document.createElement('span');
+    status.className = 'text-muted';
+    bar.appendChild(btn);
+    bar.appendChild(status);
+    box.appendChild(bar);
+
+    btn.addEventListener('click', async () => {
+      const n = stale.length;
+      if (!window.confirm(
+        `Sinkronkan ${n} bundle ke versi master AHSP terbaru? ` +
+        'Komponen hasil ekspansi akan dibangun ulang; koefisien bundle yang Anda input tidak berubah.'
+      )) return;
+      btn.disabled = true;
+      status.textContent = 'Menyinkronkan…';
+      try {
+        const resp = await fetch(endpoints.syncReference, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+          body: '{}',
+        });
+        const j = await resp.json().catch(() => null);
+        if (!resp.ok || !j || !j.ok) {
+          throw new Error((j && j.user_message) || 'Sinkronisasi gagal.');
+        }
+        status.textContent = `Tersinkronkan ${j.count} pekerjaan.`;
+        refreshReadiness();  // verdict refresh removes the outdated-reference line
+      } catch (err) {
+        btn.disabled = false;
+        status.textContent = err && err.message ? err.message : 'Sinkronisasi gagal.';
+      }
+    });
   }
 
   function refreshReadiness() {

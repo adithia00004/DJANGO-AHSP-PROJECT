@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 33% implementasi):** **IN PROGRESS - WP-A1/WP-A2(report-only)/WP-B1/WP-B2/WP-B3/WP-B4/WP-B5 DONE / WP-B6 (weekly distribution) atau WP-B7 NEXT · defer: CSP enforcement, export perf (auto-async/client-render)**
+**Status keseluruhan (≈ 40% implementasi):** **IN PROGRESS - WP-A1(+AT-01 fix)/WP-A2(report-only)/WP-B1/WP-B2/WP-B3/WP-B4/WP-B5/WP-B7 DONE; WP-B6 backend calc-core DONE (commit `58d3c41e`); WP-B8 NEXT · defer: B6d/e→WP-P8, B6f part-2 cleanup, CSP enforcement, export perf**
 
 ## 1. Aturan Tracking
 
@@ -38,7 +38,7 @@ Status:
 | WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
 | WP-B5 | Server-authoritative export | DONE | 2026-06-15 | 2026-06-15 | B1/B2/B4 | B5a seluruh controller export memakai error-wrapper · B5b identity (fix lokasi/tahun) · B5c filename · B5d JSON keluar report+data-package atomic/versioned · B5e signature/empty/PDF-placement locked. 3 item scope (auto-async threshold, client-render migrasi, snapshot eksplisit) DEFER ke milestone perf. Full B5+CSP suite 56/56 |
 | WP-B6 | Canonical weekly distribution | IN PROGRESS (backend calc-core DONE; B6d/e ke WP-P8, B6f part-2 cleanup/defer) | 2026-06-16 | - | WP-B4 | ✅B6a builder (7 test) ✅B6b+B6c `compute_kebutuhan_timeline` canonical (weekly+4-week+unscheduled+tahapan-deprecated, parity, filter periods canonical) ✅B6f part-1 snapshot scope canonical. Verifikasi B6 targeted 37/37. ⬜B6d jadwal JS no-recompute/no-auto-regen (Vite/WP-P8) ⬜B6e parity JS↔Python ⬜B6f part-2 `api_rekap_kebutuhan_weekly` tidak ada consumer aktif ditemukan; kandidat cleanup/defer |
-| WP-B7 | CUSTOM live-reference | PENDING | - | - | B3/B4 | - |
+| WP-B7 | CUSTOM live-reference | DONE | 2026-06-16 | 2026-06-16 | B3/B4 | D-05 reference-sync + user-value protection LENGKAP (a–e). B7a signature+migrasi 0049/0050 · B7b sinyal readiness `b4.5` · B7c fix TA-03 (cascade reset atomik) · B7d endpoint sync manual (bundle_quantity utuh, audit, idempotent) · B7e badge+tombol Template AHSP. Skenario-1 only (Skenario-2 versi-baru sengaja tak memicu). Caveat: nested-master signature + "upgrade versi tahunan" = WP terpisah. AT-05 audit-writer RETAINED |
 | WP-B8 | Tipe LAIN | PENDING | - | - | B3 | - |
 | WP-B9 | Bundle limits | PENDING | - | - | B7/B8 | - |
 | WP-B10 | Actual-cost legacy mapping | PENDING | - | - | WP-00/B3/B6 | Eksekusi hanya jika data legacy ada |
@@ -46,22 +46,44 @@ Status:
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
+## 2.1 Penjelasan Bahasa-Mudah: Apa & Kenapa Tiap WP
+
+> Untuk pembaca non-teknis. Tiap WP = satu masalah nyata yang membuat angka/keamanan aplikasi bisa salah secara diam-diam. "Diam-diam" = aplikasi tetap terlihat normal dan melaporkan sukses, padahal hasilnya keliru — ini risiko terburuk untuk aplikasi RAB.
+
+| WP | Apa ini (konteks) | Kenapa harus diperbaiki |
+|---|---|---|
+| **WP-A1** Hapus XSS | Mencegah teks yang diketik user (nama pekerjaan, uraian, dll.) dijalankan sebagai kode di browser saat ditampilkan kembali. | Tanpa ini, seseorang bisa menyisipkan skrip lewat nama/uraian yang lalu mencuri sesi login atau merusak tampilan saat halaman dibuka orang lain. |
+| **WP-A2** CSP | Lapisan pertahanan kedua: browser menolak skrip dari sumber yang tak dikenal. | Membatasi kerusakan bila ada satu XSS yang lolos — pertahanan berlapis, bukan satu titik gagal. |
+| **WP-B1** Satu mesin hitung RAB | Layar, cetak, dan export memakai SATU rumus perhitungan yang sama. | Dulu angka bisa berbeda antara yang dilihat di layar dan yang di-export (mis. markup 0% vs 10%) → laporan tidak konsisten dan tidak bisa dipercaya. |
+| **WP-B2** Sidik jari cache | "Sidik jari" data: bila harga/markup berubah, hasil yang disimpan sementara (cache) otomatis dianggap kedaluwarsa. | Dulu sidik jari lupa menyertakan harga → cache bisa menampilkan total lama padahal harga sudah diubah. |
+| **WP-B3** Simpan atomik | Saat menyimpan, SEMUA baris tersimpan atau SEMUA ditolak — tidak ada "sebagian berhasil". | Dulu sebagian data bisa tersimpan diam-diam sambil melaporkan "sukses" → data jadi rusak separuh tanpa disadari. |
+| **WP-B4** Banner kesiapan | Mendeteksi & menampilkan kondisi "data belum siap" (volume belum diisi, harga kosong, komposisi AHSP belum sinkron) sebagai banner peringatan. | Dulu nilai kosong diam-diam dihitung sebagai 0 → total terlihat final padahal sebenarnya kurang. |
+| **WP-B5** Export resmi server | Export (Excel/PDF/Word) memakai angka resmi dari server, bukan draf yang belum disimpan; pesan error tidak membocorkan detail teknis. | Laporan resmi harus sama persis dengan perhitungan resmi, dan tidak boleh membocorkan informasi internal sistem. |
+| **WP-B6** Distribusi mingguan kanonik | Rekap Kebutuhan dan Jadwal memakai SATU sumber distribusi mingguan yang sama (proporsi per minggu). | Dulu kebutuhan per-minggu dihitung dari "Tahapan + tumpang-tindih hari" yang berbeda dari Jadwal → angka per-minggu bisa keliru. |
+| **WP-B7** Sinkronisasi referensi CUSTOM | Bila master AHSP (versi yang dipilih project) dikoreksi, sistem memberi tahu dan memungkinkan sinkronisasi manual — sambil menjaga angka yang diinput user. | Dulu koreksi master tidak pernah sampai ke project → RAB diam-diam memakai komposisi/harga lama tanpa cara untuk tahu. |
+| **WP-B8** Tipe LAIN | Rapikan perilaku item kategori "LAIN" (bundle) sesuai keputusan produk D-08. | Agar komponen bundle dihitung dan ditampilkan konsisten dengan kategori lain. |
+| **WP-B9** Batas bundle | Batasi kedalaman/ukuran ekspansi bundle (D-10). | Mencegah bundle bersarang tak terbatas membuat perhitungan lambat atau gagal. |
+| **WP-B10** Pemetaan biaya aktual lama | Petakan data actual_cost legacy bila ada. | Hanya dieksekusi jika data lama benar-benar ada; menjaga kompatibilitas histori. |
+| **WP-P1..P9** Integrasi per-halaman | Terapkan semua fondasi di atas ke tiap halaman + tuntaskan temuan UF/ENH per-halaman. | Fondasi bersama harus benar-benar terpasang di setiap halaman, bukan hanya di halaman pilot. |
+| **Fase 3** Pembersihan | Hapus kode/jalur usang setelah penggantinya aktif (CL-01..17). | Mengurangi kebingungan & risiko memakai jalur lama yang salah. |
+| **Fase 4** Regresi/UAT | Uji menyeluruh + uji terima oleh owner. | Memastikan seluruh perbaikan benar dari sudut pandang pemakaian nyata. |
+
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 33% dari eksekusi implementasi selesai** (per 2026-06-15).
+**Headline: ≈ 40% dari eksekusi implementasi selesai** (per 2026-06-16).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
-| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~69% | ~31% | A1·A2(report-only)·B1·B2·B3·B4·**B5 DONE**; B6·B7·B8·B9·B10 PENDING (CSP enforcement + export-perf = milestone terpisah) |
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~85% | ~38% | A1·A2(report-only)·B1·B2·B3·B4·B5·**B7 DONE**·B6 backend calc-core DONE; B6d/e+B8·B9·B10 PENDING (CSP enforcement + export-perf = milestone terpisah) |
 | Fase 2 — Integrasi per-page (P1–P9) | 30% | ~5% | ~1.5% | readiness display terpasang di 5 halaman (bagian B4); integrasi per-page penuh belum |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 33%** | |
+| **Total** | **100%** | | **≈ 40%** | |
 
-Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, **B5=5 ✅**, B6=4 ⬜, B7=4 ⬜, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai 31/45 ≈ 69%.
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend calc-core ✅ ≈3.2; sisa B6d/e frontend≈0.8 ke WP-P8)**, **B7=4 ✅**, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai ≈38.2/45 ≈ 85%.
 
 **WP-B4 SELESAI** (inc-1 survei · inc-2/2.1/2.2 kontrak `b4.3` · UF-011 fix + UAT PASS · inc-3 5/5 consumer wired · inc-4a 3 sinyal jadwal · inc-4b stale-signature `b4.4`).
 
@@ -275,6 +297,16 @@ Membuka Template AHSP tanpa mengubah apa pun tetap menampilkan banner/prompt rel
 - Test: frontend behavior (pick mengisi field + reuse kode, filter kategori, blank→auto). Backend auto-code+upsert sudah tercakup `tests_wp_b3`/import.
 
 **Disposition:** owner **WP-P2 (Template AHSP)**. Severity: enhancement/UX (Medium value). Tidak memblokir UAT readiness.
+
+### UF-013 - AT-01 (Audit Trail stored-XSS) TERLEWAT dari scope WP-A1 — FIXED 2026-06-16
+
+**Konteks penemuan:** owner mempertanyakan apakah perbaikan kita kerap di-scope terlalu sempit (per-app/per-halaman) sehingga ada isu lintas-cutting yang terlewat. Cross-cutting completeness check dijalankan terhadap tema sistemik doc 26. **Hasil:** B1 (calc service), B2 (cache signature — tak ada `_kebutuhan_signature`/`_chart` terpisah, semua via `build_project_cache_signature`), B3 (tak ada 207 live), B5 (`exports/` + `views_export` response bersih; sisa `str(e)` = `logger.error` server-side, benar) **terbukti sudah app-wide**. **Satu celah nyata:** `audit_trail.js` adalah satu-satunya file render **tanpa `escapeHtml`**, menyuntik konten user mentah ke `innerHTML` (`:103-112` pekerjaan.uraian/change_summary/triggered_by/username/action; `renderDiffContent :59` old/new data) = **stored XSS**.
+
+**Kenapa lolos (akar masalah scoping):** WP-A1 mengambil daftar kerja dari audit per-halaman yang punya temuan XSS (F-01/LP-01/RR-01/RR-18). **AT-01 diaudit di dokumen TERPISAH (doc 24 Audit Trail)** dan masuk doc 26 grup A-4, tetapi A-4 **tidak dipakai sebagai checklist final** saat menyusun worklist WP-A1 → item lintas-dokumen jatuh di seam.
+
+**Fix (2026-06-16):** tambah `function escapeHtml` di `audit_trail.js`; escape semua field user di baris tabel + `escapeHtml(oldText/newText)` di `renderDiffContent`. Guard `xss_render_guard.test.js` diperluas dengan blok **AT-01** (escapeHtml ada; tiap field user di-escape; diff di-escape; no raw `${entry.*}`). `node --check` OK; guard **13/13 PASS**. Severity: **P0 stored-XSS** (sekarang CLOSED).
+
+> **⚠️ PENEKANAN PROSES — anti-celah scoping (WAJIB dipakai tiap WP lintas-cutting):** sebelum menutup WP shared/keamanan, **gunakan doc 26 (Cross-Page Reconciliation) grup A-* sebagai checklist final**, BUKAN hanya temuan per-halaman dari satu dokumen audit. Untuk WP keamanan/format/atomicity/cache: lakukan **sweep repo-wide** (mis. `git grep` pola di SEMUA app/file, bukan hanya halaman pilot) dan catat hasil "sudah tersebar / masih sempit". Tema sistemik doc 26 (#1 XSS+CSP, #2 atomicity, #3 LWW, #4 export-leak, #5 calc service, #6 owner-decision consumers, #7 cache signature) = daftar induk; tiap WP yang menyentuhnya HARUS memverifikasi seluruh instans, bukan satu. Pelajaran UF-013: audit per-dokumen ≠ scope per-WP; selalu rekonsiliasi ke A-* sebelum tutup.
 
 ## 7. Change and Decision Log
 
@@ -885,11 +917,9 @@ Rewrite `services.compute_kebutuhan_timeline` (+ helper `_scope_date_window`):
 
 `_build_time_scope_multiplier()` (`services.py:472`) **TIDAK lagi pakai `PekerjaanTahapan`/overlap-day** → kini fraksi in-scope dari `build_weekly_distribution` (Σ `planned_proportion` minggu dalam jendela tanggal). Mekanisme di-swap; **edge legacy dipertahankan** (pekerjaan tanpa jadwal → 1.0 fully-in-scope). Menutup "dua cara scope kebutuhan" — snapshot path kini = timeline path (satu SSOT). Test `tests_kebutuhan_timeline_b6b` +3 (fraksi window 0.60, both 1.00, unscheduled 1.0, all→{}); B6 targeted suite **37/37**; B4/B5 regression **76/76**; `manage.py check`, `makemigrations --check --dry-run`, dan `git diff --check` bersih.
 
-**B6f part-2 (sisa):** `api_rekap_kebutuhan_weekly` (`views_api.py:6748`) konvergensi ke SSOT — pakai detail_list raw + default volume 1.0 + tanpa expanded/raw-fallback + tanpa unscheduled + payload beda. Perubahan PERILAKU endpoint (volume 1.0→real, +expanded, +unscheduled) → perlu survei consumer (kurva-s/V2) dulu. **Belum dikerjakan.**
+**B6f part-2 — KEPUTUSAN OWNER 2026-06-16: DEFER → kandidat cleanup (CL).** `api_rekap_kebutuhan_weekly` (`views_api.py:6748`, route `api/v2/.../rekap-kebutuhan-weekly/`) hanya ada di route/view/test/dokumen — **tidak ada consumer frontend aktif**. Payload beda + konvergensi mengubah angka/perilaku (default volume 1.0→real, +expanded/raw-fallback, +unscheduled) → **JANGAN konvergensi sekarang**. Bila kelak terbukti dipakai (mobile/API eksternal) → konvergensikan sebagai WP kecil dengan kontrak payload eksplisit. Sementara: kandidat cleanup roadmap (CL).
 
-**Survei consumer B6f part-2 (2026-06-16):** pencarian repo hanya menemukan route/view/test/dokumen untuk `api_rekap_kebutuhan_weekly` / `rekap-kebutuhan-weekly`; tidak ditemukan consumer frontend aktif di luar test. Rekomendasi: **jangan konvergensi sekarang** karena endpoint tampak orphan/eksperimental dan perubahan angka/payload berisiko tanpa manfaat UI langsung. Tandai sebagai kandidat **cleanup/defer**; bila nanti dipertahankan sebagai API eksternal/mobile, konvergensikan dalam WP terpisah dengan kontrak payload eksplisit.
-
-**Berikutnya:** B6d (jadwal JS, Vite — no recompute/auto-regenerate) + B6e (parity JS↔Python) tetap dipindahkan ke **WP-P8**. Secara backend calc-core, WP-B6 dianggap cukup untuk checkpoint.
+**WP-B6 BACKEND CALC-CORE SELESAI — checkpoint commit `58d3c41e` (owner verifikasi 2026-06-16):** B6a builder · B6b/B6c timeline canonical (RK-01, parity) · B6f-1 snapshot scope canonical. **Tahapan tidak lagi sumber kalkulasi kebutuhan di mana pun.** Verifikasi owner: B6 targeted 37/37, B4/B5 regression 76/76, `manage.py check` + `makemigrations --check` + `git diff --check` bersih. **Sisa DoD frontend → WP-P8:** B6d (Jadwal JS week_number server-authoritative + stop recompute/auto-regenerate, Vite bundle KF-06) + B6e (parity test JS↔Python). B6f-2 = cleanup/defer.
 
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 
@@ -923,3 +953,185 @@ Owner **menyetujui & MENGUNCI schema `b4.3`** — tidak ada blocker kode tersisa
 **Verifikasi owner:** WP-B4 readiness 23/23 · readiness+rekap 38/38 · frontend 252 pass / 25 skip · `manage.py check` + migration check bersih · `node --check` + `git diff --check` bersih. Keterbatasan `stale_expansion` berbasis `updated_at` tetap tercatat utk inc-4 (`readiness.py:56`).
 
 **Status:** schema LOCKED. **Gate tersisa: visual UAT banner Rekap RAB** → setelah itu fan-out **Rincian AHSP** (1 consumer/tahap) memakai pola pilot.
+
+---
+
+### WP-B7 — CUSTOM Live-Reference Propagation (SURVEI 2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Status:** IN PROGRESS (survei + rencana, BELUM ada perubahan kode). **Sumber:** TA-03, TA-18, keputusan owner **D-05** (final), AT-05 (audit-writer RETAIN). **Dependency:** WP-B3 (atomic, DONE), WP-B4 (readiness/signature, DONE).
+
+**Konteks keputusan owner D-05 (final, doc 18 §916-947):** bundle master = **reference synchronization dengan perlindungan nilai milik user** — BUKAN live-reference senyap, BUKAN snapshot beku. Aturan:
+1. Komponen/koefisien yang masih *inherited* dari AHSP Referensi mengikuti koreksi sumber.
+2. Nilai input user — terutama **`bundle_quantity` (koefisien bundle di `DetailAHSPProject`)** — TIDAK boleh berubah.
+3. Expanded = derived storage, boleh dibangun ulang.
+4. Perubahan master TIDAK boleh mengubah project secara diam-diam → wajib **status + audit**.
+Implementasi minimum yang dipilih owner: simpan revision/hash + waktu sync master pada raw bundle; saat master berubah tandai `reference_update_available`; rebuild expanded via proses sinkronisasi (aksi, bukan otomatis); pertahankan koef/jumlah bundle user; catat old/new ke audit trail. Client: badge "update tersedia" + aksi sync + ringkasan perubahan + feedback. **Bukan restrukturisasi DB besar.**
+
+**Survei kode (terverifikasi):**
+- **Dua sumbu propagasi (B7 mencakup keduanya):**
+  - **TA-03 (intra-project):** `cascade_bundle_re_expansion(project, modified_pekerjaan_id)` (`services.py:1962`) ADA & dipanggil pada **save** (`:2772`) tetapi **TIDAK pada reset-to-reference** (`:2899` hanya `_populate_expanded_from_raw` utk pekerjaan itu sendiri). Akibat: reset pekerjaan A yang dipakai bundle (`ref_pekerjaan`) oleh B → expanded B stale, "reset berhasil" senyap.
+  - **TA-18/D-05 (master→project):** CUSTOM dengan `ref_ahsp` → komponen master disalin komputasional ke `DetailAHSPExpanded`. Signal app `referensi` hanya `rebuild_search_cache()` (`referensi/models.py:18-19`); **tidak ada** mekanisme cari `DetailAHSPProject.ref_ahsp` lalu rebuild expanded / tandai stale. Perubahan/import ulang master → FK tunjuk versi terbaru, expanded tetap versi lama.
+- **Model master TIDAK punya `updated_at`** (`AHSPReferensi`/`RincianReferensi`, `referensi/models.py:23/78`) — punya `HistoricalRecords()`. → deteksi revisi master harus **content-hash** atas rincian master (kategori/kode_item/koefisien/satuan/uraian), sesuai pilihan D-05 ("revision/hash"). Pola identik `readiness.source_signature()` (B4 inc-4b, sha1 koef-quant) — **REUSE/sejajarkan**.
+- **B4 sudah punya** `DetailAHSPExpanded.source_signature` (signature internal: expanded vs raw project sendiri). B7 butuh sumbu BERBEDA: signature **master** yang disnapshot pada raw bundle saat sync, dibandingkan hash master terkini → `reference_update_available`. Dua signature ini komplementer, jangan dicampur.
+
+**Rencana increment (USULAN — perlu persetujuan owner):**
+| Inc | Fokus | Sifat | DoD |
+|---|---|---|---|
+| **B7a** | Helper `master_reference_signature(ref_ahsp)` (sha1 atas RincianReferensi master, sejajar `source_signature`) + simpan snapshot signature+waktu pada raw bundle (`DetailAHSPProject`: field `ref_snapshot_signature` + `ref_synced_at`, nullable; migrasi add + backfill frozen) | backend + migrasi, additive | signature deterministik; stamped saat expand dari master |
+| **B7b** | Deteksi `reference_update_available` di **readiness** (sinyal baru, schema bump `b4.5`): per CUSTOM `ref_ahsp` bandingkan snapshot vs master terkini → entry traceable | backend, additive (tak ubah angka) | sinyal muncul saat master beda; tak ada saat sinkron |
+| **B7c** | **TA-03 fix:** panggil `cascade_bundle_re_expansion` setelah reset commit (+ rollback bila gagal, no silent success) | backend, **perbaikan reliabilitas** | reset A → expanded dependent B ikut fresh; test A↔B |
+| **B7d** | Aksi sinkronisasi master (endpoint): rebuild expanded dari master terkini, **pertahankan `bundle_quantity` user**, stamp signature baru, **audit old/new** (AT-05 writer) | backend, **risky** (ubah angka expanded — by design, atas aksi user) | expanded = master baru; koef bundle user utuh; audit tercatat |
+| **B7e** | Frontend badge "update referensi tersedia" + aksi sync + ringkasan + feedback | frontend (cek Vite vs classic per template) | badge tampil; sync berjalan; non-blocking |
+
+**Catatan risiko & sekuens:** B7a/B7b/B7c backend additive/reliabilitas → **bisa mulai sekarang** (DB up). B7d mengubah nilai expanded (atas aksi user eksplisit, bukan senyap) → kawal audit + preservasi `bundle_quantity` + test. B7e cek bundling template (Template AHSP = classic? Jadwal = Vite). **Tahapan-mode tak relevan di sini.** AT-05 (audit-writer observability) = **RETAIN** (dipakai B7d).
+
+**Pertanyaan keputusan owner sebelum GO:**
+1. Setuju field baru di `DetailAHSPProject` (`ref_snapshot_signature`, `ref_synced_at`) untuk menyimpan revisi master per raw bundle? (alternatif: tabel terpisah — lebih berat, D-05 bilang "pada raw bundle").
+2. Sinyal `reference_update_available` masuk ke **readiness** (`b4.5`) atau channel terpisah? (rekomendasi: readiness, konsisten 5 consumer).
+3. Sync = **aksi manual user** (badge→tombol) sesuai D-05, konfirmasi? (BUKAN cascade otomatis saat master berubah — D-05 melarang perubahan senyap).
+4. Mulai B7a–B7c (backend additive + TA-03) dulu, B7d/e setelah review? (pola WP berisiko = increment hijau bertahap).
+
+#### inc-B7 — DESAIN PENUH (2026-06-16, MENUNGGU PERSETUJUAN OWNER)
+
+**Keputusan owner terkonfirmasi:** Q3 = **sync = aksi manual user** (badge→tombol; tak ada perubahan senyap, sesuai D-05). Q4 = **rancang penuh B7a–e dulu** sebelum tulis kode. Q1 (storage) & Q2 (channel) → owner minta uraian trade-off + contoh kasus (di bawah; rekomendasi ditandai).
+
+**Stamp site terverifikasi:** `_populate_expanded_from_raw` (`services.py:1758`) — loop raw `DetailAHSPProject`; baris `kategori='LAIN' & ref_ahsp_id` (`:1796`) di-expand via `expand_ahsp_bundle_to_components(ref_ahsp_id)` (`:1589`, baca `RincianReferensi`). Di titik inilah snapshot master di-stamp. Karena fungsi ini dipanggil tiap save/reset → snapshot SELALU = master saat build terakhir; stale terdeteksi bila master berubah SETELAH itu. Semantik benar.
+
+---
+
+##### Q1 (storage revisi master) — trade-off + contoh kasus
+
+**Opsi A — field di `DetailAHSPProject`** (`ref_snapshot_signature` CharField(40,null), `ref_synced_at` DateTime(null)); hanya bermakna saat `ref_ahsp_id` set.
+**Opsi B — tabel terpisah** (mis. `BundleReferenceSnapshot`: bundle_detail FK, signature, synced_at, [opsional history]).
+
+| Dimensi | Opsi A (field di raw bundle) | Opsi B (tabel terpisah) |
+|---|---|---|
+| Kepatuhan D-05 | **Literal** ("simpan revision/hash pada raw bundle") | Menyimpang ("pada raw bundle") |
+| Query readiness | Tanpa join — baris `DetailAHSPProject` SUDAH dibaca di loop expansion/readiness | Butuh join per baris bundle |
+| Riwayat banyak-versi | Tidak (hanya snapshot terkini) | Bisa (tapi tak dibutuhkan — audit sudah di AT-05) |
+| Biaya skema | 2 kolom nullable di tabel besar + backfill | Tabel+FK+lifecycle (cascade delete saat bundle dihapus) |
+| Risiko | Minimal (additive) | Over-engineering utk kebutuhan "snapshot terkini == master?" |
+
+**Contoh kasus:** Project punya 3 pekerjaan CUSTOM, tiap-tiap 1 baris bundle `ref_ahsp` → master `A.2.3.1.1`. Master diperbarui (koef berubah).
+- *Opsi A:* readiness loop sudah membaca 3 baris `DetailAHSPProject`; bandingkan `ref_snapshot_signature` vs hash master live → 3 baris stale, **tanpa join**.
+- *Opsi B:* hasil sama, tapi +1 join + tabel ekstra utk manfaat nol (kita tak butuh riwayat tiap sync — itu domain audit trail).
+- *Kapan B menang:* bila kita butuh menyimpan BANYAK snapshot historis per bundle (mis. "tunjukkan 5 sync terakhir"). D-05 TIDAK memintanya; old/new sudah masuk audit trail di B7d.
+
+**REKOMENDASI: Opsi A** (literal D-05, no-join, additive, sejajar pola `DetailAHSPExpanded.source_signature` B4).
+
+---
+
+##### Q2 (channel sinyal `reference_update_available`) — trade-off + contoh kasus
+
+**Opsi A — Readiness (schema bump `b4.5`)**: tambah sebagai sinyal readiness → otomatis muncul di 5 consumer ter-wire (banner advisory non-blocking + autoload).
+**Opsi B — channel/endpoint terpisah**: endpoint khusus B7, wiring UI baru per halaman.
+
+| Dimensi | Opsi A (readiness) | Opsi B (terpisah) |
+|---|---|---|
+| Wiring UI | Nol baru — autoload+banner sudah jalan di 5 halaman | Baru per halaman (fetch+elemen) |
+| Konsistensi | Satu tempat "project belum final / sumber belum sinkron" | Dua sistem awareness paralel |
+| Biaya | Bump schema `b4.4`→`b4.5` (re-review owner) | Tanpa bump schema readiness |
+| Semantik | Stale master = expanded berbasis sumber lama = isu correctness → cocok di readiness (advisory) | Terisolasi, tapi duplikasi mekanisme |
+| Aksi sync | Awareness di mana-mana; **tombol sync tetap di Template AHSP** (tempat edit) | Idem (aksi tetap page-specific) |
+
+**Contoh kasus:** User buka **Rekap RAB**. Master di balik 1 bundle CUSTOM mereka diperbarui minggu lalu.
+- *Opsi A:* banner readiness yang SUDAH ada menambah 1 baris "1 bundle memakai versi master lama — sinkronkan di Template AHSP" berdampingan dgn missing_price dll. Nol wiring baru. User klik ke Template AHSP → badge+tombol sync (B7e).
+- *Opsi B:* Rekap RAB perlu fetch+banner BARU khusus; ulangi tiap halaman → lebih banyak kode + risiko drift.
+- *Kapan B menang:* bila update-referensi jadi UX fundamental berbeda (mis. "sync center" lintas-project). Itu lebih berat dari minimum D-05 (badge+aksi).
+
+**Nuansa:** sinyal readiness saat ini bermakna "belum siap/belum final". `reference_update_available` = "pembaruan tersedia" — tetap correctness-relevant (expanded dari sumber lama) & tetap **advisory non-blocking**. Pesan dibedakan nadanya: "pembaruan referensi tersedia" (bukan "data salah").
+
+**REKOMENDASI: Opsi A (readiness `b4.5`)**, aksi sync tetap di Template AHSP.
+
+---
+
+##### Desain increment penuh B7a–B7e (berbasis Opsi A+A+manual)
+
+**B7a — signature + snapshot master (backend + migrasi, additive)**
+- `readiness.master_reference_signature(ref_ahsp_id) -> str|None`: sha1 atas `RincianReferensi` master tersortir (`kategori, kode_item, koefisien` quantize 12dp, `satuan_item, uraian_item`), join newline. Deterministik; sejajar `source_signature`. Return None bila master tak ada.
+- Field baru `DetailAHSPProject.ref_snapshot_signature` (CharField 40,null), `ref_synced_at` (DateTime,null). Migrasi 0049 add + 0050 backfill frozen: utk baris `ref_ahsp_id` set → stamp signature master terkini + `ref_synced_at=now` (asumsi sinkron saat deploy). Master hilang → null.
+- Stamp di `_populate_expanded_from_raw` (`:1796` cabang ref_ahsp): setelah expand, set `detail_obj.ref_snapshot_signature/ref_synced_at` (lazy import, batch save). **Caveat nested master:** signature = master langsung; perubahan master ber-nested (`expand_ahsp_bundle_to_components` rekursi `:1685`) = keterbatasan diketahui → opsi recurse signature di iterasi lanjut (catat).
+- DoD: signature deterministik (test) + ter-stamp saat expand + backfill tak error. Tak ubah angka/perilaku.
+
+**B7b — sinyal readiness `reference_update_available` (backend, additive, schema `b4.5`)**
+- Di `readiness._compute`: utk tiap `DetailAHSPProject` `ref_ahsp_id` set, bandingkan `ref_snapshot_signature` vs `master_reference_signature(ref_ahsp_id)` live. Beda (dan snapshot non-null) → entry `{pekerjaan_id,kode,uraian,source_table:"DetailAHSPProject",issue:"reference_update_available", ref_ahsp_id, ref_kode}`. snapshot null → diabaikan (legacy, jangan false-positive).
+- SCHEMA_VERSION `b4.4`→`b4.5`; tambah ke payload + banner (1 baris advisory: "pembaruan referensi tersedia — sinkronkan di Template AHSP"). Query-budget tetap konstan (prefetch master sig per ref_ahsp unik).
+- DoD: sinyal muncul saat master beda, hilang saat sinkron; backward-compat (snapshot null tak memicu); 5 consumer otomatis tampil; test + bump frontend banner test.
+
+**B7c — TA-03 fix: cascade re-expansion saat reset (backend, reliabilitas)**
+- Reset-to-reference (`:2899`) saat ini hanya `_populate_expanded_from_raw(target)`. Tambah `cascade_bundle_re_expansion(project, target.id)` setelah commit (pola sama dgn save `:2772`); bila gagal → rollback + pesan generik (no silent success, sejalan WP-B3 atomicity).
+- DoD: pekerjaan A direset → expanded dependent B (yg `ref_pekerjaan=A`) ikut fresh; test A↔B reset; tak ada 207/partial.
+
+**B7d — aksi sinkronisasi master (backend, RISKY by-design, atas aksi user)**
+- Endpoint `POST api/project/<id>/sync-reference/` (body: pekerjaan_id atau bundle detail_id; atau "semua bundle stale di project"). Atomic (`@transaction.atomic`, atomic_error_response).
+- Aksi: rebuild expanded dari master terkini utk bundle target (re-`_populate_expanded_from_raw` pekerjaan ybs → otomatis re-stamp B7a). **Pertahankan `bundle_quantity` user** = koef di `DetailAHSPProject` TIDAK disentuh (hanya expanded/derived dibangun ulang; raw bundle row koef tetap). Audit old/new via AT-05 writer (komponen+signature lama→baru).
+- DoD: setelah sync, `reference_update_available` hilang utk bundle itu; `DetailAHSPProject.koefisien` (bundle_quantity) identik pre/post; audit entry tercatat; angka expanded = master baru; test preservasi koef + idempotensi.
+
+**B7e — frontend badge + aksi (frontend; cek bundling per template)**
+- Template AHSP (cek classic vs Vite): badge "pembaruan referensi tersedia" per bundle stale (baca readiness `reference_update_available`); tombol "Sinkronkan" → konfirmasi + ringkasan komponen berubah → POST B7d → feedback sukses/gagal → refresh readiness. Non-blocking; escapeHtml semua.
+- DoD: badge tampil saat stale; sync jalan; ringkasan akurat; guard test.
+
+**Risiko & sekuens:** B7a/B7b/B7c additive/reliabilitas (DB up → bisa). B7d ubah angka expanded TAPI atas aksi user eksplisit + audit + preservasi bundle_quantity (bukan senyap — patuh D-05). B7e per-template bundling. **Caveat known:** nested-master signature (B7a), dan `ref_pekerjaan` (job-bundle) vs `ref_ahsp` (master-bundle) = dua jenis bundle; B7b/B7d fokus `ref_ahsp` (master), TA-03/B7c menutup `ref_pekerjaan` (intra-project).
+
+**MENUNGGU OWNER:** (1) konfirmasi Q1=Opsi A, (2) Q2=readiness `b4.5`, (3) approve desain B7a–e + caveat nested-master, (4) GO mulai B7a.
+
+**KEPUTUSAN OWNER 2026-06-16: GO** — Q1=Opsi A, Q2=readiness `b4.5`, sync manual, desain disetujui. Mulai B7a.
+
+#### inc-B7a — Master reference signature + snapshot stamping (DONE 2026-06-16)
+
+- `readiness.master_reference_signature(ref_ahsp_id)` — sha1 atas `RincianReferensi` master (kategori, kode_item, koefisien quant-12dp, satuan_item, uraian_item) tersortir deterministik; return None bila master hilang/kosong. Sejajar `source_signature`.
+- Field baru `DetailAHSPProject.ref_snapshot_signature` (CharField 40,null) + `ref_synced_at` (DateTime,null). Migrasi **0049** (add) + **0050** (backfill frozen: stamp signature master terkini + synced_at=now utk baris `ref_ahsp_id` set → asumsi sinkron saat deploy, cegah false-positive flood; depend referensi 0024 agar field name final).
+- Stamp di `_populate_expanded_from_raw` (`services.py`): kumpulkan `ref_ahsp_rows` di loop, setelah bulk_create expanded → `bulk_update(["ref_snapshot_signature","ref_synced_at"])`. **Koefisien user (bundle_quantity) TIDAK disentuh.**
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B7 inc-B7a | `tests_wp_b7_reference_sync` | PASS | 8/8: signature deterministik, sensitif koef/komponen-ditambah, None master kosong, independen urutan-insert; stamp saat expand, koef user utuh, non-master tak di-stamp |
+| 2026-06-16 | WP-B7 inc-B7a | B4/B3/B6/rekap regresi | PASS | 90/90; `manage.py check` + `makemigrations --check` + `git diff --check` bersih |
+
+**Caveat known (dicatat):** signature = master LANGSUNG; perubahan master ber-nested (`expand_ahsp_bundle_to_components` rekursi) belum tercakup → iterasi lanjut.
+
+#### inc-B7b — Sinyal readiness `reference_update_available` (DONE 2026-06-16, schema `b4.5`)
+
+- `readiness._compute`: utk tiap baris `DetailAHSPProject` `ref_ahsp_id` set, bandingkan `ref_snapshot_signature` (tersimpan) vs signature master live. Beda → entry `{pekerjaan_id, source_detail_id, kode, uraian, ref_ahsp_id, source_table:"DetailAHSPProject", source_page, issue:"reference_update_available"}`. **snapshot null (legacy) atau master hilang/kosong → diabaikan** (anti false-positive). Masuk `affected_pekerjaan`.
+- **Query budget DIJAGA:** master signature dihitung dari SATU query `RincianReferensi` (filter `ahsp_id__in`), di-group Python, refactor helper `_master_sig_from_rows` dipakai bersama `master_reference_signature`. Query lama (count) DIGANTI (bukan ditambah) → budget tetap.
+- `SCHEMA_VERSION` `b4.4`→`b4.5`. Banner `readiness_banner.js`: baris advisory "X bundle memakai versi master AHSP lama … (sinkronkan di Template AHSP)". 5 consumer otomatis tampil (tak perlu wiring baru).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B7 inc-B7b | `tests_wp_b7_reference_sync` + `tests_wp_b4_readiness` | PASS | 57/57: schema b4.5, no-signal-in-sync, **fire saat master dikoreksi in-place (Skenario 1)**, **versi tahunan baru TIDAK memicu (Skenario 2 owner)**, legacy null tak memicu, affected_pekerjaan |
+| 2026-06-16 | WP-B7 inc-B7b | frontend `vitest run` | PASS | 270 pass / 25 skip (16 file); banner B7b line + 3 assert; `node --check` OK |
+| 2026-06-16 | WP-B7 inc-B7b | check + makemigrations --check + diff --check | CLEAN | b4.4 sweep repo = nol sisa |
+
+**Skenario 2 (versi tahunan baru) terbukti TIDAK memicu** lewat `test_new_yearly_version_does_not_fire` — proyek tetap ter-pin ke versi terpilih; "upgrade versi" = WP terpisah (di luar B7).
+
+#### inc-B7c — Fix TA-03: cascade re-expansion saat reset-to-reference (DONE 2026-06-16)
+
+- `api_reset_detail_ahsp_to_ref` (`views_api.py:2827`): setelah `_populate_expanded_from_raw(pkj)`, tambah `cascade_bundle_re_expansion(project, pkj.id)` **di dalam transaksi atomik yang sama**. Reset pekerjaan A yang dipakai bundle (LAIN `ref_pekerjaan`) oleh B kini ikut me-refresh expanded B (sebelumnya: stale senyap, "reset berhasil").
+- **No silent success (konvensi WP-B3):** cascade gagal → `transaction.set_rollback(True)` + respons generik 500 (no `str(e)` leak) → seluruh reset dibatalkan, bukan setengah-jadi. (Lebih kuat dari jalur save yang cascade post-commit.)
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B7 inc-B7c | `tests_wp_b7_reference_sync` + `tests_template_ahsp_formula_state` | PASS | 37/37: `test_reset_re_expands_dependent_bundle` (A ref_mod dari master, B bundle ref_pekerjaan=A; expanded B dihapus → reset A → cascade rebuild B; koef per-unit RA-19 = 5). check + makemigrations + diff bersih |
+
+#### inc-B7d — Endpoint sync manual master→project (DONE 2026-06-16)
+
+- `api_sync_reference` (`POST api/project/<id>/sync-reference/`, atomik, owner-scoped). Body opsional `pekerjaan_id` (sync 1 pekerjaan) atau kosong (semua bundle stale di project).
+- Cari bundle stale (`ref_snapshot_signature` ≠ signature master live; sig master di-cache per ahsp unik). Untuk tiap pekerjaan stale: rebuild expanded via `_populate_expanded_from_raw` (auto re-stamp B7a). **`bundle_quantity` (DetailAHSPProject.koefisien) dipertahankan** — diverifikasi runtime (koef_before==koef_after, else RuntimeError→rollback). Audit old/new komposisi **expanded** (bukan raw — raw tak berubah) via `log_audit` ACTION_UPDATE summary "Sinkronisasi referensi AHSP master".
+- No silent success: exception → `set_rollback(True)` + 500 generik. Sync gagal = nol perubahan. D-05: tak ada propagasi senyap (hanya atas aksi user).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B7 inc-B7d | `tests_wp_b7_reference_sync` | PASS | 36/36: sync clears `reference_update_available`, rebuild expanded (komponen baru masuk: 1→2), **bundle_quantity user utuh**, audit tertulis, **idempotent** (sync ke-2 count=0), sync-all tanpa pekerjaan_id |
+| 2026-06-16 | WP-B7 inc-B7d | B4/B3/template/rekap regresi | PASS | 95/95; check + makemigrations + diff bersih |
+
+#### inc-B7e — Frontend badge + tombol Sinkronkan (DONE 2026-06-16) → WP-B7 SELESAI
+
+- `template_ahsp.html`: data attr `data-endpoint-sync-reference` (url `api_sync_reference`). `template_ahsp.js`: `renderSyncReferenceAction(box, readiness)` dipanggil dari `renderReadiness` — bila `readiness.reference_update_available` non-kosong, tambah tombol **"Sinkronkan referensi"** di bawah banner. Klik → konfirmasi (jumlah bundle + jaminan koef tak berubah) → `POST /sync-reference/` (CSRF) → status "Tersinkronkan N pekerjaan" → `refreshReadiness()` (baris hilang saat sinkron). Gagal → pesan + tombol aktif lagi. Advisory/non-blocking; editor RAW tak perlu reload (hanya expanded berubah).
+- Banner awareness (B7b) tetap tampil di 5 halaman; **aksi** hanya di Template AHSP (tempat edit), sesuai D-05.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B7 inc-B7e | `readiness_banner.test.js` (+wiring B7e) | PASS | 12/12; guard: renderSyncReferenceAction + reference_update_available + endpoints.syncReference + POST + Tersinkronkan |
+| 2026-06-16 | WP-B7 inc-B7e | frontend `vitest run` penuh + `manage.py check` (URL resolve) | PASS | 271 pass / 25 skip (16 file); `node --check` template_ahsp.js OK; diff bersih |
+
+**WP-B7 SELESAI (a–e).** D-05 reference-sync + user-value protection terimplementasi penuh: deteksi (B7a/b) + reliabilitas reset (B7c) + aksi sync manual (B7d) + UI (B7e). Skenario-1 (perubahan in-place versi terpilih) ditangani; Skenario-2 (versi tahunan baru) sengaja tak memicu (proyek ter-pin). **Caveat known:** nested-master signature = iterasi lanjut; "upgrade versi tahunan" = WP terpisah bila diinginkan. **Sisa Fase 1: B8 (tipe LAIN D-08), B9 (bundle limits D-10), B10 (actual_cost legacy bila ada).**

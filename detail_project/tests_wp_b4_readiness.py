@@ -454,7 +454,7 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(r["incomplete_planned_allocation"], [])
         self.assertEqual(r["allocation_without_volume"], [])
         self.assertFalse(r["timeline_stale"])
-        self.assertEqual(r["schema_version"], "b4.4")
+        self.assertEqual(r["schema_version"], "b4.5")
 
     # ----- affected_items canonical index (Master Plan minimum contract) -
     def test_affected_items_is_canonical_item_index(self):
@@ -692,7 +692,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertIn("readiness", body)
-        self.assertEqual(body["readiness"]["schema_version"], "b4.4")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.5")
 
     def test_readiness_reflects_missing_price_and_volume(self):
         body = self.client.get(self.url).json()
@@ -716,7 +716,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["readiness"]["schema_version"], "b4.4")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.5")
         self.assertIn("BHN-NULL", {e["kode"] for e in body["readiness"]["missing_price"]})
 
     def test_dedicated_readiness_endpoint_is_owner_scoped(self):

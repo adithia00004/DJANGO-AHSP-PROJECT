@@ -2881,6 +2881,27 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
 
         temp.delete()
 
+        # WP-B7c (TA-03): reset rebuilds THIS pekerjaan's expanded storage, but
+        # any pekerjaan that bundles it (LAIN ref_pekerjaan) still holds stale
+        # expanded components built from the pre-reset version. Cascade re-expand
+        # dependents INSIDE this atomic transaction so a reset can never silently
+        # leave dependents stale; a cascade failure rolls the whole reset back
+        # instead of reporting a misleading success (WP-B3 atomicity convention).
+        try:
+            from .services import cascade_bundle_re_expansion
+            cascade_bundle_re_expansion(project, pkj.id)
+        except Exception:
+            logger.error(
+                "[RESET_DETAIL_AHSP] CASCADE FAILED for pekerjaan %s; rolling back reset",
+                pkj.id, exc_info=True,
+            )
+            transaction.set_rollback(True)
+            return JsonResponse({
+                "ok": False,
+                "user_message": "Gagal menyinkronkan pekerjaan terkait. Reset dibatalkan, silakan coba lagi.",
+                "errors": [_err("$", "cascade re-expansion gagal")],
+            }, status=500)
+
     # Tandai ready bila ada baris
     detail_ready = moved > 0
     detail_change_ts = timezone.now()
@@ -2897,6 +2918,115 @@ def api_reset_detail_ahsp_to_ref(request: HttpRequest, project_id: int, pekerjaa
     transaction.on_commit(lambda: _auto_cleanup_orphans(project))
 
     return JsonResponse({"ok": True, "cloned_count": int(moved)})
+
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_sync_reference(request: HttpRequest, project_id: int):
+    """WP-B7d: manually sync CUSTOM bundles to the current master AHSP version.
+
+    For bundles whose stored snapshot signature no longer matches the master
+    (``reference_update_available``), rebuild the DERIVED expanded storage from the
+    latest master. The user-entered bundle koefisien (``DetailAHSPProject.koefisien``)
+    is PRESERVED — only expanded components are rebuilt, and the snapshot signature
+    is re-stamped (B7a). Each affected pekerjaan gets an audit entry (old/new
+    expanded composition). Sync is a deliberate user action — D-05 forbids silent
+    master propagation, so nothing changes until the user invokes this.
+
+    Body: optional ``pekerjaan_id`` to sync one pekerjaan; omit to sync all stale
+    bundles in the project.
+    """
+    project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        payload = {}
+    target_pkj_id = payload.get("pekerjaan_id")
+
+    from .readiness import master_reference_signature
+
+    bundles = DetailAHSPProject.objects.filter(
+        project=project,
+        ref_ahsp_id__isnull=False,
+        ref_snapshot_signature__isnull=False,
+    )
+    if target_pkj_id:
+        bundles = bundles.filter(pekerjaan_id=target_pkj_id)
+
+    # Resolve the current master signature once per distinct master.
+    sig_cache: dict = {}
+
+    def _cur_sig(ahsp_id):
+        if ahsp_id not in sig_cache:
+            sig_cache[ahsp_id] = master_reference_signature(ahsp_id)
+        return sig_cache[ahsp_id]
+
+    stale_pkj_ids = set()
+    for row in bundles.values("pekerjaan_id", "ref_ahsp_id", "ref_snapshot_signature"):
+        cur = _cur_sig(row["ref_ahsp_id"])
+        if cur is not None and row["ref_snapshot_signature"] != cur:
+            stale_pkj_ids.add(row["pekerjaan_id"])
+
+    def _expanded_summary(pkj):
+        return sorted(
+            (
+                {"kode": e["kode"], "kategori": e["kategori"], "koefisien": str(e["koefisien"])}
+                for e in DetailAHSPExpanded.objects.filter(
+                    project=project, pekerjaan=pkj
+                ).values("kode", "kategori", "koefisien")
+            ),
+            key=lambda x: (x["kategori"], x["kode"]),
+        )
+
+    synced = []
+    try:
+        for pkj in Pekerjaan.objects.filter(project=project, id__in=stale_pkj_ids):
+            koef_before = list(
+                DetailAHSPProject.objects.filter(
+                    project=project, pekerjaan=pkj, ref_ahsp_id__isnull=False
+                ).values_list("id", "koefisien")
+            )
+            old_expanded = _expanded_summary(pkj)
+            _populate_expanded_from_raw(project, pkj)  # rebuild + re-stamp (B7a)
+            new_expanded = _expanded_summary(pkj)
+
+            # Invariant: user-entered bundle koefisien must be untouched (D-05).
+            koef_after = list(
+                DetailAHSPProject.objects.filter(
+                    project=project, pekerjaan=pkj, ref_ahsp_id__isnull=False
+                ).values_list("id", "koefisien")
+            )
+            if koef_before != koef_after:
+                raise RuntimeError("bundle koefisien changed during sync")
+
+            if old_expanded != new_expanded:
+                log_audit(
+                    project, pkj, DetailAHSPAudit.ACTION_UPDATE,
+                    old_data=old_expanded, new_data=new_expanded,
+                    triggered_by="user", user=request.user,
+                    change_summary="Sinkronisasi referensi AHSP master",
+                )
+            synced.append(pkj.id)
+    except Exception:
+        logger.error(
+            "[SYNC_REFERENCE] FAILED for project %s; rolling back", project.id, exc_info=True
+        )
+        transaction.set_rollback(True)
+        return JsonResponse({
+            "ok": False,
+            "user_message": "Gagal menyinkronkan referensi. Tidak ada perubahan disimpan, silakan coba lagi.",
+            "errors": [_err("$", "sync referensi gagal")],
+        }, status=500)
+
+    if synced:
+        touch_project_change(project, ahsp=True)
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
+
+    return JsonResponse({"ok": True, "synced_pekerjaan": sorted(synced), "count": len(synced)})
 
 # ---------- View 4: Harga Items ----------
 @login_required
