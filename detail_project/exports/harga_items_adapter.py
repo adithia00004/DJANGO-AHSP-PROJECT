@@ -17,12 +17,14 @@ class HargaItemsAdapter:
         Transform Harga Items data for export.
         
         Returns 2 pages:
-        1. Satuan Dasar - all items with their FINAL prices (conversion-calculated if available)
-        2. Satuan Konversi - items with conversion profiles showing calculation
-        
-        IMPORTANT: When an item has conversion profile, the "Harga Satuan" displayed
-        should be calculated from market_price / factor_to_base, not the stored harga_satuan
-        which might be outdated.
+        1. Satuan Dasar - all items priced at the SSOT ``harga_satuan`` (the exact
+           value Rincian AHSP / Rekap RAB use).
+        2. Satuan Konversi - items with conversion profiles, shown as a RECONCILIATION
+           (market price ÷ factor) against ``harga_satuan``, flagged on mismatch.
+
+        WP-P1d (HI-03): the base-unit price is ALWAYS ``harga_satuan`` so this document
+        can never disagree with the RAB. The conversion profile is provenance only —
+        never a competing price source (Model A: harga_satuan = single SSOT).
         """
         from detail_project.services import used_harga_items_queryset
 
@@ -83,31 +85,34 @@ class HargaItemsAdapter:
             for item in items:
                 row_num += 1
                 
-                # Determine the effective price:
-                # If item has conversion profile, calculate from market_price / factor
-                # Otherwise use stored harga_satuan
-                effective_price = item.harga_satuan
-                has_conversion = False
-                
+                # WP-P1d (HI-03): the base-unit price shown here is ALWAYS the SSOT
+                # harga_satuan — the same value Rincian AHSP and Rekap RAB use — so
+                # the Harga document can never disagree with the RAB. A conversion
+                # profile is provenance only; its derived value is shown separately
+                # in the konversi table and flagged if it diverges from harga_satuan.
+                base_price = item.harga_satuan
+
                 try:
                     if hasattr(item, 'conversion_profile') and item.conversion_profile:
                         conv = item.conversion_profile
-                        has_conversion = True
-                        # Calculate price from conversion: market_price / factor_to_base
+                        derived = None
                         if conv.factor_to_base and conv.factor_to_base > 0:
-                            calculated_price = conv.market_price / conv.factor_to_base
-                            # Use the calculated price as effective price
-                            effective_price = calculated_price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                        items_with_conversion.append((item, conv, effective_price))
+                            derived = (conv.market_price / conv.factor_to_base).quantize(
+                                Decimal('0.01'), rounding=ROUND_HALF_UP)
+                        mismatch = (
+                            derived is not None and base_price is not None
+                            and derived != base_price
+                        )
+                        items_with_conversion.append((item, conv, base_price, derived, mismatch))
                 except Exception:
                     pass
-                
+
                 satuan_dasar_rows.append([
                     str(row_num),
                     item.kode_item or '',
                     item.uraian or '',
                     item.satuan or '',
-                    self._format_number(effective_price, 0),
+                    self._format_number(base_price, 0),
                 ])
                 row_types_dasar.append('item')
                 total_items += 1
@@ -120,37 +125,45 @@ class HargaItemsAdapter:
             konv_num = 0
             current_kategori = None
             
-            for item, conv, calculated_price in items_with_conversion:
+            for item, conv, base_price, derived, mismatch in items_with_conversion:
                 # Add category header if changed
                 if item.kategori != current_kategori:
                     current_kategori = item.kategori
                     kategori_label = kategori_labels.get(current_kategori, current_kategori or 'LAIN')
                     satuan_konversi_rows.append([kategori_label, '', '', '', ''])
                     row_types_konversi.append('category')
-                
+
                 konv_num += 1
-                
+
                 # Build narrative text for Keterangan Konversi column
                 harga_beli_str = self._format_number(conv.market_price, 0)
                 factor_str = self._format_number(conv.factor_to_base, 2)
-                harga_hasil_str = self._format_number(calculated_price, 0)
+                derived_str = self._format_number(derived, 0) if derived is not None else '-'
+                base_str = self._format_number(base_price, 0) if base_price is not None else '-'
                 market_unit = conv.market_unit or 'satuan'
                 base_unit = item.satuan or 'satuan'
-                
-                # Multi-line narrative with newline separator
+
+                # WP-P1d (HI-03): narrative is a RECONCILIATION against the SSOT
+                # harga_satuan — never a competing price. Flag when the profile-derived
+                # value no longer matches the stored base price (e.g. price negotiated
+                # manually after the profile was set).
                 keterangan_lines = [
                     f"Harga Beli: Rp {harga_beli_str}/{market_unit}",
                     f"Konversi: 1 {market_unit} = {factor_str} {base_unit}",
-                    f"Perhitungan: Rp {harga_beli_str} ÷ {factor_str}"
+                    f"Perhitungan: Rp {harga_beli_str} ÷ {factor_str} = Rp {derived_str}/{base_unit}",
                 ]
+                if mismatch:
+                    keterangan_lines.append(
+                        f"⚠ Harga dasar dipakai = Rp {base_str}/{base_unit} (override manual; berbeda dari hasil konversi)"
+                    )
                 keterangan_konversi = "\n".join(keterangan_lines)
-                
+
                 satuan_konversi_rows.append([
                     str(konv_num),
                     item.kode_item or '',
                     item.uraian or '',
                     keterangan_konversi,
-                    f"Rp {harga_hasil_str}/{base_unit}",
+                    f"Rp {base_str}/{base_unit}",
                 ])
                 row_types_konversi.append('item')
 

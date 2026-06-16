@@ -5,15 +5,24 @@ Orphan Cleanup and Audit Trail are admin-role utility pages. Regular project
 owners must neither see them in the sidebar nor be able to open them; staff
 and superuser retain access.
 """
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from dashboard.models import Project
 
 ADMIN_ONLY_PAGES = ("orphan_cleanup", "audit_trail")
 
+# TimeoutMiddleware runs the view in a separate thread, which drops the
+# force_login session and makes every request redirect to /accounts/login/
+# (KF-01). Drop it for these page-access tests; product auth is unaffected.
+TEST_MIDDLEWARE = [
+    m for m in settings.MIDDLEWARE if m != "config.middleware.timeout.TimeoutMiddleware"
+]
 
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class AdminOnlyPagesTests(TestCase):
     def setUp(self):
         user_model = get_user_model()

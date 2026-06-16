@@ -36,7 +36,7 @@
 
   <!-- Actions -->
   <div class="ms-auto d-flex align-items-center gap-2">
-    <!-- Export dropdown (CSV/PDF/Word/JSON) -->
+    <!-- Export dropdown (Excel/PDF/Word) — JSON report dipensiun (B-2: JSON = paket data, bukan laporan). -->
     <div class="btn-group ux-dropdown" role="group">
       <button type="button" class="btn btn-sm btn-outline-primary dp-btn dropdown-toggle" data-bs-toggle="dropdown"
         aria-expanded="false" aria-label="Export options">
@@ -257,15 +257,13 @@
             <input id="hi-conv-density" type="hidden">
           </div>
 
-          <!-- Preference (simplified to 1 checkbox) -->
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="hi-conv-remember" checked>
-            <label class="form-check-label small" for="hi-conv-remember">
-              Ingat pengaturan ini untuk item serupa
-            </label>
-          </div>
-          <!-- Hidden server checkbox (auto-enabled when remember is checked) -->
-          <input type="checkbox" id="hi-conv-remember-server" class="d-none">
+          <!-- WP-P1f/HI-16: the old "remember"/"remember-server" checkboxes were
+               dead (no longer read by JS). Under Model A every conversion is saved
+               with the page (server = SSOT), so the choice no longer exists. -->
+          <p class="small text-muted mb-0">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+            Pengaturan konversi tersimpan saat Anda menekan <strong>Simpan</strong>.
+          </p>
         </div>
 
         <div class="modal-footer py-2">

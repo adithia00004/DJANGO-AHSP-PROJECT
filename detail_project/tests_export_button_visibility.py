@@ -5,14 +5,23 @@ bagi user tanpa entitlement, dan tampil normal bagi user dengan entitlement.
 """
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from dashboard.models import Project
 
+# TimeoutMiddleware runs the view in a separate thread and drops the force_login
+# session → every request 302s to /accounts/login/ (KF-02). Drop it for these
+# render-inspection tests; product auth/entitlement logic is unaffected.
+TEST_MIDDLEWARE = [
+    m for m in settings.MIDDLEWARE if m != "config.middleware.timeout.TimeoutMiddleware"
+]
 
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class ExportButtonVisibilityTests(TestCase):
     def _make_user(self, username, **extra):
         user_model = get_user_model()

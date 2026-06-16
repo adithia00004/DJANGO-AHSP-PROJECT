@@ -326,9 +326,10 @@
     confirmReload('Anda akan memuat ulang halaman.');
   });
 
-  // ===== Konversi: in-memory + localStorage per Kode
+  // ===== Konversi: in-memory, server-backed (no localStorage — WP-P1f/HI-08).
+  // Profile shape is backend-keyed: {market_unit, market_price, factor_to_base,
+  // density, capacity_m3, capacity_ton, method, base_unit?}.
   const convStore = new Map(); // key: item.id -> profile
-  const lsk = (kode) => 'hiConv:' + kode;
 
   // ===== Fetch list
   async function fetchList(preloaded) {
@@ -352,15 +353,12 @@
         conv: it.conv || null // opsional dari server
       }));
 
-      // Prefill konversi dari server atau localStorage
+      // WP-P1f (HI-08): conversion profiles come ONLY from the server (the SSOT).
+      // The old per-browser localStorage fallback is removed — it was not
+      // project-scoped (same kode in two projects shared a browser profile) and
+      // could resurrect stale data.
       rows.forEach(r => {
         if (r.conv) convStore.set(r.id, r.conv);
-        else {
-          try {
-            const raw = localStorage.getItem(lsk(r.kode));
-            if (raw) convStore.set(r.id, JSON.parse(raw));
-          } catch { }
-        }
       });
 
       // Profit/Margin
@@ -535,6 +533,15 @@
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || !el.classList.contains('hi-input-price')) return;
     const tr = el.closest('tr');
+    // WP-P1b-wiring (Model A last-write-wins): a manual edit to a converted row
+    // drops its conversion profile (signalled to the server via clear_conversion).
+    // The modal sets the price programmatically and does NOT fire 'input', so this
+    // only triggers on real user typing/paste.
+    const _rid = Number(tr?.dataset.itemId);
+    if (tr && convStore.has(_rid)) {
+      convStore.delete(_rid);
+      tr.dataset.clearConv = '1';
+    }
     const raw = (el.value || '').trim();
 
     // Menghapus harga yang sebelumnya terisi adalah perubahan valid: simpan
@@ -660,11 +667,16 @@
         const input = tr.querySelector('.hi-input-price');
         if (!input) return;
 
+        // WP-P1b-wiring: explicit signal that a converted row was manually overridden
+        // → server drops the now-stale profile (Model A). Non-destructive otherwise.
+        const clearConv = tr.dataset.clearConv === '1';
+        const withClear = (obj) => clearConv ? { ...obj, clear_conversion: true } : obj;
+
         // HI-01 / UF-011: field kosong = "belum diisi" → kirim null (JANGAN koersi 0.00).
         const raw = (input.value || '').trim();
         if (raw === '') {
           input.classList.remove('ux-invalid');
-          payload.items.push({ id, harga_satuan: null });
+          payload.items.push(withClear({ id, harga_satuan: null }));
           idsSaving.push({ id, canon: '' });
           return;
         }
@@ -674,7 +686,7 @@
         input.classList.toggle('ux-invalid', invalid);
         if (invalid) { invalidCount++; return; }
 
-        payload.items.push({ id, harga_satuan: canon });
+        payload.items.push(withClear({ id, harga_satuan: canon }));
         idsSaving.push({ id, canon });
       });
 
@@ -683,12 +695,22 @@
         return;
       }
 
-      // konversi → jika user minta simpan ke server
+      // WP-P1b-wiring (HI-02): every staged/loaded conversion is sent so the
+      // server applies it atomically (it recomputes harga_satuan = market/factor).
+      // Re-sending an unchanged profile is an idempotent no-op.
       const conversions = [];
       convStore.forEach((p, id) => {
-        if (p && p.rememberServer) {
-          conversions.push({ id, ...p });
-        }
+        if (!p) return;
+        conversions.push({
+          id,
+          market_unit: p.market_unit,
+          market_price: p.market_price,
+          factor_to_base: p.factor_to_base,
+          density: p.density || null,
+          capacity_m3: p.capacity_m3 || null,
+          capacity_ton: p.capacity_ton || null,
+          method: p.method,
+        });
       });
       if (conversions.length) payload.conversions = conversions;
       if (mpCanon) payload.markup_percent = mpCanon;
@@ -808,65 +830,107 @@
   })();
 
   // ===== BULK PASTE (Kode;[Unit];Harga;[Factor];[Density])
-  document.addEventListener('paste', (e) => {
+  // WP-P1e (HI-07): a row WITH a factor is a MARKET-price paste → the base price
+  // is computed (market ÷ factor) before it lands in the price column, so a market
+  // price can never be stored as the base price. A row WITHOUT a factor is a plain
+  // BASE-price paste. Both are shown in a preview and applied only on confirm.
+  document.addEventListener('paste', async (e) => {
     if (!e.clipboardData) return;
     const text = e.clipboardData.getData('text');
     if (!text || !text.includes('\n')) return; // bukan tabel
     const rowsPaste = text.trim().split(/\r?\n/).map(line => line.split(/\t|;/));
-    let hit = 0, invalid = 0;
     const byKode = new Map();
 
     rowsPaste.forEach(cols => {
       const [kode, unit, harga, factor, density] = cols;
       const k = String(kode || '').trim().toLowerCase(); if (!k) return;
-      const canonHarga = toCanon(harga || '0') || '0.00';
-      const factorCanon = toCanonFloat(factor || '', 6);
-      const densityCanon = toCanonFloat(density || '', 6);
-      byKode.set(k, { unit, harga: canonHarga, factor: factorCanon, density: densityCanon });
+      byKode.set(k, {
+        unit,
+        harga: toCanon(harga || '0') || '0.00',
+        factor: toCanonFloat(factor || '', 6),
+        density: toCanonFloat(density || '', 6),
+      });
     });
 
+    // Build a plan: resolve each matched row's FINAL base price (market→base) and
+    // its mode, without mutating anything yet.
+    const plan = [];
     viewRows.forEach(tr => {
       const k = (tr.dataset.kode || '').toLowerCase();
       if (!byKode.has(k)) return;
       const { harga, factor, unit, density } = byKode.get(k);
+      const isMarket = !!factor && Number(factor) > 0;
+      let basePrice = harga;
+      if (isMarket) {
+        const b = Number(harga) / Number(factor);
+        basePrice = isFinite(b) ? b.toFixed(2) : harga;
+      }
+      const n = Number(basePrice);
+      const invalid = !isFinite(n) || n < 0 || n > MAX_PRICE;
+      plan.push({ tr, kode: tr.dataset.kode || k, isMarket, basePrice, market: harga, factor, unit, density, invalid });
+    });
 
-      const input = tr.querySelector('.hi-input-price');
-      const prev = tr.querySelector('.hi-price-preview');
+    if (!plan.length) return;  // nothing in the project matches the pasted kode
+
+    // Preview + confirm (formatMessage escapes everything and turns \n into <br>).
+    const baseN = plan.filter(p => !p.isMarket && !p.invalid).length;
+    const marketN = plan.filter(p => p.isMarket && !p.invalid).length;
+    const invalidN = plan.filter(p => p.invalid).length;
+    const sample = plan.slice(0, 6).map(p => {
+      if (p.invalid) return `• ${p.kode}: tidak valid (dilewati)`;
+      return p.isMarket
+        ? `• ${p.kode}: Rp ${rupiah(p.market)}/${p.unit || 'satuan'} ÷ ${p.factor} = Rp ${rupiah(p.basePrice)} /satuan dasar`
+        : `• ${p.kode}: Rp ${rupiah(p.basePrice)} (harga dasar)`;
+    }).join('\n');
+    const more = plan.length > 6 ? `\n… dan ${plan.length - 6} baris lain` : '';
+    const msg =
+      `Tempel massal akan menerapkan ke ${plan.length} item:\n` +
+      `- ${baseN} harga dasar\n- ${marketN} konversi market (dihitung ke harga dasar)` +
+      (invalidN ? `\n- ${invalidN} tidak valid (dilewati)` : '') +
+      `\n\n${sample}${more}`;
+
+    const ok = await confirmModal(msg, {
+      title: 'Konfirmasi Tempel Massal', confirmText: 'Terapkan', cancelText: 'Batal',
+    });
+    if (!ok) { toast('Tempel massal dibatalkan.', 'info'); return; }
+
+    // Apply the confirmed plan.
+    let hit = 0, invalid = 0;
+    plan.forEach(p => {
+      const input = p.tr.querySelector('.hi-input-price');
+      const prev = p.tr.querySelector('.hi-price-preview');
       if (!input || !prev) return;
+      if (p.invalid) { input.classList.add('ux-invalid'); prev.textContent = '—'; invalid++; return; }
 
-      const n = Number(harga);
-      const isInv = !isFinite(n) || n < 0 || n > MAX_PRICE;
+      input.value = toUI(p.basePrice);  // already the BASE price (market converted)
+      input.classList.remove('ux-invalid');
+      prev.textContent = rupiah(p.basePrice);
+      setRowDirtyVisual(p.tr, true);
+      hit++;
 
-      input.value = toUI(harga);
-      input.classList.toggle('ux-invalid', isInv);
-      prev.textContent = isInv ? '—' : rupiah(harga);
-      if (isInv) invalid++; else hit++;
-
-      // FIX (#4): paste mengubah nilai baris → tandai kotor agar status dirty/visual ikut.
-      setRowDirtyVisual(tr, true);
-
-      // simpan profil konversi jika ada factor (tanpa push ke server)
-      if (factor) {
-        convStore.set(Number(tr.dataset.itemId), {
-          unit: (unit || '').toString(),
-          price_market: toCanon2(harga) || '',
-          factor_to_base: factor,
-          density: density || '',
+      const pid = Number(p.tr.dataset.itemId);
+      if (p.isMarket) {
+        // Stage the conversion (backend-keyed); server recomputes the same base.
+        convStore.set(pid, {
+          market_unit: (p.unit || '').toString(),
+          market_price: p.market,
+          factor_to_base: p.factor,
+          density: p.density || '',
           capacity_m3: '',
           capacity_ton: '',
           method: 'direct',
-          base_unit: tr.dataset.satuan || tr.children[4].textContent.trim(),
-          updated_at: (new Date()).toISOString(),
-          remember: true,
-          rememberServer: false
+          base_unit: p.tr.dataset.satuan || p.tr.children[4].textContent.trim(),
         });
+        p.tr.dataset.clearConv = '0';
+      } else if (convStore.has(pid)) {
+        // Plain base-price paste over a converted row = manual override (Model A).
+        convStore.delete(pid);
+        p.tr.dataset.clearConv = '1';
       }
     });
 
-    // FIX (#4): aktifkan dirty global bila ada baris yang berubah oleh paste.
-    if (hit + invalid > 0) setDirty(true);
-
-    toast(`Paste massal: ${hit} baris${invalid ? `, ${invalid} tidak valid` : ''}.`, invalid ? 'warn' : 'success');
+    if (hit > 0) setDirty(true);
+    toast(`Tempel massal: ${hit} baris${invalid ? `, ${invalid} tidak valid` : ''}.`, invalid ? 'warning' : 'success');
   });
 
   // ===== Modal Konversi: setup
@@ -929,16 +993,17 @@
     // restore profil (server/local)
     const prof = convStore.get(convCtx.id) || null;
     if (prof) {
-      const unitOpt = ['dump_truck', 'm3', 'ton', 'zak', 'custom'].includes(prof.unit) ? prof.unit : 'custom';
+      const unitName = prof.market_unit || '';
+      const unitOpt = ['dump_truck', 'm3', 'ton', 'zak', 'custom'].includes(unitName) ? unitName : 'custom';
       $convUnit.value = unitOpt;
       if (unitOpt === 'custom') {
         $convUnitCustom.classList.remove('d-none');
-        $convUnitCustom.value = prof.unit || 'satuan pembelian dari Supplier';
+        $convUnitCustom.value = unitName || 'satuan pembelian dari Supplier';
         setUnitLabel($convUnitCustom.value || 'satuan pembelian dari Supplier');
       } else {
         setUnitLabel(unitOpt);
       }
-      if (prof.price_market) $convPrice.value = toUI2(prof.price_market);
+      if (prof.market_price) $convPrice.value = toUI2(prof.market_price);
       if (prof.factor_to_base) $convFactor.value = (N ? N.formatForUI(N.enforceDp(prof.factor_to_base, 6)) : (prof.factor_to_base || ''));
       if (prof.capacity_m3) { $convCapM3Wrap.classList.remove('d-none'); $convCapM3.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_m3, 6)) : (prof.capacity_m3 || '')); }
       if (prof.capacity_ton) { $convCapTonWrap.classList.remove('d-none'); $convCapTon.value = (N ? N.formatForUI(N.enforceDp(prof.capacity_ton, 6)) : (prof.capacity_ton || '')); }
@@ -1012,61 +1077,25 @@
       }
     }
 
-    // simpan profil
+    // WP-P1b-wiring (HI-02): STAGE the profile only — do NOT commit to a separate
+    // endpoint. The conversion is persisted atomically with the page "Simpan"
+    // (sent in payload.conversions), so the profile and harga_satuan can never
+    // diverge. Profile is backend-keyed; the server recomputes harga_satuan.
     const unitName = ($convUnit.value === 'custom') ? ($convUnitCustom.value || 'satuan pembelian dari Supplier') : $convUnit.value;
     const prof = {
-      unit: unitName,
-      price_market: toCanon2($convPrice.value) || '',
+      market_unit: unitName,
+      market_price: toCanon2($convPrice.value) || '',
       factor_to_base: toCanonFloat($convFactor.value, 6) || '',
       density: toCanonFloat($convDensity.value, 6) || '',
       capacity_m3: toCanonFloat($convCapM3.value, 6) || '',
       capacity_ton: toCanonFloat($convCapTon.value, 6) || '',
       method: deriveMethod(),
       base_unit: convCtx.base,
-      updated_at: (new Date()).toISOString(),
-      remember: !!document.getElementById('hi-conv-remember')?.checked,
-      rememberServer: !!document.getElementById('hi-conv-remember-server')?.checked
     };
     convStore.set(convCtx.id, prof);
-
-    try {
-      if (prof.remember) { localStorage.setItem(lsk(convCtx.kode), JSON.stringify(prof)); }
-      else { localStorage.removeItem(lsk(convCtx.kode)); }
-    } catch { }
-
-    // POST to server if 'remember' is checked (save to database)
-    if (prof.remember && projectId && convCtx.id) {
-      const saveUrl = `/detail_project/api/project/${projectId}/conversion-profile/save/`;
-      fetch(saveUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken(),
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          harga_item_id: convCtx.id,
-          market_unit: prof.unit,
-          market_price: prof.price_market,
-          factor_to_base: prof.factor_to_base,
-          density: prof.density || null,
-          capacity_m3: prof.capacity_m3 || null,
-          capacity_ton: prof.capacity_ton || null,
-          method: prof.method
-        })
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.ok) {
-            console.log('[CONV] Profile saved to server:', data.profile_id);
-            toast('✅ Pengaturan konversi tersimpan', 'success', 2000);
-          } else {
-            console.warn('[CONV] Failed to save profile:', data.error);
-          }
-        })
-        .catch(err => console.warn('[CONV] Save error:', err));
-    }
+    // This row is conversion-driven again → cancel any pending manual-override clear.
+    if (convCtx.tr) convCtx.tr.dataset.clearConv = '0';
+    setDirty(true);  // staged conversion must be persisted on the next page Simpan
 
     if (window.bootstrap && $convModal) {
       window.bootstrap.Modal.getOrCreateInstance($convModal).hide();

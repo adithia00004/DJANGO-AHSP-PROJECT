@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 46% implementasi):** **FASE 1 (shared foundation) SELESAI - WP-A1(+AT-01)/A2(report-only)/B1/B2/B3/B4/B5/B6(backend calc-core)/B7/B8/B9/B10 DONE. NEXT: Fase 2 (WP-P1..P9 integrasi per-halaman) · defer: B6d/e→WP-P8, B6f-2 cleanup, B9b prospective UI→WP-P, CSP enforcement, export perf**
+**Status keseluruhan (≈ 49% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2 dimulai: WP-P1 (Harga Items) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P2 (Template AHSP) dst. Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
 
 ## 1. Aturan Tracking
 
@@ -37,12 +37,13 @@ Status:
 | WP-B3 | Atomic mutation convention | DONE | 2026-06-14 | 2026-06-14 | WP-00 | inc1 LP-02/JDW-01/03 · inc2 Volume VP-01/02/03/04 + quantity atomic · inc3 Harga HI-06/HI-01 · inc4 Template TA-01 · inc5 last-write-wins frontend/backend. 25 contract/failure tests; no concurrency 409 atau active-form 207 pada endpoint target. HI-16/HI-02→WP-P1; DB CheckConstraint koef→follow-up migrasi |
 | WP-B4 | Canonical readiness | DONE | 2026-06-15 | 2026-06-15 | WP-B1 | Schema `b4.4` lengkap (null≠zero; expansion missing/stale/incomplete/excess via signature bypass-proof; 3 sinyal jadwal). 5/5 consumer wired + `/readiness/` + autoload. UF-011 fixed. Migrasi 0046–0048. Test 36 readiness backend + 265 frontend |
 | WP-B5 | Server-authoritative export | DONE | 2026-06-15 | 2026-06-15 | B1/B2/B4 | B5a seluruh controller export memakai error-wrapper · B5b identity (fix lokasi/tahun) · B5c filename · B5d JSON keluar report+data-package atomic/versioned · B5e signature/empty/PDF-placement locked. 3 item scope (auto-async threshold, client-render migrasi, snapshot eksplisit) DEFER ke milestone perf. Full B5+CSP suite 56/56 |
-| WP-B6 | Canonical weekly distribution | IN PROGRESS (backend calc-core DONE; B6d/e ke WP-P8, B6f part-2 cleanup/defer) | 2026-06-16 | - | WP-B4 | ✅B6a builder (7 test) ✅B6b+B6c `compute_kebutuhan_timeline` canonical (weekly+4-week+unscheduled+tahapan-deprecated, parity, filter periods canonical) ✅B6f part-1 snapshot scope canonical. Verifikasi B6 targeted 37/37. ⬜B6d jadwal JS no-recompute/no-auto-regen (Vite/WP-P8) ⬜B6e parity JS↔Python ⬜B6f part-2 `api_rekap_kebutuhan_weekly` tidak ada consumer aktif ditemukan; kandidat cleanup/defer |
+| WP-B6 | Canonical weekly distribution | IN PROGRESS (DoD 3/5 — backend SSOT DONE; B6d/e → WP-P7 Jadwal) | 2026-06-16 | - | WP-B4 | **DoD 5 butir: ✅#2 builder sama Jadwal/Kebutuhan, ✅#3 Σweekly+unscheduled=total, ⬜#1 JS tak recompute week (B6d), ⬜#4 contract test JS↔Python (B6e), ⬜#5 no auto-regenerate senyap (B6d).** ✅B6a builder ✅B6b/c `compute_kebutuhan_timeline` canonical ✅B6f-1 snapshot scope. Targeted 37/37. **⬜B6d+B6e = Vite (KF-06, butuh rebuild owner) → dikerjakan di WP-P7 (Jadwal; checklist "R1 week number server-authoritative")**. ⬜B6f-2 `api_rekap_kebutuhan_weekly` orphan → cleanup (Rekap Kebutuhan/WP-P8). **Kebenaran angka AMAN (SSOT backend canonical); sisa = hardening UI Jadwal + parity guard.** |
 | WP-B7 | CUSTOM live-reference | DONE | 2026-06-16 | 2026-06-16 | B3/B4 | D-05 reference-sync + user-value protection LENGKAP (a–e). B7a signature+migrasi 0049/0050 · B7b sinyal readiness `b4.5` · B7c fix TA-03 (cascade reset atomik) · B7d endpoint sync manual (bundle_quantity utuh, audit, idempotent) · B7e badge+tombol Template AHSP. Skenario-1 only (Skenario-2 versi-baru sengaja tak memicu). Caveat: nested-master signature + "upgrade versi tahunan" = WP terpisah. AT-05 audit-writer RETAINED |
 | WP-B8 | Tipe LAIN | DONE | 2026-06-16 | 2026-06-16 | B3 | D-08 LENGKAP (a–d): OTHER_DIRECT vs WORK_BUNDLE, item_type **derived** (tanpa kolom). B8a helper+expose API · B8b save terima LAIN-tanpa-ref sbg OTHER_DIRECT (2 jalur ekspansi konsisten) · B8c label humanis · B8d UI 3-aksi tambah. Perangkap save tertutup; angka data lama tak berubah |
 | WP-B9 | Bundle limits | DONE (server guards; B9b UI→WP-P) | 2026-06-16 | 2026-06-16 | B7/B8 | D-10 inti: `MAX_BUNDLE_LEVELS=4` (depth 2→3, kedua jalur) + `MAX_EXPANDED_COMPONENTS=500` stop-segera + circular (existing). Test 4/4. B9b prospective-validation UI DEFER→WP-P |
 | WP-B10 | Actual-cost legacy mapping | DONE | 2026-06-16 | 2026-06-16 | WP-00/B3/B6 | Inventory: actual_cost hanya di PekerjaanProgressWeekly kanonik → mapping legacy NO MIGRATION REQUIRED. JDW-05 fix: reset actual kini hapus actual_cost (no orphan); planned tak terdampak. Test 2/2 |
-| WP-P1..P9 | Integrasi per-page | PENDING | - | - | Shared WP | - |
+| WP-P1 | Harga Items | DONE | 2026-06-16 | 2026-06-16 | B1/B3/B4 | Model A (harga_satuan=SSOT, profil=kalkulator+provenance, LWW). P1a validasi(HI-05)·P1b atomic backend+frontend wiring(HI-02 e2e)·P1c bootstrap(HI-04)·P1d export=harga_satuan(HI-03/12)·P1e paste market÷factor+confirm(HI-07)·HI-08 localStorage dihapus·HI-16 dead code. Endpoint konversi orphan→Model-A-consistent+deprecated. Orphan-cleanup UI→Fase 3 |
+| WP-P2..P9 | Integrasi per-page | PENDING | - | - | Shared WP | P2 Template AHSP (incl UF-007..012, ENH-01); **P7 Jadwal = serap B6d/e (JS week server-authoritative + stop auto-regenerate) + B6e parity test**; **P8 Rekap Kebutuhan = serap B6f-2 cleanup (`api_rekap_kebutuhan_weekly` orphan) + period selector 4-minggu**; P3 Volume; dst |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -70,20 +71,20 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 46% dari eksekusi implementasi selesai** (per 2026-06-16).
+**Headline: ≈ 49% dari eksekusi implementasi selesai** (per 2026-06-16).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
-| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~98% | ~44% | **A1·A2(report-only)·B1·B2·B3·B4·B5·B6(backend)·B7·B8·B9·B10 DONE**; sisa hanya B6d/e (Vite→WP-P8) + defer (CSP enforcement, export-perf, B9b prospective UI) |
-| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~5% | ~1.5% | readiness display terpasang di 5 halaman (bagian B4); integrasi per-page penuh belum |
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~98% | ~44% | **A1·A2(report-only)·B1·B2·B3·B4·B5·B7·B8·B9·B10 DONE; B6 backend SSOT DONE (DoD 3/5)**; sisa hanya **B6d/e (Vite → WP-P7 Jadwal)** + defer (CSP enforcement, export-perf, B9b prospective UI, B3 DB-constraint) |
+| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~16% | ~4.8% | **WP-P1 Harga Items DONE** (Model A, HI-01..16); readiness display di 5 halaman (B4); P2–P9 belum |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 46%** | |
+| **Total** | **100%** | | **≈ 49%** | |
 
-Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend calc-core ✅ ≈3.2; sisa B6d/e frontend≈0.8 ke WP-P8)**, **B7=4 ✅**, **B8=2 ✅**, **B9=2 ✅**, **B10=2 ✅** → selesai ≈44.2/45 ≈ 98% (sisa hanya B6d/e≈0.8 Vite→WP-P8).
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend SSOT ✅ ≈3.2 = DoD 3/5; sisa B6d/e frontend≈0.8 → WP-P7 Jadwal)**, **B7=4 ✅**, **B8=2 ✅**, **B9=2 ✅**, **B10=2 ✅** → selesai ≈44.2/45 ≈ 98% (sisa hanya B6d/e≈0.8 Vite → WP-P7 Jadwal).
 
 **WP-B4 SELESAI** (inc-1 survei · inc-2/2.1/2.2 kontrak `b4.3` · UF-011 fix + UAT PASS · inc-3 5/5 consumer wired · inc-4a 3 sinyal jadwal · inc-4b stale-signature `b4.4`).
 
@@ -118,8 +119,8 @@ Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-
 
 | ID | Command/Area | Baseline | Klasifikasi | Owner/Disposition |
 |---|---|---|---|---|
-| KF-01 | Audit Trail admin-only tests | Test client redirect login meski `force_login` | known-failing | REMOVE bersama CL-17; pastikan penyebab bukan auth global |
-| KF-02 | Rincian/export-button visibility | 3 fixture mendapat HTTP 302, expected 200 | known-failing | WP-00 triage; fix test/environment bila masih relevan |
+| KF-01 | Audit Trail admin-only tests | Test client redirect login meski `force_login` | **RESOLVED 2026-06-16** | Akar = `TimeoutMiddleware` jalankan view di thread terpisah → drop sesi force_login → 302 `/accounts/login/`. BUKAN auth global (terkonfirmasi). Fix: `@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)` (buang TimeoutMiddleware) di `tests_admin_only_pages`. 4/4 PASS |
+| KF-02 | Rincian/export-button visibility | 3 fixture mendapat HTTP 302, expected 200 | **RESOLVED 2026-06-16** | Akar sama (TimeoutMiddleware vs force_login). Fix: `@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)` di `tests_export_button_visibility`. 3/3 PASS. SubscriptionMiddleware hanya gate WRITE (GET selalu lolos) → bukan penyebab |
 | KF-03 | Rekap Kebutuhan suite teardown | Assertions lulus; exit 1 karena DB dipakai session lain | environment-only | Gunakan `--keepdb`; catat assertion terpisah dari teardown |
 | KF-04 | Frontend Vitest | 247 passed, 25 skipped | passing | Checkpoint WP-B3 2026-06-14 |
 | KF-05 | Django targeted baseline | 20 passed sebelum WP-B1 | passing | `tests_item_ssot` + `tests_template_ahsp_formula_state` |
@@ -879,7 +880,7 @@ Jadwal = `kelola_tahapan_grid_modern.html` (bundle Vite — JANGAN sentuh build)
 - `mode='tahapan'` → diabaikan (treat 'all') + `meta.deprecated_mode`. Tahapan tak ubah quantity.
 - time_scope: filter bucket via **rentang tanggal** (scope start/end → tanggal) terhadap minggu kanonik (key lama ISO-week tak kompatibel → map by date); parity diuji TANPA scope (full).
 - pertahankan: cache (`_kebutuhan_signature`), filters (klas/sub/pekerjaan), payload shape (periods[] + 'unscheduled' + meta), logging.
-- caveat frontend: period selector (week/month) frontend-coupled (Vite/template) → label "month" akan menampilkan 4-week; penyelarasan UI = WP-P8/B6d.
+- caveat frontend: period selector Rekap Kebutuhan (week/month) frontend-coupled (Vite/template) → label "month" akan menampilkan 4-week; penyelarasan UI = WP-P8 (Rekap Kebutuhan). Jadwal JS recompute/auto-regen = B6d → WP-P7.
 
 **Tes:** parity (Σ minggu+unscheduled=total per item, tanpa scope) + regresi `tests_rekap_calculation_contract` + `tests_api_v2_access` (akses) + check/migrasi. Existing test hanya akses/kontrak field (tak mengunci overlap-day) → aman diubah.
 
@@ -907,7 +908,7 @@ Rewrite `services.compute_kebutuhan_timeline` (+ helper `_scope_date_window`):
 |---|---|---|---|---|
 | 2026-06-16 | WP-B6 inc-B6b+B6c | `tests_kebutuhan_timeline_b6b` + regresi | PASS | 34/34: 7 timeline/filter tests (weekly=proporsi, **parity Σperiode+unscheduled=total/item**, unscheduled remainder+job, four_week=compat month_range, filter periods canonical tanpa Tahapan, canonical week scope, tahapan-deprecated quantity=all) + weekly_distribution 7 + rekap_calc_contract 15 + api_v2_access 5. `manage.py check` bersih |
 
-**Caveat frontend (B6d/WP-P8):** period selector Rekap Kebutuhan (Vite/template) masih label week/month → "month" kini menampilkan data 4-minggu (label "Minggu 1-4"). Penyelarasan UI + hentikan JS week-recompute/auto-regenerate Jadwal = **B6d** (Vite bundle).
+**Caveat frontend (dua halaman berbeda):** (a) period selector **Rekap Kebutuhan** (Vite/template) masih label week/month → "month" kini menampilkan data 4-minggu (label "Minggu 1-4"); penyelarasan UI ini = **WP-P8 (Rekap Kebutuhan)**. (b) hentikan JS week-recompute/auto-regenerate **Jadwal** = **B6d → WP-P7 (Jadwal)**, Vite bundle.
 
 **Gap-fix owner (2026-06-16, sebelum checkpoint):** `get_project_period_options()` masih berbasis `TahapPelaksanaan` → filter periode UI bisa kosong/desync utk project yang punya `PekerjaanProgressWeekly` tapi tanpa Tahapan. Diubah **canonical**: `periods.weeks` = `week_1,week_2,…`; `periods.months` = compat key 4-minggu `period4_1,period4_2,…`. `_normalize_time_scope()` kini menerima `week_N` & `period4_N` → range filter UI tetap bekerja dgn bucket baru. Konsisten dgn `_scope_date_window`/`compute_kebutuhan_timeline` (B6 suite 34/34, B4/B5 +76/76, check & migrasi bersih). Test owner: `test_period_options_are_canonical_without_tahapan`.
 
@@ -919,7 +920,7 @@ Rewrite `services.compute_kebutuhan_timeline` (+ helper `_scope_date_window`):
 
 **B6f part-2 — KEPUTUSAN OWNER 2026-06-16: DEFER → kandidat cleanup (CL).** `api_rekap_kebutuhan_weekly` (`views_api.py:6748`, route `api/v2/.../rekap-kebutuhan-weekly/`) hanya ada di route/view/test/dokumen — **tidak ada consumer frontend aktif**. Payload beda + konvergensi mengubah angka/perilaku (default volume 1.0→real, +expanded/raw-fallback, +unscheduled) → **JANGAN konvergensi sekarang**. Bila kelak terbukti dipakai (mobile/API eksternal) → konvergensikan sebagai WP kecil dengan kontrak payload eksplisit. Sementara: kandidat cleanup roadmap (CL).
 
-**WP-B6 BACKEND CALC-CORE SELESAI — checkpoint commit `58d3c41e` (owner verifikasi 2026-06-16):** B6a builder · B6b/B6c timeline canonical (RK-01, parity) · B6f-1 snapshot scope canonical. **Tahapan tidak lagi sumber kalkulasi kebutuhan di mana pun.** Verifikasi owner: B6 targeted 37/37, B4/B5 regression 76/76, `manage.py check` + `makemigrations --check` + `git diff --check` bersih. **Sisa DoD frontend → WP-P8:** B6d (Jadwal JS week_number server-authoritative + stop recompute/auto-regenerate, Vite bundle KF-06) + B6e (parity test JS↔Python). B6f-2 = cleanup/defer.
+**WP-B6 BACKEND CALC-CORE SELESAI — checkpoint commit `58d3c41e` (owner verifikasi 2026-06-16):** B6a builder · B6b/B6c timeline canonical (RK-01, parity) · B6f-1 snapshot scope canonical. **Tahapan tidak lagi sumber kalkulasi kebutuhan di mana pun.** Verifikasi owner: B6 targeted 37/37, B4/B5 regression 76/76, `manage.py check` + `makemigrations --check` + `git diff --check` bersih. **Sisa DoD frontend → WP-P7 (Jadwal):** B6d (Jadwal JS week_number server-authoritative + stop recompute/auto-regenerate, Vite bundle KF-06) + B6e (parity test JS↔Python). B6f-2 (orphan endpoint) = cleanup → WP-P8 (Rekap Kebutuhan).
 
 #### inc-2.2 — Verdict-review hardening (5 koreksi owner, sebelum lock/fan-out) → schema `b4.3`
 
@@ -1239,4 +1240,138 @@ Implementasi minimum yang dipilih owner: simpan revision/hash + waktu sync maste
 | 2026-06-16 | WP-B10 inc-B10 | `tests_wp_b10_actual_cost` | PASS | 2/2: reset actual → actual_cost=None + planned utuh; reset planned → actual_cost & actual_proportion utuh |
 | 2026-06-16 | WP-B10 inc-B10 | V2 reset/security/change-status regresi | PASS | 16/16; diff bersih |
 
-**DoD terpenuhi:** tak ada actual cost yatim setelah reset; planned cost tak berubah saat actual dibersihkan; legacy mapping = NO MIGRATION REQUIRED (tak perlu migrasi/dry-run). **WP-B10 SELESAI.** → **Fase 1 (shared foundation) SELESAI** kecuali B6d/e (Vite, →WP-P8) + defer (CSP enforcement, export perf, B6f-2 cleanup, B9b prospective UI→WP-P).
+**DoD terpenuhi:** tak ada actual cost yatim setelah reset; planned cost tak berubah saat actual dibersihkan; legacy mapping = NO MIGRATION REQUIRED (tak perlu migrasi/dry-run). **WP-B10 SELESAI.**
+
+---
+
+#### ⚑ STATUS FASE 1 (otoritatif, 2026-06-16) — baca ini untuk menghindari kebingungan
+
+**Fondasi BACKEND shared SELESAI & 100% test hijau** (473 backend OK / 0 gagal, 275 frontend). **11 dari 12 WP DoD penuh: A1·A2(report-only)·B1·B2·B3·B4·B5·B7·B8·B9·B10.**
+
+**WP-B6 = SATU-SATUNYA yang belum 100%** (DoD 3/5):
+- ✅ Backend SSOT canonical (B6a builder, B6b/c timeline weekly+4-minggu+unscheduled, B6f-1 snapshot scope) → **Rekap Kebutuhan/RAB/Kurva-S server AKURAT**.
+- ⬜ **B6d** (JS tak recompute week + stop auto-regenerate senyap) + **B6e** (contract test JS↔Python) = **frontend Jadwal, Vite bundle (KF-06)** → **dikerjakan di WP-P7 (Jadwal)**, bukan WP-P8. Bukan defek correctness (JS↔Python terverifikasi konsisten + regenerate no-data-loss); = hardening UI + parity guard.
+- ⬜ **B6f-2** `api_rekap_kebutuhan_weekly` (orphan, tanpa consumer) → cleanup di WP-P8 (Rekap Kebutuhan).
+
+**Defer lain (owner-sanctioned, non-blocking, tercatat):** A2 CSP enforcement (milestone-2), B5 export-perf (DEC-B5-DEFER), B9b prospective-validation UI (→WP-P), B3 DB CheckConstraint koef (follow-up migrasi; validasi app-level sudah jalan).
+
+**Konsekuensi keberlanjutan:** TIDAK ada yang memblok Fase 2. WP-P1 (B1/B3/B4 ✓), WP-P2 (B3/B4/B7/B8/B9 ✓) tak butuh Jadwal JS. B6d/e tuntas otomatis saat WP-P7. Backend SSOT sudah benar → consumer hilir akurat tanpa menunggu B6d/e.
+
+→ **Fase 1 dianggap cukup untuk MEMULAI Fase 2** (B6d/e diserap WP-P7).
+
+---
+
+## FASE 2 — Integrasi Per-Halaman
+
+### WP-P1 — Harga Items (SURVEI 2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Dependency:** B1/B3/B4 (DONE). **Tindakan:** REPLACE + REMOVE. **Sumber:** HI-01..16 + B-2 (JSON paket data).
+
+**Status finding (apa yang SUDAH ditutup Fase 1 vs SISA):**
+| Finding | Status |
+|---|---|
+| HI-01 null→0 | ✅ DONE (UF-011 frontend + backend null-preserve) |
+| HI-06 harga negatif | ✅ DONE (WP-B3 inc-3, validate ≥0) |
+| HI-09 multi-tab LWW | ✅ reconciled (B-1 atomic LWW) |
+| **HI-02** conversion+harga bukan 1 transaksi | ⬜ SISA — endpoint apply-conversion atomik |
+| **HI-03** export ≠ calculation (adapter pakai market/factor) | ⬜ SISA — export satuan dasar = `harga_satuan` + rekonsiliasi/warning |
+| **HI-04** profile tak dimuat ulang di editor | ⬜ SISA — bootstrap `conv` di payload / fetch saat load |
+| **HI-05** validasi conversion API lemah | ⬜ SISA — strict schema (negatif, method whitelist, full_clean, generic 400) |
+| **HI-07** bulk paste campur base/market | ⬜ SISA — pisah alur paste + preview |
+| **HI-08** localStorage tak project-scoped | ⬜ SISA — **hapus fallback localStorage konversi** (server=SSOT) |
+| **HI-12** scope page vs export beda | ⬜ SISA — verifikasi/selaraskan |
+| **HI-16** dead/drifted code | ⬜ SISA — hapus (bukan perbaiki) |
+
+**Survei kode (terverifikasi):**
+- **Dua jalur konversi** = akar HI-02: (a) modal konversi simpan via `api_save_conversion_profile` (`views_api.py:3245`, profil SAJA, tak hitung/simpan harga_satuan); (b) main save `api_save_harga_items` kirim `conversions[]` (`harga_items.js:693`). Profil & harga dasar bisa divergen (HI-02).
+- **localStorage** konversi: prefill `harga_items.js:360` + simpan `:1033` (`lsk(kode)` tanpa project → HI-08). WP-P1 = hapus.
+- **HI-05**: `api_save_conversion_profile` parse longgar (negatif→default, tanpa full_clean, method bebas).
+- **HI-03**: `HargaItemsAdapter` pilih `market_price/factor_to_base` bila profil ada; Rincian/Rekap baca `harga_satuan` → dokumen Harga bisa beda RAB.
+- **HI-04**: `build_harga_items_payload` belum kirim `conv` → editor modal kosong di device baru.
+- **JSON report** Harga (B-2): JSON Harga/RAB/Kebutuhan dipensiun jadi laporan; perlu cek menu format Harga Items.
+
+**Rencana increment (USULAN, perlu persetujuan):**
+| Inc | Fokus | Sifat | Finding |
+|---|---|---|---|
+| **P1a** | Strict validation `api_save_conversion_profile` (tolak negatif/overflow, whitelist method, full_clean, generic 400) | backend, additive-safety | HI-05 |
+| **P1b** | Endpoint **apply-conversion atomik**: validasi profil → hitung `harga_satuan` server-side → simpan profil + harga 1 transaksi; **manual override harga → hapus profil** | backend, **ubah perilaku** | HI-02 |
+| **P1c** | Bootstrap profil di `build_harga_items_payload` (`conv` per item via select_related) → editor isi ulang | backend, additive | HI-04 |
+| **P1d** | Export Harga: satuan dasar = `harga_satuan` (SSOT), hasil profil = rekonsiliasi + warning bila beda; selaraskan scope page/export | backend, **ubah export** | HI-03, HI-12 |
+| **P1e** | Bulk paste: pisah base-price vs market-conversion + preview/konfirmasi | frontend | HI-07 |
+| **P1f** | Hapus fallback localStorage konversi; pensiunkan JSON report Harga; hapus dead code | frontend + cleanup | HI-08, HI-16, B-2 |
+
+**KEPUTUSAN UNTUK OWNER:**
+1. **HI-02 apply-conversion**: endpoint baru terpisah, atau fold ke main save (`conversions[]` sudah ada) jadi atomik di sana? (rekомendasi: **fold ke main save** — satu tombol Simpan, satu transaksi; modal hanya mengisi nilai, tak commit sendiri).
+2. **HI-03 export**: konfirmasi "satuan dasar selalu `harga_satuan`, profil = rekonsiliasi + warning" (selaras B5 server-authoritative).
+3. **Manual override → hapus profil**: konfirmasi (user isi harga dasar manual ⇒ profil konversi dibuang, biar tak ada dua sumber).
+4. **Scope/urutan**: backend dulu (P1a–d), UI (P1e/f) menyusul? (pola Fase 1).
+
+**Dampak:** P1b/P1d mengubah perilaku harga/export (financial) → kawal hati-hati + test parity. P1a/c additive.
+
+**KEPUTUSAN OWNER 2026-06-16 (arsitektur presedensi harga — Model A LOCKED):** `harga_satuan` = **SSOT tunggal** (dipakai semua perhitungan). `ItemConversionProfile` = **kalkulator + provenance**, BUKAN SSOT kedua (B-5). Aturan presedensi = **last-write-wins** ditegakkan: apply konversi → server hitung `harga_satuan = market_price/factor` + simpan profil (provenance); **edit manual → tulis harga_satuan + HAPUS profil** (cegah recompute senyap menimpa edit terbaru). Apply konversi **fold ke main save** (1 tombol Simpan, 1 transaksi). Export satuan dasar = `harga_satuan` + rekonsiliasi/warning. Konfirmasi #2: profil disimpan sbg provenance (bukan dihapus saat apply).
+
+**TEMUAN SEQUENCING (penting):** "manual override hapus profil" TIDAK boleh disimpulkan dari ketiadaan item di `conversions[]` (destruktif — `build_harga_items_payload` dulu tak kirim profil, jadi convStore frontend bisa tak tahu profil ada → page-save bisa hapus profil yang tak pernah dimuat). → **HI-04 (P1c bootstrap) WAJIB sebelum auto-clear**, dan clear harus via **sinyal eksplisit** `clear_conversion` dari frontend, bukan inferensi. Urutan dikoreksi: **P1a → P1c → P1b → P1d → P1e → P1f**.
+
+#### inc-P1a — Strict validation conversion (DONE 2026-06-16, HI-05)
+
+`api_save_conversion_profile` (`views_api.py:3245`): validasi ketat — `parse_strict` tolak (bukan default 0/1) angka invalid/negatif; `factor_to_base` wajib >0; `method` whitelist `METHOD_CHOICES`; `market_unit` wajib string non-kosong; `density/capacity` ≥0; **`full_clean` sebelum save** → overflow DecimalField jadi **400, bukan 500**. Tak persist bila ada error.
+
+#### inc-P1c — Bootstrap profil di payload (DONE 2026-06-16, HI-04)
+
+`build_harga_items_payload`: tiap item kini punya `conv` (profil konversi dari DB, 1 query) atau `null`. Editor bisa isi-ulang modal di device/browser baru. Decimal di-string-kan. **Prasyarat aman utk P1b auto-clear.**
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P1 inc-a/c | `tests_wp_p1_harga_items` | PASS | 10/10: validasi (negatif/zero-factor/invalid/method/non-string-unit/density/overflow→400) + payload expose conv (none/terisi) |
+| 2026-06-16 | WP-P1 inc-a/c | B3/B4 regresi | PASS | 74/74; check + diff bersih |
+
+#### inc-P1b (BACKEND) — Atomic conversion apply di main save (DONE 2026-06-16, HI-02 + Model A + HI-07 server-math)
+
+`api_save_harga_items` kini proses `conversions[]` (sebelumnya DIABAIKAN): validasi penuh (item allowed, market_unit teks, market_price≥0, factor>0, method whitelist, density/capacity≥0, `full_clean`→overflow 400) → **server hitung `harga_satuan = market_price/factor`** (server-authoritative; client price diabaikan utk item ber-konversi → tutup HI-07) → upsert profil + set harga_satuan, **1 transaksi atomik** dgn items[]/markup. Item dgn `clear_conversion:true` (sinyal eksplisit) → set harga manual + **hapus profil** (Model A last-write-wins). Manual TANPA flag → profil tak disentuh (non-destruktif).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P1 inc-b (backend) | `tests_wp_p1_harga_items` | PASS | 15/15: conversion→server price 24000(=240000/10), override client-price salah, manual+flag hapus profil, manual tanpa flag pertahankan profil, conversion invalid→atomic 400 |
+| 2026-06-16 | WP-P1 inc-b (backend) | B3/B4/rekap regresi | PASS | 95/95; check + makemigrations + diff bersih |
+
+**⚠️ SISA P1b (FRONTEND wiring) — HI-02 belum tertutup END-TO-END:** modal konversi `harga_items.js` MASIH commit ke endpoint terpisah `api_save_conversion_profile` (`:1039`) dan belum kirim `conversions[]`/`clear_conversion` via main save. Backend jalur atomik sudah SIAP & teruji, tapi UI belum memakainya. **Frontend P1b/P1f:** (a) modal stage ke convStore (jangan commit sendiri), (b) main save kirim `conversions[]`, (c) edit manual baris ber-profil kirim `clear_conversion`, (d) hapus localStorage (HI-08) + setop pakai endpoint modal lama (dipensiun). Sampai itu, jalur lama (non-atomik) masih aktif.
+
+#### inc-P1d — Export Harga = harga_satuan + rekonsiliasi (DONE 2026-06-16, HI-03/12)
+
+`harga_items_adapter.py`: tabel **Satuan Dasar** kini SELALU pakai `item.harga_satuan` (SSOT yang dibaca Rincian/RAB) — bukan lagi `market_price/factor`. Tabel **Satuan Konversi** jadi **rekonsiliasi**: tampilkan "Harga Beli ÷ faktor = Rp derived", dan **flag ⚠ "override manual"** bila `derived ≠ harga_satuan`. Dokumen Harga tak bisa lagi beda dari RAB. Docstring lama (yang menyuruh pakai market/factor) dikoreksi.
+**Catatan (BUKAN HI-03):** `export_manager.py` market unit-mode (Rekap Kebutuhan) menampilkan qty dalam satuan beli (qty/faktor) + harga market — **total tetap** (base-derived) = fitur sah D-09 "satuan beli tak ubah total" → WP-P8, dibiarkan.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P1 inc-d | `tests_wp_p1_harga_items` (HargaExport) | PASS | 2/2: base table = 23.500 (harga_satuan) bukan 24.000 (derived); konversi flag "override manual" |
+| 2026-06-16 | WP-P1 inc-d | export identity/naming/errors + rekap regresi | PASS | 57/57; check + diff bersih |
+
+#### inc-P1b-wiring + P1f(localStorage) — Frontend Harga Items (DONE 2026-06-16)
+
+`harga_items.js` di-rewire ke Model A, **convStore dinormalisasi ke backend-keys** (market_unit/market_price/factor_to_base/density/capacity_m3/capacity_ton/method):
+- **HI-02 e2e:** modal konversi kini **STAGE** ke convStore + `setDirty` (TIDAK lagi commit ke `api_save_conversion_profile` terpisah). Main save kirim **semua** konversi di convStore via `payload.conversions` (backend hitung harga_satuan atomik). Panggilan endpoint terpisah DIHAPUS.
+- **HI-04 lengkap:** modal-open prefill kini baca backend-keys → profil dari server (P1c) terisi benar di modal (sebelumnya baca `unit`/`price_market` → kosong).
+- **Model A last-write-wins:** user ketik/paste harga di baris ber-profil → `convStore.delete` + `clear_conversion:true` di payload (modal set value programatik TIDAK fire 'input' → aman). Apply konversi → batalkan clear.
+- **HI-08:** fallback localStorage konversi DIHAPUS total (prefill + set + helper `lsk`). Server = SSOT.
+- **HI-07 (parsial):** paste ber-faktor → stage konversi (server hitung harga benar); paste polos di baris ber-profil → clear. **Preview/konfirmasi base-vs-market = P1e (sisa).**
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P1 frontend | `tests/harga_items_conversion.test.js` (guard baru) | PASS | 6/6: no conversion-profile/save call, no localStorage/hiConv, conversions backend-keyed dari convStore, no price_market/rememberServer, clear_conversion wiring, stage+setDirty |
+| 2026-06-16 | WP-P1 frontend | frontend `vitest run` penuh + `node --check` | PASS | 281 pass / 25 skip (18 file); backend P1 17/17; diff bersih |
+
+**✅ HI-02 TERTUTUP END-TO-END** (modal stage → main save atomik → server hitung). HI-04/HI-05/HI-08 selesai. HI-03/12 selesai (P1d).
+
+#### inc-P1e + cleanup — Paste UX + dead-code (DONE 2026-06-16) → WP-P1 SELESAI
+
+- **P1e (HI-07):** bulk paste di-rewrite — baris **ber-faktor = market paste** → base price **dihitung (market÷factor)** SEBELUM masuk kolom harga (market tak bisa lagi nyangkut sbg base price); baris tanpa faktor = base paste. **Preview + konfirmasi** (`confirmModal`, `formatMessage` auto-escape → XSS-safe) sebelum apply; ringkasan N base / N market / N invalid + contoh 6 baris. Plan dibangun tanpa mutasi, baru diterapkan saat confirm.
+- **HI-16 (dead code):** checkbox "Ingat pengaturan"/remember-server (tak lagi dibaca JS) DIHAPUS dari modal → diganti info "tersimpan saat Simpan".
+- **B-2 (JSON report):** export Harga = Excel/PDF/Word saja — **tak ada JSON report** (sudah compliant); komentar stale diperbaiki.
+- **Orphan endpoint:** `api_save_conversion_profile` (kini UI-orphan) dibuat **Model-A-consistent** (juga set `harga_satuan = market/factor`) + docstring DEPRECATED → kandidat hapus Fase 3.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-P1 inc-e+cleanup | `tests_wp_p1_harga_items` + `harga_items_conversion.test.js` | PASS | backend 18/18 (incl endpoint sync harga_satuan) + frontend guard 8/8 (paste market÷factor, confirm-before-apply) |
+| 2026-06-16 | WP-P1 final | frontend penuh + backend P1/B3/B4/rekap/export | PASS | 283 pass/25 skip; 103/103; check + makemigrations + diff bersih |
+
+**✅ WP-P1 SELESAI.** Checklist HI tertutup: HI-01 (Fase1), HI-02 (e2e), HI-03/HI-12 (P1d), HI-04 (P1c+modal), HI-05 (P1a), HI-06 (Fase1), HI-07 (P1e), HI-08 (localStorage dihapus), HI-09 (Fase1 LWW), HI-16 (dead code). **Model A:** harga_satuan = SSOT tunggal, profil = kalkulator+provenance, last-write-wins, semua jalur (modal/paste/manual/endpoint) konsisten. Orphan-cleanup UI = Fase 3.

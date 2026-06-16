@@ -3096,6 +3096,7 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
     # - HI-06: negative harga rejected;
     # - atomic all-or-nothing (no 207 partial).
     plan = []  # (item_id, new_price_or_None)
+    clear_ids = set()  # WP-P1b: items whose conversion profile must be dropped (manual override, Model A)
     for i, it in enumerate(items):
         if not isinstance(it, dict):
             errors.append(_err(f"items[{i}]", "Harus berupa objek")); continue
@@ -3104,6 +3105,8 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
             errors.append(_err(f"items[{i}].id", "Wajib")); continue
         if item_id not in allowed_ids:
             errors.append(_err(f"items[{i}].id", "Item ini tidak digunakan di Detail AHSP proyek")); continue
+        if it.get('clear_conversion'):
+            clear_ids.add(item_id)  # explicit signal: user manually overrode a converted price
         harga_raw = it.get('harga_satuan')
         if harga_raw is None or (isinstance(harga_raw, str) and harga_raw.strip() == ""):
             plan.append((item_id, None)); continue  # HI-01: belum diisi
@@ -3125,6 +3128,67 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
             else:
                 markup_value = quantize_half_up(val, 2)
 
+    # WP-P1b (HI-02 + Model A): apply conversions atomically in THIS save. The base
+    # price is computed SERVER-SIDE (harga_satuan = market_price / factor_to_base)
+    # so client math can never desync the profile from harga_satuan (also closes
+    # HI-07). Validated before any mutation; full_clean catches overflow → 400.
+    from django.core.exceptions import ValidationError as _ValidationError
+    conversions = payload.get('conversions') or []
+    conv_plan = []        # (item_id, profile_instance, base_price)
+    conv_item_ids = set()
+    method_values = {m[0] for m in ItemConversionProfile.METHOD_CHOICES}
+    for i, c in enumerate(conversions):
+        if not isinstance(c, dict):
+            errors.append(_err(f"conversions[{i}]", "Harus berupa objek")); continue
+        cid = c.get('id') if c.get('id') is not None else c.get('harga_item_id')
+        if cid is None:
+            errors.append(_err(f"conversions[{i}].id", "Wajib")); continue
+        if cid not in allowed_ids:
+            errors.append(_err(f"conversions[{i}].id", "Item ini tidak digunakan di Detail AHSP proyek")); continue
+        mu = c.get('market_unit')
+        if not isinstance(mu, str) or not mu.strip():
+            errors.append(_err(f"conversions[{i}].market_unit", "Wajib berupa teks")); continue
+        mp = parse_any(c.get('market_price'))
+        if mp is None or mp < 0:
+            errors.append(_err(f"conversions[{i}].market_price", "Harus angka ≥ 0")); continue
+        f2b = parse_any(c.get('factor_to_base'))
+        if f2b is None or f2b <= 0:
+            errors.append(_err(f"conversions[{i}].factor_to_base", "Harus angka > 0")); continue
+        method = c.get('method', ItemConversionProfile.METHOD_DIRECT)
+        if method not in method_values:
+            errors.append(_err(f"conversions[{i}].method", "Metode tidak valid")); continue
+
+        def _opt(field):
+            raw = c.get(field)
+            if raw in (None, '', 'null'):
+                return None
+            d = parse_any(raw)
+            if d is None or d < 0:
+                errors.append(_err(f"conversions[{i}].{field}", "Harus angka ≥ 0"))
+            return d
+        density, cap_m3, cap_ton = _opt('density'), _opt('capacity_m3'), _opt('capacity_ton')
+
+        base_price = quantize_half_up(mp / f2b, dp)  # harga_satuan = market_price / factor
+        prof = (
+            ItemConversionProfile.objects.filter(harga_item_id=cid).first()
+            or ItemConversionProfile(harga_item_id=cid)
+        )
+        prof.market_unit = mu.strip()
+        prof.market_price = mp
+        prof.factor_to_base = f2b
+        prof.density = density
+        prof.capacity_m3 = cap_m3
+        prof.capacity_ton = cap_ton
+        prof.method = method
+        try:
+            prof.full_clean(exclude=["harga_item"])
+        except _ValidationError as ve:
+            for k, msgs in ve.message_dict.items():
+                errors.append(_err(f"conversions[{i}].{k}", "; ".join(msgs)))
+            continue
+        conv_plan.append((cid, prof, base_price))
+        conv_item_ids.add(cid)
+
     if errors:
         return atomic_error_response(
             errors=errors,
@@ -3135,12 +3199,31 @@ def api_save_harga_items(request: HttpRequest, project_id: int):
 
     # Apply all validated changes atomically.
     updated = 0
+
+    # 1) Conversions are authoritative for their item: upsert the profile and write
+    #    the server-computed base price into harga_satuan (SSOT). Model A.
+    for cid, prof, base_price in conv_plan:
+        prof.save()
+        obj = HargaItemProject.objects.select_for_update().get(project=project, id=cid)
+        if obj.harga_satuan != base_price:
+            obj.harga_satuan = base_price
+            obj.save(update_fields=['harga_satuan', 'updated_at'])
+            updated += 1
+
+    # 2) Manual prices. An item driven by a conversion this save is skipped (the
+    #    conversion already set its price). A manual edit that explicitly clears its
+    #    conversion (clear_conversion) drops the now-stale profile — this is how
+    #    last-write-wins holds against a sticky profile (Model A).
     for item_id, new_price in plan:
+        if item_id in conv_item_ids:
+            continue
         obj = HargaItemProject.objects.select_for_update().get(project=project, id=item_id)
         if obj.harga_satuan != new_price:
             obj.harga_satuan = new_price
             obj.save(update_fields=['harga_satuan', 'updated_at'])
             updated += 1
+        if item_id in clear_ids:
+            ItemConversionProfile.objects.filter(harga_item_id=item_id).delete()
 
     pricing_saved = False
     if markup_value is not None:
@@ -3244,8 +3327,13 @@ def api_get_conversion_profiles(request: HttpRequest, project_id: int):
 @transaction.atomic
 def api_save_conversion_profile(request: HttpRequest, project_id: int):
     """
+    DEPRECATED (WP-P1b): the Harga Items UI no longer calls this — the conversion
+    modal stages into the atomic main save (``api_save_harga_items`` conversions[]).
+    Retained as a validated standalone API; it now also syncs ``harga_satuan`` so it
+    stays Model-A-consistent. Candidate for removal in Fase 3 cleanup.
+
     POST save/update a conversion profile for a harga item.
-    
+
     Request body:
     {
         "harga_item_id": 123,
@@ -3285,48 +3373,95 @@ def api_save_conversion_profile(request: HttpRequest, project_id: int):
     except HargaItemProject.DoesNotExist:
         return JsonResponse({"ok": False, "error": "Harga item not found"}, status=404)
     
-    # Parse decimal values
-    def parse_decimal(val, default=None):
-        if val is None or val == '' or val == 'null':
-            return default
+    # WP-P1a (HI-05): strict validation — reject bad input instead of silently
+    # coercing to a default (which previously let negative/invalid/overflow values
+    # through). Invalid numbers, negative values, out-of-range factor, and unknown
+    # methods all become a 400 with field-level errors; nothing is persisted.
+    from django.core.exceptions import ValidationError as _ValidationError
+
+    errors = []
+
+    def parse_strict(field, val, *, required=False, positive=False):
+        if val is None or (isinstance(val, str) and val.strip() in ("", "null")):
+            if required:
+                errors.append(_err(field, "Wajib diisi"))
+            return None
         try:
-            # Handle Indonesian format (dot as thousands, comma as decimal)
             s = str(val).strip()
             if ',' in s and '.' in s:
                 s = s.replace('.', '').replace(',', '.')
             elif ',' in s:
                 s = s.replace(',', '.')
-            return Decimal(s)
+            d = Decimal(s)
         except (InvalidOperation, ValueError):
-            return default
-    
-    market_unit = data.get("market_unit", "").strip()
-    market_price = parse_decimal(data.get("market_price"), Decimal("0"))
-    factor_to_base = parse_decimal(data.get("factor_to_base"), Decimal("1"))
-    density = parse_decimal(data.get("density"))
-    capacity_m3 = parse_decimal(data.get("capacity_m3"))
-    capacity_ton = parse_decimal(data.get("capacity_ton"))
-    method = data.get("method", "direct")
-    
-    if not market_unit:
-        return JsonResponse({"ok": False, "error": "market_unit required"}, status=400)
-    if factor_to_base <= 0:
-        return JsonResponse({"ok": False, "error": "factor_to_base must be positive"}, status=400)
-    
-    # Create or update conversion profile
-    profile, created = ItemConversionProfile.objects.update_or_create(
-        harga_item=harga_item,
-        defaults={
-            "market_unit": market_unit,
-            "market_price": market_price,
-            "factor_to_base": factor_to_base,
-            "density": density,
-            "capacity_m3": capacity_m3,
-            "capacity_ton": capacity_ton,
-            "method": method,
-        }
+            errors.append(_err(field, "Harus berupa angka yang valid"))
+            return None
+        if not d.is_finite():
+            errors.append(_err(field, "Angka tidak valid"))
+            return None
+        if d < 0:
+            errors.append(_err(field, "Tidak boleh negatif"))
+            return None
+        if positive and d <= 0:
+            errors.append(_err(field, "Harus lebih dari 0"))
+            return None
+        return d
+
+    market_unit = data.get("market_unit")
+    if not isinstance(market_unit, str) or not market_unit.strip():
+        errors.append(_err("market_unit", "Wajib berupa teks dan tidak boleh kosong"))
+        market_unit = ""
+    else:
+        market_unit = market_unit.strip()
+
+    market_price = parse_strict("market_price", data.get("market_price"), required=True)
+    factor_to_base = parse_strict("factor_to_base", data.get("factor_to_base"), required=True, positive=True)
+    density = parse_strict("density", data.get("density"))
+    capacity_m3 = parse_strict("capacity_m3", data.get("capacity_m3"))
+    capacity_ton = parse_strict("capacity_ton", data.get("capacity_ton"))
+
+    method = data.get("method", ItemConversionProfile.METHOD_DIRECT)
+    method_values = {m[0] for m in ItemConversionProfile.METHOD_CHOICES}
+    if method not in method_values:
+        errors.append(_err("method", f"Metode tidak valid (pilih: {', '.join(sorted(method_values))})"))
+
+    if errors:
+        return JsonResponse({
+            "ok": False,
+            "errors": errors,
+            "user_message": "Profil konversi ditolak karena ada data yang tidak valid.",
+        }, status=400)
+
+    # Build + full_clean before persisting so DecimalField max_digits/range overflow
+    # surfaces as a 400, not a 500.
+    profile = (
+        ItemConversionProfile.objects.filter(harga_item=harga_item).first()
+        or ItemConversionProfile(harga_item=harga_item)
     )
-    
+    created = profile.pk is None
+    profile.market_unit = market_unit
+    profile.market_price = market_price
+    profile.factor_to_base = factor_to_base
+    profile.density = density
+    profile.capacity_m3 = capacity_m3
+    profile.capacity_ton = capacity_ton
+    profile.method = method
+    try:
+        profile.full_clean(exclude=["harga_item"])
+    except _ValidationError as ve:
+        return JsonResponse({
+            "ok": False,
+            "errors": [_err(k, "; ".join(v)) for k, v in ve.message_dict.items()],
+            "user_message": "Profil konversi ditolak karena ada data yang tidak valid.",
+        }, status=400)
+    profile.save()
+
+    # WP-P1b / Model A: this endpoint is now UI-orphan (the conversion modal stages
+    # into the ATOMIC main save). Keep harga_satuan in sync here too so a direct API
+    # call can never reintroduce HI-02 divergence (profile ≠ base price).
+    harga_item.harga_satuan = quantize_half_up(market_price / factor_to_base, 2)
+    harga_item.save(update_fields=['harga_satuan', 'updated_at'])
+
     return JsonResponse({
         "ok": True,
         "profile_id": profile.id,
@@ -4290,6 +4425,35 @@ def build_harga_items_payload(project, canon=True):
     """
     qs = active_harga_items_queryset(project).order_by('kode_item')
     items = list(qs.values('id','kode_item','kategori','uraian','satuan','harga_satuan'))
+
+    # WP-P1c (HI-04): attach the saved conversion profile per item so the editor
+    # can reload it on any device/browser (previously omitted → the conversion
+    # modal opened empty even when a profile existed in the DB). One query.
+    item_ids = [it['id'] for it in items]
+    conv_by_item = {}
+    if item_ids:
+        for cp in ItemConversionProfile.objects.filter(harga_item_id__in=item_ids).values(
+            'harga_item_id', 'market_unit', 'market_price', 'factor_to_base',
+            'density', 'capacity_m3', 'capacity_ton', 'method'
+        ):
+            conv_by_item[cp['harga_item_id']] = cp
+
+    def _conv_str(cp):
+        if not cp:
+            return None
+        s = lambda v: str(v) if v is not None else None
+        return {
+            'market_unit': cp['market_unit'],
+            'market_price': s(cp['market_price']),
+            'factor_to_base': s(cp['factor_to_base']),
+            'density': s(cp['density']),
+            'capacity_m3': s(cp['capacity_m3']),
+            'capacity_ton': s(cp['capacity_ton']),
+            'method': cp['method'],
+        }
+
+    for it in items:
+        it['conv'] = _conv_str(conv_by_item.get(it['id']))
 
     if canon:
         dp = getattr(HargaItemProject._meta.get_field('harga_satuan'), 'decimal_places', DECIMAL_SPEC["HARGA"].dp)
