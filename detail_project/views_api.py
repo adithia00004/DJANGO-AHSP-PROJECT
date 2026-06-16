@@ -132,6 +132,9 @@ from .services import (
     _populate_expanded_from_raw,
     active_harga_items_queryset,
     used_harga_items_queryset,
+    item_type_of,
+    reference_type_of,
+    ITEM_TYPE_LABELS,
 )
 from .readiness import compute_project_readiness
 
@@ -1993,6 +1996,10 @@ def build_detail_ahsp_payload(project, pkj):
         koef_formula_raw = (formula_state.get("raw") or "") if formula_state else ""
         koef_is_fx = bool(formula_state and formula_state.get("is_fx") and koef_formula_raw.strip())
 
+        _row_item_type = item_type_of(
+            it["harga_item__kategori"], it.get("ref_ahsp_id"), it.get("ref_pekerjaan_id")
+        )
+
         items.append({
             "id": it["id"],
             "kategori": it["harga_item__kategori"],
@@ -2004,6 +2011,13 @@ def build_detail_ahsp_payload(project, pkj):
             "koef_is_fx": koef_is_fx,
             "ref_ahsp_id": it.get("ref_ahsp_id"),
             "ref_pekerjaan_id": it.get("ref_pekerjaan_id"),  # NEW: bundle support
+            # WP-B8 (D-08): derived item type + human label so consumers can
+            # distinguish a work bundle from a plain "other direct cost".
+            "item_type": _row_item_type,
+            "item_type_label": ITEM_TYPE_LABELS.get(_row_item_type, ""),
+            "reference_type": reference_type_of(
+                it.get("ref_ahsp_id"), it.get("ref_pekerjaan_id")
+            ),
             "harga_satuan": to_dp_str(effective_price, dp_harga),
         })
 
@@ -2664,17 +2678,31 @@ def api_save_detail_ahsp_for_pekerjaan(request: HttpRequest, project_id: int, pe
                 # Continue - keep raw input even if expansion fails
 
         elif detail_obj.kategori == HargaItemProject.KATEGORI_LAIN:
-            # LAIN item without ref_pekerjaan AND without ref_ahsp - invalid bundle
-            logger.warning(
-                f"LAIN item '{detail_obj.kode}' in pekerjaan {pkj.id} has no ref_pekerjaan or ref_ahsp. "
-                f"Bundle items must reference a pekerjaan or AHSP. Skipping from expanded storage."
+            # WP-B8b (D-08): LAIN without any reference = OTHER_DIRECT
+            # ("Biaya Lain Langsung"), NOT an invalid bundle. It is a direct cost
+            # line with its own Harga Item, so pass it through to expanded storage
+            # exactly like a TK/BHN/ALT direct item. This matches
+            # `_populate_expanded_from_raw` (import/clone path) so both expansion
+            # paths agree, and lets users record costs that are neither base
+            # components nor sub-work bundles. (A LAIN row intended as a bundle is
+            # guarded at the UI: the "Pekerjaan Gabungan" actions require a ref.)
+            logger.info(
+                f"[SAVE_DETAIL_AHSP] OTHER_DIRECT (LAIN tanpa ref) '{detail_obj.kode}' "
+                f"diteruskan sebagai biaya lain langsung"
             )
-            errors.append(_err(
-                f"item.{detail_obj.kode}",
-                f"Item LAIN '{detail_obj.uraian}' tidak memiliki referensi pekerjaan atau AHSP. "
-                f"Untuk pekerjaan gabungan, pilih pekerjaan atau AHSP dari dropdown."
+            expanded_to_create.append(DetailAHSPExpanded(
+                project=project,
+                pekerjaan=pkj,
+                source_detail=detail_obj,
+                harga_item=detail_obj.harga_item,
+                kategori=detail_obj.kategori,
+                kode=detail_obj.kode,
+                uraian=detail_obj.uraian,
+                satuan=detail_obj.satuan,
+                koefisien=detail_obj.koefisien,
+                source_bundle_kode=None,
+                expansion_depth=0,
             ))
-            # Don't add to expanded - invalid bundle
 
         else:
             # DIRECT INPUT (TK/BHN/ALT) - Pass-through to expanded

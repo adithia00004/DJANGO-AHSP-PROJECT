@@ -1028,8 +1028,13 @@ def api_reset_progress(request, project_id):
 
         for record in records:
             if progress_mode == 'actual':
+                # WP-B10 (JDW-05): clearing actual realization must also clear the
+                # actual cost projection — actual_cost is an actual-side field, so
+                # leaving it behind orphans a cost with no realization. Planned
+                # fields (planned_proportion / planned cost basis) are untouched.
                 record.actual_proportion = Decimal('0')
-                record.save(update_fields=['actual_proportion', 'updated_at'])
+                record.actual_cost = None
+                record.save(update_fields=['actual_proportion', 'actual_cost', 'updated_at'])
             else:  # planned
                 record.planned_proportion = Decimal('0')
                 record.save(update_fields=['planned_proportion', 'updated_at'])

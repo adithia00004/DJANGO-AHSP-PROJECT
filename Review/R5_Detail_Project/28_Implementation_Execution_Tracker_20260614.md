@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 40% implementasi):** **IN PROGRESS - WP-A1(+AT-01 fix)/WP-A2(report-only)/WP-B1/WP-B2/WP-B3/WP-B4/WP-B5/WP-B7 DONE; WP-B6 backend calc-core DONE (commit `58d3c41e`); WP-B8 NEXT · defer: B6d/e→WP-P8, B6f part-2 cleanup, CSP enforcement, export perf**
+**Status keseluruhan (≈ 46% implementasi):** **FASE 1 (shared foundation) SELESAI - WP-A1(+AT-01)/A2(report-only)/B1/B2/B3/B4/B5/B6(backend calc-core)/B7/B8/B9/B10 DONE. NEXT: Fase 2 (WP-P1..P9 integrasi per-halaman) · defer: B6d/e→WP-P8, B6f-2 cleanup, B9b prospective UI→WP-P, CSP enforcement, export perf**
 
 ## 1. Aturan Tracking
 
@@ -39,9 +39,9 @@ Status:
 | WP-B5 | Server-authoritative export | DONE | 2026-06-15 | 2026-06-15 | B1/B2/B4 | B5a seluruh controller export memakai error-wrapper · B5b identity (fix lokasi/tahun) · B5c filename · B5d JSON keluar report+data-package atomic/versioned · B5e signature/empty/PDF-placement locked. 3 item scope (auto-async threshold, client-render migrasi, snapshot eksplisit) DEFER ke milestone perf. Full B5+CSP suite 56/56 |
 | WP-B6 | Canonical weekly distribution | IN PROGRESS (backend calc-core DONE; B6d/e ke WP-P8, B6f part-2 cleanup/defer) | 2026-06-16 | - | WP-B4 | ✅B6a builder (7 test) ✅B6b+B6c `compute_kebutuhan_timeline` canonical (weekly+4-week+unscheduled+tahapan-deprecated, parity, filter periods canonical) ✅B6f part-1 snapshot scope canonical. Verifikasi B6 targeted 37/37. ⬜B6d jadwal JS no-recompute/no-auto-regen (Vite/WP-P8) ⬜B6e parity JS↔Python ⬜B6f part-2 `api_rekap_kebutuhan_weekly` tidak ada consumer aktif ditemukan; kandidat cleanup/defer |
 | WP-B7 | CUSTOM live-reference | DONE | 2026-06-16 | 2026-06-16 | B3/B4 | D-05 reference-sync + user-value protection LENGKAP (a–e). B7a signature+migrasi 0049/0050 · B7b sinyal readiness `b4.5` · B7c fix TA-03 (cascade reset atomik) · B7d endpoint sync manual (bundle_quantity utuh, audit, idempotent) · B7e badge+tombol Template AHSP. Skenario-1 only (Skenario-2 versi-baru sengaja tak memicu). Caveat: nested-master signature + "upgrade versi tahunan" = WP terpisah. AT-05 audit-writer RETAINED |
-| WP-B8 | Tipe LAIN | PENDING | - | - | B3 | - |
-| WP-B9 | Bundle limits | PENDING | - | - | B7/B8 | - |
-| WP-B10 | Actual-cost legacy mapping | PENDING | - | - | WP-00/B3/B6 | Eksekusi hanya jika data legacy ada |
+| WP-B8 | Tipe LAIN | DONE | 2026-06-16 | 2026-06-16 | B3 | D-08 LENGKAP (a–d): OTHER_DIRECT vs WORK_BUNDLE, item_type **derived** (tanpa kolom). B8a helper+expose API · B8b save terima LAIN-tanpa-ref sbg OTHER_DIRECT (2 jalur ekspansi konsisten) · B8c label humanis · B8d UI 3-aksi tambah. Perangkap save tertutup; angka data lama tak berubah |
+| WP-B9 | Bundle limits | DONE (server guards; B9b UI→WP-P) | 2026-06-16 | 2026-06-16 | B7/B8 | D-10 inti: `MAX_BUNDLE_LEVELS=4` (depth 2→3, kedua jalur) + `MAX_EXPANDED_COMPONENTS=500` stop-segera + circular (existing). Test 4/4. B9b prospective-validation UI DEFER→WP-P |
+| WP-B10 | Actual-cost legacy mapping | DONE | 2026-06-16 | 2026-06-16 | WP-00/B3/B6 | Inventory: actual_cost hanya di PekerjaanProgressWeekly kanonik → mapping legacy NO MIGRATION REQUIRED. JDW-05 fix: reset actual kini hapus actual_cost (no orphan); planned tak terdampak. Test 2/2 |
 | WP-P1..P9 | Integrasi per-page | PENDING | - | - | Shared WP | - |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
@@ -70,20 +70,20 @@ Status:
 
 ## 2.5 Progress Implementasi (estimasi terbobot)
 
-**Headline: ≈ 40% dari eksekusi implementasi selesai** (per 2026-06-16).
+**Headline: ≈ 46% dari eksekusi implementasi selesai** (per 2026-06-16).
 Prasyarat audit + planning (docs 09, 16–28) = **100% selesai** dan TIDAK dihitung di angka implementasi ini.
 
 Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
-| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~85% | ~38% | A1·A2(report-only)·B1·B2·B3·B4·B5·**B7 DONE**·B6 backend calc-core DONE; B6d/e+B8·B9·B10 PENDING (CSP enforcement + export-perf = milestone terpisah) |
+| Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~98% | ~44% | **A1·A2(report-only)·B1·B2·B3·B4·B5·B6(backend)·B7·B8·B9·B10 DONE**; sisa hanya B6d/e (Vite→WP-P8) + defer (CSP enforcement, export-perf, B9b prospective UI) |
 | Fase 2 — Integrasi per-page (P1–P9) | 30% | ~5% | ~1.5% | readiness display terpasang di 5 halaman (bagian B4); integrasi per-page penuh belum |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
-| **Total** | **100%** | | **≈ 40%** | |
+| **Total** | **100%** | | **≈ 46%** | |
 
-Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend calc-core ✅ ≈3.2; sisa B6d/e frontend≈0.8 ke WP-P8)**, **B7=4 ✅**, B8=2 ⬜, B9=2 ⬜, B10=2 ⬜ → selesai ≈38.2/45 ≈ 85%.
+Rincian bobot Fase 1 (sub-effort relatif, total 45): A1=3 ✅, A2=3 ✅ (report-only), B1=5 ✅, B2=3 ✅, B3=6 ✅, B4=6 ✅, B5=5 ✅, **B6=4 (backend calc-core ✅ ≈3.2; sisa B6d/e frontend≈0.8 ke WP-P8)**, **B7=4 ✅**, **B8=2 ✅**, **B9=2 ✅**, **B10=2 ✅** → selesai ≈44.2/45 ≈ 98% (sisa hanya B6d/e≈0.8 Vite→WP-P8).
 
 **WP-B4 SELESAI** (inc-1 survei · inc-2/2.1/2.2 kontrak `b4.3` · UF-011 fix + UAT PASS · inc-3 5/5 consumer wired · inc-4a 3 sinyal jadwal · inc-4b stale-signature `b4.4`).
 
@@ -1135,3 +1135,108 @@ Implementasi minimum yang dipilih owner: simpan revision/hash + waktu sync maste
 | 2026-06-16 | WP-B7 inc-B7e | frontend `vitest run` penuh + `manage.py check` (URL resolve) | PASS | 271 pass / 25 skip (16 file); `node --check` template_ahsp.js OK; diff bersih |
 
 **WP-B7 SELESAI (a–e).** D-05 reference-sync + user-value protection terimplementasi penuh: deteksi (B7a/b) + reliabilitas reset (B7c) + aksi sync manual (B7d) + UI (B7e). Skenario-1 (perubahan in-place versi terpilih) ditangani; Skenario-2 (versi tahunan baru) sengaja tak memicu (proyek ter-pin). **Caveat known:** nested-master signature = iterasi lanjut; "upgrade versi tahunan" = WP terpisah bila diinginkan. **Sisa Fase 1: B8 (tipe LAIN D-08), B9 (bundle limits D-10), B10 (actual_cost legacy bila ada).**
+
+---
+
+### WP-B8 — Tipe LAIN: pisahkan OTHER_DIRECT vs WORK_BUNDLE (SURVEI 2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Status:** IN PROGRESS (survei + rencana, BELUM ada perubahan kode). **Sumber:** keputusan owner **D-08** (final, doc 18 §1044-1095). **Dependency:** WP-B3 (atomic save, DONE), WP-B7 (ref handling, DONE).
+
+**Masalah (D-08):** kategori `LAIN` punya DUA makna bercampur — (a) **bundle** yang harus di-expand (punya `ref_ahsp`/`ref_pekerjaan`), dan (b) **biaya lain langsung** tanpa referensi. **Inkonsistensi terverifikasi:**
+- Save (`api_save_detail_ahsp_for_pekerjaan`, `views_api.py:2666-2677`): LAIN tanpa ref → **DITOLAK** ("invalid bundle", tidak masuk expanded). → user TIDAK bisa menambah "Biaya Lain Langsung".
+- `_populate_expanded_from_raw` (`services.py:1927-1941`): LAIN tanpa ref → **diteruskan** sebagai direct (pass-through). → dua jalur ekspansi beda perilaku untuk input yang sama.
+
+**Keputusan owner D-08 (final):** pisahkan dua makna secara **aditif**:
+- `OTHER_DIRECT` ("Biaya Lain Langsung"): tanpa ref, WAJIB punya Harga Item, diteruskan seperti direct.
+- `WORK_BUNDLE` ("Pekerjaan Gabungan"): WAJIB tepat satu referensi (AHSP atau PROJECT_JOB), di-expand.
+- Struktur: `kategori` (TK/BHN/ALT/LAIN tetap) + `item_type` (DIRECT/OTHER_DIRECT/WORK_BUNDLE) + `reference_type` (null/AHSP/PROJECT_JOB). UI: 3 aksi terpisah. Migrasi: LAIN+ref→WORK_BUNDLE, LAIN tanpa ref→OTHER_DIRECT.
+
+**Fakta struktur (terverifikasi):** `DetailAHSPProject.harga_item` = FK NOT NULL → OTHER_DIRECT pasti punya Harga Item (aturan terpenuhi struktural). `ref_ahsp`/`ref_pekerjaan` nullable + CheckConstraint (`bundle_ref_only_for_lain`, `bundle_ref_exclusive`) sudah menjamin "≤1 ref & hanya LAIN".
+
+**KEPUTUSAN DESAIN UNTUK OWNER:**
+1. **`item_type` DISIMPAN (kolom) atau DITURUNKAN (derived)?** Aturan deterministik dari keberadaan ref (LAIN+ref=WORK_BUNDLE, LAIN tanpa ref=OTHER_DIRECT, non-LAIN=DIRECT).
+   - **Derived (REKOMENDASI):** tanpa kolom/migrasi; satu sumber kebenaran = keberadaan ref; helper `item_type_of(row)` + expose di API/serializer. Paling aditif, nol risiko desync. UI 3-aksi tetap jalan (aksi menentukan apakah ref dilampirkan).
+   - **Stored:** kolom `item_type`/`reference_type` eksplisit (sesuai teks D-08). Lebih eksplisit untuk intent TAPI butuh migrasi + jaga sinkron dgn ref (risiko desync).
+2. **Scope B8 sekarang:** backend (terima OTHER_DIRECT di save + samakan dua jalur ekspansi + expose item_type) saja, atau termasuk UI 3-aksi (`template_ahsp.js`)? UI lebih besar; bisa B8d terpisah/menyusul.
+3. **B9 (bundle limits D-10)** terpisah dari B8 (MAX_BUNDLE_LEVELS=4 + MAX_EXPANDED_COMPONENTS) — konfirmasi dikerjakan setelah B8.
+
+**Rencana increment (USULAN, perlu persetujuan):**
+| Inc | Fokus | Sifat | DoD |
+|---|---|---|---|
+| **B8a** | Helper kanonik `item_type_of(detail)` (+ `reference_type`) di backend; expose di API detail/serializer | backend, additive, derived | type benar utk DIRECT/OTHER_DIRECT/WORK_BUNDLE |
+| **B8b** | Save: LAIN tanpa ref → **terima sebagai OTHER_DIRECT** (pass-through ke expanded, seperti `_populate`), bukan ditolak; WORK_BUNDLE tetap wajib tepat 1 ref (validasi+pesan). Samakan 2 jalur ekspansi | backend, **ubah perilaku** (enable input baru) | OTHER_DIRECT tersimpan+masuk expanded; WORK_BUNDLE tanpa ref ditolak jelas |
+| **B8c** | Consumer/label: pastikan rekap/kebutuhan perlakukan OTHER_DIRECT expanded sbg biaya langsung (sudah, krn pass-through); label humanis "Biaya Lain Langsung"/"Pekerjaan Gabungan" di API/export | backend, additive | label benar; angka data lama tak berubah |
+| **B8d** | UI Template AHSP: 3 aksi tambah terpisah + label tipe (`template_ahsp.js` classic) | frontend | 3 aksi berfungsi; OTHER_DIRECT bisa dibuat via UI |
+
+**Dampak:** B8b **mengaktifkan input yang sebelumnya ditolak** (OTHER_DIRECT) — menambah kemampuan, tak mengubah angka data lama (LAIN+ref tetap WORK_BUNDLE/expanded). Data lama tetap valid (derived type).
+
+**KEPUTUSAN OWNER 2026-06-16: GO** — #1 item_type **DERIVED** (tanpa kolom), #2 **backend dulu (B8a–c), UI B8d menyusul**, #3 B9 setelah B8.
+
+#### inc-B8a/b/c — Backend tipe LAIN (DONE 2026-06-16)
+
+- **B8a** `services.item_type_of(kategori, ref_ahsp_id, ref_pekerjaan_id)` + `reference_type_of(...)` + konstanta `ITEM_TYPE_*`/`REFERENCE_TYPE_*` + `ITEM_TYPE_LABELS` (derived, tanpa kolom). Di-expose di `build_detail_ahsp_payload`: tiap baris kini punya `item_type`, `item_type_label`, `reference_type`.
+- **B8b** `api_save_detail_ahsp_for_pekerjaan` (`views_api.py:2676`): cabang LAIN-tanpa-ref **TIDAK lagi menolak** — diteruskan ke expanded sebagai **OTHER_DIRECT** (pass-through, source_bundle_kode=None, depth=0), sama seperti `_populate_expanded_from_raw` → **dua jalur ekspansi konsisten**. Raw row sudah dapat harga_item via `_upsert_harga_item` (NOT NULL terpenuhi). WORK_BUNDLE tetap di-expand; CheckConstraint jamin ≤1 ref.
+- **B8c** label humanis ("Biaya Lain Langsung"/"Pekerjaan Gabungan"/"Komponen Langsung") di payload API. OTHER_DIRECT expanded otomatis dihitung rekap sbg biaya langsung (pass-through, kategori LAIN).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B8 inc-a/b/c | `tests_wp_b8_item_type` | PASS | 8/8: derivasi DIRECT/OTHER_DIRECT/WORK_BUNDLE + reference_type, payload expose item_type+label, **save terima LAIN-tanpa-ref sbg OTHER_DIRECT** (raw ref=None, masuk expanded), mixed direct+other tersimpan |
+| 2026-06-16 | WP-B8 inc-a/b/c | B3/template/readiness/rekap/B7 regresi | PASS | 138/138 gabungan; check + makemigrations + diff bersih |
+
+#### inc-B8d — UI Template AHSP 3 aksi tambah LAIN (DONE 2026-06-16) → WP-B8 SELESAI
+
+- `template_ahsp.html`: header segmen LAIN — tombol "Baris" tunggal diganti **3 aksi**: **Biaya Lain** (`data-lain-mode="direct"`), **Gabungan AHSP** (`ahsp`), **Gabungan Project** (`job`).
+- `template_ahsp.js`: `addLainRow(mode)` set `tr.dataset.refMode`; `enhanceLAINAutocomplete` (a) **skip baris `refMode==='direct'`** (OTHER_DIRECT = input teks biasa, tanpa picker referensi), (b) filter picker per mode (`ahsp`→hanya Master AHSP, `job`→hanya Pekerjaan Proyek, legacy/unset→keduanya). Aksi gabungan dikunci ke pekerjaan custom (toast bila bukan). Tombol baru masuk daftar lock read-only.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B8 inc-B8d | `template_ahsp_lain.test.js` (guard baru) | PASS | 4/4: addLainRow direct/ahsp/job, skip direct picker, filter per mode, 3 tombol wired, guard custom; template punya 3 `data-lain-mode` |
+| 2026-06-16 | WP-B8 inc-B8d | frontend `vitest run` penuh + `node --check` + `manage.py check` | PASS | 275 pass / 25 skip (17 file); diff bersih |
+
+**WP-B8 SELESAI (a–d).** D-08 terimplementasi: OTHER_DIRECT ("Biaya Lain Langsung") vs WORK_BUNDLE ("Pekerjaan Gabungan") eksplisit, item_type **derived** (tanpa kolom), dua jalur ekspansi konsisten, UI 3-aksi. Perangkap save LAIN-tanpa-ref tertutup; angka data lama tak berubah.
+
+---
+
+### WP-B9 — Batas kedalaman & ukuran bundle (D-10)
+
+**Sumber:** keputusan owner **D-10** (final, doc 18 §1118-1153). **Dependency:** WP-B7/B8 (expansion paths).
+
+**Survei:** kedua jalur ekspansi (`expand_bundle_to_components` ref_pekerjaan + `expand_ahsp_bundle_to_components` ref_ahsp) memakai `MAX_DEPTH = 2` ("≈3 level"). Circular sudah ditolak (`check_circular_dependency_pekerjaan` + visited-set per jalur). Belum ada cap jumlah komponen. `validate_bundle_reference` (save-time) cek circular+existence.
+
+#### inc-B9a — Server guards (DONE 2026-06-16)
+
+- Konstanta modul `services.MAX_BUNDLE_LEVELS = 4`, `MAX_BUNDLE_DEPTH = 3` (depth mulai 1 → 4 level pekerjaan: A→B→C→D valid, A→B→C→D→E ditolak), `MAX_EXPANDED_COMPONENTS = 500`.
+- Kedua jalur ekspansi: guard depth pakai `MAX_BUNDLE_DEPTH` (pesan "maks 4 level pekerjaan") + cap **stop-segera** `len(result) > MAX_EXPANDED_COMPONENTS` → ValueError. Berlaku untuk SEMUA jalur (UI save, import/clone populate, maintenance rebuild) krn semuanya lewat 2 fungsi ini. Circular tetap ditolak (existing).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B9 inc-B9a | `tests_wp_b9_bundle_limits` | PASS | 4/4: 4 level OK, 5 level ditolak ("kedalaman"), component cap (patch=2) ditolak ("batas"), konstanta=4/3 |
+| 2026-06-16 | WP-B9 inc-B9a | B7/B8/template/rekap regresi | PASS | 78/78; check + diff bersih; tak ada test lama yang mem-pin depth lama |
+
+**Catatan nilai:** `MAX_EXPANDED_COMPONENTS = 500` = default aman (tunable; AHSP normal jauh di bawah ini). Owner boleh setel bila perlu.
+
+**SISA B9b (opsional, UX):** endpoint prospective validation ringan (`valid/depth/estimated_component_count/reference_chain/reason`) saat user memilih referensi di UI + wiring client. **Must-have D-10 (guard server) SUDAH terpenuhi** — over-deep/over-besar ditolak saat save dengan pesan jelas; B9b hanya memajukan feedback ke saat-pilih (nice-to-have, sejajar pola "UI menyusul").
+
+**KEPUTUSAN OWNER 2026-06-16:** WP-B9 = **DONE** (guard server = inti D-10). **B9b DEFER → WP-P (integrasi per-halaman)** bersama feedback referensi UI lain. Lanjut WP-B10.
+
+---
+
+### WP-B10 — Legacy Actual Cost Mapping (D-10 §B10; JDW-05)
+
+**Sumber:** JDW-05, JDW-13A. **Status:** `IMPLEMENT/DEFER` berdasarkan inventory.
+
+**INVENTORY (terverifikasi):** `actual_cost` HANYA ada di `PekerjaanProgressWeekly` (model kanonik, migrasi 0026) — **tidak ada field actual_cost legacy terpisah** (bukan di PekerjaanTahapan/TahapPelaksanaan/Project). → **bagian "legacy mapping migration" = `NO MIGRATION REQUIRED`.**
+
+**Defek nyata (JDW-05):** `api_reset_progress` mode=`actual` (`views_api_tahapan_v2.py:1030`) men-nol-kan `actual_proportion` TAPI **membiarkan `actual_cost`** → biaya aktual yatim (realisasi 0 tapi biaya tetinggal). `reset_project_progress` (hapus-semua) AMAN (hapus baris weekly utuh).
+
+#### inc-B10 — Fix reset actual + inventory (DONE 2026-06-16)
+
+- `api_reset_progress` mode=`actual` kini juga set `actual_cost=None` (update_fields += actual_cost). Mode=`planned` TIDAK menyentuh actual_cost (planned cost tak berubah saat actual dibersihkan).
+- Copy/import: JSON exporter lama (deprecated) tak membawa `actual_cost` → salinan mulai konsisten (actuals kosong); tak ada penyalinan actual_cost tanpa actual_proportion.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-16 | WP-B10 inc-B10 | `tests_wp_b10_actual_cost` | PASS | 2/2: reset actual → actual_cost=None + planned utuh; reset planned → actual_cost & actual_proportion utuh |
+| 2026-06-16 | WP-B10 inc-B10 | V2 reset/security/change-status regresi | PASS | 16/16; diff bersih |
+
+**DoD terpenuhi:** tak ada actual cost yatim setelah reset; planned cost tak berubah saat actual dibersihkan; legacy mapping = NO MIGRATION REQUIRED (tak perlu migrasi/dry-run). **WP-B10 SELESAI.** → **Fase 1 (shared foundation) SELESAI** kecuali B6d/e (Vite, →WP-P8) + defer (CSP enforcement, export perf, B6f-2 cleanup, B9b prospective UI→WP-P).

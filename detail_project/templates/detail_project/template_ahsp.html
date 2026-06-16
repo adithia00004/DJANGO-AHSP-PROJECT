@@ -338,11 +338,22 @@
       <section class="ta-segment" data-seg="LAIN">
         <header class="ta-seg-header">
           <h2>Pekerjaan Gabungan</h2>
-          <div class="seg-tools btn-group btn-group-sm" role="group" aria-label="Aksi segmen LAIN">
-            <button class="btn btn-primary btn-sm ta-seg-add-empty d-inline-flex align-items-center gap-1" type="button"
-              data-target-seg="LAIN">
-              <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Baris</span>
-            </button>
+          <div class="seg-tools d-inline-flex flex-wrap gap-1" role="group" aria-label="Aksi segmen LAIN">
+            <!-- WP-B8d (D-08): 3 aksi tambah terpisah untuk memperjelas tipe item LAIN. -->
+            <div class="btn-group btn-group-sm" role="group" aria-label="Tambah item LAIN">
+              <button class="btn btn-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
+                data-lain-mode="direct" title="Tambah Biaya Lain Langsung (tanpa referensi)">
+                <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Biaya Lain</span>
+              </button>
+              <button class="btn btn-outline-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
+                data-lain-mode="ahsp" title="Tambah Pekerjaan Gabungan dari AHSP">
+                <i class="bi bi-diagram-3"></i><span class="d-none d-sm-inline">Gabungan AHSP</span>
+              </button>
+              <button class="btn btn-outline-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
+                data-lain-mode="job" title="Tambah Pekerjaan Gabungan dari Project">
+                <i class="bi bi-link-45deg"></i><span class="d-none d-sm-inline">Gabungan Project</span>
+              </button>
+            </div>
             <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
               type="button" data-target-seg="LAIN" disabled aria-label="Hapus baris terpilih">
               <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count"

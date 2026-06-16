@@ -874,6 +874,49 @@ def snapshot_pekerjaan_details(pekerjaan) -> List[dict]:
     return snapshot
 
 
+# ---- WP-B8 (D-08): explicit LAIN item-type derivation -------------------------
+# `kategori` LAIN historically meant BOTH a work bundle (expanded from a
+# reference) AND a plain "other direct cost" (no reference). The type is DERIVED
+# from reference presence — single source of truth, no stored column that could
+# drift from the actual reference.
+ITEM_TYPE_DIRECT = "DIRECT"               # TK/BHN/ALT — direct base component
+ITEM_TYPE_OTHER_DIRECT = "OTHER_DIRECT"   # LAIN without reference ("Biaya Lain Langsung")
+ITEM_TYPE_WORK_BUNDLE = "WORK_BUNDLE"     # LAIN with a reference ("Pekerjaan Gabungan")
+
+REFERENCE_TYPE_AHSP = "AHSP"
+REFERENCE_TYPE_PROJECT_JOB = "PROJECT_JOB"
+
+ITEM_TYPE_LABELS = {
+    ITEM_TYPE_DIRECT: "Komponen Langsung",
+    ITEM_TYPE_OTHER_DIRECT: "Biaya Lain Langsung",
+    ITEM_TYPE_WORK_BUNDLE: "Pekerjaan Gabungan",
+}
+
+
+def reference_type_of(ref_ahsp_id=None, ref_pekerjaan_id=None):
+    """Derive D-08 reference_type from which bundle FK is set (None if neither)."""
+    if ref_ahsp_id:
+        return REFERENCE_TYPE_AHSP
+    if ref_pekerjaan_id:
+        return REFERENCE_TYPE_PROJECT_JOB
+    return None
+
+
+def item_type_of(kategori, ref_ahsp_id=None, ref_pekerjaan_id=None):
+    """Derive the D-08 item type from category + reference presence.
+
+    LAIN + a reference  -> WORK_BUNDLE (expanded from the reference).
+    LAIN + no reference -> OTHER_DIRECT ("Biaya Lain Langsung", passed through).
+    anything else       -> DIRECT (TK/BHN/ALT base component).
+    Derived (not stored) so it can never drift from the actual reference.
+    """
+    if kategori == "LAIN":
+        if ref_ahsp_id or ref_pekerjaan_id:
+            return ITEM_TYPE_WORK_BUNDLE
+        return ITEM_TYPE_OTHER_DIRECT
+    return ITEM_TYPE_DIRECT
+
+
 def _build_change_summary(old_data, new_data, action) -> str:
     old_map = {item["kode"]: item for item in (old_data or [])}
     new_map = {item["kode"]: item for item in (new_data or [])}
@@ -1419,6 +1462,20 @@ def validate_bundle_reference(pekerjaan_id: int, ref_kind: str, ref_id: int, pro
     return (True, "")
 
 
+# ---- WP-B9 (D-10): bundle expansion limits ------------------------------------
+# Product rule D-10: a bundle chain may nest at most four pekerjaan levels
+# (A -> B -> C -> D valid; A -> B -> C -> D -> E rejected). Expansion depth starts
+# at 1 (the first referenced bundle), so the allowed recursion depth is
+# MAX_BUNDLE_LEVELS - 1. MAX_EXPANDED_COMPONENTS caps the total base components a
+# single bundle tree may produce so a wide branching reference cannot explode the
+# expanded storage. The same guards apply to every expansion path (UI save,
+# import/clone populate, maintenance rebuild) since they all flow through these
+# two functions.
+MAX_BUNDLE_LEVELS = 4
+MAX_BUNDLE_DEPTH = MAX_BUNDLE_LEVELS - 1  # allowed recursion depth (depth starts at 1)
+MAX_EXPANDED_COMPONENTS = 500
+
+
 def expand_bundle_to_components(
     detail_data: dict,
     project,
@@ -1472,11 +1529,11 @@ def expand_bundle_to_components(
     Raises:
         ValueError: Jika max depth exceeded atau circular dependency detected
     """
-    MAX_DEPTH = 2  # Depth starts at 1, so 2 === 3 actual bundle levels
-
-    # Check max depth
-    if depth > MAX_DEPTH:
-        raise ValueError(f"Maksimum kedalaman bundle expansion terlampaui (max {MAX_DEPTH})")
+    # WP-B9 (D-10): max 4 pekerjaan levels (depth starts at 1).
+    if depth > MAX_BUNDLE_DEPTH:
+        raise ValueError(
+            f"Maksimum kedalaman bundle terlampaui (maks {MAX_BUNDLE_LEVELS} level pekerjaan)"
+        )
 
     # Initialize visited set
     if visited is None:
@@ -1577,6 +1634,13 @@ def expand_bundle_to_components(
                 'depth': depth
             })
 
+        # WP-B9 (D-10): stop immediately if the component cap is exceeded so a wide
+        # branching reference cannot explode expanded storage.
+        if len(result) > MAX_EXPANDED_COMPONENTS:
+            raise ValueError(
+                f"Jumlah komponen hasil ekspansi melebihi batas ({MAX_EXPANDED_COMPONENTS})"
+            )
+
     # Remove from visited after processing (for backtracking)
     visited.discard(ref_pekerjaan_id)
 
@@ -1623,11 +1687,11 @@ def expand_ahsp_bundle_to_components(
     Raises:
         ValueError: Jika max depth exceeded atau circular dependency detected
     """
-    MAX_DEPTH = 2  # Depth starts at 1, so 2 === 3 actual bundle levels
-
-    # Check max depth
-    if depth > MAX_DEPTH:
-        raise ValueError(f"Maksimum kedalaman AHSP bundle expansion terlampaui (max {MAX_DEPTH})")
+    # WP-B9 (D-10): max 4 pekerjaan levels (depth starts at 1).
+    if depth > MAX_BUNDLE_DEPTH:
+        raise ValueError(
+            f"Maksimum kedalaman bundle AHSP terlampaui (maks {MAX_BUNDLE_LEVELS} level pekerjaan)"
+        )
 
     # Initialize visited set (track by source + kode_ahsp, not code alone).
     if visited is None:
@@ -1736,6 +1800,12 @@ def expand_ahsp_bundle_to_components(
                 'harga_item': None,  # Will be created by caller
                 'depth': depth
             })
+
+        # WP-B9 (D-10): stop immediately if the component cap is exceeded.
+        if len(result) > MAX_EXPANDED_COMPONENTS:
+            raise ValueError(
+                f"Jumlah komponen hasil ekspansi melebihi batas ({MAX_EXPANDED_COMPONENTS})"
+            )
 
     # Remove from visited after processing (backtracking)
     visited.discard(ahsp_key)

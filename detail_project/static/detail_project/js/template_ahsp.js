@@ -779,7 +779,8 @@
     // Kunci tombol penambah baris saat tidak editable
     const lockBtns = [
       ...$$('.ta-seg-add-catalog'),
-      ...$$('.ta-seg-add-empty')
+      ...$$('.ta-seg-add-empty'),
+      ...$$('.ta-add-lain')  // WP-B8d: lock the LAIN add actions in read-only mode too
     ].filter(Boolean);
     lockBtns.forEach(btn => { btn.disabled = !editable; });
 
@@ -806,6 +807,9 @@
 
     $$(selector, scope).forEach(input => {
       const tr = input.closest('tr.ta-row');
+      // WP-B8d: OTHER_DIRECT ("Biaya Lain Langsung") rows have no reference, so
+      // they get a plain text kode field — never a reference picker.
+      if (tr && tr.dataset.refMode === 'direct') return;
       const $input = jQuery(input);
       if ($input.data('hasSelect2')) return;
 
@@ -855,9 +859,13 @@
               };
             });
             const local = localProjectOptions(params?.term);
+            // WP-B8d: a row added via "Gabungan dari AHSP" shows only master AHSP;
+            // "Gabungan dari Project" shows only project jobs; an unscoped/legacy
+            // row shows both.
+            const refMode = (tr && tr.dataset.refMode) || '';
             const groups = [];
-            if (local.length) groups.push({ text: 'Pekerjaan Proyek', children: local });
-            if (remote.length) groups.push({ text: 'Master AHSP', children: remote });
+            if (refMode !== 'ahsp' && local.length) groups.push({ text: 'Pekerjaan Proyek', children: local });
+            if (refMode !== 'job' && remote.length) groups.push({ text: 'Master AHSP', children: remote });
             return { results: groups.length ? groups : [] };
           }
         },
@@ -1692,6 +1700,41 @@
       }
       try { updateDelState(seg); } catch (_) { }
     });
+  });
+
+  // WP-B8d (D-08): three explicit add actions for the LAIN segment.
+  //  - direct -> OTHER_DIRECT ("Biaya Lain Langsung"): no reference picker.
+  //  - ahsp/job -> WORK_BUNDLE ("Pekerjaan Gabungan"): reference picker scoped
+  //    to master AHSP or project jobs respectively (custom pekerjaan only).
+  function addLainRow(mode) {
+    if (activeSource === 'ref') return; // read-only
+    if ((mode === 'ahsp' || mode === 'job') && activeSource !== 'custom') {
+      toast('Pekerjaan Gabungan hanya tersedia untuk pekerjaan custom.', 'warning');
+      return;
+    }
+    const body = $('#seg-LAIN-body');
+    const tpl = $('#ta-row-template');
+    const tr = tpl.content.firstElementChild.cloneNode(true);
+    tr.dataset.kategori = 'LAIN';
+    tr.dataset.refMode = mode; // 'direct' | 'ahsp' | 'job'
+    if ($('.ta-empty', body)) body.innerHTML = '';
+    try { ensureSelectAffordance(tr); } catch (_) { }
+    const koefInput = $('input[data-field="koefisien"]', tr);
+    if (koefInput) koefInput.value = __koefToUI(DEFAULT_KOEF_CANON);
+    tr.dataset.lastKoefCanon = DEFAULT_KOEF_CANON;
+    clearKoefFormulaState(tr);
+    body.appendChild(tr);
+    formatIndex();
+    setDirty(true);
+    setEditorModeBySource();
+    if (mode !== 'direct' && activeSource === 'custom') {
+      enhanceLAINAutocomplete(body);
+    }
+    try { updateDelState('LAIN'); } catch (_) { }
+  }
+
+  $$('.ta-add-lain').forEach(btn => {
+    btn.addEventListener('click', () => addLainRow(btn.dataset.lainMode || 'direct'));
   });
 
   // input change -> dirty
