@@ -172,6 +172,64 @@
     return ok;
   }
 
+  // WP-P4d (LP-04): preview the destructive impact of a proposed save (deletions)
+  // and ask for confirmation. Returns true to proceed, false to abort.
+  // Fail-open: if the preview request or modal API is unavailable, do not block saving.
+  async function confirmDestructiveImpact(payload) {
+    let data;
+    try {
+      data = await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/destructive-impact/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      console.warn('[LP] Destructive-impact preview failed; proceeding without confirmation.', e);
+      return true;
+    }
+    if (!data || !data.has_destructive) return true;  // nothing being deleted
+
+    const modalApi = getModalApi();
+
+    // Some deletions are blocked because the pekerjaan is a "Pekerjaan Gabungan" target
+    // still used by a surviving pekerjaan (C1). Warn and stop — the save would be rejected.
+    if (data.has_blocked) {
+      const lines = (data.blocked || [])
+        .map(b => `• "${b.label}" dipakai oleh: ${(b.blocked_by || []).join(', ')}`)
+        .join('\n');
+      const msg = `Pekerjaan berikut tidak dapat dihapus karena dipakai sebagai Pekerjaan Gabungan:\n\n${lines}\n\nLepas/ubah referensi tersebut dulu, lalu simpan kembali.`;
+      if (modalApi && modalApi.alert) {
+        await modalApi.alert(msg, { title: 'Tidak Bisa Menghapus', confirmText: 'Mengerti' });
+      } else {
+        tShow('Sebagian pekerjaan tidak dapat dihapus (dipakai sebagai Pekerjaan Gabungan).', 'warning', 8000);
+      }
+      return false;
+    }
+
+    const t = data.totals || {};
+    const lossParts = [];
+    if (t.volume) lossParts.push(`${t.volume} data volume`);
+    if (t.detail) lossParts.push(`${t.detail} komponen template AHSP`);
+    if (t.jadwal) lossParts.push(`${t.jadwal} entri jadwal`);
+    if (t.formula) lossParts.push(`${t.formula} formula`);
+
+    const names = (data.to_delete || []).slice(0, 10).map(d => `• ${d.label}`).join('\n');
+    const moreCount = (data.to_delete || []).length - 10;
+    const more = moreCount > 0 ? `\n…dan ${moreCount} lainnya` : '';
+    const lossText = lossParts.length
+      ? `\n\nData turunan yang ikut terhapus:\n${lossParts.map(p => `• ${p}`).join('\n')}`
+      : '';
+    const msg = `Anda akan menghapus ${t.pekerjaan} pekerjaan:\n${names}${more}${lossText}\n\nTindakan ini tidak dapat dibatalkan. Lanjutkan?`;
+
+    if (!modalApi || !modalApi.confirm) return true;  // no modal → fail-open
+    return await modalApi.confirm(msg, {
+      title: 'Konfirmasi Hapus',
+      confirmText: 'Hapus & Simpan',
+      cancelText: 'Batal',
+      confirmClass: 'btn btn-danger',
+    });
+  }
+
   function isEditableTarget(target) {
     if (!target || !(target instanceof Element)) return false;
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return true;
@@ -1530,9 +1588,14 @@
       const isCustom = (v === 'custom');
       const isRefLike = (v === 'ref' || v === 'ref_modified');
 
-      // AUTO-RESET: Reset uraian/satuan when changing FROM custom TO ref/ref_modified
-      // User expects fields to clear when switching from CUSTOM to REF
-      if (oldSourceType === 'custom' && isRefLike) {
+      // AUTO-RESET uraian/satuan:
+      // - custom → ref/ref_modified: user expects fields to clear.
+      // - ref_modified → ref (UF-007): drop the modification so the pure reference
+      //   name is shown instead of the stale modified name lingering in the field.
+      const clearOverride =
+        (oldSourceType === 'custom' && isRefLike) ||
+        (oldSourceType === 'ref_modified' && v === 'ref');
+      if (clearOverride) {
         if (uraianInput) {
           uraianInput.value = '';
           autoResize(uraianInput);  // Resize textarea after clear
@@ -1640,8 +1703,16 @@
 
         const rows = sb.querySelectorAll('tbody tr');
         Array.from(rows || []).forEach((tr, pi) => {
+          // UF-008: prefer a meaningful label (uraian → current ref → selected ref text)
+          // before falling back to the generic "Pekerjaan N" placeholder.
+          let refText = '';
+          try {
+            const sel = tr.querySelector('.ref-select');
+            refText = (sel?.selectedOptions?.[0]?.text || '').trim();
+          } catch (_) { refText = ''; }
           const uraian = tr.querySelector('.uraian')?.value?.trim()
             || tr.querySelector('.current-ref .ref-uraian')?.textContent?.trim()
+            || refText
             || `Pekerjaan ${pi + 1}`;
           const pAnchor = tr.dataset.anchorId || tr.id || `p_auto_${ki + 1}_${si + 1}_${pi + 1}`;
           nodeS.pekerjaan.push({ id: pAnchor, name: uraian });
@@ -2048,6 +2119,13 @@
     }
     if (hasError) {
       tShow('Periksa baris merah. Pastikan ref_id numerik & nama K/Sub tidak kosong (fallback Kx/Kx.y aktif).', 'warning');
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
+      return;
+    }
+
+    // WP-P4d (LP-04): preview destructive impact (deletions) and confirm before saving.
+    const proceed = await confirmDestructiveImpact(payload);
+    if (!proceed) {
       if (btn) { btn.disabled = false; btn.textContent = orig; }
       return;
     }

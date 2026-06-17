@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 55% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P4 (List Pekerjaan) dst. Defer: ENH-01 (P2 picker), P3f (redundan). Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
+**Status keseluruhan (≈ 62% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P5 (Rincian) dst. Defer: ENH-01 (P2 picker), P3f (redundan). Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
 
 ## 1. Aturan Tracking
 
@@ -45,7 +45,8 @@ Status:
 | WP-P1 | Harga Items | DONE | 2026-06-16 | 2026-06-16 | B1/B3/B4 | Model A (harga_satuan=SSOT, profil=kalkulator+provenance, LWW). P1a validasi(HI-05)·P1b atomic backend+frontend wiring(HI-02 e2e)·P1c bootstrap(HI-04)·P1d export=harga_satuan(HI-03/12)·P1e paste market÷factor+confirm(HI-07)·HI-08 localStorage dihapus·HI-16 dead code. Endpoint konversi orphan→Model-A-consistent+deprecated. Orphan-cleanup UI→Fase 3 |
 | WP-P2 | Template AHSP | DONE (ENH-01 defer) | 2026-06-16 | 2026-06-16 | B3/B4/B7/B8/B9 | TA-01 (app B3+DB constraint P2a/migrasi 0051)·TA-02 (B3)·TA-03 (B7c)·TA-18 (B7a-e)·TA-20 (P2b cascade-save atomik)·TA-21 (P2c e2e)·UF-010 (P2d lazy reload). ENH-01 item picker DEFER (enhancement). TA-05 dibatalkan, TA-17→CL-08 |
 | WP-P3 | Volume Pekerjaan | DONE (P3f skip-by-design) | 2026-06-16 | 2026-06-16 | B3/B4 | VP-01..07 tertutup. P3a VP-05 validasi computed · P3b VP-07 payload+rate-limit + autosave gabung 5mnt + save-on-leave · P3c VP-06 server-authoritative + fix false-dirty project 195 · P3d JSON=param data-transfer (compliant) · P3e cross-page SSOT test. P3f (sinyal stale) skip = redundan (reevaluate+dirty sudah cover). Model A: quantity=SSOT RAB+Kebutuhan |
-| WP-P4..P9 | Integrasi per-page | PENDING | - | - | Shared WP | **P4 List Pekerjaan (UF-007/008/009/012)**; P5 Rincian; P6 Rekap RAB; **P7 Jadwal = serap B6d/e + B6e**; **P8 Rekap Kebutuhan = serap B6f-2 + period selector 4-minggu**; P9 Dashboard |
+| WP-P4 | List Pekerjaan | ✅ DONE (P4a–g) | 2026-06-17 | 2026-06-17 | B3 | Fondasi detail project. **SEMUA: P4a (UF-009/012 regression-lock), P4g (C1 delete-guard, C2 cascade re-expand), P4b (import atomik), P4c (rate/payload limit), P4d (LP-04 destructive-impact + konfirmasi UI), P4e (UF-007/008 cosmetic), P4f (contract test).** 13 backend + 8 JS guard hijau; 96 regression hijau. Matriks cascade §WP-P4 |
+| WP-P5..P9 | Integrasi per-page | PENDING | - | - | Shared WP | P5 Rincian; P6 Rekap RAB; **P7 Jadwal = serap B6d/e + B6e**; **P8 Rekap Kebutuhan = serap B6f-2 + period selector 4-minggu**; P9 Dashboard |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -1555,3 +1556,111 @@ Keputusan #5 minta sinyal "formula quantity belum sinkron dgn parameter terbaru"
 **KEPUTUSAN OWNER 2026-06-16: P3f DI-SKIP (redundan) — disetujui.** Sinyal stale formula-vs-param tidak dibangun karena sudah ter-cover oleh `reevaluateAllFormulas()` on param-change + indikator dirty akurat (P3c). Tercatat resmi sebagai keputusan, bukan utang.
 
 **✅ WP-P3 SELESAI (P3a–P3e; P3f skip-by-design).** Checklist VP tertutup: VP-01/02/03/04 (B3) · VP-05 (P3a validasi computed) · VP-06 (P3c server-authoritative + fix false-dirty project 195) · VP-07 (P3b payload+rate-limit). Plus: autosave digabung 5-menit + save-on-leave (P3b), JSON=parameter data-transfer compliant (P3d), cross-page SSOT contract terkunci (P3e). **Model A volume:** `VolumePekerjaan.quantity` = SSOT tunggal RAB+Kebutuhan; formula = kalkulator client-side; localStorage = draft transien (durability via save-on-leave).
+
+---
+
+### WP-P4 — List Pekerjaan (SURVEI 2026-06-16, MENUNGGU REVIEW OWNER)
+
+**Dependency:** B3 (DONE). **Tindakan:** REPLACE+REMOVE. **List Pekerjaan = FONDASI detail project** — `Pekerjaan` (klasifikasi→sub→pekerjaan, source_type REF/REF_MOD/CUSTOM, ref FK, ordering_index) adalah baris yang dikonsumsi SEMUA halaman hilir. **Checklist:** LP-02/04 wajib, LP-06/07 hardening; LP-01→A1, LP-03 dibatalkan G-1, LP-05→CL-05.
+
+**Mutation contract:** `api_upsert_list_pekerjaan` (`views_api.py:953`) = satu-satunya jalur mutasi (create/update/delete/reorder), atomik (B3, no 207/409). Legacy full-save (`api_save_list_pekerjaan`) = orphan → CL Fase 3.
+
+#### Matriks interaksi lintas-halaman (jawaban fokus owner) — VERIFIED
+
+| Operasi di List Pekerjaan | Mekanisme | Dampak hilir (Volume/Template/Harga/RAB/Kebutuhan/Jadwal) |
+|---|---|---|
+| **Ganti source_type** (REF↔MOD↔CUSTOM) | `_reset_pekerjaan_related_data` (`:1236`) selalu dipanggil | **WIPE**: DetailAHSPProject (Template), VolumePekerjaan (Volume), PekerjaanTahapan (Jadwal), VolumeFormulaState, TemplateAhspKoefFormulaState; `detail_ready=False`. Expanded di-rebuild (REF/MOD) → Harga/Rincian sinkron. Harga orphan → auto-cleanup. RAB/Kebutuhan recompute (cache invalidate). Flag `reload_jobs`+`volume_reset_jobs` → banner Template + pending-reset Volume |
+| **Ganti ref_id** (REF/MOD, ref beda) | replace bila `int(new_ref_id) != pobj.ref_id` (`:1462`) → reset+adopt | sama spt di atas |
+| **Ganti ref TAPI ref_id sama / tak terkirim** | **TIDAK reset** (`:1466-1468`) | ⚠️ **UF-009/UF-012:** Template/Volume/Jadwal lama **STALE** (Bug B family) |
+| **Hapus pekerjaan** | Pekerjaan.delete → FK `on_delete=CASCADE` | Detail/Expanded/Volume/Tahapan/ProgressWeekly/FormulaState ter-hapus otomatis; RAB/Kebutuhan recompute. ⚠️ **LP-04:** user tak diberi ringkasan data turunan yg akan hilang sebelum save |
+| **Buat pekerjaan baru** | create Pekerjaan | muncul di semua halaman; perlu isi Volume/Template (readiness B4 menandai belum lengkap) |
+| **Reorder (ordering_index)** | update ordering | urutan RAB/Rincian/Kebutuhan/Jadwal ikut |
+
+**Status finding:**
+| Finding | Status |
+|---|---|
+| LP-01 XSS | ✅ WP-A1 |
+| LP-02 upsert 207→atomik | ✅ B3 inc-1 |
+| LP-03 optimistic-lock | dibatalkan (G-1 LWW) |
+| LP-05 legacy full-save | →CL-05 (Fase 3) |
+| **LP-04 destructive impact confirmation** | ⬜ SISA — delete tak tampilkan ringkasan data turunan yg hilang |
+| **LP-06 rate-limit + payload-limit** upsert/import/template-library | ⬜ SISA (pola P3b) |
+| **LP-07 import template parsial→sukses** | ⬜ SISA — import harus atomik (all-or-nothing) |
+| **UF-009 ref change tak reset saat ref_id stabil** | ⬜ SISA (Bug B, correctness) — reset hanya by ref_id; ref beda-versi/kode-sama bisa lolos |
+| **UF-012 volume stale saat ganti ref/mode** | ⬜ SISA — konsekuensi UF-009 (reset tak terpicu) |
+| **UF-007 nama mod lama saat ref_modified→ref** | ⬜ SISA (frontend `list_pekerjaan.js`, cosmetic) |
+| **UF-008 placeholder "Pekerjaan N"** | ⬜ SISA (frontend, cosmetic Low) |
+
+**KEPUTUSAN UNTUK OWNER:**
+1. **UF-009 (inti correctness):** perbaiki deteksi "ref berubah" agar pakai **(sumber, kode_ahsp)** atau identitas ref penuh, bukan hanya `ref_id`, supaya ganti-ref selalu memicu reset (cegah stale Template/Volume/Jadwal)? Ini menyentuh resolusi ref ([[import-detail-project-bugs]]). Rek: ya — ini fondasi correctness.
+2. **LP-04 destructive impact:** tampilkan ringkasan "menghapus pekerjaan X akan menghapus: Volume, N komponen Template, jadwal, formula" sebelum konfirmasi save? Rek: ya (backend hitung dampak + frontend konfirmasi).
+3. **LP-06/07 hardening:** rate-limit+payload-limit upsert/import (pola P3b) + import atomik. Rek: ya.
+4. **Urutan:** backend dulu (UF-009 reset-trigger + LP-07 import atomik + LP-06 limits + LP-04 impact-API) lalu frontend (LP-04 konfirmasi + UF-007/008 cosmetic)?
+
+#### Skenario lintas-pekerjaan yang TERLEWAT (ditemukan saat completeness-check 2026-06-16) — bundle-target dependency
+
+Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan lain TIDAK tertangani penuh di jalur upsert List Pekerjaan:
+- **C1 — Hapus target bundle:** `Pekerjaan...delete()` (`:1676`) tak menangani `ref_pekerjaan` `on_delete=PROTECT` → hapus A yang dibundel B → **ProtectedError tak tertangani → 500/rollback**, tanpa pesan jelas. (Juga via hapus klasifikasi/sub yang cascade ke pekerjaan ber-bundle.)
+- **C2 — Ubah/reset target bundle:** upsert reset A (`_reset_pekerjaan_related_data`+`_populate_expanded_from_raw(A)`) **TIDAK** memanggil `cascade_bundle_re_expansion` → expanded milik B (membundel A) **STALE** → RAB/Kebutuhan dependent salah senyap. Analog TA-03/B7c tapi jalur upsert (B7c hanya tutup jalur Template-save & reset).
+
+**Skenario lain diperiksa = AMAN:** re-parent (data dipertahankan, benar), reorder (ordering only), rename CUSTOM/MOD (tak reset, benar), concurrent (LWW B-1), bundle-ref hanya dibuat di Template (List Pekerjaan tak bisa bikin siklus).
+
+**KEPUTUSAN OWNER 2026-06-16 (scope LOCKED):**
+- #1 **UF-009/UF-012:** deteksi "ref berubah" pakai **identitas ref penuh (sumber+kode_ahsp)**, bukan hanya `ref_id` → ganti-ref selalu reset. ✅
+- #2 **LP-04:** destructive-impact (backend hitung + UI konfirmasi). ✅
+- #3 **LP-06/07:** rate/payload-limit (pola P3b) + import atomik. ✅
+- #4 backend dulu, lalu frontend + contract test. ✅
+- **C1: TOLAK delete target bundle dengan pesan jelas** ("dipakai sebagai Pekerjaan Gabungan oleh X") + tangani ProtectedError → 400/422 (bukan 500); sertakan di destructive-impact. ✅
+- **C2: cascade re-expand dependents** saat target bundle direset di upsert (atomik, konsisten B7c). ✅
+
+**Rencana increment FINAL (scope LOCKED, P4a–g):**
+- **P4a** ✅ DONE 2026-06-17 — **VERIFIKASI MENGUBAH SCOPE:** root cause UF-009 (resolusi sumber-unaware) **SUDAH diperbaiki** (services.py:1743 & 2300 pakai `_resolve_ahsp_by_code_in_source(kode, sumber)`); frontend `list_pekerjaan.js` sudah sumber-aware (dropdown sumber `:1294`, pencarian ref difilter sumber `:1399-1402`, reset ref saat sumber berubah `:1361-1369`, set ref_id benar `:1469`). Sisa: fallback display read-only tanpa ref_id (views_api.py:2034, best-effort, low). → P4a di-reframe jadi **regression LOCK** (bukan kode baru): `tests_wp_p4_list_pekerjaan.py` (3 test hijau) — ganti versi ref (ref_id beda) → reset volume + pin versi baru; ganti source_type → reset; SAME ref → TIDAK reset (anti data-loss spurious). Mirror client-side workflow (frontend kirim ref_id baru). Detail REF = read-only-from-ref (tak di-clone ke DetailAHSPProject).
+- **P4b** ✅ DONE 2026-06-17 — LP-07 import template atomik. `_import_template_data` mengakumulasi `errors` (skip/IntegrityError) tapi endpoint dulu commit parsial + `warnings` + increment usage. Sekarang `api_import_template` & `api_import_template_from_file`: jika `errors` non-empty → `atomic_error_response(400)` (rollback total, TIDAK increment usage). Test: `ImportTemplateAtomicTests` (clean→200; sub ref klasifikasi hilang→400 + 0 klas tersisa). 25 test template-library/export hijau (tak ada yang andalkan partial-success lama).
+- **P4c** ✅ DONE 2026-06-17 — LP-06 rate-limit + payload-limit. 5 endpoint write: `api_save_list_pekerjaan` (+payload), `api_upsert_list_pekerjaan` (+rate+payload), `api_create_template`, `api_import_template`, `api_import_template_from_file` (+rate+payload) — pola P3b (`@rate_limit(category='write')` + `@limit_request_body()`→413). Test: `UpsertPayloadLimitTests` (2MB+→413).
+- **P4d** ✅ DONE 2026-06-17 — LP-04 destructive-impact. **Backend:** endpoint baru `api_list_pekerjaan_destructive_impact` (read-only, `views_api.py` setelah upsert) — terima payload upsert, hitung pekerjaan yang akan DIHAPUS (absen dari payload) + dampak hilir (Volume/Detail/jadwal/formula counts) + daftar `blocked` (target bundle dgn dependent yang TETAP ada = bakal ditolak C1). URL `list-pekerjaan/destructive-impact/`. **Frontend (`list_pekerjaan.js`):** `confirmDestructiveImpact(payload)` dipanggil di `handleSave` SEBELUM upsert — `has_blocked` → modal `alert` "Tidak Bisa Menghapus" + stop; ada deletion → modal `confirm` danger ("Hapus & Simpan") berisi ringkasan. **Fail-open** bila endpoint/modal tak tersedia (tak memblok save). Modal `formatMessage` escape HTML (aman AT-01). Test: `DestructiveImpactPreviewTests` (3) + JS guard `list_pekerjaan_destructive.test.js`.
+- **P4e** ✅ DONE 2026-06-17 — UF-007/008 cosmetic. **UF-007:** `syncFields` kini clear uraian/satuan saat `ref_modified→ref` (nama mod stale tak lagi nempel; pure REF name muncul). **UF-008:** fallback label sidebar pakai teks referensi terpilih sebelum placeholder generik "Pekerjaan N". JS guard hijau.
+- **P4f** ✅ DONE 2026-06-17 — contract test cascade TERPENUHI oleh test P4 yang ada: `RefChangeResetCascadeTests` (ganti ref/source → reset), `BundleDependentReExpandTests` (re-source target → re-expand), `BundleTargetDeleteGuardTests` (delete guard), `DestructiveImpactPreviewTests` (preview). 13 backend + 8 JS guard hijau.
+- **P4g** ✅ DONE 2026-06-17 — bundle-target dependency:
+  - **C1** TOLAK delete target bundle: pre-check di `api_upsert_list_pekerjaan` (sebelum delete sub/klas/pekerjaan) → jika DetailAHSPProject `ref_pekerjaan` milik pekerjaan yang TETAP ada menunjuk pekerjaan yang akan dihapus → `atomic_error_response(400)` dgn pesan "Pekerjaan 'X' tidak dapat dihapus karena dipakai sebagai Pekerjaan Gabungan oleh 'Y'". Plus defensive `try/except ProtectedError → 400`. **Edge:** hapus target+dependent bersamaan = boleh → detail set-yang-dihapus dibersihkan dulu agar cascade tak kena ProtectedError (Django collector tetap melempar walau dependent ikut dihapus).
+  - **C2** cascade re-expand: setelah delete, loop `volume_reset_jobs` → `cascade_bundle_re_expansion(project, id)` (atomik, konsisten B7c/TA-03). Pekerjaan yang di-reset/re-source via upsert kini memicu re-expand dependent → DetailAHSPExpanded dependent tak lagi STALE.
+  - Tests: `tests_wp_p4_list_pekerjaan.py` → `BundleTargetDeleteGuardTests` (tolak delete target; hapus keduanya boleh) + `BundleDependentReExpandTests` (re-source target → dependent re-expand). 6 test P4 hijau; 71 regression (upsert/multi-source/rekap-contract/B7/B9) hijau.
+
+**SCOPE WP-P4 TERKUNCI — siap implementasi (urutan: P4a → P4g/C1+C2 [correctness] → P4b → P4c → P4d → P4e → P4f).**
+
+---
+
+### WP-P5 — Rincian AHSP (SURVEI 2026-06-17, MENUNGGU REVIEW OWNER)
+
+**Apa itu halaman ini & kenapa penting:** Rincian AHSP = halaman *viewer* yang menampilkan breakdown komponen (TK/BHN/ALT/LAIN) per pekerjaan beserta HSP (Harga Satuan Pekerjaan) setelah markup/BUK. Satu-satunya mutasi di sini = **override markup (Profit/BUK) per pekerjaan**. Angka mengalir ke Rekap RAB + export. Dependency: B1 (canonical calc), B4 (readiness), B5 (export). Checklist doc 27: RA-01/02/03/04/06/07/08 (RA-05→ termasuk; RA-11 dibatalkan G-1; RA-05-removal CL-12).
+
+**Status temuan — DIVERIFIKASI ULANG terhadap kode SAAT INI (banyak sudah dibereskan B1/B4):**
+
+| Finding | Severity | Status SEKARANG | Bukti |
+|---|---|---|---|
+| RA-01 default markup 0% vs 10% divergen | CRITICAL | ✅ **RESOLVED** (B1 canonical) | service pakai `DEFAULT_PROJECT_MARKUP_PERCENT=10.00` (services.py:2499). Sisa: `api_pekerjaan_pricing` hardcode `Decimal("10")` (drift kecil → align ke konstanta) |
+| RA-02 web vs export beda definisi total | CRITICAL | ⚠️ **LIVE** | adapter `grand_total += G_hsp` (Σ per-unit, **tanpa volume & PPN**) `rincian_ahsp_adapter.py:211` — beda dgn web `Σ(G×vol)+PPN` |
+| RA-03 export duplikasi calc | HIGH | ✅ **RESOLVED** | adapter kini pakai `compute_rekap_for_project` (`:95`) utk E/F/G/markup |
+| RA-04 parser override hapus titik desimal | HIGH | ⚠️ **LIVE** | `parsePctUI` `:282` `.replace(/\./g,'')` → "12.5" jadi **125**. (`parseNum` locale-aware sudah ada `:190` tapi TAK dipakai utk override) |
+| RA-05 kontrol Save/dirty/Reset dead | HIGH | ⚠️ **LIVE** | template ada `ra-btn-save`/`ra-dirty-dot`/`ra-dirty-text`/Grand Total toolbar/`rk-btn-reset` — **NOL binding** di rincian_ahsp.js |
+| RA-06 satuan pekerjaan export salah | HIGH | ⚠️ **LIVE** | adapter `:108` `getattr(pek,'satuan','-')` → selalu '-' (harusnya `snapshot_satuan`; `:106-107` sudah benar pakai snapshot_*) |
+| RA-07 override tak tercatat audit | HIGH | ⚠️ **LIVE** | `api_pekerjaan_pricing` POST: update + cache invalidate, **tanpa `log_audit`** (D-02 belum menjangkau page ini) |
+| RA-08 readiness expanded tak tampil | HIGH | ✅ **RESOLVED** (B4 fan-out) | `renderReadiness` baca `/rekap/` readiness (`:481-509`) |
+| RA-10 error backend override tak disampaikan | MEDIUM | ⚠️ **LIVE** | `saveOverride` `:582` throw generic "save override fail", buang pesan server (mis. "maksimal 100%") |
+| RA-16 tak ada rate/payload governance pricing API | MEDIUM | ⚠️ **LIVE** | `api_pekerjaan_pricing` tanpa `@rate_limit`/`@limit_request_body` |
+
+**Interaksi lintas-halaman (VERIFIED):** Rincian AHSP = READ consumer dari `compute_rekap_for_project` (SSOT canonical, B1). Mutasi tunggal = `markup_override_percent` per pekerjaan → cache invalidate → Rekap RAB/Rincian RAB recompute (konsisten). TIDAK ada origin reset/source-change di sini (itu domain List Pekerjaan/Template — sudah ditangani P4/P2). Banner reload/volume-reset = display flag dari `/rekap/` (read-only).
+
+**Rencana increment USULAN (urut correctness → cleanup → governance → hardening):**
+- **P5a (RA-04 correctness):** `parsePctUI` delegasikan ke `parseNum` (terima "12.5"=12.5%, "12,5"=12.5%) + range 0–100. Frontend.
+- **P5b (RA-06 correctness):** adapter `pek.satuan` → `pek.snapshot_satuan`. Akurasi export.
+- **P5c (RA-02 + D-RA-01):** hilangkan `grand_total` export yang menyesatkan (Σ per-unit). **Keputusan owner** (lihat bawah).
+- **P5d (RA-05 + D-RA-02):** hapus kontrol dead (tombol Simpan+spinner, dirty indicator, Grand Total toolbar, Reset-all + wiring reset endpoint). Page = viewer, mutasi hanya override via modal. Template+JS.
+- **P5e (RA-07):** audit override via `log_audit(project, pkj, old/new markup, user, change_summary)` — governance (implementasi D-02 menjangkau Rincian AHSP).
+- **P5f (RA-10):** surface pesan error server di `saveOverride`/apply flow. UX.
+- **P5g (RA-16 + RA-01 drift):** `@rate_limit`+`@limit_request_body` pada `api_pekerjaan_pricing` + align default ke `DEFAULT_PROJECT_MARKUP_PERCENT`. Hardening.
+- **P5h:** contract test (override→canonical konsisten; parser "12.5"=12.5; audit tertulis; satuan export benar; no grand-total divergen).
+
+**KEPUTUSAN UNTUK OWNER (sebelum lock scope):**
+1. **RA-02/D-RA-01 Grand Total di Rincian AHSP:** REKOMENDASI **HAPUS** (web toolbar + export) karena total project = domain Rekap RAB; alternatif = rename "Total Nilai Project (lihat Rekap RAB)" + dibuat **identik** dgn Rekap RAB (termasuk PPN+pembulatan). Pilih hapus atau rename?
+2. **RA-05 "Reset semua override":** saat ini `rk-btn-reset` disabled + tak ter-bind. REKOMENDASI **HAPUS** (clear override sudah per-pekerjaan via modal). Atau Anda ingin fitur bulk-reset diaktifkan?
+3. **RA-07 audit:** pakai `ACTION_UPDATE` generik dgn old/new khusus markup + change_summary (REK, reuse `log_audit`) atau buat action constant baru khusus pricing?

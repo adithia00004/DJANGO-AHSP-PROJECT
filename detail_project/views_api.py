@@ -632,6 +632,7 @@ def api_search_ahsp(request: HttpRequest, project_id: int):
 @login_required
 @require_POST
 @rate_limit(category='write')
+@limit_request_body()  # WP-P4c (LP-06): cap body size (DoS guard)
 @transaction.atomic
 def api_save_list_pekerjaan(request: HttpRequest, project_id: int):
     """
@@ -949,6 +950,8 @@ def api_get_list_pekerjaan_tree(request: HttpRequest, project_id: int):
 # ---------- View 1: UPSERT ----------
 @login_required
 @require_POST
+@rate_limit(category='write')  # WP-P4c (LP-06): throttle write floods
+@limit_request_body()  # WP-P4c (LP-06): cap body size (DoS guard)
 @transaction.atomic
 def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     """
@@ -1666,14 +1669,89 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             message=f"{len(errors)} perubahan tidak dapat diproses. Tidak ada perubahan yang disimpan.",
         )
 
+    # WP-P4 (C1): tolak hapus pekerjaan yang masih dipakai sebagai target
+    # "Pekerjaan Gabungan" (bundle) oleh pekerjaan lain yang TETAP ada.
+    # DetailAHSPProject.ref_pekerjaan = on_delete=PROTECT, jadi delete-nya akan
+    # melempar ProtectedError (500 + rollback tanpa pesan). Pre-check di sini agar
+    # ditolak ATOMIK (400) dengan pesan jelas, sebelum delete apa pun dijalankan.
+    to_delete_pekerjaan_ids = set(
+        Pekerjaan.objects.filter(project=project)
+        .exclude(id__in=keep_all_p)
+        .values_list("id", flat=True)
+    )
+    if to_delete_pekerjaan_ids:
+        blocking = (
+            DetailAHSPProject.objects.filter(
+                project=project,
+                ref_pekerjaan_id__in=to_delete_pekerjaan_ids,
+            )
+            .exclude(pekerjaan_id__in=to_delete_pekerjaan_ids)  # dependent yang TETAP ada
+            .select_related("pekerjaan", "ref_pekerjaan")
+        )
+        seen_pairs: set = set()
+        bundle_errs: list = []
+        for d in blocking:
+            pair = (d.ref_pekerjaan_id, d.pekerjaan_id)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            target = d.ref_pekerjaan
+            dependent = d.pekerjaan
+            t_label = (
+                (target.snapshot_kode or target.snapshot_uraian or f"#{target.id}")
+                if target else f"#{d.ref_pekerjaan_id}"
+            )
+            dep_label = (
+                (dependent.snapshot_kode or dependent.snapshot_uraian or f"#{dependent.id}")
+                if dependent else f"#{d.pekerjaan_id}"
+            )
+            bundle_errs.append(_err(
+                "pekerjaan",
+                f"Pekerjaan '{t_label}' tidak dapat dihapus karena dipakai sebagai "
+                f"Pekerjaan Gabungan oleh '{dep_label}'. Lepas/ubah referensi tersebut dulu."
+            ))
+        if bundle_errs:
+            return atomic_error_response(
+                errors=bundle_errs,
+                status=400,
+                message=(
+                    f"{len(bundle_errs)} pekerjaan tidak dapat dihapus karena masih dipakai "
+                    "sebagai Pekerjaan Gabungan. Tidak ada perubahan yang disimpan."
+                ),
+            )
+        # Lolos pre-check: satu-satunya edge PROTECT yang tersisa = antar pekerjaan yang
+        # SAMA-SAMA dihapus (mis. hapus bundle B + target A sekaligus). Bersihkan detail
+        # milik set-yang-dihapus dulu agar cascade delete sub/klas/pekerjaan tidak kena
+        # ProtectedError. (Detail ini toh akan ikut terhapus.)
+        DetailAHSPProject.objects.filter(
+            project=project, pekerjaan_id__in=to_delete_pekerjaan_ids
+        ).delete()
+
     # Hapus sub yang tidak ada di payload (global, setelah seluruh mutasi selesai)
     SubKlasifikasi.objects.filter(project=project).exclude(id__in=keep_all_s).delete()
 
     # Hapus klasifikasi yang tidak ada lagi
     Klasifikasi.objects.filter(project=project).exclude(id__in=keep_k).delete()
 
-    # Hapus pekerjaan yang tidak ada di payload (global, setelah seluruh mutasi selesai)
-    Pekerjaan.objects.filter(project=project).exclude(id__in=keep_all_p).delete()
+    # Hapus pekerjaan yang tidak ada di payload (global, setelah seluruh mutasi selesai).
+    # Defensive net: jika masih ada referensi bundle yang lolos pre-check (race), tangkap
+    # ProtectedError → 400 (bukan 500) agar transaksi batal bersih.
+    from django.db.models.deletion import ProtectedError
+    try:
+        Pekerjaan.objects.filter(project=project).exclude(id__in=keep_all_p).delete()
+    except ProtectedError:
+        return atomic_error_response(
+            errors=[_err("pekerjaan", "Pekerjaan masih dipakai sebagai Pekerjaan Gabungan oleh pekerjaan lain.")],
+            status=400,
+            message="Tidak dapat menghapus pekerjaan yang masih direferensikan. Tidak ada perubahan yang disimpan.",
+        )
+
+    # WP-P4 (C2): pekerjaan yang di-reset/di-resource (detail AHSP-nya berubah) dapat
+    # menjadi target bundle bagi pekerjaan lain. DetailAHSPExpanded milik dependent kini
+    # STALE → re-expand cascade (atomik, konsisten dgn jalur Template-save B7c/TA-03).
+    # Hanya untuk pekerjaan yang TETAP ada (yang dihapus tak punya dependent yang lolos C1).
+    for _modified_id in source_change_state["volume_reset_jobs"]:
+        cascade_bundle_re_expansion(project, _modified_id)
 
     status = 200  # WP-B3: errors already rejected atomically above (no 207)
     summary = {
@@ -1702,6 +1780,96 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
     return JsonResponse(response_payload, status=status)
 
+
+# ---------- View 1b: Destructive-impact preview (WP-P4d / LP-04) ----------
+@login_required
+@require_POST
+@rate_limit(category='write')
+@limit_request_body()
+def api_list_pekerjaan_destructive_impact(request: HttpRequest, project_id: int):
+    """WP-P4d (LP-04): read-only preview of the destructive impact of a proposed
+    upsert. Given the SAME payload the upsert would receive, compute which existing
+    pekerjaan would be DELETED (absent from the payload) and the downstream data that
+    would be lost (Volume / Template components / jadwal / formula), plus any bundle
+    target rows that would be BLOCKED by C1 (still referenced by a surviving pekerjaan).
+
+    No writes. The frontend calls this before saving to confirm with the user.
+    """
+    from .models import PekerjaanTahapan, VolumeFormulaState, TemplateAhspKoefFormulaState
+
+    project = _owner_or_404(project_id, request.user)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
+
+    # Surviving pekerjaan = those carried in the payload by id (mirror upsert keep-set).
+    keep_ids: set = set()
+    for k in (payload.get("klasifikasi") or []):
+        for s in (k.get("sub") or []):
+            for p in (s.get("pekerjaan") or []):
+                pid = p.get("id")
+                if pid:
+                    try:
+                        keep_ids.add(int(pid))
+                    except (TypeError, ValueError):
+                        pass
+
+    to_delete = list(Pekerjaan.objects.filter(project=project).exclude(id__in=keep_ids))
+    to_delete_ids = {p.id for p in to_delete}
+
+    items: list = []
+    blocked: list = []
+    totals = {"pekerjaan": 0, "volume": 0, "detail": 0, "jadwal": 0, "formula": 0}
+    for p in to_delete:
+        vol = VolumePekerjaan.objects.filter(project=project, pekerjaan=p).count()
+        detail = DetailAHSPProject.objects.filter(project=project, pekerjaan=p).count()
+        jadwal = PekerjaanTahapan.objects.filter(pekerjaan=p).count()
+        formula = (
+            VolumeFormulaState.objects.filter(project=project, pekerjaan=p).count()
+            + TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=p).count()
+        )
+        # Bundle-target: surviving pekerjaan that reference p → delete would be rejected (C1).
+        dep_labels: list = []
+        seen: set = set()
+        for d in (
+            DetailAHSPProject.objects.filter(project=project, ref_pekerjaan=p)
+            .exclude(pekerjaan_id__in=to_delete_ids)
+            .select_related("pekerjaan")
+        ):
+            dp = d.pekerjaan
+            lbl = (dp.snapshot_kode or dp.snapshot_uraian or f"#{dp.id}") if dp else f"#{d.pekerjaan_id}"
+            if lbl not in seen:
+                seen.add(lbl)
+                dep_labels.append(lbl)
+
+        item = {
+            "id": p.id,
+            "label": p.snapshot_kode or p.snapshot_uraian or f"#{p.id}",
+            "uraian": p.snapshot_uraian or "",
+            "volume": vol,
+            "detail": detail,
+            "jadwal": jadwal,
+            "formula": formula,
+            "blocked_by": dep_labels,
+        }
+        items.append(item)
+        totals["pekerjaan"] += 1
+        totals["volume"] += vol
+        totals["detail"] += detail
+        totals["jadwal"] += jadwal
+        totals["formula"] += formula
+        if dep_labels:
+            blocked.append(item)
+
+    return JsonResponse({
+        "ok": True,
+        "to_delete": items,
+        "blocked": blocked,
+        "totals": totals,
+        "has_destructive": bool(items),
+        "has_blocked": bool(blocked),
+    })
 
 
 # ---------- View 2: Volume ----------
@@ -9235,6 +9403,8 @@ def api_get_template_detail(request: HttpRequest, template_id: int):
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # WP-P4c (LP-06)
+@limit_request_body()  # WP-P4c (LP-06)
 @transaction.atomic
 def api_create_template(request: HttpRequest, project_id: int):
     """
@@ -9777,6 +9947,8 @@ def _import_template_data(project, data, user=None):
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # WP-P4c (LP-06)
+@limit_request_body()  # WP-P4c (LP-06)
 @transaction.atomic
 def api_import_template(request: HttpRequest, project_id: int, template_id: int):
     """
@@ -9819,27 +9991,35 @@ def api_import_template(request: HttpRequest, project_id: int, template_id: int)
     
     # Use unified import helper
     stats, errors = _import_template_data(project, content, user=request.user)
-    
+
+    # WP-P4b (LP-07): import = all-or-nothing. Jika ADA error (skip/IntegrityError),
+    # batalkan SELURUH import (rollback) — jangan commit parsial, jangan increment usage.
+    if errors:
+        return atomic_error_response(
+            errors=errors,
+            status=400,
+            message="Sebagian data template gagal diimport. Tidak ada yang disimpan.",
+        )
+
     # Increment usage count
     template.increment_usage()
-    
+
     # Invalidate cache
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
-    
+
     response_data = {
         'ok': True,
         'message': f'Template "{template.name}" berhasil diimport',
         'stats': stats
     }
-    
-    if errors:
-        response_data['warnings'] = errors
-    
+
     return JsonResponse(response_data)
 
 
 @login_required
 @require_POST
+@rate_limit(category='write')  # WP-P4c (LP-06)
+@limit_request_body()  # WP-P4c (LP-06)
 @transaction.atomic
 def api_import_template_from_file(request: HttpRequest, project_id: int):
     """
@@ -9904,19 +10084,24 @@ def api_import_template_from_file(request: HttpRequest, project_id: int):
             'ok': False,
             'message': 'Terjadi kesalahan saat memproses import template'
         }, status=500)
-    
+
+    # WP-P4b (LP-07): import = all-or-nothing. Jika ADA error, rollback total.
+    if errors:
+        return atomic_error_response(
+            errors=errors,
+            status=400,
+            message="Sebagian data file gagal diimport. Tidak ada yang disimpan.",
+        )
+
     # Invalidate cache
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
-    
+
     response_data = {
         'ok': True,
         'message': f'Import dari file berhasil!',
         'stats': stats
     }
-    
-    if errors:
-        response_data['warnings'] = errors
-    
+
     return JsonResponse(response_data)
 
 

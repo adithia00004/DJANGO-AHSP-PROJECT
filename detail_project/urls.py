@@ -37,6 +37,7 @@ urlpatterns = [
     path('api/project/<int:project_id>/list-pekerjaan/save/',   views_api.api_save_list_pekerjaan,   name='api_save_list_pekerjaan'),
     path('api/project/<int:project_id>/list-pekerjaan/tree/',   views_api.api_get_list_pekerjaan_tree, name='api_get_list_pekerjaan_tree'),
     path('api/project/<int:project_id>/list-pekerjaan/upsert/', views_api.api_upsert_list_pekerjaan, name='api_upsert_list_pekerjaan'),
+    path('api/project/<int:project_id>/list-pekerjaan/destructive-impact/', views_api.api_list_pekerjaan_destructive_impact, name='api_list_pekerjaan_destructive_impact'),
 
     # Export List Pekerjaan (JSON)
     path('api/project/<int:project_id>/export/list-pekerjaan/json/',
