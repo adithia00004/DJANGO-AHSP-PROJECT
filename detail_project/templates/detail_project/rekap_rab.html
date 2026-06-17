@@ -242,13 +242,9 @@
 {% block extra_js %}
 {{ block.super }}
 
-<!-- SheetJS for Excel export (keep this - for your Excel feature) -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-
-<!-- Excel Exporter (keep this - your existing feature) -->
-<script src="{% static 'detail_project/js/export/ExcelExporter.js' %}"></script>
-
-
+<!-- WP-P6f (RR-15/16): SheetJS CDN + client-side ExcelExporter.js DIHAPUS — Export Excel
+     sudah memakai ExportManager server-authoritative (XLSX server, parity B5). Menghapus
+     beban CDN + supply-chain surface (tanpa SRI) + jalur fallback Excel→CSV yang menyesatkan. -->
 
 <!-- WP-B4: shared readiness banner builder (exposes window.ReadinessBanner) -->
 <script src="{% static 'detail_project/js/shared/readiness_banner.js' %}"></script>
@@ -306,49 +302,34 @@
       }
     };
 
+    // WP-P6 (RR-14): satu initializer per aksi, TANPA clone-replace. rekap_rab.js sudah
+    // tidak lagi mem-bind tombol export/print, jadi tak ada listener ganda untuk dibuang.
     const btnXLSX = document.getElementById('btn-export-xlsx');
     const btnPDF = document.getElementById('btn-export-pdf');
     const btnWord = document.getElementById('btn-export-word');
+    // WP-P6c (RR-03/04/14): client print di-deprecate. Tombol "Print" memakai PDF
+    // server-authoritative (kalkulasi B1 + identitas B5b) — bukan modul scrape-DOM.
+    const btnPrint = document.getElementById('btn-print');
 
-    // Helper to remove all existing listeners by cloning and replacing
-    const cleanButton = (btn) => {
-      if (!btn) return null;
-      const newBtn = btn.cloneNode(true);
-      btn.parentNode.replaceChild(newBtn, btn);
-      return newBtn;
-    };
-
-    // Clean buttons first to remove any existing listeners
-    const cleanXLSX = cleanButton(btnXLSX);
-    const cleanPDF = cleanButton(btnPDF);
-    const cleanWord = cleanButton(btnWord);
-
-    if (cleanXLSX) {
-      cleanXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e, false));
+    if (btnXLSX) {
+      btnXLSX.addEventListener('click', (e) => handleExport('xlsx', 'Excel', e, false));
     }
-    if (cleanPDF) {
+    if (btnPDF) {
       // PDF uses async export via Celery
-      cleanPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
+      btnPDF.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
     }
-    if (cleanWord) {
+    if (btnWord) {
       // Word uses async export via Celery
-      cleanWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
+      btnWord.addEventListener('click', (e) => handleExport('word', 'Word', e, true));
+    }
+    if (btnPrint) {
+      btnPrint.addEventListener('click', (e) => handleExport('pdf', 'PDF', e, true));
     }
     console.log('[RekapRAB] Export buttons initialized with async support');
   })();
 </script>
 
-<!-- Print System (ES6 Module) -->
-<script type="module">
-  import { initRekapRABPrint } from '{% static "detail_project/js/print/RekapRABPrint.js" %}';
-
-  document.addEventListener('DOMContentLoaded', () => {
-    if (window.RABModule) {
-      initRekapRABPrint(window.RABModule);
-      console.log('[Print] Rekap RAB print system initialized');
-    } else {
-      console.error('[Print] RABModule not found. Check rekap_rab.js export.');
-    }
-  });
-</script>
+<!-- WP-P6c (RR-03/04/14): modul print client-side (RekapRABPrint.js / PrintComponents.js)
+     DI-DEPRECATE. Tombol "Print" memakai PDF server-authoritative (lihat blok export di
+     atas). File modul + CSS print dibiarkan sbagai orphan → dibersihkan di Fase 3 (RR-24). -->
 {% endblock %}

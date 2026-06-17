@@ -116,6 +116,8 @@ urlpatterns = [
     
     # Pricing per-pekerjaan
     path('api/project/<int:project_id>/pekerjaan/<int:pekerjaan_id>/pricing/', views_api.api_pekerjaan_pricing, name='api_pekerjaan_pricing'),
+    # WP-P5d (RA-05): reset semua override Profit/BUK ke default project
+    path('api/project/<int:project_id>/pricing/reset-all-overrides/', views_api.api_reset_all_overrides, name='api_reset_all_overrides'),
 
     # ===== API: Project Parameters (for volume formula calculations) =====
     path('api/project/<int:project_id>/parameters/', views_api.api_project_parameters, name='api_project_parameters'),

@@ -3695,6 +3695,15 @@ def api_project_pricing(request: HttpRequest, project_id: int):
     project = _owner_or_404(project_id, request.user)
     with transaction.atomic():
         obj = _get_or_create_pricing(project)
+
+        def _snapshot_pricing(o):
+            return {
+                "markup_percent": to_dp_str(o.markup_percent, 2) if o.markup_percent is not None else None,
+                "ppn_percent": to_dp_str(o.ppn_percent, 2) if o.ppn_percent is not None else None,
+                "rounding_base": int(o.rounding_base) if getattr(o, "rounding_base", None) else None,
+            }
+
+        old_pricing = _snapshot_pricing(obj)  # WP-P6d (RR-10): nilai lama utk catatan perubahan
         updated_fields = []
 
         # markup_percent (opsional)
@@ -3717,6 +3726,32 @@ def api_project_pricing(request: HttpRequest, project_id: int):
         if updated_fields:
             updated_fields.append("updated_at")
             obj.save(update_fields=updated_fields)
+
+            # WP-P6d (RR-10): catat perubahan pricing project-level (timestamp + lama→baru).
+            # Sengaja RINGAN sesuai keputusan owner: single-user → role tak ditekankan; hanya
+            # mencatat saat ada nilai yang BENAR-BENAR berubah (pricing = aksi jarang, beban
+            # minimal). pekerjaan=None (event project-level; field memang nullable).
+            new_pricing = _snapshot_pricing(obj)
+            changed = [k for k in new_pricing if old_pricing.get(k) != new_pricing.get(k)]
+            if changed:
+                try:
+                    from .models import DetailAHSPAudit
+                    labels = {"markup_percent": "Markup/BUK", "ppn_percent": "PPN", "rounding_base": "Pembulatan"}
+                    summary = "Pricing project — " + "; ".join(
+                        f"{labels[k]}: {old_pricing.get(k)} → {new_pricing.get(k)}" for k in changed
+                    )
+                    DetailAHSPAudit.objects.create(
+                        project=project,
+                        pekerjaan=None,
+                        action=DetailAHSPAudit.ACTION_UPDATE,
+                        old_data={k: old_pricing[k] for k in changed},
+                        new_data={k: new_pricing[k] for k in changed},
+                        triggered_by="user",
+                        user=request.user if getattr(request.user, "id", None) else None,
+                        change_summary=summary,
+                    )
+                except Exception:
+                    logger.exception("[PRICING_AUDIT] gagal mencatat perubahan pricing project %s", project.id)
 
             # CACHE FIX: Invalidate cache AFTER transaction commits
             # Pricing changes affect rekap calculations
@@ -5387,6 +5422,8 @@ def export_rekap_kebutuhan_xlsx(request: HttpRequest, project_id: int):
 
 @login_required
 @require_http_methods(["GET", "POST"])
+@rate_limit(category='write')  # WP-P5g (RA-16)
+@limit_request_body()  # WP-P5g (RA-16)
 @transaction.atomic
 def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: int):
     """
@@ -5394,17 +5431,20 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
     POST â†’ terima {"override_markup": "12,5"} atau null untuk clear
     """
     from .numeric import parse_any, to_dp_str
+    from .services import DEFAULT_PROJECT_MARKUP_PERCENT
 
     project = _owner_or_404(project_id, request.user)
     pkj = get_object_or_404(Pekerjaan, id=pekerjaan_id, project=project)
 
-    # Dapatkan default proyek
+    # Dapatkan default proyek. WP-P5g (RA-01 drift): pakai konstanta kanonik tunggal
+    # `DEFAULT_PROJECT_MARKUP_PERCENT` (services.py), bukan literal "10" yang bisa
+    # menyimpang dari default service bila kebijakan berubah.
     try:
         from .models import ProjectPricing
         pp = ProjectPricing.objects.filter(project=project).first()
-        proj_mp = pp.markup_percent if pp else Decimal("10")
+        proj_mp = pp.markup_percent if (pp and pp.markup_percent is not None) else DEFAULT_PROJECT_MARKUP_PERCENT
     except Exception:
-        proj_mp = Decimal("10")
+        proj_mp = DEFAULT_PROJECT_MARKUP_PERCENT
 
     if request.method == "GET":
         ov = getattr(pkj, "markup_override_percent", None)
@@ -5423,9 +5463,25 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
         return JsonResponse({"ok": False, "errors": [_err("$","Payload JSON tidak valid")]}, status=400)
 
     raw = payload.get("override_markup", None)
+    # WP-P5e (RA-07): nilai lama utk audit perubahan markup/BUK.
+    old_ov = getattr(pkj, "markup_override_percent", None)
+    old_ov_str = to_dp_str(old_ov, 2) if old_ov is not None else None
     if raw in (None, ""):
         # clear override
         Pekerjaan.objects.filter(pk=pkj.pk).update(markup_override_percent=None)
+
+        # WP-P5e (RA-07): catat penghapusan override (kembali ke default project).
+        if old_ov is not None:
+            log_audit(
+                project, pkj, DetailAHSPAudit.ACTION_UPDATE,
+                old_data={"markup_override_percent": old_ov_str},
+                new_data={"markup_override_percent": None},
+                user=request.user,
+                change_summary=(
+                    f"Override Profit/Margin (BUK) dihapus: {old_ov_str}% → default project "
+                    f"{to_dp_str(proj_mp, 2)}%"
+                ),
+            )
 
         # CACHE FIX: Invalidate cache AFTER transaction commits
         # Rekap berubah bila ada override
@@ -5472,6 +5528,20 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
     # Save and return updated values
     Pekerjaan.objects.filter(pk=pkj.pk).update(markup_override_percent=dec)
 
+    # WP-P5e (RA-07): catat perubahan override markup/BUK (lama → baru).
+    new_ov_str = to_dp_str(dec, 2)
+    if old_ov_str != new_ov_str:
+        log_audit(
+            project, pkj, DetailAHSPAudit.ACTION_UPDATE,
+            old_data={"markup_override_percent": old_ov_str},
+            new_data={"markup_override_percent": new_ov_str},
+            user=request.user,
+            change_summary=(
+                f"Override Profit/Margin (BUK): "
+                f"{old_ov_str + '%' if old_ov_str is not None else 'default'} → {new_ov_str}%"
+            ),
+        )
+
     # CACHE FIX: Invalidate cache AFTER transaction commits
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
@@ -5482,6 +5552,51 @@ def api_pekerjaan_pricing(request: HttpRequest, project_id: int, pekerjaan_id: i
         "project_markup": to_dp_str(proj_mp, 2),
         "override_markup": to_dp_str(dec, 2),
         "effective_markup": to_dp_str(eff, 2)
+    })
+
+
+@login_required
+@require_POST
+@rate_limit(category='write')  # WP-P5d (RA-05)
+@limit_request_body()  # WP-P5d (RA-05)
+@transaction.atomic
+def api_reset_all_overrides(request: HttpRequest, project_id: int):
+    """WP-P5d (RA-05): reset SEMUA override Profit/Margin (BUK) per pekerjaan → default
+    project. Atomik; hanya pekerjaan yang punya override yang diubah + di-audit."""
+    from .numeric import to_dp_str
+    from .services import DEFAULT_PROJECT_MARKUP_PERCENT
+    from .models import ProjectPricing
+
+    project = _owner_or_404(project_id, request.user)
+    pp = ProjectPricing.objects.filter(project=project).only("markup_percent").first()
+    proj_mp = pp.markup_percent if (pp and pp.markup_percent is not None) else DEFAULT_PROJECT_MARKUP_PERCENT
+
+    overridden = list(
+        Pekerjaan.objects.filter(project=project, markup_override_percent__isnull=False)
+    )
+    reset_count = len(overridden)
+    if reset_count:
+        for pkj in overridden:
+            old_ov = pkj.markup_override_percent
+            log_audit(
+                project, pkj, DetailAHSPAudit.ACTION_UPDATE,
+                old_data={"markup_override_percent": to_dp_str(old_ov, 2)},
+                new_data={"markup_override_percent": None},
+                user=request.user,
+                change_summary=(
+                    f"Override Profit/Margin (BUK) dihapus (reset massal): "
+                    f"{to_dp_str(old_ov, 2)}% → default {to_dp_str(proj_mp, 2)}%"
+                ),
+            )
+        Pekerjaan.objects.filter(
+            project=project, markup_override_percent__isnull=False
+        ).update(markup_override_percent=None)
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
+
+    return JsonResponse({
+        "ok": True,
+        "reset_count": reset_count,
+        "project_markup": to_dp_str(proj_mp, 2),
     })
 
 

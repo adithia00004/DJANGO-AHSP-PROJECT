@@ -37,7 +37,6 @@ null-vs-zero (locked by the underlying model facts):
                            explicit ``0`` is intentional and is NOT flagged).
   * missing_price        : ``HargaItemProject.harga_satuan IS NULL`` for an item
                            used in the calculation path. ``0.00`` is explicit free.
-  * invalid_coefficient  : ``koefisien < 0`` (defensive — WP-B3 rejects on save).
   * expansion (D-06)     : analysed per ``source_detail``:
                              - no expanded component         -> ``missing_expansion``
                              - raw newer than its expansion  -> ``stale_expansion``
@@ -85,7 +84,7 @@ from .models import (
     PekerjaanProgressWeekly,
 )
 
-SCHEMA_VERSION = "b4.5"  # b4.5 = reference_update_available signal (B7b)
+SCHEMA_VERSION = "b4.6"  # b4.6 = removed dead invalid_coefficient signal (koef<0 now blocked by DB constraint, P2a)
 
 # All signals are now computed; nothing pending.
 PENDING_SIGNALS = ()
@@ -288,24 +287,9 @@ def _compute(project):
             master_sig_by_ahsp[_aid] = _master_sig_from_rows(_rws)
 
     expansion_not_ready = []
-    invalid_coefficient = []
     for row in raw_rows:
         kode = row["kode"] or ""
         uraian = row["uraian"] or ""
-        if row["koefisien"] is not None and row["koefisien"] < 0:
-            invalid_coefficient.append(
-                {
-                    "pekerjaan_id": row["pekerjaan_id"],
-                    "source_detail_id": row["id"],
-                    "kode": kode,
-                    "uraian": uraian,
-                    "source_table": "DetailAHSPProject",
-                    "source_page": PAGE_DETAIL,
-                    "issue": "invalid_coefficient",
-                    "actual": str(row["koefisien"]),
-                }
-            )
-
         is_bundle = row["kategori"] == "LAIN" and (
             row["ref_pekerjaan_id"] is not None or row["ref_ahsp_id"] is not None
         )
@@ -367,23 +351,6 @@ def _compute(project):
         elif expected_exact and actual != expected:
             issue = "incomplete_expansion" if actual < expected else "excess_expansion"
             expansion_not_ready.append(_entry(issue))
-
-    # negative coefficient that only exists in expanded rows (defensive).
-    for e in DetailAHSPExpanded.objects.filter(
-        project=project, koefisien__lt=0
-    ).values("pekerjaan_id", "source_detail_id", "kode", "uraian", "koefisien"):
-        invalid_coefficient.append(
-            {
-                "pekerjaan_id": e["pekerjaan_id"],
-                "source_detail_id": e["source_detail_id"],
-                "kode": e["kode"] or "",
-                "uraian": e["uraian"] or "",
-                "source_table": "DetailAHSPExpanded",
-                "source_page": PAGE_DETAIL,
-                "issue": "invalid_coefficient",
-                "actual": str(e["koefisien"]),
-            }
-        )
 
     expanded_ready = not expansion_not_ready
 
@@ -518,9 +485,6 @@ def _compute(project):
     # --- pekerjaan index into the rich entries above (UI highlighting).
     affected_pekerjaan = {e["pekerjaan_id"] for e in missing_volume}
     affected_pekerjaan.update(e["pekerjaan_id"] for e in expansion_not_ready)
-    affected_pekerjaan.update(
-        e["pekerjaan_id"] for e in invalid_coefficient if e["pekerjaan_id"] is not None
-    )
     for e in missing_price:
         affected_pekerjaan.update(e["affected_pekerjaan"])
     affected_pekerjaan.update(e["pekerjaan_id"] for e in incomplete_planned_allocation)
@@ -532,7 +496,6 @@ def _compute(project):
         "expanded_ready": expanded_ready,
         "missing_volume": missing_volume,
         "missing_price": missing_price,
-        "invalid_coefficient": invalid_coefficient,
         "expansion_not_ready": expansion_not_ready,
         # Jadwal-derived — live since inc-4a.
         "incomplete_planned_allocation": incomplete_planned_allocation,

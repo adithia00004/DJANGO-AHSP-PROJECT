@@ -219,12 +219,14 @@
           if (!r && P.snapshot_kode) r = byKode.get(String(P.snapshot_kode));
 
           const volume = (r && r.volume != null) ? Number(r.volume) : 0;
-          // Harga Satuan pada Rekap RAB harus mengikuti G (HSP = E + F) dari Rincian AHSP
-          // Fallback ke field lain bila G belum tersedia untuk kompatibilitas mundur
-          const harga = (r && (r.G != null || r.harga_satuan != null || r.HSP != null || r.unit_price != null))
-            ? Number(r.G ?? r.harga_satuan ?? r.HSP ?? r.unit_price)
-            : 0;
-          const total = Number((volume || 0) * (harga || 0));
+          // RR-09: harga jual final = `unit_price_after_markup` (alias `G`) — SATU-SATUNYA
+          // kontrak. JANGAN fallback ke HSP/unit_price (itu harga PRA-markup) karena akan
+          // menampilkan harga lebih rendah seolah final = under-estimate senyap. Jika harga
+          // final belum tersedia, tandai "belum siap" (jangan tampilkan angka menyesatkan).
+          const gRaw = r ? (r.unit_price_after_markup ?? r.G) : null;
+          const hargaReady = gRaw != null && Number.isFinite(Number(gRaw));
+          const harga = hargaReady ? Number(gRaw) : null;
+          const total = hargaReady ? Number((volume || 0) * harga) : null;
 
           Snode.children.push({
             type:'job',
@@ -235,7 +237,11 @@
             satuan:(r && r.satuan) ? r.satuan : (P.snapshot_satuan || ''),
             volume,
             harga,
-            total
+            total,
+            hargaReady,
+            // D-RR-06: indikator markup override (efektif %) — tooltip, tanpa kolom permanen.
+            markupIsOverride: !!(r && r.markup_is_override),
+            markupEff: (r && r.markup_eff != null) ? Number(r.markup_eff) : null
           });
         }
         Knode.children.push(Snode);
@@ -341,12 +347,23 @@
         ? highlightMatch(escapeHtml(node.kode), currentFilter)
         : escapeHtml(node.kode || '');
       
-      tdU.innerHTML = `<span class="text-muted small d-block">Pekerjaan</span><span>${displayLabel}</span>`;
+      // D-RR-06: badge kecil utk pekerjaan ber-override markup (tooltip = nilai efektif).
+      const ovrBadge = node.markupIsOverride
+        ? ` <span class="badge bg-warning-subtle text-warning-emphasis border border-warning small" title="Profit/Margin (BUK) di-override ke ${node.markupEff != null ? node.markupEff + '%' : 'nilai khusus'} (beda dari default project)">override ${node.markupEff != null ? node.markupEff + '%' : ''}</span>`
+        : '';
+      tdU.innerHTML = `<span class="text-muted small d-block">Pekerjaan</span><span>${displayLabel}</span>${ovrBadge}`;
       tdK.innerHTML = displayKode;
       tdS.textContent = node.satuan || '';
       tdV.textContent = fmt(node.volume ?? '', 3);
-      tdH.textContent = fmt(node.harga ?? '', 2);
-      tdT.textContent = fmt(node.total ?? '', 2);
+      // RR-09: kalau harga final belum tersedia, tampilkan penanda — bukan angka pra-markup.
+      if (node.hargaReady === false) {
+        const warn = '<span class="text-warning small" title="Harga satuan final belum tersedia — lengkapi Template AHSP / Harga Item">belum siap</span>';
+        tdH.innerHTML = warn;
+        tdT.innerHTML = warn;
+      } else {
+        tdH.textContent = fmt(node.harga ?? '', 2);
+        tdT.textContent = fmt(node.total ?? '', 2);
+      }
       tr.removeAttribute('aria-expanded');
     }
 
@@ -443,7 +460,11 @@
       );
     };
 
-    const { totalD, rows } = computeTotalsFiltered(fullModel, match);
+    const { rows } = computeTotalsFiltered(fullModel, match);
+    // RR-05: footer (Total Sebelum Pajak / PPN / Grand Total / Pembulatan) SELALU
+    // mencerminkan SELURUH project — search hanya memfilter baris tabel, bukan
+    // mengubah arti total anggaran. (D-RR-01)
+    const { totalD: projectTotalD } = computeTotalsFiltered(fullModel, () => true);
 
     const frag = document.createDocumentFragment();
     let currentK = null, currentS = null;
@@ -463,18 +484,24 @@
     }
 
     tbody.innerHTML = '';
+    // RR-13: gunakan empty-state kaya (#rab-empty, CTA lintas-halaman) saat project
+    // benar-benar kosong (tanpa search). Saat search tak ketemu → pesan baris biasa.
+    const emptyState = document.getElementById('rab-empty');
+    const projectIsEmpty = rows.length === 0 && !q;
+    if (emptyState) emptyState.classList.toggle('d-none', !projectIsEmpty);
     if (rows.length === 0) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
       td.colSpan = 6;
       td.className = 'text-center text-muted py-4';
-      td.textContent = q ? 'Tidak ada hasil yang cocok dengan pencarian' : 'Tidak ada data';
+      td.textContent = q ? 'Tidak ada hasil yang cocok dengan pencarian' : 'Belum ada pekerjaan pada project ini.';
       tr.appendChild(td);
       tbody.appendChild(tr);
-      
+
       // ENHANCEMENT #2: Announce no results
       if (q) announce('Tidak ada hasil yang cocok dengan pencarian');
     } else {
+      if (emptyState) emptyState.classList.add('d-none');
       tbody.appendChild(frag);
       updateIconsFromState();
       applyVisibility({ filterActive: !!q });
@@ -487,7 +514,7 @@
     }
     
     updateSortIndicators();
-    recalcFooter(totalD);
+    recalcFooter(projectTotalD);  // RR-05: selalu total seluruh project
     recalcTableHeight();
     updateToolbarState();
   }
@@ -516,17 +543,23 @@
     box.innerHTML = html;
   }
 
+  let _loadSeq = 0;
   async function loadData() {
+    // RR-12: sequence token — abaikan respons load yang sudah usang (refresh cepat
+    // berkali-kali) supaya respons lama yang lambat tidak menimpa yang lebih baru.
+    const seq = ++_loadSeq;
     try {
       loadingRow && (loadingRow.style.display = '');
-      
+
       // CORRECT URL PREFIX: /detail_project/api/project/...
       const [tRes, rRes, pRes] = await Promise.all([
         fetchJSON(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`),
         fetchJSON(`/detail_project/api/project/${projectId}/rekap/`),
         fetchJSON(`/detail_project/api/project/${projectId}/pricing/`)
       ]);
-      
+
+      if (seq !== _loadSeq) return;  // RR-12: load yang lebih baru sudah jalan
+
       if (!tRes.ok || !rRes.ok || !Array.isArray(tRes.data.klasifikasi) || !Array.isArray(rRes.data.rows)) {
         throw new Error('Gagal memuat data dari server');
       }
@@ -554,13 +587,14 @@
       announce('Data RAB berhasil dimuat');
       
     } catch (e) {
+      if (seq !== _loadSeq) return;  // RR-12: error dari load usang — abaikan
       console.error('[RAB] Load error:', e);
       tbody.innerHTML = `
         <tr>
           <td colspan="6" class="text-center text-danger py-4">
             <i class="bi bi-exclamation-triangle-fill mb-2" style="font-size: 2rem; display: block;"></i>
             <strong>Gagal memuat data</strong>
-            <p class="mb-2 small">${e.message}</p>
+            <p class="mb-2 small">${escapeHtml(e.message || '')}</p>
             <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
               <i class="bi bi-arrow-clockwise"></i> Muat Ulang
             </button>
@@ -570,7 +604,7 @@
       // ENHANCEMENT #2: Announce error
       announce(`Error: ${e.message}`);
     } finally {
-      loadingRow && loadingRow.remove();
+      if (seq === _loadSeq) loadingRow && loadingRow.remove();
     }
   }
 
@@ -740,22 +774,87 @@
     announce('File CSV berhasil di-download');
   }
 
-  // ========= Server-save prefs =========
-  const postPricingDebounced = (() => {
-    let t; 
-    return (payload) => {
-      clearTimeout(t);
-      t = setTimeout(async () => {
-        try {
-          await fetch(`/detail_project/api/project/${projectId}/pricing/`, {
-            method: 'POST',
-            headers: csrfHeaders(),
-            body: JSON.stringify(payload)
-          });
-        } catch(e) { console.error('[RAB] Pricing error:', e); }
-      }, 250);
-    };
+  // ========= Server-save prefs (RR-06: confirmed autosave w/ status + retry) =========
+  // Small inline status indicator next to the PPN control.
+  const pricingStatusEl = (() => {
+    if (!inpPPN) return null;
+    let el = document.getElementById('rab-pricing-status');
+    if (!el) {
+      el = document.createElement('span');
+      el.id = 'rab-pricing-status';
+      el.className = 'small ms-2';
+      el.setAttribute('aria-live', 'polite');
+      (inpPPN.closest('.input-group') || inpPPN.parentElement || inpPPN).after?.(el);
+    }
+    return el;
   })();
+
+  let _pricingRetryPayload = null;
+  function setPricingStatus(state) {
+    if (!pricingStatusEl) return;
+    pricingStatusEl.innerHTML = '';
+    if (state === 'saving') {
+      pricingStatusEl.className = 'small ms-2 text-muted';
+      pricingStatusEl.textContent = 'Menyimpan…';
+    } else if (state === 'saved') {
+      pricingStatusEl.className = 'small ms-2 text-success';
+      pricingStatusEl.textContent = 'Tersimpan';
+      setTimeout(() => { if (pricingStatusEl.textContent === 'Tersimpan') pricingStatusEl.textContent = ''; }, 1500);
+    } else if (state === 'error') {
+      pricingStatusEl.className = 'small ms-2 text-danger';
+      pricingStatusEl.textContent = 'Gagal menyimpan. ';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'btn btn-link btn-sm p-0 align-baseline';
+      retry.textContent = 'Coba lagi';
+      retry.addEventListener('click', () => { if (_pricingRetryPayload) doSavePricing(_pricingRetryPayload); });
+      pricingStatusEl.appendChild(retry);
+    }
+  }
+
+  async function doSavePricing(payload) {
+    _pricingRetryPayload = payload;
+    setPricingStatus('saving');
+    try {
+      const res = await fetch(`/detail_project/api/project/${projectId}/pricing/`, {
+        method: 'POST',
+        headers: csrfHeaders(),
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+      let ok = res.ok;
+      try { const j = await res.json(); ok = ok && (j.ok ?? true); } catch { /* non-JSON */ }
+      if (!ok) throw new Error('pricing save rejected');
+      _pricingRetryPayload = null;
+      setPricingStatus('saved');
+    } catch (e) {
+      console.error('[RAB] Pricing error:', e);
+      setPricingStatus('error');  // value tetap di input+localStorage (draft) → tak hilang
+    }
+  }
+
+  let _pricingTimer = null;
+  let _pendingPricingPayload = null;
+  function postPricingDebounced(payload) {
+    _pendingPricingPayload = payload;
+    clearTimeout(_pricingTimer);
+    _pricingTimer = setTimeout(() => {
+      _pendingPricingPayload = null;
+      doSavePricing(payload);
+    }, 250);
+  }
+  function flushPricing() {
+    if (_pendingPricingPayload) {
+      clearTimeout(_pricingTimer);
+      const p = _pendingPricingPayload;
+      _pendingPricingPayload = null;
+      doSavePricing(p);
+    }
+  }
+  // Flush immediately on blur / page hide so a quick navigation doesn't drop the last edit.
+  inpPPN?.addEventListener('blur', flushPricing);
+  selBase?.addEventListener('blur', flushPricing);
+  window.addEventListener('pagehide', flushPricing);
 
   // ========= Density UI =========
   function applyDenseUI() {
@@ -789,7 +888,8 @@
     if (!hasFilterText()) collapseAll(); 
   });
 
-  btnPrint?.addEventListener('click', ()=>window.print());
+  // RR-14: tombol Print TIDAK di-bind di sini — diinisialisasi sekali di blok export
+  // template (server PDF, P6c). Hindari listener ganda yang dulu butuh clone-replace.
 
   btnSubtotal?.addEventListener('click', () => {
     subtotalOnly = !subtotalOnly;
@@ -818,14 +918,9 @@
     render(inpSearch?.value || '');
   });
 
-  btnExportXlsx?.addEventListener('click', async (e) => {
-    e.preventDefault();
-    if (unifiedExporter) {
-      await unifiedExporter.exportAs('xlsx');
-    } else {
-      exportCSV();
-    }
-  });
+  // RR-14/RR-16: tombol Export Excel TIDAK di-bind di sini (dulu fallback ke CSV bila
+  // unified exporter absen = menyesatkan). Diinisialisasi sekali di blok export template
+  // via ExportManager server (XLSX server-authoritative).
 
   sortHeaders.forEach(th => {
     th.addEventListener('click', (e) => {

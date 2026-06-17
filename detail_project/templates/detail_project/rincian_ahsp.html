@@ -25,7 +25,7 @@
   data-ep-pricing="{% url 'detail_project:api_project_pricing' project.id %}"
   data-ep-detail-prefix="{% url 'detail_project:api_get_detail_ahsp' project.id 0 %}"
   data-ep-pricing-item-prefix="{% url 'detail_project:api_pekerjaan_pricing' project.id 0 %}"
-  data-ep-reset-prefix="{% url 'detail_project:api_reset_detail_ahsp_to_ref' project.id 0 %}" data-locale="id-ID">
+  data-ep-reset-all-overrides="{% url 'detail_project:api_reset_all_overrides' project.id %}" data-locale="id-ID">
 
   <!-- Toolbar (simplified, compact - matching Template AHSP) -->
   <div id="ra-toolbar"
@@ -40,12 +40,6 @@
     <!-- Grand Total -->
     <div id="rk-grand" class="small fw-semibold text-body-secondary" aria-live="polite">
       Grand Total: <span class="text-primary">Rp 0</span>
-    </div>
-
-    <!-- Dirty indicator -->
-    <div class="ra-dirty-indicator d-inline-flex align-items-center small" aria-live="polite">
-      <span id="ra-dirty-dot" class="text-warning me-1" hidden>●</span>
-      <span id="ra-dirty-text" class="text-warning small" hidden>Belum disimpan</span>
     </div>
 
     <div class="ms-auto d-flex align-items-center gap-1">
@@ -66,14 +60,6 @@
       <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
         data-bs-target="#raHelpModal" title="Bantuan">
         <i class="bi bi-question-circle"></i>
-      </button>
-
-      <!-- Save -->
-      <button id="ra-btn-save" class="btn btn-success btn-sm d-inline-flex align-items-center gap-1" type="button"
-        disabled>
-        <span class="spinner-border spinner-border-sm" id="ra-btn-save-spin" role="status" hidden></span>
-        <i class="bi bi-save"></i>
-        <span class="d-none d-sm-inline">Simpan</span>
       </button>
     </div>
   </div>
@@ -166,8 +152,8 @@
               <i class="bi bi-sliders" aria-hidden="true"></i><span>Override</span>
             </button>
             <button id="rk-btn-reset" class="btn btn-outline-warning d-inline-flex align-items-center gap-1"
-              type="button" title="Reset semua override ke default" disabled>
-              <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span>Reset</span>
+              type="button" title="Reset semua override Profit/BUK ke default project">
+              <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span>Reset Semua</span>
             </button>
           </div>
         </div>

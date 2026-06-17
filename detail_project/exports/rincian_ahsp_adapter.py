@@ -88,7 +88,11 @@ class RincianAHSPAdapter:
 
         total_pekerjaan = 0
         total_items = 0
-        grand_total = Decimal('0')
+        # RA-02 fix: subtotal langsung = Σ(G × volume) per pekerjaan (canonical),
+        # BUKAN Σ HSP per-unit (yang lama, tanpa volume/PPN). Grand Total final lalu
+        # ditambah PPN agar IDENTIK dengan toolbar Grand Total halaman web
+        # (D × (1 + PPN%)), sehingga bisa dipakai operator mengontrol margin vs pagu.
+        subtotal_langsung = Decimal('0')
 
         canonical_rekap = {
             int(row['pekerjaan_id']): row
@@ -105,7 +109,10 @@ class RincianAHSPAdapter:
                 for pek in sub.pekerjaan_list.all().order_by('ordering_index', 'id'):
                     uraian = getattr(pek, 'snapshot_uraian', getattr(pek, 'nama', getattr(pek, 'name', '')))
                     kode_pek = getattr(pek, 'snapshot_kode', getattr(pek, 'kode_ahsp', ''))
-                    satuan_pek = getattr(pek, 'satuan', '-')
+                    # RA-06 fix: the model stores the unit on `snapshot_satuan` (mirip
+                    # snapshot_kode/uraian di atas); `pek.satuan` tidak ada → dulu satuan
+                    # pekerjaan SELALU jatuh ke '-' di seluruh dokumen export.
+                    satuan_pek = getattr(pek, 'snapshot_satuan', None) or '-'
 
                     # Get details for this pekerjaan
                     details = details_by_pekerjaan.get(pek.id, [])
@@ -208,7 +215,23 @@ class RincianAHSPAdapter:
 
                     sections.append(section)
                     total_pekerjaan += 1
-                    grand_total += G_hsp
+                    # Σ(G × volume) per pekerjaan = biaya langsung project (sama dgn
+                    # `D` di updateGrandTotalFromRekap web).
+                    subtotal_langsung += self._to_decimal(
+                        canonical.get('work_total_after_markup', 0)
+                    )
+
+        # PPN dari ProjectPricing — replikasi PERSIS logika api_get_rekap_rab:
+        # pp.ppn_percent bila ada-dan-tak-None, selain itu default 11.00. (Tanpa baris
+        # ProjectPricing pun web tetap pakai 11.00, jadi export harus sama.)
+        from detail_project.models import ProjectPricing
+        pricing = ProjectPricing.objects.filter(project=self.project).only('ppn_percent').first()
+        ppn_percent = (
+            self._to_decimal(pricing.ppn_percent)
+            if pricing and pricing.ppn_percent is not None
+            else Decimal('11.00')
+        )
+        grand_total = subtotal_langsung * (Decimal('1') + ppn_percent / Decimal('100'))
 
         return {
             'sections': sections,
@@ -219,6 +242,9 @@ class RincianAHSPAdapter:
             'summary': {
                 'total_pekerjaan': total_pekerjaan,
                 'total_items': total_items,
+                # Grand Total = biaya langsung + PPN (= Grand Total web; kontrol vs pagu).
+                'subtotal_langsung': self._format_number(subtotal_langsung, 0),
+                'ppn_percent': f"{ppn_percent:.2f}",
                 'grand_total': self._format_number(grand_total, 0),
             }
         }

@@ -80,6 +80,7 @@
   const EP_PRICING = ROOT.dataset.epPricing;
   const EP_DET_PREF = ROOT.dataset.epDetailPrefix;      // ex: ".../detail-ahsp/0/"
   const EP_POV_PREF = ROOT.dataset.epPricingItemPrefix; // ex: ".../pekerjaan/0/pricing/"
+  const EP_RESET_ALL = ROOT.dataset.epResetAllOverrides; // WP-P5d: reset semua override
 
   // ====== URL helpers ======
   /**
@@ -229,6 +230,16 @@
    */
   const csrf = () => (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] || '');
 
+  /**
+   * Confirm dialog — prefer the shared (XSS-safe) DP modal, fall back to native confirm.
+   * @returns {Promise<boolean>}
+   */
+  async function raConfirm(message, opts = {}) {
+    const modalApi = window.DP && window.DP.core && window.DP.core.modal;
+    if (modalApi && modalApi.confirm) return await modalApi.confirm(message, opts);
+    return window.confirm(message);
+  }
+
   // ====== UI polish: icons/classes/placeholder alignment ======
   /**
    * Apply initial UI fixes and icon standardization on page load
@@ -279,7 +290,13 @@
     s = String(s).trim().replace(/\s+/g, '');
     s = s.replace(/%+$/, '');
     if (s === '') return null;
-    s = s.replace(/\./g, '').replace(',', '.'); // "12.500,5" -> "12500.5"
+    // RA-04 fix: a Profit/BUK percentage is 0–100, so a single separator is ALWAYS a
+    // decimal point. Treat comma as decimal ("12,5"→12.5) and KEEP the dot as decimal
+    // ("12.5"→12.5). The old code stripped all dots, turning "12.5" into 125. No
+    // thousands grouping is meaningful for a 0–100 value. Returns null on invalid input
+    // (distinct from 0) and preserves sign so the caller can reject negatives.
+    s = s.replace(',', '.');
+    if (!/^-?\d*\.?\d+$/.test(s)) return null;
     const v = Number(s);
     return Number.isFinite(v) ? v : null;
   }
@@ -579,7 +596,14 @@
       body: JSON.stringify(payload)
     });
     const j = await safeJson(r);
-    if (!r.ok || !j.ok) throw new Error('save override fail');
+    if (!r.ok || !j.ok) {
+      // RA-10 fix: surface the actual server message (mis. "maksimal 100%") instead of
+      // a generic string, so the modal catch can show it to the user.
+      const serverMsg = (j && Array.isArray(j.errors) && j.errors.length && j.errors[0].message)
+        || (j && (j.message || j.error))
+        || 'Gagal menyimpan override Profit/Margin (BUK)';
+      throw new Error(serverMsg);
+    }
     return j;
   }
 
@@ -1222,7 +1246,9 @@
         return;
       }
 
-      if (!confirm('Hapus override dan kembali ke Profit/Margin (BUK) default proyek?')) {
+      if (!await raConfirm('Hapus override dan kembali ke Profit/Margin (BUK) default proyek?', {
+        title: 'Hapus Override', confirmText: 'Hapus', confirmClass: 'btn btn-warning'
+      })) {
         return;
       }
 
@@ -1293,6 +1319,54 @@
       } finally {
         $modalClear.disabled = false;
         $modalClear.innerHTML = originalText;
+      }
+    });
+  }
+
+  // ====== WP-P5d (RA-05): Reset SEMUA override Profit/BUK ke default project ======
+  const $btnResetAll = ROOT.querySelector('#rk-btn-reset');
+  if ($btnResetAll && EP_RESET_ALL) {
+    $btnResetAll.addEventListener('click', async () => {
+      const ok = await raConfirm(
+        'Reset SEMUA override Profit/Margin (BUK) di proyek ini kembali ke default project? '
+        + 'Tindakan ini tidak dapat dibatalkan.',
+        { title: 'Reset Semua Override', confirmText: 'Reset Semua', confirmClass: 'btn btn-warning' }
+      );
+      if (!ok) return;
+
+      const orig = $btnResetAll.innerHTML;
+      $btnResetAll.disabled = true;
+      $btnResetAll.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Mereset...';
+      try {
+        const r = await fetch(EP_RESET_ALL, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+          body: '{}',
+        });
+        const j = await safeJson(r);
+        if (!r.ok || !j.ok) {
+          const msg = (j && Array.isArray(j.errors) && j.errors.length && j.errors[0].message)
+            || (j && (j.message || j.error)) || 'Gagal mereset override';
+          throw new Error(msg);
+        }
+        cacheDetail.clear();
+        await loadRekap();
+        if (selectedId != null) {
+          const detail = await fetchDetail(selectedId);
+          const pp = await getPricingItem(selectedId);
+          renderDetailTable(detail?.items || [], Number(pp.effective_markup));
+          if ($eff) $eff.textContent = `Profit: ${pp.effective_markup}%`;
+          if ($ovrChip) $ovrChip.hidden = true;
+        }
+        const n = Number(j.reset_count || 0);
+        showToast(n ? `✅ ${n} override direset ke default.` : 'Tidak ada override untuk direset.',
+          n ? 'success' : 'info');
+      } catch (e) {
+        console.error('[OVERRIDE] Reset-all failed:', e);
+        showToast(`❌ ${e.message || 'Gagal mereset override'}`, 'error');
+      } finally {
+        $btnResetAll.disabled = false;
+        $btnResetAll.innerHTML = orig;
       }
     });
   }

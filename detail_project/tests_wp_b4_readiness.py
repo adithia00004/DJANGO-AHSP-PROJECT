@@ -396,29 +396,11 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(entry["source_page"], "template_ahsp")
 
     # ----- invalid coefficient (defensive) ------------------------------
-    def test_invalid_coefficient_flags_negative(self):
-        p = self._pekerjaan("P-1")
-        item = self._item("BHN-1", Decimal("100.00"))
-        self._detail(p, item, expand=False)
-        DetailAHSPProject.objects.filter(pekerjaan=p).update(koefisien=Decimal("-1"))
-
-        r = compute_project_readiness(self.project)
-
-        entry = next(
-            (e for e in r["invalid_coefficient"] if e["pekerjaan_id"] == p.id), None
-        )
-        self.assertIsNotNone(entry)
-        self.assertEqual(entry["actual"], "-1.000000000000")
-        self.assertEqual(entry["source_table"], "DetailAHSPProject")
-
-    def test_invalid_coefficient_empty_for_clean_project(self):
-        p = self._pekerjaan("P-1")
-        item = self._item("BHN-1", Decimal("100.00"))
-        self._detail(p, item, expand=True)
-
-        r = compute_project_readiness(self.project)
-
-        self.assertEqual(r["invalid_coefficient"], [])
+    # NOTE (2026-06-17): the `invalid_coefficient` (negative koef) readiness signal was
+    # REMOVED — the P2a CheckConstraint `detailahsp_koef_nonneg` (migration 0051) now
+    # guarantees koef >= 0 at the DB level on both DetailAHSPProject and DetailAHSPExpanded,
+    # so a negative coefficient can never be stored. The old tests that inserted koef=-1/-5
+    # to exercise the signal therefore violated the constraint and have been deleted.
 
     # ----- jadwal signals empty/false when nothing scheduled (live, inc-4a) ----
     def test_jadwal_signals_empty_when_unscheduled(self):
@@ -454,7 +436,7 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(r["incomplete_planned_allocation"], [])
         self.assertEqual(r["allocation_without_volume"], [])
         self.assertFalse(r["timeline_stale"])
-        self.assertEqual(r["schema_version"], "b4.5")
+        self.assertEqual(r["schema_version"], "b4.6")
 
     # ----- affected_items canonical index (Master Plan minimum contract) -
     def test_affected_items_is_canonical_item_index(self):
@@ -540,21 +522,10 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(entry["actual"], 2)
         self.assertFalse(r["expanded_ready"])
 
-    # ----- no cross-request cache: value-only bulk mutations reflected ---
-    def test_bulk_update_negative_coef_is_reflected(self):
-        p = self._pekerjaan("P-1")
-        item = self._item("BHN-1", Decimal("100.00"))
-        self._detail(p, item, expand=False)
-
-        self.assertEqual(compute_project_readiness(self.project)["invalid_coefficient"], [])
-        DetailAHSPProject.objects.filter(pekerjaan=p).update(koefisien=Decimal("-5"))
-        self.assertTrue(
-            any(
-                e["pekerjaan_id"] == p.id
-                for e in compute_project_readiness(self.project)["invalid_coefficient"]
-            )
-        )
-
+    # NOTE (2026-06-17): the negative-koef bulk-update test was removed alongside the
+    # invalid_coefficient signal (koef<0 blocked by DB constraint). The no-stale-cache /
+    # value-mutation-reflected contract remains covered by
+    # test_relation_move_updates_affected_set_no_stale below.
     def test_relation_move_updates_affected_set_no_stale(self):
         # The digest-collision case: swap which detail row points at the NULL-price
         # item. Row counts and HargaItemProject null-count are unchanged, so a
@@ -692,7 +663,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertIn("readiness", body)
-        self.assertEqual(body["readiness"]["schema_version"], "b4.5")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.6")
 
     def test_readiness_reflects_missing_price_and_volume(self):
         body = self.client.get(self.url).json()
@@ -716,7 +687,7 @@ class RekapRabReadinessWiringTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["readiness"]["schema_version"], "b4.5")
+        self.assertEqual(body["readiness"]["schema_version"], "b4.6")
         self.assertIn("BHN-NULL", {e["kode"] for e in body["readiness"]["missing_price"]})
 
     def test_dedicated_readiness_endpoint_is_owner_scoped(self):

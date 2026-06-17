@@ -579,6 +579,12 @@ hardening endpoint/import.
 **Finding checklist:** RA-01, RA-02, RA-03, RA-04, RA-06, RA-07, RA-08.
 RA-05 diselesaikan dengan removal CL-12; RA-11 dibatalkan G-1.
 
+> **UPDATE 2026-06-17 — verifikasi ulang + keputusan owner (lihat doc 28 §WP-P5 survei):**
+> Saat survei, RA-01/RA-03/RA-08 ternyata SUDAH selesai (B1 canonical + B4 fan-out). Live: RA-02/04/05/06/07/10/16.
+> - **RA-02 (Grand Total):** owner memutuskan **TETAP ADA** (alat kontrol margin vs pagu untuk operator) → bukan dihapus melainkan **dibuat benar & konsisten** dgn Rekap RAB (Σ G×vol + PPN), web+export. RA-05-removal di **CL-12 dibatalkan sebagian** (Grand Total tidak jadi dihapus).
+> - **RA-05 (Reset-all override):** owner memutuskan **JADIKAN FITUR** (bukan dihapus) → implement bulk reset override. Kontrol Save/dirty vestigial tetap dibersihkan.
+> - **RA-07 + RR-10 (audit-coverage sweep):** D-02 (markup wajib ter-audit) baru menjangkau Template AHSP; pricing endpoints belum. RA-07 (per-pekerjaan) masuk P5e; **RR-10 (project-level pricing) se-keluarga → WP-P6** dgn keputusan desain audit project-level (DetailAHSPAudit ber-FK pekerjaan).
+
 ### WP-P6 - Rekap RAB
 
 **Dependency:** B1, B2, B4, B5  
@@ -594,6 +600,8 @@ RA-05 diselesaikan dengan removal CL-12; RA-11 dibatalkan G-1.
 **Finding checklist:** RR-01 dimiliki WP-A1; RR-02, RR-03, RR-04, RR-05,
 RR-06, RR-07, RR-08, RR-09, RR-10 wajib terpetakan. RR-20 dibatalkan G-1;
 RR-24 masuk cleanup.
+
+> **NOTE 2026-06-17:** **RR-10 (audit trail finansial project-level)** = se-keluarga RA-07 (D-02). Ditemukan saat audit-coverage sweep WP-P5: `api_project_pricing` (markup/PPN/pembulatan) belum ter-audit. **Komplikasi:** `DetailAHSPAudit` ber-FK `pekerjaan`; perubahan project-level tak punya satu pekerjaan → butuh keputusan owner: audit project-level (model/scope baru) vs log per-pekerjaan terdampak vs skip. Bawa keputusan ini saat mulai WP-P6.
 
 ### WP-P7 - Jadwal Pekerjaan
 

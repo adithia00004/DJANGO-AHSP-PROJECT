@@ -2652,6 +2652,9 @@ def compute_rekap_for_project(project):
             markup_amount=float(F),
             unit_price_after_markup=float(G),
             work_total_after_markup=float(total),
+            # D-RR-06: tandai pekerjaan yang memakai override markup (vs default project)
+            # agar Rekap RAB bisa menampilkan indikator/tooltip tanpa kolom permanen.
+            markup_is_override=(ov is not None),
         ))
     cache.set(cache_key, {"sig": signature, "data": result}, 300)  # 5 menit (atau sesuai kebutuhan)
     return result

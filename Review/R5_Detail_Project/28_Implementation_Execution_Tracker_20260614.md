@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 62% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P5 (Rincian) dst. Defer: ENH-01 (P2 picker), P3f (redundan). Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
+**Status keseluruhan (≈ 74% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P7 (Jadwal — incl B6d/e + audit-gap reset/realisasi) dst. Suite 100% hijau. Defer: ENH-01 (P2 picker), P3f (redundan). Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
 
 ## 1. Aturan Tracking
 
@@ -1660,7 +1660,196 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 - **P5g (RA-16 + RA-01 drift):** `@rate_limit`+`@limit_request_body` pada `api_pekerjaan_pricing` + align default ke `DEFAULT_PROJECT_MARKUP_PERCENT`. Hardening.
 - **P5h:** contract test (override→canonical konsisten; parser "12.5"=12.5; audit tertulis; satuan export benar; no grand-total divergen).
 
+**KEPUTUSAN OWNER 2026-06-17 (scope LOCKED):**
+1. **RA-02 Grand Total → TETAP ADA.** Tujuan: alat kontrol operator agar margin tak melebihi **pagu**. Konsekuensi: bukan dihapus, melainkan **dibuat BENAR & KONSISTEN** dgn Rekap RAB (`Σ G×volume + PPN`, web + export identik termasuk pembulatan). Pertimbangkan surface **pagu (`anggaran_owner`)** di toolbar agar perbandingan eksplisit (enhancement). ✅
+2. **RA-05 Reset-all override → JADIKAN FITUR** (jangan hapus). Implement bulk-reset semua override → default project (atomik + konfirmasi + audit tiap pekerjaan). Kontrol Save/dirty vestigial (tanpa model batch-save) tetap dibersihkan. ✅
+3. **RA-07 audit → YA, implement.** Reuse `log_audit` (`ACTION_UPDATE` + old/new khusus markup + change_summary). **Audit-coverage sweep menemukan temuan penting (dilaporkan ke doc 20+27):** D-02 (markup wajib audit) baru menjangkau Template AHSP; pricing endpoints belum. **RA-07** (per-pekerjaan) masuk P5e. **RR-10** (project-level `api_project_pricing` markup/PPN/pembulatan) **se-keluarga tapi butuh keputusan desain** (DetailAHSPAudit ber-FK pekerjaan ⇒ project-level tak terpetakan) → **diserahkan ke WP-P6** dgn keputusan owner. ✅
+
+**Rencana increment FINAL (scope LOCKED, P5a–h):**
+- **P5a** RA-04 — `parsePctUI` pakai logika `parseNum` (terima "12.5"=12.5%, "12,5"=12.5%) + range 0–100. correctness.
+- **P5b** RA-06 — adapter export `pek.satuan`→`snapshot_satuan`. correctness.
+- **P5c** RA-02 — Grand Total **TETAP**, dibuat konsisten Rekap RAB (`Σ G×vol + PPN`) di web + export (hapus jumlah Σ-per-unit yang menyesatkan di adapter); pertimbangkan surface pagu.
+- **P5d** RA-05 — implement **Reset-all override** (endpoint bulk + bind `rk-btn-reset` + konfirmasi + audit); bersihkan kontrol Save/dirty vestigial.
+- **P5e** RA-07 — audit override per-pekerjaan via `log_audit`.
+- **P5f** RA-10 — surface pesan error server di `saveOverride`/apply.
+- **P5g** RA-16 + RA-01-drift — `@rate_limit`+`@limit_request_body` pada `api_pekerjaan_pricing` + align default ke `DEFAULT_PROJECT_MARKUP_PERCENT`.
+- **P5h** contract test (parser; satuan export; Grand Total = Rekap RAB; audit override+reset-all tertulis).
+
+**SCOPE WP-P5 TERKUNCI — siap implementasi (urutan: P5a → P5b → P5c → P5e → P5d → P5f → P5g → P5h).**
+
+> **CROSS-CUTTING (lihat [[cross-cutting-scope-checklist]]):** RR-10 = pengingat bahwa keputusan owner (D-02) harus disapu repo-wide, bukan per-page. Saat WP-P6, tutup RR-10 bersama keputusan desain audit project-level. Audit gaps lain (Jadwal reset/realisasi) = WP-P7.
+
+---
+
+### ✅ WP-P5 SELESAI 2026-06-17 (uncommitted) — P5a–h
+
+| Inc | Implementasi | File |
+|---|---|---|
+| **P5a** RA-04 | `parsePctUI`: koma→titik + validasi `/^-?\d*\.?\d+$/`, **titik tunggal = desimal** ("12.5"→12.5, bukan 125) | rincian_ahsp.js |
+| **P5b** RA-06 | adapter satuan `pek.satuan`→`snapshot_satuan` (dulu selalu '-') | rincian_ahsp_adapter.py |
+| **P5c** RA-02 | Grand Total export = `Σ(work_total_after_markup) × (1 + PPN%)` = IDENTIK web (default PPN 11.00 sans ProjectPricing, replikasi `api_get_rekap_rab`). Web sudah benar (tak diubah). summary tambah `subtotal_langsung`+`ppn_percent` | rincian_ahsp_adapter.py |
+| **P5d** RA-05 | endpoint `api_reset_all_overrides` (atomik, audit tiap, return reset_count) + route + bind `#rk-btn-reset` (enabled, "Reset Semua") + konfirmasi modal; **dead Save/dirty/`data-ep-reset-prefix` dibersihkan**; Grand Total DIPERTAHANKAN (keputusan owner) | views_api.py, urls.py, template, rincian_ahsp.js |
+| **P5e** RA-07 | `api_pekerjaan_pricing` set+clear tulis `log_audit` (old/new markup, change_summary) | views_api.py |
+| **P5f** RA-10 | `saveOverride` throw pesan server (errors[0].message) → modal catch tampilkan (mis. "maksimal 100%") | rincian_ahsp.js |
+| **P5g** RA-16/RA-01 | `@rate_limit`+`@limit_request_body`→413 + default markup pakai `DEFAULT_PROJECT_MARKUP_PERCENT` | views_api.py |
+| **P5h** | `tests_wp_p5_rincian.py` 10 + `tests/rincian_override.test.js` 5 | tests |
+
+**Verifikasi:** P5 10 backend + 5 JS guard hijau; regresi rekap-contract/export-identity/export-naming/data-retention hijau; `manage.py check` bersih. Checklist RA-01..08 + RA-10/16 tertutup (RA-01/03/08 sudah dari B1/B4). **PROGRESS ≈68%.**
+
+> **✅ TEMUAN B4 RESOLVED 2026-06-17 (keputusan owner: opsi (a) hapus).** Sinyal readiness `invalid_coefficient` (koef<0) DIHAPUS — DB CheckConstraint `detailahsp_koef_nonneg` (P2a/migrasi 0051) sudah menjamin koef≥0 di DetailAHSPProject+Expanded, jadi sinyal itu unreachable. Dihapus: deteksi di `readiness.py` (2 blok: DetailAHSPProject loop + DetailAHSPExpanded loop), field output, affected_pekerjaan ref, docstring; **SCHEMA_VERSION b4.5→b4.6**; rendering di `readiness_banner.js`; 2 test B4 (flags_negative, bulk_update_negative) + empty-for-clean dihapus; assertion schema b4.5→b4.6 di B4+B7; mock invalid_coefficient di `readiness_banner.test.js`. Verifikasi: 79 backend (B4+B7+P5) + 24 frontend (readiness_banner/autoload/rincian_override) hijau. No-stale-cache contract tetap tercover `test_relation_move_updates_affected_set_no_stale`.
+
+---
+
+### WP-P6 — Rekap RAB (SURVEI 2026-06-17, MENUNGGU REVIEW OWNER)
+
+**Apa & kenapa:** Rekap RAB = halaman ringkasan anggaran (klasifikasi→sub→pekerjaan + Total Sebelum Pajak, PPN, Grand Total, Pembulatan) + print/export dokumen resmi. **READ consumer** dari `compute_rekap_for_project` (SSOT canonical, B1). Mutasi tunggal = **pricing project-level** (PPN / pembulatan / markup default) via `api_project_pricing` → memengaruhi SELURUH total + Rincian AHSP + export + bobot Kurva S. Dependency B1/B2/B4/B5 (semua DONE). Checklist doc27: RR-02..RR-10 (RR-01→A1; RR-20 batal G-1; RR-24 cleanup).
+
+**Status temuan — DIVERIFIKASI ULANG terhadap kode SAAT INI:**
+
+| Finding | Sev | Status SEKARANG | Bukti |
+|---|---|---|---|
+| RR-01 stored XSS label | CRIT | ✅ A1 | `rekap_rab.js` escapeHtml name/label/kode (`:91,326-342`) |
+| RR-02 markup divergen | CRIT | ✅ B1 | service default `DEFAULT_PROJECT_MARKUP_PERCENT` (=RA-01) |
+| **RR-03 print PPN dobel** | CRIT | ⚠️ **LIVE** | `RekapRABPrint.extractSummaryFromTfoot:196` scrape tfoot + fallback cell terakhir (sudah dibulatkan) → recompute PPN |
+| **RR-04 print identitas palsu** | HIGH | ⚠️ **LIVE** | `getProjectInfo:947-953` hardcode `'Dinas PUPR (Pemprov DKI Jakarta)'/'Jakarta'/'APBD'/'Pembangunan Gedung Serbaguna'` (server export sudah benar via B5b, tapi CLIENT print belum) |
+| **RR-05 search ubah total** | HIGH | ⚠️ **LIVE** | `recalcFooter(totalD)` `:490` pakai `computeTotalsFiltered(fullModel, match)` `:446` → footer ikut filter |
+| RR-06 autosave pricing tak terkonfirmasi | HIGH | ⚠️ **PARSIAL** | kini cek `pRes.ok` (`:539`) — perlu verifikasi status/retry/rollback UX |
+| RR-07 missing vs zero | HIGH | ✅ B4 | `renderReadiness` (`:500,551`) |
+| RR-08 readiness gate/warning | HIGH | ✅ B4 | banner `#rab-readiness` (pilot B4 inc-3) |
+| **RR-09 fallback harga salah** | HIGH | ⚠️ **LIVE** | `:224` `r.G ?? r.harga_satuan ?? r.HSP ?? r.unit_price` → bila G hilang, tampilkan harga PRA-markup diam-diam |
+| **RR-10 audit finansial** | HIGH | ⚠️ **LIVE** | `api_project_pricing` (PPN/pembulatan/markup) tanpa audit — **se-keluarga RA-07, butuh keputusan desain (lihat bawah)** |
+| RR-11 cache tanpa timestamp harga | MED | ✅ B2 | signature include HargaItemProject |
+| RR-12 refresh race | MED | ⚠️ LIVE | tak ada AbortController/sequence token |
+| RR-13 empty-state tak dipakai | MED | ⚠️ LIVE | `#rab-empty` CTA ada, JS render row kosong sederhana |
+| RR-14 listener clone-replace | MED | ⚠️ LIVE | export/print di-clone |
+| RR-15 SheetJS CDN tak perlu+no SRI | MED | ⚠️ LIVE | server XLSX sudah parity (B5) → hapus |
+| RR-16 fallback Excel = CSV | MED | ⚠️ LIVE | klik Export Excel → `exportCSV()` |
+| RR-17 export `str(e)` leak | MED | ✅ ~B5a | `export_error_response` dipakai (verifikasi endpoint RAB spesifik) |
+| RR-18 print reinject HTML | MED | ✅ A1 | `RekapRABPrint` escapeHtml (`:17`) |
+| RR-19 presisi display/export | MED | ⚠️ LIVE | adapter format 0-desimal vs kanonik 2-desimal (D-RR-04) |
+| RR-20 concurrency pricing | MED | ❌ batal G-1 (LWW) | — |
+| RR-21 sort in-place | MED | ⚠️ LIVE (low) | array diurut langsung |
+| RR-22/23 a11y/terminologi | LOW | ⚠️ LIVE | — |
+| RR-24 legacy print/export dup | LOW | →cleanup | terkait keputusan print (bawah) |
+| RR-25 error UI innerHTML | LOW | ⚠️ LIVE | — |
+
+**Interaksi lintas-halaman (VERIFIED):** Rekap RAB READ dari `compute_rekap_for_project` (SSOT). Satu mutasi = `api_project_pricing` (PPN/pembulatan/markup default project) → cache invalidate → **mengubah total SEMUA pekerjaan + Rincian AHSP Grand Total (P5c) + export + bobot Kurva S (KS-05)**. Maka RR-10 (audit) + RR-06 (reliabilitas autosave) berdampak project-wide.
+
+**Akar arsitektur (penting):** RR-03 (PPN dobel) + RR-04 (identitas palsu) + RR-14 (listener) semuanya berasal dari **modul print client-side `RekapRABPrint.js` yang men-scrape DOM lalu menghitung ulang**. Server PDF export sudah punya kalkulasi benar (B1) + identitas benar (B5b). → keputusan #1 di bawah.
+
+**Rencana increment USULAN (urut correctness → reliability → cleanup):**
+- **P6a (RR-09):** kontrak harga tunggal `unit_price_after_markup`; jika hilang → tampilkan error kontrak, BUKAN fallback diam ke HSP/unit_price (pra-markup). correctness/SSOT.
+- **P6b (RR-05):** footer utama SELALU total seluruh project (D-RR-01); search hanya filter baris (+opsional "Total hasil filter" sekunder). correctness.
+- **P6c (RR-03 + RR-04 + print):** sesuai keputusan #1 — deprecate client print → server PDF, ATAU perbaiki di tempat (identitas dari server data-*/endpoint + nilai kanonik eksplisit, hapus fallback palsu + extractSummaryFromTfoot).
+- **P6d (RR-10):** audit perubahan pricing project-level — sesuai keputusan #2 (desain audit project-level).
+- **P6e (RR-06):** autosave pricing dgn status Menyimpan/Tersimpan/Gagal + retry + rollback on failure (D-RR-03).
+- **P6f (RR-15/16):** hapus SheetJS CDN + client Excel/CSV fallback (server XLSX parity ada). cleanup per master plan.
+- **P6g (RR-12/14):** AbortController/sequence token refresh + satu initializer per aksi (tanpa clone).
+- **P6h (RR-19 + D-RR-06):** presisi kanonik 2-desimal konsisten + indikator/tooltip markup override (tanpa kolom permanen).
+- **P6i:** RR-13/21/22/23/25 polish (batch low).
+- **P6j:** contract test (footer=full total saat search; harga kontrak; pricing audit; print/export parity calc+identitas).
+
+**KEPUTUSAN OWNER 2026-06-17 (scope LOCKED):**
+1. **Modul print client-side → opsi A: DEPRECATE, arahkan tombol Print ke server PDF.** ✅ Hapus kelas bug scrape+recompute (RR-03/04/14 sekaligus).
+2. **RR-10 → versi RINGAN: catat TIMESTAMP + nilai lama→baru saat pricing berubah, TANPA fokus role/user** (asumsi single-user single-role). **Syarat owner: jangan membebani server.** Implementasi: log HANYA saat nilai benar-benar berubah (old≠new), pricing = aksi jarang (bukan high-freq) → beban minimal. Reuse `DetailAHSPAudit` dgn `pekerjaan` nullable (1 migrasi kecil) + `triggered_by="pricing"`; `user` boleh diisi tapi bukan tujuan utama. → simpan jejak "kapan & apa yang berubah", tampil di Riwayat yang sama.
+3. **RR-09 → kontrak harga tunggal `unit_price_after_markup`; bila hilang tampilkan penanda "data belum siap", BUKAN fallback diam ke pra-markup.** ✅
+4. **RR-15/16 → HAPUS SheetJS CDN + jalur Excel/CSV client** (server XLSX sudah parity). ✅
+
+**Rencana increment FINAL (scope LOCKED, P6a–j):**
+- **P6a** RR-09 kontrak harga (`unit_price_after_markup` only + penanda bila hilang). correctness.
+- **P6b** RR-05 footer = total seluruh project saat search (D-RR-01). correctness.
+- **P6c** RR-03/04/14 — **deprecate client print → tombol Print panggil server PDF** (kalkulasi+identitas server-authoritative).
+- **P6d** RR-10 — pricing change record RINGAN (timestamp+old/new, `DetailAHSPAudit.pekerjaan` nullable, log-on-change-only).
+- **P6e** RR-06 autosave pricing: status Menyimpan/Tersimpan/Gagal + retry + rollback (D-RR-03).
+- **P6f** RR-15/16 hapus SheetJS + client Excel/CSV.
+- **P6g** RR-12/14 AbortController/sequence + satu initializer per aksi (tanpa clone).
+- **P6h** RR-19 presisi 2-desimal konsisten + D-RR-06 indikator/tooltip markup override (tanpa kolom permanen).
+- **P6i** RR-13/21/22/23/25 polish (batch low).
+- **P6j** contract test (footer=full saat search; harga kontrak; pricing timestamp tercatat; print/export = server-authoritative).
+
+**SCOPE WP-P6 TERKUNCI — siap implementasi (urutan: P6a → P6b → P6c → P6d → P6e → P6f → P6g → P6h → P6i → P6j).**
+
+---
+
+#### WP-P6 — PROGRESS (2026-06-17, uncommitted): P6a–f DONE (correctness+governance core)
+
+| Inc | Implementasi | File |
+|---|---|---|
+| **P6a** RR-09 | harga = `unit_price_after_markup ?? G` saja; bila hilang → penanda **"belum siap"** (bukan fallback pra-markup senyap) | rekap_rab.js |
+| **P6b** RR-05 | footer (Total/PPN/Grand/Pembulatan) SELALU `computeTotalsFiltered(fullModel, ()=>true)` → search hanya filter baris | rekap_rab.js |
+| **P6c** RR-03/04/14 | **client print di-deprecate** → tombol Print panggil `handleExport('pdf', async)` (server PDF, kalkulasi B1 + identitas B5b); import `initRekapRABPrint` dihapus; modul+CSS print = orphan→Fase 3 | rekap_rab.html |
+| **P6d** RR-10 | pricing change record RINGAN: `DetailAHSPAudit` `pekerjaan=None` (sudah nullable, no migrasi), log **hanya saat nilai berubah** (old→new + timestamp), single-user (role tak ditekankan) | views_api.py `api_project_pricing` |
+| **P6e** RR-06 | autosave pricing: validasi `res.ok`/`j.ok` + status **Menyimpan/Tersimpan/Gagal** + tombol "Coba lagi" + `flushPricing` on blur/pagehide (keepalive) | rekap_rab.js |
+| **P6f** RR-15/16 | hapus **SheetJS CDN + ExcelExporter.js** (client Excel mati; server XLSX parity); `RekapRABExcelExporter` terverifikasi tak terpakai | rekap_rab.html |
+
+**Fix sampingan (guard):** migrasi `confirm()` native di `$modalClear` Rincian AHSP → `raConfirm` (DP.modal) supaya `feedback_governance_guard` budget native-dialog rincian_ahsp.js tetap 1 (raConfirm fallback).
+
+| **P6g** RR-12/14 | `loadData` sequence-token (abaikan respons usang); export/print di-bind SEKALI di template (rekap_rab.js tak lagi bind → clone-replace dihapus) | rekap_rab.js, rekap_rab.html |
+| **P6h** RR-19/D-RR-06 | RR-19 = full-rupiah di dokumen DITERIMA sbg presentation policy (D-RR-04; kanonik tetap 2-desimal). D-RR-06 = `markup_is_override` di rekap row + badge "override N%" + tooltip di baris pekerjaan | services.py, rekap_rab.js |
+| **P6i** RR-13/21/25 | RR-13 empty-state kaya `#rab-empty` saat project benar2 kosong; RR-25 pesan error load di-escape sebelum innerHTML; RR-21 **verified non-issue** (jobs = array fresh per render, fullModel tak dimutasi). RR-22/23 (a11y mode-state + terminologi) = LOW, defer Fase 3 polish | rekap_rab.js |
+| **P6j** | contract test: backend `tests_wp_p6_rekap_rab` (5: pricing audit ×4 + markup_is_override) + frontend `rekap_rab_p6.test.js` (15: P6a–i guards) | tests |
+
+**✅ WP-P6 (Rekap RAB) SELESAI 2026-06-17 (uncommitted, P6a–j).** Verifikasi: backend P6 5 + rekap-contract 20 + b4-readiness 24 hijau; frontend full vitest **321 pass / 25 skip, 0 fail**; `manage.py check` bersih. Checklist RR-01..19 tertutup (RR-01/02/07/08/11/17/18 dari Fase 1; RR-20 batal G-1; RR-22/23 defer polish; RR-24 cleanup Fase 3). **PROGRESS ≈74%.**
+
+> **RR-10 (cross-cutting) DITUTUP** versi ringan sesuai keputusan owner (timestamp+old/new, tanpa role, log-on-change). Catatan: keputusan D-02 audit kini menjangkau Template AHSP (B7/P2) + Rincian AHSP override (P5e) + pricing project (P6d). Sisa audit-gap = Jadwal reset/realisasi → WP-P7.
+
+---
+
+### WP-P7 — Jadwal Pekerjaan (SURVEI 2026-06-17, MENUNGGU REVIEW OWNER)
+
+**Apa & kenapa:** halaman penjadwalan (Grid mingguan + Gantt + Kurva S) atas `PekerjaanProgressWeekly.planned_proportion`/`actual` = SSOT. **Mayoritas keputusan produk SUDAH FINAL (DISETUJUI 14 Juni 2026)** — survei ini memetakan apa yang SUDAH selesai vs SISA implementasi, BUKAN re-litigasi keputusan. Dependency B1/B2/B3/B5/B6/B10 (semua DONE). **Menyerap B6d/e (deferred dari WP-B6).**
+
+**⚠️ KENDALA UTAMA — KF-06 (Vite bundle):** sebagian besar frontend jadwal = `js/src/` (DataOrchestrator, data-loader, time-column-generator, dataset-builder, jadwal_kegiatan_app, gantt) → bundle `dist/` **dilindungi**; edit source butuh **owner rebuild Vite**. Backend (views_api_tahapan_v2, adapter, services) bisa diubah+ditest langsung. → **sequencing: batch BACKEND dulu (testable sekarang) → batch FRONTEND Vite (sekali rebuild owner).**
+
+**Status temuan — DIVERIFIKASI ulang vs kode SAAT INI:**
+
+| Finding | Status | Bukti |
+|---|---|---|
+| JDW-01 partial-save rollback | ✅ B3 | `views_api_tahapan_v2.py` set_rollback |
+| JDW-03 sync gagal commit | ✅ B3 | rollback on sync fail |
+| JDW-05 reset actual_cost | ✅ B10 | reset mode=actual→None |
+| JDW-08 concurrency | ❌ batal G-1 (LWW) | — |
+| JDW-15 lokasi project | ✅ B5b | identity provider |
+| timeline_stale (sinyal server) | ✅ B4 inc-4a | ada di `/readiness/`, tampil via banner (fan-out #3) |
+| KS-04 adapter chart=export | ✅ (positif) | jadikan SSOT |
+| weekly canonical calc | ✅ B6a/b/c | `build_weekly_distribution` |
+| **B6d (R1/P2) week_number server-authoritative** | ⚠️ **LIVE** | frontend masih hitung minggu sendiri (`time-column-generator`) [Vite] |
+| **B6e (R2/P1) stop auto-regenerate** | ⚠️ **LIVE** | `_estimateExpectedWeeklyColumns` (jadwal_kegiatan_app.js:116) + `DataOrchestrator.js:93` auto-regenerate saat page-open [Vite] |
+| **JDW-04 (P0) loadAssignments error→map kosong** | ⚠️ **LIVE** | `data-loader.js` telan error [Vite] |
+| **JDW-02 save fallback abaikan batas minggu** | ⚠️ **LIVE** | `views_api_tahapan_v2.py:221/228` hardcode `week_end_day=6` (project punya `week_end_day` :469) [backend] |
+| **JDW-06 notes shared** | ⚠️ **LIVE** | keputusan: **HAPUS fitur catatan** (model field + UI) |
+| **JDW-07 realisasi timestamp** | ⚠️ **LIVE** | keputusan: timestamp tak diperlukan |
+| **JDW-09 save full_clean per sel** | ⚠️ **LIVE** | perf [backend] |
+| **JDW-11 batas minggu disimpan sebelum konfirmasi** | ⚠️ **LIVE** | [Vite] |
+| **JDW-12 + KS-01 export campur saved/unsaved** | ⚠️ **LIVE** | layar(draft) vs export(server) beda sumber; keputusan server-authoritative + label draft [Vite+adapter] |
+| **KS-02 fallback bobot rata senyap** | ⚠️ **LIVE** | `dataset-builder.js:60-66` (langgar JDW-13D) [Vite] |
+| **KS-03 cache chart-data kurang harga** | ⚠️ **LIVE?** (=RR-11) | verifikasi signature `chart-data` (views_api.py ~7286) sertakan HargaItemProject |
+| **KS-05 bobot G×volume + except:pass senyap** | ⚠️ **LIVE** | `jadwal_pekerjaan_adapter._build_rekap_harga_cache` surface error |
+| **Audit-gap reset/regenerate/cascade** | ⚠️ **LIVE** | `api_reset_progress:984` tanpa `log_audit` [backend] |
+| JDW-16/17 a11y+terminologi | ⚠️ LIVE (LOW) | [Vite] |
+| R4 contract-test week numbering JS↔Python | ⚠️ SISA | test |
+
+**Interaksi lintas-halaman (VERIFIED):** Jadwal READ dari `compute_rekap_for_project` (bobot Kurva S = G×volume, KS-05) + `build_weekly_distribution`. Mutasi = `PekerjaanProgressWeekly` (planned/actual) via grid save + reset + regenerate. `sync_weekly_to_tahapan` = **linchpin tunggal** weekly↔kolom (dipakai save & regenerate). Regenerate = NO DATA LOSS (weekly canonical tak disentuh; §14.5). Rekap Kebutuhan (P8) konsumsi planned_proportion → distribusi mingguan.
+
+**Rencana increment USULAN — BATCH A (backend, testable sekarang):**
+- **P7a** JDW-02: save fallback pakai `project.week_end_day`, bukan hardcode 6.
+- **P7b** audit-gap: `log_audit` pada reset/regenerate (pola RR-10 project-level / per-pekerjaan — keputusan #2).
+- **P7c** KS-03: signature `chart-data` sertakan HargaItemProject+markup (=RR-11 untuk jalur chart).
+- **P7d** KS-05: `_build_rekap_harga_cache` surface error (bukan `except:pass`→bobot 0 senyap).
+- **P7e** B6d-backend (R1/P2): API kolom minggu kirim `week_number/start_date/end_date` kanonik eksplisit.
+- **P7f** JDW-07/09: hapus update timestamp realisasi saat edit plan; optimasi full_clean per-sel (bulk validate).
+- **P7g** JDW-06-backend: deprecate field notes (stop tulis; drop kolom→Fase 3).
+
+**BATCH B (frontend Vite — butuh owner rebuild dist):**
+- **P7h** B6d-frontend (R1): frontend pakai metadata minggu server, stop recompute (`time-column-generator`).
+- **P7i** B6e (R2): hapus auto-regenerate page-open (`_estimateExpectedWeeklyColumns`/DataOrchestrator); pakai `timeline_stale` → tombol "Perbarui Struktur Waktu" terkontrol.
+- **P7j** JDW-04: `loadAssignments` error-state (blokir edit), bukan map kosong.
+- **P7k** KS-01/02/JDW-12: Kurva S 1 SSOT (server), hapus fallback bobot rata, label draft vs saved.
+- **P7l** JDW-06-UI/JDW-11/16/17: hapus UI catatan; konfirmasi sebelum simpan batas minggu; a11y+terminologi.
+- **P7m** R4: contract test builder minggu backend (frontend tak transform metadata).
+
 **KEPUTUSAN UNTUK OWNER (sebelum lock scope):**
-1. **RA-02/D-RA-01 Grand Total di Rincian AHSP:** REKOMENDASI **HAPUS** (web toolbar + export) karena total project = domain Rekap RAB; alternatif = rename "Total Nilai Project (lihat Rekap RAB)" + dibuat **identik** dgn Rekap RAB (termasuk PPN+pembulatan). Pilih hapus atau rename?
-2. **RA-05 "Reset semua override":** saat ini `rk-btn-reset` disabled + tak ter-bind. REKOMENDASI **HAPUS** (clear override sudah per-pekerjaan via modal). Atau Anda ingin fitur bulk-reset diaktifkan?
-3. **RA-07 audit:** pakai `ACTION_UPDATE` generik dgn old/new khusus markup + change_summary (REK, reuse `log_audit`) atau buat action constant baru khusus pricing?
+1. **Sequencing KF-06:** setuju kerjakan **Batch A (backend) dulu sampai hijau**, lalu Batch B (Vite) sebagai satu paket yang Anda rebuild? (atau ada preferensi lain)
+2. **Audit reset/regenerate (P7b):** reset/regenerate berskala project (seperti pricing RR-10). Pakai pola **project-level `log_audit` (pekerjaan=None)** [REK, konsisten RR-10] atau per-pekerjaan terdampak?
+3. **JDW-06 notes (P7g):** **hapus UI sekarang + stop-tulis field, drop kolom DB di Fase 3** [REK, aman] atau migrasi drop kolom sekarang?
+4. Konfirmasi: semua keputusan 14-Juni (export server-authoritative, Periode 4-Minggu, Grid satu-satunya editor, Gantt read-only, Kurva S pertahankan logika, hapus notes/timestamp, LWW) tetap berlaku — saya implementasi sesuai itu, tidak re-litigasi. ✅?

@@ -294,6 +294,13 @@ Keputusan produk sebelumnya mewajibkan perubahan markup mencatat nilai lama, bar
 
 **Rekomendasi:** tambah audit action pricing/markup atau audit event generik yang tidak mencampur snapshot komponen.
 
+> **UPDATE 2026-06-17 (audit-coverage sweep, dikonfirmasi owner perlu didiskusikan):**
+> Sweep seluruh endpoint mutasi mengonfirmasi keputusan **D-02** (markup wajib ter-audit) **baru menjangkau Template AHSP**, belum dua endpoint pricing:
+> - **RA-07** `api_pekerjaan_pricing` (override markup per-pekerjaan) — **LIVE**. Fix mudah: `log_audit(project, pkj, action=ACTION_UPDATE, old_data/new_data khusus markup, user, change_summary)`. Masuk **WP-P5 (P5e)**.
+> - **RR-10** `api_project_pricing` (markup/PPN/pembulatan project-level) — **LIVE, se-keluarga**. **Komplikasi desain:** `DetailAHSPAudit` ber-FK `pekerjaan` (project-level change tak punya satu pekerjaan; `log_audit` return-early bila `pekerjaan is None`). Perlu keputusan: (a) audit project-level (model/field baru atau `pekerjaan=None`-tolerant), (b) log ke semua pekerjaan terdampak (berisik), atau (c) skip. → diserahkan ke **WP-P6 (Rekap RAB)** dengan keputusan owner.
+>
+> Yang SUDAH ter-audit: Template save (`views_api.py:3207`), reset-to-ref/TA-04 (`:2995`), source-change List Pekerjaan (`:1350`), detail copy/populate (`services.py:2209`). Volume/Harga/Parameter **tidak** di-flag sebagai audit-gap oleh R5 (di luar scope DetailAHSPAudit) — jangan diperluas tanpa keputusan terpisah (hindari scope creep).
+
 ### RA-08 - HIGH - Readiness Expanded Storage Tidak Ditampilkan
 
 Page belum menampilkan:

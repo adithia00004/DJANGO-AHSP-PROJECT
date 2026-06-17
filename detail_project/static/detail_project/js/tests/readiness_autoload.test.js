@@ -34,7 +34,7 @@ describe('ReadinessAutoload.render', () => {
 
   test('clears the host (hidden) when readiness is clean', async () => {
     document.body.innerHTML = '<div id="h" data-readiness-endpoint="/x/readiness/"></div>';
-    mockReadiness({ missing_price: [], missing_volume: [], expansion_not_ready: [], invalid_coefficient: [] });
+    mockReadiness({ missing_price: [], missing_volume: [], expansion_not_ready: [] });
 
     await render(document.getElementById('h'));
 

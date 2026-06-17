@@ -41,10 +41,7 @@ function buildReadinessBannerHTML(readiness) {
   if (enr.length) {
     lines.push(`<li><strong>${enr.length}</strong> sumber AHSP belum sinkron dengan hasil ekspansi <span class="text-muted">(periksa dan simpan ulang di Template AHSP)</span></li>`);
   }
-  const inv = readiness.invalid_coefficient || [];
-  if (inv.length) {
-    lines.push(`<li><strong>${inv.length}</strong> koefisien tidak valid (negatif): ${codes(inv, 'kode')}</li>`);
-  }
+  // (Sinyal "koefisien negatif" dihapus — DB CheckConstraint P2a menjamin koef ≥ 0.)
   // CUSTOM master reference sync (B7b) — advisory: a newer corrected version of
   // the chosen master AHSP exists; user can sync in Template AHSP.
   const rua = readiness.reference_update_available || [];

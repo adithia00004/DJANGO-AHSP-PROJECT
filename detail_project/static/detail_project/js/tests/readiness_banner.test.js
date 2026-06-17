@@ -16,7 +16,6 @@ describe('buildReadinessBannerHTML', () => {
         missing_price: [],
         missing_volume: [],
         expansion_not_ready: [],
-        invalid_coefficient: [],
       }),
     ).toBeNull();
   });
@@ -35,12 +34,10 @@ describe('buildReadinessBannerHTML', () => {
       missing_price: [{ kode: 'BHN-1' }, { kode: 'BHN-2' }],
       missing_volume: [{ kode: 'P-1' }],
       expansion_not_ready: [{ kode: 'P-2' }],
-      invalid_coefficient: [{ kode: 'P-3' }],
     });
     expect(html).toContain('harga item belum diisi');
     expect(html).toContain('pekerjaan belum punya volume');
     expect(html).toContain('belum sinkron dengan hasil ekspansi');
-    expect(html).toContain('koefisien tidak valid');
     expect(html).toContain('<strong>2</strong>');
   });
 
@@ -72,7 +69,6 @@ describe('buildReadinessBannerHTML', () => {
       missing_price: [],
       missing_volume: [],
       expansion_not_ready: [],
-      invalid_coefficient: [],
       incomplete_planned_allocation: null,
       allocation_without_volume: null,
       timeline_stale: null,
