@@ -148,9 +148,13 @@
     <div class="d-flex align-items-center gap-2">
       <!-- Quick Search -->
       <div class="input-group input-group-sm" style="max-width: 250px;">
-        <input type="text" class="form-control" id="quickSearchInput" placeholder="Cari project...">
+        <input type="text" class="form-control" id="quickSearchInput" placeholder="Cari di halaman ini...">
         <button class="btn btn-outline-secondary" type="button" id="quickSearchBtn">
           <i class="fas fa-search"></i>
+        </button>
+        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn"
+          style="display: none;" aria-label="Bersihkan pencarian" title="Bersihkan pencarian">
+          <i class="fas fa-times"></i>
         </button>
       </div>
 
@@ -307,7 +311,7 @@
         <!-- Status -->
         <td class="text-center">
           {% if project.tanggal_selesai and project.tanggal_mulai %}
-          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Selesai</span>
+          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Terlambat</span>
             {% elif project.tanggal_selesai|date:"Y-m-d" <= deadline_threshold_str %} <span
               class="badge bg-warning text-dark">Deadline</span>
               {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}
@@ -381,7 +385,7 @@
         <span class="label"><i class="fas fa-info-circle"></i> Status:</span>
         <span class="value">
           {% if project.tanggal_selesai and project.tanggal_mulai %}
-          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Selesai</span>
+          {% if project.tanggal_selesai|date:"Y-m-d" < today_str %} <span class="badge bg-danger">Terlambat</span>
         {% elif project.tanggal_selesai|date:"Y-m-d" <= deadline_threshold_str %} <span
           class="badge bg-warning text-dark">Deadline</span>
           {% elif project.tanggal_mulai|date:"Y-m-d" > today_str %}

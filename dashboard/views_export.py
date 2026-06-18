@@ -444,7 +444,7 @@ def _timeline_status_text(project):
     deadline_threshold = today + timedelta(days=30)
 
     if project.tanggal_selesai < today:
-        return "Selesai"
+        return "Terlambat"
     if project.tanggal_selesai <= deadline_threshold:
         return "Deadline"
     if project.tanggal_mulai > today:

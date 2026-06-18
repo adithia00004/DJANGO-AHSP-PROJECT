@@ -271,11 +271,11 @@
 
       if (!searchTerm) {
         showAllProjects();
-        clearBtn.style.display = 'none';
+        if (clearBtn) clearBtn.style.display = 'none';
         return;
       }
 
-      clearBtn.style.display = 'block';
+      if (clearBtn) clearBtn.style.display = 'block';
       let visibleCount = 0;
 
       // Search in table rows (desktop)
@@ -321,6 +321,13 @@
       performSearch(e.target.value);
     }, 300));
 
+    const searchButton = document.getElementById('quickSearchBtn');
+    if (searchButton) {
+      searchButton.addEventListener('click', function () {
+        performSearch(searchInput.value);
+      });
+    }
+
     // Clear button
     if (clearBtn) {
       clearBtn.addEventListener('click', function () {
@@ -345,7 +352,7 @@
       if (e.key === 'Escape') {
         this.value = '';
         showAllProjects();
-        clearBtn.style.display = 'none';
+        if (clearBtn) clearBtn.style.display = 'none';
         this.blur();
       }
     });

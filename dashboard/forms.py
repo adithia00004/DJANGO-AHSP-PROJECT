@@ -216,7 +216,7 @@ class ProjectFilterForm(forms.Form):
         required=False,
         choices=[
             ('', 'Semua Status'),
-            ('selesai', 'Selesai'),
+            ('selesai', 'Terlambat'),
             ('deadline', 'Deadline (< 1 bulan)'),
             ('belum_mulai', 'Belum Mulai'),
             ('berjalan', 'Berjalan'),

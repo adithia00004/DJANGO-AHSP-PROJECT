@@ -410,9 +410,9 @@ class PrelaunchFunctionalSmokeTests(TestCase):
         self.assertTrue(self.client.login(username=self.owner.username, password=self.password))
         today = timezone.now().date()
 
-        selesai = Project.objects.create(
+        terlambat = Project.objects.create(
             owner=self.owner,
-            nama="Timeline Selesai",
+            nama="Timeline Terlambat",
             tanggal_mulai=today - timedelta(days=40),
             tanggal_selesai=today - timedelta(days=1),
             sumber_dana="APBN",
@@ -451,13 +451,13 @@ class PrelaunchFunctionalSmokeTests(TestCase):
             anggaran_owner=4000,
         )
 
-        resp_selesai = self.client.get(reverse("dashboard:project_detail", kwargs={"pk": selesai.pk}))
+        resp_terlambat = self.client.get(reverse("dashboard:project_detail", kwargs={"pk": terlambat.pk}))
         resp_deadline = self.client.get(reverse("dashboard:project_detail", kwargs={"pk": deadline.pk}))
         resp_belum_mulai = self.client.get(reverse("dashboard:project_detail", kwargs={"pk": belum_mulai.pk}))
         resp_berjalan = self.client.get(reverse("dashboard:project_detail", kwargs={"pk": berjalan.pk}))
 
-        self.assertContains(resp_selesai, "Selesai")
-        self.assertNotContains(resp_selesai, "Terlambat")
+        self.assertContains(resp_terlambat, "Terlambat")
+        self.assertNotContains(resp_terlambat, "Project selesai pada")
         self.assertContains(resp_deadline, "Deadline")
         self.assertContains(resp_belum_mulai, "Belum Mulai")
         self.assertContains(resp_berjalan, "Sedang Berjalan")

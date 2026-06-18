@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from .forms import ProjectForm
 from .models import Project
 from .views import UPLOAD_ALL_HEADERS
+from detail_project.progress_utils import reset_project_progress
 
 
 logger = logging.getLogger(__name__)
@@ -109,9 +110,10 @@ def mass_edit_bulk_update(request):
                 if project.allow_bundle_soft_errors:
                     merged_data["allow_bundle_soft_errors"] = "on"
 
+                original_start = project.tanggal_mulai
                 form = ProjectForm(merged_data, instance=project)
                 if form.is_valid():
-                    valid_forms.append(form)
+                    valid_forms.append((form, original_start))
                 else:
                     validation_errors[str(project_id)] = {
                         field_name: [
@@ -135,8 +137,11 @@ def mass_edit_bulk_update(request):
                     status=400,
                 )
 
-            for form in valid_forms:
-                form.save()
+            for form, original_start in valid_forms:
+                updated_project = form.save()
+                new_start = updated_project.tanggal_mulai
+                if (original_start or None) != (new_start or None):
+                    reset_project_progress(updated_project, regenerate_weekly=True)
 
         updated_count = len(valid_forms)
         return JsonResponse(

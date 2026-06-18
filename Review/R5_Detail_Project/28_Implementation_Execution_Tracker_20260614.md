@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 82% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) + WP-P8 (Rekap Kebutuhan) DONE/siap UAT runtime.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P9 Dashboard. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint legacy removal setelah monitoring, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
+**Status keseluruhan (≈ 85% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) + WP-P8 (Rekap Kebutuhan) DONE/siap UAT runtime; WP-P9 Dashboard targeted fixes DONE/siap UAT runtime.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: Fase 3 cleanup / UAT runtime lintas-page. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint legacy removal setelah monitoring, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
 
 ## 1. Aturan Tracking
 
@@ -46,7 +46,7 @@ Status:
 | WP-P2 | Template AHSP | DONE (ENH-01 defer) | 2026-06-16 | 2026-06-16 | B3/B4/B7/B8/B9 | TA-01 (app B3+DB constraint P2a/migrasi 0051)·TA-02 (B3)·TA-03 (B7c)·TA-18 (B7a-e)·TA-20 (P2b cascade-save atomik)·TA-21 (P2c e2e)·UF-010 (P2d lazy reload). ENH-01 item picker DEFER (enhancement). TA-05 dibatalkan, TA-17→CL-08 |
 | WP-P3 | Volume Pekerjaan | DONE (P3f skip-by-design) | 2026-06-16 | 2026-06-16 | B3/B4 | VP-01..07 tertutup. P3a VP-05 validasi computed · P3b VP-07 payload+rate-limit + autosave gabung 5mnt + save-on-leave · P3c VP-06 server-authoritative + fix false-dirty project 195 · P3d JSON=param data-transfer (compliant) · P3e cross-page SSOT test. P3f (sinyal stale) skip = redundan (reevaluate+dirty sudah cover). Model A: quantity=SSOT RAB+Kebutuhan |
 | WP-P4 | List Pekerjaan | ✅ DONE (P4a–g) | 2026-06-17 | 2026-06-17 | B3 | Fondasi detail project. **SEMUA: P4a (UF-009/012 regression-lock), P4g (C1 delete-guard, C2 cascade re-expand), P4b (import atomik), P4c (rate/payload limit), P4d (LP-04 destructive-impact + konfirmasi UI), P4e (UF-007/008 cosmetic), P4f (contract test).** 13 backend + 8 JS guard hijau; 96 regression hijau. Matriks cascade §WP-P4 |
-| WP-P5..P9 | Integrasi per-page | IN PROGRESS | 2026-06-17 | - | Shared WP | P5 Rincian DONE; P6 Rekap RAB DONE; P7 Jadwal DONE/siap UAT runtime; **P8 Rekap Kebutuhan DONE/siap UAT runtime** (period selector 4-minggu, RK-10 cleanup, unscheduled_items, B6f-2 deprecated); P9 Dashboard pending |
+| WP-P5..P9 | Integrasi per-page | DONE (targeted fixes; siap UAT runtime) | 2026-06-17 | 2026-06-18 | Shared WP | P5 Rincian DONE; P6 Rekap RAB DONE; P7 Jadwal DONE/siap UAT runtime; P8 Rekap Kebutuhan DONE/siap UAT runtime; **P9 Dashboard DONE/siap UAT runtime** (status overdue SSOT, quick search, mass edit reset, dead endpoint cleanup) |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -82,7 +82,7 @@ Estimasi terbobot per fase (bobot = perkiraan effort relatif, bukan jumlah WP):
 | Fase | Bobot | % Selesai | Kontribusi | Dasar |
 |---|---|---|---|---|
 | Fase 1 — Shared foundation (A1–A2, B1–B10) | 45% | ~98% | ~44% | **A1·A2(report-only)·B1·B2·B3·B4·B5·B7·B8·B9·B10 DONE; B6 backend SSOT DONE (DoD 3/5)**; sisa hanya **B6d/e (Vite → WP-P7 Jadwal)** + defer (CSP enforcement, export-perf, B9b prospective UI, B3 DB-constraint) |
-| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~38% | ~11% | **WP-P1 Harga + WP-P2 Template + WP-P3 Volume DONE**; readiness di 5 halaman (B4); P4–P9 belum (ENH-01 + P3f defer/skip) |
+| Fase 2 — Integrasi per-page (P1–P9) | 30% | ~90% | ~27% | **WP-P1 Harga, WP-P2 Template, WP-P3 Volume, WP-P4 List, WP-P5 Rincian, WP-P6 RAB, WP-P7 Jadwal, WP-P8 Kebutuhan, WP-P9 Dashboard targeted fixes DONE**; sisa Fase 2 hanya UAT runtime/polish/defer yang sudah tercatat |
 | Fase 3 — Cleanup/deprecation (CL-01..17) | 10% | 0% | 0% | belum mulai (gate: replacement selesai) |
 | Fase 4 — Regression/UAT | 15% | ~2% | ~0.3% | contract/regression test berjalan tiap WP; UAT formal belum |
 | **Total** | **100%** | | **≈ 55%** | |
@@ -1997,3 +1997,43 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 **Residual P8:**
 - B6f-2 endpoint `api_rekap_kebutuhan_weekly` masih ada sebagai route/test/API legacy tanpa frontend consumer, tetapi sudah deprecated; penghapusan fisik masuk Fase 3 cleanup setelah window monitoring.
 - UAT visual Rekap Kebutuhan: cek label periode 4 minggu, export modal, mode Satuan Beli tanpa profil server, dan timeline range.
+
+---
+
+### WP-P9 — Dashboard (DONE / siap UAT runtime 2026-06-18)
+
+**Apa & kenapa:** Dashboard adalah pintu masuk project dan tempat user melihat status timeline, quick search, export JSON project backup, serta mass edit identitas project. Page ini tidak boleh memiliki status visual yang bertentangan dengan analytics/export, dan mass edit harus memakai side-effect timeline yang sama seperti edit form tunggal.
+
+#### inc-P9a — Status timeline overdue disatukan (DONE 2026-06-18)
+
+**Fix:** tanggal selesai yang sudah lewat kini ditampilkan sebagai **Terlambat** di tabel desktop, mobile card, detail project, chart status, filter label, dan export dashboard. Key lama `selesai` tetap dipertahankan sebagai alias kompatibilitas untuk query/template/cache lama, tetapi visual user-facing tidak lagi menyebut overdue sebagai "Selesai".
+
+**Menutup:** F-04 + UX-01.
+
+#### inc-P9b — Quick search tidak crash dan punya clear-state eksplisit (DONE 2026-06-18)
+
+**Fix:** tombol `clearSearchBtn` ditambahkan di toolbar; semua akses JS ke tombol clear diberi null guard; tombol search kini memicu pencarian manual selain debounce input. Placeholder diperjelas menjadi "Cari di halaman ini..." agar user tidak mengira ini search server lintas halaman.
+
+**Menutup:** F-03.
+
+#### inc-P9c — Mass edit mengikuti side-effect timeline edit tunggal (DONE 2026-06-18)
+
+**Fix:** endpoint mass edit aktif (`views_mass_edit.py`) menyimpan `tanggal_mulai` lama sebelum validasi `ModelForm`; setelah save atomik, bila `tanggal_mulai` berubah, endpoint memanggil `reset_project_progress(updated_project, regenerate_weekly=True)` seperti form edit tunggal. Jika reset gagal, transaksi rollback karena masih berada dalam `transaction.atomic()`.
+
+**Menutup:** F-02.
+
+#### inc-P9d — Dead mass edit endpoint dihapus (DONE 2026-06-18)
+
+**Fix:** fungsi legacy `mass_edit_bulk_update` di `dashboard/views.py` dihapus. Route aktif tetap memakai `dashboard.views_mass_edit.mass_edit_bulk_update`, sehingga tidak ada dua kontrak mass edit yang berbeda.
+
+**Menutup:** F-10 / CL-04.
+
+**Verifikasi WP-P9:**
+- `python manage.py test dashboard.tests_mass_edit dashboard.tests_prelaunch_smoke dashboard.tests_chart_xss --keepdb` PASS (39/39).
+- `python manage.py check` PASS.
+- `node --check dashboard/static/dashboard/js/ux-enhancements.js` PASS.
+- `git diff --check` PASS.
+
+**Residual P9:**
+- UX-02 popover HTML dengan `data-bs-html="true"` masih kandidat hardening lanjutan bila masuk cleanup/security polishing; tidak dibuka di targeted batch ini karena F-01 XSS dashboard sudah fixed/guarded oleh WP-A1.
+- UX-03/UX-04/UX-05/UX-06 adalah polish/performance/a11y lanjutan dan tidak memblok UAT runtime WP-P9.

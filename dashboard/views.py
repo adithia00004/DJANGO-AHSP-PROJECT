@@ -524,7 +524,7 @@ def dashboard_view(request):
         tanggal_selesai__lt=today
     ).order_by('tanggal_selesai')[:5]
 
-    status_selesai = stats.get('status_selesai') or 0
+    status_terlambat = stats.get('status_selesai') or 0
     status_deadline = stats.get('status_deadline') or 0
     status_belum_mulai = stats.get('status_belum_mulai') or 0
     status_berjalan = stats.get('status_berjalan') or 0
@@ -543,7 +543,9 @@ def dashboard_view(request):
             'upcoming_deadlines': upcoming_deadlines,
             'overdue_projects': overdue_projects,
             'status_counts': {
-                'selesai': status_selesai,
+                # Backward-compat key retained for old template/cache consumers.
+                'selesai': status_terlambat,
+                'terlambat': status_terlambat,
                 'deadline': status_deadline,
                 'belum_mulai': status_belum_mulai,
                 'berjalan': status_berjalan,
@@ -576,7 +578,7 @@ def project_detail(request, pk):
             project.tanggal_mulai <= today
             and project.tanggal_selesai < today
         ):
-            timeline_status = 'selesai'
+            timeline_status = 'terlambat'
         elif (
             project.tanggal_mulai <= today
             and project.tanggal_selesai <= deadline_threshold
@@ -832,164 +834,3 @@ def project_upload_view(request):
 
     context['error_rows'] = error_rows
     return render(request, 'dashboard/project_upload.html', context)
-
-
-@login_required
-def mass_edit_bulk_update(request):
-    """
-    Mass edit bulk update endpoint
-    Handles inline table editing with full field validation
-    Receives array of project changes from mass-edit-toggle.js
-    Returns JSON response for AJAX handling
-    """
-    from django.http import JsonResponse
-    from datetime import datetime
-    import logging
-
-    logger = logging.getLogger(__name__)
-    logger.info('📥 Mass edit bulk update request received')
-    logger.info(f'User: {request.user}')
-    logger.info(f'Method: {request.method}')
-
-    if request.method != 'POST':
-        logger.warning('❌ Invalid request method')
-        return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=400)
-
-    try:
-        logger.info(f'Request body: {request.body[:500]}')  # Log first 500 chars
-        data = json.loads(request.body)
-        logger.info(f'Parsed data: {data}')
-
-        changes = data.get('changes', [])
-        logger.info(f'Number of changes: {len(changes)}')
-
-        if not changes:
-            logger.warning('❌ No changes provided')
-            return JsonResponse({'success': False, 'message': 'No changes provided'}, status=400)
-
-        updated_count = 0
-
-        with transaction.atomic():
-            for idx, change_data in enumerate(changes):
-                logger.info(f'Processing change {idx + 1}/{len(changes)}: {change_data}')
-
-                project_id = change_data.get('id')
-                if not project_id:
-                    logger.warning(f'Skipping change {idx + 1}: No project ID')
-                    continue
-
-                # Get project (only owner's projects)
-                try:
-                    project = Project.objects.get(pk=project_id, owner=request.user)
-                    logger.info(f'Found project: {project.nama} (ID: {project_id})')
-                except Project.DoesNotExist:
-                    logger.warning(f'Project not found or not owned: ID {project_id}')
-                    continue
-
-                # Update fields
-                # Required fields
-                if 'nama' in change_data:
-                    project.nama = change_data['nama'].strip()
-
-                if 'sumber_dana' in change_data:
-                    project.sumber_dana = change_data['sumber_dana'].strip()
-
-                if 'lokasi_project' in change_data:
-                    project.lokasi_project = change_data['lokasi_project'].strip()
-
-                if 'nama_client' in change_data:
-                    project.nama_client = change_data['nama_client'].strip()
-
-                if 'anggaran_owner' in change_data:
-                    try:
-                        project.anggaran_owner = decimal.Decimal(change_data['anggaran_owner'])
-                    except (ValueError, decimal.InvalidOperation):
-                        pass
-
-                if 'tanggal_mulai' in change_data:
-                    try:
-                        project.tanggal_mulai = datetime.strptime(change_data['tanggal_mulai'], '%Y-%m-%d').date()
-                    except ValueError:
-                        pass
-
-                # Optional fields
-                if 'tanggal_selesai' in change_data:
-                    val = change_data['tanggal_selesai'].strip()
-                    if val:
-                        try:
-                            project.tanggal_selesai = datetime.strptime(val, '%Y-%m-%d').date()
-                        except ValueError:
-                            pass
-                    else:
-                        project.tanggal_selesai = None
-
-                if 'durasi_hari' in change_data:
-                    val = change_data['durasi_hari'].strip()
-                    if val:
-                        try:
-                            project.durasi_hari = int(val)
-                        except ValueError:
-                            pass
-                    else:
-                        project.durasi_hari = None
-
-                if 'ket_project1' in change_data:
-                    project.ket_project1 = change_data['ket_project1'].strip() or None
-
-                if 'ket_project2' in change_data:
-                    project.ket_project2 = change_data['ket_project2'].strip() or None
-
-                if 'jabatan_client' in change_data:
-                    project.jabatan_client = change_data['jabatan_client'].strip() or None
-
-                if 'instansi_client' in change_data:
-                    project.instansi_client = change_data['instansi_client'].strip() or None
-
-                if 'nama_kontraktor' in change_data:
-                    project.nama_kontraktor = change_data['nama_kontraktor'].strip() or None
-
-                if 'instansi_kontraktor' in change_data:
-                    project.instansi_kontraktor = change_data['instansi_kontraktor'].strip() or None
-
-                if 'nama_konsultan_perencana' in change_data:
-                    project.nama_konsultan_perencana = change_data['nama_konsultan_perencana'].strip() or None
-
-                if 'instansi_konsultan_perencana' in change_data:
-                    project.instansi_konsultan_perencana = change_data['instansi_konsultan_perencana'].strip() or None
-
-                if 'nama_konsultan_pengawas' in change_data:
-                    project.nama_konsultan_pengawas = change_data['nama_konsultan_pengawas'].strip() or None
-
-                if 'instansi_konsultan_pengawas' in change_data:
-                    project.instansi_konsultan_pengawas = change_data['instansi_konsultan_pengawas'].strip() or None
-
-                if 'deskripsi' in change_data:
-                    project.deskripsi = change_data['deskripsi'].strip() or None
-
-                if 'kategori' in change_data:
-                    project.kategori = change_data['kategori'].strip() or None
-
-                # Save project (tahun_project will be auto-calculated)
-                logger.info(f'Saving project {project_id}...')
-                project.save()
-                updated_count += 1
-                logger.info(f'✅ Successfully saved project {project_id}')
-
-        logger.info(f'✅ All changes saved successfully. Total updated: {updated_count}')
-
-        return JsonResponse({
-            'success': True,
-            'updated_count': updated_count,
-            'message': f'{updated_count} project(s) successfully updated'
-        })
-
-    except json.JSONDecodeError as e:
-        logger.error(f'❌ JSON decode error: {str(e)}')
-        return JsonResponse({'success': False, 'message': 'Invalid JSON data'}, status=400)
-    except Exception as e:
-        logger.error(f'❌ Unexpected error: {str(e)}')
-        logger.exception(e)  # This will log the full stack trace
-        return JsonResponse({
-            'success': False,
-            'message': f'Error updating projects: {str(e)}'
-        }, status=500)

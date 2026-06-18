@@ -1,6 +1,7 @@
 import json
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -130,6 +131,25 @@ class MassEditProjectTests(TestCase):
         self.project_a.refresh_from_db()
         self.assertEqual(self.project_a.anggaran_owner, Decimal("1000000"))
 
+    @patch("dashboard.views_mass_edit.reset_project_progress")
+    def test_mass_edit_resets_progress_when_start_date_changes(self, reset_mock):
+        response = self._post(
+            [
+                {
+                    "id": self.project_a.pk,
+                    "tanggal_mulai": "2026-02-01",
+                }
+            ]
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.project_a.refresh_from_db()
+        self.assertEqual(self.project_a.tanggal_mulai, date(2026, 2, 1))
+        reset_mock.assert_called_once()
+        reset_project = reset_mock.call_args.args[0]
+        self.assertEqual(reset_project.pk, self.project_a.pk)
+        self.assertEqual(reset_mock.call_args.kwargs, {"regenerate_weekly": True})
+
 
 class MassEditFrontendGuardTests(TestCase):
     def test_frontend_limits_editor_to_selected_projects(self):
@@ -188,3 +208,27 @@ class MassEditFrontendGuardTests(TestCase):
             "min-width: clamp(280px, 38vw, 560px);",
             styles,
         )
+
+    def test_quick_search_has_clear_button_and_null_guards(self):
+        with open(
+            "dashboard/templates/dashboard/_project_stats_and_table.html",
+            encoding="utf-8",
+        ) as handle:
+            template = handle.read()
+        with open(
+            "dashboard/static/dashboard/js/ux-enhancements.js",
+            encoding="utf-8",
+        ) as handle:
+            script = handle.read()
+
+        self.assertIn('id="clearSearchBtn"', template)
+        self.assertIn("if (clearBtn) clearBtn.style.display = 'none';", script)
+        self.assertIn("if (clearBtn) clearBtn.style.display = 'block';", script)
+        self.assertIn("const searchButton = document.getElementById('quickSearchBtn');", script)
+
+    def test_legacy_mass_edit_endpoint_removed_from_dashboard_views(self):
+        with open("dashboard/views.py", encoding="utf-8") as handle:
+            source = handle.read()
+
+        self.assertNotIn("logger.info('", source)
+        self.assertNotIn("def mass_edit_bulk_update(request):", source)
