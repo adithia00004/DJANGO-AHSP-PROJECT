@@ -1946,4 +1946,6 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **Verifikasi:** guard src `jadwal_batch_b.test.js` 4/4 PASS + P7 backend dalam `tests_wp_p7_jadwal.py` PASS. `npm run build` sudah dijalankan dan `dist/` sudah ikut commit `6f59215a`; tidak ada rebuild manual tersisa. **UAT manual berikutnya:** buka page Jadwal dan pastikan tidak ada auto-regenerate senyap saat load, load-error assignment tampil sebagai error-state, dan Kurva S tidak menampilkan fallback bobot volume/rata-rata saat bobot harga belum siap.
 
-**SISA WP-P7:** UAT runtime Batch B; defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.
+**Runtime check Docker 2026-06-18:** `ahsp_web` direstart dan kembali **healthy**; `manage.py check` di container PASS; `/health/` GET OK; static bundle `jadwal-kegiatan-C7bv7bzY.js` tersaji 200; `vite_entry('assets/js/jadwal-kegiatan.js')` mengarah ke bundle baru; smoke render `/detail_project/<project>/jadwal-pekerjaan/` status 200 dan HTML memuat bundle baru (`bundle_old=False`); API `/api/v2/project/<id>/assignments/` status 200 dan tidak mengandung `actual_updated_at`.
+
+**SISA WP-P7:** UAT manual interaktif Batch B pada browser (cek perilaku tanpa auto-regenerate senyap, error-state assignment, dan Kurva S weightsReady) lalu defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.
