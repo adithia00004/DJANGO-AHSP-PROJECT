@@ -227,6 +227,8 @@ Medium/Low akan diberi salah satu disposisi:
 
 **Verifikasi:** `tests_wp_b4_readiness` PASS (33/33), regresi `tests_rekap_calculation_contract` + `tests_kebutuhan_timeline_b6b` PASS (27/27), `manage.py check` PASS. Follow-up backfill legacy expanded tetap boleh dilakukan sebagai hygiene, tetapi alert tidak lagi menyasar raw-fallback valid.
 
+**STATUS UPDATE 2026-06-18:** banner readiness dibuat actionable untuk user. Alert `sumber AHSP belum sinkron` kini membuka detail tabel berisi pekerjaan, baris AHSP, jenis masalah (`missing/stale/incomplete/excess expansion`), aktual/ekspektasi, dan aksi perbaikan di Template AHSP. Payload readiness juga membawa `pekerjaan_kode` + `pekerjaan_uraian` pada entry expansion agar user tidak hanya melihat ID teknis. Verifikasi: `tests_wp_b4_readiness` PASS (33/33), `readiness_banner.test.js` PASS (14/14), `node --check readiness_banner.js` PASS.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.

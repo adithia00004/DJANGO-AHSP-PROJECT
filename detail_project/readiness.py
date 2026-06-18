@@ -306,8 +306,11 @@ def _compute(project):
         actual = g["n"] if g else 0
 
         def _entry(issue):
+            pekerjaan_kode, pekerjaan_uraian = _pkj(row["pekerjaan_id"])
             return {
                 "pekerjaan_id": row["pekerjaan_id"],
+                "pekerjaan_kode": pekerjaan_kode,
+                "pekerjaan_uraian": pekerjaan_uraian,
                 "source_detail_id": row["id"],
                 "kode": kode,
                 "uraian": uraian,

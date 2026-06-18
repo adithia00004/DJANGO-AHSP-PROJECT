@@ -41,6 +41,48 @@ describe('buildReadinessBannerHTML', () => {
     expect(html).toContain('<strong>2</strong>');
   });
 
+  test('renders actionable expansion details with pekerjaan, row, issue and action', () => {
+    const html = buildReadinessBannerHTML({
+      expansion_not_ready: [{
+        pekerjaan_id: 101,
+        pekerjaan_kode: 'P-001',
+        pekerjaan_uraian: 'Pasangan dinding',
+        source_detail_id: 909,
+        kode: 'BHN-SEMEN',
+        uraian: 'Semen Portland',
+        issue: 'stale_expansion',
+        actual: 1,
+        expected: 2,
+      }],
+    });
+    expect(html).toContain('Lihat detail sumber AHSP yang perlu diperbaiki');
+    expect(html).toContain('P-001 - Pasangan dinding');
+    expect(html).toContain('BHN-SEMEN - Semen Portland');
+    expect(html).toContain('Detail #909');
+    expect(html).toContain('Ekspansi basi');
+    expect(html).toContain('1 / 2');
+    expect(html).toContain('Sumber berubah setelah ekspansi dibuat');
+  });
+
+  test('escapes expansion detail fields (XSS-safe)', () => {
+    const html = buildReadinessBannerHTML({
+      expansion_not_ready: [{
+        pekerjaan_kode: '<svg onload=alert(1)>',
+        kode: '<img src=x onerror=alert(1)>',
+        uraian: '<b>bad</b>',
+        issue: 'missing_expansion',
+        actual: 0,
+        expected: 1,
+      }],
+    });
+    expect(html).not.toContain('<svg onload');
+    expect(html).not.toContain('<img src=x');
+    expect(html).not.toContain('<b>bad</b>');
+    expect(html).toContain('&lt;svg onload=alert(1)&gt;');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&lt;b&gt;bad&lt;/b&gt;');
+  });
+
   test('renders jadwal-derived signals (inc-4a)', () => {
     const html = buildReadinessBannerHTML({
       allocation_without_volume: [{ kode: 'P-A' }],

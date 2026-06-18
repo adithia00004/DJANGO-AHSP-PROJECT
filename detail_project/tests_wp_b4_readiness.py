@@ -396,6 +396,8 @@ class ReadinessContractTests(TestCase):
         )
         self.assertEqual(entry["expected"], 1)
         self.assertEqual(entry["actual"], 0)
+        self.assertEqual(entry["pekerjaan_kode"], "P-PARTIAL-ENTRY")
+        self.assertTrue("pekerjaan_uraian" in entry)
         self.assertEqual(entry["source_page"], "template_ahsp")
 
     # ----- invalid coefficient (defensive) ------------------------------
