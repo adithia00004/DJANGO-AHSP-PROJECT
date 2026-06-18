@@ -2135,15 +2135,17 @@ class JadwalKegiatanApp {
           (expectedWeeks > 0 && weeklyCount > 0 && weeklyCount < expectedWeeks);
 
         if (shouldForceWeekly) {
-          console.warn('[JadwalKegiatanApp] Weekly columns incomplete; regenerating weekly structure based on project timeline...');
-          this._isEnforcingWeekly = true;
-          await this._regenerateTimeline({
-            mode: 'weekly',
-            weekStartDay: this._getWeekStartDay(),
-            weekEndDay: this._getWeekEndDay(),
-          });
-          this._isEnforcingWeekly = false;
-          return;
+          // WP-P7i (B6e / R2): JANGAN auto-regenerate saat page-open (mutasi backend senyap
+          // berbasis estimasi client rapuh). Advisory + notice non-destruktif; user memicu
+          // "Perbarui Struktur Waktu" terkontrol. Lihat DataOrchestrator untuk catatan penuh.
+          console.warn('[JadwalKegiatanApp] Weekly columns appear incomplete; advising manual "Perbarui Struktur Waktu" (no silent regenerate).');
+          this.state.timelineNeedsRegen = true;
+          try {
+            this.showToast(
+              'Struktur waktu mingguan tampak belum lengkap. Klik "Perbarui Struktur Waktu" untuk menyusun ulang bila perlu.',
+              'warning'
+            );
+          } catch (_) { /* toast best-effort */ }
         }
       }
 

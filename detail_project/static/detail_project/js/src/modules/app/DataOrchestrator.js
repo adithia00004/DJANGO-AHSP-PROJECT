@@ -100,15 +100,21 @@ export class DataOrchestrator {
           (expectedWeeks > 0 && weeklyCount > 0 && weeklyCount < expectedWeeks);
 
         if (shouldForceWeekly) {
-          console.warn('[JadwalKegiatanApp] Weekly columns incomplete; regenerating weekly structure based on project timeline...');
-          app._isEnforcingWeekly = true;
-          await this.regenerateTimeline({
-            mode: 'weekly',
-            weekStartDay: app._getWeekStartDay(),
-            weekEndDay: app._getWeekEndDay(),
-          });
-          app._isEnforcingWeekly = false;
-          return;
+          // WP-P7i (B6e / R2): JANGAN auto-regenerate saat page-open. Dulu di sini terjadi
+          // MUTASI BACKEND SENYAP (regenerateTimeline) berdasarkan estimasi client yang
+          // rapuh (mengabaikan minggu parsial) — berisiko mengubah struktur tahapan tanpa
+          // sepengetahuan user. Sekarang: tandai sebagai advisory + beri notice non-destruktif.
+          // User memicu "Perbarui Struktur Waktu" secara TERKONTROL (punya konfirmasi sendiri
+          // bila ada perubahan belum disimpan). Deteksi basi otoritatif = sinyal server
+          // `timeline_stale` (readiness B4), bukan recompute client.
+          console.warn('[JadwalKegiatanApp] Weekly columns appear incomplete; advising manual "Perbarui Struktur Waktu" (no silent regenerate).');
+          app.state.timelineNeedsRegen = true;
+          try {
+            app.showToast(
+              'Struktur waktu mingguan tampak belum lengkap. Klik "Perbarui Struktur Waktu" untuk menyusun ulang bila perlu.',
+              'warning'
+            );
+          } catch (_) { /* toast best-effort */ }
         }
       }
 

@@ -56,14 +56,26 @@ export function buildProgressDataset(state) {
   }
   const useHargaCalculation = totalBiaya > 0 && hargaLookup.size > 0;
 
-  let totalVolume = 0;
+  // KS-02 (JDW-13D): bobot Kurva S WAJIB berbasis HARGA (G×volume). DILARANG fallback
+  // senyap ke volume atau bobot rata — itu menampilkan kurva yang menyesatkan. Bila bobot
+  // harga belum tersedia (total biaya 0 / harga belum diisi), JANGAN memalsukan bobot:
+  // kembalikan dataset kosong bertanda `weightsReady:false` agar UI memberi tahu user
+  // "bobot Kurva S belum siap (lengkapi Harga/Template)" — bukan kurva palsu.
   if (!useHargaCalculation) {
-    pekerjaanIds.forEach((id) => {
-      totalVolume += getVolumeForPekerjaan(volumeLookup, id, 1);
+    console.warn(LOG_PREFIX, 'Bobot harga (G×volume) belum tersedia — Kurva S tidak dihitung; tanpa fallback volume/bobot-rata (JDW-13D).');
+    const emptyLabels = generateLabels(columns);
+    return ensureWeekZeroDataset({
+      labels: emptyLabels,
+      planned: emptyLabels.map(() => 0),
+      actual: emptyLabels.map(() => 0),
+      details: null,
+      totalVolume: 0,
+      totalBiaya: 0,
+      columnTotals: new Map(),
+      useHargaCalculation: false,
+      weightsReady: false,
+      viewMode: 'progress',
     });
-    if (!Number.isFinite(totalVolume) || totalVolume <= 0) {
-      totalVolume = pekerjaanIds.size || 1;
-    }
   }
 
   const columnIndexById = new Map();
@@ -77,7 +89,7 @@ export function buildProgressDataset(state) {
     volumeLookup,
     hargaLookup,
     plannedCellValues,
-    useHargaCalculation ? totalBiaya : totalVolume,
+    totalBiaya,  // KS-02: selalu basis harga (volume/equal-weight fallback dihapus)
     columnIndexById,
     useHargaCalculation
   );
@@ -94,7 +106,7 @@ export function buildProgressDataset(state) {
   const actualSeries = calculateActualCurve(
     columns,
     actualColumnTotals,
-    useHargaCalculation ? totalBiaya : totalVolume,
+    totalBiaya,  // KS-02: selalu basis harga (volume/equal-weight fallback dihapus)
     useHargaCalculation
   );
 
@@ -103,7 +115,7 @@ export function buildProgressDataset(state) {
     labels,
     plannedSeries,
     actualSeries,
-    useHargaCalculation ? totalBiaya : totalVolume,
+    totalBiaya,  // KS-02: selalu basis harga (volume/equal-weight fallback dihapus)
     useHargaCalculation
   );
 
@@ -112,10 +124,11 @@ export function buildProgressDataset(state) {
     planned: plannedSeries,
     actual: actualSeries,
     details,
-    totalVolume,
+    totalVolume: 0,  // KS-02: volume bukan basis bobot (harga-only)
     totalBiaya,
     columnTotals: actualColumnTotals,
     useHargaCalculation,
+    weightsReady: true,
     viewMode: 'progress',
   });
 }

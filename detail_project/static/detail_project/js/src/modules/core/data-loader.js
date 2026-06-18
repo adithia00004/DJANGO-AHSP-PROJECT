@@ -513,10 +513,16 @@ export class DataLoader {
         this._setCache('assignments', assignments);
       }
 
+      this.state.assignmentsLoadError = null;
       return this.state.assignmentMap;
     } catch (error) {
       console.error('[DataLoader] ❌ Failed to load assignments:', error);
-      return this.state.assignmentMap;
+      // JDW-04: JANGAN kembalikan map kosong saat gagal — itu tampak seperti "tidak ada
+      // data" sehingga user bisa mengedit di atas data yang sebenarnya gagal dimuat.
+      // Tandai error + propagasikan agar orchestrator masuk error-state (toast + state.error)
+      // dan tidak menyajikan grid kosong yang menyesatkan sebagai data valid.
+      this.state.assignmentsLoadError = error;
+      throw error;
     }
   }
 
