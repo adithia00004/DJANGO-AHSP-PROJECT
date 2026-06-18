@@ -204,7 +204,7 @@ Medium/Low akan diberi salah satu disposisi:
 
 ---
 
-**STATUS UPDATE 2026-06-18:** UF-014 sudah diperbaiki sebelum WP-P7 Batch B.
+**STATUS UPDATE 2026-06-18:** UF-014 sudah diperbaiki sebelum WP-P7 Batch B dan di-commit (`b2ce22a5`).
 - Parameter dan computed parameter Volume sekarang ikut SSR bootstrap server (`views.py`, `views_api.py`) bersama `volume_list` dan `formula_state`.
 - Dirty flag persisten localStorage tidak lagi boleh memblok server saat load; hanya autosave timer aktif dalam sesi berjalan yang melindungi draft lokal nyata (`volume_pekerjaan.js`).
 - Regression coverage ditambahkan di `volume_false_dirty.test.js` dan `tests_wp_p3_volume.py`.
@@ -1917,7 +1917,7 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 ---
 
-#### WP-P7 — BATCH A SELESAI 2026-06-17 (uncommitted, backend)
+#### WP-P7 — BATCH A SELESAI 2026-06-17 (backend, committed)
 
 | Inc | Implementasi | File |
 |---|---|---|
@@ -1931,9 +1931,9 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **DEFER:** JDW-09 (full_clean per-sel di model `save()` `models.py:954`) = perubahan model-wide save, perf-only, risiko → ditunda (didokumentasikan; bukan correctness).
 
-**Test:** `tests_wp_p7_jadwal.py` 5 hijau (week_end_day fallback; reset+regenerate audit; actual_updated_at hilang; notes diabaikan). Regresi v2-access+b10+rekap-contract 22 hijau; `manage.py check` bersih. **Catatan test:** assign progress>0 butuh `VolumePekerjaan` (validasi missing_capacity); `Project.save()` paksa `week_end_day=week_start_day+6` (pakai pasangan konsisten di fixture).
+**Test:** `tests_wp_p7_jadwal.py` hijau (week_end_day fallback; reset+regenerate audit; actual_updated_at hilang; notes diabaikan; exception text tidak bocor). Regresi gabungan P3+P7 hijau; `manage.py check` bersih. **Commit:** `588ad26c`. **Catatan test:** assign progress>0 butuh `VolumePekerjaan` (validasi missing_capacity); `Project.save()` paksa `week_end_day=week_start_day+6` (pakai pasangan konsisten di fixture).
 
-#### WP-P7 — BATCH B (Vite source) EDIT SELESAI 2026-06-17 — ⚠️ BUTUH OWNER REBUILD `dist/` + UAT
+#### WP-P7 — BATCH B (Vite source + dist) SELESAI 2026-06-18 — siap UAT runtime
 
 | Inc | Implementasi (di `js/src/`) | Status |
 |---|---|---|
@@ -1944,6 +1944,6 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 | **P7e+P7h** B6d/R1 week_number server-authoritative | **DEFER** — audit klasifikasikan HARDENING (JS↔Python terbukti konsisten §14.5; bukan live bug); refactor `time-column-generator` untadvisable tanpa runtime test → tunda ke pass hardening. | ⏸️ defer |
 | **P7m** R4 | contract test builder minggu (backend, testable): `get_week_date_range` align week_end_day, minggu kontigu 7-hari, `calculate_week_number` round-trip. | ✅ test |
 
-**Verifikasi:** guard src `jadwal_batch_b.test.js` 4 + P7m backend 3 (dalam `tests_wp_p7_jadwal.py`) + full vitest 325 hijau + P7 backend 10 hijau. **⚠️ PENTING: edit ada di `js/src/` — bundle `dist/` MASIH perilaku LAMA sampai owner `npm run build`. Setelah rebuild → UAT manual (buka page jadwal: tak ada auto-regenerate senyap; load-error tampil; Kurva S tanpa bobot-rata).**
+**Verifikasi:** guard src `jadwal_batch_b.test.js` 4/4 PASS + P7 backend dalam `tests_wp_p7_jadwal.py` PASS. `npm run build` sudah dijalankan dan `dist/` sudah ikut commit `6f59215a`; tidak ada rebuild manual tersisa. **UAT manual berikutnya:** buka page Jadwal dan pastikan tidak ada auto-regenerate senyap saat load, load-error assignment tampil sebagai error-state, dan Kurva S tidak menampilkan fallback bobot volume/rata-rata saat bobot harga belum siap.
 
-**SISA WP-P7:** owner rebuild Vite + UAT Batch B; defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.
+**SISA WP-P7:** UAT runtime Batch B; defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.

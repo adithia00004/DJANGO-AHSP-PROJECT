@@ -402,6 +402,7 @@ Save quantity sendiri juga belum memakai revision token per pekerjaan.
 > Keputusan G-1 membatalkan locking/409; fix VP-06 dikerjakan sebagai **P3c** (reconciliation local↔server + clear false-dirty). **Fix itu TERNYATA SEPARUH:** ia menangani kasus `local==server` (bersihkan flag basi) tetapi **tidak** kasus `local kosong/inkompatibel + flag dirty basi`. Pada jalur itu `loadParamsFromServer` (`volume_pekerjaan.js:7051`, `shouldProtectLocalBaseState`) **menolak menerapkan parameter server saat LOAD** → tabel parameter kosong → formula `bp_N` jadi "token tidak valid". Quantity AMAN (di-bootstrap SSR); parameter TIDAK punya SSR bootstrap.
 > **Akar kontrak:** melanggar prinsip baru **A-11 (server-authoritative SAAT LOAD)** — cache klien tak boleh memblok data server saat load.
 > **Remediasi (belum dikerjakan, owner minta dokumentasi dulu):** (1) bootstrap parameter/computed dari SSR-server (seperti quantity); (2) P3c hanya lindungi edit lokal yang benar-benar berisi; lokal kosong/inkompatibel → terapkan server + bersihkan flag; (3) regression test localStorage "diracuni". **Pelajaran:** verifikasi fix false-dirty WAJIB menyertakan skenario localStorage diracuni, bukan hanya local==server.
+> **STATUS 2026-06-18:** remediasi sudah dikerjakan dan di-commit (`b2ce22a5`). Volume sekarang mem-bootstrap parameter/computed dari server; dirty flag localStorage lama tidak lagi memblok server saat load; regression test frontend+backend sudah ditambahkan.
 
 ### VP-07 - MEDIUM - Endpoint Write Belum Mempunyai Rate Limit dan Domain Payload Limit
 

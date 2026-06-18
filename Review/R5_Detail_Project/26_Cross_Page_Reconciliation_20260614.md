@@ -75,6 +75,9 @@ memblok atau menimpa data server-authoritative saat halaman load**. Berlaku untu
 - **Sweep 2026-06-17:** Volume parameter/formula = LIVE (perbaiki). Rekap Kebutuhan
   conversion `hiConv:` = A-6/RK-10 (sudah direncana WP-P8). UI prefs (collapse/lebar/
   theme/pane) = aman. `source_change_state` = flag awareness, risiko rendah.
+- **Status 2026-06-18:** Volume UF-014 sudah FIXED (`b2ce22a5`): parameter/computed
+  ikut SSR bootstrap server, dan dirty flag localStorage lama tidak lagi memblok server
+  saat load. A-11 tetap menjadi checklist untuk WP-P8/RK-10.
 - **Pelajaran proses:** fix konflik-sync/false-dirty (VP-06) WAJIB diuji dengan
   localStorage "diracuni" (flag dirty + var legacy/kosong), bukan hanya kasus local==server.
 
