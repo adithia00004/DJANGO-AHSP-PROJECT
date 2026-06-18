@@ -1978,6 +1978,14 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **Verifikasi inc-P8a:** `node --check rekap_kebutuhan.js` PASS; `npm run test:frontend -- detail_project/static/detail_project/js/tests/rekap_kebutuhan_p8.test.js` PASS (3/3); grep negatif untuk `Bulanan`, `Bulan Tertentu`, `hiConv:`, fallback localStorage conversion, dan `await loadTahapan()`.
 
+#### inc-P8b — Timeline aggregate menampilkan kebutuhan belum terjadwal (DONE 2026-06-18, uncommitted)
+
+**Masalah:** service kanonik sudah punya bucket `unscheduled`, tetapi endpoint aggregate hanya mengirim `unscheduled_total` dan membuang detail itemnya. UI timeline akhirnya hanya menampilkan kebutuhan terjadwal, sehingga user tidak bisa melihat item mana yang masuk “Belum Terjadwal” pada mode periode.
+
+**Fix:** `api_get_rekap_kebutuhan_timeline(...aggregate=1)` kini mengirim `unscheduled_items` dari bucket kanonik; `rekap_kebutuhan.js` merender bagian **Kebutuhan Belum Terjadwal** + subtotal. Client tetap display-only dan tidak menghitung ulang distribusi.
+
+**Verifikasi inc-P8b:** `tests_kebutuhan_timeline_b6b` PASS (11/11, termasuk kontrak `unscheduled_items`), `rekap_kebutuhan_p8.test.js` PASS (4/4), `py_compile` PASS.
+
 **Residual P8:**
 - B6f-2 endpoint `api_rekap_kebutuhan_weekly` masih ada sebagai route/test/API legacy tanpa frontend consumer; cleanup/deprecation perlu keputusan terpisah agar tidak mematahkan API eksternal tak terdokumentasi.
 - UAT visual Rekap Kebutuhan: cek label periode 4 minggu, export modal, mode Satuan Beli tanpa profil server, dan timeline range.

@@ -36,4 +36,11 @@ describe('WP-P8 — Rekap Kebutuhan cleanup guards', () => {
     expect(tpl).not.toContain('Bulanan');
     expect(tpl).not.toContain('Bulan Tertentu');
   });
+
+  test('timeline aggregate renders server-provided unscheduled items', () => {
+    expect(js).toContain('data.unscheduled_items || []');
+    expect(js).toContain('unscheduledItems = []');
+    expect(js).toContain('Kebutuhan Belum Terjadwal');
+    expect(js).toContain('Subtotal Belum Terjadwal');
+  });
 });

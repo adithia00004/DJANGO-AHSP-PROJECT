@@ -798,64 +798,73 @@ def api_get_rekap_kebutuhan_timeline(request, project_id):
         from decimal import Decimal
         from collections import defaultdict
         
-        aggregated = {}  # key: (kategori, kode, uraian, satuan) -> accumulated data
+        aggregated = {}  # key: (kategori, kode, uraian, satuan) -> accumulated scheduled data
+        unscheduled = {}  # key: (kategori, kode, uraian, satuan) -> accumulated unscheduled data
         unscheduled_total = Decimal('0')
+
+        def _accumulate(target, item):
+            key = (
+                item.get('kategori', ''),
+                item.get('kode', ''),
+                item.get('uraian', ''),
+                item.get('satuan', '')
+            )
+
+            qty = item.get('quantity_decimal', Decimal('0'))
+            if not isinstance(qty, Decimal):
+                qty = Decimal(str(qty or 0))
+
+            harga_satuan = item.get('harga_satuan_decimal', Decimal('0'))
+            if not isinstance(harga_satuan, Decimal):
+                harga_satuan = Decimal(str(harga_satuan or 0))
+
+            if key not in target:
+                target[key] = {
+                    'kategori': item.get('kategori', ''),
+                    'kode': item.get('kode', '-'),
+                    'uraian': item.get('uraian', '-'),
+                    'satuan': item.get('satuan', '-'),
+                    'quantity': Decimal('0'),
+                    'harga_satuan': harga_satuan,
+                    'harga_total': Decimal('0'),
+                }
+
+            target[key]['quantity'] += qty
+            target[key]['harga_total'] += qty * harga_satuan
         
         for period in periods:
             # Skip "Di luar jadwal" from aggregation - track separately
             if period.get('value') == 'unscheduled':
                 unscheduled_total = Decimal(str(period.get('total_cost_decimal', 0)))
+                for item in period.get('items', []):
+                    _accumulate(unscheduled, item)
                 continue
                 
             for item in period.get('items', []):
-                key = (
-                    item.get('kategori', ''),
-                    item.get('kode', ''),
-                    item.get('uraian', ''),
-                    item.get('satuan', '')
-                )
-                
-                qty = item.get('quantity_decimal', Decimal('0'))
-                if not isinstance(qty, Decimal):
-                    qty = Decimal(str(qty or 0))
-                    
-                harga_satuan = item.get('harga_satuan_decimal', Decimal('0'))
-                if not isinstance(harga_satuan, Decimal):
-                    harga_satuan = Decimal(str(harga_satuan or 0))
-                
-                if key not in aggregated:
-                    aggregated[key] = {
-                        'kategori': item.get('kategori', ''),
-                        'kode': item.get('kode', '-'),
-                        'uraian': item.get('uraian', '-'),
-                        'satuan': item.get('satuan', '-'),
-                        'quantity': Decimal('0'),
-                        'harga_satuan': harga_satuan,
-                        'harga_total': Decimal('0'),
-                    }
-                
-                aggregated[key]['quantity'] += qty
-                aggregated[key]['harga_total'] += qty * harga_satuan
+                _accumulate(aggregated, item)
         
         # Format aggregated items
-        aggregated_items = []
-        for key, info in aggregated.items():
-            aggregated_items.append({
-                'kategori': info['kategori'],
-                'kode': info['kode'],
-                'uraian': info['uraian'],
-                'satuan': info['satuan'],
-                'quantity': str(info['quantity'].quantize(Decimal('0.000001'))).rstrip('0').rstrip('.'),
-                'quantity_decimal': float(info['quantity']),
-                'harga_satuan': f"{info['harga_satuan']:,.0f}".replace(',', '.'),
-                'harga_satuan_decimal': float(info['harga_satuan']),
-                'harga_total': f"{info['harga_total']:,.0f}".replace(',', '.'),
-                'harga_total_decimal': float(info['harga_total']),
-            })
-        
-        # Sort by kategori, kode
-        aggregated_items.sort(key=lambda x: (x['kategori'], x['kode'] or '', x['uraian'] or ''))
-        
+        def _format_items(source):
+            formatted = []
+            for key, info in source.items():
+                formatted.append({
+                    'kategori': info['kategori'],
+                    'kode': info['kode'],
+                    'uraian': info['uraian'],
+                    'satuan': info['satuan'],
+                    'quantity': str(info['quantity'].quantize(Decimal('0.000001'))).rstrip('0').rstrip('.'),
+                    'quantity_decimal': float(info['quantity']),
+                    'harga_satuan': f"{info['harga_satuan']:,.0f}".replace(',', '.'),
+                    'harga_satuan_decimal': float(info['harga_satuan']),
+                    'harga_total': f"{info['harga_total']:,.0f}".replace(',', '.'),
+                    'harga_total_decimal': float(info['harga_total']),
+                })
+            formatted.sort(key=lambda x: (x['kategori'], x['kode'] or '', x['uraian'] or ''))
+            return formatted
+
+        aggregated_items = _format_items(aggregated)
+        unscheduled_items = _format_items(unscheduled)
+
         # Debug: calculate total from aggregated items
         aggregated_total = sum(info['harga_total'] for info in aggregated.values())
         
@@ -874,6 +883,7 @@ def api_get_rekap_kebutuhan_timeline(request, project_id):
             "aggregated_items": aggregated_items,
             "aggregated_total": float(aggregated_total),
             "unscheduled_total": float(unscheduled_total),  # Items without schedule
+            "unscheduled_items": unscheduled_items,
             "period_labels": scheduled_labels,
             "period_totals": period_totals,  # Debug: per-period breakdown
             "meta": data.get('meta', {}),

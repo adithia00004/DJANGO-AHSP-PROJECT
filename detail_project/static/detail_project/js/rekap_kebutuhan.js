@@ -1061,10 +1061,16 @@
   };
 
   // Phase 4: Render aggregated timeline as single table
-  const renderAggregatedTimeline = (items = [], periodLabels = [], periodTotals = [], unscheduledTotal = 0) => {
+  const renderAggregatedTimeline = (
+    items = [],
+    periodLabels = [],
+    periodTotals = [],
+    unscheduledTotal = 0,
+    unscheduledItems = []
+  ) => {
     if (!refs.timelineContent) return;
 
-    if (!items.length) {
+    if (!items.length && !unscheduledItems.length) {
       refs.timelineContent.innerHTML = '';
       setTimelineEmpty(true);
       return;
@@ -1079,6 +1085,49 @@
     // Calculate totals - round each value to eliminate decimals
     const totalQty = items.reduce((sum, item) => sum + Math.round(item.quantity_decimal || 0), 0);
     const totalCost = items.reduce((sum, item) => sum + Math.round(item.harga_total_decimal || 0), 0);
+    const totalWithUnscheduled = totalCost + Math.round(unscheduledTotal || 0);
+    const renderItemRows = (source) => source.map((item) => `
+      <tr>
+        <td><span class="badge bg-${getCategoryColor(item.kategori)}">${item.kategori}</span></td>
+        <td class="text-nowrap">${esc(item.kode || '-')}</td>
+        <td>${esc(item.uraian || '-')}</td>
+        <td class="text-nowrap">${esc(item.satuan || '-')}</td>
+        <td class="text-end font-monospace">${formatQtyValue(item.quantity_decimal || item.quantity)}</td>
+        <td class="text-end font-monospace">${formatCurrencyValue(item.harga_satuan_decimal || item.harga_satuan)}</td>
+        <td class="text-end font-monospace fw-semibold">${formatCurrencyValue(item.harga_total_decimal || item.harga_total)}</td>
+      </tr>
+    `).join('');
+    const unscheduledHtml = unscheduledItems.length ? `
+      <div class="alert alert-warning mt-3 mb-2">
+        <div class="fw-semibold">
+          <i class="bi bi-clock-history me-1"></i>
+          Kebutuhan Belum Terjadwal (${unscheduledItems.length} item)
+        </div>
+        <div class="small">Item di bawah ini belum dialokasikan penuh ke periode jadwal yang dipilih.</div>
+      </div>
+      <div class="table-responsive dp-scrollbar">
+        <table class="rk-table table table-sm table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:90px" class="text-nowrap">Kat</th>
+              <th style="width:160px" class="text-nowrap">Kode</th>
+              <th>Uraian</th>
+              <th style="width:90px">Satuan</th>
+              <th style="width:140px" class="text-end text-nowrap">Kuantitas</th>
+              <th style="width:140px" class="text-end text-nowrap">Harga Satuan</th>
+              <th style="width:160px" class="text-end text-nowrap">Total Harga</th>
+            </tr>
+          </thead>
+          <tbody>${renderItemRows(unscheduledItems)}</tbody>
+          <tfoot>
+            <tr class="table-warning fw-bold">
+              <td colspan="6" class="text-end">Subtotal Belum Terjadwal</td>
+              <td class="text-end font-monospace">${formatCurrencyValue(unscheduledTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    ` : '';
 
     const html = `
       <div class="rk-aggregated-timeline">
@@ -1096,26 +1145,23 @@
               </tr>
             </thead>
             <tbody>
-              ${items.map((item) => `
-                <tr>
-                  <td><span class="badge bg-${getCategoryColor(item.kategori)}">${item.kategori}</span></td>
-                  <td class="text-nowrap">${esc(item.kode || '-')}</td>
-                  <td>${esc(item.uraian || '-')}</td>
-                  <td class="text-nowrap">${esc(item.satuan || '-')}</td>
-                  <td class="text-end font-monospace">${formatQtyValue(item.quantity_decimal || item.quantity)}</td>
-                  <td class="text-end font-monospace">${formatCurrencyValue(item.harga_satuan_decimal || item.harga_satuan)}</td>
-                  <td class="text-end font-monospace fw-semibold">${formatCurrencyValue(item.harga_total_decimal || item.harga_total)}</td>
-                </tr>
-              `).join('')}
+              ${renderItemRows(items)}
             </tbody>
             <tfoot>
               <tr class="table-light fw-bold">
-                <td colspan="6" class="text-end">GRAND TOTAL (${items.length} item)</td>
+                <td colspan="6" class="text-end">Subtotal Terjadwal (${items.length} item)</td>
                 <td class="text-end font-monospace text-success">${formatCurrencyValue(totalCost)}</td>
               </tr>
+              ${unscheduledItems.length ? `
+                <tr class="table-warning fw-bold">
+                  <td colspan="6" class="text-end">Grand Total + Belum Terjadwal</td>
+                  <td class="text-end font-monospace">${formatCurrencyValue(totalWithUnscheduled)}</td>
+                </tr>
+              ` : ''}
             </tfoot>
           </table>
         </div>
+        ${unscheduledHtml}
       </div>
     `;
 
@@ -1648,7 +1694,13 @@
 
       // Phase 4: Check for aggregated response
       if (data.aggregated_items) {
-        renderAggregatedTimeline(data.aggregated_items, data.period_labels || [], data.period_totals || [], data.unscheduled_total || 0);
+        renderAggregatedTimeline(
+          data.aggregated_items,
+          data.period_labels || [],
+          data.period_totals || [],
+          data.unscheduled_total || 0,
+          data.unscheduled_items || []
+        );
       } else {
         // Fallback to old per-period rendering
         let periods = data.periods || [];

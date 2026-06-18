@@ -8,9 +8,11 @@ core parity invariant: Σ all periods + unscheduled = total per item.
 from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
+import json
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from dashboard.models import Project
 
@@ -29,6 +31,7 @@ from .services import (
     compute_kebutuhan_timeline,
     get_project_period_options,
 )
+from .views_api_tahapan import api_get_rekap_kebutuhan_timeline
 
 
 class KebutuhanTimelineCanonicalTests(TestCase):
@@ -40,6 +43,7 @@ class KebutuhanTimelineCanonicalTests(TestCase):
             project=self.project, klasifikasi=klas, name="S", ordering_index=1
         )
         self._order = 0
+        self.factory = RequestFactory()
 
     def _pekerjaan(self, kode):
         self._order += 1
@@ -129,6 +133,32 @@ class KebutuhanTimelineCanonicalTests(TestCase):
         by_kode = {i["kode"]: Decimal(str(i["quantity_decimal"])) for i in unsched["items"]}
         self.assertEqual(by_kode["BHN-2"], Decimal("6"))   # 12 × 0.5 remainder
         self.assertEqual(by_kode["BHN-3"], Decimal("7"))   # fully unscheduled
+
+    def test_aggregate_endpoint_exposes_unscheduled_items(self):
+        p2 = self._pekerjaan("P2")
+        self._item_detail(p2, "BHN-2", koef=3, harga=50, volume=4)   # base 12
+        self._weekly(p2, 1, "50.00", "2026-01-01", "2026-01-07")     # 50% scheduled
+        p3 = self._pekerjaan("P3")
+        self._item_detail(p3, "BHN-3", koef=1, harga=10, volume=7)   # base 7, unscheduled
+
+        request = self.factory.get(
+            reverse("detail_project:api_get_rekap_kebutuhan_timeline", args=[self.project.id]),
+            {"aggregate": "1", "full_range": "1"},
+        )
+        request.user = self.owner
+        response = api_get_rekap_kebutuhan_timeline(request, self.project.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))
+        self.assertTrue(payload["ok"])
+        scheduled_codes = {item["kode"] for item in payload["aggregated_items"]}
+        unscheduled_by_code = {
+            item["kode"]: Decimal(str(item["quantity_decimal"]))
+            for item in payload["unscheduled_items"]
+        }
+        self.assertIn("BHN-2", scheduled_codes)
+        self.assertEqual(unscheduled_by_code["BHN-2"], Decimal("6.0"))
+        self.assertEqual(unscheduled_by_code["BHN-3"], Decimal("7.0"))
 
     def test_four_week_aggregation_is_compat_alias_for_month_range(self):
         p = self._pekerjaan("P1")
