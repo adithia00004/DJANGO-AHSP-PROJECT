@@ -1206,3 +1206,61 @@ Urutan P0 (TA-01, TA-02, TA-03, TA-18) sudah tepat. Catatan effort:
 - **TA-01 adalah quick win** (tambah satu guard `koef < 0` + DB constraint) dengan dampak integritas tinggi — dahulukan.
 - **TA-02 sebagian besar adalah keputusan kebijakan**, bukan kerja teknis besar: backend + dialog Reload/Timpa sudah ada; tinggal meng-uncomment pengiriman `client_updated_at` (`:1739`) dan menyesuaikan regression test yang saat ini mengunci last-save-wins. Murah, tapi perlu keputusan owner karena saat ini "single-user policy" tampaknya disengaja.
 - **TA-03 dan TA-18** lebih berat (cascade + dependency index + kontrak snapshot/live-reference) dan terkait keputusan D-05/D-06 — jadwalkan sebagai unit kerja tersendiri di fase perbaikan.
+
+---
+
+## 15. Addendum Implementasi R5 (18 Juni 2026)
+
+Bagian ini mencatat perubahan implementasi yang lahir dari UAT setelah WP-P2/B7/B8, khususnya alur CUSTOM bundle dan readiness `expansion_not_ready`.
+
+### 15.1 CUSTOM: Biaya Lain dan Pekerjaan Gabungan Dipisah Visual
+
+**Keputusan implementasi:** pemisahan tipe `LAIN` dilakukan pada UI Template AHSP **hanya untuk mode CUSTOM**.
+
+- Segmen **Biaya Lain** menampung `LAIN` tanpa referensi (`OTHER_DIRECT`).
+- Segmen **Pekerjaan Gabungan** menampung `LAIN` dengan `ref_ahsp` atau `ref_pekerjaan` (`WORK_BUNDLE`).
+- Tombol pada Pekerjaan Gabungan:
+  - `Gabungan AHSP`;
+  - `Gabungan Project`.
+- Untuk pekerjaan `REF` dan `MOD`, tampilan lama `Lain-lain` tetap dipertahankan agar workflow existing tidak berubah.
+- Backend tetap memakai kontrak data lama: `kategori=LAIN` + ada/tidaknya `ref_ahsp/ref_pekerjaan`. Tidak ada migrasi schema untuk pemisahan visual ini.
+
+**Guard anti-bug baru:**
+
+- baris Pekerjaan Gabungan yang sudah punya referensi tidak boleh diam-diam berubah menjadi Biaya Lain melalui edit kode manual;
+- perubahan referensi harus lewat picker;
+- payload save tetap mengirim `kategori=LAIN`, sehingga kompatibel dengan backend/export/import lama.
+
+**Verifikasi:** `template_ahsp_lain.test.js` PASS, `node --check template_ahsp.js` PASS, `manage.py check` PASS.
+
+### 15.2 Missing Expansion Repair Tanpa Edit Palsu
+
+**Masalah UAT:** alert seperti `4 sumber AHSP belum sinkron dengan hasil ekspansi` dapat muncul pada pekerjaan CUSTOM yang raw bundle-nya valid, tetapi `DetailAHSPExpanded` belum pernah terbentuk. Contoh terverifikasi: project `195`, pekerjaan `CUST-0001` pada `Green House 2` dan `Green House 3`.
+
+**Akar:** tombol Simpan Template AHSP hanya aktif setelah ada perubahan (`dirty=true`), sehingga menyuruh user "save ulang tanpa perubahan" bukan workflow yang valid. Data raw sudah benar, tetapi derived storage belum dibangun.
+
+**Keputusan implementasi:** tambahkan aksi backend eksplisit, bukan mendorong user membuat perubahan palsu.
+
+- Endpoint baru: `POST /api/project/<id>/rebuild-expansion/`.
+- Tombol UI pada banner Template AHSP: **Bangun ulang ekspansi**.
+- Tombol muncul saat readiness melaporkan `expansion_not_ready`.
+- Endpoint hanya memproses pekerjaan yang dilaporkan readiness, bukan seluruh project.
+- Raw input dan koefisien user tidak diubah.
+- Derived storage dibangun ulang via `_populate_expanded_from_raw`.
+- Dependent project-bundle di-cascade seperlunya.
+- Perubahan dicatat di audit writer dengan ringkasan `Bangun ulang ekspansi AHSP`.
+- Cache rekap di-invalidate setelah commit.
+
+**Batasan beban sistem:** proses bersifat targeted berdasarkan readiness. Untuk kasus project 195, rebuild hanya menyentuh pekerjaan bermasalah, bukan semua pekerjaan dalam project. Batas bundle D-10 (`MAX_BUNDLE_LEVELS`, `MAX_EXPANDED_COMPONENTS`) tetap berlaku.
+
+**Verifikasi:** `RebuildMissingExpansionEndpointTests` PASS, full `tests_wp_b7_reference_sync` PASS, `template_ahsp_lain.test.js` PASS, `node --check template_ahsp.js` PASS, `manage.py check` PASS.
+
+### 15.3 Status Risiko Setelah Addendum
+
+- Tidak ditemukan kebutuhan migrasi DB baru.
+- Tidak ada perubahan formula/perhitungan raw; perubahan hanya pada visual segmentation dan rebuild derived storage.
+- Risiko user salah memilih `Biaya Lain` vs `Pekerjaan Gabungan` berkurang karena segmen dipisah.
+- Risiko alert tidak actionable berkurang karena banner readiness sudah menampilkan detail pekerjaan/baris/issue/aksi.
+- Risiko pekerjaan legacy/copy/import tetap stale berkurang karena ada tombol rebuild targeted.
+
+**Catatan UAT:** bila alert masih muncul setelah `Bangun ulang ekspansi`, itu berarti ada issue lain yang tetap valid, misalnya master AHSP kosong, circular/depth limit, atau ekspansi gagal. Detail banner harus digunakan sebagai sumber diagnosis berikutnya.
