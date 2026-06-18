@@ -7396,6 +7396,11 @@ def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonRespons
 
 @require_GET
 @login_required
+@api_deprecated(
+    sunset_date="2026-09-30",
+    migration_endpoint="api_get_rekap_kebutuhan_timeline",
+    reason="Use the Rekap Kebutuhan timeline endpoint backed by canonical weekly distribution; this V2 weekly endpoint has no active frontend consumer."
+)
 def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonResponse:
     """
     API untuk Rekap Kebutuhan per minggu - resource requirements breakdown by period.

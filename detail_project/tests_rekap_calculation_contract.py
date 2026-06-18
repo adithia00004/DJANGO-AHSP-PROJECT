@@ -423,6 +423,12 @@ class RekapCalculationContractTests(TestCase):
                 200,
                 f"{view.__name__}: {response.content.decode('utf-8')}",
             )
+            if view is api_rekap_kebutuhan_weekly:
+                self.assertEqual(response["X-API-Deprecated"], "true")
+                self.assertIn(
+                    "canonical weekly distribution",
+                    response["X-API-Deprecation-Reason"],
+                )
 
     def test_kurva_cache_refreshes_after_price_bulk_update(self):
         request = RequestFactory().get("/api/kurva-s-data/")

@@ -1986,6 +1986,14 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **Verifikasi inc-P8b:** `tests_kebutuhan_timeline_b6b` PASS (11/11, termasuk kontrak `unscheduled_items`), `rekap_kebutuhan_p8.test.js` PASS (4/4), `py_compile` PASS.
 
+#### inc-P8c — B6f-2 endpoint weekly V2 ditandai deprecated (DONE 2026-06-18, uncommitted)
+
+**Keputusan:** jangan rewrite `api_rekap_kebutuhan_weekly` karena tidak ada consumer frontend aktif dan payload-nya berbeda; konvergensi bisa mengubah angka/perilaku untuk API eksternal tak terdokumentasi. Jalur aman = beri `api_deprecated` header + monitoring, arahkan ke endpoint timeline kanonik.
+
+**Fix:** `api_rekap_kebutuhan_weekly` tetap merespons seperti sebelumnya, tetapi sekarang mengirim header `X-API-Deprecated=true`, sunset `2026-09-30`, dan migration endpoint `api_get_rekap_kebutuhan_timeline`.
+
+**Verifikasi inc-P8c:** `tests_rekap_calculation_contract` mengunci owner-call tetap 200 dan header deprecation aktif.
+
 **Residual P8:**
-- B6f-2 endpoint `api_rekap_kebutuhan_weekly` masih ada sebagai route/test/API legacy tanpa frontend consumer; cleanup/deprecation perlu keputusan terpisah agar tidak mematahkan API eksternal tak terdokumentasi.
+- B6f-2 endpoint `api_rekap_kebutuhan_weekly` masih ada sebagai route/test/API legacy tanpa frontend consumer, tetapi sudah deprecated; penghapusan fisik masuk Fase 3 cleanup setelah window monitoring.
 - UAT visual Rekap Kebutuhan: cek label periode 4 minggu, export modal, mode Satuan Beli tanpa profil server, dan timeline range.
