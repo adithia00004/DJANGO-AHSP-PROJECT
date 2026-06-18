@@ -113,6 +113,10 @@ def api_assign_pekerjaan_weekly(request, project_id):
         except (TypeError, ValueError):
             week_end_day = 6
 
+        # JDW-02: batas minggu fallback HARUS mengikuti konfigurasi project (SSOT),
+        # bukan hardcode Minggu(6). Pakai project.week_end_day; bila null pakai payload.
+        effective_week_end_day = project.week_end_day if project.week_end_day is not None else week_end_day
+
         if not isinstance(assignments, list):
             return JsonResponse({
                 'ok': False,
@@ -129,7 +133,9 @@ def api_assign_pekerjaan_weekly(request, project_id):
         for item in assignments:
             pekerjaan_id = item.get('pekerjaan_id')
             week_number = item.get('week_number')
-            notes = item.get('notes', '')
+            # JDW-06: fitur catatan DIHAPUS (keputusan 14-Juni). Abaikan input notes dari
+            # client; save baru menulis string kosong (kolom DB di-drop di Fase 3).
+            notes = ''
 
             proportion = item.get(payload_field)
             if proportion is None:
@@ -218,14 +224,14 @@ def api_assign_pekerjaan_weekly(request, project_id):
                     week_start, week_end = get_week_date_range(
                         week_number,
                         project.tanggal_mulai,
-                        week_end_day=6  # Sunday
+                        week_end_day=effective_week_end_day  # JDW-02: konfigurasi project
                     )
             except Exception:
                 # Fallback: calculate from project start
                 week_start, week_end = get_week_date_range(
                     week_number,
                     project.tanggal_mulai,
-                    week_end_day=6  # Sunday
+                    week_end_day=effective_week_end_day  # JDW-02: konfigurasi project
                 )
 
             # Create or update weekly progress (CANONICAL STORAGE)
@@ -384,7 +390,7 @@ def api_assign_pekerjaan_weekly(request, project_id):
         # Success: keep PekerjaanTahapan (view layer) in sync so legacy reads stay accurate.
         # Note: mode here refers to time scale mode ('weekly'), not progress mode ('planned'/'actual')
         try:
-            synced_count = sync_weekly_to_tahapan(project.id, mode='weekly', week_end_day=week_end_day)
+            synced_count = sync_weekly_to_tahapan(project.id, mode='weekly', week_end_day=effective_week_end_day)
         except Exception:
             # WP-B3 / JDW-03: sync is part of the save contract. On failure roll
             # back the weekly writes too (no canonical/projection drift) and do
@@ -426,10 +432,10 @@ def api_assign_pekerjaan_weekly(request, project_id):
     except Http404:
         return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+    except Exception:
+        # WP-P7 Batch A hardening: do not leak internal exception text to the client.
+        logger.exception("[ASSIGN_WEEKLY] gagal menyimpan progress mingguan project %s", project_id)
+        return JsonResponse({'ok': False, 'error': 'Gagal menyimpan progress mingguan. Silakan coba lagi.'}, status=500)
 
 
 @login_required
@@ -747,7 +753,6 @@ def api_get_project_assignments_v2(request, project_id):
                     "week_start_date": "2026-01-01",
                     "week_end_date": "2026-01-07",
                     "updated_at": "2026-01-08T12:00:00Z",
-                    "actual_updated_at": "2026-01-10T09:30:00Z",  # NEW: When actual was last updated
                     "notes": ""
                 },
                 ...
@@ -783,7 +788,6 @@ def api_get_project_assignments_v2(request, project_id):
             'week_start_date',
             'week_end_date',
             'updated_at',
-            'actual_updated_at',
             'notes',
             'pekerjaan__budgeted_cost',
         )
@@ -805,7 +809,8 @@ def api_get_project_assignments_v2(request, project_id):
             'week_start_date': row.get('week_start_date').isoformat() if row.get('week_start_date') else None,
             'week_end_date': row.get('week_end_date').isoformat() if row.get('week_end_date') else None,
             'updated_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
-            'actual_updated_at': row.get('actual_updated_at').isoformat() if row.get('actual_updated_at') else None,
+            # JDW-07: `actual_updated_at` (timestamp realisasi) dihapus dari API — fitur
+            # timestamp tidak diperlukan (keputusan 14-Juni) & field tak pernah ditulis.
             'notes': row.get('notes'),
         })
 
@@ -897,9 +902,26 @@ def api_regenerate_tahapan_v2(request, project_id):
                 'error': 'Invalid mode. Must be: daily, weekly, monthly, or custom'
             }, status=400)
 
+        # WP-P7b (audit-gap): catat perubahan konfigurasi batas minggu (memengaruhi
+        # interpretasi seluruh minggu) — project-level, hanya bila benar berubah.
+        _old_wsd, _old_wed = project.week_start_day, project.week_end_day
         project.week_start_day = week_start_day
         project.week_end_day = week_end_day
         project.save(update_fields=['week_start_day', 'week_end_day', 'updated_at'])
+        if (_old_wsd, _old_wed) != (week_start_day, week_end_day):
+            try:
+                from detail_project.models import DetailAHSPAudit
+                DetailAHSPAudit.objects.create(
+                    project=project, pekerjaan=None, action=DetailAHSPAudit.ACTION_UPDATE,
+                    old_data={"week_start_day": _old_wsd, "week_end_day": _old_wed},
+                    new_data={"week_start_day": week_start_day, "week_end_day": week_end_day},
+                    triggered_by="user",
+                    user=request.user if getattr(request.user, "id", None) else None,
+                    change_summary=f"Regenerate struktur waktu (mode={mode}); batas minggu "
+                                   f"{_old_wsd}/{_old_wed} → {week_start_day}/{week_end_day}",
+                )
+            except Exception:
+                logger.exception("[PROGRESS_AUDIT] gagal mencatat regenerate project %s", project.id)
 
         # Validate project timeline
         if not project.tanggal_mulai or not project.tanggal_selesai:
@@ -972,10 +994,10 @@ def api_regenerate_tahapan_v2(request, project_id):
 
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+    except Exception:
+        # WP-P7 Batch A hardening: do not leak internal exception text to the client.
+        logger.exception("[REGENERATE_TAHAPAN] gagal regenerate project %s", project_id)
+        return JsonResponse({'ok': False, 'error': 'Gagal memperbarui struktur waktu. Silakan coba lagi.'}, status=500)
 
 
 @login_required
@@ -1043,6 +1065,25 @@ def api_reset_progress(request, project_id):
 
         mode_label = 'Planned' if progress_mode == 'planned' else 'Actual'
 
+        # WP-P7b (audit-gap): catat reset progress berskala project (timestamp + ringkas),
+        # konsisten pola project-level RR-10 (DetailAHSPAudit pekerjaan=None). Hanya saat
+        # ada record yang berubah; fail-safe (audit tak boleh menggagalkan reset).
+        if updated_count:
+            try:
+                from detail_project.models import DetailAHSPAudit
+                DetailAHSPAudit.objects.create(
+                    project=project,
+                    pekerjaan=None,
+                    action=DetailAHSPAudit.ACTION_UPDATE,
+                    old_data=None,
+                    new_data={"reset_mode": progress_mode, "records": updated_count},
+                    triggered_by="user",
+                    user=request.user if getattr(request.user, "id", None) else None,
+                    change_summary=f"Reset progress {mode_label} → 0 ({updated_count} pekerjaan)",
+                )
+            except Exception:
+                logger.exception("[PROGRESS_AUDIT] gagal mencatat reset progress project %s", project.id)
+
         return JsonResponse({
             'ok': True,
             'updated_count': updated_count,
@@ -1053,7 +1094,7 @@ def api_reset_progress(request, project_id):
     except Http404:
         return JsonResponse({'ok': False, 'error': 'Project not found'}, status=404)
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+    except Exception:
+        # JDW (security): jangan bocorkan detail exception ke client.
+        logger.exception("[RESET_PROGRESS] gagal reset progress project %s", project_id)
+        return JsonResponse({'ok': False, 'error': 'Gagal mereset progress. Silakan coba lagi.'}, status=500)

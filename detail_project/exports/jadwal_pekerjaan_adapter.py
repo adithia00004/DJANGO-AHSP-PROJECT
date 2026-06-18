@@ -1606,7 +1606,16 @@ class JadwalPekerjaanExportAdapter:
                     total = Decimal(str(row.get('total', 0)))
                     cache[int(pek_id)] = total
         except Exception:
-            pass  # Return empty cache on error
+            # KS-05: JANGAN telan error menjadi cache kosong — itu membuat SEMUA bobot
+            # Kurva S = 0 secara senyap (dokumen menyesatkan). Surface: log + re-raise
+            # agar export gagal dengan jelas (dibungkus export_error_response) ketimbang
+            # menghasilkan kurva yang salah tanpa peringatan.
+            import logging
+            logging.getLogger(__name__).exception(
+                "[KURVA_S] gagal membangun cache harga rekap (project %s)",
+                getattr(self.project, "id", None),
+            )
+            raise
         return cache
 
     def _get_bobot_maps(
