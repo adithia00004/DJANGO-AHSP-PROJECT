@@ -344,11 +344,17 @@ def _compute(project):
                 and g["last"] < row["updated_at"]
             )
 
-        if actual == 0:
+        # Raw-only direct rows are a valid calculation path: compute_rekap_for_project
+        # intentionally falls back to DetailAHSPProject when a pekerjaan has no
+        # expanded rows at all. Flag missing expansion only when it can change the
+        # result: bundles must be expanded, or a partially-expanded pekerjaan would
+        # drop this raw row because the calc path reads expanded rows for that job.
+        job_has_any_expansion = row["pekerjaan_id"] in exp_count_by_pkj
+        if actual == 0 and (is_bundle or job_has_any_expansion):
             expansion_not_ready.append(_entry("missing_expansion"))
         elif is_stale:
             expansion_not_ready.append(_entry("stale_expansion"))
-        elif expected_exact and actual != expected:
+        elif actual > 0 and expected_exact and actual != expected:
             issue = "incomplete_expansion" if actual < expected else "excess_expansion"
             expansion_not_ready.append(_entry(issue))
 

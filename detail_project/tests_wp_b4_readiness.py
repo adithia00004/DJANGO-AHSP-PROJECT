@@ -271,6 +271,8 @@ class ReadinessContractTests(TestCase):
         r = compute_project_readiness(self.project)
 
         self.assertIn("BHN-NULL", {e["kode"] for e in r["missing_price"]})
+        self.assertTrue(r["expanded_ready"])
+        self.assertEqual(r["expansion_not_ready"], [])
 
     # ----- expansion: per-source_detail (partial & stale) ----------------
     def test_partial_expansion_flags_unexpanded_raw_row(self):
@@ -383,10 +385,11 @@ class ReadinessContractTests(TestCase):
         self.assertEqual(r["expansion_not_ready"], [])
 
     def test_expansion_entry_carries_expected_actual(self):
-        p = self._pekerjaan("P-RAW")
-        item = self._item("BHN-1", Decimal("100.00"))
-        src = self._detail(p, item, expand=False)  # direct row → expected 1
-
+        p = self._pekerjaan("P-PARTIAL-ENTRY")
+        item_a = self._item("BHN-A-ENTRY", Decimal("100.00"))
+        item_b = self._item("BHN-B-ENTRY", Decimal("100.00"))
+        self._detail(p, item_a, expand=True)
+        src = self._detail(p, item_b, expand=False)  # partial job -> expected 1
         r = compute_project_readiness(self.project)
         entry = next(
             e for e in r["expansion_not_ready"] if e["source_detail_id"] == src.id

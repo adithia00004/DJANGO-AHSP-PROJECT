@@ -211,6 +211,22 @@ Medium/Low akan diberi salah satu disposisi:
 - Verifikasi: frontend guard 4/4 PASS, backend WP-P3 11/11 PASS, `node --check`, `manage.py check`, `makemigrations --check`, dan `git diff --check` bersih.
 - Follow-up terpisah: backfill `DetailAHSPExpanded` untuk project legacy tetap diperlukan sebagai hygiene readiness, bukan penyebab parameter Volume kosong.
 
+### UF-015 - Readiness expansion false-positive pada raw-fallback AHSP valid - FIXED 2026-06-18
+
+**Ditemukan:** saat owner meninjau alert seperti "255 sumber AHSP belum sinkron dengan hasil ekspansi (periksa dan simpan ulang di Template AHSP)" yang kadang muncul pada data yang secara hitungan sudah valid.
+
+**Akar masalah:** `compute_project_readiness()` membaca absennya `DetailAHSPExpanded` per baris `DetailAHSPProject` sebagai `missing_expansion` tanpa membedakan jalur kalkulasi Rekap. Padahal `compute_rekap_for_project()` memang punya jalur valid: bila sebuah pekerjaan sama sekali belum punya expanded rows, Rekap memakai raw fallback dari `DetailAHSPProject`. Untuk pekerjaan direct/raw-only tanpa bundle, kondisi ini tidak membuat angka salah dan tidak pantas memaksa user "simpan ulang".
+
+**Aturan koreksi:**
+- direct raw-only row pada pekerjaan yang belum punya expanded rows = valid raw fallback, **tidak** memunculkan alert sinkronisasi;
+- bundle (`kategori=LAIN` dengan `ref_pekerjaan`/`ref_ahsp`) tetap wajib diekspansi, sehingga expanded kosong tetap alert;
+- pekerjaan yang sudah punya sebagian expanded rows tetap alert bila ada raw source lain yang belum ikut expanded, karena jalur kalkulasi akan membaca expanded untuk pekerjaan itu dan raw yang tertinggal bisa drop;
+- stale/incomplete/excess expansion yang benar tetap dilaporkan.
+
+**Fix:** readiness kini hanya menandai `missing_expansion` bila row adalah bundle atau pekerjaan sudah memiliki expanded rows parsial. Perbandingan `expected/actual` juga hanya berlaku saat ada actual expanded row, sehingga direct raw-fallback valid tidak lagi dianggap incomplete.
+
+**Verifikasi:** `tests_wp_b4_readiness` PASS (33/33), regresi `tests_rekap_calculation_contract` + `tests_kebutuhan_timeline_b6b` PASS (27/27), `manage.py check` PASS. Follow-up backfill legacy expanded tetap boleh dilakukan sebagai hygiene, tetapi alert tidak lagi menyasar raw-fallback valid.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.
