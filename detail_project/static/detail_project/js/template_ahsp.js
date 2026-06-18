@@ -569,6 +569,22 @@
   function formatIndex() {
     $$('.ta-row').forEach((tr, i) => $('.row-index', tr).textContent = (i + 1));
   }
+  function visualSegToKategori(seg) {
+    return seg === 'LAIN_BUNDLE' ? 'LAIN' : seg;
+  }
+  function allVisualSegs() {
+    return ['TK', 'BHN', 'ALT', 'LAIN', 'LAIN_BUNDLE'];
+  }
+  function isBundleRowData(row) {
+    return !!(row && (row.ref_pekerjaan_id || row.ref_ahsp_id || row.reference_type === 'AHSP' || row.reference_type === 'PROJECT_JOB'));
+  }
+  function syncCustomSegmentVisibility() {
+    const split = activeSource === 'custom';
+    const bundleSection = $('#seg-LAIN_BUNDLE-section');
+    if (bundleSection) bundleSection.classList.toggle('d-none', !split);
+    const lainTitle = $('#ta-lain-title');
+    if (lainTitle) lainTitle.textContent = split ? 'Biaya Lain' : 'Lain-lain';
+  }
   function clearTable(seg) {
     const body = $(`#seg-${seg}-body`);
     body.innerHTML = `<tr class="ta-empty"><td colspan="5">Belum ada item.</td></tr>`;
@@ -602,19 +618,36 @@
       tr.dataset.koefFormulaMessage = '';
       syncKoefVisualStateFromDataset(tr);
 
-      // Hidden ref_ahsp_id dari GET (kalau ada)
+      // Hidden refs dari GET (kalau ada)
       const hid = $('input[data-field="ref_ahsp_id"]', tr);
       if (hid) hid.value = (r.ref_ahsp_id != null ? String(r.ref_ahsp_id) : '');
-      // Tandai bundle di LAIN
-      if (seg === 'LAIN') {
-        const isBundle = !!(hid && hid.value);
+      const refKindInput = $('input[data-field="ref_kind"]', tr);
+      const refIdInput = $('input[data-field="ref_id"]', tr);
+      if (refKindInput && refIdInput) {
+        if (r.ref_pekerjaan_id) {
+          refKindInput.value = 'job';
+          refIdInput.value = String(r.ref_pekerjaan_id);
+        } else if (r.ref_ahsp_id) {
+          refKindInput.value = 'ahsp';
+          refIdInput.value = String(r.ref_ahsp_id);
+        }
+      }
+      // Tandai bundle di LAIN / LAIN_BUNDLE.
+      if (visualSegToKategori(seg) === 'LAIN') {
+        const isBundle = isBundleRowData(r);
+        tr.dataset.refMode = r.ref_pekerjaan_id ? 'job' : (r.ref_ahsp_id ? 'ahsp' : 'direct');
         const kodeTd = $('input[data-field="kode"]', tr).closest('td');
         if (isBundle && kodeTd && !kodeTd.querySelector('.tag-bundle')) {
           kodeTd.insertAdjacentHTML('beforeend', ' <span class="tag-bundle">Bundle</span>');
         }
+        if (isBundle) {
+          const kodeInput = $('input[data-field="kode"]', tr);
+          if (kodeInput) kodeInput.dataset.bundleKode = kodeInput.value || '';
+        }
       }
 
-      tr.dataset.kategori = r.kategori;
+      tr.dataset.kategori = visualSegToKategori(seg);
+      tr.dataset.visualSeg = seg;
       // tambahkan checkbox seleksi di kolom nomor
       try { ensureSelectAffordance(tr); } catch (_) { }
       body.appendChild(tr);
@@ -623,7 +656,7 @@
     formatIndex();
 
     // Autocomplete khusus LAIN + sumber CUSTOM
-    if (seg === 'LAIN' && activeSource === 'custom') {
+    if ((seg === 'LAIN' || seg === 'LAIN_BUNDLE') && activeSource === 'custom') {
       enhanceLAINAutocomplete(body);
     }
   }
@@ -651,14 +684,15 @@
   }
 
   function gatherRows() {
-    const segs = ['TK', 'BHN', 'ALT', 'LAIN'];
+    const segs = allVisualSegs();
     const out = [];
     segs.forEach(seg => {
       $(`#seg-${seg}-body`)?.querySelectorAll('tr.ta-row')?.forEach(tr => {
+        const kategori = visualSegToKategori(seg);
         const formulaRaw = (tr.dataset.koefFormulaRaw || '').trim();
         const isFx = tr.dataset.koefIsFx === '1' && !!formulaRaw;
         const base = {
-          kategori: seg,
+          kategori,
           uraian: $('.cell-wrap', tr).textContent.trim(),
           kode: $('input[data-field="kode"]', tr).value.trim(),
           satuan: $('input[data-field="satuan"]', tr).value.trim(),
@@ -666,7 +700,7 @@
           koef_formula_raw: isFx ? formulaRaw : '',
           koef_is_fx: isFx,
         };
-        if (seg === 'LAIN' && activeSource === 'custom') {
+        if (kategori === 'LAIN' && activeSource === 'custom') {
           const rk = $('input[data-field="ref_kind"]', tr).value.trim();
           const rid = $('input[data-field="ref_id"]', tr).value.trim();
           if (rk && rid) { base.ref_kind = rk; base.ref_id = rid; }
@@ -748,6 +782,7 @@
 
   // Mode editor berdasarkan sumber row (lock/unlock)
   function setEditorModeBySource() {
+    syncCustomSegmentVisibility();
     const canSave = (activeSource === 'ref_modified' || activeSource === 'custom') && !readOnly;
     const canReset = (activeSource === 'ref_modified') && !readOnly;
 
@@ -943,6 +978,7 @@
         // AHSP bundles are now supported! Backend will expand them recursively
 
         input.value = kode;
+        input.dataset.bundleKode = kode || '';
         $('.cell-wrap', tr).textContent = nama;
         $('input[data-field="satuan"]', tr).value = sat;
         $('input[data-field="ref_kind"]', tr).value = kind;
@@ -964,6 +1000,17 @@
 
       // Edit manual kode â†’ kosongkan ref id
       input.addEventListener('input', () => {
+        const isBundleVisual = tr.dataset.visualSeg === 'LAIN_BUNDLE';
+        const hasRef = !!(
+          $('input[data-field="ref_kind"]', tr).value.trim()
+          || $('input[data-field="ref_id"]', tr).value.trim()
+          || $('input[data-field="ref_ahsp_id"]', tr).value.trim()
+        );
+        if (isBundleVisual && hasRef) {
+          input.value = input.dataset.bundleKode || input.value;
+          toast('Ubah referensi Pekerjaan Gabungan melalui picker, bukan edit kode manual.', 'warning');
+          return;
+        }
         $('input[data-field="ref_ahsp_id"]', tr).value = '';
         $('input[data-field="ref_kind"]', tr).value = '';
         $('input[data-field="ref_id"]', tr).value = '';
@@ -1138,17 +1185,22 @@
   }
 
   function paint(items) {
-    const by = { TK: [], BHN: [], ALT: [], LAIN: [] };
+    syncCustomSegmentVisibility();
+    const by = { TK: [], BHN: [], ALT: [], LAIN: [], LAIN_BUNDLE: [] };
     (items || []).forEach(r => {
-      const seg = by[r.kategori] ? r.kategori : 'LAIN';
+      let seg = by[r.kategori] ? r.kategori : 'LAIN';
+      if (activeSource === 'custom' && r.kategori === 'LAIN' && isBundleRowData(r)) {
+        seg = 'LAIN_BUNDLE';
+      }
       by[seg].push(r);
     });
-    ['TK', 'BHN', 'ALT', 'LAIN'].forEach(seg => renderRows(seg, by[seg]));
+    allVisualSegs().forEach(seg => renderRows(seg, by[seg]));
     updateStats();
   }
 
   function showLoadingPlaceholder() {
-    ['TK', 'BHN', 'ALT', 'LAIN'].forEach((seg) => {
+    syncCustomSegmentVisibility();
+    allVisualSegs().forEach((seg) => {
       const body = $(`#seg-${seg}-body`);
       if (!body) return;
       body.innerHTML = `<tr class="ta-empty"><td colspan="5">Memuat data...</td></tr>`;
@@ -1683,7 +1735,8 @@
       const body = $(`#seg-${seg}-body`);
       const tpl = $('#ta-row-template');
       const tr = tpl.content.firstElementChild.cloneNode(true);
-      tr.dataset.kategori = seg;
+      tr.dataset.kategori = visualSegToKategori(seg);
+      tr.dataset.visualSeg = seg;
       if ($('.ta-empty', body)) body.innerHTML = '';
       try { ensureSelectAffordance(tr); } catch (_) { }
       // FIX: Set default koefisien = 1 untuk row baru (prevent validation error)
@@ -1712,10 +1765,12 @@
       toast('Pekerjaan Gabungan hanya tersedia untuk pekerjaan custom.', 'warning');
       return;
     }
-    const body = $('#seg-LAIN-body');
+    const visualSeg = mode === 'direct' ? 'LAIN' : 'LAIN_BUNDLE';
+    const body = $(`#seg-${visualSeg}-body`);
     const tpl = $('#ta-row-template');
     const tr = tpl.content.firstElementChild.cloneNode(true);
     tr.dataset.kategori = 'LAIN';
+    tr.dataset.visualSeg = visualSeg;
     tr.dataset.refMode = mode; // 'direct' | 'ahsp' | 'job'
     if ($('.ta-empty', body)) body.innerHTML = '';
     try { ensureSelectAffordance(tr); } catch (_) { }
@@ -2040,7 +2095,7 @@
     const cb = e.target.closest('.ta-row-check');
     if (!cb) return;
     const tr = cb.closest('tr.ta-row');
-    const seg = tr?.dataset?.kategori;
+    const seg = tr?.dataset?.visualSeg || tr?.dataset?.kategori;
     if (seg) updateDelState(seg);
   });
 

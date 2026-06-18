@@ -18,11 +18,26 @@ describe('WP-B8d — LAIN three-action add', () => {
   test('addLainRow handles direct / ahsp / job modes', () => {
     expect(js).toContain('function addLainRow(mode)');
     expect(js).toContain("tr.dataset.refMode = mode");
+    expect(js).toContain("tr.dataset.visualSeg = visualSeg");
+    expect(js).toContain("const visualSeg = mode === 'direct' ? 'LAIN' : 'LAIN_BUNDLE'");
     // direct rows never get a reference picker
     expect(js).toContain("tr.dataset.refMode === 'direct'");
     // bundle picker scoped per mode
     expect(js).toContain("refMode !== 'ahsp'");
     expect(js).toContain("refMode !== 'job'");
+  });
+
+  test('custom mode visually splits OTHER_DIRECT and WORK_BUNDLE while saving both as LAIN', () => {
+    expect(js).toContain("function visualSegToKategori(seg)");
+    expect(js).toContain("seg === 'LAIN_BUNDLE' ? 'LAIN' : seg");
+    expect(js).toContain("activeSource === 'custom' && r.kategori === 'LAIN' && isBundleRowData(r)");
+    expect(js).toContain("const kategori = visualSegToKategori(seg)");
+  });
+
+  test('bundle rows cannot silently become Biaya Lain via manual kode edit', () => {
+    expect(js).toContain("tr.dataset.visualSeg === 'LAIN_BUNDLE'");
+    expect(js).toContain('Ubah referensi Pekerjaan Gabungan melalui picker');
+    expect(js).toContain('input.dataset.bundleKode');
   });
 
   test('three add buttons are wired', () => {
@@ -42,6 +57,11 @@ describe('WP-B8d — template markup', () => {
     expect(html).toContain('data-lain-mode="direct"');
     expect(html).toContain('data-lain-mode="ahsp"');
     expect(html).toContain('data-lain-mode="job"');
+    expect(html).toContain('id="seg-LAIN_BUNDLE-section"');
+    expect(html).toContain('id="seg-LAIN_BUNDLE-body"');
+    expect(html).toContain('Pekerjaan Gabungan');
+    expect(html).toContain('Biaya Lain');
+    expect(html).toContain('koefisien berarti jumlah/multiplier bundle');
   });
 });
 

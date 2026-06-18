@@ -229,6 +229,8 @@ Medium/Low akan diberi salah satu disposisi:
 
 **STATUS UPDATE 2026-06-18:** banner readiness dibuat actionable untuk user. Alert `sumber AHSP belum sinkron` kini membuka detail tabel berisi pekerjaan, baris AHSP, jenis masalah (`missing/stale/incomplete/excess expansion`), aktual/ekspektasi, dan aksi perbaikan di Template AHSP. Payload readiness juga membawa `pekerjaan_kode` + `pekerjaan_uraian` pada entry expansion agar user tidak hanya melihat ID teknis. Verifikasi: `tests_wp_b4_readiness` PASS (33/33), `readiness_banner.test.js` PASS (14/14), `node --check readiness_banner.js` PASS.
 
+**STATUS UPDATE 2026-06-18 (Template AHSP CUSTOM UX):** segmen `LAIN` dipisah secara visual khusus mode `CUSTOM`: `Biaya Lain` untuk OTHER_DIRECT dan `Pekerjaan Gabungan` untuk WORK_BUNDLE (`Gabungan AHSP`/`Gabungan Project`). Backend tetap memakai kontrak lama `kategori=LAIN` + `ref/no-ref`, sehingga tidak ada migrasi data. Untuk REF/MOD, segmen bundle terpisah tetap tersembunyi dan tampilan `Lain-lain` lama dipertahankan. Baris Pekerjaan Gabungan yang sudah punya referensi tidak boleh berubah diam-diam menjadi Biaya Lain lewat edit kode manual; perubahan referensi harus melalui picker. Verifikasi: `template_ahsp_lain.test.js` PASS (8/8), `node --check template_ahsp.js` PASS, `manage.py check` PASS.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.

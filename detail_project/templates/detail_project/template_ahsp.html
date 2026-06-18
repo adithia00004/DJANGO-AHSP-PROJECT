@@ -337,21 +337,13 @@
       <!-- Segmen LAIN -->
       <section class="ta-segment" data-seg="LAIN">
         <header class="ta-seg-header">
-          <h2>Pekerjaan Gabungan</h2>
+          <h2 id="ta-lain-title">Lain-lain</h2>
           <div class="seg-tools d-inline-flex flex-wrap gap-1" role="group" aria-label="Aksi segmen LAIN">
-            <!-- WP-B8d (D-08): 3 aksi tambah terpisah untuk memperjelas tipe item LAIN. -->
+            <!-- WP-B8d/D-08 + UX split: OTHER_DIRECT dipisah visual dari WORK_BUNDLE. -->
             <div class="btn-group btn-group-sm" role="group" aria-label="Tambah item LAIN">
               <button class="btn btn-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
                 data-lain-mode="direct" title="Tambah Biaya Lain Langsung (tanpa referensi)">
                 <i class="bi bi-plus-circle"></i><span class="d-none d-sm-inline">Biaya Lain</span>
-              </button>
-              <button class="btn btn-outline-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
-                data-lain-mode="ahsp" title="Tambah Pekerjaan Gabungan dari AHSP">
-                <i class="bi bi-diagram-3"></i><span class="d-none d-sm-inline">Gabungan AHSP</span>
-              </button>
-              <button class="btn btn-outline-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
-                data-lain-mode="job" title="Tambah Pekerjaan Gabungan dari Project">
-                <i class="bi bi-link-45deg"></i><span class="d-none d-sm-inline">Gabungan Project</span>
               </button>
             </div>
             <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
@@ -388,12 +380,61 @@
         </div>
       </section>
 
+      <!-- Segmen Pekerjaan Gabungan (CUSTOM only, tetap disimpan sebagai kategori LAIN + ref) -->
+      <section class="ta-segment d-none" data-seg="LAIN_BUNDLE" id="seg-LAIN_BUNDLE-section">
+        <header class="ta-seg-header">
+          <h2>Pekerjaan Gabungan</h2>
+          <div class="seg-tools d-inline-flex flex-wrap gap-1" role="group" aria-label="Aksi segmen Pekerjaan Gabungan">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Tambah pekerjaan gabungan">
+              <button class="btn btn-outline-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
+                data-lain-mode="ahsp" title="Tambah Pekerjaan Gabungan dari AHSP">
+                <i class="bi bi-diagram-3"></i><span class="d-none d-sm-inline">Gabungan AHSP</span>
+              </button>
+              <button class="btn btn-outline-primary btn-sm ta-add-lain d-inline-flex align-items-center gap-1" type="button"
+                data-lain-mode="job" title="Tambah Pekerjaan Gabungan dari Project">
+                <i class="bi bi-link-45deg"></i><span class="d-none d-sm-inline">Gabungan Project</span>
+              </button>
+            </div>
+            <button class="btn btn-outline-danger btn-sm ta-seg-del-selected d-inline-flex align-items-center gap-1"
+              type="button" data-target-seg="LAIN_BUNDLE" disabled aria-label="Hapus baris terpilih">
+              <i class="bi bi-trash"></i><span class="d-none d-sm-inline"><span class="ta-del-count"
+                  data-for="LAIN_BUNDLE">0</span> baris</span>
+            </button>
+          </div>
+        </header>
+        <div class="ta-table-wrap">
+          <table class="ta-table dp-table ux-thead" aria-label="Tabel Pekerjaan Gabungan">
+            <colgroup>
+              <col class="col-no">
+              <col class="col-uraian">
+              <col class="col-kode">
+              <col class="col-satuan">
+              <col class="col-koef">
+            </colgroup>
+            <thead class="ta-thead-sticky">
+              <tr>
+                <th class="col-no">No</th>
+                <th class="col-uraian">Uraian</th>
+                <th class="col-kode">Kode item</th>
+                <th class="col-satuan">Satuan</th>
+                <th class="col-koef">Koefisien</th>
+              </tr>
+            </thead>
+            <tbody id="seg-LAIN_BUNDLE-body">
+              <tr class="ta-empty">
+                <td colspan="5">Belum ada pekerjaan gabungan.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- RESET & Info area -->
       <div class="ta-reset-area">
         <div class="d-flex align-items-center gap-2 mb-2">
           <i class="bi bi-info-circle text-info"></i>
-          <span class="small text-body-secondary">Pekerjaan Gabungan: Komponen LAIN dapat mereferensi pekerjaan lain
-            (bundle).</span>
+          <span class="small text-body-secondary">Pada pekerjaan custom, Biaya Lain adalah biaya langsung; Pekerjaan
+            Gabungan mengambil komponen dari AHSP atau pekerjaan project lain.</span>
         </div>
         <div class="d-flex align-items-center gap-2">
           <button id="ta-btn-reset" class="btn btn-warning btn-sm" type="button" hidden>
@@ -732,6 +773,13 @@
             <li><kbd>Ctrl/⌘+S</kbd> — Simpan perubahan</li>
             <li><kbd>Enter</kbd> / <kbd>Shift+Enter</kbd> — Pindah sel</li>
             <li><kbd>Del</kbd> — Hapus baris terpilih</li>
+          </ul>
+
+          <h6 class="fw-semibold mt-3"><i class="bi bi-diagram-3 me-1"></i>Custom: Biaya Lain & Pekerjaan Gabungan</h6>
+          <ul class="small mb-0">
+            <li><strong>Biaya Lain</strong> adalah biaya langsung tanpa referensi; isi kode, uraian, satuan, dan koefisien sendiri.</li>
+            <li><strong>Gabungan AHSP</strong> mengambil komponen dari master AHSP; koefisien berarti jumlah/multiplier bundle.</li>
+            <li><strong>Gabungan Project</strong> mengambil komponen dari pekerjaan lain dalam project; pekerjaan tujuan harus sudah punya detail AHSP.</li>
           </ul>
         </div>
         <div class="modal-footer">
