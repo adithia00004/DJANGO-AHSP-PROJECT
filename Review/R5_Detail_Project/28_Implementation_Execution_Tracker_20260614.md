@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 80% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) DONE/siap UAT runtime. WP-P8 (Rekap Kebutuhan) IN PROGRESS.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: selesaikan WP-P8 lalu WP-P9 Dashboard. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint orphan cleanup, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
+**Status keseluruhan (≈ 82% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) + WP-P8 (Rekap Kebutuhan) DONE/siap UAT runtime.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P9 Dashboard. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint legacy removal setelah monitoring, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
 
 ## 1. Aturan Tracking
 
@@ -46,7 +46,7 @@ Status:
 | WP-P2 | Template AHSP | DONE (ENH-01 defer) | 2026-06-16 | 2026-06-16 | B3/B4/B7/B8/B9 | TA-01 (app B3+DB constraint P2a/migrasi 0051)·TA-02 (B3)·TA-03 (B7c)·TA-18 (B7a-e)·TA-20 (P2b cascade-save atomik)·TA-21 (P2c e2e)·UF-010 (P2d lazy reload). ENH-01 item picker DEFER (enhancement). TA-05 dibatalkan, TA-17→CL-08 |
 | WP-P3 | Volume Pekerjaan | DONE (P3f skip-by-design) | 2026-06-16 | 2026-06-16 | B3/B4 | VP-01..07 tertutup. P3a VP-05 validasi computed · P3b VP-07 payload+rate-limit + autosave gabung 5mnt + save-on-leave · P3c VP-06 server-authoritative + fix false-dirty project 195 · P3d JSON=param data-transfer (compliant) · P3e cross-page SSOT test. P3f (sinyal stale) skip = redundan (reevaluate+dirty sudah cover). Model A: quantity=SSOT RAB+Kebutuhan |
 | WP-P4 | List Pekerjaan | ✅ DONE (P4a–g) | 2026-06-17 | 2026-06-17 | B3 | Fondasi detail project. **SEMUA: P4a (UF-009/012 regression-lock), P4g (C1 delete-guard, C2 cascade re-expand), P4b (import atomik), P4c (rate/payload limit), P4d (LP-04 destructive-impact + konfirmasi UI), P4e (UF-007/008 cosmetic), P4f (contract test).** 13 backend + 8 JS guard hijau; 96 regression hijau. Matriks cascade §WP-P4 |
-| WP-P5..P9 | Integrasi per-page | IN PROGRESS | 2026-06-17 | - | Shared WP | P5 Rincian DONE; P6 Rekap RAB DONE; P7 Jadwal DONE/siap UAT runtime; **P8 Rekap Kebutuhan IN PROGRESS (period selector 4-minggu + RK-10 localStorage conversion cleanup + B6f-2 orphan decision)**; P9 Dashboard pending |
+| WP-P5..P9 | Integrasi per-page | IN PROGRESS | 2026-06-17 | - | Shared WP | P5 Rincian DONE; P6 Rekap RAB DONE; P7 Jadwal DONE/siap UAT runtime; **P8 Rekap Kebutuhan DONE/siap UAT runtime** (period selector 4-minggu, RK-10 cleanup, unscheduled_items, B6f-2 deprecated); P9 Dashboard pending |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -1952,7 +1952,7 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 ---
 
-### WP-P8 — Rekap Kebutuhan (IN PROGRESS 2026-06-18)
+### WP-P8 — Rekap Kebutuhan (DONE / siap UAT runtime 2026-06-18)
 
 **Apa & kenapa:** Rekap Kebutuhan adalah halaman pembacaan kebutuhan item dari SSOT lintas-page: Volume (`VolumePekerjaan.quantity`), Template/Rincian AHSP expanded, Harga Item, dan Jadwal (`PekerjaanProgressWeekly.planned_proportion`). Page ini **tidak boleh menjadi mesin kalkulasi paralel**; ia hanya menyajikan snapshot/timeline/filter/export dari service kanonik.
 
@@ -1967,7 +1967,7 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 - Halaman masih boot-load API Tahapan dan bisa membawa query `mode=tahapan` dari URL lama, walau mode itu sudah dipensiun.
 - `api_rekap_kebutuhan_weekly` V2 tidak punya consumer frontend aktif dan payload-nya berbeda; keputusan B6f-2: jangan dikonvergensikan sekarang, jadikan kandidat cleanup/deprecation terpisah.
 
-#### inc-P8a — UI 4-minggu + server-authoritative conversion + tahapan frontend cleanup (DONE 2026-06-18, uncommitted)
+#### inc-P8a — UI 4-minggu + server-authoritative conversion + tahapan frontend cleanup (DONE 2026-06-18, commit `3f1786a3`)
 
 | Item | Implementasi |
 |---|---|
@@ -1978,7 +1978,7 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **Verifikasi inc-P8a:** `node --check rekap_kebutuhan.js` PASS; `npm run test:frontend -- detail_project/static/detail_project/js/tests/rekap_kebutuhan_p8.test.js` PASS (3/3); grep negatif untuk `Bulanan`, `Bulan Tertentu`, `hiConv:`, fallback localStorage conversion, dan `await loadTahapan()`.
 
-#### inc-P8b — Timeline aggregate menampilkan kebutuhan belum terjadwal (DONE 2026-06-18, uncommitted)
+#### inc-P8b — Timeline aggregate menampilkan kebutuhan belum terjadwal (DONE 2026-06-18, commit `cee235f2`)
 
 **Masalah:** service kanonik sudah punya bucket `unscheduled`, tetapi endpoint aggregate hanya mengirim `unscheduled_total` dan membuang detail itemnya. UI timeline akhirnya hanya menampilkan kebutuhan terjadwal, sehingga user tidak bisa melihat item mana yang masuk “Belum Terjadwal” pada mode periode.
 
@@ -1986,7 +1986,7 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **Verifikasi inc-P8b:** `tests_kebutuhan_timeline_b6b` PASS (11/11, termasuk kontrak `unscheduled_items`), `rekap_kebutuhan_p8.test.js` PASS (4/4), `py_compile` PASS.
 
-#### inc-P8c — B6f-2 endpoint weekly V2 ditandai deprecated (DONE 2026-06-18, uncommitted)
+#### inc-P8c — B6f-2 endpoint weekly V2 ditandai deprecated (DONE 2026-06-18, commit `d9f8ded7`)
 
 **Keputusan:** jangan rewrite `api_rekap_kebutuhan_weekly` karena tidak ada consumer frontend aktif dan payload-nya berbeda; konvergensi bisa mengubah angka/perilaku untuk API eksternal tak terdokumentasi. Jalur aman = beri `api_deprecated` header + monitoring, arahkan ke endpoint timeline kanonik.
 
