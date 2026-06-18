@@ -231,6 +231,8 @@ Medium/Low akan diberi salah satu disposisi:
 
 **STATUS UPDATE 2026-06-18 (Template AHSP CUSTOM UX):** segmen `LAIN` dipisah secara visual khusus mode `CUSTOM`: `Biaya Lain` untuk OTHER_DIRECT dan `Pekerjaan Gabungan` untuk WORK_BUNDLE (`Gabungan AHSP`/`Gabungan Project`). Backend tetap memakai kontrak lama `kategori=LAIN` + `ref/no-ref`, sehingga tidak ada migrasi data. Untuk REF/MOD, segmen bundle terpisah tetap tersembunyi dan tampilan `Lain-lain` lama dipertahankan. Baris Pekerjaan Gabungan yang sudah punya referensi tidak boleh berubah diam-diam menjadi Biaya Lain lewat edit kode manual; perubahan referensi harus melalui picker. Verifikasi: `template_ahsp_lain.test.js` PASS (8/8), `node --check template_ahsp.js` PASS, `manage.py check` PASS.
 
+**STATUS UPDATE 2026-06-18 (missing expansion repair):** karena tombol Simpan Template AHSP hanya aktif saat ada perubahan, kasus legacy/copy/import yang sudah punya raw bundle valid tetapi `DetailAHSPExpanded` kosong tidak boleh memaksa user membuat edit palsu. Ditambahkan endpoint `POST /api/project/<id>/rebuild-expansion/` + tombol `Bangun ulang ekspansi` pada banner Template AHSP saat `expansion_not_ready` muncul. Endpoint memproses hanya pekerjaan yang dilaporkan readiness, menjaga raw input/koefisien user, rebuild derived expanded storage via `_populate_expanded_from_raw`, cascade dependent project-bundle seperlunya, audit perubahan, dan refresh cache. Ini menyelesaikan kasus seperti project 195 tanpa membebani sistem secara project-wide.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.

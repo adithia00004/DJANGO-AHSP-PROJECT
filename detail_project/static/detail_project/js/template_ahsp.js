@@ -20,6 +20,7 @@
     computedParameters: app.dataset.endpointComputedParameters,
     readiness: app.dataset.endpointReadiness,  // WP-B4: dedicated readiness GET
     syncReference: app.dataset.endpointSyncReference,  // WP-B7d: manual master sync
+    rebuildExpansion: app.dataset.endpointRebuildExpansion,  // derived expansion rebuild
   };
   const locale = app.dataset.locale || 'id-ID';
 
@@ -42,7 +43,61 @@
       else app.prepend(box);
     }
     box.innerHTML = html;
+    renderRebuildExpansionAction(box, readiness);
     renderSyncReferenceAction(box, readiness);
+  }
+
+  // Derived-storage repair: raw CUSTOM bundle rows may exist while their
+  // DetailAHSPExpanded rows are missing/stale (legacy import/copy path). This
+  // action rebuilds only affected pekerjaan; it does not change raw user input.
+  function renderRebuildExpansionAction(box, readiness) {
+    const expansion = (readiness && readiness.expansion_not_ready) || [];
+    if (!expansion.length || !endpoints.rebuildExpansion) return;
+
+    const affected = Array.from(new Set(expansion.map((e) => e && e.pekerjaan_id).filter(Boolean)));
+    const bar = document.createElement('div');
+    bar.className = 'mt-2 d-flex align-items-center gap-2 flex-wrap';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-warning';
+    btn.innerHTML = '<i class="bi bi-hammer"></i> Bangun ulang ekspansi';
+    const status = document.createElement('span');
+    status.className = 'text-muted';
+    bar.appendChild(btn);
+    bar.appendChild(status);
+    box.appendChild(bar);
+
+    btn.addEventListener('click', async () => {
+      const n = affected.length || expansion.length;
+      if (!window.confirm(
+        `Bangun ulang hasil ekspansi untuk ${n} pekerjaan bermasalah? ` +
+        'Input raw dan koefisien yang Anda isi tidak akan diubah.'
+      )) return;
+      btn.disabled = true;
+      status.textContent = 'Membangun ulang ekspansi...';
+      try {
+        const resp = await fetch(endpoints.rebuildExpansion, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+          body: '{}',
+        });
+        const j = await resp.json().catch(() => null);
+        if (!resp.ok || !j || !j.ok) {
+          throw new Error((j && j.user_message) || 'Bangun ulang ekspansi gagal.');
+        }
+        status.textContent = `Ekspansi dibangun ulang untuk ${j.count} pekerjaan.`;
+        refreshReadiness();
+        if (activeJobId && affected.includes(activeJobId)) {
+          delete rowsByJob[activeJobId];
+          const jobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
+          if (jobEl) triggerSelectJobInternal(jobEl, activeJobId, true, { skipFormulaReeval: true });
+        }
+      } catch (err) {
+        btn.disabled = false;
+        status.textContent = err && err.message ? err.message : 'Bangun ulang ekspansi gagal.';
+      }
+    });
   }
 
   // WP-B7e: when readiness reports outdated master references, offer a one-click

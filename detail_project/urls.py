@@ -93,6 +93,7 @@ urlpatterns = [
     path('api/project/<int:project_id>/detail-ahsp/<int:pekerjaan_id>/save/',  views_api.api_save_detail_ahsp_for_pekerjaan, name='api_save_detail_ahsp_for_pekerjaan'),
     path('api/project/<int:project_id>/detail-ahsp/<int:pekerjaan_id>/reset-to-ref/', views_api.api_reset_detail_ahsp_to_ref, name='api_reset_detail_ahsp_to_ref'),
     path('api/project/<int:project_id>/sync-reference/',                       views_api.api_sync_reference,               name='api_sync_reference'),
+    path('api/project/<int:project_id>/rebuild-expansion/',                     views_api.api_rebuild_missing_expansion,    name='api_rebuild_missing_expansion'),
     path('api/project/<int:project_id>/detail-ahsp/save/',                     views_api.api_save_detail_ahsp_gabungan,    name='api_save_detail_ahsp_gabungan'),
 
     # Bundle expansion endpoint (NEW - for rincian AHSP bundle detail visibility)

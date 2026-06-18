@@ -3228,6 +3228,111 @@ def api_sync_reference(request: HttpRequest, project_id: int):
 
     return JsonResponse({"ok": True, "synced_pekerjaan": sorted(synced), "count": len(synced)})
 
+
+@login_required
+@require_POST
+@transaction.atomic
+def api_rebuild_missing_expansion(request: HttpRequest, project_id: int):
+    """Rebuild derived DetailAHSPExpanded rows reported by readiness.
+
+    This is the safe backend path for legacy/imported CUSTOM bundles whose raw
+    DetailAHSPProject rows already exist but their derived expansion was never
+    generated. It does not edit user-entered raw rows or koefisien; it only
+    rebuilds derived expanded storage for pekerjaan listed in
+    ``readiness.expansion_not_ready``.
+    """
+    project = _owner_or_404(project_id, request.user)
+    from dashboard.models import Project as _P
+    _P.objects.select_for_update().filter(id=project.id).first()
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except Exception:
+        payload = {}
+    target_pkj_id = payload.get("pekerjaan_id")
+
+    from .readiness import compute_project_readiness
+
+    readiness = compute_project_readiness(project)
+    affected_ids = {
+        int(e["pekerjaan_id"])
+        for e in readiness.get("expansion_not_ready", [])
+        if e.get("pekerjaan_id")
+    }
+    if target_pkj_id:
+        try:
+            target_pkj_id = int(target_pkj_id)
+        except (TypeError, ValueError):
+            return JsonResponse({
+                "ok": False,
+                "user_message": "pekerjaan_id tidak valid.",
+                "errors": [_err("pekerjaan_id", "Harus integer")],
+            }, status=400)
+        affected_ids = affected_ids.intersection({target_pkj_id})
+
+    def _expanded_summary(pkj):
+        return sorted(
+            (
+                {"kode": e["kode"], "kategori": e["kategori"], "koefisien": str(e["koefisien"])}
+                for e in DetailAHSPExpanded.objects.filter(
+                    project=project, pekerjaan=pkj
+                ).values("kode", "kategori", "koefisien")
+            ),
+            key=lambda x: (x["kategori"], x["kode"], x["koefisien"]),
+        )
+
+    rebuilt = []
+    try:
+        for pkj in Pekerjaan.objects.filter(project=project, id__in=affected_ids).order_by("id"):
+            koef_before = list(
+                DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj)
+                .order_by("id")
+                .values_list("id", "koefisien")
+            )
+            old_expanded = _expanded_summary(pkj)
+            _populate_expanded_from_raw(project, pkj)
+            new_expanded = _expanded_summary(pkj)
+            koef_after = list(
+                DetailAHSPProject.objects.filter(project=project, pekerjaan=pkj)
+                .order_by("id")
+                .values_list("id", "koefisien")
+            )
+            if koef_before != koef_after:
+                raise RuntimeError("raw detail koefisien changed during expansion rebuild")
+
+            if old_expanded != new_expanded:
+                log_audit(
+                    project, pkj, DetailAHSPAudit.ACTION_UPDATE,
+                    old_data=old_expanded, new_data=new_expanded,
+                    triggered_by="user", user=request.user,
+                    change_summary="Bangun ulang ekspansi AHSP",
+                )
+            rebuilt.append(pkj.id)
+
+            # If other pekerjaan bundle this pekerjaan, their derived storage may
+            # depend on the rebuilt composition. Cascade only from affected jobs.
+            cascade_bundle_re_expansion(project, pkj.id)
+    except Exception:
+        logger.error(
+            "[REBUILD_EXPANSION] FAILED for project %s; rolling back", project.id, exc_info=True
+        )
+        transaction.set_rollback(True)
+        return JsonResponse({
+            "ok": False,
+            "user_message": "Gagal membangun ulang ekspansi. Tidak ada perubahan disimpan, silakan coba lagi.",
+            "errors": [_err("$", "rebuild ekspansi gagal")],
+        }, status=500)
+
+    if rebuilt:
+        touch_project_change(project, ahsp=True)
+        transaction.on_commit(lambda: invalidate_rekap_cache(project))
+
+    return JsonResponse({
+        "ok": True,
+        "rebuilt_pekerjaan": sorted(rebuilt),
+        "count": len(rebuilt),
+    })
+
 # ---------- View 4: Harga Items ----------
 @login_required
 @require_POST

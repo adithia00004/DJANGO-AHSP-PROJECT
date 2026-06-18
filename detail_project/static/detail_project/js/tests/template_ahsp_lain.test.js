@@ -40,6 +40,12 @@ describe('WP-B8d — LAIN three-action add', () => {
     expect(js).toContain('input.dataset.bundleKode');
   });
 
+  test('Template AHSP exposes backend rebuild action for missing/stale expansion', () => {
+    expect(js).toContain('rebuildExpansion');
+    expect(js).toContain('Bangun ulang ekspansi');
+    expect(js).toContain('expansion_not_ready');
+  });
+
   test('three add buttons are wired', () => {
     expect(js).toContain("$$('.ta-add-lain')");
     expect(js).toContain('btn.dataset.lainMode');
@@ -62,6 +68,7 @@ describe('WP-B8d — template markup', () => {
     expect(html).toContain('Pekerjaan Gabungan');
     expect(html).toContain('Biaya Lain');
     expect(html).toContain('koefisien berarti jumlah/multiplier bundle');
+    expect(html).toContain('data-endpoint-rebuild-expansion');
   });
 });
 

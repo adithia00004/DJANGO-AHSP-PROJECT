@@ -370,3 +370,69 @@ class SyncReferenceEndpointTests(MasterReferenceSignatureTests):
         _, pkj, _ = self._setup_stale_bundle()
         resp = self._sync()  # no target → project-wide
         self.assertEqual(_json.loads(resp.content)["synced_pekerjaan"], [pkj.id])
+
+
+class RebuildMissingExpansionEndpointTests(MasterReferenceSignatureTests):
+    """Manual repair for raw bundles whose derived expansion is missing."""
+
+    def _rebuild(self, pekerjaan_id=None):
+        from django.test import RequestFactory
+
+        from .views_api import api_rebuild_missing_expansion
+
+        body = {} if pekerjaan_id is None else {"pekerjaan_id": pekerjaan_id}
+        req = RequestFactory().post(
+            "/rebuild-expansion/", data=json.dumps(body), content_type="application/json"
+        )
+        req.user = self.owner
+        return api_rebuild_missing_expansion(req, self.project.id)
+
+    def test_rebuild_missing_expansion_repairs_raw_bundle_without_raw_change(self):
+        import json as _json
+
+        from .models import DetailAHSPAudit, DetailAHSPExpanded
+
+        ahsp = self._master("A.9")
+        self._rincian(ahsp, "BHN", "B-1", 5)
+        self._rincian(ahsp, "TK", "T-1", 2)
+        pkj = self._custom_pekerjaan("P-MISSING")
+        row = self._bundle_row(pkj, ahsp, koef=4)
+
+        before = compute_project_readiness(self.project)["expansion_not_ready"]
+        self.assertEqual(len(before), 1)
+        self.assertEqual(before[0]["source_detail_id"], row.id)
+        self.assertEqual(before[0]["actual"], 0)
+        self.assertEqual(before[0]["expected"], 2)
+
+        resp = self._rebuild(pkj.id)
+        self.assertEqual(resp.status_code, 200)
+        body = _json.loads(resp.content)
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["rebuilt_pekerjaan"], [pkj.id])
+
+        row.refresh_from_db()
+        self.assertEqual(row.koefisien, Decimal("4.000000000000"))
+        self.assertEqual(
+            DetailAHSPExpanded.objects.filter(project=self.project, pekerjaan=pkj).count(),
+            2,
+        )
+        self.assertEqual(compute_project_readiness(self.project)["expansion_not_ready"], [])
+        self.assertEqual(
+            DetailAHSPAudit.objects.filter(project=self.project, pekerjaan=pkj).latest("id").change_summary,
+            "Bangun ulang ekspansi AHSP",
+        )
+
+    def test_rebuild_is_idempotent_when_no_readiness_problem(self):
+        import json as _json
+
+        ahsp = self._master("A.10")
+        self._rincian(ahsp, "BHN", "B-1", 5)
+        pkj = self._custom_pekerjaan("P-OK")
+        self._bundle_row(pkj, ahsp, koef=1)
+        _populate_expanded_from_raw(self.project, pkj)
+
+        resp = self._rebuild()
+        self.assertEqual(resp.status_code, 200)
+        body = _json.loads(resp.content)
+        self.assertEqual(body["count"], 0)
+        self.assertEqual(body["rebuilt_pekerjaan"], [])
