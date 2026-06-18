@@ -124,7 +124,6 @@
   let conversionProfiles = {}; // keyed by kode: { market_unit, market_price, factor_to_base, ... }
   let conversionProfilesLoaded = false;
   const conversionEndpoint = app?.dataset?.conversionEndpoint; // 'app' defined at line 10
-  const LS_CONV_PREFIX = 'hiConv:'; // localStorage key prefix (shared with harga_items.js)
 
   // Phase 5: Column visibility state
   const LS_COL_VISIBILITY_KEY = 'rk_col_visibility';
@@ -395,9 +394,6 @@
 
   const buildQueryParams = () => {
     const params = { mode: currentFilter.mode };
-    if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
-      params.tahapan_id = currentFilter.tahapan_id;
-    }
     if (currentFilter.klasifikasi_ids.length) {
       params.klasifikasi = currentFilter.klasifikasi_ids.join(',');
     }
@@ -966,7 +962,7 @@
       const source = period.items || [];
       const items = limit ? source.slice(0, limit) : source;
 
-      // Determine period type (week or month)
+      // Determine period type (week or legacy month alias for 4-week group)
       const periodLabel = period.label || period.value || '-';
       const isWeek = periodLabel.toLowerCase().includes('minggu') || periodLabel.toLowerCase().includes('week');
       const badgeClass = isWeek ? 'rk-period-badge--week' : 'rk-period-badge--month';
@@ -1446,15 +1442,13 @@
 
   // ===== Phase 4: Unit Conversion Profiles Loading =====
   /**
-   * Load conversion profiles using hybrid approach:
-   * 1. Try server endpoint first
-   * 2. Fallback to localStorage (shared with Harga Items)
-   * 3. Items without profile use base unit (no conversion)
+   * Load conversion profiles from the server only.
+   * Harga Items owns conversion persistence; Rekap Kebutuhan is display-only and
+   * must not revive stale browser cache as a calculation/display source.
    */
   const loadConversionProfiles = async () => {
     if (conversionProfilesLoaded) return conversionProfiles;
 
-    // Try server first
     if (conversionEndpoint) {
       try {
         const res = await fetch(conversionEndpoint, { credentials: 'same-origin' });
@@ -1468,37 +1462,11 @@
           }
         }
       } catch (e) {
-        console.warn('[RK] Failed to load conversion profiles from server, falling back to localStorage:', e);
+        console.warn('[RK] Failed to load conversion profiles from server:', e);
       }
     }
 
-    // Fallback: try localStorage (scan for all hiConv: keys)
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LS_CONV_PREFIX)) {
-          const kode = key.slice(LS_CONV_PREFIX.length);
-          try {
-            const profile = JSON.parse(localStorage.getItem(key));
-            if (profile && profile.factor_to_base) {
-              conversionProfiles[kode] = {
-                market_unit: profile.unit || '',
-                market_price: profile.price_market || '0',
-                factor_to_base: profile.factor_to_base || '1',
-                base_unit: profile.base_unit || '',
-                method: profile.method || 'direct',
-              };
-            }
-          } catch { }
-        }
-      }
-      if (Object.keys(conversionProfiles).length > 0) {
-        console.log('[RK] Loaded', Object.keys(conversionProfiles).length, 'conversion profiles from localStorage');
-      }
-    } catch (e) {
-      console.warn('[RK] localStorage not available:', e);
-    }
-
+    conversionProfiles = {};
     conversionProfilesLoaded = true;
     return conversionProfiles;
   };
@@ -1779,10 +1747,6 @@
     }
 
     // Add scope
-    if (currentFilter.mode === 'tahapan' && currentFilter.tahapan_id) {
-      parts.push(`tahapan-${currentFilter.tahapan_id}`);
-    }
-
     // Add kategori filter if not all
     if (currentFilter.kategori.length && currentFilter.kategori.length < 4) {
       parts.push(currentFilter.kategori.join('-'));
@@ -1882,7 +1846,7 @@
           if (periodDetails) periodDetails.style.display = 'none';
         } else {
           if (periodDetails) periodDetails.style.display = 'block';
-          if (periodLabel) periodLabel.textContent = value === 'week' ? 'Minggu' : 'Bulan';
+          if (periodLabel) periodLabel.textContent = value === 'week' ? 'Minggu' : 'Periode 4 Minggu';
           populateExportPeriodOptions(value);
         }
       });
@@ -2025,10 +1989,10 @@
       if (!raw) return [];
       return raw.split(',').map((val) => parseInt(val, 10)).filter(Number.isFinite);
     };
-    if ((params.get('mode') || '').toLowerCase() === 'tahapan') {
-      currentFilter.mode = 'tahapan';
-      currentFilter.tahapan_id = parseInt(params.get('tahapan_id'), 10) || null;
-    }
+    // D-RK-08: Tahapan mode is retired for Rekap Kebutuhan. Legacy URLs with
+    // mode=tahapan are intentionally normalized to keseluruhan.
+    currentFilter.mode = 'all';
+    currentFilter.tahapan_id = null;
     currentFilter.klasifikasi_ids = toIds('klasifikasi');
     currentFilter.sub_klasifikasi_ids = toIds('sub_klasifikasi');
     currentFilter.pekerjaan_ids = toIds('pekerjaan');
@@ -2333,9 +2297,9 @@
     if (currentFilter.period_mode && currentFilter.period_mode !== 'all') {
       const periodLabels = {
         'weekly': 'Mode Mingguan',
-        'monthly': 'Mode Bulanan',
+        'monthly': 'Mode Periode 4 Minggu',
         'weekly_range': 'Range Mingguan',
-        'monthly_range': 'Range Bulanan'
+        'monthly_range': 'Range Periode 4 Minggu'
       };
       chips.push({
         type: 'period_mode',
@@ -2723,7 +2687,7 @@
 
   // Phase 3: Timeline Range Picker Initialization
   let timelineRangeState = {
-    mode: 'week', // 'week' or 'month'
+    mode: 'week', // 'week' or legacy 'month' alias for 4-week periods
     startIdx: 0,
     endIdx: 3, // Default first 4 weeks
     weeks: [],
@@ -2862,7 +2826,6 @@
 
     parseInitialParams();
     await loadFilterOptions();
-    await loadTahapan();
     updateFilterIndicator();
     updateScopeIndicator();
     attachEventListeners();

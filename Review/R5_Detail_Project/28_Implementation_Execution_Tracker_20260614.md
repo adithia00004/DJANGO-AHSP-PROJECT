@@ -2,7 +2,7 @@
 
 **Mulai:** 14 Juni 2026  
 **Master plan:** `27_Master_Implementation_Plan_20260614.md`  
-**Status keseluruhan (≈ 74% implementasi):** **FASE 1 SELESAI & 100% hijau (A1/A2/B1-B5/B7-B10; B6 DoD 3/5 — B6d/e→WP-P7). FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) DONE.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: WP-P7 (Jadwal — incl B6d/e + audit-gap reset/realisasi) dst. Suite 100% hijau. Defer: ENH-01 (P2 picker), P3f (redundan). Defer (tercatat, non-blocking): **B6d/e→WP-P7 (Jadwal)**, B6f-2 cleanup→WP-P8, B9b prospective UI→WP-P, A2 CSP enforcement, B5 export-perf, B3 DB-constraint-koef follow-up.
+**Status keseluruhan (≈ 80% implementasi):** **FASE 1 SELESAI & 100% hijau. FASE 2: WP-P1 (Harga) + WP-P2 (Template) + WP-P3 (Volume) + WP-P4 (List Pekerjaan) + WP-P5 (Rincian AHSP) + WP-P6 (Rekap RAB) + WP-P7 (Jadwal) DONE/siap UAT runtime. WP-P8 (Rekap Kebutuhan) IN PROGRESS.** Kebenaran perhitungan AMAN (SSOT canonical). NEXT: selesaikan WP-P8 lalu WP-P9 Dashboard. Suite targeted hijau. Defer: ENH-01 (P2 picker), P3f (redundan), P7 week-number hardening/polish, B6f-2 endpoint orphan cleanup, B9b prospective UI, A2 CSP enforcement, B5 export-perf.
 
 ## 1. Aturan Tracking
 
@@ -46,7 +46,7 @@ Status:
 | WP-P2 | Template AHSP | DONE (ENH-01 defer) | 2026-06-16 | 2026-06-16 | B3/B4/B7/B8/B9 | TA-01 (app B3+DB constraint P2a/migrasi 0051)·TA-02 (B3)·TA-03 (B7c)·TA-18 (B7a-e)·TA-20 (P2b cascade-save atomik)·TA-21 (P2c e2e)·UF-010 (P2d lazy reload). ENH-01 item picker DEFER (enhancement). TA-05 dibatalkan, TA-17→CL-08 |
 | WP-P3 | Volume Pekerjaan | DONE (P3f skip-by-design) | 2026-06-16 | 2026-06-16 | B3/B4 | VP-01..07 tertutup. P3a VP-05 validasi computed · P3b VP-07 payload+rate-limit + autosave gabung 5mnt + save-on-leave · P3c VP-06 server-authoritative + fix false-dirty project 195 · P3d JSON=param data-transfer (compliant) · P3e cross-page SSOT test. P3f (sinyal stale) skip = redundan (reevaluate+dirty sudah cover). Model A: quantity=SSOT RAB+Kebutuhan |
 | WP-P4 | List Pekerjaan | ✅ DONE (P4a–g) | 2026-06-17 | 2026-06-17 | B3 | Fondasi detail project. **SEMUA: P4a (UF-009/012 regression-lock), P4g (C1 delete-guard, C2 cascade re-expand), P4b (import atomik), P4c (rate/payload limit), P4d (LP-04 destructive-impact + konfirmasi UI), P4e (UF-007/008 cosmetic), P4f (contract test).** 13 backend + 8 JS guard hijau; 96 regression hijau. Matriks cascade §WP-P4 |
-| WP-P5..P9 | Integrasi per-page | PENDING | - | - | Shared WP | P5 Rincian; P6 Rekap RAB; **P7 Jadwal = serap B6d/e + B6e**; **P8 Rekap Kebutuhan = serap B6f-2 + period selector 4-minggu**; P9 Dashboard |
+| WP-P5..P9 | Integrasi per-page | IN PROGRESS | 2026-06-17 | - | Shared WP | P5 Rincian DONE; P6 Rekap RAB DONE; P7 Jadwal DONE/siap UAT runtime; **P8 Rekap Kebutuhan IN PROGRESS (period selector 4-minggu + RK-10 localStorage conversion cleanup + B6f-2 orphan decision)**; P9 Dashboard pending |
 | Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
 
@@ -1949,3 +1949,35 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 **Runtime check Docker 2026-06-18:** `ahsp_web` direstart dan kembali **healthy**; `manage.py check` di container PASS; `/health/` GET OK; static bundle `jadwal-kegiatan-C7bv7bzY.js` tersaji 200; `vite_entry('assets/js/jadwal-kegiatan.js')` mengarah ke bundle baru; smoke render `/detail_project/<project>/jadwal-pekerjaan/` status 200 dan HTML memuat bundle baru (`bundle_old=False`); API `/api/v2/project/<id>/assignments/` status 200 dan tidak mengandung `actual_updated_at`.
 
 **SISA WP-P7:** UAT manual interaktif Batch B pada browser (cek perilaku tanpa auto-regenerate senyap, error-state assignment, dan Kurva S weightsReady) lalu defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.
+
+---
+
+### WP-P8 — Rekap Kebutuhan (IN PROGRESS 2026-06-18)
+
+**Apa & kenapa:** Rekap Kebutuhan adalah halaman pembacaan kebutuhan item dari SSOT lintas-page: Volume (`VolumePekerjaan.quantity`), Template/Rincian AHSP expanded, Harga Item, dan Jadwal (`PekerjaanProgressWeekly.planned_proportion`). Page ini **tidak boleh menjadi mesin kalkulasi paralel**; ia hanya menyajikan snapshot/timeline/filter/export dari service kanonik.
+
+**Status sebelum P8:** kalkulasi inti sudah selesai di B6:
+- `compute_kebutuhan_timeline` sudah memakai `build_weekly_distribution` (mingguan + unscheduled + agregasi 4 minggu).
+- `_build_time_scope_multiplier` snapshot/export sudah konvergen ke builder kanonik.
+- `mode=tahapan` backend sudah dideprecated dan tidak lagi mengubah quantity.
+
+**Sisa aktif P8 yang ditemukan:**
+- UI masih menyebut `month/Bulanan`, padahal backend kini memaknai `month` sebagai alias kompatibilitas untuk **Periode 4 Minggu**.
+- `rekap_kebutuhan.js` masih punya fallback conversion `hiConv:` dari localStorage (RK-10/A-6) meskipun server/Harga Items sudah menjadi SSOT conversion profile.
+- Halaman masih boot-load API Tahapan dan bisa membawa query `mode=tahapan` dari URL lama, walau mode itu sudah dipensiun.
+- `api_rekap_kebutuhan_weekly` V2 tidak punya consumer frontend aktif dan payload-nya berbeda; keputusan B6f-2: jangan dikonvergensikan sekarang, jadikan kandidat cleanup/deprecation terpisah.
+
+#### inc-P8a — UI 4-minggu + server-authoritative conversion + tahapan frontend cleanup (DONE 2026-06-18, uncommitted)
+
+| Item | Implementasi |
+|---|---|
+| Label periode | Semua label user-facing `Bulanan/Bulan Tertentu` di Rekap Kebutuhan diganti menjadi **Periode 4 Minggu**. Value internal `month/month_range` tetap dipertahankan sebagai alias kompatibilitas backend. |
+| RK-10/A-6 | Fallback `localStorage hiConv:` dihapus dari `rekap_kebutuhan.js`; mode Satuan Beli hanya memakai profil dari endpoint server. Jika endpoint gagal/tidak ada profil, page kembali ke satuan dasar tanpa menghidupkan cache browser lama. |
+| D-RK-08 frontend | Init halaman tidak lagi memanggil `loadTahapan()`; legacy URL `mode=tahapan` dinormalisasi ke `mode=all`; query export/load tidak lagi mengirim `tahapan_id`. |
+| Guard test | `rekap_kebutuhan_p8.test.js` mengunci: tidak ada `hiConv`/fallback localStorage conversion, init tidak boot-load Tahapan, dan teks 4-minggu tampil di JS/template. |
+
+**Verifikasi inc-P8a:** `node --check rekap_kebutuhan.js` PASS; `npm run test:frontend -- detail_project/static/detail_project/js/tests/rekap_kebutuhan_p8.test.js` PASS (3/3); grep negatif untuk `Bulanan`, `Bulan Tertentu`, `hiConv:`, fallback localStorage conversion, dan `await loadTahapan()`.
+
+**Residual P8:**
+- B6f-2 endpoint `api_rekap_kebutuhan_weekly` masih ada sebagai route/test/API legacy tanpa frontend consumer; cleanup/deprecation perlu keputusan terpisah agar tidak mematahkan API eksternal tak terdokumentasi.
+- UAT visual Rekap Kebutuhan: cek label periode 4 minggu, export modal, mode Satuan Beli tanpa profil server, dan timeline range.

@@ -282,8 +282,9 @@
           <button type="button" class="btn btn-outline-secondary btn-sm active" data-range-type="week" title="Mingguan">
             <i class="bi bi-calendar-week"></i>
           </button>
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-range-type="month" title="Bulanan">
-            <i class="bi bi-calendar-month"></i>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-range-type="month"
+            title="Periode 4 minggu">
+            <i class="bi bi-calendar4-range"></i>
           </button>
         </div>
         <select id="rk-toolbar-range-start" class="form-select form-select-sm" style="width: auto; min-width: 100px;">
@@ -477,7 +478,7 @@
                 <input type="radio" class="btn-check" name="timelinePeriodType" id="timelineWeek" value="week" checked>
                 <label class="btn btn-outline-secondary" for="timelineWeek">Mingguan</label>
                 <input type="radio" class="btn-check" name="timelinePeriodType" id="timelineMonth" value="month">
-                <label class="btn btn-outline-secondary" for="timelineMonth">Bulanan</label>
+                <label class="btn btn-outline-secondary" for="timelineMonth">Periode 4 Minggu</label>
               </div>
             </div>
             <div class="col-auto">
@@ -551,14 +552,14 @@
               <input class="form-check-input me-3 mt-1 flex-shrink-0" type="radio" name="exportPeriod" value="month"
                 id="exportPeriodMonth">
               <div class="flex-grow-1">
-                <h6 class="mb-1 fw-bold">Bulan Tertentu</h6>
-                <small class="text-muted">Export kebutuhan per bulan yang dipilih</small>
+                <h6 class="mb-1 fw-bold">Periode 4 Minggu</h6>
+                <small class="text-muted">Export kebutuhan per kelompok 4 minggu yang dipilih</small>
               </div>
             </label>
           </div>
         </div>
 
-        <!-- Period Details (shown when week/month selected) -->
+        <!-- Period Details (shown when week/4-week selected) -->
         <div id="rk-export-period-details" class="mb-4" style="display: none;">
           <label class="form-label fw-bold">
             <i class="bi bi-calendar-week"></i> Pilih <span id="rk-export-period-label">Periode</span>
