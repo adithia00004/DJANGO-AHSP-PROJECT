@@ -5,13 +5,15 @@ SAME formula validator used by quantity formulas (char/token/function whitelist,
 identifier format bp_N/cp_N) — previously only emptiness was checked.
 """
 import json
+import re
+from html import unescape
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
 from dashboard.models import Project
 
-from .models import ProjectComputedParameter
+from .models import ProjectComputedParameter, ProjectParameter
 from .views_api import (
     api_project_computed_parameters,
     api_project_computed_parameters_sync,
@@ -91,6 +93,60 @@ class PayloadLimitTests(TestCase):
     def test_normal_body_not_413(self):
         resp = self._post(json.dumps({"items": []}))
         self.assertNotEqual(resp.status_code, 413)
+
+
+class VolumeBootstrapServerAuthoritativeTests(TestCase):
+    """UF-014: Volume parameters must be bootstrapped from the server.
+
+    A stale browser localStorage snapshot must not be the first source of truth
+    when the page opens.
+    """
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user("p3-boot-owner", password="x")
+        self.project = Project.objects.create(owner=self.owner, nama="P3 Bootstrap")
+        ProjectParameter.objects.create(
+            project=self.project,
+            name="bp_1",
+            value="10",
+            label="lebar_w",
+            unit="m",
+        )
+        ProjectComputedParameter.objects.create(
+            project=self.project,
+            name="cp_1",
+            expression="bp_1 * 2",
+            label="double_width",
+        )
+
+    def _bootstrap_payload(self):
+        from .views import volume_pekerjaan_view
+        request = RequestFactory().get("/volume/")
+        request.user = self.owner
+        response = volume_pekerjaan_view(request, self.project.id)
+        self.assertEqual(response.status_code, 200, response.content[:300])
+        html = response.content.decode("utf-8")
+        match = re.search(
+            r'<script id="vp-bootstrap" type="application/json">(.*?)</script>',
+            html,
+            flags=re.S,
+        )
+        self.assertIsNotNone(match, "vp-bootstrap script not found")
+        return json.loads(unescape(match.group(1)))
+
+    def test_volume_page_bootstraps_base_parameters_from_server(self):
+        payload = self._bootstrap_payload()
+        params = payload["parameters"]["parameters"]
+        self.assertEqual(params[0]["name"], "bp_1")
+        self.assertEqual(params[0]["label"], "lebar_w")
+        self.assertEqual(params[0]["value"], "10.000000000000")
+
+    def test_volume_page_bootstraps_computed_parameters_from_server(self):
+        payload = self._bootstrap_payload()
+        computed = payload["computed_parameters"]["computed_parameters"]
+        self.assertEqual(computed[0]["name"], "cp_1")
+        self.assertEqual(computed[0]["expression"], "bp_1 * 2")
+        self.assertEqual(computed[0]["label"], "double_width")
 
 
 class VolumeCrossPageSSOTTests(TestCase):

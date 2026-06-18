@@ -27,7 +27,8 @@
   const EP_TREE = root.dataset.endpointTree
     || `/detail_project/api/project/${projectId}/list-pekerjaan/tree/`;
 
-  // PERF: bootstrap SSR (volume_list + formula_state) supaya prefill() tidak perlu
+  // PERF: bootstrap SSR (volume_list + formula_state + parameters +
+  // computed_parameters) supaya prefill() tidak perlu
   // round-trip AJAX saat halaman dibuka. null jika tidak tersedia → fallback fetch.
   // Freshness payload dijamin oleh DetailProjectNoStoreMiddleware pada respons HTML.
   const VP_BOOTSTRAP = (() => {
@@ -7027,11 +7028,16 @@
     return true;
   }
 
+  function hasBaseParamContent(params = variables) {
+    return Object.keys(params || {}).some((code) => isValidBaseParamCode(code));
+  }
+
   // Load parameters from server and replace localStorage snapshot
   async function loadParamsFromServer(options = {}) {
     const force = !!options.force;
     try {
-      const data = await HTTP.jget(EP_PARAMS);
+      const boot = !force ? VP_BOOTSTRAP?.parameters : null;
+      const data = options.data || boot || await HTTP.jget(EP_PARAMS);
       if (data?.ok && Array.isArray(data.parameters)) {
         const serverParams = {};
         const serverLabels = {};
@@ -7049,11 +7055,12 @@
         // copy. This stops the false "perlu disimpan" on open (project 195) without
         // discarding real unsaved edits. An active sync timer always protects.
         if (!force && shouldProtectLocalBaseState()) {
-          if (paramSyncTimer || !_baseParamsMatchServer(serverParams, serverLabels)) {
+          const hasLocalDraft = hasBaseParamContent();
+          if (paramSyncTimer && hasLocalDraft && !_baseParamsMatchServer(serverParams, serverLabels)) {
             TOAST.warn('Perubahan lokal parameter belum tersinkron. Data server tidak diterapkan agar edit lokal aman.');
             return { ok: false, source: 'localStorage', reason: 'local_dirty' };
           }
-          clearBaseParamsDirty();  // stale flag — local already matches server
+          clearBaseParamsDirty();  // stale persisted flag cannot block server on load
         }
 
         // Server is authoritative on successful fetch.
@@ -7099,10 +7106,16 @@
     return true;
   }
 
+  function hasComputedParamContent(params = computedParams) {
+    return Object.keys(normalizeComputedParamsShape(params || {}))
+      .some((code) => isValidComputedParamCode(code));
+  }
+
   async function loadComputedParamsFromServer(options = {}) {
     const force = !!options.force;
     try {
-      const data = await HTTP.jget(EP_CPARAMS);
+      const boot = !force ? VP_BOOTSTRAP?.computed_parameters : null;
+      const data = options.data || boot || await HTTP.jget(EP_CPARAMS);
       if (data?.ok && Array.isArray(data.computed_parameters)) {
         const defs = {};
         data.computed_parameters.forEach((p) => {
@@ -7119,11 +7132,12 @@
         // matches the server (false "perlu disimpan" fix); protect only real diffs.
         if (!force && shouldProtectLocalComputedState()) {
           const normalizedDefs = normalizeComputedParamsShape(defs);
-          if (computedSyncTimer || !_computedParamsMatchServer(normalizedDefs)) {
+          const hasLocalDraft = hasComputedParamContent();
+          if (computedSyncTimer && hasLocalDraft && !_computedParamsMatchServer(normalizedDefs)) {
             TOAST.warn('Perubahan lokal formula turunan belum tersinkron. Data server tidak diterapkan agar edit lokal aman.');
             return { ok: false, source: 'localStorage', reason: 'local_dirty' };
           }
-          clearComputedParamsDirty();  // stale flag — local already matches server
+          clearComputedParamsDirty();  // stale persisted flag cannot block server on load
         }
         computedParams = normalizeComputedParamsShape(defs);
         dropComputedNameConflicts();
@@ -7319,6 +7333,12 @@
   loadVarLabels();
   loadComputedParams();
   loadSyncMarkers();
+  if (VP_BOOTSTRAP?.parameters) {
+    loadParamsFromServer({ data: VP_BOOTSTRAP.parameters });
+  }
+  if (VP_BOOTSTRAP?.computed_parameters) {
+    loadComputedParamsFromServer({ data: VP_BOOTSTRAP.computed_parameters });
+  }
   formulaDraftById = loadFormulaDrafts();
   Object.keys(variables).forEach(code => { if (!varLabels[code]) varLabels[code] = code; });
   localStorage.setItem(storageKeyVarLabels(), JSON.stringify(varLabels));

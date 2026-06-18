@@ -114,10 +114,17 @@ def volume_pekerjaan_view(request, project_id: int):
     )
     # PERF: bootstrap volume + formula state ke HTML supaya prefill() tidak perlu
     # round-trip AJAX (kolom volume/formula kosong → terisi) saat halaman dibuka.
-    from .views_api import build_volume_list_payload, build_volume_formula_state_payload
+    from .views_api import (
+        build_project_computed_parameters_payload,
+        build_project_parameters_payload,
+        build_volume_formula_state_payload,
+        build_volume_list_payload,
+    )
     bootstrap_volume = {
         "volume_list": build_volume_list_payload(project),
         "formula_state": build_volume_formula_state_payload(project),
+        "parameters": build_project_parameters_payload(project),
+        "computed_parameters": build_project_computed_parameters_payload(project),
     }
 
     context = {

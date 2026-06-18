@@ -3767,6 +3767,30 @@ def api_project_pricing(request: HttpRequest, project_id: int):
 
 # ========== API: Project Parameters (for volume formula calculations) ==========
 
+def build_project_parameters_payload(project):
+    """Canonical payload for project base parameters.
+
+    Used by both the API and the Volume page SSR bootstrap so the browser does
+    not need to trust stale localStorage before it has seen server state.
+    """
+    params = ProjectParameter.objects.filter(project=project).order_by('name')
+    return {
+        "ok": True,
+        "synced_at": _to_iso_timestamp(timezone.now()),
+        "parameters": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "value": str(p.value),
+                "label": p.label or p.name,
+                "unit": p.unit or "",
+                "description": p.description or "",
+            }
+            for p in params
+        ],
+    }
+
+
 @login_required
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
@@ -3780,27 +3804,10 @@ def api_project_parameters(request: HttpRequest, project_id: int):
             Body: { value, label?, unit?, description? }
             Returns: { ok: true, parameter: {...}, created: true }
     """
-    from .models import ProjectParameter
-    
     project = _owner_or_404(project_id, request.user)
     
     if request.method == "GET":
-        params = ProjectParameter.objects.filter(project=project).order_by('name')
-        return JsonResponse({
-            "ok": True,
-            "synced_at": _to_iso_timestamp(timezone.now()),
-            "parameters": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "value": str(p.value),
-                    "label": p.label or p.name,
-                    "unit": p.unit or "",
-                    "description": p.description or "",
-                }
-                for p in params
-            ]
-        })
+        return JsonResponse(build_project_parameters_payload(project))
     
     # POST: Create new parameter
     try:
@@ -4162,6 +4169,30 @@ def api_project_parameters_sync(request: HttpRequest, project_id: int):
 
 # ========== API: Project Computed Parameters (derived formula variables) ==========
 
+def build_project_computed_parameters_payload(project):
+    """Canonical payload for project computed parameters.
+
+    Kept shared between the API and SSR bootstrap for server-authoritative page
+    load behavior.
+    """
+    params = ProjectComputedParameter.objects.filter(project=project).order_by('name')
+    return {
+        "ok": True,
+        "synced_at": _to_iso_timestamp(timezone.now()),
+        "computed_parameters": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "expression": p.expression,
+                "label": p.label or p.name,
+                "unit": p.unit or "",
+                "description": p.description or "",
+            }
+            for p in params
+        ],
+    }
+
+
 @login_required
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
@@ -4173,22 +4204,7 @@ def api_project_computed_parameters(request: HttpRequest, project_id: int):
     """
     project = _owner_or_404(project_id, request.user)
     if request.method == "GET":
-        params = ProjectComputedParameter.objects.filter(project=project).order_by('name')
-        return JsonResponse({
-            "ok": True,
-            "synced_at": _to_iso_timestamp(timezone.now()),
-            "computed_parameters": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "expression": p.expression,
-                    "label": p.label or p.name,
-                    "unit": p.unit or "",
-                    "description": p.description or "",
-                }
-                for p in params
-            ]
-        })
+        return JsonResponse(build_project_computed_parameters_payload(project))
 
     try:
         payload = json.loads(request.body.decode("utf-8"))
