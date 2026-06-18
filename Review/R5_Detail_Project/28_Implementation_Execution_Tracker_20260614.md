@@ -152,6 +152,65 @@ Medium/Low akan diberi salah satu disposisi:
 
 ## 6. Unexpected Findings
 
+### UF-014 — CRITICAL (proses+kode) — Client localStorage dapat MEMBLOKIR/menimpa data server-authoritative SAAT LOAD (parameter Volume terkonfirmasi)
+
+**Ditemukan:** 2026-06-17, saat owner UAT project dummy ID 160 (data dummy lama, dibuat sebelum implementasi R5). Owner secara eksplisit menilai ini **celah besar yang seharusnya masuk proses audit namun terlewat/lalai** — penilaian ini DITERIMA.
+
+**Gejala (project 160):**
+1. Page Volume sebagian tampak kosong / parameter pada input formula dianggap "tidak valid & perlu reinput", PADAHAL Rekap RAB menampilkan nilai valid.
+2. Template AHSP & Rincian AHSP menampilkan banner "165 sumber AHSP belum sinkron dengan hasil ekspansi" + "1 pekerjaan jadwalnya belum 100%".
+
+**Verifikasi data backend project 160 (BERSIH — bukan korupsi data):**
+- `VolumePekerjaan` 29/29 terisi (quantity>0); `ProjectParameter` `bp_1=10`(lebar_w), `bp_2=300`(panjang_dinding) valid+opaque; 2 formula `=bp_1*bp_2`,`=bp_2*30` valid; **tanpa bundle LAIN**.
+- `DetailAHSPProject`=165, **`DetailAHSPExpanded`=0** (expanded tak pernah dipopulasi — legacy).
+
+**Akar masalah:**
+- **Gejala 1&2 (parameter):** SSR bootstrap `#vp-bootstrap` HANYA berisi `volume_list`(quantity) + `formula_state` — **parameter TIDAK di-bootstrap server**. Parameter di-load dari **localStorage dulu** (`loadVars()` `volume_pekerjaan.js:6833`), lalu `loadParamsFromServer()` *seharusnya* menimpa dgn server. **Tapi fix P3c kita** (`:7051`, `shouldProtectLocalBaseState()`) **MENOLAK menerapkan parameter server** bila ada dirty-flag basi di localStorage DAN lokal≠server — **termasuk saat lokal KOSONG** (legacy/ter-normalize habis). Akibat: tabel parameter kosong → formula `bp_1/bp_2` jadi "token tidak valid". Quantity tetap benar (dari SSR) → RAB tak terpengaruh. = **VP-06b** (regresi yang DIINTRODUKSI/ditinggalkan oleh fix P3c, bukan oleh audit asli).
+- **Gejala 3 (banner):** kondisi data legacy NYATA (expanded kosong) yang **dideteksi benar** oleh readiness B4. Untuk 160 tanpa bundle → RAB tetap benar (raw-fallback identik); banner secara teknis benar tapi membingungkan. (Untuk project ber-bundle, expanded-kosong = RAB undercount → di situ penting.) Ini bukan kerusakan akibat perubahan kita — perubahan kita (B4) MENGEKSPOS kondisi lama.
+
+**AKUNTABILITAS (kelalaian saya, bukan celah audit asli):**
+- Audit SUDAH memuat yang berdekatan: **A-6** (localStorage conversion non-project-scoped → hapus fallback; HI-08 selesai, **RK-10 belum→WP-P8**) + **VP-06** (false-dirty/sync). Jadi RISIKO localStorage teridentifikasi.
+- **Yang saya gagalkan:** (a) fix **P3c untuk VP-06 hanya separuh** — menangani kasus `local==server` (bersihkan flag basi) tapi **tidak** kasus `local kosong/inkompatibel + flag dirty basi` → tetap blokir server (deadlock); (b) **verifikasi saya tidak menguji jalur localStorage "diracuni"** (flag dirty + var legacy/kosong) — tes guard saya hijau, bug tetap; (c) **A-6 tidak digeneralisasi** ke prinsip "cache klien TIDAK BOLEH memblok/menimpa DATA server SAAT LOAD" (berlaku utk **parameter/formula/dirty-flag**, bukan hanya conversion); (d) parameter tak punya SSR bootstrap seperti quantity → tak pernah punya jaminan "server menang saat load".
+
+**Blast radius (sweep localStorage 2026-06-17):**
+- **Volume** (`volume_pekerjaan.js`): parameter/computed/formula + dirty-flag → **TERKONFIRMASI** (VP-06b).
+- **Rekap Kebutuhan** (`rekap_kebutuhan.js:1451-1496`): fallback localStorage `hiConv:` conversion profile masih ADA = **A-6/RK-10 (sudah direncanakan WP-P8)** — bukan temuan baru, tapi konfirmasi belum dibersihkan.
+- UI prefs (collapse/lebar kolom/pane/preview/theme/sidebar) = **AMAN** (kosmetik, bukan data).
+- `source_change_state.js` = flag awareness lintas-tab (bukan override data) — risiko rendah, catat.
+
+**SWEEP LANJUTAN PER-PAGE 2026-06-18 (owner minta verifikasi page lain — read-only, analisis perilaku-load, bukan sekadar grep):**
+
+| Page / file | localStorage isi | Perilaku saat LOAD | Verdict |
+|---|---|---|---|
+| **volume_pekerjaan.js** | params, computed, formula state + dirty flags | **localStorage-first; P3c `shouldProtect*` MENOLAK server saat dirty** | ⚠️ **BUG (UF-014)** — satu-satunya pelanggaran A-11 |
+| rekap_kebutuhan.js | conversion `hiConv:` + col-visibility | conversion **server-FIRST**, localStorage hanya bila server gagal; col-vis=UI | ⚠️ **A-6/RK-10** (sudah rencana WP-P8) — fallback anggun, TAK memblok; conversion tak ubah total kanonik (D-RK-03) → severity < Volume |
+| rekap_rab.js | PPN/round prefs + expanded-UI | `restorePrefs()` lalu `loadData()` **menimpa dgn server** (`:573-574`) | ✅ AMAN (server menang saat load; localStorage = fallback bila server gagal) |
+| rincian_ahsp.js | last-pkj-id, resizer width | navigasi/UI | ✅ AMAN (kosmetik) |
+| template_ahsp.js · list_pekerjaan.js · volume_runtime.js | lebar kolom/sidebar, toggle | UI | ✅ AMAN (kosmetik) |
+| harga_items.js | — (conversion DIHAPUS HI-08) | — | ✅ AMAN (sudah diperbaiki) |
+| source_change_state.js | flag awareness perubahan-sumber (project-scoped) | **memicu reload data server** (bukan memblok) | ✅ AMAN (awareness; paling banter staleness banner ringan) |
+| src/utils/error-handler.js | prefs error-handler | UI prefs | ✅ AMAN |
+
+**KESIMPULAN SWEEP:** pola berbahaya **"cache klien menolak server saat load"** (`shouldProtect*` + dirty-flag gating) **HANYA ada di `volume_pekerjaan.js`** (base+computed+formula = semuanya dalam UF-014). **Tidak ada page lain** yang mereplikasi bug ini → UF-014 **TERISOLASI di Volume**. Temuan terkait yang LEBIH RINGAN & SUDAH DIRENCANAKAN: A-6/RK-10 (hapus fallback localStorage conversion di Rekap Kebutuhan → WP-P8). Sisanya server-authoritative-saat-load atau kosmetik. Page lain yang konsumsi data saat load (RAB/Rincian/Kebutuhan/Template) **fetch dari server** + server menang.
+
+**REMEDIASI USULAN (BELUM dikerjakan — owner minta dokumentasi dulu, jangan edit):**
+1. **Prinsip baru cross-cutting (doc 26 A-11): "server-authoritative ON LOAD"** — cache klien = draft; TAK PERNAH boleh memblok/menimpa data server saat load. Berlaku untuk parameter/formula/dirty-flag, generalisasi A-6.
+2. **Volume:** bootstrap parameter/computed dari **SSR-server** (seperti quantity) → server otomatis menang saat load; localStorage murni draft edit belum-tersinkron.
+3. **P3c diperketat:** localStorage hanya melindungi edit lokal **yang benar-benar ada isinya**; bila lokal kosong/inkompatibel → terapkan server + bersihkan flag basi (tutup deadlock).
+4. **Regression test localStorage "diracuni"** (jalur yang terlewat).
+5. **Backfill `DetailAHSPExpanded`** untuk project legacy (management command) — penting bila ada bundle; hygiene utk lainnya. Pertimbangkan kalimat banner lebih ramah saat expanded-kosong tanpa bundle.
+
+**Workaround verifikasi cepat owner:** buka project di incognito / clear site-data → parameter normal (mengonfirmasi penyebab localStorage). **STATUS: PROGRESS WP-P7+ DIJEDA atas permintaan owner sampai remediasi UF-014 disepakati.**
+
+---
+
+**STATUS UPDATE 2026-06-18:** UF-014 sudah diperbaiki sebelum WP-P7 Batch B.
+- Parameter dan computed parameter Volume sekarang ikut SSR bootstrap server (`views.py`, `views_api.py`) bersama `volume_list` dan `formula_state`.
+- Dirty flag persisten localStorage tidak lagi boleh memblok server saat load; hanya autosave timer aktif dalam sesi berjalan yang melindungi draft lokal nyata (`volume_pekerjaan.js`).
+- Regression coverage ditambahkan di `volume_false_dirty.test.js` dan `tests_wp_p3_volume.py`.
+- Verifikasi: frontend guard 4/4 PASS, backend WP-P3 11/11 PASS, `node --check`, `manage.py check`, `makemigrations --check`, dan `git diff --check` bersih.
+- Follow-up terpisah: backfill `DetailAHSPExpanded` untuk project legacy tetap diperlukan sebagai hygiene readiness, bukan penyebab parameter Volume kosong.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.
@@ -1848,8 +1907,43 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 - **P7l** JDW-06-UI/JDW-11/16/17: hapus UI catatan; konfirmasi sebelum simpan batas minggu; a11y+terminologi.
 - **P7m** R4: contract test builder minggu backend (frontend tak transform metadata).
 
-**KEPUTUSAN UNTUK OWNER (sebelum lock scope):**
-1. **Sequencing KF-06:** setuju kerjakan **Batch A (backend) dulu sampai hijau**, lalu Batch B (Vite) sebagai satu paket yang Anda rebuild? (atau ada preferensi lain)
-2. **Audit reset/regenerate (P7b):** reset/regenerate berskala project (seperti pricing RR-10). Pakai pola **project-level `log_audit` (pekerjaan=None)** [REK, konsisten RR-10] atau per-pekerjaan terdampak?
-3. **JDW-06 notes (P7g):** **hapus UI sekarang + stop-tulis field, drop kolom DB di Fase 3** [REK, aman] atau migrasi drop kolom sekarang?
-4. Konfirmasi: semua keputusan 14-Juni (export server-authoritative, Periode 4-Minggu, Grid satu-satunya editor, Gantt read-only, Kurva S pertahankan logika, hapus notes/timestamp, LWW) tetap berlaku — saya implementasi sesuai itu, tidak re-litigasi. ✅?
+**KEPUTUSAN OWNER 2026-06-17 (scope LOCKED — "lanjutkan Batch A"):**
+1. **Sequencing:** Batch A (backend) dulu sampai hijau → Batch B (Vite, sekali rebuild owner). ✅
+2. **Audit reset/regenerate (P7b):** pola **project-level `log_audit` (pekerjaan=None)** konsisten RR-10 (rekomendasi diterima). ✅
+3. **JDW-06 notes (P7g):** hapus UI + stop-tulis field, **drop kolom DB di Fase 3** (rekomendasi diterima). ✅
+4. Semua keputusan 14-Juni tetap berlaku — implementasi mengikuti, tak re-litigasi. ✅
+
+**SCOPE WP-P7 TERKUNCI — BATCH A (backend) urutan: P7a → P7b → P7c → P7d → P7e → P7f → P7g; lalu BATCH B (Vite) P7h–m.**
+
+---
+
+#### WP-P7 — BATCH A SELESAI 2026-06-17 (uncommitted, backend)
+
+| Inc | Implementasi | File |
+|---|---|---|
+| **P7a** JDW-02 | save fallback batas minggu pakai `project.week_end_day` (effective) bukan hardcode 6; sync juga | views_api_tahapan_v2.py |
+| **P7b** audit | `api_reset_progress` → `DetailAHSPAudit(pekerjaan=None)` "Reset progress {mode}"; `api_regenerate_tahapan_v2` → audit perubahan batas minggu (hanya bila berubah). Plus reset endpoint `str(e)` leak → pesan generik | views_api_tahapan_v2.py |
+| **P7c** KS-03 | ✅ **sudah selesai B2** — `api_kurva_s_data` pakai `build_project_cache_signature` (sertakan HargaItemProject+markup+pricing). Verifikasi only. | (no change) |
+| **P7d** KS-05 | `_build_rekap_harga_cache` `except:pass`→ **log + re-raise** (cegah bobot 0 senyap; export gagal jelas) | jadwal_pekerjaan_adapter.py |
+| **P7e** B6d-metadata | **RE-SCOPE → BATCH B** (frontend-coupled; nilai hanya muncul saat frontend konsumsi, tak isolable-testable) | — |
+| **P7f** JDW-07 | hapus field mati `actual_updated_at` dari API assignments (tak pernah ditulis; timestamp tak diperlukan) | views_api_tahapan_v2.py |
+| **P7g** JDW-06 | notes diabaikan saat save (`notes=''`); fitur catatan dihapus; **drop kolom DB Fase 3** | views_api_tahapan_v2.py |
+
+**DEFER:** JDW-09 (full_clean per-sel di model `save()` `models.py:954`) = perubahan model-wide save, perf-only, risiko → ditunda (didokumentasikan; bukan correctness).
+
+**Test:** `tests_wp_p7_jadwal.py` 5 hijau (week_end_day fallback; reset+regenerate audit; actual_updated_at hilang; notes diabaikan). Regresi v2-access+b10+rekap-contract 22 hijau; `manage.py check` bersih. **Catatan test:** assign progress>0 butuh `VolumePekerjaan` (validasi missing_capacity); `Project.save()` paksa `week_end_day=week_start_day+6` (pakai pasangan konsisten di fixture).
+
+#### WP-P7 — BATCH B (Vite source) EDIT SELESAI 2026-06-17 — ⚠️ BUTUH OWNER REBUILD `dist/` + UAT
+
+| Inc | Implementasi (di `js/src/`) | Status |
+|---|---|---|
+| **P7i** B6e/R2 | hapus AUTO-regenerate saat page-open di `DataOrchestrator.js` + `jadwal_kegiatan_app.js` (dulu mutasi backend senyap via estimasi client rapuh). Ganti → `state.timelineNeedsRegen=true` + toast advisory; user picu "Perbarui Struktur Waktu" terkontrol (sudah ada konfirmasi). | ✅ src |
+| **P7j** JDW-04 | `data-loader.loadAssignments` set `assignmentsLoadError` + **re-throw** (bukan map kosong) → orchestrator masuk error-state (toast + state.error). | ✅ src |
+| **P7k** KS-02/JDW-13D | `dataset-builder.buildProgressDataset` HAPUS fallback volume/bobot-rata senyap; bobot = harga (G×volume) saja; bila belum siap → dataset kosong `weightsReady:false` (jujur, bukan kurva palsu). | ✅ src |
+| **P7l** JDW-06/11/16/17 | notes UI = **tak ada** di Vite (di-handle backend P7g); konfirmasi regen sudah ada (DataOrchestrator:177); JDW-16/17 (a11y/terminologi) = LOW **defer Fase 3**. | ✅/defer |
+| **P7e+P7h** B6d/R1 week_number server-authoritative | **DEFER** — audit klasifikasikan HARDENING (JS↔Python terbukti konsisten §14.5; bukan live bug); refactor `time-column-generator` untadvisable tanpa runtime test → tunda ke pass hardening. | ⏸️ defer |
+| **P7m** R4 | contract test builder minggu (backend, testable): `get_week_date_range` align week_end_day, minggu kontigu 7-hari, `calculate_week_number` round-trip. | ✅ test |
+
+**Verifikasi:** guard src `jadwal_batch_b.test.js` 4 + P7m backend 3 (dalam `tests_wp_p7_jadwal.py`) + full vitest 325 hijau + P7 backend 10 hijau. **⚠️ PENTING: edit ada di `js/src/` — bundle `dist/` MASIH perilaku LAMA sampai owner `npm run build`. Setelah rebuild → UAT manual (buka page jadwal: tak ada auto-regenerate senyap; load-error tampil; Kurva S tanpa bobot-rata).**
+
+**SISA WP-P7:** owner rebuild Vite + UAT Batch B; defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.

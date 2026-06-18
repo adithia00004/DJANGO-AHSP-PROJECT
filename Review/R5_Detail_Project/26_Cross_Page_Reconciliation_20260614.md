@@ -59,6 +59,25 @@ page Audit Trail. Model, histori, dan writer dipertahankan apa adanya untuk
 diagnosis sementara; migrasi snapshot baru hanya dibuat jika kebutuhan audit
 operasional muncul kembali.
 
+### A-11. Server-authoritative SAAT LOAD — cache klien tak boleh memblok/menimpa data server (DITAMBAHKAN 2026-06-17)
+**Generalisasi A-6 (yang dulu sempit: conversion).** Prinsip: setiap state yang
+dipersistensi di klien (localStorage) = **draft cache**, dan **TIDAK BOLEH PERNAH
+memblok atau menimpa data server-authoritative saat halaman load**. Berlaku untuk
+**parameter, computed, formula, dan dirty-flag** — bukan hanya conversion profile.
+- **Akar temuan:** UF-014/VP-06b (doc 28 §6). Page Volume mem-bootstrap parameter dari
+  localStorage (`loadVars`), lalu fix P3c (`shouldProtectLocalBaseState`) **menolak**
+  parameter server saat ada dirty-flag basi + lokal kosong/inkompatibel → parameter
+  macet di localStorage lama → formula "tidak valid". Quantity AMAN karena di-bootstrap SSR.
+- **Kontrak yang benar:** (a) data yang dikonsumsi saat load **di-bootstrap dari server
+  (SSR atau fetch yang selalu menang)**; (b) localStorage hanya melindungi **edit lokal
+  yang nyata ada isinya** (bukan flag basi / state kosong); (c) state klien tak-kompatibel
+  (mis. nama param legacy pasca-migrasi opaque) **dibuang**, bukan dipertahankan.
+- **Sweep 2026-06-17:** Volume parameter/formula = LIVE (perbaiki). Rekap Kebutuhan
+  conversion `hiConv:` = A-6/RK-10 (sudah direncana WP-P8). UI prefs (collapse/lebar/
+  theme/pane) = aman. `source_change_state` = flag awareness, risiko rendah.
+- **Pelajaran proses:** fix konflik-sync/false-dirty (VP-06) WAJIB diuji dengan
+  localStorage "diracuni" (flag dirty + var legacy/kosong), bukan hanya kasus local==server.
+
 ---
 
 ## B. Keputusan — STATUS
