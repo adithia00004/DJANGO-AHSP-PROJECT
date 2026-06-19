@@ -108,7 +108,6 @@ function countNativeDialogs(content) {
 // ke DP.modal; JANGAN menaikkan; file baru tidak boleh muncul di sini.
 const NATIVE_DIALOG_BUDGET = {
   'detail_project/static/detail_project/js/template_ahsp.js': 9,
-  'detail_project/static/detail_project/js/detail_ahsp_gabungan.js': 4,
   'detail_project/static/detail_project/js/volume_pekerjaan.js': 3,
   'detail_project/static/detail_project/js/shared/param_sidebar_editor.js': 3,
   'detail_project/static/detail_project/js/src/jadwal_kegiatan_app.js': 3,

@@ -47,8 +47,18 @@ Status:
 | WP-P3 | Volume Pekerjaan | DONE (P3f skip-by-design) | 2026-06-16 | 2026-06-16 | B3/B4 | VP-01..07 tertutup. P3a VP-05 validasi computed · P3b VP-07 payload+rate-limit + autosave gabung 5mnt + save-on-leave · P3c VP-06 server-authoritative + fix false-dirty project 195 · P3d JSON=param data-transfer (compliant) · P3e cross-page SSOT test. P3f (sinyal stale) skip = redundan (reevaluate+dirty sudah cover). Model A: quantity=SSOT RAB+Kebutuhan |
 | WP-P4 | List Pekerjaan | ✅ DONE (P4a–g) | 2026-06-17 | 2026-06-17 | B3 | Fondasi detail project. **SEMUA: P4a (UF-009/012 regression-lock), P4g (C1 delete-guard, C2 cascade re-expand), P4b (import atomik), P4c (rate/payload limit), P4d (LP-04 destructive-impact + konfirmasi UI), P4e (UF-007/008 cosmetic), P4f (contract test).** 13 backend + 8 JS guard hijau; 96 regression hijau. Matriks cascade §WP-P4 |
 | WP-P5..P9 | Integrasi per-page | DONE (targeted fixes; siap UAT runtime) | 2026-06-17 | 2026-06-18 | Shared WP | P5 Rincian DONE; P6 Rekap RAB DONE; P7 Jadwal DONE/siap UAT runtime; P8 Rekap Kebutuhan DONE/siap UAT runtime; **P9 Dashboard DONE/siap UAT runtime** (status overdue SSOT, quick search, mass edit reset, dead endpoint cleanup) |
-| Fase 3 | Cleanup/deprecation | PENDING | - | - | Replacement gates | - |
+| Fase 3 | Cleanup/deprecation | IN PROGRESS | 2026-06-19 | - | Replacement gates | Batch 1 mulai: CL-10, CL-11, CL-09A |
 | Fase 4 | Regression/UAT | PENDING | - | - | Semua WP target | - |
+
+### Fase 3 Cleanup - Batch 1 Progress
+
+**Mulai:** 2026-06-19. Scope awal mengikuti roadmap 25 Batch 1, hanya artefak yang replacement gate-nya sudah jelas.
+
+| Cleanup | Status | Perubahan | Guard |
+|---|---|---|---|
+| CL-10 `detail_ahsp_gabungan.js` legacy | DONE | Hapus JS orphan dan test UI yang hanya menjaga file lama. Endpoint backend `/detail-ahsp/save/` tetap dipertahankan sebagai jaring pengaman sampai route/API cleanup tersendiri. | `DetailGabunganAtomicSaveTests` tetap PASS untuk endpoint backend |
+| CL-11 template tanpa consumer | DONE | Hapus `rekap_ahsp.html`, `tambah_dari_referensi.html`, dan `rincian_rab.html`. View `rincian_rab_view` tetap redirect permanen ke Rincian AHSP; API legacy mengikuti sunset roadmap. | exact reference scan sebelum hapus; page redirect test tetap dipertahankan |
+| CL-09A duplicate `ExportManager.js` Jadwal | DONE | Hapus load kedua `ExportManager.js` dari `kelola_tahapan_grid_modern.html`; global load tetap dari `base_detail.html`. | template still extends `base_detail.html`; frontend governance + Django check |
 
 ## 2.1 Penjelasan Bahasa-Mudah: Apa & Kenapa Tiap WP
 
