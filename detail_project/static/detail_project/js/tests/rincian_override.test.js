@@ -44,3 +44,13 @@ describe('WP-P5f — surface backend override error (RA-10)', () => {
     expect(src).not.toContain("throw new Error('save override fail')");
   });
 });
+
+describe('Rincian AHSP source-change stale flag hygiene', () => {
+  test('pending volume/reload flags are pruned against active rekap rows', () => {
+    expect(src).toContain('function activePekerjaanIds()');
+    expect(src).toContain('function pruneStalePendingVolumeJobs()');
+    expect(src).toContain('sourceChange?.markVolumeResolved(projectId, staleIds)');
+    expect(src).toContain('sourceChange?.markReloaded(projectId, staleReloadIds)');
+    expect(src).toContain('const visibleVolumeJobs = activeIds.size ? volumeJobs.filter((id) => activeIds.has(id)) : volumeJobs;');
+  });
+});

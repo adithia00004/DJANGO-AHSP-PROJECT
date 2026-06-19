@@ -1098,9 +1098,33 @@ def get_pending_source_change_flags(project) -> Dict[str, List[int]]:
     tracker = get_change_tracker(project, create=False)
     if tracker is None:
         return {"reload_job_ids": [], "volume_reset_job_ids": []}
+    reload_ids = _normalize_job_ids(getattr(tracker, "pending_reload_job_ids", []))
+    volume_ids = _normalize_job_ids(getattr(tracker, "pending_volume_reset_job_ids", []))
+
+    # Defensive hygiene: source-change flags can outlive the row they point to
+    # after import/delete/copy-project flows. Returning stale IDs makes Volume
+    # banners say "7 pekerjaan" while only two rows can actually be highlighted.
+    active_ids = set(
+        Pekerjaan.objects.filter(project=project, id__in=set(reload_ids).union(volume_ids))
+        .values_list("id", flat=True)
+    )
+    next_reload = [pk for pk in reload_ids if pk in active_ids]
+    next_volume = [pk for pk in volume_ids if pk in active_ids]
+
+    if next_reload != reload_ids or next_volume != volume_ids:
+        tracker.pending_reload_job_ids = next_reload
+        tracker.pending_volume_reset_job_ids = next_volume
+        tracker.save(
+            update_fields=[
+                "pending_reload_job_ids",
+                "pending_volume_reset_job_ids",
+                "updated_at",
+            ]
+        )
+
     return {
-        "reload_job_ids": _normalize_job_ids(getattr(tracker, "pending_reload_job_ids", [])),
-        "volume_reset_job_ids": _normalize_job_ids(getattr(tracker, "pending_volume_reset_job_ids", [])),
+        "reload_job_ids": next_reload,
+        "volume_reset_job_ids": next_volume,
     }
 
 

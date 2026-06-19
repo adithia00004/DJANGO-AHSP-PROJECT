@@ -8,7 +8,14 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from dashboard.models import Project
-from detail_project.models import Klasifikasi, Pekerjaan, PekerjaanProgressWeekly, SubKlasifikasi
+from detail_project.models import (
+    Klasifikasi,
+    Pekerjaan,
+    PekerjaanProgressWeekly,
+    ProjectChangeStatus,
+    SubKlasifikasi,
+)
+from detail_project.services import get_pending_source_change_flags
 from detail_project.views import (
     jadwal_pekerjaan_view,
     rekap_kebutuhan_view,
@@ -76,6 +83,31 @@ class ChangeStatusSyncTests(TestCase):
         body = json.loads(response.content.decode("utf-8"))
         self.assertTrue(body["ok"])
         self.assertIsNotNone(body["jadwal_changed_at"])
+
+    def test_pending_source_change_flags_prune_deleted_pekerjaan_ids(self):
+        tracker, _ = ProjectChangeStatus.objects.get_or_create(project=self.project)
+        tracker.pending_reload_job_ids = [self.pekerjaan.id, 999901]
+        tracker.pending_volume_reset_job_ids = [self.pekerjaan.id, 999902]
+        tracker.save(update_fields=["pending_reload_job_ids", "pending_volume_reset_job_ids", "updated_at"])
+
+        flags = get_pending_source_change_flags(self.project)
+
+        self.assertEqual(flags["reload_job_ids"], [self.pekerjaan.id])
+        self.assertEqual(flags["volume_reset_job_ids"], [self.pekerjaan.id])
+        tracker.refresh_from_db()
+        self.assertEqual(tracker.pending_reload_job_ids, [self.pekerjaan.id])
+        self.assertEqual(tracker.pending_volume_reset_job_ids, [self.pekerjaan.id])
+
+    def test_change_status_api_returns_only_active_pending_volume_rows(self):
+        tracker, _ = ProjectChangeStatus.objects.get_or_create(project=self.project)
+        tracker.pending_volume_reset_job_ids = [self.pekerjaan.id, 999902]
+        tracker.save(update_fields=["pending_volume_reset_job_ids", "updated_at"])
+
+        response = self._get_change_status()
+
+        self.assertEqual(response.status_code, 200, response.content.decode("utf-8"))
+        body = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(body["pending_volume_reset_job_ids"], [self.pekerjaan.id])
 
     def test_summary_and_schedule_pages_render_scoped_sync_led(self):
         cases = (

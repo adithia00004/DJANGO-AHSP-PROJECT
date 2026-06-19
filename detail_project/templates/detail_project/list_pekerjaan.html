@@ -49,7 +49,7 @@
       <div class="input-group lp-toolbar-search">
         <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
         <input id="lp-nav-search" type="search" class="form-control lp-nav-search ux-focusable"
-          placeholder="{% trans 'Cari di navigasi…' %}" autocomplete="off" aria-label="{% trans 'Cari di navigasi' %}">
+          placeholder="{% trans 'Cari di navigasi...' %}" autocomplete="off" aria-label="{% trans 'Cari di navigasi' %}">
       </div>
       <span id="lp-toolbar-announce" class="dp-visually-hidden" aria-live="polite"></span>
     </div>
@@ -127,8 +127,8 @@
 
       {# Info tooltip about drag-and-drop impact #}
       <button type="button" class="btn btn-sm btn-outline-info dp-btn lp-btn" data-bs-toggle="tooltip"
-        data-bs-placement="bottom" data-bs-html="true"
-        title="<strong>💡 Drag & Drop</strong><br><small>Perubahan urutan akan mempengaruhi semua halaman terkait.</small>">
+        data-bs-placement="bottom"
+        title="{% trans 'Drag & Drop: perubahan urutan akan mempengaruhi semua halaman terkait setelah disimpan.' %}">
         <i class="bi bi-info-circle" aria-hidden="true"></i>
       </button>
 
@@ -147,7 +147,7 @@
       <div class="flex-grow-1 small">
         <strong>Fitur Drag & Drop Aktif</strong><br>
         Anda dapat mengubah urutan pekerjaan dengan drag & drop pada kolom nomor <span
-          class="badge bg-secondary">⋮⋮</span>.
+          class="badge bg-secondary">::</span>.
         Perubahan urutan akan otomatis tersinkronisasi ke semua halaman terkait setelah disimpan.
       </div>
       <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -208,7 +208,7 @@
       </div>
     </aside>
 
-    <!-- MAIN AREA (Feel v1: kartu Klasifikasi → Sub berisi tabel lokal) -->
+    <!-- MAIN AREA (Feel v1: kartu Klasifikasi -> Sub berisi tabel lokal) -->
     <main class="lp-main">
       <!-- Container utama mirip versi lama -->
       <div id="klas-list" class="vstack gap-3">

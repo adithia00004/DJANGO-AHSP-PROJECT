@@ -145,11 +145,11 @@
 <div id="vp-sync-banner" class="alert alert-warning d-flex align-items-center gap-3 d-none" role="status"
   aria-live="polite">
   <div>
-    <div class="fw-semibold">Perlu update volume/tahapan</div>
-    <div id="vp-sync-text" class="small text-muted">Beberapa pekerjaan wajib diperiksa ulang sebelum ekspor.</div>
+    <div class="fw-semibold">Volume perlu diperiksa ulang</div>
+    <div id="vp-sync-text" class="small text-muted">Beberapa pekerjaan berubah sumber/referensi. Periksa lalu simpan volume yang ditandai.</div>
   </div>
   <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="vp-sync-focus">
-    <i class="bi bi-arrow-down-circle me-1"></i>Lompat ke pekerjaan
+    <i class="bi bi-arrow-down-circle me-1"></i>Lihat pekerjaan
   </button>
 </div>
 
@@ -649,5 +649,5 @@
 
 
 
-<script src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
+<script defer src="{% static 'detail_project/js/volume_pekerjaan.js' %}"></script>
 {% endblock %}

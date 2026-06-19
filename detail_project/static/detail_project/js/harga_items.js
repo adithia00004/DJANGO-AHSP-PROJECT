@@ -99,9 +99,10 @@
   let dirty = false;
   let allowUnload = false;
   let formLocked = false;
-  let pendingTemplateReloadJobs = new Set(
-    sourceChange && projectId ? sourceChange.listReloadJobs(projectId) : [],
-  );
+  // Server-first on load: Harga Items has no rendered pekerjaan list to prune
+  // browser-cached source-change IDs. Starting from localStorage can lock the
+  // form with stale flags from deleted jobs; wait for sync-led/server events.
+  let pendingTemplateReloadJobs = new Set();
   let changeStatusPending = false;
 
   function setDirty(val) {

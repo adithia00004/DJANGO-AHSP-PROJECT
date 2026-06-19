@@ -158,6 +158,27 @@
     sourceChange && projectId ? sourceChange.listVolumeJobs(projectId) : [],
   );
 
+  function activePekerjaanIds() {
+    return new Set(
+      (rows || [])
+        .map((row) => Number(row?.pekerjaan_id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+  }
+
+  function pruneStalePendingVolumeJobs() {
+    const activeIds = activePekerjaanIds();
+    if (!activeIds.size || !pendingVolumeJobs.size) return;
+    const staleIds = Array.from(pendingVolumeJobs).filter((id) => !activeIds.has(Number(id)));
+    if (!staleIds.length) return;
+    staleIds.forEach((id) => pendingVolumeJobs.delete(id));
+    try {
+      sourceChange?.markVolumeResolved(projectId, staleIds);
+    } catch (err) {
+      console.warn('[RincianAHSP] Failed to clear stale volume flags', err);
+    }
+  }
+
   // ====== utils ======
   /**
    * Escape HTML special characters to prevent XSS
@@ -523,6 +544,7 @@
       const j = await safeJson(r);
       if (!r.ok || !j.ok) throw new Error('rekap fail');
       rows = j.rows || [];
+      pruneStalePendingVolumeJobs();
       renderReadiness(j.readiness);
       try { projectPPN = Number(j.meta?.ppn_percent ?? 0); } catch { projectPPN = 0; }
       renderList();
@@ -757,8 +779,15 @@
       // Backward compatibility: legacy consumers expected `state.ahsp`,
       // current producer emits `state.reload`.
       const reloadJobs = toIds(detail.state.reload || detail.state.ahsp);
+      const activeIds = activePekerjaanIds();
+      const staleVolumeIds = volumeJobs.filter((id) => activeIds.size && !activeIds.has(id));
+      const staleReloadIds = reloadJobs.filter((id) => activeIds.size && !activeIds.has(id));
+      if (staleVolumeIds.length) sourceChange?.markVolumeResolved(projectId, staleVolumeIds);
+      if (staleReloadIds.length) sourceChange?.markReloaded(projectId, staleReloadIds);
+      const visibleVolumeJobs = activeIds.size ? volumeJobs.filter((id) => activeIds.has(id)) : volumeJobs;
+      const visibleReloadJobs = activeIds.size ? reloadJobs.filter((id) => activeIds.has(id)) : reloadJobs;
       const previousPending = new Set(pendingVolumeJobs);
-      pendingVolumeJobs = new Set([...volumeJobs, ...reloadJobs]);
+      pendingVolumeJobs = new Set([...visibleVolumeJobs, ...visibleReloadJobs]);
 
       // Clear detail cache for jobs affected by source/template reload.
       reloadJobs.forEach((id) => cacheDetail.delete(id));
@@ -1682,6 +1711,7 @@
 
   function updateVolumeAlertForSelection(id) {
     if (!volumeAlertEl) return;
+    pruneStalePendingVolumeJobs();
     const needsWarning = pendingVolumeJobs.has(Number(id));
     volumeAlertEl.classList.toggle('d-none', !needsWarning);
   }
@@ -1694,4 +1724,3 @@
   }
 
 })();
-

@@ -75,13 +75,28 @@ describe('WP-B8d — template markup', () => {
 describe('WP-P2d (UF-010) — no eager mass auto-reload on page-open', () => {
   const js = read('template_ahsp.js');
 
-  test('page-open does not trigger a bulk auto-reload', () => {
-    expect(js).not.toContain("scheduleAutoReloadPendingJobs('page-open')");
+  test('no bulk auto-reload scheduler remains', () => {
+    expect(js).not.toContain('function scheduleAutoReloadPendingJobs');
+    expect(js).not.toContain('function autoReloadPendingJobs');
+    expect(js).not.toContain('scheduleAutoReloadPendingJobs(');
+    expect(js).not.toContain('Auto-reloading pending Template AHSP jobs');
   });
 
   test('stale jobs are still resolved lazily on selection', () => {
     // selectJobInternal fetches fresh detail when a flagged job is opened.
     expect(js).toContain('jobNeedsReload(id)');
     expect(js).toContain('const needsFetch =');
+  });
+
+  test('stale job labels are actionable, not vague reload copy', () => {
+    expect(js).not.toContain("pill.textContent = 'Perlu reload'");
+    expect(js).toContain("pill.textContent = 'Detail perlu dimuat ulang'");
+    expect(js).toContain('Sumber pekerjaan berubah di List Pekerjaan');
+  });
+
+  test('stale reload flags for deleted jobs are pruned locally', () => {
+    expect(js).toContain('function pruneStalePendingReloadJobs()');
+    expect(js).toContain('sourceChange?.markReloaded(projectId, staleIds)');
+    expect(js).toContain('pruneStalePendingReloadJobs();');
   });
 });

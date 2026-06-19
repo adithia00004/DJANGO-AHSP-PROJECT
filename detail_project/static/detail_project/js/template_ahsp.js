@@ -182,8 +182,6 @@
   let changeStatusPending = false;
   let reloadInFlight = false;
   let reloadQueue = Promise.resolve();
-  let autoReloadPendingTimer = null;
-  let autoReloadPendingInFlight = false;
 
   function formatSourceLabel(sourceType, sourceLabel, ahspSumber) {
     const label = String(sourceLabel || '').trim();
@@ -988,7 +986,7 @@
         // P1.2 FIX: Add loading state during bundle validation
         if (kind === 'job' && refId) {
           // Show loading toast
-          const loadingMsg = `ðŸ” Memeriksa bundle "${kode}"...`;
+          const loadingMsg = `Memeriksa bundle "${kode}"...`;
           toast(loadingMsg, 'info', 0); // No auto-dismiss during loading
 
           try {
@@ -1007,7 +1005,7 @@
 
             if (data.ok && (!data.items || data.items.length === 0)) {
               // Bundle is empty - show warning and prevent selection
-              toast(`âš ï¸ Bundle Kosong: "${nama}" belum memiliki komponen AHSP.\n\nSilakan isi detail AHSP untuk pekerjaan tersebut terlebih dahulu sebelum menggunakan sebagai bundle.`, 'warning', 5000);
+              toast(`Bundle kosong: "${nama}" belum memiliki komponen AHSP.\n\nIsi detail AHSP pekerjaan tersebut terlebih dahulu sebelum digunakan sebagai bundle.`, 'warning', 5000);
               console.warn('[BUNDLE_VALIDATION] Empty bundle detected:', kode, nama);
 
               // Clear the selection
@@ -1016,15 +1014,15 @@
             }
 
             console.log('[BUNDLE_VALIDATION] Bundle valid:', kode, 'has', data.items?.length || 0, 'components');
-            toast(`âœ… Bundle "${kode}" valid (${data.items?.length || 0} komponen)`, 'success', 2000);
+            toast(`Bundle "${kode}" valid (${data.items?.length || 0} komponen).`, 'success', 2000);
 
           } catch (err) {
             if (err.name === 'AbortError') {
               console.error('[BUNDLE_VALIDATION] Timeout validating bundle:', kode);
-              toast('â±ï¸ Timeout saat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);
+              toast('Timeout saat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);
             } else {
               console.error('[BUNDLE_VALIDATION] Error validating bundle:', err);
-              toast('âš ï¸ Tidak dapat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);
+              toast('Tidak dapat validasi bundle. Lanjutkan dengan hati-hati.', 'warning', 4000);
             }
             // Don't block - let backend handle validation
           }
@@ -1053,7 +1051,7 @@
         setDirty(true);
       });
 
-      // Edit manual kode â†’ kosongkan ref id
+      // Edit manual kode -> kosongkan ref id
       input.addEventListener('input', () => {
         const isBundleVisual = tr.dataset.visualSeg === 'LAIN_BUNDLE';
         const hasRef = !!(
@@ -1088,7 +1086,7 @@
       const currentKode = currentJobEl?.querySelector('.kode')?.textContent?.trim() || 'pekerjaan ini';
       const targetKode = li.querySelector('.kode')?.textContent?.trim() || 'pekerjaan lain';
 
-      const confirmMsg = `âš ï¸ PERUBAHAN BELUM TERSIMPAN!\n\nAnda memiliki perubahan yang belum disimpan pada "${currentKode}".\n\nPilih tindakan:\nâ€¢ OK = Simpan dulu, lalu pindah ke "${targetKode}"\nâ€¢ Cancel = Tetap di "${currentKode}"`;
+      const confirmMsg = `PERUBAHAN BELUM TERSIMPAN\n\nAnda memiliki perubahan yang belum disimpan pada "${currentKode}".\n\nPilih tindakan:\n- OK = Simpan dulu, lalu pindah ke "${targetKode}"\n- Cancel = Tetap di "${currentKode}"`;
 
       if (!confirm(confirmMsg)) {
         console.log('[SELECT_JOB] User cancelled job switch due to unsaved changes');
@@ -1097,16 +1095,16 @@
 
       // User chose to save first - use Promise to wait for completion
       console.log('[SELECT_JOB] Auto-saving before job switch...');
-      toast('ðŸ’¾ Menyimpan perubahan...', 'info', 2000);
+      toast('Menyimpan perubahan...', 'info', 2000);
 
       doSave(activeJobId).then(() => {
         console.log('[SELECT_JOB] Save completed successfully, switching job...');
-        toast('âœ… Tersimpan! Beralih ke pekerjaan lain...', 'success', 1500);
+        toast('Tersimpan. Beralih ke pekerjaan lain...', 'success', 1500);
         // Wait a bit for user to see success message
         setTimeout(() => triggerSelectJobInternal(li, id), 500);
       }).catch((err) => {
         console.error('[SELECT_JOB] Save failed:', err);
-        toast('âŒ Gagal menyimpan. Tetap di pekerjaan ini.', 'error');
+        toast('Gagal menyimpan. Tetap di pekerjaan ini.', 'error');
         // Stay on current job if save fails
       });
       return;
@@ -1116,8 +1114,8 @@
     // No more invasive blocker - just seamless refresh
     const requiresReload = jobNeedsReload(id);
     if (requiresReload) {
-      console.log('[SELECT_JOB] Job requires reload - auto-reloading silently');
-      toast('ðŸ”„ Memuat data terbaru...', 'info', 2000);
+      console.log('[SELECT_JOB] Job requires reload - loading fresh detail for selected job');
+      toast('Memuat data terbaru untuk pekerjaan ini...', 'info', 2000);
     }
 
     // Proceed with job selection - forceRefresh will be handled by selectJobInternal
@@ -1266,6 +1264,27 @@
     return pendingReloadJobs.has(Number(id));
   }
 
+  function renderedJobIds() {
+    return new Set(
+      $$('#ta-job-list .ta-job-item')
+        .map((li) => Number(li.dataset.pekerjaanId))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+  }
+
+  function pruneStalePendingReloadJobs() {
+    const activeIds = renderedJobIds();
+    if (!activeIds.size || !pendingReloadJobs.size) return;
+    const staleIds = Array.from(pendingReloadJobs).filter((id) => !activeIds.has(Number(id)));
+    if (!staleIds.length) return;
+    staleIds.forEach((id) => pendingReloadJobs.delete(id));
+    try {
+      sourceChange?.markReloaded(projectId, staleIds);
+    } catch (err) {
+      console.warn('[TA] Failed to clear stale reload flags', err);
+    }
+  }
+
   function syncPendingState(state) {
     if (!state || !state.reload) {
       pendingReloadJobs = new Set();
@@ -1274,9 +1293,11 @@
     pendingReloadJobs = new Set(
       Object.keys(state.reload).map((key) => Number(key)).filter((id) => Number.isFinite(id)),
     );
+    pruneStalePendingReloadJobs();
   }
 
   function updateJobBadges() {
+    pruneStalePendingReloadJobs();
     const items = $$('#ta-job-list .ta-job-item');
     items.forEach((li) => {
       const id = Number(li.dataset.pekerjaanId);
@@ -1289,9 +1310,11 @@
         if (!pill) {
           pill = document.createElement('span');
           pill.className = 'ta-job-pill';
-          pill.textContent = 'Perlu reload';
           meta.appendChild(pill);
         }
+        pill.textContent = 'Detail perlu dimuat ulang';
+        pill.title = 'Sumber pekerjaan berubah di List Pekerjaan. Buka pekerjaan ini atau klik Muat ulang untuk mengambil detail AHSP terbaru.';
+        pill.setAttribute('aria-label', pill.title);
       } else if (pill) {
         pill.remove();
       }
@@ -1300,18 +1323,18 @@
 
   function updateBanner() {
     if (!bannerEl) return;
+    pruneStalePendingReloadJobs();
     const pendingCount = pendingReloadJobs.size;
     const shouldShow = pendingCount > 0 || changeStatusPending;
     bannerEl.classList.toggle('d-none', !shouldShow);
     if (!shouldShow) return;
 
-    // P2 FIX: Friendlier banner messages - emphasize auto-reload
     const messages = [];
     if (pendingCount > 0) {
-      messages.push(`${pendingCount} pekerjaan memiliki pembaruan. Data akan dimuat otomatis saat dibuka.`);
+      messages.push(`${pendingCount} pekerjaan memiliki perubahan sumber dari List Pekerjaan. Buka pekerjaan terkait atau klik Muat ulang untuk mengambil detail AHSP terbaru.`);
     }
     if (changeStatusPending) {
-      messages.push('Ada perubahan terbaru pada Template AHSP.');
+      messages.push('Ada perubahan data terbaru dari halaman lain.');
     }
     if (bannerTextEl) {
       bannerTextEl.textContent = messages.join(' ');
@@ -1331,7 +1354,7 @@
   }
 
   function toggleEditorBlocker(show) {
-    // P2 FIX: Blocker disabled - auto-reload is seamless now
+    // P2 FIX: Blocker disabled; stale data is resolved by explicit reload/selection.
     // Keep function for backward compatibility but don't actually block
     if (!editorBlocker) return;
     // Always keep it hidden
@@ -1362,7 +1385,7 @@
     updateJobBadges();
     updateBanner();
     acknowledgePekerjaanSyncIfSettled();
-    // P2 FIX: No more blocker toggle - auto-reload is seamless
+    // P2 FIX: No blocker toggle; banner/job pill guides the user.
   }
 
   async function reloadJobs(jobIds, options = {}) {
@@ -1372,7 +1395,7 @@
     const queueMode = !!options.queue || isSilent;
     if (!uniqueIds.length) {
       if (!isSilent) {
-        toast('Tidak ada pekerjaan yang dipilih untuk dimuat ulang.', 'info');
+        toast('Tidak ada pekerjaan yang dipilih.', 'warning');
       }
       return Promise.resolve();
     }
@@ -1456,39 +1479,10 @@
     }
     const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
     if (!currentJobEl) {
-      toast('Pekerjaan tidak ditemukan.', 'error');
+        toast('Pekerjaan tidak ditemukan.', 'error');
       return Promise.resolve();
     }
     return reloadJobs([activeJobId], { preserveSelection: true });
-  }
-
-  function scheduleAutoReloadPendingJobs(reason = 'open') {
-    if (!pendingReloadJobs.size || dirty) return;
-    if (autoReloadPendingTimer) {
-      clearTimeout(autoReloadPendingTimer);
-    }
-    autoReloadPendingTimer = setTimeout(() => {
-      autoReloadPendingTimer = null;
-      autoReloadPendingJobs(reason).catch((err) => {
-        console.warn('[TA] Auto reload pending jobs failed:', err);
-      });
-    }, 900);
-  }
-
-  async function autoReloadPendingJobs(reason = 'open') {
-    if (autoReloadPendingInFlight || reloadInFlight || dirty || !pendingReloadJobs.size) return;
-    autoReloadPendingInFlight = true;
-    const targets = Array.from(pendingReloadJobs);
-    try {
-      console.info('[TA] Auto-reloading pending Template AHSP jobs', { reason, count: targets.length });
-      await reloadJobs(targets, {
-        preserveSelection: !!activeJobId,
-        queue: true,
-        silent: true,
-      });
-    } finally {
-      autoReloadPendingInFlight = false;
-    }
   }
 
   function updateStats() {
@@ -1664,7 +1658,6 @@
         syncPendingState(detail.state);
         updateJobBadges();
         updateBanner();
-        scheduleAutoReloadPendingJobs('source-change-sync');
       }
     });
   }
@@ -1945,7 +1938,7 @@
               cached: currentCache.updatedAt,
               fresh: freshData.pekerjaan.updated_at
             });
-            toast('âš ï¸ Data telah diubah sejak terakhir dimuat. Muat ulang dulu!', 'warning', 5000);
+            toast('Data telah diubah sejak terakhir dimuat. Muat ulang dulu.', 'warning', 5000);
 
             // Offer to reload
             const reload = confirm('Data pekerjaan ini telah berubah sejak terakhir dimuat.\n\nMuat ulang data terbaru? Perubahan Anda akan hilang.');
@@ -1995,14 +1988,14 @@
         toast(userMsg, 'error');
         console.error('[SAVE] Server errors:', js.errors || []);
         // FIX (#1): REJECT pada gagal penuh agar pemanggil (auto-save sebelum pindah
-        // pekerjaan / sebelum sinkronisasi) TIDAK menganggapnya sukses lalu berpindah —
+        // pekerjaan / sebelum sinkronisasi) TIDAK menganggapnya sukses lalu berpindah -
         // yang akan menghilangkan input pengguna. dirty sengaja TIDAK di-reset.
         const error = new Error(userMsg);
         error.handled = true;
         return Promise.reject(error);
       }
 
-      let userMsg = js.user_message || 'âœ… Data berhasil disimpan!';
+      let userMsg = js.user_message || 'Data berhasil disimpan.';
 
         // ENHANCED: Show bundle expansion feedback
         const rawRows = js.saved_raw_rows || 0;
@@ -2013,7 +2006,7 @@
           const bundleCount = rawRows - (rows.filter(r => r.kategori !== 'LAIN').length);
           const expandedCount = expandedRows - rawRows;
           if (bundleCount > 0) {
-            userMsg += `\n\nðŸ“¦ ${bundleCount} bundle di-expand menjadi ${expandedCount} komponen tambahan.`;
+            userMsg += `\n\n${bundleCount} bundle di-expand menjadi ${expandedCount} komponen tambahan.`;
           }
         }
 
@@ -2023,7 +2016,7 @@
       // Update state
       setDirty(false);
 
-      // WP-B4: simpan detail dapat mengubah readiness (harga/expansion/koef) → refresh banner.
+      // WP-B4: simpan detail dapat mengubah readiness (harga/expansion/koef) -> refresh banner.
       refreshReadiness();
 
       // P0 FIX: Use response data directly instead of double fetch
@@ -2082,7 +2075,7 @@
       if (err.handled) {
         throw err;
       }
-      toast('âŒ Gagal menyimpan. Periksa koneksi internet Anda dan coba lagi.', 'error');
+      toast('Gagal menyimpan. Periksa koneksi internet Anda dan coba lagi.', 'error');
       throw err;
     }).finally(() => {
       if (spin) spin.hidden = true;
@@ -2121,10 +2114,10 @@
       return { kode, uraian };
     }).slice(0, 5); // Show max 5 items in preview
 
-    const preview = items.map(item => `â€¢ ${item.kode}: ${item.uraian}`).join('\n');
+    const preview = items.map(item => `- ${item.kode}: ${item.uraian}`).join('\n');
     const moreText = count > 5 ? `\n... dan ${count - 5} baris lainnya` : '';
 
-    const confirmMsg = `âš ï¸ HAPUS ${count} BARIS TERPILIH?\n\n${preview}${moreText}\n\nTindakan ini tidak bisa dibatalkan (belum ada undo).`;
+    const confirmMsg = `HAPUS ${count} BARIS TERPILIH?\n\n${preview}${moreText}\n\nTindakan ini tidak bisa dibatalkan (belum ada undo).`;
 
     if (!confirm(confirmMsg)) {
       console.log('[DELETE] User cancelled deletion');
@@ -2142,7 +2135,7 @@
     updateDelState(seg);
 
     // Show feedback toast
-    toast(`ðŸ—‘ï¸ ${count} baris berhasil dihapus dari ${seg}`, 'info');
+    toast(`${count} baris berhasil dihapus dari ${seg}.`, 'info');
   });
 
   // Update state tombol hapus saat ceklis berubah
@@ -2177,11 +2170,11 @@
           let errorMsg = 'Gagal reset. Silakan coba lagi.';
 
           if (response.status === 403) {
-            errorMsg = 'â›” Anda tidak memiliki akses untuk reset pekerjaan ini.';
+            errorMsg = 'Anda tidak memiliki akses untuk reset pekerjaan ini.';
           } else if (response.status === 404) {
-            errorMsg = 'âŒ Pekerjaan atau referensi tidak ditemukan.';
+            errorMsg = 'Pekerjaan atau referensi tidak ditemukan.';
           } else if (response.status === 500) {
-            errorMsg = 'âš ï¸ Server error. Hubungi administrator.';
+            errorMsg = 'Server error. Hubungi administrator.';
           } else if (text) {
             errorMsg = `HTTP ${response.status}: ${text}`;
           }
@@ -2228,7 +2221,7 @@
 
         // Show success with item count
         const count = getData.items?.length || 0;
-        toast(`âœ… Berhasil reset ${count} item dari referensi`, 'success');
+        toast(`Berhasil reset ${count} item dari referensi.`, 'success');
 
       } catch (err) {
         // Comprehensive error handling
@@ -2238,9 +2231,9 @@
 
         if (err.message) {
           if (err.message.includes('timeout') || err.message.includes('Failed to fetch')) {
-            errorMsg = 'â±ï¸ Koneksi timeout. Periksa internet dan coba lagi.';
+            errorMsg = 'Koneksi timeout. Periksa internet dan coba lagi.';
           } else if (err.message.includes('NetworkError') || err.message.includes('Network request failed')) {
-            errorMsg = 'ðŸŒ Tidak ada koneksi internet. Periksa koneksi Anda.';
+            errorMsg = 'Tidak ada koneksi internet. Periksa koneksi Anda.';
           } else {
             errorMsg = err.message; // Use specific error from server
           }
@@ -2256,19 +2249,19 @@
   if (reloadBtn) {
     reloadBtn.addEventListener('click', () => {
       if (!activeJobId) {
-        toast('âš ï¸ Tidak ada pekerjaan yang dipilih', 'warning');
+        toast('Tidak ada pekerjaan yang dipilih.', 'warning');
         return;
       }
 
       // Konfirmasi jika ada perubahan yang belum disimpan
       if (dirty) {
         const confirmMsg = (
-          "âš ï¸ PERUBAHAN BELUM TERSIMPAN!\n\n" +
+          "PERUBAHAN BELUM TERSIMPAN\n\n" +
           "Anda memiliki perubahan yang belum disimpan.\n\n" +
           "Pilihan:\n" +
-          "â€¢ OK = Buang perubahan dan muat ulang data terbaru dari server\n" +
-          "â€¢ Cancel = Batalkan reload dan simpan dulu\n\n" +
-          "âš ï¸ Perubahan yang belum disimpan akan hilang!"
+          "- OK = Buang perubahan dan muat ulang data terbaru dari server\n" +
+          "- Cancel = Batalkan reload dan simpan dulu\n\n" +
+          "Perubahan yang belum disimpan akan hilang."
         );
 
         if (!confirm(confirmMsg)) {
@@ -2284,10 +2277,10 @@
       // Re-fetch dari server dengan forceRefresh = true
       const currentJobEl = $(`.ta-job-item[data-pekerjaan-id="${activeJobId}"]`);
       if (currentJobEl) {
-        toast('ðŸ”„ Memuat ulang data terbaru...', 'info');
+        toast('Memuat ulang data terbaru...', 'info');
         triggerSelectJobInternal(currentJobEl, activeJobId, true); // forceRefresh = true
       } else {
-        toast('âŒ Pekerjaan tidak ditemukan', 'error');
+        toast('Pekerjaan tidak ditemukan.', 'error');
       }
     });
   }
@@ -2333,7 +2326,7 @@
     a.download = `template_ahsp_${jobKode}_${timestamp}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
-    toast('âœ… CSV berhasil di-export', 'success');
+    toast('CSV berhasil di-export.', 'success');
   });
 
   // toast notification - delegate to global DP.toast
@@ -2503,9 +2496,9 @@
   // auto-select first job
   const first = $('#ta-job-list .ta-job-item:not([hidden])');
   if (first) selectJob(first);
-  // WP-P2d (UF-010): NO eager mass auto-reload on page-open. Stale (pending-reload)
-  // jobs are resolved LAZILY — selectJobInternal already fetches fresh detail when
-  // a flagged job is opened — and the sync banner shows the pending count. This
+  // WP-P2d (UF-010): NO eager mass reload. Stale (pending-reload)
+  // jobs are resolved LAZILY: selectJobInternal fetches fresh detail when
+  // a flagged job is opened, and the sync banner shows the pending count. This
   // stops the surprising bulk reload that fired even when the user left details alone.
 
   // =========================

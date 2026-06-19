@@ -1,6 +1,6 @@
 // /static/detail_project/js/list_pekerjaan.js
 /* =====================================================================
-   List Pekerjaan — JS
+ *   List Pekerjaan - JS
    - Kompatibel: jQuery 3.7, Select2 4.1, Bootstrap 5
    - Fitur: TOC Sidebar, Drag & Drop, Template Library, Filter
    ===================================================================== */
@@ -192,10 +192,10 @@
     const modalApi = getModalApi();
 
     // Some deletions are blocked because the pekerjaan is a "Pekerjaan Gabungan" target
-    // still used by a surviving pekerjaan (C1). Warn and stop — the save would be rejected.
+    // still used by a surviving pekerjaan (C1). Warn and stop; the save would be rejected.
     if (data.has_blocked) {
       const lines = (data.blocked || [])
-        .map(b => `• "${b.label}" dipakai oleh: ${(b.blocked_by || []).join(', ')}`)
+        .map(b => `- "${b.label}" dipakai oleh: ${(b.blocked_by || []).join(', ')}`)
         .join('\n');
       const msg = `Pekerjaan berikut tidak dapat dihapus karena dipakai sebagai Pekerjaan Gabungan:\n\n${lines}\n\nLepas/ubah referensi tersebut dulu, lalu simpan kembali.`;
       if (modalApi && modalApi.alert) {
@@ -213,15 +213,15 @@
     if (t.jadwal) lossParts.push(`${t.jadwal} entri jadwal`);
     if (t.formula) lossParts.push(`${t.formula} formula`);
 
-    const names = (data.to_delete || []).slice(0, 10).map(d => `• ${d.label}`).join('\n');
+    const names = (data.to_delete || []).slice(0, 10).map(d => `- ${d.label}`).join('\n');
     const moreCount = (data.to_delete || []).length - 10;
-    const more = moreCount > 0 ? `\n…dan ${moreCount} lainnya` : '';
+    const more = moreCount > 0 ? `\n...dan ${moreCount} lainnya` : '';
     const lossText = lossParts.length
-      ? `\n\nData turunan yang ikut terhapus:\n${lossParts.map(p => `• ${p}`).join('\n')}`
+      ? `\n\nData turunan yang ikut terhapus:\n${lossParts.map(p => `- ${p}`).join('\n')}`
       : '';
     const msg = `Anda akan menghapus ${t.pekerjaan} pekerjaan:\n${names}${more}${lossText}\n\nTindakan ini tidak dapat dibatalkan. Lanjutkan?`;
 
-    if (!modalApi || !modalApi.confirm) return true;  // no modal → fail-open
+    if (!modalApi || !modalApi.confirm) return true;  // no modal -> fail-open
     return await modalApi.confirm(msg, {
       title: 'Konfirmasi Hapus',
       confirmText: 'Hapus & Simpan',
@@ -293,7 +293,7 @@
             log('[BROADCAST] Received ordering_changed from other tab');
 
             // Show warning toast
-            tShow('⚠️ Urutan pekerjaan diubah di tab lain. Refresh halaman untuk melihat perubahan terbaru.', 'warning', 8000);
+            tShow('Urutan pekerjaan diubah di tab lain. Refresh halaman untuk melihat perubahan terbaru.', 'warning', 8000);
 
             // Optionally: Add refresh button to banner
             const banner = document.createElement('div');
@@ -307,7 +307,7 @@
                   <i class="bi bi-arrow-clockwise"></i> Refresh Sekarang
                 </button>
               </div>
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
             `;
             document.body.appendChild(banner);
 
@@ -866,7 +866,7 @@
   //
   // | Aksi              | Hasil                    |
   // |-------------------|--------------------------|
-  // | Klik Navigasi     | Toggle (buka/tutup)      |
+  // Klik tombol Navigasi -> toggle
   // | Klik X / ESC      | Tutup                    |
   // | Hover masuk       | Buka                     |
   // | Hover keluar      | Tutup (delay 150ms)      |
@@ -947,7 +947,7 @@
     sidebar?.addEventListener('mouseleave', () => { if (isDesktop()) Sidebar.closeDelayed(); });
   })();
 
-  // Klik tombol Navigasi → toggle
+  // Klik tombol Navigasi -> toggle
   document.addEventListener('click', (e) => {
     if (e.target.closest('.lp-sidebar-toggle, .btn-sidebar-toggle, [data-open="lp-sidebar"]')) {
       e.preventDefault();
@@ -955,7 +955,7 @@
     }
   });
 
-  // Klik tombol X → simulasi tekan ESC
+  // Klik tombol X -> simulasi tekan ESC
   document.addEventListener('click', (e) => {
     if (e.target.closest('[data-action="close-sidebar"]')) {
       e.preventDefault();
@@ -963,7 +963,7 @@
     }
   });
 
-  // ESC → tutup sidebar
+  // ESC -> tutup sidebar
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && Sidebar.isOpen()) {
       if (window.jQuery && jQuery(e.target).closest('.select2-container').length) return;
@@ -993,7 +993,7 @@
   }
   function truncateText(str, n = 100) {
     const arr = Array.from(String(str || ""));
-    return arr.length > n ? arr.slice(0, n).join('') + '…' : String(str || "");
+    return arr.length > n ? arr.slice(0, n).join('') + '...' : String(str || "");
   }
   function buildSourceLabel(src) {
     if (src === 'ref') return REF_YEAR ? `Ref AHSP ${REF_YEAR}` : 'Ref';
@@ -1091,32 +1091,31 @@
     return dropdown?.value || row.dataset.ahspSumber || defaultAhspSource || '';
   }
 
-  // Mapper aman untuk berbagai format respons API → {id, text}
+  // Mapper aman untuk berbagai format respons API -> {id, text}
   function mapToSelect2Results(input) {
+    const buildText = (it) => {
+      if (!it) return '';
+      if (it.text || it.label) return String(it.text ?? it.label);
+      if (it.kode_ahsp && it.nama_ahsp) return `${it.kode_ahsp} - ${it.nama_ahsp}`;
+      return String(it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '');
+    };
+    const mapItem = (it) => ({
+      id: String(it.id ?? it.pk ?? it.value ?? it.kode ?? ''),
+      text: buildText(it),
+      sumber: it.sumber ?? it.ahsp_sumber ?? it.ref_sumber ?? null,
+    });
     try {
       if (!input) return [];
       if (Array.isArray(input)) {
-        return input.map(it => ({
-          id: String(it.id ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
-          text: String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
-        })).filter(x => x.id && x.text);
+        return input.map(mapItem).filter(x => x.id && x.text);
       }
       if (Array.isArray(input.results)) return input.results;
       if (Array.isArray(input.items)) {
-        return input.items.map(it => ({
-          id: String(it.id ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
-          text: String(it.text ?? it.label ?? it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')
-        })).filter(x => x.id && x.text);
+        return input.items.map(mapItem).filter(x => x.id && x.text);
       }
       const src = Array.isArray(input.data) ? input.data : Object.values(input);
       if (Array.isArray(src) && src.length && typeof src[0] === 'object') {
-        return src.map(it => ({
-          id: String(it.id ?? it.pk ?? it.value ?? it.kode_ahsp ?? it.kode ?? it.uid ?? ''),
-          text: String(it.text ?? it.label
-            ?? (it.kode_ahsp && it.nama_ahsp
-              ? `${it.kode_ahsp} — ${it.nama_ahsp}`
-              : (it.nama_ahsp ?? it.nama ?? it.name ?? it.uraian ?? '')))
-        })).filter(x => x.id && x.text);
+        return src.map(mapItem).filter(x => x.id && x.text);
       }
       return [];
     } catch (_) { return []; }
@@ -1416,6 +1415,7 @@
       // Event: when source changes, clear current reference and notify user
       ahspSrcSel.addEventListener('change', () => {
         row.dataset.ahspSumber = ahspSrcSel.value;
+        clearManualOverrideFields();
         // Clear current reference selection since source changed
         if (HAS_S2 && $sel && $sel.length && $sel.val()) {
           $sel.val(null).trigger('change');
@@ -1435,7 +1435,7 @@
     const selEl = row.querySelector('.ref-select');
     const ajaxUrl = selEl?.dataset.ajaxUrl || '/referensi/api/search';
     const minLen = Number(selEl?.dataset.minlength || 2);
-    const placeholder = selEl?.dataset.placeholder || 'Cari referensi kode/nama…';
+    const placeholder = selEl?.dataset.placeholder || 'Cari referensi kode/nama...';
 
     if (HAS_JQ) {
       host = $(row).find('.select2-host');
@@ -1534,8 +1534,8 @@
         if (srcNow === 'ref_modified' && ta && !ta.value) {
           const item = $sel.select2('data')[0];
           const full = item?.text ? String(item.text) : '';
-          const parts = full.split('—');
-          const ura = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
+          const parts = full.split(/\s+(?:\u2014|-)\s+/);
+          const ura = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
           if (ura) { ta.value = ura; }
           const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
           syncPreview(td || row);
@@ -1562,7 +1562,7 @@
     if (ref_id) {
       const lbl = ref_label
         || (snapshot_kode && snapshot_uraian
-          ? `${snapshot_kode || ''}${snapshot_kode && snapshot_uraian ? ' — ' : ''}${snapshot_uraian || ''}`
+          ? `${snapshot_kode || ''}${snapshot_kode && snapshot_uraian ? ' - ' : ''}${snapshot_uraian || ''}`
           : null);
       if (HAS_S2 && $sel && $sel.length) {
         preselectSelect2($sel, ref_id, lbl);
@@ -1581,6 +1581,16 @@
     if (uraian && uraianInput) uraianInput.value = uraian;
     if (satuan && satuanInput) satuanInput.value = satuan;
 
+    function clearManualOverrideFields() {
+      if (uraianInput) {
+        uraianInput.value = '';
+        autoResize(uraianInput);
+      }
+      if (satuanInput) satuanInput.value = '';
+      const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
+      if (td) syncPreview(td);
+    }
+
     function syncFields() {
       const v = srcSel?.value;
       const oldSourceType = row.dataset.sourceType;  // Save old value before update
@@ -1588,23 +1598,11 @@
       const isCustom = (v === 'custom');
       const isRefLike = (v === 'ref' || v === 'ref_modified');
 
-      // AUTO-RESET uraian/satuan:
-      // - custom → ref/ref_modified: user expects fields to clear.
-      // - ref_modified → ref (UF-007): drop the modification so the pure reference
-      //   name is shown instead of the stale modified name lingering in the field.
-      const clearOverride =
-        (oldSourceType === 'custom' && isRefLike) ||
-        (oldSourceType === 'ref_modified' && v === 'ref');
-      if (clearOverride) {
-        if (uraianInput) {
-          uraianInput.value = '';
-          autoResize(uraianInput);  // Resize textarea after clear
-        }
-        if (satuanInput) satuanInput.value = '';
-        // Trigger preview update
-        const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
-        if (td) syncPreview(td);
-      }
+      // AUTO-RESET uraian/satuan on every real mode change.
+      // A row that changes Ref/Ref Modified/Custom is a different pekerjaan source;
+      // keeping the previous manual text makes the next save look valid while it is
+      // actually stale. Initial hydration does not clear because oldSourceType === v.
+      if (oldSourceType && oldSourceType !== v) clearManualOverrideFields();
 
       if (uraianInput) uraianInput.readOnly = !(isCustom || v === 'ref_modified');
       if (satuanInput) satuanInput.readOnly = !isCustom;
@@ -1662,8 +1660,8 @@
         if (srcSel?.value === 'ref_modified' && uraianInput && !uraianInput.value) {
           const item = $sel.select2('data')[0];
           const text = item?.text ? String(item.text) : '';
-          const parts = text.split('—');
-          const ura = parts.length > 1 ? parts.slice(1).join('—').trim() : '';
+          const parts = text.split(/\s+(?:\u2014|-)\s+/);
+          const ura = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
           if (ura) uraianInput.value = ura;
           const td = row.querySelector('td.col-urai, #lp-table tbody td:nth-child(4)');
           if (td) { syncPreview(td); autoResize(uraianInput); }
@@ -1703,7 +1701,7 @@
 
         const rows = sb.querySelectorAll('tbody tr');
         Array.from(rows || []).forEach((tr, pi) => {
-          // UF-008: prefer a meaningful label (uraian → current ref → selected ref text)
+          // UF-008: prefer a meaningful label (uraian -> current ref -> selected ref text)
           // before falling back to the generic "Pekerjaan N" placeholder.
           let refText = '';
           try {
@@ -1750,7 +1748,7 @@
 
       // Update stats display
       if (tocStats) {
-        tocStats.innerHTML = `<i class="bi bi-diagram-3 me-1"></i>${totalKlas} Klas · ${totalSub} Sub · ${totalPkj} Pkj`;
+        tocStats.innerHTML = `<i class="bi bi-diagram-3 me-1"></i>${totalKlas} Klas | ${totalSub} Sub | ${totalPkj} Pkj`;
       }
 
       // Build tree HTML - compact 3-level tree
@@ -1781,7 +1779,7 @@
             const truncName = truncateText(P.name, 45);
             return `
               <div class="lp-toc-item" data-anchor="${escapeHtml(P.id)}" title="${escapeHtml(P.name)}">
-                <span class="lp-toc-bullet">·</span>
+                <span class="lp-toc-bullet">-</span>
                 <span class="lp-toc-text">${escapeHtml(truncName)}</span>
               </div>`;
           }).filter(Boolean).join('');
@@ -1789,7 +1787,7 @@
           return `
             <div class="lp-toc-node lp-toc-sub" data-sub-id="${escapeHtml(S.id)}">
               <div class="lp-toc-header" data-anchor="${escapeHtml(S.id)}">
-                <span class="lp-toc-toggle">▸</span>
+                <span class="lp-toc-toggle">+</span>
                 <span class="lp-toc-label" title="${escapeHtml(S.name)}">${escapeHtml(truncateText(S.name, 35))}</span>
                 <span class="lp-toc-badge">${(S.pekerjaan || []).length}</span>
               </div>
@@ -1802,7 +1800,7 @@
         return `
           <div class="lp-toc-node lp-toc-klas" data-klas-id="${escapeHtml(K.id)}">
             <div class="lp-toc-header" data-anchor="${escapeHtml(K.id)}">
-              <span class="lp-toc-toggle">▸</span>
+              <span class="lp-toc-toggle">+</span>
               <span class="lp-toc-label" title="${escapeHtml(K.name)}">${escapeHtml(truncateText(K.name, 30))}</span>
               <span class="lp-toc-badge">${(K.sub || []).length}</span>
             </div>
@@ -1830,7 +1828,7 @@
               if (children) {
                 const isOpen = children.style.display !== 'none';
                 children.style.display = isOpen ? 'none' : '';
-                if (toggle) toggle.textContent = isOpen ? '▸' : '▾';
+                if (toggle) toggle.textContent = isOpen ? '+' : '-';
               }
               return;
             }
@@ -1846,7 +1844,7 @@
       // Auto-expand if search is active
       if (filterText) {
         tocTree.querySelectorAll('.lp-toc-children').forEach(c => c.style.display = '');
-        tocTree.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '▾');
+        tocTree.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '-');
       }
 
     } catch (e) {
@@ -1864,12 +1862,12 @@
   // Expand/Collapse All buttons
   tocExpandAll?.addEventListener('click', () => {
     tocTree?.querySelectorAll('.lp-toc-children').forEach(c => c.style.display = '');
-    tocTree?.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '▾');
+    tocTree?.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '-');
     say('Semua bagian terbuka');
   });
   tocCollapseAll?.addEventListener('click', () => {
     tocTree?.querySelectorAll('.lp-toc-children').forEach(c => c.style.display = 'none');
-    tocTree?.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '▸');
+    tocTree?.querySelectorAll('.lp-toc-toggle').forEach(t => t.textContent = '+');
     say('Semua bagian tertutup');
   });
 
@@ -1955,7 +1953,7 @@
               mode: p.source_type || 'ref',
               ref_id: p.ref_id || null,
               ref_label: (p.snapshot_kode || p.snapshot_uraian)
-                ? `${p.snapshot_kode || ''}${p.snapshot_kode && p.snapshot_uraian ? ' — ' : ''}${p.snapshot_uraian || ''}`
+                ? `${p.snapshot_kode || ''}${p.snapshot_kode && p.snapshot_uraian ? ' - ' : ''}${p.snapshot_uraian || ''}`
                 : null,
               uraian: p.snapshot_uraian || '',
               satuan: p.snapshot_satuan || '',
@@ -1991,7 +1989,7 @@
     const btn = document.querySelector('#btn-save');
     const orig = btn?.textContent;
     btn?.setAttribute('disabled', 'true');
-    if (btn) btn.textContent = 'Menyimpan…';
+    if (btn) btn.textContent = 'Menyimpan...';
 
     const payload = { klasifikasi: [] };
     let hasError = false;
@@ -2118,7 +2116,7 @@
       return;
     }
     if (hasError) {
-      tShow('Periksa baris merah. Pastikan ref_id numerik & nama K/Sub tidak kosong (fallback Kx/Kx.y aktif).', 'warning');
+      tShow('Periksa baris merah. Pilih referensi AHSP untuk mode Referensi/Ref Modified, atau isi uraian untuk mode Custom.', 'warning');
       if (btn) { btn.disabled = false; btn.textContent = orig; }
       return;
     }
@@ -2164,7 +2162,7 @@
             userMsg = `${e.field}: Data terkait telah dihapus karena perubahan sumber`;
           }
 
-          errorMessages.push(`• ${userMsg}`);
+          errorMessages.push(`- ${userMsg}`);
         });
 
         const errorMsg = errorMessages.join('\n');
@@ -2600,7 +2598,7 @@
         return;
       }
 
-      // U19: escapeHtml WAJIB — nama template adalah input user dan (bila
+      // U19: escapeHtml WAJIB - nama template adalah input user dan (bila
       // publik) tampil lintas-user; tanpa escape = stored XSS antar-user.
       templateList.innerHTML = currentTemplates.map(t => {
         const badge = t.is_public
@@ -2677,7 +2675,7 @@
       if (!selectedTemplateId || !projectId) return;
 
       btnConfirmImport.disabled = true;
-      btnConfirmImport.innerHTML = '<i class=\"bi bi-arrow-clockwise spin\"></i> Importing...';
+      btnConfirmImport.innerHTML = '<i class=\"bi bi-arrow-clockwise spin\"></i> Mengimpor...';
 
       try {
         const csrfToken = getCsrfToken();
@@ -2785,15 +2783,26 @@
         // Show confirmation
         const stats = data.stats || {};
         const msg = `Import template dari file:\n\n` +
-          `• Klasifikasi: ${stats.total_klasifikasi || '?'}\n` +
-          `• Sub-Klasifikasi: ${stats.total_sub || '?'}\n` +
-          `• Pekerjaan: ${stats.total_pekerjaan || '?'}\n\n` +
+          `- Klasifikasi: ${stats.total_klasifikasi || '?'}\n` +
+          `- Sub-Klasifikasi: ${stats.total_sub || '?'}\n` +
+          `- Pekerjaan: ${stats.total_pekerjaan || '?'}\n\n` +
           `Lanjutkan import?`;
 
-        if (!confirm(msg)) return;
+        const modalApi = getModalApi();
+        if (!modalApi?.confirm) {
+          tShow('Dialog konfirmasi belum siap. Muat ulang halaman lalu coba import lagi.', 'warning');
+          return;
+        }
+        const ok = await modalApi.confirm(msg, {
+          title: 'Konfirmasi Import',
+          confirmText: 'Import',
+          cancelText: 'Batal',
+          confirmClass: 'btn btn-primary',
+        });
+        if (!ok) return;
 
         btnImportFromFile.disabled = true;
-        btnImportFromFile.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Importing...';
+        btnImportFromFile.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Mengimpor...';
 
         // Get CSRF token
         const csrfToken = getCsrfToken();

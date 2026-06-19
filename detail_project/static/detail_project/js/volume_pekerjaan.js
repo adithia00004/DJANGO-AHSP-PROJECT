@@ -108,6 +108,8 @@
   let formulaDraftById = {};
   const rawInputTouchedAtById = {};
   const negativeClampNoticeById = new Set(); // non-blocking warning agar tidak spam
+  let initialHydrationActive = true;
+  let userInteractedDuringInitialHydration = false;
   // WP-P3b: unified with the volume autosave cadence (AUTOSAVE_MS = 5 min). The
   // three autosave subsystems (volume / formula / parameter) now share ONE calm
   // 5-minute debounce instead of per-second background syncs — far less server
@@ -669,8 +671,36 @@
     sourceChange && projectId ? sourceChange.listVolumeJobs(projectId) : [],
   );
   let changeStatusPending = false;
+  const volumeResetHelpText = 'Tipe, sumber, atau referensi pekerjaan berubah di List Pekerjaan. Volume/formula lama sudah direset agar tidak memakai data yang salah. Periksa lalu simpan volume untuk menghapus penanda.';
+
+  function renderedVolumeJobIds() {
+    return new Set(
+      rows
+        .map((tr) => Number(tr.dataset.pekerjaanId))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+  }
+
+  function pruneStalePendingVolumeJobs() {
+    const activeIds = renderedVolumeJobIds();
+    if (!activeIds.size || !pendingVolumeJobs.size) return;
+    const staleIds = Array.from(pendingVolumeJobs).filter((id) => !activeIds.has(Number(id)));
+    if (!staleIds.length) return;
+    staleIds.forEach((id) => pendingVolumeJobs.delete(id));
+    try {
+      sourceChange?.markVolumeResolved(projectId, staleIds);
+    } catch (err) {
+      console.warn('[Volume] Failed to clear stale volume reset flags', err);
+    }
+  }
+
+  function pendingVisibleVolumeJobs() {
+    const activeIds = renderedVolumeJobIds();
+    return Array.from(pendingVolumeJobs).filter((id) => activeIds.has(Number(id)));
+  }
 
   function updateVolumeWarnings() {
+    pruneStalePendingVolumeJobs();
     rows.forEach((tr) => {
       const id = Number(tr.dataset.pekerjaanId);
       const needsWarning = pendingVolumeJobs.has(id);
@@ -682,9 +712,11 @@
         if (!pill) {
           pill = document.createElement('span');
           pill.className = 'vp-row-pill';
-          pill.textContent = 'Perlu cek';
           cell.appendChild(pill);
         }
+        pill.textContent = 'Volume perlu diisi ulang';
+        pill.title = volumeResetHelpText;
+        pill.setAttribute('aria-label', volumeResetHelpText);
       } else if (pill) {
         pill.remove();
       }
@@ -693,17 +725,17 @@
 
   function updateVolumeBanner() {
     if (!bannerEl) return;
-    const count = pendingVolumeJobs.size;
+    const count = pendingVisibleVolumeJobs().length;
     const shouldShow = count > 0 || changeStatusPending;
     bannerEl.classList.toggle('d-none', !shouldShow);
     if (!shouldShow) return;
     if (bannerTextEl) {
       if (count > 0 && changeStatusPending) {
-        bannerTextEl.textContent = `${count} pekerjaan perlu diperbarui setelah perubahan sumber. Perubahan data terbaru juga terdeteksi dari halaman lain.`;
+        bannerTextEl.textContent = `${count} pekerjaan ditandai karena tipe/sumber/referensi berubah di List Pekerjaan. Volume/formula lama sudah direset; isi atau simpan volume yang ditandai untuk menghapus penanda. Perubahan data lain juga terdeteksi dari halaman lain.`;
       } else if (count > 0) {
-        bannerTextEl.textContent = `${count} pekerjaan perlu diperbarui setelah perubahan sumber.`;
+        bannerTextEl.textContent = `${count} pekerjaan ditandai karena tipe/sumber/referensi berubah di List Pekerjaan. Volume/formula lama sudah direset; isi atau simpan volume yang ditandai untuk menghapus penanda.`;
       } else {
-        bannerTextEl.textContent = 'Perubahan data terbaru terdeteksi dari halaman lain. Disarankan muat ulang data sebelum melanjutkan.';
+        bannerTextEl.textContent = 'Perubahan data terbaru terdeteksi dari halaman lain. Muat ulang atau sinkronkan data sebelum melanjutkan input volume.';
       }
     }
   }
@@ -725,10 +757,10 @@
     const target = rows.find((tr) => tr.classList.contains('vp-row-needs-volume'));
     if (!target) {
       if (changeStatusPending) {
-        TOAST.warn('Perubahan data terbaru terdeteksi. Gunakan sinkronisasi untuk memperbarui status.');
+        TOAST.warn('Perubahan data dari halaman lain terdeteksi. Muat ulang atau sinkronkan data sebelum melanjutkan.');
         return;
       }
-      TOAST.warn('Tidak ada pekerjaan yang perlu diperbarui.');
+      TOAST.warn('Tidak ada pekerjaan yang ditandai perlu isi ulang volume.');
       return;
     }
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -885,6 +917,19 @@
     return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
 
+  function getPekerjaanDisplayLabel(id) {
+    const numericId = Number(id);
+    if (!Number.isFinite(numericId)) return 'pekerjaan terkait';
+    const tr = rows.find((r) => Number(r.dataset.pekerjaanId) === numericId);
+    const kode = (tr?.querySelector('.ux-mono, .text-monospace')?.textContent || '').trim();
+    let uraian = (tr?.querySelector('.text-wrap')?.textContent || '').trim();
+    uraian = uraian.replace(/\bVolume perlu diisi ulang\b/g, '').trim();
+    if (kode && uraian) return `${kode} - ${uraian}`;
+    if (kode) return kode;
+    if (uraian) return uraian;
+    return `pekerjaan #${numericId}`;
+  }
+
   function setInputValidationError(id, message = '') {
     const numericId = Number(id);
     if (!Number.isFinite(numericId)) return;
@@ -927,7 +972,7 @@
     if (!Number.isFinite(numericId)) return;
     if (negativeClampNoticeById.has(numericId)) return;
     negativeClampNoticeById.add(numericId);
-    const msg = `Baris #${numericId}: hasil negatif diubah menjadi 0.`;
+    const msg = `${getPekerjaanDisplayLabel(numericId)}: hasil negatif diubah menjadi 0.`;
     setSaveStatus(msg, 'warning');
     try { TOAST.info(msg); } catch { }
   }
@@ -2876,6 +2921,24 @@
     if (formulaDirtySet.size === 0) clearFormulaLocalDirty();
   }
 
+  function markInitialHydrationUserInteraction() {
+    if (initialHydrationActive) userInteractedDuringInitialHydration = true;
+  }
+
+  function clearInitialHydrationDirtyState(reason = 'initial-load') {
+    if (!initialHydrationActive || userInteractedDuringInitialHydration) return false;
+    dirtySet.clear();
+    formulaDirtySet.clear();
+    clearFormulaLocalDirty();
+    rows.forEach((tr) => {
+      const id = parseInt(tr.dataset.pekerjaanId, 10);
+      if (Number.isFinite(id)) setRowDirtyVisual(id, false);
+    });
+    setBtnSaveEnabled();
+    try { console.debug('[VP] Cleared initial hydration dirty state:', reason); } catch { }
+    return true;
+  }
+
   function setFormulaSyncAt(ts) {
     const value = String(ts || '').trim();
     if (!value) return;
@@ -2953,7 +3016,7 @@
       showFormulaSyncStatus('error');
       if (reason === 'manual') {
         const first = validationIssues[0];
-        TOAST.warn(`Sinkron formula diblokir: baris #${first.id} masih invalid.`);
+        TOAST.warn(`Sinkron formula diblokir: ${getPekerjaanDisplayLabel(first.id)} masih invalid.`);
       }
       setBtnSaveEnabled();
       return { ok: false, blocked: true, synced: 0 };
@@ -3062,7 +3125,7 @@
       rawInputById[id] = item.raw;
       input.value = item.raw;
       setFxState(id, !!item.fx);
-      handleInputChange(id, input, preview, false);
+      handleInputChange(id, input, preview, { persistFormula: false, markTouched: false, updateDirty: false });
     });
     setBtnSaveEnabled();
   }
@@ -3713,7 +3776,7 @@
     renderFormulaEditorInvalidOverlay([]);
     syncFormulaEditorHighlightScroll();
     if (shouldUseDraft) {
-      TOAST.info(`Draft formula baris #${id} dipulihkan.`);
+      TOAST.info(`Draft formula ${getPekerjaanDisplayLabel(id)} dipulihkan.`);
     }
 
     if (formulaEditorMetaEl) {
@@ -4352,6 +4415,7 @@
 
     let debTimer = null;
     input && input.addEventListener('input', () => {
+      markInitialHydrationUserInteraction();
       lastQtyInputAt = Date.now();
       clearTimeout(debTimer);
       if (FORMULA_LABEL_ONLY_UI_ENABLED && isFormulaMode(id, rawInputById[id] || input.value || '')) {
@@ -4700,7 +4764,11 @@
     tr.classList.add('vp-row-saved');
     setTimeout(() => tr.classList.remove('vp-row-saved'), 1800);
   }
-  function handleInputChange(id, inputEl, previewEl) {
+  function handleInputChange(id, inputEl, previewEl, options = {}) {
+    const opts = (options && typeof options === 'object') ? options : {};
+    const persistFormulaOnSuccess = opts.persistFormula !== false;
+    const markTouchedOnChange = opts.markTouched !== false;
+    const updateDirtyOnChange = opts.updateDirty !== false;
     pendingInputIds.delete(Number(id)); // FIX: edit ini sedang di-commit sekarang
     const formulaActive = isFormulaMode(id, rawInputById[id] || inputEl.value || '');
     const rawValue = (FORMULA_LABEL_ONLY_UI_ENABLED && formulaActive)
@@ -4710,7 +4778,7 @@
       forceFormula: formulaActive || String(rawValue || '').trim().startsWith('='),
     });
     rawInputById[id] = raw;
-    markRawInputTouched(id);
+    if (markTouchedOnChange) markRawInputTouched(id);
     // flag kosong
     const isEmpty = raw.trim() === '';
     inputEl.classList.toggle('vp-empty', isEmpty);
@@ -4749,8 +4817,12 @@
         if (validation.clampedNegative) notifyNegativeClamp(id);
         else clearNegativeClampNotice(id);
         setInputValidationError(id, '');
-        updateDirty(id);
-        persistRowFormula(id);
+        if (updateDirtyOnChange) updateDirty(id);
+        else {
+          dirtySet.delete(Number(id));
+          setRowDirtyVisual(id, false);
+        }
+        if (persistFormulaOnSuccess) persistRowFormula(id);
       } else {
         const msg = String(validation.message || 'Formula tidak valid.');
         inputEl.classList.add('is-invalid');
@@ -4848,7 +4920,11 @@
         setInputValidationError(id, '');
         clearFormulaStateForNumericInput(id);
       }
-      updateDirty(id);
+      if (updateDirtyOnChange) updateDirty(id);
+      else {
+        dirtySet.delete(Number(id));
+        setRowDirtyVisual(id, false);
+      }
     }
 
     setBtnSaveEnabled();
@@ -4887,7 +4963,8 @@
     setBtnSaveEnabled();
   }
 
-  function reevaluateAllFormulas() {
+  function reevaluateAllFormulas(options = {}) {
+    const opts = (options && typeof options === 'object') ? options : {};
     // Sprint 3.4: batch processing to avoid jank on large projects
     const BATCH_SIZE = 50;
     const allRows = Array.from(rows);
@@ -4901,7 +4978,7 @@
         const preview = tr.querySelector('.fx-preview');
         const raw = String(rawInputById[id] || input.value || '');
         if (!raw.trim()) continue;
-        if (isFormulaMode(id, raw)) handleInputChange(id, input, preview, false);
+        if (isFormulaMode(id, raw)) handleInputChange(id, input, preview, opts);
       }
       index = end;
       if (index < allRows.length) {
@@ -5027,6 +5104,7 @@
         tr.scrollIntoView({ block: 'nearest' });
       });
       tr.querySelector('.var-label').addEventListener('change', e => {
+        markInitialHydrationUserInteraction();
         const nextLabel = String(e.target.value || '').trim();
         if (!nextLabel) {
           e.target.classList.add('is-invalid');
@@ -5038,6 +5116,7 @@
         saveVarLabels();
       });
       tr.querySelector('.var-value').addEventListener('change', e => {
+        markInitialHydrationUserInteraction();
         const n = parseNumberOrEmpty(e.target.value);
         if (n === '') {
           e.target.classList.add('is-invalid');
@@ -6244,7 +6323,7 @@
   }
 
   // ===== Prefill: rekap volume + (opsional) server formula state
-  (async function prefill() {
+  async function prefillVolumeRows() {
     try {
       // 1) Prefill volume: coba dari volume list (paling tepat), fallback ke rekap
       const volMap = {};
@@ -6305,27 +6384,19 @@
           });
         }
       } catch { }
-      const localFormula = loadFormulas();
-      if (formulaLocalDirty) {
-        // WP-P3c (VP-06): reconcile local↔server on load. Only entries whose raw/fx
-        // GENUINELY differ from the server are unsaved. Previously every local entry
-        // was marked dirty whenever the persisted flag was set, so a stale flag (or
-        // a sync that already succeeded server-side) made the page open showing
-        // "ada perubahan yang perlu disimpan" with nothing actually edited
-        // (e.g. project 195). Server is authoritative; if nothing differs, clear it.
-        Object.keys(localFormula).forEach((id) => {
-          const parsedId = Number(id);
-          if (!Number.isFinite(parsedId)) return;
-          const l = localFormula[id] || {};
-          const s = serverFormula[parsedId] || {};
-          const lRaw = String(l.raw || '').trim();
-          const sRaw = String(s.raw || '').trim();
-          if (lRaw !== sRaw || !!l.fx !== !!s.fx) {
-            formulaDirtySet.add(parsedId);
-          }
-        });
-        if (formulaDirtySet.size) showFormulaSyncStatus('pending');
-        else clearFormulaLocalDirty();
+      const localFormula = serverFormula ? {} : loadFormulas();
+      if (serverFormula) {
+        // UF-014: server is authoritative on page load. A persisted
+        // `volform_dirty` flag from an older browser session must not turn
+        // server-loaded formulas into fake unsaved edits (e.g. "Simpan 29").
+        formulaDirtySet.clear();
+        clearFormulaLocalDirty();
+      } else if (formulaLocalDirty) {
+        // Server formula failed to load, so localStorage is only a visual
+        // fallback. Do not convert an old persisted dirty flag into fake
+        // unsaved rows on page open; the user must edit in this session before
+        // Save becomes active.
+        clearFormulaLocalDirty();
       }
       const formulaState = resolveFormulaStateSnapshot(serverFormula, localFormula);
 
@@ -6354,7 +6425,7 @@
         if (f && typeof f.raw === 'string' && f.raw.trim() && isFormulaStateFreshForVolume(f, volUpdatedMap[id], hasStoredVolume)) {
           input.value = f.raw;
           fxModeById[id] = !!f.fx;
-          handleInputChange(id, input, preview, false);
+          handleInputChange(id, input, preview, { persistFormula: false, markTouched: false, updateDirty: false });
         } else if (f && hasFormulaStateValue(f)) {
           forgetLocalFormulaState(id);
         }
@@ -6384,7 +6455,7 @@
       setBtnSaveEnabled();
       syncSummaryBarWithCurrentFilter();
     }
-  })();
+  }
 
   // ===== Autosave + Undo =====
   function scheduleAutosave(ms = AUTOSAVE_MS) {
@@ -6440,6 +6511,7 @@
     const blockingIssues = getSortedInputValidationIssues();
     if (blockingIssues.length) {
       const first = blockingIssues[0];
+      const firstLabel = getPekerjaanDisplayLabel(first.id);
       const tr = rows.find((r) => parseInt(r.dataset.pekerjaanId, 10) === first.id);
       const input = tr?.querySelector('.qty-input');
       if (input) {
@@ -6452,10 +6524,10 @@
         }
       }
       if (reason === 'manual') {
-        TOAST.warn(`Simpan diblokir: baris #${first.id} masih invalid. Hapus token yang tidak termuat atau pilih dari autosuggestion.`);
-        setSaveStatus(`Simpan diblokir: baris #${first.id} masih invalid.`, 'warning');
+        TOAST.warn(`Simpan diblokir: ${firstLabel} masih invalid. Hapus token yang tidak termuat atau pilih dari autosuggestion.`);
+        setSaveStatus(`Simpan diblokir: ${firstLabel} masih invalid.`, 'warning');
       } else {
-        setSaveStatus(`Autosave ditunda: baris #${first.id} masih invalid.`, 'warning');
+        setSaveStatus(`Autosave ditunda: ${firstLabel} masih invalid.`, 'warning');
       }
       return;
     }
@@ -7079,7 +7151,7 @@
         evaluateComputedParams();
         renderVarTable();
         renderComputedTable();
-        reevaluateAllFormulas();
+        reevaluateAllFormulas({ persistFormula: false, markTouched: false, updateDirty: false });
         refreshUsageBadges();
         showParamSyncStatus('synced');
         return { ok: true, source: 'server', total: Object.keys(serverParams).length };
@@ -7146,7 +7218,7 @@
         clearComputedParamsDirty();
         evaluateComputedParams();
         renderComputedTable();
-        reevaluateAllFormulas();
+        reevaluateAllFormulas({ persistFormula: false, markTouched: false, updateDirty: false });
         refreshUsageBadges();
         showParamSyncStatus('synced');
         return { ok: true, source: 'server', total: Object.keys(defs).length };
@@ -7333,11 +7405,12 @@
   loadVarLabels();
   loadComputedParams();
   loadSyncMarkers();
+  const initialHydrationTasks = [];
   if (VP_BOOTSTRAP?.parameters) {
-    loadParamsFromServer({ data: VP_BOOTSTRAP.parameters });
+    initialHydrationTasks.push(loadParamsFromServer({ data: VP_BOOTSTRAP.parameters }));
   }
   if (VP_BOOTSTRAP?.computed_parameters) {
-    loadComputedParamsFromServer({ data: VP_BOOTSTRAP.computed_parameters });
+    initialHydrationTasks.push(loadComputedParamsFromServer({ data: VP_BOOTSTRAP.computed_parameters }));
   }
   formulaDraftById = loadFormulaDrafts();
   Object.keys(variables).forEach(code => { if (!varLabels[code]) varLabels[code] = code; });
@@ -7350,12 +7423,15 @@
   loadFormulaPreviewMode();
   loadFormulaShowInlineValues();
   // Load from server (async - will replace local snapshot and re-render)
-  runOpaqueMigrationLoadOnce().then((didMigrateLoad) => {
+  initialHydrationTasks.push(runOpaqueMigrationLoadOnce().then((didMigrateLoad) => {
     if (!didMigrateLoad) {
-      loadParamsFromServer();
-      loadComputedParamsFromServer();
+      return Promise.all([
+        loadParamsFromServer(),
+        loadComputedParamsFromServer(),
+      ]);
     }
-  });
+    return null;
+  }));
 
   // Bind baris yang sudah dirender server agar fitur aktif sebelum tree di-load
   rows.forEach(tr => bindRow(tr));
@@ -7605,5 +7681,19 @@
     rawToDisplayText,
     displayToRaw,
   };
+
+  // UF-014 follow-up: prefill must run AFTER server bootstrap parameters are
+  // applied AND after all file-scope helpers/DOM refs below this file are
+  // initialized (summaryBar, filters, Formula engine consumers). Calling it
+  // earlier can crash mid-prefill and leave every volume row visually empty.
+  initialHydrationTasks.push(prefillVolumeRows());
+  Promise.allSettled(initialHydrationTasks).then(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        clearInitialHydrationDirtyState('initial-hydration-complete');
+        initialHydrationActive = false;
+      });
+    });
+  });
 
 })();
