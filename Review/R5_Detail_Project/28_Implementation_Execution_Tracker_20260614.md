@@ -61,6 +61,8 @@ Status:
 | CL-09A duplicate `ExportManager.js` Jadwal | DONE | Hapus load kedua `ExportManager.js` dari `kelola_tahapan_grid_modern.html`; global load tetap dari `base_detail.html`. | template still extends `base_detail.html`; frontend governance + Django check |
 | CL-01 Orphan Cleanup UI | DONE | Hapus route/view/sidebar/template/JS/CSS page Orphan Cleanup. Service `detect_orphaned_items`/`cleanup_orphaned_items`, auto cleanup, management command, dan API manual orphan tetap RETAIN sesuai roadmap sampai ada bukti no ops consumer. | test baru memastikan route UI hilang dan service cleanup masih callable |
 | CL-17 Audit Trail reader | DONE | Hapus route/view/sidebar/template/JS/CSS dan API pembacaan `api_get_audit_trail`. Model `DetailAHSPAudit`, data histori, dan writer `log_audit` tetap RETAIN. | test baru memastikan reader route hilang dan writer audit masih mencatat |
+| CL-05 legacy List Pekerjaan full-save | DONE (2026-06-20) | Hapus view `api_save_list_pekerjaan` + route `.../list-pekerjaan/save/` (V1: `print(traceback)` + leak `type(e):{e}` + 207 partial). FE memakai `/upsert/` saja (reference scan: tak ada konsumen JS/HTML). 2 referensi test middleware `accounts/tests.py` dialihkan ke `/upsert/`. | `manage.py check` 0 issue; `makemigrations --check` no changes; 106 test PASS (accounts + list_pekerjaan + security/admin/cache) |
+| Volume VP-A1/VP-A2/T-series/V3/V6/V7 hardening | DONE (2026-06-20, uncommitted) | VP-A1 strict id-ID quantity parsing untuk input Volume (`0,123`/`0.123` tidak lagi jadi 123); VP-A2 leave-flush menyimpan baris valid meski ada baris invalid; T1/T3/T4/T11 accessibility fixed (`main`, `scope`, tabpanel relation, `aria-invalid`); V3 fixed = computed expression syntax/whitelist + missing reference + cycle validation server-side; V6 `print()` debug/export diganti logger dan error generik; V7 PUT parameter invalid value kini 400, bukan `ok:true` diam-diam. | `volume_a11y.test.js` + `volume_false_dirty.test.js` + `volume_qty_parse_idid.test.js` = 25/25; `tests_computed_parameter_graph_v3` + computed/opaque regression = 25/25; `tests_param_detail_v7` 3/3; `node --check`; `manage.py check`; `makemigrations --check`; `git diff --check` |
 
 ## 2.1 Penjelasan Bahasa-Mudah: Apa & Kenapa Tiap WP
 
@@ -298,9 +300,9 @@ Medium/Low akan diberi salah satu disposisi:
 
 **Koreksi status temuan audit 16:**
 - **LP-03 (revision token/409) BUKAN bug terbuka** — dibatalkan **DEC-002** (last-write-wins, no optimistic locking). Membuka lagi = ubah keputusan arsitektur.
-- **LP-05 (legacy `api_save_list_pekerjaan` masih di `urls.py:35`)** = cleanup **CL-05**, bukan blocker selama FE tak memakainya.
+- **LP-05 (legacy `api_save_list_pekerjaan`)** = **CL-05 DONE 2026-06-20** — view + route dihapus (tutup info-leak `type(e):{e}` + 207 partial); FE pakai `/upsert/`; test middleware `accounts/tests.py` → `/upsert/`. 106 test PASS.
 
-**Fix (2026-06-19, working tree, BELUM commit):**
+**Fix (2026-06-19, sudah masuk checkpoint `7ba33278`):**
 1. Pra-scan payload → `payload_pekerjaan_ids`; `reuse_pool` mengecualikan pekerjaan ber-id → reuse hanya mendaur-ulang kandidat yang memang akan dihapus (tutup data-bleed + row-collapse tanpa bergantung urutan proses).
 2. Reuse baris baru tanpa id → **selalu** `_reset_pekerjaan_related_data` (tak peduli source lama=baru).
 3. Kandidat reuse yang masih dipakai `Pekerjaan Gabungan` oleh pekerjaan surviving dikeluarkan dari `reuse_pool` → C1 tetap memblok delete target bundle.
@@ -626,7 +628,7 @@ Restruktur **validate-all-first → reject atomik** (no 207):
 
 **Follow-up 2026-06-15:** ditemukan satu jalur `207` aktif yang belum tercakup — `api_save_detail_ahsp_gabungan` (URL `/detail-ahsp/save/`, masih reachable). Diperbaiki ke kontrak atomik (`atomic_error_response(400)`, set_rollback membatalkan delete+create per-item; tak ada 207). Catatan: JS pemanggilnya (`detail_ahsp_gabungan.js`) **orphan** (tak dimuat template manapun) — endpoint reachable-by-URL tapi tanpa halaman UI aktif; tetap dihardening agar selaras DEC-003 dan tak meninggalkan partial-write live hingga cleanup.
 
-**Residual cleanup yang sengaja tidak diperbaiki:** satu jalur `207` tersisa pada API full-save List Pekerjaan lama (`api_save_list_pekerjaan`, line 779) — tidak dipanggil frontend (kanonikal = `/upsert/`), dimiliki cleanup Section E (`CL-05`). Endpoint gabungan + JS orphan-nya tetap milik `CL-10` (hapus route/JS/test legacy); kontrak atomiknya sekarang hanya jaring pengaman sampai dihapus — jangan jadikan fitur baru.
+**Update 2026-06-20:** residual `207` pada API full-save List Pekerjaan lama sudah ditutup lewat **CL-05**: view `api_save_list_pekerjaan` dan route `.../list-pekerjaan/save/` dihapus. Endpoint gabungan + JS orphan-nya tetap milik `CL-10` (hapus route/JS/test legacy); kontrak atomiknya sekarang hanya jaring pengaman sampai dihapus — jangan jadikan fitur baru.
 
 ---
 
@@ -1723,7 +1725,7 @@ Keputusan #5 minta sinyal "formula quantity belum sinkron dgn parameter terbaru"
 
 **Dependency:** B3 (DONE). **Tindakan:** REPLACE+REMOVE. **List Pekerjaan = FONDASI detail project** — `Pekerjaan` (klasifikasi→sub→pekerjaan, source_type REF/REF_MOD/CUSTOM, ref FK, ordering_index) adalah baris yang dikonsumsi SEMUA halaman hilir. **Checklist:** LP-02/04 wajib, LP-06/07 hardening; LP-01→A1, LP-03 dibatalkan G-1, LP-05→CL-05.
 
-**Mutation contract:** `api_upsert_list_pekerjaan` (`views_api.py:953`) = satu-satunya jalur mutasi (create/update/delete/reorder), atomik (B3, no 207/409). Legacy full-save (`api_save_list_pekerjaan`) = orphan → CL Fase 3.
+**Mutation contract:** `api_upsert_list_pekerjaan` = satu-satunya jalur mutasi (create/update/delete/reorder), atomik (B3, no 207/409). Legacy full-save `api_save_list_pekerjaan` sudah dihapus lewat **CL-05** (2026-06-20).
 
 #### Matriks interaksi lintas-halaman (jawaban fokus owner) — VERIFIED
 
@@ -1742,7 +1744,7 @@ Keputusan #5 minta sinyal "formula quantity belum sinkron dgn parameter terbaru"
 | LP-01 XSS | ✅ WP-A1 |
 | LP-02 upsert 207→atomik | ✅ B3 inc-1 |
 | LP-03 optimistic-lock | dibatalkan (G-1 LWW) |
-| LP-05 legacy full-save | →CL-05 (Fase 3) |
+| LP-05 legacy full-save | ✅ CL-05 DONE 2026-06-20 |
 | **LP-04 destructive impact confirmation** | ⬜ SISA — delete tak tampilkan ringkasan data turunan yg hilang |
 | **LP-06 rate-limit + payload-limit** upsert/import/template-library | ⬜ SISA (pola P3b) |
 | **LP-07 import template parsial→sukses** | ⬜ SISA — import harus atomik (all-or-nothing) |
@@ -1776,7 +1778,7 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 **Rencana increment FINAL (scope LOCKED, P4a–g):**
 - **P4a** ✅ DONE 2026-06-17 — **VERIFIKASI MENGUBAH SCOPE:** root cause UF-009 (resolusi sumber-unaware) **SUDAH diperbaiki** (services.py:1743 & 2300 pakai `_resolve_ahsp_by_code_in_source(kode, sumber)`); frontend `list_pekerjaan.js` sudah sumber-aware (dropdown sumber `:1294`, pencarian ref difilter sumber `:1399-1402`, reset ref saat sumber berubah `:1361-1369`, set ref_id benar `:1469`). Sisa: fallback display read-only tanpa ref_id (views_api.py:2034, best-effort, low). → P4a di-reframe jadi **regression LOCK** (bukan kode baru): `tests_wp_p4_list_pekerjaan.py` (3 test hijau) — ganti versi ref (ref_id beda) → reset volume + pin versi baru; ganti source_type → reset; SAME ref → TIDAK reset (anti data-loss spurious). Mirror client-side workflow (frontend kirim ref_id baru). Detail REF = read-only-from-ref (tak di-clone ke DetailAHSPProject).
 - **P4b** ✅ DONE 2026-06-17 — LP-07 import template atomik. `_import_template_data` mengakumulasi `errors` (skip/IntegrityError) tapi endpoint dulu commit parsial + `warnings` + increment usage. Sekarang `api_import_template` & `api_import_template_from_file`: jika `errors` non-empty → `atomic_error_response(400)` (rollback total, TIDAK increment usage). Test: `ImportTemplateAtomicTests` (clean→200; sub ref klasifikasi hilang→400 + 0 klas tersisa). 25 test template-library/export hijau (tak ada yang andalkan partial-success lama).
-- **P4c** ✅ DONE 2026-06-17 — LP-06 rate-limit + payload-limit. 5 endpoint write: `api_save_list_pekerjaan` (+payload), `api_upsert_list_pekerjaan` (+rate+payload), `api_create_template`, `api_import_template`, `api_import_template_from_file` (+rate+payload) — pola P3b (`@rate_limit(category='write')` + `@limit_request_body()`→413). Test: `UpsertPayloadLimitTests` (2MB+→413).
+- **P4c** ✅ DONE 2026-06-17 — LP-06 rate-limit + payload-limit. Endpoint write aktif: `api_upsert_list_pekerjaan` (+rate+payload), `api_create_template`, `api_import_template`, `api_import_template_from_file` (+rate+payload) — pola P3b (`@rate_limit(category='write')` + `@limit_request_body()`→413). Legacy `api_save_list_pekerjaan` yang dulu ikut dihitung sudah dihapus via CL-05 (2026-06-20). Test: `UpsertPayloadLimitTests` (2MB+→413).
 - **P4d** ✅ DONE 2026-06-17 — LP-04 destructive-impact. **Backend:** endpoint baru `api_list_pekerjaan_destructive_impact` (read-only, `views_api.py` setelah upsert) — terima payload upsert, hitung pekerjaan yang akan DIHAPUS (absen dari payload) + dampak hilir (Volume/Detail/jadwal/formula counts) + daftar `blocked` (target bundle dgn dependent yang TETAP ada = bakal ditolak C1). URL `list-pekerjaan/destructive-impact/`. **Frontend (`list_pekerjaan.js`):** `confirmDestructiveImpact(payload)` dipanggil di `handleSave` SEBELUM upsert — `has_blocked` → modal `alert` "Tidak Bisa Menghapus" + stop; ada deletion → modal `confirm` danger ("Hapus & Simpan") berisi ringkasan. **Fail-open** bila endpoint/modal tak tersedia (tak memblok save). Modal `formatMessage` escape HTML (aman AT-01). Test: `DestructiveImpactPreviewTests` (3) + JS guard `list_pekerjaan_destructive.test.js`.
 - **P4e** ✅ DONE 2026-06-17 — UF-007/008 cosmetic. **UF-007:** `syncFields` kini clear uraian/satuan saat `ref_modified→ref` (nama mod stale tak lagi nempel; pure REF name muncul). **UF-008:** fallback label sidebar pakai teks referensi terpilih sebelum placeholder generik "Pekerjaan N". JS guard hijau.
 - **P4f** ✅ DONE 2026-06-17 — contract test cascade TERPENUHI oleh test P4 yang ada: `RefChangeResetCascadeTests` (ganti ref/source → reset), `BundleDependentReExpandTests` (re-source target → re-expand), `BundleTargetDeleteGuardTests` (delete guard), `DestructiveImpactPreviewTests` (preview). 13 backend + 8 JS guard hijau.

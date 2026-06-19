@@ -631,3 +631,95 @@ Halaman Volume Pekerjaan memiliki **arsitektur yang solid** dengan security-firs
 
 *Dokumen ini dihasilkan dari audit menyeluruh dan revalidasi kode pada 14 Februari 2026.*
 *Total komponen utama yang dirujuk: 12 file utama, 18 file test Python terdeteksi, 24.393 baris kode fokus (9 file inti).*
+
+---
+
+## 13. Revalidasi Mendalam 2026-06-19 (Claude)
+
+Penelusuran ulang terhadap kode aktual (pasca WP-P3/WP-B3 + seluruh follow-up UF-014). Fokus: backend save/sync, jalur JS hydration/dirty/save/parsing, aksesibilitas, dan export. **Banyak temuan Feb sudah tertutup; beberapa masih terbuka; satu temuan integritas BARU.**
+
+### 13.1 Sudah TERTUTUP / TERVERIFIKASI SOLID (jangan dikerjakan lagi)
+
+- **Save/sync core**: `api_save_volume_pekerjaan`, `api_volume_formula_state`, `api_project_parameters_sync`, `api_project_computed_parameters_sync`, `api_project_parameter_detail` semua **validate-all-first + `@transaction.atomic` + `@require_POST`/method-guard + `@rate_limit` + `@limit_request_body`**. Tidak ada partial-commit pada endpoint kanonik.
+- **VP-02** dependency guard hapus parameter: ADA (`_parameter_dependents` → 422 + `usage`) di `views_api.py` (`api_project_parameter_detail` DELETE).
+- **Server-authoritative on load (UF-014)**: SSR bootstrap `volume_list/formula_state/parameters/computed_parameters` di `views.py:123-128`; prefill kini **di-chain setelah** `Promise.allSettled(initialHydrationTasks)` (`volume_pekerjaan.js:7690-7699`) → tidak lagi validasi formula sebelum parameter server siap. UF-014 + seluruh follow-up-nya **CLOSED**.
+- **`saveDirty`** (`:6486+`): acknowledgment atomik via `saved_job_ids`, baris gagal tetap dirty (input dipertahankan), keepalive flush saat leave. Robust.
+- **Client computed-param cycle guard** (`evaluateComputedParams :2653-2719`): guard counter + deteksi no-progress → tandai error siklus; **tidak** infinite-loop dan **tidak** membocorkan nilai salah ke RAB (param siklik diekskl. dari `computedValues`).
+- **T11 (sebagian)**: validasi input MENGUMUMKAN error via `aria-live` region (`setInputValidationError :944-953`).
+
+### 13.2 Temuan BARU (terverifikasi)
+
+| ID | Severity | Lokasi | Temuan |
+|---|---|---|---|
+| **VP-A1** | **Medium-High** → **FIXED (input)** | `volume_pekerjaan.js` (`canonFromUIQty`) + `volume_numeric_patch.js` (`canonFromUIQty`) | **Ambiguitas locale: volume 3-desimal kecil dipanggang jadi ribuan.** Jalur input langsung Volume dan patch blur sebelumnya memperlakukan pola `^\d{1,3}[.,]\d{3}$` sebagai grouping → `"0,123"`/`"0.123"` → `123`/`123` (error 1000×). **FIXED 2026-06-19 (kebijakan owner = Strict id-ID):** koma SELALU desimal; titik = ribuan hanya untuk grup 3-digit penuh dengan lead non-zero (`^[1-9]\d{0,2}(\.\d{3})+$`). Konsekuensi yang disengaja: nilai desimal 3 digit untuk angka `1..999` harus diketik dengan koma (`2,345`), karena `2.345` tetap dibaca sebagai 2345 sesuai id-ID. Kedua copy `canonFromUIQty` diselaraskan. Test `volume_qty_parse_idid.test.js` (behavioral via `VolumeNumeric.getCanonValue` + parity-guard copy utama). **`excel_exporter.parse_number` BELUM disentuh** — jalur export numeric-cell conversion; penyelarasan butuh verifikasi format output adapter dulu (agar tak merusak export). Akar sama dengan K2. |
+| **VP-A2** | Low-Medium → **FIXED** | `volume_pekerjaan.js` (`saveDirty`) | **Leave-flush dulu diblok total oleh satu input invalid.** **FIXED 2026-06-20:** `reason:'leave'` kini menyaring id invalid lalu mem-persist baris valid yang tersisa (baris invalid tetap dirty); `manual`/`autosave` tetap atomik (blokir + fokus + warn). Guard `volume_false_dirty.test.js` (3 assertion baru). |
+
+### 13.3 Temuan MASIH TERBUKA (revalidasi)
+
+> **Update final 2026-06-20:** status T-series/V3 di tabel lama ini sudah superseded oleh §13.8-§13.9. T1/T3/T4/T11 kini **FIXED**. V3 kini **FIXED**: syntax/whitelist, missing-reference, dan cycle validation server-side sudah ada.
+
+> **Update 2026-06-20:** status T-series di tabel lama ini sudah superseded oleh §13.8. T1/T3/T4/T11 kini **FIXED**. V3 kini **PARTIAL**: syntax/whitelist server-side sudah ada, tetapi validasi graph referensi/siklus masih follow-up.
+
+| ID (lama) | Severity | Lokasi | Status |
+|---|---|---|---|
+| **V1** (mirip T6) | Medium → **FIXED (CL-05)** | ~~`views_api.py` legacy `api_save_list_pekerjaan`~~ | **DIHAPUS 2026-06-20 (CL-05).** Endpoint legacy (`print(traceback)` + leak `type(e):{e}` + 207 partial) + route `.../list-pekerjaan/save/` dihapus; jalur tulis kanonik = `/upsert/` (atomik, no 207, no leak). 2 referensi test middleware `accounts/tests.py` dialihkan ke `/upsert/`. `manage.py check` bersih; 106 test PASS. |
+| **T1/T3/T4** | Medium (a11y) | `volume_pekerjaan.html` | TERBUKA — `<main>`=0, `scope=`=1, tab buttons sudah ada `role="tab"`/`aria-selected` tetapi belum punya `aria-controls`; pane belum diberi `role="tabpanel"`/`aria-labelledby`. |
+| **T11** | Low (a11y) | input qty | PARSIAL — `aria-live` ada, atribut `aria-invalid` pada input tetap absen. |
+| **V3** | Low-Medium | `api_project_computed_parameters[_sync]` | TERBUKA tapi DITURUNKAN — server tak validasi referensi/siklus computed param; client evaluator menjaganya aman → defense-in-depth saja. |
+| **V5** | Low-Medium | `volume_pekerjaan.js:6789-6812` | TERBUKA — `keepalive` flush dibatasi 64KB body oleh browser; project besar bisa gagal-senyap saat tutup tab (mitigasi: autosave 5-mnt + tombol Simpan). |
+| **V6** | Low → **FIXED** | `views_api.py` export/copy paths | **FIXED 2026-06-20.** `print()` debug di `export_jadwal_pekerjaan_professional` diganti `logger.debug`; `api_batch_copy_project` juga diganti `logger.exception` + error client generik (tidak leak `str(e)`). |
+| **V7** | Low → **FIXED** | `api_project_parameter_detail` PUT | **FIXED 2026-06-20.** Payload yang menyertakan `value` tapi tidak bisa diparse kini ditolak `400` (`Nilai parameter tidak valid`) dan nilai lama tetap utuh; update label-only tetap boleh. Test `tests_param_detail_v7` (3) PASS. |
+| **K1** | High | `services.py` `_populate_expanded_from_raw` | CARRY-OVER (belum revalidasi penuh) — boundary transaksi lokal + partial-continue. |
+| **K3** | Critical (klaim Feb) | `excel_exporter.py`, `volume_pekerjaan_adapter.py` | CARRY-OVER — formula export label-only vs live + mapping kolom. |
+| **K5** | Medium-High | `select_for_update()` callsites | CARRY-OVER — tanpa `nowait`/timeout. |
+
+### 13.4 Catatan cakupan
+
+Dibaca tuntas: seluruh endpoint backend Volume + jalur JS kritis (helpers number-parse/format, `handleInputChange`, `updateDirty`, `saveDirty`, `tryUndoLast`, hydration orchestration, `evaluateComputedParams`, guard unload/leave). **Belum** disisir baris-demi-baris: subsistem formula-editor modal, palette parameter, dan import file (`handleUnifiedImport`/`parseXLSX/CSV/JSON`) — masih mungkin menyimpan bug UI lebih halus.
+
+### 13.5 Prioritas tindak lanjut (revisi)
+
+1. ~~**VP-A1** parser 3-desimal~~ — **DONE (input path, Strict id-ID).** Sisa: nilai `excel_exporter.parse_number` (export) terpisah, butuh verifikasi format output adapter.
+2. ~~**V1 / CL-05** — hapus endpoint legacy~~ — **DONE 2026-06-20** (view + route dihapus; test middleware → `/upsert/`).
+3. ~~**V7 + V6** quick wins~~ — **DONE 2026-06-20** (PUT invalid value → 400; `print()`/exception leak diganti logger + pesan generik).
+4. ~~**VP-A2** — leave-flush persist baris valid~~ — **DONE 2026-06-20.**
+5. **T1/T3/T4/T11** — accessibility polish.
+6. **V3** — validasi referensi/siklus computed param server-side.
+
+### 13.6 Status Perbaikan VP-A1 (2026-06-19)
+
+**Kebijakan dipilih owner: Strict id-ID** (konsisten dgn tampilan `formatIdSmart`):
+- Koma = **selalu** pemisah desimal: `"0,123"` → `0.123`, `"1,234"` → `1.234`, `"2,5"` → `2.5`.
+- Titik = ribuan **hanya** untuk grup 3-digit penuh berlead non-zero (`^[1-9]\d{0,2}(\.\d{3})+$`): `"1.234"` → `1234`, `"12.345.678"` → `12345678`; selain itu titik = desimal: `"0.123"` → `0.123`, `"1.25"` → `1.25`, `"1234.567"` → `1234.567`.
+- Campuran (kedua pemisah) tetap pakai "pemisah terakhir = desimal" (tak ambigu): `"1.234,5"` → `1234.5`, `"1,234.56"` → `1234.56`.
+- Multi-koma (`"1,234,567"`) = malformed → invalid (`''`).
+
+**Perubahan:** kedua copy `canonFromUIQty` (`volume_pekerjaan.js` = penggerak nilai tersimpan; `volume_numeric_patch.js` = reformat blur). **Test:** `detail_project/static/detail_project/js/tests/volume_qty_parse_idid.test.js` — 6 test (behavioral patch + parity-guard main). `node --check` 2 file OK; regresi FE volume/formula 75/75 PASS. **Belum di-commit.**
+
+### 13.7 Status Perbaikan CL-05/VP-A2/V6/V7 (2026-06-20)
+
+- **CL-05:** legacy full-save List Pekerjaan dihapus (`api_save_list_pekerjaan` + route `.../list-pekerjaan/save/`). `/upsert/` tetap satu-satunya jalur mutasi aktif. Test middleware `accounts/tests.py` dialihkan ke `/upsert/`.
+- **VP-A2:** leave-flush (`reason:'leave'`) kini menyaring ID invalid dan tetap menyimpan baris valid yang dirty; manual/autosave tetap memblok atomik seperti sebelumnya.
+- **V6:** `print()` debug/export diganti structured logging; jalur batch copy tidak lagi mengembalikan detail exception mentah ke client.
+- **V7:** PUT parameter invalid ditolak `400`, tidak lagi `ok:true` tanpa menyimpan. Test `detail_project.tests_param_detail_v7` (3) PASS.
+- **Verifikasi terbaru:** `manage.py check` OK, `makemigrations --check` no changes, `git diff --check` OK, `volume_qty_parse_idid.test.js` 6/6 PASS, `volume_false_dirty.test.js` PASS, `tests_param_detail_v7` 3/3 PASS. **Belum di-commit.**
+
+### 13.8 Status Perbaikan T-series dan V3 parsial (2026-06-20)
+
+- **T1/T3/T4:** aksesibilitas struktur halaman Volume ditutup: landmark utama (`<main id="vp-page">`), header tabel berscope, dan relasi tab-panel sidebar sudah eksplisit (`aria-controls`, `role="tabpanel"`, `aria-labelledby`).
+- **T11:** status validasi quantity sekarang terekspos ke assistive tech melalui `aria-invalid`, bukan hanya class visual `is-invalid`; atribut dihapus lagi saat nilai valid.
+- **V3 parsial:** endpoint computed parameter sekarang menolak expression dengan karakter/token/identifier tidak aman pada mode opaque (`bp_N`/`cp_N`) untuk create dan sync. Ini belum mencakup validasi graph penuh: referensi `cp_N`/`bp_N` yang tidak ada dan siklus antar computed parameter masih menjadi follow-up defense-in-depth.
+- **Verifikasi:** `volume_a11y.test.js`, `volume_false_dirty.test.js`, `volume_qty_parse_idid.test.js` total 25/25 PASS; `tests_param_detail_v7` 3/3 PASS; `node --check volume_pekerjaan.js`, `manage.py check`, `makemigrations --check`, dan `git diff --check` bersih.
+
+### 13.9 Status Perbaikan V3 penuh (2026-06-20)
+
+- **V3 FIXED:** server sekarang memvalidasi graph computed parameter pada mode opaque:
+  - referensi `bp_N` harus ada di `ProjectParameter`;
+  - referensi `cp_N` harus ada di snapshot computed parameter yang berlaku;
+  - siklus langsung maupun tidak langsung antar `cp_N` ditolak.
+- **Create computed parameter:** expression divalidasi terhadap base parameter dan computed parameter existing sebelum row dibuat.
+- **Sync computed parameter:** validasi dilakukan sebelum delete/update/create; payload invalid mengembalikan `422` dan tidak mengubah data lama.
+- **Scope legacy:** graph validation hanya aktif pada opaque mode agar tidak mematahkan project/backup lama dengan nama deskriptif non-`bp_N`/`cp_N`.
+- **Verifikasi:** `tests_computed_parameter_graph_v3` + `ComputedExpressionValidationTests` + `Phase1OpaqueApiTests` = 25/25 PASS; `manage.py check` dan `node --check volume_pekerjaan.js` bersih.
+
+*Revalidasi mendalam oleh Claude, 2026-06-19. Diverifikasi terhadap working tree aktual; carry-over K1/K3/K5 tetap perlu revalidasi terpisah.*

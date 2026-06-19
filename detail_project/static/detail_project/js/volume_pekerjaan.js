@@ -930,15 +930,27 @@
     return `pekerjaan #${numericId}`;
   }
 
+  // T11 (a11y): reflect the validation state of a row's qty input via aria-invalid
+  // so assistive tech exposes the error, not just the visual is-invalid class.
+  function setQtyAriaInvalid(numericId, invalid) {
+    const tr = rows.find((r) => parseInt(r.dataset.pekerjaanId, 10) === numericId);
+    const input = tr?.querySelector('.qty-input');
+    if (!input) return;
+    if (invalid) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+
   function setInputValidationError(id, message = '') {
     const numericId = Number(id);
     if (!Number.isFinite(numericId)) return;
     const text = String(message || '').trim();
     if (!text) {
       inputValidationErrorsById.delete(numericId);
+      setQtyAriaInvalid(numericId, false);
       return;
     }
     inputValidationErrorsById.set(numericId, text);
+    setQtyAriaInvalid(numericId, true);
     // Sprint 3.5: announce error to screen readers via aria-live
     try {
       let liveRegion = document.getElementById('vp-validation-live');
@@ -1948,30 +1960,39 @@
   }
 
   // Robust UI->canonical parser for quantity (handles id-ID grouping)
+  // VP-A1: strict id-ID parsing for the quantity field (matches the app's own
+  // id-ID display via formatIdSmart). Comma is ALWAYS the decimal separator; the
+  // dot is thousands grouping only for full 3-digit groups with a non-zero lead.
+  // This keeps 3-decimal volumes ("0,123" -> 0.123) enterable instead of being
+  // collapsed to thousands (the old `^\d{1,3}[.,]\d{3}$` heuristic turned 0,123
+  // into 123 \u2014 a silent 1000x error). NOTE: a twin copy exists in
+  // volume_numeric_patch.js (blur reformat) \u2014 keep both in sync.
   function canonFromUIQty(raw) {
     let s = String(raw ?? '').trim();
     if (!s) return '';
     s = s.replace(/\u00A0/g, ' ').replace(/\s+/g, '').replace(/_/g, '');
     const hasDot = s.includes('.');
     const hasComma = s.includes(',');
-    if (hasDot && !hasComma) {
-      const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
-      if (dotGrouping.test(s)) s = s.replace(/\./g, '');
-      // else: treat dot as decimal (e.g., 1.25)
-    } else if (hasComma && !hasDot) {
-      const commaGrouping = /^\d{1,3}(,\d{3})+$/;
-      if (commaGrouping.test(s)) s = s.replace(/,/g, '');
-      else s = s.replace(/,/g, '.'); // comma as decimal
-    } else if (hasDot && hasComma) {
+    if (hasDot && hasComma) {
+      // Mixed notation is unambiguous: whichever separator is LAST is decimal.
       const lastComma = s.lastIndexOf(',');
       const lastDot = s.lastIndexOf('.');
       if (lastComma > lastDot) {
-        // comma decimal, dot thousands
+        // id-ID: dot thousands, comma decimal -> "1.234,5" => 1234.5
         s = s.replace(/\./g, '').replace(/,/g, '.');
       } else {
-        // dot decimal, comma thousands
+        // dot decimal, comma thousands (rare US paste) -> drop commas
         s = s.replace(/,/g, '');
       }
+    } else if (hasComma) {
+      // comma-only = decimal separator (id-ID). "1,234" => 1.234 ; "0,123" => 0.123
+      s = s.replace(/,/g, '.');
+    } else if (hasDot) {
+      // dot-only = thousands grouping ONLY for full 3-digit groups with a non-zero
+      // lead ("1.234", "12.345.678"). Otherwise the dot is decimal ("1.25",
+      // "0.123", "1234.567" \u2014 a 4-digit lead is not valid id-ID grouping).
+      const dotGrouping = /^[1-9]\d{0,2}(\.\d{3})+$/;
+      if (dotGrouping.test(s)) s = s.replace(/\./g, '');
     }
     // canonical integer/decimal
     if (!/^\-?\d+(\.\d+)?$/.test(s)) return '';
@@ -6499,9 +6520,9 @@
       return;
     }
     flushPendingQtyInputs();
-    const postingIds = Array.from(dirtySet.values());
-    const pendingFormulaIds = Array.from(formulaDirtySet.values());
-    const hasVolumeChanges = postingIds.length > 0;
+    let postingIds = Array.from(dirtySet.values());
+    let pendingFormulaIds = Array.from(formulaDirtySet.values());
+    let hasVolumeChanges = postingIds.length > 0;
     if (!hasVolumeChanges && !pendingFormulaIds.length) return;
 
     const precheckIds = Array.from(new Set([...postingIds, ...pendingFormulaIds]));
@@ -6510,26 +6531,38 @@
     // Hard block: ada token/input invalid yang belum dibersihkan.
     const blockingIssues = getSortedInputValidationIssues();
     if (blockingIssues.length) {
-      const first = blockingIssues[0];
-      const firstLabel = getPekerjaanDisplayLabel(first.id);
-      const tr = rows.find((r) => parseInt(r.dataset.pekerjaanId, 10) === first.id);
-      const input = tr?.querySelector('.qty-input');
-      if (input) {
-        input.classList.add('is-invalid');
-        input.setAttribute('title', first.message);
-        if (reason === 'manual') {
-          suppressFormulaInputFocusOpen = true;
-          input.focus();
-          setTimeout(() => { suppressFormulaInputFocusOpen = false; }, 0);
+      // VP-A2: manual/autosave treat a save as one atomic unit — block on ANY
+      // invalid row (focus it, warn). Leave-flush is different: the tab is
+      // closing, so persist the cleanly-valid dirty rows and just SKIP the
+      // invalid ones (they stay dirty) instead of losing everything.
+      if (reason !== 'leave') {
+        const first = blockingIssues[0];
+        const firstLabel = getPekerjaanDisplayLabel(first.id);
+        const tr = rows.find((r) => parseInt(r.dataset.pekerjaanId, 10) === first.id);
+        const input = tr?.querySelector('.qty-input');
+        if (input) {
+          input.classList.add('is-invalid');
+          input.setAttribute('title', first.message);
+          if (reason === 'manual') {
+            suppressFormulaInputFocusOpen = true;
+            input.focus();
+            setTimeout(() => { suppressFormulaInputFocusOpen = false; }, 0);
+          }
         }
+        if (reason === 'manual') {
+          TOAST.warn(`Simpan diblokir: ${firstLabel} masih invalid. Hapus token yang tidak termuat atau pilih dari autosuggestion.`);
+          setSaveStatus(`Simpan diblokir: ${firstLabel} masih invalid.`, 'warning');
+        } else {
+          setSaveStatus(`Autosave ditunda: ${firstLabel} masih invalid.`, 'warning');
+        }
+        return;
       }
-      if (reason === 'manual') {
-        TOAST.warn(`Simpan diblokir: ${firstLabel} masih invalid. Hapus token yang tidak termuat atau pilih dari autosuggestion.`);
-        setSaveStatus(`Simpan diblokir: ${firstLabel} masih invalid.`, 'warning');
-      } else {
-        setSaveStatus(`Autosave ditunda: ${firstLabel} masih invalid.`, 'warning');
-      }
-      return;
+      // reason === 'leave': drop the invalid ids, persist the valid remainder.
+      const invalidIds = new Set(blockingIssues.map((b) => Number(b.id)));
+      postingIds = postingIds.filter((id) => !invalidIds.has(Number(id)));
+      pendingFormulaIds = pendingFormulaIds.filter((id) => !invalidIds.has(Number(id)));
+      hasVolumeChanges = postingIds.length > 0;
+      if (!hasVolumeChanges && !pendingFormulaIds.length) return;
     }
 
     const changes = postingIds.map(id => ({
@@ -6571,7 +6604,7 @@
           const id = postingIds[idx];
           const tr = rows.find(r => parseInt(r.dataset.pekerjaanId, 10) === id);
           const input = tr?.querySelector('.qty-input');
-          if (input) { input.classList.add('is-invalid'); if (e.message) input.setAttribute('title', e.message); }
+          if (input) { input.classList.add('is-invalid'); input.setAttribute('aria-invalid', 'true'); if (e.message) input.setAttribute('title', e.message); }
         });
       };
 

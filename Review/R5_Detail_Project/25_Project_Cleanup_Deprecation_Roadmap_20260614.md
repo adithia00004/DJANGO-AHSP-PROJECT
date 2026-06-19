@@ -60,7 +60,7 @@ bundle tidak boleh dihapus hanya karena tidak dirujuk langsung oleh template.
 | CL-02 | Page/template Rincian RAB legacy | A/B | Template mati dapat dihapus; redirect/API tunggu sunset |
 | CL-03 | Page Export Test | B | Pindahkan fungsi ke automated test; hapus route production |
 | CL-04 | Dashboard `mass_edit_bulk_update` lama | A | Hapus fungsi dead di `dashboard/views.py` |
-| CL-05 | Legacy full-save List Pekerjaan | B | Hapus setelah telemetry dan consumer test |
+| CL-05 | Legacy full-save List Pekerjaan | B | **DONE 2026-06-20** - route/view dihapus setelah consumer scan; jalur aktif = upsert |
 | CL-06 | Mode Tahapan Rekap Kebutuhan | B | Hapus menyeluruh sesuai keputusan D-RK-08 |
 | CL-07 | Jalur Kurva S client sebagai SSOT | B | Pensiunkan setelah server adapter menjadi canonical |
 | CL-08 | Auto reload Template AHSP saat page open | A/B | Hapus trigger massal, pertahankan stale diagnostics |
@@ -256,17 +256,20 @@ usage.
 
 ## 7. Batch 4 - Hapus Legacy Full-Save List Pekerjaan
 
-UI aktif memakai endpoint `upsert/`. Endpoint `list-pekerjaan/save/` masih
-callable dan membawa semantics full-state/destructive yang berbeda.
+UI aktif memakai endpoint `upsert/`. Endpoint `list-pekerjaan/save/` sebelumnya
+masih callable dan membawa semantics full-state/destructive yang berbeda.
+
+**Status 2026-06-20: DONE.** Route `list-pekerjaan/save/` dan view
+`api_save_list_pekerjaan` sudah dihapus; test middleware yang masih hardcoded
+dipindahkan ke `/upsert/`.
 
 **Aksi:**
 
-1. beri/pertahankan deprecation telemetry;
-2. scan frontend, integration, external caller, dan account tests;
-3. migrasikan caller yang masih hardcoded;
-4. hapus route dan `api_save_list_pekerjaan`;
-5. pertahankan satu contract upsert transactional;
-6. perbarui security/rate-limit test.
+1. DONE - consumer scan frontend/integration/account tests;
+2. DONE - migrasikan caller test yang masih hardcoded ke `/upsert/`;
+3. DONE - hapus route dan `api_save_list_pekerjaan`;
+4. DONE - pertahankan satu contract upsert transactional;
+5. DONE - perbarui test terkait middleware/security path.
 
 **Jangan dilakukan** sebelum upsert mempunyai rollback, conflict protection, rate
 limit, dan impact confirmation yang disepakati pada audit List Pekerjaan.

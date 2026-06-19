@@ -8,20 +8,16 @@
 
   const DP = 3; // volume = 3 dp
 
+  // VP-A1: strict id-ID parsing \u2014 comma is ALWAYS decimal; dot is thousands only
+  // for full 3-digit groups with a non-zero lead. MUST stay in sync with the twin
+  // canonFromUIQty in volume_pekerjaan.js (which drives the saved value).
   function canonFromUIQty(raw){
     let s = String(raw ?? '').trim();
     if (!s) return '';
     s = s.replace(/\u00A0/g,' ').replace(/\s+/g,'').replace(/_/g,'');
     const hasDot = s.includes('.');
     const hasComma = s.includes(',');
-    if (hasDot && !hasComma){
-      const dotGrouping = /^\d{1,3}(\.\d{3})+$/;
-      if (dotGrouping.test(s)) s = s.replace(/\./g, '');
-    } else if (hasComma && !hasDot){
-      const commaGrouping = /^\d{1,3}(,\d{3})+$/;
-      if (commaGrouping.test(s)) s = s.replace(/,/g, '');
-      else s = s.replace(/,/g, '.');
-    } else if (hasDot && hasComma){
+    if (hasDot && hasComma){
       const lastComma = s.lastIndexOf(',');
       const lastDot = s.lastIndexOf('.');
       if (lastComma > lastDot){
@@ -29,6 +25,11 @@
       } else {
         s = s.replace(/,/g, '');
       }
+    } else if (hasComma){
+      s = s.replace(/,/g, '.'); // comma = decimal (id-ID)
+    } else if (hasDot){
+      const dotGrouping = /^[1-9]\d{0,2}(\.\d{3})+$/;
+      if (dotGrouping.test(s)) s = s.replace(/\./g, '');
     }
     // valid kanonik sederhana
     if (!/^\-?\d+(\.\d+)?$/.test(s)) return '';

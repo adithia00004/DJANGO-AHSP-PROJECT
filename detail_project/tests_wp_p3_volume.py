@@ -24,6 +24,8 @@ class ComputedExpressionValidationTests(TestCase):
     def setUp(self):
         self.owner = get_user_model().objects.create_user("p3-owner", password="x")
         self.project = Project.objects.create(owner=self.owner, nama="P3")
+        ProjectParameter.objects.create(project=self.project, name="bp_1", value="10", label="Panjang")
+        ProjectParameter.objects.create(project=self.project, name="bp_2", value="5", label="Lebar")
 
     def _sync(self, computed):
         req = RequestFactory().post(

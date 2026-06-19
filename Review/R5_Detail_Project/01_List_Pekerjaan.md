@@ -3,6 +3,11 @@
 **Status:** `[!]` ONGOING - backend API hardening selesai, **1 HIGH XSS ditemukan pada template library modal**, audit end-to-end UI masih berjalan
 **Terakhir diperbarui:** 2026-02-17
 
+> **Update 2026-06-20:** dokumen ini adalah arsip audit awal. Endpoint legacy
+> `api/project/<id>/list-pekerjaan/save/` / `api_save_list_pekerjaan` sudah
+> dihapus lewat CL-05. Jalur mutasi aktif List Pekerjaan sekarang hanya
+> `api/project/<id>/list-pekerjaan/upsert/`.
+
 ---
 
 ## Informasi Umum
@@ -20,7 +25,7 @@
 
 | Method | Endpoint | Fungsi |
 |--------|----------|--------|
-| POST | `api/project/<id>/list-pekerjaan/save/` | Save pekerjaan |
+| POST | ~~`api/project/<id>/list-pekerjaan/save/`~~ | **Dihapus 2026-06-20 (CL-05)** |
 | GET | `api/project/<id>/list-pekerjaan/tree/` | Get tree structure |
 | POST | `api/project/<id>/list-pekerjaan/upsert/` | Upsert pekerjaan |
 | GET | `api/project/<id>/export/list-pekerjaan/json/` | Export JSON |
@@ -70,8 +75,8 @@
 | F-2 | **RESOLVED (was MEDIUM)** | Payload node non-objek (`string/null`) berpotensi memicu error server karena akses `.get`. | `detail_project/views_api.py:997` | Type guard untuk `klasifikasi/sub/pekerjaan` aktif; test PASS di `detail_project/tests_list_pekerjaan_upsert_validation.py:132`. |
 | F-3 | **OPEN (MEDIUM)** | Conflict handling UI untuk concurrent edit belum eksplisit (lebih ke last-writer-serialized). | `detail_project/views_api.py:957` | Ada lock project (`select_for_update`) namun belum ada mekanisme versi/409 untuk konflik pengguna. |
 | F-4 | **OPEN (HIGH)** | **Stored XSS via Template Library modal.** Template name/content names dirender via `innerHTML` tanpa `escapeHtml()`. `escapeHtml` sudah ada (line 933) dan dipakai di TOC/builder, tapi TIDAK di template library section. | `list_pekerjaan.js:2417,2468,2470` | Attack: template public dengan nama `<img src=x onerror=alert(1)>` mengeksekusi script pada semua user yang buka Template Library modal. Server API (`api_list_templates:8468`, `api_get_template_detail:8520`) mengembalikan nama mentah. |
-| F-5 | **OPEN (MEDIUM)** | `api_save_list_pekerjaan` (line 651) tidak punya type guard `isinstance(k, dict)` sebelum `k.get('name')`. Payload malformed bisa 500. | `detail_project/views_api.py:651` | Endpoint upsert sudah punya guard (line 996), tapi full-save endpoint belum. Dimitigasi: endpoint deprecated (komentar mengarahkan ke upsert). |
-| F-6 | **OPEN (LOW)** | `api_upsert_list_pekerjaan` tidak punya decorator `@rate_limit` seperti `api_save_list_pekerjaan`. | `detail_project/views_api.py:932` | Endpoint save punya `@rate_limit(category='write')` (line 619), upsert tidak. |
+| F-5 | **CLOSED (CL-05, 2026-06-20)** | `api_save_list_pekerjaan` legacy dihapus, sehingga jalur malformed-payload ini tidak lagi callable. | `detail_project/views_api.py` | Jalur aktif = `api_upsert_list_pekerjaan`. |
+| F-6 | **RESOLVED (WP-P4c)** | `api_upsert_list_pekerjaan` kini memakai `@rate_limit(category='write')` + `@limit_request_body`; endpoint save legacy sudah dihapus CL-05. | `detail_project/views_api.py` | Jalur mutasi aktif sudah rate/payload guarded. |
 
 ---
 
@@ -82,8 +87,8 @@
 | REC-1 | Validasi preflight duplikat `ordering_index` + type guard payload (API upsert) | P0 | Low | F-1, F-2 (`[DONE]`) |
 | REC-2 | Tambahkan conflict token/versioning (`etag`/`updated_at` check) agar user dapat feedback konflik edit real-time | P1 | Medium | F-3 (`[OPEN]`) |
 | REC-3 | **Escape template names di JS**: Tambahkan `escapeHtml()` pada `t.name`, `k.name`, `s.name` di template library rendering (lines 2417, 2468, 2470) | P0 (Pre-launch) | Low (15 min) | F-4 (`[OPEN]`) |
-| REC-4 | Tambahkan type guard `isinstance(k, dict)` di `api_save_list_pekerjaan` (line 651), sama seperti di upsert | P1 | Low (10 min) | F-5 (`[OPEN]`) |
-| REC-5 | Tambahkan `@rate_limit(category='write')` pada `api_upsert_list_pekerjaan` | P2 | Low (5 min) | F-6 (`[OPEN]`) |
+| REC-4 | ~~Tambahkan type guard di `api_save_list_pekerjaan`~~ | - | - | **Tidak relevan lagi: endpoint dihapus CL-05** |
+| REC-5 | ~~Tambahkan `@rate_limit(category='write')` pada `api_upsert_list_pekerjaan`~~ | - | - | **DONE WP-P4c** |
 
 ---
 

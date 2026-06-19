@@ -188,11 +188,11 @@
 
         <div class="vp-pane-tabs" role="tablist" aria-label="Mode Sidebar Parameter">
           <button type="button" class="btn btn-sm btn-outline-secondary vp-pane-tab is-active" id="vp-tab-base"
-            role="tab" aria-selected="true" data-pane="base">
+            role="tab" aria-selected="true" aria-controls="vp-pane-base" data-pane="base">
             Parameter <span class="badge text-bg-secondary ms-1" id="vp-tab-base-count">0</span>
           </button>
           <button type="button" class="btn btn-sm btn-outline-secondary vp-pane-tab" id="vp-tab-computed" role="tab"
-            aria-selected="false" data-pane="computed">
+            aria-selected="false" aria-controls="vp-pane-computed" data-pane="computed">
             Formula <span class="badge text-bg-secondary ms-1" id="vp-tab-computed-count">0</span>
           </button>
         </div>
@@ -208,7 +208,8 @@
           </button>
         </div>
 
-        <div class="vp-pane is-active" data-pane="base">
+        <div class="vp-pane is-active" data-pane="base" id="vp-pane-base" role="tabpanel"
+          aria-labelledby="vp-tab-base" tabindex="0">
           <div class="vp-param-toolbar">
             <span class="text-muted small">
               <span id="vp-param-count">0</span> parameter
@@ -267,9 +268,9 @@
             <table class="table table-sm align-middle" id="vp-var-table">
               <thead class="vp-thead-sticky">
                 <tr>
-                  <th style="width:45%">Nama</th>
-                  <th style="width:35%">Nilai</th>
-                  <th class="text-end" style="width:20%">Aksi</th>
+                  <th scope="col" style="width:45%">Nama</th>
+                  <th scope="col" style="width:35%">Nilai</th>
+                  <th scope="col" class="text-end" style="width:20%">Aksi</th>
                 </tr>
               </thead>
               <tbody><!-- diisi JS --></tbody>
@@ -277,7 +278,8 @@
           </div>
         </div>
 
-        <div class="vp-pane" data-pane="computed">
+        <div class="vp-pane" data-pane="computed" id="vp-pane-computed" role="tabpanel"
+          aria-labelledby="vp-tab-computed" tabindex="0">
           <div class="vp-cparam-section">
             <div class="vp-param-toolbar">
               <span class="text-muted small">
@@ -295,9 +297,9 @@
               <table class="table table-sm align-middle" id="vp-cparam-table">
                 <thead class="vp-thead-sticky">
                   <tr>
-                    <th style="width:35%">Nama</th>
-                    <th style="width:40%">Formula</th>
-                    <th class="text-end" style="width:25%">Nilai / Aksi</th>
+                    <th scope="col" style="width:35%">Nama</th>
+                    <th scope="col" style="width:40%">Formula</th>
+                    <th scope="col" class="text-end" style="width:25%">Nilai / Aksi</th>
                   </tr>
                 </thead>
                 <tbody><!-- diisi JS --></tbody>
@@ -315,7 +317,7 @@
   {# Backdrop terpisah dihapus karena overlay sudah memberi latar. #}
 
   <!-- ===== Tabel Utama ===== -->
-  <div class="table-responsive dp-card" id="vp-page">
+  <main class="table-responsive dp-card" id="vp-page" aria-label="Tabel Volume Pekerjaan">
     <div id="vp-head-proxy" class="vp-head-proxy" aria-hidden="true"></div>
 
     <table class="table table-sm align-middle" id="vp-table">
@@ -370,10 +372,10 @@
                       </colgroup>
                       <thead class="table-light vp-thead-sticky">
                         <tr>
-                          <th class="text-center">No</th>
-                          <th class="text-wrap text-start">Uraian</th>
-                          <th>Satuan</th>
-                          <th>Quantity</th>
+                          <th scope="col" class="text-center">No</th>
+                          <th scope="col" class="text-wrap text-start">Uraian</th>
+                          <th scope="col">Satuan</th>
+                          <th scope="col">Quantity</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -426,7 +428,7 @@
         {% endif %}
       </tbody>
     </table>
-  </div>
+  </main>
 
   <div class="d-flex justify-content-between align-items-center mt-2">
     <small class="text-muted">

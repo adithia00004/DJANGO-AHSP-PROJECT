@@ -492,7 +492,7 @@ Setiap temuan diperiksa ulang terhadap kode kerja saat ini. Seluruh 12 temuan **
 | LP-02 Commit parsial 207 | **DIKONFIRMASI (dengan penajaman)** | `@transaction.atomic` ada (`:953`); status `207` di `:1670`; penghapusan node omitted (`:1662-1668`) **tetap dieksekusi** lalu response dikembalikan tanpa `set_rollback`/raise → commit. Lihat 10.2 soal cakupan praktis. |
 | LP-03 Stale write antar-tab | **DIKONFIRMASI** | `select_for_update()` di `:976` hanya menserialkan, tidak ada token revisi. Payload full-state + delete omitted = tab lama menimpa. Cache GET tree (`:839`) memperlebar jendela stale. |
 | LP-04 Destructive tanpa impact preview | **DIKONFIRMASI** | `_reset_pekerjaan_related_data` (`:1237-1280`) meng-cascade hapus DetailAHSPProject, VolumePekerjaan, PekerjaanTahapan, VolumeFormulaState, TemplateAhspKoefFormulaState. Tidak ada impact summary di FE sebelum save. |
-| LP-05 Dua endpoint save | **DIKONFIRMASI** | Legacy `api_save_list_pekerjaan` (`:637`) masih terdaftar di `urls.py:37`; docstring sendiri memperingatkan "panggilan berulang bisa menduplikasi data". UI hanya memanggil `/upsert/` (`list_pekerjaan.js:2056`) → legacy dormant-but-callable. |
+| LP-05 Dua endpoint save | **DONE CL-05 (2026-06-20)** | Temuan awal benar saat audit dibuat, tetapi sudah ditutup: legacy `api_save_list_pekerjaan` dan route `.../list-pekerjaan/save/` dihapus; UI/API aktif memakai `/upsert/`. |
 | LP-06 Rate limit & batas payload | **DIKONFIRMASI** | Legacy save punya `@rate_limit(category='write')` (`:635`), tetapi `api_upsert_list_pekerjaan` (`:951-953`), `api_create_template` (`:9119-9122`), `api_import_template` (`:9661-9664`), dan `api_import_template_from_file` (`:9724-9727`) **tidak punya** rate limit. |
 | LP-07 Import template parsial | **DIKONFIRMASI** | `api_import_template:9704` ambil `(stats, errors)`; `:9707` `increment_usage()` jalan **tanpa syarat**; `:9712-9721` mengembalikan `'ok': True` walau ada error (hanya dimasukkan sebagai `warnings`). |
 | LP-08 Reorder tak accessible | **PLAUSIBEL** | Konsisten dengan implementasi drag HTML5 saja; tidak ada handler keyboard reorder/aria-live yang ditemukan. Perlu UAT touch untuk konfirmasi penuh. |
@@ -531,7 +531,7 @@ Reaudit lintas-page atas permintaan owner (List Pekerjaan = root entity; bug men
 | LP-02 commit parsial 207 | **FIXED** (WP-B3) | upsert `atomic_error_response` status 400, no 207 |
 | LP-03 stale write / revision token | **DITUTUP BY DESIGN** | DEC-002 last-write-wins, no optimistic locking/409. Bukan bug terbuka; membuka lagi = ubah keputusan arsitektur |
 | LP-04 konfirmasi destruktif | **PARSIAL** | destructive-impact preview untuk delete sudah ada (WP-P4d); **reset karena source-change belum di-preview** → lihat N2 |
-| LP-05 endpoint save lama | **CLEANUP CL-05** | `api_save_list_pekerjaan` masih di `urls.py:35`, dormant; hapus saat Fase 3, bukan blocker |
+| LP-05 endpoint save lama | **DONE CL-05 (2026-06-20)** | `api_save_list_pekerjaan` dan route `.../list-pekerjaan/save/` sudah dihapus; jalur aktif = `/upsert/` |
 | LP-06 rate/payload limit | **FIXED** (WP-P4c) | `@rate_limit`+`@limit_request_body` pada upsert + create/import template |
 | LP-08 keyboard/touch reorder | TERBUKA (UX/a11y) | cleanup/polish, bukan blocker |
 | LP-09 loading/error state | TERBUKA (UX) | cleanup/polish |

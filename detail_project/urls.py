@@ -32,7 +32,8 @@ urlpatterns = [
     path('<int:project_id>/rincian-rab/',           views.rincian_rab_view,           name='rincian_rab'),  # NEW
 
     # ===== API: List Pekerjaan =====
-    path('api/project/<int:project_id>/list-pekerjaan/save/',   views_api.api_save_list_pekerjaan,   name='api_save_list_pekerjaan'),
+    # CL-05: legacy full-save endpoint (api_save_list_pekerjaan) removed 2026-06-20.
+    # Canonical write path is .../list-pekerjaan/upsert/ (atomic, no 207, no exception leak).
     path('api/project/<int:project_id>/list-pekerjaan/tree/',   views_api.api_get_list_pekerjaan_tree, name='api_get_list_pekerjaan_tree'),
     path('api/project/<int:project_id>/list-pekerjaan/upsert/', views_api.api_upsert_list_pekerjaan, name='api_upsert_list_pekerjaan'),
     path('api/project/<int:project_id>/list-pekerjaan/destructive-impact/', views_api.api_list_pekerjaan_destructive_impact, name='api_list_pekerjaan_destructive_impact'),

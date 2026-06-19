@@ -116,3 +116,23 @@ describe('WP-P3c / UF-014 - server-authoritative parameter load', () => {
     expect(src).toContain('getPekerjaanDisplayLabel(first.id)');
   });
 });
+
+describe('VP-A2 - leave-flush persists valid rows even when one row is invalid', () => {
+  test('manual/autosave still block atomically, leave-flush does not', () => {
+    // The hard-block (focus + warn + return) only applies when NOT a leave flush.
+    expect(src).toContain("if (reason !== 'leave') {");
+  });
+
+  test('leave-flush drops invalid ids and saves the valid remainder', () => {
+    expect(src).toContain('const invalidIds = new Set(blockingIssues.map((b) => Number(b.id)));');
+    expect(src).toContain('postingIds = postingIds.filter((id) => !invalidIds.has(Number(id)));');
+    expect(src).toContain('pendingFormulaIds = pendingFormulaIds.filter((id) => !invalidIds.has(Number(id)));');
+    expect(src).toContain('hasVolumeChanges = postingIds.length > 0;');
+  });
+
+  test('posting buckets are mutable (let) so the leave filter can apply', () => {
+    expect(src).toContain('let postingIds = Array.from(dirtySet.values());');
+    expect(src).toContain('let pendingFormulaIds = Array.from(formulaDirtySet.values());');
+    expect(src).toContain('let hasVolumeChanges = postingIds.length > 0;');
+  });
+});

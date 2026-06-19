@@ -156,7 +156,7 @@ class SubscriptionMiddlewareTests(SimpleTestCase):
 
     def test_api_write_returns_403_for_expired_user(self):
         request = self.factory.post(
-            "/detail_project/api/project/1/list-pekerjaan/save/",
+            "/detail_project/api/project/1/list-pekerjaan/upsert/",
             HTTP_ACCEPT="application/json",
         )
         request.user = self.expired_user
@@ -324,7 +324,7 @@ class TrialAccessGuardTests(TestCase):
         )
 
         request = self.factory.post(
-            "/detail_project/api/project/1/list-pekerjaan/save/",
+            "/detail_project/api/project/1/list-pekerjaan/upsert/",
             HTTP_ACCEPT="application/json",
         )
         request.user = user

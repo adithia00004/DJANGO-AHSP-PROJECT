@@ -109,6 +109,12 @@ class Phase1OpaqueApiTests(TestCase):
         self.assertRegex(body["parameter"]["name"], r"^bp_[1-9][0-9]*$")
 
     def test_create_computed_parameter_uses_server_generated_cp_name(self):
+        ProjectParameter.objects.create(
+            project=self.project,
+            name="bp_1",
+            value="10",
+            label="Panjang",
+        )
         request = self._post_json(
             "/api/project/computed-parameters/",
             {"name": "luas", "label": "Luas", "expression": "bp_1 * 2"},

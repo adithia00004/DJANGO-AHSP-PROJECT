@@ -628,174 +628,6 @@ def api_search_ahsp(request: HttpRequest, project_id: int):
 
     return JsonResponse({"ok": True, "results": results, "total": len(results)})
 
-# ---------- View 1: SAVE (full-create) ----------
-@login_required
-@require_POST
-@rate_limit(category='write')
-@limit_request_body()  # WP-P4c (LP-06): cap body size (DoS guard)
-@transaction.atomic
-def api_save_list_pekerjaan(request: HttpRequest, project_id: int):
-    """
-    Full save (create-all). Hati-hati: panggilan berulang bisa menduplikasi data.
-    Disarankan gunakan /upsert/. Endpoint ini tetap disediakan untuk kebutuhan reset penuh.
-    """
-    project = _owner_or_404(project_id, request.user)
-    from dashboard.models import Project as _P
-    _P.objects.select_for_update().filter(id=project.id).first()
-
-    # 1) Parse JSON
-    try:
-        payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
-        return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
-
-    klas_list = payload.get('klasifikasi') or []
-    if not isinstance(klas_list, list):
-        return JsonResponse({"ok": False, "errors": [_err("klasifikasi", "Harus berupa list")]}, status=400)
-
-    VALID_SRC = {
-        'ref': Pekerjaan.SOURCE_REF,
-        'custom': Pekerjaan.SOURCE_CUSTOM,
-        'ref_modified': Pekerjaan.SOURCE_REF_MOD,
-    }
-
-    id_map = {"klasifikasi": {}, "sub": {}, "pekerjaan": {}}
-    errors = []
-
-    k_counter = 0
-    try:
-        for ki, k in enumerate(klas_list):
-            k_counter += 1
-            k_name = ((k.get('name') or k.get('nama')) or f"Klasifikasi {k_counter}").strip()
-            k_order = int(k.get('ordering_index') or k_counter)
-
-            # Klasifikasi
-            try:
-                k_obj = Klasifikasi.objects.create(project=project, name=k_name, ordering_index=k_order)
-            except IntegrityError as e:
-                errors.append(_err(f"klasifikasi[{ki}]", f"Gagal membuat klasifikasi: {e}"))
-                continue
-            id_map['klasifikasi'][k.get('temp_id') or f"k{ki}"] = k_obj.id
-
-            # Sub
-            sub_list = (k.get('sub') or k.get('subs') or [])
-            if not isinstance(sub_list, list):
-                errors.append(_err(f"klasifikasi[{ki}].sub", "Harus berupa list"))
-                continue
-
-            for si, s in enumerate(sub_list):
-                s_name = ((s.get('name') or s.get('nama')) or f"{ki+1}.{si+1}").strip()
-                s_order = int(s.get('ordering_index') or (si+1))
-                try:
-                    s_obj = SubKlasifikasi.objects.create(project=project, klasifikasi=k_obj, name=s_name, ordering_index=s_order)
-                except IntegrityError as e:
-                    errors.append(_err(f"klasifikasi[{ki}].sub[{si}]", f"Gagal membuat sub: {e}"))
-                    continue
-                id_map['sub'][s.get('temp_id') or f"s{ki}_{si}"] = s_obj.id
-
-                # Pekerjaan
-                pekerjaan_list = (s.get('pekerjaan') or s.get('jobs') or [])
-                if not isinstance(pekerjaan_list, list):
-                    errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan", "Harus berupa list"))
-                    continue
-
-                for pi, p in enumerate(pekerjaan_list):
-                    src_in = p.get('source_type')
-                    src = VALID_SRC.get(src_in, src_in)
-                    if src not in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_CUSTOM, Pekerjaan.SOURCE_REF_MOD]:
-                        errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].source_type", "Nilai tidak valid"))
-                        continue
-
-                    order = int(p.get('ordering_index') or (pi + 1))
-
-                    if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
-                        ref_id = p.get('ref_id')
-                        if not ref_id:
-                            errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id", "Wajib untuk source=ref/ref_modified"))
-                            continue
-                        try:
-                            ref_obj = AHSPReferensi.objects.get(id=ref_id)
-                        except AHSPReferensi.DoesNotExist:
-                            errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id", f"Referensi #{ref_id} tidak ditemukan"))
-                            continue
-                        try:
-                            # override hanya dipakai untuk ref_modified (optional)
-                            ov_ura = (p.get('snapshot_uraian') or '').strip() or None
-                            ov_sat = (p.get('snapshot_satuan') or '').strip() or None
-                            pkj = clone_ref_pekerjaan(
-                                project, s_obj, ref_obj, src,
-                                ordering_index=order, auto_load_rincian=True,
-                                override_uraian=ov_ura if src == Pekerjaan.SOURCE_REF_MOD else None,
-                                override_satuan=ov_sat if src == Pekerjaan.SOURCE_REF_MOD else None,
-                            )
-                            # Safety: pastikan FK ref terisi (beberapa versi clone_ref_pekerjaan bisa belum set .ref)
-                            try:
-                                if getattr(pkj, "ref_id", None) is None:
-                                    pkj.ref = ref_obj
-                                    pkj.save(update_fields=["ref"])
-                            except Exception:
-                                pass
-
-                            # >>> NEW: fallback kalau clone tidak membuat apa-apa
-                            if not pkj:
-                                _k, _u, _s = _safe_snap_from_ref(ref_obj, src, ov_ura, ov_sat)
-                                pkj = Pekerjaan.objects.create(
-                                    project=project,
-                                    sub_klasifikasi=s_obj,
-                                    source_type=src,
-                                    ref=ref_obj,
-                                    snapshot_kode=_k,
-                                    snapshot_uraian=_u,
-                                    snapshot_satuan=_s,
-                                    ordering_index=order,
-                                )
-
-                            if not pkj:
-                                raise ValueError("clone_ref_pekerjaan mengembalikan None")
-                        except Exception as e:
-                            errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}]", f"Gagal clone referensi: {type(e).__name__}: {e}"))
-                            continue
-                    else:
-                        uraian = (p.get('snapshot_uraian') or '').strip()
-                        satuan = (p.get('snapshot_satuan') or None)
-                        if not uraian:
-                            errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].snapshot_uraian", "Wajib diisi untuk custom"))
-                            continue
-                        try:
-                            pkj = Pekerjaan.objects.create(
-                                project=project, sub_klasifikasi=s_obj, source_type=src,
-                                snapshot_kode=generate_custom_code(project),
-                                snapshot_uraian=uraian, snapshot_satuan=satuan, ordering_index=order,
-                            )
-                        except IntegrityError as e:
-                            errors.append(_err(f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}]", f"Gagal membuat pekerjaan custom: {e}"))
-                            continue
-
-                    id_map['pekerjaan'][p.get('temp_id') or f"p{ki}_{si}_{pi}"] = pkj.id
-
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return JsonResponse(
-            {"ok": False, "errors": [_err("$", f"Server error: {type(e).__name__}: {e}")], "id_map": id_map},
-            status=500
-        )
-
-    if errors:
-        status_code = 207 if any(id_map.values()) else 400
-        return JsonResponse({"ok": status_code == 200, "errors": errors, "id_map": id_map}, status=status_code)
-
-    summary = {
-        "klasifikasi": len(id_map['klasifikasi']),
-        "sub": len(id_map['sub']),
-        "pekerjaan": len(id_map['pekerjaan']),
-    }
-
-    # CACHE FIX: Invalidate cache AFTER transaction commits
-    transaction.on_commit(lambda: invalidate_rekap_cache(project))
-
-    return JsonResponse({"ok": True, "id_map": id_map, "summary": summary})
-
 # helper untuk normalisasi source_type
 def _str_to_src(s):
     m = {
@@ -4212,6 +4044,108 @@ def _parameter_dependents(project, name):
     return usage
 
 
+def _formula_opaque_refs(expr: str) -> set:
+    """Return opaque bp_N/cp_N identifiers referenced by a formula expression."""
+    from .formula_tokenizer import tokenize_formula
+
+    refs = set()
+    for tok_type, raw, _s, _e in tokenize_formula(expr or ""):
+        if tok_type != "id":
+            continue
+        token = str(raw or "").strip().lower()
+        if token in _FORMULA_ALLOWED_FUNCTIONS:
+            continue
+        if _FORMULA_IDENTIFIER_RE.match(token):
+            refs.add(token)
+    return refs
+
+
+def _validate_computed_parameter_graph(project, candidate_expressions: dict, *, include_existing: bool) -> list:
+    """Validate computed parameter references and cycles for opaque mode.
+
+    ``candidate_expressions`` maps the computed parameter names being created or
+    changed to their expressions. In merge/create flows, existing computed rows
+    are included as dependency targets; in replace flow, only the submitted
+    snapshot is authoritative.
+
+    Existing legacy-invalid rows should not block unrelated edits, so the graph
+    walk starts from the candidate names only.
+    """
+    if not _is_opaque_id_enabled():
+        return []
+
+    candidates = {
+        str(name or "").strip().lower(): str(expr or "").strip()
+        for name, expr in (candidate_expressions or {}).items()
+    }
+    if not candidates:
+        return []
+
+    base_names = set(
+        ProjectParameter.objects.filter(project=project).values_list("name", flat=True)
+    )
+    base_names = {str(name or "").strip().lower() for name in base_names}
+
+    expressions = {}
+    if include_existing:
+        expressions.update({
+            str(row.name or "").strip().lower(): str(row.expression or "").strip()
+            for row in ProjectComputedParameter.objects.filter(project=project).only("name", "expression")
+        })
+    expressions.update(candidates)
+    computed_names = set(expressions)
+
+    errors = []
+    seen_errors = set()
+    visiting = []
+    visited = set()
+
+    def add_error(path, message):
+        key = (path, message)
+        if key not in seen_errors:
+            seen_errors.add(key)
+            errors.append(_err(path, message))
+
+    def visit(name):
+        if name in visiting:
+            cycle = visiting[visiting.index(name):] + [name]
+            add_error(
+                f"computed_parameters[{name}]",
+                "Siklus formula turunan terdeteksi: " + " -> ".join(cycle),
+            )
+            return
+        if name in visited:
+            return
+        expr = expressions.get(name)
+        if expr is None:
+            return
+
+        visiting.append(name)
+        for ref in sorted(_formula_opaque_refs(expr)):
+            if ref.startswith("bp_"):
+                if ref not in base_names:
+                    add_error(
+                        f"computed_parameters[{name}]",
+                        f"Referensi parameter tidak ditemukan: {ref}",
+                    )
+                continue
+            if ref.startswith("cp_"):
+                if ref not in computed_names:
+                    add_error(
+                        f"computed_parameters[{name}]",
+                        f"Referensi formula turunan tidak ditemukan: {ref}",
+                    )
+                    continue
+                visit(ref)
+        visiting.pop()
+        visited.add(name)
+
+    for name in candidates:
+        visit(name)
+
+    return errors
+
+
 @login_required
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "PUT", "DELETE"])
@@ -4268,13 +4202,19 @@ def api_project_parameter_detail(request: HttpRequest, project_id: int, param_id
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
     
     updated_fields = []
-    
+
     if "value" in payload:
         value = _parse_parameter_value_allow_negative(payload.get("value"))
-        if value is not None:
-            param.value = value
-            updated_fields.append("value")
-    
+        # VP-A/V7: a present-but-unparseable value must be rejected, not silently
+        # skipped while still returning ok:true (user would think it was saved).
+        if value is None:
+            return JsonResponse(
+                {"ok": False, "errors": [_err("value", "Nilai parameter tidak valid (harus angka).")]},
+                status=400,
+            )
+        param.value = value
+        updated_fields.append("value")
+
     if "label" in payload:
         param.label = str(payload.get("label", "")).strip() or param.name
         updated_fields.append("label")
@@ -4520,6 +4460,20 @@ def api_project_computed_parameters(request: HttpRequest, project_id: int):
     for _ in range(3):
         try:
             generated_name = generate_computed_param_name(project, label or "rumus")
+            graph_errors = _validate_computed_parameter_graph(
+                project,
+                {generated_name: expression},
+                include_existing=True,
+            )
+            if graph_errors:
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "errors": graph_errors,
+                        "message": "Formula turunan tidak valid.",
+                    },
+                    status=422,
+                )
             obj = ProjectComputedParameter.objects.create(
                 project=project,
                 name=generated_name,
@@ -4618,6 +4572,23 @@ def api_project_computed_parameters_sync(request: HttpRequest, project_id: int):
             errors=invalid,
             status=422,
             message="Sebagian formula turunan tidak valid. Tidak ada perubahan yang disimpan.",
+        )
+
+    candidate_expressions = {}
+    for raw_code, data in params_data.items():
+        name = str(raw_code or "").strip().lower()
+        expr = str((data.get("expression", "") if isinstance(data, dict) else (data or ""))).strip()
+        candidate_expressions[name] = expr
+    graph_errors = _validate_computed_parameter_graph(
+        project,
+        candidate_expressions,
+        include_existing=(mode == "merge"),
+    )
+    if graph_errors:
+        return atomic_error_response(
+            errors=graph_errors,
+            status=422,
+            message="Sebagian formula turunan memiliki referensi tidak valid atau siklus. Tidak ada perubahan yang disimpan.",
         )
 
     created_count = 0
@@ -6407,13 +6378,13 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
         period_str = request.GET.get('period') or payload.get('period')
         format_type = request.GET.get('format') or payload.get('format', 'pdf')
         
-        # DEBUG: Trace period parameter from frontend
-        print(f"[views_api] DEBUG export_jadwal_pekerjaan_professional called:")
-        print(f"  - report_type: {report_type}")
-        print(f"  - period_str (raw): {period_str}")
-        print(f"  - format_type: {format_type}")
-        print(f"  - payload keys: {list(payload.keys()) if payload else 'empty'}")
-        
+        # V6: trace via structured logging (debug level) instead of stray print().
+        logger.debug(
+            "[export_jadwal_pekerjaan_professional] report_type=%s period=%s format=%s payload_keys=%s",
+            report_type, period_str, format_type,
+            list(payload.keys()) if payload else "empty",
+        )
+
         # Parse months parameter for multi-month export (NEW)
         months_raw = request.GET.get('months') or payload.get('months')
         months = None
@@ -6933,12 +6904,13 @@ def api_batch_copy_project(request: HttpRequest, project_id: int):
             }
         }, status=201)
 
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
+    except Exception:
+        # V6: structured logging instead of print(); do NOT leak exception detail
+        # to the client (same hardening as the retired legacy save endpoint).
+        logger.exception("[api_batch_copy_project] batch copy failed (project=%s)", project_id)
         return JsonResponse({
             "ok": False,
-            "error": f"Batch copy failed: {str(e)}"
+            "error": "Batch copy gagal. Silakan coba lagi atau hubungi administrator."
         }, status=500)
 
 
