@@ -516,3 +516,39 @@ Setiap temuan diperiksa ulang terhadap kode kerja saat ini. Seluruh 12 temuan **
 ### 10.4 Kalibrasi prioritas
 
 Urutan P0 di tabel bagian 8 sudah tepat. Satu penyesuaian effort: **LP-01 dan LP-02 berdampak tinggi tetapi effort rendah** (masing-masing perubahan beberapa baris) — keduanya layak dikerjakan lebih dulu sebagai quick win sebelum LP-03/LP-04 yang menuntut perubahan kontrak API + alur UI yang lebih besar.
+
+---
+
+## 11. Reaudit & Remediasi (2026-06-19)
+
+Reaudit lintas-page atas permintaan owner (List Pekerjaan = root entity; bug menyebar via `pekerjaan_id` ke Volume/Template/Jadwal/Rekap). Detail eksekusi + verifikasi test ada di **tracker doc 28 §6 UF-016**.
+
+### 11.1 Status temuan audit 13 Juni (LP-01..LP-13)
+
+| Temuan | Status per 2026-06-19 | Bukti/keputusan |
+|---|---|---|
+| LP-01 XSS preview template | **FIXED** (WP-A1) | `list_pekerjaan.js` preview kini `escapeHtml(k.name)/escapeHtml(s.name)` |
+| LP-02 commit parsial 207 | **FIXED** (WP-B3) | upsert `atomic_error_response` status 400, no 207 |
+| LP-03 stale write / revision token | **DITUTUP BY DESIGN** | DEC-002 last-write-wins, no optimistic locking/409. Bukan bug terbuka; membuka lagi = ubah keputusan arsitektur |
+| LP-04 konfirmasi destruktif | **PARSIAL** | destructive-impact preview untuk delete sudah ada (WP-P4d); **reset karena source-change belum di-preview** → lihat N2 |
+| LP-05 endpoint save lama | **CLEANUP CL-05** | `api_save_list_pekerjaan` masih di `urls.py:35`, dormant; hapus saat Fase 3, bukan blocker |
+| LP-06 rate/payload limit | **FIXED** (WP-P4c) | `@rate_limit`+`@limit_request_body` pada upsert + create/import template |
+| LP-08 keyboard/touch reorder | TERBUKA (UX/a11y) | cleanup/polish, bukan blocker |
+| LP-09 loading/error state | TERBUKA (UX) | cleanup/polish |
+| LP-10 nama template unik global | TERBUKA | data-model multi-user |
+| LP-11 inline onclick | TERBUKA | CSP hardening (WP-A2 enforcement = milestone terpisah) |
+| LP-12 dua pola search | TERBUKA (UX) | cleanup/polish |
+| LP-13 re-indexing O(N) | TERBUKA (perf) | batasi node + `bulk_update` |
+
+### 11.2 Temuan baru integritas data (HIGH) — sudah diperbaiki
+
+- **N1 — `reuse_pool` upsert mewariskan data turunan / tabrakan ID.** Slot pekerjaan lama bisa diklaim baris baru tanpa id → data-bleed (Volume/Detail/Jadwal/formula) atau dua row kolaps jadi satu objek DB (baris hilang). **FIXED:** pekerjaan ber-id dikecualikan dari `reuse_pool` + reuse baris baru selalu reset turunan.
+- **N1b — `_reset_pekerjaan_related_data` tak menghapus `PekerjaanProgressWeekly`.** Reset hanya menghapus view `PekerjaanTahapan`, bukan SSOT weekly → jadwal/progress lama "hidup lagi" pada reuse (N1) dan source-change (N2). **FIXED:** reset kini ikut hapus weekly.
+- **Verifikasi lintas-page:** DetailAHSPExpanded bersih via cascade; bundle delete diblok C1; ganti-sumber memicu `cascade_bundle_re_expansion` (dependent tak stale); rekap cache di-invalidate on_commit. Test regresi 44 (upsert/atomic/p4) + 38 (jadwal/rekap/kebutuhan/bundle) PASS; test baru `tests_list_pekerjaan_reuse_n1` mengunci N1/N1b.
+- **BAC (`budgeted_cost`) — DONE (2026-06-19).** Awalnya ditandai low-risk/tunda; owner memutuskan **CLEAR di N1+N2**. `_reset_pekerjaan_related_data` kini reset `budgeted_cost=0` → reuse tak mewarisi BAC lama; source-change tak menyisakan BAC basi. BAC import-only (Kurva S Harga); setelah clear → fallback ke rekap live. Preview N2 + konfirmasi FE menyebut BAC yang dihapus (tak senyap). Test `tests_list_pekerjaan_budgeted_cost_reset` (3).
+
+### 11.3 Sisa pekerjaan (sequencing berikutnya)
+
+- **N2 — DONE (2026-06-19).** destructive-impact preview + konfirmasi kini mencakup pekerjaan yang **tetap ada tapi di-reset** karena source-change (kategori `to_reset`/`has_reset`, hanya yang punya data turunan → konfirmasi proporsional) + warning `affects_bundle`. SSOT `_is_reset_change()` dipakai bersama upsert+preview (anti-drift). Menutup sisa LP-04. Test: `tests_list_pekerjaan_destructive_impact_n2` (3) + `list_pekerjaan_destructive.test.js` (15); regresi gabungan 80 backend PASS. Detail di tracker doc 28 §6 UF-016.
+- **N3 — DONE via Opsi B (2026-06-19).** `syncTreeIdsFromServer()` tetap fetch `/tree/`, tapi memvalidasi struktur (`treeStructureMatches`) terhadap proyeksi DOM **savable** (`buildSavableDomTree`, meniru filter `handleSave`) sebelum stamp id by-posisi; mismatch jumlah klas/sub/pekerjaan → `reloadAfterSave()` + toast (jangan tempel id salah), match → sync ordinal (`stampRowIdentity`). FE-only, tanpa ubah kontrak API; menutup failure-mode paling berbahaya (mis-stamp saat DOM/server divergen). **Opsi A (echo `temp_id→id` pada upsert kanonik) DITUNDA** sebagai hardening kontrak lebih besar (perlu id_map semua cabang + test map-completeness; risiko duplikasi bila peta tak lengkap). FE test `list_pekerjaan_destructive.test.js` (22).
+- **N5 — DONE (2026-06-19).** "Export Template JSON" kini guard dirty-save (anchor `btn-export-template-json` + handler di `initListPekerjaanExport`): jika ada perubahan belum disimpan, simpan dulu lalu unduh (`Content-Disposition: attachment`); batal bila save gagal. Konsisten dengan Export List JSON. FE test `list_pekerjaan_destructive.test.js` (18).

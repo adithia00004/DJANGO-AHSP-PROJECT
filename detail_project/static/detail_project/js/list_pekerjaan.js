@@ -187,7 +187,8 @@
       console.warn('[LP] Destructive-impact preview failed; proceeding without confirmation.', e);
       return true;
     }
-    if (!data || !data.has_destructive) return true;  // nothing being deleted
+    // Nothing destructive at all (no deletions AND no source-change resets) -> proceed.
+    if (!data || (!data.has_destructive && !data.has_reset)) return true;
 
     const modalApi = getModalApi();
 
@@ -206,25 +207,61 @@
       return false;
     }
 
-    const t = data.totals || {};
-    const lossParts = [];
-    if (t.volume) lossParts.push(`${t.volume} data volume`);
-    if (t.detail) lossParts.push(`${t.detail} komponen template AHSP`);
-    if (t.jadwal) lossParts.push(`${t.jadwal} entri jadwal`);
-    if (t.formula) lossParts.push(`${t.formula} formula`);
+    // Plain-text summary of derived data that will be lost for a totals bucket.
+    const formatLoss = (t) => {
+      const parts = [];
+      if (t && t.volume) parts.push(`${t.volume} data volume`);
+      if (t && t.detail) parts.push(`${t.detail} komponen template AHSP`);
+      if (t && t.jadwal) parts.push(`${t.jadwal} entri jadwal`);
+      if (t && t.formula) parts.push(`${t.formula} formula`);
+      return parts.length ? `\n  Data turunan ikut hilang: ${parts.join(', ')}` : '';
+    };
+    const listNames = (rows) => {
+      const names = (rows || []).slice(0, 10).map(d => `- ${d.label}`).join('\n');
+      const moreCount = (rows || []).length - 10;
+      return names + (moreCount > 0 ? `\n...dan ${moreCount} lainnya` : '');
+    };
 
-    const names = (data.to_delete || []).slice(0, 10).map(d => `- ${d.label}`).join('\n');
-    const moreCount = (data.to_delete || []).length - 10;
-    const more = moreCount > 0 ? `\n...dan ${moreCount} lainnya` : '';
-    const lossText = lossParts.length
-      ? `\n\nData turunan yang ikut terhapus:\n${lossParts.map(p => `- ${p}`).join('\n')}`
-      : '';
-    const msg = `Anda akan menghapus ${t.pekerjaan} pekerjaan:\n${names}${more}${lossText}\n\nTindakan ini tidak dapat dibatalkan. Lanjutkan?`;
+    const sections = [];
+
+    if (data.has_destructive) {
+      const t = data.totals || {};
+      sections.push(`Akan MENGHAPUS ${t.pekerjaan} pekerjaan:\n${listNames(data.to_delete)}${formatLoss(t)}`);
+    }
+
+    if (data.has_reset) {
+      const rt = data.reset_totals || {};
+      let sec = `Akan MERESET ${rt.pekerjaan} pekerjaan karena sumber/referensi AHSP-nya berubah `
+        + `(volume, komponen AHSP, jadwal, dan formula lama akan dihapus dan perlu diisi ulang):`
+        + `\n${listNames(data.to_reset)}${formatLoss(rt)}`;
+      // Baseline biaya (BAC) ikut direset; Kurva S akan memakai nilai hitung ulang dari RAB.
+      if (rt.budgeted_cost && rt.budgeted_cost > 0) {
+        let bacText;
+        try {
+          bacText = Math.round(rt.budgeted_cost).toLocaleString('id-ID');
+        } catch (_) {
+          bacText = String(Math.round(rt.budgeted_cost));
+        }
+        sec += `\n  Baseline biaya/BAC Rp ${bacText} akan dihapus karena sumber pekerjaan berubah. `
+          + `Kurva S akan memakai nilai hitung ulang dari RAB.`;
+      }
+      const bundleWarn = (data.to_reset || [])
+        .filter(d => (d.affects_bundle || []).length)
+        .map(d => `- "${d.label}" dipakai sebagai Pekerjaan Gabungan oleh: ${d.affects_bundle.join(', ')}`)
+        .join('\n');
+      if (bundleWarn) {
+        sec += `\n\nReset ini juga mengubah Pekerjaan Gabungan yang memakainya:\n${bundleWarn}`;
+      }
+      sections.push(sec);
+    }
+
+    const msg = `${sections.join('\n\n')}\n\nTindakan ini tidak dapat dibatalkan. Lanjutkan?`;
 
     if (!modalApi || !modalApi.confirm) return true;  // no modal -> fail-open
+    const confirmText = data.has_destructive ? 'Hapus & Simpan' : 'Reset & Simpan';
     return await modalApi.confirm(msg, {
-      title: 'Konfirmasi Hapus',
-      confirmText: 'Hapus & Simpan',
+      title: 'Konfirmasi Perubahan',
+      confirmText,
       cancelText: 'Batal',
       confirmClass: 'btn btn-danger',
     });
@@ -2214,55 +2251,107 @@
 
   async function reloadAfterSave() { klasWrap.innerHTML = ''; await loadTree(); }
 
+  // Build the "savable" projection of the current DOM tree: klas -> subs -> rows,
+  // dropping nodes the upsert would NOT persist (empty subs, klas without any
+  // populated sub). This mirrors handleSave()'s filtering so the structure check
+  // below compares apples to apples with the server tree (which only contains
+  // persisted nodes), instead of tripping on benign empty/unsaved cards.
+  function buildSavableDomTree() {
+    const klasNodes = [];
+    const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
+    kCards.forEach((kc) => {
+      const subWrap = kc.querySelector('.sub-wrap');
+      const subNodes = [];
+      Array.from(subWrap?.children || []).forEach((sb) => {
+        const rows = Array.from(sb.querySelectorAll('tbody tr'));
+        if (rows.length === 0) return;   // sub tanpa pekerjaan tidak ikut disimpan
+        subNodes.push({ el: sb, rows });
+      });
+      if (subNodes.length === 0) return; // klas tanpa sub tersimpan tidak ikut disimpan
+      klasNodes.push({ el: kc, subs: subNodes });
+    });
+    return klasNodes;
+  }
+
+  // N3 (Opsi B): the post-save id sync is positional. It is only safe when the
+  // savable DOM structure matches the server tree exactly (counts at every level).
+  // If they diverge (cross-klas sub move id churn, server-side filtering, a
+  // concurrent edit in another tab), stamping ids by position could attach the
+  // wrong DB id to a row -> silent cross-page corruption. So we verify first.
+  function treeStructureMatches(savable, serverKlas) {
+    if (savable.length !== serverKlas.length) return false;
+    for (let ki = 0; ki < savable.length; ki++) {
+      const sSubs = serverKlas[ki]?.sub || [];
+      if (savable[ki].subs.length !== sSubs.length) return false;
+      for (let si = 0; si < savable[ki].subs.length; si++) {
+        const sPkj = sSubs[si]?.pekerjaan || [];
+        if (savable[ki].subs[si].rows.length !== sPkj.length) return false;
+      }
+    }
+    return true;
+  }
+
+  function stampRowIdentity(tr, pSrv) {
+    if (pSrv?.id) tr.dataset.id = String(pSrv.id);
+
+    const srcSel = tr.querySelector('.src');
+    const srcNow = srcSel?.value || tr.dataset.sourceType || 'custom';
+    tr.dataset.sourceType = srcNow;
+    tr.dataset.originalSourceType = srcNow;
+
+    let refRaw;
+    if (HAS_JQ) {
+      refRaw = $(tr).find('.ref-select').val();
+    } else {
+      refRaw = tr.querySelector('.ref-select')?.value ?? '';
+    }
+    if (refRaw == null || refRaw === '') {
+      refRaw = tr.dataset.refId || tr.dataset.originalRefId || '';
+    }
+
+    const refVal = (refRaw == null || refRaw === '') ? null : String(refRaw);
+    if (refVal) {
+      tr.dataset.refId = refVal;
+      tr.dataset.originalRefId = refVal;
+    } else {
+      delete tr.dataset.refId;
+      delete tr.dataset.originalRefId;
+    }
+  }
+
   async function syncTreeIdsFromServer() {
     if (!projectId) return;
     const data = await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`, { method: 'GET' });
     const serverKlas = Array.isArray(data?.klasifikasi) ? data.klasifikasi : [];
 
-    const kCards = Array.from(klasWrap.children).filter(el => el?.querySelector && el.querySelector('.sub-wrap'));
-    kCards.forEach((kc, ki) => {
+    const savable = buildSavableDomTree();
+
+    // Safety net: if the DOM no longer lines up with the server, do NOT risk
+    // mis-stamping ids by position — reload the authoritative tree instead.
+    if (!treeStructureMatches(savable, serverKlas)) {
+      warn('[SYNC] DOM/server tree structure mismatch after save; reloading to stay safe.', {
+        domKlas: savable.length,
+        serverKlas: serverKlas.length,
+      });
+      tShow('Struktur berubah saat sinkronisasi, halaman dimuat ulang agar data tetap aman.', 'info');
+      await reloadAfterSave();
+      return;
+    }
+
+    savable.forEach((kNode, ki) => {
       const kSrv = serverKlas[ki];
       if (kSrv?.id) {
-        kc.dataset.id = String(kSrv.id);
-        kc.dataset.klasId = String(kSrv.id);
+        kNode.el.dataset.id = String(kSrv.id);
+        kNode.el.dataset.klasId = String(kSrv.id);
       }
-
-      const subBlocks = Array.from(kc.querySelector('.sub-wrap')?.children || []);
-      subBlocks.forEach((sb, si) => {
+      kNode.subs.forEach((sNode, si) => {
         const sSrv = kSrv?.sub?.[si];
         if (sSrv?.id) {
-          sb.dataset.id = String(sSrv.id);
-          sb.dataset.subId = String(sSrv.id);
+          sNode.el.dataset.id = String(sSrv.id);
+          sNode.el.dataset.subId = String(sSrv.id);
         }
-
-        const rows = Array.from(sb.querySelectorAll('tbody tr'));
-        rows.forEach((tr, pi) => {
-          const pSrv = sSrv?.pekerjaan?.[pi];
-          if (pSrv?.id) tr.dataset.id = String(pSrv.id);
-
-          const srcSel = tr.querySelector('.src');
-          const srcNow = srcSel?.value || tr.dataset.sourceType || 'custom';
-          tr.dataset.sourceType = srcNow;
-          tr.dataset.originalSourceType = srcNow;
-
-          let refRaw;
-          if (HAS_JQ) {
-            refRaw = $(tr).find('.ref-select').val();
-          } else {
-            refRaw = tr.querySelector('.ref-select')?.value ?? '';
-          }
-          if (refRaw == null || refRaw === '') {
-            refRaw = tr.dataset.refId || tr.dataset.originalRefId || '';
-          }
-
-          const refVal = (refRaw == null || refRaw === '') ? null : String(refRaw);
-          if (refVal) {
-            tr.dataset.refId = refVal;
-            tr.dataset.originalRefId = refVal;
-          } else {
-            delete tr.dataset.refId;
-            delete tr.dataset.originalRefId;
-          }
+        sNode.rows.forEach((tr, pi) => {
+          stampRowIdentity(tr, sSrv?.pekerjaan?.[pi]);
         });
       });
     });
@@ -2499,6 +2588,26 @@
       });
       await exporter.exportAs('json', { requestTimeoutMs: 30000 });
     });
+
+    // N5: "Export Template JSON" is a plain download link (server returns an
+    // attachment). It must NOT export stale server state while there are unsaved
+    // changes — mirror the dirty-save guard used by the List JSON export above.
+    const exportTemplateLink = document.getElementById('btn-export-template-json');
+    if (exportTemplateLink) {
+      exportTemplateLink.addEventListener('click', async (e) => {
+        if (!isDirty) return;  // clean -> allow native download navigation
+        e.preventDefault();
+        tShow('Menyimpan perubahan sebelum export...', 'info');
+        await handleSave();
+        if (isDirty) {
+          tShow('Export dibatalkan karena perubahan belum berhasil disimpan.', 'warning');
+          return;
+        }
+        // Saved successfully -> trigger the download (Content-Disposition: attachment).
+        const url = exportTemplateLink.getAttribute('href');
+        if (url) window.location.href = url;
+      });
+    }
   })();
 
   // ========= [DEBUG] (hanya aktif jika __DEBUG__ = true) ======================

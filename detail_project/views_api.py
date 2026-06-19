@@ -805,6 +805,30 @@ def _str_to_src(s):
     }
     return m.get(s, s)
 
+
+def _is_reset_change(new_src, new_ref_id, old_src, old_ref_id) -> bool:
+    """SSOT: apakah perubahan satu baris pekerjaan (payload vs state DB) memicu
+    reset data turunan (Volume/Detail/Jadwal/formula)?
+
+    Mirror persis keputusan `replace` pada jalur existing-row di
+    `api_upsert_list_pekerjaan`. Dipakai BERSAMA oleh upsert (otoritatif) dan
+    preview destructive-impact (N2) agar tidak ada dua sumber kebenaran yang bisa
+    drift. `new_src`/`old_src` memakai representasi tersimpan (hasil `_str_to_src`
+    untuk payload, nilai kolom untuk DB).
+    """
+    if new_src != old_src:
+        return True
+    if new_src in (Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD):
+        if new_ref_id is not None:
+            try:
+                return int(new_ref_id) != old_ref_id
+            except (TypeError, ValueError):
+                # Payload anomali: upsert fail-safe ke replace agar state konsisten.
+                return True
+        # Tidak ada ref_id baru → tidak dianggap ganti referensi.
+        return False
+    return False
+
 # ---------- View 1: TREE ----------
 @login_required
 @require_GET
@@ -1202,8 +1226,51 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     existing_s = {s.id: s for s in sub_queryset}
     pekerjaan_queryset = list(Pekerjaan.objects.filter(project=project).order_by('id'))
     existing_p = {p.id: p for p in pekerjaan_queryset}
+
+    # N1 fix: pekerjaan yang dibawa EKSPLISIT by-id di payload TIDAK boleh menjadi
+    # kandidat reuse-by-ordering_index. Tanpa pengecualian ini, baris baru tanpa id
+    # bisa "mengklaim" pekerjaan yang juga di-update lewat jalur id (tabrakan ID →
+    # baris hilang) atau mewarisi data turunannya (data-bleed). reuse_pool hanya boleh
+    # berisi pekerjaan yang TIDAK dibawa by-id (yakni kandidat yang memang akan dihapus).
+    payload_pekerjaan_ids: Set[int] = set()
+    for _k in klas_list:
+        if not isinstance(_k, dict):
+            continue
+        for _s in (_k.get("sub") or _k.get("subs") or []):
+            if not isinstance(_s, dict):
+                continue
+            for _p in (_s.get("pekerjaan") or _s.get("jobs") or []):
+                if not isinstance(_p, dict):
+                    continue
+                _pid = _p.get("id")
+                if _pid is None:
+                    continue
+                try:
+                    payload_pekerjaan_ids.add(int(_pid))
+                except (TypeError, ValueError):
+                    pass
+
+    # N1b/N1c guard: a pekerjaan omitted from the payload may be a legitimate
+    # delete candidate, but if it is still referenced as a Pekerjaan Gabungan by
+    # a surviving pekerjaan, it must remain a delete candidate so the C1 guard
+    # can reject the save. Reusing its DB identity for a brand-new row would make
+    # the dependent bundle silently point at the new pekerjaan.
+    protected_reuse_ids: Set[int] = set()
+    if payload_pekerjaan_ids:
+        protected_reuse_ids = set(
+            DetailAHSPProject.objects.filter(
+                project=project,
+                pekerjaan_id__in=payload_pekerjaan_ids,
+                ref_pekerjaan_id__isnull=False,
+            ).values_list("ref_pekerjaan_id", flat=True)
+        )
+
     reuse_pool: Dict[int, list[Pekerjaan]] = {}
     for pobj in pekerjaan_queryset:
+        if pobj.id in payload_pekerjaan_ids:
+            continue  # di-update lewat jalur id; jangan jadi kandidat reuse
+        if pobj.id in protected_reuse_ids:
+            continue  # masih dipakai bundle oleh row surviving; biarkan C1 memblok delete
         reuse_pool.setdefault(pobj.ordering_index, []).append(pobj)
 
     # BUG FIX #3 (REVISED): Set temporary high ordering_index to avoid UniqueViolation
@@ -1241,17 +1308,22 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         Reset semua data terkait pekerjaan saat pekerjaan dimodifikasi (source_type atau ref_id berubah).
 
         Cascade reset:
-        - DetailAHSPProject: hapus semua detail lama
+        - DetailAHSPProject: hapus semua detail lama (DetailAHSPExpanded ikut via cascade source_detail/pekerjaan)
         - VolumePekerjaan: reset volume jadi NULL/0
-        - PekerjaanTahapan: hapus dari semua tahapan (jadwal)
+        - PekerjaanTahapan: hapus dari semua tahapan (jadwal, view turunan)
+        - PekerjaanProgressWeekly: hapus progress canonical (SSOT jadwal) — tanpa ini
+          jadwal lama "hidup lagi" karena PekerjaanTahapan diregenerasi dari weekly
         - VolumeFormulaState: hapus formula state
         - TemplateAhspKoefFormulaState: hapus formula koef sidecar
+        - budgeted_cost (BAC): reset ke 0 — definisi pekerjaan berubah, baseline biaya
+          lama tak lagi valid; Kurva S akan fallback ke total rekap live (hitung ulang)
         - detail_ready flag: set ke False
         """
         from .models import (
             DetailAHSPProject,
             VolumePekerjaan,
             PekerjaanTahapan,
+            PekerjaanProgressWeekly,
             VolumeFormulaState,
             TemplateAhspKoefFormulaState,
         )
@@ -1262,8 +1334,13 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         # 2. Hapus VolumePekerjaan (quantity field is NOT NULL, so delete instead of update)
         VolumePekerjaan.objects.filter(project=project, pekerjaan=pobj).delete()
 
-        # 3. Hapus dari semua tahapan (jadwal)
+        # 3. Hapus dari semua tahapan (jadwal, view turunan)
         PekerjaanTahapan.objects.filter(pekerjaan=pobj).delete()
+
+        # 3b. Hapus progress mingguan canonical (SSOT). PekerjaanTahapan adalah VIEW yang
+        # diregenerasi dari sini; menghapus tahapan saja membuat progress lama muncul
+        # kembali di Jadwal Pekerjaan saat pekerjaan diganti sumber / slot dipakai ulang.
+        PekerjaanProgressWeekly.objects.filter(project=project, pekerjaan=pobj).delete()
 
         # 4. Hapus volume formula state
         VolumeFormulaState.objects.filter(project=project, pekerjaan=pobj).delete()
@@ -1271,9 +1348,12 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
         # 5. Hapus formula sidecar koefisien Template AHSP
         TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=pobj).delete()
 
-        # 6. Set detail_ready flag ke False
+        # 6. Set detail_ready=False + reset BAC (budgeted_cost). Baris baru yang me-reuse
+        # slot lama (N1) maupun pekerjaan yang ganti sumber (N2) lewat fungsi yang sama,
+        # jadi keduanya otomatis tidak mewarisi BAC lama yang sudah tak relevan.
         pobj.detail_ready = False
-        pobj.save(update_fields=['detail_ready'])
+        pobj.budgeted_cost = Decimal("0.00")
+        pobj.save(update_fields=['detail_ready', 'budgeted_cost'])
 
         logger.info(
             f"Reset all related data for pekerjaan {pobj.id} (kode: {pobj.snapshot_kode})",
@@ -1439,36 +1519,29 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     # even if validation fails later (before any 'continue' statements)
                     keep_all_p.add(pobj.id)
 
-                    replace = False
                     new_ref_id = p.get("ref_id")
                     old_source_type = pobj.source_type
                     old_ref_id = getattr(pobj, "ref_id", None)
                     change_was_applied = False
 
-                    # Ganti tipe sumber â†’ pasti replace
-                    if pobj.source_type != src:
-                        # Special case: ganti ke REF/REF_MOD tapi tidak ada ref_id
-                        if src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD] and new_ref_id is None:
-                            if getattr(pobj, "ref_id", None):
-                                new_ref_id = pobj.ref_id
-                            else:
-                                errors.append(_err(
-                                    f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
-                                    "Wajib diisi saat mengganti source type ke ref/ref_modified"
-                                ))
-                                continue
-                        replace = True
-                    # Untuk REF/REF_MOD: hanya replace jika ref_id benar-benar BERBEDA
-                    elif src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]:
-                        if new_ref_id is not None:
-                            try:
-                                replace = (int(new_ref_id) != getattr(pobj, "ref_id", None))
-                            except (TypeError, ValueError):
-                                # Payload anomali: fail-safe ke replace agar state konsisten
-                                replace = True
+                    # Ganti tipe sumber ke REF/REF_MOD tanpa ref_id eksplisit: pakai ref_id
+                    # lama bila ada; bila tidak ada â†’ wajib diisi.
+                    if (
+                        pobj.source_type != src
+                        and src in [Pekerjaan.SOURCE_REF, Pekerjaan.SOURCE_REF_MOD]
+                        and new_ref_id is None
+                    ):
+                        if getattr(pobj, "ref_id", None):
+                            new_ref_id = pobj.ref_id
                         else:
-                            # Tidak ada ref_id baru â†’ tidak dianggap replace
-                            replace = False
+                            errors.append(_err(
+                                f"klasifikasi[{ki}].sub[{si}].pekerjaan[{pi}].ref_id",
+                                "Wajib diisi saat mengganti source type ke ref/ref_modified"
+                            ))
+                            continue
+
+                    # SSOT keputusan reset (helper yang sama dipakai preview N2 â†’ anti-drift).
+                    replace = _is_reset_change(src, new_ref_id, old_source_type, old_ref_id)
 
                     if replace:
                         try:
@@ -1617,9 +1690,12 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                             satuan = (p.get("snapshot_satuan") or None)
                             pobj = _get_or_reuse_pekerjaan_for_order(order_requested)
                             if pobj:
-                                # Check if source_type is changing - if yes, reset related data
-                                if pobj.source_type != src:
-                                    _reset_pekerjaan_related_data(pobj)
+                                # N1 fix: pobj adalah slot pekerjaan lama (kandidat hapus)
+                                # yang dipakai ulang untuk baris payload BARU tanpa id.
+                                # Karena ini baris baru, ia TIDAK boleh mewarisi data
+                                # turunan slot lama (Volume/Detail/Jadwal/formula).
+                                # Selalu reset, terlepas dari source_type lama vs baru.
+                                _reset_pekerjaan_related_data(pobj)
 
                                 pobj.sub_klasifikasi = s_obj
                                 pobj.source_type = src
@@ -1788,14 +1864,22 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 @limit_request_body()
 def api_list_pekerjaan_destructive_impact(request: HttpRequest, project_id: int):
     """WP-P4d (LP-04): read-only preview of the destructive impact of a proposed
-    upsert. Given the SAME payload the upsert would receive, compute which existing
-    pekerjaan would be DELETED (absent from the payload) and the downstream data that
-    would be lost (Volume / Template components / jadwal / formula), plus any bundle
-    target rows that would be BLOCKED by C1 (still referenced by a surviving pekerjaan).
+    upsert. Given the SAME payload the upsert would receive, compute:
+      * pekerjaan that would be DELETED (absent from the payload) + downstream data
+        lost (Volume / Template components / jadwal / formula), plus bundle target
+        rows BLOCKED by C1 (still referenced by a surviving pekerjaan); and
+      * (N2) pekerjaan that SURVIVE but whose source_type/ref_id changes → derived
+        data RESET (`_reset_pekerjaan_related_data`). Only rows that actually own
+        derived data are listed, so the confirmation stays proportional to real loss.
 
     No writes. The frontend calls this before saving to confirm with the user.
     """
-    from .models import PekerjaanTahapan, VolumeFormulaState, TemplateAhspKoefFormulaState
+    from .models import (
+        PekerjaanTahapan,
+        PekerjaanProgressWeekly,
+        VolumeFormulaState,
+        TemplateAhspKoefFormulaState,
+    )
 
     project = _owner_or_404(project_id, request.user)
     try:
@@ -1804,16 +1888,34 @@ def api_list_pekerjaan_destructive_impact(request: HttpRequest, project_id: int)
         return JsonResponse({"ok": False, "errors": [_err("$", "Payload JSON tidak valid")]}, status=400)
 
     # Surviving pekerjaan = those carried in the payload by id (mirror upsert keep-set).
+    # Track each kept row's proposed source_type/ref_id for the N2 reset preview.
     keep_ids: set = set()
+    keep_rows: dict = {}  # id -> (new_source_type, new_ref_id)
     for k in (payload.get("klasifikasi") or []):
         for s in (k.get("sub") or []):
             for p in (s.get("pekerjaan") or []):
                 pid = p.get("id")
-                if pid:
-                    try:
-                        keep_ids.add(int(pid))
-                    except (TypeError, ValueError):
-                        pass
+                if not pid:
+                    continue
+                try:
+                    pid = int(pid)
+                except (TypeError, ValueError):
+                    continue
+                keep_ids.add(pid)
+                keep_rows[pid] = (_str_to_src(p.get("source_type")), p.get("ref_id"))
+
+    def _derived_counts(p):
+        vol = VolumePekerjaan.objects.filter(project=project, pekerjaan=p).count()
+        detail = DetailAHSPProject.objects.filter(project=project, pekerjaan=p).count()
+        # Jadwal: hitung weekly canonical (SSOT) bila ada; fallback ke PekerjaanTahapan
+        # (view turunan) untuk data legacy. Keduanya dihapus saat delete/reset.
+        weekly = PekerjaanProgressWeekly.objects.filter(project=project, pekerjaan=p).count()
+        jadwal = weekly or PekerjaanTahapan.objects.filter(pekerjaan=p).count()
+        formula = (
+            VolumeFormulaState.objects.filter(project=project, pekerjaan=p).count()
+            + TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=p).count()
+        )
+        return vol, detail, jadwal, formula
 
     to_delete = list(Pekerjaan.objects.filter(project=project).exclude(id__in=keep_ids))
     to_delete_ids = {p.id for p in to_delete}
@@ -1822,13 +1924,7 @@ def api_list_pekerjaan_destructive_impact(request: HttpRequest, project_id: int)
     blocked: list = []
     totals = {"pekerjaan": 0, "volume": 0, "detail": 0, "jadwal": 0, "formula": 0}
     for p in to_delete:
-        vol = VolumePekerjaan.objects.filter(project=project, pekerjaan=p).count()
-        detail = DetailAHSPProject.objects.filter(project=project, pekerjaan=p).count()
-        jadwal = PekerjaanTahapan.objects.filter(pekerjaan=p).count()
-        formula = (
-            VolumeFormulaState.objects.filter(project=project, pekerjaan=p).count()
-            + TemplateAhspKoefFormulaState.objects.filter(project=project, pekerjaan=p).count()
-        )
+        vol, detail, jadwal, formula = _derived_counts(p)
         # Bundle-target: surviving pekerjaan that reference p → delete would be rejected (C1).
         dep_labels: list = []
         seen: set = set()
@@ -1862,13 +1958,72 @@ def api_list_pekerjaan_destructive_impact(request: HttpRequest, project_id: int)
         if dep_labels:
             blocked.append(item)
 
+    # N2: surviving pekerjaan whose source/ref changes → derived data will be reset.
+    # Only list rows that actually own derived data (proportional confirmation).
+    to_reset: list = []
+    reset_totals = {"pekerjaan": 0, "volume": 0, "detail": 0, "jadwal": 0, "formula": 0, "budgeted_cost": 0.0}
+    if keep_rows:
+        db_meta = {
+            row["id"]: (row["source_type"], row["ref_id"])
+            for row in Pekerjaan.objects.filter(project=project, id__in=keep_rows.keys())
+            .values("id", "source_type", "ref_id")
+        }
+        for p in Pekerjaan.objects.filter(project=project, id__in=keep_rows.keys()):
+            meta = db_meta.get(p.id)
+            if not meta:
+                continue
+            old_src, old_ref_id = meta
+            new_src, new_ref_id = keep_rows[p.id]
+            if not _is_reset_change(new_src, new_ref_id, old_src, old_ref_id):
+                continue
+            vol, detail, jadwal, formula = _derived_counts(p)
+            bac = float(p.budgeted_cost or 0)
+            # Reset menghapus data turunan DAN baseline biaya (BAC). Konfirmasi muncul
+            # bila ada salah satu yang benar-benar hilang (proporsional, tak senyap).
+            if (vol + detail + jadwal + formula) == 0 and bac <= 0:
+                continue
+            # Bundle yang ikut terdampak: pekerjaan lain yang masih merujuk p sebagai
+            # gabungan akan di-re-expand ke komposisi p yang baru/kosong.
+            affects: list = []
+            seen_a: set = set()
+            for d in (
+                DetailAHSPProject.objects.filter(project=project, ref_pekerjaan=p)
+                .exclude(pekerjaan_id=p.id)
+                .select_related("pekerjaan")
+            ):
+                dp = d.pekerjaan
+                lbl = (dp.snapshot_kode or dp.snapshot_uraian or f"#{dp.id}") if dp else f"#{d.pekerjaan_id}"
+                if lbl not in seen_a:
+                    seen_a.add(lbl)
+                    affects.append(lbl)
+            to_reset.append({
+                "id": p.id,
+                "label": p.snapshot_kode or p.snapshot_uraian or f"#{p.id}",
+                "uraian": p.snapshot_uraian or "",
+                "volume": vol,
+                "detail": detail,
+                "jadwal": jadwal,
+                "formula": formula,
+                "budgeted_cost": bac,
+                "affects_bundle": affects,
+            })
+            reset_totals["pekerjaan"] += 1
+            reset_totals["volume"] += vol
+            reset_totals["detail"] += detail
+            reset_totals["jadwal"] += jadwal
+            reset_totals["formula"] += formula
+            reset_totals["budgeted_cost"] += bac
+
     return JsonResponse({
         "ok": True,
         "to_delete": items,
         "blocked": blocked,
         "totals": totals,
+        "to_reset": to_reset,
+        "reset_totals": reset_totals,
         "has_destructive": bool(items),
         "has_blocked": bool(blocked),
+        "has_reset": bool(to_reset),
     })
 
 

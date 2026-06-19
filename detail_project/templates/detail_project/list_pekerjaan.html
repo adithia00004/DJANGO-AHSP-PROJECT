@@ -118,7 +118,8 @@
             </button>
           </li>
           <li>
-            <a class="dropdown-item" href="{% url 'detail_project:export_template_json' project.id %}" download>
+            <a id="btn-export-template-json" class="dropdown-item"
+              href="{% url 'detail_project:export_template_json' project.id %}" download>
               <i class="bi bi-filetype-json text-success"></i> {% trans "Export Template JSON" %}
             </a>
           </li>

@@ -275,6 +275,43 @@ Medium/Low akan diberi salah satu disposisi:
 
 **FOLLOW-UP 2026-06-19 (List Pekerjaan source-mode reset):** owner menemukan uraian pekerjaan lama masih bertahan saat mode/sumber pekerjaan diganti, terutama `Ref -> Custom`. Verifikasi: reset frontend sebelumnya hanya mencakup `custom -> ref/ref_modified` dan `ref_modified -> ref`, sehingga jalur `ref -> custom` dan ganti sumber AHSP dapat membawa teks manual lama. Fix: setiap perubahan mode nyata (`oldSourceType !== newSourceType`) sekarang mengosongkan uraian/satuan/preview, dan perubahan dropdown sumber AHSP juga mengosongkan override manual sekaligus referensi lama. Ini selaras dengan keputusan reset-on-source-change: pekerjaan dengan sumber baru tidak boleh membawa teks/volume/detail lama secara diam-diam.
 
+### UF-016 - (Reaudit List Pekerjaan 2026-06-19) reuse_pool upsert mewariskan data turunan ke pekerjaan baru (data-bleed) + jadwal canonical tak ikut reset
+
+**Ditemukan:** 2026-06-19 saat reaudit lintas-page page List Pekerjaan (pasca WP-P4 DONE). Owner meminta N1/N2/N3 diperiksa sebagai **risiko lintas-page**, bukan bug UI semata, karena `pekerjaan_id` adalah kunci yang dipakai semua page hilir (Volume/Template/Jadwal/Rekap RAB/Rekap Kebutuhan).
+
+**N1 (HIGH) — `reuse_pool` di `api_upsert_list_pekerjaan` (`views_api.py`):**
+- `reuse_pool` dikunci `ordering_index` lama dan **tidak** mengeluarkan pekerjaan yang dibawa eksplisit by-id di payload. Karena `ordering_index` FE adalah global-sekuensial yang dipadatkan ulang tiap save, hapus 1 baris menggeser order → slot lama bisa "diklaim" baris baru tanpa id.
+- Akibat-1 (data-bleed): hapus pekerjaan custom lalu tambah custom baru → baris baru me-reuse objek lama; karena `source_type` sama, `_reset_pekerjaan_related_data` TIDAK terpanggil → Volume/DetailAHSP/Jadwal/formula lama ikut terbawa.
+- Akibat-2 (row-collapse): bila order baris baru kebetulan sama dengan `ordering_index` lama pekerjaan ber-id yang tetap ada, objek itu diklaim dua kali → dua row DOM kolaps jadi satu objek DB (baris hilang diam-diam).
+
+**N1b (HIGH, BUG BARU yang ditemukan saat verifikasi N1) — `_reset_pekerjaan_related_data` tak menghapus `PekerjaanProgressWeekly`:**
+- Reset hanya menghapus `PekerjaanTahapan` (VIEW turunan), bukan `PekerjaanProgressWeekly` (SSOT canonical jadwal). `PekerjaanTahapan` diregenerasi dari weekly, dan Jadwal page membaca weekly langsung (`views_api_tahapan_v2.py:534`) → progress/jadwal lama "hidup lagi" pada pekerjaan yang di-reuse (N1) atau diganti sumbernya (N2). Ini menimpa **kedua** jalur reset.
+
+**N1c (HIGH, ditemukan saat review unit N1+N2) — reuse bisa bypass guard `Pekerjaan Gabungan`:**
+- Walau N1 reset membersihkan data keluar, reuse tetap mempertahankan `pekerjaan_id` lama. Jika pekerjaan lama yang dihapus adalah target `Pekerjaan Gabungan` dari pekerjaan lain yang tetap ada, baris baru tanpa id dapat memakai ID target lama sehingga guard C1 tidak melihat "delete" dan dependent bundle diam-diam menunjuk pekerjaan baru. Fix: kandidat reuse yang masih direferensikan oleh pekerjaan surviving dikeluarkan dari `reuse_pool`, sehingga tetap menjadi kandidat delete dan guard C1 memblok save.
+
+**Verifikasi lintas-page (read-only, bukan asumsi):**
+- Sapu semua FK→`Pekerjaan`: satu-satunya model turunan yang terlewat reset = `PekerjaanProgressWeekly`. `DetailAHSPExpanded` ikut bersih via cascade `source_detail`/`pekerjaan`; `DetailAHSPAudit` sengaja RETAIN; bundle `ref_pekerjaan` ditangani C1.
+- Bundle: hapus pekerjaan target yang masih dipakai bundle → diblok C1 (400). Ganti-sumber pekerjaan target → `cascade_bundle_re_expansion` me-rebuild dependent (tidak stale), tapi belum ada warning bahwa bundle jadi merujuk pekerjaan yang dikosongkan (→ paket N2).
+- Rekap RAB/Kebutuhan: `invalidate_rekap_cache` on_commit + re-expansion cascade + readiness `source_signature`. `budgeted_cost` hanya ditulis saat import (rekap fallback hitung-ulang bila 0) → stale-risk rendah; **tidak diubah** (kemungkinan nilai rencana user, bukan cache) — menunggu keputusan owner.
+- N3 (sync ID by-ordinal di `syncTreeIdsFromServer`): residual risk **turun signifikan** setelah N1 (tak ada lagi collapse; `ordering_index` deterministik). Tetap disarankan echo `temp_id→id` sebagai hardening, bukan darurat.
+
+**Koreksi status temuan audit 16:**
+- **LP-03 (revision token/409) BUKAN bug terbuka** — dibatalkan **DEC-002** (last-write-wins, no optimistic locking). Membuka lagi = ubah keputusan arsitektur.
+- **LP-05 (legacy `api_save_list_pekerjaan` masih di `urls.py:35`)** = cleanup **CL-05**, bukan blocker selama FE tak memakainya.
+
+**Fix (2026-06-19, working tree, BELUM commit):**
+1. Pra-scan payload → `payload_pekerjaan_ids`; `reuse_pool` mengecualikan pekerjaan ber-id → reuse hanya mendaur-ulang kandidat yang memang akan dihapus (tutup data-bleed + row-collapse tanpa bergantung urutan proses).
+2. Reuse baris baru tanpa id → **selalu** `_reset_pekerjaan_related_data` (tak peduli source lama=baru).
+3. Kandidat reuse yang masih dipakai `Pekerjaan Gabungan` oleh pekerjaan surviving dikeluarkan dari `reuse_pool` → C1 tetap memblok delete target bundle.
+4. `_reset_pekerjaan_related_data` kini juga menghapus `PekerjaanProgressWeekly` (SSOT jadwal).
+
+**Verifikasi:** test baru `detail_project/tests_list_pekerjaan_reuse_n1.py` (3 skenario: data-bleed Volume+Weekly, row-collapse, dan reuse tidak boleh bypass guard target bundle) — **gagal di kode lama** (`AssertionError: 1 != 0 : Volume ... bled into the new row` / direct API bisa repurpose target bundle), **lulus dengan fix**. Regresi: **44** test upsert/atomic/p4 + **38** test jadwal/rekap/kebutuhan/bundle/change-status PASS; tak ada regresi.
+
+**Sisa (belum dikerjakan, lanjut berikutnya):** N2 (destructive-impact tambah kategori `to_reset_due_source_change` + warning bundle + konfirmasi FE), N3 (echo `temp_id→id`), N5 (guard dirty-save untuk "Export Template JSON" `<a href download>` di `list_pekerjaan.html:121`). Severity: N1/N1b HIGH (silent data corruption), N2 Medium-High (UX/data-safety), N3 Medium (hardening), N5 Low.
+
+**Disposition:** N1/N1b = perbaikan WP-P4 lanjutan (reopened post-DONE); N2/N3/N5 dijadwalkan setelahnya.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.
@@ -2101,3 +2138,46 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 **Residual P9:**
 - UX-02 popover HTML dengan `data-bs-html="true"` masih kandidat hardening lanjutan bila masuk cleanup/security polishing; tidak dibuka di targeted batch ini karena F-01 XSS dashboard sudah fixed/guarded oleh WP-A1.
 - UX-03/UX-04/UX-05/UX-06 adalah polish/performance/a11y lanjutan dan tidak memblok UAT runtime WP-P9.
+
+### WP-P4 reaudit (UF-016) — reuse_pool data-bleed + jadwal canonical reset (2026-06-19)
+
+Reaudit lintas-page page List Pekerjaan (pasca WP-P4 DONE) menemukan dua bug HIGH integritas data (N1/N1b) — detail akar masalah + verifikasi lintas-page di **§6 UF-016**. Ringkas fix working tree (belum commit):
+- `api_upsert_list_pekerjaan`: pekerjaan ber-id dan target bundle yang masih dipakai dikecualikan dari `reuse_pool`; reuse baris baru selalu reset turunan.
+- `_reset_pekerjaan_related_data`: kini ikut hapus `PekerjaanProgressWeekly` (SSOT jadwal), bukan hanya `PekerjaanTahapan`.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-19 | WP-P4 (UF-016) | `detail_project.tests_list_pekerjaan_reuse_n1` | PASS dgn fix; **FAIL di kode lama** (`AssertionError: 1 != 0 : Volume ... bled into the new row`) | 3 skenario: data-bleed Volume+Weekly; row-collapse keep+new; reuse tidak bypass C1 target bundle |
+| 2026-06-19 | WP-P4 (UF-016) | `tests_list_pekerjaan_reuse_n1` + `tests_list_pekerjaan_upsert_drag_drop` + `tests_wp_p4_list_pekerjaan` + `tests_wp_b3_atomic` | PASS | 44/44 (log "Exception: boom" = mock atomic, bukan kegagalan) |
+| 2026-06-19 | WP-P4 (UF-016) | `tests_wp_p7_jadwal` + `tests_wp_p6_rekap_rab` + `tests_kebutuhan_timeline_b6b` + `tests_change_status_sync` + `tests_wp_b9_bundle_limits` | PASS | 38/38; tak ada regresi efek-samping penghapusan weekly |
+
+**N2 — DONE (2026-06-19, working tree).** Destructive-impact preview kini menampilkan reset karena ganti sumber, bukan hanya delete:
+- BE `api_list_pekerjaan_destructive_impact`: kategori baru `to_reset`/`reset_totals`/`has_reset` untuk pekerjaan yang TETAP ada tapi `source_type`/`ref_id`-nya berubah **dan** punya data turunan (konfirmasi proporsional) + `affects_bundle` (pekerjaan gabungan yang ikut terdampak).
+- Helper SSOT `_is_reset_change()` dipakai BERSAMA upsert (refactor blok `replace`, behavior-preserving) dan preview → anti-drift (mitigasi trade-off utama N2).
+- `_derived_counts` jadwal kini hitung `PekerjaanProgressWeekly` (SSOT, fallback `PekerjaanTahapan`) → memperbaiki undercount jadwal pada delete preview juga.
+- FE `confirmDestructiveImpact`: gate `!has_destructive && !has_reset`, render dua section (Hapus + Reset), label adaptif `Reset & Simpan`, warning bundle. Plain-text (no innerHTML) → tak ada permukaan XSS baru. Fail-open dipertahankan.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-19 | WP-P4 (UF-016/N2) | `tests_list_pekerjaan_destructive_impact_n2` | PASS | 3: source-change flagged + counts; same-source NOT flagged; reset tanpa data turunan NOT flagged (proporsional) |
+| 2026-06-19 | WP-P4 (UF-016/N2) | `list_pekerjaan_destructive.test.js` (vitest) | PASS | 15: gate baru, render reset section, affects_bundle, label adaptif; `node --check` OK |
+| 2026-06-19 | WP-P4 (UF-016/N1+N2) | 9 suite gabungan (upsert/atomic/p4/jadwal/rekap/change-status/N1/N2) | PASS | **80/80**; `manage.py check` 0 issue; `makemigrations --check` no changes |
+
+**N5 — DONE (2026-06-19, working tree).** "Export Template JSON" sebelumnya `<a href download>` polos → bypass guard dirty-save (export state server basi). Fix: anchor diberi id `btn-export-template-json`; handler di `initListPekerjaanExport` (`list_pekerjaan.js`) men-guard seperti Export List JSON — bila dirty: `handleSave()` dulu, batal bila masih dirty, lalu `window.location.href = url` (download via `Content-Disposition: attachment`). Murni FE; tak ada perubahan backend. FE guard `list_pekerjaan_destructive.test.js` → 18 (3 assertion N5). `node --check` OK; render template diverifikasi via `tests_list_pekerjaan_export` + `tests_wp_p4_list_pekerjaan` (16/16).
+
+**N3 — DONE via Opsi B (2026-06-19, owner memilih B).** `syncTreeIdsFromServer()` sebelumnya menempel id DB ke baris DOM **murni by-posisi** → bila struktur DOM≠server (churn sub antar-klas, filter node kosong, edit tab lain) id bisa salah-tempel → korupsi silang antar-page (semua page hilir berkunci `pekerjaan_id`). Fix Opsi B (FE-only, tanpa ubah kontrak API): tetap fetch `/tree/`, lalu **validasi struktur** (`treeStructureMatches`) terhadap proyeksi DOM **savable** (`buildSavableDomTree` meniru filter `handleSave` → node kosong tak memicu false-reload); mismatch jumlah klas/sub/pekerjaan → `reloadAfterSave()` + toast informatif (jangan tempel id yang salah); match → sync ordinal seperti semula (`stampRowIdentity`). **Opsi A (echo `temp_id→id` di respons upsert kanonik) DITUNDA**: endpoint kanonik `api_upsert_list_pekerjaan` belum punya id_map (yang punya = legacy `api_save_list_pekerjaan` = CL-05); butuh kontrak baru + map untuk semua cabang create/update/reuse/adopt/move + persist temp_id di DOM + fallback + test map-completeness — ada risiko "id_map tak lengkap → baris dianggap baru → duplikasi". Opsi B = safety net risiko-rendah sebelum Opsi A.
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-19 | WP-P4 (UF-016/N3-B) | `list_pekerjaan_destructive.test.js` (vitest) | PASS | 22 (4 assertion N3: validasi struktur, savable projection drop node kosong, mismatch→reload+toast, match→stamp ordinal); `node --check` OK |
+| 2026-06-19 | WP-P4 (UF-016/N1+N2) | backend gabungan (N1+bundle/N2/upsert/atomic/p4) | PASS | **58/58** (file N1 ditambah test bundle oleh owner) |
+
+**BAC (budgeted_cost) reset — DONE (2026-06-19, owner memutuskan CLEAR di N1+N2).** `budgeted_cost` = Budget-At-Completion baseline, **import-only** (tak ada UI), dipakai sebagai basis **Kurva S Harga** (`views_api`, `dashboard/views.py`, `dashboard/views_export.py`) via `budgeted_cost>0 ? budgeted_cost : fallback_total`. Sebelumnya tidak ikut reset → reuse N1 mewariskan BAC pekerjaan lama (data-bleed), source-change N2 menyisakan BAC basi (Kurva S pakai baseline salah sementara RAB/Kebutuhan sudah ikut data baru). Fix: `_reset_pekerjaan_related_data` set `budgeted_cost=Decimal("0.00")` (update_fields) → reuse N1 & source-change N2 sama-sama clear (fungsi sama). Setelah clear, Kurva S fallback ke total rekap live (tak kosong selama rekap lengkap). Preview N2 ditambah `budgeted_cost` per item + `reset_totals.budgeted_cost`; gate to_reset ikut flag bila BAC>0 walau tak ada data turunan lain (tak ada wipe senyap). FE konfirmasi: "Baseline biaya/BAC Rp X akan dihapus karena sumber pekerjaan berubah. Kurva S akan memakai nilai hitung ulang dari RAB." BAC sebagai planning value sticky ditolak (perlu UI/label/aturan eksplisit dulu).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-19 | WP-P4 (UF-016/BAC) | `tests_list_pekerjaan_budgeted_cost_reset` | PASS | 3: reuse tak warisi BAC; source-change save → BAC 0; preview surface BAC walau tanpa data turunan lain |
+| 2026-06-19 | WP-P4 (UF-016/BAC) | `list_pekerjaan_destructive.test.js` | PASS | 23 (assertion BAC di modal); `node --check` OK |
+| 2026-06-19 | WP-P4 (UF-016 full) | 9 suite gabungan (BAC/N1+bundle/N2/upsert/atomic/p4/jadwal/rekap) | PASS | **76/76**; `manage.py check` 0 issue; `makemigrations --check` no changes |
+
+**Sisa (next):** N3 Opsi A (hardening kontrak temp_id→id — ditunda, lihat di atas). **Status paket N1/N1b/N2/N3(B)/N5/BAC = SELESAI & teruji; belum di-commit.**
