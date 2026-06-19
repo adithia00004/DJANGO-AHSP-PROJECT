@@ -2180,4 +2180,12 @@ Reaudit lintas-page page List Pekerjaan (pasca WP-P4 DONE) menemukan dua bug HIG
 | 2026-06-19 | WP-P4 (UF-016/BAC) | `list_pekerjaan_destructive.test.js` | PASS | 23 (assertion BAC di modal); `node --check` OK |
 | 2026-06-19 | WP-P4 (UF-016 full) | 9 suite gabungan (BAC/N1+bundle/N2/upsert/atomic/p4/jadwal/rekap) | PASS | **76/76**; `manage.py check` 0 issue; `makemigrations --check` no changes |
 
-**Sisa (next):** N3 Opsi A (hardening kontrak temp_id→id — ditunda, lihat di atas). **Status paket N1/N1b/N2/N3(B)/N5/BAC = SELESAI & teruji; belum di-commit.**
+**N3 Opsi A — DONE (2026-06-19, berlapis di atas Opsi B).** Upsert kanonik kini meng-echo `id_map` `{klas,sub,pekerjaan}` = temp_id→id, diisi di tiap titik keep (create/update-by-id/reuse/adopt; pobj.id stabil pada cabang existing). FE: `handleSave` persist `tr.dataset.tempId` saat build + teruskan `response.id_map` ke sync; `syncTreeIdsFromServer(idMap)` stamp **by-identitas** bila `idMapCovers(savable, idMap)` (semua node tertutup) — tanpa GET `/tree/`; jika map absen/tak lengkap → **fallback Opsi B** (fetch tree + validasi struktur + reload-on-mismatch). Non-breaking by design: worst case = perilaku Opsi B. `stampRowIdentity(tr, id)` digeneralkan menerima id langsung. **Tidak ada perubahan model/migrasi** (id_map field respons aditif).
+
+| Tanggal | WP | Command/Test | Result | Catatan |
+|---|---|---|---|---|
+| 2026-06-19 | WP-P4 (UF-016/N3-A) | `tests_list_pekerjaan_idmap_n3a` | PASS | 3: fresh-create map lengkap+benar; update-by-id stabil; reuse → temp_id baru→id survivor |
+| 2026-06-19 | WP-P4 (UF-016/N3-A) | `list_pekerjaan_destructive.test.js` | PASS | 28 (persist temp_id, pass id_map, idMapCovers gate, stamp by temp_id, fallback ke Opsi B); `node --check` OK |
+| 2026-06-19 | WP-P4 (UF-016/N3-A) | regresi gabungan 12 suite (idmap/N1+bundle/N2/BAC/upsert/atomic/p4/export/jadwal/rekap/change-status) | PASS | **90/90**; `manage.py check` 0 issue; `makemigrations --check` no changes; FE xss/feedback/destructive 39 PASS |
+
+**Status paket N1/N1b/N2/N3(B+A)/N5/BAC = SELESAI & teruji.** N3 Opsi B sudah di-commit (`7ba33278`); Opsi A = commit lanjutan.

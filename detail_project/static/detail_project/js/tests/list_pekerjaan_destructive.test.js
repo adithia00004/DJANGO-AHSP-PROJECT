@@ -110,7 +110,34 @@ describe('N3 (Opsi B) - post-save id sync guards against structural mismatch', (
   });
 
   test('on match it still stamps ids ordinally over the savable nodes', () => {
-    expect(src).toContain('stampRowIdentity(tr, sSrv?.pekerjaan?.[pi])');
+    expect(src).toContain('stampRowIdentity(tr, sSrv?.pekerjaan?.[pi]?.id)');
+  });
+});
+
+describe('N3 (Opsi A) - temp_id->id map stamps by identity, falls back to Opsi B', () => {
+  test('handleSave persists the per-row temp_id on the DOM row', () => {
+    expect(src).toContain('tr.dataset.tempId = pekerjaanTempId');
+  });
+
+  test('save passes the response id_map into the id sync', () => {
+    expect(src).toContain('await syncTreeIdsFromServer(response?.id_map)');
+  });
+
+  test('the map is only used when it covers every savable node', () => {
+    expect(src).toContain('function idMapCovers(');
+    expect(src).toContain('if (idMap && idMapCovers(savable, idMap)) {');
+  });
+
+  test('Opsi A stamps klas/sub/pekerjaan ids by temp_id lookup', () => {
+    expect(src).toContain('idMap.klas[kNode.el.dataset.tempId]');
+    expect(src).toContain('idMap.sub[sNode.el.dataset.tempId]');
+    expect(src).toContain('stampRowIdentity(tr, idMap.pekerjaan[tr.dataset.tempId])');
+  });
+
+  test('an incomplete/absent map degrades to the validated positional fallback', () => {
+    // idMapCovers returns false on any missing entry, so the code path continues
+    // to the /tree/ fetch + treeStructureMatches reload guard (Opsi B).
+    expect(src).toMatch(/idMapCovers[\s\S]*list-pekerjaan\/tree\/[\s\S]*treeStructureMatches/);
   });
 });
 

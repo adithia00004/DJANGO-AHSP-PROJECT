@@ -2108,9 +2108,15 @@
 
           const existingId = tr.dataset.id ? parseInt(tr.dataset.id, 10) : undefined;
 
+          // N3 Opsi A: persist the per-save temp_id on the row so the post-save
+          // id sync can match server ids back to THIS row by identity (temp_id),
+          // not by position. Regenerated each save; only meaningful within one cycle.
+          const pekerjaanTempId = `p_${ki}_${si}_${globalOrder}`;
+          tr.dataset.tempId = pekerjaanTempId;
+
           const p = {
             id: existingId,
-            temp_id: `p_${ki}_${si}_${globalOrder}`,
+            temp_id: pekerjaanTempId,
             source_type: src,
             ordering_index: globalOrder
           };
@@ -2220,8 +2226,10 @@
       broadcastOrderingChange();
 
       // Keep current editing context (no hard re-render) and only sync IDs.
+      // Prefer the temp_id->id map echoed by the save response (N3 Opsi A);
+      // syncTreeIdsFromServer falls back to the validated positional sync (Opsi B).
       try {
-        await syncTreeIdsFromServer();
+        await syncTreeIdsFromServer(response?.id_map);
       } catch (syncErr) {
         console.warn('[LP] Save succeeded but ID sync failed:', syncErr);
       }
@@ -2291,8 +2299,8 @@
     return true;
   }
 
-  function stampRowIdentity(tr, pSrv) {
-    if (pSrv?.id) tr.dataset.id = String(pSrv.id);
+  function stampRowIdentity(tr, pid) {
+    if (pid != null && pid !== '') tr.dataset.id = String(pid);
 
     const srcSel = tr.querySelector('.src');
     const srcNow = srcSel?.value || tr.dataset.sourceType || 'custom';
@@ -2319,12 +2327,58 @@
     }
   }
 
-  async function syncTreeIdsFromServer() {
+  // N3 Opsi A: the save response's temp_id->id map is usable ONLY if it covers
+  // every savable DOM node (klas/sub/pekerjaan). If a single node is missing
+  // (older server, or a node the backend did not map), we must NOT stamp by map
+  // — a row left without an id would be treated as new on the next save and could
+  // be duplicated. In that case we degrade to the Opsi B positional fallback.
+  function idMapCovers(savable, idMap) {
+    if (!idMap || !idMap.klas || !idMap.sub || !idMap.pekerjaan) return false;
+    for (const kNode of savable) {
+      if (idMap.klas[kNode.el.dataset.tempId] == null) return false;
+      for (const sNode of kNode.subs) {
+        if (idMap.sub[sNode.el.dataset.tempId] == null) return false;
+        for (const tr of sNode.rows) {
+          if (idMap.pekerjaan[tr.dataset.tempId] == null) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  async function syncTreeIdsFromServer(idMap) {
     if (!projectId) return;
-    const data = await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`, { method: 'GET' });
-    const serverKlas = Array.isArray(data?.klasifikasi) ? data.klasifikasi : [];
 
     const savable = buildSavableDomTree();
+
+    // N3 Opsi A: stamp ids by IDENTITY (temp_id) when the save response carries a
+    // complete map. Immune to reorder/move/empty-node divergence, and skips the
+    // extra GET /tree/ round-trip entirely.
+    if (idMap && idMapCovers(savable, idMap)) {
+      savable.forEach((kNode) => {
+        const kid = idMap.klas[kNode.el.dataset.tempId];
+        if (kid != null) {
+          kNode.el.dataset.id = String(kid);
+          kNode.el.dataset.klasId = String(kid);
+        }
+        kNode.subs.forEach((sNode) => {
+          const sid = idMap.sub[sNode.el.dataset.tempId];
+          if (sid != null) {
+            sNode.el.dataset.id = String(sid);
+            sNode.el.dataset.subId = String(sid);
+          }
+          sNode.rows.forEach((tr) => {
+            stampRowIdentity(tr, idMap.pekerjaan[tr.dataset.tempId]);
+          });
+        });
+      });
+      return;
+    }
+
+    // Fallback (Opsi B): structure-validated positional sync from the fresh tree.
+    // Used when the map is absent (older server) or incomplete (a node not mapped).
+    const data = await jfetch(`/detail_project/api/project/${projectId}/list-pekerjaan/tree/`, { method: 'GET' });
+    const serverKlas = Array.isArray(data?.klasifikasi) ? data.klasifikasi : [];
 
     // Safety net: if the DOM no longer lines up with the server, do NOT risk
     // mis-stamping ids by position — reload the authoritative tree instead.
@@ -2351,7 +2405,7 @@
           sNode.el.dataset.subId = String(sSrv.id);
         }
         sNode.rows.forEach((tr, pi) => {
-          stampRowIdentity(tr, sSrv?.pekerjaan?.[pi]);
+          stampRowIdentity(tr, sSrv?.pekerjaan?.[pi]?.id);
         });
       });
     });

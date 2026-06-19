@@ -1202,6 +1202,14 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     keep_all_p = set()  # global keep untuk semua pekerjaan di payload
     assigned_orders: Set[int] = set()
 
+    # N3 Opsi A: echo mapping temp_id -> assigned DB id per level. Frontend memakai
+    # ini untuk menempelkan id ke baris DOM berdasarkan IDENTITAS (temp_id), bukan
+    # posisi. Diisi di titik tiap node final; HANYA dipakai pada respons sukses
+    # (jalur error rollback tidak mengirim map).
+    id_map_klas: Dict[str, int] = {}
+    id_map_sub: Dict[str, int] = {}
+    id_map_pekerjaan: Dict[str, int] = {}
+
     klas_queryset = list(Klasifikasi.objects.filter(project=project).order_by('id'))
     sub_queryset = list(SubKlasifikasi.objects.filter(project=project).order_by('id'))
 
@@ -1462,6 +1470,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
             else:
                 k_obj = Klasifikasi.objects.create(project=project, name=k_name, ordering_index=k_order)
         keep_k.add(k_obj.id)
+        if k.get("temp_id"):
+            id_map_klas[str(k.get("temp_id"))] = k_obj.id
 
         sub_list = (k.get("sub") or k.get("subs") or [])
         if not isinstance(sub_list, list):
@@ -1491,6 +1501,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                         project=project, klasifikasi=k_obj, name=s_name, ordering_index=s_order
                     )
             keep_all_s.add(s_obj.id)
+            if s.get("temp_id"):
+                id_map_sub[str(s.get("temp_id"))] = s_obj.id
 
             pekerjaan_list = (s.get("pekerjaan") or s.get("jobs") or [])
             if not isinstance(pekerjaan_list, list):
@@ -1518,6 +1530,10 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
                     # CRITICAL FIX: Add to keep list IMMEDIATELY to prevent deletion
                     # even if validation fails later (before any 'continue' statements)
                     keep_all_p.add(pobj.id)
+                    # N3 Opsi A: pobj.id stabil sepanjang cabang ini (adopt menyalin
+                    # KE pobj, id tak berubah), jadi aman dicatat di awal.
+                    if p.get("temp_id"):
+                        id_map_pekerjaan[str(p.get("temp_id"))] = pobj.id
 
                     new_ref_id = p.get("ref_id")
                     old_source_type = pobj.source_type
@@ -1729,6 +1745,8 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
 
                     source_change_state["reload_jobs"].add(pobj.id)
                     keep_all_p.add(pobj.id)
+                    if p.get("temp_id"):
+                        id_map_pekerjaan[str(p.get("temp_id"))] = pobj.id
 
         # NOTE:
         # Jangan hapus sub per-klas di tengah loop.
@@ -1839,7 +1857,18 @@ def api_upsert_list_pekerjaan(request: HttpRequest, project_id: int):
     # CACHE FIX: Invalidate cache AFTER transaction commits
     transaction.on_commit(lambda: invalidate_rekap_cache(project))
 
-    response_payload = {"ok": status == 200, "errors": errors, "summary": summary}
+    response_payload = {
+        "ok": status == 200,
+        "errors": errors,
+        "summary": summary,
+        # N3 Opsi A: temp_id -> id per level. Frontend stamp id by-identitas
+        # (fallback ke sync by-posisi tervalidasi bila map tak lengkap/absen).
+        "id_map": {
+            "klas": id_map_klas,
+            "sub": id_map_sub,
+            "pekerjaan": id_map_pekerjaan,
+        },
+    }
     if source_change_state["reload_jobs"] or source_change_state["volume_reset_jobs"]:
         persisted_flags = register_source_change_flags(
             project,
