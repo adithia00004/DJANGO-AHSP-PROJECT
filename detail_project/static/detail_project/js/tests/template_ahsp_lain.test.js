@@ -70,6 +70,14 @@ describe('WP-B8d — template markup', () => {
     expect(html).toContain('koefisien berarti jumlah/multiplier bundle');
     expect(html).toContain('data-endpoint-rebuild-expansion');
   });
+
+  test('source-change reload banner exposes the JS targets', () => {
+    expect(html).toContain('id="ta-sync-banner"');
+    expect(html).toContain('id="ta-sync-banner-text"');
+    expect(html).toContain('id="ta-banner-reload"');
+    expect(html).toContain('Detail AHSP perlu dimuat ulang');
+    expect(html).toContain('Muat ulang');
+  });
 });
 
 describe('WP-P2d (UF-010) — no eager mass auto-reload on page-open', () => {

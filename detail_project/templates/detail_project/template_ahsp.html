@@ -101,6 +101,21 @@
     </div>
   </div>
 
+  <div id="ta-sync-banner" class="ta-sync-banner alert alert-warning d-none" role="status" aria-live="polite">
+    <div class="d-flex align-items-start gap-2">
+      <i class="bi bi-arrow-repeat ta-sync-banner__icon" aria-hidden="true"></i>
+      <div class="flex-grow-1">
+        <div class="fw-semibold mb-1">Detail AHSP perlu dimuat ulang</div>
+        <div id="ta-sync-banner-text" class="small">
+          Ada pekerjaan yang sumbernya berubah. Muat ulang untuk mengambil detail AHSP terbaru.
+        </div>
+      </div>
+      <button type="button" class="btn btn-warning btn-sm flex-shrink-0" id="ta-banner-reload">
+        <i class="bi bi-arrow-clockwise me-1"></i>Muat ulang
+      </button>
+    </div>
+  </div>
+
   <div class="ta-body">
     <!-- Sidebar pekerjaan -->
     <aside class="ta-sidebar" aria-label="Daftar pekerjaan">
