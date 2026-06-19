@@ -203,37 +203,6 @@ def harga_items_view(request, project_id: int):
 
 @login_required
 @coerce_project_id
-@staff_only_page
-def orphan_cleanup_view(request, project_id: int):
-    project = _project_or_404(project_id, request.user)
-    context = {
-        "project": project,
-        "side_active": "orphan_cleanup",
-    }
-    return render(request, "detail_project/orphan_cleanup.html", context)
-
-
-@login_required
-@coerce_project_id
-@staff_only_page
-def audit_trail_view(request, project_id: int):
-    project = _project_or_404(project_id, request.user)
-    pekerjaan_options = (
-        Pekerjaan.objects
-        .filter(project=project)
-        .order_by("ordering_index", "id")
-        .values("id", "snapshot_kode", "snapshot_uraian")
-    )
-    context = {
-        "project": project,
-        "pekerjaan_options": pekerjaan_options,
-        "side_active": "audit_trail",
-    }
-    return render(request, "detail_project/audit_trail.html", context)
-
-
-@login_required
-@coerce_project_id
 
 def rincian_ahsp_view(request, project_id: int):
     project = _project_or_404(project_id, request.user)

@@ -117,7 +117,6 @@ const NATIVE_DIALOG_BUDGET = {
   'referensi/static/referensi/js/ahsp_database_api.js': 1,
   'detail_project/static/detail_project/js/rincian_ahsp.js': 1,
   'detail_project/static/detail_project/js/list_pekerjaan.js': 1,
-  'detail_project/static/detail_project/js/orphan_cleanup.js': 1,
   'detail_project/static/detail_project/js/print/RekapRABPrint.js': 1,
   'detail_project/static/detail_project/js/print/PrintComponents.js': 1,
   'detail_project/static/detail_project/js/export/ExcelExporter.js': 1,

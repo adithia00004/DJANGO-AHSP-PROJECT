@@ -59,8 +59,6 @@ class DetailProjectPageCacheHeaderTests(TransactionTestCase):
         "volume_pekerjaan",
         "template_ahsp",
         "harga_items",
-        "orphan_cleanup",
-        "audit_trail",
         "rincian_ahsp",
         "rekap_rab",
         "rekap_kebutuhan",
@@ -76,8 +74,7 @@ class DetailProjectPageCacheHeaderTests(TransactionTestCase):
             username="owner_page_cache_headers",
             email="owner-page-cache-headers@example.com",
             password="Secret123!",
-            # Staff agar halaman admin-only (orphan_cleanup, audit_trail — U14)
-            # tetap 200 dan header cache-nya bisa diverifikasi.
+            # Staff user keeps coverage for any remaining staff-only utility pages.
             is_staff=True,
         )
         self.project = Project.objects.create(

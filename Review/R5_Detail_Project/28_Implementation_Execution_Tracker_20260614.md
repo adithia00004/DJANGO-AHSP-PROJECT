@@ -59,6 +59,8 @@ Status:
 | CL-10 `detail_ahsp_gabungan.js` legacy | DONE | Hapus JS orphan dan test UI yang hanya menjaga file lama. Endpoint backend `/detail-ahsp/save/` tetap dipertahankan sebagai jaring pengaman sampai route/API cleanup tersendiri. | `DetailGabunganAtomicSaveTests` tetap PASS untuk endpoint backend |
 | CL-11 template tanpa consumer | DONE | Hapus `rekap_ahsp.html`, `tambah_dari_referensi.html`, dan `rincian_rab.html`. View `rincian_rab_view` tetap redirect permanen ke Rincian AHSP; API legacy mengikuti sunset roadmap. | exact reference scan sebelum hapus; page redirect test tetap dipertahankan |
 | CL-09A duplicate `ExportManager.js` Jadwal | DONE | Hapus load kedua `ExportManager.js` dari `kelola_tahapan_grid_modern.html`; global load tetap dari `base_detail.html`. | template still extends `base_detail.html`; frontend governance + Django check |
+| CL-01 Orphan Cleanup UI | DONE | Hapus route/view/sidebar/template/JS/CSS page Orphan Cleanup. Service `detect_orphaned_items`/`cleanup_orphaned_items`, auto cleanup, management command, dan API manual orphan tetap RETAIN sesuai roadmap sampai ada bukti no ops consumer. | test baru memastikan route UI hilang dan service cleanup masih callable |
+| CL-17 Audit Trail reader | DONE | Hapus route/view/sidebar/template/JS/CSS dan API pembacaan `api_get_audit_trail`. Model `DetailAHSPAudit`, data histori, dan writer `log_audit` tetap RETAIN. | test baru memastikan reader route hilang dan writer audit masih mencatat |
 
 ## 2.1 Penjelasan Bahasa-Mudah: Apa & Kenapa Tiap WP
 

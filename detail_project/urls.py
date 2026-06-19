@@ -17,8 +17,6 @@ urlpatterns = [
     path('<int:project_id>/template-ahsp/',         views.template_ahsp_view,         name='template_ahsp'),
     path('<int:project_id>/detail-ahsp/',           views.template_ahsp_view,         name='detail_ahsp_legacy'),
     path('<int:project_id>/harga-items/',           views.harga_items_view,           name='harga_items'),
-    path('<int:project_id>/orphan-cleanup/',        views.orphan_cleanup_view,        name='orphan_cleanup'),
-    path('<int:project_id>/audit-trail/',           views.audit_trail_view,           name='audit_trail'),
 
     # Renamed: detail_ahsp_gabungan -> rincian_ahsp (plus legacy alias)
     path('<int:project_id>/rincian-ahsp/',          views.rincian_ahsp_view,          name='rincian_ahsp'),
@@ -106,7 +104,6 @@ urlpatterns = [
     path('api/project/<int:project_id>/orphaned-items/cleanup/', views_api.api_cleanup_orphaned_harga_items, name='api_cleanup_orphaned_items'),
     path('api/project/<int:project_id>/change-status/', views_api.api_get_change_status, name='api_get_change_status'),
     path('api/project/<int:project_id>/source-change/ack/', views_api.api_ack_source_change_flags, name='api_ack_source_change_flags'),
-    path('api/project/<int:project_id>/audit-trail/', views_api.api_get_audit_trail, name='api_get_audit_trail'),
     
     # ===== API: Conversion Profiles =====
     path('api/project/<int:project_id>/conversion-profiles/', views_api.api_get_conversion_profiles, name='api_get_conversion_profiles'),

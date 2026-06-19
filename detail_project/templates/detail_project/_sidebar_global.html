@@ -8,8 +8,6 @@
   {% url 'detail_project:list_pekerjaan' project.id as url_list_pekerjaan %}
   {% url 'detail_project:volume_pekerjaan' project.id as url_volume_pekerjaan %}
   {% url 'detail_project:harga_items' project.id as url_harga_items %}
-  {% url 'detail_project:orphan_cleanup' project.id as url_orphan_cleanup %}
-  {% url 'detail_project:audit_trail' project.id as url_audit_trail %}
   {% url 'detail_project:template_ahsp' project.id as url_template_ahsp %}
   {% url 'detail_project:rincian_ahsp' project.id as url_rincian_ahsp %}
   {% url 'detail_project:rekap_rab' project.id as url_rekap_rab %}
@@ -24,8 +22,6 @@
 {% trans "List Pekerjaan" as t_list_pekerjaan %}
 {% trans "Volume Pekerjaan" as t_volume_pekerjaan %}
 {% trans "Harga Items" as t_harga_items %}
-{% trans "Audit Trail" as t_audit_trail %}
-{% trans "Orphan Cleanup" as t_orphan_cleanup %}
 {% trans "Template AHSP" as t_template_ahsp %}
 {% trans "Rincian AHSP" as t_rincian_ahsp %}
 {% trans "Rekap RAB" as t_rekap_rab %}
@@ -115,16 +111,6 @@
             </a>
           </li>
           {# U14: utilitas admin-only — disembunyikan dari pemilik proyek biasa #}
-          {% if request.user.is_staff or request.user.is_superuser %}
-          <li>
-            <a class="dp-link {% if side_active == 'orphan_cleanup' %}is-active{% endif %}"
-               {% if side_active == 'orphan_cleanup' %}aria-current="page"{% endif %}
-               href="{{ url_orphan_cleanup|default:'#' }}">
-              <i class="bi bi-eraser" aria-hidden="true"></i>
-              <span>{{ t_orphan_cleanup }}</span>
-            </a>
-          </li>
-          {% endif %}
 
           <!-- Analysis Section -->
           <li class="dp-nav-section">Analisis & Laporan</li>
@@ -137,16 +123,6 @@
             </a>
           </li>
           {# U14: utilitas admin-only — disembunyikan dari pemilik proyek biasa #}
-          {% if request.user.is_staff or request.user.is_superuser %}
-          <li>
-            <a class="dp-link {% if side_active == 'audit_trail' %}is-active{% endif %}"
-               {% if side_active == 'audit_trail' %}aria-current="page"{% endif %}
-               href="{{ url_audit_trail|default:'#' }}">
-              <i class="bi bi-clock-history" aria-hidden="true"></i>
-              <span>{{ t_audit_trail }}</span>
-            </a>
-          </li>
-          {% endif %}
           <li>
             <a class="dp-link {% if side_active == 'rekap_rab' %}is-active{% endif %}"
                {% if side_active == 'rekap_rab' %}aria-current="page"{% endif %}
