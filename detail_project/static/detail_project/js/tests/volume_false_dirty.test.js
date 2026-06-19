@@ -36,13 +36,17 @@ describe('WP-P3c / UF-014 - server-authoritative parameter load', () => {
     const prefillDefinition = src.indexOf('async function prefillVolumeRows()');
     const serverParamBootstrap = src.indexOf('initialHydrationTasks.push(loadParamsFromServer({ data: VP_BOOTSTRAP.parameters }));');
     const summaryBarInit = src.indexOf("const summaryBar = document.getElementById('vp-summary-bar');");
-    const prefillCall = src.indexOf('initialHydrationTasks.push(prefillVolumeRows());');
+    const hydrationBarrier = src.indexOf('const initialHydrationComplete = Promise.allSettled(initialHydrationTasks)');
+    const prefillCall = src.indexOf('.then(() => prefillVolumeRows());');
     expect(prefillDefinition).toBeGreaterThan(-1);
     expect(serverParamBootstrap).toBeGreaterThan(-1);
     expect(summaryBarInit).toBeGreaterThan(-1);
+    expect(hydrationBarrier).toBeGreaterThan(-1);
     expect(prefillCall).toBeGreaterThan(-1);
     expect(serverParamBootstrap).toBeLessThan(prefillCall);
     expect(summaryBarInit).toBeLessThan(prefillCall);
+    expect(hydrationBarrier).toBeLessThan(prefillCall);
+    expect(src).not.toContain('initialHydrationTasks.push(prefillVolumeRows());');
   });
 
   test('server-loaded formulas do not mark the page dirty', () => {
@@ -59,7 +63,7 @@ describe('WP-P3c / UF-014 - server-authoritative parameter load', () => {
     expect(src).toContain('function clearInitialHydrationDirtyState(');
     expect(src).toContain('dirtySet.clear();');
     expect(src).toContain('formulaDirtySet.clear();');
-    expect(src).toContain('Promise.allSettled(initialHydrationTasks)');
+    expect(src).toContain('const initialHydrationComplete = Promise.allSettled(initialHydrationTasks)');
     expect(src).toContain('markInitialHydrationUserInteraction();');
   });
 

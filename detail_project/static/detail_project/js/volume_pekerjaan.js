@@ -7684,10 +7684,12 @@
 
   // UF-014 follow-up: prefill must run AFTER server bootstrap parameters are
   // applied AND after all file-scope helpers/DOM refs below this file are
-  // initialized (summaryBar, filters, Formula engine consumers). Calling it
-  // earlier can crash mid-prefill and leave every volume row visually empty.
-  initialHydrationTasks.push(prefillVolumeRows());
-  Promise.allSettled(initialHydrationTasks).then(() => {
+  // initialized (summaryBar, filters, Formula engine consumers). Do not push
+  // prefill into initialHydrationTasks: Promise tasks start immediately, so it
+  // can validate formulas before server parameters (bp_*) are available.
+  const initialHydrationComplete = Promise.allSettled(initialHydrationTasks)
+    .then(() => prefillVolumeRows());
+  initialHydrationComplete.then(() => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         clearInitialHydrationDirtyState('initial-hydration-complete');
