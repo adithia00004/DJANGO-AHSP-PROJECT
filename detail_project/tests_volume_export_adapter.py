@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 from io import BytesIO
 from unittest import skipUnless
 
@@ -71,12 +72,15 @@ class VolumeExportAdapterHardeningTests(TestCase):
 
         param_rows = data["pages"][1]["table_data"]["rows"]
         headers = data["pages"][1]["table_data"]["headers"]
-        self.assertEqual(headers, ["No", "Nama Parameter", "Nilai", "Satuan"])
+        self.assertEqual(headers, ["No", "Nama Parameter", "Expression", "Nilai", "Satuan"])
 
-        bp_rows = [row for row in param_rows if len(row) >= 4 and row[1] == "Panjang Dinding"]
+        # Row: [No, Nama, Expression, Nilai, Satuan]. A base parameter shows the
+        # canonical BACKEND value (7) — never the request payload (12) — and has no
+        # expression.
+        bp_rows = [row for row in param_rows if len(row) >= 5 and row[1] == "Panjang Dinding"]
         self.assertEqual(len(bp_rows), 1)
-        self.assertEqual(bp_rows[0][2], "12")
-        self.assertEqual(bp_rows[0][3], "-")
+        self.assertEqual(bp_rows[0][2], "-")                          # Expression
+        self.assertEqual(Decimal(str(bp_rows[0][3])), Decimal("7"))   # Nilai (backend, not 12)
         self.assertEqual(data["pages"][1]["table_data"]["param_codes"], ["bp_1"])
 
         volume_rows = data["pages"][0]["table_data"]["rows"]
@@ -116,22 +120,28 @@ class VolumeExportAdapterHardeningTests(TestCase):
 
         data = VolumePekerjaanAdapter(self.project).get_export_data()
         param_table = data["pages"][1]["table_data"]
+        rows = param_table["rows"]
         codes = param_table["param_codes"]
-        formulas = param_table["param_formulas"]
-
         self.assertEqual(codes, ["bp_1", "cp_1"])
-        self.assertEqual(formulas[codes.index("bp_1")], "")
-        self.assertEqual(formulas[codes.index("cp_1")], "bp_1 * 2")
+
+        # Row: [No, Nama, Expression, Nilai, Satuan]. Base = numeric Nilai, no
+        # expression. Computed = humanized expression text + Nilai '-' (its value is
+        # not canonical backend data; never 0, never a live formula).
+        by_label = {row[1]: row for row in rows}
+        self.assertEqual(by_label["Panjang"][2], "-")
+        self.assertEqual(Decimal(str(by_label["Panjang"][3])), Decimal("7"))
+        self.assertIn("Panjang", by_label["Luas"][2])   # cp_1 = bp_1 * 2, humanized
+        self.assertEqual(by_label["Luas"][3], "-")
 
     @skipUnless(OPENPYXL_AVAILABLE, "openpyxl is required for XLSX export test")
-    def test_xlsx_volume_column_uses_formula_reference_to_parameter_sheet(self):
+    def test_xlsx_volume_column_is_canonical_backend_number(self):
         ProjectParameter.objects.create(
             project=self.project,
             name="bp_1",
             label="Panjang Dinding",
             value="7",
         )
-        pekerjaan = self._create_one_pekerjaan()
+        pekerjaan = self._create_one_pekerjaan()  # VolumePekerjaan.quantity = 10
         VolumeFormulaState.objects.create(
             project=self.project,
             pekerjaan=pekerjaan,
@@ -154,13 +164,19 @@ class VolumeExportAdapterHardeningTests(TestCase):
                 break
         self.assertIsNotNone(item_row, "Row item nomor 1 tidak ditemukan pada sheet Volume Pekerjaan")
 
+        # WP Export: Volume is the canonical stored quantity (10) as a real number,
+        # never a live =Parameters!.. formula that Excel could recompute.
         volume_cell = ws_volume.cell(row=item_row, column=5)
-        self.assertEqual(volume_cell.data_type, "f")
-        self.assertTrue(str(volume_cell.value or "").startswith("=Parameters!$C$"))
-        self.assertRegex(str(volume_cell.value or ""), r"\*\s*2")
+        self.assertEqual(volume_cell.data_type, "n")
+        self.assertAlmostEqual(float(volume_cell.value), 10.0, places=3)
+        self.assertEqual(volume_cell.number_format, "#,##0.000")
+
+        # The Formula column stays as text provenance (not a live formula).
+        formula_cell = ws_volume.cell(row=item_row, column=3)
+        self.assertNotEqual(formula_cell.data_type, "f")
 
     @skipUnless(OPENPYXL_AVAILABLE, "openpyxl is required for XLSX export test")
-    def test_xlsx_computed_parameter_is_live_formula_and_volume_references_it(self):
+    def test_xlsx_computed_parameter_is_text_not_live_formula(self):
         ProjectParameter.objects.create(
             project=self.project,
             name="bp_1",
@@ -187,26 +203,28 @@ class VolumeExportAdapterHardeningTests(TestCase):
         ws_params = wb["Parameters"]
         ws_volume = wb["Volume Pekerjaan"]
 
-        bp_row = None
+        # Layout: col 2 = Nama, col 3 = Expression, col 4 = Nilai.
         cp_row = None
         for r in range(1, ws_params.max_row + 1):
-            if str(ws_params.cell(row=r, column=2).value or "").strip() == "Panjang":
-                bp_row = r
             if str(ws_params.cell(row=r, column=2).value or "").strip() == "Luas":
                 cp_row = r
-        self.assertIsNotNone(bp_row, "Base parameter row tidak ditemukan")
         self.assertIsNotNone(cp_row, "Computed parameter row tidak ditemukan")
-        self.assertEqual(ws_params.cell(row=cp_row, column=3).data_type, "f")
-        self.assertEqual(ws_params.cell(row=cp_row, column=3).value, f"=Parameters!$C${bp_row} * 2")
 
-        item_row = None
-        for r in range(1, ws_volume.max_row + 1):
-            if str(ws_volume.cell(row=r, column=1).value or "").strip() == "1":
-                item_row = r
-                break
-        self.assertIsNotNone(item_row, "Row item nomor 1 tidak ditemukan pada sheet Volume Pekerjaan")
-        volume_formula = str(ws_volume.cell(row=item_row, column=5).value or "")
-        self.assertIn(f"Parameters!$C${cp_row}", volume_formula)
+        # Computed param: Nilai is '-' (no canonical value; never 0, never a formula);
+        # the Expression column holds the humanized formula text.
+        nilai_cell = ws_params.cell(row=cp_row, column=4)
+        self.assertEqual(nilai_cell.value, "-")
+        self.assertNotEqual(nilai_cell.data_type, "f")
+        self.assertNotEqual(ws_params.cell(row=cp_row, column=3).data_type, "f")
+
+        # Gate: not one cell in either sheet is a live formula.
+        for ws in (ws_params, ws_volume):
+            for row in ws.iter_rows():
+                for cell in row:
+                    self.assertNotEqual(
+                        cell.data_type, "f",
+                        f"{ws.title}!{cell.coordinate} is a formula: {cell.value!r}",
+                    )
 
 
 class DeepCopyVolumeFormulaStateTests(TestCase):

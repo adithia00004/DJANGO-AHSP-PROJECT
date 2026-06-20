@@ -27,6 +27,7 @@ from detail_project.models import (
     DetailAHSPExpanded,
     VolumePekerjaan,
 )
+from detail_project.models import ProjectParameter, ProjectComputedParameter, VolumeFormulaState
 from detail_project.exports.export_manager import ExportManager
 
 
@@ -233,6 +234,54 @@ class RincianAHSPExcelParityTests(_RekapFixtureMixin, TestCase):
         # G=220 rendered id-ID; the raw str(Decimal) must not leak.
         self.assertIn("220,00", blob)
         self.assertNotIn("220.00", blob)
+
+
+class VolumeExportParityTests(TestCase):
+    """Volume value = canonical stored quantity (numeric); base param = backend
+    value (numeric); computed param = expression text + Nilai '-'; no live formula.
+    Verifies the PDF/Word boundary (materialize) for the Volume pages structure."""
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(
+            username="wp-volume-parity-owner", password="not-used",
+        )
+        self.project = Project.objects.create(owner=self.owner, nama="Volume Parity")
+        klas = Klasifikasi.objects.create(project=self.project, name="Klas A", ordering_index=1)
+        sub = SubKlasifikasi.objects.create(
+            project=self.project, klasifikasi=klas, name="Sub A", ordering_index=1,
+        )
+        self.pekerjaan = Pekerjaan.objects.create(
+            project=self.project, sub_klasifikasi=sub, source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode="P-001", snapshot_uraian="Pekerjaan volume", snapshot_satuan="m3",
+            ordering_index=1,
+        )
+        VolumePekerjaan.objects.create(
+            project=self.project, pekerjaan=self.pekerjaan, quantity=Decimal("125.500"),
+        )
+        ProjectParameter.objects.create(
+            project=self.project, name="bp_1", label="Panjang", value=Decimal("7"),
+        )
+        ProjectComputedParameter.objects.create(
+            project=self.project, name="cp_1", label="Luas", expression="bp_1 * 2",
+        )
+        VolumeFormulaState.objects.create(
+            project=self.project, pekerjaan=self.pekerjaan, raw="=cp_1 + bp_1", is_fx=True,
+        )
+
+    def test_word_volume_and_params_are_materialized_numbers(self):
+        from docx import Document
+
+        resp = ExportManager(self.project, self.owner).export_volume_pekerjaan("word")
+        doc = Document(BytesIO(resp.content))
+        blob = "\n".join(
+            [p.text for p in doc.paragraphs]
+            + [c.text for t in doc.tables for r in t.rows for c in r.cells]
+        )
+        # Canonical volume 125.5 -> id-ID 3 dp; raw str(Decimal) must not leak.
+        self.assertIn("125,500", blob)
+        self.assertNotIn("125.500", blob)
+        # Base param backend value present (7 -> "7,00"); computed Nilai is "-".
+        self.assertIn("7,00", blob)
 
 
 class HargaItemsExcelParityTests(TestCase):

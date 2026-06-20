@@ -336,20 +336,17 @@ class ExcelExporter(ConfigExporterBase):
             cell.alignment = Alignment(horizontal='center', vertical='center')
         current_row += 1
         
-        # Parameter rows
+        # Parameter rows. WP Export: Nilai (base param) is written as a real number
+        # via the boundary helper; computed params carry '-' (text) for Nilai and the
+        # expression text in the Expression column — no live Excel formula.
+        param_column_formats = param_table.get('column_formats', [])
         for row_idx, row in enumerate(param_rows):
             for col_idx, val in enumerate(row, 1):
-                cell_value = val
-                if col_idx == 3 and row_idx < len(param_formulas):
-                    raw_param_formula = str(param_formulas[row_idx] or '').strip()
-                    if raw_param_formula.startswith('='):
-                        cell_value = self._convert_volume_formula(raw_param_formula, param_value_cells)
-                    elif raw_param_formula:
-                        cell_value = self._convert_volume_formula(f"={raw_param_formula}", param_value_cells)
-                cell = ws_params.cell(row=current_row, column=col_idx, value=cell_value)
+                fmt = param_column_formats[col_idx - 1] if col_idx - 1 < len(param_column_formats) else None
+                cell = self._write_value_cell(ws_params, current_row, col_idx, val, fmt)
                 cell.font = Font(size=9)
                 cell.border = border
-                if col_idx == 3:  # Value column - right align numbers
+                if col_idx == 4:  # Nilai column - right align numbers
                     cell.alignment = Alignment(horizontal='right')
             current_row += 1
         
@@ -412,43 +409,20 @@ class ExcelExporter(ConfigExporterBase):
                 for col_idx in range(2, num_cols + 1):
                     ws_volume.cell(row=current_row, column=col_idx).border = border
             else:
-                # Normal row
-                raw_formula = row_formulas[row_idx] if row_idx < len(row_formulas) else ''
+                # Normal row. WP Export: the Volume column is the canonical backend
+                # number; the Formula column keeps the input formula as TEXT (audit).
+                # No _convert_volume_formula / live Excel formula on the official report.
+                volume_column_formats = volume_table.get('column_formats', [])
                 for col_idx, val in enumerate(row, 1):
-                    cell = ws_volume.cell(row=current_row, column=col_idx)
+                    fmt = volume_column_formats[col_idx - 1] if col_idx - 1 < len(volume_column_formats) else None
+                    if col_idx == 3 and isinstance(val, str) and val.startswith('='):
+                        # Force text so Excel never evaluates the formula provenance.
+                        cell = ws_volume.cell(row=current_row, column=col_idx, value=f"'{val}")
+                    else:
+                        cell = self._write_value_cell(ws_volume, current_row, col_idx, val, fmt)
                     cell.font = Font(size=9)
                     cell.border = border
-                    
-                    # Column 3 is Formula - try to convert to Excel formula
-                    if (
-                        col_idx == 3
-                        and adapter
-                        and formula_display_mode != 'label'
-                        and val
-                        and str(val).startswith('=')
-                    ):
-                        try:
-                            excel_formula = self._convert_volume_formula(val, param_value_cells)
-                            cell.value = excel_formula
-                        except Exception:
-                            cell.value = val  # Fallback to raw formula
-                    elif col_idx == 3 and formula_display_mode == 'label' and isinstance(val, str) and val.startswith('='):
-                        # In human-readable mode, keep formula as text so Excel does not evaluate it.
-                        cell.value = f"'{val}"
-                    elif (
-                        col_idx == num_cols
-                        and adapter
-                        and isinstance(raw_formula, str)
-                        and raw_formula.strip().startswith('=')
-                    ):
-                        # Volume column uses Excel formula referencing Parameters sheet.
-                        try:
-                            cell.value = self._convert_volume_formula(raw_formula, param_value_cells)
-                        except Exception:
-                            cell.value = val  # Fallback to stored numeric value
-                    else:
-                        cell.value = val
-                    
+
                     # Text wrapping for Uraian column (column 2)
                     if col_idx == 2:
                         cell.alignment = Alignment(vertical='top', wrap_text=True)
@@ -502,11 +476,17 @@ class ExcelExporter(ConfigExporterBase):
     def _convert_volume_formula(self, formula_str: str, param_cells: Dict[str, str]) -> str:
         """
         Convert volume formula to Excel formula with cell references.
-        
+
         Example:
             Input: "= panjang * lebar"
             param_cells: {'panjang': 'D5', 'lebar': 'D6'}
             Output: "=Parameters!$D$5*Parameters!$D$6"
+
+        WP Export (2026-06-20): RETIRED from the official Volume report — the report
+        now writes canonical backend values, never a live formula Excel could
+        recompute. Kept (no callers) and reserved for a future, separate
+        "Template Kalkulasi" export type that is explicitly an editable/recomputable
+        workbook, not the official report.
         """
         import re
         

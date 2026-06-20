@@ -118,47 +118,50 @@ class VolumePekerjaanAdapter:
         )
 
         # User-facing export is label-first. Do not expose opaque code column.
-        headers = ['No', 'Nama Parameter', 'Nilai', 'Satuan']
-        col_widths = [12, 92, 38, 40]  # in mm (total: 182mm for A4)
+        headers = ['No', 'Nama Parameter', 'Expression', 'Nilai', 'Satuan']
+        col_widths = [10, 70, 50, 32, 20]  # in mm (total: 182mm for A4)
 
         rows = []
         param_codes = []
-        param_formulas = []
         row_num = 0
 
         for param in sorted(all_params, key=self._sort_param_key):
             row_num += 1
             # Prefer DB label. Fallback to compact generated text.
             label = self._name_to_label.get(param) or param.replace('_', ' ').title()
-
-            # Value priority: explicit request payload > DB snapshot > default 0
-            value = self.parameters.get(param, self._name_to_value.get(param, 0))
             unit = str(self._name_to_unit.get(param, '') or '-').strip() or '-'
-            if isinstance(value, (int, float, Decimal)):
-                value_str = self._format_number(value, 2)
+            expression_raw = self._name_to_expression.get(param, '')
+
+            if expression_raw:
+                # Computed parameter: its value is NOT canonical backend data (no
+                # stored value, no server evaluator). Show the expression as TEXT and
+                # leave Nilai as '-' — never 0 (a false "official" value) and never a
+                # live Excel formula. Canonical computed values are deferred to a
+                # separate "Canonical Formula Evaluation Service" WP.
+                expression = self._humanize_formula(expression_raw)
+                nilai = '-'
             else:
-                value_str = str(value) if value else '-'
+                # Base parameter: write the canonical backend value (numeric Decimal).
+                expression = '-'
+                value = self._name_to_value.get(param, None)
+                nilai = self._to_decimal(value) if value is not None else '-'
 
-            rows.append([str(row_num), label, value_str, unit])
+            rows.append([str(row_num), label, expression, nilai, unit])
             param_codes.append(param)
-            param_formulas.append(self._name_to_expression.get(param, ''))
-
-            # Store value cell reference for Excel (column C after header change).
-            self._parameter_cells[param] = f'C{row_num + 1}'
 
         # Empty state
         if not rows:
-            rows.append(['', '-', 'Tidak ada parameter', '-'])
+            rows.append(['', '-', '-', '-', '-'])
             param_codes.append('')
-            param_formulas.append('')
 
         return {
             'title': 'DAFTAR PARAMETER PERHITUNGAN',
             'table_data': {
                 'headers': headers,
                 'rows': rows,
-                'param_codes': param_codes,  # aligned with rows, used by XLSX exporter
-                'param_formulas': param_formulas,  # aligned with rows, computed params become live XLSX formulas
+                'param_codes': param_codes,  # aligned with rows
+                # No/Nama/Expression text; Nilai = 2-dp number (computed Nilai = '-').
+                'column_formats': ['@', '@', '@', '#,##0.00', '@'],
             },
             'col_widths': col_widths,
             'row_types': ['item'] * len(rows),
@@ -214,12 +217,16 @@ class VolumePekerjaanAdapter:
                     # Display formula with human-readable labels or "-"
                     formula_display = self._humanize_formula(formula_raw) if is_fx and formula_raw else '-'
 
+                    # WP Export: Volume is the canonical stored backend value
+                    # (VolumePekerjaan.quantity) written as a real 3-dp number — never
+                    # recomputed via a live Excel formula. The Formula column keeps
+                    # the input formula as humanized text (provenance/audit only).
                     rows.append([
                         str(item_num),
                         uraian,
                         formula_display,
                         satuan or '-',
-                        self._format_number(volume, 3),
+                        volume,
                     ])
                     row_types.append('item')
                     hierarchy_levels[row_idx] = 3
@@ -237,6 +244,8 @@ class VolumePekerjaanAdapter:
             'table_data': {
                 'headers': headers,
                 'rows': rows,
+                # No/Uraian/Formula/Satuan text; Volume = 3-dp number.
+                'column_formats': ['@', '@', '@', '@', '#,##0.000'],
             },
             'col_widths': col_widths,
             'row_types': row_types,
