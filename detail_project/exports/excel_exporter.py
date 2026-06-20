@@ -666,6 +666,65 @@ class ExcelExporter(ConfigExporterBase):
         ws_rekap.column_dimensions['E'].width = 18
         ws_rekap.column_dimensions['F'].width = 18
 
+        # ========== SHEET 3: KONTROL KALKULASI (audit-only) ==========
+        # WP Export control layer: the official sheets above hold backend-canonical
+        # NUMBERS. This sheet re-derives each pekerjaan's G = E + F with a LIVE Excel
+        # formula referencing the Rincian sheet, then shows the difference vs the
+        # official value. Audit only — its formula results are never used for import
+        # or app calculation.
+        ws_kontrol = wb.create_sheet("Kontrol Kalkulasi")
+        kc_row = 1
+        ws_kontrol.cell(row=kc_row, column=1, value="KONTROL KALKULASI (AUDIT)")
+        ws_kontrol.cell(row=kc_row, column=1).font = Font(size=14, bold=True, color='B45309')
+        kc_row += 1
+        ws_kontrol.cell(
+            row=kc_row, column=1,
+            value=("Nilai Kontrol dihitung ulang oleh Excel dari sheet Rincian (G = E + F). "
+                   "Sheet ini hanya untuk audit; hasilnya tidak dipakai untuk perhitungan/import. "
+                   "Status PERIKSA = selisih melebihi 0,01."),
+        )
+        ws_kontrol.cell(row=kc_row, column=1).font = Font(size=9, italic=True, color='6B7280')
+        kc_row += 2
+
+        kontrol_headers = ['No', 'Kode', 'Uraian', 'Nilai Resmi', 'Nilai Kontrol', 'Selisih', 'Status']
+        for col_idx, header in enumerate(kontrol_headers, 1):
+            cell = ws_kontrol.cell(row=kc_row, column=col_idx, value=header)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='B45309')
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+        kc_row += 1
+
+        for idx, ref in enumerate(pekerjaan_refs, 1):
+            ws_kontrol.cell(row=kc_row, column=1, value=idx).border = border
+            ws_kontrol.cell(row=kc_row, column=2, value=ref.get('kode')).border = border
+            ws_kontrol.cell(row=kc_row, column=3, value=ref.get('uraian')).border = border
+
+            resmi = self._write_value_cell(ws_kontrol, kc_row, 4, ref.get('g_val'), '#,##0.00')
+            resmi.border = border
+
+            # Nilai Kontrol: live formula re-deriving G = E + F from the Rincian sheet.
+            kontrol = ws_kontrol.cell(
+                row=kc_row, column=5,
+                value=f"=Rincian!{ref['e_cell']}+Rincian!{ref['f_cell']}",
+            )
+            kontrol.number_format = '#,##0.00'
+            kontrol.border = border
+
+            selisih = ws_kontrol.cell(row=kc_row, column=6, value=f"=D{kc_row}-E{kc_row}")
+            selisih.number_format = '#,##0.00'
+            selisih.border = border
+
+            status = ws_kontrol.cell(
+                row=kc_row, column=7, value=f'=IF(ABS(F{kc_row})<0.01,"OK","PERIKSA")'
+            )
+            status.border = border
+            status.alignment = Alignment(horizontal='center')
+            kc_row += 1
+
+        for col, width in zip('ABCDEFG', (5, 15, 40, 18, 18, 14, 12)):
+            ws_kontrol.column_dimensions[col].width = width
+
         # Save
         output = BytesIO()
         wb.save(output)
@@ -766,6 +825,7 @@ class ExcelExporter(ConfigExporterBase):
         cell.fill = PatternFill('solid', fgColor='E8F5E9')
         cell.border = border
 
+        e_row = start_row
         cell = self._write_value_cell(ws, start_row, 7, e_val, '#,##0.00')
         cell.font = Font(bold=True)
         cell.fill = PatternFill('solid', fgColor='E8F5E9')
@@ -780,6 +840,7 @@ class ExcelExporter(ConfigExporterBase):
         cell.fill = PatternFill('solid', fgColor='FFF8E1')
         cell.border = border
 
+        f_row = start_row
         cell = self._write_value_cell(ws, start_row, 7, f_val, '#,##0.00')
         cell.font = Font(bold=True)
         cell.fill = PatternFill('solid', fgColor='FFF8E1')
@@ -794,19 +855,25 @@ class ExcelExporter(ConfigExporterBase):
         cell.fill = PatternFill('solid', fgColor='BBDEFB')
         cell.border = border
 
+        g_row = start_row
         cell = self._write_value_cell(ws, start_row, 7, g_val, '#,##0.00')
         cell.font = Font(bold=True, size=10)
         cell.fill = PatternFill('solid', fgColor='BBDEFB')
         cell.border = border
         start_row += 1
 
-        # Track canonical values for the Rekap sheet (values, not cross-sheet refs).
+        # Track canonical values (for the Rekap sheet) AND the Rincian cell addresses
+        # (for the Kontrol Kalkulasi audit sheet, which recomputes G = E + F by live
+        # formula and compares it to the official backend value).
         pekerjaan_refs.append({
             'kode': pek_kode,
             'uraian': pek_name,
             'e_val': e_val,
             'f_val': f_val,
             'g_val': g_val,
+            'e_cell': f"G{e_row}",
+            'f_cell': f"G{f_row}",
+            'g_cell': f"G{g_row}",
         })
 
         return start_row

@@ -9,6 +9,7 @@ This suite renders a small fixture through the real adapter+exporter and reads
 the workbook back with openpyxl. One report per test class; add reports as each
 slice lands (K2 -> K3 -> precision).
 """
+import re
 from decimal import Decimal
 from io import BytesIO
 
@@ -178,8 +179,12 @@ class RincianAHSPExcelParityTests(_RekapFixtureMixin, TestCase):
         resp = ExportManager(self.project, self.owner).export_rincian_ahsp("xlsx")
         wb = load_workbook(BytesIO(resp.content))
 
-        # Gate: not a single cell may be a live formula (data_type 'f').
+        # Gate: not a single cell on the OFFICIAL sheets may be a live formula
+        # (data_type 'f'). The "Kontrol Kalkulasi" audit sheet is excluded — it is
+        # the control layer and intentionally carries formulas.
         for ws in wb.worksheets:
+            if ws.title == "Kontrol Kalkulasi":
+                continue
             for row in ws.iter_rows():
                 for cell in row:
                     self.assertNotEqual(
@@ -219,6 +224,40 @@ class RincianAHSPExcelParityTests(_RekapFixtureMixin, TestCase):
         self.assertAlmostEqual(float(e_cell.value), 200.0, places=2)
         self.assertAlmostEqual(float(f_cell.value), 20.0, places=2)
         self.assertAlmostEqual(float(g_cell.value), 220.0, places=2)
+
+    def test_kontrol_kalkulasi_sheet_audits_via_formula(self):
+        resp = ExportManager(self.project, self.owner).export_rincian_ahsp("xlsx")
+        wb = load_workbook(BytesIO(resp.content))
+        self.assertIn("Kontrol Kalkulasi", wb.sheetnames)
+        kontrol = wb["Kontrol Kalkulasi"]
+
+        # Row: [No, Kode, Uraian, Nilai Resmi, Nilai Kontrol, Selisih, Status]
+        row = None
+        for r in kontrol.iter_rows():
+            if len(r) >= 7 and r[1].value == "P-001":
+                row = r
+                break
+        self.assertIsNotNone(row, "kontrol row not found")
+        resmi, kontrol_cell, selisih, status = row[3], row[4], row[5], row[6]
+
+        # Nilai Resmi = backend G (numeric 220), not a formula.
+        self.assertIsInstance(resmi.value, (int, float))
+        self.assertAlmostEqual(float(resmi.value), 220.0, places=2)
+
+        # The control columns are LIVE formulas (this is the audit layer).
+        self.assertEqual(kontrol_cell.data_type, "f")
+        self.assertIn("Rincian!", str(kontrol_cell.value))
+        self.assertEqual(selisih.data_type, "f")
+        self.assertEqual(status.data_type, "f")
+        self.assertIn("OK", str(status.value))  # =IF(...,"OK","PERIKSA")
+
+        # The control reconciles: the Rincian E + F cells the formula references sum
+        # to the official G, so Selisih would be 0 and Status "OK".
+        addrs = re.findall(r"Rincian!([A-Z]+\d+)", str(kontrol_cell.value))
+        self.assertEqual(len(addrs), 2)
+        rincian = wb["Rincian"]
+        e_plus_f = sum(float(rincian[addr].value) for addr in addrs)
+        self.assertAlmostEqual(e_plus_f, float(resmi.value), places=2)
 
     def test_word_rincian_uses_materialized_idid_strings(self):
         from docx import Document
