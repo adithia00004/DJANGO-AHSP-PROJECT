@@ -346,11 +346,11 @@ class JadwalMonthlyValueOnlyTests(TestCase):
             )
 
     @staticmethod
-    def _value_for_label(ws, label):
+    def _value_for_label(ws, label, offset=2):
         for row in ws.iter_rows():
             for cell in row:
                 if cell.value == label:
-                    return ws.cell(row=cell.row, column=cell.column + 2)
+                    return ws.cell(row=cell.row, column=cell.column + offset)
         raise AssertionError(f"label {label!r} not found in {ws.title}")
 
     def test_data_master_numeric_and_monthly_rincian_mirror_only(self):
@@ -453,6 +453,32 @@ class JadwalMonthlyValueOnlyTests(TestCase):
         self.assertTrue(any(abs(v - 0.10) < 1e-9 for v in col_i), col_i)      # P-001: 2/3×15%
         self.assertTrue(any(abs(v - (1 / 60)) < 1e-9 for v in col_i), col_i)  # P-002: 1/3×5%
         self.assertTrue(any(abs(v - (7 / 60)) < 1e-9 for v in col_i), col_i)  # TOTAL (weighted)
+
+        # Summary is planned-only by the existing weekly-report contract.
+        self.assertAlmostEqual(
+            self._value_for_label(rincian, "Progress Kumulatif s.d. Minggu Lalu", 5).value,
+            0,
+            places=9,
+        )
+        self.assertAlmostEqual(
+            self._value_for_label(rincian, "Progress Minggu Ini", 5).value,
+            7 / 60,
+            places=9,
+        )
+        self.assertAlmostEqual(
+            self._value_for_label(rincian, "Progress Kumulatif s.d. Minggu Ini", 5).value,
+            7 / 60,
+            places=9,
+        )
+
+        total_row = next(
+            r for r in range(1, rincian.max_row + 1) if rincian.cell(row=r, column=1).value == "TOTAL"
+        )
+        self.assertAlmostEqual(rincian.cell(total_row, 6).value, 3300.00, places=9)
+        self.assertAlmostEqual(rincian.cell(total_row, 7).value, 1.00, places=9)
+        self.assertAlmostEqual(rincian.cell(total_row, 8).value, 0.00, places=9)
+        self.assertAlmostEqual(rincian.cell(total_row, 9).value, 7 / 60, places=9)
+        self.assertAlmostEqual(rincian.cell(total_row, 10).value, 7 / 60, places=9)
 
 
 class VolumeExportParityTests(TestCase):

@@ -3749,7 +3749,7 @@ class ExcelExporter(ConfigExporterBase):
         Structure (same as monthly):
         1. Title: "LAPORAN MINGGU KE-{N}"
         2. Project info section (formulas from Data Master)
-        3. Ringkasan Progress section (SUMPRODUCT formulas)
+        3. Ringkasan Progress section (canonical planned values)
         4. Tabel Rincian Progress with 10 columns
         5. Lembar Pengesahan
         
@@ -3816,7 +3816,7 @@ class ExcelExporter(ConfigExporterBase):
         current_row += 2
         
         # ==============================================
-        # RINGKASAN PROGRESS (SUMPRODUCT formulas)
+        # RINGKASAN PROGRESS (canonical planned values)
         # Layout: A-D merged for labels (long text), E for ":", F-G merged for values
         # ==============================================
         ws.merge_cells(f'A{current_row}:D{current_row}')
@@ -3825,10 +3825,7 @@ class ExcelExporter(ConfigExporterBase):
         current_row += 1
         
         # Get table range from ssot_ranges
-        table_info = ssot_ranges['table']
-        data_start = table_info['data_start_row']
-        data_end = table_info['data_end_row']
-        week_col_map = table_info['week_col_map']
+        # All weekly values needed below are carried directly in ssot_ranges.
         # WP Export 2B: canonical aggregates (Decimal) captured on the SSOT sheet — the
         # official sheet carries backend VALUES; only 1:1 ='Data Master'!cell mirrors stay.
         project_weekly = ssot_ranges.get('project_weekly', {})
@@ -3931,7 +3928,7 @@ class ExcelExporter(ConfigExporterBase):
                     cell = ws.cell(row=current_row, column=col, value='')
                     cell.border = border
             else:
-                # PEKERJAAN: Full data with formulas
+                # PEKERJAAN: A-G mirror SSOT; H-J canonical weighted values
                 
                 # Col A: No (reference)
                 ws.cell(row=current_row, column=1, value=f"='{ssot_name}'!A{ssot_row}").border = border
