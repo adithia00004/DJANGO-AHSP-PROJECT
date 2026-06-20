@@ -189,8 +189,8 @@ Rincian AHSP 2-sheet (4 call-site). Perlu cek apakah adapter lain memanggil `par
 | **Harga Items** | ✅ SELESAI (`4ce0870f`) | Satuan Dasar harga→Decimal 2dp; NULL→`'-'` tetap beda dari `0.00` (D-HI-01); konversi page = narasi by-design |
 | **Rekap Kebutuhan** | ✅ SELESAI (`0e27a719`) | Qty 3dp + harga/total 2dp Decimal; grand-total footer numeric; scheduled/unscheduled & total tak berubah |
 | **Rincian AHSP** | ✅ SELESAI (`786d2834`) | hapus `=E*F`/`=SUM`/E-F-G formula + cross-ref `=Rincian!` + `_parse_number`; adapter Decimal; Rekap sheet pakai nilai (refs bawa value); gate **no `data_type='f'`** |
-| Volume | ⏳ berikutnya | K2 `_parse_number` + K3 `_convert_volume_formula` (rumus param — perlu perlakuan khusus per owner) |
-| Jadwal | ⏳ | `float()`→Decimal + K3 `=C*D`/bobot (monthly/weekly/professional) |
+| **Volume** | ✅ SELESAI (`33e0dfe0`) | nilai numeric kanonik (`VolumePekerjaan.quantity`); rumus = teks audit; computed param Nilai=`-`/Expression teks (Opsi C); `_convert_volume_formula` di-retire (reserved "Template Kalkulasi") |
+| Jadwal | ⏳ terakhir | `float()`→Decimal + K3 `=C*D`/bobot (monthly/weekly/professional) |
 
 ### 6.5 Temuan penting — boundary teks-exporter (PDF/Word/CSV)
 Adapter dipakai **semua format**, bukan hanya Excel. PDF (`pdf_table_builder` `Paragraph(str(...))`) + Word + CSV merender sel via `str(...)`. Saat adapter beralih ke Decimal, mereka akan menampilkan `str(Decimal)` = `"1500000.00"` (kehilangan grouping). **Keputusan owner (2026-06-20): 2 desimal konsisten semua format.**
@@ -257,3 +257,18 @@ Blast radius terbesar (jalur exporter khusus `_export_rincian_ahsp_2sheet`, buka
 Rekomendasi: **(A)** — selaras kontrak SSOT. Bila (A) di luar scope slice ini, **(C)** sebagai langkah aman sementara (jangan (B)).
 
 **Catatan precision param value**: base param `_format_number(value,2)` (2dp) saat ini. Perlu konfirmasi: param value 2dp cukup, atau presisi penuh? (param bisa integer/desimal panjang).
+
+### 6.9 Slice 5 — Volume (SELESAI 2026-06-20, kode `33e0dfe0`)
+**Keputusan owner (final, Opsi C diperketat):** TIDAK bangun evaluator baru, TIDAK pakai nilai computed dari frontend.
+- **Base param** → nilai numeric dari backend (`ProjectParameter.value`, **bukan** payload `?params=`).
+- **Computed param** → kolom **Expression** = formula teks (humanized); kolom **Nilai** = `-` (jangan 0 = kesan resmi salah; jangan formula hidup).
+- **Volume pekerjaan** → numeric dari `VolumePekerjaan.quantity` (kanonik tersimpan, 3dp).
+- `_convert_volume_formula()` **di-retire** dari laporan resmi (0 caller; disimpan untuk WP "Template Kalkulasi" mendatang).
+- Nilai computed-param resmi → **WP terpisah "Canonical Formula Evaluation Service"** (dipakai page Volume + validasi save + export sekaligus, dengan parity test JS↔server). **Jangan** bikin evaluator khusus exporter.
+
+**Implementasi:** Parameters sheet jadi 5 kolom `[No, Nama, Expression, Nilai, Satuan]` + `column_formats`; Volume sheet Volume→Decimal 3dp + `column_formats`; exporter tulis numeric via `_write_value_cell`, Formula tetap text-prefixed; PDF/Word/CSV lewat `materialize_display_rows` (jalur `pages`).
+
+**Gate (semua ✅):** Volume cell `data_type='n'` == quantity; base param numeric == backend (bukan payload 12); computed Nilai `-`; **tak ada sel `data_type='f'`** (di-assert 2 sheet); Word render `"125,500"`; **135 export test PASS**. Test lama yang meng-assert anti-pola live-formula **di-rewrite** ke kontrak baru.
+
+### 6.10 Status WP Export
+**5 dari 6 report SELESAI**: Rekap RAB, Harga Items, Rekap Kebutuhan, Rincian AHSP, Volume. **Sisa: Jadwal** (`float()`→Decimal + K3 `=C*D`/bobot di 3 metode professional/monthly/weekly — sheet Kurva-S/SSOT). **Backlog terpisah (bukan WP Export):** Canonical Formula Evaluation Service (nilai computed-param resmi, parity JS↔server) + "Template Kalkulasi" export type (workbook editable dgn formula hidup).
