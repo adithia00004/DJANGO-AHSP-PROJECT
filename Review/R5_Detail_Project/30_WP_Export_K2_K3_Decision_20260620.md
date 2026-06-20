@@ -185,11 +185,22 @@ Rincian AHSP 2-sheet (4 call-site). Perlu cek apakah adapter lain memanggil `par
 
 | Report | Status | Catatan |
 |---|---|---|
-| **Rekap RAB** | ✅ SELESAI (commit `e2d7b85e`) | adapter Decimal + `column_formats`; exporter boundary; manager propagasi 2 page; `tests_wp_export_parity` + parity web==export diperkuat exact-Decimal; 80 export test PASS |
-| Harga Items | ⏳ berikutnya | jalur `export()` generik — pola sama, cepat |
-| Rekap Kebutuhan | ⏳ | jalur `export()` generik |
-| Rincian AHSP | ⏳ | jalur `_export_rincian_ahsp_2sheet` — K2 `_parse_number` + K3 `=E*F`/`=SUM` |
+| **Rekap RAB** | ✅ SELESAI (`e2d7b85e`) | adapter Decimal + `column_formats`; exporter boundary; manager propagasi 2 page; parity web==export diperkuat exact-Decimal |
+| **Harga Items** | ✅ SELESAI (`4ce0870f`) | Satuan Dasar harga→Decimal 2dp; NULL→`'-'` tetap beda dari `0.00` (D-HI-01); konversi page = narasi by-design |
+| **Rekap Kebutuhan** | ✅ SELESAI (`0e27a719`) | Qty 3dp + harga/total 2dp Decimal; grand-total footer numeric; scheduled/unscheduled & total tak berubah |
+| Rincian AHSP | ⏳ slice tersendiri | jalur `_export_rincian_ahsp_2sheet` — K2 `_parse_number` + K3 `=E*F`/`=SUM` (blast radius lebih besar) |
 | Volume | ⏳ | K2 `_parse_number` + K3 `_convert_volume_formula` (rumus param) |
 | Jadwal | ⏳ | `float()`→Decimal + K3 `=C*D`/bobot (monthly/weekly/professional) |
 
-**Pola reusable sudah jadi**: `_write_value_cell(ws,row,col,val,fmt)` + `column_formats`/`footer_value_format`. Slice generik (Harga/Kebutuhan) tinggal: adapter emit Decimal + deklarasikan `column_formats`, lalu parity test.
+### 6.5 Temuan penting — boundary teks-exporter (PDF/Word/CSV)
+Adapter dipakai **semua format**, bukan hanya Excel. PDF (`pdf_table_builder` `Paragraph(str(...))`) + Word + CSV merender sel via `str(...)`. Saat adapter beralih ke Decimal, mereka akan menampilkan `str(Decimal)` = `"1500000.00"` (kehilangan grouping). **Keputusan owner (2026-06-20): 2 desimal konsisten semua format.**
+
+Solusi: `exports/cell_format.py` → `materialize_display_rows(data)` memformat sel Decimal pada tabel ber-`column_formats` jadi string id-ID 2dp, dipanggil di awal `export()` PDF/Word/CSV (Excel TIDAK — pakai Decimal numeric langsung). Tabel tanpa `column_formats` (report belum dimigrasi) lewat tanpa diubah → aman. Boundary ini juga mengamankan PDF/Word/CSV untuk RAB & Harga yang sudah dimigrasi.
+
+### 6.6 Gate setelah Harga + Kebutuhan (SELESAI 2026-06-20)
+- ✅ Seluruh test export jalan: **121 PASS**.
+- ✅ PDF/Word tidak rusak: boundary materialize → Word render test assert `"220,00"`/`"660,00"` (bukan `"220.00"` mentah).
+- ✅ Tidak ada `_format_number()` pada **raw data output** kedua adapter (page-1 harga & rows kebutuhan). Narasi konversi Harga + footer label = prosa by-design.
+- ✅ Workbook menyimpan **numeric cell**, bukan string id-ID (parity test Excel).
+
+**Pola reusable**: Excel `_write_value_cell` + text `materialize_display_rows`, dipandu `column_formats`/`footer_value_format`. Berikutnya: **Rincian AHSP** sebagai slice tersendiri (hapus formula hidup + `_parse_number`).
