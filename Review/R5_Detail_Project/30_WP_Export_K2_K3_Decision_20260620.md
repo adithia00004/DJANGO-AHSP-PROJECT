@@ -178,4 +178,18 @@ Rincian AHSP 2-sheet (4 call-site). Perlu cek apakah adapter lain memanggil `par
 - `_parse_number`/`parse_number` (K2) di exporter di-pensiun untuk jalur data; sisakan guard tipis numeric-passthrough.
 - Formula hidup (K3) diganti nilai; rumus boleh jadi komentar/sheet sekunder.
 
-**Status langkah berikutnya:** LANGKAH 2 (contract test backend→adapter→workbook) — test ditulis sebagai spesifikasi (RED) sebelum K2/K3/presisi membuatnya GREEN.
+### 6.3 Desain boundary (keputusan owner 2026-06-20)
+**`column_formats` metadata per report.** Adapter mengirim **Decimal** di sel + `table_data.column_formats` (mis. `['@','@','@','#,##0.000','#,##0.00','#,##0.00']`) + opsional `footer_value_format`. Exporter (`_write_value_cell`) menulis `float(Decimal)` + stamp `number_format` per kolom. **Backward-compatible**: report tanpa metadata = perilaku lama → migrasi **satu report per slice**.
+
+### 6.4 Progress slice (vertical, tiap report parity-tested)
+
+| Report | Status | Catatan |
+|---|---|---|
+| **Rekap RAB** | ✅ SELESAI (commit `e2d7b85e`) | adapter Decimal + `column_formats`; exporter boundary; manager propagasi 2 page; `tests_wp_export_parity` + parity web==export diperkuat exact-Decimal; 80 export test PASS |
+| Harga Items | ⏳ berikutnya | jalur `export()` generik — pola sama, cepat |
+| Rekap Kebutuhan | ⏳ | jalur `export()` generik |
+| Rincian AHSP | ⏳ | jalur `_export_rincian_ahsp_2sheet` — K2 `_parse_number` + K3 `=E*F`/`=SUM` |
+| Volume | ⏳ | K2 `_parse_number` + K3 `_convert_volume_formula` (rumus param) |
+| Jadwal | ⏳ | `float()`→Decimal + K3 `=C*D`/bobot (monthly/weekly/professional) |
+
+**Pola reusable sudah jadi**: `_write_value_cell(ws,row,col,val,fmt)` + `column_formats`/`footer_value_format`. Slice generik (Harga/Kebutuhan) tinggal: adapter emit Decimal + deklarasikan `column_formats`, lalu parity test.
