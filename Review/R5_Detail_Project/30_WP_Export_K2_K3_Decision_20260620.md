@@ -313,6 +313,49 @@ Section writer kembali melacak alamat sel E/F/G (di samping nilai) agar formula 
 - **Increment 2C — Weekly** (`_build_weekly_rincian_sheet` :3673): hapus perkalian `=G*…` (3988/3999/4012) + agregasi `=SUM` (4039-4059); nilai periode & total dari dataset kanonik; mirror (3937-3974) TETAP.
 - **Increment 2D — Parity gate**: backend == Data Master == monthly == weekly == professional; guard memastikan formula sheet resmi HANYA direct-reference 1:1; formula recompute hanya boleh di Kontrol Kalkulasi. Setelah hijau → **WP Export nilai-resmi 6/6 dikunci**.
 
+### 8.1 INVENTARIS FORMULA view-sheet (read-only, 2026-06-21) — sebelum implementasi 2A/2B/2C
+
+Klasifikasi tiap formula: **MIRROR 1:1** (`='Data Master'!{1 sel}`, tanpa operator/fungsi → DIPERTAHANKAN) vs **RECOMPUTE** (operator/fungsi/agregasi → jadi nilai backend / Kontrol Kalkulasi).
+
+**A. Professional Kurva** (`export_professional`, ±1103-2100) — **TIDAK ADA mirror murni; mesin S-curve berbobot penuh.**
+| Baris | Formula | Klasifikasi |
+|---|---|---|
+| 1779 | `=C*E` total harga/pekerjaan | recompute |
+| 1806/1828 | `=$G$row * 'Data Master'!gantt` (sel mingguan = bobot×proporsi) | recompute (bobot×ref, **bukan** mirror) |
+| 1845/1854 | `=SUM(rentang minggu)` total kolom/pekerjaan | recompute |
+| 1902/1909 | `=F+F+…` / `=G+G+…` total & bobot sum | recompute |
+| 1924 | `=IF(F/total)` bobot/pekerjaan | recompute |
+| 1968/1987 | `={col}{p}+…` agregasi progress mingguan (rencana/realisasi) | recompute |
+| 2008+ | `=week0+col` kumulatif | recompute |
+- **Sumber nilai backend:** adapter punya `bobot` (harga/total), proporsi mingguan per pekerjaan, dan S-curve tertimbang (`weighted_planned_period/cumulative`). → **rewrite penuh ke nilai; tak ada mirror untuk disandari.**
+
+**B. Monthly rincian** (`_build_monthly_rincian_sheet`, ±3175) — **mayoritas MIRROR + recompute terbatas.**
+| Baris | Formula | Klasifikasi |
+|---|---|---|
+| 3435/3438/3444/3448/3451/3455/3459 | `='Data Master'!{A..G}{row}` (No/Uraian/Vol/Satuan/Harga/Total/Bobot) | **MIRROR → KEEP** |
+| 3318/3336 | `='Data Master'!{identitas}` (Lokasi/Pemilik) | **MIRROR → KEEP** |
+| 3470 | Col H `=SUM('Data Master'!sel minggu lalu)` | recompute |
+| 3484 | Col I `=SUM('Data Master'!sel bulan ini)` | recompute |
+| 3490 | Col J `=H+I` | recompute |
+| 3309/3327 (+3341+) | summary `=SUM(multi-ref)` Rencana/Actual/Kumulatif Bulan | recompute |
+| TOTAL row | `=SUM(...)` kolom | recompute |
+- **Sumber nilai:** H = Σ proporsi (minggu 1..lalu), I = Σ (bulan ini), J = H+I — semua dari proporsi mingguan per pekerjaan (adapter `progress_map`). **Bounded: ganti SUM/H+I dengan Σ Python; mirror tetap.**
+
+**C. Weekly rincian** (`_build_weekly_rincian_sheet`, ±3673) — **mayoritas MIRROR + recompute bobot×sum.**
+| Baris | Formula | Klasifikasi |
+|---|---|---|
+| 3937-3974 | `='Data Master'!{A..G}{row}` | **MIRROR → KEEP** |
+| 3988 | Col H `=G*SUM('Data Master'!minggu lalu)` (bobot×Σ) | recompute |
+| 3999 | Col I `=G*'Data Master'!minggu ini` (bobot×ref) | recompute |
+| 4012 | Col J `=G*SUM(minggu 1..ini)` (bobot×Σ) | recompute |
+| 4039-4059 | TOTAL `=SUM(kolom)` | recompute |
+- **Sumber nilai:** H/I/J = bobot × Σ proporsi. bobot + proporsi ada di adapter. **Bounded: ganti dengan nilai Python; mirror tetap.**
+
+**KESIMPULAN ORDERING (terkonfirmasi, asumsi awal TERBALIK):**
+- **Effort: Monthly ≈ Weekly (bounded, banyak mirror) ≪ Professional (rewrite S-curve penuh, tanpa mirror).**
+- **Rekomendasi urutan: 2A=Monthly → 2B=Weekly → 2C=Professional** (sederhana-dengan-mirror dulu; pola guard "sheet resmi = mirror-1:1-only + nilai" matang sebelum hadapi Professional yang terumit). Penamaan 2A/2B/2C disesuaikan ke urutan baru ini.
+- Mirror `='Data Master'!cell` DIPERTAHANKAN di Monthly & Weekly; Professional tak punya mirror sehingga seluruh sel resmi jadi nilai.
+
 ---
 
 ## 9. Aturan lapisan kontrol (rollout)
