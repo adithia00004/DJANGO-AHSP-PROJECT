@@ -540,3 +540,33 @@ Urutan P0 (HI-01, HI-02, HI-03, HI-05/06) sudah tepat. Catatan:
 - **HI-01 dan HI-06 quick win** (HI-01: simpan hanya baris dirty + pertahankan null; HI-06: satu guard + DB constraint) — dampak integritas tinggi, effort rendah.
 - **HI-02 + HI-16 sebaiknya dikerjakan bersama**: buat endpoint `Terapkan dan Simpan` atomik (D-HI-02) sekaligus hapus `payload.conversions` yang mati.
 - **HI-12 + D-HI-04/D-HI-05** (unifikasi ke `used_` + pensiun Orphan Cleanup) adalah unit kerja tersendiri yang menyentuh beberapa consumer — jadwalkan terpisah.
+
+---
+
+## 13. Revalidasi & Penutupan (Claude, 2026-06-20)
+
+Revalidasi seluruh temuan terhadap kode kerja terbaru. **Mayoritas P0/HIGH sudah DITUTUP oleh WP-P1** (verifikasi langsung ke `views_api.py`/adapter/JS):
+
+| Temuan | Status | Bukti |
+|---|---|---|
+| HI-01 null→0 | ✅ FIXED | harga kosong → `plan.append((id, None))` (`:3433`), tak di-coerce 0 |
+| HI-02 konversi+harga atomik | ✅ FIXED | konversi diproses di save utama; base price server-side `mp/f2b` (`:3492`), satu `@transaction.atomic` |
+| HI-03 export ≠ calc | ✅ FIXED | adapter pakai `harga_satuan` SSOT; konversi = kolom rekonsiliasi (WP-P1d, `harga_items_adapter.py:93`) |
+| HI-04 profile tak dimuat | ✅ FIXED | `conv` dari server, `convStore` |
+| HI-05 validasi konversi | ✅ FIXED | `full_clean`+whitelist+range di **kedua** endpoint (save utama `:3505` & legacy `:3705` parse_strict) |
+| HI-06 backend terima negatif | ✅ FIXED | `if dec < 0: reject` (`:3437`) |
+| HI-07 bulk paste campur | ✅ FIXED | base price dihitung server-side |
+| HI-08 localStorage lintas-project | ✅ FIXED | localStorage konversi dihapus, server SSOT (WP-P1f) |
+| HI-16 `conversions` diabaikan | ✅ FIXED | kini diproses; legacy endpoint DEPRECATED (kandidat hapus Fase-3) |
+| HI-09 last-write-wins | BY-DESIGN | docstring eksplisit "Uses last-write-wins" (DEC-002) |
+
+**HI-10 — DITUTUP 2026-06-20 (commit `9f8a5673`, UF-020).** Sweep repo-wide menemukan **~11 endpoint write callable** tanpa `@rate_limit`/`@limit_request_body` (dipimpin `api_save_harga_items` = payload terbesar). Kebijakan diterapkan konsisten: write normal → `rate_limit(category='write')`+`limit_request_body()`; copy berat (`api_deep_copy_project`/`api_batch_copy_project`) → `category='bulk'`; endpoint UI-polled (pricing/parameter) → override longgar 240/min; endpoint deprecated tetap di-guard selama masih routed. Guard test `tests_hi10_write_governance.py` mengunci daftar+kategori terhadap drift. **27/27 PASS**, check/makemigrations bersih.
+
+**Masih terbuka (unit terpisah, lebih besar):**
+- **HI-12 / D-HI-04 / D-HI-05** — page & save masih `active_harga_items_queryset` (termasuk standalone); unifikasi ke `used_` + pensiun Orphan Cleanup = unit kerja lintas-consumer.
+- **HI-13/14/15** — a11y (lock overlay `inert`, dirty recompute, modal `for`/`aria-pressed`); belum di-deep-dive, prioritas rendah.
+- `api_save_conversion_profile` Fase-3 removal (sudah DEPRECATED + ter-harden + ter-guard).
+
+**Status Harga Items page-scope: data-integrity & governance SELESAI** (HI-01..HI-10/16 + by-design HI-09). Sisa = unit terpisah HI-12 (scope `used_`) + a11y HI-13/15.
+
+*Penutupan oleh Claude, 2026-06-20. Commit: WP-P1 (HI-01..08/16), `9f8a5673` (HI-10 governance, UF-020).*
