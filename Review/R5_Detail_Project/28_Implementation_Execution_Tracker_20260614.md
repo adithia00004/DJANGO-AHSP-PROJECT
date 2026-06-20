@@ -2117,6 +2117,22 @@ Pekerjaan yang menjadi **target bundle** (`LAIN ref_pekerjaan=A`) bagi pekerjaan
 
 **SISA WP-P7:** UAT manual interaktif Batch B pada browser (cek perilaku tanpa auto-regenerate senyap, error-state assignment, dan Kurva S weightsReady) lalu defer P7e+h (week_number hardening) + JDW-16/17 (polish) + JDW-09 (full_clean perf) → pass hardening/Fase 3.
 
+#### WP-P7 — revalidasi page-scope 2026-06-20 (JDW-18/JDW-19)
+
+Reaudit aktif page Jadwal membaca template `kelola_tahapan_grid_modern.html`, bundle Vite source, `views_api_tahapan_v2.py`, dan API Kurva/Chart. Modul legacy `views_api_tahapan.py` + JS lama tidak dimuat oleh template aktif; statusnya cleanup legacy, bukan bug runtime page aktif.
+
+| Item | Status | Catatan |
+|---|---|---|
+| JDW-01/02/03/04/05/06/07 + KS-02 + no auto-regenerate | ✅ verified closed | P7 Batch A/B tetap valid; no partial-write, boundary project dipakai, assignment load error-state, reset actual clears cost, notes/timestamp tidak aktif, Kurva S tanpa fallback bobot rata |
+| **JDW-18 write governance v2** | ✅ fixed | `api_assign_pekerjaan_weekly`, `api_update_week_boundaries`, `api_regenerate_tahapan_v2`, `api_reset_progress` kini `rate_limit` + `limit_request_body`; grid save memakai limit longgar 240/min |
+| **JDW-19 chart/Kurva API exception leak** | ✅ fixed | `api_kurva_s_data`, `api_kurva_s_harga_data`, `api_chart_data` tidak lagi response `detail: str(e)`; detail hanya log server |
+| **JDW-11 week-boundary destructive flow** | ✅ fixed | perubahan batas minggu kini confirm-before-mutate/persist; cancel mengembalikan dropdown ke nilai lama |
+| **JDW-15 project location metadata** | ✅ fixed | template aktif memakai `project.lokasi_project`, bukan `project.lokasi`; reload error control bebas inline `onclick` |
+| Legacy tahapan v1 routes | ↦ Fase 3 cleanup | Masih callable dan berpola lama; tidak dipakai page aktif |
+| P7e/P7h week-number server-authoritative penuh | ↦ hardening | JS↔Python sudah konsisten; tunda sampai pass hardening/UI runtime |
+
+**Verifikasi:** `python manage.py test detail_project.tests_jadwal_api_hardening detail_project.tests_api_v2_access detail_project.tests_wp_p7_jadwal --keepdb` → 18/18 PASS; `npm run test:frontend -- detail_project/static/detail_project/js/tests/jadwal_batch_b.test.js` → 7/7 PASS; `npm run build` OK (bundle `jadwal-kegiatan-DJ4HB4a1.js`); `manage.py check` PASS; `makemigrations --check --dry-run` no changes; `git diff --check` clean.
+
 ---
 
 ### WP-P8 — Rekap Kebutuhan (DONE / siap UAT runtime 2026-06-18)

@@ -7115,8 +7115,7 @@ def api_kurva_s_data(request: HttpRequest, project_id: int) -> JsonResponse:
             exc_info=True
         )
         return JsonResponse({
-            'error': 'Failed to compute rekap data',
-            'detail': str(e)
+            'error': 'Failed to compute rekap data'
         }, status=500)
 
     # Build response data
@@ -7244,8 +7243,7 @@ def api_kurva_s_harga_data(request: HttpRequest, project_id: int) -> JsonRespons
             exc_info=True
         )
         return JsonResponse({
-            'error': 'Failed to compute rekap data',
-            'detail': str(e)
+            'error': 'Failed to compute rekap data'
         }, status=500)
 
     rekap_lookup = {row['pekerjaan_id']: row for row in rekap_rows}
@@ -8056,8 +8054,7 @@ def api_chart_data(request: HttpRequest, project_id: int) -> JsonResponse:
             exc_info=True
         )
         return JsonResponse({
-            'error': 'Failed to generate chart data',
-            'detail': str(e)
+            'error': 'Failed to generate chart data'
         }, status=500)
 
 

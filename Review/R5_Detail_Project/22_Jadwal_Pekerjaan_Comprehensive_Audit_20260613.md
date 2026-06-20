@@ -1548,3 +1548,34 @@ Koreksi owner: overlay canvas **tidak sepenuhnya server-side**. `UnifiedTableMan
 6. **Contract test:** kurva tersimpan di layar harus identik dengan kurva export.
 
 **Severity:** KS-01 & KS-02 berdampak pada kepercayaan data yang ditampilkan (layar bisa menyesatkan vs export); KS-03 menyebabkan basi senyap; KS-04 fondasi yang dipertahankan; KS-05 menetapkan kontrak basis bobot. Dikategorikan sebagai **temuan terverifikasi** untuk fase perbaikan, terkait erat dengan penyelesaian calculation service Rekap RAB (RA-01/RR-02). 
+
+### 14.7 Revalidasi page-scope setelah implementasi WP-P7 (20 Juni 2026)
+
+Revalidasi dilakukan terhadap jalur aktif page `kelola_tahapan_grid_modern.html`, bundle Vite `jadwal_kegiatan_app.js` + modul `js/src/modules`, endpoint v2 `views_api_tahapan_v2.py`, dan API Kurva/Chart yang dipakai layar/export. Modul lama `kelola_tahapan_page_bootstrap.js` dan keluarga `jadwal_pekerjaan/kelola_tahapan/*` tidak dimuat oleh template aktif; statusnya masuk cleanup legacy, bukan bug runtime page aktif.
+
+**Sudah terverifikasi tertutup:**
+
+- JDW-01/JDW-03: save weekly dan sync sudah atomik; cabang error melakukan rollback, bukan partial-write.
+- JDW-02: fallback minggu memakai konfigurasi boundary project, bukan hardcode Minggu.
+- JDW-04: `loadAssignments` melempar error/error-state, tidak lagi menyamarkan gagal load sebagai map kosong.
+- JDW-05: reset realisasi menghapus `actual_cost`.
+- JDW-06/JDW-07: notes/timestamp tidak lagi menjadi kontrak UI/API aktif.
+- KS-02/JDW-13D: Kurva S client tidak lagi memakai fallback volume/bobot-rata senyap; bila bobot harga belum siap, dataset ditandai `weightsReady:false`.
+- B6/R2: page-open tidak melakukan auto-regenerate senyap; client hanya memberi advisory `timelineNeedsRegen` dan user menjalankan tindakan terkontrol.
+
+**Ditutup pada revalidasi ini:**
+
+- **JDW-18 (Medium) - governance endpoint write v2 belum lengkap.** Endpoint aktif `api_assign_pekerjaan_weekly`, `api_update_week_boundaries`, `api_regenerate_tahapan_v2`, dan `api_reset_progress` kini memakai `rate_limit` + `limit_request_body`. Save grid memakai limit lebih longgar (`240/min`) agar tidak mengganggu input normal, endpoint lain memakai kategori `write`.
+- **JDW-19 (Medium) - API Kurva/Chart membocorkan detail exception.** `api_kurva_s_data`, `api_kurva_s_harga_data`, dan `api_chart_data` tidak lagi mengirim `detail: str(e)` ke client. Detail tetap masuk log server via `exc_info=True`.
+- **JDW-11 (Tinggi) - batas minggu disimpan sebelum konfirmasi discard.** Handler perubahan week boundary kini meminta konfirmasi sebelum mengubah state, regenerate kolom, atau persist ke backend bila ada perubahan belum disimpan. Jika user membatalkan, dropdown dikembalikan ke nilai lama dan tidak ada mutasi.
+- **JDW-15 (Sedang) - lokasi project salah field.** Template aktif `kelola_tahapan_grid_modern.html` kini memakai `project.lokasi_project`, bukan alias tidak resmi `project.lokasi`. Ini menjaga metadata client/export standar agar sama dengan identitas project.
+- **CSP cleanup kecil.** Tombol reload pada error state inisialisasi tidak lagi memakai inline `onclick`; diganti tautan reload biasa ke current path.
+
+**Sisa yang bukan bug aktif page-scope:**
+
+- Endpoint legacy di `views_api_tahapan.py` masih callable dan masih punya pola lama (`str(e)`, `print`, mode daily/monthly/custom lama). Karena template aktif tidak memuat modul legacy, ini dipindahkan ke Fase 3 cleanup/route retirement atau hardening legacy jika route harus dipertahankan.
+- P7e/P7h week-number server-authoritative penuh tetap hardening: JS dan Python sudah dikunci konsisten oleh contract test; tidak ada bukti drift runtime saat ini.
+- JDW-09 (`full_clean` per sel) tetap performance-defer karena menyentuh model-wide save dan tidak memengaruhi correctness.
+- JDW-16/JDW-17 tetap polish a11y/terminologi rendah untuk pass UI berikutnya.
+
+**Verifikasi:** `tests_jadwal_api_hardening`, `tests_api_v2_access`, dan `tests_wp_p7_jadwal` lulus; `jadwal_batch_b.test.js` 7/7 lulus; `npm run build` menghasilkan bundle Jadwal baru; `manage.py check` bersih; `makemigrations --check --dry-run` tidak menghasilkan migrasi; `git diff --check` bersih.

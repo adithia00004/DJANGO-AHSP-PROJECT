@@ -207,7 +207,7 @@
   data-api-save="{% url 'detail_project:api_v2_assign_weekly' project.id %}" data-enable-uplot-kurva="true"
   data-project-name="{{ project.nama|escape }}" data-project-start="{{ project.tanggal_mulai|date:'Y-m-d'|default:'' }}"
   data-project-end="{{ project.tanggal_selesai|date:'Y-m-d'|default:'' }}" data-default-time-scale="weekly"
-  data-project-location="{{ project.lokasi|default:'-' }}" data-project-owner="{{ project.nama_client|default:'-' }}"
+  data-project-location="{{ project.lokasi_project|default:'-' }}" data-project-owner="{{ project.nama_client|default:'-' }}"
   data-project-source-of-funds="{{ project.sumber_dana|default:'-' }}"
   data-project-budget="{{ project.anggaran_owner|default:0 }}" data-default-input-mode="percentage"
   data-week-start-day="{{ project.week_start_day|default:0 }}" data-week-end-day="{{ project.week_end_day|default:6 }}"
@@ -246,10 +246,10 @@
             <strong>Jadwal pekerjaan gagal dimuat.</strong>
             <span id="jadwal-initialization-error-message">Silakan muat ulang halaman.</span>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-danger" onclick="window.location.reload()">
+          <a class="btn btn-sm btn-outline-danger" href="{{ request.get_full_path }}" role="button">
             <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
             Muat ulang
-          </button>
+          </a>
         </div>
       </div>
       <div class="tanstack-grid-section" id="tanstack-grid-section">

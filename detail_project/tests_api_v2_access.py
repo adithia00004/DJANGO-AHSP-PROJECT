@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from unittest.mock import patch
 
 from dashboard.models import Project
 from detail_project.views_api import (
@@ -60,3 +61,39 @@ class ApiV2OwnershipAccessTests(TestCase):
         response = api_chart_data(request, self.project.id)
 
         self.assertEqual(response.status_code, 404)
+
+    def test_kurva_s_data_error_does_not_leak_exception_text(self):
+        secret = "secret-kurva-s-data"
+        request = self.factory.get("/detail_project/api/v2/project/kurva-s-data/")
+        request.user = self.owner
+        with patch("detail_project.views_api.compute_rekap_for_project", side_effect=RuntimeError(secret)):
+            response = api_kurva_s_data(request, self.project.id)
+
+        body = response.content.decode("utf-8")
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(secret, body)
+
+    def test_kurva_s_harga_error_does_not_leak_exception_text(self):
+        secret = "secret-kurva-s-harga"
+        request = self.factory.get("/detail_project/api/v2/project/kurva-s-harga/")
+        request.user = self.owner
+        with patch("detail_project.views_api.compute_rekap_for_project", side_effect=RuntimeError(secret)):
+            response = api_kurva_s_harga_data(request, self.project.id)
+
+        body = response.content.decode("utf-8")
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(secret, body)
+
+    def test_chart_data_error_does_not_leak_exception_text(self):
+        secret = "secret-chart-data"
+        request = self.factory.get("/detail_project/api/v2/project/chart-data/")
+        request.user = self.owner
+        with patch(
+            "detail_project.exports.jadwal_pekerjaan_adapter.JadwalPekerjaanExportAdapter._fetch_weekly_tahapan",
+            side_effect=RuntimeError(secret),
+        ):
+            response = api_chart_data(request, self.project.id)
+
+        body = response.content.decode("utf-8")
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(secret, body)

@@ -38,7 +38,7 @@ from detail_project.progress_utils import (
 
 # Import helper from original views
 from detail_project.views_api_tahapan import _owner_or_404
-from detail_project.api_helpers import atomic_error_response
+from detail_project.api_helpers import atomic_error_response, limit_request_body, rate_limit
 
 import logging
 logger = logging.getLogger(__name__)
@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 
 @login_required
 @require_POST
+@rate_limit(max_requests=240, window=60)  # Jadwal grid save can be frequent; still guard runaway writes.
+@limit_request_body()
 @transaction.atomic
 def api_assign_pekerjaan_weekly(request, project_id):
     """
@@ -440,6 +442,8 @@ def api_assign_pekerjaan_weekly(request, project_id):
 
 @login_required
 @require_POST
+@rate_limit(category='write')
+@limit_request_body()
 def api_update_week_boundaries(request, project_id):
     """
     Persist user preference for week start/end day per project.
@@ -835,6 +839,8 @@ def api_get_project_assignments_v2(request, project_id):
 
 @login_required
 @require_POST
+@rate_limit(category='write')
+@limit_request_body()
 @transaction.atomic
 def api_regenerate_tahapan_v2(request, project_id):
     """
@@ -1002,6 +1008,8 @@ def api_regenerate_tahapan_v2(request, project_id):
 
 @login_required
 @require_POST
+@rate_limit(category='write')
+@limit_request_body()
 @transaction.atomic
 def api_reset_progress(request, project_id):
     """

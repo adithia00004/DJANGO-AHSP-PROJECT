@@ -1637,12 +1637,31 @@ class JadwalKegiatanApp {
     }
   }
 
-  _handleWeekBoundaryChange({ weekStartDay, weekEndDay, source }) {
+  async _handleWeekBoundaryChange({ weekStartDay, weekEndDay, source }) {
     const normalizedEnd = this._normalizePythonWeekday(weekEndDay, this._getWeekEndDay());
     const normalizedStart = this._normalizePythonWeekday(weekStartDay, (normalizedEnd + 1) % 7);
-    if (normalizedStart === this._getWeekStartDay() && normalizedEnd === this._getWeekEndDay()) {
+    const previousStart = this._getWeekStartDay();
+    const previousEnd = this._getWeekEndDay();
+    if (normalizedStart === previousStart && normalizedEnd === previousEnd) {
       this._syncWeekBoundaryControls();
       return;
+    }
+
+    if (this.state.isDirty || this._getModifiedCount() > 0) {
+      const confirmed = await this._confirmAction({
+        title: 'Ubah batas minggu?',
+        message: 'Perubahan yang belum disimpan akan dibatalkan ketika batas minggu diubah.',
+        confirmLabel: 'Ubah batas minggu',
+        danger: true,
+      });
+      if (!confirmed) {
+        this.state.weekStartDay = previousStart;
+        this.state.weekEndDay = previousEnd;
+        this._syncWeekBoundaryControls();
+        return;
+      }
+      this._resetEditedCellsState();
+      this.state.isDirty = false;
     }
 
     this.state.weekStartDay = normalizedStart;

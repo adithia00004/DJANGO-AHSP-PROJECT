@@ -18,6 +18,10 @@ const orchestrator = read('modules/app/DataOrchestrator.js');
 const app = read('jadwal_kegiatan_app.js');
 const dataLoader = read('modules/core/data-loader.js');
 const datasetBuilder = read('modules/kurva-s/dataset-builder.js');
+const template = readFileSync(
+  resolve(__dirname, '..', '..', '..', '..', 'templates', 'detail_project', 'kelola_tahapan_grid_modern.html'),
+  'utf-8'
+);
 
 describe('WP-P7i — no silent auto-regenerate on page-open (B6e/R2)', () => {
   test('DataOrchestrator flags advisory instead of auto-regenerating', () => {
@@ -29,6 +33,34 @@ describe('WP-P7i — no silent auto-regenerate on page-open (B6e/R2)', () => {
   test('jadwal_kegiatan_app flags advisory instead of auto-regenerating', () => {
     expect(app).toContain('this.state.timelineNeedsRegen = true');
     expect(app).not.toMatch(/shouldForceWeekly\)\s*\{[\s\S]*?await this\._regenerateTimeline/);
+  });
+});
+
+describe('JDW-11/JDW-15 - boundary confirmation and project identity metadata', () => {
+  test('week boundary changes confirm before mutating/persisting when dirty', () => {
+    expect(app).toMatch(/async _handleWeekBoundaryChange/);
+    expect(app).toContain("title: 'Ubah batas minggu?'");
+    expect(app).toContain("confirmLabel: 'Ubah batas minggu'");
+    expect(app).toMatch(/if \(!confirmed\) \{[\s\S]*?this\.state\.weekStartDay = previousStart;[\s\S]*?this\.state\.weekEndDay = previousEnd;[\s\S]*?return;/);
+
+    const handlerStart = app.indexOf('async _handleWeekBoundaryChange');
+    const confirmIdx = app.indexOf("title: 'Ubah batas minggu?'", handlerStart);
+    const mutateIdx = app.indexOf('this.state.weekStartDay = normalizedStart;', handlerStart);
+    const persistIdx = app.indexOf('this._persistWeekBoundarySettings(normalizedStart, normalizedEnd);', handlerStart);
+
+    expect(confirmIdx).toBeGreaterThan(handlerStart);
+    expect(mutateIdx).toBeGreaterThan(confirmIdx);
+    expect(persistIdx).toBeGreaterThan(mutateIdx);
+  });
+
+  test('active template reads project location from lokasi_project', () => {
+    expect(template).toContain('data-project-location="{{ project.lokasi_project|default:\'-\' }}"');
+    expect(template).not.toContain('data-project-location="{{ project.lokasi|default:\'-\' }}"');
+  });
+
+  test('initialization reload control is CSP-safe (no inline onclick)', () => {
+    expect(template).not.toContain('onclick="window.location.reload()"');
+    expect(template).toContain('href="{{ request.get_full_path }}"');
   });
 });
 
