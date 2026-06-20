@@ -860,6 +860,7 @@
   function applyDenseUI() {
     root.classList.toggle('rab-dense', dense);
     btnDensity?.classList.toggle('active', dense);
+    btnDensity?.setAttribute('aria-pressed', String(dense));  // RR-22: announce pressed state
     recalcTableHeight();
   }
 
@@ -895,6 +896,7 @@
     subtotalOnly = !subtotalOnly;
     setBoolPref('subtotal_only', subtotalOnly);
     btnSubtotal.classList.toggle('active', subtotalOnly);
+    btnSubtotal.setAttribute('aria-pressed', String(subtotalOnly));  // RR-22: announce pressed state
     render(inpSearch?.value || '');
     announce(subtotalOnly ? 'Mode subtotal aktif' : 'Mode detail aktif');
   });
@@ -940,6 +942,7 @@
   updateSortIndicators();
   subtotalOnly = getBoolPref('subtotal_only', false);
   btnSubtotal?.classList.toggle('active', subtotalOnly);
+  btnSubtotal?.setAttribute('aria-pressed', String(subtotalOnly));  // RR-22: sync init pressed state
   dense = getBoolPref('dense', false);
   applyDenseUI();
   updateToolbarState();
