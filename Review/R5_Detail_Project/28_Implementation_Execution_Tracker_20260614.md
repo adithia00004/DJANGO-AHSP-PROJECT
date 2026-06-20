@@ -348,9 +348,9 @@ Test: `tests_template_ahsp_ta_followups` + `template_ahsp_a11y.test.js`. **71 ba
 
 **Dipindah ke WP lain:** TA-08 (export `str(e)` leak, sistemik) → WP Export; TA-11 (CDN SRI) → CSP/SRI level-app (WP-A2). **Sisa low/maintainability:** TA-12 (immutable row id), TA-19 (kontrak koef expanded docs).
 
-**Sisir tuntas `template_ahsp.js` (2026-06-20) — TEMUAN BARU `TA-22` (commit `7283da6c`):** race "stale async response" → korupsi silang antar-pekerjaan. `selectJobInternal` fetch / `doSave` success / handler reset mem-paint/cache via global `activeJobId` lintas-async; saat user pindah pekerjaan ketika request in-flight, respons job A bisa nyangkut ke tabel job B → edit+save menulis komponen A ke B (senyap). Fix: kunci cache/paint ke job-id request + jangan repaint bila active berubah. Guard `template_ahsp_race_guard.test.js`; 384 FE PASS. Minor (catat, tak diperbaiki): dead-code freshness check, 24 console.log debug, mismatch nol koef FE↔BE, TA-09 native confirm.
+**Sisir tuntas `template_ahsp.js` (2026-06-20) — TEMUAN BARU `TA-22` (commit `7283da6c`, residual `e76d4716`):** race "stale async response" → korupsi silang antar-pekerjaan. `selectJobInternal` fetch / `doSave` success / handler reset mem-paint/cache via global `activeJobId` lintas-async; saat user pindah pekerjaan ketika request in-flight, respons job A bisa nyangkut ke tabel job B → edit+save menulis komponen A ke B (senyap). Fix: kunci cache/paint ke job-id request + jangan repaint bila active berubah; residual dirty-flag juga ditutup (`if (stillActive) setDirty(false)`) sehingga save response job lama tidak membersihkan dirty state pekerjaan aktif lain. Guard `template_ahsp_race_guard.test.js`; 384 FE PASS. Minor (catat, tak diperbaiki): dead-code freshness check, 24 console.log debug, mismatch nol koef FE↔BE, TA-09 native confirm.
 
-**Disposition:** Template AHSP page-scope = **SELESAI** (termasuk bug race TA-22 dari sisir tuntas).
+**Disposition:** Template AHSP page-scope = **SELESAI TOTAL** (termasuk bug race TA-22 + residual dirty-flag dari sisir tuntas).
 
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
