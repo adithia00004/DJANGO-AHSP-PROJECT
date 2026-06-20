@@ -188,8 +188,8 @@ Rincian AHSP 2-sheet (4 call-site). Perlu cek apakah adapter lain memanggil `par
 | **Rekap RAB** | ✅ SELESAI (`e2d7b85e`) | adapter Decimal + `column_formats`; exporter boundary; manager propagasi 2 page; parity web==export diperkuat exact-Decimal |
 | **Harga Items** | ✅ SELESAI (`4ce0870f`) | Satuan Dasar harga→Decimal 2dp; NULL→`'-'` tetap beda dari `0.00` (D-HI-01); konversi page = narasi by-design |
 | **Rekap Kebutuhan** | ✅ SELESAI (`0e27a719`) | Qty 3dp + harga/total 2dp Decimal; grand-total footer numeric; scheduled/unscheduled & total tak berubah |
-| Rincian AHSP | ⏳ slice tersendiri | jalur `_export_rincian_ahsp_2sheet` — K2 `_parse_number` + K3 `=E*F`/`=SUM` (blast radius lebih besar) |
-| Volume | ⏳ | K2 `_parse_number` + K3 `_convert_volume_formula` (rumus param) |
+| **Rincian AHSP** | ✅ SELESAI (`786d2834`) | hapus `=E*F`/`=SUM`/E-F-G formula + cross-ref `=Rincian!` + `_parse_number`; adapter Decimal; Rekap sheet pakai nilai (refs bawa value); gate **no `data_type='f'`** |
+| Volume | ⏳ berikutnya | K2 `_parse_number` + K3 `_convert_volume_formula` (rumus param — perlu perlakuan khusus per owner) |
 | Jadwal | ⏳ | `float()`→Decimal + K3 `=C*D`/bobot (monthly/weekly/professional) |
 
 ### 6.5 Temuan penting — boundary teks-exporter (PDF/Word/CSV)
@@ -203,4 +203,15 @@ Solusi: `exports/cell_format.py` → `materialize_display_rows(data)` memformat 
 - ✅ Tidak ada `_format_number()` pada **raw data output** kedua adapter (page-1 harga & rows kebutuhan). Narasi konversi Harga + footer label = prosa by-design.
 - ✅ Workbook menyimpan **numeric cell**, bukan string id-ID (parity test Excel).
 
-**Pola reusable**: Excel `_write_value_cell` + text `materialize_display_rows`, dipandu `column_formats`/`footer_value_format`. Berikutnya: **Rincian AHSP** sebagai slice tersendiri (hapus formula hidup + `_parse_number`).
+**Pola reusable**: Excel `_write_value_cell` + text `materialize_display_rows`, dipandu `column_formats`/`footer_value_format`.
+
+### 6.7 Slice 4 — Rincian AHSP (SELESAI 2026-06-20, commit kode `786d2834`)
+Blast radius terbesar (jalur exporter khusus `_export_rincian_ahsp_2sheet`, bukan generic):
+- **Excel**: sebelumnya tiap baris `=E{r}*F{r}`, subtotal `=SUM(...)`, E/F/G chain formula, dan **sheet "Rekap" pakai cross-ref `=Rincian!G..`**. Semua diganti **nilai kanonik backend** via `_write_value_cell`; `pekerjaan_refs` kini membawa `e_val/f_val/g_val` (bukan alamat sel). `_parse_number` dibuang dari jalur ini.
+- **Adapter**: `groups[].rows` (koef/harga/jumlah), `subtotal`, `totals{E,F,G,markup_eff}`, `pekerjaan.total`, `recap.rows`, `summary` → Decimal kanonik. `detail_table` + `recap` deklarasi `column_formats` (Koef `#,##0.000000`, uang `#,##0.00`).
+- **PDF/Word/CSV**: `materialize_display_rows` dapat cabang `sections`/`recap`/`summary` (`_materialize_rincian`) → format id-ID 2dp.
+- **Formula**: dihapus total (bukan dijadikan komentar) — paling bersih utk gate "bukan nilai sel".
+
+**Gate Rincian (semua ✅):** parity backend→adapter→workbook (komponen koef/harga/jumlah + E/F/G); **tak ada sel `data_type='f'`** (di-assert lintas semua sheet); explicit-zero numeric (None→0 coercion lama Rincian dipertahankan, beda dari Harga Items yg NULL→`-`); markup default/override + bundle expanded tak berubah (tetap dari canonical rekap + `bundle_totals`); **123 export test PASS**; Word render `"220,00"` (bukan `"220.00"`).
+
+**Berikutnya — Volume** (slice tersendiri): `_convert_volume_formula` (rumus parameter user → rumus Excel) butuh **perlakuan khusus** (formula parameter Volume = fitur, bukan sekadar kalkulasi nilai) — evaluasi terpisah sesuai instruksi owner.
