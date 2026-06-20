@@ -453,6 +453,7 @@
     } else if (scope === 'list') {
       if ($list) {
         $list.classList.toggle('is-loading', !!on);
+        $list.setAttribute('aria-busy', on ? 'true' : 'false');
         if (on) {
           $list.style.opacity = String(CONSTANTS.LOADING_OPACITY);
           $list.style.pointerEvents = 'none';
@@ -465,6 +466,7 @@
       const $editor = ROOT.querySelector('.ra-editor');
       if ($editor) {
         $editor.classList.toggle('is-loading', !!on);
+        $editor.setAttribute('aria-busy', on ? 'true' : 'false');
         if (on) {
           $editor.style.opacity = String(CONSTANTS.LOADING_OPACITY);
           $editor.style.pointerEvents = 'none';
@@ -961,8 +963,12 @@
           tr.dataset.refPekerjaanId = it.ref_pekerjaan_id || '';
           tr.dataset.refAhspId = it.ref_ahsp_id || '';
           tr.classList.add('bundle-row', 'clickable');
+          tr.setAttribute('role', 'button');
+          tr.setAttribute('tabindex', '0');
+          tr.setAttribute('aria-expanded', 'false');
+          tr.setAttribute('aria-label', `Lihat komponen bundle ${it.kode || it.uraian || ''}`.trim());
           tr.style.cursor = 'pointer';
-          tr.title = 'Klik untuk melihat detail komponen bundle';
+          tr.title = 'Klik atau tekan Enter/Spasi untuk melihat detail komponen bundle';
         }
 
         const koefTitle = isBundle ? 'Koefisien bundle dipakai untuk ekspansi komponen' : '';
@@ -1030,20 +1036,84 @@
     const bundleRows = $tbody?.querySelectorAll('.bundle-row');
     if (!bundleRows) return;
 
+    function closeBundleExpansion(row) {
+      const expansion = row?.nextElementSibling;
+      if (expansion?.classList.contains('bundle-expansion')) {
+        expansion.remove();
+      }
+      row?.classList.remove('expanded');
+      row?.setAttribute('aria-expanded', 'false');
+    }
+
+    function buildExpansionRow(row, components) {
+      const expansionRow = document.createElement('tr');
+      expansionRow.className = 'bundle-expansion';
+      const closeId = `ra-bundle-close-${row.dataset.bundleId || 'x'}`;
+      expansionRow.innerHTML = `
+        <td colspan="7" style="padding: 0; background: #f8f9fa;">
+          <div style="padding: 12px 20px; border-left: 3px solid #0dcaf0;">
+            <div class="d-flex align-items-center mb-2">
+              <i class="bi bi-box-seam text-info me-2"></i>
+              <strong>Komponen Bundle (${components.length} item)</strong>
+              <button type="button" id="${closeId}" class="btn btn-sm btn-link ms-auto js-bundle-close">
+                <i class="bi bi-x-lg" aria-hidden="true"></i> Tutup
+              </button>
+            </div>
+            <table class="table table-sm table-bordered mb-0" style="font-size: 0.85em;">
+              <thead style="background: #e9ecef;">
+                <tr>
+                  <th scope="col" style="width: 40px;">No</th>
+                  <th scope="col">Kategori</th>
+                  <th scope="col">Uraian</th>
+                  <th scope="col">Kode</th>
+                  <th scope="col" class="text-center">Satuan</th>
+                  <th scope="col" class="text-end">Koefisien</th>
+                  <th scope="col" class="text-end">Harga Satuan</th>
+                  <th scope="col" class="text-end">Jumlah</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${components.map((c, idx) => `
+                  <tr>
+                    <td class="mono text-center">${idx + 1}</td>
+                    <td><span class="badge bg-secondary">${esc(c.kategori)}</span></td>
+                    <td>${esc(c.uraian)}</td>
+                    <td class="mono">${esc(c.kode)}</td>
+                    <td class="mono text-center">${esc(c.satuan || '-')}</td>
+                    <td class="mono text-end">${num(c.koefisien).toLocaleString(locale, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</td>
+                    <td class="mono text-end">${fmt(c.harga_satuan)}</td>
+                    <td class="mono text-end">${fmt(num(c.koefisien) * num(c.harga_satuan))}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+              <tfoot style="background: #e9ecef; font-weight: bold;">
+                <tr>
+                  <td colspan="7" class="text-end">Total Bundle:</td>
+                  <td class="mono text-end">${fmt(components.reduce((sum, c) => sum + (num(c.koefisien) * num(c.harga_satuan)), 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </td>
+      `;
+      expansionRow.querySelector('.js-bundle-close')?.addEventListener('click', () => closeBundleExpansion(row));
+      return expansionRow;
+    }
+
     bundleRows.forEach(row => {
-      row.addEventListener('click', async function () {
+      async function toggleBundleExpansion() {
         const bundleId = this.dataset.bundleId;
 
         // Toggle expansion
         const existingExpansion = this.nextElementSibling?.classList.contains('bundle-expansion');
         if (existingExpansion) {
-          this.nextElementSibling.remove();
-          this.classList.remove('expanded');
+          closeBundleExpansion(this);
           return;
         }
 
         // Show loading
         this.classList.add('loading');
+        this.setAttribute('aria-busy', 'true');
         const originalCursor = this.style.cursor;
         this.style.cursor = 'wait';
 
@@ -1052,67 +1122,28 @@
           const components = await fetchBundleExpansion(selectedId, bundleId);
 
           // Create expansion row
-          const expansionRow = document.createElement('tr');
-          expansionRow.className = 'bundle-expansion';
-          expansionRow.innerHTML = `
-            <td colspan="7" style="padding: 0; background: #f8f9fa;">
-              <div style="padding: 12px 20px; border-left: 3px solid #0dcaf0;">
-                <div class="d-flex align-items-center mb-2">
-                  <i class="bi bi-box-seam text-info me-2"></i>
-                  <strong>Komponen Bundle (${components.length} item)</strong>
-                  <button class="btn btn-sm btn-link ms-auto" onclick="this.closest('.bundle-expansion').remove(); this.closest('.bundle-expansion').previousElementSibling.classList.remove('expanded');">
-                    <i class="bi bi-x-lg"></i> Tutup
-                  </button>
-                </div>
-                <table class="table table-sm table-bordered mb-0" style="font-size: 0.85em;">
-                  <thead style="background: #e9ecef;">
-                    <tr>
-                      <th style="width: 40px;">No</th>
-                      <th>Kategori</th>
-                      <th>Uraian</th>
-                      <th>Kode</th>
-                      <th class="text-center">Satuan</th>
-                      <th class="text-end">Koefisien</th>
-                      <th class="text-end">Harga Satuan</th>
-                      <th class="text-end">Jumlah</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${components.map((c, idx) => `
-                      <tr>
-                        <td class="mono text-center">${idx + 1}</td>
-                        <td><span class="badge bg-secondary">${esc(c.kategori)}</span></td>
-                        <td>${esc(c.uraian)}</td>
-                        <td class="mono">${esc(c.kode)}</td>
-                        <td class="mono text-center">${esc(c.satuan || '-')}</td>
-                        <td class="mono text-end">${num(c.koefisien).toLocaleString(locale, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}</td>
-                        <td class="mono text-end">${fmt(c.harga_satuan)}</td>
-                        <td class="mono text-end">${fmt(num(c.koefisien) * num(c.harga_satuan))}</td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
-                  <tfoot style="background: #e9ecef; font-weight: bold;">
-                    <tr>
-                      <td colspan="7" class="text-end">Total Bundle:</td>
-                      <td class="mono text-end">${fmt(components.reduce((sum, c) => sum + (num(c.koefisien) * num(c.harga_satuan)), 0))}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </td>
-          `;
+          const expansionRow = buildExpansionRow(this, components);
 
           // Insert after current row
           this.parentNode.insertBefore(expansionRow, this.nextSibling);
           this.classList.add('expanded');
+          this.setAttribute('aria-expanded', 'true');
 
         } catch (err) {
           console.error('[BUNDLE] Failed to load expansion:', err);
           showToast('Gagal memuat detail bundle: ' + err.message, 'error');
         } finally {
           this.classList.remove('loading');
+          this.setAttribute('aria-busy', 'false');
           this.style.cursor = originalCursor;
         }
+      }
+
+      row.addEventListener('click', toggleBundleExpansion);
+      row.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        toggleBundleExpansion.call(this);
       });
     });
   }

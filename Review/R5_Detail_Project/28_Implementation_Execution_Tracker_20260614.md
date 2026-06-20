@@ -352,6 +352,18 @@ Test: `tests_template_ahsp_ta_followups` + `template_ahsp_a11y.test.js`. **71 ba
 
 **Disposition:** Template AHSP page-scope = **SELESAI TOTAL** (termasuk bug race TA-22 + residual dirty-flag dari sisir tuntas).
 
+### UF-019 - (Reaudit Rincian AHSP 2026-06-20) — RA-13 page-scope a11y ditutup
+
+**Revalidasi** audit `20_Rincian_AHSP_Comprehensive_Audit`: temuan core WP-P5/B1/B5 sudah sesuai kode aktual — RA-01 (default markup), RA-04 (parser override), RA-06 (`snapshot_satuan` export), RA-07 (audit override), RA-08 (readiness banner), RA-10 (surface backend error), RA-15 (export wrapper), RA-16 (rate/body limit), dan RA-05 (Reset Semua Override fungsional) sudah tertutup.
+
+**Guard async:** Rincian AHSP sudah punya `selectToken`, `AbortController`, guard `selectedId === targetId`, dan auto-select hanya saat belum ada selection aktif. Tidak ditemukan kelas race seperti TA-22 pada Template AHSP.
+
+**Ditutup turn ini:** **RA-13** bundle expansion accessibility. Bundle row kini menjadi disclosure control keyboard-accessible (`role="button"`, `tabindex="0"`, Enter/Space), state expand memakai `aria-expanded`, loading state memakai `aria-busy`, expansion table header memakai `scope="col"`, dan inline `onclick` pada tombol Tutup dihapus/diganti event listener.
+
+**Verifikasi:** `node --check detail_project/static/detail_project/js/rincian_ahsp.js` PASS; `npm run test:frontend -- detail_project/static/detail_project/js/tests/rincian_a11y.test.js detail_project/static/detail_project/js/tests/rincian_override.test.js` PASS (9/9); `python manage.py check` PASS; `git diff --check` PASS.
+
+**Disposition:** Rincian AHSP page-scope = **SELESAI**. Sisa: RA-02 keputusan produk label/scope Grand Total, RA-03 WP Export/canonical export builder, RA-09 edge backend rekap, RA-11 last-write-wins by design, dan RA-12/14/17..20 polish.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.

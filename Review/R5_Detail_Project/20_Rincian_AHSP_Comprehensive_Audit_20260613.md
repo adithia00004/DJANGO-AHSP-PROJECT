@@ -548,3 +548,28 @@ Urutan P0 (RA-01..RA-04) sudah tepat. Catatan:
 - **RA-04 dan RA-06 quick win** (RA-04: ganti ke parser shared; RA-06: `snapshot_satuan`) — effort sangat rendah, RA-06 cukup satu kata.
 - **RA-01, RA-02, RA-03 sebaiknya satu paket**: buat satu calculation builder kanonik (default markup tunggal di service) yang dipakai `api_get_rekap_rab`, web, dan adapter export — menutup RA-01/02/03/06 sekaligus. Ini juga prasyarat keputusan D-RA-01 (scope Grand Total).
 - **RA-05 (kontrol Save/Reset mati)** murah dan mengurangi kebingungan — bagus dikerjakan bareng D-RA-02.
+
+---
+
+## 13. Revalidasi Implementasi (20 Juni 2026)
+
+Revalidasi terhadap kode aktual setelah WP-B1/B4/B5 dan WP-P5:
+
+- **RA-01, RA-04, RA-06, RA-07, RA-08, RA-10, RA-15, RA-16, RA-05**: **FIXED**.
+- Guard async Rincian AHSP sudah benar: `selectToken`, `AbortController`, guard `selectedId === targetId`, dan auto-select hanya saat belum ada selection aktif.
+- **RA-13**: **FIXED page-scope**. Bundle row kini keyboard-accessible (`role="button"`, `tabindex="0"`, Enter/Space), status expand memakai `aria-expanded`, loading memakai `aria-busy`, close expansion memakai event listener, dan inline `onclick` pada expansion dihapus.
+
+Verifikasi RA-13:
+
+- `node --check detail_project/static/detail_project/js/rincian_ahsp.js`: **PASS**.
+- `npm run test:frontend -- detail_project/static/detail_project/js/tests/rincian_a11y.test.js detail_project/static/detail_project/js/tests/rincian_override.test.js`: **9/9 PASS**.
+- `python manage.py check`: **PASS**.
+- `git diff --check`: **PASS**.
+
+Sisa yang bukan page-scope blocker:
+
+- **RA-02**: keputusan produk label/scope Grand Total Rincian AHSP.
+- **RA-03**: masuk WP Export/canonical export builder.
+- **RA-09**: edge backend rekap REF tanpa cloned detail.
+- **RA-11**: last-write-wins by design.
+- **RA-12/RA-14/RA-17..RA-20**: polish/UX minor.
