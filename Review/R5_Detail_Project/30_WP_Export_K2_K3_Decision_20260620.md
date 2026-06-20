@@ -359,6 +359,20 @@ Klasifikasi tiap formula: **MIRROR 1:1** (`='Data Master'!{1 sel}`, tanpa operat
 - **Monthly rincian:** Col H/I = Python Σ proporsi planned per periode (filter bulan/4-minggu sebelum agregasi, urutan minggu kanonik); J = Python H+I; TOTAL = jumlah Python tertimbang-bobot (bukan `=SUMPRODUCT`); summary Rencana/Actual + Deviasi = nilai Python. **Kumulatif Lalu/Ini tetap mirror 1:1.** Pengesahan lokasi+tanggal = nilai string (bukan `&`-concat).
 - **Gate (✅):** test render monthly export → Data Master tanpa sel formula; tiap formula di sheet Rincian Monthly = mirror `='Data Master'!cell` murni. **157 export test PASS**, check+makemigrations bersih.
 
+**Verifikasi independen 21 Juni 2026:** implementasi dinilai benar, tetapi fixture awal hanya satu pekerjaan (bobot 100%), planned-only, dan tepat satu periode empat minggu sehingga belum membuktikan agregasi berbobot/actual/padding periode. Guard diperkuat menjadi dua pekerjaan dengan nilai 2:1, planned dan actual berbeda, enam minggu data + periode kedua W5-W8 (W7-W8 padding nol). Test kini mengunci nilai project tertimbang, nilai per-pekerjaan, deviasi, SSOT tanpa formula, dan Monthly mirror-only. Dead helper formula/variabel dari implementasi lama dibersihkan; period membership menggunakan daftar kolom kanonik yang tersedia. Verifikasi tambahan: targeted Jadwal Monthly 2/2 PASS; discovery `tests*export*.py` 81/81 PASS; `manage.py check` bersih; tidak ada migrasi.
+
+### 8.3 Increment 2B — Weekly — SELESAI (kode `c2fc3422`, 2026-06-21)
+
+Pola sama 2A untuk `_build_weekly_rincian_sheet`:
+- **Ringkasan Progress** (Kumulatif Lalu / Minggu Ini / Kumulatif Ini): `=SUMPRODUCT(bobot, weeks)` project rollup → nilai Python dari `ssot_ranges['project_weekly']` (cumul/current planned).
+- **Per-pekerjaan H/I/J:** `=G*SUM('Data Master'!..)` → `bobot × Σ proporsi planned` per periode (Decimal) dari `weekly_values`/`bobot_by_row` — **bukan baca sel worksheet**.
+- **TOTAL:** `=SUM(col)` → jumlah Python; F = Σ total harga (`grand_total`), G = Σ bobot (≈100%), H/I/J = Σ nilai tertimbang per-pekerjaan.
+- **Cols A–G tetap mirror 1:1** `='Data Master'!cell`.
+- `_build_ssot_sheet` ekspos `total_by_row` + `grand_total` untuk TOTAL weekly.
+- **Gate (✅):** test render weekly → Data Master tanpa formula; weekly rincian hanya mirror 1:1; per-pekerjaan Progress Minggu Ini + TOTAL tertimbang cocok backend (2/3×15%=10%, 1/3×5%=1/60, total 7/60). **159 export test PASS**, check bersih.
+
+**Sisa: 2C Professional Kurva** (rewrite S-curve berbobot penuh — terberat, tanpa mirror) → **2D Parity gate** → kunci 6/6.
+
 **KESIMPULAN ORDERING (terkonfirmasi, asumsi awal TERBALIK):**
 - **Effort: Monthly ≈ Weekly (bounded, banyak mirror) ≪ Professional (rewrite S-curve penuh, tanpa mirror).**
 - **Rekomendasi urutan: 2A=Monthly → 2B=Weekly → 2C=Professional** (sederhana-dengan-mirror dulu; pola guard "sheet resmi = mirror-1:1-only + nilai" matang sebelum hadapi Professional yang terumit). Penamaan 2A/2B/2C disesuaikan ke urutan baru ini.
