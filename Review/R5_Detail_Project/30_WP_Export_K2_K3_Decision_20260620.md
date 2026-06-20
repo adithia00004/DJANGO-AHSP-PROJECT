@@ -293,6 +293,29 @@ Section writer kembali melacak alamat sel E/F/G (di samping nilai) agar formula 
 
 **Gate:** sheet resmi (Rincian, Rekap) tetap **tanpa sel `data_type='f'`** (test no-`f` kini meng-exclude "Kontrol Kalkulasi"); test baru memastikan kolom kontrol = formula, menunjuk sel E/F Rincian, dan rekonsiliasi (E+F == G resmi → Status OK). **136 export test PASS**.
 
+## 8. Jadwal — nilai-resmi (scope semantik, owner 2026-06-21)
+
+**Penemuan:** exporter Jadwal **berbasis formula** — beda dari report lain. Ada **sheet SSOT "Data Master"** (sumber) + **sheet view** (rincian monthly/weekly, kurva professional) yang menarik dari SSOT.
+
+**Keputusan owner — scope SEMANTIK, bukan "hapus semua formula":**
+- **Hapus** seluruh formula **recompute** dari sheet laporan resmi: `=C*D`, `=SUM(...)`, `=IF(...)`, bobot, nilai mingguan/kurva hasil perkalian (`=G*…`), agregasi multi-ref (`=E12+E13`), apa pun yang **mengubah/menafsirkan** nilai SSOT.
+- **Pertahankan** formula **mirror 1:1**: referensi langsung SATU sel numeric pada sheet SSOT internal, tanpa operator/fungsi/pembulatan/agregasi (mis. `='Data Master'!E12`). Ini hanya memproyeksikan nilai resmi, bukan mesin kalkulasi kedua.
+- Formula recompute **dipindahkan ke Kontrol Kalkulasi** (lapisan kontrol §7).
+
+**Gate Jadwal:** sel SSOT numeric == backend; formula view = pola direct-ref 1:1; tak ada aritmetika/fungsi di sheet resmi; monthly/weekly/professional = nilai semantik sama; kurva resmi pakai angka backend (formula kurva hanya di sheet kontrol); tanpa external-link/volatile.
+
+**Increment 1 — SELESAI (commit `d3c63464`):** sheet SSOT "Data Master" (`_build_ssot_sheet`) + monthly detail = nilai backend (recompute `=C*D`/`=SUM`/bobot dihapus; Total = Σ Python; Bobot = row/grand). Tanpa regresi.
+
+**Sisa (recompute di VIEW sheets → nilai / Kontrol Kalkulasi):**
+- Professional kurva: agregasi `={refs}` (`:1902/1909/1968/1987`).
+- Monthly rincian (`_build_monthly_rincian_sheet` :3175): `=SUM` (3470/3484), `=H+I` (3490), join multi-ref (3308/3326); mirror `='Data Master'!cell` (3286/3318/3336/3435-3459) DIPERTAHANKAN.
+- Weekly rincian (`_build_weekly_rincian_sheet` :3673): `=G*…` (3988/3999/4012), `=SUM` (4039-4059); mirror (3937-3974) DIPERTAHANKAN.
+- Parity test Jadwal (SSOT numeric==backend; view = mirror-only; monthly/weekly/professional nilai semantik sama) — bagian penyelesaian slice.
+
+---
+
+## 9. Aturan lapisan kontrol (rollout)
+
 **Aturan lapisan kontrol (berlaku semua report):**
 - Sheet utama = nilai backend kanonik (tak berubah).
 - Sheet "Kontrol Kalkulasi" = formula hidup referensi eksplisit + diuji.
