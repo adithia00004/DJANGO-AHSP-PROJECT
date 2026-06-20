@@ -745,3 +745,36 @@ Urutan P0 (RR-01..RR-05) tepat. Catatan:
 - **RR-01 + RR-18 satu paket** (renderer `textContent` aman di web + print).
 - **RR-02 jangan dikerjakan lokal**: perbaiki bersama RA-01 di service (default markup tunggal + satu calculation builder web/print/export).
 - **RR-03** (print summary) sebaiknya baca ID eksplisit (`ft-total-d`/`ft-ppn`/`ft-grand`/`ft-rounded`) atau, lebih baik, state calculation terstruktur — sejalan dengan "satu calculation contract".
+
+---
+
+## 14. Revalidasi & Penutupan (Claude, 2026-06-20)
+
+Revalidasi seluruh temuan ke kode kerja terbaru. **Page ini ternyata sudah diremediasi sangat ekstensif** lintas banyak WP (B1/B4/B5b/P6/P6c/P6d/P6f + sweep HI-10). Tidak ada bug korektness/keamanan hidup tersisa.
+
+| Temuan | Status | Bukti |
+|---|---|---|
+| RR-01 Stored XSS | ✅ FIXED | `escapeHtml` ke name/label/kode (`rekap_rab.js:332-347`); `highlightMatch` aman (text pra-escape, query regex-escaped) |
+| RR-02 default markup 0%/10% | ✅ FIXED | `DEFAULT_PROJECT_MARKUP_PERCENT` di service+API (jalur sama RA-01) |
+| RR-03 print PPN dobel | ✅ FIXED | **WP-P6c**: modul client print di-deprecate; Print → PDF server-authoritative |
+| RR-04 print identitas palsu | ✅ FIXED | **WP-P6c/B5b**: modul scrape-DOM mati (orphan, tak dimuat); server export pakai field asli (`nama_client`/`sumber_dana`) + `-` |
+| RR-05 search ubah total project | ✅ FIXED | footer = `computeTotalsFiltered(fullModel, ()=>true)` |
+| RR-06 autosave tak terkonfirmasi | ✅ FIXED | status "Menyimpan…/Tersimpan" + cek `res.ok` |
+| RR-08 readiness bukan gate | ✅ FIXED | `renderReadiness` server-driven (**WP-B4**) |
+| RR-09 fallback harga pra-markup | ✅ FIXED | `unit_price_after_markup ?? G` saja + warning "belum siap" |
+| RR-10 audit finansial | ✅ FIXED | **WP-P6d**: `DetailAHSPAudit` `pekerjaan=None` project-level, hanya saat berubah |
+| RR-11 cache tanpa harga ts | ✅ FIXED | signature sertakan `prices` (HargaItemProject) |
+| RR-12 refresh race | ✅ FIXED | sequence token `_loadSeq` + guard |
+| RR-14 listener export/print tumpuk | ✅ FIXED | **WP-P6**: satu initializer, tanpa clone |
+| RR-15/16 SheetJS/ExcelExporter | ✅ FIXED | **WP-P6f**: CDN + client exporter DIHAPUS |
+| pricing validation + rate-limit | ✅ FIXED | markup/ppn `0..100` (`:3833`); rate/body-limit (sweep HI-10) |
+
+**RR-22 — DITUTUP 2026-06-20 (commit `c7064a58`).** Toggle **Subtotal** & **Compact (density)** kini tulis `aria-pressed` (template init `false` + sinkron di klik & init/restore; density via `applyDenseUI` sebagai single-source). Guard test `rekap_rab_a11y.test.js`. node+suite (18) + `manage.py check` PASS.
+
+**RR-21 — BUKAN bug (false positive).** `sortJobsIfNeeded` mengurutkan array **fresh per-render** (`const jobs = []`, `:280`), bukan `S.children` kanonik di `fullModel`. Reset sort pulih tanpa reload. Tak diperbaiki (tak ada yang rusak).
+
+**Sisa terbuka (lintas-page / Fase-lain, bukan bug page):** RR-07 diagnostic per-pekerjaan penuh (parsial; D-04 lintas-page Volume→Template→Rincian→Rekap); RR-17 `str(e)` leak + RR-19 presisi export → **WP Export**; RR-20 concurrency = by-design (DEC-002); RR-24 orphan `RekapRABPrint.js`/print CSS → Fase-3 cleanup; RR-23/25 terminologi/error-string (LOW).
+
+**Status Rekap RAB page-scope: SELESAI** (seluruh P0/P1 ditutup; a11y RR-22 closed; RR-21 false-positive). Sisa = lintas-page (D-04, WP Export) + Fase-3 cleanup.
+
+*Penutupan oleh Claude, 2026-06-20. Commit: WP-B1/B4/B5b/P6/P6c/P6d/P6f (RR-01..16), `9f8a5673` (rate-limit), `c7064a58` (RR-22 a11y).*
