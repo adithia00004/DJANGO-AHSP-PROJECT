@@ -315,10 +315,16 @@ class ExcelExporter(ConfigExporterBase):
         param_headers = param_table.get('headers', [])
         param_rows = param_table.get('rows', [])
         param_codes = param_table.get('param_codes', [])
+        param_formulas = param_table.get('param_formulas', [])
         
         # Track actual cell locations for formula references
-        param_value_cells = {}  # {param_code: 'D5', ...}
+        param_value_cells = {}  # {param_code: 'C5', ...}
         param_header_row = current_row
+        first_param_row = param_header_row + 1
+        for row_idx, param_code_raw in enumerate(param_codes):
+            param_code = str(param_code_raw or '').strip().lower()
+            if param_code:
+                param_value_cells[param_code] = f'C{first_param_row + row_idx}'
         
         # Headers
         for col_idx, header in enumerate(param_headers, 1):
@@ -332,16 +338,18 @@ class ExcelExporter(ConfigExporterBase):
         # Parameter rows
         for row_idx, row in enumerate(param_rows):
             for col_idx, val in enumerate(row, 1):
-                cell = ws_params.cell(row=current_row, column=col_idx, value=val)
+                cell_value = val
+                if col_idx == 3 and row_idx < len(param_formulas):
+                    raw_param_formula = str(param_formulas[row_idx] or '').strip()
+                    if raw_param_formula.startswith('='):
+                        cell_value = self._convert_volume_formula(raw_param_formula, param_value_cells)
+                    elif raw_param_formula:
+                        cell_value = self._convert_volume_formula(f"={raw_param_formula}", param_value_cells)
+                cell = ws_params.cell(row=current_row, column=col_idx, value=cell_value)
                 cell.font = Font(size=9)
                 cell.border = border
                 if col_idx == 3:  # Value column - right align numbers
                     cell.alignment = Alignment(horizontal='right')
-            # Store value cell reference by parameter code metadata (aligned with rows)
-            if row_idx < len(param_codes):
-                param_code = str(param_codes[row_idx] or '').strip().lower()
-                if param_code:
-                    param_value_cells[param_code] = f'C{current_row}'
             current_row += 1
         
         # Apply column widths

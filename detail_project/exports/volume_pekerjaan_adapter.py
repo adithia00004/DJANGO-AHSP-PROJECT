@@ -28,6 +28,7 @@ class VolumePekerjaanAdapter:
         self._name_to_label: Dict[str, str] = {}
         self._name_to_value: Dict[str, Any] = {}
         self._name_to_unit: Dict[str, str] = {}
+        self._name_to_expression: Dict[str, str] = {}
 
     def get_export_data(self) -> Dict[str, Any]:
         """
@@ -62,7 +63,12 @@ class VolumePekerjaanAdapter:
                 'is_fx': fs.is_fx,
             }
 
-        self._name_to_label, self._name_to_value, self._name_to_unit = self._load_parameter_metadata()
+        (
+            self._name_to_label,
+            self._name_to_value,
+            self._name_to_unit,
+            self._name_to_expression,
+        ) = self._load_parameter_metadata()
 
         # ===== SEGMENT 1: PARAMETER PERHITUNGAN =====
         param_page = self._build_parameter_segment(formula_map)
@@ -108,6 +114,7 @@ class VolumePekerjaanAdapter:
             | set(self.parameters.keys())
             | set(self._name_to_label.keys())
             | set(self._name_to_value.keys())
+            | set(self._name_to_expression.keys())
         )
 
         # User-facing export is label-first. Do not expose opaque code column.
@@ -116,6 +123,7 @@ class VolumePekerjaanAdapter:
 
         rows = []
         param_codes = []
+        param_formulas = []
         row_num = 0
 
         for param in sorted(all_params, key=self._sort_param_key):
@@ -133,6 +141,7 @@ class VolumePekerjaanAdapter:
 
             rows.append([str(row_num), label, value_str, unit])
             param_codes.append(param)
+            param_formulas.append(self._name_to_expression.get(param, ''))
 
             # Store value cell reference for Excel (column C after header change).
             self._parameter_cells[param] = f'C{row_num + 1}'
@@ -141,6 +150,7 @@ class VolumePekerjaanAdapter:
         if not rows:
             rows.append(['', '-', 'Tidak ada parameter', '-'])
             param_codes.append('')
+            param_formulas.append('')
 
         return {
             'title': 'DAFTAR PARAMETER PERHITUNGAN',
@@ -148,6 +158,7 @@ class VolumePekerjaanAdapter:
                 'headers': headers,
                 'rows': rows,
                 'param_codes': param_codes,  # aligned with rows, used by XLSX exporter
+                'param_formulas': param_formulas,  # aligned with rows, computed params become live XLSX formulas
             },
             'col_widths': col_widths,
             'row_types': ['item'] * len(rows),
@@ -236,13 +247,14 @@ class VolumePekerjaanAdapter:
             'formula_display_mode': 'label',
         }
 
-    def _load_parameter_metadata(self) -> tuple[Dict[str, str], Dict[str, Any], Dict[str, str]]:
+    def _load_parameter_metadata(self) -> tuple[Dict[str, str], Dict[str, Any], Dict[str, str], Dict[str, str]]:
         """Load parameter/computed labels and values for human-readable export."""
         from detail_project.models import ProjectParameter, ProjectComputedParameter
 
         name_to_label: Dict[str, str] = {}
         name_to_value: Dict[str, Any] = {}
         name_to_unit: Dict[str, str] = {}
+        name_to_expression: Dict[str, str] = {}
 
         for row in ProjectParameter.objects.filter(project=self.project).values('name', 'label', 'value', 'unit'):
             name = str(row.get('name') or '').strip().lower()
@@ -253,15 +265,16 @@ class VolumePekerjaanAdapter:
             name_to_value[name] = row.get('value')
             name_to_unit[name] = str(row.get('unit') or '').strip()
 
-        for row in ProjectComputedParameter.objects.filter(project=self.project).values('name', 'label', 'unit'):
+        for row in ProjectComputedParameter.objects.filter(project=self.project).values('name', 'label', 'unit', 'expression'):
             name = str(row.get('name') or '').strip().lower()
             if not name:
                 continue
             label = str(row.get('label') or '').strip()
             name_to_label[name] = label or name
             name_to_unit[name] = str(row.get('unit') or '').strip()
+            name_to_expression[name] = str(row.get('expression') or '').strip()
 
-        return name_to_label, name_to_value, name_to_unit
+        return name_to_label, name_to_value, name_to_unit, name_to_expression
 
     @staticmethod
     def _sort_param_key(param_name: str):

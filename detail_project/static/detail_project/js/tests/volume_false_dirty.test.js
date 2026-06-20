@@ -136,3 +136,13 @@ describe('VP-A2 - leave-flush persists valid rows even when one row is invalid',
     expect(src).toContain('let hasVolumeChanges = postingIds.length > 0;');
   });
 });
+
+describe('V5 - keepalive payload size guard', () => {
+  test('save-on-leave refuses oversized payloads instead of silently trusting keepalive', () => {
+    expect(src).toContain('const KEEPALIVE_SAFE_MAX_BYTES = 60 * 1024;');
+    expect(src).toContain('keepalive_payload_too_large');
+    expect(src).toContain('return { ok: false, status: 0, data: payload, errors: payload.errors, keepaliveTooLarge: true };');
+    expect(src).toContain('if (res?.keepaliveTooLarge) {');
+    expect(src).toContain('Perubahan terlalu besar untuk disimpan saat halaman ditutup');
+  });
+});

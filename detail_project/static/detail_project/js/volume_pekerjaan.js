@@ -53,6 +53,9 @@
   // Debounce autosave (ms). Default 5 menit agar autosave tidak terlalu agresif.
   const DEFAULT_AUTOSAVE_MS = 5 * 60 * 1000;
   const AUTOSAVE_MS = Number(root.dataset.autosaveMs || DEFAULT_AUTOSAVE_MS);
+  // V5: fetch keepalive has a browser-level body cap (~64KB). Stay below it
+  // and fail visibly/structured instead of pretending leave-flush is durable.
+  const KEEPALIVE_SAFE_MAX_BYTES = 60 * 1024;
 
   // Quantity column width (manual, persisted per-project)
   const QTY_COL_W_DEFAULT_CH = 48;
@@ -456,6 +459,12 @@
   // ---- HTTP helper: gunakan DP.core.http bila ada
   const HTTP = (function () {
     const h = (window.DP && DP.core && DP.core.http) ? DP.core.http : null;
+    function byteLength(text) {
+      try {
+        if (window.TextEncoder) return new TextEncoder().encode(String(text || '')).length;
+      } catch (_) { }
+      return String(text || '').length;
+    }
     async function jget(url) {
       if (h && h.jfetch) return h.jfetch(url, { method: 'GET', normalize: false });
       const r = await fetch(url, { credentials: 'same-origin' });
@@ -466,12 +475,21 @@
       // WP-P3b: keepalive flushes (save-on-leave) bypass the shared http layer and
       // use a local fetch with keepalive:true so the request survives page unload.
       if (!opts.keepalive && h && h.jfetchJson) return h.jfetchJson(url, { method: 'POST', data });
+      const bodyText = JSON.stringify(data);
+      if (opts.keepalive && byteLength(bodyText) > KEEPALIVE_SAFE_MAX_BYTES) {
+        const payload = {
+          ok: false,
+          code: 'keepalive_payload_too_large',
+          errors: [{ path: '$', message: 'Payload terlalu besar untuk save-on-leave; gunakan tombol Simpan.' }],
+        };
+        return { ok: false, status: 0, data: payload, errors: payload.errors, keepaliveTooLarge: true };
+      }
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
         credentials: 'same-origin',
         keepalive: !!opts.keepalive,
-        body: JSON.stringify(data)
+        body: bodyText
       });
       const body = await r.json().catch(() => ({}));
       return { ok: r.ok, status: r.status, data: body, errors: body?.errors || [] };
@@ -6612,6 +6630,11 @@
       let savedIdSet = new Set();
       if (hasVolumeChanges) {
         const res = await HTTP.jpost(EP_SAVE, { items }, { keepalive });
+        if (res?.keepaliveTooLarge) {
+          const msg = 'Perubahan terlalu besar untuk disimpan saat halaman ditutup. Halaman tetap menandai perubahan belum tersimpan; gunakan tombol Simpan.';
+          setSaveStatus(msg, 'warning');
+          return;
+        }
         json = res?.data || {};
         const errCount = Array.isArray(json.errors) ? json.errors.length : 0;
         // Atomic response: acknowledge rows only after a complete success.

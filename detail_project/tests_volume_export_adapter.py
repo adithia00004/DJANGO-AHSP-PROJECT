@@ -93,6 +93,36 @@ class VolumeExportAdapterHardeningTests(TestCase):
         self.assertEqual(row_formulas[item_row_idx], "=bp_1 * 2")
         self.assertEqual(row_pekerjaan_ids[item_row_idx], pekerjaan.id)
 
+    def test_adapter_exposes_computed_parameter_formula_metadata(self):
+        ProjectParameter.objects.create(
+            project=self.project,
+            name="bp_1",
+            label="Panjang",
+            value="7",
+        )
+        ProjectComputedParameter.objects.create(
+            project=self.project,
+            name="cp_1",
+            label="Luas",
+            expression="bp_1 * 2",
+        )
+        pekerjaan = self._create_one_pekerjaan()
+        VolumeFormulaState.objects.create(
+            project=self.project,
+            pekerjaan=pekerjaan,
+            raw="=cp_1 + bp_1",
+            is_fx=True,
+        )
+
+        data = VolumePekerjaanAdapter(self.project).get_export_data()
+        param_table = data["pages"][1]["table_data"]
+        codes = param_table["param_codes"]
+        formulas = param_table["param_formulas"]
+
+        self.assertEqual(codes, ["bp_1", "cp_1"])
+        self.assertEqual(formulas[codes.index("bp_1")], "")
+        self.assertEqual(formulas[codes.index("cp_1")], "bp_1 * 2")
+
     @skipUnless(OPENPYXL_AVAILABLE, "openpyxl is required for XLSX export test")
     def test_xlsx_volume_column_uses_formula_reference_to_parameter_sheet(self):
         ProjectParameter.objects.create(
@@ -128,6 +158,55 @@ class VolumeExportAdapterHardeningTests(TestCase):
         self.assertEqual(volume_cell.data_type, "f")
         self.assertTrue(str(volume_cell.value or "").startswith("=Parameters!$C$"))
         self.assertRegex(str(volume_cell.value or ""), r"\*\s*2")
+
+    @skipUnless(OPENPYXL_AVAILABLE, "openpyxl is required for XLSX export test")
+    def test_xlsx_computed_parameter_is_live_formula_and_volume_references_it(self):
+        ProjectParameter.objects.create(
+            project=self.project,
+            name="bp_1",
+            label="Panjang",
+            value="7",
+        )
+        ProjectComputedParameter.objects.create(
+            project=self.project,
+            name="cp_1",
+            label="Luas",
+            expression="bp_1 * 2",
+        )
+        pekerjaan = self._create_one_pekerjaan()
+        VolumeFormulaState.objects.create(
+            project=self.project,
+            pekerjaan=pekerjaan,
+            raw="=cp_1 + bp_1",
+            is_fx=True,
+        )
+
+        manager = ExportManager(self.project)
+        response = manager.export_volume_pekerjaan("xlsx")
+        wb = load_workbook(BytesIO(response.content), data_only=False)
+        ws_params = wb["Parameters"]
+        ws_volume = wb["Volume Pekerjaan"]
+
+        bp_row = None
+        cp_row = None
+        for r in range(1, ws_params.max_row + 1):
+            if str(ws_params.cell(row=r, column=2).value or "").strip() == "Panjang":
+                bp_row = r
+            if str(ws_params.cell(row=r, column=2).value or "").strip() == "Luas":
+                cp_row = r
+        self.assertIsNotNone(bp_row, "Base parameter row tidak ditemukan")
+        self.assertIsNotNone(cp_row, "Computed parameter row tidak ditemukan")
+        self.assertEqual(ws_params.cell(row=cp_row, column=3).data_type, "f")
+        self.assertEqual(ws_params.cell(row=cp_row, column=3).value, f"=Parameters!$C${bp_row} * 2")
+
+        item_row = None
+        for r in range(1, ws_volume.max_row + 1):
+            if str(ws_volume.cell(row=r, column=1).value or "").strip() == "1":
+                item_row = r
+                break
+        self.assertIsNotNone(item_row, "Row item nomor 1 tidak ditemukan pada sheet Volume Pekerjaan")
+        volume_formula = str(ws_volume.cell(row=item_row, column=5).value or "")
+        self.assertIn(f"Parameters!$C${cp_row}", volume_formula)
 
 
 class DeepCopyVolumeFormulaStateTests(TestCase):

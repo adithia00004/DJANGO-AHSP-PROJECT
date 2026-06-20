@@ -722,4 +722,12 @@ Dibaca tuntas: seluruh endpoint backend Volume + jalur JS kritis (helpers number
 - **Scope legacy:** graph validation hanya aktif pada opaque mode agar tidak mematahkan project/backup lama dengan nama deskriptif non-`bp_N`/`cp_N`.
 - **Verifikasi:** `tests_computed_parameter_graph_v3` + `ComputedExpressionValidationTests` + `Phase1OpaqueApiTests` = 25/25 PASS; `manage.py check` dan `node --check volume_pekerjaan.js` bersih.
 
+### 13.10 Status Pembersihan Sisa Volume (2026-06-20)
+
+- **K3 FIXED:** export XLSX Volume sekarang tetap user-friendly di kolom `Formula` (label manusia), tetapi kolom `Volume` memakai formula Excel live. Parameter sheet juga menulis computed parameter (`cp_N`) sebagai formula live yang mereferensikan cell parameter lain, bukan nilai statis/default. Mapping cell memakai kolom `C` (`Nilai`) dan metadata `param_codes`/`param_formulas`, bukan label.
+- **V5 FIXED:** save-on-leave kini punya guard ukuran payload keepalive (`60KB`). Payload terlalu besar tidak dikirim secara diam-diam; response internal diberi kode `keepalive_payload_too_large`, status UI memperingatkan user untuk memakai tombol Simpan, dan dirty state tetap dipertahankan.
+- **K1 RE-SCOPED:** `_populate_expanded_from_raw()` adalah isu expansion Template/Rincian AHSP, bukan bug page Volume langsung. Readiness sudah menampilkan expansion tidak sinkron; perubahan transaksi helper ini perlu ditangani di paket Template/Rincian agar tidak memperlebar scope Volume.
+- **K5 RE-SCOPED:** `select_for_update()` tanpa timeout/nowait adalah isu contention lintas endpoint, bukan spesifik Volume. Dibiarkan sebagai hardening operasional lintas-page.
+- **Area UI sisa:** formula editor, palette parameter, dan import parameter sudah tersentuh oleh V3 server validation + server-authoritative bootstrap. Tidak ditemukan blocker baru pada sweep ini; bug yang tersisa di area tersebut dikategorikan polishing/edge-case, bukan correctness page Volume.
+
 *Revalidasi mendalam oleh Claude, 2026-06-19. Diverifikasi terhadap working tree aktual; carry-over K1/K3/K5 tetap perlu revalidasi terpisah.*
