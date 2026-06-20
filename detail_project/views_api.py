@@ -3379,6 +3379,8 @@ def api_rebuild_missing_expansion(request: HttpRequest, project_id: int):
 
 # ---------- View 4: Harga Items ----------
 @login_required
+@rate_limit(category='write')  # HI-10: throttle full-page Harga Items saves
+@limit_request_body()  # HI-10: cap payload size for bulk item/conversion saves
 @require_POST
 @transaction.atomic
 def api_save_harga_items(request: HttpRequest, project_id: int):
@@ -3644,6 +3646,8 @@ def api_get_conversion_profiles(request: HttpRequest, project_id: int):
 
 
 @login_required
+@rate_limit(category='write')  # HI-10: legacy callable endpoint still needs write governance
+@limit_request_body()  # HI-10: cap standalone conversion payload
 @require_http_methods(["POST"])
 @transaction.atomic
 def api_save_conversion_profile(request: HttpRequest, project_id: int):
@@ -3793,6 +3797,8 @@ def api_save_conversion_profile(request: HttpRequest, project_id: int):
 
 # ---------- View: Project Pricing (Profit/Margin) ----------
 @login_required
+@rate_limit(max_requests=240, window=60)  # HI-10 sweep: pricing panel is read/write and polled by UI
+@limit_request_body()  # HI-10 sweep: reject oversized pricing payloads before parsing
 @require_http_methods(["GET","POST"])
 def api_project_pricing(request: HttpRequest, project_id: int):
     """
@@ -3941,6 +3947,7 @@ def build_project_parameters_payload(project):
 
 
 @login_required
+@rate_limit(max_requests=240, window=60)  # HI-10 sweep: parameter editor read/write endpoint
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
@@ -4451,6 +4458,7 @@ def build_project_computed_parameters_payload(project):
 
 
 @login_required
+@rate_limit(max_requests=240, window=60)  # HI-10 sweep: computed-parameter editor read/write endpoint
 @limit_request_body()  # WP-P3b (VP-07)
 @require_http_methods(["GET", "POST"])
 @transaction.atomic
@@ -4695,6 +4703,8 @@ def api_project_computed_parameters_sync(request: HttpRequest, project_id: int):
 
 # ---------- View 5: Detail Gabungan ----------
 @login_required
+@rate_limit(category='write')  # HI-10 sweep: legacy callable detail save endpoint
+@limit_request_body()  # HI-10 sweep: cap legacy detail payload
 @require_POST
 @transaction.atomic
 def api_save_detail_ahsp_gabungan(request: HttpRequest, project_id: int):
@@ -5061,6 +5071,8 @@ def api_list_orphaned_harga_items(request: HttpRequest, project_id: int):
 
 
 @login_required
+@rate_limit(category='write')  # HI-10 sweep: destructive cleanup endpoint
+@limit_request_body()  # HI-10 sweep: cap item id payload
 @require_POST
 def api_cleanup_orphaned_harga_items(request: HttpRequest, project_id: int):
     """
@@ -5251,6 +5263,8 @@ def api_get_change_status(request: HttpRequest, project_id: int):
 
 
 @login_required
+@rate_limit(category='write')  # HI-10 sweep: shared state mutation endpoint
+@limit_request_body()  # HI-10 sweep: cap ack payload
 @require_POST
 @transaction.atomic
 def api_ack_source_change_flags(request: HttpRequest, project_id: int):
@@ -6513,6 +6527,8 @@ def export_jadwal_pekerjaan_professional(request: HttpRequest, project_id: int):
 # ============================================================================
 
 @login_required
+@rate_limit(category='bulk')  # HI-10 sweep: deep copy is an expensive write
+@limit_request_body()  # HI-10 sweep: cap copy payload
 @require_POST
 def api_deep_copy_project(request: HttpRequest, project_id: int):
     """
@@ -6790,6 +6806,8 @@ def api_deep_copy_project(request: HttpRequest, project_id: int):
 # ============================================================================
 
 @login_required
+@rate_limit(category='bulk')  # HI-10 sweep: batch copy is an expensive write
+@limit_request_body()  # HI-10 sweep: cap batch-copy payload
 @require_POST
 def api_batch_copy_project(request: HttpRequest, project_id: int):
     """
@@ -9741,6 +9759,8 @@ def api_create_template(request: HttpRequest, project_id: int):
 
 
 @login_required
+@rate_limit(category='write')  # HI-10 sweep: template management write endpoint
+@limit_request_body()  # HI-10 sweep: cap delete payload
 @require_POST
 @transaction.atomic
 def api_delete_template(request: HttpRequest, template_id: int):

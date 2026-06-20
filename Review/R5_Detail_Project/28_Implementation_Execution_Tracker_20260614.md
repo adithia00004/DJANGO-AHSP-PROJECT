@@ -364,6 +364,20 @@ Test: `tests_template_ahsp_ta_followups` + `template_ahsp_a11y.test.js`. **71 ba
 
 **Disposition:** Rincian AHSP page-scope = **SELESAI**. Sisa: RA-02 keputusan produk label/scope Grand Total, RA-03 WP Export/canonical export builder, RA-09 edge backend rekap, RA-11 last-write-wins by design, dan RA-12/14/17..20 polish.
 
+### UF-020 - (Reaudit Harga Items 2026-06-20) — HI-10 write governance repo-wide ditutup
+
+**Revalidasi Harga Items:** WP-P1/B3/B5 menutup temuan integritas utama: HI-01 null≠zero, HI-02 konversi+harga atomik, HI-03 export memakai `harga_satuan` SSOT, HI-04 conversion profile server-backed, HI-05 validasi profile, HI-06 harga negatif ditolak, HI-07 bulk paste server-side base price, HI-08 localStorage conversion dihapus, HI-16 conversion dead path diproses. HI-09 = by-design last-write-wins.
+
+**Temuan tersisa yang valid:** HI-10 bukan hanya page-scope. Sweep repo-wide menemukan endpoint write callable tanpa governance rate/body limit. Keputusan scope: tutup semua endpoint callable yang ditemukan sekarang; endpoint legacy tetap diberi guard selama belum dihapus Fase 3.
+
+**Ditutup turn ini:** `@rate_limit` + `@limit_request_body` pada `api_save_harga_items`, `api_save_conversion_profile`, `api_cleanup_orphaned_harga_items`, `api_project_pricing`, `api_project_parameters`, `api_project_computed_parameters`, `api_save_detail_ahsp_gabungan`, `api_ack_source_change_flags`, `api_deep_copy_project`, `api_batch_copy_project`, dan `api_delete_template`. Endpoint copy memakai kategori `bulk`; endpoint parameter GET/POST memakai limit longgar `240/min` agar tidak mengganggu UI.
+
+**Guard:** `detail_project.tests_hi10_write_governance` mengunci decorator governance untuk daftar endpoint HI-10.
+
+**Verifikasi:** `python manage.py test detail_project.tests_hi10_write_governance detail_project.tests_wp_p1_harga_items detail_project.tests_harga_items_save_api detail_project.tests_harga_items_export --keepdb` PASS (27/27); `python manage.py check` PASS; `git diff --check` PASS.
+
+**Disposition:** Harga Items page-scope integrity tetap **SELESAI**. Sisa: HI-12/D-HI-04/D-HI-05 scope active item/orphan cleanup = unit kerja terpisah; HI-13/14/15 polish/a11y rendah; legacy endpoints yang sudah di-guard tetap kandidat cleanup.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.
