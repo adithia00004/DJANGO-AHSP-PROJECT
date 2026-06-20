@@ -335,6 +335,21 @@ Medium/Low akan diberi salah satu disposisi:
 
 **Disposition:** halaman Volume Pekerjaan page-scope = **SELESAI**. Sisa K3/parse_number = WP Export terpisah.
 
+### UF-018 - (Reaudit Template AHSP 2026-06-20) — penutupan page-scope (TA-04/07/10)
+
+**Revalidasi** audit Juni-13 (`18_Template_AHSP_Comprehensive_Audit` §16) ke kode aktual. **P0 sudah ditutup WP-P2/B7:** TA-01 (koef negatif: reject + DB CheckConstraint), TA-03 (reset cascade B7c), TA-17 (auto-reload massal dihapus), TA-18 (master sync B7d). **TA-02/TA-05** = by-design (DEC-002 last-write-wins).
+
+**Ditutup turn ini (commit `f4bf7960`):**
+- **TA-07** — `@rate_limit(category='write')` + `@limit_request_body()` ke 4 endpoint write detail-AHSP (save, reset-to-ref, sync-reference, rebuild-missing-expansion) — sebelumnya tanpa DoS guard.
+- **TA-04** — reset-to-ref menulis audit trail (`log_audit` old/new snapshot).
+- **TA-10** — a11y: `scope="col"` (5 tabel komponen + 2 sidebar), tab↔panel `aria-controls`/`role=tabpanel`, `aria-invalid` input koef, `aria-label` checkbox dinamis (`<main>` sudah ada).
+
+Test: `tests_template_ahsp_ta_followups` + `template_ahsp_a11y.test.js`. **71 backend + 18 FE PASS**; check + makemigrations bersih.
+
+**Dipindah ke WP lain:** TA-08 (export `str(e)` leak, sistemik) → WP Export; TA-11 (CDN SRI) → CSP/SRI level-app (WP-A2). **Sisa low/maintainability:** TA-12 (immutable row id), TA-19 (kontrak koef expanded docs).
+
+**Disposition:** Template AHSP page-scope = **SELESAI**.
+
 ### UF-001 - Default Markup Service Bertentangan dengan Model
 
 **Ditemukan:** 14 Juni 2026 saat WP-00.

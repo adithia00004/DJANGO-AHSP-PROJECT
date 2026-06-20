@@ -1264,3 +1264,45 @@ Bagian ini mencatat perubahan implementasi yang lahir dari UAT setelah WP-P2/B7/
 - Risiko pekerjaan legacy/copy/import tetap stale berkurang karena ada tombol rebuild targeted.
 
 **Catatan UAT:** bila alert masih muncul setelah `Bangun ulang ekspansi`, itu berarti ada issue lain yang tetap valid, misalnya master AHSP kosong, circular/depth limit, atau ekspansi gagal. Detail banner harus digunakan sebagai sumber diagnosis berikutnya.
+
+---
+
+## 16. Revalidasi & Penutupan Page-Scope (2026-06-20, Claude)
+
+Seluruh temuan TA-01..TA-21 direvalidasi terhadap kode aktual. Status:
+
+### 16.1 Sudah FIXED (diverifikasi)
+
+| Temuan | Bukti |
+|---|---|
+| TA-01 koef negatif | `if koef < 0` reject (`views_api.py` save loop) + DB `CheckConstraint(koefisien__gte=0)` pada `DetailAHSPProject`/`DetailAHSPExpanded` |
+| TA-03 reset cascade | `cascade_bundle_re_expansion(project, pkj.id)` dalam atomik reset + rollback on failure (WP-B7c) |
+| TA-17 auto-reload massal | `scheduleAutoReloadPendingJobs` dihapus (0 occurrence di `template_ahsp.js`) |
+| TA-18 master propagasi | `api_sync_reference` (WP-B7d) manual sync + preserve koef user + audit; D-05 honored |
+| TA-20/TA-21 cascade failure / contract test | WP-P2 |
+
+### 16.2 BY-DESIGN (bukan bug)
+
+- **TA-02 / TA-05** last-write-wins (frontend sengaja tak kirim `client_updated_at`; reset tanpa token) = keputusan **DEC-002** (no optimistic locking app-wide), konsisten dengan LP-03/VP-06. Bukan defect.
+
+### 16.3 DITUTUP turn ini (commit `f4bf7960`)
+
+- **TA-07** — `@rate_limit(category='write')` + `@limit_request_body()` ditambahkan ke 4 endpoint write: `api_save_detail_ahsp_for_pekerjaan`, `api_reset_detail_ahsp_to_ref`, `api_sync_reference`, `api_rebuild_missing_expansion`.
+- **TA-04** — reset-to-ref kini menulis audit trail (`log_audit` old/new snapshot, summary "Reset detail AHSP ke referensi").
+- **TA-10** — a11y: `scope="col"` semua header (5 tabel komponen + 2 tabel sidebar), tab↔panel `aria-controls`/`role=tabpanel`/`aria-labelledby`, `aria-invalid` pada input koefisien, `aria-label` pada checkbox seleksi dinamis. Catatan: `<main>` sudah ada sebelumnya.
+- Test: `tests_template_ahsp_ta_followups` (reset audit + rate-limit guard) + `template_ahsp_a11y.test.js`. **71 backend + 18 frontend PASS**; `manage.py check` 0 issue; `makemigrations --check` no changes.
+
+### 16.4 DIPINDAH ke WP lain (lintas-cutting, bukan page-scope)
+
+- **TA-08** — export bocor `str(e)` = **sistemik di semua exporter** → **WP Export** (wrapper error bersama + correlation ID), sama keputusan dengan K3/parse_number (Volume) dan V-export.
+- **TA-11** — Select2/SheetJS CDN tanpa SRI → keputusan **CSP/SRI level-app** (WP-A2 enforcement milestone).
+
+### 16.5 Sisa (maintainability, low)
+
+- **TA-12** formula identity pakai mutable `row_key=kode` (immutable UUID = refactor terpisah).
+- **TA-19** kontrak koef expanded (quantity-semantic) vs docstring model — perlu update dokumentasi/field eksplisit. Jalur perhitungan saat ini konsisten.
+- **TA-06** parameter sidebar shared = sudah tertutup lewat perbaikan Volume (VP-02/V3) yang dipakai bersama.
+
+**Status page-scope Template AHSP: SELESAI.** P0 (TA-01/03/18) sudah ditutup WP-P2/B7; sisa page-scope (TA-04/07/10) ditutup turn ini. TA-08/TA-11 = WP lintas-cutting; TA-12/TA-19 = maintainability backlog.
+
+*Revalidasi & penutupan oleh Claude, 2026-06-20. Commit: `f4bf7960`.*
