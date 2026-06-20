@@ -249,14 +249,18 @@ class KebutuhanTimelineCanonicalTests(TestCase):
         )
         self.assertEqual(both[p.id], Decimal("1.00"))
 
-    def test_scope_multiplier_unscheduled_is_fully_in_scope(self):
+    def test_scope_multiplier_unscheduled_is_out_of_every_period(self):
+        # RK-03 / D-RK-02: a pekerjaan with no planned allocation belongs to
+        # "Belum Terjadwal", not to any selected period — so a time-scoped
+        # snapshot excludes it (0), instead of the old 1.0 that double-counted
+        # unscheduled work into every chosen window.
         p = self._pekerjaan("P1")  # no weekly rows
         self._item_detail(p, "BHN-1", koef=1, harga=100, volume=10)
         res = _build_time_scope_multiplier(
             self.project, [p.id],
             {"mode": "week_range", "start_date": date(2026, 1, 5), "end_date": date(2026, 1, 11)},
         )
-        self.assertEqual(res[p.id], Decimal("1.0"))  # legacy edge preserved
+        self.assertEqual(res[p.id], Decimal("0"))
 
     def test_scope_multiplier_empty_for_all_scope(self):
         p = self._pekerjaan("P1")

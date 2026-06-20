@@ -484,8 +484,10 @@ def _build_time_scope_multiplier(project, pekerjaan_ids, scope):
     # WP-B6f: scope fraction from the canonical weekly distribution (B6a) instead
     # of TahapPelaksanaan overlap-days — one source for kebutuhan scope (snapshot
     # path now matches the timeline path; Tahapan is no longer a calc source).
-    # Legacy edge preserved: a pekerjaan with NO schedule is treated as fully
-    # in-scope (1.0).
+    # RK-03 / D-RK-02: a pekerjaan with NO planned allocation does NOT belong to
+    # any specific period — its quantity is "Belum Terjadwal" — so it is excluded
+    # (0) from a time-scoped snapshot rather than counted in full (the old 1.0
+    # double-counted unscheduled work into every selected period).
     dist = build_weekly_distribution(project)
     weeks_in_window = {
         w['week_number']
@@ -498,7 +500,7 @@ def _build_time_scope_multiplier(project, pekerjaan_ids, scope):
     result = {}
     for pk in pekerjaan_ids:
         if scheduled_fraction.get(pk, Decimal('0')) == 0:
-            result[pk] = Decimal('1.0')  # unscheduled → fully in scope (legacy semantics)
+            result[pk] = Decimal('0')  # RK-03/D-RK-02: unscheduled → out of every period
             continue
         frac = sum(
             (f for wn, f in by_pekerjaan.get(pk, {}).items() if wn in weeks_in_window),
