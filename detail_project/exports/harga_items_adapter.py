@@ -107,12 +107,16 @@ class HargaItemsAdapter:
                 except Exception:
                     pass
 
+                # WP Export (all Option A): emit the canonical Decimal price; the
+                # exporter writes a real 2-dp Excel number at its boundary. NULL
+                # (price not yet filled) stays a distinct '-' text marker — it must
+                # never collapse into an explicit 0.00 (D-HI-01).
                 satuan_dasar_rows.append([
                     str(row_num),
                     item.kode_item or '',
                     item.uraian or '',
                     item.satuan or '',
-                    self._format_number(base_price, 0),
+                    base_price if base_price is not None else '-',
                 ])
                 row_types_dasar.append('item')
                 total_items += 1
@@ -188,6 +192,8 @@ class HargaItemsAdapter:
                 'table_data': {
                     'headers': headers_dasar,
                     'rows': satuan_dasar_rows,
+                    # No/Kode/Uraian/Satuan text; Harga Satuan = 2-dp number.
+                    'column_formats': ['@', '@', '@', '@', '#,##0.00'],
                 },
                 'row_types': row_types_dasar,
                 'col_widths': col_widths_dasar,
@@ -214,6 +220,7 @@ class HargaItemsAdapter:
             'table_data': {
                 'headers': headers_dasar,
                 'rows': satuan_dasar_rows,
+                'column_formats': ['@', '@', '@', '@', '#,##0.00'],
             },
             'col_widths': col_widths_dasar,
             'footer_rows': footer_rows,

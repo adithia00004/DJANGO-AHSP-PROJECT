@@ -103,3 +103,73 @@ class RekapRABExcelParityTests(_RekapFixtureMixin, TestCase):
         self.assertEqual(harga_cell.number_format, "#,##0.00")
         self.assertEqual(jumlah_cell.number_format, "#,##0.00")
         self.assertEqual(volume_cell.number_format, "#,##0.000")
+
+
+class HargaItemsExcelParityTests(TestCase):
+    """Three USED price items: one priced, one NULL (not filled), one explicit 0.00.
+    The Excel price cell must be a real 2-dp number for priced/zero, and a distinct
+    '-' marker for NULL (D-HI-01: NULL must never collapse into 0.00)."""
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(
+            username="wp-harga-parity-owner", password="not-used",
+        )
+        self.project = Project.objects.create(owner=self.owner, nama="Harga Parity")
+        klas = Klasifikasi.objects.create(project=self.project, name="Klas A", ordering_index=1)
+        sub = SubKlasifikasi.objects.create(
+            project=self.project, klasifikasi=klas, name="Sub A", ordering_index=1,
+        )
+        pekerjaan = Pekerjaan.objects.create(
+            project=self.project, sub_klasifikasi=sub, source_type=Pekerjaan.SOURCE_CUSTOM,
+            snapshot_kode="P-001", snapshot_uraian="Pekerjaan harga", snapshot_satuan="m2",
+            ordering_index=1,
+        )
+        # kode, harga_satuan
+        specs = [
+            ("BHN-PRICED", Decimal("1500.00")),
+            ("BHN-NULLED", None),
+            ("BHN-ZEROED", Decimal("0.00")),
+        ]
+        for kode, harga in specs:
+            item = HargaItemProject.objects.create(
+                project=self.project, kode_item=kode, kategori="BHN",
+                uraian=f"Bahan {kode}", satuan="kg", harga_satuan=harga,
+            )
+            source = DetailAHSPProject.objects.create(
+                project=self.project, pekerjaan=pekerjaan, harga_item=item,
+                kategori="BHN", kode=kode, uraian=f"Bahan {kode}", satuan="kg",
+                koefisien=Decimal("1.000000"),
+            )
+            DetailAHSPExpanded.objects.create(
+                project=self.project, pekerjaan=pekerjaan, source_detail=source,
+                harga_item=item, kategori="BHN", kode=kode, uraian=f"Bahan {kode}",
+                satuan="kg", koefisien=Decimal("1.000000"), expansion_depth=0,
+            )
+
+    def _harga_cell(self, ws, kode):
+        for row in ws.iter_rows():
+            if len(row) >= 5 and row[1].value == kode:
+                return row[4]
+        return None
+
+    def test_price_cells_numeric_and_null_stays_distinct(self):
+        resp = ExportManager(self.project, self.owner).export_harga_items("xlsx")
+        ws = load_workbook(BytesIO(resp.content)).worksheets[0]
+
+        priced = self._harga_cell(ws, "BHN-PRICED")
+        nulled = self._harga_cell(ws, "BHN-NULLED")
+        zeroed = self._harga_cell(ws, "BHN-ZEROED")
+        for cell, kode in ((priced, "PRICED"), (nulled, "NULLED"), (zeroed, "ZEROED")):
+            self.assertIsNotNone(cell, f"row {kode} not found")
+
+        # Priced + explicit zero are real numbers at 2 dp.
+        self.assertIsInstance(priced.value, (int, float))
+        self.assertAlmostEqual(float(priced.value), 1500.0, places=2)
+        self.assertEqual(priced.number_format, "#,##0.00")
+
+        self.assertIsInstance(zeroed.value, (int, float))
+        self.assertAlmostEqual(float(zeroed.value), 0.0, places=2)
+
+        # NULL stays a distinct text marker — never a numeric 0.
+        self.assertEqual(nulled.value, "-")
+        self.assertNotEqual(nulled.value, zeroed.value)
