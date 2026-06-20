@@ -1849,9 +1849,17 @@ def generate_custom_code(project) -> str:
     return f"CUST-{n:04d}"
 
 
+@transaction.atomic
 def _populate_expanded_from_raw(project, pekerjaan):
     """
     DUAL STORAGE HELPER: Populate DetailAHSPExpanded from DetailAHSPProject.
+
+    K1: wrapped in @transaction.atomic so the delete-old + rebuild is all-or-nothing
+    even when this helper is called standalone (not already inside an atomic view).
+    When nested inside an outer atomic block (the common case) this is just a
+    savepoint. A single malformed bundle is still skipped on its own (ValueError is
+    caught + logged per-bundle); only an UNEXPECTED failure rolls the rebuild back so
+    the old expanded rows are never dropped without a replacement.
 
     BUG FIX #2: Now handles bundle expansion for LAIN items with ref_ahsp or ref_pekerjaan.
     Previously, this function only passed through items without expansion, causing bundle

@@ -669,9 +669,10 @@ Penelusuran ulang terhadap kode aktual (pasca WP-P3/WP-B3 + seluruh follow-up UF
 | **V5** | Low-Medium | `volume_pekerjaan.js:6789-6812` | TERBUKA — `keepalive` flush dibatasi 64KB body oleh browser; project besar bisa gagal-senyap saat tutup tab (mitigasi: autosave 5-mnt + tombol Simpan). |
 | **V6** | Low → **FIXED** | `views_api.py` export/copy paths | **FIXED 2026-06-20.** `print()` debug di `export_jadwal_pekerjaan_professional` diganti `logger.debug`; `api_batch_copy_project` juga diganti `logger.exception` + error client generik (tidak leak `str(e)`). |
 | **V7** | Low → **FIXED** | `api_project_parameter_detail` PUT | **FIXED 2026-06-20.** Payload yang menyertakan `value` tapi tidak bisa diparse kini ditolak `400` (`Nilai parameter tidak valid`) dan nilai lama tetap utuh; update label-only tetap boleh. Test `tests_param_detail_v7` (3) PASS. |
-| **K1** | High | `services.py` `_populate_expanded_from_raw` | CARRY-OVER (belum revalidasi penuh) — boundary transaksi lokal + partial-continue. |
-| **K3** | Critical (klaim Feb) | `excel_exporter.py`, `volume_pekerjaan_adapter.py` | CARRY-OVER — formula export label-only vs live + mapping kolom. |
-| **K5** | Medium-High | `select_for_update()` callsites | CARRY-OVER — tanpa `nowait`/timeout. |
+| **K1** | High → **FIXED** | `services.py` `_populate_expanded_from_raw` | **FIXED 2026-06-20.** `@transaction.atomic` ditambahkan → delete-old + rebuild kini all-or-nothing meski dipanggil standalone (nested = savepoint, perilaku callsite atomik tak berubah). `except ValueError: continue` per-bundle tetap (sengaja, sudah `logger.error`); hanya kegagalan tak-terduga yang rollback agar expanded lama tak hilang tanpa pengganti. Regresi bundle/ekspansi/rekap 57 PASS. |
+| **K3** | Critical (klaim Feb) → **DIPINDAH ke WP Export** | `excel_exporter.py`, adapter export | **Bukan scope halaman Volume.** `excel_exporter.py` = modul **bersama** lintas-report (Rincian/RAB/Volume/dll); label-only vs live + mapping kolom butuh keputusan produk + verifikasi tiap adapter + regresi lintas-report. Mengubah di bawah task halaman = risiko regresi export lain. |
+| **K2 / `parse_number` (export)** | Carry-over → **DIPINDAH ke WP Export** | `excel_exporter.parse_number` | Modul bersama; perilaku benar bergantung format output tiap adapter. Penyamaan ke Strict id-ID (sejalan VP-A1) hanya aman setelah audit output adapter + regresi lintas-report. **Risiko input langsung Volume (sumber 1000× yang nyata) sudah ditutup VP-A1.** |
+| **K5** | Medium-High → **REVALIDASI: low practical risk** | `select_for_update()` callsites | **TIDAK diubah (sadar).** 13 callsite semua single-row scoped per-project (single owner); lock hanya men-serialkan tulisan-konkuren user yang sama dalam transaksi atomik pendek (last-write-wins, DEC-002). `nowait`/per-query timeout justru memunculkan error transien tanpa manfaat. Fix tepat bila perlu = `lock_timeout` level-koneksi DB (config infra), bukan per-query. |
 
 ### 13.4 Catatan cakupan
 
@@ -683,8 +684,13 @@ Dibaca tuntas: seluruh endpoint backend Volume + jalur JS kritis (helpers number
 2. ~~**V1 / CL-05** — hapus endpoint legacy~~ — **DONE 2026-06-20** (view + route dihapus; test middleware → `/upsert/`).
 3. ~~**V7 + V6** quick wins~~ — **DONE 2026-06-20** (PUT invalid value → 400; `print()`/exception leak diganti logger + pesan generik).
 4. ~~**VP-A2** — leave-flush persist baris valid~~ — **DONE 2026-06-20.**
-5. **T1/T3/T4/T11** — accessibility polish.
-6. **V3** — validasi referensi/siklus computed param server-side.
+5. ~~**T1/T3/T4/T11** — accessibility polish~~ — **DONE 2026-06-20** (`<main>`, `scope="col"`, tab↔panel `aria-controls`/`role=tabpanel`, qty `aria-invalid`; guard `volume_a11y.test.js`).
+6. ~~**V3** — validasi referensi/siklus computed param server-side~~ — **DONE** (`_validate_computed_parameter_graph`, opaque-gated, fungsi-safe, graf dari kandidat; test `tests_computed_parameter_graph_v3`).
+7. ~~**K1** — boundary transaksi `_populate_expanded_from_raw`~~ — **DONE 2026-06-20.**
+8. **K5** — REVALIDASI: low practical risk, tidak diubah (lihat tabel §13.3).
+9. **K3 + `parse_number` (export)** — DIPINDAH ke **WP Export** (modul bersama lintas-report; di luar scope halaman Volume).
+
+**Status halaman Volume Pekerjaan: SELESAI.** Semua temuan page-scope (VP-A1/A2, V1/CL-05, V3, V6, V7, T1/T3/T4/T11, K1) ditutup & teruji. Sisa (K3, K2/parse_number export) = WP Export terpisah; K5 = revalidasi low-risk (tanpa perubahan).
 
 ### 13.6 Status Perbaikan VP-A1 (2026-06-19)
 
