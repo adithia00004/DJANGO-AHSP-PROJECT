@@ -183,7 +183,9 @@ class SaveVolumePekerjaanApiTests(TestCase):
 
         save_idx = script.index("async function saveDirty")
         flush_idx = script.index("flushPendingQtyInputs();", save_idx)
-        posting_idx = script.index("const postingIds = Array.from(dirtySet.values());", save_idx)
+        # VP-A2 changed `const postingIds` -> `let postingIds` (so the leave-flush
+        # branch can filter invalid ids). The flush-before-read contract is unchanged.
+        posting_idx = script.index("let postingIds = Array.from(dirtySet.values());", save_idx)
         self.assertLess(flush_idx, posting_idx)
 
     def test_volume_flush_commits_pending_debounced_edits(self):
