@@ -2429,6 +2429,9 @@ class ExcelExporter(ConfigExporterBase):
 
         # Data rows
         no_counter = 0
+        # WP Export: track each row's canonical total so the SUM and bobot are written
+        # as backend NUMBERS, not live Excel formulas.
+        row_total_values = []  # list of (row, total_harga)
         for item in hierarchy_progress:
             item_type = item.get('type', 'pekerjaan')
             level = item.get('level', 3)
@@ -2469,15 +2472,17 @@ class ExcelExporter(ConfigExporterBase):
             harga_satuan_cell.number_format = '#,##0'
             harga_satuan_cell.border = border
 
-            # Col E: Total Harga (FORMULA: Volume × Harga Satuan)
-            total_harga_cell = ws.cell(row=current_row, column=5)
-            if item_type == 'pekerjaan':
-                total_harga_cell.value = f"=C{current_row}*D{current_row}"
-            else:
-                # For klasifikasi, use actual value or sum
-                total_harga_cell.value = item.get('total_harga', 0) or 0
+            # Col E: Total Harga (canonical backend value Volume × Harga Satuan —
+            # written as a number, never a live =C*D formula).
+            total_value = item.get('total_harga')
+            if total_value in (None, ''):
+                total_value = (volume or 0) * (harga_satuan or 0)
+            total_value = float(total_value or 0)
+            total_harga_cell = ws.cell(row=current_row, column=5, value=total_value)
             total_harga_cell.number_format = '#,##0'
             total_harga_cell.border = border
+            # Match the original =SUM(E..)/bobot semantics: every data row participates.
+            row_total_values.append((current_row, total_value))
 
             # Col F: Bobot (FORMULA will be set after all data with SUM reference)
             bobot_cell = ws.cell(row=current_row, column=6)
@@ -2519,8 +2524,9 @@ class ExcelExporter(ConfigExporterBase):
         ws.cell(row=current_row, column=3, value='').border = border
         ws.cell(row=current_row, column=4, value='').border = border
         
-        # Total Harga SUM
-        total_harga_sum = ws.cell(row=current_row, column=5, value=f"=SUM(E{data_start_row}:E{data_end_row})")
+        # Total Harga SUM — canonical backend sum (not =SUM)
+        grand_total_value = sum(v for _, v in row_total_values)
+        total_harga_sum = ws.cell(row=current_row, column=5, value=grand_total_value)
         total_harga_sum.number_format = '#,##0'
         total_harga_sum.font = Font(bold=True)
         total_harga_sum.border = border
@@ -2541,10 +2547,11 @@ class ExcelExporter(ConfigExporterBase):
         
         current_row += 1
 
-        # Now set Bobot formulas (E/SUM(E))
-        for row in range(data_start_row, data_end_row + 1):
+        # Now set Bobot as canonical share (row total / grand total) — not a formula.
+        for row, value in row_total_values:
             bobot_cell = ws.cell(row=row, column=6)
-            bobot_cell.value = f"=IF(E{current_row-1}>0,E{row}/E{current_row-1},0)"
+            bobot_cell.value = (value / grand_total_value) if grand_total_value else 0
+            bobot_cell.number_format = '0.00%'
 
         # Column widths
         ws.column_dimensions['A'].width = 5
@@ -2821,6 +2828,7 @@ class ExcelExporter(ConfigExporterBase):
         
         # Track pekerjaan rows for reference
         pekerjaan_rows = []  # List of {id, planned_row, actual_row, type, name}
+        weekly_total_by_row = {}  # row -> canonical total (backend SUM + bobot, no formula)
         current_row = data_start_row
         pekerjaan_counter = 0
         
@@ -2890,11 +2898,16 @@ class ExcelExporter(ConfigExporterBase):
                 if harga_satuan:
                     cell.number_format = '#,##0'
                 
-                # Col F: Total Harga (FORMULA)
-                total_cell = ws.cell(row=planned_row, column=6, value=f"=C{planned_row}*E{planned_row}")
+                # Col F: Total Harga (canonical backend value — no live =C*E formula)
+                total_value = item.get('total_harga')
+                if total_value in (None, ''):
+                    total_value = (volume or 0) * (harga_satuan or 0)
+                total_value = float(total_value or 0)
+                total_cell = ws.cell(row=planned_row, column=6, value=total_value)
                 total_cell.number_format = '#,##0'
                 total_cell.alignment = Alignment(horizontal='center', vertical='center')
                 total_cell.border = border
+                weekly_total_by_row[planned_row] = total_value
                 
                 # Col G: Bobot (will be set later)
                 bobot_cell = ws.cell(row=planned_row, column=7)
@@ -3008,12 +3021,13 @@ class ExcelExporter(ConfigExporterBase):
         for col in range(3, 6):
             ws.cell(row=current_row, column=col, value='').border = border
         
-        # Total Harga SUM
-        total_harga_sum = ws.cell(row=current_row, column=6, value=f"=SUM(F{data_start_row}:F{data_end_row})")
+        # Total Harga SUM — canonical backend sum (not =SUM)
+        grand_total_value = sum(weekly_total_by_row.values())
+        total_harga_sum = ws.cell(row=current_row, column=6, value=grand_total_value)
         total_harga_sum.number_format = '#,##0'
         total_harga_sum.font = Font(bold=True)
         total_harga_sum.border = border
-        
+
         # Bobot 100%
         ws.cell(row=current_row, column=7, value=1).number_format = '0.00%'
         ws.cell(row=current_row, column=7).font = Font(bold=True)
@@ -3027,12 +3041,14 @@ class ExcelExporter(ConfigExporterBase):
         
         total_row = current_row
         
-        # Set Bobot formulas for pekerjaan rows only (they have merged cells)
+        # Set Bobot as canonical share (pekerjaan total / grand total) — not a formula.
         for pek in pekerjaan_rows:
             if pek['type'] == 'pekerjaan':
                 planned_row = pek['planned_row']
                 bobot_cell = ws.cell(row=planned_row, column=7)
-                bobot_cell.value = f"=IF(F{total_row}>0,F{planned_row}/F{total_row},0)"
+                pek_total = weekly_total_by_row.get(planned_row, 0)
+                bobot_cell.value = (pek_total / grand_total_value) if grand_total_value else 0
+                bobot_cell.number_format = '0.00%'
         
         # ================================================================
         # SUMMARY ROWS: Weekly and Cumulative Progress
