@@ -312,20 +312,11 @@ class RekapCalculationContractTests(TestCase):
             web_row["work_total_after_markup"],
             service_row["work_total_after_markup"],
         )
-        self.assertEqual(
-            work_row[4],
-            RekapRABAdapter(self.project)._format_number(
-                service_row["unit_price_after_markup"],
-                0,
-            ),
-        )
-        self.assertEqual(
-            work_row[5],
-            RekapRABAdapter(self.project)._format_number(
-                service_row["work_total_after_markup"],
-                0,
-            ),
-        )
+        # WP Export (all Option A): the export adapter now carries canonical
+        # Decimal values (not locale strings); the exporter formats at its
+        # boundary. Parity is therefore an exact numeric match with the service.
+        self.assert_decimal_equal(work_row[4], service_row["unit_price_after_markup"])
+        self.assert_decimal_equal(work_row[5], service_row["work_total_after_markup"])
         self.assert_decimal_equal(
             export_data["totals"]["total_biaya_langsung"],
             service_row["work_total_after_markup"],

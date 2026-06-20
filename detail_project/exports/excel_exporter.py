@@ -228,10 +228,11 @@ class ExcelExporter(ConfigExporterBase):
             footer_rows = section.get('footer_rows') or []
             if footer_rows:
                 current_row += 1
+                footer_fmt = section.get('footer_value_format')
                 for footer in footer_rows:
                     ws.cell(row=current_row, column=1, value=footer[0] if footer else '')
                     if len(footer) > 1:
-                        ws.cell(row=current_row, column=2, value=footer[1])
+                        self._write_value_cell(ws, current_row, 2, footer[1], footer_fmt)
                     current_row += 1
 
             self._apply_column_widths(ws, section.get('col_widths'))
@@ -866,10 +867,35 @@ class ExcelExporter(ConfigExporterBase):
             title = title.replace(ch, '_')
         return title[:31]
 
+    @staticmethod
+    def _is_numeric_format(fmt) -> bool:
+        """A column number_format is numeric unless it is a text marker."""
+        return bool(fmt) and str(fmt).strip() not in ('@', 'text', '')
+
+    def _write_value_cell(self, ws, row: int, col: int, val, fmt=None):
+        """Write a cell at the adapter→Excel boundary (WP Export K2/K3 contract).
+
+        When the column carries a numeric number_format and the adapter passed a
+        canonical Decimal/number, write a real Excel number (float) and stamp the
+        format — never a locale string and never a live formula. Text columns and
+        empty placeholders pass through unchanged.
+        """
+        if (
+            self._is_numeric_format(fmt)
+            and isinstance(val, (Decimal, int, float))
+            and not isinstance(val, bool)
+        ):
+            cell = ws.cell(row=row, column=col, value=float(val))
+            cell.number_format = str(fmt)
+        else:
+            cell = ws.cell(row=row, column=col, value=val)
+        return cell
+
     def _write_table(self, ws, start_row: int, section: Dict[str, Any]) -> int:
         table_data = section.get('table_data') or {}
         headers = table_data.get('headers') or []
         rows = table_data.get('rows') or []
+        column_formats = table_data.get('column_formats') or []
         hierarchy = section.get('hierarchy_levels') or {}
         row_types = section.get('row_types') or []
         border = self._get_thin_border()
@@ -905,7 +931,8 @@ class ExcelExporter(ConfigExporterBase):
             else:
                 # Normal row
                 for col_idx, val in enumerate(row, 1):
-                    cell = ws.cell(row=start_row, column=col_idx, value=val)
+                    fmt = column_formats[col_idx - 1] if col_idx - 1 < len(column_formats) else None
+                    cell = self._write_value_cell(ws, start_row, col_idx, val, fmt)
                     cell.border = border
                     # Check if cell has multi-line content
                     has_newline = isinstance(val, str) and '\n' in val

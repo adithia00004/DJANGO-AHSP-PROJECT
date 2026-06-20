@@ -120,33 +120,36 @@ class RekapRABAdapter:
                         satuan = getattr(pek, 'snapshot_satuan', getattr(pek, 'satuan', ''))
                         jumlah = harga_satuan * volume
                     
+                    # WP Export K2/K3: emit canonical Decimal; the exporter writes
+                    # a real Excel number at its boundary (no locale string, no
+                    # live formula). Precision per column via `column_formats`.
                     rows.append([
                         uraian,
                         kode or '',
                         satuan or '',
-                        self._format_number(volume, 3),
-                        self._format_number(harga_satuan, 0),
-                        self._format_number(jumlah, 0),
+                        volume,
+                        harga_satuan,
+                        jumlah,
                     ])
                     hierarchy_levels[row_idx] = 3
                     row_idx += 1
-                    
+
                     sub_total += jumlah
-                
+
                 # Sub total: place in the same sub header row (Total column)
                 if sub_total > 0:
-                    rows[sub_header_idx][-1] = self._format_number(sub_total, 0)
-                
+                    rows[sub_header_idx][-1] = sub_total
+
                 klas_total += sub_total
-            
+
             # Klas total: place in the same klas header row (Total column)
             if klas_total > 0:
-                rows[klas_header_idx][-1] = self._format_number(klas_total, 0)
+                rows[klas_header_idx][-1] = klas_total
 
             # Append summary per klasifikasi (for pengesahan page)
             summary_by_klas.append([
                 getattr(klas, 'name', getattr(klas, 'nama', 'Klasifikasi')),
-                self._format_number(klas_total, 0)
+                klas_total  # WP Export: canonical Decimal; exporter formats at boundary
             ])
             
             grand_total += klas_total
@@ -175,20 +178,24 @@ class RekapRABAdapter:
         rounded = int((Decimal(grand_with_ppn) / Decimal(rounding_base)).to_integral_value(rounding=ROUND_HALF_UP)) * rounding_base
 
         footer_rows = [
-            ['TOTAL BIAYA LANGSUNG', self._format_number(grand_total, 0)],
-            [f'PPN {ppn_pct}%', self._format_number(ppn_value, 0)],
-            ['GRAND TOTAL', self._format_number(grand_with_ppn, 0)],
-            ['PEMBULATAN', self._format_number(rounded, 0)],
+            ['TOTAL BIAYA LANGSUNG', grand_total],
+            [f'PPN {ppn_pct}%', ppn_value],
+            ['GRAND TOTAL', grand_with_ppn],
+            ['PEMBULATAN', Decimal(rounded)],
         ]
-        
+
         return {
             'table_data': {
                 'headers': headers,
                 'rows': rows,
+                # WP Export: per-column number_format applied at the exporter
+                # boundary. Columns: Uraian, Kode, Satuan, Volume, Harga, Jumlah.
+                'column_formats': ['@', '@', '@', '#,##0.000', '#,##0.00', '#,##0.00'],
             },
             'col_widths': col_widths,
             'hierarchy_levels': hierarchy_levels,
             'footer_rows': footer_rows,
+            'footer_value_format': '#,##0.00',
             'totals': {
                 'total_biaya_langsung': grand_total,
                 'ppn_percent': ppn_pct,

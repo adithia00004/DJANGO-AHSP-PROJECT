@@ -128,6 +128,7 @@ class ExportManager:
             'row_types': row_types,  # Added for PDF cell merging
             'col_widths': data_raw.get('col_widths', []),
             'footer_rows': data_raw.get('footer_rows', []),
+            'footer_value_format': data_raw.get('footer_value_format'),  # WP Export numeric footer
             'include_signatures': False,  # No signatures on RAB detail page
         }
 
@@ -135,6 +136,9 @@ class ExportManager:
         page2_table = {
             'headers': ['No', 'Uraian Klasifikasi', 'Jumlah Harga (Rp)'],
             'rows': [],
+            # WP Export: No + name are text, the recap value is a Decimal formatted
+            # at the exporter boundary (matches the main table's 2-decimal contract).
+            'column_formats': ['@', '@', '#,##0.00'],
         }
         # Build numbered summary rows
         summary_rows = data_raw.get('summary_by_klasifikasi', [])
@@ -148,6 +152,7 @@ class ExportManager:
             'title': 'REKAPITULASI RENCANA ANGGARAN BIAYA',
             'table_data': page2_table,
             'footer_rows': data_raw.get('footer_rows', []),
+            'footer_value_format': data_raw.get('footer_value_format'),  # WP Export numeric footer
             'col_widths': page2_col_widths,
             'include_signatures': True,  # Signatures on pengesahan page
             'keep_together': True,  # Keep table + footer + signatures together
