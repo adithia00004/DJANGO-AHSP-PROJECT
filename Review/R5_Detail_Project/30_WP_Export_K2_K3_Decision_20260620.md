@@ -272,3 +272,30 @@ Rekomendasi: **(A)** — selaras kontrak SSOT. Bila (A) di luar scope slice ini,
 
 ### 6.10 Status WP Export
 **5 dari 6 report SELESAI**: Rekap RAB, Harga Items, Rekap Kebutuhan, Rincian AHSP, Volume. **Sisa: Jadwal** (`float()`→Decimal + K3 `=C*D`/bobot di 3 metode professional/monthly/weekly — sheet Kurva-S/SSOT). **Backlog terpisah (bukan WP Export):** Canonical Formula Evaluation Service (nilai computed-param resmi, parity JS↔server) + "Template Kalkulasi" export type (workbook editable dgn formula hidup).
+
+---
+
+## 7. Lapisan Kontrol Formula (forward implementation, 2026-06-20)
+
+**Perubahan arah owner:** pertahankan formula Excel native sebagai **lapisan kontrol/audit** — BUKAN revert. Sheet utama tetap nilai backend (K2/presisi/no-formula tetap berlaku); formula ditambahkan kembali di **sheet terpisah** yang menghitung ulang lalu membandingkan. Riwayat Git = sumber kode converter lama, bukan untuk memulihkan desain lama.
+
+**Keputusan owner (2026-06-20):** penempatan = **sheet "Kontrol Kalkulasi" di dalam file resmi**; pilot = **Rincian AHSP**.
+
+**Pilot Rincian AHSP — SELESAI (commit `62c688e3`).** Sheet ke-3 "Kontrol Kalkulasi" per pekerjaan:
+| Kolom | Isi |
+|---|---|
+| Nilai Resmi | G backend (numeric) |
+| Nilai Kontrol | formula hidup `=Rincian!{E}+Rincian!{F}` (Excel recompute dari sheet resmi) |
+| Selisih | `=Resmi-Kontrol` |
+| Status | `=IF(ABS(Selisih)<0.01,"OK","PERIKSA")` |
+
+Section writer kembali melacak alamat sel E/F/G (di samping nilai) agar formula kontrol menunjuk sel yang benar. Hasil formula kontrol **tak pernah** dipakai import/perhitungan aplikasi.
+
+**Gate:** sheet resmi (Rincian, Rekap) tetap **tanpa sel `data_type='f'`** (test no-`f` kini meng-exclude "Kontrol Kalkulasi"); test baru memastikan kolom kontrol = formula, menunjuk sel E/F Rincian, dan rekonsiliasi (E+F == G resmi → Status OK). **136 export test PASS**.
+
+**Aturan lapisan kontrol (berlaku semua report):**
+- Sheet utama = nilai backend kanonik (tak berubah).
+- Sheet "Kontrol Kalkulasi" = formula hidup referensi eksplisit + diuji.
+- Hasil formula kontrol TIDAK dipakai import/perhitungan.
+
+**Sisa rollout lapisan kontrol:** Rekap RAB (kontrol = Σ(volume×harga)+PPN vs grand total — formula 100% baru), Jadwal (Σbobot vs 100% / Σperiode vs total — converter `=C*D`/bobot dari riwayat). **Volume:** laporan resmi tetap; converter `_convert_volume_formula` (di-retire, tersedia di `33e0dfe0^`) → tipe export **"Template Kalkulasi"** terpisah (bukan sheet kontrol).
