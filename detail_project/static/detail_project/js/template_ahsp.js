@@ -1196,28 +1196,42 @@
     return fetch(url, { credentials: 'same-origin' }).then((r) => parseJsonPayload(r, 'Muat detail pekerjaan')).then(js => {
       if (!js.ok) throw new Error(js.user_message || 'Gagal memuat detail pekerjaan.');
       const items = js.items || [];
-      kategoriMeta = js.meta?.kategori_opts || kategoriMeta;
-      readOnly = !!js.meta?.read_only;
+      const localKategoriMeta = js.meta?.kategori_opts || kategoriMeta;
+      const localReadOnly = !!js.meta?.read_only;
 
       // OPTIMISTIC LOCKING: Store timestamp when data is loaded
       const updatedAt = js.pekerjaan?.updated_at || null;
 
-      // P1 FIX: Store cache timestamp for TTL check
+      // P1 FIX: Store cache timestamp for TTL check. Caching `id` is always safe.
       rowsByJob[id] = {
         items,
-        kategoriMeta,
-        readOnly,
+        kategoriMeta: localKategoriMeta,
+        readOnly: localReadOnly,
         sourceLabel: js.pekerjaan?.source_label || activeSourceLabel,
         updatedAt,
         cachedAt: Date.now() // Track when cache was created
       };
+      if (flaggedBefore) {
+        resolveReloadJob(id);
+      }
+
+      // TA-22: guard against a STALE async response. If the user switched to a
+      // different job while this fetch was in flight, do NOT paint this job's rows
+      // over the now-active job — a following save reads the visible table and
+      // would write THIS job's components to the OTHER pekerjaan (silent
+      // corruption). The cache above stays valid for when `id` is reselected.
+      // reloadJobs awaits each selectJobInternal sequentially, so within it
+      // `id === activeJobId` always holds here and this guard never trips.
+      if (id !== activeJobId) {
+        return;
+      }
+
+      kategoriMeta = localKategoriMeta;
+      readOnly = localReadOnly;
       activeSourceLabel = rowsByJob[id].sourceLabel;
       renderActiveSource();
       paint(items);
       setEditorModeBySource();
-      if (flaggedBefore) {
-        resolveReloadJob(id);
-      }
       if (skipFormulaReeval) {
         return;
       }
@@ -2030,49 +2044,34 @@
       // Server already sends fresh data in save response - no need to fetch again!
       const hasExpansion = (js.saved_expanded_rows || 0) > (js.saved_raw_rows || 0);
 
+      // TA-22: always key cache/paint off the SAVED jobId (the request target),
+      // not the global activeJobId — the active job can shift mid-save (concurrent
+      // reloadJobs) and we must never attach this response to a different pekerjaan.
+      const savedItems = (js.items && Array.isArray(js.items)) ? js.items : rowsCanon;
+      const stillActive = (jobId === activeJobId);
+
       if (hasExpansion) {
         // Bundle expansion occurred - reload to get expanded components
-        console.log('[SAVE] Bundle expansion detected - reloading to fetch expanded components');
-        delete rowsByJob[activeJobId];
-        reloadJobs([activeJobId], { preserveSelection: true, silent: true, queue: true }).catch(() => { });
+        delete rowsByJob[jobId];
+        reloadJobs([jobId], { preserveSelection: true, silent: true, queue: true }).catch(() => { });
       } else {
-        // Simple save without expansion - update cache directly from response
-        console.log('[SAVE] Updating cache directly from response (no expansion)');
-
-        if (js.items && Array.isArray(js.items)) {
-          // Server returned updated items - use them
-          rowsByJob[activeJobId] = {
-            items: js.items,
-            kategoriMeta: rowsByJob[activeJobId]?.kategoriMeta || kategoriMeta,
-            readOnly: rowsByJob[activeJobId]?.readOnly || readOnly,
-            sourceLabel: js.pekerjaan?.source_label || rowsByJob[activeJobId]?.sourceLabel || activeSourceLabel,
-            updatedAt: js.pekerjaan?.updated_at || null,
-            cachedAt: Date.now()
-          };
-          activeSourceLabel = rowsByJob[activeJobId].sourceLabel;
+        // Simple save without expansion - update cache directly from response.
+        rowsByJob[jobId] = {
+          items: savedItems,
+          kategoriMeta: rowsByJob[jobId]?.kategoriMeta || kategoriMeta,
+          readOnly: rowsByJob[jobId]?.readOnly || readOnly,
+          sourceLabel: js.pekerjaan?.source_label || rowsByJob[jobId]?.sourceLabel || activeSourceLabel,
+          updatedAt: js.pekerjaan?.updated_at || null,
+          cachedAt: Date.now()
+        };
+        // Only repaint when the saved job is still the one on screen.
+        if (stillActive) {
+          activeSourceLabel = rowsByJob[jobId].sourceLabel;
           renderActiveSource();
-          paint(js.items);
+          paint(savedItems);
           reevaluateAllKoefFormulaRows({ snapshot: saveSnapshot, silent: true })
-            .then(() => rememberFormulaEvalSnapshot(activeJobId, saveSnapshot))
+            .then(() => rememberFormulaEvalSnapshot(jobId, saveSnapshot))
             .catch(() => { });
-          console.log('[SAVE] Cache updated with', js.items.length, 'items from response');
-        } else {
-          // Fallback: Server didn't return items - use what we sent
-          rowsByJob[activeJobId] = {
-            items: rowsCanon,
-            kategoriMeta: rowsByJob[activeJobId]?.kategoriMeta || kategoriMeta,
-            readOnly: rowsByJob[activeJobId]?.readOnly || readOnly,
-            sourceLabel: js.pekerjaan?.source_label || rowsByJob[activeJobId]?.sourceLabel || activeSourceLabel,
-            updatedAt: js.pekerjaan?.updated_at || null,
-            cachedAt: Date.now()
-          };
-          activeSourceLabel = rowsByJob[activeJobId].sourceLabel;
-          renderActiveSource();
-          paint(rowsCanon);
-          reevaluateAllKoefFormulaRows({ snapshot: saveSnapshot, silent: true })
-            .then(() => rememberFormulaEvalSnapshot(activeJobId, saveSnapshot))
-            .catch(() => { });
-          console.log('[SAVE] Cache updated with sent data (server response had no items)');
         }
       }
     }).catch((err) => {
@@ -2161,7 +2160,10 @@
       if (!activeJobId || activeSource !== 'ref_modified') return;
       if (!confirm('Reset rincian dari referensi? Perubahan lokal akan hilang.')) return;
 
-      const url = urlFor(endpoints.reset, activeJobId);
+      // TA-22: pin the job being reset so a mid-request job switch cannot make the
+      // post-reset fetch/paint attach to a different pekerjaan.
+      const resetJobId = activeJobId;
+      const url = urlFor(endpoints.reset, resetJobId);
 
       try {
         // Fetch with HTTP error checking
@@ -2200,12 +2202,12 @@
           throw new Error(errorMsg);
         }
 
-        // Success: reload data
-        const getResponse = await fetch(urlFor(endpoints.get, activeJobId), { credentials: 'same-origin' });
+        // Success: reload data for the job that was actually reset.
+        const getResponse = await fetch(urlFor(endpoints.get, resetJobId), { credentials: 'same-origin' });
         const getData = await getResponse.json();
 
-        // P1 FIX: Add cache timestamp
-        rowsByJob[activeJobId] = {
+        // P1 FIX: Add cache timestamp. Cache is keyed by the reset job id.
+        rowsByJob[resetJobId] = {
           items: getData.items || [],
           kategoriMeta: getData.meta?.kategori_opts || [],
           readOnly: !!getData.meta?.read_only,
@@ -2213,15 +2215,18 @@
           updatedAt: getData.pekerjaan?.updated_at || null,
           cachedAt: Date.now()
         };
-        activeSourceLabel = rowsByJob[activeJobId].sourceLabel;
-        renderActiveSource();
 
-        paint(rowsByJob[activeJobId].items);
-        refreshParamSnapshot({ quiet: true })
-          .then((snapshot) => reevaluateAllKoefFormulaRows({ snapshot, silent: true }))
-          .catch(() => { });
-        setDirty(false);
-        setEditorModeBySource();
+        // TA-22: only repaint if the reset job is still on screen.
+        if (resetJobId === activeJobId) {
+          activeSourceLabel = rowsByJob[resetJobId].sourceLabel;
+          renderActiveSource();
+          paint(rowsByJob[resetJobId].items);
+          refreshParamSnapshot({ quiet: true })
+            .then((snapshot) => reevaluateAllKoefFormulaRows({ snapshot, silent: true }))
+            .catch(() => { });
+          setDirty(false);
+          setEditorModeBySource();
+        }
         // Reset-to-reference rebuilds raw/expanded detail, so the project-level
         // readiness verdict may change even though this is not the normal save path.
         refreshReadiness();
