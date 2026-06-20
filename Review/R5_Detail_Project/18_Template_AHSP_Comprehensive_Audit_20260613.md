@@ -1305,4 +1305,19 @@ Seluruh temuan TA-01..TA-21 direvalidasi terhadap kode aktual. Status:
 
 **Status page-scope Template AHSP: SELESAI.** P0 (TA-01/03/18) sudah ditutup WP-P2/B7; sisa page-scope (TA-04/07/10) ditutup turn ini. TA-08/TA-11 = WP lintas-cutting; TA-12/TA-19 = maintainability backlog.
 
-*Revalidasi & penutupan oleh Claude, 2026-06-20. Commit: `f4bf7960`.*
+### 16.6 Sisir tuntas `template_ahsp.js` (2026-06-20) — TEMUAN BARU TA-22
+
+Sisir baris-demi-baris `template_ahsp.js` (2.600 baris: job-switch, save-controller, formula eval, bundle picker) — sejajar dengan kedalaman audit List Pekerjaan/Volume.
+
+- **TA-22 (Medium) — race "stale async response" → korupsi silang antar-pekerjaan. FIXED 2026-06-20 (commit `7283da6c`).** Tiga handler async (`selectJobInternal` fetch, `doSave` success, tombol reset) mem-`paint`/cache memakai **global `activeJobId`** lintas-batas async. Bila user pindah pekerjaan saat request masih in-flight (resolusi fetch out-of-order, atau `reloadJobs` konkuren), respons job A bisa di-`paint` ke tabel job B (activeJobId=B); edit+save berikutnya menulis komponen A ke B (senyap). **Fix:** kunci cache/paint ke job-id milik request, dan **jangan repaint** bila active job berubah (`if (id !== activeJobId) return`; `doSave` pakai `jobId`+`stillActive`; reset pin `resetJobId`). `reloadJobs` await sequential → guard tak pernah trip. Guard `template_ahsp_race_guard.test.js`. **384 FE test PASS.**
+
+**Temuan minor (catat, belum diperbaiki — low):**
+- **Dead code** `if (false && currentCache ...)` di `doSave` (freshness/conflict check dimatikan = konsisten DEC-002 LWW) + `confirm()` di dalamnya → hapus saat cleanup.
+- **24 `console.log('[SAVE|SELECT_JOB|CACHE|LOAD]...')`** debug tertinggal di produksi (analog V6, sisi client) → ganti/ hapus.
+- **Mismatch nol koef FE↔BE**: FE `validateClient`/blur tolak `koef < MIN_KOEF` (≈1e-12, termasuk 0 → reset ke default), BE (TA-01) menerima 0. UI lebih ketat; bukan korupsi, tapi 0 tak bisa diinput via UI. Samakan aturan nol bila diinginkan.
+- **TA-09** native `confirm()` (9 callsite) tetap terbuka (modal governance, sudah tercatat).
+- **Edge residual TA-22**: `setDirty(false)` di success `doSave` tidak di-guard `stillActive` — pada race ekstrem bisa clear dirty job lain; sangat sempit karena dirty-guard mencegah switch saat dirty. Dicatat, tak diperbaiki.
+
+**Kesimpulan sisir:** jalur save backend & dual-storage **sound** (sudah diverifikasi: delete-before-create replace-all, dedup `unique_together`, koef negatif ditolak, formula sidecar mengikuti kode). Satu bug korupsi-senyap **baru** (TA-22, race client-side) ditemukan & ditutup. Sisanya minor/maintainability.
+
+*Revalidasi & penutupan oleh Claude, 2026-06-20. Commit: `f4bf7960` (TA-04/07/10), `7283da6c` (TA-22).*
