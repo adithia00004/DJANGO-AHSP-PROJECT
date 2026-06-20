@@ -1447,3 +1447,29 @@ P0 (RK-01..RK-05) tepat. Catatan:
 - **RK-01 + RK-05** = unit kerja utama: satu `build_canonical_item_requirements` + `distribute_requirements_by_week` dari `planned_proportion` berbasis expanded (§10). Ini menutup RK-01, RK-02 (via D-RK-08), dan RK-05 sekaligus.
 
 Catatan proses: keputusan owner D-RK-01..12 sangat lengkap dan kontraknya koheren dengan akar masalah yang terverifikasi (dua formula waktu, signature harga, scheduled-by-quantity). Arsitektur target (satu builder weekly-expanded) tepat dan tidak butuh migrasi DB besar karena seluruh storage sudah ada.
+
+---
+
+## 15. Revalidasi & Status (Claude, 2026-06-20)
+
+Page ini **berbeda dari page lain: sedang di tengah redesign besar WP-P8** (commit terakhir `b6ab3ce6 "mark WP-P8 ready for UAT"`). Revalidasi P0 ke kode aktual:
+
+| Temuan | Status | Bukti |
+|---|---|---|
+| RK-01 timeline tak pakai weekly canonical | ✅ FIXED | `compute_kebutuhan_timeline` (`services.py:3248`) kini pakai `build_weekly_distribution` (`:3309`) baca `PekerjaanProgressWeekly.planned_proportion` — bukan `PekerjaanTahapan`/overlap-hari |
+| RK-02 proporsi tahapan dobel | ✅ (via D-RK-08) | mode tahapan dijalur kalkulasi dihapus; assignment `@api_deprecated` |
+| RK-04 cache stale setelah harga | ✅ FIXED | `_kebutuhan_signature` → `build_project_cache_signature`; `CALCULATION_CACHE_DOMAINS` memuat `"prices"` (`:108`) |
+| RK-05 weekly endpoint baca raw | ✅ deprecated | `d9f8ded7 "deprecate legacy weekly endpoint"`; canonical builder berbasis expanded |
+| RK-06 unscheduled hilang | ✅ | `cee235f2 "expose unscheduled timeline items"` |
+
+**RK-03 — DITUTUP 2026-06-20 (commit `f5e078de`).** `_build_time_scope_multiplier` mengembalikan `1.0` untuk pekerjaan tanpa alokasi planned → time-scope snapshot menghitung pekerjaan belum-terjadwal **penuh** di setiap periode terpilih. Per **D-RK-02**, kerja tanpa `planned_proportion` = "Belum Terjadwal", bukan milik periode mana pun → multiplier kini **0**. Snapshot Total Kebutuhan (time_scope='all') tak terpengaruh (helper early-return `{}`). Test `tests_kebutuhan_timeline_b6b.py` di-update ke semantik baru (0). 18 backend + 4 FE PASS.
+
+**Sisa (mengikuti WP-P8 UAT / lintas-page, BUKAN diperbaiki piecemeal):**
+- **RK-20** `validate_total_proporsi()` masih di-comment (`models.py:1023`); efek berkurang karena partial <100% kini by-design → Belum Terjadwal (D-RK-02). Kebijakan over-alokasi (>100%) = domain **Jadwal Pekerjaan**.
+- **D-RK-01..12 lengkap** (hierarki UI, URL state, readiness banner, filter modal, hapus tahapan tuntas, parity export) = lingkup UAT WP-P8 — verifikasi visual/behavioral, bukan grep statik.
+- **RK-23** `str(e)` leak export → **WP Export**; **RK-10** localStorage conversion (cek apakah sudah dihapus per D-RK-03).
+- **Dependensi:** kontrak distribusi periode dimiliki audit **Jadwal Pekerjaan (doc 22)** — Rekap Kebutuhan adalah consumer hilir. Fix kontrak lanjutan harus selaras Jadwal.
+
+**Status:** core P0 backend (RK-01/03/04/05/06) ditutup; redesign D-RK-01..12 = WP-P8 ready-for-UAT. RK-03 residual ditutup atas permintaan owner.
+
+*Penutupan oleh Claude, 2026-06-20. Commit: WP-P8 (`58d3c41e`/`3f1786a3`/`cee235f2`/`d9f8ded7`), `f5e078de` (RK-03).*
