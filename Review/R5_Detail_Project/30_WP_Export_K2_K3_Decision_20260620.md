@@ -1,7 +1,26 @@
 # WP Export — Audit & Dokumen Keputusan K2/K3 (excel_exporter.py)
 
 **Tanggal:** 20 Juni 2026
-**Status:** AUDIT-ONLY (belum ada perubahan kode — menunggu keputusan produk)
+**Status:** **KEPUTUSAN OWNER DITERIMA 2026-06-20 — semua Opsi A.** Implementasi mengikuti urutan §6.1.
+
+## KEPUTUSAN OWNER (terkunci, 2026-06-20)
+
+Prinsip: **Excel = representasi laporan dari SSOT backend, bukan mesin perhitungan paralel.**
+
+- **K3** — Excel menulis **nilai kanonik hasil backend**, bukan formula hidup. Formula boleh disimpan sebagai informasi tambahan (komentar/sheet sekunder), **bukan** sumber nilai sel resmi.
+- **K2** — Adapter menyerahkan **Decimal** langsung ke exporter. Konversi ke tipe Excel dilakukan **di boundary exporter**; **jangan** parsing string locale.
+- **Presisi** — **2 desimal konsisten** untuk harga & nilai finansial. Rupiah bulat hanya boleh format presentasi terpisah, **tidak** menghilangkan presisi nilai sel.
+- **Kontrak tipe** — Decimal berlaku pada jalur **Python adapter → exporter**. Bila melewati **JSON**, gunakan **string desimal kanonik** (mis. `"1500.00"`), **bukan** float atau string berformat locale.
+
+**Urutan implementasi (owner):**
+1. Inventarisasi tipe output seluruh adapter.
+2. Tambah contract test: nilai backend → adapter → workbook.
+3. Tutup K2 dulu.
+4. Ganti formula hidup → nilai backend (K3).
+5. Terapkan format 2 desimal.
+6. Regresi kelima report + parity "dataset backend = nilai sel Excel".
+
+> Status awal dokumen (di bawah) dipertahankan sebagai catatan audit. Bagian implementasi/progress ditambahkan di §6.x.
 **Scope:** `detail_project/exports/excel_exporter.py` (4044 baris) — modul export Excel **bersama** lintas-report.
 **Konteks:** Lanjutan WP Export. `str(e)`-leak (TA-08/JDW-19/RK-23) sudah ditutup. Sisa = K2 (locale parse) + K3 (rumus hidup) + presisi (`number_format`). Ketiganya **kebijakan presentasi** + **risiko regresi lintas-report**, jadi diaudit dulu.
 
@@ -126,3 +145,37 @@ Rincian AHSP 2-sheet (4 call-site). Perlu cek apakah adapter lain memanggil `par
 - Sisa leak yang **sengaja** dibiarkan: `json.JSONDecodeError` import (input user) + legacy tahapan v1 (→ Fase-3).
 
 *Audit oleh Claude, 2026-06-20. Tidak ada perubahan kode pada `excel_exporter.py`.*
+
+---
+
+## 6. Implementasi (mengikuti keputusan owner)
+
+### 6.1 Urutan (diulang dari keputusan)
+1. Inventarisasi tipe output adapter · 2. Contract test backend→adapter→workbook · 3. K2 · 4. K3 · 5. Presisi 2-desimal · 6. Regresi 5 report + parity.
+
+### 6.2 LANGKAH 1 — Inventarisasi tipe output adapter (SELESAI 2026-06-20)
+
+**Temuan utama: setiap adapter punya `_format_number(value, decimals) -> str` yang menghasilkan STRING berformat id-ID** (`f"{x:,.2f}"` lalu swap `,`↔`.` → mis. `"1.500.000"` / `"1.500,50"`). Akibatnya angka kanonik di-*downgrade* jadi string presentasi **di adapter**, lalu exporter harus mem-parse ulang / menulis sebagai teks.
+
+| Adapter | Tipe numerik dikirim | Jalur exporter | Masalah |
+|---|---|---|---|
+| **Rekap RAB** (`:123-181`) | `_format_number(volume,3)`, `_format_number(harga,0)`, `_format_number(jumlah,0)` = **string id-ID** | `export()` generic → `ws.cell(value=str)` | Sel = **TEKS** di Excel (tak bisa dijumlah), presisi hilang di `decimals=0` |
+| **Rekap Kebutuhan** | `_format_number(...)` = string | `export()` generic | sama (teks, presisi hilang) |
+| **Harga Items** | `_format_number(...)` = string | `export()` generic | sama |
+| **Rincian AHSP** (`:169-246`) | `_format_number(subtotal,0)`, `f"{eff:.2f}"` = string | `_export_rincian_ahsp_2sheet` → `_parse_number` (**K2 heuristik**) + formula `=E*F` (**K3**) | round-trip lossy + formula≠backend |
+| **Volume** | campuran string `_format_number` + `_convert_volume_formula` (**K3**) | `export_volume_pekerjaan` → `_parse_number` (**K2**) | sama |
+| **Jadwal** (`:1180-1282`) | **campur**: `float(volume)`, `float(harga)` (OK-ish) + `_format_number(volume,3)` string utk `*_display` + formula `=C*D`/bobot (**K3**) | `export_professional/monthly/weekly` | float kehilangan presisi Decimal; display string; formula |
+
+**Kesimpulan inventaris:**
+1. **Akar tunggal**: adapter memformat angka jadi **string id-ID** (sering `decimals=0` → presisi hilang **sebelum** sampai exporter). Ini menyebabkan K2 (exporter mem-parse ulang) **dan** kasus lebih buruk (jalur generic menulis string sebagai **teks sel**).
+2. **K3** (formula hidup) menumpuk di atasnya untuk Rincian/Volume/Jadwal.
+3. **Jadwal** memakai `float()` (bukan Decimal) → kehilangan presisi & melanggar kontrak owner "Decimal pada jalur adapter→exporter".
+
+**Implikasi desain (sesuai kontrak owner):**
+- Adapter harus mengirim **`Decimal` kanonik** (atau **string desimal kanonik** `"1500.00"` bila lewat JSON), **bukan** hasil `_format_number`.
+- `_format_number` (string id-ID) **hanya** untuk sel label/teks non-data atau format presentasi terpisah — bukan untuk nilai data.
+- Boundary konversi **Decimal→tipe Excel** + `number_format='#,##0.00'` dilakukan **di exporter** (satu tempat).
+- `_parse_number`/`parse_number` (K2) di exporter di-pensiun untuk jalur data; sisakan guard tipis numeric-passthrough.
+- Formula hidup (K3) diganti nilai; rumus boleh jadi komentar/sheet sekunder.
+
+**Status langkah berikutnya:** LANGKAH 2 (contract test backend→adapter→workbook) — test ditulis sebagai spesifikasi (RED) sebelum K2/K3/presisi membuatnya GREEN.
