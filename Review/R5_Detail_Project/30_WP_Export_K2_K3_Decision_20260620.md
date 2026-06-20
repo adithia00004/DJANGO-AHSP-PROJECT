@@ -306,11 +306,12 @@ Section writer kembali melacak alamat sel E/F/G (di samping nilai) agar formula 
 
 **Increment 1 — SELESAI (commit `d3c63464`):** sheet SSOT "Data Master" (`_build_ssot_sheet`) + monthly detail = nilai backend (recompute `=C*D`/`=SUM`/bobot dihapus; Total = Σ Python; Bobot = row/grand). Tanpa regresi.
 
-**Sisa (recompute di VIEW sheets → nilai / Kontrol Kalkulasi):**
-- Professional kurva: agregasi `={refs}` (`:1902/1909/1968/1987`).
-- Monthly rincian (`_build_monthly_rincian_sheet` :3175): `=SUM` (3470/3484), `=H+I` (3490), join multi-ref (3308/3326); mirror `='Data Master'!cell` (3286/3318/3336/3435-3459) DIPERTAHANKAN.
-- Weekly rincian (`_build_weekly_rincian_sheet` :3673): `=G*…` (3988/3999/4012), `=SUM` (4039-4059); mirror (3937-3974) DIPERTAHANKAN.
-- Parity test Jadwal (SSOT numeric==backend; view = mirror-only; monthly/weekly/professional nilai semantik sama) — bagian penyelesaian slice.
+**Sisa — RENCANA SESI BERIKUTNYA (owner 2026-06-21, increment terpisah, commit+test masing-masing). Fondasi = `d3c63464`. JANGAN campur ketiga view-sheet besar dalam satu sesi.**
+
+- **Increment 2A — Professional Kurva** (mulai dari sini): ganti agregasi multi-ref `={refs}` (`:1902/1909/1968/1987`) dengan nilai backend; pertahankan hanya mirror 1:1; commit + regression test terpisah.
+- **Increment 2B — Monthly** (`_build_monthly_rincian_sheet` :3175): hapus `=SUM` (3470/3484), `=H+I` (3490), join multi-ref (3308/3326); total/subtotal dari backend/Python; mirror `='Data Master'!cell` (3286/3318/3336/3435-3459) TETAP.
+- **Increment 2C — Weekly** (`_build_weekly_rincian_sheet` :3673): hapus perkalian `=G*…` (3988/3999/4012) + agregasi `=SUM` (4039-4059); nilai periode & total dari dataset kanonik; mirror (3937-3974) TETAP.
+- **Increment 2D — Parity gate**: backend == Data Master == monthly == weekly == professional; guard memastikan formula sheet resmi HANYA direct-reference 1:1; formula recompute hanya boleh di Kontrol Kalkulasi. Setelah hijau → **WP Export nilai-resmi 6/6 dikunci**.
 
 ---
 
