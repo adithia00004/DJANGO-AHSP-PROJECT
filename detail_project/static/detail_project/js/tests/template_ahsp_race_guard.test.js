@@ -28,4 +28,10 @@ describe('TA-22 - stale-response guard', () => {
     // the previous global-active bleed must be gone from the save success path
     expect(src).not.toContain('rowsByJob[activeJobId] = {');
   });
+
+  test('save success only clears dirty when the saved job is still active', () => {
+    // residual guard: a stale save must not clear a DIFFERENT active job's dirty flag
+    expect(src).toContain('if (stillActive) setDirty(false);');
+    expect(src).not.toMatch(/\/\/ Update state\s*\n\s*setDirty\(false\);/);
+  });
 });

@@ -2034,8 +2034,14 @@
       toast(userMsg, 'success');
       console.log('[SAVE] Success - Raw:', rawRows, 'Expanded:', expandedRows, 'Expansion:', expandedRows - rawRows);
 
-      // Update state
-      setDirty(false);
+      // TA-22: the active job can shift mid-save (concurrent reloadJobs / job
+      // switch), so compute this up front and never let a stale response touch a
+      // DIFFERENT active pekerjaan — including its dirty flag.
+      const stillActive = (jobId === activeJobId);
+
+      // Update state. Only clear dirty when the saved job is still on screen,
+      // otherwise the now-active job's unsaved edits would lose their dirty flag.
+      if (stillActive) setDirty(false);
 
       // WP-B4: simpan detail dapat mengubah readiness (harga/expansion/koef) -> refresh banner.
       refreshReadiness();
@@ -2044,11 +2050,8 @@
       // Server already sends fresh data in save response - no need to fetch again!
       const hasExpansion = (js.saved_expanded_rows || 0) > (js.saved_raw_rows || 0);
 
-      // TA-22: always key cache/paint off the SAVED jobId (the request target),
-      // not the global activeJobId — the active job can shift mid-save (concurrent
-      // reloadJobs) and we must never attach this response to a different pekerjaan.
+      // TA-22: always key cache/paint off the SAVED jobId (the request target).
       const savedItems = (js.items && Array.isArray(js.items)) ? js.items : rowsCanon;
-      const stillActive = (jobId === activeJobId);
 
       if (hasExpansion) {
         // Bundle expansion occurred - reload to get expanded components
