@@ -5,9 +5,11 @@ from unittest.mock import patch
 from dashboard.models import Project
 from detail_project.views_api import (
     api_chart_data,
+    api_get_rekap_kebutuhan,
     api_kurva_s_data,
     api_kurva_s_harga_data,
     api_rekap_kebutuhan_weekly,
+    api_validate_rekap_kebutuhan,
 )
 
 
@@ -93,6 +95,40 @@ class ApiV2OwnershipAccessTests(TestCase):
             side_effect=RuntimeError(secret),
         ):
             response = api_chart_data(request, self.project.id)
+
+        body = response.content.decode("utf-8")
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(secret, body)
+
+    # RK-23: Rekap Kebutuhan data endpoints must not leak raw exception text.
+    def test_rekap_kebutuhan_snapshot_error_does_not_leak_exception_text(self):
+        secret = "secret-kebutuhan-snapshot"
+        request = self.factory.get("/detail_project/api/project/rekap-kebutuhan/")
+        request.user = self.owner
+        with patch("detail_project.views_api.compute_kebutuhan_items", side_effect=RuntimeError(secret)):
+            response = api_get_rekap_kebutuhan(request, self.project.id)
+
+        body = response.content.decode("utf-8")
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(secret, body)
+
+    def test_rekap_kebutuhan_weekly_error_does_not_leak_exception_text(self):
+        secret = "secret-kebutuhan-weekly"
+        request = self.factory.get("/detail_project/api/v2/project/rekap-kebutuhan-weekly/")
+        request.user = self.owner
+        with patch("detail_project.views_api.compute_kebutuhan_items", side_effect=RuntimeError(secret)):
+            response = api_rekap_kebutuhan_weekly(request, self.project.id)
+
+        body = response.content.decode("utf-8")
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(secret, body)
+
+    def test_rekap_kebutuhan_validate_error_does_not_leak_exception_text(self):
+        secret = "secret-kebutuhan-validate"
+        request = self.factory.get("/detail_project/api/project/rekap-kebutuhan/validate/")
+        request.user = self.owner
+        with patch("detail_project.services.validate_kebutuhan_data", side_effect=RuntimeError(secret)):
+            response = api_validate_rekap_kebutuhan(request, self.project.id)
 
         body = response.content.decode("utf-8")
         self.assertEqual(response.status_code, 500)

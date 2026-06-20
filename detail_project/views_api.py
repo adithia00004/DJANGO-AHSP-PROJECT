@@ -5376,8 +5376,9 @@ def api_get_rekap_kebutuhan(request: HttpRequest, project_id: int):
             filters=filters,
             time_scope=time_scope,
         )
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+    except Exception:
+        logger.exception("[Rekap Kebutuhan] Snapshot compute failed for project %s", project_id)
+        return JsonResponse({'ok': False, 'error': 'Gagal menghitung rekap kebutuhan'}, status=500)
 
     rows, summary = summarize_kebutuhan_rows(raw_rows, search=search)
     scope_active = bool(time_scope and time_scope.get('mode') not in ('', 'all'))
@@ -5460,11 +5461,11 @@ def api_validate_rekap_kebutuhan(request, project_id: int):
             'validation': validation_result,
         })
 
-    except Exception as e:
+    except Exception:
         logger.exception("[Rekap Kebutuhan] Validation failed for project %s", project_id)
         return JsonResponse({
             'status': 'error',
-            'message': f'Validation failed: {str(e)}'
+            'message': 'Validasi rekap kebutuhan gagal'
         }, status=500)
 
 
@@ -7615,14 +7616,13 @@ def api_rekap_kebutuhan_weekly(request: HttpRequest, project_id: int) -> JsonRes
     # Step 1: Get all kebutuhan items (material/tenaga requirements)
     try:
         kebutuhan_items = compute_kebutuhan_items(project)
-    except Exception as e:
+    except Exception:
         logger.error(
             f"[Rekap Kebutuhan API] Failed to compute kebutuhan for project {project_id}",
             exc_info=True
         )
         return JsonResponse({
-            'error': 'Failed to compute resource requirements',
-            'detail': str(e)
+            'error': 'Failed to compute resource requirements'
         }, status=500)
 
     # Build item index: (kategori, kode) â†’ item data
