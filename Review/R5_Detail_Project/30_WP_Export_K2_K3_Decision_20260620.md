@@ -351,6 +351,14 @@ Klasifikasi tiap formula: **MIRROR 1:1** (`='Data Master'!{1 sel}`, tanpa operat
 | 4039-4059 | TOTAL `=SUM(kolom)` | recompute |
 - **Sumber nilai:** H/I/J = bobot × Σ proporsi. bobot + proporsi ada di adapter. **Bounded: ganti dengan nilai Python; mirror tetap.**
 
+### 8.2 Increment 2A — Monthly — SELESAI (kode `74e5d58d`, 2026-06-21)
+
+**Koreksi penting:** increment 1 (`d3c63464`) ternyata BELUM menuntaskan SSOT "Data Master" — baris ringkasan project-level (Progress Mingguan Rencana/Realisasi, Kumulatif) masih formula recompute `=SUM(G*col)`/`=prev+col` DI SHEET SSOT. 2A menuntaskannya.
+
+- **SSOT "Data Master" kini 100% nilai:** baris ringkasan = Python Decimal (project weekly = Σ bobot×proporsi; kumulatif = running sum). Per-pekerjaan total/bobot sudah dari increment 1. Nilai weekly per-pekerjaan + bobot + agregat project ditangkap ke `ssot_ranges` (`weekly_values`/`bobot_by_row`/`project_weekly`) → sheet hilir agregasi dari data kanonik, **bukan baca sel worksheet**.
+- **Monthly rincian:** Col H/I = Python Σ proporsi planned per periode (filter bulan/4-minggu sebelum agregasi, urutan minggu kanonik); J = Python H+I; TOTAL = jumlah Python tertimbang-bobot (bukan `=SUMPRODUCT`); summary Rencana/Actual + Deviasi = nilai Python. **Kumulatif Lalu/Ini tetap mirror 1:1.** Pengesahan lokasi+tanggal = nilai string (bukan `&`-concat).
+- **Gate (✅):** test render monthly export → Data Master tanpa sel formula; tiap formula di sheet Rincian Monthly = mirror `='Data Master'!cell` murni. **157 export test PASS**, check+makemigrations bersih.
+
 **KESIMPULAN ORDERING (terkonfirmasi, asumsi awal TERBALIK):**
 - **Effort: Monthly ≈ Weekly (bounded, banyak mirror) ≪ Professional (rewrite S-curve penuh, tanpa mirror).**
 - **Rekomendasi urutan: 2A=Monthly → 2B=Weekly → 2C=Professional** (sederhana-dengan-mirror dulu; pola guard "sheet resmi = mirror-1:1-only + nilai" matang sebelum hadapi Professional yang terumit). Penamaan 2A/2B/2C disesuaikan ke urutan baru ini.
